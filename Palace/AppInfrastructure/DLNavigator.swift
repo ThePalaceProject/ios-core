@@ -60,7 +60,7 @@ class DLNavigator {
         return Destination(screen: screen, params: params )
     }
 
-    private func login(libraryId: String, barcode: String, accountsManager: AccountsManager = AccountsManager.shared) {
+    private func login(libraryId: String, barcode: String, accountsManager: AccountsManager = AppContainer.production().accountsManager) {
         let accountsManager = accountsManager
         guard let topViewController = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController(),
               let newAccount = accountsManager.account(libraryId)
@@ -75,17 +75,17 @@ class DLNavigator {
                 self?.login(libraryId: libraryId, barcode: barcode)
             }
             DispatchQueue.main.async {
-                MyBooksViewModel().authenticateAndLoad(account: newAccount)
+                MyBooksViewModel(appContainer: .production()).authenticateAndLoad(account: newAccount)
             }
             return
         }
-        if AccountsManager.shared.userAccount(for: libraryId).isSignedIn() {
+        if accountsManager.userAccount(for: libraryId).isSignedIn() {
             return
         }
         Task { @MainActor in
             SignInModalPresenter.presentSignInModalForCurrentAccount {
                 let accountList = TPPAccountList { account in
-                    MyBooksViewModel().authenticateAndLoad(account: account)
+                    MyBooksViewModel(appContainer: .production()).authenticateAndLoad(account: account)
                 }
                 let nav = UINavigationController(rootViewController: accountList)
                 topViewController.present(nav, animated: true)

@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import PalaceCatalog
 
 enum BookButtonState: Equatable {
     case canBorrow
@@ -56,7 +57,7 @@ extension BookButtonState {
                 buttons = [.cancelHold]
             }
         case .downloadNeeded:
-            if let authDef = AccountsManager.shared.currentUserAccount.authDefinition,
+            if let authDef = AppContainer.production().accountsManager.currentUserAccount.authDefinition,
                authDef.needsAuth || book.defaultAcquisitionIfOpenAccess != nil {
                 buttons = [.download, .return]
             } else {
@@ -72,7 +73,7 @@ extension BookButtonState {
                 break
             }
 
-            if let authDef = AccountsManager.shared.currentUserAccount.authDefinition,
+            if let authDef = AppContainer.production().accountsManager.currentUserAccount.authDefinition,
                authDef.needsAuth ||
                 book.defaultAcquisitionIfOpenAccess != nil {
                 buttons.append(.return)
@@ -119,7 +120,7 @@ extension BookButtonState {
 }
 
 extension BookButtonState {
-    init?(_ book: TPPBook, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) {
+    init?(_ book: TPPBook, bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry) {
         let bookState = bookRegistry.state(for: book.identifier)
         switch bookState {
         case .unregistered, .holding:
@@ -186,7 +187,7 @@ extension BookButtonState {
 }
 
 extension TPPBook {
-    func supportsDeletion(for state: BookButtonState, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) -> Bool {
+    func supportsDeletion(for state: BookButtonState, bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry) -> Bool {
         var fullfillmentRequired = false
         #if FEATURE_DRM_CONNECTOR
         fullfillmentRequired = state == .holding && self.revokeURL != nil
@@ -194,7 +195,7 @@ extension TPPBook {
 
         let hasFullfillmentId = bookRegistry.fulfillmentId(forIdentifier: self.identifier) != nil
         let isFullfiliable = !(hasFullfillmentId && fullfillmentRequired) && self.revokeURL != nil
-        let needsAuthentication = self.defaultAcquisitionIfOpenAccess == nil && AccountsManager.shared.currentUserAccount.authDefinition?.needsAuth ?? false
+        let needsAuthentication = self.defaultAcquisitionIfOpenAccess == nil && AppContainer.production().accountsManager.currentUserAccount.authDefinition?.needsAuth ?? false
 
         return isFullfiliable && !needsAuthentication
     }

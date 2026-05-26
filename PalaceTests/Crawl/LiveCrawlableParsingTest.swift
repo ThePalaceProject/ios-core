@@ -1,4 +1,5 @@
 import XCTest
+import PalaceCatalog
 @testable import Palace
 
 /// Integration test that fetches the live crawlable endpoint and verifies parsing.

@@ -1,0 +1,93 @@
+scenario:
+  id: audiobook-scrubber-drag
+  name: "Audiobook scrubber drag position state"
+  description: >
+    Third audiobook UI recording. Verifies that dragging the scrubber
+    thumb on the audio progress bar seeks the audiobook to the
+    dragged-to position. Position-state OCR (chapter, elapsed,
+    remaining) changes are the load-bearing assertion — the sim audio
+    decoder is silent (memory: feedback_audiobook_sim_audio_limitation).
+
+    Closes the direct-position-control gap. Pairs with audiobook-
+    skip-forward (incremental +30s) and audiobook-toc-seek
+    (chapter-grained) to cover all three position drivers — direct,
+    incremental, and indexed.
+
+  tags: [tier1, ios, audiobook, scrubber, position-state]
+  tier: stateful
+  blocking: false   # smoke-only — drag end-position varies with HID
+                    # injection timing; load-bearing invariant is the
+                    # OCR delta on position-state indicators.
+
+  preconditions:
+    - "A1QA Test Library is the active library"
+    - "A1QA is signed in (patron 'al/qa' visible top-left)"
+    - "Animal Farm audiobook is in MyBooks, downloaded, Listen button visible"
+    - "MyBooks tab is in the foreground"
+    - "Playback position is in Chapter 1 at end (17:20 elapsed) — the recording's pre-state seeks backward to chapter 1 start via the scrubber"
+
+  state_reset:
+    - "Before each replay, ensure Animal Farm has been borrowed AND downloaded under A1QA."
+    - "Pre-state must place playback in Chapter 1 area for the post-drag position-state delta to be meaningful. Easiest: run audiobook-toc-seek replay first to land in chapter 1 boundary, then run this scrubber-drag replay."
+
+  recording:
+    path: "~/.simdrive/recordings/audiobook-scrubber-drag/recording.yaml"
+    steps: 2
+    captured_with: "simdrive 1.0.0a9"
+    captured_on: "2026-05-12"
+
+  steps:
+    - id: tap_listen
+      description: "Tap Listen on Animal Farm row — open audiobook player at cached last position"
+      tap_target: { stable_id: "d354dbdde1de" }
+    - id: swipe_scrubber
+      description: "Swipe the scrubber thumb at y=642 from x=87 (left edge) to x=800 (about 70% across). Drag duration 500ms."
+      swipe: { from: { x: 87, y: 642 }, to: { x: 800, y: 642 }, duration_ms: 500 }
+
+  expected_invariants:
+    - "Listen tap opens audiobook player"
+    - "Scrubber bar visible at y≈642 (between '02 hr X min remaining' text and Chapter X / position row)"
+    - "Initial scrubber thumb position is at left edge (or wherever the cached playback position dictates)"
+    - "Swipe from (87, 642) to (800, 642) drags the scrubber thumb visibly toward the middle/right of the bar"
+    - "Post-swipe position-state changes ALL THREE indicators: total remaining time, chapter elapsed/remaining (left/right timestamps), AND chapter number (if drag crosses a chapter boundary)"
+    - "Example observed delta: '02 hr 54 min remaining' → '03 hr 11 min remaining' (drag seeks backward by ~17 min when starting from chapter 1 end position)"
+
+  ssim_gating:
+    threshold: 0.85
+    on_drift: warn   # Scrubber thumb position is a small pixel
+                     # region; SSIM at 0.85 won't reliably detect the
+                     # thumb move alone. OCR-readable position-state
+                     # delta is the regression detector.
+
+  rationale: |
+    Scrubber drag is the most-precise seek control in the audiobook
+    player. Regressions in:
+
+    1. **Gesture-to-position mapping** — the drag's x-coord-to-time
+       conversion must match the scrubber bar's underlying total-
+       duration scale. A regression here lands the user at a wrong
+       position despite the thumb appearing correctly placed.
+
+    2. **AVAudioSession seek call** — the drag should issue an
+       AVAudioPlayer.currentTime seek. A regression in the binding
+       leaves the audio engine at the OLD position while the UI shows
+       the NEW thumb position (cosmetic drift).
+
+    3. **Chapter-index recompute** — if the drag crosses a chapter
+       boundary, the Chapter: N label must update. A regression in the
+       chapter-index recompute leaves the label stale even when the
+       underlying position is correctly in the next chapter.
+
+    The OCR delta on remaining/elapsed/chapter is the unified
+    regression detector for all three failure modes — any of them
+    produces a different post-state than the recorded baseline.
+
+  known_issues:
+    - "Drag end-position is approximate. HID injection timing varies by ~5-10ms between runs, which shifts the drag's end-x by a few pixels. The scrubber bar's pixel-to-time scale is small (1206px ≈ 3 hours = 9 seconds per pixel) so a 10px end-position drift = ~90s position drift. The recording's post-state OCR assertions should accept ±2 minutes of drift in remaining time."
+    - "The scrubber thumb sometimes 'snaps' to nearest second/minute, which adds quantization noise to the drag's effective end-position. Test against a recording captured on the same device + iOS version for tightest agreement."
+    - "On a fresh sim with a fresh download, the scrubber thumb starts at x≈87 (left edge). On a sim with prior playback, it starts wherever the cached position is — the recording's step-2 from-x assumes left-edge start."
+
+  related:
+    - "audiobook-skip-forward.yaml — fine-grained +30s incremental seek"
+    - "audiobook-toc-seek.yaml — chapter-indexed seek"
+    - "Memory: feedback_audiobook_sim_audio_limitation.md — sim audio is silent, position-state is the only signal"

@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import PalaceLogging
 
 class TPPPDFTextExtractor {
     private var textBlocks = [String]()

@@ -1,4 +1,5 @@
 import Foundation
+import PalaceCatalog
 
 // MARK: - Catalog State Machine
 

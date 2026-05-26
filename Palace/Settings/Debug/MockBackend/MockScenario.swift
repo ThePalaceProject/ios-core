@@ -10,6 +10,7 @@
 #if DEBUG
 
 import Foundation
+import PalaceLogging
 
 /// A test scenario that defines how the mock backend responds to each URL pattern.
 struct MockScenario: Codable, Identifiable {

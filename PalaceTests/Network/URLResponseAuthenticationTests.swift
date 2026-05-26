@@ -6,6 +6,8 @@
 //
 
 import XCTest
+import PalaceAuth
+import PalaceCatalog
 @testable import Palace
 
 final class URLResponseAuthenticationTests: XCTestCase {

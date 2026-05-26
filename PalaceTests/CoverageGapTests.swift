@@ -10,6 +10,7 @@
 
 import XCTest
 import Combine
+import PalaceCatalog
 @testable import Palace
 
 // MARK: - Gap 1-3: Account, AccountDetails, Authentication (Account.swift)
@@ -184,16 +185,16 @@ final class AccountsManagerGapTests: XCTestCase {
 
     /// Coverage Gap: AccountsManager class — verify account lookup by UUID
     func testAccountsManager_accountByUUID_returnsNilForUnknownUUID() {
-        let result = AccountsManager.shared.account("urn:uuid:nonexistent-12345")
+        let result = AppContainer.production().accountsManager.account("urn:uuid:nonexistent-12345")
         XCTAssertNil(result, "Looking up a nonexistent UUID should return nil")
         // A different unknown UUID must also return nil (not a cached misfire)
-        let result2 = AccountsManager.shared.account("urn:uuid:also-nonexistent-67890")
+        let result2 = AppContainer.production().accountsManager.account("urn:uuid:also-nonexistent-67890")
         XCTAssertNil(result2, "Distinct nonexistent UUIDs must both return nil")
     }
 
     /// Coverage Gap: AccountsManager — verify currentAccountId persists
     func testAccountsManager_currentAccountId_persistsToUserDefaults() {
-        let manager = AccountsManager.shared
+        let manager = AppContainer.production().accountsManager
         let currentId = manager.currentAccountId
 
         // currentAccountId should be readable (may be nil in test environment)
@@ -205,10 +206,10 @@ final class AccountsManagerGapTests: XCTestCase {
 
     /// Coverage Gap: AccountsManager — verify tppAccountUUID is accessible
     func testAccountsManager_tppAccountUUID_isNotEmpty() {
-        let uuid = AccountsManager.shared.tppAccountUUID
+        let uuid = AppContainer.production().accountsManager.tppAccountUUID
         XCTAssertFalse(uuid.isEmpty, "TPP account UUID should not be empty")
         // UUID must be stable across calls (not regenerated each time)
-        let uuid2 = AccountsManager.shared.tppAccountUUID
+        let uuid2 = AppContainer.production().accountsManager.tppAccountUUID
         XCTAssertEqual(uuid, uuid2, "tppAccountUUID must return the same value on repeated calls")
     }
 }
@@ -221,7 +222,7 @@ final class SettingsViewModelGapTests: XCTestCase {
     /// Coverage Gap: SettingsViewModel function missing tests — refreshAccountsList
     func testSettingsViewModel_refreshAccountsList_updatesProperty() {
         let mockSettings = TPPSettingsMock()
-        let viewModel = SettingsViewModel(settings: mockSettings)
+        let viewModel = SettingsViewModel(settings: mockSettings, accountsManager: AppContainer.production().accountsManager)
 
         // The settingsAccountsList should be readable after refresh
         viewModel.refreshAccountsList()
@@ -365,10 +366,8 @@ final class MyBooksDownloadCenterAdeptGapTests: XCTestCase {
 
     /// Coverage Gap: adept progress update — verify progress tracking infrastructure
     func testDownloadCenter_downloadProgressPublisher_exists() {
-        // Verify the download progress infrastructure exists and is accessible
-        let center = MyBooksDownloadCenter.shared
-        XCTAssertNotNil(center, "MyBooksDownloadCenter should be accessible")
         // A book with no active download should report zero progress
+        let center = AppContainer.production().downloadCenter
         let progress = center.downloadProgress(for: "nonexistent-book-id")
         XCTAssertEqual(progress, 0.0, accuracy: 0.001,
                        "Progress for unknown book must be 0.0")

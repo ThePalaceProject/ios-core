@@ -1,11 +1,12 @@
 import Combine
 import SwiftUI
-import SafariServices
 import PalaceAudiobookToolkit
 
 #if LCP
 import ReadiumShared
 import ReadiumStreamer
+import PalaceLogging
+import PalaceCatalog
 #endif
 
 struct BookLane {
@@ -77,6 +78,22 @@ final class BookDetailViewModel: ObservableObject {
     }
     @Published var isProcessing: Bool = false
 
+    /// `true` while BorrowOperation has the registry's processing flag set
+    /// for this book — i.e. a borrow request is in flight. Distinct from
+    /// `downloadProgress` (which is 0 for the entire borrow phase, before
+    /// the download itself starts) and from `processingButtons` (which
+    /// tracks user-initiated UI spinners on individual buttons).
+    ///
+    /// Surfacing this flag fixes the "borrow stuck with Cancel-only UI" bug
+    /// on slow distributors (Overdrive in particular): before this, the
+    /// half-sheet rendered a 0%-linear progress bar and an inert Cancel
+    /// button with no indeterminate spinner, so the user had no signal that
+    /// anything was happening. BorrowOperation's setProcessing(true:false)
+    /// pair is the canonical truth here; we mirror it via the existing
+    /// `.TPPBookProcessingDidChange` notification so unit tests can flip it
+    /// without standing up the full download stack.
+    @Published private(set) var isBorrowProcessing: Bool = false
+
     var isShowingSample = false
     var isProcessingSample = false
 
@@ -85,6 +102,10 @@ final class BookDetailViewModel: ObservableObject {
     let registry: TPPBookRegistryProvider
     let downloadCenter: MyBooksDownloadCenter
     private let accountsManager: AccountsManager
+    private let settings: TPPSettings
+    private let opdsFeedService: OPDSFeedService
+    private let samplePreviewManager: SamplePreviewManager
+    private let readerService: ReaderService
     private let metadataHydrator: BookMetadataHydrator
     private var cancellables = Set<AnyCancellable>()
 
@@ -111,25 +132,63 @@ final class BookDetailViewModel: ObservableObject {
     // MARK: - Initializer
 
     @objc convenience init(book: TPPBook) {
-        self.init(book: book, registry: TPPBookRegistry.shared)
+        self.init(book: book, appContainer: .production())
+    }
+
+    /// Standard composition path — wraps the AppContainer service graph.
+    convenience init(book: TPPBook, appContainer: AppContainer) {
+        self.init(
+            book: book,
+            registry: appContainer.bookRegistry,
+            downloadCenter: appContainer.downloadCenter,
+            accountsManager: appContainer.accountsManager,
+            settings: appContainer.settings,
+            opdsFeedService: appContainer.opdsFeedService,
+            samplePreviewManager: appContainer.samplePreviewManager,
+            readerService: appContainer.readerService
+        )
     }
 
     /// Initializer with dependency injection for testing
     init(
         book: TPPBook,
         registry: TPPBookRegistryProvider,
-        downloadCenter: MyBooksDownloadCenter = .shared,
-        accountsManager: AccountsManager = .shared,
-        metadataHydrator: @escaping BookMetadataHydrator = BookDetailViewModel.defaultMetadataHydrator
+        downloadCenter: MyBooksDownloadCenter,
+        accountsManager: AccountsManager,
+        settings: TPPSettings,
+        opdsFeedService: OPDSFeedService,
+        samplePreviewManager: SamplePreviewManager,
+        readerService: ReaderService,
+        metadataHydrator: BookMetadataHydrator? = nil
     ) {
         self.book = book
         self.registry = registry
         self.downloadCenter = downloadCenter
         self.accountsManager = accountsManager
-        self.metadataHydrator = metadataHydrator
+        self.settings = settings
+        self.opdsFeedService = opdsFeedService
+        self.samplePreviewManager = samplePreviewManager
+        self.readerService = readerService
+        // Default hydrator captures the injected services instead of reading
+        // .shared singletons. Tests pass a custom hydrator to short-circuit.
+        self.metadataHydrator = metadataHydrator ?? { url in
+            let feed = try await opdsFeedService.fetchFeed(
+                from: url,
+                useToken: accountsManager.currentUserAccount.hasAdobeToken()
+            )
+            guard let entries = feed.entries as? [TPPOPDSEntry],
+                  let entry = entries.first else { return nil }
+            return TPPBook(entry: entry)
+        }
         self.bookState = registry.state(for: book.identifier)
         self.bookIdentifier = book.identifier
         self.stableButtonState = self.computeButtonState(book: book, state: self.bookState, isManagingHold: self.isManagingHold)
+        // Seed isBorrowProcessing from the registry's processing flag so a
+        // borrow that's already in flight when the detail view opens (e.g.
+        // user kicked it off from a swimlane, then navigated into details
+        // before the network round-trip returned) shows the spinner from
+        // first frame instead of looking idle until the next emission.
+        self.isBorrowProcessing = registry.processing(forIdentifier: book.identifier)
 
         bindRegistryState()
         setupStableButtonState()
@@ -151,7 +210,7 @@ final class BookDetailViewModel: ObservableObject {
         timer = nil
         NotificationCenter.default.removeObserver(self)
         #if LCP
-        if let licenseUrl = Self.lcpLicenseURL(forBookIdentifier: bookIdentifier) {
+        if let licenseUrl = Self.lcpLicenseURL(forBookIdentifier: bookIdentifier, downloadCenter: downloadCenter) {
             var lcpAudiobooks: LCPAudiobooks?
             if let localURL = downloadCenter.fileUrl(for: bookIdentifier),
                FileManager.default.fileExists(atPath: localURL.path) {
@@ -182,56 +241,53 @@ final class BookDetailViewModel: ObservableObject {
                 // was too aggressive and missed availability data changes needed for the HalfSheet.
                 self.book = updatedBook
 
-                // If we are in a local returning override, hold it until unregistered
-                if let override = self.localBookStateOverride, override == .returning, registryState != .unregistered {
-                    return
-                }
-                self.bookState = registryState
-
-                // Clear processing buttons based on state transitions
-                switch registryState {
-                case .unregistered:
-                    // Ensure UI is not left in a managing/processing state after returning
-                    self.isManagingHold = false
-                    self.showHalfSheet = false
-                    self.processingButtons.remove(.returning)
-                    self.processingButtons.remove(.cancelHold)
-                    self.processingButtons.remove(.return)
-                    self.processingButtons.remove(.remove)
-
-                case .downloading:
-                    // Download started - clear download-related processing buttons
-                    self.processingButtons.remove(.download)
-                    self.processingButtons.remove(.get)
-                    self.processingButtons.remove(.retry)
-
-                case .downloadFailed:
-                    // Download failed - clear download-related processing buttons
-                    self.processingButtons.remove(.download)
-                    self.processingButtons.remove(.get)
-                    self.processingButtons.remove(.retry)
-                // Don't auto-close the HalfSheet on downloadFailed - the HalfSheet will update
-                // to show retry/cancel buttons. Auto-closing causes a race condition with the
-                // error alert presentation, resulting in the alert being auto-dismissed.
-
-                case .downloadSuccessful, .used:
-                    // Download completed - clear all download-related processing
-                    // Keep half sheet open so user can tap Read/Listen
-                    self.processingButtons.remove(.download)
-                    self.processingButtons.remove(.get)
-                    self.processingButtons.remove(.retry)
-
-                case .holding:
-                    // Hold placed - clear reserve button and dismiss half sheet
-                    self.processingButtons.remove(.reserve)
-                    self.processingButtons.remove(.get)
-                    self.showHalfSheet = false
-
-                default:
-                    break
-                }
+                // Run the registry-state transition through BorrowReducer so the
+                // legacy switch is testable in isolation (see BorrowReducerTests).
+                var snapshot = self.snapshotBorrowState()
+                _ = BorrowReducer.reduce(&snapshot, .registryStateChanged(registryState))
+                self.applyBorrowState(snapshot)
             }
             .store(in: &cancellables)
+    }
+
+    /// Reads the relevant slice of VM @Published state into a `BorrowState`
+    /// value type so the reducer can mutate it in isolation. Cosmetic VM
+    /// fields (related books, alerts, sample state, etc.) live outside this
+    /// snapshot — the reducer only owns the borrow lifecycle.
+    private func snapshotBorrowState() -> BorrowState {
+        BorrowState(
+            bookState: bookState,
+            localBookStateOverride: localBookStateOverride,
+            downloadProgress: downloadProgress,
+            processingButtons: processingButtons,
+            isManagingHold: isManagingHold,
+            showHalfSheet: showHalfSheet
+        )
+    }
+
+    /// Mirrors the post-reduce state back onto VM @Published properties.
+    /// Guards each write with an inequality check so we avoid an unnecessary
+    /// objectWillChange spam — Combine subscribers (e.g. button-state
+    /// throttling) only fire when something actually changed.
+    private func applyBorrowState(_ state: BorrowState) {
+        if bookState != state.bookState {
+            bookState = state.bookState
+        }
+        if localBookStateOverride != state.localBookStateOverride {
+            localBookStateOverride = state.localBookStateOverride
+        }
+        if downloadProgress != state.downloadProgress {
+            downloadProgress = state.downloadProgress
+        }
+        if processingButtons != state.processingButtons {
+            processingButtons = state.processingButtons
+        }
+        if isManagingHold != state.isManagingHold {
+            isManagingHold = state.isManagingHold
+        }
+        if showHalfSheet != state.showHalfSheet {
+            showHalfSheet = state.showHalfSheet
+        }
     }
 
     private func setupObservers() {
@@ -241,6 +297,24 @@ final class BookDetailViewModel: ObservableObject {
             name: .TPPBookRegistryDidChange,
             object: nil
         )
+
+        // BorrowOperation posts .TPPBookProcessingDidChange via the registry
+        // when it starts a borrow request and again when it finishes. Mirror
+        // it onto an @Published flag the half-sheet can observe, filtered to
+        // this VM's book identifier so unrelated borrows don't spin our UI.
+        NotificationCenter.default.publisher(for: .TPPBookProcessingDidChange)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] note in
+                guard let self else { return }
+                guard let info = note.userInfo as? [String: Any],
+                      let identifier = info[TPPNotificationKeys.bookProcessingBookIDKey] as? String,
+                      identifier == self.bookIdentifier,
+                      let value = info[TPPNotificationKeys.bookProcessingValueKey] as? Bool else { return }
+                if self.isBorrowProcessing != value {
+                    self.isBorrowProcessing = value
+                }
+            }
+            .store(in: &cancellables)
 
         // Avoid general download center change notifications; we already subscribe to fine-grained progress and registry state publishers
 
@@ -284,7 +358,7 @@ final class BookDetailViewModel: ObservableObject {
                     self.downloadErrorAlert = AlertModel(title: errorInfo.title, message: errorInfo.message)
                 }
 
-                // BookActionHandler.startDownloadAfterAuth sets bookState =
+                // startDownloadAfterAuth sets bookState =
                 // .downloading and shows a Cancel button in the half-sheet
                 // before the download task even runs. When the download is
                 // refused (Wi-Fi-only on cellular, auth issue, etc.), nothing
@@ -396,21 +470,13 @@ final class BookDetailViewModel: ObservableObject {
         }
     }
 
-    static let defaultMetadataHydrator: BookMetadataHydrator = { url in
-        let feed = try await OPDSFeedService.shared.fetchFeed(
-            from: url,
-            useToken: AccountsManager.shared.currentUserAccount.hasAdobeToken()
-        )
-        guard let entries = feed.entries as? [TPPOPDSEntry],
-              let entry = entries.first else { return nil }
-        return TPPBook(entry: entry)
-    }
-
     private static func needsMetadataHydration(_ book: TPPBook) -> Bool {
         book.published == nil
             && (book.publisher?.isEmpty ?? true)
             && (book.distributor?.isEmpty ?? true)
             && (book.categoryStrings?.isEmpty ?? true)
+            && (book.audience?.isEmpty ?? true)
+            && (book.language?.isEmpty ?? true)
     }
 
     private static func mergeHydratedMetadata(into current: TPPBook, fresh: TPPBook) -> TPPBook {
@@ -439,6 +505,8 @@ final class BookDetailViewModel: ObservableObject {
             timeTrackingURL: current.timeTrackingURL,
             contributors: current.contributors,
             bookDuration: (current.bookDuration?.isEmpty ?? true) ? fresh.bookDuration : current.bookDuration,
+            audience: (current.audience?.isEmpty ?? true) ? fresh.audience : current.audience,
+            language: (current.language?.isEmpty ?? true) ? fresh.language : current.language,
             imageCache: current.imageCache
         )
     }
@@ -467,7 +535,7 @@ final class BookDetailViewModel: ObservableObject {
         Task { [weak self] in
             guard let self else { return }
             do {
-                let feed = try await OPDSFeedService.shared.fetchFeed(from: url, useToken: AccountsManager.shared.currentUserAccount.hasAdobeToken())
+                let feed = try await opdsFeedService.fetchFeed(from: url, useToken: accountsManager.currentUserAccount.hasAdobeToken())
 
                 await MainActor.run {
                     guard self.book.identifier == currentBookId else {
@@ -482,7 +550,7 @@ final class BookDetailViewModel: ObservableObject {
                             for entry in entries {
                                 guard let group = entry.groupAttributes else { continue }
                                 let groupTitle = group.title ?? ""
-                                if let b = CatalogViewModel.makeBook(from: entry) {
+                                if let b = CatalogViewModel.makeBook(from: entry, bookRegistry: registry) {
                                     groupTitleToBooks[groupTitle, default: []].append(b)
                                     if groupTitleToMoreURL[groupTitle] == nil { groupTitleToMoreURL[groupTitle] = group.href }
                                 }
@@ -607,7 +675,7 @@ final class BookDetailViewModel: ObservableObject {
         let businessLogic = TPPSignInBusinessLogic(
             libraryAccountID: accountsManager.currentAccount?.uuid ?? "",
             libraryAccountsProvider: accountsManager,
-            urlSettingsProvider: TPPSettings.shared,
+            urlSettingsProvider: settings,
             bookRegistry: (registry as? TPPBookRegistrySyncing) ?? { preconditionFailure("registry must conform to TPPBookRegistrySyncing") }(),
             bookDownloadsCenter: downloadCenter,
             userAccountProvider: TPPUserAccount.self,
@@ -619,7 +687,7 @@ final class BookDetailViewModel: ObservableObject {
             DispatchQueue.main.async {
                 guard let self = self else { return }
 
-                let account = AccountsManager.shared.currentUserAccount
+                let account = self.accountsManager.currentUserAccount
                 let needsSignIn = account.needsAuth && !account.hasCredentials()
                 // .credentialsStale means we still hold credentials but a 401
                 // has marked the session expired. Reading the cached book
@@ -630,10 +698,11 @@ final class BookDetailViewModel: ObservableObject {
                 let needsReauth = account.authState == .credentialsStale
                 if needsSignIn || needsReauth {
                     Log.info(#file, "[SAML-REAUTH] ensureAuthAndExecute presenting modal: needsSignIn=\(needsSignIn) needsReauth=\(needsReauth)")
+                    let halfSheetWasShowing = self.showHalfSheet
                     self.showHalfSheet = false
-                    SignInModalPresenter.presentSignInModalForCurrentAccount { [weak self] in
+                    SignInModalPresenter.presentSignInModalForCurrentAccount(accountsManager: self.accountsManager) { [weak self] in
                         guard let self else { return }
-                        let post = AccountsManager.shared.currentUserAccount
+                        let post = self.accountsManager.currentUserAccount
                         // Proceed only if the user actually re-authenticated
                         // — they have credentials AND state is loggedIn.
                         // Cancelling the modal leaves authState unchanged
@@ -642,12 +711,26 @@ final class BookDetailViewModel: ObservableObject {
                         // book and reproduce the original hang.
                         guard post.hasCredentials() && post.authState == .loggedIn else {
                             Log.info(#file, "[SAML-REAUTH] Sign-in cancelled or incomplete (hasCredentials=\(post.hasCredentials()) authState=\(post.authState)) — not proceeding with action")
-                            // Clear any processing state for download-related buttons
-                            self.processingButtons.remove(.download)
-                            self.processingButtons.remove(.get)
-                            self.processingButtons.remove(.retry)
-                            self.processingButtons.remove(.reserve)
+                            // Clear ALL processing state. A bailed-out modal can
+                            // leave .read/.listen/.reserve/etc. stuck in the set,
+                            // and `handleAction` ignores any tap whose button is
+                            // already processing — i.e. the next Read tap is
+                            // silently dropped until the view is recreated.
+                            self.processingButtons.removeAll()
+                            // Restore the half-sheet so the patron can retry. We
+                            // only re-show it if the caller had it open before
+                            // the modal stole the screen (e.g. download in
+                            // flight); pure book-detail actions like Read don't
+                            // use the half-sheet and shouldn't summon it now.
+                            if halfSheetWasShowing {
+                                self.showHalfSheet = true
+                            }
                             return
+                        }
+                        // Restore the half-sheet on the success path too — it
+                        // was only dismissed to make room for the SAML modal.
+                        if halfSheetWasShowing {
+                            self.showHalfSheet = true
                         }
                         action()
                     }
@@ -717,7 +800,7 @@ final class BookDetailViewModel: ObservableObject {
             Task { @MainActor in
                 guard let self = self else { return }
                 #if FEATURE_DRM_CONNECTOR
-                let user = AccountsManager.shared.currentUserAccount
+                let user = self.accountsManager.currentUserAccount
 
                 if user.hasCredentials() {
                     if user.hasAuthToken() {
@@ -812,8 +895,8 @@ final class BookDetailViewModel: ObservableObject {
     }
 
     #if LCP
-    nonisolated static func lcpLicenseURL(forBookIdentifier identifier: String) -> URL? {
-        guard let bookFileURL = MyBooksDownloadCenter.shared.fileUrl(for: identifier) else {
+    nonisolated static func lcpLicenseURL(forBookIdentifier identifier: String, downloadCenter: MyBooksDownloadCenter) -> URL? {
+        guard let bookFileURL = downloadCenter.fileUrl(for: identifier) else {
             return nil
         }
         let licenseURL = bookFileURL.deletingPathExtension().appendingPathExtension("lcpl")
@@ -823,7 +906,7 @@ final class BookDetailViewModel: ObservableObject {
 
     #if LCP
     private func prefetchLCPStreamingIfPossible() {
-        guard !didPrefetchLCPStreaming, LCPAudiobooks.canOpenBook(book), let licenseUrl = Self.lcpLicenseURL(forBookIdentifier: bookIdentifier) else { return }
+        guard !didPrefetchLCPStreaming, LCPAudiobooks.canOpenBook(book), let licenseUrl = Self.lcpLicenseURL(forBookIdentifier: bookIdentifier, downloadCenter: downloadCenter) else { return }
         if let localURL = downloadCenter.fileUrl(for: bookIdentifier), FileManager.default.fileExists(atPath: localURL.path) {
             return
         }
@@ -843,18 +926,18 @@ final class BookDetailViewModel: ObservableObject {
 
         if book.defaultBookContentType == .audiobook {
             if book.sampleAcquisition?.type == "text/html" {
-                SamplePreviewManager.shared.close()
+                samplePreviewManager.close()
                 presentWebView(book.sampleAcquisition?.hrefURL)
                 isProcessingSample = false
                 completion?()
             } else {
 
-                SamplePreviewManager.shared.toggle(for: book)
+                samplePreviewManager.toggle(for: book)
                 isProcessingSample = false
                 completion?()
             }
         } else {
-            SamplePreviewManager.shared.close()
+            samplePreviewManager.close()
             EpubSampleFactory.createSample(book: book) { sampleURL, error in
                 DispatchQueue.main.async {
                     if let error = error {
@@ -867,7 +950,7 @@ final class BookDetailViewModel: ObservableObject {
 
                         if isEpubSample {
                             // Use Readium EPUB reader for EPUB samples
-                            ReaderService.shared.openSample(book, url: sampleURL)
+                            self.readerService.openSample(book, url: sampleURL)
                         } else {
                             // Use WebKit for HTML/web samples
                             let web = BundledHTMLViewController(fileURL: sampleURL, title: book.title)
@@ -886,17 +969,11 @@ final class BookDetailViewModel: ObservableObject {
     private func presentWebView(_ url: URL?) {
         guard let url = url else { return }
         guard let top = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController() else { return }
-
-        if url.scheme == "http" || url.scheme == "https" {
-            let safari = SFSafariViewController(url: url)
-            top.present(safari, animated: true)
-        } else {
-            let webController = BundledHTMLViewController(
-                fileURL: url,
-                title: accountsManager.currentAccount?.name ?? ""
-            )
-            top.present(webController, animated: true)
-        }
+        let controller = PreviewControllerFactory.makePreviewController(
+            for: url,
+            title: accountsManager.currentAccount?.name ?? ""
+        )
+        top.present(controller, animated: true)
     }
 
     // MARK: - Error Alerts
@@ -1044,7 +1121,7 @@ extension BookDetailViewModel {
         }
     }
 
-    static func presentEndOfBookAlert(for book: TPPBook, downloadCenter: MyBooksDownloadCenter = .shared) {
+    static func presentEndOfBookAlert(for book: TPPBook, downloadCenter: MyBooksDownloadCenter) {
         let paths = TPPOPDSAcquisitionPath.supportedAcquisitionPaths(
             forAllowedTypes: TPPOPDSAcquisitionPath.supportedTypes(),
             allowedRelations: TPPOPDSAcquisitionRelationSetBorrow | TPPOPDSAcquisitionRelationSetGeneric,
@@ -1054,7 +1131,7 @@ extension BookDetailViewModel {
         if paths.count > 0 {
             let alert = TPPReturnPromptHelper.audiobookPrompt { returnWasChosen in
                 if returnWasChosen {
-                    NavigationCoordinatorHub.shared.coordinator?.pop()
+                    AppContainer.production().navigationCoordinatorHub.coordinator?.pop()
                     downloadCenter.returnBook(withIdentifier: book.identifier)
                 }
                 TPPAppStoreReviewPrompt.presentIfAvailable()
@@ -1066,7 +1143,7 @@ extension BookDetailViewModel {
     }
 
     private func presentEndOfBookAlert() {
-        BookDetailViewModel.presentEndOfBookAlert(for: book)
+        BookDetailViewModel.presentEndOfBookAlert(for: book, downloadCenter: downloadCenter)
     }
 }
 

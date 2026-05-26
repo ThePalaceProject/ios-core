@@ -8,6 +8,7 @@
 
 import Foundation
 import WebKit
+import PalaceKeychain
 
 enum TPPCredentials {
     case token(authToken: String, barcode: String?  = nil, pin: String? = nil, expirationDate: Date? = nil)

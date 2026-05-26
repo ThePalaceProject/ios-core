@@ -16,8 +16,7 @@ final class AppTabRouter: ObservableObject {
 }
 
 final class AppTabRouterHub {
-    static let shared = AppTabRouterHub()
-    private init() {}
+    init() {}
     weak var router: AppTabRouter?
 
     /// Pending tab selection that survives router deallocation.

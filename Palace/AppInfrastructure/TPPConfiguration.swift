@@ -3,10 +3,11 @@ import UIKit
 @objc class TPPConfiguration: NSObject {
 
   @objc static func mainFeedURL() -> URL? {
-    if let customURL = TPPSettings.shared.customMainFeedURL {
+    let settings = AppContainer.production().settings
+    if let customURL = settings.customMainFeedURL {
       return customURL
     }
-    return TPPSettings.shared.accountMainFeedURL
+    return settings.accountMainFeedURL
   }
 
   @objc static func accentColor() -> UIColor {

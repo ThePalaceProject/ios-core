@@ -10,7 +10,7 @@ struct LibraryNavTitleView: View {
     /// on launch instead of flashing "Catalog" while the account loads.
     static let cachedNameKey = "LibraryNavTitle.cachedName"
 
-    init(onTap: (() -> Void)? = nil, accountsManager: AccountsManager = AccountsManager.shared) {
+    init(onTap: (() -> Void)? = nil, accountsManager: AccountsManager = AppContainer.production().accountsManager) {
         self.onTap = onTap
         self.accountsManager = accountsManager
     }

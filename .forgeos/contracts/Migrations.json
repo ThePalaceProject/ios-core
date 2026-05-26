@@ -1,0 +1,17 @@
+{
+  "module": "Migrations",
+  "generated_at": "2026-05-12T16:15:16+00:00",
+  "file_count": 3,
+  "shared_singleton_reads": 0,
+  "public_types": [],
+  "objc_surface": [
+    {
+      "name": "migrate",
+      "kind": "func",
+      "file": "TPPMigrationManager.swift",
+      "line": 8
+    }
+  ],
+  "public_functions": [],
+  "internal_protocols": []
+}

@@ -9,6 +9,7 @@
 import UserNotifications
 import FirebaseCore
 import FirebaseMessaging
+import PalaceLogging
 
 // MARK: - Notification Constants
 
@@ -54,14 +55,14 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
     private let notificationCenter = UNUserNotificationCenter.current()
     private let accountsManager: AccountsManager
     private let networkExecutor: TPPNetworkExecutor
-    private let bookRegistry: TPPBookRegistry
+    private let bookRegistry: TPPBookRegistryProvider
 
     static let shared = NotificationService()
 
     override init() {
-        self.accountsManager = .shared
-        self.networkExecutor = .shared
-        self.bookRegistry = TPPBookRegistry.shared
+        self.accountsManager = AppContainer.production().accountsManager
+        self.networkExecutor = AppContainer.production().networkExecutor
+        self.bookRegistry = AppContainer.production().bookRegistry
         super.init()
 
         // Update library token when the user changes library account.
@@ -131,9 +132,14 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
     }
 
     /// Save token to the server
-    /// - Parameter token: FCM token value
-    private func saveToken(_ token: String, endpointUrl: URL) {
+    /// - Parameters:
+    ///   - token: FCM token value
+    ///   - endpointUrl: device-registration endpoint
+    ///   - completion: invoked with `true` only when the PUT returned a 2xx
+    ///     status. Used by `updateToken` to gate `hasUpdatedToken`.
+    private func saveToken(_ token: String, endpointUrl: URL, completion: ((Bool) -> Void)? = nil) {
         guard let requestBody = TokenData(token: token).data else {
+            completion?(false)
             return
         }
         var request = URLRequest(url: endpointUrl, applyingCustomUserAgent: true)
@@ -150,35 +156,125 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
                                             "statusCode": (response as? HTTPURLResponse)?.statusCode ?? 0
                                         ]
                 )
+                completion?(false)
+                return
             }
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            completion?((200..<300).contains(status))
         }
     }
 
     /// Sends FCM to the backend
     ///
-    /// Update token when user account changes
+    /// Update token when user account changes.
+    ///
+    /// Why `hasUpdatedToken` is set only on confirmed success (HelpSpot 17680):
+    /// previously the flag was latched optimistically before `/patrons/me/` was
+    /// even called. When SAML credentials had gone stale, the profile fetch
+    /// returned nil, the device-registration endpoint was never resolved, and
+    /// the FCM token was never sent to the Circulation Manager — so the CM
+    /// could not push hold-availability notifications. The flag stayed `true`,
+    /// blocking every subsequent retry until app cold-launch / sign-out / library
+    /// switch reset it. Now the flag is set only when the token is confirmed
+    /// registered on the server (already-exists OR save succeeded).
     func updateToken() {
         guard !(accountsManager.currentAccount?.hasUpdatedToken ?? false) else {
             return
         }
 
-        accountsManager.currentAccount?.hasUpdatedToken = true
-        accountsManager.currentAccount?.getProfileDocument { profileDocument in
-            guard let endpointHref = profileDocument?.linksWith(.deviceRegistration).first?.href,
-                  let endpointUrl = URL(string: endpointHref)
-            else {
+        // [FCM_REG] grep marker for support-collected logs. Each branch
+        // below logs its outcome with this prefix so a sysdiagnose from a
+        // patron complaining about missing hold notifications can be
+        // searched for the exact step that blocked registration. The CM
+        // is blind to the SAML-stale-zero-token case (no metric surfaces
+        // it server-side per the cross-platform audit on 2026-05-05) so
+        // these client-side logs are the canonical signal.
+        let authState = accountsManager.currentUserAccount.authState
+        Log.info(#file, "[FCM_REG] updateToken start — authState=\(authState)")
+
+        accountsManager.currentAccount?.getProfileDocument { [weak self] profileDocument in
+            guard let self else { return }
+            guard let profileDocument else {
+                Log.warn(#file, "[FCM_REG] FAIL: profile_doc_missing — /patrons/me/ returned nil. Common causes: SAML-stale credentials, no credentials, network failure. authState=\(self.accountsManager.currentUserAccount.authState)")
                 return
             }
-            Messaging.messaging().token { token, _ in
-                if let token {
-                    self.checkTokenExists(token, endpointUrl: endpointUrl) { exists, _ in
-                        if let exists = exists, !exists {
-                            self.saveToken(token, endpointUrl: endpointUrl)
+            guard let endpointHref = profileDocument.linksWith(.deviceRegistration).first?.href,
+                  let endpointUrl = URL(string: endpointHref)
+            else {
+                Log.warn(#file, "[FCM_REG] FAIL: device_registration_link_missing — profile doc returned but had no deviceRegistration link. Library may not support push.")
+                return
+            }
+            Messaging.messaging().token { [weak self] token, error in
+                guard let self else { return }
+                guard let token else {
+                    Log.warn(#file, "[FCM_REG] FAIL: fcm_token_unavailable — Firebase Messaging returned no token. error=\(error?.localizedDescription ?? "nil")")
+                    return
+                }
+                self.checkTokenExists(token, endpointUrl: endpointUrl) { [weak self] exists, _ in
+                    guard let self else { return }
+                    guard let exists = exists else {
+                        // Inconclusive (non-200/404 status). Leave flag false so
+                        // the next sign-in / account-change observer retries.
+                        Log.warn(#file, "[FCM_REG] FAIL: exists_check_inconclusive — token-exists check returned non-200/non-404 (likely 401 or 5xx). Will retry on next sign-in / account-change.")
+                        return
+                    }
+                    if exists {
+                        Log.info(#file, "[FCM_REG] SUCCESS: token_already_registered — CM has the FCM token, no save needed")
+                        self.markTokenRegistered()
+                    } else {
+                        self.saveToken(token, endpointUrl: endpointUrl) { [weak self] succeeded in
+                            guard let self else { return }
+                            guard succeeded else {
+                                Log.warn(#file, "[FCM_REG] FAIL: save_failed — PUT to deviceRegistration endpoint did not return 2xx. CM does not have the token. Will retry on next sign-in / account-change.")
+                                return
+                            }
+                            Log.info(#file, "[FCM_REG] SUCCESS: token_saved — CM accepted the new FCM token (PUT 2xx)")
+                            self.markTokenRegistered()
                         }
                     }
                 }
             }
         }
+    }
+
+    /// Latches `hasUpdatedToken = true` on the account once the FCM token is
+    /// confirmed live on the server. Centralized so the success contract has a
+    /// single set-site (see `updateToken`'s doc comment for the why).
+    private func markTokenRegistered() {
+        accountsManager.currentAccount?.hasUpdatedToken = true
+    }
+
+    /// Pure success-decision helper used by `updateToken` and locked by unit
+    /// tests. Returns true ONLY when the FCM token is confirmed registered with
+    /// the Circulation Manager — i.e., every prerequisite succeeded AND either
+    /// the token already exists on the server (no save needed) or a save
+    /// attempt completed successfully. Returning false here means "leave the
+    /// `hasUpdatedToken` flag false so the next sign-in observer can retry."
+    ///
+    /// - Parameters:
+    ///   - profileDocument: the `/patrons/me/` document, or nil on auth failure.
+    ///   - hasDeviceRegistrationLink: true iff the profile doc advertised a
+    ///     device-registration link.
+    ///   - fcmToken: the FCM token from Firebase Messaging, or nil if unavailable.
+    ///   - existsResult: result of the token-exists check (true = already
+    ///     registered, false = needs save, nil = inconclusive status).
+    ///   - saveSucceeded: nil if save wasn't attempted (because exists==true or
+    ///     an earlier guard short-circuited), otherwise true/false from PUT.
+    static func shouldMarkTokenRegistered(
+        profileDocumentPresent: Bool,
+        hasDeviceRegistrationLink: Bool,
+        fcmTokenPresent: Bool,
+        existsResult: Bool?,
+        saveSucceeded: Bool?
+    ) -> Bool {
+        guard profileDocumentPresent,
+              hasDeviceRegistrationLink,
+              fcmTokenPresent,
+              let exists = existsResult else {
+            return false
+        }
+        if exists { return true }
+        return saveSucceeded == true
     }
 
     private func deleteToken(_ token: String, endpointUrl: URL) {
@@ -278,7 +374,7 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
                     return
                 }
 
-                AppTabRouterHub.shared.navigate(to: .holds)
+                AppContainer.production().tabRouterHub.navigate(to: .holds)
                 Log.info(#file, "[Notification] Navigated to Holds tab")
                 completionHandler()
             }
@@ -298,7 +394,7 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
     /// Uses the same throttle as applicationDidBecomeActive to coordinate syncs.
     private func syncWithThrottle(completion: ((_ errorDocument: [AnyHashable: Any]?, _ newBooks: Bool) -> Void)? = nil) {
         // Skip if user isn't authenticated
-        guard AccountsManager.shared.currentUserAccount.hasCredentials() else {
+        guard AppContainer.production().accountsManager.currentUserAccount.hasCredentials() else {
             completion?(nil, false)
             return
         }
@@ -504,7 +600,7 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
     ///
     /// - Returns: `true` if the user has held books and should fetch updates
     class func backgroundFetchIsNeeded() -> Bool {
-        let count = TPPBookRegistry.shared.heldBooks.count
+        let count = AppContainer.production().bookRegistry.heldBooks.count
         Log.info(#file, "[Background Fetch] Held books: \(count)")
         return count > 0
     }

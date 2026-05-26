@@ -138,32 +138,21 @@ final class AppTabRouterCoverageTests: XCTestCase {
                        "After sequential changes, selected should equal the last tab assigned")
     }
 
-    // SRS: AppTabRouterHub singleton exists
-    func testAppTabRouterHub_singletonExists() {
-        let hub = AppTabRouterHub.shared
-        XCTAssertNotNil(hub)
-        // Singleton must return the same instance on every access
-        XCTAssertTrue(hub === AppTabRouterHub.shared, "AppTabRouterHub.shared must always return the same instance")
-    }
-
     // SRS: AppTabRouterHub weak router reference allows an AppTabRouter to be
     // injected, read back, and released without the hub retaining it.
     // Verifies that the hub does NOT extend the router's lifetime (weak reference).
     func testAppTabRouterHub_weakRouterReference() {
-        let hub = AppTabRouterHub.shared
+        let hub = AppTabRouterHub()
 
-        // Use an inner scope to guarantee the router is released when the scope exits
         var routerIdentity: ObjectIdentifier?
         autoreleasepool {
             let router = AppTabRouter()
             routerIdentity = ObjectIdentifier(router)
             hub.router = router
-            // Router is alive inside this scope — hub.router should be non-nil
             let hubRouterIdentity = hub.router.map { ObjectIdentifier($0) }
             XCTAssertEqual(hubRouterIdentity, routerIdentity,
                            "Hub must vend back the same router instance that was assigned")
         }
-        // `router` local var is out of scope; autoreleasepool drained — hub's weak ref must be nil
         XCTAssertNil(hub.router,
                      "Hub's weak reference must be nil once the only strong reference is released")
     }

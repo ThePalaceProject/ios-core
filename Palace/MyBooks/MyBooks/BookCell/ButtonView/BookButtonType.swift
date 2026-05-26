@@ -43,7 +43,7 @@ enum BookButtonType: String {
         case .read, .listen, .remove:
             false
         default:
-            !Reachability.shared.isConnectedToNetwork()
+            !AppContainer.production().reachability.isConnectedToNetwork()
         }
     }
 }
@@ -75,7 +75,7 @@ extension BookButtonType {
     func title(for book: TPPBook) -> String {
         switch self {
         case .sample, .audiobookSample:
-            return SamplePreviewManager.shared.isShowingPreview(for: book) ? DisplayStrings.close : DisplayStrings.preview
+            return AppContainer.production().samplePreviewManager.isShowingPreview(for: book) ? DisplayStrings.close : DisplayStrings.preview
         default:
             return title
         }

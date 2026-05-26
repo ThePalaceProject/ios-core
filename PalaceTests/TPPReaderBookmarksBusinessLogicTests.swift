@@ -8,6 +8,7 @@
 
 import XCTest
 import ReadiumShared
+import PalaceCatalog
 @testable import Palace
 
 class TPPReaderBookmarksBusinessLogicTests: XCTestCase {
@@ -216,14 +217,30 @@ class TPPReaderBookmarksBusinessLogicTests: XCTestCase {
         XCTAssertEqual(result?.progressWithinChapter, 0.1)
     }
 
-    func testBookmarkAtIndex_WithNegativeIndex_ReturnsNil() {
-        let result = bookmarkBusinessLogic.bookmark(at: -1)
-        XCTAssertNil(result)
-    }
+    /// `bookmark(at:)` guards both ends of the array. Pair negative AND
+    /// past-end on an empty registry, plus the same guards on a populated
+    /// registry (where index 0 is now valid). A mutant dropping either
+    /// bound check fails on a different row.
+    func testBookmarkAtIndex_returnsNilForOutOfRangeIndicesEmptyOrPopulated() {
+        // Empty registry — both negative and past-end indices nil.
+        XCTAssertNil(bookmarkBusinessLogic.bookmark(at: -1),
+                     "Negative index on empty registry must yield nil")
+        XCTAssertNil(bookmarkBusinessLogic.bookmark(at: 100),
+                     "Past-end index on empty registry must yield nil")
 
-    func testBookmarkAtIndex_WithOutOfBoundsIndex_ReturnsNil() {
-        let result = bookmarkBusinessLogic.bookmark(at: 100)
-        XCTAssertNil(result)
+        // Populated — index 0 is now valid; -1 and 1 still nil.
+        guard let bookmark = newBookmark(href: "Chapter1",
+                                         chapter: "1",
+                                         progressWithinChapter: 0.5,
+                                         progressWithinBook: 0.5) else {
+            XCTFail("Failed to create bookmark"); return
+        }
+        bookmarkBusinessLogic.bookmarks.append(bookmark)
+        XCTAssertNotNil(bookmarkBusinessLogic.bookmark(at: 0),
+                        "Valid index MUST return the stored bookmark — guards an always-nil mutant")
+        XCTAssertNil(bookmarkBusinessLogic.bookmark(at: -1))
+        XCTAssertNil(bookmarkBusinessLogic.bookmark(at: 1),
+                     "Past-end index past a 1-element array must still be nil")
     }
 
     func testBookmarkAtIndex_WithEmptyBookmarks_ReturnsNil() {
@@ -274,18 +291,29 @@ class TPPReaderBookmarksBusinessLogicTests: XCTestCase {
         XCTAssertNil(deleted2)
     }
 
-    func testNoBookmarksText_ReturnsNonEmptyString() {
-        let text = bookmarkBusinessLogic.noBookmarksText
-        XCTAssertFalse(text.isEmpty, "noBookmarksText should not be empty")
-    }
+    /// Three small static surfaces: the empty-list label, the
+    /// always-selectable predicate, and the nil-location guard. Group
+    /// them so a mutant on any one fails here without three near-identical
+    /// single-assert tests.
+    func testReadOnlySurfaces_noBookmarksText_shouldSelect_isBookmarkExisting() {
+        // noBookmarksText: must surface the canonical localized string,
+        // not just be non-empty (a mutant returning "" would pass non-empty).
+        XCTAssertEqual(bookmarkBusinessLogic.noBookmarksText,
+                       Strings.TPPReaderBookmarksBusinessLogic.noBookmarks,
+                       "noBookmarksText must match the canonical localization key")
+        XCTAssertFalse(bookmarkBusinessLogic.noBookmarksText.isEmpty)
 
-    func testShouldSelectBookmark_ReturnsTrue() {
+        // shouldSelectBookmark always returns true regardless of index —
+        // selection is decoupled from validity. Lock that design so a future
+        // refactor that adds an index check needs an explicit signal.
         XCTAssertTrue(bookmarkBusinessLogic.shouldSelectBookmark(at: 0))
-    }
+        XCTAssertTrue(bookmarkBusinessLogic.shouldSelectBookmark(at: -1),
+                      "Selection is decoupled from index — taps always succeed")
+        XCTAssertTrue(bookmarkBusinessLogic.shouldSelectBookmark(at: 999))
 
-    func testIsBookmarkExisting_WithNilLocation_ReturnsNil() {
-        let result = bookmarkBusinessLogic.isBookmarkExisting(at: nil)
-        XCTAssertNil(result)
+        // isBookmarkExisting(at: nil) must short-circuit to nil.
+        XCTAssertNil(bookmarkBusinessLogic.isBookmarkExisting(at: nil),
+                     "Nil location must yield nil — distinct branch from empty-registry case")
     }
 
     // MARK: Helper

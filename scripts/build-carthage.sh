@@ -17,10 +17,6 @@
 #     git checkout Cartfile.resolved
 #     ./scripts/build-carthage.sh
 #
-# NOTES
-#   If working on R2 integration, use the `build-carthage-R2-integration.sh`
-#   script instead.
-
 set -eo pipefail
 
 if [ "$BUILD_CONTEXT" == "" ]; then

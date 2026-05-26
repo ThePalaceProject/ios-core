@@ -10,6 +10,7 @@
 //
 
 import XCTest
+import PalaceAuth
 @testable import Palace
 
 final class AccountAwareNetworkTests: XCTestCase {
@@ -163,13 +164,13 @@ final class AccountAwareNetworkTests: XCTestCase {
         // memory pressure. After it runs, the executor must still produce
         // valid requests for new URLs (next-account preloads land here
         // within milliseconds of the switch).
-        TPPNetworkExecutor.shared.cancelNonEssentialTasks()
+        AppContainer.production().networkExecutor.cancelNonEssentialTasks()
 
         let urlA = URL(string: "https://example.com/a")!
         let urlB = URL(string: "https://example.com/b/with/path?q=1")!
 
-        let requestA = TPPNetworkExecutor.shared.request(for: urlA, useTokenIfAvailable: false)
-        let requestB = TPPNetworkExecutor.shared.request(for: urlB, useTokenIfAvailable: true)
+        let requestA = AppContainer.production().networkExecutor.request(for: urlA, useTokenIfAvailable: false)
+        let requestB = AppContainer.production().networkExecutor.request(for: urlB, useTokenIfAvailable: true)
 
         XCTAssertEqual(requestA.url, urlA,
                        "Executor must still build requests for URL A after cancel")
@@ -177,8 +178,8 @@ final class AccountAwareNetworkTests: XCTestCase {
                        "Executor must also produce requests for URL B with a different token strategy")
 
         // Second cancel must also be safe (observed under rapid account swaps).
-        TPPNetworkExecutor.shared.cancelNonEssentialTasks()
-        let requestC = TPPNetworkExecutor.shared.request(for: urlA, useTokenIfAvailable: false)
+        AppContainer.production().networkExecutor.cancelNonEssentialTasks()
+        let requestC = AppContainer.production().networkExecutor.request(for: urlA, useTokenIfAvailable: false)
         XCTAssertEqual(requestC.url, urlA,
                        "Executor must survive back-to-back cancels")
     }

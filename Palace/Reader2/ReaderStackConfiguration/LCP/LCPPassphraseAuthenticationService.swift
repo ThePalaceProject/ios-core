@@ -2,22 +2,23 @@
 
 import Foundation
 import ReadiumLCP
+import PalaceCatalog
 
 /**
  For Passphrase in License Document, see https://readium.org/lcp-specs/releases/lcp/latest#41-introduction
  */
 class LCPPassphraseAuthenticationService: LCPAuthenticating {
 
-    private let bookRegistry: TPPBookRegistry
+    private let bookRegistry: TPPBookRegistryProvider
     private let accountsManager: AccountsManager
     private let networkExecutor: TPPNetworkExecutor
     private let settings: TPPSettings
 
     init(
-        bookRegistry: TPPBookRegistry = .shared,
-        accountsManager: AccountsManager = .shared,
-        networkExecutor: TPPNetworkExecutor = .shared,
-        settings: TPPSettings = .shared
+        bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry,
+        accountsManager: AccountsManager = AppContainer.production().accountsManager,
+        networkExecutor: TPPNetworkExecutor = AppContainer.production().networkExecutor,
+        settings: TPPSettings = AppContainer.production().settings
     ) {
         self.bookRegistry = bookRegistry
         self.accountsManager = accountsManager

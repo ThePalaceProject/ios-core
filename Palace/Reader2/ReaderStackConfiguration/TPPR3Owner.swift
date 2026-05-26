@@ -13,6 +13,7 @@ import Foundation
 import UIKit
 import ReadiumShared
 import ReadiumStreamer
+import PalaceLogging
 
 /// This class is the main root of R3 objects. It:
 /// - owns the sub-modules (library, reader, etc.)
@@ -23,7 +24,7 @@ import ReadiumStreamer
     var libraryService: LibraryService! = nil
     var readerModule: ReaderModuleAPI! = nil
 
-    init(bookRegistry: TPPBookRegistry = .shared) {
+    init(bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry) {
         super.init()
         libraryService = LibraryService()
         readerModule = ReaderModule(delegate: self,

@@ -9,6 +9,7 @@
 //
 
 import Foundation
+import PalaceCatalog
 @testable import Palace
 
 /// Mock implementation of CatalogRepositoryProtocol for isolated ViewModel testing

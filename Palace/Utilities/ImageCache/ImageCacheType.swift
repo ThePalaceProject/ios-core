@@ -1,4 +1,5 @@
 import UIKit
+import PalaceLogging
 
 public protocol ImageCacheType {
     func set(_ image: UIImage, for key: String, expiresIn: TimeInterval?)
@@ -6,6 +7,7 @@ public protocol ImageCacheType {
     func getAsync(for key: String) async -> UIImage?
     func remove(for key: String)
     func clear()
+    func warmMemoryCache(for keys: [String]) async
 }
 
 public extension ImageCacheType {

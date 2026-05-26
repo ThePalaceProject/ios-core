@@ -8,6 +8,7 @@
 
 import Foundation
 import ObjectiveC
+import PalaceKeychain
 
 // MARK: - Associated Object Keys for Keychain Variables
 

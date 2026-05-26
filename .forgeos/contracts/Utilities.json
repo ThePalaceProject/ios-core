@@ -1,0 +1,414 @@
+{
+  "module": "Utilities",
+  "generated_at": "2026-05-12T16:15:16+00:00",
+  "file_count": 66,
+  "shared_singleton_reads": 13,
+  "public_types": [
+    {
+      "name": "AccessibilityID",
+      "kind": "enum",
+      "file": "Testing/AccessibilityIdentifiers.swift",
+      "line": 22
+    },
+    {
+      "name": "AudiobookPlayer",
+      "kind": "enum",
+      "file": "Testing/AccessibilityIdentifiers.swift",
+      "line": 219
+    },
+    {
+      "name": "BookDetail",
+      "kind": "enum",
+      "file": "Testing/AccessibilityIdentifiers.swift",
+      "line": 90
+    },
+    {
+      "name": "CachePolicy",
+      "kind": "enum",
+      "file": "ImageCache/GeneralCache.swift",
+      "line": 13
+    },
+    {
+      "name": "CachingMode",
+      "kind": "enum",
+      "file": "ImageCache/GeneralCache.swift",
+      "line": 6
+    },
+    {
+      "name": "Catalog",
+      "kind": "enum",
+      "file": "Testing/AccessibilityIdentifiers.swift",
+      "line": 50
+    },
+    {
+      "name": "Common",
+      "kind": "enum",
+      "file": "Testing/AccessibilityIdentifiers.swift",
+      "line": 283
+    },
+    {
+      "name": "DismissKeyboardOnTap",
+      "kind": "struct",
+      "file": "Extensions/KeyboardModifier.swift",
+      "line": 8
+    },
+    {
+      "name": "DismissKeyboardOnTap",
+      "kind": "struct",
+      "file": "SwiftUI/View+DismissKeyboard.swift",
+      "line": 8
+    },
+    {
+      "name": "EPUBReader",
+      "kind": "enum",
+      "file": "Testing/AccessibilityIdentifiers.swift",
+      "line": 295
+    },
+    {
+      "name": "ErrorAlert",
+      "kind": "enum",
+      "file": "Testing/AccessibilityIdentifiers.swift",
+      "line": 368
+    },
+    {
+      "name": "GeneralCache",
+      "kind": "class",
+      "file": "ImageCache/GeneralCache.swift",
+      "line": 21
+    },
+    {
+      "name": "Holds",
+      "kind": "enum",
+      "file": "Testing/AccessibilityIdentifiers.swift",
+      "line": 166
+    },
+    {
+      "name": "ImageCache",
+      "kind": "class",
+      "file": "ImageCache/ImageCacheType.swift",
+      "line": 20
+    },
+    {
+      "name": "ImageCacheType",
+      "kind": "protocol",
+      "file": "ImageCache/ImageCacheType.swift",
+      "line": 4
+    },
+    {
+      "name": "JWK",
+      "kind": "struct",
+      "file": "JWK/JWK.swift",
+      "line": 5
+    },
+    {
+      "name": "LibraryPicker",
+      "kind": "enum",
+      "file": "Testing/AccessibilityIdentifiers.swift",
+      "line": 346
+    },
+    {
+      "name": "MyBooks",
+      "kind": "enum",
+      "file": "Testing/AccessibilityIdentifiers.swift",
+      "line": 143
+    },
+    {
+      "name": "NYPLDateSuffixType",
+      "kind": "enum",
+      "file": "Date-Time/Date+NYPLAdditions.swift",
+      "line": 19
+    },
+    {
+      "name": "PDFReader",
+      "kind": "enum",
+      "file": "Testing/AccessibilityIdentifiers.swift",
+      "line": 324
+    },
+    {
+      "name": "Search",
+      "kind": "enum",
+      "file": "Testing/AccessibilityIdentifiers.swift",
+      "line": 76
+    },
+    {
+      "name": "Settings",
+      "kind": "enum",
+      "file": "Testing/AccessibilityIdentifiers.swift",
+      "line": 187
+    },
+    {
+      "name": "SignIn",
+      "kind": "enum",
+      "file": "Testing/AccessibilityIdentifiers.swift",
+      "line": 267
+    },
+    {
+      "name": "TabBar",
+      "kind": "enum",
+      "file": "Testing/AccessibilityIdentifiers.swift",
+      "line": 36
+    },
+    {
+      "name": "Tutorial",
+      "kind": "enum",
+      "file": "Testing/AccessibilityIdentifiers.swift",
+      "line": 357
+    }
+  ],
+  "objc_surface": [
+    {
+      "name": "EmailAddress",
+      "kind": "class",
+      "file": "EmailAddress.swift",
+      "line": 12
+    },
+    {
+      "name": "LocalizedStrings",
+      "kind": "class",
+      "file": "Localization/Strings+objC.swift",
+      "line": 12
+    },
+    {
+      "name": "NSDate",
+      "kind": "extension",
+      "file": "Date-Time/Date+NYPLAdditions.swift",
+      "line": 97
+    },
+    {
+      "name": "NSString",
+      "kind": "extension",
+      "file": "Localization/String+MD5.swift",
+      "line": 26
+    },
+    {
+      "name": "NYPLBackgroundWorkOwner",
+      "kind": "protocol",
+      "file": "Concurrency/TPPBackgroundExecutor.swift",
+      "line": 14
+    },
+    {
+      "name": "TPPBackgroundExecutor",
+      "kind": "class",
+      "file": "Concurrency/TPPBackgroundExecutor.swift",
+      "line": 56
+    },
+    {
+      "name": "TPPMainThreadRun",
+      "kind": "class",
+      "file": "Concurrency/TPPMainThreadChecker.swift",
+      "line": 12
+    },
+    {
+      "name": "TPPProcessInfo",
+      "kind": "class",
+      "file": "TPPProcessInfo.swift",
+      "line": 10
+    },
+    {
+      "name": "TransifexManager",
+      "kind": "class",
+      "file": "Localization/Transifex/TransifexManager.swift",
+      "line": 11
+    },
+    {
+      "name": "asyncIfNeeded",
+      "kind": "func",
+      "file": "Concurrency/TPPMainThreadChecker.swift",
+      "line": 41
+    },
+    {
+      "name": "centerInSuperview",
+      "kind": "func",
+      "file": "UI/UIView+TPPViewAdditions.swift",
+      "line": 13
+    },
+    {
+      "name": "centerInSuperview",
+      "kind": "func",
+      "file": "UI/UIView+TPPViewAdditions.swift",
+      "line": 22
+    },
+    {
+      "name": "customBoldFont",
+      "kind": "func",
+      "file": "UI/UIFont+TPPSystemFontOverride.swift",
+      "line": 25
+    },
+    {
+      "name": "customFont",
+      "kind": "func",
+      "file": "UI/UIFont+TPPSystemFontOverride.swift",
+      "line": 5
+    },
+    {
+      "name": "customFont",
+      "kind": "func",
+      "file": "UI/UIFont+TPPSystemFontOverride.swift",
+      "line": 9
+    },
+    {
+      "name": "defaultLabelColor",
+      "kind": "func",
+      "file": "Extensions/UIColor+Extensions.swift",
+      "line": 4
+    },
+    {
+      "name": "dismissSelf",
+      "kind": "func",
+      "file": "Extensions/UIViewController+Extensions.swift",
+      "line": 4
+    },
+    {
+      "name": "dispatchBackgroundWork",
+      "kind": "func",
+      "file": "Concurrency/TPPBackgroundExecutor.swift",
+      "line": 80
+    },
+    {
+      "name": "fontName",
+      "kind": "var",
+      "file": "UI/UILabel+NYPLAppearanceAdditions.swift",
+      "line": 5
+    },
+    {
+      "name": "forceUpdateAppearance",
+      "kind": "func",
+      "file": "UI/UINavigationBar+appearance.swift",
+      "line": 23
+    },
+    {
+      "name": "handleMemoryWarning",
+      "kind": "func",
+      "file": "ImageCache/ImageCacheType.swift",
+      "line": 73
+    },
+    {
+      "name": "integralizeFrame",
+      "kind": "func",
+      "file": "UI/UIView+TPPViewAdditions.swift",
+      "line": 31
+    },
+    {
+      "name": "isNYPLExternal",
+      "kind": "var",
+      "file": "Networking/NSURL+NYPLURLAdditions.swift",
+      "line": 5
+    },
+    {
+      "name": "isProblemDocument",
+      "kind": "func",
+      "file": "Networking/URLResponse+NYPL.swift",
+      "line": 17
+    },
+    {
+      "name": "isSuccess",
+      "kind": "func",
+      "file": "Networking/URLResponse+NYPL.swift",
+      "line": 25
+    },
+    {
+      "name": "javascriptHexString",
+      "kind": "var",
+      "file": "UI/UIColor+TPPColorAdditions.swift",
+      "line": 6
+    },
+    {
+      "name": "parseJSONString",
+      "kind": "var",
+      "file": "Localization/NSString+JSONParse.swift",
+      "line": 13
+    },
+    {
+      "name": "postRequest",
+      "kind": "func",
+      "file": "Networking/NSURLRequest+NYPLURLRequestAdditions.swift",
+      "line": 5
+    },
+    {
+      "name": "postRequest",
+      "kind": "func",
+      "file": "Networking/NSURLRequest+NYPLURLRequestAdditions.swift",
+      "line": 26
+    },
+    {
+      "name": "preferredHeight",
+      "kind": "var",
+      "file": "UI/UIView+TPPViewAdditions.swift",
+      "line": 5
+    },
+    {
+      "name": "preferredWidth",
+      "kind": "var",
+      "file": "UI/UIView+TPPViewAdditions.swift",
+      "line": 9
+    },
+    {
+      "name": "rawValue",
+      "kind": "let",
+      "file": "EmailAddress.swift",
+      "line": 13
+    },
+    {
+      "name": "setAppearance",
+      "kind": "func",
+      "file": "UI/UINavigationBar+appearance.swift",
+      "line": 14
+    },
+    {
+      "name": "setUpWorkItem",
+      "kind": "func",
+      "file": "Concurrency/TPPBackgroundExecutor.swift",
+      "line": 47
+    },
+    {
+      "name": "setup",
+      "kind": "func",
+      "file": "Localization/Transifex/TransifexManager.swift",
+      "line": 12
+    },
+    {
+      "name": "titleFontName",
+      "kind": "var",
+      "file": "UI/UIButton+NYPLAppearanceAdditions.swift",
+      "line": 5
+    },
+    {
+      "name": "updateOrientation",
+      "kind": "func",
+      "file": "System/DeviceOrientation.swift",
+      "line": 30
+    },
+    {
+      "name": "urlBySwapping",
+      "kind": "func",
+      "file": "Networking/NSURL+NYPLURLAdditions.swift",
+      "line": 12
+    }
+  ],
+  "public_functions": [
+    {
+      "name": "dismissKeyboard",
+      "signature": "public func dismissKeyboard() {",
+      "file": "Extensions/KeyboardModifier.swift",
+      "line": 4
+    },
+    {
+      "name": "dismissKeyboard",
+      "signature": "public func dismissKeyboard() {",
+      "file": "SwiftUI/View+DismissKeyboard.swift",
+      "line": 4
+    }
+  ],
+  "internal_protocols": [
+    {
+      "name": "NYPLBackgroundWorkOwner",
+      "file": "Concurrency/TPPBackgroundExecutor.swift",
+      "line": 14
+    },
+    {
+      "name": "TPPLoadingViewController",
+      "file": "UI/TPPLoadingViewController.swift",
+      "line": 3
+    }
+  ]
+}

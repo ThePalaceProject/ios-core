@@ -8,6 +8,7 @@
 
 import CarPlay
 import Combine
+import PalaceLogging
 
 /// CarPlay scene delegate that manages the CarPlay interface lifecycle
 /// and coordinates audiobook playback from the vehicle's infotainment system.
@@ -20,7 +21,7 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
     private var interfaceController: CPInterfaceController?
     private var templateManager: CarPlayTemplateManager?
     private var cancellables = Set<AnyCancellable>()
-    private let bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared
+    private let bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry
 
     // MARK: - CPTemplateApplicationSceneDelegate
 
@@ -126,7 +127,11 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
 
         let comingSoonTemplate = CPListTemplate(title: "Palace", sections: [section])
 
-        interfaceController.setRootTemplate(comingSoonTemplate, animated: true, completion: nil)
+        interfaceController.setRootTemplate(comingSoonTemplate, animated: true) { _, error in
+            if let error = error {
+                Log.warn(#file, "CarPlay: setRootTemplate(comingSoon) failed: \(error)")
+            }
+        }
     }
 
     private func createCarPlayLogo() -> UIImage? {
@@ -158,7 +163,7 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
         }
     }
 
-    private func subscribeToBookRegistryChanges(bookRegistry: TPPBookRegistry = .shared) {
+    private func subscribeToBookRegistryChanges(bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry) {
         // Subscribe to registry changes (fires when books are loaded from disk or synced)
         bookRegistry.registryPublisher
             .dropFirst() // Skip initial empty state

@@ -1,4 +1,6 @@
 import Foundation
+import PalaceLogging
+import PalaceCatalog
 
 let currentAccountIdentifierKey = "TPPCurrentAccountIdentifier"
 
@@ -65,9 +67,6 @@ struct CatalogCacheMetadata: Codable {
 /// Manages library accounts asynchronously with authentication & image loading
 @objcMembers final class AccountsManager: NSObject, TPPLibraryAccountsProvider, TPPUserAccountResolving {
 
-    static let shared = AccountsManager()
-    static func sharedInstance() -> AccountsManager { shared }
-
     // MARK: – Config / state
 
     static let TPPAccountUUIDs = [
@@ -88,7 +87,12 @@ struct CatalogCacheMetadata: Codable {
 
     let ageCheck: TPPAgeCheckVerifying
     private let settings: TPPSettings
-    private let networkExecutor: TPPNetworkExecutor
+    /// Lazy-resolved from AppContainer to break the singleton init cycle:
+    /// AccountsManager is constructed inline by AppContainer._cached's
+    /// initializer, so we cannot read AppContainer.production() during this
+    /// class's init. The lazy var is first accessed *after* AppContainer
+    /// finishes constructing, so the cached instance is ready.
+    private lazy var networkExecutor: TPPNetworkExecutor = AppContainer.production().networkExecutor
     private var accountSet: String
     private var accountSets = [String: [Account]]()
     private let accountSetsLock = DispatchQueue(label: "com.tpp.accountSetsLock", attributes: .concurrent)
@@ -99,9 +103,12 @@ struct CatalogCacheMetadata: Codable {
     private var loadingCompletionHandlers = [String: [(Bool) -> Void]]()
     private let loadingHandlersQueue = DispatchQueue(label: "com.tpp.loadingHandlers", attributes: .concurrent)
 
-    private override init() {
-        self.settings = .shared
-        self.networkExecutor = .shared
+    /// Initializer is `internal` rather than `private` so `AppContainer` can
+    /// construct the single live instance directly. Outside of `AppContainer`
+    /// (and tests that need an isolated instance), do not call this directly
+    /// — read `appContainer.accountsManager` instead.
+    override init() {
+        self.settings = TPPSettings()
         self.accountSet = TPPConfiguration.customUrlHash()
             ?? (settings.useBetaLibraries
                     ? TPPConfiguration.betaUrlHash
@@ -193,7 +200,7 @@ struct CatalogCacheMetadata: Codable {
             TPPErrorLogger.setUserID(self.currentUserAccount.barcode)
             // isAccountSwitching is reset asynchronously by cleanupActiveContentBeforeAccountSwitch
             // after navigation cleanup completes — NOT here, to avoid premature reset (F-032).
-            if previousAccountId == newAccountId || previousAccountId == nil {
+            if Self.shouldFinishSwitchingImmediately(previousAccountId: previousAccountId, newAccountId: newAccountId) {
                 isAccountSwitching = false
             }
             NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
@@ -207,11 +214,11 @@ struct CatalogCacheMetadata: Codable {
         MyBooksDownloadCenter.clearAllBorrowReauthState()
 
         Task { @MainActor [weak self] in
-            if let coordinator = NavigationCoordinatorHub.shared.coordinator {
+            if let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator {
                 let pathCount = coordinator.path.count
                 Log.debug(#file, "  Navigation path has \(pathCount) items")
 
-                if pathCount > 0 {
+                if Self.shouldPopToRoot(navigationPathCount: pathCount) {
                     Log.info(#file, "  🔄 Popping to root to clean up active content before account switch")
                     coordinator.popToRoot()
 
@@ -633,13 +640,43 @@ struct CatalogCacheMetadata: Codable {
 
     /// Returns true if cache exists and is stale (needs background refresh)
     private func isCacheStale(hash: String) -> Bool {
-        guard let metadata = readCacheMetadata(hash: hash) else {
+        let metadata = readCacheMetadata(hash: hash)
+        let serverMaxAge = readCrawlState(hash: hash)?.serverMaxAge
+        return Self.isCacheStale(metadata: metadata, serverMaxAge: serverMaxAge)
+    }
+
+    /// Pure variant of `isCacheStale(hash:)` that doesn't touch the file
+    /// system. Returns `true` when metadata is missing OR when the metadata
+    /// reports staleness against `serverMaxAge`. Extracted from the private
+    /// version so tests can exercise the nil-metadata → refresh path that
+    /// previously had no test coverage (F-013).
+    static func isCacheStale(
+        metadata: CatalogCacheMetadata?,
+        serverMaxAge: TimeInterval?
+    ) -> Bool {
+        guard let metadata else {
             // No metadata means we should refresh
             return true
         }
-        // Use server's Cache-Control max-age if available from crawl state
-        let serverMaxAge = readCrawlState(hash: hash)?.serverMaxAge
         return metadata.isStale(serverMaxAge: serverMaxAge)
+    }
+
+    /// Pure helper for `cleanupActiveContentBeforeAccountSwitch`'s
+    /// `pathCount > 0` guard — extracted so the bound check is testable.
+    static func shouldPopToRoot(navigationPathCount: Int) -> Bool {
+        return navigationPathCount > 0
+    }
+
+    /// Pure helper for the `currentAccount.didSet` decision of whether to
+    /// finish the account-switch synchronously. The previous implementation
+    /// had `previousAccountId == newAccountId || previousAccountId == nil`
+    /// inline in the setter; extracting it keeps the equality and identity
+    /// branches testable and kills the surviving == ↔ != mutants.
+    static func shouldFinishSwitchingImmediately(
+        previousAccountId: String?,
+        newAccountId: String?
+    ) -> Bool {
+        return previousAccountId == newAccountId || previousAccountId == nil
     }
 
     /// Reads crawl state for the given hash (used for dynamic TTL adjustment)

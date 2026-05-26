@@ -8,6 +8,7 @@
 
 import AuthenticationServices
 import stduritemplate
+import PalaceLogging
 
 extension TPPSignInBusinessLogic {
 
@@ -232,7 +233,13 @@ extension TPPSignInBusinessLogic {
             } else {
                 session.presentationContextProvider = self
             }
-            session.prefersEphemeralWebBrowserSession = false
+            // PP-4282 (HelpSpot 17716): the patron-driven "Reset Account"
+            // button sets a one-shot UserDefaults flag. When set, force this
+            // session to use ephemeral cookies — defeats the Safari-shared-
+            // cookie reuse that otherwise survives app deletion for OIDC
+            // libraries. Flag self-clears on consumption.
+            session.prefersEphemeralWebBrowserSession =
+                TPPSignInBusinessLogic.consumeNextOIDCSessionEphemeralFlag()
             session.start()
         }
     }
@@ -301,7 +308,7 @@ extension TPPSignInBusinessLogic {
             return
         }
 
-        self.authToken = authToken
+        self.dispatch(.bearerTokenReceived(token: authToken, expiration: nil))
         self.patron = parsedPatron
         validateCredentials()
     }

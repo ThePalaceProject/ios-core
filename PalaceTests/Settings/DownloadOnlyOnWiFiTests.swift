@@ -7,14 +7,22 @@
 //
 
 import XCTest
+import PalaceNetwork
 @testable import Palace
 
 final class DownloadOnlyOnWiFiTests: XCTestCase {
 
     private let settingsKey = TPPSettings.downloadOnlyOnWiFiKey
+    private var settings: TPPSettings!
+
+    override func setUp() {
+        super.setUp()
+        settings = TPPSettings()
+    }
 
     override func tearDown() {
         UserDefaults.standard.removeObject(forKey: settingsKey)
+        settings = nil
         super.tearDown()
     }
 
@@ -23,36 +31,42 @@ final class DownloadOnlyOnWiFiTests: XCTestCase {
     func testDefaultValue_isFalse() {
         UserDefaults.standard.removeObject(forKey: settingsKey)
         XCTAssertFalse(
-            TPPSettings.shared.downloadOnlyOnWiFi,
+            settings.downloadOnlyOnWiFi,
             "Download only on Wi-Fi should default to OFF"
         )
     }
 
     // MARK: - Setting Persistence
 
-    func testSetting_canBeToggledOn() {
-        TPPSettings.shared.downloadOnlyOnWiFi = true
-        XCTAssertTrue(TPPSettings.shared.downloadOnlyOnWiFi)
-        // Setting must persist to UserDefaults immediately
+    /// Setting persists to UserDefaults synchronously through the
+    /// `TPPSettings` getter/setter bridge. Lock the full toggle cycle
+    /// (off→on→off) plus a fresh-instance read after each write to catch
+    /// a mutant that caches the value in memory but drops the
+    /// UserDefaults write (which would silently revert on app relaunch).
+    func testSetting_persistsToUserDefaultsAcrossToggleCycle() {
+        // Toggle on: in-memory + UserDefaults must agree.
+        settings.downloadOnlyOnWiFi = true
         XCTAssertTrue(UserDefaults.standard.bool(forKey: settingsKey),
-                      "downloadOnlyOnWiFi=true must be reflected in UserDefaults")
-    }
+                      "Setter must write through to UserDefaults synchronously")
+        // A fresh TPPSettings instance must observe the same value —
+        // this is the cross-relaunch invariant the setting depends on.
+        XCTAssertTrue(TPPSettings().downloadOnlyOnWiFi,
+                      "A new TPPSettings must observe the persisted value — guards against an in-memory-only mutant")
 
-    func testSetting_canBeToggledOff() {
-        TPPSettings.shared.downloadOnlyOnWiFi = true
-        TPPSettings.shared.downloadOnlyOnWiFi = false
-        XCTAssertFalse(TPPSettings.shared.downloadOnlyOnWiFi)
-        // Must also be false in UserDefaults
+        // Toggle off: same round-trip.
+        settings.downloadOnlyOnWiFi = false
         XCTAssertFalse(UserDefaults.standard.bool(forKey: settingsKey),
-                       "downloadOnlyOnWiFi=false must be reflected in UserDefaults")
+                       "Setting to false must write through to UserDefaults")
+        XCTAssertFalse(TPPSettings().downloadOnlyOnWiFi,
+                       "A new TPPSettings must read the now-false value")
     }
 
     func testSetting_persistsAcrossReads() {
-        TPPSettings.shared.downloadOnlyOnWiFi = true
+        settings.downloadOnlyOnWiFi = true
         let value = UserDefaults.standard.bool(forKey: settingsKey)
         XCTAssertTrue(value, "Setting should be persisted in UserDefaults")
         // Reading the setting again must return the same value (no side effects)
-        XCTAssertTrue(TPPSettings.shared.downloadOnlyOnWiFi,
+        XCTAssertTrue(settings.downloadOnlyOnWiFi,
                       "Re-reading the setting after setting to true must still return true")
     }
 
@@ -79,17 +93,17 @@ final class DownloadOnlyOnWiFiTests: XCTestCase {
     func testReachability_isOnWiFi_returnsBool() {
         // isOnWiFi must return a Bool without crashing. In CI the interface is
         // unknown, but we can verify the value is consistent with the detailed status.
-        let isWiFi = Reachability.shared.isOnWiFi
+        let isWiFi = AppContainer.production().reachability.isOnWiFi
         // Verify the return type is a proper Bool (not some nil-bridged optional)
         XCTAssertNotNil(isWiFi as Bool?, "isOnWiFi must return a non-nil Bool")
         // Verify consistency: calling twice must return the same value (no side effects)
-        XCTAssertEqual(Reachability.shared.isOnWiFi, isWiFi,
+        XCTAssertEqual(AppContainer.production().reachability.isOnWiFi, isWiFi,
                        "isOnWiFi must be idempotent: repeated calls must return the same value")
     }
 
     func testReachability_isOnWiFi_consistentWithDetailedStatus() {
-        let detailed = Reachability.shared.getDetailedConnectivityStatus()
-        let isWiFi = Reachability.shared.isOnWiFi
+        let detailed = AppContainer.production().reachability.getDetailedConnectivityStatus()
+        let isWiFi = AppContainer.production().reachability.isOnWiFi
 
         if detailed.connectionType == "WiFi" || detailed.connectionType == "Ethernet" {
             XCTAssertTrue(isWiFi, "isOnWiFi should be true when connected via WiFi or Ethernet")

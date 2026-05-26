@@ -1,11 +1,12 @@
 import Foundation
+import PalaceLogging
 
 /// Manages bookmark CRUD operations and reading location tracking.
 /// Delegates thread-safe storage access to a BookRegistryStore.
 ///
 /// Every mutating method takes an explicit `account` and passes it to the
 /// injected save closure. The caller (the facade) captures
-/// `AccountsManager.shared.currentAccount` synchronously at the moment of
+/// `appContainer.accountsManager.currentAccount` synchronously at the moment of
 /// dispatch, not inside the async barrier — otherwise a save queued here could
 /// land in the wrong account's registry file if the user switched libraries
 /// while the async work was in flight (PP-4129 regression).

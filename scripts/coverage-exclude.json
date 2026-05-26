@@ -1,0 +1,26 @@
+{
+  "_comment": "Path patterns excluded from 'testable coverage'. These are files that require a running app (UI surfaces, lifecycle) or external environment (DRM licenses, device hardware) to exercise. They still count toward 'total coverage' for continuity, but are subtracted from the denominator of the metric we gate on via scripts/coverage-floors.json. Add entries here when you're certain a file cannot be unit-tested — review in PR. Delete an entry if you write a unit test for that file. Patterns use fnmatch-style globbing; ** matches across directories.",
+
+  "paths": [
+    "Palace/AppInfrastructure/TPPAppDelegate.swift",
+    "Palace/AppInfrastructure/SceneDelegate.swift",
+
+    "Palace/**/Views/**/*.swift",
+    "Palace/CatalogUI/Views/**/*.swift",
+    "Palace/PDF/Views/**/*.swift",
+    "Palace/Stats/Views/**/*.swift",
+
+    "Palace/**/*ViewController.swift",
+
+    "Palace/**/*+Preview.swift",
+    "Palace/**/*Previews.swift"
+  ],
+
+  "rationale": {
+    "TPPAppDelegate.swift": "UIApplicationDelegate lifecycle — requires a real UIApplication.",
+    "SceneDelegate.swift": "UIScene lifecycle — requires a real UIScene.",
+    "Views/**": "SwiftUI view bodies — declarative rendering code exercised via snapshot/E2E, not unit tests.",
+    "*ViewController.swift": "UIKit controllers — view lifecycle needs a host window; covered via XCUITests or SpecterQA replays.",
+    "*+Preview.swift / *Previews.swift": "#Preview providers — dev-time only, never shipped in Release; not a unit-test surface."
+  }
+}

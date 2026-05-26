@@ -1,0 +1,31 @@
+{
+  "fixture": "anonymous-borrow/03-catalog",
+  "version": "3.0.1",
+  "build": "468",
+  "device": "iPhone 16 Pro",
+  "os": "iOS 18.4",
+  "udid": "DF4A2A27-9888-429D-A749-2E157A049A37",
+  "captured_at": "2026-04-29T17:14:43Z",
+  "screen_size": [1206, 2622],
+  "screenshot_relpath": "03-catalog.png",
+  "marks": [
+    {"id": 2, "bbox": [441, 217, 422, 42], "center": [652, 238], "text": "Palace Bookshelf", "confidence": 1.0},
+    {"id": 3, "bbox": [38, 518, 525, 54], "center": [300, 545], "text": "DPLA Publications", "confidence": 1.0},
+    {"id": 4, "bbox": [1038, 503, 125, 38], "center": [1100, 522], "text": "More...", "confidence": 1.0},
+    {"id": 28, "bbox": [38, 1280, 882, 64], "center": [479, 1312], "text": "Big Ten Open Books Collection", "confidence": 1.0},
+    {"id": 48, "bbox": [33, 2045, 194, 58], "center": [130, 2074], "text": "Fiction", "confidence": 1.0},
+    {"id": 62, "bbox": [83, 2479, 134, 41], "center": [150, 2499], "text": "Catalog", "confidence": 1.0},
+    {"id": 63, "bbox": [369, 2480, 163, 38], "center": [450, 2499], "text": "My Books", "confidence": 1.0},
+    {"id": 64, "bbox": [699, 2480, 103, 31], "center": [750, 2495], "text": "Holds", "confidence": 1.0},
+    {"id": 65, "bbox": [981, 2480, 141, 39], "center": [1051, 2499], "text": "Settings", "confidence": 1.0}
+  ],
+  "asserts_match_baseline": ["title at (652, 238)", "DPLA Publications lane at y=545", "Big Ten lane at y=1312", "Fiction lane at y=2074", "tab bar [Catalog, My Books, Holds, Settings]"],
+  "diffs_from_baseline": {
+    "carousel_books": "Different first-visible books in DPLA carousel (candidate: 'The Impeachment Papers II' at y=677 first; baseline: 'The Covid Archive' at y=677). Lane scroll positions are non-deterministic between cold launches. NOT a regression — Palace Bookshelf catalog content rotates server-side.",
+    "comment": "Lane STRUCTURE matches exactly: same 3 lanes in same order at same y-positions. Tab bar identical. Title at identical position. Architectural test passes."
+  },
+  "kills_mutants": [
+    {"file": "Palace/Accounts/Library/AccountsManager.swift", "line": 308, "rationale": "library catalog must render after Phase 6.5 singleton kill — DI must deliver the account → if mutated, no catalog appears at all"},
+    {"file": "Palace/SignInLogic/TPPSignInBusinessLogic.swift", "line": 506, "rationale": "anonymous detection — flipped operator triggers sign-in modal which would replace catalog"}
+  ]
+}

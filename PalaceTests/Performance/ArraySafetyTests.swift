@@ -12,6 +12,7 @@
 
 import XCTest
 import Combine
+import PalaceCatalog
 @testable import Palace
 
 // MARK: - BookCellModelCache Prefetch Safety Tests
@@ -35,7 +36,11 @@ final class BookCellModelCachePrefetchSafetyTests: XCTestCase {
                 observeRegistryChanges: false
             ),
             imageCache: mockImageCache,
-            bookRegistry: mockBookRegistry
+            bookRegistry: mockBookRegistry,
+            downloadCenter: AppContainer.production().downloadCenter,
+            accountsManager: AppContainer.production().accountsManager,
+            samplePreviewManager: AppContainer.production().samplePreviewManager,
+            readerService: AppContainer.production().readerService
         )
     }
 
@@ -146,7 +151,8 @@ final class CatalogSearchViewModelRegistryUpdateTests: XCTestCase {
         sut = CatalogSearchViewModel(
             repository: mockRepository,
             baseURL: { URL(string: "https://example.com/search") },
-            debounceInterval: 0.0
+            debounceInterval: 0.0,
+            bookCellModelCache: AppContainer.production().bookCellModelCache
         )
     }
 

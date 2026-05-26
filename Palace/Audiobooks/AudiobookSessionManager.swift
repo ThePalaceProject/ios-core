@@ -13,6 +13,8 @@ import Combine
 import Foundation
 import MediaPlayer
 import PalaceAudiobookToolkit
+import PalaceLogging
+import PalaceNetwork
 
 // MARK: - AudiobookSessionState
 
@@ -101,6 +103,11 @@ public final class AudiobookSessionManager: ObservableObject {
     private(set) var playbackModel: AudiobookPlaybackModel?
     private(set) var nowPlayingCoordinator: NowPlayingCoordinator?
 
+    /// Surface for the `AudiobookSessionManaging` protocol — exposes whether
+    /// an `AudiobookManager` is bound without leaking the toolkit type
+    /// through the protocol.
+    public var hasActiveManager: Bool { manager != nil }
+
     /// DRM decryptor tied to the currently loaded audiobook. Owned atomically
     /// alongside manager/audiobook/playbackModel so stopPlayback can release
     /// all four together — preventing the previous LCP Publication from
@@ -144,18 +151,78 @@ public final class AudiobookSessionManager: ObservableObject {
 
     private let bookRegistry: TPPBookRegistryProvider
     private let accountsManager: AccountsManager
+    private let settings: TPPSettings
+    /// Reachability is resolved on demand because it's a process-wide
+    /// network monitor singleton; the closure makes it overridable in tests
+    /// without forcing every consumer to wire one up.
+    private let reachabilityProvider: () -> Reachability
+    /// Cover registry resolved lazily so a future migration that injects an
+    /// alternate cache (or a no-op for tests) doesn't force a touch here.
+    private let bookCoverRegistryProvider: () -> TPPBookCoverRegistry
+    /// Navigation hub resolved lazily — the hub itself is process-wide and
+    /// references a UIKit coordinator that isn't valid at construction time
+    /// during cold launch / CarPlay background launch.
+    private let navigationCoordinatorHubProvider: () -> NavigationCoordinatorHub
 
     // MARK: - Initialization
 
-    private init(bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared, accountsManager: AccountsManager = AccountsManager.shared) {
+    /// Designated init — every dependency is explicit. `private` so the
+    /// singleton accessor remains the only entry point in production.
+    private init(
+        bookRegistry: TPPBookRegistryProvider,
+        accountsManager: AccountsManager,
+        settings: TPPSettings,
+        reachabilityProvider: @escaping () -> Reachability,
+        bookCoverRegistryProvider: @escaping () -> TPPBookCoverRegistry,
+        navigationCoordinatorHubProvider: @escaping () -> NavigationCoordinatorHub
+    ) {
         self.bookRegistry = bookRegistry
         self.accountsManager = accountsManager
+        self.settings = settings
+        self.reachabilityProvider = reachabilityProvider
+        self.bookCoverRegistryProvider = bookCoverRegistryProvider
+        self.navigationCoordinatorHubProvider = navigationCoordinatorHubProvider
         Log.info(#file, "AudiobookSessionManager initialized")
         nowPlayingCoordinator = NowPlayingCoordinator()
         // Note: Remote commands are handled by the toolkit's MediaControlPublisher.
         // This manager now owns the full audiobook lifecycle (load → bind → play)
         // directly via AudiobookLoader; no pub/sub handoff is needed.
         subscribeToPhoneSideErrorAlerts()
+    }
+
+    /// Backwards-compatible convenience for the singleton. Resolves every
+    /// dependency from `.shared` accessors at the moment the singleton is
+    /// first touched. Production code should prefer
+    /// `init(appContainer:)` so the dep graph is explicit.
+    private convenience init() {
+        self.init(
+            bookRegistry: AppContainer.production().bookRegistry,
+            accountsManager: AppContainer.production().accountsManager,
+            settings: AppContainer.production().settings,
+            reachabilityProvider: { AppContainer.production().reachability },
+            bookCoverRegistryProvider: { TPPBookCoverRegistry.shared },
+            navigationCoordinatorHubProvider: { AppContainer.production().navigationCoordinatorHub }
+        )
+    }
+
+    /// AppContainer-friendly initializer. Used by future call sites that
+    /// thread the container down to here. Provider closures default to
+    /// `.shared` accessors since AppContainer doesn't currently hold
+    /// Reachability / TPPBookCoverRegistry / NavigationCoordinatorHub.
+    convenience init(
+        appContainer: AppContainer,
+        reachabilityProvider: @escaping () -> Reachability = { AppContainer.production().reachability },
+        bookCoverRegistryProvider: @escaping () -> TPPBookCoverRegistry = { TPPBookCoverRegistry.shared },
+        navigationCoordinatorHubProvider: @escaping () -> NavigationCoordinatorHub = { AppContainer.production().navigationCoordinatorHub }
+    ) {
+        self.init(
+            bookRegistry: appContainer.bookRegistry,
+            accountsManager: appContainer.accountsManager,
+            settings: appContainer.settings,
+            reachabilityProvider: reachabilityProvider,
+            bookCoverRegistryProvider: bookCoverRegistryProvider,
+            navigationCoordinatorHubProvider: navigationCoordinatorHubProvider
+        )
     }
 
     /// Presents user-facing alerts for validation errors published to
@@ -285,6 +352,33 @@ public final class AudiobookSessionManager: ObservableObject {
                         // doesn't flash an error on screen.
                         if case .cancelled = loadError {
                             // no-op
+                        } else if Self.shouldTriggerSAMLReauthForLoadFailure(
+                            loadError: loadError,
+                            userAccount: self.accountsManager.currentUserAccount,
+                            currentBook: self.currentBook
+                        ) {
+                            // HelpSpot 17727: SAML credentials went stale upstream
+                            // (network layer marked them so on a 401). Showing the
+                            // generic "Try Again" alert is useless — Try Again will
+                            // hit the same 401. Trigger SAML re-auth and re-attempt
+                            // the open after credentials refresh.
+                            Log.info(#file, "SAML credentials stale on audiobook open failure — triggering re-auth before showing error (HelpSpot 17727)")
+                            let userAccount = self.accountsManager.currentUserAccount
+                            let reauthenticator = TPPReauthenticator()
+                            reauthenticator.authenticateIfNeeded(userAccount, usingExistingCredentials: true) { [weak self] in
+                                Task { @MainActor in
+                                    guard let self else { return }
+                                    // Same-book guard — a newer open may have superseded this one.
+                                    guard self.currentBook?.identifier == book.identifier else { return }
+                                    guard self.accountsManager.currentUserAccount.hasCredentials() else {
+                                        Log.info(#file, "SAML re-auth cancelled or failed — falling back to standard try-again error")
+                                        BookService.showAudiobookTryAgainError(book: book, onFinish: nil)
+                                        return
+                                    }
+                                    Log.info(#file, "SAML re-auth succeeded — re-attempting audiobook open")
+                                    _ = await self.openAudiobook(book, startPlaying: startPlaying)
+                                }
+                            }
                         } else {
                             BookService.showAudiobookTryAgainError(book: book, onFinish: nil)
                         }
@@ -432,7 +526,7 @@ public final class AudiobookSessionManager: ObservableObject {
 
     /// Dismisses the audiobook player view on the phone
     private func dismissPlayerOnPhone(bookId: String) {
-        if let coordinator = NavigationCoordinatorHub.shared.coordinator {
+        if let coordinator = navigationCoordinatorHubProvider().coordinator {
             Log.info(#file, "Dismissing player UI on phone for book: \(bookId)")
             coordinator.removeAudioModel(forBookId: bookId)
             coordinator.popToRoot()
@@ -507,8 +601,9 @@ public final class AudiobookSessionManager: ObservableObject {
             loaded.playbackModel.updateCoverImage(lowRes)
             updateCoverImage(lowRes)
         }
+        let coverRegistry = bookCoverRegistryProvider()
         Task { [weak self, weak playbackModel = loaded.playbackModel] in
-            guard let img = await TPPBookCoverRegistry.shared.coverImage(for: book) else { return }
+            guard let img = await coverRegistry.coverImage(for: book) else { return }
             await MainActor.run {
                 playbackModel?.updateCoverImageAnimated(img)
                 self?.updateCoverImage(img)
@@ -516,7 +611,7 @@ public final class AudiobookSessionManager: ObservableObject {
         }
 
         let route = BookRoute(id: book.identifier)
-        if let coordinator = NavigationCoordinatorHub.shared.coordinator {
+        if let coordinator = navigationCoordinatorHubProvider().coordinator {
             Log.debug(#file, "Presenting audiobook player route for \(book.identifier)")
             coordinator.storeAudioModel(loaded.playbackModel, forBookId: route.id)
             coordinator.pushAudioRoute(route)
@@ -556,7 +651,20 @@ public final class AudiobookSessionManager: ObservableObject {
         let bookId = book.identifier
         let audiobookRef = loaded.audiobook
         let playbackModelRef = loaded.playbackModel
-        TPPBookRegistry.shared.syncLocation(for: book) { [weak self, weak playbackModel = playbackModelRef, localPosition] (remoteBookmark: AudioBookmark?) in
+        // `syncLocation(for:)` lives on the concrete TPPBookRegistry as an
+        // extension; the provider protocol doesn't expose it. Cast at the
+        // call site so the rest of this file talks to the protocol.
+        // syncLocation(for:) lives on the concrete TPPBookRegistry as an
+        // extension; the provider protocol doesn't expose it. If the injected
+        // bookRegistry isn't the concrete app-scoped instance, skip the
+        // remote-bookmark lookup rather than fall through to a singleton —
+        // tests pass mocks here on purpose.
+        guard let concreteRegistry = bookRegistry as? TPPBookRegistry else {
+            // No-op: progress-syncing requires the production registry. In a
+            // mock-injected test, the local position alone is the best signal.
+            return
+        }
+        concreteRegistry.syncLocation(for: book) { [weak self, weak playbackModel = playbackModelRef, localPosition] (remoteBookmark: AudioBookmark?) in
             guard let remoteBookmark = remoteBookmark,
                   let remote = TrackPosition(
                     audioBookmark: remoteBookmark,
@@ -607,13 +715,13 @@ public final class AudiobookSessionManager: ObservableObject {
     // MARK: - Position restoration helpers
 
     private func shouldRestoreBookmarkPosition(for book: TPPBook) -> Bool {
-        let hasLocation = TPPBookRegistry.shared.location(forIdentifier: book.identifier) != nil
+        let hasLocation = bookRegistry.location(forIdentifier: book.identifier) != nil
         guard hasLocation else { return false }
         return true
     }
 
     private func getValidLocalPosition(book: TPPBook, audiobook: Audiobook) -> TrackPosition? {
-        guard let dict = TPPBookRegistry.shared.location(forIdentifier: book.identifier)?.locationStringDictionary(),
+        guard let dict = bookRegistry.location(forIdentifier: book.identifier)?.locationStringDictionary(),
               let localBookmark = AudioBookmark.create(locatorData: dict),
               let localPosition = TrackPosition(
                 audioBookmark: localBookmark,
@@ -637,6 +745,39 @@ public final class AudiobookSessionManager: ObservableObject {
     }
 
     // MARK: - Private Methods
+
+    /// HelpSpot 17727: Returns true when an audiobook OPEN (load) failed and the
+    /// user's account is in `.credentialsStale` state (set upstream by the network
+    /// layer when an authenticated request returned 401 / a recoverable auth doc),
+    /// AND the account is SAML with credentials, AND there's a current book to
+    /// re-open after re-auth. This is the load-path counterpart to
+    /// `shouldTriggerSAMLReauthForPlaybackFailure` (PP-3703, which handles the
+    /// playback-time 401 from OpenAccessPlayer).
+    ///
+    /// Why predicate on `authState == .credentialsStale` instead of inspecting the
+    /// load error's underlying NSError: most `AudiobookLoadError` cases don't
+    /// carry an HTTP-status-bearing underlying error (e.g. `manifestFetchFailed`
+    /// is a bare case, no associated value). The credentials-stale signal is
+    /// already propagated by `TPPNetworkResponder` / interceptors when any
+    /// authenticated request returns 401, so by the time the loader returns
+    /// failure we already know whether the credentials need refresh — just check
+    /// the latched signal rather than try to re-derive it from a partial error.
+    ///
+    /// Cancellation never triggers re-auth (a superseded open shouldn't drag the
+    /// user through a sign-in sheet they didn't ask for).
+    static func shouldTriggerSAMLReauthForLoadFailure(
+        loadError: AudiobookLoadError,
+        userAccount: TPPUserAccount,
+        currentBook: TPPBook?
+    ) -> Bool {
+        if case .cancelled = loadError {
+            return false
+        }
+        return userAccount.authState == .credentialsStale
+            && userAccount.authDefinition?.isSaml == true
+            && userAccount.hasCredentials()
+            && currentBook != nil
+    }
 
     /// PP-3703: Returns true when playback failed due to bearer token refresh (e.g. 401 on CM fulfill)
     /// and the account is SAML with credentials, so we should trigger re-auth and re-open the audiobook.
@@ -664,11 +805,12 @@ public final class AudiobookSessionManager: ObservableObject {
             return .notDownloaded
         }
 
+        let reachability = reachabilityProvider()
         return Self.networkValidationError(
             bookState: bookState,
-            isConnectedToNetwork: Reachability.shared.isConnectedToNetwork(),
-            isOnWiFi: Reachability.shared.isOnWiFi,
-            downloadOnlyOnWiFi: TPPSettings.shared.downloadOnlyOnWiFi
+            isConnectedToNetwork: reachability.isConnectedToNetwork(),
+            isOnWiFi: reachability.isOnWiFi,
+            downloadOnlyOnWiFi: settings.downloadOnlyOnWiFi
         )
     }
 
@@ -680,6 +822,47 @@ public final class AudiobookSessionManager: ObservableObject {
     ///     → .wifiRequired (refusing to burn their cell data against their
     ///     stated preference, and surfacing the same "connect to Wi-Fi or
     ///     change settings" alert the download path uses)
+    /// Builds a Crashlytics-ready NSError describing an audiobook playback
+    /// failure, with all available context (typed error code, HTTP status,
+    /// track URL, book id, position). Pure — straight-line unit testable
+    /// without spinning up the audiobook stack. `nonisolated` because no
+    /// app/state is read; lets tests call it off the MainActor.
+    nonisolated static func buildPlaybackFailureRecord(error: Error?, position: TrackPosition?, bookId: String?) -> NSError {
+        var userInfo: [String: Any] = [
+            "bookId": bookId ?? "unknown",
+            "trackTitle": position?.track.title ?? "unknown",
+            "trackPosition": position.map { "\($0.timestamp)" } ?? "unknown",
+        ]
+        if let trackUrl = position?.track.urls?.first?.absoluteString {
+            userInfo["trackUrl"] = trackUrl
+        }
+        if let nsError = error as NSError? {
+            userInfo["underlyingDomain"] = nsError.domain
+            userInfo["underlyingCode"] = nsError.code
+            for (key, value) in nsError.userInfo {
+                let stringKey = key as String
+                guard ["httpStatusCode", "trackKey", "url"].contains(stringKey) else { continue }
+                userInfo[stringKey] = value
+            }
+        }
+        let message = "Audiobook playback failed: \(error?.localizedDescription ?? "no underlying error")"
+        userInfo[NSLocalizedDescriptionKey] = message
+        return NSError(
+            domain: "org.thepalaceproject.palace.audiobookPlayback",
+            code: (error as NSError?)?.code ?? -1,
+            userInfo: userInfo
+        )
+    }
+
+    /// Records the playback-failure NSError to PalaceLogging + Crashlytics
+    /// non-fatal sink. Thin wrapper over `buildPlaybackFailureRecord` so the
+    /// pure construction is independently testable.
+    static func recordPlaybackFailure(error: Error?, position: TrackPosition?, bookId: String?) {
+        let nonFatal = buildPlaybackFailureRecord(error: error, position: position, bookId: bookId)
+        Log.error(#file, "Recording audiobook playback non-fatal: \(nonFatal)")
+        FirebaseManager.shared.logError(nonFatal)
+    }
+
     static func networkValidationError(
         bookState: TPPBookState,
         isConnectedToNetwork: Bool,
@@ -712,7 +895,7 @@ public final class AudiobookSessionManager: ObservableObject {
             return true
         }
 
-        return AccountsManager.shared.currentUserAccount.hasCredentials()
+        return accountsManager.currentUserAccount.hasCredentials()
     }
 
     private func handleManagerState(_ managerState: AudiobookManagerState) {
@@ -742,9 +925,17 @@ public final class AudiobookSessionManager: ObservableObject {
             state = .error(bookId: bookId, message: "Playback failed")
             playbackStatePublisher.send(state)
 
+            // Record a Crashlytics non-fatal so audiobook playback failures
+            // surface in our weekly in-field signal review. Previously a
+            // 403 from BiblioBoard fell through to a generic toast and
+            // produced no Crashlytics record at all — the issue was
+            // invisible to ops. Now every playback failure includes the
+            // underlying error code, HTTP status, track URL, and book id.
+            Self.recordPlaybackFailure(error: error, position: position, bookId: bookId)
+
             // PP-3703: When BiblioBoard bearer token refresh fails due to SAML session expiration
             // (401 on CM fulfill link), trigger SAML re-login and then re-fetch fulfill to resume playback.
-            let userAccount = AccountsManager.shared.currentUserAccount
+            let userAccount = accountsManager.currentUserAccount
             if Self.shouldTriggerSAMLReauthForPlaybackFailure(error: error, userAccount: userAccount, currentBook: currentBook),
                let book = currentBook {
                 Log.info(#file, "SAML + BiblioBoard: Bearer token refresh failed (session expired) - triggering re-auth, will re-open audiobook after login")
@@ -754,7 +945,7 @@ public final class AudiobookSessionManager: ObservableObject {
                     Task { @MainActor in
                         guard let self else { return }
                         guard self.currentBook?.identifier == book.identifier else { return }
-                        guard AccountsManager.shared.currentUserAccount.hasCredentials() else {
+                        guard self.accountsManager.currentUserAccount.hasCredentials() else {
                             Log.info(#file, "SAML re-auth cancelled or failed - not re-opening audiobook")
                             self.errorPublisher.send(.notAuthenticated)
                             return

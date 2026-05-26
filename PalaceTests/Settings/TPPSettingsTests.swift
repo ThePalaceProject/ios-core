@@ -6,160 +6,171 @@
 //
 
 import XCTest
+import Combine
 @testable import Palace
 
 final class TPPSettingsTests: XCTestCase {
 
-    // MARK: - Shared Instance
+    private var settings: TPPSettings!
+    private var cancellables: Set<AnyCancellable>!
 
-    func testShared_isNotNil() {
-        let shared = TPPSettings.shared
-        XCTAssertTrue(shared is TPPSettings, "shared must be a TPPSettings instance")
-        // Verify it's the same singleton
-        XCTAssertTrue(shared === TPPSettings.shared, "shared must always return the same singleton object")
+    override func setUp() {
+        super.setUp()
+        settings = TPPSettings()
+        cancellables = []
     }
 
-    func testSharedSettings_returnsSameInstance() {
-        let a = TPPSettings.shared
-        let b = TPPSettings.sharedSettings()
-        XCTAssertTrue(a === b, "sharedSettings() must return the same instance as shared")
-        // Verify identity transitively
-        XCTAssertTrue(a === TPPSettings.shared, "shared property must equal shared singleton")
+    override func tearDown() {
+        cancellables = nil
+        settings = nil
+        super.tearDown()
     }
 
-    // MARK: - Static URL Strings
+    // MARK: - Setter Early-Return Guard (mutation surface)
 
-    func testAboutPalaceURL_isValid() {
-        let urlString = TPPSettings.TPPAboutPalaceURLString
-        XCTAssertNotNil(urlString)
-        XCTAssertNotNil(URL(string: urlString), "About URL string should be a valid URL")
+    /// Setting `customMainFeedURL` to its current value must skip the
+    /// notification post — the setter has an explicit early-return guard
+    /// to avoid spurious change events. Mutating that guard would be silently
+    /// undetected without this test.
+    func testCustomMainFeedURL_setToSameValue_doesNotPostNotification() {
+        let url = URL(string: "https://example.com/feed-\(UUID().uuidString)")!
+        let original = settings.customMainFeedURL
+        settings.customMainFeedURL = url
+        defer { settings.customMainFeedURL = original }
+
+        var notificationCount = 0
+        let observer = NotificationCenter.default.addObserver(
+            forName: Notification.Name.TPPSettingsDidChange,
+            object: nil,
+            queue: .main
+        ) { _ in
+            notificationCount += 1
+        }
+        defer { NotificationCenter.default.removeObserver(observer) }
+
+        // Re-set to the same value — should NOT post.
+        settings.customMainFeedURL = url
+
+        // Drain the run loop to allow any errant posts to land.
+        let drained = expectation(description: "drain run loop")
+        DispatchQueue.main.async { drained.fulfill() }
+        wait(for: [drained], timeout: 1.0)
+
+        XCTAssertEqual(notificationCount, 0,
+                       "Setting customMainFeedURL to its current value must not post TPPSettingsDidChange")
     }
 
-    func testUserAgreementURL_isValid() {
-        let urlString = TPPSettings.TPPUserAgreementURLString
-        XCTAssertNotNil(urlString)
-        XCTAssertNotNil(URL(string: urlString), "User Agreement URL string should be a valid URL")
+    /// Same guard for `accountMainFeedURL`.
+    func testAccountMainFeedURL_setToSameValue_doesNotPostNotification() {
+        let url = URL(string: "https://example.com/account-\(UUID().uuidString)")!
+        let original = settings.accountMainFeedURL
+        settings.accountMainFeedURL = url
+        defer { settings.accountMainFeedURL = original }
+
+        var notificationCount = 0
+        let observer = NotificationCenter.default.addObserver(
+            forName: Notification.Name.TPPSettingsDidChange,
+            object: nil,
+            queue: .main
+        ) { _ in
+            notificationCount += 1
+        }
+        defer { NotificationCenter.default.removeObserver(observer) }
+
+        settings.accountMainFeedURL = url
+
+        let drained = expectation(description: "drain run loop")
+        DispatchQueue.main.async { drained.fulfill() }
+        wait(for: [drained], timeout: 1.0)
+
+        XCTAssertEqual(notificationCount, 0,
+                       "Setting accountMainFeedURL to its current value must not post TPPSettingsDidChange")
     }
 
-    func testPrivacyPolicyURL_isValid() {
-        let urlString = TPPSettings.TPPPrivacyPolicyURLString
-        XCTAssertNotNil(urlString)
-        XCTAssertNotNil(URL(string: urlString), "Privacy Policy URL string should be a valid URL")
+    /// Setting `customMainFeedURL` to a *different* value must post the
+    /// notification — verifies the change-detection branch.
+    func testCustomMainFeedURL_setToDifferentValue_postsNotification() {
+        let oldURL = URL(string: "https://example.com/old-\(UUID().uuidString)")!
+        let newURL = URL(string: "https://example.com/new-\(UUID().uuidString)")!
+        let original = settings.customMainFeedURL
+        settings.customMainFeedURL = oldURL
+        defer { settings.customMainFeedURL = original }
+
+        let posted = expectation(description: "TPPSettingsDidChange posted")
+        let observer = NotificationCenter.default.addObserver(
+            forName: Notification.Name.TPPSettingsDidChange,
+            object: nil,
+            queue: .main
+        ) { _ in
+            posted.fulfill()
+        }
+        defer { NotificationCenter.default.removeObserver(observer) }
+
+        settings.customMainFeedURL = newURL
+
+        wait(for: [posted], timeout: 2.0)
     }
 
-    func testSoftwareLicensesURL_isValid() {
-        let urlString = TPPSettings.TPPSoftwareLicensesURLString
-        XCTAssertNotNil(urlString)
-        XCTAssertNotNil(URL(string: urlString), "Software Licenses URL string should be a valid URL")
+    // MARK: - Combine Publishers
+
+    /// `useBetaLibraries` setter must publish via the `useBetaDidChange` Combine
+    /// subject. Replaces the legacy `.TPPUseBetaDidChange` notification observers.
+    func testUseBetaLibraries_publishesViaCombine() {
+        let original = settings.useBetaLibraries
+        defer { settings.useBetaLibraries = original }
+
+        let received = expectation(description: "useBetaDidChange published")
+        var capturedValue: Bool?
+
+        settings.useBetaDidChange
+            .sink { value in
+                capturedValue = value
+                received.fulfill()
+            }
+            .store(in: &cancellables)
+
+        settings.useBetaLibraries = !original
+
+        wait(for: [received], timeout: 2.0)
+        XCTAssertEqual(capturedValue, !original,
+                       "Combine publisher must emit the new value")
     }
 
-    // MARK: - Boolean Settings
+    /// `customMainFeedURL` setter must publish via the omnibus `settingsDidChange`
+    /// publisher (which replaces direct `.TPPSettingsDidChange` notification observation).
+    func testCustomMainFeedURL_publishesViaSettingsDidChange() {
+        let original = settings.customMainFeedURL
+        let newURL = URL(string: "https://example.com/combine-\(UUID().uuidString)")!
+        defer { settings.customMainFeedURL = original }
 
-    func testUseBetaLibraries_defaultIsFalse() {
-        // Save current value, test default, restore
-        let original = TPPSettings.shared.useBetaLibraries
-        TPPSettings.shared.useBetaLibraries = false
-        let captured = TPPSettings.shared.useBetaLibraries
+        let received = expectation(description: "settingsDidChange published")
+        settings.settingsDidChange
+            .sink { _ in received.fulfill() }
+            .store(in: &cancellables)
 
-        XCTAssertFalse(captured, "useBetaLibraries must be false after explicit false assignment")
-        XCTAssertFalse(TPPSettings.shared.useBetaLibraries, "Value must persist within same test")
+        settings.customMainFeedURL = newURL
 
-        TPPSettings.shared.useBetaLibraries = original
-    }
-
-    func testUseBetaLibraries_canBeToggled() {
-        let original = TPPSettings.shared.useBetaLibraries
-
-        TPPSettings.shared.useBetaLibraries = true
-        XCTAssertTrue(TPPSettings.shared.useBetaLibraries)
-
-        TPPSettings.shared.useBetaLibraries = false
-        XCTAssertFalse(TPPSettings.shared.useBetaLibraries)
-
-        TPPSettings.shared.useBetaLibraries = original
-    }
-
-    func testEnterLCPPassphraseManually_canBeToggled() {
-        let original = TPPSettings.shared.enterLCPPassphraseManually
-
-        TPPSettings.shared.enterLCPPassphraseManually = true
-        XCTAssertTrue(TPPSettings.shared.enterLCPPassphraseManually)
-
-        TPPSettings.shared.enterLCPPassphraseManually = false
-        XCTAssertFalse(TPPSettings.shared.enterLCPPassphraseManually)
-
-        TPPSettings.shared.enterLCPPassphraseManually = original
-    }
-
-    // MARK: - EULA
-
-    func testUserHasAcceptedEULA_canBeSet() {
-        let original = TPPSettings.shared.userHasAcceptedEULA
-
-        TPPSettings.shared.userHasAcceptedEULA = true
-        XCTAssertTrue(TPPSettings.shared.userHasAcceptedEULA)
-
-        TPPSettings.shared.userHasAcceptedEULA = false
-        XCTAssertFalse(TPPSettings.shared.userHasAcceptedEULA)
-
-        TPPSettings.shared.userHasAcceptedEULA = original
-    }
-
-    // MARK: - App Version
-
-    func testAppVersion_canBeSetAndRead() {
-        let original = TPPSettings.shared.appVersion
-
-        TPPSettings.shared.appVersion = "1.2.3"
-        let capturedVersion = TPPSettings.shared.appVersion
-
-        XCTAssertEqual(capturedVersion, "1.2.3", "appVersion must persist after assignment")
-        XCTAssertTrue(capturedVersion?.contains(".") ?? false, "Version string must contain dot separators")
-
-        TPPSettings.shared.appVersion = original
-    }
-
-    // MARK: - Custom URLs
-
-    func testCustomMainFeedURL_defaultIsNil() {
-        // Custom URL should be nil by default in test environment
-        let url = TPPSettings.shared.customMainFeedURL
-        // In a clean test environment, no custom feed URL should be set
-        XCTAssertNil(url, "customMainFeedURL must be nil by default in a clean test environment")
-        // customLibraryRegistryServer is separate — should be independently nil
-        XCTAssertTrue(url == nil, "customMainFeedURL must consistently be nil in clean test environment")
-    }
-
-    func testCustomLibraryRegistryServer_canBeSet() {
-        let original = TPPSettings.shared.customLibraryRegistryServer
-
-        TPPSettings.shared.customLibraryRegistryServer = "https://custom.registry.example.com"
-        let capturedServer = TPPSettings.shared.customLibraryRegistryServer
-
-        XCTAssertEqual(capturedServer, "https://custom.registry.example.com",
-                       "Custom registry server must be retrievable after setting")
-        XCTAssertTrue(capturedServer?.hasPrefix("https://") ?? false,
-                      "Custom registry server must use HTTPS scheme")
-
-        TPPSettings.shared.customLibraryRegistryServer = original
+        wait(for: [received], timeout: 2.0)
     }
 
     // MARK: - Notifications
 
     func testUseBetaLibraries_postsNotification() {
-        let original = TPPSettings.shared.useBetaLibraries
-        let expectation = XCTNSNotificationExpectation(
-            name: NSNotification.Name.TPPUseBetaDidChange
-        )
+        let original = settings.useBetaLibraries
+        defer { settings.useBetaLibraries = original }
 
-        TPPSettings.shared.useBetaLibraries = !original
+        let posted = expectation(description: "TPPUseBetaDidChange posted")
+        let observer = NotificationCenter.default.addObserver(
+            forName: NSNotification.Name.TPPUseBetaDidChange,
+            object: nil,
+            queue: .main
+        ) { _ in
+            posted.fulfill()
+        }
+        defer { NotificationCenter.default.removeObserver(observer) }
 
-        wait(for: [expectation], timeout: 2.0)
-        // The setting must actually have changed
-        XCTAssertNotEqual(TPPSettings.shared.useBetaLibraries, original,
-                          "useBetaLibraries must differ from original after toggling")
+        settings.useBetaLibraries = !original
 
-        // Restore
-        TPPSettings.shared.useBetaLibraries = original
+        wait(for: [posted], timeout: 2.0)
     }
 }

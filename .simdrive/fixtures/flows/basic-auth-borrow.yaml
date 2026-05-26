@@ -1,0 +1,88 @@
+name: basic-auth-borrow
+description: |
+  Add A1QA Test Library (basic auth: barcode + PIN), sign in, browse
+  catalog, borrow a book, return. Exercises:
+  - A1 basic (sign-in form rendered correctly per auth type)
+  - A2 just-in-time (sign-in prompt triggered by borrow)
+  - A6 credential isolation (TPPCredentials writes to keychain)
+  - B1 borrow (auth-required path)
+  - B2 return (credential persists across action)
+
+status: PENDING_CAPTURE
+blocked_by: |
+  simdrive v0.1.0a1 type_text mangles mixed-case input — typed 'A1QA' returns
+  'A1qa' / 'Alqa'. Blocks any field that requires exact-string match.
+
+  PIN 'Lyrtest123' has uppercase L which will be lowercased through simdrive
+  type_text. Barcode '01230000000237' is digit-only and types correctly.
+
+  Resolution: capture this flow when simdrive v0.1.0a2 lands with the
+  type_text casing fix (see SIMDRIVE_DOGFOOD_2026_04_29.md P1 #2), OR via the
+  chaos-qa subagent which handles input variability natively.
+
+credentials_source: ~/.simdrive/credentials/a1qa-test.env
+credentials_keys: [A1QA_BARCODE, A1QA_PIN]
+
+steps:
+  - id: 01-launch
+    expects:
+      title: "Add Library"
+      contains_text: ["A1QA Test Library", "A test library for A1QA"]
+
+  - id: 02-tap-a1qa-row
+    action: "tap text='A1QA Test Library'"
+    expects:
+      title: "A1QA Test Library"
+      contains_text: ["Library Card", "PIN"]
+      visible_input_field: true
+
+  - id: 03-type-barcode
+    action: "tap_first text='Library Card', type_text('${A1QA_BARCODE}')"
+    expects:
+      contains_text: ["${A1QA_BARCODE}"]
+
+  - id: 04-type-pin
+    action: "tap_first text='PIN', type_text('${A1QA_PIN}')"
+    expects:
+      contains_text: ["${A1QA_PIN}"]
+    blocked_by: simdrive type_text case-mangling
+
+  - id: 05-after-signin
+    action: "tap text='Sign In' or 'Log In'"
+    expects:
+      title: "A1QA Test Library"
+      no_text: ["Library Card", "PIN", "Sign In"]
+      tab_bar: ["Catalog", "My Books", "Holds", "Settings"]
+
+  - id: 06-borrow-jit
+    action: "tap a borrowable book → tap Borrow → JIT prompt → confirm"
+    expects:
+      contains_text: ["Read", "Remove"]
+      no_text: ["Borrow"]
+
+  - id: 07-mybooks-after-borrow
+    action: "tap text='My Books'"
+    expects:
+      title: "A1QA Test Library"
+      contains_text: ["Read", "Remove"]
+
+  - id: 08-return
+    action: "tap text='Remove' on the borrowed book → confirm"
+    expects:
+      no_text: ["The Souls of Black Folk"]  # whichever book was borrowed
+      contains_text: ["Borrow"]  # restored
+
+mutation_targets:
+  - file: Palace/SignInLogic/TPPSignInBusinessLogic.swift
+    rationale: |
+      Anonymous flow exercises the no-auth path; this flow exercises the
+      basic-auth path. Together they cover both branches of the sign-in
+      dispatch.
+  - file: Palace/Accounts/User/TPPCredentials.swift
+    rationale: |
+      Keychain write/read on sign-in success. A6 credential isolation regression
+      (F-034 from PP-4020) lived here.
+  - file: Palace/MyBooks/MyBooksDownloadCenter.swift
+    rationale: |
+      Authenticated borrow path differs from anonymous on auth header
+      injection. Both should produce Read+Remove transition.

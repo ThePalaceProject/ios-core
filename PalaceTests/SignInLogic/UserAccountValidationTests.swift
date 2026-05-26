@@ -10,6 +10,7 @@
 //
 
 import XCTest
+import PalaceAuth
 @testable import Palace
 
 // MARK: - Mock Input Provider
@@ -35,37 +36,35 @@ final class UserAccountValidationTests: XCTestCase {
     private var usernameField: UITextField!
     private var pinField: UITextField!
     private var inputProvider: MockInputProvider!
+    private var account: Account!
 
     override func setUpWithError() throws {
         try super.setUpWithError()
-        try XCTSkipIf(AccountsManager.shared.accounts().isEmpty,
-                      "TEST-BLOCKED: AccountsManager has no loaded accounts in this test environment; tests rely on real OPDS feed loading.")
         usernameField = UITextField()
         pinField = UITextField()
         inputProvider = MockInputProvider()
         inputProvider.usernameTextField = usernameField
         inputProvider.PINTextField = pinField
+        account = TPPLibraryAccountMock().tppAccount
     }
 
     override func tearDown() {
         usernameField = nil
         pinField = nil
         inputProvider = nil
+        account = nil
         super.tearDown()
     }
 
     // MARK: - ASCII Enforcement
 
     func testRejectsNonASCIICharacters() {
-        // Create a validation instance without business logic (it will allow editing)
-        let account = AccountsManager.shared.accounts().first ?? makeStubAccount()
         let validation = TPPUserAccountFrontEndValidation(
             account: account,
-            businessLogic: nil,
+            validationContext: nil,
             inputProvider: inputProvider
         )
 
-        // Non-ASCII characters should be rejected
         let result = validation.textField(
             usernameField,
             shouldChangeCharactersIn: NSRange(location: 0, length: 0),
@@ -75,10 +74,9 @@ final class UserAccountValidationTests: XCTestCase {
     }
 
     func testAcceptsASCIICharacters() {
-        let account = AccountsManager.shared.accounts().first ?? makeStubAccount()
         let validation = TPPUserAccountFrontEndValidation(
             account: account,
-            businessLogic: nil,
+            validationContext: nil,
             inputProvider: inputProvider
         )
 
@@ -91,11 +89,9 @@ final class UserAccountValidationTests: XCTestCase {
     }
 
     func testAcceptsEmptyReplacementString() {
-        // Backspace sends empty replacement string
-        let account = AccountsManager.shared.accounts().first ?? makeStubAccount()
         let validation = TPPUserAccountFrontEndValidation(
             account: account,
-            businessLogic: nil,
+            validationContext: nil,
             inputProvider: inputProvider
         )
 
@@ -111,10 +107,9 @@ final class UserAccountValidationTests: XCTestCase {
 
     func testShouldBeginEditingWhenForceEditabilityIsTrue() {
         inputProvider.forceEditability = true
-        let account = AccountsManager.shared.accounts().first ?? makeStubAccount()
         let validation = TPPUserAccountFrontEndValidation(
             account: account,
-            businessLogic: nil,
+            validationContext: nil,
             inputProvider: inputProvider
         )
 
@@ -124,10 +119,9 @@ final class UserAccountValidationTests: XCTestCase {
 
     func testShouldBeginEditingWhenNoBusinessLogic() {
         inputProvider.forceEditability = false
-        let account = AccountsManager.shared.accounts().first ?? makeStubAccount()
         let validation = TPPUserAccountFrontEndValidation(
             account: account,
-            businessLogic: nil,
+            validationContext: nil,
             inputProvider: inputProvider
         )
 
@@ -136,11 +130,126 @@ final class UserAccountValidationTests: XCTestCase {
         XCTAssertTrue(result)
     }
 
+    // MARK: - Username 25-character limit
+
+    func testRejectsUsernameLongerThan25Characters() {
+        let validation = TPPUserAccountFrontEndValidation(
+            account: account,
+            validationContext: nil,
+            inputProvider: inputProvider
+        )
+        usernameField.text = String(repeating: "a", count: 25)
+
+        let result = validation.textField(
+            usernameField,
+            shouldChangeCharactersIn: NSRange(location: 25, length: 0),
+            replacementString: "b"
+        )
+        XCTAssertFalse(result, "Adding a 26th character to a 25-char username must be rejected")
+    }
+
+    func testAcceptsUsernameAtExactly25Characters() {
+        let validation = TPPUserAccountFrontEndValidation(
+            account: account,
+            validationContext: nil,
+            inputProvider: inputProvider
+        )
+        usernameField.text = String(repeating: "a", count: 24)
+
+        let result = validation.textField(
+            usernameField,
+            shouldChangeCharactersIn: NSRange(location: 24, length: 0),
+            replacementString: "b"
+        )
+        XCTAssertTrue(result, "25-character usernames must be accepted")
+    }
+
+    func testRejectsUsernameRangeOutsideTextBounds() {
+        let validation = TPPUserAccountFrontEndValidation(
+            account: account,
+            validationContext: nil,
+            inputProvider: inputProvider
+        )
+        usernameField.text = "abc"
+
+        let result = validation.textField(
+            usernameField,
+            shouldChangeCharactersIn: NSRange(location: 5, length: 0),
+            replacementString: "x"
+        )
+        XCTAssertFalse(result, "Range past end of text must be rejected to avoid out-of-bounds replace")
+    }
+
+    // MARK: - PIN passcode length (with businessLogic)
+
+    func testRejectsPINLongerThanAuthPasscodeLength() throws {
+        let businessLogic = makeBusinessLogicWithBasicAuth()
+        let validation = TPPUserAccountFrontEndValidation(
+            account: account,
+            validationContext: businessLogic,
+            inputProvider: inputProvider
+        )
+        // NYPL fixture sets passcode maximum_length = 12 for basic auth
+        pinField.text = String(repeating: "1", count: 12)
+
+        let result = validation.textField(
+            pinField,
+            shouldChangeCharactersIn: NSRange(location: 12, length: 0),
+            replacementString: "3"
+        )
+        XCTAssertFalse(result, "PIN longer than auth.authPasscodeLength must be rejected")
+    }
+
+    func testAcceptsPINAtExactlyAuthPasscodeLength() throws {
+        let businessLogic = makeBusinessLogicWithBasicAuth()
+        let validation = TPPUserAccountFrontEndValidation(
+            account: account,
+            validationContext: businessLogic,
+            inputProvider: inputProvider
+        )
+        pinField.text = String(repeating: "1", count: 11)
+
+        let result = validation.textField(
+            pinField,
+            shouldChangeCharactersIn: NSRange(location: 11, length: 0),
+            replacementString: "3"
+        )
+        XCTAssertTrue(result, "PIN at exactly authPasscodeLength must be accepted")
+    }
+
+    // MARK: - shouldBeginEditing with businessLogic
+
+    func testShouldNotBeginEditingWhenBusinessLogicHasBarcodeAndPIN() throws {
+        inputProvider.forceEditability = false
+        let businessLogic = makeBusinessLogicWithBasicAuth()
+        businessLogic.userAccount.setBarcode("user", PIN: "1234")
+        let validation = TPPUserAccountFrontEndValidation(
+            account: account,
+            validationContext: businessLogic,
+            inputProvider: inputProvider
+        )
+
+        let result = validation.textFieldShouldBeginEditing(usernameField)
+        XCTAssertFalse(result,
+                       "When credentials are already stored and forceEditability is off, fields must lock")
+    }
+
     // MARK: - Helpers
 
-    private func makeStubAccount() -> Account {
-        // Class-level setUpWithError already XCTSkipIf's the test if accounts
-        // are empty, so this force-unwrap is now safe.
-        return AccountsManager.shared.accounts().first!
+    private func makeBusinessLogicWithBasicAuth() -> TPPSignInBusinessLogic {
+        TPPUserAccountMock.resetShared()
+        let libraryMock = TPPLibraryAccountMock()
+        let logic = TPPSignInBusinessLogic(
+            libraryAccountID: libraryMock.tppAccountUUID,
+            libraryAccountsProvider: libraryMock,
+            urlSettingsProvider: TPPURLSettingsProviderMock(),
+            bookRegistry: TPPBookRegistryMock(),
+            bookDownloadsCenter: TPPMyBooksDownloadsCenterMock(),
+            userAccountProvider: TPPUserAccountMock.self,
+            networkExecutor: TPPRequestExecutorMock(),
+            uiDelegate: TPPSignInOutBusinessLogicUIDelegateMock(),
+            drmAuthorizer: TPPDRMAuthorizingMock())
+        logic.selectedAuthentication = libraryMock.basicAuthentication
+        return logic
     }
 }

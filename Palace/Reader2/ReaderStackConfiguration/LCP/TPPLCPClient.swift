@@ -4,9 +4,18 @@ import R2LCPClient
 import ReadiumLCP
 import ReadiumShared
 import PalaceAudiobookToolkit
+import PalaceLogging
 
 enum LCPContextError: Error {
     case creationReturnedNil
+    case nativeException(name: String, reason: String)
+    /// The pemCrl input did not look like a PEM-encoded X509 CRL.
+    /// Defense-in-depth — Botan's BER parser used to crash with an
+    /// uncaught C++ exception (Crashlytics 0ca62d8244, 11 users on
+    /// 3.0.0) when the server returned HTML / JSON / partial bytes.
+    /// The ObjC++ exception wrapper now catches that, but it's faster
+    /// to reject up front and easier to diagnose from the log.
+    case invalidPemCrl(prefix: String)
 }
 
 let lcpService = LCPLibraryService()
@@ -35,19 +44,52 @@ class TPPLCPClient: ReadiumLCP.LCPClient {
         hashedPassphrase: String,
         pemCrl: String
     ) throws -> LCPClientContext {
+        // F-002 defense-in-depth: pre-validate the PEM CRL header before
+        // handing it to the C++ Botan parser. A valid X509 CRL in PEM form
+        // starts with the literal "-----BEGIN X509 CRL-----" marker. When the
+        // server returns HTML/JSON/partial bytes, Botan throws an uncaught
+        // Decoding_Error that the wrapper below catches — but rejecting up
+        // front gives a much cleaner failure mode (clear log, no native frame
+        // in the crash report, no wasted C++ entry/exit) and lets us see in
+        // logs how often this happens in the wild.
+        let trimmed = pemCrl.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty && !trimmed.hasPrefix("-----BEGIN X509 CRL-----") {
+            let prefix = String(trimmed.prefix(40))
+            Log.error(#file, "LCP createContext: pemCrl does not look like a PEM-encoded CRL (prefix: \(prefix)) — rejecting before Botan parse")
+            throw LCPContextError.invalidPemCrl(prefix: prefix)
+        }
+
         var rawResult: LCPClientContext?
         var caughtError: Error?
+        var caughtNativeException: NSException?
 
+        // R2LCPClient → LCPWrapper (ObjC) → lcp::DRMService (C++) → Botan can
+        // throw C++ exceptions that escape the binary framework's bridge
+        // unhandled (notably Botan::Decoding_Error when the CRL bytes are
+        // malformed). A Swift do/catch cannot catch those — they bypass the
+        // Swift error machinery entirely and reach std::terminate. We catch
+        // both NSException AND C++ exceptions here so a bad CRL surfaces as
+        // a Swift-throwable error instead of crashing the app
+        // (Crashlytics 0ca62d8244 — 27 users, 249 events).
         contextQueue.sync {
-            do {
-                rawResult = try R2LCPClient.createContext(
-                    jsonLicense: jsonLicense,
-                    hashedPassphrase: hashedPassphrase,
-                    pemCrl: pemCrl
-                )
-            } catch {
-                caughtError = error
+            caughtNativeException = TPPObjCExceptionCatcher.catchAllExceptions {
+                do {
+                    rawResult = try R2LCPClient.createContext(
+                        jsonLicense: jsonLicense,
+                        hashedPassphrase: hashedPassphrase,
+                        pemCrl: pemCrl
+                    )
+                } catch {
+                    caughtError = error
+                }
             }
+        }
+
+        if let exception = caughtNativeException {
+            let name = exception.name.rawValue
+            let reason = exception.reason ?? "Unknown native exception"
+            Log.error(#file, "LCP createContext threw native exception: \(name) — \(reason)")
+            throw LCPContextError.nativeException(name: name, reason: reason)
         }
 
         if let error = caughtError {

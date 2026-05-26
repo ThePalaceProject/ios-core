@@ -11,6 +11,7 @@
 //
 
 import XCTest
+import PalaceCatalog
 @testable import Palace
 
 // MARK: - Account Initialization Tests
@@ -87,6 +88,100 @@ final class AccountModelTests: XCTestCase {
         let account = Account(publication: publication, imageCache: mockImageCache)
 
         XCTAssertEqual(account.supportURL?.absoluteString, "https://support.example.com")
+    }
+
+    // MARK: - BUG-001 regression: marketing-URL filter on `help` link
+    //
+    // Real-world repro (3.1.0 release validation, A1QA Test Library):
+    // the library's auth doc published `rel="help"` pointing at the public
+    // Palace marketing site (http://thepalaceproject.org/). The Account
+    // screen's "Report an Issue" row then pushed a webview titled
+    // "Report an Issue" but rendering the About-App marketing page
+    // ("Migrating from Boundless?…"). Users could not report issues.
+    //
+    // Fix: when a `help` href resolves to the same marketing host as
+    // TPPSettings.TPPAboutPalaceURLString, drop it on the floor — the row
+    // (and its destination) must not be exposed.
+
+    func testAccount_InitFromPublication_DropsHelpLink_WhenItPointsAtAboutAppMarketingURL() {
+        // Arrange: a library that misconfigures `help` as the Palace
+        // marketing URL (BUG-001 reproduction).
+        let helpLink = OPDS2Link(
+            href: "http://thepalaceproject.org/",
+            rel: "help"
+        )
+        let publication = makePublication(links: [helpLink])
+
+        // Act
+        let account = Account(publication: publication, imageCache: mockImageCache)
+
+        // Assert: support entry is suppressed in all surfaces — neither a
+        // URL push nor a mailto compose should be offered to the user.
+        XCTAssertNil(account.supportURL,
+                     "Help link equal to the Palace marketing URL must not become supportURL")
+        XCTAssertNil(account.supportEmail,
+                     "Marketing help link is not an email and must not become supportEmail")
+        XCTAssertFalse(account.hasSupportOption,
+                       "hasSupportOption must be false when the only `help` link is the marketing URL (BUG-001)")
+    }
+
+    func testAccount_InitFromPublication_DropsHelpLink_WhenItPointsAtAboutAppMarketingURL_HTTPSScheme() {
+        // Arrange: same case, but normalised over HTTPS — the filter must
+        // be scheme-insensitive (the constant in TPPSettings is http but
+        // the live host serves https).
+        let helpLink = OPDS2Link(
+            href: "https://thepalaceproject.org/",
+            rel: "help"
+        )
+        let publication = makePublication(links: [helpLink])
+
+        // Act
+        let account = Account(publication: publication, imageCache: mockImageCache)
+
+        // Assert
+        XCTAssertNil(account.supportURL,
+                     "HTTPS variant of the Palace marketing URL must also be suppressed")
+        XCTAssertFalse(account.hasSupportOption,
+                       "hasSupportOption must be false for the HTTPS marketing URL as well")
+    }
+
+    func testAccount_InitFromPublication_DropsHelpLink_TrailingSlashAndPathInsensitive() {
+        // Arrange: vendors sometimes drop the trailing slash or add an
+        // empty path — the filter must still match.
+        let helpLink = OPDS2Link(
+            href: "http://thepalaceproject.org",
+            rel: "help"
+        )
+        let publication = makePublication(links: [helpLink])
+
+        // Act
+        let account = Account(publication: publication, imageCache: mockImageCache)
+
+        // Assert
+        XCTAssertNil(account.supportURL,
+                     "Marketing URL without trailing slash must also be suppressed")
+        XCTAssertFalse(account.hasSupportOption)
+    }
+
+    func testAccount_InitFromPublication_KeepsHelpLink_WhenItPointsAtRealSupportPage() {
+        // Arrange: a library that publishes a genuine support URL —
+        // distinct host, not the marketing site.
+        let helpLink = OPDS2Link(
+            href: "https://thepalaceproject.org/help/contact",
+            rel: "help"
+        )
+        let publication = makePublication(links: [helpLink])
+
+        // Act
+        let account = Account(publication: publication, imageCache: mockImageCache)
+
+        // Assert: real support pages on the same host (with a path) must
+        // pass through — only the bare marketing root is suspect.
+        XCTAssertEqual(account.supportURL?.absoluteString,
+                       "https://thepalaceproject.org/help/contact",
+                       "A non-empty path on the marketing host is a real support page and must be preserved")
+        XCTAssertTrue(account.hasSupportOption,
+                      "hasSupportOption must be true when the help URL has real support content")
     }
 
     func testAccount_InitFromPublication_SetsAuthDocUrl() {

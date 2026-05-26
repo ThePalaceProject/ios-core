@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import PalaceLogging
 @preconcurrency import PalaceAudiobookToolkit
 
 @objc public class AudiobookBookmarkBusinessLogic: NSObject {
@@ -22,7 +23,7 @@ import Foundation
     private var deletedBookmarkIds = Set<String>()
 
     @objc convenience init(book: TPPBook) {
-        self.init(book: book, registry: TPPBookRegistry.shared, annotationsManager: TPPAnnotationsWrapper())
+        self.init(book: book, registry: AppContainer.production().bookRegistry, annotationsManager: TPPAnnotationsWrapper())
     }
 
     init(book: TPPBook, registry: TPPBookRegistryProvider, annotationsManager: AnnotationsManager) {

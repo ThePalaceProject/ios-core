@@ -1,3 +1,6 @@
+import PalaceLogging
+import PalaceCatalog
+
 private let userAboveAgeKey              = "TPPSettingsUserAboveAgeKey"
 private let accountSyncEnabledKey        = "TPPAccountSyncEnabledKey"
 
@@ -310,6 +313,18 @@ protocol AccountLogoDelegate: AnyObject {
         // this will tell if any authentication method requires age check
         return auths.contains(where: { $0.needsAgeCheck })
     }
+    /// Whether any of this library's authentication methods require user
+    /// credentials. Returns `false` for anonymous libraries (e.g. Palace
+    /// Bookshelf) — those have no patron concept, so per-patron endpoints
+    /// like loans / holds must not be fetched (BUG-004).
+    ///
+    /// This is a *library-state* signal, distinct from `TPPUserAccount.needsAuth`
+    /// which can race during library switches when `currentAccountId` is
+    /// transiently nil and `lastKnownCurrentUserAccount` returns the previous
+    /// (still-credentialed) library.
+    var needsAuth: Bool {
+        return auths.contains(where: { $0.needsAuth })
+    }
 
     fileprivate var urlAnnotations: URL?
     fileprivate var urlAcknowledgements: URL?
@@ -530,6 +545,16 @@ protocol AccountLogoDelegate: AnyObject {
         return details?.loansUrl
     }
 
+    /// Whether any of this library's authentication methods require user
+    /// credentials. Returns `false` for anonymous libraries (Palace
+    /// Bookshelf etc.) once the auth document has been parsed; `nil` while
+    /// the auth document is still loading. Callers in critical-path code
+    /// (e.g. holds-fetch suppression, BUG-004) should default-deny when this
+    /// returns nil to avoid swallowing legitimate failures on cold launch.
+    var needsAuth: Bool? {
+        return details?.needsAuth
+    }
+
     init(publication: OPDS2Publication, imageCache: ImageCacheType) {
         name = publication.metadata.title
         subtitle = publication.metadata.description
@@ -538,8 +563,16 @@ protocol AccountLogoDelegate: AnyObject {
         if let link = publication.links.first(where: { $0.rel == "help" })?.href {
             if let emailAddress = EmailAddress(rawValue: link) {
                 supportEmail = emailAddress
-            } else {
-                supportURL = URL(string: link)
+            } else if let url = URL(string: link),
+                      !Account.isAboutAppMarketingURL(url) {
+                // BUG-001: some libraries misconfigure their auth-document
+                // `help` link to point at the Palace marketing site
+                // (e.g. http://thepalaceproject.org/). That URL is the same
+                // page Settings -> About App renders, so wiring it under
+                // "Report an Issue" sends users to a marketing splash with
+                // no way to report anything. Drop the misconfiguration on
+                // the floor so the row is suppressed by hasSupportOption.
+                supportURL = url
             }
         }
         authenticationDocumentUrl = publication.links.first(where: { $0.type == "application/vnd.opds.authentication.v1.0+json" })?.href
@@ -548,6 +581,26 @@ protocol AccountLogoDelegate: AnyObject {
         logoUrl = publication.thumbnailURL
         self.imageCache = imageCache
         super.init()
+    }
+
+    /// Returns true when `url`'s host is the Palace marketing site root
+    /// (the same destination as Settings -> About App), regardless of
+    /// scheme (http/https) or trailing-slash variance. We suppress any
+    /// `help` link that resolves to this URL — it never contains issue
+    /// reporting content and would otherwise present a marketing splash
+    /// under "Report an Issue" (BUG-001).
+    static func isAboutAppMarketingURL(_ url: URL) -> Bool {
+        guard let marketingURL = URL(string: TPPSettings.TPPAboutPalaceURLString),
+              let marketingHost = marketingURL.host?.lowercased(),
+              let candidateHost = url.host?.lowercased(),
+              candidateHost == marketingHost else {
+            return false
+        }
+        // Same host — only suppress if the help link is the bare site root
+        // ("" or "/"). Any real support page on the same host (e.g.
+        // "/help/contact") is preserved.
+        let path = url.path
+        return path.isEmpty || path == "/"
     }
 
     /// Load authentication documents from the network or cache.
@@ -604,7 +657,7 @@ protocol AccountLogoDelegate: AnyObject {
             return
         }
 
-        TPPNetworkExecutor.shared.GET(url, useTokenIfAvailable: false) { result in
+        AppContainer.production().networkExecutor.GET(url, useTokenIfAvailable: false) { result in
             switch result {
             case .success(let serverData, _):
                 do {
@@ -659,7 +712,7 @@ protocol AccountLogoDelegate: AnyObject {
             completion(cachedImage)
             return
         }
-        TPPNetworkExecutor.shared.GET(url, useTokenIfAvailable: false) { result in
+        AppContainer.production().networkExecutor.GET(url, useTokenIfAvailable: false) { result in
             DispatchQueue.main.async {
                 switch result {
                 case .success(let serverData, _):

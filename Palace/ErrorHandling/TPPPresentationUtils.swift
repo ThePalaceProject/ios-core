@@ -61,6 +61,21 @@ class TPPPresentationUtils: NSObject {
             }
         }
 
+        // If a presentation/dismiss/push is already in flight on `base`,
+        // calling present() here is the failure mode behind the SAML re-auth
+        // lock-up: UIKit rejects the present with "transitioning already",
+        // leaves the form sheet half-mounted, and the app freezes. Wait for
+        // the in-flight transition to complete, then re-walk to the (possibly
+        // new) topmost VC and present there. HelpSpot 17716 follow-up.
+        if let coordinator = base.transitionCoordinator {
+            coordinator.animate(alongsideTransition: nil) { _ in
+                DispatchQueue.main.async {
+                    safelyPresent(vc, animated: animated, completion: completion)
+                }
+            }
+            return
+        }
+
         base.present(vc, animated: animated, completion: completion)
     }
 }

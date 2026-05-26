@@ -27,7 +27,7 @@ import SwiftUI
     fileprivate let settings: TPPSettings
     fileprivate var accountsLoadingLogos: Set<String> = []
 
-    required init(accounts: [Account], manager: AccountsManager = .shared, settings: TPPSettings = .shared) {
+    required init(accounts: [Account], manager: AccountsManager = AppContainer.production().accountsManager, settings: TPPSettings = AppContainer.production().settings) {
         self.accounts = accounts
         self.manager = manager
         self.settings = settings
@@ -328,7 +328,7 @@ import SwiftUI
             account = userAddedSecondaryAccounts[indexPath.row]
         }
 
-        let view = AccountDetailView(libraryAccountID: account?.uuid ?? "")
+        let view = AccountDetailView(libraryAccountID: account?.uuid ?? "", appContainer: .production())
         let vc = UIHostingController(rootView: view)
 
         // Pre-configure navigation bar to prevent snap

@@ -13,6 +13,6 @@ extension TPPBook {
     // instead of implicitly using NYPLMyBooksDownloadCenter
     /// Legacy computed property for file URL. Prefer `fileUrl(downloadCenter:)` for testability.
     var url: URL? {
-        return MyBooksDownloadCenter.shared.fileUrl(for: identifier)
+        return AppContainer.production().downloadCenter.fileUrl(for: identifier)
     }
 }

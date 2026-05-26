@@ -16,6 +16,7 @@ import Foundation
 import MediaPlayer
 import PalaceAudiobookToolkit
 import UIKit
+import PalaceLogging
 
 // MARK: - NowPlayingCoordinator
 

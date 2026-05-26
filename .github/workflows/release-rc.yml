@@ -5,7 +5,7 @@ jobs:
   create-rc:
     runs-on: macos-26
     outputs:
-      version: ${{ steps.notes.outputs.version }}
+      version: ${{ steps.ver.outputs.version }}
     steps:
       - name: Guard branch
         run: |
@@ -31,11 +31,26 @@ jobs:
           repository: ThePalaceProject/mobile-certificates
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
           path: ./mobile-certificates
-      - name: Create release notes
-        id: notes
+      - name: Resolve version and clear stale prerelease
+        id: ver
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ./scripts/create-release-notes.sh
+          source ./scripts/xcode-settings.sh
+          echo "VERSION_NUM=$VERSION_NUM" >> "$GITHUB_ENV"
           echo "version=$VERSION_NUM" >> "$GITHUB_OUTPUT"
+          if gh release view "$VERSION_NUM" > /dev/null 2>&1; then
+            IS_PRERELEASE=$(gh release view "$VERSION_NUM" --json isPrerelease --jq .isPrerelease)
+            if [ "$IS_PRERELEASE" != "true" ]; then
+              echo "::error::Release $VERSION_NUM already exists and is NOT a prerelease. Bump VERSION_NUM on this branch before re-running."
+              exit 1
+            fi
+            echo "Deleting existing prerelease $VERSION_NUM (remote release + remote tag)"
+            gh release delete "$VERSION_NUM" --yes --cleanup-tag
+            git tag -d "$VERSION_NUM" 2>/dev/null || true
+          fi
+      - name: Create release notes
+        run: ./scripts/create-release-notes.sh
         env:
           BUILD_CONTEXT: ci
           GITHUB_TOKEN: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
@@ -44,25 +59,6 @@ jobs:
           echo "Release notes path: $RELEASE_NOTES_PATH"
           cat "$RELEASE_NOTES_PATH"
           echo "Version: $VERSION_NUM"
-      - name: Guard against clobbering shipped release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          if gh release view "$VERSION_NUM" > /dev/null 2>&1; then
-            IS_PRERELEASE=$(gh release view "$VERSION_NUM" --json isPrerelease --jq .isPrerelease)
-            if [ "$IS_PRERELEASE" != "true" ]; then
-              echo "::error::Release $VERSION_NUM already exists and is NOT a prerelease. Bump VERSION_NUM on this branch before re-running."
-              exit 1
-            fi
-          fi
-      - name: Delete existing prerelease (if any)
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          if gh release view "$VERSION_NUM" > /dev/null 2>&1; then
-            echo "Deleting existing prerelease $VERSION_NUM (and its tag)"
-            gh release delete "$VERSION_NUM" --yes --cleanup-tag
-          fi
       - name: Create prerelease
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

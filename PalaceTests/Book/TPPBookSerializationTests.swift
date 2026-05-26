@@ -101,24 +101,31 @@ class TPPBookSerializationTests: XCTestCase {
   /// timestamp.
   func test_initFromDictionary_missingUpdated_fallsBackToDistantPast() {
     let acquisitions = [TPPFake.genericAcquisition.dictionaryRepresentation()]
-    let book = TPPBook(dictionary: [
+
+    guard let book = TPPBook(dictionary: [
       "acquisitions": acquisitions,
       "categories": ["Test"],
       "id": "123",
       "title": "Title"
-    ])
-    XCTAssertNotNil(book, "Missing 'updated' must not drop the book — fall back to .distantPast")
-    XCTAssertEqual(book?.updated, .distantPast, "Missing 'updated' falls back to .distantPast")
+    ]) else {
+      XCTFail("Missing 'updated' must not drop the book — fall back to .distantPast")
+      return
+    }
+    XCTAssertEqual(book.updated, .distantPast,
+                   "Missing 'updated' falls back to .distantPast")
 
-    let bookBadDate = TPPBook(dictionary: [
+    guard let bookBadDate = TPPBook(dictionary: [
       "acquisitions": acquisitions,
       "categories": ["Test"],
       "id": "123",
       "title": "Title",
       "updated": "not-a-date"
-    ])
-    XCTAssertNotNil(bookBadDate, "Malformed 'updated' must not drop the book")
-    XCTAssertEqual(bookBadDate?.updated, .distantPast, "Unparseable 'updated' falls back to .distantPast")
+    ]) else {
+      XCTFail("Malformed 'updated' must not drop the book")
+      return
+    }
+    XCTAssertEqual(bookBadDate.updated, .distantPast,
+                   "Unparseable 'updated' falls back to .distantPast")
   }
 
   /// Missing `categories` used to drop the book. The reader now accepts an
@@ -126,14 +133,19 @@ class TPPBookSerializationTests: XCTestCase {
   /// `title` remain hard requirements.
   func test_initFromDictionary_missingCategories_usesEmptyArray() {
     let acquisitions = [TPPFake.genericAcquisition.dictionaryRepresentation()]
-    let book = TPPBook(dictionary: [
+    guard let book = TPPBook(dictionary: [
       "acquisitions": acquisitions,
       "id": "no-categories",
       "title": "Title",
       "updated": "2024-01-01T00:00:00Z"
-    ])
-    XCTAssertNotNil(book, "Missing 'categories' must not drop the book")
-    XCTAssertEqual(book?.categoryStrings ?? [], [], "Missing 'categories' defaults to []")
+    ]) else {
+      XCTFail("Missing 'categories' must not drop the book")
+      return
+    }
+    XCTAssertEqual(book.categoryStrings, [],
+                   "Missing 'categories' defaults to []")
+    XCTAssertEqual(book.identifier, "no-categories",
+                   "Other fields must still parse correctly when categories is absent")
   }
 
   // MARK: - UpdatedKey parsing (registry reload bug)
@@ -144,18 +156,20 @@ class TPPBookSerializationTests: XCTestCase {
   /// registry on the next reload and was re-added as .downloadNeeded by sync.
   func test_initFromDictionary_updatedFullRFC3339Datetime_parsesSuccessfully() {
     let acquisitions = [TPPFake.genericAcquisition.dictionaryRepresentation()]
-    let book = TPPBook(dictionary: [
+    guard let book = TPPBook(dictionary: [
       "acquisitions": acquisitions,
       "categories": ["Test"],
       "id": "rfc3339-book",
       "title": "Title",
       "updated": "2024-09-15T14:32:07Z"
-    ])
-    XCTAssertNotNil(book, "Full RFC 3339 datetime must parse — this is what dictionaryRepresentation() writes")
+    ]) else {
+      XCTFail("Full RFC 3339 datetime must parse — this is what dictionaryRepresentation() writes")
+      return
+    }
 
     let components = Calendar(identifier: .iso8601).dateComponents(
       in: TimeZone(secondsFromGMT: 0)!,
-      from: book!.updated
+      from: book.updated
     )
     XCTAssertEqual(components.year, 2024)
     XCTAssertEqual(components.month, 9)
@@ -169,17 +183,19 @@ class TPPBookSerializationTests: XCTestCase {
   /// bare date (no time). The reader must still accept those.
   func test_initFromDictionary_updatedBareDate_parsesSuccessfully() {
     let acquisitions = [TPPFake.genericAcquisition.dictionaryRepresentation()]
-    let book = TPPBook(dictionary: [
+    guard let book = TPPBook(dictionary: [
       "acquisitions": acquisitions,
       "categories": ["Test"],
       "id": "bare-date-book",
       "title": "Title",
       "updated": "2024-09-15"
-    ])
-    XCTAssertNotNil(book, "Bare ISO 8601 date must still parse for legacy/OPDS compatibility")
+    ]) else {
+      XCTFail("Bare ISO 8601 date must still parse for legacy/OPDS compatibility")
+      return
+    }
     let components = Calendar(identifier: .iso8601).dateComponents(
       in: TimeZone(secondsFromGMT: 0)!,
-      from: book!.updated
+      from: book.updated
     )
     XCTAssertEqual(components.year, 2024)
     XCTAssertEqual(components.month, 9)
@@ -191,21 +207,32 @@ class TPPBookSerializationTests: XCTestCase {
   /// This is the exact disk write/read cycle the registry performs.
   func test_dictionaryRoundTrip_preservesUpdatedTimestamp() {
     let acquisitions = [TPPFake.genericAcquisition.dictionaryRepresentation()]
-    let original = TPPBook(dictionary: [
+    guard let original = TPPBook(dictionary: [
       "acquisitions": acquisitions,
       "categories": ["Test"],
       "id": "roundtrip",
       "title": "Title",
       "updated": "2024-09-15T14:32:07Z"
-    ])!
+    ]) else {
+      XCTFail("Setup precondition: original book must construct from dictionary")
+      return
+    }
     let serialized = original.dictionaryRepresentation()
-    let restored = TPPBook(dictionary: serialized as! [String: Any])
-    XCTAssertNotNil(restored, "Round-trip through dictionaryRepresentation() must not drop the book")
+    guard let serializedDict = serialized as? [String: Any],
+          let restored = TPPBook(dictionary: serializedDict) else {
+      XCTFail("Round-trip through dictionaryRepresentation() must not drop the book")
+      return
+    }
     XCTAssertEqual(
-      restored?.updated.timeIntervalSince1970,
+      restored.updated.timeIntervalSince1970,
       original.updated.timeIntervalSince1970,
+      accuracy: 1,
       "Updated timestamp must survive write-then-read to the second"
     )
+    XCTAssertEqual(restored.identifier, original.identifier,
+                   "Round-trip must preserve identifier")
+    XCTAssertEqual(restored.title, original.title,
+                   "Round-trip must preserve title")
   }
 
   // MARK: - Content type

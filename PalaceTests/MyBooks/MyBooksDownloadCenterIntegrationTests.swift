@@ -11,6 +11,7 @@
 
 import XCTest
 import Combine
+import PalaceCatalog
 @testable import Palace
 
 // MARK: - MockURLProtocol for Network Mocking
@@ -438,7 +439,7 @@ final class DownloadStateMachineIntegrationTests: XCTestCase {
     // MARK: Place Hold path — pre availability == unavailable
 
     /// Place Hold on a no-copies title is a success when CM responds `unavailable`
-    /// (patron is now queued). The pre-PP-4178 alert was incorrectly firing here.
+    /// (patron is now queued). The pre-PP-4178-follow-up alert was incorrectly firing here.
     func testBorrowResponseState_placeHold_unavailableResponse_noError() {
         let preBook = Self.makeBook(withAvailability: TPPOPDSAcquisitionAvailabilityUnavailable(
             copiesHeld: 3,
@@ -800,7 +801,7 @@ final class DownloadProgressPublisherTests: XCTestCase {
 
     func testProgressPublisher_emitsProgressUpdates() {
         // Given a download center
-        let downloadCenter = MyBooksDownloadCenter.shared
+        let downloadCenter = AppContainer.production().downloadCenter
 
         // Setup expectation for progress updates
         let progressExpectation = expectation(description: "Progress update received")
@@ -826,7 +827,7 @@ final class DownloadProgressPublisherTests: XCTestCase {
 
     func testProgressPublisher_emitsMultipleUpdates() {
         // Given a download center
-        let downloadCenter = MyBooksDownloadCenter.shared
+        let downloadCenter = AppContainer.production().downloadCenter
 
         // Setup expectation for multiple progress updates
         let progressExpectation = expectation(description: "Multiple progress updates received")
@@ -863,7 +864,7 @@ final class FileURLGenerationTests: XCTestCase {
 
     func testFileUrl_epubBook_hasEpubExtension() {
         // Given a download center and EPUB book
-        let downloadCenter = MyBooksDownloadCenter.shared
+        let downloadCenter = AppContainer.production().downloadCenter
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
 
         // Note: This test verifies the pathExtension method behavior
@@ -875,7 +876,7 @@ final class FileURLGenerationTests: XCTestCase {
 
     func testFileUrl_contentDirectoryExists() {
         // Given a download center
-        let downloadCenter = MyBooksDownloadCenter.shared
+        let downloadCenter = AppContainer.production().downloadCenter
 
         // When getting content directory
         let testAccountId = "test-account-\(UUID().uuidString)"
@@ -895,7 +896,7 @@ final class FileURLGenerationTests: XCTestCase {
 
     func testFileUrl_deterministicForSameIdentifier() {
         // Given a download center
-        let downloadCenter = MyBooksDownloadCenter.shared
+        let downloadCenter = AppContainer.production().downloadCenter
 
         // When generating file URL for same identifier multiple times
         // Note: We need a registered book for fileUrl to work
@@ -1146,7 +1147,7 @@ final class DiskBudgetTests: XCTestCase {
 
     func testContentDirectory_createdOnAccess() {
         // Given a download center
-        let downloadCenter = MyBooksDownloadCenter.shared
+        let downloadCenter = AppContainer.production().downloadCenter
         let testAccountId = "test-disk-budget-\(UUID().uuidString)"
 
         // When accessing content directory

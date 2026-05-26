@@ -1,0 +1,32 @@
+{
+  "fixture": "anonymous-borrow/05-after-borrow",
+  "version": "3.0.0",
+  "build": "470",
+  "device": "iPhone 16 Pro",
+  "os": "iOS 18.4",
+  "udid": "F3CB599D-B154-4D40-B2C4-52F821EABAD7",
+  "captured_at": "2026-04-29T17:00:54Z",
+  "screen_size": [1206, 2622],
+  "screenshot_relpath": "05-after-borrow.png",
+  "marks": [
+    {"id": 2, "bbox": [48, 203, 184, 65], "center": [140, 235], "text": "< Back", "confidence": 1.0},
+    {"id": 3, "bbox": [391, 1047, 422, 38], "center": [602, 1066], "text": "The Souls of Black Folk", "confidence": 1.0},
+    {"id": 4, "bbox": [479, 1139, 247, 38], "center": [602, 1158], "text": "W.E. B. Du Bois", "confidence": 1.0},
+    {"id": 5, "bbox": [45, 1349, 414, 49], "center": [252, 1373], "text": "Palace Bookshelf", "confidence": 1.0},
+    {"id": 10, "bbox": [94, 2198, 106, 46], "center": [147, 2221], "text": "Read", "confidence": 1.0},
+    {"id": 11, "bbox": [345, 2201, 164, 44], "center": [427, 2223], "text": "Remove", "confidence": 1.0}
+  ],
+  "asserts": {
+    "title_visible": "The Souls of Black Folk",
+    "post_borrow_actions": ["Read", "Remove"],
+    "post_borrow_action_y_range": [2195, 2230],
+    "no_text": ["Borrow", "Sign In"],
+    "library_attribution_visible": "Palace Bookshelf",
+    "comment": "Successful borrow transitions: Borrow CTA gone, Read+Remove appear at bottom. Library attribution shows Palace Bookshelf (which library this loan is in). This is the strongest mutation-killing assertion: any code path that fails to register the borrow OR fails to refresh the detail view would leave Borrow visible, which the assert flags."
+  },
+  "kills_mutants": [
+    {"file": "Palace/MyBooks/MyBooksDownloadCenter.swift", "rationale": "borrow flow completion writes to registry → if registry write is mutated, no Read button appears"},
+    {"file": "Palace/Book/UI/BookDetail/BookActionHandler.swift", "rationale": "action button state machine — flipping the borrow→loaned transition leaves Borrow visible"},
+    {"file": "Palace/Book/UI/BookDetail/BorrowReducer.swift", "rationale": "BorrowReducer state transitions; failure to emit .loaned action leaves stale Borrow CTA"}
+  ]
+}

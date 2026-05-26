@@ -8,7 +8,7 @@ The Palace.xcscheme already contains a TestableReference for `PalaceUITests` (Bl
 
 ### 1. Add the Target
 
-1. Open `Palace.xcodeproj` (or `PalaceR2.xcworkspace`) in Xcode.
+1. Open `Palace.xcodeproj` in Xcode. (Do not use a workspace wrapper — `Palace.xcodeproj` is the canonical entry point; the legacy `PalaceR2.xcworkspace` was removed because it hit Firebase SPM xcframework resolution issues.)
 2. Select the project in the Project Navigator (top-level blue icon).
 3. Click the **+** button at the bottom of the targets list.
 4. Choose **iOS > Test > UI Testing Bundle**.

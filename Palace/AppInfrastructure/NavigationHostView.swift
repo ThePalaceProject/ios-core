@@ -4,6 +4,7 @@ import PalaceAudiobookToolkit
 /// Generic host that provides a NavigationStack and a NavigationCoordinator environment object.
 struct NavigationHostView<Content: View>: View {
     @StateObject private var coordinator = NavigationCoordinator()
+    @Environment(\.appContainer) private var appContainer
     let rootView: Content
 
     init(rootView: Content) {
@@ -14,7 +15,7 @@ struct NavigationHostView<Content: View>: View {
         NavigationStack(path: $coordinator.path) {
             rootView
                 .navigationTitle("")
-                .onAppear { NavigationCoordinatorHub.shared.coordinator = coordinator }
+                .onAppear { AppContainer.production().navigationCoordinatorHub.coordinator = coordinator }
                 .fullScreenCover(item: $coordinator.presentedEPUBSample) { epubData in
                     if let book = coordinator.resolveBook(for: BookRoute(id: epubData.bookId)) {
                         EPUBReaderView(book: book, publication: epubData.publication, forSample: true)
@@ -32,7 +33,7 @@ struct NavigationHostView<Content: View>: View {
                             Text("Missing book")
                         }
                     case .catalogLaneMore(let title, let url):
-                        CatalogLaneMoreView(title: title, url: url)
+                        CatalogLaneMoreView(title: title, url: url, appContainer: appContainer)
                             .environmentObject(coordinator)
                     case .search(let searchRoute):
                         CatalogSearchView(
@@ -67,7 +68,7 @@ struct NavigationHostView<Content: View>: View {
                         if let model = coordinator.resolveAudioModel(for: bookRoute) {
                             AudiobookPlayerView(
                                 model: model,
-                                useIncrementalSpeedSlider: DebugSettings.shared.isIncrementalSpeedSliderEnabled
+                                useIncrementalSpeedSlider: appContainer.debugSettings.isIncrementalSpeedSliderEnabled
                             )
                             .toolbar(.hidden, for: .tabBar)
                             // CarMode prototype — not compiled

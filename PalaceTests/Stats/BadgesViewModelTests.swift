@@ -173,14 +173,8 @@ final class BadgesViewModelTests: XCTestCase {
 
     NotificationCenter.default.post(name: .badgeEarned, object: badge)
 
-    let expectation = XCTestExpectation(description: "Reload triggered")
-    // Give the async load() call time to run
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-      // The load() was called, which sets earnedBadges
-      XCTAssertEqual(self.viewModel.earnedBadges.count, 1)
-      expectation.fulfill()
-    }
-    wait(for: [expectation], timeout: 2.0)
+    awaitCondition { self.viewModel.earnedBadges.count == 1 }
+    XCTAssertEqual(viewModel.earnedBadges.count, 1)
   }
 
   // MARK: - Badge Categories Mutually Exclusive

@@ -1,3 +1,5 @@
+import PalaceCatalog
+
 extension Notification.Name {
     static let TPPProblemDocumentWasCached = Notification.Name("TPPProblemDocumentWasCached")
 }

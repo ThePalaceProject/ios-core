@@ -1,6 +1,8 @@
 import Foundation
 import Combine
 import SQLite
+import PalaceLogging
+import PalaceNetwork
 
 /**
  Recommended pattern by SQLite docs
@@ -25,12 +27,14 @@ enum HTTPMethodType: String {
 final class NetworkQueue: NSObject {
     typealias Expression = SQLite.Expression
 
-    static let sharedInstance = NetworkQueue()
     private var cancellables = Set<AnyCancellable>()
+    private let transport: NetworkTransport
+    private let reachability: Reachability
 
-    // For Objective-C classes
-    @objc static func shared() -> NetworkQueue {
-        return NetworkQueue.sharedInstance
+    init(transport: NetworkTransport, reachability: Reachability) {
+        self.transport = transport
+        self.reachability = reachability
+        super.init()
     }
 
     static let StatusCodes = [NSURLErrorTimedOut,
@@ -69,7 +73,7 @@ final class NetworkQueue: NSObject {
     // MARK: - Public Functions
 
     @objc func addObserverForOfflineQueue() {
-        Reachability.shared.connectivityPublisher
+        reachability.connectivityPublisher
             .filter { $0 }
             .sink { [weak self] _ in self?.retryQueue() }
             .store(in: &cancellables)
@@ -232,7 +236,7 @@ final class NetworkQueue: NSObject {
             }
         }
 
-        let task = URLSession.shared.dataTask(with: urlRequest) { (_, response, _) in
+        let task = transport.urlSession.dataTask(with: urlRequest) { (_, response, _) in
             self.serialQueue.async {
                 if let response = response as? HTTPURLResponse,
                    (200...299).contains(response.statusCode) {

@@ -1,0 +1,272 @@
+name: Mutation Gate (critical paths)
+
+# Fails a PR when mutation-testing kill rates drop on touched critical-path files.
+# Triggered automatically on PRs that change files in known-risky areas (auth,
+# borrow, download, DRM, registry). Skipped otherwise to keep PR latency low.
+#
+# Background: PP-4164 surfaced AccountsManager.swift at 0% mutation kill rate.
+# This gate exists so the next 0% file is caught at PR review, not in production.
+
+on:
+  pull_request:
+    paths:
+      - 'Palace/Accounts/**/*.swift'
+      - 'Palace/SignInLogic/**/*.swift'
+      - 'Palace/Book/Models/TPPBookRegistry*.swift'
+      - 'Palace/MyBooks/MyBooksDownloadCenter*.swift'
+      - 'Palace/Reader2/ReaderStackConfiguration/AdobeDRM/**/*.swift'
+      - 'Palace/Reader2/ReaderStackConfiguration/LCP/**/*.swift'
+      - 'Palace/Settings/TPPSettings.swift'
+      - 'Palace/AppInfrastructure/AppContainer.swift'
+
+concurrency:
+  group: mutation-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mutation-gate:
+    runs-on: macos-26
+    # 90 min budget vs the previous 60: per-mutant cost is ~7 min on cold
+    # runners (xcodebuild rebuild + test run), and 8 mutants × 7 min = 56 min
+    # left zero headroom for checkout + sim boot + summary. Account.swift
+    # exceeded the 60-min cap in PR #948 with no reports written — the gate
+    # appeared to fail but had simply timed out. 90 min gives ~25% headroom
+    # without re-tuning per-file mutant counts.
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Set up Xcode 26
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '26'
+
+      - name: Checkout PR with full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+          # Private DRM submodules (adept-ios, adobe-content-filter,
+          # ios-audiobook-overdrive) require this token. Without it the
+          # checkout step fails before mutation gating ever runs.
+          # Matches the pattern in unit-testing.yml.
+          token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
+
+      - name: Detect critical-path files changed in this PR
+        id: changed
+        run: |
+          set -euo pipefail
+          # Only run mutation on the curated critical-path list. The workflow's
+          # `paths:` filter is a coarse trigger; this step is the precise filter.
+          git fetch origin "${{ github.base_ref }}" --depth=1
+          BASE="origin/${{ github.base_ref }}"
+          CHANGED=$(git diff --name-only "$BASE...HEAD" -- \
+            'Palace/Accounts/**/*.swift' \
+            'Palace/SignInLogic/**/*.swift' \
+            'Palace/Book/Models/TPPBookRegistry*.swift' \
+            'Palace/MyBooks/MyBooksDownloadCenter*.swift' \
+            'Palace/Reader2/ReaderStackConfiguration/AdobeDRM/**/*.swift' \
+            'Palace/Reader2/ReaderStackConfiguration/LCP/**/*.swift' \
+            'Palace/Settings/TPPSettings.swift' \
+            'Palace/AppInfrastructure/AppContainer.swift' \
+            | grep -v -E '(Tests|Mock)' || true)
+
+          if [[ -z "$CHANGED" ]]; then
+            echo "No critical-path source files changed; skipping mutation gate."
+            echo "files=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Critical-path files changed:"
+          echo "$CHANGED"
+          # Output as a comma-separated list for downstream steps.
+          echo "files=$(echo "$CHANGED" | tr '\n' ',' | sed 's/,$//')" >> "$GITHUB_OUTPUT"
+
+      - name: Run mutation testing on changed critical-path files
+        if: steps.changed.outputs.files != ''
+        env:
+          MUTATION_FILES: ${{ steps.changed.outputs.files }}
+        run: |
+          set -euo pipefail
+
+          # Resolve a usable iPhone simulator UDID. The previous regex-based
+          # approach was brittle: device-name renames between runner-image
+          # versions (and case variations in `simctl list devices` output)
+          # silently produced an empty UDID and exited 1 before anything ran.
+          # Mirrors the ui-testing.yml pattern: prefer iPhone 16 Pro, fall
+          # back to any available iPhone, and surface what's on the runner
+          # when nothing is found.
+          echo "Available iPhone simulators on runner:"
+          xcrun simctl list devices available | grep iPhone | head -20 || true
+
+          UDID=$(xcrun simctl list devices available -j | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          preferred = 'iPhone 16 Pro'
+          for runtime, devices in data.get('devices', {}).items():
+              if 'iOS' not in runtime: continue
+              for d in devices:
+                  if d['name'] == preferred and d['isAvailable']:
+                      print(d['udid']); sys.exit(0)
+          for runtime, devices in data.get('devices', {}).items():
+              if 'iOS' not in runtime: continue
+              for d in devices:
+                  if 'iPhone' in d['name'] and d['isAvailable']:
+                      print(d['udid']); sys.exit(0)
+          sys.exit(1)
+          ")
+          if [[ -z "$UDID" ]]; then
+            echo "::error::No iPhone simulator available on runner."
+            exit 1
+          fi
+          echo "Using simulator UDID: $UDID"
+          xcrun simctl boot "$UDID" 2>/dev/null || true
+          xcrun simctl bootstatus "$UDID" -b
+
+          mkdir -p mutation-results
+
+          # Use the regression orchestrator's auto cmd in mutation-only mode.
+          # --mutation-files passes through to palace_mutate.py which derives
+          # the right XCTest class per source file. --mutation-max-per-file 8
+          # keeps the wallclock under the timeout.
+          scripts/regression-report.sh auto \
+            --output-dir "$PWD/mutation-results" \
+            --skip-sync-tests \
+            --skip-push \
+            --mutation-run \
+            --mutation-max-per-file 8 \
+            --mutation-files "$MUTATION_FILES" \
+            --sim-id "$UDID" \
+            --yes-long-mutation
+
+      - name: Enforce kill-rate threshold (75% on critical paths)
+        if: steps.changed.outputs.files != ''
+        run: |
+          set -euo pipefail
+          REPORTS=mutation-results/automated/mutation/reports
+
+          if [[ ! -d "$REPORTS" ]]; then
+            echo "::error::No mutation reports produced; tooling failure."
+            exit 1
+          fi
+
+          python3 scripts/summarize-mutation-reports.py "$REPORTS" \
+            --threshold 75 \
+            --strict
+
+      - name: Comment kill-rate summary on PR
+        if: always() && steps.changed.outputs.files != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const reportsDir = 'mutation-results/automated/mutation/reports';
+            const resultsTxt = 'mutation-results/automated/mutation/results.txt';
+            const changedFiles = (process.env.MUTATION_FILES || '').split(',').filter(Boolean);
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            // Detect skip-reason from the wallclock guard message the
+            // orchestrator writes when it punts. If results.txt says
+            // "Mutation execution skipped", the rest of the pipeline
+            // never produced reports — surface that explicitly.
+            let skipReason = null;
+            if (fs.existsSync(resultsTxt)) {
+              try {
+                const txt = fs.readFileSync(resultsTxt, 'utf8');
+                const m = txt.match(/Mutation execution skipped:.*/);
+                if (m) skipReason = m[0].trim();
+              } catch (_) { /* fall through */ }
+            }
+
+            // Empty / missing reports dir = orchestrator never wrote any
+            // JSON. Most common cause: job timeout (palace_mutate.py only
+            // flushes the report on completion, not incrementally).
+            const reportsExist = fs.existsSync(reportsDir);
+            const reportFiles = reportsExist
+              ? fs.readdirSync(reportsDir).filter(f => f.endsWith('.json'))
+              : [];
+
+            // Parse + filter to reports that have a usable summary block.
+            // A truncated/partial JSON write would also land here as a
+            // skip; surfacing that distinguishes "ran but timed out" from
+            // "ran and reported".
+            const reports = [];
+            const skipped = [];
+            for (const f of reportFiles) {
+              try {
+                const r = JSON.parse(fs.readFileSync(path.join(reportsDir, f), 'utf8'));
+                if (r && r.summary) reports.push(r);
+                else skipped.push(`${f}: missing summary block`);
+              } catch (e) {
+                skipped.push(`${f}: ${e.message}`);
+              }
+            }
+
+            const lines = ['### Mutation gate — kill rates per critical-path file', ''];
+
+            if (reports.length === 0) {
+              // No usable reports — explain WHY rather than posting an
+              // empty table. Three distinguishable cases:
+              //   1. results.txt says "skipped" → orchestrator guard fired
+              //   2. results.txt absent AND reports dir empty → timeout
+              //   3. reports dir has JSON but none parse → tooling bug
+              lines.push('> ⚠️ **No kill-rate data produced for this run.**', '');
+              if (skipReason) {
+                lines.push(`Orchestrator skipped execution: \`${skipReason}\``);
+                lines.push('');
+                lines.push('Pass `--yes-long-mutation` in the workflow if the estimate is intentional, or tighten `--mutation-max-per-file`.');
+              } else if (reportFiles.length === 0) {
+                lines.push('Mutation testing did not write any reports. Most likely cause: **job timed out** before `palace_mutate.py` flushed its JSON (reports are written on completion, not incrementally).');
+                lines.push('');
+                lines.push('To unblock this PR:');
+                lines.push('- Re-run the workflow on a less-loaded runner, or');
+                lines.push('- Run mutation locally on the changed file(s) and post results manually:');
+                lines.push('  ```bash');
+                for (const f of changedFiles) {
+                  lines.push(`  python3 scripts/palace_mutate.py --file ${f} --tests PalaceTests/<TestClass> --max-mutations 8`);
+                }
+                lines.push('  ```');
+              } else {
+                lines.push('Reports were produced but none parsed cleanly. Tooling bug — see workflow log.');
+                lines.push('');
+                lines.push('Parse errors:');
+                for (const s of skipped) lines.push(`- \`${s}\``);
+              }
+              lines.push('');
+              lines.push(`Workflow run: ${runUrl}`);
+            } else {
+              lines.push('| File | Killed / Run | Kill % | Verdict |', '|---|---|---|---|');
+              for (const r of reports) {
+                const k = r.summary.killed || 0;
+                const run = (r.summary.killed || 0) + (r.summary.survived || 0);
+                const pct = run === 0 ? 0 : Math.round(k / run * 100);
+                const verdict = pct >= 75 ? '✅' : pct >= 50 ? '⚠️ borderline' : '❌ insufficient';
+                lines.push(`| ${r.file} | ${k} / ${run} | ${pct}% | ${verdict} |`);
+              }
+              // If some files were expected but only some produced reports,
+              // call out the gap — that's the "partial completion" case.
+              const reportedFiles = new Set(reports.map(r => r.file));
+              const missing = changedFiles.filter(f => !reportedFiles.has(f));
+              if (missing.length > 0) {
+                lines.push('');
+                lines.push(`> ⚠️ **${missing.length} changed file(s) produced no report** (likely timed out mid-run):`);
+                for (const f of missing) lines.push(`> - \`${f}\``);
+              }
+              if (skipped.length > 0) {
+                lines.push('');
+                lines.push('Skipped (parse errors):');
+                for (const s of skipped) lines.push(`- \`${s}\``);
+              }
+            }
+
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: lines.join('\n')
+            });
+        env:
+          MUTATION_FILES: ${{ steps.changed.outputs.files }}

@@ -283,21 +283,29 @@ final class TypographyServiceTests: XCTestCase {
     // MARK: - Persistence
 
     func testSettingsPersistedAfterDebounce() {
-        let expectation = expectation(description: "Settings persisted")
-
+        // Capture into a local so the predicate block doesn't reach back through
+        // self.testDefaults — under CI load the predicate can fire after tearDown
+        // has already nulled the implicitly-unwrapped optional, crashing the
+        // next test that's running. The captured local keeps UserDefaults alive
+        // for the predicate's lifetime.
+        let capturedDefaults = testDefaults!
         service.updateFontSize(28)
 
-        // Wait for debounce (500ms + buffer)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
-            let reloaded = TypographyService(userDefaults: self.testDefaults)
-            XCTAssertEqual(reloaded.currentSettings.fontSize, 28, "Font size should be persisted")
-            // Other default settings should also be preserved on reload
-            XCTAssertEqual(reloaded.currentSettings.fontFamily, .georgia,
-                           "Default fontFamily should be preserved alongside the changed fontSize")
-            expectation.fulfill()
+        // Poll the persisted value rather than guess at debounce + scheduling
+        // drift. The previous fixed-700ms wait raced the 500ms debounce on
+        // RunLoop.main and intermittently read the default 18pt back on loaded
+        // CI runners (the main run loop can be starved past the debounce
+        // deadline). Polling lets the test pass as soon as the value lands.
+        let predicate = NSPredicate { _, _ in
+            let reloaded = TypographyService(userDefaults: capturedDefaults)
+            return reloaded.currentSettings.fontSize == 28
         }
+        wait(for: [XCTNSPredicateExpectation(predicate: predicate, object: nil)], timeout: 5.0)
 
-        waitForExpectations(timeout: 2)
+        let reloaded = TypographyService(userDefaults: capturedDefaults)
+        XCTAssertEqual(reloaded.currentSettings.fontSize, 28, "Font size should be persisted")
+        XCTAssertEqual(reloaded.currentSettings.fontFamily, .georgia,
+                       "Default fontFamily should be preserved alongside the changed fontSize")
     }
 
     func testSettingsPublisherEmitsOnChange() {

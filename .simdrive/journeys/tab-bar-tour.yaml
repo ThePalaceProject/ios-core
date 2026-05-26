@@ -1,0 +1,49 @@
+scenario:
+  id: tab-bar-tour
+  name: "Tab Bar — Catalog → My Books → Holds → Settings → Catalog"
+  description: >
+    Cycle through every primary tab and return to the start. Verifies tab-bar
+    routing, screen transitions, and that no tab gets stuck or fails to render.
+  tags: [tier0, ios, navigation, tabs, layout-regression]
+  tier: stateless
+  blocking: true
+
+  preconditions:
+    - "iPhone 16 Pro / iOS 18.4 simulator booted"
+    - "Palace app installed"
+    - "App launched to the Catalog tab (default first launch)"
+
+  recording:
+    path: "~/.simdrive/recordings/tab-bar-tour/recording.yaml"
+    steps: 4
+    captured_with: "simdrive 0.2.0a1"
+    captured_on: "2026-04-29"
+
+  steps:
+    - { id: tap_my_books, description: "Tap My Books tab", tap_target: { stable_id: "3218623d0801" } }
+    - { id: tap_holds,    description: "Tap Holds tab",    tap_target: { stable_id: "0f06bf1e2d8b" } }
+    - { id: tap_settings, description: "Tap Settings tab", tap_target: { stable_id: "7fbaa4deb053" } }
+    - { id: tap_catalog,  description: "Tap Catalog tab (return to start)", tap_target: { stable_id: "a229e82e3f00" } }
+
+  expected_invariants:
+    - "Every tab transition completes within 1 second (no freeze, no spinner)"
+    - "The selected tab indicator follows the tap"
+    - "Returning to Catalog at the end shows the same lanes that were visible at start"
+    - "No error alerts, no SpringBoard drops"
+
+  ssim_gating:
+    threshold: 0.85
+    on_drift: warn    # OPDS pre-state at step 1; structural_checks below are the gate
+
+  structural_checks:
+    - after_step: 4   # back on Catalog after the full tour
+      required_text:   ["Catalog", "My Books", "Holds", "Settings"]
+      required_chrome: ["a229e82e3f00", "3218623d0801", "0f06bf1e2d8b", "7fbaa4deb053"]
+      min_marks: 25
+      rationale: "After returning to Catalog, all 4 tab labels + tab stable_ids must be visible."
+
+  rationale: |
+    Stateless from a state-mutation standpoint, but the recording's first-step
+    pre_screenshot is the OPDS catalog (non-deterministic content), so SSIM
+    gating doesn't work as a regression detector here. Structural checks
+    assert the chrome and labels are intact — robust to OPDS thumbnail churn.

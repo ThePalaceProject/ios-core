@@ -1112,9 +1112,13 @@ final class FetchManifestWithBearerTokenLCPSafetyTests: XCTestCase {
     }
 
     func testFetchManifestWithBearerToken_receivingLCPLicense_returnsJSON() {
-        let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [HTTPStubURLProtocol.self]
-        let stubbedSession = URLSession(configuration: config)
+        // Use the process-wide shared stubbed session per URLSession+Stubbing.swift's
+        // contract — creating a fresh URLSession per test method leaks the session
+        // and its private delegate queue, causing callbacks to fire on freed state
+        // long after the test method returns. CI's full-suite run on iOS 26.2
+        // surfaced this as an "Asynchronous wait failed: Exceeded timeout" because
+        // the leaked-session callback never reached this expectation.
+        let stubbedSession = URLSession.stubbedSession()
 
         let licenseData = try! JSONSerialization.data(
             withJSONObject: LCPLicenseDocumentDetectionTests.sampleLCPLicense

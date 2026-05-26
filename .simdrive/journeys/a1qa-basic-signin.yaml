@@ -1,0 +1,75 @@
+scenario:
+  id: a1qa-basic-signin
+  name: "A1QA basic-auth sign-in"
+  description: >
+    First basic-auth (barcode + PIN) sign-in recording in the simdrive
+    corpus. Closes the Basic / OAuth / OIDC coverage gap surfaced by the
+    2026-05-11 regression coverage analysis — until this lands the corpus
+    only had pr907-saml-signin-gorgon.
+  tags: [tier1, ios, auth, basic-auth, a1qa]
+  tier: stateful
+  blocking: false   # smoke-only — auth completion is gated by network; replay
+                    # cares about UI smoke (form renders, type+tap works), not
+                    # whether the OPDS auth endpoint returns 200.
+
+  preconditions:
+    - "A1QA Test Library added under Settings → Libraries"
+    - "Signed OUT of A1QA (Account view shows Sign in button)"
+    - "Account view in the foreground"
+
+  state_reset:
+    - "Before each replay, sign out of A1QA: Settings → Libraries → A1QA Test Library → Sign out → confirm"
+    - "Note: rapid back-to-back replays may rate-limit the OPDS auth endpoint; the recording's value is UI smoke regardless of auth result"
+
+  recording:
+    path: "~/.simdrive/recordings/a1qa-basic-signin/recording.yaml"
+    steps: 3
+    captured_with: "simdrive 1.0.0a9"
+    captured_on: "2026-05-12"
+
+  steps:
+    - id: type_barcode
+      description: "Tap Library Card field + type the barcode from harness vault (slug palace-ios.lib.a1qa, HARNESS_USER)"
+      type:
+        tap_first: { stable_id: "f3fc510deb8f" }
+    - id: type_password
+      description: "Tap Password field + type the PIN from harness vault (slug palace-ios.lib.a1qa, HARNESS_PASS)"
+      type:
+        tap_first: { stable_id: "ea94d7159e25" }
+    - id: tap_sign_in
+      description: "Tap Sign in"
+      tap_target: { stable_id: "4b8b57094583" }
+
+  expected_invariants:
+    - "Sign in form renders with Library Card + Password + Sign in"
+    - "type_text into Library Card lands the typed value"
+    - "type_text into Password lands the typed value (masked display)"
+    - "Tap on Sign in initiates the auth network call"
+    - "Layer-2 state contract correctly distinguishes signed-out vs signed-in"
+
+  ssim_gating:
+    threshold: 0.85
+    on_drift: warn   # Step-3 post-screenshot captures the 'Signing In' spinner;
+                     # the post-state can diverge depending on network latency
+
+  rationale: |
+    First basic-auth recording. The pattern (state-contract-gated form
+    rendering + type+tap drive) is the template for future auth
+    recordings: a1qa-basic-signin (this), pr907-saml-signin-gorgon
+    (existing), and the OAuth / OIDC slots once those libraries are
+    vaulted via `harness creds add palace-ios.lib.<name>`.
+
+    Replay sources credentials from the vault at replay time (not from
+    this journey file). The underlying recording.yaml currently embeds
+    test creds in plaintext per simdrive's recording-format limitation
+    — that file lives under ~/.simdrive/recordings/ (user-local, not in
+    the repo). When simdrive adds a `type_secret` action (memory:
+    feedback_simdrive_credential_typing_gap.md), the recording will
+    move to slug-references.
+
+  credentials_source: harness creds vault — slug `palace-ios.lib.a1qa`
+  credentials_keys: [HARNESS_USER, HARNESS_PASS]
+
+  known_issues:
+    - "Replay-time auth may rate-limit on rapid re-attempts. The state-contract halt at step 0 + per-step similarity check (steps 1-2) are the reliable invariants; step 3's post-state varies with network."
+    - "Underlying recording.yaml (in ~/.simdrive/, not in repo) embeds test credentials. They are intentionally non-sensitive and live only in the user-local simdrive recordings directory. Do NOT promote this pattern to production credentials."

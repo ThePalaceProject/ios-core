@@ -8,6 +8,7 @@
 
 import AVFoundation
 import Combine
+import PalaceLogging
 
 enum AudiobookSamplePlayerState {
     case initialized

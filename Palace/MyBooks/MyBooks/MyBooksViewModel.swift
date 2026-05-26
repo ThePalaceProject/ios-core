@@ -8,6 +8,7 @@
 
 import Foundation
 import Combine
+import PalaceLogging
 
 enum Group: Int {
     case groupSortBy
@@ -37,7 +38,15 @@ enum Group: Int {
     private let bookRegistry: TPPBookRegistryProvider
     private let accountsManager: AccountsManager
     private let settings: TPPSettings
+    private let downloadCenter: MyBooksDownloadCenter
     private var allBooks: [TPPBook] = []
+
+    /// Decides whether `loadData()` may show the registry contents. Defaults
+    /// to consulting the injected `accountsManager`: if the current account
+    /// requires auth and has no credentials, the registry is hidden (anti-
+    /// stale-data guard from F-007). Tests can override this closure to
+    /// bypass the guard when seeding a registry with mock books.
+    private let isUserAuthorizedForRegistry: () -> Bool
 
     /// Tracks whether the My Books tab is currently visible. When false,
     /// notification-driven reloads are deferred until the tab reappears,
@@ -53,15 +62,38 @@ enum Group: Int {
     private var needsReloadOnAppear = false
 
     // MARK: - Initialization
-    init(bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared, accountsManager: AccountsManager = .shared, settings: TPPSettings = .shared) {
+
+    convenience init(appContainer: AppContainer) {
+        self.init(
+            bookRegistry: appContainer.bookRegistry,
+            accountsManager: appContainer.accountsManager,
+            settings: appContainer.settings,
+            downloadCenter: appContainer.downloadCenter
+        )
+    }
+
+    init(
+        bookRegistry: TPPBookRegistryProvider,
+        accountsManager: AccountsManager,
+        settings: TPPSettings,
+        downloadCenter: MyBooksDownloadCenter,
+        isUserAuthorizedForRegistry: (() -> Bool)? = nil
+    ) {
         self.bookRegistry = bookRegistry
         self.accountsManager = accountsManager
         self.settings = settings
+        self.downloadCenter = downloadCenter
         self.activeFacetSort = .author
         self.facetViewModel = FacetViewModel(
             groupName: DisplayStrings.sortBy,
-            facets: [.title, .author]
+            facets: [.title, .author],
+            accountsManager: accountsManager
         )
+        // Default: consult the injected accountsManager. F-007 guard.
+        self.isUserAuthorizedForRegistry = isUserAuthorizedForRegistry ?? { [weak accountsManager] in
+            guard let acc = accountsManager?.currentUserAccount else { return false }
+            return !acc.needsAuth || acc.hasCredentials()
+        }
         super.init()
 
         registerPublishers()
@@ -80,9 +112,9 @@ enum Group: Int {
         isLoading = true
 
         // If the account requires authentication and user is not logged in,
-        // don't show any books from the registry (they may be stale from a previous session)
-        let account = AccountsManager.shared.currentUserAccount
-        if account.needsAuth && !account.hasCredentials() {
+        // don't show any books from the registry (they may be stale from a
+        // previous session). F-007 guard. Closure is overridable in tests.
+        if !isUserAuthorizedForRegistry() {
             Log.info(#file, "User not logged in - showing empty My Books")
             self.allBooks = []
             self.books = []
@@ -108,7 +140,7 @@ enum Group: Int {
             Log.info(#file, "📚 Removing \(expired.count) expired book(s) from My Books")
             for book in expired {
                 Log.info(#file, "  → '\(book.title)' expired")
-                MyBooksDownloadCenter.shared.deleteLocalContent(for: book.identifier)
+                downloadCenter.deleteLocalContent(for: book.identifier)
                 bookRegistry.setState(.unregistered, for: book.identifier)
             }
         }
@@ -162,8 +194,8 @@ enum Group: Int {
     func reloadData() {
         guard !isLoading else { return }
 
-        if AccountsManager.shared.currentUserAccount.needsAuth, !AccountsManager.shared.currentUserAccount.hasCredentials() {
-            SignInModalPresenter.presentSignInModalForCurrentAccount(completion: nil)
+        if accountsManager.currentUserAccount.needsAuth, !accountsManager.currentUserAccount.hasCredentials() {
+            SignInModalPresenter.presentSignInModalForCurrentAccount(accountsManager: accountsManager, completion: nil)
         } else {
             bookRegistry.sync { [weak self] _, _ in
                 self?.loadData()
@@ -176,7 +208,7 @@ enum Group: Int {
     /// smoothly via registry notification → loadData() when sync completes.
     func refreshInBackground() {
         guard !isLoading else { return }
-        guard AccountsManager.shared.currentUserAccount.hasCredentials() else { return }
+        guard accountsManager.currentUserAccount.hasCredentials() else { return }
         // Only do a silent sync if we already have books displayed —
         // if empty, the user sees the empty state and can pull to refresh
         guard !books.isEmpty else { return }
@@ -287,6 +319,40 @@ enum Group: Int {
                 guard let self = self else { return }
                 self.activeFacetSort = sort
                 self.sortData()
+            }
+            .store(in: &observers)
+
+        // Force a registry sync + reload on any transition into `.loggedIn`
+        // (fresh sign-in OR SAML re-auth from `.credentialsStale`). The
+        // post-sign-in `bookRegistry.sync()` wired into
+        // `TPPSignInBusinessLogic.updateUserAccount` is supposed to
+        // repopulate loans, but in practice the propagation through
+        // `TPPBookRegistryDidChange` doesn't always reach this view model
+        // in time — especially when the registry is in the `.unloaded`
+        // race window between sign-out and sign-in (handled at the
+        // TPPBookRegistry.sync wrapper level, but the safety net here
+        // covers the case where sync itself didn't fire).
+        //
+        // We can't use a `hasCredentials`-based publisher because
+        // `hasCredentials` is true for both `.credentialsStale` AND
+        // `.loggedIn` — SAML re-auth keeps the keychain populated through
+        // both states, no false→true transition fires.
+        //
+        // The hasCredentials guard inside the sink is for test isolation:
+        // `UserAccountPublisher.shared` is a singleton whose authState
+        // leaks across XCTest cases, so without the guard the observer
+        // fires in tests against a mock account that has no real
+        // credentials and clobbers test fixtures (18 MyBooks tests
+        // regressed locally without this guard during 3.0.1 hotfix work).
+        UserAccountPublisher.shared.authStateDidChangePublisher
+            .dropFirst()
+            .filter { $0 == .loggedIn }
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let self,
+                      self.accountsManager.currentUserAccount.hasCredentials()
+                else { return }
+                self.reloadData()
             }
             .store(in: &observers)
     }

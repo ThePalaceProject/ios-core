@@ -11,6 +11,8 @@
 
 import XCTest
 import Combine
+import PalaceNetwork
+import PalaceCatalog
 @testable import Palace
 
 // SRS: REQ-CATALOG-001 — Catalog load integration

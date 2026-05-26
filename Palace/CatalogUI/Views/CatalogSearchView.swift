@@ -1,6 +1,8 @@
 import SwiftUI
 import Combine
 import UIKit
+import PalaceNetwork
+import PalaceCatalog
 
 // MARK: - Accessibility focus target (PP-3834: move VoiceOver to results after search)
 private enum SearchAccessibilityFocus: Hashable {
@@ -22,9 +24,13 @@ struct CatalogSearchView: View {
         baseURL: @escaping () -> URL?,
         books: [TPPBook],
         onBookSelected: @escaping (TPPBook) -> Void,
-        downloadCenter: MyBooksDownloadCenter = .shared
+        downloadCenter: MyBooksDownloadCenter = AppContainer.production().downloadCenter
     ) {
-        self._viewModel = StateObject(wrappedValue: CatalogSearchViewModel(repository: repository, baseURL: baseURL))
+        self._viewModel = StateObject(wrappedValue: CatalogSearchViewModel(
+            repository: repository,
+            baseURL: baseURL,
+            bookCellModelCache: AppContainer.production().bookCellModelCache
+        ))
         self.books = books
         self.onBookSelected = onBookSelected
         self.downloadCenter = downloadCenter
@@ -37,12 +43,16 @@ struct CatalogSearchView: View {
 
         let client = URLSessionNetworkClient()
         let parser = OPDSParser()
-        let api = DefaultCatalogAPI(client: client, parser: parser)
+        let api = DefaultCatalogAPI(client: client, parser: parser, featureFlags: RemoteFeatureFlags.shared)
         let dummyRepository = CatalogRepository(api: api)
-        self._viewModel = StateObject(wrappedValue: CatalogSearchViewModel(repository: dummyRepository, baseURL: { nil }))
+        self._viewModel = StateObject(wrappedValue: CatalogSearchViewModel(
+            repository: dummyRepository,
+            baseURL: { nil },
+            bookCellModelCache: AppContainer.production().bookCellModelCache
+        ))
         self.books = books
         self.onBookSelected = onBookSelected
-        self.downloadCenter = .shared
+        self.downloadCenter = AppContainer.production().downloadCenter
     }
 
     var body: some View {
@@ -116,15 +126,23 @@ private extension CatalogSearchView {
 
     var resultsContent: some View {
         ScrollView {
-            BookListView(
-                books: viewModel.filteredBooks,
-                isLoading: $viewModel.isLoading,
-                onSelect: onBookSelected,
-                onLoadMore: { @MainActor in await viewModel.loadNextPage() },
-                isLoadingMore: viewModel.isLoadingMore,
-                previewEnabled: false
-            )
-            .id("search-results-top")
+            if viewModel.shouldShowNoResultsState {
+                // BUG-003: When a completed search returns zero results, render
+                // a visible empty state rather than a blank screen so the user
+                // can distinguish "no matches" from a hung request.
+                noResultsEmptyState
+                    .id("search-results-top")
+            } else {
+                BookListView(
+                    books: viewModel.filteredBooks,
+                    isLoading: $viewModel.isLoading,
+                    onSelect: onBookSelected,
+                    onLoadMore: { @MainActor in await viewModel.loadNextPage() },
+                    isLoadingMore: viewModel.isLoadingMore,
+                    previewEnabled: false
+                )
+                .id("search-results-top")
+            }
         }
         .accessibilityIdentifier(AccessibilityID.Search.resultsScrollView)
         .accessibilityElement(children: .contain)
@@ -132,6 +150,30 @@ private extension CatalogSearchView {
         .accessibilityValue(Strings.SearchAnnouncements.searchResultsListValue(bookCount: viewModel.filteredBooks.count))
         .accessibilityHint(Strings.SearchAnnouncements.searchResultsListHint)
         .accessibilityFocused($accessibilityFocus, equals: .resultsArea)
+    }
+
+    /// "No results" empty state shown when a completed search returns zero books.
+    /// Visibility is governed by `viewModel.shouldShowNoResultsState`, which guards
+    /// against the loading and "no query yet" cases — see BUG-003.
+    var noResultsEmptyState: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 44, weight: .light))
+                .foregroundColor(.secondary)
+                .accessibilityHidden(true)
+            Text(Strings.SearchAnnouncements.noResultsTitle)
+                .font(.headline)
+                .multilineTextAlignment(.center)
+            Text(Strings.SearchAnnouncements.noResultsBody)
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 24)
+        .padding(.vertical, 48)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier(AccessibilityID.Search.noResultsView)
     }
 
     func announceSearchResults(isLoading: Bool) {

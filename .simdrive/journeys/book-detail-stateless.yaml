@@ -1,0 +1,54 @@
+scenario:
+  id: book-detail-stateless
+  name: "Book Detail — open, verify, return"
+  description: >
+    Tap a book on the catalog, verify the detail screen renders cover/title/
+    author/Borrow button, tap Back. Stateless because we never tap Borrow.
+  tags: [tier1, ios, catalog, book-detail, layout-regression]
+  tier: stateless
+  blocking: true
+
+  preconditions:
+    - "Palace app launched, Catalog tab active"
+    - "DPLA Publications lane has a 'Dobbs v. Jackson' book (default test fixture)"
+
+  recording:
+    path: "~/.simdrive/recordings/book-detail-stateless/recording.yaml"
+    steps: 2
+    captured_with: "simdrive 0.2.0a2"
+    captured_on: "2026-04-30"
+
+  steps:
+    - { id: open_book,    description: "Tap 'Dobbs v. Jackson' on catalog", tap_target: { stable_id: "adacc9d8d4b6" } }
+    - { id: tap_back,     description: "Tap '< Back' to return to catalog", tap_target: { stable_id: "55190c848b7d" } }
+
+  expected_invariants:
+    - "Detail page renders title, author, cover, Borrow button"
+    - "Description section visible below the action buttons"
+    - "Back returns to catalog with no state mutation"
+
+  ssim_gating:
+    threshold: 0.85
+    on_drift: warn
+
+  structural_checks:
+    - after_step: 1
+      required_text:   ["Borrow", "DESCRIPTION", "Back"]
+      min_marks: 15
+      rationale: |
+        Detail page must show generic chrome: a Borrow CTA, DESCRIPTION
+        header, and a Back button. Do NOT assert the specific book title
+        — OPDS feed shuffles per session, so the tapped cell may resolve
+        to whatever book is in that pixel slot. The journey verifies the
+        detail-page LAYOUT, not which book opened.
+    - after_step: 2
+      required_text:   ["Catalog", "My Books", "Holds", "Settings"]
+      required_chrome: ["a229e82e3f00", "3218623d0801", "0f06bf1e2d8b"]
+      min_marks: 25
+      rationale: "Back to catalog: tab bar restored."
+
+  rationale: |
+    Replaces SpecterQA's `book-detail.yaml`. SSIM is informational because the
+    catalog content varies between sessions (different cover thumbnails). The
+    structural check is what actually gates: detail elements must render, and
+    Back must restore the catalog chrome.

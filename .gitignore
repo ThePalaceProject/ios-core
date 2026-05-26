@@ -118,3 +118,4 @@ scripts/sim-test/
 *.pbxproj.swift-only
 *.pbxproj.bak
 ios-core-cm-monitor
+scripts/__pycache__/

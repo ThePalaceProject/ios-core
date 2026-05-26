@@ -18,14 +18,23 @@ set -eo pipefail
 
 echo "Setting up repo for non-DRM build"
 
-git submodule deinit adept-ios
-git rm -rf adept-ios
-git submodule deinit adobe-content-filter
-git rm -rf adobe-content-filter
-git submodule deinit ios-drm-audioengine
-git rm -rf ios-drm-audioengine
-git submodule deinit ios-audiobook-overdrive
-git rm -rf ios-audiobook-overdrive
+# Remove the private DRM submodules from the working tree. Idempotent: each
+# block is guarded so a second run is silent rather than printing "did not
+# match any files" errors. `git submodule deinit` returns 0 on a missing
+# submodule (just prints to stderr), but `git rm -rf` returns 128 — without
+# the guard the second run is noisy.
+remove_drm_submodule() {
+  local path="$1"
+  if [ -e "$path" ] || git submodule status "$path" >/dev/null 2>&1; then
+    git submodule deinit -f "$path" 2>/dev/null || true
+    git rm -rf "$path" 2>/dev/null || true
+  fi
+}
+
+remove_drm_submodule adept-ios
+remove_drm_submodule adobe-content-filter
+remove_drm_submodule ios-drm-audioengine
+remove_drm_submodule ios-audiobook-overdrive
 
 git submodule update --init --recursive
 

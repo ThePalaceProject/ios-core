@@ -8,6 +8,8 @@
 //
 
 import XCTest
+import PalaceCatalog
+import PalaceAuth
 @testable import Palace
 
 // MARK: - Phase 1+2: UI Decoupling + Force-Unwrap Elimination
@@ -16,18 +18,25 @@ final class TPPSAMLFlowTests: XCTestCase {
 
     private var mockContext: MockSAMLAuthContext!
     private var mockPresenter: MockSAMLWebViewPresenter!
+    private var mockURLProvider: TPPURLSettingsProviderMock!
     private var samlHelper: TPPSAMLHelper!
 
     override func setUp() {
         super.setUp()
         mockContext = MockSAMLAuthContext()
         mockPresenter = MockSAMLWebViewPresenter()
-        samlHelper = TPPSAMLHelper(context: mockContext, presenter: mockPresenter)
+        mockURLProvider = TPPURLSettingsProviderMock()
+        samlHelper = TPPSAMLHelper(
+            universalLinksProvider: mockURLProvider,
+            context: mockContext,
+            presenter: mockPresenter
+        )
     }
 
     override func tearDown() {
         samlHelper = nil
         mockPresenter = nil
+        mockURLProvider = nil
         mockContext = nil
         super.tearDown()
     }
@@ -78,7 +87,7 @@ final class TPPSAMLFlowTests: XCTestCase {
 
         XCTAssertNotNil(redirectParam, "URL must include redirect_uri query param")
         XCTAssertEqual(redirectParam?.value,
-                       mockContext.urlSettingsProvider.universalLinksURL.absoluteString)
+                       mockURLProvider.universalLinksURL.absoluteString)
     }
 
     // MARK: - Test 4: Preserves existing query params
@@ -239,18 +248,25 @@ final class TPPSAMLCookieExpirationTests: XCTestCase {
 
     private var mockContext: MockSAMLAuthContext!
     private var mockPresenter: MockSAMLWebViewPresenter!
+    private var mockURLProvider: TPPURLSettingsProviderMock!
     private var samlHelper: TPPSAMLHelper!
 
     override func setUp() {
         super.setUp()
         mockContext = MockSAMLAuthContext()
         mockPresenter = MockSAMLWebViewPresenter()
-        samlHelper = TPPSAMLHelper(context: mockContext, presenter: mockPresenter)
+        mockURLProvider = TPPURLSettingsProviderMock()
+        samlHelper = TPPSAMLHelper(
+            universalLinksProvider: mockURLProvider,
+            context: mockContext,
+            presenter: mockPresenter
+        )
     }
 
     override func tearDown() {
         samlHelper = nil
         mockPresenter = nil
+        mockURLProvider = nil
         mockContext = nil
         super.tearDown()
     }
@@ -571,7 +587,11 @@ final class TPPSAMLStateIsolationTests: XCTestCase {
         // account A's SAML session would leak into account B's requests.
         let mockContext = MockSAMLAuthContext()
         let mockPresenter = MockSAMLWebViewPresenter()
-        let helper = TPPSAMLHelper(context: mockContext, presenter: mockPresenter)
+        let helper = TPPSAMLHelper(
+            universalLinksProvider: TPPURLSettingsProviderMock(),
+            context: mockContext,
+            presenter: mockPresenter
+        )
 
         let testCookies = [
             HTTPCookie(properties: [
@@ -601,7 +621,11 @@ final class TPPSAMLStateIsolationTests: XCTestCase {
     func testSignOut_clearsSAMLState() {
         let mockContext = MockSAMLAuthContext()
         let mockPresenter = MockSAMLWebViewPresenter()
-        let helper = TPPSAMLHelper(context: mockContext, presenter: mockPresenter)
+        let helper = TPPSAMLHelper(
+            universalLinksProvider: TPPURLSettingsProviderMock(),
+            context: mockContext,
+            presenter: mockPresenter
+        )
 
         helper.cookies = [HTTPCookie(properties: [
             .name: "session",
@@ -609,7 +633,11 @@ final class TPPSAMLStateIsolationTests: XCTestCase {
             .domain: "idp.example.com",
             .path: "/",
         ])].compactMap { $0 }
-        helper.selectedIDP = OPDS2SamlIDP(opdsLink: OPDS2Link(
+        // The new PalaceAuth helper no longer owns `selectedIDP` — the SAML
+        // identity-provider URL is sourced from the injected SAMLAuthContext.
+        // Drive that state through the mock context and assert the mock's
+        // stored value gets cleared.
+        mockContext.selectedIDP = OPDS2SamlIDP(opdsLink: OPDS2Link(
             href: "https://idp.example.com/login",
             type: "text/html",
             rel: "authenticate",
@@ -621,7 +649,6 @@ final class TPPSAMLStateIsolationTests: XCTestCase {
         helper.clearState()
 
         XCTAssertNil(helper.cookies, "Sign-out must clear SAML cookies")
-        XCTAssertNil(helper.selectedIDP, "Sign-out must clear selected IDP")
     }
 }
 

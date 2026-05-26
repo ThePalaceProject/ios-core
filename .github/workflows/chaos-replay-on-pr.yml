@@ -1,0 +1,102 @@
+# chaos-replay-on-pr.yml
+#
+# Runs all checked-in chaos-discovered replays against a PR's candidate
+# build. Deterministic; cheap. This is what actually GUARDS PRs from
+# regressions that prior chaos sessions found.
+#
+# Live chaos exploration runs separately (chaos-qa-on-demand.yml,
+# chaos-qa-nightly.yml). Replays here are the curated, kept-in-tree
+# subset that have proven valuable enough to lock into CI forever.
+#
+# Replays live under .simdrive/replays/chaos/<flow>-<descriptor>.yaml.
+# Each YAML was written by `simdrive.record_stop` during a chaos session
+# and curated by a human as worth-keeping.
+
+name: chaos-replay-on-pr
+
+on:
+  pull_request:
+    branches: [develop, main]
+    paths:
+      - '.simdrive/replays/chaos/**'
+      - 'Palace/**'
+      - 'PalaceTests/**'
+      - 'Palace.xcodeproj/**'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  # Skipped (not failed) when no [macos, palace-ios] runner is available
+  # OR no replays exist yet. Set ENABLE_CHAOS_QA_RUNNER repo variable to
+  # "true" once the runner is provisioned and at least one curated replay
+  # is in the corpus.
+  replay:
+    runs-on: [self-hosted, macos, palace-ios]
+    timeout-minutes: 30
+    if: |
+      vars.ENABLE_CHAOS_QA_RUNNER == 'true' &&
+      hashFiles('.simdrive/replays/chaos/**.yaml') != ''
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v4
+
+      - name: Pick / boot sim
+        id: sim
+        run: |
+          UDID=$(xcrun simctl list devices iPhone | awk '/Booted/ {print $NF; exit}' | tr -d '()')
+          if [[ -z "$UDID" ]]; then
+            UDID=$(xcrun simctl create chaos-replay "iPhone 16 Pro" "iOS 18.4")
+            xcrun simctl boot "$UDID"
+          fi
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+
+      - name: Build candidate
+        run: |
+          xcodebuild -project Palace.xcodeproj -scheme Palace \
+            -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}" \
+            -derivedDataPath /tmp/dd-replay build > /tmp/build.log 2>&1
+          xcrun simctl install "${{ steps.sim.outputs.udid }}" \
+            /tmp/dd-replay/Build/Products/Debug-iphonesimulator/Palace.app
+
+      - name: Replay each chaos-discovered scenario
+        id: replays
+        run: |
+          UDID="${{ steps.sim.outputs.udid }}"
+          FAIL=0
+          PASS=0
+          REPORT=/tmp/replay-report.txt
+          : > "$REPORT"
+          for yaml in .simdrive/replays/chaos/*.yaml; do
+            [[ -f "$yaml" ]] || continue
+            NAME=$(basename "$yaml" .yaml)
+            echo "::group::$NAME"
+            # simdrive.replay accepts on_drift={halt,warn,force}; halt = exit
+            # non-zero if the replay diverges (post-state SSIM < threshold).
+            if simdrive replay --name "$NAME" --on-drift halt --drift-threshold 0.85 --udid "$UDID" 2>&1 | tee -a "$REPORT"; then
+              PASS=$((PASS + 1))
+            else
+              FAIL=$((FAIL + 1))
+              echo "::error::Replay $NAME diverged from recorded state — chaos-discovered regression has reappeared"
+            fi
+            echo "::endgroup::"
+          done
+          echo "pass=$PASS" >> "$GITHUB_OUTPUT"
+          echo "fail=$FAIL" >> "$GITHUB_OUTPUT"
+          [[ "$FAIL" == "0" ]]
+
+      - name: Comment summary on PR
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body: '⚠️ **chaos-replay** found ${{ steps.replays.outputs.fail }} divergent replay(s) ' +
+                    '(${{ steps.replays.outputs.pass }} passed). ' +
+                    'A previously-fixed chaos-discovered bug appears to have regressed. ' +
+                    'See workflow logs for details and the specific replay YAML(s) that diverged.',
+            });

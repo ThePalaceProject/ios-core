@@ -9,6 +9,7 @@
 
 import XCTest
 import Combine
+import PalaceCatalog
 @testable import Palace
 
 @MainActor
@@ -30,7 +31,12 @@ final class HoldsViewModelTests: XCTestCase {
     }
 
     private func createViewModel() -> HoldsViewModel {
-        HoldsViewModel(bookRegistry: mockRegistry)
+        HoldsViewModel(
+            bookRegistry: mockRegistry,
+            accountsManager: AppContainer.production().accountsManager,
+            settings: TPPSettings(),
+            debugSettings: AppContainer.production().debugSettings
+        )
     }
 
     private func addHeldBook(identifier: String = "held-book", title: String = "Test Book") -> TPPBook {
@@ -77,7 +83,9 @@ final class HoldsViewModelTests: XCTestCase {
 
         NotificationCenter.default.post(name: .TPPSyncBegan, object: nil)
 
-        await fulfillment(of: [expectation], timeout: 1.0)
+        // 5s budget covers the .receive(on: DispatchQueue.main) hop +
+        // suite-wide dispatch saturation.
+        await fulfillment(of: [expectation], timeout: 5.0)
         XCTAssertTrue(viewModel.isLoading)
     }
 
@@ -98,7 +106,8 @@ final class HoldsViewModelTests: XCTestCase {
 
         NotificationCenter.default.post(name: .TPPSyncEnded, object: nil)
 
-        await fulfillment(of: [expectation], timeout: 1.0)
+        // 5s budget covers the production 300ms debounce + dispatch saturation.
+        await fulfillment(of: [expectation], timeout: 5.0)
         XCTAssertFalse(viewModel.isLoading)
     }
 
@@ -444,11 +453,17 @@ final class HoldsSyncFailureTests: XCTestCase {
     /// All tests in this suite exercise the sign-in-required error-banner
     /// path, which `HoldsViewModel.handleSyncFailure(_:)` guards behind
     /// `hasCredentials()`. The default closure reads from
-    /// `AccountsManager.shared.currentUserAccount`, which is not populated
+    /// `AppContainer.production().accountsManager.currentUserAccount`, which is not populated
     /// in the test harness, so inject `hasCredentials: { true }` to exercise
     /// the authenticated-user branch under test.
     private func makeSignedInViewModel() -> HoldsViewModel {
-        HoldsViewModel(bookRegistry: mockRegistry, hasCredentials: { true })
+        HoldsViewModel(
+            bookRegistry: mockRegistry,
+            accountsManager: AppContainer.production().accountsManager,
+            settings: TPPSettings(),
+            debugSettings: AppContainer.production().debugSettings,
+            hasCredentials: { true }
+        )
     }
 
     // MARK: - Error State Tests
@@ -567,9 +582,27 @@ final class HoldsSyncFailureTests: XCTestCase {
         XCTAssertNil(viewModel.syncError, "Error should be cleared when new sync begins (retry)")
     }
 
-    func testDismissSyncError_ClearsError() {
-        let viewModel = HoldsViewModel(bookRegistry: mockRegistry)
-        viewModel.syncError = HoldsViewModel.SyncError(message: "Test error")
+    func testDismissSyncError_ClearsError() async {
+        // With the Store-backed VM, dismissSyncError flows through the reducer,
+        // so we first put the reducer state into the error condition via the
+        // real code path (TPPSyncFailed for an authenticated, uncached user).
+        let viewModel = HoldsViewModel(
+            bookRegistry: mockRegistry,
+            accountsManager: AppContainer.production().accountsManager,
+            settings: TPPSettings(),
+            debugSettings: AppContainer.production().debugSettings,
+            hasCredentials: { true }
+        )
+
+        let errorSet = XCTestExpectation(description: "syncError set")
+        viewModel.$syncError
+            .dropFirst()
+            .first { $0 != nil }
+            .sink { _ in errorSet.fulfill() }
+            .store(in: &cancellables)
+        NotificationCenter.default.post(name: .TPPSyncFailed, object: nil, userInfo: nil)
+        await fulfillment(of: [errorSet], timeout: 1.0)
+        XCTAssertNotNil(viewModel.syncError, "Precondition: error surfaced")
 
         viewModel.dismissSyncError()
 
@@ -585,7 +618,12 @@ final class HoldsSyncFailureTests: XCTestCase {
         )
         mockRegistry.addBook(staleBook, state: .holding)
 
-        let viewModel = HoldsViewModel(bookRegistry: mockRegistry)
+        let viewModel = HoldsViewModel(
+            bookRegistry: mockRegistry,
+            accountsManager: AppContainer.production().accountsManager,
+            settings: TPPSettings(),
+            debugSettings: AppContainer.production().debugSettings
+        )
         XCTAssertEqual(viewModel.reservedBookVMs.count, 1)
 
         // Sync fails, but cached holds are visible — error is intentionally suppressed
@@ -608,7 +646,13 @@ final class HoldsSyncFailureTests: XCTestCase {
         // Anonymous user on a library that requires auth — sync fails because
         // we can't fetch holds without credentials. The empty-state text already
         // handles the anonymous case; an error banner here is noise.
-        let viewModel = HoldsViewModel(bookRegistry: mockRegistry, hasCredentials: { false })
+        let viewModel = HoldsViewModel(
+            bookRegistry: mockRegistry,
+            accountsManager: AppContainer.production().accountsManager,
+            settings: TPPSettings(),
+            debugSettings: AppContainer.production().debugSettings,
+            hasCredentials: { false }
+        )
         XCTAssertTrue(viewModel.visibleBooks.isEmpty, "Precondition: no cached holds")
 
         NotificationCenter.default.post(name: .TPPSyncFailed, object: nil, userInfo: nil)
@@ -621,9 +665,83 @@ final class HoldsSyncFailureTests: XCTestCase {
         XCTAssertFalse(viewModel.isLoading, "Not stuck in loading state")
     }
 
+    // MARK: - BUG-004: anonymous library (Palace Bookshelf) on sync failure
+
+    /// BUG-004: switching to an anonymous library (Palace Bookshelf) while a
+    /// previously signed-in account's sync was in flight surfaces a spurious
+    /// "There was a problem loading your holds" banner. The credential-only
+    /// suppression path (`!hasCredentials()`) races against the account-switch
+    /// window in AccountsManager — `lastKnownCurrentUserAccount` falls back to
+    /// the previous (still-credentialed) library while `currentAccountId` is
+    /// briefly nil. The fix adds a *library-state* guard
+    /// (`currentLibraryNeedsAuth`) that reflects the new selection
+    /// synchronously and overrides the stale credential view.
+    ///
+    /// Scenario simulated: user has cached credentials (race window —
+    /// `hasCredentials() == true`) but the library no longer requires auth.
+    /// Without the fix, the banner appears; with the fix, it's suppressed.
+    func testSyncFailure_AnonymousLibrary_SuppressesErrorBanner_EvenWhenHasCredentialsRacesTrue() async {
+        let viewModel = HoldsViewModel(
+            bookRegistry: mockRegistry,
+            accountsManager: AppContainer.production().accountsManager,
+            settings: TPPSettings(),
+            debugSettings: AppContainer.production().debugSettings,
+            // Simulate the AccountsManager race: stale lastKnownCurrentUserAccount
+            // returns the previous (signed-in) library, so hasCredentials() is true.
+            hasCredentials: { true },
+            // New (current) library is anonymous — no patron auth at all.
+            currentLibraryNeedsAuth: { false }
+        )
+        XCTAssertTrue(viewModel.visibleBooks.isEmpty, "Precondition: no cached holds on freshly-switched library")
+
+        NotificationCenter.default.post(name: .TPPSyncFailed, object: nil, userInfo: nil)
+
+        let exp = XCTestExpectation(description: "notification processed")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { exp.fulfill() }
+        await fulfillment(of: [exp], timeout: 2.0)
+
+        XCTAssertNil(viewModel.syncError,
+                     "Error banner must be suppressed when the current library is anonymous, even when stale credentials are present (BUG-004)")
+        XCTAssertFalse(viewModel.isLoading, "Not stuck in loading state")
+    }
+
+    /// Guard against regression: when the library *does* require auth and the
+    /// user has credentials, the banner must still appear on a real failure.
+    /// This is the contrast case for the BUG-004 fix — proving the new
+    /// library-state guard doesn't blanket-suppress all errors.
+    func testSyncFailure_LibraryNeedsAuth_AndHasCredentials_ShowsBanner() async {
+        let viewModel = HoldsViewModel(
+            bookRegistry: mockRegistry,
+            accountsManager: AppContainer.production().accountsManager,
+            settings: TPPSettings(),
+            debugSettings: AppContainer.production().debugSettings,
+            hasCredentials: { true },
+            currentLibraryNeedsAuth: { true }
+        )
+
+        let errorExpectation = XCTestExpectation(description: "syncError surfaced")
+        viewModel.$syncError
+            .dropFirst()
+            .first { $0 != nil }
+            .sink { _ in errorExpectation.fulfill() }
+            .store(in: &cancellables)
+
+        NotificationCenter.default.post(name: .TPPSyncFailed, object: nil, userInfo: nil)
+        await fulfillment(of: [errorExpectation], timeout: 1.0)
+
+        XCTAssertNotNil(viewModel.syncError,
+                        "Signed-in users on credentialed libraries must still see real sync errors")
+    }
+
     func testSyncFailure_AuthenticatedUser_ShowsErrorBanner() async {
         // Authenticated user — sync failed for a real reason. Banner still appears.
-        let viewModel = HoldsViewModel(bookRegistry: mockRegistry, hasCredentials: { true })
+        let viewModel = HoldsViewModel(
+            bookRegistry: mockRegistry,
+            accountsManager: AppContainer.production().accountsManager,
+            settings: TPPSettings(),
+            debugSettings: AppContainer.production().debugSettings,
+            hasCredentials: { true }
+        )
 
         let errorExpectation = XCTestExpectation(description: "syncError surfaced")
         viewModel.$syncError

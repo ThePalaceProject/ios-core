@@ -6,10 +6,10 @@ This repository contains the client-side code for The Palace Project [Palace](ht
 
 # System Requirements
 
-- Install Xcode 16.1 in `/Applications`, open it and make sure to install additional components if it asks you.
-- Install [Carthage](https://github.com/Carthage/Carthage) if you haven't already. Using `brew` is recommended.
+- Install **Xcode 26** in `/Applications`, open it and install additional components if it prompts. iOS 26 SDK is required for App Store submission as of April 2026; CI builds release artifacts on Xcode 26 / `macos-26`.
+- Install [Carthage](https://github.com/Carthage/Carthage) if you haven't already. `brew install carthage` is recommended.
 
-If you run this project **with DRM support** on a Mac computer with Apple Silicon, make sure to check **[x]&nbsp;Open&nbsp;using&nbsp;Rosetta** in Xcode.app application info. This is required to build with Adobe DRM support. 
+The DRM build runs natively on Apple Silicon — no Rosetta needed. (If you hit Adobe RMSDK linker errors on Apple Silicon you may need to toggle "Open using Rosetta" on Xcode.app as a fallback, but the default path no longer requires it.)
 
 # Building without Adobe DRM nor Private Repos
 
@@ -47,22 +47,30 @@ Open `Palace.xcodeproj` and build the `Palace-noDRM` target.
 
 Unless the DRM dependencies change (which is very seldom) you shouldn't need to run the `bootstrap-drm.sh` script more than once.
 
-Other 3rd party dependencies are managed via Carthage and a few git submodules. To rebuild them you can use the following idempotent script:
+Other 3rd party dependencies come from a mix of Swift Package Manager (Readium 3.x, Firebase, SQLite.swift, PureLayout, snapshot-testing, ULID, std-uritemplate, transifex), git submodules (`ios-audiobooktoolkit`, `ios-tenprintcover`, plus DRM-only submodules), and local Swift packages under `Palace/Packages/` (`PalaceAuth`, `PalaceCatalog`, `PalaceKeychain`, `PalaceLogging`, `PalaceNetwork`).
+
+To rebuild non-SPM dependencies use the idempotent script:
 ```bash
 cd ios-core
 ./scripts/build-3rd-party-dependencies.sh
 ```
-The `scripts` directory contains a number of other scripts to build dependencies more granularly and also to build/archive/test the app from the command line. These scripts are the same used by our CI system. All these scripts must be run from the root of Palace `ios-core` repository, not from the `scripts` directory.
+The `scripts` directory contains other scripts for granular dependency, archive, and test runs. These scripts are the same ones CI uses. All must be run from the root of `ios-core`, not from the `scripts` directory. See [`scripts/README.md`](./scripts/README.md) for a categorized reference.
 
 ## Branching and CI
 
 `develop` is the main development branch.
 
-Release branch names follow the convention: `release/palace/<version>`. For example, `release/palace/1.0.0`.
+Release branch names follow the convention: `release/<version>`. For example, `release/1.0.0`.
 
 Feature branch names (for features whose development is a month or more): `feature/<feature-name>`, e.g. `feature/my-new-screen`.
 
 Continuous integration is enabled on merge events on `develop` branch. Palace device builds are uploaded to [ios-binaries](https://github.com/ThePalaceProject/ios-binaries).
+
+# Contributing
+
+Tests are required for production changes. The full workflow — TDD discipline, the local self-check, and the public/private boundary between outside contributors and maintainer-internal agent tooling — is documented in [`CONTRIBUTING.md`](./CONTRIBUTING.md).
+
+CI enforces coverage floors, snapshot tests, build for both `Palace` and `Palace-noDRM` targets, and a chaos-replay regression suite. Run `scripts/verify-pr.sh --quick` locally before opening a PR to catch failures before CI does.
 
 # Palace License
 

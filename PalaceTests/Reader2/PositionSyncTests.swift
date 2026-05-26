@@ -7,6 +7,7 @@
 
 import XCTest
 import ReadiumShared
+import PalaceCatalog
 @testable import Palace
 
 final class PositionSyncTests: XCTestCase {
@@ -302,7 +303,7 @@ final class SyncPermissionTests: XCTestCase {
         mockAccount._credentials = .barcodeAndPin(barcode: "test", pin: "test")
         XCTAssertTrue(mockAccount.hasCredentials())
 
-        // The result depends on AccountsManager.shared.currentAccount?.details
+        // The result depends on AppContainer.production().accountsManager.currentAccount?.details
         // which we can't fully control in unit tests, but we verify no crash.
         _ = TPPAnnotations.syncIsPossible(mockAccount)
     }

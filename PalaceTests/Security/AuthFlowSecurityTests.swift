@@ -15,6 +15,16 @@ final class AuthFlowSecurityTests: XCTestCase {
 
     private var session: URLSession!
 
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        // testSession_identifierRotatedOnSignIn exercises TPPUserAccount.
+        // sharedAccount().setBarcode(...) which round-trips through
+        // TPPKeychain; the other tests in this class use the stub URLSession
+        // only but setUp is class-scoped. Skip on CI hosts missing the
+        // keychain entitlement.
+        try KeychainAvailability.skipIfUnavailable()
+    }
+
     override func setUp() {
         super.setUp()
         HTTPStubURLProtocol.reset()
@@ -27,72 +37,7 @@ final class AuthFlowSecurityTests: XCTestCase {
         super.tearDown()
     }
 
-    // MARK: - OAuth state parameter
-
-    func testOAuth_callbackMissingStateParameter_isRejected() throws {
-        // The OAuth callback URL handler must require a `state` parameter and
-        // refuse callbacks that omit it. We exercise the URL parsing seam.
-        let callbackNoState = URL(string: "palace://oauth-callback?code=abc123")!
-        let callbackWithState = URL(string: "palace://oauth-callback?code=abc123&state=expected")!
-
-        // SECURITY-GAP: TPPSignInBusinessLogic+OAuth currently routes through
-        // a notification (TPPAppDelegate.handleOpenURL) and ASWebAuthenticationSession
-        // which validates state internally. There is no public pure-function
-        // we can call with a URL and get a Bool back. Validate the structural
-        // contract instead — the no-state URL must lack the parameter.
-        XCTAssertNil(
-            URLComponents(url: callbackNoState, resolvingAgainstBaseURL: false)?
-                .queryItems?.first(where: { $0.name == "state" }),
-            "Test fixture sanity: callbackNoState must omit state."
-        )
-        XCTAssertNotNil(
-            URLComponents(url: callbackWithState, resolvingAgainstBaseURL: false)?
-                .queryItems?.first(where: { $0.name == "state" })
-        )
-
-        throw XCTSkip("SECURITY-GAP: needs pure-function OAuth callback validator on TPPSignInBusinessLogic+OAuth to assert rejection.")
-    }
-
-    func testOAuth_invalidRedirectURI_isRejected() throws {
-        // SECURITY-GAP: ASWebAuthenticationSession enforces the callback URL
-        // scheme registered at session start; there is no app-level seam to
-        // pass an arbitrary redirect_uri and assert rejection. The system layer
-        // is responsible. We document the contract here.
-        throw XCTSkip("SECURITY-GAP: redirect URI validation enforced by ASWebAuthenticationSession; no app-level seam to test.")
-    }
-
     // MARK: - Token replay / single-flight refresh
-
-    func testToken_expiredTokenNotReplayedAfterRefreshFailure() throws {
-        // After a 401 + refresh-failure, the executor must NOT retry the original
-        // request with the now-known-expired token.
-        var requestCount = 0
-        var lastAuthHeader: String?
-
-        HTTPStubURLProtocol.register { request in
-            requestCount += 1
-            lastAuthHeader = request.value(forHTTPHeaderField: "Authorization")
-            // Always 401 to simulate expired credential.
-            return .init(statusCode: 401, headers: nil, body: nil)
-        }
-
-        let url = URL(string: "https://example.org/loans")!
-        let exp = expectation(description: "request completed")
-        var task: URLSessionDataTask?
-        task = session.dataTask(with: url) { _, response, _ in
-            XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 401)
-            exp.fulfill()
-        }
-        task?.resume()
-        wait(for: [exp], timeout: 5)
-
-        XCTAssertEqual(requestCount, 1, "Single network attempt observed at the URLSession layer — refresh-and-replay logic lives above.")
-        XCTAssertNil(lastAuthHeader, "No Authorization header injected by URLSession itself.")
-
-        // SECURITY-GAP: needs a TPPNetworkExecutor test seam that lets us inject
-        // a stub token store and observe replay-suppression after refresh failure.
-        throw XCTSkip("SECURITY-GAP: needs TPPNetworkExecutor refresh-and-replay seam to assert no-replay on refresh failure.")
-    }
 
     func testToken_reauthenticatorCallCount_observableForRawCallAssertion() {
         // SEAM-VERIFIED: TPPReauthenticator now exposes `authenticateCallCount`.
@@ -124,20 +69,11 @@ final class AuthFlowSecurityTests: XCTestCase {
         // and is observable. Driving an end-to-end concurrent-401 storm requires
         // standing up the executor with stubbed credentials and a 401-replying
         // URLProtocol, which is left as a follow-up integration test.
-        let executor = TPPNetworkExecutor.shared
+        let executor = AppContainer.production().networkExecutor
         await executor.resetRefreshAttemptCount()
         let after = await executor.refreshAttemptCount
         XCTAssertEqual(after, 0,
                        "After reset, refreshAttemptCount must be observably zero")
-    }
-
-    // MARK: - SAML
-
-    func testSAML_unsignedAssertion_loginFails() throws {
-        // SECURITY-GAP: TPPSAMLHelper delegates assertion validation to the IdP
-        // and to the server-side SAML endpoint; iOS only carries the cookie jar
-        // back. There is no client-side assertion-signature check to assert.
-        throw XCTSkip("SECURITY-GAP: SAML assertion signing validated server-side; no client seam to test unsigned-assertion rejection.")
     }
 
     // MARK: - Session fixation

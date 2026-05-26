@@ -151,7 +151,11 @@ final class AccountSwitchCleanupTests: XCTestCase {
         let cache = BookCellModelCache(
             configuration: .init(maxEntries: 50, unusedTTL: 60, observeRegistryChanges: false),
             imageCache: mockImageCache,
-            bookRegistry: mockRegistry
+            bookRegistry: mockRegistry,
+            downloadCenter: AppContainer.production().downloadCenter,
+            accountsManager: AppContainer.production().accountsManager,
+            samplePreviewManager: AppContainer.production().samplePreviewManager,
+            readerService: AppContainer.production().readerService
         )
 
         let book = TPPBookMocker.mockBook(identifier: "cache-test", title: "Cache Test", authors: "Author")

@@ -1,0 +1,116 @@
+# chaos-qa-nightly.yml
+#
+# Runs chaos-qa on develop HEAD every night with a wide budget. Findings
+# are posted to a Slack channel for triage by the iOS team.
+#
+# Why nightly:
+#   - The replay corpus catches known bad states; live chaos discovers new
+#     ones. Discovery is most valuable on the canonical develop branch
+#     after the day's PRs have merged.
+#   - Rotating seeds across captured fixtures gives broad coverage over a
+#     week that no single PR-scoped run could match.
+#
+# Requires the same self-hosted macOS runner setup as chaos-qa-on-demand.
+
+name: chaos-qa-nightly
+
+on:
+  schedule:
+    # 06:00 UTC = 02:00 ET (after most US contributors are asleep).
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+    inputs:
+      seeds:
+        description: "Seed selection (default: --all-flows). Override with comma-separated <flow>/<step> list."
+        required: false
+        default: "--all-flows"
+      max_paths:
+        description: "Max paths total (default 60)"
+        required: false
+        default: "60"
+      max_minutes:
+        description: "Max minutes total (default 30)"
+        required: false
+        default: "30"
+
+permissions:
+  contents: read
+
+jobs:
+  chaos:
+    runs-on: [self-hosted, macos, palace-ios]
+    timeout-minutes: 60
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_CHAOS_WEBHOOK }}
+    steps:
+      - name: Checkout develop
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+          fetch-depth: 1
+
+      - name: Pick / build sim
+        id: sim
+        run: |
+          UDID=$(xcrun simctl list devices iPhone | awk '/Booted/ {print $NF; exit}' | tr -d '()')
+          if [[ -z "$UDID" ]]; then
+            UDID=$(xcrun simctl create chaos-qa-nightly "iPhone 16 Pro" "iOS 18.4")
+            xcrun simctl boot "$UDID"
+          fi
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+          xcodebuild -project Palace.xcodeproj -scheme Palace \
+            -destination "platform=iOS Simulator,id=$UDID" \
+            -derivedDataPath /tmp/dd-chaos-nightly build > /tmp/build.log 2>&1
+          xcrun simctl install "$UDID" \
+            /tmp/dd-chaos-nightly/Build/Products/Debug-iphonesimulator/Palace.app
+          echo "app_path=/tmp/dd-chaos-nightly/Build/Products/Debug-iphonesimulator/Palace.app" >> "$GITHUB_OUTPUT"
+
+      - name: Run chaos-qa
+        run: |
+          ARGS=()
+          SEEDS="${{ github.event.inputs.seeds || '--all-flows' }}"
+          if [[ "$SEEDS" == "--all-flows" ]]; then
+            ARGS+=(--all-flows)
+          else
+            IFS=',' read -ra SS <<< "$SEEDS"
+            for s in "${SS[@]}"; do ARGS+=(--seed "$s"); done
+          fi
+          ./scripts/run-chaos-pass.sh \
+            --udid "${{ steps.sim.outputs.udid }}" \
+            --app-path "${{ steps.sim.outputs.app_path }}" \
+            --max-paths "${{ github.event.inputs.max_paths || '60' }}" \
+            --max-minutes "${{ github.event.inputs.max_minutes || '30' }}" \
+            "${ARGS[@]}"
+
+      - name: Locate run dir
+        id: run
+        run: |
+          DIR=$(ls -dt ~/.simdrive/chaos-runs/*/ | head -1)
+          echo "dir=$DIR" >> "$GITHUB_OUTPUT"
+
+      - name: Post summary to Slack
+        if: env.SLACK_WEBHOOK_URL != ''
+        run: |
+          DIR="${{ steps.run.outputs.dir }}"
+          SUMMARY=$(cat "$DIR/summary.json" 2>/dev/null || echo '{}')
+          TOTAL=$(echo "$SUMMARY" | python3 -c 'import json,sys;print(json.load(sys.stdin).get("total_findings",0))')
+          BODY=$(cat <<JSON
+          {
+            "text": "chaos-qa nightly: $TOTAL finding(s) on develop @ ${{ github.sha }}",
+            "blocks": [
+              {"type":"section","text":{"type":"mrkdwn","text":"*chaos-qa nightly* on develop @ \`${{ github.sha }}\`\n$SUMMARY\n\nRun dir: \`$DIR\`"}}
+            ]
+          }
+          JSON
+          )
+          curl -sf -X POST -H 'Content-Type: application/json' \
+            --data "$BODY" "$SLACK_WEBHOOK_URL" || true
+
+      - name: Upload run dir as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chaos-qa-nightly-${{ github.run_id }}
+          path: ${{ steps.run.outputs.dir }}
+          retention-days: 90

@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import PalaceLogging
 @preconcurrency import ReadiumShared
 
 /// A front-end to the Annotations api to sync the reading progress for

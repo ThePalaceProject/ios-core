@@ -9,6 +9,7 @@
 //
 
 import XCTest
+import PalaceCatalog
 @testable import Palace
 
 final class AccountProfileDocumentTests: XCTestCase {
@@ -48,6 +49,56 @@ final class AccountProfileDocumentTests: XCTestCase {
         }
 
         wait(for: [expectation], timeout: 2.0)
+    }
+
+    /// F-007 regression guard: anonymous Palace Bookshelf was hitting
+    /// `/patrons/me/` on every cold launch and getting a 401 because
+    /// `getProfileDocument` fired the request whenever the auth document
+    /// declared a `userProfileUrl`, regardless of whether the current user
+    /// had credentials. Discovered by chaos-qa dogfood-3 + dogfood-5;
+    /// gated in a single chokepoint at the Account extension. This test
+    /// kills the gate-removal mutation on Palace/Accounts/Library/Account+profileDocument.swift.
+    func testGetProfileDocument_WhenUserAccountHasNoCredentials_CompletesWithNil_DoesNotFetch() {
+        let uuid = "urn:uuid:f007-no-creds-\(UUID().uuidString)"
+        let publication = OPDS2Publication(
+            links: [],
+            metadata: OPDS2Publication.Metadata(
+                updated: Date(),
+                description: nil,
+                id: uuid,
+                title: "F-007 Test Library"
+            ),
+            images: nil
+        )
+        let account = Account(publication: publication, imageCache: mockImageCache)
+
+        let json: [String: Any] = [
+            "id": uuid,
+            "title": "F-007 Test Library",
+            "links": [
+                ["rel": "http://librarysimplified.org/terms/rel/user-profile",
+                 "href": "https://example.invalid/patrons/me/",
+                 "type": "vnd.librarysimplified/user-profile+json"]
+            ],
+            "authentication": []
+        ]
+        let data = try! JSONSerialization.data(withJSONObject: json)
+        let authDoc = try! OPDS2AuthenticationDocument.fromData(data)
+        account.authenticationDocument = authDoc
+
+        XCTAssertNotNil(account.details?.userProfileUrl,
+                        "Test setup precondition: auth doc must declare a user-profile URL.")
+
+        let expectation = XCTestExpectation(description: "Completion called without network")
+        let start = Date()
+        account.getProfileDocument { profileDocument in
+            XCTAssertNil(profileDocument,
+                         "Gate must short-circuit when no credentials are stored.")
+            XCTAssertLessThan(Date().timeIntervalSince(start), 1.0,
+                              "Gate must NOT issue a network request — should return synchronously-fast.")
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 3.0)
     }
 
     func testGetProfileDocument_WithDetailsButNilProfileUrl_CompletesWithNil() {

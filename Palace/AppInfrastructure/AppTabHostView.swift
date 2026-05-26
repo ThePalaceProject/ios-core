@@ -1,24 +1,30 @@
 import SwiftUI
 import UIKit
+import PalaceLogging
+import PalaceNetwork
+import PalaceCatalog
 
 struct AppTabHostView: View {
     @StateObject private var router = AppTabRouter()
     @State private var holdsBadgeCount: Int = 0
+    private let appContainer: AppContainer
     let bookRegistry: TPPBookRegistryProvider
+    @StateObject private var catalogViewModel: CatalogViewModel
 
-    init(bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) {
-        self.bookRegistry = bookRegistry
-    }
-
-    @StateObject private var catalogViewModel: CatalogViewModel = {
+    init(appContainer: AppContainer = .production()) {
+        self.appContainer = appContainer
+        self.bookRegistry = appContainer.bookRegistry
         let client = URLSessionNetworkClient()
         let parser = OPDSParser()
-        let api = DefaultCatalogAPI(client: client, parser: parser)
+        let api = DefaultCatalogAPI(client: client, parser: parser, featureFlags: RemoteFeatureFlags.shared)
         let repository = CatalogRepository(api: api)
-        return CatalogViewModel(repository: repository) {
-            TPPSettings.shared.accountMainFeedURL
-        }
-    }()
+        _catalogViewModel = StateObject(wrappedValue: CatalogViewModel(
+            repository: repository,
+            topLevelURLProvider: { appContainer.settings.accountMainFeedURL },
+            bookRegistry: appContainer.bookRegistry,
+            imageCache: appContainer.imageCache
+        ))
+    }
 
     var body: some View {
         TabView(selection: $router.selected) {
@@ -33,7 +39,7 @@ struct AppTabHostView: View {
                 .tag(AppTab.catalog)
                 .accessibilityIdentifier(AccessibilityID.TabBar.catalogTab)
 
-            NavigationHostView(rootView: MyBooksView(model: MyBooksViewModel()))
+            NavigationHostView(rootView: MyBooksView(model: MyBooksViewModel(appContainer: appContainer), appContainer: appContainer))
                 .tabItem {
                     VStack {
                         Image("MyBooks").renderingMode(.template)
@@ -43,7 +49,7 @@ struct AppTabHostView: View {
                 .tag(AppTab.myBooks)
                 .accessibilityIdentifier(AccessibilityID.TabBar.myBooksTab)
 
-            NavigationHostView(rootView: HoldsView())
+            NavigationHostView(rootView: HoldsView(appContainer: appContainer))
                 .tabItem {
                     VStack {
                         Image("Holds").renderingMode(.template)
@@ -61,16 +67,16 @@ struct AppTabHostView: View {
         }
         .tint(Color.accentColor)
         .onAppear {
-            AppTabRouterHub.shared.router = router
-            AppTabRouterHub.shared.applyPending()
+            appContainer.tabRouterHub.router = router
+            appContainer.tabRouterHub.applyPending()
         }
         .onChange(of: router.selected) { newTab in
             // Respect reduce motion accessibility setting
             if UIAccessibility.isReduceMotionEnabled {
-                NavigationCoordinatorHub.shared.coordinator?.popToRoot()
+                appContainer.navigationCoordinatorHub.coordinator?.popToRoot()
             } else {
                 withAnimation(.easeInOut) {
-                    NavigationCoordinatorHub.shared.coordinator?.popToRoot()
+                    appContainer.navigationCoordinatorHub.coordinator?.popToRoot()
                 }
             }
             if let appDelegate = UIApplication.shared.delegate as? TPPAppDelegate,
@@ -82,7 +88,7 @@ struct AppTabHostView: View {
             // become visible so the user doesn't have to pull-to-refresh
             // to see newly borrowed/returned/held books.
             if newTab == .myBooks || newTab == .holds {
-                TPPBookRegistry.shared.sync()
+                appContainer.bookRegistry.sync()
             }
             // Announce the new tab for VoiceOver when tab changes
             if UIAccessibility.isVoiceOverRunning {
@@ -101,6 +107,45 @@ struct AppTabHostView: View {
     }
 }
 
+extension AppTabHostView {
+    /// Pure helpers extracted for unit testability — these were previously
+    /// inline closures inside `updateHoldsBadge()` that could not be exercised
+    /// by tests, leaving mutations like `+= 1` → `-= 1` undetected.
+    static func computeReadyCount(books: [TPPBook]) -> Int {
+        var count = 0
+        for book in books {
+            book.defaultAcquisition?.availability.match(
+                unavailable: nil,
+                limited: nil,
+                unlimited: nil,
+                reserved: nil,
+                ready: { _ in count += 1 }
+            )
+        }
+        return count
+    }
+
+    static func computeReservedCount(books: [TPPBook]) -> Int {
+        var count = 0
+        for book in books {
+            book.defaultAcquisition?.availability.match(
+                unavailable: nil,
+                limited: nil,
+                unlimited: nil,
+                reserved: { _ in count += 1 },
+                ready: nil
+            )
+        }
+        return count
+    }
+
+    /// `state == .loaded || state == .synced` factored out of `updateHoldsBadge`
+    /// so the OR/equality conditions can be exercised by tests directly.
+    static func shouldUpdateBadge(for state: TPPBookRegistry.RegistryState) -> Bool {
+        return state == .loaded || state == .synced
+    }
+}
+
 private extension AppTabHostView {
     /// VoiceOver announcement label for each tab (matches tab item text).
     static func accessibilityLabel(for tab: AppTab) -> String {
@@ -114,37 +159,27 @@ private extension AppTabHostView {
     }
 
     func updateHoldsBadge() {
-        guard bookRegistry.state == .loaded || bookRegistry.state == .synced else {
+        guard Self.shouldUpdateBadge(for: bookRegistry.state) else {
             return
         }
+
+        let debugSettings = appContainer.debugSettings
 
         // Move heavy registry access off main thread to avoid blocking UI
         DispatchQueue.global(qos: .userInitiated).async {
             // Use test books if debug configuration is enabled, otherwise use real registry data
             #if DEBUG
-            let held: [TPPBook] = DebugSettings.shared.createTestHoldBooks() ?? bookRegistry.heldBooks
-            let usingTestBooks = DebugSettings.shared.isTestHoldsEnabled
+            let held: [TPPBook] = debugSettings.createTestHoldBooks() ?? bookRegistry.heldBooks
+            let usingTestBooks = debugSettings.isTestHoldsEnabled
             #else
             let held = bookRegistry.heldBooks
             #endif
 
-            var readyCount = 0
-
-            for book in held {
-                book.defaultAcquisition?.availability.match(unavailable: nil,
-                                                                       limited: nil,
-                                                                       unlimited: nil,
-                                                                       reserved: nil,
-                                                                       ready: { _ in readyCount += 1 })
-            }
+            let readyCount = Self.computeReadyCount(books: held)
 
             #if DEBUG
-            if DebugSettings.shared.isBadgeLoggingEnabled {
-                var reservedCount = 0
-                for book in held {
-                    book.defaultAcquisition?.availability.match(unavailable: nil, limited: nil, unlimited: nil,
-                                                                           reserved: { _ in reservedCount += 1 }, ready: nil)
-                }
+            if debugSettings.isBadgeLoggingEnabled {
+                let reservedCount = Self.computeReservedCount(books: held)
                 Log.info(#file, "[DEBUG-BADGE] updateHoldsBadge: source=\(usingTestBooks ? "TEST BOOKS" : "registry"), totalHeld=\(held.count), reserved=\(reservedCount), ready=\(readyCount)")
                 for (index, book) in held.enumerated() {
                     var status = "unknown"

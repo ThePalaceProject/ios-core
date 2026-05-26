@@ -7,6 +7,7 @@ import BackgroundTasks
 import SwiftUI
 import CarPlay
 import PalaceAudiobookToolkit
+import PalaceLogging
 
 @main
 class TPPAppDelegate: UIResponder, UIApplicationDelegate {
@@ -32,6 +33,10 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     // MARK: - Application Lifecycle
 
     func applicationDidFinishLaunching(_ application: UIApplication) {
+        // Register Crashlytics forwarder before any Log call fires.
+        // PalaceLogging is Firebase-free; the host app supplies the bridge.
+        Log.crashlyticsBridge = FirebaseCrashlyticsBridge()
+
         let startupQueue = DispatchQueue.global(qos: .userInitiated)
 
         // Build identifier marker — logged on every app launch so a sysdiagnose
@@ -40,7 +45,7 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         let buildNumber = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
         let iosVersion = UIDevice.current.systemVersion
         let deviceModel = UIDevice.current.model
-        Log.info(#file, "[BUILD MARKER] release/3.0.2 — App=\(appVersion) (\(buildNumber)), iOS=\(iosVersion), device=\(deviceModel)")
+        Log.info(#file, "[BUILD MARKER] App=\(appVersion) (\(buildNumber)), iOS=\(iosVersion), device=\(deviceModel)")
 
         // CRITICAL: Initialize playback infrastructure FIRST for CarPlay cold starts
         // This ensures MPRemoteCommandCenter handlers are registered before any UI loads
@@ -98,16 +103,16 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     private func performBackgroundStartupTasks() {
-        let isFreshInstall = TPPSettings.shared.appVersion == nil
+        let isFreshInstall = AppContainer.production().settings.appVersion == nil
         TPPKeychainManager.validateKeychain()
         TPPMigrationManager.migrate()
-        NetworkQueue.shared().addObserverForOfflineQueue()
-        Reachability.shared.startMonitoring()
+        AppContainer.production().networkQueue.addObserverForOfflineQueue()
+        AppContainer.production().reachability.startMonitoring()
 
         logCredentialStateAtLaunch(isFreshInstall: isFreshInstall)
 
         PalaceAuthTokenProvider.tokenResolver = {
-            AccountsManager.shared.currentUserAccount.authToken
+            AppContainer.production().accountsManager.currentUserAccount.authToken
         }
 
         DispatchQueue.main.async {
@@ -127,8 +132,9 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     private func logCredentialStateAtLaunch(isFreshInstall: Bool) {
-        let account = AccountsManager.shared.currentUserAccount
-        let accountId = AccountsManager.shared.currentAccountId ?? "nil"
+        let accountsManager = AppContainer.production().accountsManager
+        let account = accountsManager.currentUserAccount
+        let accountId = accountsManager.currentAccountId ?? "nil"
         let authDef = account.authDefinition
         let authType = authDef?.authType.rawValue ?? "none"
         let hasCredentials = account.hasCredentials()
@@ -182,7 +188,7 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         // store's own queue — but it primes the `loadingAccount` guard and
         // queues the state transition to .loaded. Any sync() that races it is
         // caught by the .unloaded/.loading guard in BookRegistrySync.sync.
-        TPPBookRegistry.shared.load()
+        AppContainer.production().bookRegistry.load()
 
         NotificationService.shared.setupPushNotifications()
     }
@@ -200,14 +206,14 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         scheduleAppRefresh()
         let startDate = Date()
 
-        TPPBookRegistry.shared.sync { errorDocument, newBooks in
+        AppContainer.production().bookRegistry.sync { errorDocument, newBooks in
             if errorDocument != nil {
                 Log.log("[Background Refresh] Failed. Error Document Present. Elapsed Time: \(-startDate.timeIntervalSinceNow)")
                 task.setTaskCompleted(success: false)
             } else {
                 Log.log("[Background Refresh] \(newBooks ? "New books available" : "No new books fetched"). Elapsed Time: \(-startDate.timeIntervalSinceNow)")
 
-                NotificationService.updateAppIconBadge(heldBooks: TPPBookRegistry.shared.heldBooks)
+                NotificationService.updateAppIconBadge(heldBooks: AppContainer.production().bookRegistry.heldBooks)
 
                 task.setTaskCompleted(success: true)
             }
@@ -246,7 +252,7 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         }
 
         if userActivity.activityType == NSUserActivityTypeBrowsingWeb &&
-            userActivity.webpageURL?.host == TPPSettings.shared.universalLinksURL.host {
+            userActivity.webpageURL?.host == AppContainer.production().settings.universalLinksURL.host {
             NotificationCenter.default.post(name: .TPPAppDelegateDidReceiveCleverRedirectURL, object: userActivity.webpageURL)
             return true
         }
@@ -270,7 +276,7 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     func applicationDidBecomeActive(_ application: UIApplication) {
-        TPPErrorLogger.setUserID(AccountsManager.shared.currentUserAccount.barcode)
+        TPPErrorLogger.setUserID(AppContainer.production().accountsManager.currentUserAccount.barcode)
 
         // Resume Firebase operations when app becomes active
         FirebaseManager.shared.applicationDidBecomeActive()
@@ -289,11 +295,11 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     /// Syncs the book registry if the user has holds to ensure fresh availability data.
     /// Throttled to prevent excessive network calls on frequent app activation.
     private func syncIfUserHasHolds() {
-        guard AccountsManager.shared.currentUserAccount.hasCredentials() else {
+        guard AppContainer.production().accountsManager.currentUserAccount.hasCredentials() else {
             return
         }
 
-        let heldBooks = TPPBookRegistry.shared.heldBooks
+        let heldBooks = AppContainer.production().bookRegistry.heldBooks
         guard !heldBooks.isEmpty else {
             return
         }
@@ -312,12 +318,12 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 
         Log.info(#file, "[Foreground Sync] Starting - user has \(heldBooks.count) holds")
 
-        TPPBookRegistry.shared.sync { errorDocument, newBooks in
+        AppContainer.production().bookRegistry.sync { errorDocument, newBooks in
             if let errorDocument = errorDocument {
                 Log.error(#file, "[Foreground Sync] Failed: \(errorDocument)")
             } else {
                 Log.info(#file, "[Foreground Sync] Completed. New books: \(newBooks)")
-                NotificationService.updateAppIconBadge(heldBooks: TPPBookRegistry.shared.heldBooks)
+                NotificationService.updateAppIconBadge(heldBooks: AppContainer.production().bookRegistry.heldBooks)
             }
         }
     }
@@ -340,7 +346,7 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 
         audiobookLifecycleManager.willTerminate()
         NotificationCenter.default.removeObserver(self)
-        Reachability.shared.stopMonitoring()
+        AppContainer.production().reachability.stopMonitoring()
     }
 
     internal func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String, completionHandler: @escaping () -> Void) {
@@ -423,7 +429,7 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 
     /// Creates and returns the app's root view controller
     func createRootViewController() -> UIViewController {
-        let container = AppContainer()
+        let container = AppContainer.production()
         let root = AppTabHostView()
             .environment(\.appContainer, container)
         return UIHostingController(rootView: root)
@@ -454,8 +460,9 @@ extension TPPAppDelegate {
         // iOS 26.4.2 stacked 4 TPPAccountList modals.
         guard !hasPresentedFirstRunFlow else { return }
 
+        let accountsManager = AppContainer.production().accountsManager
         // Defer until accounts have loaded to avoid false negatives on currentAccount
-        if !AccountsManager.shared.accountsHaveLoaded {
+        if !accountsManager.accountsHaveLoaded {
             // PP-4329: remove the previous deferred observer (if any)
             // before adding a new one — otherwise observers accumulate
             // every time this method re-enters itself.
@@ -470,7 +477,7 @@ extension TPPAppDelegate {
             ) { [weak self] _ in
                 self?.presentFirstRunFlowIfNeeded()
             }
-            AccountsManager.shared.loadCatalogs(completion: nil)
+            accountsManager.loadCatalogs(completion: nil)
             return
         }
 
@@ -483,20 +490,23 @@ extension TPPAppDelegate {
         }
 
         // Use persisted currentAccountId rather than computed currentAccount to avoid timing issues
-        let needsAccount = (AccountsManager.shared.currentAccountId == nil)
+        let needsAccount = (accountsManager.currentAccountId == nil)
         guard needsAccount else { return }
 
         guard let top = topViewController() else { return }
 
         var nav: UINavigationController!
         let accountList = TPPAccountList { [weak self] account in
-            if !TPPSettings.shared.settingsAccountIdsList.contains(account.uuid) {
-                TPPSettings.shared.settingsAccountIdsList.append(account.uuid)
+            let settings = AppContainer.production().settings
+            if !settings.settingsAccountIdsList.contains(account.uuid) {
+                settings.settingsAccountIdsList.append(account.uuid)
             }
             if let urlString = account.catalogUrl, let url = URL(string: urlString) {
-                TPPSettings.shared.accountMainFeedURL = url
+                settings.accountMainFeedURL = url
             }
-            AccountsManager.shared.currentAccount = account
+            // The lone writer: route through the AppContainer-owned instance
+            // (same singleton, but no .shared literal at the call site).
+            accountsManager.currentAccount = account
 
             account.loadAuthenticationDocument { _ in }
 
@@ -624,9 +634,9 @@ final class MemoryPressureMonitor {
         case .high:
             // Aggressive cleanup
             URLCache.shared.removeAllCachedResponses()
-            TPPNetworkExecutor.shared.clearCache()
+            AppContainer.production().networkExecutor.clearCache()
             await MainActor.run {
-                MyBooksDownloadCenter.shared.pauseAllDownloads()
+                AppContainer.production().downloadCenter.pauseAllDownloads()
             }
             Log.info(#file, "Performed aggressive cache cleanup due to high memory pressure")
 
@@ -645,10 +655,10 @@ final class MemoryPressureMonitor {
     @objc private func handleMemoryWarning() {
         monitorQueue.async {
             URLCache.shared.removeAllCachedResponses()
-            TPPNetworkExecutor.shared.clearCache()
+            AppContainer.production().networkExecutor.clearCache()
 
             DispatchQueue.main.async {
-                MyBooksDownloadCenter.shared.pauseAllDownloads()
+                AppContainer.production().downloadCenter.pauseAllDownloads()
             }
 
             self.reclaimDiskSpaceIfNeeded(minimumFreeMegabytes: 256)
@@ -683,7 +693,7 @@ final class MemoryPressureMonitor {
             if processInfo.isLowPowerModeEnabled {
                 maxActive = min(maxActive, 1)
             }
-            MyBooksDownloadCenter.shared.limitActiveDownloads(max: maxActive)
+            AppContainer.production().downloadCenter.limitActiveDownloads(max: maxActive)
         }
     }
 
@@ -700,7 +710,7 @@ final class MemoryPressureMonitor {
         GeneralCache<String, Data>.clearAllCaches()
 
         // Evict least-recently-used book files
-        MyBooksDownloadCenter.shared.enforceContentDiskBudgetIfNeeded(adding: 0)
+        AppContainer.production().downloadCenter.enforceContentDiskBudgetIfNeeded(adding: 0)
 
         // As a final step, prune very old files from Caches directory
         pruneOldFilesFromCachesDirectory(olderThanDays: 30)

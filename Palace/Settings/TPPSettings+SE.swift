@@ -22,7 +22,7 @@ extension TPPSettings {
 
             // Avoid crash in case currentLibrary isn't set yet
             var accountsList = [String]()
-            if let currentLibrary = AccountsManager.shared.currentAccount?.uuid {
+            if let currentLibrary = AppContainer.production().accountsManager.currentAccount?.uuid {
                 accountsList.append(currentLibrary)
             }
             accountsList.append(AccountsManager.TPPAccountUUIDs[2])
@@ -37,7 +37,7 @@ extension TPPSettings {
 
     var settingsAccountsList: [Account] {
         settingsAccountIdsList
-            .compactMap { AccountsManager.shared.account($0) }
+            .compactMap { AppContainer.production().accountsManager.account($0) }
             .sorted { $0.name < $1.name }
     }
 }

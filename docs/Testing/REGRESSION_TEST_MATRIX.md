@@ -19,7 +19,7 @@ Standing test area checklist for release-gate regression testing. Derived from t
 
 ## Test Fixtures
 
-Authentication and distributor combinations are *matrix axes*, not single points. Use these libraries to exercise each combination. Credentials live in `~/.specterqa/credentials/` (not in this repo).
+Authentication and distributor combinations are *matrix axes*, not single points. Use these libraries to exercise each combination. Credentials live in your local agent credentials dir (e.g. `~/.simdrive/credentials/` or the legacy `~/.simdrive/credentials/`) and are never committed.
 
 ### Auth-type → test library
 
@@ -65,9 +65,9 @@ Every auth row below must be run against **each** auth type listed in the "Auth 
 
 | ID | Area | Description | Auth Types | Automation | Notes |
 |----|------|-------------|------------|------------|-------|
-| A1 | Sign in (settings) | Sign in via Settings > Libraries > Account | All 7 (basic, token, oauth, saml, oidc, anonymous, coppa) | Partial (SpecterQA: basic, token) | Check nav title (F-001), form fields rendered correctly per auth type, error messages. Anonymous / COPPA should show no login form. |
-| A2 | Sign in (just-in-time) | Sign-in prompt triggered by borrow/download | basic, token, oauth, saml, oidc | Manual (SpecterQA for basic) | Verify prompt appears, completes, resumes the original action without losing context. Anonymous libraries must **not** trigger JIT (SQ-005 regression). |
-| A3 | Sign out (basic/token/anonymous) | Sign out and verify credential cleanup | basic, token, anonymous | Partial (SpecterQA) | No credential bleed in keychain. No stale UI. No hang (F-080 regression). |
+| A1 | Sign in (settings) | Sign in via Settings > Libraries > Account | All 7 (basic, token, oauth, saml, oidc, anonymous, coppa) | Partial (simdrive: basic, token) | Check nav title (F-001), form fields rendered correctly per auth type, error messages. Anonymous / COPPA should show no login form. |
+| A2 | Sign in (just-in-time) | Sign-in prompt triggered by borrow/download | basic, token, oauth, saml, oidc | Manual (simdrive for basic) | Verify prompt appears, completes, resumes the original action without losing context. Anonymous libraries must **not** trigger JIT (SQ-005 regression). |
+| A3 | Sign out (basic/token/anonymous) | Sign out and verify credential cleanup | basic, token, anonymous | Partial (simdrive) | No credential bleed in keychain. No stale UI. No hang (F-080 regression). |
 | A3-SAML | Sign out (SAML SLO) | SAML Single Logout via CM | saml | Manual | Verify `/logout` endpoint called with correct params. PP-3452 refactored this. |
 | A3-OIDC | Sign out (OIDC end_session) | OIDC RP-initiated logout | oidc | Manual | Verify `end_session_endpoint` called with `post_logout_redirect_uri`. Check for NSURLError -1002 on callback redirect (expected). |
 | A3-OAuth | Sign out (OAuth intermediary) | Clever-style sign-out | oauth | Manual | Verify token cleared from keychain. Re-sign-in should work. |
@@ -83,8 +83,8 @@ Borrow and fulfillment paths branch by distributor. Every circulation row below 
 
 | ID | Area | Description | Distributors | Automation | Notes |
 |----|------|-------------|--------------|------------|-------|
-| B1 | Borrow (generic) | Borrow a book from catalog | All 7 distributors | Partial (SpecterQA) | Check borrow sheet, button states, OPDS entry refresh. |
-| B2 | Return | Return a borrowed book | All 7 distributors | Partial (SpecterQA) | Verify confirmation alert (PR #803), auto-dismiss, registry cleanup. F-012: revoke endpoint returns XML but client parses as JSON. |
+| B1 | Borrow (generic) | Borrow a book from catalog | All 7 distributors | Partial (simdrive) | Check borrow sheet, button states, OPDS entry refresh. |
+| B2 | Return | Return a borrowed book | All 7 distributors | Partial (simdrive) | Verify confirmation alert (PR #803), auto-dismiss, registry cleanup. F-012: revoke endpoint returns XML but client parses as JSON. |
 | B3 | Place hold | Place a hold on unavailable title | All distributors that support holds | Manual | Check hold confirmation, Holds tab update. Anonymous libraries should not offer hold. |
 | B4 | Cancel hold | Cancel an existing hold | All | Manual | Verify state sync in search/list view (F-065), Holds tab refresh. |
 | B5 | Download (generic) | Download borrowed book for offline | Adobe, LCP, DRM-free, Overdrive EPUB | Manual | Check progress indication, completion, registry transition. |
@@ -92,7 +92,7 @@ Borrow and fulfillment paths branch by distributor. Every circulation row below 
 | B6-Adobe | DRM fulfillment (Adobe) | Adobe RMSDK device activation + ACSM fulfillment | Adobe DRM libraries | Manual | Check device activation persists, fulfillment succeeds, DRM certificate loads without crash (see `AdobeCertificate` crash in Crashlytics). |
 | B6-OD | DRM fulfillment (Overdrive) | Overdrive scope + patron-authorization headers | Overdrive (audiobook primary) | Manual | F-081: post-borrow OPDS entry still has `/borrow` URL; fix defers to `deferOverdriveFulfillment`. Headers `x-overdrive-scope` + `x-overdrive-patron-authorization` must arrive on 302. |
 | B7 | Hold → loan conversion | Waited hold becomes available → user taps Borrow → loan placed → download | All distributors | Manual (requires waiting for hold to fire) | **C5 was "Unable to test" in PP-4020**. F-081 closed Overdrive path. **Adobe and LCP paths still need a waited-out run.** |
-| B8 | Concurrent borrow | Rapid taps on Borrow button | All | SpecterQA (`concurrent-borrow.yaml`) | Verify no double-borrow, debounce works. |
+| B8 | Concurrent borrow | Rapid taps on Borrow button | All | simdrive (`concurrent-borrow.yaml`) | Verify no double-borrow, debounce works. |
 | B9 | Borrow after sign-out | Anonymous flow: Borrow without any sign-in | anonymous | Manual | SQ-005 regression: must not show empty sign-in modal. |
 
 ---
@@ -122,9 +122,9 @@ Borrow and fulfillment paths branch by distributor. Every circulation row below 
 
 | ID | Area | Description | Automation | Notes |
 |----|------|-------------|------------|-------|
-| C1 | Catalog browsing | Browse lanes, scroll, facet switching | Partial (SpecterQA) | Check cover alignment (F-018), facet speed (F-041) |
-| C2 | Catalog search | Live search, filter pills, results | Partial (SpecterQA) | Check auto-search (F-025), button styling (F-045) |
-| C3 | My Books | Tab navigation, sort, state after borrow/return | Partial (SpecterQA) | Check auto-refresh on appear (F-035) |
+| C1 | Catalog browsing | Browse lanes, scroll, facet switching | Partial (simdrive) | Check cover alignment (F-018), facet speed (F-041) |
+| C2 | Catalog search | Live search, filter pills, results | Partial (simdrive) | Check auto-search (F-025), button styling (F-045) |
+| C3 | My Books | Tab navigation, sort, state after borrow/return | Partial (simdrive) | Check auto-refresh on appear (F-035) |
 | C4 | Holds tab | Holds display, cancel from list vs detail | Manual | Check state sync after cancel (F-065) |
 
 ---
@@ -171,10 +171,10 @@ Borrow and fulfillment paths branch by distributor. Every circulation row below 
 |----|------|-------------|------------|-------|
 | X1 | iPad layout | All screens render correctly on iPad | Manual | |
 | X2 | CarPlay | Audiobook browsing and playback via CarPlay | Manual | |
-| X3 | Library onboarding | Add library, walkthrough, first sign-in | Partial (SpecterQA) | |
+| X3 | Library onboarding | Add library, walkthrough, first sign-in | Partial (simdrive) | |
 | X4 | Multi-library config | 3+ libraries, switching, isolation | Manual | |
-| X5 | Book detail view | Cover, description, buttons, back nav | Partial (SpecterQA) | Check HTML tags (F-029), back button (F-043) |
-| X6 | Settings completeness | All rows visible and functional | Partial (SpecterQA) | Content Licenses, Advanced, Wi-Fi toggle |
+| X5 | Book detail view | Cover, description, buttons, back nav | Partial (simdrive) | Check HTML tags (F-029), back button (F-043) |
+| X6 | Settings completeness | All rows visible and functional | Partial (simdrive) | Content Licenses, Advanced, Wi-Fi toggle |
 
 ---
 
@@ -228,7 +228,7 @@ When logging findings to the CSV, use these classifications:
 
 These are the items currently requiring manual runs that would most reduce per-release regression cost if automated. Ordered by cost-of-delay for a solo dev.
 
-### SpecterQA journeys missing
+### simdrive journeys missing
 
 | Journey to record | Covers | Why it matters |
 |-------------------|--------|----------------|
@@ -257,7 +257,7 @@ Auth area has good depth on SAML (3 test files), basic (`TPPBasicAuthTests`), cr
 |---------------|---------|
 | `scripts/test-sync.sh --auth-type all` flag | Run sync tests against each auth type in one pass |
 | Crashlytics snapshot delta tool | Snapshot top-20 crashes before RC, alert on any new entry in the top-20 after 24h on TestFlight |
-| `scripts/run-auth-matrix.sh` | Orchestrate all 9 rows of the auth × distributor critical matrix through SpecterQA journeys + report pass/fail |
+| `scripts/run-auth-matrix.sh` | Orchestrate all 9 rows of the auth × distributor critical matrix through simdrive journeys + report pass/fail |
 
 ---
 

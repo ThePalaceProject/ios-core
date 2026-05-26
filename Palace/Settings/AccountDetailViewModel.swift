@@ -8,6 +8,9 @@
 import SwiftUI
 import Combine
 import LocalAuthentication
+import PalaceLogging
+import PalaceNetwork
+import PalaceAuth
 
 @MainActor
 class AccountDetailViewModel: NSObject, ObservableObject {
@@ -50,6 +53,9 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     private let accountsManager: AccountsManager
     private let bookRegistry: TPPBookRegistryProvider
     private let downloadCenter: MyBooksDownloadCenter
+    private let settings: TPPSettings
+    private let userAccountPublisher: UserAccountPublisher
+    private let drmAuthorizerProvider: () -> TPPDRMAuthorizing?
     private var cancellables = Set<AnyCancellable>()
     var forceEditability = false
 
@@ -102,15 +108,38 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     /// re-auth flows triggered by 401 responses.
     var forceReauthMode: Bool = false
 
-    init(libraryAccountID: String, accountsManager: AccountsManager = .shared, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared, downloadCenter: MyBooksDownloadCenter = .shared) {
+    convenience init(libraryAccountID: String, appContainer: AppContainer) {
+        self.init(
+            libraryAccountID: libraryAccountID,
+            accountsManager: appContainer.accountsManager,
+            bookRegistry: appContainer.bookRegistry,
+            downloadCenter: appContainer.downloadCenter,
+            settings: appContainer.settings,
+            userAccountPublisher: appContainer.userAccountPublisher,
+            drmAuthorizerProvider: appContainer.drmAuthorizerProvider
+        )
+    }
+
+    init(
+        libraryAccountID: String,
+        accountsManager: AccountsManager,
+        bookRegistry: TPPBookRegistryProvider,
+        downloadCenter: MyBooksDownloadCenter,
+        settings: TPPSettings,
+        userAccountPublisher: UserAccountPublisher,
+        drmAuthorizerProvider: @escaping () -> TPPDRMAuthorizing?
+    ) {
         self.libraryAccountID = libraryAccountID
         self.accountsManager = accountsManager
         self.bookRegistry = bookRegistry
         self.downloadCenter = downloadCenter
+        self.settings = settings
+        self.userAccountPublisher = userAccountPublisher
+        self.drmAuthorizerProvider = drmAuthorizerProvider
         self.businessLogic = TPPSignInBusinessLogic(
             libraryAccountID: libraryAccountID,
             libraryAccountsProvider: accountsManager,
-            urlSettingsProvider: TPPSettings.shared,
+            urlSettingsProvider: settings,
             bookRegistry: (bookRegistry as? TPPBookRegistrySyncing) ?? { preconditionFailure("bookRegistry must conform to TPPBookRegistrySyncing") }(),
             bookDownloadsCenter: downloadCenter,
             userAccountProvider: TPPUserAccount.self,
@@ -118,17 +147,12 @@ class AccountDetailViewModel: NSObject, ObservableObject {
             drmAuthorizer: nil
         )
 
-        let snapshot = AccountsManager.shared.userAccount(for: libraryAccountID).credentialSnapshot()
+        let snapshot = accountsManager.userAccount(for: libraryAccountID).credentialSnapshot()
         self.isSignedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
 
         super.init()
 
-        var drmAuthorizer: TPPDRMAuthorizing?
-        #if FEATURE_DRM_CONNECTOR
-        if AdobeCertificate.isDRMAvailable {
-            drmAuthorizer = AdobeDRMService.shared.adeptInstance
-        }
-        #endif
+        let drmAuthorizer = drmAuthorizerProvider()
 
         let networkExecutor = TPPNetworkExecutor(
             credentialsProvider: self,
@@ -139,7 +163,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
         self.businessLogic = TPPSignInBusinessLogic(
             libraryAccountID: libraryAccountID,
             libraryAccountsProvider: accountsManager,
-            urlSettingsProvider: TPPSettings.shared,
+            urlSettingsProvider: settings,
             bookRegistry: (bookRegistry as? TPPBookRegistrySyncing) ?? { preconditionFailure("bookRegistry must conform to TPPBookRegistrySyncing") }(),
             bookDownloadsCenter: downloadCenter,
             userAccountProvider: TPPUserAccount.self,
@@ -151,7 +175,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
         if let account = selectedAccount {
             frontEndValidator = TPPUserAccountFrontEndValidation(
                 account: account,
-                businessLogic: businessLogic,
+                validationContext: businessLogic,
                 inputProvider: self
             )
         }
@@ -192,7 +216,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
             .sink { [weak self] _ in self?.accountDidChange() }
             .store(in: &cancellables)
 
-        UserAccountPublisher.shared.$hasCredentials
+        userAccountPublisher.$hasCredentials
             .receive(on: RunLoop.main)
             .removeDuplicates()
             .sink { [weak self] _ in self?.accountDidChange() }
@@ -341,11 +365,11 @@ class AccountDetailViewModel: NSObject, ObservableObject {
         // OIDC was missing here, so signed-in OIDC accounts were rendering
         // the barcode/PIN/sign-in cells inappropriately.
         if auth.isOauth || auth.isOidc {
-            return [.logInSignOut]
+            return appendResetIfSignedIn([.logInSignOut])
         }
 
         if auth.isSaml && isSignedIn {
-            return [.logInSignOut]
+            return appendResetIfSignedIn([.logInSignOut])
         }
 
         if auth.isSaml {
@@ -353,10 +377,21 @@ class AccountDetailViewModel: NSObject, ObservableObject {
         }
 
         if auth.pinKeyboard != .none {
-            return [.barcode, .pin, .logInSignOut]
+            return appendResetIfSignedIn([.barcode, .pin, .logInSignOut])
         }
 
-        return [.barcode, .logInSignOut]
+        return appendResetIfSignedIn([.barcode, .logInSignOut])
+    }
+
+    /// Conditionally appends the destructive `.resetAccount` cell. Two gates:
+    /// (1) signed-in (no state to clear when signed-out), (2) the
+    /// `reset_account_enabled` feature flag is on for this device. Default in
+    /// production is OFF; support enables it per-patron via Firebase Remote
+    /// Config (`reset_account_enabled_device_<id>`) when a stuck-state ticket
+    /// comes in, then disables it again after the patron recovers.
+    private func appendResetIfSignedIn(_ cells: [CellType]) -> [CellType] {
+        guard isSignedIn, RemoteFeatureFlags.shared.isResetAccountEnabled else { return cells }
+        return cells + [.resetAccount]
     }
 
     // MARK: - Actions
@@ -368,7 +403,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
         let isReauth = forceReauthMode && selectedUserAccount.authState == .credentialsStale
         guard !isSignedIn || isReauth else {
             isSigningOut = true
-            presentSignOutAlert()
+            confirmSignOut()
             return
         }
 
@@ -398,7 +433,15 @@ class AccountDetailViewModel: NSObject, ObservableObject {
         TPPPresentationUtils.safelyPresent(alert, animated: true)
     }
 
-    private func presentSignOutAlert() {
+    /// Entry point for the Sign Out button. Presents a confirmation alert so
+    /// the user does not get signed out by an accidental tap (PP-4229).
+    /// Confirmed sign-outs route through signOut() → logOutOrWarn(), which
+    /// preserves the secondary sync/DRM-in-progress warning.
+    func confirmSignOut() {
+        TPPPresentationUtils.safelyPresent(makeSignOutConfirmationAlert(), animated: true)
+    }
+
+    func makeSignOutConfirmationAlert() -> UIAlertController {
         let alert = UIAlertController(
             title: DisplayStrings.signOut,
             message: nil,
@@ -416,7 +459,57 @@ class AccountDetailViewModel: NSObject, ObservableObject {
             style: .cancel
         ))
 
-        TPPPresentationUtils.safelyPresent(alert, animated: true)
+        return alert
+    }
+
+    // MARK: - Reset Account (PP-4282 / HelpSpot 17716)
+
+    /// Entry point for the destructive "Reset This Library Account" button.
+    /// Presents a confirmation alert before tearing down all local state.
+    /// See `TPPSignInBusinessLogic+ForceReset.swift` for the cleanup contract.
+    func confirmResetAccount() {
+        TPPPresentationUtils.safelyPresent(makeResetAccountConfirmationAlert(), animated: true)
+    }
+
+    /// Builds the destructive confirmation alert. Library name is interpolated
+    /// into the message so the patron can confirm they're resetting the right
+    /// account (relevant for multi-library installs).
+    func makeResetAccountConfirmationAlert() -> UIAlertController {
+        let libraryName = businessLogic.libraryAccount?.name ?? DisplayStrings.account
+        let alert = UIAlertController(
+            title: NSLocalizedString("Reset \(libraryName)?", comment: "Title for the reset-account confirmation alert"),
+            message: NSLocalizedString(
+                "This will sign you out, delete your downloaded books and bookmarks for this library, and clear local sign-in state. Your loans and holds on the server are not affected. You'll need to sign in again.",
+                comment: "Body for the reset-account confirmation alert"
+            ),
+            preferredStyle: .alert
+        )
+
+        alert.addAction(UIAlertAction(
+            title: NSLocalizedString("Reset", comment: "Destructive confirmation button for reset-account"),
+            style: .destructive,
+            handler: { [weak self] _ in self?.performResetAccount() }
+        ))
+
+        alert.addAction(UIAlertAction(
+            title: Strings.Generic.cancel,
+            style: .cancel
+        ))
+
+        return alert
+    }
+
+    /// Invokes the unconditional cleanup. After completion, refreshes the
+    /// view-model's sign-in state so the UI shows the unsigned state and
+    /// the patron can sign back in immediately. Diagnostic logging lives
+    /// inside `performForceReset(...)` itself.
+    func performResetAccount() {
+        isSigningOut = true
+        businessLogic.performForceReset { [weak self] in
+            guard let self = self else { return }
+            self.isSigningOut = false
+            self.refreshSignInState()
+        }
     }
 
     func togglePINVisibility() {
@@ -526,7 +619,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     }
 
     private func accountDidChange() {
-        let snapshot = AccountsManager.shared.userAccount(for: libraryAccountID).credentialSnapshot()
+        let snapshot = accountsManager.userAccount(for: libraryAccountID).credentialSnapshot()
 
         let newSignedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
 
@@ -557,7 +650,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     func refreshSignInState() {
         let wasSignedIn = isSignedIn
 
-        let snapshot = AccountsManager.shared.userAccount(for: libraryAccountID).credentialSnapshot()
+        let snapshot = accountsManager.userAccount(for: libraryAccountID).credentialSnapshot()
         isSignedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
 
         if wasSignedIn != isSignedIn {
@@ -575,6 +668,7 @@ enum CellType: Hashable {
     case barcode
     case pin
     case logInSignOut
+    case resetAccount
     case registration
     case syncButton
     case about
@@ -600,6 +694,8 @@ enum CellType: Hashable {
             hasher.combine("pin")
         case .logInSignOut:
             hasher.combine("logInSignOut")
+        case .resetAccount:
+            hasher.combine("resetAccount")
         case .registration:
             hasher.combine("registration")
         case .syncButton:

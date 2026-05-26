@@ -134,47 +134,70 @@ final class EPUBToolbarToggleTests: XCTestCase {
 
     // MARK: - Tap Region Classification
 
-    /// Center of the viewport should be classified as center.
-    func testTapRegion_centerOfViewport_isCenter() {
-        let region = TapRegion.classify(
-            tapX: 187.5, viewportWidth: 375, edgeThresholdPercent: 0.2)
-        XCTAssertEqual(region, .center)
+    /// `TapRegion.classify` divides the viewport into left-edge / center /
+    /// right-edge zones based on `edgeThresholdPercent`. Lock all three
+    /// zones at standard 375px width in one body so a mutant that swaps
+    /// any zone's branch (e.g. classifies left as right) fails immediately.
+    func testTapRegion_classifiesViewportInToThreeZones() {
+        let width: CGFloat = 375
+        let percent: CGFloat = 0.2
+
+        XCTAssertEqual(
+            TapRegion.classify(tapX: 30, viewportWidth: width, edgeThresholdPercent: percent),
+            .leftEdge,
+            "Tap inside the left 20% must classify as leftEdge")
+        XCTAssertEqual(
+            TapRegion.classify(tapX: 187.5, viewportWidth: width, edgeThresholdPercent: percent),
+            .center,
+            "Tap at exact midpoint must classify as center")
+        XCTAssertEqual(
+            TapRegion.classify(tapX: 360, viewportWidth: width, edgeThresholdPercent: percent),
+            .rightEdge,
+            "Tap inside the right 20% must classify as rightEdge")
     }
 
-    /// Left edge tap should be classified as left edge.
-    func testTapRegion_leftEdge_isLeftEdge() {
-        let region = TapRegion.classify(
-            tapX: 30, viewportWidth: 375, edgeThresholdPercent: 0.2)
-        XCTAssertEqual(region, .leftEdge)
+    /// Threshold boundary is the load-bearing decision point — Readium
+    /// pages flip vs. toolbar shows depending on this. Pin the exact
+    /// threshold AND just-past-threshold AND just-under-threshold (in the
+    /// right zone) on a 400px viewport so a mutant that flips `<=` to `<`
+    /// (or vice versa) fails on the boundary case.
+    func testTapRegion_threshold_isInclusiveOnEdgeAndExclusiveAtCenter() {
+        let width: CGFloat = 400      // 20% threshold = 80px
+        let percent: CGFloat = 0.2
+
+        // Exact left threshold (80) → leftEdge (inclusive)
+        XCTAssertEqual(
+            TapRegion.classify(tapX: 80, viewportWidth: width, edgeThresholdPercent: percent),
+            .leftEdge,
+            "Tap at exactly 20% boundary on the left must be leftEdge — boundary case for `<=` mutant")
+        // Just past left threshold → center
+        XCTAssertEqual(
+            TapRegion.classify(tapX: 80.1, viewportWidth: width, edgeThresholdPercent: percent),
+            .center,
+            "Tap just past the left threshold must be center")
+        // Symmetrical right boundary: 80% of 400 = 320
+        XCTAssertEqual(
+            TapRegion.classify(tapX: 320, viewportWidth: width, edgeThresholdPercent: percent),
+            .rightEdge,
+            "Tap at exactly 80% boundary on the right must be rightEdge — symmetric to left boundary")
+        XCTAssertEqual(
+            TapRegion.classify(tapX: 319.9, viewportWidth: width, edgeThresholdPercent: percent),
+            .center,
+            "Tap just under the right threshold must be center")
     }
 
-    /// Right edge tap should be classified as right edge.
-    func testTapRegion_rightEdge_isRightEdge() {
-        let region = TapRegion.classify(
-            tapX: 360, viewportWidth: 375, edgeThresholdPercent: 0.2)
-        XCTAssertEqual(region, .rightEdge)
-    }
-
-    /// Tap exactly at the threshold boundary should be edge.
-    func testTapRegion_atExactThreshold_isEdge() {
-        // 20% of 400 = 80
-        let region = TapRegion.classify(
-            tapX: 80, viewportWidth: 400, edgeThresholdPercent: 0.2)
-        XCTAssertEqual(region, .leftEdge)
-    }
-
-    /// Tap just past the threshold boundary should be center.
-    func testTapRegion_justPastThreshold_isCenter() {
-        let region = TapRegion.classify(
-            tapX: 80.1, viewportWidth: 400, edgeThresholdPercent: 0.2)
-        XCTAssertEqual(region, .center)
-    }
-
-    /// Zero-width viewport edge case.
-    func testTapRegion_zeroWidthViewport_isCenter() {
-        let region = TapRegion.classify(
-            tapX: 0, viewportWidth: 0, edgeThresholdPercent: 0.2)
-        XCTAssertEqual(region, .center)
+    /// Zero-width viewport: classify must not divide-by-zero. Default to
+    /// center (no edge zones to land in). A mutant that produces NaN/.crash
+    /// or returns leftEdge/rightEdge would fail here.
+    func testTapRegion_zeroWidthViewport_defaultsToCenter() {
+        XCTAssertEqual(
+            TapRegion.classify(tapX: 0, viewportWidth: 0, edgeThresholdPercent: 0.2),
+            .center,
+            "Zero-width viewport must default to center, not crash on division")
+        XCTAssertEqual(
+            TapRegion.classify(tapX: 100, viewportWidth: 0, edgeThresholdPercent: 0.2),
+            .center,
+            "Non-zero tapX with zero-width must still default to center")
     }
 }
 

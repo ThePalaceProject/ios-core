@@ -1,5 +1,5 @@
 {
-  "overall": 0.46,
+  "overall": 0.41,
   "modules": {
     "MyBooksDownloadCenter": 0.40,
     "TPPBookRegistry": 0.50,
@@ -10,5 +10,5 @@
     "TPPAnnotations": 0.40,
     "AudiobookBookmarkBusinessLogic": 0.36
   },
-  "_comment": "Phase 1: floors set to current baseline (no regression). Ratchet upward in Phase 2 toward master test plan targets."
+  "_comment": "Floors gate on TESTABLE coverage — denominator excludes UI/lifecycle files per scripts/coverage-exclude.json. Overall floor 0.41 matches the 41.1% baseline established when the testable metric was introduced (no regression). Ratchet upward as real unit-testable coverage grows; do NOT raise the number by adding more paths to the exclude list. Per-module floors were already computed on files we unit-test directly, so they carry over unchanged."
 }

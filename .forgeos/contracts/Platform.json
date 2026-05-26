@@ -1,0 +1,31 @@
+{
+  "module": "Platform",
+  "generated_at": "2026-05-12T16:15:16+00:00",
+  "file_count": 25,
+  "shared_singleton_reads": 5,
+  "public_types": [],
+  "objc_surface": [],
+  "public_functions": [],
+  "internal_protocols": [
+    {
+      "name": "AccessibilityServiceProtocol",
+      "file": "AccessibilityServiceProtocol.swift",
+      "line": 15
+    },
+    {
+      "name": "OfflineQueueServiceProtocol",
+      "file": "OfflineQueueServiceProtocol.swift",
+      "line": 14
+    },
+    {
+      "name": "PerformanceMonitorProtocol",
+      "file": "PerformanceMonitorProtocol.swift",
+      "line": 14
+    },
+    {
+      "name": "PositionSyncServiceProtocol",
+      "file": "PositionSyncServiceProtocol.swift",
+      "line": 22
+    }
+  ]
+}

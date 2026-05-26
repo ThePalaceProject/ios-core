@@ -22,7 +22,14 @@ final class BookCellModelCacheInvalidationTests: XCTestCase {
         super.setUp()
         mockRegistry = TPPBookRegistryMock()
         mockImageCache = MockImageCache()
-        cache = BookCellModelCache(imageCache: mockImageCache, bookRegistry: mockRegistry)
+        cache = BookCellModelCache(
+            imageCache: mockImageCache,
+            bookRegistry: mockRegistry,
+            downloadCenter: AppContainer.production().downloadCenter,
+            accountsManager: AppContainer.production().accountsManager,
+            samplePreviewManager: AppContainer.production().samplePreviewManager,
+            readerService: AppContainer.production().readerService
+        )
         cancellables = Set<AnyCancellable>()
     }
 

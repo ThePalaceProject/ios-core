@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import PalaceCatalog
 
 struct Strings {
 
@@ -334,6 +335,22 @@ struct Strings {
                 count
             )
         }
+
+        // MARK: - Empty-state copy (BUG-003)
+        //
+        // Shown in the Catalog search screen when a completed search returns
+        // zero books. The previous behavior was a blank screen, indistinguishable
+        // from a hung request.
+
+        static let noResultsTitle = NSLocalizedString(
+            "No results",
+            comment: "Title of the empty-state shown in the Catalog search screen when a query returns no books"
+        )
+
+        static let noResultsBody = NSLocalizedString(
+            "Try a different search term.",
+            comment: "Body copy of the empty-state shown in the Catalog search screen when a query returns no books"
+        )
     }
 
     // MARK: - Status Announcements (PP-3673)
@@ -624,6 +641,7 @@ struct Strings {
         static let returnFailedMessage = NSLocalizedString("The return of %@ could not be completed.", comment: "Alert message when returning a book fails, %@ is the book title")
         static let downloadFailed = NSLocalizedString("Download Failed", comment: "Alert title when a download fails")
         static let downloadFailedMessage = NSLocalizedString("The download for %@ could not be completed.", comment: "Alert message when downloading a book fails, %@ is the book title")
+        static let downloadFailedUnknownReason = NSLocalizedString("Please check your connection and try again.", comment: "Fallback detail shown under the \"Download Failed\" alert when the underlying failure reason has no user-facing description (e.g. a generic URLSession error or DRM fulfillment error with no localizedDescription).")
         static let retry = NSLocalizedString("Retry", comment: "Button to retry a failed operation")
         static let tryAgainLater = NSLocalizedString("Please try again later.", comment: "Message shown when maximum retry attempts have been exceeded")
         static let errorSyncingBookmarks = NSLocalizedString("Error Syncing Bookmarks", comment: "Alert title when bookmark sync fails")
@@ -632,6 +650,8 @@ struct Strings {
         static let libraryLoadErrorLegacy = NSLocalizedString("We can\u{2019}t get your library right now. Please close and reopen the app to try again.", comment: "Alert message when library data fails to load, no retry available")
         static let wifiRequired = Strings.Settings.wifiRequired
         static let downloadRestrictedToWiFi = Strings.Settings.downloadRestrictedToWiFi
+        static let noConnectionTitle = NSLocalizedString("No Connection", comment: "Alert title shown when the user attempts to download or reserve a book while offline")
+        static let noConnectionMessage = NSLocalizedString("You don\u{2019}t appear to be connected to the internet. Reconnect and try again.", comment: "Alert message shown when the user attempts to download or reserve a book while offline")
     }
 
     struct BookDetailView {
@@ -640,6 +660,8 @@ struct Strings {
         static let information = NSLocalizedString("Information", comment: "")
         static let preview = NSLocalizedString("Preview", comment: "")
         static let format = NSLocalizedString("Format", comment: "")
+        static let audience = NSLocalizedString("Audience", comment: "Book detail metadata label for the target reader audience (Adult, Young Adult, Children, etc.)")
+        static let language = NSLocalizedString("Language", comment: "Book detail metadata label for the work's language")
         static let published = NSLocalizedString("Published", comment: "")
         static let publisher = NSLocalizedString("Publisher", comment: "")
         static let category = NSLocalizedString("Category", comment: "")
@@ -652,6 +674,11 @@ struct Strings {
         static let otherBooks = NSLocalizedString("Other books by this author", comment: "Section header for related books")
         static let borrowedUntil = NSLocalizedString("Borrowed until", comment: "")
         static let borrowingFor = NSLocalizedString("Borrowing for", comment: "")
+        /// Status text shown alongside the indeterminate spinner during the
+        /// borrow phase (network request to the borrow URL is in flight,
+        /// before the download itself starts). Distinct from `borrowingFor`,
+        /// which renders a loan-duration label on already-borrowed books.
+        static let borrowingInProgress = NSLocalizedString("Borrowing…", comment: "Status label shown while a borrow request is in flight, before the download begins.")
         static let due = NSLocalizedString("Due", comment: "")
         static let holdStatus = NSLocalizedString(
             "You are %1$@ in line. %2$d %3$@ in use.",

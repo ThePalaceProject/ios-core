@@ -8,6 +8,7 @@
 
 import Foundation
 import Combine
+import PalaceLogging
 
 /// PDF Document metadata
 ///
@@ -59,7 +60,7 @@ import Combine
     ///
     /// This function gets data from `TPPBookRegistry`,
     /// `bookIdentifier` must be present in the registry, otherwise the app crashes..
-    init(with book: TPPBook, bookRegistry: TPPBookRegistryProvider = TPPBookRegistry.shared) {
+    init(with book: TPPBook, bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry) {
         self.book = book
         self.bookRegistry = bookRegistry
         currentPage = bookRegistry.location(forIdentifier: book.identifier)?.pageNumber ?? 0

@@ -1,0 +1,154 @@
+{
+  "module": "Network",
+  "generated_at": "2026-05-12T16:15:16+00:00",
+  "file_count": 8,
+  "shared_singleton_reads": 5,
+  "public_types": [],
+  "objc_surface": [
+    {
+      "name": "BundledHTMLViewController",
+      "kind": "class",
+      "file": "BundledHTMLViewController.swift",
+      "line": 7
+    },
+    {
+      "name": "DELETE",
+      "kind": "func",
+      "file": "TPPNetworkExecutor.swift",
+      "line": 373
+    },
+    {
+      "name": "GET",
+      "kind": "func",
+      "file": "TPPNetworkExecutor.swift",
+      "line": 300
+    },
+    {
+      "name": "GET",
+      "kind": "func",
+      "file": "TPPNetworkExecutor.swift",
+      "line": 307
+    },
+    {
+      "name": "POST",
+      "kind": "func",
+      "file": "TPPNetworkExecutor.swift",
+      "line": 353
+    },
+    {
+      "name": "PUT",
+      "kind": "func",
+      "file": "TPPNetworkExecutor.swift",
+      "line": 329
+    },
+    {
+      "name": "PUT",
+      "kind": "func",
+      "file": "TPPNetworkExecutor.swift",
+      "line": 335
+    },
+    {
+      "name": "RemoteHTMLViewController",
+      "kind": "class",
+      "file": "RemoteHTMLViewController.swift",
+      "line": 7
+    },
+    {
+      "name": "TPPNetworkExecutor",
+      "kind": "class",
+      "file": "TPPNetworkExecutor.swift",
+      "line": 62
+    },
+    {
+      "name": "addBearerAndExecute",
+      "kind": "func",
+      "file": "TPPNetworkExecutor.swift",
+      "line": 288
+    },
+    {
+      "name": "addObserverForOfflineQueue",
+      "kind": "func",
+      "file": "TPPNetworkQueue.swift",
+      "line": 68
+    },
+    {
+      "name": "bearerAuthorized",
+      "kind": "func",
+      "file": "TPPNetworkExecutor.swift",
+      "line": 256
+    },
+    {
+      "name": "cancelNonEssentialTasks",
+      "kind": "func",
+      "file": "TPPNetworkExecutor.swift",
+      "line": 160
+    },
+    {
+      "name": "clearCache",
+      "kind": "func",
+      "file": "TPPNetworkExecutor.swift",
+      "line": 250
+    },
+    {
+      "name": "download",
+      "kind": "func",
+      "file": "TPPNetworkExecutor.swift",
+      "line": 271
+    },
+    {
+      "name": "pauseAllTasks",
+      "kind": "func",
+      "file": "TPPNetworkExecutor.swift",
+      "line": 148
+    },
+    {
+      "name": "problemDocument",
+      "kind": "var",
+      "file": "TPPUserFriendlyError.swift",
+      "line": 35
+    },
+    {
+      "name": "request",
+      "kind": "func",
+      "file": "TPPNetworkExecutor.swift",
+      "line": 213
+    },
+    {
+      "name": "resumeAllTasks",
+      "kind": "func",
+      "file": "TPPNetworkExecutor.swift",
+      "line": 152
+    },
+    {
+      "name": "retryQueue",
+      "kind": "func",
+      "file": "TPPNetworkQueue.swift",
+      "line": 174
+    },
+    {
+      "name": "userFriendlyMessage",
+      "kind": "var",
+      "file": "TPPUserFriendlyError.swift",
+      "line": 46
+    },
+    {
+      "name": "userFriendlyTitle",
+      "kind": "var",
+      "file": "TPPUserFriendlyError.swift",
+      "line": 40
+    }
+  ],
+  "public_functions": [],
+  "internal_protocols": [
+    {
+      "name": "TPPRequestExecuting",
+      "file": "TPPRequestExecuting.swift",
+      "line": 13
+    },
+    {
+      "name": "TPPUserFriendlyError",
+      "file": "TPPUserFriendlyError.swift",
+      "line": 14
+    }
+  ]
+}

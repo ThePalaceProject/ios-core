@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import PalaceLogging
 
 /// Tracks bookmarks that the user explicitly deleted locally.
 /// This ensures that during sync, these bookmarks are deleted from the server

@@ -9,6 +9,7 @@
 //
 
 import Foundation
+import PalaceCatalog
 @testable import Palace
 
 final class MockBackgroundDownloadDelegate: BackgroundDownloadHandlerDelegate {

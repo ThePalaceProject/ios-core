@@ -10,6 +10,8 @@ import Foundation
 import Combine
 import CoreImage
 import CoreImage.CIFilterBuiltins
+import PalaceLogging
+import PalaceCatalog
 
 let DeprecatedAcquisitionKey = "acquisition"
 let DeprecatedAvailableCopiesKey = "available-copies"
@@ -22,10 +24,12 @@ let AcquisitionsKey = "acquisitions"
 let AlternateURLKey = "alternate"
 let AnalyticsURLKey = "analytics"
 let AnnotationsURLKey = "annotations"
+let AudienceKey = "audience"
 let AuthorLinksKey = "author-links"
 let AuthorsKey = "authors"
 let CategoriesKey = "categories"
 let DistributorKey = "distributor"
+let LanguageKey = "language"
 let IdentifierKey = "id"
 let ImageThumbnailURLKey = "image-thumbnail"
 let ImageURLKey = "image"
@@ -68,6 +72,15 @@ public class TPPBook: NSObject, ObservableObject {
     @objc var contributors: [String: Any]?
     @objc var bookTokenQueue: DispatchQueue
     @objc var bookDuration: String?
+
+    /// Patron audience, e.g. "Adult", "Young Adult", "Children". Sourced
+    /// from `<category scheme="schema.org/audience">` and surfaced as its
+    /// own row in the book detail INFORMATION section (PP-4046).
+    @objc var audience: String?
+
+    /// Language code (BCP-47 / ISO 639) sourced from `<dcterms:language>`.
+    /// Use ``displayLanguage`` for a localized name (PP-4046).
+    @objc var language: String?
 
     @Published var coverImage: UIImage?
     @Published var thumbnailImage: UIImage?
@@ -116,6 +129,8 @@ public class TPPBook: NSObject, ObservableObject {
         timeTrackingURL: URL?,
         contributors: [String: Any]?,
         bookDuration: String?,
+        audience: String? = nil,
+        language: String? = nil,
         imageCache: ImageCacheType
     ) {
         self.acquisitions = acquisitions
@@ -143,6 +158,8 @@ public class TPPBook: NSObject, ObservableObject {
         self.contributors = contributors
         self.bookTokenQueue = DispatchQueue(label: "TPPBook.bookTokenQueue.\(identifier)")
         self.bookDuration = bookDuration
+        self.audience = audience
+        self.language = language
         self.imageCache = imageCache
 
         super.init()
@@ -208,6 +225,8 @@ public class TPPBook: NSObject, ObservableObject {
             timeTrackingURL: entry.timeTrackingLink?.href,
             contributors: entry.contributors as? [String: Any],
             bookDuration: entry.duration,
+            audience: entry.audience,
+            language: entry.language,
             imageCache: ImageCache.shared
         )
     }
@@ -311,6 +330,8 @@ public class TPPBook: NSObject, ObservableObject {
             timeTrackingURL: URL(string: dictionary[TimeTrackingURLURLKey] as? String ?? ""),
             contributors: nil,
             bookDuration: nil,
+            audience: dictionary[AudienceKey] as? String,
+            language: dictionary[LanguageKey] as? String,
             imageCache: ImageCache.shared
         )
     }
@@ -341,6 +362,8 @@ public class TPPBook: NSObject, ObservableObject {
             timeTrackingURL: self.timeTrackingURL,
             contributors: book.contributors,
             bookDuration: book.bookDuration,
+            audience: book.audience,
+            language: book.language,
             imageCache: self.imageCache
         )
     }
@@ -392,6 +415,8 @@ public class TPPBook: NSObject, ObservableObject {
             timeTrackingURL: fresh.timeTrackingURL ?? self.timeTrackingURL,
             contributors: fresh.contributors ?? self.contributors,
             bookDuration: fresh.bookDuration ?? self.bookDuration,
+            audience: preferNonEmpty(fresh.audience, self.audience),
+            language: preferNonEmpty(fresh.language, self.language),
             imageCache: self.imageCache
         )
         // Carry the resolved images onto the merged instance so the view
@@ -412,6 +437,7 @@ public class TPPBook: NSObject, ObservableObject {
             AlternateURLKey: alternateURL?.absoluteString ?? "",
             AnnotationsURLKey: annotationsURL?.absoluteString ?? "",
             AnalyticsURLKey: analyticsURL?.absoluteString ?? "",
+            AudienceKey: audience as Any,
             AuthorLinksKey: authorLinkArray ?? [],
             AuthorsKey: authorNameArray ?? [],
             CategoriesKey: categoryStrings as Any,
@@ -419,6 +445,7 @@ public class TPPBook: NSObject, ObservableObject {
             IdentifierKey: identifier,
             ImageURLKey: imageURL?.absoluteString as Any,
             ImageThumbnailURLKey: imageThumbnailURL?.absoluteString as Any,
+            LanguageKey: language as Any,
             PublishedKey: published?.rfc1123String as Any,
             PublisherKey: publisher as Any,
             RelatedURLKey: relatedWorksURL?.absoluteString as Any,
@@ -432,6 +459,14 @@ public class TPPBook: NSObject, ObservableObject {
             UpdatedKey: updated.rfc339String as Any,
             TimeTrackingURLURLKey: timeTrackingURL?.absoluteString as Any
         ]
+    }
+
+    /// Localized human-readable language name for `language` (e.g. "en" → "English"
+    /// in English locales, "Anglais" in French). Falls back to the raw code if
+    /// Foundation has no localization for it.
+    @objc var displayLanguage: String? {
+        guard let code = language, !code.isEmpty else { return nil }
+        return Locale.current.localizedString(forLanguageCode: code) ?? code
     }
 
     @objc var authorNameArray: [String]? {
@@ -621,7 +656,7 @@ extension TPPBook: @unchecked Sendable {}
 
 extension TPPBook {
     func requiresAuthForReturnOrDeletion() -> Bool {
-        let userAuthRequired = AccountsManager.shared.currentUserAccount.authDefinition?.needsAuth ?? false
+        let userAuthRequired = AppContainer.production().accountsManager.currentUserAccount.authDefinition?.needsAuth ?? false
         return self.defaultAcquisitionIfOpenAccess == nil && userAuthRequired
     }
 }

@@ -23,6 +23,13 @@ final class FacetViewModelTests: XCTestCase {
         super.tearDown()
     }
 
+    /// Test factory: FacetViewModel's `accountsManager` is a required dep.
+    /// Tests that don't care about account behavior pass the live singleton
+    /// since none of these tests exercise account-scoped state transitions.
+    private func makeViewModel(groupName: String, facets: [Facet]) -> FacetViewModel {
+        FacetViewModel(groupName: groupName, facets: facets, accountsManager: AppContainer.production().accountsManager)
+    }
+
     // MARK: - Facet Enum Tests
 
     func testFacetRawValues() {
@@ -52,7 +59,7 @@ final class FacetViewModelTests: XCTestCase {
     // MARK: - Initialization Tests
 
     func testInitWithAuthorAndTitleFacets() {
-        let viewModel = FacetViewModel(groupName: "My Books", facets: [.author, .title])
+        let viewModel = makeViewModel(groupName: "My Books", facets: [.author, .title])
 
         XCTAssertEqual(viewModel.groupName, "My Books")
         XCTAssertEqual(viewModel.facets, [.author, .title])
@@ -60,7 +67,7 @@ final class FacetViewModelTests: XCTestCase {
     }
 
     func testInitWithTitleFirst() {
-        let viewModel = FacetViewModel(groupName: "Library", facets: [.title, .author])
+        let viewModel = makeViewModel(groupName: "Library", facets: [.title, .author])
 
         XCTAssertEqual(viewModel.activeSort, .title, "Active sort should default to first facet")
         XCTAssertEqual(viewModel.facets.first, .title, "First facet in the array must be .title")
@@ -68,7 +75,7 @@ final class FacetViewModelTests: XCTestCase {
     }
 
     func testInitWithSingleFacet() {
-        let viewModel = FacetViewModel(groupName: "Test", facets: [.author])
+        let viewModel = makeViewModel(groupName: "Test", facets: [.author])
 
         XCTAssertEqual(viewModel.facets.count, 1)
         XCTAssertEqual(viewModel.activeSort, .author)
@@ -77,7 +84,7 @@ final class FacetViewModelTests: XCTestCase {
     // MARK: - Published Property Tests
 
     func testGroupNamePublished() {
-        let viewModel = FacetViewModel(groupName: "Initial", facets: [.author, .title])
+        let viewModel = makeViewModel(groupName: "Initial", facets: [.author, .title])
 
         let expectation = XCTestExpectation(description: "groupName should publish changes")
 
@@ -95,7 +102,7 @@ final class FacetViewModelTests: XCTestCase {
     }
 
     func testActiveSortPublished() {
-        let viewModel = FacetViewModel(groupName: "Test", facets: [.author, .title])
+        let viewModel = makeViewModel(groupName: "Test", facets: [.author, .title])
 
         let expectation = XCTestExpectation(description: "activeSort should publish changes")
 
@@ -113,7 +120,7 @@ final class FacetViewModelTests: XCTestCase {
     }
 
     func testFacetsArrayPublished() {
-        let viewModel = FacetViewModel(groupName: "Test", facets: [.author])
+        let viewModel = makeViewModel(groupName: "Test", facets: [.author])
 
         let expectation = XCTestExpectation(description: "facets should publish changes")
 
@@ -133,8 +140,8 @@ final class FacetViewModelTests: XCTestCase {
     // MARK: - Account URL Tests
 
     func testCurrentAccountURLWithNilAccount() {
-        let vm = FacetViewModel(groupName: "Test", facets: [.author, .title])
-        // The init populates from AccountsManager.shared — clear to test nil path
+        let vm = makeViewModel(groupName: "Test", facets: [.author, .title])
+        // The init populates from AppContainer.production().accountsManager — clear to test nil path
         vm.currentAccount = nil
         vm.logo = nil
 
@@ -147,7 +154,7 @@ final class FacetViewModelTests: XCTestCase {
     // MARK: - Show Account Screen Tests
 
     func testShowAccountScreenInitiallyFalse() {
-        let viewModel = FacetViewModel(groupName: "Test", facets: [.author, .title])
+        let viewModel = makeViewModel(groupName: "Test", facets: [.author, .title])
 
         // showAccountScreen defaults to false regardless of account state
         XCTAssertFalse(viewModel.showAccountScreen)
@@ -159,7 +166,7 @@ final class FacetViewModelTests: XCTestCase {
     }
 
     func testShowAccountScreenToggle() {
-        let viewModel = FacetViewModel(groupName: "Test", facets: [.author, .title])
+        let viewModel = makeViewModel(groupName: "Test", facets: [.author, .title])
 
         // Track the state before and after toggling
         let initialState = viewModel.showAccountScreen
@@ -180,7 +187,7 @@ final class FacetViewModelTests: XCTestCase {
     // MARK: - Logo Tests
 
     func testLogoInitiallyNilWithoutAccount() {
-        let viewModel = FacetViewModel(groupName: "Test", facets: [.author, .title])
+        let viewModel = makeViewModel(groupName: "Test", facets: [.author, .title])
         // Clear state populated by init's updateAccount() call
         viewModel.currentAccount = nil
         viewModel.logo = nil
@@ -194,7 +201,7 @@ final class FacetViewModelTests: XCTestCase {
     // MARK: - Edge Case Tests
 
     func testChangingSortMultipleTimes() {
-        let viewModel = FacetViewModel(groupName: "Test", facets: [.author, .title])
+        let viewModel = makeViewModel(groupName: "Test", facets: [.author, .title])
 
         // Rapidly change sort multiple times — final value must be the last assignment
         viewModel.activeSort = .title
@@ -210,7 +217,7 @@ final class FacetViewModelTests: XCTestCase {
     }
 
     func testSettingSameSortValue() {
-        let viewModel = FacetViewModel(groupName: "Test", facets: [.author, .title])
+        let viewModel = makeViewModel(groupName: "Test", facets: [.author, .title])
 
         let expectation = XCTestExpectation(description: "activeSort should publish")
         expectation.expectedFulfillmentCount = 1
@@ -232,7 +239,7 @@ final class FacetViewModelTests: XCTestCase {
     }
 
     func testEmptyGroupName() {
-        let viewModel = FacetViewModel(groupName: "", facets: [.author, .title])
+        let viewModel = makeViewModel(groupName: "", facets: [.author, .title])
 
         XCTAssertEqual(viewModel.groupName, "")
         XCTAssertEqual(viewModel.facets.count, 2)
@@ -240,7 +247,7 @@ final class FacetViewModelTests: XCTestCase {
 
     func testGroupNameWithSpecialCharacters() {
         let groupName = "My Books 📚 & More!"
-        let viewModel = FacetViewModel(groupName: groupName, facets: [.author, .title])
+        let viewModel = makeViewModel(groupName: groupName, facets: [.author, .title])
 
         XCTAssertEqual(viewModel.groupName, groupName)
         XCTAssertFalse(viewModel.groupName.isEmpty, "Group name with special characters must not be empty")
@@ -249,7 +256,7 @@ final class FacetViewModelTests: XCTestCase {
     }
 
     func testUpdatingFacetsDoesNotChangeActiveSort() {
-        let viewModel = FacetViewModel(groupName: "Test", facets: [.author, .title])
+        let viewModel = makeViewModel(groupName: "Test", facets: [.author, .title])
         viewModel.activeSort = .title
 
         // Update facets but keep same values
@@ -264,7 +271,7 @@ final class FacetViewModelTests: XCTestCase {
     // MARK: - Publisher Subscription Tests
 
     func testMultipleSubscribersToActiveSort() {
-        let viewModel = FacetViewModel(groupName: "Test", facets: [.author, .title])
+        let viewModel = makeViewModel(groupName: "Test", facets: [.author, .title])
 
         let exp1 = XCTestExpectation(description: "First subscriber")
         let exp2 = XCTestExpectation(description: "Second subscriber")

@@ -12,6 +12,7 @@
 
 import XCTest
 import Combine
+import PalaceCatalog
 @testable import Palace
 
 // SRS: REQ-ACCT-001 — Account switch integration

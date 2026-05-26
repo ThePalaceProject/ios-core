@@ -9,6 +9,7 @@
 import Foundation
 import ReadiumShared
 import ReadiumNavigator
+import PalaceLogging
 
 /// Encapsulates all of the SimplyE business logic related to bookmarking
 /// for a given book.
@@ -202,7 +203,7 @@ class TPPReaderBookmarksBusinessLogic: NSObject {
     }
 
     private func performSyncBookmarks(completion: @escaping (Bool, [TPPReadiumBookmark]) -> Void) {
-        guard Reachability.shared.isConnectedToNetwork() else {
+        guard AppContainer.production().reachability.isConnectedToNetwork() else {
             self.handleBookmarksSyncFail(message: "Error: host was not reachable for bookmark sync attempt.",
                                          completion: completion,
                                          shouldAttemptReauth: false)
@@ -316,7 +317,7 @@ class TPPReaderBookmarksBusinessLogic: NSObject {
         Log.info(#file, message)
 
         // Check if we should attempt re-authentication
-        let userAccount = AccountsManager.shared.currentUserAccount
+        let userAccount = AppContainer.production().accountsManager.currentUserAccount
         let isCredentialsStale = userAccount.authState == .credentialsStale
 
         if shouldAttemptReauth && isCredentialsStale && !hasAttemptedReauthDuringSync {
