@@ -164,7 +164,14 @@ final class CatalogCacheKeyAndIsolationTests: XCTestCase {
 
         // After background refreshes land, each URL's cache reflects ITS OWN
         // refresh — no cross-talk.
-        await awaitCondition {
+        //
+        // 30s timeout: predicate body is fully sync so overload resolution
+        // picks the global sync `awaitCondition` (default 5s), not the
+        // local async helper (default 2s). Three concurrent background
+        // refreshes hopping through the repository's cacheQueue exceed 5s
+        // under CI runner contention. Matches the #989/#996 lineage —
+        // restore 30s headroom; still fails loud on a true regression.
+        await awaitCondition(timeout: 30) {
             sut.cachedFeed(for: urlA)?.title == "A-refreshed" &&
             sut.cachedFeed(for: urlB)?.title == "B-refreshed" &&
             sut.cachedFeed(for: urlC)?.title == "C-refreshed"
@@ -193,7 +200,11 @@ final class CatalogCacheKeyAndIsolationTests: XCTestCase {
         _ = try await sut.loadTopLevelCatalog(at: urlA)
 
         // Wait for A's refresh to land.
-        await awaitCondition {
+        // 30s timeout — see neighbor test for the global-vs-local
+        // overload-resolution explanation + #989/#996 CI-load lineage.
+        // CI repro of this test exceeded the global 5s default at 8.65s
+        // on macos-26 runners; 30s headroom restores stability.
+        await awaitCondition(timeout: 30) {
             sut.cachedFeed(for: urlA)?.title == "A-new"
         }
 
@@ -290,7 +301,9 @@ final class CatalogCacheKeyAndIsolationTests: XCTestCase {
         )
 
         // The eviction is dispatched onto cacheQueue, so poll for it.
-        await awaitCondition {
+        // 30s timeout — same global-overload + CI-load lineage as the
+        // sibling tests in this file.
+        await awaitCondition(timeout: 30) {
             sut.cachedFeed(for: url) == nil
         }
         XCTAssertNil(sut.cachedFeed(for: url),
@@ -345,7 +358,9 @@ final class CatalogCacheKeyAndIsolationTests: XCTestCase {
 
         // Both caches must be cleared. Sanity-poll on the feed cache
         // because the eviction is dispatched on cacheQueue.
-        await awaitCondition { sut.cachedFeed(for: url) == nil }
+        // 30s timeout — same global-overload + CI-load lineage as the
+        // sibling tests in this file.
+        await awaitCondition(timeout: 30) { sut.cachedFeed(for: url) == nil }
 
         // After eviction, the next entry-point read MUST go to the network.
         _ = try await sut.fetchSearchEntryPoints(from: url)
