@@ -58,7 +58,7 @@ private enum StorageKey: String {
     /// account is bound to a specific library (per-account-isolation tests).
     let boundLibraryUUID: String?
 
-    /// PP-3819: Incremented by `cancelPendingSignOut()` each time the user
+    /// Incremented by `cancelPendingSignOut()` each time the user
     /// signs in, so that a stale DRM deauthorization callback can detect
     /// that re-authentication occurred and skip credential cleanup.
     var signInGeneration: Int = 0

@@ -318,7 +318,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
         super.viewDidAppear(animated)
         accessibilityToolbar.accessibilityElementsHidden = false
 
-        // PP-4326 follow-up (product requirement): when a book is opened
+        // follow-up (product requirement): when a book is opened
         // with VoiceOver already running, the reader navbar (back / TOC /
         // bookmark / settings) must auto-present. `updateNavigationBar()`
         // checks `UIAccessibility.isVoiceOverRunning` and sets the navbar

@@ -35,7 +35,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         Log.info(#file, "📱 Main app scene connecting")
         SceneDelegate.hasMainSceneConnected = true
 
-        // PP-4289: when running as "Designed for iPad" on Apple Silicon Macs,
+        // when running as "Designed for iPad" on Apple Silicon Macs
         // the default window size (~715x800pt) is undersized for Mac monitors.
         // Set a Mac-class minimum and request a larger initial geometry so the
         // first-launch experience uses the available screen real estate.

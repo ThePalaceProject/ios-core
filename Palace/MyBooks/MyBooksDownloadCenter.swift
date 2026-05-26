@@ -773,7 +773,7 @@ import OverdriveProcessor
         // lives on the throttlingService which holds the handle for cleanup.
         self.throttlingService.setupNetworkMonitoring()
 
-        // PP-4114 follow-up: react to mid-flight reachability drops. PR #901
+        // follow-up: react to mid-flight reachability drops. PR #901
         // fixed the borrow path on BookCellModel; the parallel gap on this
         // side was that an in-progress URLSession download could sit in
         // flight for up to 60 s (per-request default) or longer (no resource
@@ -908,7 +908,7 @@ import OverdriveProcessor
         session?.invalidateAndCancel()
     }
 
-    // MARK: - Error Announcements (PP-3673)
+    // MARK: - Error Announcements
 
     /// Publishes an error to `downloadErrorPublisher` and simultaneously announces
     /// it via VoiceOver so assistive technology users hear the error without
@@ -945,7 +945,7 @@ import OverdriveProcessor
     // and the start-download path can't both fire concurrent sign-in modals.
 
     @objc func startDownload(for book: TPPBook, withRequest initedRequest: URLRequest? = nil) {
-        // PP-4114 follow-up: pre-flight reachability before kicking off a new
+        // follow-up: pre-flight reachability before kicking off a new
         // URLSession download task. The Retry button on the failure alert
         // routes through DownloadAlertPresenter.makeRetryAction → this method,
         // bypassing BookCellModel's pre-flight. Without this guard, tapping

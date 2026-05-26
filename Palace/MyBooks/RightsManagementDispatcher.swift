@@ -129,7 +129,7 @@ final class RightsManagementDispatcher {
                 delegate?.logBookDownloadFailure(book, reason: "Received PDF for AdobeDRM rights", downloadTask: task, metadata: nil)
                 failureRequiringAlert = true
             } else if let acsmData = try? Data(contentsOf: location) {
-                // PP-3649 deferred Adobe device activation from login to borrow
+                // deferred Adobe device activation from login to borrow
                 // time, but the download-retry path bypasses borrow — so we
                 // must also guarantee activation here before fulfillment.
                 Task { [weak self] in

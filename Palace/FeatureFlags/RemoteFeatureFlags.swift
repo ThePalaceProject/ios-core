@@ -184,7 +184,7 @@ final class RemoteFeatureFlags {
         isFeatureEnabled(.opds2Enabled)
     }
 
-    /// PP-4282: UserDefaults override that lets QA / support force the Reset
+    /// UserDefaults override that lets QA / support force the Reset
     /// Account button on for a specific device without a Firebase round-trip.
     /// Settable from `TPPDeveloperSettingsTableViewController`. Falls through
     /// to the Remote Config flag when nil.

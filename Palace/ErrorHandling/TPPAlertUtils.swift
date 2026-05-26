@@ -208,7 +208,7 @@ import PalaceCatalog
                                               viewController: UIViewController?,
                                               animated: Bool,
                                               completion: (() -> Void)?) {
-        // PP-3673: Announce the alert to VoiceOver without moving focus.
+        // Announce the alert to VoiceOver without moving focus.
         // This ensures assistive-technology users hear error/status messages
         // even if UIKit focus changes are delayed or suppressed.
         if let alert = alertController, UIAccessibility.isVoiceOverRunning {
@@ -523,7 +523,7 @@ import PalaceCatalog
             }
         })
 
-        // PP-3707: Add Retry + Cancel for retryable errors, or OK for non-retryable
+        // Add Retry + Cancel for retryable errors, or OK for non-retryable
         if let retryAction = retryAction {
             let retry = UIAlertAction(title: Strings.MyDownloadCenter.retry, style: .default) { _ in
                 retryAction()

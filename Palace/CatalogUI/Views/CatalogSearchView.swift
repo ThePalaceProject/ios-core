@@ -68,7 +68,7 @@ struct CatalogSearchView: View {
         .onAppear {
             viewModel.updateBooks(books)
             viewModel.loadFormatEntryPoints()
-            // PP-4115: when returning from book detail, registry state may have
+            // when returning from book detail, registry state may have
             // changed (cancel hold, return, etc.) while a throttled notification
             // was in flight or the view was off-screen. Force a full reconcile.
             viewModel.applyRegistryUpdates(changedIdentifier: nil)

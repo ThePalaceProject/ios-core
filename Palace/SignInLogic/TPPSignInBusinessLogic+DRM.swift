@@ -19,7 +19,7 @@ extension TPPSignInBusinessLogic {
     /// Profile document parsing is best-effort: if it fails, sign-in still
     /// succeeds because the server already accepted the patron's credentials
     /// (HTTP 200). Wiping credentials on a parse failure was the cause of
-    /// PP-3784 (barcode disappearing after sign-in).
+    /// (barcode disappearing after sign-in).
     ///
     /// - Parameters:
     ///   - data: The binary data containing the DRM authorization info.

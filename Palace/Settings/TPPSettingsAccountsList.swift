@@ -225,7 +225,7 @@ import SwiftUI
     }
 
     private func showLoadingFailureAlert(retryHandler: (() -> Void)? = nil) {
-        // PP-3707: Offer retry for library loading failures (likely transient)
+        // Offer retry for library loading failures (likely transient)
         let operationId = "library-fetch"
         let canRetry = UserRetryTracker.shared.canRetry(operationId: operationId)
 

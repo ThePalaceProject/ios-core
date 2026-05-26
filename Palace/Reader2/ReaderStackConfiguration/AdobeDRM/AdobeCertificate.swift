@@ -248,7 +248,7 @@ class AdobeDRMService: NSObject {
         adept.fulfill(withACSMData: acsmData, tag: tag, userID: userID, deviceID: deviceID)
     }
 
-    // MARK: - On-Demand Activation (PP-3649)
+    // MARK: - On-Demand Activation
 
     /// Ensures the device is activated with Adobe DRM, performing on-demand
     /// activation if needed. This is called at borrow time for Adobe DRM content

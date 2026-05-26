@@ -871,7 +871,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         controller.dismiss(animated: true, completion: nil)
     }
 
-    // MARK: - Reset Account Testing (PP-4282 / HelpSpot 17716)
+    // MARK: - Reset Account Testing
     //
     // Test harness for the patron-self-service Reset Account button. Lets QA
     // and support reproduce the stuck-state condition (so they can verify
@@ -921,7 +921,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         let user = accountsManager.currentUserAccount
 
         // 1. Simulate "we think we registered FCM but actually didn't" — the
-        //    PP-4275 silent-failure mode that Reset Account heals on next launch.
+        // silent-failure mode that Reset Account heals on next launch.
         account.hasUpdatedToken = true
 
         // 2. Simulate stale SAML/OIDC session — the credentialsStale state that

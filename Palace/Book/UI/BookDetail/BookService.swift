@@ -111,7 +111,7 @@ enum BookService {
             metadata: ["user_message": Strings.Error.tryAgain]
         )
 
-        // PP-3707: Offer retry for audiobook open failures (may be transient)
+        // Offer retry for audiobook open failures (may be transient)
         let retryAction: (() -> Void)? = {
             guard let book = book else { return nil }
             let operationId = "audiobook-open-\(book.identifier)"

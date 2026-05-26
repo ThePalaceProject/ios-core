@@ -91,7 +91,7 @@ final class CarPlayTemplateManager: NSObject {
 
         Log.info(#file, "CarPlay root template configured")
 
-        // PP-3679: If an audiobook is already playing, jump straight to Now Playing
+        // If an audiobook is already playing, jump straight to Now Playing
         if playerBridge.isPlaying {
             Log.info(#file, "CarPlay: Audiobook already playing at connect — navigating to Now Playing")
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
