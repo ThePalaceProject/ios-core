@@ -1,0 +1,28 @@
+[
+  {
+    "args" : {
+      "bookID" : "contract-reader2-resume-1"
+    },
+    "method" : "resumeNoRemote.begin"
+  },
+  {
+    "args" : {
+      "bookID" : "contract-reader2-resume-1",
+      "returnsNil" : "true"
+    },
+    "method" : "registry.location"
+  },
+  {
+    "args" : {
+      "bookID" : "contract-reader2-resume-1",
+      "returnsNil" : "true"
+    },
+    "method" : "writer.load"
+  },
+  {
+    "args" : {
+      "bookID" : "contract-reader2-resume-1"
+    },
+    "method" : "resumeNoRemote.end"
+  }
+]
