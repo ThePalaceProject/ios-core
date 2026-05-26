@@ -945,6 +945,155 @@ final class AccountsManagerStateMachineWiringTests: XCTestCase {
         }
     }
 
+    // MARK: - Test 8: startDownload captures currentAccountId once — full A→nil→A→B round-trip
+
+    /// Contract (Module A — `feedback_round_trip_wiring_tests.md`): the
+    /// `DownloadStartCoordinator.startDownloadAsync` seam MUST capture
+    /// `accountsManager.currentAccountId` ONCE at the top of the path and
+    /// thread that captured id through to bearer-auth. Mid-flight library
+    /// swaps cannot leak into the in-flight download's Authorization header.
+    ///
+    /// Round-trip exercise (the canonical pattern — write → reset → re-enter):
+    ///   1. Set currentAccountId = "A". Start download → bearer-auth applied
+    ///      with accountId == "A".
+    ///   2. Set currentAccountId = nil (the "reset" arm). Start a SECOND
+    ///      download → bearer-auth applied with accountId == sentinel
+    ///      (the new capture observes nil and records the placeholder).
+    ///   3. Restore currentAccountId = "A" (the "re-enter" arm). Start a
+    ///      THIRD download → bearer-auth applied with accountId == "A"
+    ///      again (the prior nil capture did NOT poison subsequent captures).
+    ///   4. Set currentAccountId = "B". Start a FOURTH download →
+    ///      bearer-auth applied with accountId == "B" (proves capture
+    ///      re-reads each call — it's not cached forever).
+    ///
+    /// Kill case: removing the capture-at-start let-binding in
+    /// `DownloadStartCoordinator.startDownloadAsync` (so the downstream
+    /// `processWithCredentials` reads `currentAccountId` at request-build
+    /// time instead) would break step 2 — the sentinel capture would be
+    /// replaced by whatever currentAccountId resolved to AT THAT INSTANT,
+    /// which a real-world library-swap window would observe as the wrong
+    /// account.
+    ///
+    /// The seam exercised is `DownloadStartCoordinator.startDownloadAsync` —
+    /// the production entry point. NOT a `_setCapturedAccountId` shortcut.
+    func testStartDownload_currentAccountIdRoundTrip_A_nil_A_B_eachCaptureIsPinned() async throws {
+        // Recorder for the bearer-auth seam — captures the accountId argument
+        // each time the dispatcher's `applyBearerAuth` closure is invoked.
+        // Production wires this to `networkExecutor.bearerAuthorized(request:
+        // accountId:)`; here we verify the captured-id correctly flows down
+        // to this closure boundary.
+        var capturedAccountIdsAtBearerAuth: [String] = []
+
+        // Driver: simulates `AccountsManager.currentAccountId` as a mutable
+        // ground-truth value the test flips between steps. The coordinator's
+        // `currentAccountIdProvider` reads this on each startDownloadAsync
+        // entry — identical contract to the production wiring which reads
+        // `accountsManager.currentAccountId`.
+        var groundTruthCurrentAccountId: String? = nil
+
+        // Spy delegate so we can satisfy the coordinator's delegate slot
+        // without standing up a full MBDC.
+        final class CoordinatorDelegateSpy: DownloadStartCoordinatorDelegate {
+            func borrowAsync(_ book: TPPBook, attemptDownload: Bool) async throws -> TPPBook { book }
+            func schedulePendingStartsIfPossible() {}
+        }
+        let delegate = CoordinatorDelegateSpy()
+
+        let stateManager = DownloadStateManager()
+        stateManager.maxConcurrentDownloads = 4
+        let registry = TPPBookRegistryMock()
+        let userAccount = TPPUserAccountMock()
+        let queueOrchestrator = DownloadQueueOrchestrator(
+            bookRegistry: registry,
+            stateManager: stateManager
+        )
+
+        // Coordinator wired so the 4-arg processWithCredentials closure
+        // sees the captured accountId. The captured-id reaches the closure
+        // ONLY if `startDownloadAsync` captures-once at its top and
+        // threads through — which is exactly the contract Module A is
+        // pinning. We record into `capturedAccountIdsAtBearerAuth` so we
+        // can assert the round-trip post-hoc.
+        let coordinator = DownloadStartCoordinator(
+            stateManager: stateManager,
+            bookRegistry: registry,
+            userAccountProvider: { userAccount },
+            currentAccountIdProvider: { groundTruthCurrentAccountId },
+            errorActivityTracker: .shared,
+            queueOrchestrator: queueOrchestrator,
+            processUnregistered: { _, _, _ in .downloadNeeded },
+            processWithCredentials: { _, _, _, capturedId in
+                capturedAccountIdsAtBearerAuth.append(capturedId)
+            },
+            requestCredentials: { _ in /* no login required in this scenario */ }
+        )
+        coordinator.delegate = delegate
+
+        // Make 4 fresh books so each startDownloadAsync exercises a new
+        // entry — the existing-info skip branch would short-circuit any
+        // re-use of the same identifier, masking later captures.
+        let bookA = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        let bookANil = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        let bookA2 = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        let bookB = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        for b in [bookA, bookANil, bookA2, bookB] {
+            registry.addBook(b, state: .downloadNeeded)
+        }
+
+        // Step 1 — currentAccountId == "A", start download for bookA.
+        // Capture must observe "A" and thread it to the bearer-auth closure.
+        groundTruthCurrentAccountId = "library-A"
+        await coordinator.startDownloadAsync(for: bookA)
+
+        XCTAssertEqual(capturedAccountIdsAtBearerAuth.count, 1,
+                       "Step 1: bearer-auth must fire exactly once for bookA")
+        XCTAssertEqual(capturedAccountIdsAtBearerAuth.first, "library-A",
+                       "Step 1: captured accountId must be 'library-A', not the resolver fallback")
+
+        // Step 2 — flip to nil (simulating the swap window where the user
+        // has tapped library-picker and the old id is cleared before the
+        // new one is assigned). Start a SECOND download — capture must
+        // observe the sentinel, NOT carry-forward "library-A".
+        groundTruthCurrentAccountId = nil
+        await coordinator.startDownloadAsync(for: bookANil)
+
+        XCTAssertEqual(capturedAccountIdsAtBearerAuth.count, 2,
+                       "Step 2: bearer-auth must fire a second time")
+        XCTAssertEqual(capturedAccountIdsAtBearerAuth[1],
+                       DownloadStartCoordinator.capturedNoAccountSentinelUUID,
+                       "Step 2: nil currentAccountId at capture time must record the sentinel, not carry-forward the prior id")
+
+        // Step 3 — restore "library-A" (the "re-enter" arm of the round-
+        // trip). Start a THIRD download — capture must observe "A" cleanly.
+        // The prior nil/sentinel capture must NOT have poisoned anything.
+        groundTruthCurrentAccountId = "library-A"
+        await coordinator.startDownloadAsync(for: bookA2)
+
+        XCTAssertEqual(capturedAccountIdsAtBearerAuth.count, 3,
+                       "Step 3: bearer-auth must fire a third time")
+        XCTAssertEqual(capturedAccountIdsAtBearerAuth[2], "library-A",
+                       "Step 3: re-entry to 'library-A' must capture cleanly — prior nil/sentinel must not have stuck")
+
+        // Step 4 — flip to "library-B" (the A→B arm). Start a FOURTH
+        // download — capture must observe "B". This proves the capture
+        // re-reads each call rather than caching forever after step 1.
+        groundTruthCurrentAccountId = "library-B"
+        await coordinator.startDownloadAsync(for: bookB)
+
+        XCTAssertEqual(capturedAccountIdsAtBearerAuth.count, 4,
+                       "Step 4: bearer-auth must fire a fourth time")
+        XCTAssertEqual(capturedAccountIdsAtBearerAuth[3], "library-B",
+                       "Step 4: A→B switch must capture 'library-B' — proves capture re-reads each entry")
+
+        // Final assertion: the full sequence pins the contract.
+        XCTAssertEqual(capturedAccountIdsAtBearerAuth, [
+            "library-A",
+            DownloadStartCoordinator.capturedNoAccountSentinelUUID,
+            "library-A",
+            "library-B"
+        ], "Full A→nil→A→B round-trip sequence must be captured exactly — any divergence proves the capture seam is broken")
+    }
+
     // MARK: - Cache seeding helpers
 
     /// Cache file URL for the given hash. Mirrors AccountsManager's private
