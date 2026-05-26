@@ -70,7 +70,7 @@ MUTATION_MIN_KILL_RATE=50
 # Critical paths: every changed file matching one of these prefixes is held to
 # the strict kill-rate floor unless explicitly opted out via --no-enforce-mutations.
 # These are the user-money / access-bearing paths memory flagged as air-tight.
-CRITICAL_MUTATION_PATHS_REGEX='^Palace/(Audiobooks|SignInLogic|MyBooks/Download)'
+CRITICAL_MUTATION_PATHS_REGEX='^Palace/(Audiobooks|SignInLogic|MyBooks/Download|Book/UI/BookDetail/BookButtonMapper)'
 # Sim selection. Honors the harness allocator's per-session UDID so parallel
 # agents on the same machine don't collide on one device. Falls back to the
 # pool default when the harness isn't claiming. CLAUDE.md: "NEVER hardcode a
