@@ -91,17 +91,21 @@ final class TPPBookRegistryPersistenceTests: XCTestCase {
     /// emission onto the main thread; we wait on a `loaded` setState callback
     /// and then drain the main RunLoop.
     ///
-    /// Timeout: 10s. Persistence round-trip tests seed only a handful of
-    /// records so the load resolves in well under a second locally. If CI
-    /// needs more than 10s the production load path is degraded and the
-    /// test should fail loudly rather than mask the regression.
+    /// Timeout: 30s. Locally these round-trips resolve in <1s, but CI
+    /// runners under parallel-test contention have been observed exceeding
+    /// 10s on the BookRegistry load path (JSON parse + publisher dispatch
+    /// + RunLoop drain). PR #989 tightened this from 30s → 10s under the
+    /// assumption that 10s "fail loud on degraded production load" was
+    /// sufficient; the actual CI floor is higher. 30s still fails loud
+    /// on a true regression (the local <1s baseline gives 30× headroom)
+    /// without bouncing off runner load.
     private func loadAndWait(account: String) {
         let exp = expectation(description: "load(\(account)) completes")
         sync.load(account: account, setState: { newState in
             if newState == .loaded { exp.fulfill() }
         }, completion: nil)
         // Drain RunLoop so the publisher-on-main dispatch lands before assertions.
-        wait(for: [exp], timeout: 10.0)
+        wait(for: [exp], timeout: 30.0)
         RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
     }
 

@@ -11,23 +11,42 @@ public final class MockImageCache: ImageCacheType {
 
     public var now: Date = Date()
 
+    /// Serializes access to the backing dictionaries. `ImageLoaderImpl.coverImage`
+    /// awaits a MainActor hop then resumes on a Task scheduler thread before
+    /// reading the cache — the call site is concurrent even though tests look
+    /// sequential. Without this lock, COW-storage reads from one thread while
+    /// the test setup mutations are still propagating from main can corrupt
+    /// the bridge, producing `-[__NSTaggedDate objectForKey:]` crashes on CI
+    /// under load. Production `ImageCache` is `OperationQueue`-serialized for
+    /// the same reason; the mock has to match.
+    private let lock = NSLock()
+    private func sync<T>(_ work: () -> T) -> T {
+        lock.lock()
+        defer { lock.unlock() }
+        return work()
+    }
+
     public func set(_ image: UIImage, for key: String, expiresIn: TimeInterval?) {
-        store[key] = image
-        setKeys.append(key)
-        if let ttl = expiresIn {
-            expirations[key] = now.addingTimeInterval(ttl)
-        } else {
-            expirations[key] = nil
+        sync {
+            store[key] = image
+            setKeys.append(key)
+            if let ttl = expiresIn {
+                expirations[key] = now.addingTimeInterval(ttl)
+            } else {
+                expirations[key] = nil
+            }
         }
     }
 
     public func get(for key: String) -> UIImage? {
-        if let exp = expirations[key], exp < now {
-            store.removeValue(forKey: key)
-            expirations.removeValue(forKey: key)
-            return nil
+        sync {
+            if let exp = expirations[key], exp < now {
+                store.removeValue(forKey: key)
+                expirations.removeValue(forKey: key)
+                return nil
+            }
+            return store[key]
         }
-        return store[key]
     }
 
     public func getAsync(for key: String) async -> UIImage? {
@@ -35,15 +54,19 @@ public final class MockImageCache: ImageCacheType {
     }
 
     public func remove(for key: String) {
-        store.removeValue(forKey: key)
-        expirations.removeValue(forKey: key)
-        removedKeys.append(key)
+        sync {
+            store.removeValue(forKey: key)
+            expirations.removeValue(forKey: key)
+            removedKeys.append(key)
+        }
     }
 
     public func clear() {
-        store.removeAll()
-        expirations.removeAll()
-        cleared = true
+        sync {
+            store.removeAll()
+            expirations.removeAll()
+            cleared = true
+        }
     }
 
     public func warmMemoryCache(for keys: [String]) async {
@@ -53,9 +76,11 @@ public final class MockImageCache: ImageCacheType {
     }
 
     public func resetHistory() {
-        setKeys.removeAll()
-        removedKeys.removeAll()
-        cleared = false
+        sync {
+            setKeys.removeAll()
+            removedKeys.removeAll()
+            cleared = false
+        }
     }
 
     // MARK: - TenPrint Cover Generation for Snapshot Tests
