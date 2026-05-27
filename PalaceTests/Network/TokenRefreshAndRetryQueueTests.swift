@@ -57,7 +57,13 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         userAccount.markLoggedIn()
 
         libraryAccount = TPPLibraryAccountMock()
-        libraryAccount.userAccountResolver = { [unowned self] _ in self.userAccount }
+        // Capture the userAccount instance directly (NOT via `[unowned self]`)
+        // so a stale URLSession callback firing after tearDown nils
+        // `self.userAccount` can't crash on the IUO unwrap. The closure holds
+        // its own strong reference to the mock; tearDown's `userAccount = nil`
+        // safely drops only the test class's property.
+        let resolvedUserAccount: TPPUserAccountMock = userAccount
+        libraryAccount.userAccountResolver = { _ in resolvedUserAccount }
 
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [HTTPStubURLProtocol.self]
@@ -435,8 +441,12 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
 
         executor.refreshTokenAndResume(task: queuedTask, accountId: nil)
 
-        // Wait until the retry request has been observed.
-        let retried = waitForCondition(timeout: 5.0) {
+        // Wait until the retry request has been observed. 30s budget matches
+        // the #999 "un-tighten" pattern (local <1s baseline, CI runner under
+        // parallel-test contention can stall the actor-hop + URLSession
+        // teardown well past 5s — same root cause as the BookRegistry,
+        // CatalogCache, and ImageCache flakes documented in 2877d1a8e).
+        let retried = waitForCondition(timeout: 30.0) {
             lock.lock(); defer { lock.unlock() }
             return retryHits >= 1
         }
