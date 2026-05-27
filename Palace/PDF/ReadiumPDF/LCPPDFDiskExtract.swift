@@ -48,10 +48,48 @@ enum LCPPDFDiskExtract {
         case missingAccountDir
     }
 
-    /// Returns the cached extracted-PDF URL if one exists for this book.
+    /// Returns the cached extracted-PDF URL if a usable extract exists
+    /// for this book. "Usable" means present on disk **and** parseable
+    /// as a PDF — a partial file from a prior crashed/aborted extract
+    /// (e.g. the device OOMed mid-write before we added chunked reads)
+    /// would still pass a `fileExists` check but explode at PDFKit
+    /// open time as "Unable to load PDF file." If the cached file is
+    /// malformed we delete it here so the next `extract` call rebuilds
+    /// it cleanly.
+    ///
+    /// Validation is `%PDF-` magic byte check + minimum-size sanity
+    /// (a 4-byte file is not a PDF). We DON'T spin up a full
+    /// `PDFDocument(url:)` to validate because that mmaps + parses the
+    /// whole xref table on big files (~830MB extracts), which is
+    /// exactly the work we want to defer to the actual reader.
     static func cachedURL(bookIdentifier: String, account: String) -> URL? {
         guard let url = fileURL(bookIdentifier: bookIdentifier, account: account) else { return nil }
-        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+        let path = url.path
+        guard FileManager.default.fileExists(atPath: path) else { return nil }
+        do {
+            let attrs = try FileManager.default.attributesOfItem(atPath: path)
+            let size = (attrs[.size] as? Int) ?? 0
+            if size < 1024 {
+                Log.warn(#file, "[PERF] [LCP-PDF] cached extract too small (\(size) bytes) — treating as corrupt, deleting")
+                try? FileManager.default.removeItem(at: url)
+                return nil
+            }
+            // %PDF- = 0x25 0x50 0x44 0x46 0x2D
+            guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+            defer { try? handle.close() }
+            let header = (try? handle.read(upToCount: 5)) ?? Data()
+            if header != Data([0x25, 0x50, 0x44, 0x46, 0x2D]) {
+                let preview = header.map { String(format: "%02x", $0) }.joined()
+                Log.warn(#file, "[PERF] [LCP-PDF] cached extract is not a PDF (header=\(preview)) — deleting and re-extracting")
+                try? FileManager.default.removeItem(at: url)
+                return nil
+            }
+            return url
+        } catch {
+            Log.warn(#file, "[PERF] [LCP-PDF] cached extract validation failed: \(error.localizedDescription) — deleting")
+            try? FileManager.default.removeItem(at: url)
+            return nil
+        }
     }
 
     /// Reads the publication's PDF resource in fixed-size chunks via
