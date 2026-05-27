@@ -92,16 +92,27 @@ final class ReaderService {
     /// failed and an alert is queued). It does NOT wait for the
     /// publication itself — callers that want to clear a button spinner
     /// can do so as soon as the reader appears.
+    /// LCP PDF open flow — **disk-extract architecture**.
+    ///
+    /// Previously this route handed an LCP-encrypted `Publication`
+    /// directly to Readium's `PDFNavigatorViewController`, which did
+    /// random-access reads on the encrypted stream. The device log
+    /// captured 841,570 decrypts in 10s with ~9 KB retained per call
+    /// (residentMB 1.8 → 2.8 GB), guaranteed OOM on anything bigger
+    /// than a one-page PDF.
+    ///
+    /// The new path streams the decrypted PDF ONCE through Readium's
+    /// `Resource.stream(consume:)` into a temp .pdf on disk, then
+    /// renders with PDFKit (`TPPPDFReaderView`) which mmaps the file
+    /// and pages in on demand. ~25k linear decrypts for a 50MB book
+    /// instead of ~800k random-access ones, with the Readium
+    /// publication released the instant extraction completes.
+    ///
+    /// Cached extract on disk → re-opens skip the decrypt entirely.
     @MainActor
     func openPDF(_ book: TPPBook, onFinish: (() -> Void)? = nil) {
         guard let presenter = topPresenter() else { onFinish?(); return }
 
-        // Coalesce: if an open is already in flight for this book id, the
-        // second tap is a no-op rather than starting a parallel decrypt.
-        // Without this guard a double-tap on the Read button (or a swipe-
-        // back-and-re-tap before the first open finishes) spins up two
-        // concurrent libraryService.openBook flows, both holding the
-        // publication and both running the cross-ref AES decrypt walk.
         if openInFlightBookIds.contains(book.identifier) {
             Log.info(#file, "[PERF] [LCP-PDF] open coalesced — already in flight for \(book.identifier)")
             onFinish?()
@@ -111,57 +122,17 @@ final class ReaderService {
         let generation = openGenerationByBookId[book.identifier, default: 0] + 1
         openGenerationByBookId[book.identifier] = generation
 
-        // [PERF] T0: Read button tapped → route push completion. Sets
-        // the baseline for downstream stage timings so a single grep
-        // over the log produces a per-stage breakdown.
         let openStartedAt = Date()
         Log.info(#file, "[PERF] [LCP-PDF] T0 open requested: \(book.title) (\(book.identifier)) gen=\(generation), residentMB=\(Self.residentMemoryMB())")
 
         LCPPDFOpenProgress.shared.begin(bookIdentifier: book.identifier)
         LCPPDFOpenProgress.shared.setPhase(.openingPublication)
 
-        // Periodically log memory while the open is in flight so a
-        // post-mortem on an OOM crash can identify which phase tipped
-        // the device over its jetsam ceiling. Also acts as our
-        // last-line-of-defense abort: if the decrypt walk runs away
-        // (a known failure mode on large Marketplace LCP PDFs where
-        // PDFNavigator's random-access reads hit unique file offsets
-        // and the cache never catches up), we pop the route and
-        // surface a friendly alert before the OS jetsam-kills the
-        // app. 150k decrypts is conservatively above any healthy
-        // open — a typical small PDF first-page paints in 200-2000
-        // decrypts.
-        Task.detached(priority: .utility) { [weak self] in
-            guard let self else { return }
-            while await LCPPDFOpenProgress.shared.phase != .idle {
-                try? await Task.sleep(nanoseconds: 1_500_000_000)
-                let mb = Self.residentMemoryMB()
-                let blocks = await LCPPDFOpenProgress.shared.decryptedBlocks
-                let hits = await LCPPDFOpenProgress.shared.cachedHits
-                let phase = await LCPPDFOpenProgress.shared.phase
-                Log.info(#file, "[PERF] [LCP-PDF] residentMB=\(mb) blocks=\(blocks) cacheHits=\(hits) phase=\(phase)")
-
-                if blocks > 150_000 {
-                    Log.error(#file, "[PERF] [LCP-PDF] abort: decrypt walk exceeded 150k blocks (\(blocks)) — assuming runaway, aborting open to avoid OOM")
-                    await self.abortRunawayOpen(for: book)
-                    return
-                }
-            }
-        }
-
-        // LCP-PDF open on large Marketplace containers walks the PDF
-        // cross-ref table through the LCP decrypt layer (hundreds of
-        // `Successfully decrypted 2064 -> 2048` calls in the log), which
-        // is memory-hungry. On a device that's already holding the
-        // catalog memory cache (3+ MB of OPDS JSON for the active +
-        // preloaded entry points) plus the book-cell model cache, the
-        // combined working set can trip the OS memory limit and OOM.
-        // Post the system memory-warning notification proactively so
-        // every cache that listens (CatalogRepository, BookCellModelCache,
-        // image caches) drops its in-memory contents before the decrypt
-        // walk starts. Disk caches survive — the catalog's URLCache is
-        // content-addressed, so the next time the user backs out the
-        // feed re-hydrates from disk without a network round-trip.
+        // Pre-emptive memory release for the catalog / cell / cover caches.
+        // The extraction itself is bounded (one chunk at a time + the
+        // temp file) but giving Readium more headroom up front reduces
+        // the chance of an OOM during the initial license-check phase
+        // on smaller-RAM devices.
         NotificationCenter.default.post(
             name: UIApplication.didReceiveMemoryWarningNotification,
             object: nil
@@ -170,20 +141,45 @@ final class ReaderService {
         let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator
         coordinator?.store(book: book)
         coordinator?.markReadiumPDFPending(forBookId: book.identifier)
-
-        // Cold-app cache hit: if a previous session persisted TOC + page
-        // count to disk, surface it BEFORE the publication opens so side
-        // panels populate the instant the navigator appears.
-        var tocCacheHit = false
-        if let accountId = AppContainer.production().accountsManager.currentAccountId,
-           let cached = ReadiumPDFTOCCache.read(bookIdentifier: book.identifier, account: accountId) {
-            coordinator?.storeReadiumPDFTableOfContents(cached.toc, pageCount: cached.pageCount, forBookId: book.identifier)
-            tocCacheHit = true
-        }
-
         coordinator?.push(.pdf(BookRoute(id: book.identifier)))
-        Log.info(#file, "[PERF] [LCP-PDF] T1 route pushed (+\(Self.ms(since: openStartedAt))ms, tocDiskHit=\(tocCacheHit))")
+        Log.info(#file, "[PERF] [LCP-PDF] T1 route pushed (+\(Self.ms(since: openStartedAt))ms)")
         onFinish?()
+
+        #if LCP
+        // Disk cache hit: a prior extract is reusable as long as the
+        // loan hasn't been returned (LocalBookContentService invalidates
+        // on return). Skip the entire Readium open + decrypt pass.
+        if let accountId = AppContainer.production().accountsManager.currentAccountId,
+           let cachedURL = LCPPDFDiskExtract.cachedURL(bookIdentifier: book.identifier, account: accountId) {
+            Log.info(#file, "[PERF] [LCP-PDF] disk-extract cache hit — opening PDFKit directly: \(cachedURL.lastPathComponent)")
+            self.handOffExtractedPDF(at: cachedURL, for: book, openStartedAt: openStartedAt)
+            return
+        }
+        #endif
+
+        // Periodic memory log + runaway-abort safety net. With the
+        // disk-extract path the decrypt count should peak in the
+        // low tens of thousands (one decrypt per LCP block as the
+        // stream advances through the publication), so 150k is still
+        // way above any healthy open and below the OOM ceiling.
+        Task.detached(priority: .utility) { [weak self] in
+            guard let self else { return }
+            while await LCPPDFOpenProgress.shared.phase != .idle {
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                let mb = Self.residentMemoryMB()
+                let blocks = await LCPPDFOpenProgress.shared.decryptedBlocks
+                let bytes = await LCPPDFOpenProgress.shared.bytesExtracted
+                let total = await LCPPDFOpenProgress.shared.totalExtractBytes
+                let phase = await LCPPDFOpenProgress.shared.phase
+                Log.info(#file, "[PERF] [LCP-PDF] residentMB=\(mb) blocks=\(blocks) extracted=\(bytes)/\(total) phase=\(phase)")
+
+                if blocks > 150_000 {
+                    Log.error(#file, "[PERF] [LCP-PDF] abort: decrypt walk exceeded 150k blocks (\(blocks)) — aborting to avoid OOM")
+                    await self.abortRunawayOpen(for: book)
+                    return
+                }
+            }
+        }
 
         let libraryOpenStartedAt = Date()
         r3Owner.libraryService.openBook(book, sender: presenter) { [weak self] result in
@@ -192,80 +188,96 @@ final class ReaderService {
             case .success(let publication):
                 Task { @MainActor in
                     guard let self else { return }
-                    // Stale-completion guard: if the user backed out (or
-                    // started a fresh open) while libraryService.openBook
-                    // was decrypting in the background, the generation
-                    // we started under no longer matches. Drop the
-                    // publication on the floor instead of storing it.
                     let currentGeneration = self.openGenerationByBookId[book.identifier, default: 0]
                     guard currentGeneration == generation else {
                         Log.info(#file, "[PERF] [LCP-PDF] stale openBook completion ignored for \(book.identifier) (gen=\(generation) current=\(currentGeneration))")
                         return
                     }
-                    self.openInFlightBookIds.remove(book.identifier)
-                    guard let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator else {
-                        Log.error(#file, "📄 [Readium PDF] No NavigationCoordinator when publication landed")
+                    Log.info(#file, "[PERF] [LCP-PDF] T2 publication opened (+\(Self.ms(since: openStartedAt))ms total, libraryService.openBook=\(libraryOpenElapsedMs)ms)")
+                    LCPPDFOpenProgress.shared.setPhase(.extractingToDisk)
+
+                    #if LCP
+                    guard let accountId = AppContainer.production().accountsManager.currentAccountId else {
+                        Log.error(#file, "[PERF] [LCP-PDF] no current account — cannot resolve extract path")
+                        await self.abortRunawayOpen(for: book)
                         return
                     }
-                    Log.info(#file, "[PERF] [LCP-PDF] T2 publication opened (+\(Self.ms(since: openStartedAt))ms total, libraryService.openBook=\(libraryOpenElapsedMs)ms)")
-                    LCPPDFOpenProgress.shared.setPhase(.loadingFirstPage)
-                    // Reuse the cached TOC snapshot if we already loaded
-                    // it on a previous open — saves the second
-                    // publication.tableOfContents() + publication.positions()
-                    // round-trip (each triggers AES decrypt of the PDF
-                    // cross-ref table, which is what dominates re-open
-                    // time on large Marketplace containers).
-                    let hasCachedTOC = coordinator.resolveReadiumPDFTableOfContents(for: BookRoute(id: book.identifier)) != nil
-
-                    // Store the publication FIRST so the navigator can
-                    // start rendering page 1 immediately. TOC + page
-                    // count load in the background — side panels show
-                    // empty until that lands, then re-render. Without
-                    // this split the user waits for positions() to walk
-                    // the entire decrypted PDF (the hundreds of
-                    // "Successfully decrypted 2064 -> 2048" log lines)
-                    // BEFORE seeing page 1.
-                    let metadata = TPPPDFDocumentMetadata(with: book)
-                    coordinator.storeReadiumPDF(publication: publication, metadata: metadata, forBookId: book.identifier)
-
-                    if !hasCachedTOC {
-                        // Background-load TOC + positions. Uses a low-
-                        // priority Task so it yields to navigator work.
-                        // Persist the snapshot to disk so a cold-app
-                        // re-open of the same book skips this entirely.
-                        let tocLoadStartedAt = Date()
-                        Task.detached(priority: .utility) {
-                            let toc = await Self.loadTableOfContents(for: publication)
-                            let tocElapsedMs = Self.ms(since: tocLoadStartedAt)
-                            let positionsStartedAt = Date()
-                            let pageCount = await Self.loadPageCount(for: publication)
-                            let positionsElapsedMs = Self.ms(since: positionsStartedAt)
-                            let bookId = book.identifier
+                    // Disk-extract on a background task — chunk writes
+                    // to FileHandle on a userInitiated queue, the main
+                    // actor only sees progress publishes via
+                    // LCPPDFOpenProgress.shared. The Readium publication
+                    // is released the instant extraction completes —
+                    // its job is to provide the decrypt context, and
+                    // PDFKit owns the rendering surface from there.
+                    let bookIdentifier = book.identifier
+                    Task.detached(priority: .userInitiated) {
+                        do {
+                            let extractStartedAt = Date()
+                            let extractedURL = try await LCPPDFDiskExtract.extract(
+                                publication: publication,
+                                bookIdentifier: bookIdentifier,
+                                account: accountId
+                            )
+                            let extractMs = Self.ms(since: extractStartedAt)
                             await MainActor.run {
-                                Log.info(#file, "[PERF] [LCP-PDF] T3 TOC+positions loaded (+\(Self.ms(since: openStartedAt))ms total, toc=\(tocElapsedMs)ms, positions=\(positionsElapsedMs)ms, entries=\(toc.count), pages=\(pageCount))")
-                                AppContainer.production().navigationCoordinatorHub.coordinator?
-                                    .storeReadiumPDFTableOfContents(toc, pageCount: pageCount, forBookId: bookId)
-                                if let accountId = AppContainer.production().accountsManager.currentAccountId {
-                                    ReadiumPDFTOCCache.write(toc: toc, pageCount: pageCount, bookIdentifier: bookId, account: accountId)
+                                // Stale-completion guard again — user
+                                // may have backed out during extract.
+                                let cur = self.openGenerationByBookId[bookIdentifier, default: 0]
+                                guard cur == generation else {
+                                    Log.info(#file, "[PERF] [LCP-PDF] stale extract completion ignored for \(bookIdentifier)")
+                                    return
                                 }
+                                Log.info(#file, "[PERF] [LCP-PDF] T3 extracted+ready (+\(Self.ms(since: openStartedAt))ms total, extract=\(extractMs)ms)")
+                                // Release Readium publication — its work
+                                // is done, free its memory now.
+                                self.r3Owner.libraryService.releaseServedPublication(forBookIdentifier: bookIdentifier)
+                                self.handOffExtractedPDF(at: extractedURL, for: book, openStartedAt: openStartedAt)
+                            }
+                        } catch {
+                            Log.error(#file, "[PERF] [LCP-PDF] extract failed: \(error)")
+                            await MainActor.run {
+                                self.r3Owner.libraryService.releaseServedPublication(forBookIdentifier: bookIdentifier)
+                                self.abortRunawayOpen(for: book)
                             }
                         }
                     }
+                    #else
+                    // Non-LCP build (open-source) — should never reach
+                    // here because openPDF is only invoked for LCP books,
+                    // but bail safely if it does.
+                    self.r3Owner.libraryService.releaseServedPublication(forBookIdentifier: book.identifier)
+                    self.abortRunawayOpen(for: book)
+                    #endif
                 }
             case .failure(let error):
                 Task { @MainActor in
                     guard let self else { return }
                     self.openInFlightBookIds.remove(book.identifier)
                     self.presentOpenFailureAlert(for: error, book: book, isRetry: false)
-                    // Pop the route on failure — the user shouldn't be left
-                    // sitting on a loading spinner.
                     coordinator?.removeReadiumPDF(forBookId: book.identifier)
                     if let path = coordinator?.path, path.count > 0 {
                         coordinator?.path.removeLast()
                     }
+                    LCPPDFOpenProgress.shared.finish()
                 }
             }
         }
+    }
+
+    /// Stores the extracted on-disk PDF into the coordinator's plain-PDF
+    /// slot so `NavigationHostView` swaps the loading overlay out for
+    /// `TPPPDFReaderView` (PDFKit). Clears the pending flag, finishes
+    /// the progress reporter, and removes the in-flight bookkeeping.
+    @MainActor
+    private func handOffExtractedPDF(at url: URL, for book: TPPBook, openStartedAt: Date) {
+        let document = TPPPDFDocument(url: url)
+        let metadata = TPPPDFDocumentMetadata(with: book)
+        let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator
+        coordinator?.storePDF(document: document, metadata: metadata, forBookId: book.identifier)
+        coordinator?.removeReadiumPDF(forBookId: book.identifier)  // clears pending + drops any Readium publication leftovers
+        openInFlightBookIds.remove(book.identifier)
+        LCPPDFOpenProgress.shared.finish()
+        Log.info(#file, "[PERF] [LCP-PDF] T4 PDFKit handoff (+\(Self.ms(since: openStartedAt))ms total)")
     }
 
     /// Flattens a Readium publication's `[Link]` table of contents into a

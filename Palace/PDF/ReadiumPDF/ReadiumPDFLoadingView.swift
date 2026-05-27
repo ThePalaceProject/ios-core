@@ -134,6 +134,14 @@ private final class ProgressBridge: ObservableObject {
             guard let self, let center else { return }
             self.recompute(from: center)
         })
+        subscriptions.append(center.$bytesExtracted.sink { [weak self, weak center] _ in
+            guard let self, let center else { return }
+            self.recompute(from: center)
+        })
+        subscriptions.append(center.$totalExtractBytes.sink { [weak self, weak center] _ in
+            guard let self, let center else { return }
+            self.recompute(from: center)
+        })
     }
 
     private func recompute(from center: LCPPDFOpenProgress) {
@@ -152,8 +160,8 @@ private final class ProgressBridge: ObservableObject {
             return NSLocalizedString("Loading…", comment: "")
         case .preparing, .openingPublication:
             return NSLocalizedString("Preparing book…", comment: "")
-        case .decryptingContent, .loadingFirstPage:
-            if percent >= 95 {
+        case .decryptingContent, .extractingToDisk, .loadingFirstPage:
+            if percent >= 99 {
                 return NSLocalizedString("Finishing up…", comment: "")
             }
             return String(

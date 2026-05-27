@@ -48,6 +48,12 @@ final class LCPPDFOpenProgress: ObservableObject {
         case preparing
         case openingPublication
         case decryptingContent
+        /// Streaming the decrypted PDF to a temp file on disk. The
+        /// disk-extract pipeline replaced direct-PDFNavigator render
+        /// because the latter random-accessed the LCP stream and
+        /// OOM'd on large books. `bytesExtracted / totalExtractBytes`
+        /// gives a real % for this phase.
+        case extractingToDisk
         case loadingFirstPage
     }
 
@@ -60,6 +66,13 @@ final class LCPPDFOpenProgress: ObservableObject {
     /// page is one step closer to rendering — without misleadingly
     /// padding the work-done counter.
     @Published private(set) var cachedHits: Int = 0
+    /// Bytes written to the temp .pdf so far during the disk-extract
+    /// phase. When `totalExtractBytes > 0` the progress bar derives a
+    /// real percentage from this — first true % we can show.
+    @Published private(set) var bytesExtracted: UInt64 = 0
+    /// Estimated total bytes for the LCP-decrypted PDF (from
+    /// `Resource.estimatedLength()`). 0 when unknown.
+    @Published private(set) var totalExtractBytes: UInt64 = 0
 
     /// Identifier of the book whose open this reporter is tracking.
     /// Used by the loading overlay to ignore stale signals if a back-
@@ -74,7 +87,23 @@ final class LCPPDFOpenProgress: ObservableObject {
         decryptedBlocks = 0
         decryptedBytes = 0
         cachedHits = 0
+        bytesExtracted = 0
+        totalExtractBytes = 0
         Self.setOpenInProgress(true)
+    }
+
+    func setTotalExtractBytes(_ bytes: UInt64) {
+        totalExtractBytes = bytes
+    }
+
+    nonisolated func recordExtractedBytes(_ count: Int) {
+        Task { @MainActor in
+            guard phase != .idle else { return }
+            bytesExtracted += UInt64(count)
+            if phase == .openingPublication || phase == .decryptingContent {
+                phase = .extractingToDisk
+            }
+        }
     }
 
     func setPhase(_ newPhase: Phase) {
@@ -102,33 +131,22 @@ final class LCPPDFOpenProgress: ObservableObject {
         }
     }
 
-    /// Percentage in [0, 99]. The denominator (total blocks to render
-    /// the first page) is not known a priori — small one-page Marketplace
-    /// PDFs need a few dozen decrypts, large textbooks need thousands —
-    /// so the curve is monotonic without a hard plateau.
-    ///
-    /// Stage 1 (0–80%): exponential `1 - exp(-x/N)` so a small book
-    /// climbs fast and the user sees real motion in the first few
-    /// seconds.
-    /// Stage 2 (80–99%): linear continuation that keeps creeping by
-    /// ~1% every N additional blocks. Prevents the "stuck at 95%"
-    /// look that a pure exponential produces on large books — the
-    /// bar visibly inches forward right up until first paint.
-    ///
-    /// Cached hits count at 50% weight: they ARE forward motion (the
-    /// page is one step closer to rendering, just for free) but
-    /// shouldn't make the bar lurch on a warm-cache re-open.
+    /// Percentage in [0, 99]. Prefers the bytes-extracted denominator
+    /// from the disk-extract pipeline when it's known — that gives the
+    /// user a true, monotonically-accurate percentage. Falls back to
+    /// the legacy decrypt-block curve only when no byte total is
+    /// available (early startup, before `setTotalExtractBytes` fires,
+    /// or in error paths where extraction never began).
     var percentComplete: Int {
+        if totalExtractBytes > 0 {
+            let ratio = Double(bytesExtracted) / Double(totalExtractBytes)
+            return min(99, Int((ratio * 100.0).rounded()))
+        }
         let credit = Double(decryptedBlocks) + 0.5 * Double(cachedHits)
-        // Exponential climb to 80%.
         let expRatio = 1.0 - exp(-credit / 90.0)
         if expRatio < 0.80 {
             return Int((expRatio * 100.0).rounded())
         }
-        // Beyond exp ≈ 80% (around 145 credit), linearly approach 99%.
-        // Every additional 50 credit adds ~1% — so a 1000-block book
-        // sees the bar drift from 80% → 99% over 17 stages, never
-        // stalling visually.
         let overshoot = credit - 145.0
         let extra = min(19.0, overshoot / 50.0)
         return min(99, Int((80.0 + extra).rounded()))
