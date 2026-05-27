@@ -49,6 +49,6 @@ class PalacePDFView: PDFView {
         Selector(("_share:")),
         Selector(("_lookup:")),
         Selector(("_define:")),
-        Selector(("_translate:")),
+        Selector(("_translate:"))
     ]
 }
