@@ -10,6 +10,7 @@ import Foundation
 import UIKit
 import PalaceAudiobookToolkit
 import Combine
+import PalaceAuth
 import PalaceLogging
 import PalaceNetwork
 import PalaceCatalog
@@ -264,7 +265,14 @@ import OverdriveProcessor
         // When `bookFileManager` is also injected, the explicit
         // BookFileManager wins; this param only configures the default
         // `BookFileManager` MBDC constructs when none is supplied.
-        directoryProvider: ((String?) -> URL?)? = nil
+        directoryProvider: ((String?) -> URL?)? = nil,
+        // swarm_66819d80 Module C: AuthCoordinator from PalaceAuth.
+        // Production (AppContainer.production()) passes its constructed
+        // coordinator so BookReturnService can route 401/403 through the
+        // single seam. Optional so existing tests that construct MBDC
+        // manually keep compiling — they fall back to the legacy
+        // reauthenticator path until updated to inject a SpyAuthCoordinator.
+        authCoordinator: AuthCoordinator? = nil
     ) {
         self.injectedUserAccount = userAccount
         self.bookRegistry = bookRegistry
@@ -317,7 +325,12 @@ import OverdriveProcessor
             bookmarkDeletionLog: bookmarkDeletionLog,
             reauthenticator: reauthenticator,
             userRetryTracker: userRetryTracker,
-            userAccountProvider: resolveAccountForReturn
+            userAccountProvider: resolveAccountForReturn,
+            // swarm_66819d80 Module C: forward the coordinator MBDC's init
+            // received so BookReturnService's auth-error branch routes
+            // through the single seam. Tests that construct MBDC without
+            // a coordinator fall back to the legacy reauthenticator path.
+            authCoordinator: authCoordinator
         )
         self.stateManager = stateManager
         // DownloadAlertPresenter built eagerly so `self` can wire as its
@@ -333,7 +346,8 @@ import OverdriveProcessor
         // `self` can wire as their delegate after `super.init()`. Both default
         // to nil-init so callers (production + tests) can substitute mocks.
         self.tokenInterceptor = tokenInterceptor ?? TokenRefreshInterceptor(
-            reauthenticator: reauthenticator
+            reauthenticator: reauthenticator,
+            authCoordinator: authCoordinator
         )
         self.backgroundDownloadHandler = backgroundDownloadHandler ?? BackgroundDownloadHandler()
         // Parses URL session download completions before MBDC's per-
@@ -444,7 +458,8 @@ import OverdriveProcessor
             bookRegistry: bookRegistry,
             reauthenticator: reauthenticator,
             alertPresenter: self.alertPresenter,
-            userAccountProvider: resolveAccount
+            userAccountProvider: resolveAccount,
+            authCoordinator: authCoordinator
         )
         // DownloadThrottlingService shares the same DownloadStateManager
         // MBDC owns so cap + suspend/resume policy stays coherent with the
@@ -680,7 +695,8 @@ import OverdriveProcessor
             fetchBook: fetchBookClosure,
             presentBorrowErrorAlert: presentBorrowErrorAlertClosure,
             presentSignInModal: presentSignInModalClosure,
-            attemptOIDCReauth: attemptOIDCReauthClosure
+            attemptOIDCReauth: attemptOIDCReauthClosure,
+            authCoordinator: authCoordinator
         )
         #else
         self.borrowOperation = borrowOperation ?? BorrowOperation(
@@ -693,7 +709,8 @@ import OverdriveProcessor
             fetchBook: fetchBookClosure,
             presentBorrowErrorAlert: presentBorrowErrorAlertClosure,
             presentSignInModal: presentSignInModalClosure,
-            attemptOIDCReauth: attemptOIDCReauthClosure
+            attemptOIDCReauth: attemptOIDCReauthClosure,
+            authCoordinator: authCoordinator
         )
         #endif
 
@@ -878,7 +895,8 @@ import OverdriveProcessor
             downloadAnnouncementService: appContainer.downloadAnnouncementService,
             opdsFeedService: appContainer.opdsFeedService,
             debugSettings: appContainer.debugSettings,
-            settings: appContainer.settings
+            settings: appContainer.settings,
+            authCoordinator: appContainer.authCoordinator
         )
     }
 

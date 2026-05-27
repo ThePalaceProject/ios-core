@@ -21,6 +21,7 @@
 //
 
 import Foundation
+import PalaceAuth
 import PalaceCatalog
 import PalaceLogging
 
@@ -49,6 +50,17 @@ final class DownloadAuthRetryHandler {
     private let reauthenticator: Reauthenticator
     private let alertPresenter: DownloadAlertPresenter
 
+    /// swarm_66819d80 Module C: auth-refresh coordinator. When non-nil,
+    /// the IdP-dispatch branches (SAML vs OIDC vs generic browser) inside
+    /// `handleAuthFailureIfApplicable` route through the coordinator's
+    /// single seam rather than carrying per-call-site dispatch logic. The
+    /// per-book download state-machine transitions (`.SAMLStarted`,
+    /// `.downloadNeeded`) and the `startDownload` retry remain at this
+    /// call site — the coordinator only owns the *credentials refresh*.
+    /// Optional so existing tests that supply only `reauthenticator` keep
+    /// compiling; production wiring always injects.
+    private let authCoordinator: AuthCoordinator?
+
     /// Closure resolves the current user account each call. MBDC's
     /// `userAccount` property is a computed property over `accountsManager.
     /// currentUserAccount`, so the closure preserves the same just-in-time
@@ -60,13 +72,15 @@ final class DownloadAuthRetryHandler {
         bookRegistry: TPPBookRegistryProvider,
         reauthenticator: Reauthenticator,
         alertPresenter: DownloadAlertPresenter,
-        userAccountProvider: @escaping () -> TPPUserAccount
+        userAccountProvider: @escaping () -> TPPUserAccount,
+        authCoordinator: AuthCoordinator? = nil
     ) {
         self.stateManager = stateManager
         self.bookRegistry = bookRegistry
         self.reauthenticator = reauthenticator
         self.alertPresenter = alertPresenter
         self.userAccountProvider = userAccountProvider
+        self.authCoordinator = authCoordinator
     }
 
     // MARK: - Entry point
@@ -148,6 +162,37 @@ final class DownloadAuthRetryHandler {
     /// modal (OIDC + retry on completion).
     @MainActor
     private func handleBrowserSessionExpired(book: TPPBook, task: URLSessionTask, isSaml: Bool) {
+        // swarm_66819d80 Module C: when the coordinator is wired, hand off
+        // the per-IdP dispatch entirely — the coordinator decides SAML web
+        // sheet vs OIDC ASWebAuthenticationSession vs basic prompt based
+        // on the active library's mechanism. The per-book download state
+        // transition (`.SAMLStarted` for SAML, `.downloadNeeded` for
+        // others) and the post-success download restart stay here.
+        if let coordinator = self.authCoordinator {
+            let reason: ReauthReason = isSaml ? .samlSessionExpired : .invalidCredentials
+            Task { [weak self] in
+                guard let self else { return }
+                await self.cleanupTrackingState(book: book, task: task)
+                let outcome = await coordinator.refreshCredentialsIfNeeded(reason: reason)
+                await MainActor.run { [weak self] in
+                    guard let self else { return }
+                    if isSaml {
+                        self.bookRegistry.setState(.SAMLStarted, for: book.identifier)
+                    } else {
+                        self.bookRegistry.setState(.downloadNeeded, for: book.identifier)
+                    }
+                    switch outcome {
+                    case .success:
+                        Log.info(#file, "Coordinator refresh succeeded — retrying download for \(book.identifier)")
+                        self.delegate?.startDownload(for: book, withRequest: nil)
+                    case .failure(let cancellation):
+                        Log.info(#file, "Coordinator declined to refresh for \(book.identifier) — \(cancellation)")
+                    }
+                }
+            }
+            return
+        }
+
         if isSaml {
             // SAML cookies expired - need to re-auth via IDP
             Log.info(#file, "SAML session expired - triggering SAML re-auth flow")
@@ -186,6 +231,34 @@ final class DownloadAuthRetryHandler {
     /// session has timed out).
     @MainActor
     private func handleNoActiveLoanAsSessionExpiry(book: TPPBook, task: URLSessionTask, isSaml: Bool) {
+        // swarm_66819d80 Module C: same coordinator routing as
+        // handleBrowserSessionExpired — `no-active-loan` is just a 400
+        // dressed up as a session-expiry signal for browser-based auth.
+        if let coordinator = self.authCoordinator {
+            let reason: ReauthReason = isSaml ? .samlSessionExpired : .invalidCredentials
+            Task { [weak self] in
+                guard let self else { return }
+                await self.cleanupTrackingState(book: book, task: task)
+                let outcome = await coordinator.refreshCredentialsIfNeeded(reason: reason)
+                await MainActor.run { [weak self] in
+                    guard let self else { return }
+                    if isSaml {
+                        self.bookRegistry.setState(.SAMLStarted, for: book.identifier)
+                    } else {
+                        self.bookRegistry.setState(.downloadNeeded, for: book.identifier)
+                    }
+                    switch outcome {
+                    case .success:
+                        Log.info(#file, "Coordinator refresh succeeded for no-active-loan path — retrying download for \(book.identifier)")
+                        self.delegate?.startDownload(for: book, withRequest: nil)
+                    case .failure(let cancellation):
+                        Log.info(#file, "Coordinator declined to refresh for no-active-loan path on \(book.identifier) — \(cancellation)")
+                    }
+                }
+            }
+            return
+        }
+
         if isSaml {
             Log.info(#file, "SAML: 'no-active-loan' treating as session expiry (PP-3716)")
             Task { [weak self] in

@@ -4,7 +4,21 @@ base_ref: origin/develop
 base_sha: d7f115adeb69032fb3abed33ba07b3deeb245f4b
 worktree: .claude/worktrees/swarm_66819d80-orchestrator
 branch: swarm/swarm_66819d80-scaffold
-status: triaged
+status: complete
+reviews:
+  architect:
+    - rev_61cc1bc4  # BLOCKED — 3 findings (submodule typechanges, fake wiring test, dead classifier)
+    - rev_c654b55b  # APPROVED post-fixup
+  qa_test:
+    - rev_3d0048c7  # BLOCKED — 3 findings (half-done test, fake responder test, fake service test)
+    - rev_3cfc4d1e  # APPROVED post-fixup
+gates_promoted:
+  review: 2026-05-27T21:58:12Z
+  testing: 2026-05-27T21:58:17Z
+  release: 2026-05-27T21:58:35Z
+outcome: .forgeos/swarms/swarm_66819d80/outcome.md
+changeset_id: cs_8f163b41
+initiative_id: init_fd2178b0
 created_at: 2026-05-27
 forgeos_project: proj_87884c17
 parent_plan: /Users/mauricework/.claude/plans/palace-3.2.0-auth-architecture.md

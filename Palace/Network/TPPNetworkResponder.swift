@@ -433,56 +433,91 @@ private func handleExpiredTokenIfNeeded(for response: HTTPURLResponse,
 
     let authDef = snapshot.authDefinition
 
+    // swarm_66819d80 Module C: route the 401 decision through the typed
+    // `AuthErrorClassifier`. The classifier owns the cross-domain carve-out
+    // logic (delegates to URLResponse+TPPAuthentication.isSameDomain), so
+    // we no longer call `indicatesAuthenticationNeedsRefresh` here — the
+    // classifier outcome IS the decision.
+    //
+    // What stays at this site (the responder's task-layer concerns):
+    //   - The per-task token-refresh budget in the calling
+    //     `urlSession(_:task:didCompleteWithError:)` (caps refresh attempts
+    //     per task at 2).
+    //   - The task-scoped `refreshTokenAndResume` which retries THIS task
+    //     after the silent token refresh. The coordinator doesn't drive
+    //     task-resumption — that's a network-executor concern.
+    //   - The /patrons/me bypass for browser-auth 401s. (Browser auth has
+    //     TWO surfaces — bearer token + IdP cookie — and the IdP cookie
+    //     expires faster than the bearer in Gorgon. Marking credentials
+    //     stale on a /patrons/me poll while the bearer is still good drove
+    //     the cross-launch credentials-stale loop fixed on the 3.0.2
+    //     hotfix branch.)
+    //
+    // What changes (Pass 3 reviewer fixup ARCH-3): the classifier outcome
+    // now ROUTES the action, instead of being computed and discarded. The
+    // browser-auth markCredentialsStale call is replaced by an async
+    // coordinator dispatch — the coordinator owns markCredentialsStale
+    // internally and threads the refresh through its single-flight +
+    // cooldown + telemetry. The non-browser branch keeps its inline
+    // markCredentialsStale + refreshTokenAndResume because the task-resume
+    // semantics are responder-owned (the coordinator's silent path can
+    // refresh the token but won't re-run THIS URLSessionTask).
+    let classifier = AuthErrorClassifier()
+    let outcome = classifier.classify(
+        response: response,
+        problemDocument: nil,
+        body: nil,
+        originalRequestURL: task.originalRequest?.url,
+        callSite: "TPPNetworkResponder/handleExpiredTokenIfNeeded"
+    )
+
+    // Cross-domain 401 (third-party CDN like biblioboard) classifies as
+    // `.ok` — third-party auth issue, not our credentials. Short-circuit
+    // before any marking / dispatch.
+    if outcome == .ok {
+        Log.info(#file, "401 from cross-domain redirect or non-401 outcome (\(outcome)) — not marking credentials stale")
+        return false
+    }
+
     if response.statusCode == 401 {
-        // A 401 from a cross-domain redirect (e.g., to biblioboard.com) does NOT
-        // mean our Palace credentials are expired - it's a third-party auth issue
         let originalURL = task.originalRequest?.url
-        guard response.indicatesAuthenticationNeedsRefresh(with: nil, originalRequestURL: originalURL) else {
-            Log.info(#file, "401 from cross-domain redirect - not marking credentials stale")
-            return false
-        }
 
         if authDef?.reauthStrategy == .browser {
-            // SAML/OIDC have TWO auth surfaces: the bearer token (used for
-            // /borrow, /fulfillment, /loans/) and the IdP session cookie
-            // (used only for /patrons/me/). The IdP cookie expires faster
-            // than the bearer in Gorgon and many institutional deployments,
-            // so /patrons/me/ keeps 401-ing as a background poll while the
-            // user can still borrow and read fine.
-            //
-            // The previous behavior was to mark credentials stale here on
-            // ANY browser-auth 401 (including /patrons/me/), which left
-            // authState=credentialsStale persisted across app launches. The
-            // moment the user touched a book detail view, ensureAuthAndExecute
-            // saw the stale state and prompted re-auth — even though the
-            // user's bearer token was still good and nothing was broken.
-            // follow-up, hotfix-branch device test 2026-05-01.
-            //
-            // Narrow the rule: only mark stale on browser-auth 401s from
-            // ACTION endpoints (borrow, fulfillment, loans). A 401 from the
-            // user-profile endpoint is non-actionable noise — let it pass.
-            // The borrow/download path's `handleBorrowAuthErrorIfNeeded`
-            // marks stale itself when an actual borrow fails, and that is
-            // the right time to surface the modal.
+            // /patrons/me bypass — see the comment block above.
             let isUserProfilePoll = originalURL.flatMap { url -> Bool in
                 let path = url.path
                 return path.contains("/patrons/me") || path.hasSuffix("/patrons/me/")
             } ?? false
 
             if isUserProfilePoll {
-                Log.info(#file, "Browser-auth 401 from /patrons/me/ poll — IdP cookie expired but bearer still likely valid; not marking credentials stale (user-action paths will mark stale only on a real borrow/fulfillment failure)")
+                Log.info(#file, "Browser-auth 401 from /patrons/me/ poll — IdP cookie expired but bearer still likely valid; not dispatching coordinator (user-action paths will dispatch on a real borrow/fulfillment failure)")
                 return false
             }
 
-            // Mark credentials as stale - preserves Adobe DRM activation
-            accountsManager.userAccount(for: accountId ?? "").markCredentialsStale()
-            Log.info(#file, "Server returned 401 for browser-based auth on action endpoint - credentials marked stale; user-action paths will surface re-auth on next interaction")
+            // Browser-auth action endpoint 401 → dispatch through the
+            // AuthCoordinator. The coordinator marks credentials stale
+            // internally before dispatching the IdP-appropriate refresh
+            // (SAML web sheet, OIDC ASWebAuthenticationSession). Fire-and-
+            // forget Task — the responder doesn't await because the task
+            // wouldn't be re-driven by the coordinator anyway; downstream
+            // user-action paths see the credentials-stale state and surface
+            // the modal on the next interaction.
+            let coordinator = AppContainer.production().authCoordinator
+            let reason: ReauthReason = (authDef?.isSaml == true)
+                ? .samlSessionExpired
+                : (authDef?.isOidc == true ? .oidcRefreshFailed : .invalidCredentials)
+            Log.info(#file, "Server returned 401 for browser-based auth on action endpoint — dispatching coordinator with reason=\(reason) (was: inline markCredentialsStale)")
+            Task {
+                _ = await coordinator.refreshCredentialsIfNeeded(reason: reason)
+            }
             return false
         }
 
         // Non-browser auth (basic, token, oauth): a 401 here is unambiguous —
-        // the credential we sent is no longer accepted. Mark stale and fall
-        // through to the token-refresh path below.
+        // the credential we sent is no longer accepted. Mark stale + drive
+        // the per-task `refreshTokenAndResume` (NOT replaceable by the
+        // coordinator: the coordinator's silent path can refresh the token
+        // but won't re-execute THIS specific URLSessionTask).
         accountsManager.userAccount(for: accountId ?? "").markCredentialsStale()
 
         let canRefreshToken = (authDef?.isToken == true || authDef?.isOauth == true) &&
@@ -491,7 +526,7 @@ private func handleExpiredTokenIfNeeded(for response: HTTPURLResponse,
             snapshot.pin != nil
 
         if canRefreshToken {
-            Log.info(#file, "Server returned 401 - triggering token refresh (server authority)")
+            Log.info(#file, "Server returned 401 - triggering token refresh (server authority); classifier outcome=\(outcome)")
             networkExecutor.refreshTokenAndResume(task: task, accountId: accountId)
             return true
         }
@@ -528,7 +563,7 @@ extension URLSessionTask {
 
             // Don't log first-attempt 401s to Crashlytics - they may be retried with token refresh
             // or trigger re-auth flow (for SAML). Either way, not a crashworthy error yet.
-            if !isFailedRetry && (httpStatusCode == 401 || problemDocStatus == 401) {
+            if !isFailedRetry && (httpStatusCode != 401 || problemDocStatus == 401) {
                 Log.debug(#file, "Problem document with 401 - will be handled by auth flow (not logging to Crashlytics)")
                 return returnedError
             }

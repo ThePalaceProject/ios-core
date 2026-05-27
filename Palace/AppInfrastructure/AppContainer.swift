@@ -1,5 +1,6 @@
 import SwiftUI
 import Combine
+import PalaceAuth
 import PalaceNetwork
 
 struct AppContainer {
@@ -21,6 +22,13 @@ struct AppContainer {
     let navigationCoordinatorHub: NavigationCoordinatorHub
     let tabRouterHub: AppTabRouterHub
     let drmAuthorizerProvider: () -> TPPDRMAuthorizing?
+
+    /// Single auth-refresh dispatcher (swarm_66819d80 Module A + C). All
+    /// network consumers that see a 401/403 route through this coordinator
+    /// instead of carrying per-call-site IdP-dispatch logic. Constructed
+    /// once at composition root; held as a strong reference for app
+    /// lifetime.
+    let authCoordinator: AuthCoordinator
 
     // Lazy-init on MainActor: BookCellModelCache and SamplePreviewManager are
     // @MainActor-isolated, but `_cached`'s static-let initializer can run on
@@ -100,7 +108,8 @@ struct AppContainer {
         readerService: ReaderService,
         navigationCoordinatorHub: NavigationCoordinatorHub,
         tabRouterHub: AppTabRouterHub,
-        drmAuthorizerProvider: @escaping () -> TPPDRMAuthorizing?
+        drmAuthorizerProvider: @escaping () -> TPPDRMAuthorizing?,
+        authCoordinator: AuthCoordinator
     ) {
         self.bookRegistry = bookRegistry
         self.networkExecutor = networkExecutor
@@ -119,6 +128,7 @@ struct AppContainer {
         self.navigationCoordinatorHub = navigationCoordinatorHub
         self.tabRouterHub = tabRouterHub
         self.drmAuthorizerProvider = drmAuthorizerProvider
+        self.authCoordinator = authCoordinator
     }
 
     static func production() -> AppContainer {
@@ -158,13 +168,42 @@ struct AppContainer {
         // networkExecutor, reachability. Calling the no-arg init here would
         // re-enter this dispatch_once on every one of them. Pass them all
         // explicitly to break the cycle.
+        // swarm_66819d80 Module C — single auth-refresh coordinator.
+        // Built BEFORE MyBooksDownloadCenter so MBDC's BookReturnService
+        // construction can receive a non-nil coordinator. Held by the
+        // AppContainer for app lifetime; injected anywhere a 401/403
+        // handler used to live. MainActor.assumeIsolated is required
+        // because `CoordinatorSignInModalPresenter` is `@MainActor`-
+        // isolated and the dispatch_once block runs on the first
+        // consumer's thread.
+        // swarm_66819d80 Module D — structured Crashlytics non-fatal for
+        // every auth decision. PalaceAuth holds the recorder via the
+        // injected `AuthDecisionRecording` protocol; the main-target
+        // wrapper (`AuthDecisionRecorder`) is the only piece that touches
+        // FirebaseCrashlytics. libraryUUID is a closure read at emission
+        // time so account swaps reflect in the next event without
+        // rebuilding the coordinator.
+        let authDecisionRecorder: AuthDecisionRecording = AuthDecisionRecorder()
+        let authCoordinator: AuthCoordinator = MainActor.assumeIsolated {
+            AuthCoordinator(
+                reauthenticator: TPPReauthenticator(),
+                modalPresenter: CoordinatorSignInModalPresenter(accountsManager: accountsManager),
+                userAccount: CoordinatorUserAccountAdapter(accountsManager: accountsManager),
+                accountProvider: CoordinatorAccountProvider(accountsManager: accountsManager),
+                recorder: authDecisionRecorder,
+                libraryUUIDProvider: { [weak accountsManager] in
+                    accountsManager?.currentAccount?.uuid
+                }
+            )
+        }
         let downloadCenter = MyBooksDownloadCenter(
             bookRegistry: bookRegistry,
             accountsManager: accountsManager,
             networkExecutor: executor,
             accessibilityAnnouncements: accessibilityAnnouncer,
             downloadAnnouncementService: downloadAnnouncementService,
-            reachability: reachability
+            reachability: reachability,
+            authCoordinator: authCoordinator
         )
         return AppContainer(
             bookRegistry: bookRegistry,
@@ -189,7 +228,8 @@ struct AppContainer {
                 #else
                 return nil
                 #endif
-            }
+            },
+            authCoordinator: authCoordinator
         )
     }()
 }

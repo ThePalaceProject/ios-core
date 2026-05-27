@@ -8,6 +8,7 @@
 
 import AuthenticationServices
 import Foundation
+import PalaceAuth
 import PalaceLogging
 import PalaceCatalog
 
@@ -43,12 +44,38 @@ final class TokenRefreshInterceptor {
     var reauthenticator: Reauthenticator
     private let userRetryTracker: UserRetryTracker
 
+    /// swarm_66819d80 Module C: auth-refresh coordinator. When non-nil,
+    /// the SAML-reauth + generic-browser-reauth dispatch sites inside
+    /// `handleDownloadFailureWithAuthCheck` and `handleProblem` route
+    /// through the coordinator's single seam instead of carrying
+    /// per-call-site SAML vs OIDC vs generic branching.
+    ///
+    /// **OIDC silent-reauth decision (Option A from the contract):** the
+    /// coordinator does NOT drive `ASWebAuthenticationSession.start()`
+    /// directly — that's an in-app system browser session, while the
+    /// coordinator presents the standard sign-in modal. To preserve the
+    /// silent-OIDC dance (which can succeed without user interaction
+    /// when the IdP session is still live), the OIDC branch keeps the
+    /// existing `triggerOIDCReauth` path AS-IS for the SUCCESS case.
+    /// Only the OIDC FAILURE fallback inside `triggerOIDCReauth` could
+    /// route through the coordinator, but the existing fallback already
+    /// hops back to `triggerBrowserReauth` which then routes through
+    /// the coordinator on the second pass — so no extra wiring is
+    /// needed at this layer for OIDC.
+    ///
+    /// Per-book download state-machine transitions (`.SAMLStarted`,
+    /// `.downloadNeeded`) and the `startDownload` retry stay at the call
+    /// site — the coordinator only owns credentials refresh.
+    private let authCoordinator: AuthCoordinator?
+
     // MARK: - Init
 
     init(reauthenticator: Reauthenticator = TPPReauthenticator(),
-         userRetryTracker: UserRetryTracker = .shared) {
+         userRetryTracker: UserRetryTracker = .shared,
+         authCoordinator: AuthCoordinator? = nil) {
         self.reauthenticator = reauthenticator
         self.userRetryTracker = userRetryTracker
+        self.authCoordinator = authCoordinator
     }
 
     // MARK: - Download Failure with Auth Check
@@ -82,14 +109,33 @@ final class TokenRefreshInterceptor {
 
                 switch reauthStrategy {
                 case .browser:
-                    if userAccount.authDefinition?.isSaml == true {
-                        Log.info(#file, "SAML session expired - triggering SAML re-auth flow")
-                        triggerSAMLReauth(for: book, task: task)
-                    } else if userAccount.authDefinition?.isOidc == true {
+                    // swarm_66819d80 Module C: route SAML + generic
+                    // browser through the coordinator (modal-routing for
+                    // browser-mechanism). OIDC keeps its silent
+                    // ASWebAuthenticationSession dance as-is per Option A
+                    // — the coordinator can't drive that surface.
+                    if userAccount.authDefinition?.isOidc == true {
                         Log.info(#file, "OIDC session expired - attempting silent re-auth via ASWebAuthenticationSession")
                         triggerOIDCReauth(for: book, task: task)
+                        return true
+                    }
+                    if let coordinator = self.authCoordinator {
+                        let isSaml = userAccount.authDefinition?.isSaml == true
+                        Log.info(#file, "Browser session expired - dispatching through AuthCoordinator (isSaml=\(isSaml))")
+                        triggerCoordinatorReauth(
+                            for: book,
+                            task: task,
+                            coordinator: coordinator,
+                            reason: isSaml ? .samlSessionExpired : .invalidCredentials,
+                            stateOnSuccess: isSaml ? .SAMLStarted : .downloadNeeded
+                        )
+                        return true
+                    }
+                    if userAccount.authDefinition?.isSaml == true {
+                        Log.info(#file, "SAML session expired - triggering SAML re-auth flow (legacy path)")
+                        triggerSAMLReauth(for: book, task: task)
                     } else {
-                        Log.info(#file, "Browser-based auth expired - triggering re-auth via sign-in modal")
+                        Log.info(#file, "Browser-based auth expired - triggering re-auth via sign-in modal (legacy path)")
                         triggerBrowserReauth(for: book, task: task)
                     }
                     return true
@@ -116,14 +162,30 @@ final class TokenRefreshInterceptor {
         if let problemDoc = problemDoc, problemDoc.type == TPPProblemDocument.TypeNoActiveLoan {
             if reauthStrategy == .browser && hasCredentials {
                 userAccount.markCredentialsStale()
-                if userAccount.authDefinition?.isSaml == true {
-                    Log.info(#file, "SAML: 'no-active-loan' treating as session expiry (PP-3716)")
-                    triggerSAMLReauth(for: book, task: task)
-                } else if userAccount.authDefinition?.isOidc == true {
+                // swarm_66819d80 Module C: same coordinator routing as
+                // the 401 branch above. OIDC stays on its own silent path.
+                if userAccount.authDefinition?.isOidc == true {
                     Log.info(#file, "OIDC: 'no-active-loan' treating as session expiry")
                     triggerOIDCReauth(for: book, task: task)
+                    return true
+                }
+                if let coordinator = self.authCoordinator {
+                    let isSaml = userAccount.authDefinition?.isSaml == true
+                    Log.info(#file, "no-active-loan as session expiry — dispatching through AuthCoordinator (isSaml=\(isSaml))")
+                    triggerCoordinatorReauth(
+                        for: book,
+                        task: task,
+                        coordinator: coordinator,
+                        reason: isSaml ? .samlSessionExpired : .invalidCredentials,
+                        stateOnSuccess: isSaml ? .SAMLStarted : .downloadNeeded
+                    )
+                    return true
+                }
+                if userAccount.authDefinition?.isSaml == true {
+                    Log.info(#file, "SAML: 'no-active-loan' treating as session expiry (PP-3716, legacy path)")
+                    triggerSAMLReauth(for: book, task: task)
                 } else {
-                    Log.info(#file, "Browser auth: 'no-active-loan' treating as session expiry")
+                    Log.info(#file, "Browser auth: 'no-active-loan' treating as session expiry (legacy path)")
                     triggerBrowserReauth(for: book, task: task)
                 }
                 return true
@@ -277,8 +339,43 @@ final class TokenRefreshInterceptor {
 
         // For browser-based auth (SAML/OIDC) with expired session, trigger re-auth
         if authDef?.reauthStrategy == .browser && hasCredentials {
+            // swarm_66819d80 Module C: route SAML cookie-expiry + generic
+            // browser-expiry through the coordinator. OIDC stays out of
+            // scope here (the handleProblem flow doesn't dispatch OIDC
+            // separately like handleDownloadFailureWithAuthCheck does;
+            // OIDC inherits the SAML branch behavior pre-Module-C).
+            if let coordinator = self.authCoordinator {
+                let isSaml = authDef?.isSaml == true
+                Log.info(#file, "handleProblem: browser-based reauth dispatched through AuthCoordinator (isSaml=\(isSaml))")
+                Task { [weak self, weak delegate] in
+                    guard let delegate = delegate else { return }
+                    await delegate.stateManager.bookIdentifierToDownloadInfo.remove(book.identifier)
+                    await delegate.stateManager.downloadCoordinator.registerCompletion(identifier: book.identifier)
+
+                    let outcome = await coordinator.refreshCredentialsIfNeeded(
+                        reason: isSaml ? .samlSessionExpired : .invalidCredentials
+                    )
+
+                    await MainActor.run {
+                        if isSaml {
+                            bookRegistry.setState(.SAMLStarted, for: book.identifier)
+                        } else {
+                            bookRegistry.setState(.downloadNeeded, for: book.identifier)
+                        }
+                        switch outcome {
+                        case .success:
+                            Log.info(#file, "handleProblem coordinator success — retrying download for \(book.identifier)")
+                            delegate.startDownload(for: book, withRequest: nil)
+                        case .failure(let cancellation):
+                            Log.info(#file, "handleProblem coordinator declined refresh for \(book.identifier) — \(cancellation)")
+                        }
+                        _ = self // retain to make warnings about unused capture happy
+                    }
+                }
+                return
+            }
             if authDef?.isSaml == true {
-                Log.info(#file, "SAML cookies expired - triggering SAML re-auth flow")
+                Log.info(#file, "SAML cookies expired - triggering SAML re-auth flow (legacy path)")
 
                 Task { [weak delegate] in
                     guard let delegate = delegate else { return }
@@ -292,7 +389,7 @@ final class TokenRefreshInterceptor {
                     }
                 }
             } else {
-                Log.info(#file, "Browser-based auth expired - triggering re-auth via sign-in modal")
+                Log.info(#file, "Browser-based auth expired - triggering re-auth via sign-in modal (legacy path)")
                 userAccount.markCredentialsStale()
                 bookRegistry.setState(.downloadNeeded, for: book.identifier)
 
@@ -348,6 +445,43 @@ final class TokenRefreshInterceptor {
     }
 
     // MARK: - Private Helpers
+
+    /// swarm_66819d80 Module C: coordinator-routed reauth dispatch.
+    /// Cleans up the per-book download tracking state, asks the
+    /// coordinator to refresh credentials (the coordinator decides
+    /// silent vs modal per IdP), then flips the per-book state and
+    /// fires the retry download on success.
+    private func triggerCoordinatorReauth(
+        for book: TPPBook,
+        task: URLSessionTask,
+        coordinator: AuthCoordinator,
+        reason: ReauthReason,
+        stateOnSuccess: TPPBookState
+    ) {
+        guard let delegate = delegate else { return }
+        let stateManager = delegate.stateManager
+
+        Task { [weak self, weak delegate] in
+            await stateManager.bookIdentifierToDownloadInfo.remove(book.identifier)
+            await stateManager.taskIdentifierToBook.remove(task.taskIdentifier)
+            await stateManager.downloadCoordinator.registerCompletion(identifier: book.identifier)
+
+            let outcome = await coordinator.refreshCredentialsIfNeeded(reason: reason)
+
+            await MainActor.run {
+                guard let delegate = delegate else { return }
+                delegate.bookRegistry.setState(stateOnSuccess, for: book.identifier)
+                switch outcome {
+                case .success:
+                    Log.info(#file, "Coordinator refresh succeeded — retrying download for \(book.identifier)")
+                    delegate.startDownload(for: book, withRequest: nil)
+                case .failure(let cancellation):
+                    Log.info(#file, "Coordinator declined refresh for \(book.identifier) — \(cancellation)")
+                }
+                _ = self // retain to silence unused-capture-of-self
+            }
+        }
+    }
 
     private func triggerSAMLReauth(for book: TPPBook, task: URLSessionTask) {
         guard let delegate = delegate else { return }
