@@ -110,7 +110,14 @@ detect_base_branch() {
 BASE=$(detect_base_branch)
 CHANGED_SWIFT=$(git diff --name-only "$BASE"...HEAD -- '*.swift' 2>/dev/null | grep -v 'Tests/' || true)
 CHANGED_TEST_SWIFT=$(git diff --name-only "$BASE"...HEAD -- '*.swift' 2>/dev/null | grep 'Tests/' || true)
-CHANGED_UI=$(echo "$CHANGED_SWIFT" | grep -E 'UI/|View|Cell|Controller' || true)
+# Scope a11y file picker to actual SwiftUI/UIKit view files. Exclude
+# non-view siblings (ViewModel, Model, Reducer, Service, Provider, Mapper,
+# Store, Coordinator, Builder, Dispatcher) that happen to substring-match
+# "View" or "Controller". Documented in feedback_verify_pr_false_positives.md.
+CHANGED_UI=$(echo "$CHANGED_SWIFT" \
+  | grep -E '(UI/|View|Cell|Controller)' \
+  | grep -Ev '(ViewModel|ViewState|Model|Reducer|Service|Provider|Mapper|Store|Coordinator|Builder|Dispatcher|Repository|Manager)\.swift$' \
+  || true)
 ALL_CHANGED=$(git diff --name-only "$BASE"...HEAD 2>/dev/null || true)
 
 # Docs-only fast-path. If every changed file matches a documentation or
@@ -491,8 +498,11 @@ elif [ -n "$CHANGED_UI" ]; then
   while IFS= read -r ui_file; do
     [ -z "$ui_file" ] && continue
     [ ! -f "$ui_file" ] && continue
-    # Check for Button/Image without accessibilityIdentifier or accessibilityLabel
-    HAS_BUTTON=$(grep -c 'UIButton\|Button(' "$ui_file" 2>/dev/null || true)
+    # Check for Button/Image without accessibilityIdentifier or accessibilityLabel.
+    # Use a word-boundary regex on `Button(` so we don't substring-match
+    # method names like `removeProcessingButton(` on a ViewModel call site
+    # (see feedback_verify_pr_false_positives.md).
+    HAS_BUTTON=$(grep -cE '(^|[^A-Za-z0-9_])(UIButton|Button)\(' "$ui_file" 2>/dev/null || true)
     HAS_A11Y=$(grep -c 'accessibilityIdentifier\|accessibilityLabel\|isAccessibilityElement' "$ui_file" 2>/dev/null || true)
     if [ "${HAS_BUTTON:-0}" -gt 0 ] && [ "${HAS_A11Y:-0}" -eq 0 ]; then
       A11Y_ISSUES=$((A11Y_ISSUES + 1))
