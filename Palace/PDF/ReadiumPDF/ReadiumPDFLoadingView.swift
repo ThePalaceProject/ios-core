@@ -71,11 +71,11 @@ struct ReadiumPDFLoadingView: View {
                 .padding(.horizontal, 32)
 
                 VStack(spacing: 10) {
-                    ProgressView(value: barFillRatio)
+                    ProgressView(value: Double(progress.percentComplete) / 100.0)
                         .progressViewStyle(.linear)
                         .tint(.white.opacity(0.85))
                         .frame(maxWidth: 240)
-                        .animation(.easeInOut(duration: 0.4), value: barFillRatio)
+                        .animation(.easeInOut(duration: 0.4), value: progress.percentComplete)
 
                     Text(progress.statusText)
                         .font(.footnote)
@@ -88,18 +88,6 @@ struct ReadiumPDFLoadingView: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(book.title), \(progress.statusText)")
-    }
-
-    /// Bar fill that nudges visibly forward with each decrypt event but
-    /// never reaches 100% before the navigator paints the first page.
-    /// `1 - exp(-blocks/N)` is monotonically increasing with diminishing
-    /// returns, so a user with a small book sees a fast climb and a
-    /// user with a huge book sees the bar keep edging upward without
-    /// stalling at the same number.
-    private var barFillRatio: Double {
-        let blocks = Double(progress.decryptedBlocks)
-        // Tune so 60 blocks ≈ 50% fill, ~240 blocks ≈ 90% fill.
-        return min(0.95, 1.0 - exp(-blocks / 90.0))
     }
 
     @ViewBuilder
@@ -125,53 +113,48 @@ struct ReadiumPDFLoadingView: View {
 /// `ObservableObject` that the view subscribes to via @StateObject.
 @MainActor
 private final class ProgressBridge: ObservableObject {
-    @Published var statusText: String = NSLocalizedString("Preparing…", comment: "")
-    @Published var decryptedBlocks: Int = 0
+    @Published var statusText: String = NSLocalizedString("Loading…", comment: "")
+    @Published var percentComplete: Int = 0
 
     private var subscriptions: [AnyObject] = []
 
     init() {
         let center = LCPPDFOpenProgress.shared
-        // Initial snapshot.
-        recompute(phase: center.phase, blocks: center.decryptedBlocks, bytes: center.decryptedBytes)
+        recompute(from: center)
 
-        // Subscribe to changes. Using NotificationCenter would also
-        // work, but a direct Combine sink keeps the dependency local.
-        subscriptions.append(center.$phase.sink { [weak self, weak center] phase in
+        subscriptions.append(center.$phase.sink { [weak self, weak center] _ in
             guard let self, let center else { return }
-            self.recompute(phase: phase, blocks: center.decryptedBlocks, bytes: center.decryptedBytes)
+            self.recompute(from: center)
         })
-        subscriptions.append(center.$decryptedBlocks.sink { [weak self, weak center] blocks in
+        subscriptions.append(center.$decryptedBlocks.sink { [weak self, weak center] _ in
             guard let self, let center else { return }
-            self.recompute(phase: center.phase, blocks: blocks, bytes: center.decryptedBytes)
+            self.recompute(from: center)
+        })
+        subscriptions.append(center.$cachedHits.sink { [weak self, weak center] _ in
+            guard let self, let center else { return }
+            self.recompute(from: center)
         })
     }
 
-    private func recompute(phase: LCPPDFOpenProgress.Phase, blocks: Int, bytes: Int) {
-        decryptedBlocks = blocks
-        statusText = Self.statusText(phase: phase, blocks: blocks, bytes: bytes)
+    private func recompute(from center: LCPPDFOpenProgress) {
+        percentComplete = center.percentComplete
+        statusText = Self.statusText(phase: center.phase, percent: center.percentComplete)
     }
 
-    private static func statusText(phase: LCPPDFOpenProgress.Phase, blocks: Int, bytes: Int) -> String {
+    /// User-facing status. Show a percentage once we're past the
+    /// startup phases — common users care that progress is happening,
+    /// not which AES block is being decrypted.
+    private static func statusText(phase: LCPPDFOpenProgress.Phase, percent: Int) -> String {
         switch phase {
         case .idle:
             return NSLocalizedString("Loading…", comment: "")
-        case .preparing:
-            return NSLocalizedString("Preparing…", comment: "")
-        case .openingPublication:
-            return NSLocalizedString("Opening publication…", comment: "")
-        case .decryptingContent:
+        case .preparing, .openingPublication:
+            return NSLocalizedString("Preparing book…", comment: "")
+        case .decryptingContent, .loadingFirstPage:
             return String(
-                format: NSLocalizedString("Decrypting content… %d blocks", comment: ""),
-                blocks
+                format: NSLocalizedString("Loading… %d%%", comment: ""),
+                percent
             )
-        case .loadingFirstPage:
-            return blocks > 0
-                ? String(
-                    format: NSLocalizedString("Rendering first page… %d blocks decrypted", comment: ""),
-                    blocks
-                  )
-                : NSLocalizedString("Rendering first page…", comment: "")
         }
     }
 }

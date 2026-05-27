@@ -36,6 +36,12 @@ final class LCPPDFOpenProgress: ObservableObject {
     @Published private(set) var phase: Phase = .idle
     @Published private(set) var decryptedBlocks: Int = 0
     @Published private(set) var decryptedBytes: Int = 0
+    /// Blocks served from the LRU decrypt cache (no AES work needed).
+    /// Counted separately so the progress bar credits them — a cached
+    /// hit IS forward motion as far as PDFNavigator is concerned, the
+    /// page is one step closer to rendering — without misleadingly
+    /// padding the work-done counter.
+    @Published private(set) var cachedHits: Int = 0
 
     /// Identifier of the book whose open this reporter is tracking.
     /// Used by the loading overlay to ignore stale signals if a back-
@@ -49,20 +55,25 @@ final class LCPPDFOpenProgress: ObservableObject {
         phase = .preparing
         decryptedBlocks = 0
         decryptedBytes = 0
+        cachedHits = 0
     }
 
     func setPhase(_ newPhase: Phase) {
         phase = newPhase
     }
 
-    nonisolated func recordDecrypt(byteCount: Int) {
+    nonisolated func recordDecrypt(byteCount: Int, fromCache: Bool = false) {
         Task { @MainActor in
             // Only count blocks once we're actively in an LCP open. A
             // stray decrypt from elsewhere (e.g. an audiobook chunk on
             // a parallel read) should not bump this reporter.
             guard phase != .idle else { return }
-            decryptedBlocks += 1
-            decryptedBytes += byteCount
+            if fromCache {
+                cachedHits += 1
+            } else {
+                decryptedBlocks += 1
+                decryptedBytes += byteCount
+            }
             // If a decrypt fires while we're still showing
             // "openingPublication", flip to "decryptingContent" so the
             // overlay text matches reality.
@@ -70,6 +81,18 @@ final class LCPPDFOpenProgress: ObservableObject {
                 phase = .decryptingContent
             }
         }
+    }
+
+    /// Percentage in [0, 95]. The denominator (total blocks to render
+    /// page 1) is not known a priori, so the curve is `1 - exp(-x/N)`
+    /// with N tuned so a small book climbs quickly and a large book
+    /// keeps edging upward without stalling. Cached hits count toward
+    /// progress — they ARE forward motion as far as PDFNavigator is
+    /// concerned, the page is one step closer to rendering.
+    var percentComplete: Int {
+        let credit = Double(decryptedBlocks) + 0.5 * Double(cachedHits)
+        let ratio = 1.0 - exp(-credit / 90.0)
+        return min(95, Int((ratio * 100.0).rounded()))
     }
 
     func finish() {
