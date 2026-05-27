@@ -591,16 +591,16 @@
 
   <!-- ─────── Triage callout ─────── -->
   <div class="triage">
-    <h2>Is this the right workflow?</h2>
-    <p>Use this if the ticket matches <strong>any</strong> of these:</p>
+    <h2>When to use this workflow</h2>
+    <p>Use this whenever a patron's app is in a stuck state that ordinary sign-out and reinstall does not clear. Typical signals:</p>
     <ul>
-      <li>Audiobook or ebook <strong>loaded once, then refuses to load</strong> on every subsequent open.</li>
-      <li>Patron already tried <strong>sign-out → uninstall → reinstall</strong> and the failure persists.</li>
-      <li>Same credentials work on a <strong>different device</strong> — i.e. the failure is tied to the device, not the patron.</li>
-      <li>In-app overlays the patron sees: <em>"Audiobook Unavailable,"</em> <em>"A Problem Has Occurred,"</em> or <em>"The download could not be completed."</em></li>
-      <li>"It's hit or miss" / "sometimes it loads, sometimes it doesn't" on the same checkout.</li>
+      <li>A book loaded once, then refuses to load on every subsequent open.</li>
+      <li>The patron has already tried sign-out → uninstall → reinstall and the failure persists.</li>
+      <li>The same credentials work on a different device — i.e. the failure is tied to the device, not the patron or the title.</li>
+      <li>The patron sees a recurring error overlay or alert that retrying does not clear.</li>
+      <li>"It's hit or miss" / "sometimes it works, sometimes it doesn't" on the same checkout.</li>
     </ul>
-    <p style="margin-top: 10px; font-size: 13px;"><strong>Different bug:</strong> "Can borrow but can't READ an EPUB" (audio works, ebook spins) is <code>PP-3649</code> (Adobe DRM activation). Reset Account can incidentally help, but the real fix lives elsewhere.</p>
+    <p style="margin-top: 10px; font-size: 13px;">Reset Account is a general-purpose local-state recovery for one library — it is not targeted at a specific bug. Use it as the first recovery step whenever ordinary sign-out has not been enough.</p>
   </div>
 
   <!-- ═══════════════════════════════════════════ -->
