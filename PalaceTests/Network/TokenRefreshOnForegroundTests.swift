@@ -431,7 +431,11 @@ final class TokenRefreshOnForegroundTests: XCTestCase {
 
         // Wait until /token is observed in-flight, sample the counter
         // before releasing — that's the moment that proves single-flight.
-        XCTAssertTrue(waitForCondition(timeout: 2.0) { counterQueue.sync { tokenHits } >= 1 },
+        // 30s budget matches the #999 "un-tighten" pattern (local <100ms
+        // baseline, CI runner under parallel-test contention stalls the
+        // actor-hop + URLSession dispatch well past 2s — same root cause
+        // as the BookRegistry / CatalogCache / ImageCache 30s restorations).
+        XCTAssertTrue(waitForCondition(timeout: 30.0) { counterQueue.sync { tokenHits } >= 1 },
                       "/token endpoint should be in-flight")
         let snapshotted = counterQueue.sync { tokenHits }
         XCTAssertEqual(snapshotted, 1,
