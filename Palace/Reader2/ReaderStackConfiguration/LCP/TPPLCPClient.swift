@@ -173,7 +173,12 @@ class TPPLCPClient: ReadiumLCP.LCPClient {
         do {
             let decrypted = R2LCPClient.decrypt(data: data, using: drmContext)
             if let decrypted {
-                Log.debug(#file, "Successfully decrypted \(data.count) bytes -> \(decrypted.count) bytes")
+                // Per-call success log dropped intentionally — at ~7k
+                // calls/s during a PDF cross-ref walk the string
+                // formatting + log-system writes were measurable
+                // memory churn on the device. The progress reporter +
+                // periodic [PERF] [LCP-PDF] residentMB line carry the
+                // same information without the per-call cost.
                 LCPDecryptCache.shared.store(decrypted, for: data)
                 LCPPDFOpenProgress.shared.recordDecrypt(byteCount: data.count)
             } else {
@@ -234,7 +239,6 @@ extension TPPLCPClient {
         do {
             let result = R2LCPClient.decrypt(data: data, using: drmContext)
             if let result {
-                Log.debug(#file, "Successfully decrypted \(data.count) bytes -> \(result.count) bytes")
                 LCPDecryptCache.shared.store(result, for: data)
                 LCPPDFOpenProgress.shared.recordDecrypt(byteCount: data.count)
             } else {

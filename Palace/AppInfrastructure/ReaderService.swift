@@ -122,8 +122,15 @@ final class ReaderService {
 
         // Periodically log memory while the open is in flight so a
         // post-mortem on an OOM crash can identify which phase tipped
-        // the device over its jetsam ceiling. Stops on its own when
-        // the progress reporter flips back to .idle.
+        // the device over its jetsam ceiling. Also acts as our
+        // last-line-of-defense abort: if the decrypt walk runs away
+        // (a known failure mode on large Marketplace LCP PDFs where
+        // PDFNavigator's random-access reads hit unique file offsets
+        // and the cache never catches up), we pop the route and
+        // surface a friendly alert before the OS jetsam-kills the
+        // app. 150k decrypts is conservatively above any healthy
+        // open — a typical small PDF first-page paints in 200-2000
+        // decrypts.
         Task.detached(priority: .utility) { [weak self] in
             guard let self else { return }
             while await LCPPDFOpenProgress.shared.phase != .idle {
@@ -131,7 +138,14 @@ final class ReaderService {
                 let mb = Self.residentMemoryMB()
                 let blocks = await LCPPDFOpenProgress.shared.decryptedBlocks
                 let hits = await LCPPDFOpenProgress.shared.cachedHits
-                Log.info(#file, "[PERF] [LCP-PDF] residentMB=\(mb) blocks=\(blocks) cacheHits=\(hits) phase=\(await LCPPDFOpenProgress.shared.phase)")
+                let phase = await LCPPDFOpenProgress.shared.phase
+                Log.info(#file, "[PERF] [LCP-PDF] residentMB=\(mb) blocks=\(blocks) cacheHits=\(hits) phase=\(phase)")
+
+                if blocks > 150_000 {
+                    Log.error(#file, "[PERF] [LCP-PDF] abort: decrypt walk exceeded 150k blocks (\(blocks)) — assuming runaway, aborting open to avoid OOM")
+                    await self.abortRunawayOpen(for: book)
+                    return
+                }
             }
         }
 
@@ -332,6 +346,39 @@ final class ReaderService {
     /// log signal is what lets us tell whether the remaining pressure
     /// is from PDFNavigator buffers, the decrypt cache, or something
     /// upstream.
+    /// Tears down an LCP-PDF open that's spiraling into OOM territory
+    /// and surfaces a user-facing alert. Triggered by the periodic
+    /// memory-log Task when the decrypt count crosses an absurd
+    /// threshold — at that point the open is definitely not going to
+    /// succeed and continuing risks a hard jetsam kill (worse UX than
+    /// a clean alert).
+    @MainActor
+    private func abortRunawayOpen(for book: TPPBook) {
+        releaseReadiumPDF(forBookIdentifier: book.identifier)
+        let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator
+        if let path = coordinator?.path, path.count > 0 {
+            coordinator?.path.removeLast()
+        }
+        guard let top = topPresenter() else { return }
+        let alert = UIAlertController(
+            title: NSLocalizedString("Unable to open book", comment: ""),
+            message: NSLocalizedString("This book is too large to open on this device right now. We're working on a fix — please contact support if this keeps happening.", comment: ""),
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: NSLocalizedString("OK", comment: ""), style: .default))
+        top.present(alert, animated: true)
+        TPPErrorLogger.logError(
+            withCode: .lcpDRMFulfillmentFail,
+            summary: "LCP PDF open aborted due to runaway decrypt",
+            metadata: [
+                "bookTitle": book.title,
+                "bookIdentifier": book.identifier,
+                "decryptedBlocks": LCPPDFOpenProgress.shared.decryptedBlocks,
+                "residentMB": Self.residentMemoryMB()
+            ]
+        )
+    }
+
     static func residentMemoryMB() -> Int {
         var info = mach_task_basic_info()
         var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size / MemoryLayout<natural_t>.size)
