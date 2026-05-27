@@ -841,12 +841,20 @@ final class BookDetailViewModel: ObservableObject {
         switch contentType {
         case .epub:
             Log.debug(#file, "  → Opening as EPUB")
-            processingButtons.removeAll()
-            presentEPUB(resolvedBook)
+            presentEPUB(resolvedBook) { [weak self] in
+                DispatchQueue.main.async {
+                    self?.processingButtons.removeAll()
+                    completion?()
+                }
+            }
         case .pdf:
             Log.debug(#file, "  → Opening as PDF")
-            processingButtons.removeAll()
-            presentPDF(resolvedBook)
+            presentPDF(resolvedBook) { [weak self] in
+                DispatchQueue.main.async {
+                    self?.processingButtons.removeAll()
+                    completion?()
+                }
+            }
         case .audiobook:
             Log.debug(#file, "  → Opening as AUDIOBOOK")
             openAudiobook(resolvedBook) { [weak self] in
@@ -862,12 +870,12 @@ final class BookDetailViewModel: ObservableObject {
         }
     }
 
-    @MainActor private func presentEPUB(_ book: TPPBook) {
-        BookService.open(book)
+    @MainActor private func presentEPUB(_ book: TPPBook, completion: (() -> Void)? = nil) {
+        BookService.open(book, onFinish: completion)
     }
 
-    @MainActor private func presentPDF(_ book: TPPBook) {
-        BookService.open(book)
+    @MainActor private func presentPDF(_ book: TPPBook, completion: (() -> Void)? = nil) {
+        BookService.open(book, onFinish: completion)
     }
 
     // MARK: - Audiobook Opening

@@ -567,9 +567,14 @@ extension BookCellModel {
             self.isLoading = false
         case .pdf:
             #if LCP
-            if LCPPDFs.canOpenBook(book) {
-                readerService.openPDF(book)
-                self.isLoading = false
+            if LCPPDFs.hasLCPAcquisition(book) {
+                // LCP PDFs go through the Readium publication opener which
+                // is async + heavy (LCP key derivation + asset retrieval).
+                // Hold isLoading until the route is pushed so the cell
+                // spinner stays visible while the user waits.
+                readerService.openPDF(book) { [weak self] in
+                    self?.isLoading = false
+                }
                 return
             }
             #endif

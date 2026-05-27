@@ -82,11 +82,18 @@ enum BookService {
 
     @MainActor private static func presentPDF(_ book: TPPBook, completion: (() -> Void)? = nil) {
         // LCP-protected PDFs go through Readium's PDFNavigator — no temp
-        // extract, pages stream on demand via the shared httpServer.
+        // extract, pages stream on demand via the shared httpServer. Use
+        // hasLCPAcquisition (walks all acquisitions + indirect chains)
+        // rather than canOpenBook so OPDS-Catalog-wrapped LCP PDFs (where
+        // the LCP MIME is a sibling acquisition rather than the default)
+        // get routed correctly. Defer `completion?()` until the
+        // publication opens — LCP open is async (~1–3s) and the caller
+        // typically holds a loading indicator on this completion.
         #if LCP
-        if LCPPDFs.canOpenBook(book) {
-            AppContainer.production().readerService.openPDF(book)
-            completion?()
+        if LCPPDFs.hasLCPAcquisition(book) {
+            AppContainer.production().readerService.openPDF(book) {
+                completion?()
+            }
             return
         }
         #endif

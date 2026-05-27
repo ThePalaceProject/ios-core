@@ -30,6 +30,7 @@ final class LCPPDFAcquisitionPredicateTests: XCTestCase {
 
     private let lcpLicenseMIME = "application/vnd.readium.lcp.license.v1.0+json"
     private let opdsPublicationMIME = "application/opds-publication+json"
+    private let opdsCatalogMIME = "application/atom+xml;type=entry;profile=opds-catalog"
     private let pdfMIME = "application/pdf"
     private let audiobookLCPMIME = "application/audiobook+lcp"
 
@@ -132,6 +133,32 @@ final class LCPPDFAcquisitionPredicateTests: XCTestCase {
                       "Marketplace /groups/ JSON shape (LCP nested in indirectAcquisitions) must match — PP-4454 kill point")
         XCTAssertFalse(LCPPDFs.canOpenBook(book),
                        "Legacy canOpenBook MUST return false on this fixture — divergence asserts that hasLCPAcquisition is doing real recursive work, not duplicating canOpenBook")
+    }
+
+    /// OPDS-Catalog wrapping shape — the failing fixture from
+    /// **Power Rangers Unlimited: Edge of Darkness** in PP-4454. The book
+    /// exposes TWO top-level acquisitions: `[0]` is the OPDS Catalog entry
+    /// (becomes `defaultAcquisition`), `[1]` is the LCP license MIME
+    /// directly. A predicate that only inspects `defaultAcquisition` (or
+    /// only its `indirectAcquisitions`) misses the LCP MIME entirely
+    /// because it lives on a *sibling* acquisition, not nested under the
+    /// default one.
+    ///
+    /// **THIS IS THE PP-4454 EDGE OF DARKNESS KILL POINT.** If this test
+    /// fails, OPDS-Catalog-wrapped LCP PDFs route to the open-access
+    /// PDFKit path and the user sees "Unable to load PDF file."
+    func testHasLCPAcquisition_siblingLCPAcquisition_returnsTrue() {
+        let book = makeBook(acquisitions: [
+            acquisition(type: opdsCatalogMIME, indirect: [indirect(pdfMIME)]),
+            acquisition(type: lcpLicenseMIME, indirect: [indirect(pdfMIME)])
+        ])
+
+        XCTAssertEqual(book.defaultBookContentType, .pdf,
+                       "Pre-condition: OPDS-Catalog-wrapped LCP PDF resolves as .pdf")
+        XCTAssertTrue(LCPPDFs.hasLCPAcquisition(book),
+                      "OPDS-Catalog wrapping shape — LCP MIME on sibling acquisition must match — PP-4454 Edge of Darkness kill point")
+        XCTAssertFalse(LCPPDFs.canOpenBook(book),
+                       "Legacy canOpenBook only inspects defaultAcquisition (the OPDS Catalog one), so it returns false here — divergence asserts the new predicate is walking siblings")
     }
 
     /// Open-access PDF — no LCP MIME anywhere in the chain. Pins that

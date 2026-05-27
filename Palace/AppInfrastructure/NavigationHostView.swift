@@ -49,7 +49,14 @@ struct NavigationHostView<Content: View>: View {
                         if let (publication, metadata) = coordinator.resolveReadiumPDF(for: bookRoute),
                            let book = coordinator.resolveBook(for: bookRoute),
                            let httpServer = AppContainer.production().readerService.httpServer {
-                            ReadiumPDFReaderView(publication: publication, book: book, httpServer: httpServer)
+                            let toc = coordinator.resolveReadiumPDFTableOfContents(for: bookRoute)
+                            ReadiumPDFReaderView(
+                                publication: publication,
+                                book: book,
+                                httpServer: httpServer,
+                                tableOfContents: toc?.toc ?? [],
+                                pageCount: toc?.pageCount ?? 0
+                            )
                                 .environmentObject(metadata)
                                 .toolbar(.hidden, for: .tabBar)
                         } else if let (document, metadata) = coordinator.resolvePDF(for: bookRoute) {

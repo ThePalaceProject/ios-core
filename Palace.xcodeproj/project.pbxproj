@@ -1593,7 +1593,6 @@
 		F68B8376C17CF090F900FAE6 /* BearerTokenAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AA1511F27C932D92C002C86 /* BearerTokenAdapter.swift */; };
 		F7081A2B3C4D5E6F70819203 /* TPPAuthDocumentContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6F7081A2B3C4D5E6F708192 /* TPPAuthDocumentContractTests.swift */; };
 		F75B245083BE4AD72CA2AED1 /* NYPLOPDSLinkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46E73CE2D76D4616118002BC /* NYPLOPDSLinkTests.swift */; };
-		F8027019D604EEB6191B37E1 /* LCPPDFsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6F691D8676CFC56232C6790 /* LCPPDFsTests.swift */; };
 		F8724E8E85D04DC1941AFC2A /* AccountDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 480ADB3F1AA842DE805EC230 /* AccountDetailView.swift */; };
 		F8724E8F85D04DC1941AFC2B /* AccountDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 480ADB3F1AA842DE805EC230 /* AccountDetailView.swift */; };
 		F8A42595FF8E09407C980F50 /* CirculationAnalyticsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2024455DC09E38D5FA3CE21 /* CirculationAnalyticsTests.swift */; };
@@ -1647,7 +1646,6 @@
 		MULTILIBISOL001BLD001 /* MultiLibraryTokenIsolationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = MULTILIBISOL001REF001 /* MultiLibraryTokenIsolationTests.swift */; };
 		NEWTST002CONFIGTEST0001 /* TPPConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = NEWTST001CONFIGTEST0001 /* TPPConfigurationTests.swift */; };
 		NEWTST006OPENSRCTEST001 /* TPPOpenSearchDescriptionExpandedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = NEWTST005OPENSRCTEST001 /* TPPOpenSearchDescriptionExpandedTests.swift */; };
-		NEWTST008PDFPRVTEST0001 /* TPPEncryptedPDFDataProviderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = NEWTST007PDFPRVTEST0001 /* TPPEncryptedPDFDataProviderTests.swift */; };
 		NEWTST010XMLSWFTEST0001 /* TPPXMLSwiftTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = NEWTST009XMLSWFTEST0001 /* TPPXMLSwiftTests.swift */; };
 		NEWTST012OPDSACQTEST001 /* OPDSAcquisitionPathExpandedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = NEWTST011OPDSACQTEST001 /* OPDSAcquisitionPathExpandedTests.swift */; };
 		NPCOORD0001BSRC000001 /* NowPlayingCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = NPCOORD0001FREF000001 /* NowPlayingCoordinatorTests.swift */; };
@@ -2957,7 +2955,6 @@
 		F6990140C2393E885A89B739 /* Corpus */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Corpus; sourceTree = "<group>"; };
 		F6BA53D1C399ABE2186FD429 /* OPDS2AuthenticationDocumentTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OPDS2AuthenticationDocumentTests.swift; sourceTree = "<group>"; };
 		F6C56509A03466E0531DBC27 /* TPPAccountAuthState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPAccountAuthState.swift; sourceTree = "<group>"; };
-		F6F691D8676CFC56232C6790 /* LCPPDFsTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LCPPDFsTests.swift; sourceTree = "<group>"; };
 		F75B6896C9742C07208D935E /* MockVisualNavigator.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MockVisualNavigator.swift; sourceTree = "<group>"; };
 		F8091A2B3C4D5E6F70819213 /* TPPPreferredAuthSelectionTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TPPPreferredAuthSelectionTests.swift; sourceTree = "<group>"; };
 		F820025C44C02D27C13B48B9 /* SAMLCookieSyncTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SAMLCookieSyncTests.swift; sourceTree = "<group>"; };
@@ -3003,7 +3000,6 @@
 		MULTILIBISOL001REF001 /* MultiLibraryTokenIsolationTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MultiLibraryTokenIsolationTests.swift; sourceTree = "<group>"; };
 		NEWTST001CONFIGTEST0001 /* TPPConfigurationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPConfigurationTests.swift; sourceTree = "<group>"; };
 		NEWTST005OPENSRCTEST001 /* TPPOpenSearchDescriptionExpandedTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPOpenSearchDescriptionExpandedTests.swift; sourceTree = "<group>"; };
-		NEWTST007PDFPRVTEST0001 /* TPPEncryptedPDFDataProviderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPEncryptedPDFDataProviderTests.swift; sourceTree = "<group>"; };
 		NEWTST009XMLSWFTEST0001 /* TPPXMLSwiftTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPXMLSwiftTests.swift; sourceTree = "<group>"; };
 		NEWTST011OPDSACQTEST001 /* OPDSAcquisitionPathExpandedTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OPDSAcquisitionPathExpandedTests.swift; sourceTree = "<group>"; };
 		NPCOORD0001FREF000001 /* NowPlayingCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingCoordinatorTests.swift; sourceTree = "<group>"; };
@@ -3620,7 +3616,6 @@
 			children = (
 				8568424DF6517B247D048D5D /* LCPLibraryServiceTests.swift */,
 				3C0E625DA84AEEFF9840A601 /* LCPAudiobooksTests.swift */,
-				F6F691D8676CFC56232C6790 /* LCPPDFsTests.swift */,
 				QALCS001T260955EF00000001 /* LicensesServiceTests.swift */,
 				77C1C5F7FE43056D96C9DE5C /* LCPSessionOrphaningTests.swift */,
 				0D1DDCD0CAAF267ED41E69DB /* LCPPassphraseReadinessTests.swift */,
@@ -5284,7 +5279,6 @@
 				QAPDF001T260955EF00000001 /* TPPPDFDocumentMetadataTests.swift */,
 				80EA8E55783D47B7A773164F /* PDFExtensionsTests.swift */,
 				A9BFD0F3410046E6AD2F25B0 /* TPPPDFLocationTests.swift */,
-				NEWTST007PDFPRVTEST0001 /* TPPEncryptedPDFDataProviderTests.swift */,
 				EE3D078322CEC4B660EC470F /* TPPPDFModelTests.swift */,
 			);
 			path = PDF;
@@ -5744,6 +5738,8 @@
 			);
 			name = Reader2;
 			path = Reader2;
+			sourceTree = "<group>";
+		};
 		99CE86024E6003C63E4D24A1 /* ReadiumPDF */ = {
 			isa = PBXGroup;
 			children = (
@@ -6645,7 +6641,6 @@
 				8CD73CE1905CBD7FA883FF6A /* TPPReauthenticatorTests.swift in Sources */,
 				58AF4A75D388F83A1F5B140B /* LCPLibraryServiceTests.swift in Sources */,
 				CCD4CE5B21BED732364D2899 /* LCPAudiobooksTests.swift in Sources */,
-				F8027019D604EEB6191B37E1 /* LCPPDFsTests.swift in Sources */,
 				FA346754BE76A48C92CF0754 /* OPDS2FeedParsingTests.swift in Sources */,
 				E33196F7DAE1612BD57E3CC9 /* OPDS2AuthenticationDocumentTests.swift in Sources */,
 				E5A09A812F0D72D000CC23EA /* URLResponseAuthenticationTests.swift in Sources */,
@@ -6773,7 +6768,6 @@
 				KCHAVAIL00BUILD000000001 /* KeychainAvailability.swift in Sources */,
 				APICONTRACT01BUILD00001 /* APIContractTests.swift in Sources */,
 				NEWTST006OPENSRCTEST001 /* TPPOpenSearchDescriptionExpandedTests.swift in Sources */,
-				NEWTST008PDFPRVTEST0001 /* TPPEncryptedPDFDataProviderTests.swift in Sources */,
 				NEWTST010XMLSWFTEST0001 /* TPPXMLSwiftTests.swift in Sources */,
 				NEWTST012OPDSACQTEST001 /* OPDSAcquisitionPathExpandedTests.swift in Sources */,
 				74E2FBEE352BB19421EABD2A /* AccountDetailsTests.swift in Sources */,

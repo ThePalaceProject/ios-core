@@ -43,24 +43,108 @@ final class ReaderService {
     /// Opens an LCP-protected PDF through the Readium pipeline:
     /// `AssetRetriever` + `PublicationOpener` → `Publication` served by
     /// `httpServer` → `PDFNavigatorViewController`. No temp-extract step.
+    ///
+    /// `onFinish` fires when the publication has been opened, its TOC +
+    /// positions have been loaded, and the route has been pushed (success)
+    /// or the failure alert has been queued (failure). LCP open is heavy
+    /// — AssetRetriever + LCP key derivation + PublicationOpener typically
+    /// takes 1-3s on real Marketplace containers — so callers should hold
+    /// a loading indicator until this completes.
     @MainActor
-    func openPDF(_ book: TPPBook) {
-        guard let presenter = topPresenter() else { return }
+    func openPDF(_ book: TPPBook, onFinish: (() -> Void)? = nil) {
+        guard let presenter = topPresenter() else { onFinish?(); return }
         r3Owner.libraryService.openBook(book, sender: presenter) { result in
             switch result {
             case .success(let publication):
-                if let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator {
-                    coordinator.store(book: book)
-                    let metadata = TPPPDFDocumentMetadata(with: book)
-                    coordinator.storeReadiumPDF(publication: publication, metadata: metadata, forBookId: book.identifier)
-                    coordinator.push(.pdf(BookRoute(id: book.identifier)))
-                } else {
-                    Log.error(#file, "📄 [Readium PDF] No NavigationCoordinator — cannot push route")
+                Task { @MainActor in
+                    // Pre-load TOC + page count so the side panels in
+                    // TPPPDFNavigation (TOC view, preview grid, bookmarks)
+                    // can stay synchronous against the publication-backed
+                    // TPPPDFDocument. Both calls are awaited before the
+                    // route pushes — adds ~ms to the open but keeps the
+                    // chrome from rendering with an empty TOC and then
+                    // re-rendering when the async load lands.
+                    let toc = await Self.loadTableOfContents(for: publication)
+                    let pageCount = await Self.loadPageCount(for: publication)
+
+                    if let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator {
+                        coordinator.store(book: book)
+                        let metadata = TPPPDFDocumentMetadata(with: book)
+                        coordinator.storeReadiumPDF(publication: publication, metadata: metadata, forBookId: book.identifier)
+                        coordinator.storeReadiumPDFTableOfContents(toc, pageCount: pageCount, forBookId: book.identifier)
+                        coordinator.push(.pdf(BookRoute(id: book.identifier)))
+                    } else {
+                        Log.error(#file, "📄 [Readium PDF] No NavigationCoordinator — cannot push route")
+                    }
+                    onFinish?()
                 }
             case .failure(let error):
                 self.presentOpenFailureAlert(for: error, book: book, isRetry: false)
+                onFinish?()
             }
         }
+    }
+
+    /// Flattens a Readium publication's `[Link]` table of contents into a
+    /// `[TPPPDFLocation]` array, resolving each link's destination to a
+    /// 0-indexed page number via the publication's positions list.
+    /// Returns `[]` if either call fails — the chrome handles an empty
+    /// TOC gracefully (just no list items).
+    private static func loadTableOfContents(for publication: Publication) async -> [TPPPDFLocation] {
+        let tocResult = await publication.tableOfContents()
+        guard case .success(let links) = tocResult else {
+            return []
+        }
+        let positionsResult = await publication.positions()
+        let positions: [Locator]
+        switch positionsResult {
+        case .success(let value): positions = value
+        case .failure: positions = []
+        }
+        var out: [TPPPDFLocation] = []
+        flatten(links: links, level: 0, positions: positions, into: &out)
+        return out
+    }
+
+    private static func flatten(links: [ReadiumShared.Link],
+                                 level: Int,
+                                 positions: [Locator],
+                                 into result: inout [TPPPDFLocation]) {
+        for link in links {
+            let pageNumber = pageNumber(for: link, positions: positions)
+            result.append(
+                TPPPDFLocation(
+                    title: link.title,
+                    subtitle: nil,
+                    pageLabel: nil,
+                    pageNumber: pageNumber,
+                    level: level
+                )
+            )
+            if !link.children.isEmpty {
+                flatten(links: link.children, level: level + 1, positions: positions, into: &result)
+            }
+        }
+    }
+
+    /// Resolves a Readium `Link` to a 0-indexed page number. Falls back
+    /// to matching the link's href against the publication's positions
+    /// via stable string representation. Worst case: TOC entry jumps to
+    /// page 0.
+    private static func pageNumber(for link: ReadiumShared.Link, positions: [Locator]) -> Int {
+        let linkHrefDesc = String(describing: link.href)
+        if let matchIndex = positions.firstIndex(where: { String(describing: $0.href) == linkHrefDesc }) {
+            return matchIndex
+        }
+        return 0
+    }
+
+    private static func loadPageCount(for publication: Publication) async -> Int {
+        let result = await publication.positions()
+        if case .success(let value) = result {
+            return value.count
+        }
+        return 0
     }
 
     @MainActor

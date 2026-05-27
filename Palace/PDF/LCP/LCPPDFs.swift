@@ -38,26 +38,39 @@ import PalaceCatalog
     }
 
     /// Returns `true` iff `book` is an LCP-protected PDF, regardless of which
-    /// OPDS feed shape Marketplace happened to populate it from. Unlike
-    /// `canOpenBook(_:)` — which only matches the `/loans/` XML shape that
-    /// places the LCP MIME at the top of `defaultAcquisition.type` — this
-    /// predicate also walks `indirectAcquisitions[*].type` recursively so the
-    /// `/groups/` JSON feed shape (top-level `application/opds-publication+json`
-    /// with the LCP license nested one or more levels deep) is caught.
+    /// OPDS feed shape Marketplace happened to populate it from.
     ///
-    /// Direct mirror of `LCPAudiobooks.hasLCPAcquisition` (PP-4407 / commit
-    /// `ca2ff13b6`); closes PP-4454, the PDF variant of the same structural
-    /// regression. The `defaultBookContentType == .pdf` clause is required
-    /// so LCP-typed EPUBs and audiobooks do NOT match here — only PDFs.
+    /// Walks the full set of `book.acquisitions` (not just `defaultAcquisition`)
+    /// and recurses into each one's `indirectAcquisitions` chain, so all three
+    /// real-world shapes match:
+    ///
+    /// - `/loans/` XML shape: LCP license MIME at top of `defaultAcquisition.type`
+    ///   — matches at the outer loop, first iteration.
+    /// - `/groups/` JSON shape (Marketplace): top-level type is
+    ///   `application/opds-publication+json` with the LCP license nested in
+    ///   `indirectAcquisitions` — matches via recursive walk.
+    /// - OPDS-Catalog wrapping shape (e.g. Power Rangers Unlimited): TPPBook
+    ///   exposes multiple top-level acquisitions, one of which is the OPDS
+    ///   catalog entry and a sibling is the LCP license MIME directly.
+    ///   `defaultAcquisition` returns only the first, so iterating
+    ///   `book.acquisitions` catches the sibling case.
+    ///
+    /// Mirror of `LCPAudiobooks.hasLCPAcquisition` (PP-4407 / commit
+    /// `ca2ff13b6`) extended to handle the sibling-acquisition shape that
+    /// surfaced in PP-4454 (Edge of Darkness). The
+    /// `defaultBookContentType == .pdf` clause is required so LCP-typed
+    /// EPUBs and audiobooks do NOT match here — only PDFs.
     @objc static func hasLCPAcquisition(_ book: TPPBook) -> Bool {
-        guard book.defaultBookContentType == .pdf,
-              let acquisition = book.defaultAcquisition else {
-            return false
+        guard book.defaultBookContentType == .pdf else { return false }
+        for acquisition in book.acquisitions {
+            if acquisition.type == expectedAcquisitionType {
+                return true
+            }
+            if indirectChainContainsLCP(acquisition.indirectAcquisitions) {
+                return true
+            }
         }
-        if acquisition.type == expectedAcquisitionType {
-            return true
-        }
-        return indirectChainContainsLCP(acquisition.indirectAcquisitions)
+        return false
     }
 
     private static func indirectChainContainsLCP(_ chain: [TPPOPDSIndirectAcquisition]) -> Bool {

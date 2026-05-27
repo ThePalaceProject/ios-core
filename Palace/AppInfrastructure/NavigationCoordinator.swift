@@ -83,6 +83,12 @@ final class NavigationCoordinator: ObservableObject {
     private var audioModelById: [String: AudiobookPlaybackModel] = [:]
     private var pdfContentById: [String: (TPPPDFDocument, TPPPDFDocumentMetadata)] = [:]
     private var readiumPDFById: [String: (Publication, TPPPDFDocumentMetadata)] = [:]
+    /// Pre-loaded TOC + page count for the Readium-backed PDF, so the
+    /// side panels (TOC view, preview grid) can render synchronously
+    /// even though Readium's `tableOfContents()` and `positions()` are
+    /// async. Populated by `ReaderService.openPDF` after the publication
+    /// opens; dropped by `removeReadiumPDF` and on cleanup.
+    private var readiumPDFTOCById: [String: (toc: [TPPPDFLocation], pageCount: Int)] = [:]
     private var catalogFilterStatesByURL: [String: CatalogLaneFilterState] = [:]
 
     private let maxStoredItems = 100
@@ -198,7 +204,7 @@ final class NavigationCoordinator: ObservableObject {
     private func scheduleCleanupIfNeeded() {
         let totalItems = bookById.count + searchBooksById.count + pdfControllerById.count +
             epubControllerById.count + epubPublicationById.count + audioModelById.count +
-            pdfContentById.count + catalogFilterStatesByURL.count
+            pdfContentById.count + readiumPDFById.count + catalogFilterStatesByURL.count
 
         if totalItems > maxStoredItems {
             cleanupTask?.cancel()
@@ -232,6 +238,12 @@ final class NavigationCoordinator: ObservableObject {
         epubPublicationById.removeAll()
         audioModelById.removeAll()
         pdfContentById.removeAll()
+        // LCP PDF publications hold LCP content-protection state, an
+        // HTTP-server endpoint, and decrypted page caches. Dropping them
+        // on cleanup is necessary to avoid unbounded memory growth from
+        // back-to-back opens.
+        readiumPDFById.removeAll()
+        readiumPDFTOCById.removeAll()
         catalogFilterStatesByURL.removeAll()
 
         Log.info(#file, "🧹 NavigationCoordinator: Cleaned up cached items (weak controllers preserved if still alive)")
@@ -323,6 +335,27 @@ final class NavigationCoordinator: ObservableObject {
 
     func resolveReadiumPDF(for route: BookRoute) -> (Publication, TPPPDFDocumentMetadata)? {
         readiumPDFById[route.id]
+    }
+
+    /// Stores the pre-loaded TOC + page count for a Readium-backed PDF.
+    /// Loaded asynchronously by `ReaderService.openPDF` before the route
+    /// pushes so the side panels can stay synchronous.
+    func storeReadiumPDFTableOfContents(_ toc: [TPPPDFLocation], pageCount: Int, forBookId id: String) {
+        readiumPDFTOCById[id] = (toc: toc, pageCount: pageCount)
+    }
+
+    func resolveReadiumPDFTableOfContents(for route: BookRoute) -> (toc: [TPPPDFLocation], pageCount: Int)? {
+        readiumPDFTOCById[route.id]
+    }
+
+    /// Drops the cached `Publication` + metadata for an LCP-protected PDF so
+    /// the LCP content-protection state, HTTP-server endpoint, and decrypted
+    /// page caches can be released. Call from the reader view's `.onDisappear`
+    /// when the user backs out — without this, every open accumulates a new
+    /// publication and the app eventually OOMs on a large LCP textbook.
+    func removeReadiumPDF(forBookId id: String) {
+        readiumPDFById.removeValue(forKey: id)
+        readiumPDFTOCById.removeValue(forKey: id)
     }
 
     // MARK: - Catalog Filter State Management
