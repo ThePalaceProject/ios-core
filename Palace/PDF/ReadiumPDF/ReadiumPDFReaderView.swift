@@ -101,6 +101,7 @@ struct ReadiumPDFReaderView: View {
                 if !didMarkFirstPageRendered {
                     didMarkFirstPageRendered = true
                     coordinator.markReadiumPDFFirstPageRendered(forBookId: book.identifier)
+                    LCPPDFOpenProgress.shared.finish()
                 }
                 // `Locator.locations.position` is 1-indexed; Palace's
                 // metadata is 0-indexed. Keep metadata as-is so TOC and

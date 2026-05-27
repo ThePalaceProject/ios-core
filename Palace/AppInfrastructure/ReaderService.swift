@@ -60,6 +60,11 @@ final class ReaderService {
         // coordinator after the NEW open already started.
         openGenerationByBookId[identifier, default: 0] += 1
         openInFlightBookIds.remove(identifier)
+        // Only clear the progress reporter if it was tracking this book.
+        // A back-out from book A shouldn't wipe a parallel open for B.
+        if LCPPDFOpenProgress.shared.bookIdentifier == identifier {
+            LCPPDFOpenProgress.shared.finish()
+        }
         r3Owner.libraryService.releaseServedPublication(forBookIdentifier: identifier)
         AppContainer.production().navigationCoordinatorHub.coordinator?
             .removeReadiumPDF(forBookId: identifier)
@@ -112,6 +117,27 @@ final class ReaderService {
         let openStartedAt = Date()
         Log.info(#file, "[PERF] [LCP-PDF] T0 open requested: \(book.title) (\(book.identifier)) gen=\(generation)")
 
+        LCPPDFOpenProgress.shared.begin(bookIdentifier: book.identifier)
+        LCPPDFOpenProgress.shared.setPhase(.openingPublication)
+
+        // LCP-PDF open on large Marketplace containers walks the PDF
+        // cross-ref table through the LCP decrypt layer (hundreds of
+        // `Successfully decrypted 2064 -> 2048` calls in the log), which
+        // is memory-hungry. On a device that's already holding the
+        // catalog memory cache (3+ MB of OPDS JSON for the active +
+        // preloaded entry points) plus the book-cell model cache, the
+        // combined working set can trip the OS memory limit and OOM.
+        // Post the system memory-warning notification proactively so
+        // every cache that listens (CatalogRepository, BookCellModelCache,
+        // image caches) drops its in-memory contents before the decrypt
+        // walk starts. Disk caches survive — the catalog's URLCache is
+        // content-addressed, so the next time the user backs out the
+        // feed re-hydrates from disk without a network round-trip.
+        NotificationCenter.default.post(
+            name: UIApplication.didReceiveMemoryWarningNotification,
+            object: nil
+        )
+
         let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator
         coordinator?.store(book: book)
         coordinator?.markReadiumPDFPending(forBookId: book.identifier)
@@ -153,6 +179,7 @@ final class ReaderService {
                         return
                     }
                     Log.info(#file, "[PERF] [LCP-PDF] T2 publication opened (+\(Self.ms(since: openStartedAt))ms total, libraryService.openBook=\(libraryOpenElapsedMs)ms)")
+                    LCPPDFOpenProgress.shared.setPhase(.loadingFirstPage)
                     // Reuse the cached TOC snapshot if we already loaded
                     // it on a previous open — saves the second
                     // publication.tableOfContents() + publication.positions()

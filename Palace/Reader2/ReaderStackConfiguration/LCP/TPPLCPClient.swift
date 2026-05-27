@@ -124,6 +124,7 @@ class TPPLCPClient: ReadiumLCP.LCPClient {
                 Log.error(#file, "R2LCPClient.decrypt returned nil for \(data.count) bytes")
             } else {
                 Log.debug(#file, "Successfully decrypted \(data.count) bytes -> \(decrypted?.count ?? 0) bytes")
+                LCPPDFOpenProgress.shared.recordDecrypt(byteCount: data.count)
             }
             return decrypted
         } catch {
@@ -178,6 +179,7 @@ extension TPPLCPClient {
                 Log.error(#file, "R2LCPClient.decrypt returned nil for \(data.count) bytes")
             } else {
                 Log.debug(#file, "Successfully decrypted \(data.count) bytes -> \(result?.count ?? 0) bytes")
+                LCPPDFOpenProgress.shared.recordDecrypt(byteCount: data.count)
             }
             return result
         } catch {

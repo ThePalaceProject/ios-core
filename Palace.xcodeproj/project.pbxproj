@@ -325,6 +325,7 @@
 		411FE5619F2A1B79454C26ED /* ChaosFaultInjectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC95BE63D9C7C7AE1EFB8D6B /* ChaosFaultInjectionTests.swift */; };
 		4156D2A2D92766E8268939A4 /* CredentialGuardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46A0B2DA8FB8ABF53C9E32FF /* CredentialGuardTests.swift */; };
 		4172AAE925DEBEDDF9681174 /* TPPLinearView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE97656B54F67282B7B52648 /* TPPLinearView.swift */; };
+		423525D426442C6249B2F267 /* LCPPDFOpenProgress.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52C86F54125C3BD725906F86 /* LCPPDFOpenProgress.swift */; };
 		426EAF683902FAB74F18193A /* OfflineQueueStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63A20EB1443A7F62505E2071 /* OfflineQueueStatusView.swift */; };
 		42B90B321C764EAF8456945B /* FacetViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44E59F675A3E4419BE1E24BB /* FacetViewModelTests.swift */; };
 		42E6CF5F51913951B7DC5F9D /* BookRegistryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9234DD4339B85855A91CE3DE /* BookRegistryStore.swift */; };
@@ -793,6 +794,7 @@
 		A5B6C7D8E9F0A1B2C3D4E5F6 /* DownloadCancellationHandlerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4B5C6D7E8F9A0B1C2D3E4F5 /* DownloadCancellationHandlerTests.swift */; };
 		A5D21B64F3AD2BE436E92048 /* AccessibilityPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14C78FDF4D5C0DE3F151FAE5 /* AccessibilityPreferences.swift */; };
 		A6B46B564D17521FD9892D70 /* TypographyPreset.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A78DE6D235AA54DC8F02DA /* TypographyPreset.swift */; };
+		A6C6D83ED0F20F041062ECF0 /* LCPPDFOpenProgress.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52C86F54125C3BD725906F86 /* LCPPDFOpenProgress.swift */; };
 		A6C753810A4D64E933B7B36A /* SettingsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = SETVM003T260955EF008E1DC3 /* SettingsViewModel.swift */; };
 		A7D3A61E77E6B8C0FD9AEA5D /* TypographySettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97C1C917A6BF4317D7FA6567 /* TypographySettings.swift */; };
 		A7E1CE3367F3C787133E928B /* PalaceCatalog in Frameworks */ = {isa = PBXBuildFile; productRef = 4BDC371B99FCA4E42EEFA3CB /* PalaceCatalog */; };
@@ -2129,6 +2131,7 @@
 		502761BDE732D3752808C4C4 /* TPPBookButtonsState.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TPPBookButtonsState.swift; sourceTree = "<group>"; };
 		52226B7262C85C91578DB3A7 /* TPPJSON.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TPPJSON.swift; sourceTree = "<group>"; };
 		5248CEFDF1FEDEBE50897394 /* LCPAdapterTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LCPAdapterTests.swift; sourceTree = "<group>"; };
+		52C86F54125C3BD725906F86 /* LCPPDFOpenProgress.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LCPPDFOpenProgress.swift; sourceTree = "<group>"; };
 		53CCA7049DE640BABC8D20B8 /* SignInModalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignInModalView.swift; sourceTree = "<group>"; };
 		54172B43D47BE5FCE8A1B975 /* TPPAttributedString.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TPPAttributedString.swift; sourceTree = "<group>"; };
 		5431B832D502714505B6EAF5 /* StatsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatsView.swift; sourceTree = "<group>"; };
@@ -4516,6 +4519,7 @@
 				4494F50352E88455B28AD34E /* ReadiumPDFReaderView.swift */,
 				49150841E0DEA8C0F35D81C4 /* ReadiumPDFLoadingView.swift */,
 				2AC116D83FA0E5E94E26508B /* ReadiumPDFTOCCache.swift */,
+				52C86F54125C3BD725906F86 /* LCPPDFOpenProgress.swift */,
 			);
 			path = ReadiumPDF;
 			sourceTree = "<group>";
@@ -7488,6 +7492,7 @@
 				C5EECC48E4D821DA5AC9EFB2 /* BundledRegistrySnapshot.swift in Sources */,
 				A531A3837D73D92A342FE068 /* ReadiumPDFLoadingView.swift in Sources */,
 				29BB24C5E49A9781F6F16EC5 /* ReadiumPDFTOCCache.swift in Sources */,
+				423525D426442C6249B2F267 /* LCPPDFOpenProgress.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -8005,6 +8010,7 @@
 				15E780E11F3F16BC3348D0DB /* BundledRegistrySnapshot.swift in Sources */,
 				44E00CEDECA9CCF7788760F7 /* ReadiumPDFLoadingView.swift in Sources */,
 				29EA3A64D577CE0995849D12 /* ReadiumPDFTOCCache.swift in Sources */,
+				A6C6D83ED0F20F041062ECF0 /* LCPPDFOpenProgress.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
