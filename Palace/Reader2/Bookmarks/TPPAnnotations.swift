@@ -458,7 +458,21 @@ protocol AnnotationsManager {
             Log.info(#file, "📡 PARSED BOOKMARKS COUNT: \(bookmarks.count) (from \(items.count) raw items)")
 
             if bookmarks.count < items.count {
-                Log.warn(#file, "📡 ⚠️ Some items failed to parse: \(items.count - bookmarks.count) items were not converted to bookmarks")
+                // The server's `/annotations/` endpoint returns ALL of
+                // the user's annotations across every book they've ever
+                // read, not just bookmarks for the requested book. Most
+                // skipped items are filtered by `make()` for being
+                // bookmarks for *other* books (`source != bookID`),
+                // not parse failures. Logged at info, not warn, to
+                // avoid alarming the support team — the number scales
+                // with how much the user has read across the library.
+                //
+                // The cold-open latency from this endpoint dominates
+                // bookmark load on books with many annotations: every
+                // open re-downloads the same N-thousand-item payload
+                // just to extract the few that match. A CM-side
+                // per-book filter parameter would be the right fix.
+                Log.info(#file, "📡 Filtered \(items.count - bookmarks.count) items belonging to other books (kept \(bookmarks.count) for \(book.identifier))")
             }
 
             completion(bookmarks)

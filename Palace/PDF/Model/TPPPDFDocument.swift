@@ -5,6 +5,23 @@
 //  Created by Vladimir Fedorov on 17.06.2022.
 //  Copyright © 2022 The Palace Project. All rights reserved.
 //
+//  Post-migration: this wrapper covers BOTH PDF pipelines:
+//  - PDFKit-backed: plain (non-LCP) PDFs initialized via `init(url:)` or
+//    `init(data:)`. `document` is a PDFKit `PDFDocument`.
+//  - Readium-Publication-backed: LCP-protected PDFs initialized via
+//    `init(publication:tableOfContents:pageCount:)`. The Readium
+//    `PDFNavigatorViewController` handles page rendering directly via
+//    the GCDHTTPServer; this class only proxies the side-bar APIs
+//    (table of contents, page count, labels) so `TPPPDFNavigation` +
+//    `TPPPDFTOCView` + `TPPPDFPreviewGrid` keep working against LCP PDFs
+//    without forking their UI.
+//
+//  TOC and page count are passed in as snapshots at init time so the
+//  consumer-facing API stays synchronous — Readium's `tableOfContents()`
+//  and `positions()` are async, but the side panels expect sync getters.
+//  The caller (`ReaderService.openPDF`) awaits both before constructing
+//  the document.
+//
 
 import Foundation
 import PDFKit
@@ -14,94 +31,95 @@ protocol TPPPDFDocumentDelegate {
     func didMatchString(_ instance: TPPPDFLocation)
 }
 
-/// Wrapper class for PDF docuument in general
+/// Thin wrapper around a PDF source — either a PDFKit `PDFDocument` (open-access
+/// path) or a Readium `Publication` (LCP path) — carrying a Palace-flavored
+/// search delegate and TOC/thumbnail helpers the reader views expect.
 @objcMembers class TPPPDFDocument: NSObject {
     let data: Data
     let fileURL: URL?
-    let decryptor: ((_ data: Data, _ start: UInt, _ end: UInt) -> Data)?
-    let isEncrypted: Bool
+
+    /// Snapshot of TOC + page count for the publication path. `nil` /
+    /// `0` for the PDFKit path (which derives them from `document`).
+    private let publicationTableOfContents: [TPPPDFLocation]
+    private let publicationPageCount: Int
+
+    /// `true` when this document wraps a Readium publication and should
+    /// skip PDFKit page access (no `document`, no thumbnails, no
+    /// PDFKit-backed search).
+    let isPublicationBacked: Bool
 
     var delegate: TPPPDFDocumentDelegate?
 
-    /// Initialize with a non-encrypted document
-    /// - Parameter data: PDF document data
+    /// Initialize from an in-memory PDF buffer. Kept for the rare sample/preview
+    /// caller that already has the bytes and can't expose a URL.
     init(data: Data) {
         self.data = data
         self.fileURL = nil
-        self.decryptor = nil
-        self.isEncrypted = false
+        self.publicationTableOfContents = []
+        self.publicationPageCount = 0
+        self.isPublicationBacked = false
     }
 
-    /// Initialize with a non-encrypted PDF file on disk. `PDFDocument(url:)` mmaps
+    /// Initialize from a file on disk — preferred. `PDFDocument(url:)` mmaps
     /// the file and pages in on demand, so opening a 500 MB textbook doesn't
     /// pin the whole buffer in RAM or block the main thread on a synchronous
-    /// read — both of which `Data(contentsOf:)` + `init(data:)` does.
+    /// read.
     init(url: URL) {
         self.data = Data()
         self.fileURL = url
-        self.decryptor = nil
-        self.isEncrypted = false
+        self.publicationTableOfContents = []
+        self.publicationPageCount = 0
+        self.isPublicationBacked = false
     }
 
-    /// Initialize with an encrypted PDF document data
-    /// - Parameters:
-    ///   - encryptedData: Encrypted PDF document data
-    ///   - decryptor: Decryptor function
-    init(encryptedData: Data, decryptor: @escaping (_ data: Data, _ start: UInt, _ end: UInt) -> Data) {
-        self.data = encryptedData
+    /// Initialize from a pre-loaded snapshot of a Readium publication's
+    /// metadata (LCP path). Page rendering is owned by
+    /// `ReadiumPDFViewController`/`PDFNavigatorViewController`; this
+    /// wrapper exposes only the side-panel metadata surface — TOC,
+    /// pageCount — so the existing `TPPPDFNavigation` chrome keeps
+    /// working.
+    ///
+    /// `tableOfContents` and `pageCount` are accepted as snapshots
+    /// (rather than reaching into the publication on demand) because
+    /// Readium 3's `tableOfContents()` and `positions()` are async and
+    /// the consumer side panels expect synchronous getters.
+    init(tableOfContents: [TPPPDFLocation], pageCount: Int) {
+        self.data = Data()
         self.fileURL = nil
-        self.decryptor = decryptor
-        self.isEncrypted = true
+        self.publicationTableOfContents = tableOfContents
+        self.publicationPageCount = pageCount
+        self.isPublicationBacked = true
     }
 
-    /// Encrypted PDF document
-    lazy var encryptedDocument: TPPEncryptedPDFDocument? = {
-        guard let decryptor = decryptor, isEncrypted else {
-            return nil
-        }
-        return TPPEncryptedPDFDocument(encryptedData: data, decryptor: decryptor)
-    }()
-
-    /// PDFKit PDF document
-    lazy var document: PDFDocument? = {
-        guard !isEncrypted else {
-            return nil
-        }
+    /// PDFKit document — mmapped from `fileURL` when available, otherwise
+    /// parsed from the in-memory `data` buffer. `nil` in publication mode.
+    lazy var document: PDFKit.PDFDocument? = {
+        if isPublicationBacked { return nil }
         if let fileURL {
-            return PDFDocument(url: fileURL)
+            return PDFKit.PDFDocument(url: fileURL)
         }
-        return PDFDocument(data: data)
+        return PDFKit.PDFDocument(data: data)
     }()
 }
 
-// MARK: - Common properties of encrypted and non-encrypted PDF files
+// MARK: - Common properties
 
 extension TPPPDFDocument {
 
     /// PDF title
     var title: String? {
         get async {
-            if isEncrypted {
-                return encryptedDocument?.title
-            } else {
-                return (try? await document?.title()) ?? nil
-            }
+            // PDFKit's `PDFDocument.title` is a sync property, not async,
+            // but the legacy API was async-wrapped — preserve that shape.
+            if isPublicationBacked { return nil }
+            return document?.documentAttributes?[PDFDocumentAttribute.titleAttribute] as? String
         }
-    }
-
-    /// Decrypt PDF data
-    /// - Parameters:
-    ///   - data: Encrypted PDF data
-    ///   - start: Start of the block of data to decrypt
-    ///   - end: End of the block of data to decrypt
-    /// - Returns: Decrypted block of data or original data if decryption was not possible
-    func decrypt(data: Data, start: UInt, end: UInt) -> Data {
-        decryptor?(data, start, end) ?? data
     }
 
     /// Number of pages in the PDF document
     var pageCount: Int {
-        (isEncrypted ? encryptedDocument?.pageCount : document?.pageCount) ?? 0
+        if isPublicationBacked { return publicationPageCount }
+        return document?.pageCount ?? 0
     }
 
     /// Preview image for a page
@@ -110,80 +128,65 @@ extension TPPPDFDocument {
     ///
     /// `preview` returns a larger image than `thumbnail`
     func preview(for page: Int) -> UIImage? {
-        image(page: page, size: .pdfPreviewSize)
+        // Page-image rendering in the publication path lives inside Readium's
+        // PDFNavigator and isn't exposed as a thumbnail API — the preview
+        // grid in publication mode shows page labels only, no thumbnails.
+        if isPublicationBacked { return nil }
+        return image(page: page, size: .pdfPreviewSize)
     }
 
     /// Thumbnail image for a page
-    /// - Parameter page: Page number
-    /// - Returns: Rendered page image
-    ///
-    /// `thumbnail` returns a smaller image than `preview`
     func thumbnail(for page: Int) -> UIImage? {
-        isEncrypted ?
-            encryptedDocument?.thumbnail(for: page) :
-            image(page: page, size: .pdfThumbnailSize)
+        if isPublicationBacked { return nil }
+        return image(page: page, size: .pdfThumbnailSize)
     }
 
     /// Image for a page
-    /// - Parameters:
-    ///   - page: Page number
-    ///   - size: Size of the image to render
-    /// - Returns: Rendered page image
     func image(page: Int, size: CGSize) -> UIImage? {
-        isEncrypted ?
-            encryptedDocument?.page(at: page)?.image(of: size, for: .mediaBox) :
-            document?.page(at: page)?.thumbnail(of: size, for: .mediaBox)
+        document?.page(at: page)?.thumbnail(of: size, for: PDFDisplayBox.mediaBox)
     }
 
     /// Page size
-    /// - Parameter page: Page number
-    /// - Returns: Size of the page
     func size(page: Int) -> CGSize? {
-        isEncrypted ?
-            encryptedDocument?.page(at: page)?.getBoxRect(.mediaBox).size :
-            document?.page(at: page)?.bounds(for: .mediaBox).size
+        // Approximate US-letter at @1x — used by the preview grid to size
+        // its cells when no PDFKit page is available. Real bounds would
+        // require reading the publication resource bytes; the grid layout
+        // looks fine with a constant guess.
+        if isPublicationBacked { return CGSize(width: 612, height: 792) }
+        return document?.page(at: page)?.bounds(for: PDFDisplayBox.mediaBox).size
     }
 
     /// Page label
-    /// - Parameter page: Page number
-    /// - Returns: Page label
     func label(page: Int) -> String? {
-        isEncrypted ?
-            encryptedDocument?.page(at: page)?.pageNumber.description :
-            document?.page(at: page)?.label
+        // Readium's `Locator.locations.position` is 1-indexed and is the
+        // closest analog to a PDFKit page label. The caller already falls
+        // back to `"\(page + 1)"` so returning nil is safe and consistent
+        // with the publication's positions.
+        if isPublicationBacked { return nil }
+        return document?.page(at: page)?.label
     }
 
     /// Search the document
-    /// - Parameter text: Text string to look for
-    /// - Returns: Array of PDF locations
     func search(text: String) {
+        // TODO: Bridge to `publication.search(query:)` via Readium 3's
+        // SearchService in a follow-up. For now publication-mode search
+        // is a no-op — the search button is hidden in the navigation
+        // chrome when the document is publication-backed.
+        if isPublicationBacked { return }
         let searchString = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-
-        if isEncrypted {
-            Task {
-                if let locations = await encryptedDocument?.search(text: searchString) {
-                    // Make sure the delegate is called on the main thread
-                    for location in locations {
-                        DispatchQueue.main.async {
-                            self.delegate?.didMatchString(location)
-                        }
-                    }
-                }
-            }
-        } else {
-            // Handle regular PDF search
-            document?.delegate = self
-            document?.cancelFindString()
-            document?.beginFindString(searchString, withOptions: .caseInsensitive)
-        }
+        document?.delegate = self
+        document?.cancelFindString()
+        document?.beginFindString(searchString, withOptions: NSString.CompareOptions.caseInsensitive)
     }
 
     func cancelSearch() {
+        if isPublicationBacked { return }
         document?.cancelFindString()
     }
 
     /// Table of contents for PDF document
     var tableOfContents: [TPPPDFLocation] {
+        if isPublicationBacked { return publicationTableOfContents }
         guard let outlineRoot = document?.outlineRoot else {
             return []
         }
@@ -203,19 +206,13 @@ extension TPPPDFDocument {
     }
 
     /// Unfolds all outline levels into a flat array with `level` parameter for depth level information
-    /// - Parameters:
-    ///   - element: `PDFOutline` element
-    ///   - level: depth level
-    /// - Returns: `(Int, PDFOutline)` for (depth level, outline element)
     private func outlineItems(in element: PDFOutline, level: Int = 0) -> [(Int, PDFOutline)] {
         [(level, element)] + (0..<element.numberOfChildren).compactMap { element.child(at: $0) }.flatMap { outlineItems(in: $0, level: level + 1) }
     }
-
 }
 
 extension TPPPDFDocument: PDFDocumentDelegate {
     /// Search delegate for `PDFDocument`
-    /// - Parameter instance: `PDFSelection` found
     func didMatchString(_ instance: PDFSelection) {
         guard let extendedSelection = instance.copy() as? PDFSelection else {
             return

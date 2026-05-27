@@ -55,7 +55,11 @@ final class TokenRefreshOnForegroundTests: XCTestCase {
         userAccount.markLoggedIn()
 
         libraryAccount = TPPLibraryAccountMock()
-        libraryAccount.userAccountResolver = { [unowned self] _ in self.userAccount }
+        // Capture the userAccount instance directly so a stale URLSession
+        // callback firing after tearDown nils `self.userAccount` can't
+        // crash on the IUO unwrap (same pattern as TokenRefreshAndRetryQueueTests).
+        let resolvedUserAccount: TPPUserAccountMock = userAccount
+        libraryAccount.userAccountResolver = { _ in resolvedUserAccount }
 
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [HTTPStubURLProtocol.self]
@@ -240,7 +244,10 @@ final class TokenRefreshOnForegroundTests: XCTestCase {
 
         // Poll until /token has been received but BEFORE we release the
         // gate: at that moment, the user request must NOT have fired.
-        XCTAssertTrue(waitForCondition(timeout: 2.0) { counterQueue.sync { tokenHits } == 1 },
+        // 30s budget matches the #999 "un-tighten" pattern — local <100ms,
+        // CI runner under parallel-test contention stalls the URLSession
+        // dispatch past 2s.
+        XCTAssertTrue(waitForCondition(timeout: 30.0) { counterQueue.sync { tokenHits } == 1 },
                       "Token endpoint should be in-flight")
         // Snapshot now — race-window check.
         let apiInFlightWhileTokenBlocking = counterQueue.sync { apiHits }
@@ -431,7 +438,11 @@ final class TokenRefreshOnForegroundTests: XCTestCase {
 
         // Wait until /token is observed in-flight, sample the counter
         // before releasing — that's the moment that proves single-flight.
-        XCTAssertTrue(waitForCondition(timeout: 2.0) { counterQueue.sync { tokenHits } >= 1 },
+        // 30s budget matches the #999 "un-tighten" pattern (local <100ms
+        // baseline, CI runner under parallel-test contention stalls the
+        // actor-hop + URLSession dispatch well past 2s — same root cause
+        // as the BookRegistry / CatalogCache / ImageCache 30s restorations).
+        XCTAssertTrue(waitForCondition(timeout: 30.0) { counterQueue.sync { tokenHits } >= 1 },
                       "/token endpoint should be in-flight")
         let snapshotted = counterQueue.sync { tokenHits }
         XCTAssertEqual(snapshotted, 1,
