@@ -88,6 +88,37 @@ final class PalacePDFViewTests: XCTestCase {
                        "DRM-protected PDF must reject the system-private Look Up selector PDFView surfaces.")
     }
 
+    func testCanPerformDefine_whenAllowsCopyIsFalse_returnsFalse() {
+        pdfView.allowsCopy = false
+        let allowed = pdfView.canPerformAction(Selector(("_define:")), withSender: nil)
+        XCTAssertFalse(allowed,
+                       "DRM-protected PDF must reject the system-private Define selector — without this, the iOS Define menu item bypasses suppression.")
+    }
+
+    func testCanPerformTranslate_whenAllowsCopyIsFalse_returnsFalse() {
+        pdfView.allowsCopy = false
+        let allowed = pdfView.canPerformAction(Selector(("_translate:")), withSender: nil)
+        XCTAssertFalse(allowed,
+                       "DRM-protected PDF must reject the system-private Translate selector — without this, the iOS Translate menu item bypasses suppression.")
+    }
+
+    // MARK: - Accessibility passthrough (AC #7)
+
+    func testCanPerformAccessibilityAction_whenAllowsCopyIsFalse_defersToSuper() {
+        // VoiceOver text-read-aloud relies on accessibility selectors
+        // (`accessibilityActivate`, `_accessibility*`, etc.) — gating must
+        // NOT trip on these or VoiceOver users lose the rotor read action
+        // on DRM titles. We assert the subclass returns the same value as
+        // an `allowsCopy=true` baseline for an accessibility selector.
+        pdfView.allowsCopy = false
+        let viaSubclass = pdfView.canPerformAction(#selector(NSObject.accessibilityActivate), withSender: nil)
+        let baseline = PalacePDFView()
+        baseline.allowsCopy = true
+        let viaBaseline = baseline.canPerformAction(#selector(NSObject.accessibilityActivate), withSender: nil)
+        XCTAssertEqual(viaSubclass, viaBaseline,
+                       "Accessibility selectors must pass through unchanged regardless of allowsCopy — VoiceOver users on DRM titles need text read-aloud preserved.")
+    }
+
     // MARK: - Non-editing selectors must not be affected
 
     func testCanPerformNonEditingAction_whenAllowsCopyIsFalse_defersToSuper() {

@@ -20,6 +20,13 @@ struct TPPPDFView: View {
     // Up/Share on long-press when the book is DRM-protected. The
     // `allowsCopy` flag is applied below in `onAppear`, before any user
     // interaction can reach the view.
+    //
+    // Today TPPPDFView only renders non-encrypted PDFs — encrypted (LCP)
+    // titles go through TPPEncryptedPDFView's bitmap-tile path where text
+    // is non-selectable by construction. The gating here is forward-
+    // looking for any future PDFKit-rendered DRM-PDF path (e.g. PP-4454
+    // Readium-PDF) and a defense against future content where decryption
+    // happens upstream of this view.
     let pdfView = PalacePDFView()
     private let pageChangePublisher = NotificationCenter.default.publisher(for: .PDFViewPageChanged)
 

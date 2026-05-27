@@ -27,8 +27,12 @@ class PalacePDFView: PDFView {
     }
 
     override func buildMenu(with builder: UIMenuBuilder) {
-        // Defer to super first, then strip — defends against future PDFKit
-        // versions that insert items late in their buildMenu pass.
+        // Belt-and-suspenders: `canPerformAction` already gates the long-
+        // press selection menu via UIKit's responder chain, so the menu
+        // never gets populated with Copy/Cut/Paste etc. on DRM titles.
+        // This override is defense in depth — strips any UIMenuController
+        // entries a future PDFKit version might insert via UIMenuBuilder
+        // late in the buildMenu pass.
         super.buildMenu(with: builder)
         if !allowsCopy {
             builder.remove(menu: .standardEdit)
