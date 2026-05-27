@@ -66,6 +66,10 @@ Feature branch names (for features whose development is a month or more): `featu
 
 Continuous integration is enabled on merge events on `develop` branch. Palace device builds are uploaded to [ios-binaries](https://github.com/ThePalaceProject/ios-binaries).
 
+# Support tooling
+
+Helping a patron whose Palace app is in a stuck state that sign-out + uninstall + reinstall does **not** clear? See the [Reset Library Account support workflow](https://thepalaceproject.github.io/ios-core/operations/reset-account.html) — an interactive console with the recovery steps, an inline Device-ID → Firebase Remote Config parameter generator, and a sysdiagnose log verifier. Ships in Palace iOS 3.1.0+.
+
 # Contributing
 
 Tests are required for production changes. The full workflow — TDD discipline, the local self-check, and the public/private boundary between outside contributors and maintainer-internal agent tooling — is documented in [`CONTRIBUTING.md`](./CONTRIBUTING.md).
