@@ -240,7 +240,10 @@ final class TokenRefreshOnForegroundTests: XCTestCase {
 
         // Poll until /token has been received but BEFORE we release the
         // gate: at that moment, the user request must NOT have fired.
-        XCTAssertTrue(waitForCondition(timeout: 2.0) { counterQueue.sync { tokenHits } == 1 },
+        // 30s budget matches the #999 "un-tighten" pattern — local <100ms,
+        // CI runner under parallel-test contention stalls the URLSession
+        // dispatch past 2s.
+        XCTAssertTrue(waitForCondition(timeout: 30.0) { counterQueue.sync { tokenHits } == 1 },
                       "Token endpoint should be in-flight")
         // Snapshot now — race-window check.
         let apiInFlightWhileTokenBlocking = counterQueue.sync { apiHits }

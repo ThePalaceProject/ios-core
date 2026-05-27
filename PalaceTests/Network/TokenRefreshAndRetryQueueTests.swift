@@ -57,7 +57,13 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         userAccount.markLoggedIn()
 
         libraryAccount = TPPLibraryAccountMock()
-        libraryAccount.userAccountResolver = { [unowned self] _ in self.userAccount }
+        // Capture the userAccount instance directly (NOT via `[unowned self]`)
+        // so a stale URLSession callback firing after tearDown nils
+        // `self.userAccount` can't crash on the IUO unwrap. The closure holds
+        // its own strong reference to the mock; tearDown's `userAccount = nil`
+        // safely drops only the test class's property.
+        let resolvedUserAccount: TPPUserAccountMock = userAccount
+        libraryAccount.userAccountResolver = { _ in resolvedUserAccount }
 
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [HTTPStubURLProtocol.self]
