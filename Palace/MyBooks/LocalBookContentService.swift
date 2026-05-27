@@ -84,6 +84,14 @@ class LocalBookContentService {
                 // Historical cleanup of the LCPPDFs-extracted temp PDF is
                 // obsolete post-migration to Readium PDFNavigator — pages
                 // stream on demand and there is no temp extract to delete.
+                #if LCP
+                // Drop the on-disk TOC snapshot so a re-borrow doesn't
+                // reuse stale cached TOC against potentially different
+                // content.
+                if book.defaultBookContentType == .pdf, let acct = currentAccount {
+                    ReadiumPDFTOCCache.invalidate(bookIdentifier: book.identifier, account: acct)
+                }
+                #endif
             case .audiobook:
                 try deleteLocalAudiobookContent(forAudiobook: book, at: bookURL)
             case .unsupported:

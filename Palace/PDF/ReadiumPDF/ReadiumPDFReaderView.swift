@@ -69,12 +69,15 @@ struct ReadiumPDFReaderView: View {
         }
         .ignoresSafeArea(edges: .bottom)
         .onDisappear {
-            // Drop the publication so its LCP content-protection state,
-            // HTTP-server endpoint, and decrypted page caches are released
-            // — otherwise back-to-back opens accumulate publications and
-            // the app OOMs on large LCP textbooks.
-            AppContainer.production().navigationCoordinatorHub.coordinator?
-                .removeReadiumPDF(forBookId: book.identifier)
+            // Drop the publication AND deregister its HTTP-server
+            // endpoint so the LCP content-protection state, GCDHTTPServer
+            // handler/transformer entries, and decrypted page caches all
+            // release — otherwise back-to-back opens accumulate state and
+            // the app OOMs on large LCP textbooks. The TOC + page-count
+            // snapshot is preserved across this teardown so re-opens
+            // repopulate side panels instantly.
+            AppContainer.production().readerService
+                .releaseReadiumPDF(forBookIdentifier: book.identifier)
         }
     }
 

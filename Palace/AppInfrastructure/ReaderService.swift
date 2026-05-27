@@ -35,6 +35,19 @@ final class ReaderService {
         r3Owner.libraryService.httpServer
     }
 
+    /// Tears down all in-memory state for an LCP-protected PDF: drops the
+    /// `Publication` from the navigation coordinator, removes the
+    /// `GCDHTTPServer` endpoint that was registered for the publication,
+    /// and clears the pending-open marker. The TOC + page-count snapshot
+    /// is intentionally preserved across this teardown so a re-open
+    /// repopulates side panels instantly.
+    @MainActor
+    func releaseReadiumPDF(forBookIdentifier identifier: String) {
+        r3Owner.libraryService.releaseServedPublication(forBookIdentifier: identifier)
+        AppContainer.production().navigationCoordinatorHub.coordinator?
+            .removeReadiumPDF(forBookId: identifier)
+    }
+
     @MainActor
     func openEPUB(_ book: TPPBook) {
         openEPUBInternal(book, isRetry: false)
@@ -61,13 +74,33 @@ final class ReaderService {
     func openPDF(_ book: TPPBook, onFinish: (() -> Void)? = nil) {
         guard let presenter = topPresenter() else { onFinish?(); return }
 
+        // [PERF] T0: Read button tapped → route push completion. Sets
+        // the baseline for downstream stage timings so a single grep
+        // over the log produces a per-stage breakdown.
+        let openStartedAt = Date()
+        Log.info(#file, "[PERF] [LCP-PDF] T0 open requested: \(book.title) (\(book.identifier))")
+
         let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator
         coordinator?.store(book: book)
         coordinator?.markReadiumPDFPending(forBookId: book.identifier)
+
+        // Cold-app cache hit: if a previous session persisted TOC + page
+        // count to disk, surface it BEFORE the publication opens so side
+        // panels populate the instant the navigator appears.
+        var tocCacheHit = false
+        if let accountId = AppContainer.production().accountsManager.currentAccountId,
+           let cached = ReadiumPDFTOCCache.read(bookIdentifier: book.identifier, account: accountId) {
+            coordinator?.storeReadiumPDFTableOfContents(cached.toc, pageCount: cached.pageCount, forBookId: book.identifier)
+            tocCacheHit = true
+        }
+
         coordinator?.push(.pdf(BookRoute(id: book.identifier)))
+        Log.info(#file, "[PERF] [LCP-PDF] T1 route pushed (+\(Self.ms(since: openStartedAt))ms, tocDiskHit=\(tocCacheHit))")
         onFinish?()
 
+        let libraryOpenStartedAt = Date()
         r3Owner.libraryService.openBook(book, sender: presenter) { result in
+            let libraryOpenElapsedMs = Self.ms(since: libraryOpenStartedAt)
             switch result {
             case .success(let publication):
                 Task { @MainActor in
@@ -75,6 +108,7 @@ final class ReaderService {
                         Log.error(#file, "📄 [Readium PDF] No NavigationCoordinator when publication landed")
                         return
                     }
+                    Log.info(#file, "[PERF] [LCP-PDF] T2 publication opened (+\(Self.ms(since: openStartedAt))ms total, libraryService.openBook=\(libraryOpenElapsedMs)ms)")
                     // Reuse the cached TOC snapshot if we already loaded
                     // it on a previous open — saves the second
                     // publication.tableOfContents() + publication.positions()
@@ -97,12 +131,23 @@ final class ReaderService {
                     if !hasCachedTOC {
                         // Background-load TOC + positions. Uses a low-
                         // priority Task so it yields to navigator work.
+                        // Persist the snapshot to disk so a cold-app
+                        // re-open of the same book skips this entirely.
+                        let tocLoadStartedAt = Date()
                         Task.detached(priority: .utility) {
                             let toc = await Self.loadTableOfContents(for: publication)
+                            let tocElapsedMs = Self.ms(since: tocLoadStartedAt)
+                            let positionsStartedAt = Date()
                             let pageCount = await Self.loadPageCount(for: publication)
+                            let positionsElapsedMs = Self.ms(since: positionsStartedAt)
+                            let bookId = book.identifier
                             await MainActor.run {
+                                Log.info(#file, "[PERF] [LCP-PDF] T3 TOC+positions loaded (+\(Self.ms(since: openStartedAt))ms total, toc=\(tocElapsedMs)ms, positions=\(positionsElapsedMs)ms, entries=\(toc.count), pages=\(pageCount))")
                                 AppContainer.production().navigationCoordinatorHub.coordinator?
-                                    .storeReadiumPDFTableOfContents(toc, pageCount: pageCount, forBookId: book.identifier)
+                                    .storeReadiumPDFTableOfContents(toc, pageCount: pageCount, forBookId: bookId)
+                                if let accountId = AppContainer.production().accountsManager.currentAccountId {
+                                    ReadiumPDFTOCCache.write(toc: toc, pageCount: pageCount, bookIdentifier: bookId, account: accountId)
+                                }
                             }
                         }
                     }
@@ -179,6 +224,15 @@ final class ReaderService {
             return value.count
         }
         return 0
+    }
+
+    /// Milliseconds elapsed since the given timestamp. Used by the
+    /// `[PERF] [LCP-PDF]` log markers — a single grep over the
+    /// Console log after a test run produces a per-stage breakdown
+    /// without needing Instruments / WDA. Cheap rounded integer so
+    /// the log line stays compact.
+    private static func ms(since start: Date) -> Int {
+        Int(Date().timeIntervalSince(start) * 1000)
     }
 
     @MainActor
