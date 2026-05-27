@@ -32,7 +32,7 @@ struct TPPPDFReaderView: View {
                         Alert(title: Text(DisplayStrings.syncReadingPositionAlertTitle),
                               message: Text(DisplayStrings.syncReadingPositionAlertBody),
                               primaryButton: .default(Text(DisplayStrings.move), action: metadata.syncReadingPosition),
-                              secondaryButton: .cancel(Text(DisplayStrings.stay))
+                              secondaryButton: .cancel(Text(DisplayStrings.stay), action: metadata.dismissRemotePageSync)
                         )
                     }
 
@@ -82,9 +82,13 @@ struct TPPPDFReaderView: View {
         readerMode = .reader
     }
 
-    /// Present navigation alert
+    /// Present navigation alert. Delegates the prompt-gating decision
+    /// to `TPPPDFDocumentMetadata.shouldPromptRemotePageSync()` which
+    /// also accounts for prior Stay decisions on the same remote-page
+    /// value — so a fresh open of a book the user already declined
+    /// for doesn't re-nag until the server position actually advances.
     func showRemotePositionAlert(_ value: Published<Int?>.Publisher.Output) {
-        if let value = value, metadata.currentPage != value {
+        if metadata.shouldPromptRemotePageSync() {
             shouldRequestPageSync = true
         }
     }
