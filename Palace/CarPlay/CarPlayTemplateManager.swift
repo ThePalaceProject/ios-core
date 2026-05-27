@@ -43,6 +43,15 @@ final class CarPlayTemplateManager: NSObject {
     private var lastSelectedBookId: String?
     private var lastSelectionTime: Date?
     private var hasConfiguredNowPlaying = false
+    // Tracks whether a CPAlertTemplate is in-flight or visible. AudiobookSessionManager
+    // surfaces a single failure via TWO channels — its async openAudiobook result AND
+    // sessionManager.errorPublisher — which races a second presentTemplate(alert) call
+    // through handlePlaybackError. CarPlay rejects a second modal while one is
+    // presented; with completion: nil the rejection raises NSException at
+    // CPInterfaceController.m:481 (TF crash 9A269135 on 3.1.0 build 476, iOS 26.4.2).
+    // Dedupe at the present site; non-nil completion handlers below catch the
+    // rejection in the closure instead of letting CarPlay raise.
+    private var isPresentingAlert = false
 
     // MARK: - Initialization
 
@@ -87,7 +96,11 @@ final class CarPlayTemplateManager: NSObject {
             Log.error(#file, "CarPlay: Failed to create library template")
             return
         }
-        interfaceController?.setRootTemplate(libraryTemplate, animated: true, completion: nil)
+        interfaceController?.setRootTemplate(libraryTemplate, animated: true) { _, error in
+            if let error = error {
+                Log.warn(#file, "CarPlay: setRootTemplate(library) failed: \(error)")
+            }
+        }
 
         Log.info(#file, "CarPlay root template configured")
 
@@ -130,7 +143,11 @@ final class CarPlayTemplateManager: NSObject {
         if let controller = interfaceController {
             let newLibraryTemplate = createLibraryTemplate()
             self.libraryTemplate = newLibraryTemplate
-            controller.setRootTemplate(newLibraryTemplate, animated: true, completion: nil)
+            controller.setRootTemplate(newLibraryTemplate, animated: true) { _, error in
+                if let error = error {
+                    Log.warn(#file, "CarPlay: setRootTemplate(new library) failed: \(error)")
+                }
+            }
             Log.info(#file, "🚗 CarPlay library template replaced with new name: '\(libraryName)'")
         }
     }
@@ -377,16 +394,41 @@ final class CarPlayTemplateManager: NSObject {
     private func showErrorAlert(title: String, message: String) {
         guard let interfaceController = interfaceController else { return }
 
+        // Dedupe: the dual-channel error path (async openAudiobook result + errorPublisher)
+        // can race a second presentTemplate while the first alert is in-flight or visible.
+        // CarPlay rejects the second present and raises NSException at
+        // CPInterfaceController.m:481 if completion is nil. Suppress here AND catch in
+        // the completion handler below.
+        guard !isPresentingAlert, interfaceController.presentedTemplate == nil else {
+            Log.info(#file, "CarPlay: Suppressing duplicate error alert — modal already presented")
+            return
+        }
+
+        isPresentingAlert = true
+
         let alert = CPAlertTemplate(
             titleVariants: [title],
             actions: [
-                CPAlertAction(title: Strings.Generic.ok, style: .default) { _ in
-                    interfaceController.dismissTemplate(animated: true, completion: nil)
+                CPAlertAction(title: Strings.Generic.ok, style: .default) { [weak self] _ in
+                    self?.interfaceController?.dismissTemplate(animated: true) { _, error in
+                        if let error = error {
+                            Log.warn(#file, "CarPlay: dismissTemplate(alert) failed: \(error)")
+                        }
+                        self?.isPresentingAlert = false
+                    }
                 }
             ]
         )
 
-        interfaceController.presentTemplate(alert, animated: true, completion: nil)
+        interfaceController.presentTemplate(alert, animated: true) { [weak self] _, error in
+            if let error = error {
+                // CarPlay rejected the present (typically because another modal slipped
+                // in between our guard and this call). Logged, NOT raised. Clear the flag
+                // so the next attempt isn't blocked by a stuck `isPresentingAlert`.
+                Log.warn(#file, "CarPlay: presentTemplate(errorAlert) failed: \(error)")
+                self?.isPresentingAlert = false
+            }
+        }
     }
 
     /// Shows an alert when the user tries to play a book but the main phone app
