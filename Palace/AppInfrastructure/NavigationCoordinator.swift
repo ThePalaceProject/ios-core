@@ -82,13 +82,22 @@ final class NavigationCoordinator: ObservableObject {
 
     private var audioModelById: [String: AudiobookPlaybackModel] = [:]
     private var pdfContentById: [String: (TPPPDFDocument, TPPPDFDocumentMetadata)] = [:]
-    private var readiumPDFById: [String: (Publication, TPPPDFDocumentMetadata)] = [:]
+    /// `@Published` so SwiftUI views observing the coordinator
+    /// re-render when the publication arrives. Pushed BEFORE the
+    /// publication opens — the reader view shows a loading state until
+    /// this dict gains an entry for the route's book id.
+    @Published private var readiumPDFById: [String: (Publication, TPPPDFDocumentMetadata)] = [:]
     /// Pre-loaded TOC + page count for the Readium-backed PDF, so the
     /// side panels (TOC view, preview grid) can render synchronously
     /// even though Readium's `tableOfContents()` and `positions()` are
     /// async. Populated by `ReaderService.openPDF` after the publication
     /// opens; dropped by `removeReadiumPDF` and on cleanup.
-    private var readiumPDFTOCById: [String: (toc: [TPPPDFLocation], pageCount: Int)] = [:]
+    @Published private var readiumPDFTOCById: [String: (toc: [TPPPDFLocation], pageCount: Int)] = [:]
+    /// Books whose LCP PDF open is in progress. Pushed when the user taps
+    /// Read, cleared when the publication finishes loading (or the open
+    /// fails). The reader view shows a loading state for any book id in
+    /// this set that doesn't yet have a publication in `readiumPDFById`.
+    @Published private var readiumPDFPending: Set<String> = []
     private var catalogFilterStatesByURL: [String: CatalogLaneFilterState] = [:]
 
     private let maxStoredItems = 100
@@ -353,9 +362,28 @@ final class NavigationCoordinator: ObservableObject {
     /// page caches can be released. Call from the reader view's `.onDisappear`
     /// when the user backs out — without this, every open accumulates a new
     /// publication and the app eventually OOMs on a large LCP textbook.
+    ///
+    /// Intentionally does NOT drop `readiumPDFTOCById`: the TOC + page count
+    /// are pure metadata (a few KB) and re-loading them via Readium 3's
+    /// async `tableOfContents()` / `positions()` requires re-opening the
+    /// publication, which is exactly what we just released. Keeping the
+    /// snapshot keyed by book id lets a re-open populate side panels
+    /// instantly before the publication finishes its second open.
     func removeReadiumPDF(forBookId id: String) {
         readiumPDFById.removeValue(forKey: id)
-        readiumPDFTOCById.removeValue(forKey: id)
+        readiumPDFPending.remove(id)
+    }
+
+    /// Marks an LCP PDF open as in progress. The reader view (pushed
+    /// IMMEDIATELY by `ReaderService.openPDF`) shows a loading state for
+    /// any pending book id whose publication hasn't landed yet.
+    func markReadiumPDFPending(forBookId id: String) {
+        readiumPDFPending.insert(id)
+    }
+
+    /// `true` while the LCP open + TOC pre-load is still in flight.
+    func isReadiumPDFPending(for route: BookRoute) -> Bool {
+        readiumPDFPending.contains(route.id) && readiumPDFById[route.id] == nil
     }
 
     // MARK: - Catalog Filter State Management

@@ -44,43 +44,77 @@ final class ReaderService {
     /// `AssetRetriever` + `PublicationOpener` → `Publication` served by
     /// `httpServer` → `PDFNavigatorViewController`. No temp-extract step.
     ///
-    /// `onFinish` fires when the publication has been opened, its TOC +
-    /// positions have been loaded, and the route has been pushed (success)
-    /// or the failure alert has been queued (failure). LCP open is heavy
-    /// — AssetRetriever + LCP key derivation + PublicationOpener typically
-    /// takes 1-3s on real Marketplace containers — so callers should hold
-    /// a loading indicator until this completes.
+    /// The route is pushed IMMEDIATELY so the reader view appears with
+    /// its own loading state — the publication open + TOC pre-load run
+    /// asynchronously in the background, and the reader view re-renders
+    /// when the publication lands. This is intentional: LCP open on large
+    /// Marketplace containers involves hundreds of synchronous AES decrypt
+    /// calls (visible in `TPPLCPClient.swift: Successfully decrypted ...`
+    /// logs) and can take 30-60s. Holding the user on the book detail
+    /// page during that window makes the app feel frozen.
+    ///
+    /// `onFinish` fires once the route has been pushed (or the open has
+    /// failed and an alert is queued). It does NOT wait for the
+    /// publication itself — callers that want to clear a button spinner
+    /// can do so as soon as the reader appears.
     @MainActor
     func openPDF(_ book: TPPBook, onFinish: (() -> Void)? = nil) {
         guard let presenter = topPresenter() else { onFinish?(); return }
+
+        let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator
+        coordinator?.store(book: book)
+        coordinator?.markReadiumPDFPending(forBookId: book.identifier)
+        coordinator?.push(.pdf(BookRoute(id: book.identifier)))
+        onFinish?()
+
         r3Owner.libraryService.openBook(book, sender: presenter) { result in
             switch result {
             case .success(let publication):
                 Task { @MainActor in
-                    // Pre-load TOC + page count so the side panels in
-                    // TPPPDFNavigation (TOC view, preview grid, bookmarks)
-                    // can stay synchronous against the publication-backed
-                    // TPPPDFDocument. Both calls are awaited before the
-                    // route pushes — adds ~ms to the open but keeps the
-                    // chrome from rendering with an empty TOC and then
-                    // re-rendering when the async load lands.
-                    let toc = await Self.loadTableOfContents(for: publication)
-                    let pageCount = await Self.loadPageCount(for: publication)
-
-                    if let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator {
-                        coordinator.store(book: book)
-                        let metadata = TPPPDFDocumentMetadata(with: book)
-                        coordinator.storeReadiumPDF(publication: publication, metadata: metadata, forBookId: book.identifier)
-                        coordinator.storeReadiumPDFTableOfContents(toc, pageCount: pageCount, forBookId: book.identifier)
-                        coordinator.push(.pdf(BookRoute(id: book.identifier)))
-                    } else {
-                        Log.error(#file, "📄 [Readium PDF] No NavigationCoordinator — cannot push route")
+                    guard let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator else {
+                        Log.error(#file, "📄 [Readium PDF] No NavigationCoordinator when publication landed")
+                        return
                     }
-                    onFinish?()
+                    // Reuse the cached TOC snapshot if we already loaded
+                    // it on a previous open — saves the second
+                    // publication.tableOfContents() + publication.positions()
+                    // round-trip (each triggers AES decrypt of the PDF
+                    // cross-ref table, which is what dominates re-open
+                    // time on large Marketplace containers).
+                    let hasCachedTOC = coordinator.resolveReadiumPDFTableOfContents(for: BookRoute(id: book.identifier)) != nil
+
+                    // Store the publication FIRST so the navigator can
+                    // start rendering page 1 immediately. TOC + page
+                    // count load in the background — side panels show
+                    // empty until that lands, then re-render. Without
+                    // this split the user waits for positions() to walk
+                    // the entire decrypted PDF (the hundreds of
+                    // "Successfully decrypted 2064 -> 2048" log lines)
+                    // BEFORE seeing page 1.
+                    let metadata = TPPPDFDocumentMetadata(with: book)
+                    coordinator.storeReadiumPDF(publication: publication, metadata: metadata, forBookId: book.identifier)
+
+                    if !hasCachedTOC {
+                        // Background-load TOC + positions. Uses a low-
+                        // priority Task so it yields to navigator work.
+                        Task.detached(priority: .utility) {
+                            let toc = await Self.loadTableOfContents(for: publication)
+                            let pageCount = await Self.loadPageCount(for: publication)
+                            await MainActor.run {
+                                AppContainer.production().navigationCoordinatorHub.coordinator?
+                                    .storeReadiumPDFTableOfContents(toc, pageCount: pageCount, forBookId: book.identifier)
+                            }
+                        }
+                    }
                 }
             case .failure(let error):
                 self.presentOpenFailureAlert(for: error, book: book, isRetry: false)
-                onFinish?()
+                // Pop the route on failure — the user shouldn't be left
+                // sitting on a loading spinner.
+                coordinator?.removeReadiumPDF(forBookId: book.identifier)
+                if let path = coordinator?.path, path.count > 0 {
+                    coordinator?.path.removeLast()
+                }
             }
         }
     }

@@ -59,6 +59,14 @@ struct NavigationHostView<Content: View>: View {
                             )
                                 .environmentObject(metadata)
                                 .toolbar(.hidden, for: .tabBar)
+                        } else if coordinator.isReadiumPDFPending(for: bookRoute),
+                                  let book = coordinator.resolveBook(for: bookRoute) {
+                            // LCP open is still in flight — show a loader
+                            // inside the reader nav so the user knows
+                            // something's happening rather than seeing
+                            // a frozen book-detail page.
+                            ReadiumPDFLoadingView(book: book)
+                                .toolbar(.hidden, for: .tabBar)
                         } else if let (document, metadata) = coordinator.resolvePDF(for: bookRoute) {
                             TPPPDFReaderView(document: document)
                                 .environmentObject(metadata)
