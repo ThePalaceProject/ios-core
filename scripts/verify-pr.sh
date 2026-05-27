@@ -70,7 +70,13 @@ MUTATION_MIN_KILL_RATE=50
 # Critical paths: every changed file matching one of these prefixes is held to
 # the strict kill-rate floor unless explicitly opted out via --no-enforce-mutations.
 # These are the user-money / access-bearing paths memory flagged as air-tight.
-CRITICAL_MUTATION_PATHS_REGEX='^Palace/(Audiobooks|SignInLogic|MyBooks/Download|Book/UI/BookDetail/BookButtonMapper)'
+#
+# Enumeration methodology, file-by-file inclusion list, and the Reader2
+# exemption (covered by Module D contract snapshots, not mutation) are
+# documented in `docs/architecture/critical-path-mutation-coverage.md`.
+# Re-run that audit after any file rename in the listed surfaces or any PR
+# that adds a new state machine, retry handler, or borrow/download/DRM router.
+CRITICAL_MUTATION_PATHS_REGEX='^Palace/(Audiobooks/|SignInLogic/|MyBooks/(Download|Borrow|BookSignInRedirectHandler|AdobeDRMHandler|LCPFulfillmentHandler|RightsManagementDispatcher|MyBooksDownload|BackgroundDownloadHandler|OverdriveDownloadHandler)|Book/UI/BookDetail/(BookButtonMapper|BorrowReducer)|Accounts/User/TPPUserAccount|Accounts/Library/AccountsManager|Network/TPPNetworkExecutor|Packages/PalaceAuth/)'
 # Sim selection. Honors the harness allocator's per-session UDID so parallel
 # agents on the same machine don't collide on one device. Falls back to the
 # pool default when the harness isn't claiming. CLAUDE.md: "NEVER hardcode a
@@ -164,6 +170,7 @@ if [ "$DOCS_ONLY" = "true" ]; then
   record "test_quality" "pass" "Skipped — docs-only PR (no test files changed)"
   record "coverage_floors" "pass" "Skipped — docs-only PR (no source files changed)"
   record "mutation" "pass" "Skipped — docs-only PR (no production Swift changed)"
+  record "audiobook_smoke" "pass" "Skipped — docs-only PR (no audiobook files changed)"
   record "accessibility" "pass" "Skipped — docs-only PR (no UI files changed)"
   TEST_PASS=0
   TEST_FAIL=0
@@ -431,6 +438,47 @@ elif [ -f scripts/palace_mutate.py ] && [ -n "$CHANGED_SWIFT" ]; then
   fi
 else
   record "mutation" "pass" "No production Swift files changed (skipped)"
+fi
+
+# 5b. Audiobook cross-vendor smoke (if audiobook files changed)
+# When any Palace/Audiobooks/ or ios-audiobooktoolkit/ file changes, run the
+# four-case smoke test (LCP / BearerToken / OpenAccess / LocalFile) that pins
+# the cross-vendor adapter contract. Skipped otherwise so non-audiobook PRs
+# don't eat the build/run cost. The gate fails if any smoke case fails — the
+# audiobook toolkit overhaul (PR #990 → F-011) is the historical reason this
+# gate exists: a vendor adapter regression slipped through because there was
+# no smoke net for "did the four adapters at least load and emit a session?"
+#
+# The test class lives in PalaceTests (owned by Module B of swarm_eefef87a).
+# We reference it as a -only-testing string, not a Swift import, so the gate
+# is robust if the file lands on develop before Module B's PR merges.
+echo "--- Audiobook Cross-Vendor Smoke ---"
+if [ "$MUTATION_ONLY" = "true" ]; then
+  record "audiobook_smoke" "pass" "Skipped (--mutation-only)"
+else
+  AUDIOBOOK_CHANGED=$(echo "$ALL_CHANGED" | grep -E '^Palace/Audiobooks/|^ios-audiobooktoolkit/' || true)
+  if [ -z "$AUDIOBOOK_CHANGED" ]; then
+    record "audiobook_smoke" "pass" "Skipped (no audiobook files changed)"
+  else
+    SMOKE_OUTPUT=$(xcodebuild -project Palace.xcodeproj -scheme Palace \
+      -destination "id=$SIM_ID" \
+      -only-testing:PalaceTests/AudiobookCrossVendorSmokeTests test 2>&1 || true)
+    # Same rollup parsing as the main unit-tests step — one Executed line per
+    # bundle rollup, count failures from the trailing "N failure(s)" token.
+    SMOKE_ROLLUP=$(echo "$SMOKE_OUTPUT" | grep -A1 "Test Suite '\(All tests\|Selected tests\)' \(passed\|failed\)")
+    SMOKE_PASS=$(echo "$SMOKE_ROLLUP" | grep -o 'Executed [0-9]* tests\?' | grep -o '[0-9]*' | awk '{s+=$1} END {print s+0}')
+    SMOKE_FAIL=$(echo "$SMOKE_ROLLUP" | grep -oE '[0-9]+ failures? \(' | grep -o '[0-9]*' | awk '{s+=$1} END {print s+0}')
+    if [ "${SMOKE_FAIL:-0}" -eq 0 ] && [ "${SMOKE_PASS:-0}" -gt 0 ]; then
+      record "audiobook_smoke" "pass" "${SMOKE_PASS} smoke case(s), 0 failures"
+    elif [ "${SMOKE_PASS:-0}" -eq 0 ]; then
+      # Zero executed with audiobook files changed = misconfiguration (the
+      # smoke test class may not have landed yet, or -only-testing matched
+      # zero classes). Fail loudly rather than silently rubber-stamp.
+      record "audiobook_smoke" "fail" "0 smoke cases executed — AudiobookCrossVendorSmokeTests class missing or unbuilt"
+    else
+      record "audiobook_smoke" "fail" "${SMOKE_PASS} smoke case(s), ${SMOKE_FAIL} failure(s)"
+    fi
+  fi
 fi
 
 # 6. Accessibility audit (if UI files changed)

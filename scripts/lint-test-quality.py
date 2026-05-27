@@ -151,6 +151,8 @@ SILENT_TIMEOUT_ALLOWLIST = {
         "Canonical implementation — `awaitConditionAsync` is the helper this rule recommends.",
     "PalaceTests/Logging/LogTests.swift":
         "pollForLog returns the polled value; caller asserts on its contents — informative downstream failure.",
+    "PalaceTests/Accounts/AccountsManagerStateMachineWiringTests.swift":
+        "Wiring suite exercises AccountsManager() instances whose background `loadCatalogs` Task outlives the synchronous test scope. XCTestExpectation `wait(for:)` deadlocks @MainActor async (see feedback_wiring_suite_test_isolation). The `while Date() < deadline` poll in Test 7 (redrive-stale-marker) is the documented escape — exits early on the desired state and the surrounding XCTestExpectation marks pass/fail loudly.",
 }
 
 def lint_silent_timeout(content: str, filepath: str) -> List["Violation"]:

@@ -32,11 +32,40 @@ import OverdriveProcessor
     /// account-scoped, not global).
     private let injectedUserAccount: TPPUserAccount?
 
+    /// Sentinel UUID for "no account selected" — captured at download-start
+    /// time when `currentAccountId` is nil so the rest of the path
+    /// deterministically resolves against the no-credentials placeholder
+    /// (rather than re-reading `currentUserAccount` and silently picking up
+    /// whatever account becomes current mid-flight).
+    ///
+    /// Kept lexically identical to `AccountsManager.noAccountSentinelUUID`
+    /// (private there) so `accountsManager.userAccount(for:)` returns the
+    /// same placeholder instance the resolver path would have returned.
+    static let capturedNoAccountSentinelUUID = "__no_account_selected__"
+
     /// The user account whose credentials should drive download requests.
     /// Always reflects the *current* account so library switches and fresh
     /// sign-ins propagate to in-flight download decisions.
+    ///
+    /// This is the legacy resolver-fallback path used by code that doesn't
+    /// have a captured accountId in scope. New code on the start-download /
+    /// bearer-auth path should call `userAccount(forCapturedId:)` with the
+    /// pinned id from `DownloadStartCoordinator.startDownloadAsync` instead
+    /// — that path is deterministic across library-swap windows.
     public var userAccount: TPPUserAccount {
         injectedUserAccount ?? accountsManager.currentUserAccount
+    }
+
+    /// Resolves the user account for a captured accountId — the deterministic
+    /// path that avoids `currentUserAccount`'s re-resolution window. Pass the
+    /// captured-at-start UUID; if `injectedUserAccount` is set (test seam),
+    /// it wins regardless. Returns the no-credentials placeholder when the
+    /// captured id is the sentinel and no real account is selected.
+    public func userAccount(forCapturedId capturedAccountId: String) -> TPPUserAccount {
+        if let injected = injectedUserAccount {
+            return injected
+        }
+        return accountsManager.userAccount(for: capturedAccountId)
     }
 
     private var reauthenticator: Reauthenticator
@@ -306,6 +335,12 @@ import OverdriveProcessor
         // deletion log / reauthenticator / retry tracker. The userAccount
         // provider closure preserves MBDC's just-in-time userAccount
         // resolution semantics across library switches.
+        //
+        // Resolver path (intentional): book return fires AFTER a user-
+        // initiated action against the currently-selected library — there
+        // is no "captured at download start" id to thread here. Closing the
+        // bearer-auth window for return is out-of-scope for Module A
+        // (the spurious-login-modal bug is mid-DOWNLOAD, not mid-return).
         let resolveAccountForReturn: () -> TPPUserAccount = {
             userAccount ?? accountsManager.currentUserAccount
         }
@@ -351,6 +386,12 @@ import OverdriveProcessor
         // through the just-resolved accountsManager — same library-
         // switch semantics as the rest of MBDC. Adobe DRM service is
         // wired only when FEATURE_DRM_CONNECTOR is on.
+        //
+        // Resolver path (intentional): rights-management fires AFTER the
+        // download completes — bearer auth has already been applied at
+        // download START via the captured-accountId path. Re-resolution at
+        // rights-dispatch time correctly observes any sign-in refresh that
+        // landed during the download window.
         let resolveAccountForDispatcher: () -> TPPUserAccount = {
             userAccount ?? accountsManager.currentUserAccount
         }
@@ -436,6 +477,14 @@ import OverdriveProcessor
         // closure resolves through `accountsManager.currentUserAccount` each
         // call so library switches mid-flow are observed correctly (matches
         // MBDC's `userAccount` computed property semantics).
+        //
+        // Resolver path (intentional): the auth retry handler fires AFTER a
+        // 401 on the captured-accountId download path. By the time it runs,
+        // either the user has refreshed credentials (resolver picks up the
+        // new token) or they've library-swapped (in which case the original
+        // download is intentionally abandoned and any retry should bind to
+        // the new current account). Threading the captured id here would
+        // pin the retry to a library the user has already abandoned.
         let resolveAccount: () -> TPPUserAccount = {
             userAccount ?? accountsManager.currentUserAccount
         }
@@ -457,6 +506,14 @@ import OverdriveProcessor
         // MBDC's `requestCredentialsAndStartDownload` so concurrent
         // sign-in modals across the borrow + start-download paths are
         // prevented at the source.
+        //
+        // Resolver path (intentional): the borrow error presenter, the
+        // sign-in redirect handler, the overdrive download handler, and
+        // the credential prompt coordinator all share this provider. They
+        // run BEFORE the download bearer-auth step or in response to a
+        // sign-in prompt — there is no captured-accountId pinning at the
+        // point these fire. Closing the auth-doc-fetch / re-borrow windows
+        // for these consumers is out-of-scope for Module A.
         let resolveAccountForBorrow: () -> TPPUserAccount = {
             userAccount ?? accountsManager.currentUserAccount
         }
@@ -546,13 +603,31 @@ import OverdriveProcessor
         // overdrive handler when FEATURE_OVERDRIVE is on so its
         // distributor=Overdrive branch can dispatch without a back-
         // delegate hop into MBDC.
+        // Resolver path (intentional): DownloadStartDispatcher's
+        // userAccount provider drives the SAML-cookies branch +
+        // credential checks BEFORE the bearer-auth step. The bearer-auth
+        // step itself uses the captured accountId via `applyBearerAuth`
+        // (next closure) — that's the window the contract is closing.
+        // SAML cookies binding has its own per-session HTTPCookieStorage
+        // path and doesn't suffer the currentUserAccount swap window.
         let resolveAccountForDispatcher2: () -> TPPUserAccount = {
             userAccount ?? accountsManager.currentUserAccount
+        }
+        // Bearer-auth applier: routes through the executor's INSTANCE method
+        // `bearerAuthorized(request:accountId:)` so the captured accountId
+        // pins credentials to the originally-selected library — never
+        // re-resolves `currentUserAccount` mid-download. Test seam: the
+        // dispatcher tests pass a recorder closure that captures the
+        // accountId argument without standing up a real network executor.
+        let executorForBearer = self.networkExecutor
+        let applyBearerAuthForDispatcher: (URLRequest, String) -> URLRequest = { req, accountId in
+            return executorForBearer.bearerAuthorized(request: req, accountId: accountId)
         }
         let dispatcherReachability = reachability
         #if FEATURE_OVERDRIVE
         self.startDispatcher = startDispatcher ?? DownloadStartDispatcher(
             userAccountProvider: resolveAccountForDispatcher2,
+            applyBearerAuth: applyBearerAuthForDispatcher,
             settings: settings,
             isOnWiFi: { dispatcherReachability.isOnWiFi },
             memoryPressureMonitor: memoryPressureMonitor,
@@ -561,6 +636,7 @@ import OverdriveProcessor
         #else
         self.startDispatcher = startDispatcher ?? DownloadStartDispatcher(
             userAccountProvider: resolveAccountForDispatcher2,
+            applyBearerAuth: applyBearerAuthForDispatcher,
             settings: settings,
             isOnWiFi: { dispatcherReachability.isOnWiFi },
             memoryPressureMonitor: memoryPressureMonitor
@@ -572,8 +648,22 @@ import OverdriveProcessor
         // queueOrchestrator / credentialPromptCoordinator so the
         // coordinator can hold those concrete services directly
         // (smaller delegate surface than routing through MBDC).
+        // Resolver path (intentional): the coordinator's userAccount
+        // provider drives the loginRequired check BEFORE the bearer-auth
+        // step. The bearer-auth step itself uses the captured accountId
+        // (threaded via `processWithCredentials`). loginRequired needs the
+        // current account because the user's authentication state is
+        // what gates the credential-prompt branch — capturing pre-prompt
+        // would mean a fresh sign-in's credentials don't take effect.
         let resolveAccountForStart: () -> TPPUserAccount = {
             userAccount ?? accountsManager.currentUserAccount
+        }
+        // Capture-at-start seam: reads currentAccountId from the same
+        // accountsManager MBDC owns, evaluated lazily so each new
+        // startDownloadAsync sees the CURRENT current-account-id at its
+        // entry — pinning it for the rest of THAT download path.
+        let captureCurrentAccountId: () -> String? = {
+            accountsManager.currentAccountId
         }
         let coordinatorDispatcher = self.startDispatcher
         let coordinatorCredentialPrompt = self.credentialPromptCoordinator
@@ -581,13 +671,14 @@ import OverdriveProcessor
             stateManager: stateManager,
             bookRegistry: bookRegistry,
             userAccountProvider: resolveAccountForStart,
+            currentAccountIdProvider: captureCurrentAccountId,
             errorActivityTracker: errorActivityTracker,
             queueOrchestrator: self.queueOrchestrator,
             processUnregistered: { book, location, loginRequired in
                 coordinatorDispatcher.processUnregisteredState(for: book, location: location, loginRequired: loginRequired)
             },
-            processWithCredentials: { book, state, request in
-                coordinatorDispatcher.processDownloadWithCredentials(for: book, withState: state, andRequest: request)
+            processWithCredentials: { book, state, request, capturedAccountId in
+                coordinatorDispatcher.processDownloadWithCredentials(for: book, withState: state, andRequest: request, capturedAccountId: capturedAccountId)
             },
             requestCredentials: { book in
                 coordinatorCredentialPrompt.requestCredentialsAndStartDownload(for: book)
@@ -629,6 +720,12 @@ import OverdriveProcessor
         // retries), the TPPAlertUtils error-presentation path, the
         // SignInModalPresenter, and the OIDC silent-reauth web session.
         // Tests substitute simpler stubs.
+        // Resolver path (intentional): BorrowOperation owns the complete
+        // borrow lifecycle including OIDC silent reauth. The bearer-auth
+        // window on borrow OPDS fetches is its own (separate from the
+        // download bearer-auth window Module A closes). Threading a
+        // captured-accountId here would couple the borrow flow's mid-
+        // flight refresh semantics to the start-download capture seam.
         let resolveAccountForBorrowOp: () -> TPPUserAccount = {
             userAccount ?? accountsManager.currentUserAccount
         }
