@@ -94,9 +94,15 @@ final class NavigationCoordinator: ObservableObject {
     /// opens; dropped by `removeReadiumPDF` and on cleanup.
     @Published private var readiumPDFTOCById: [String: (toc: [TPPPDFLocation], pageCount: Int)] = [:]
     /// Books whose LCP PDF open is in progress. Pushed when the user taps
-    /// Read, cleared when the publication finishes loading (or the open
-    /// fails). The reader view shows a loading state for any book id in
-    /// this set that doesn't yet have a publication in `readiumPDFById`.
+    /// Read, cleared when the **navigator emits its first
+    /// `locationDidChange`** — i.e. page 1 has actually rendered, not
+    /// merely "the publication object exists". `libraryService.openBook`
+    /// returns in ~100ms on a fast device but Readium then has to walk
+    /// the PDF cross-ref table through the LCP content protection layer
+    /// (the hundreds of `decrypt 2064 -> 2048` calls), which can take
+    /// minutes on large Marketplace containers. Without this we'd hide
+    /// the loading view at T2 and show a blank navigator for the rest of
+    /// the open.
     @Published private var readiumPDFPending: Set<String> = []
     private var catalogFilterStatesByURL: [String: CatalogLaneFilterState] = [:]
 
@@ -376,14 +382,25 @@ final class NavigationCoordinator: ObservableObject {
 
     /// Marks an LCP PDF open as in progress. The reader view (pushed
     /// IMMEDIATELY by `ReaderService.openPDF`) shows a loading state for
-    /// any pending book id whose publication hasn't landed yet.
+    /// any pending book id whose first page hasn't rendered yet.
     func markReadiumPDFPending(forBookId id: String) {
         readiumPDFPending.insert(id)
     }
 
-    /// `true` while the LCP open + TOC pre-load is still in flight.
+    /// Called by `ReadiumPDFViewController` when the PDFNavigator emits
+    /// its first `locationDidChange` — i.e. page 1 has actually rendered.
+    /// Removes the book from `readiumPDFPending` so the host view drops
+    /// the loading overlay.
+    func markReadiumPDFFirstPageRendered(forBookId id: String) {
+        readiumPDFPending.remove(id)
+    }
+
+    /// `true` while the LCP open + first-page render is still in flight.
+    /// The host view shows `ReadiumPDFLoadingView` while this returns
+    /// true; once the navigator emits its first locationDidChange,
+    /// `markReadiumPDFFirstPageRendered` flips it off.
     func isReadiumPDFPending(for route: BookRoute) -> Bool {
-        readiumPDFPending.contains(route.id) && readiumPDFById[route.id] == nil
+        readiumPDFPending.contains(route.id)
     }
 
     // MARK: - Catalog Filter State Management

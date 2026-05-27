@@ -30,8 +30,10 @@ struct ReadiumPDFReaderView: View {
     let httpServer: GCDHTTPServer
 
     @EnvironmentObject var metadata: TPPPDFDocumentMetadata
+    @EnvironmentObject var coordinator: NavigationCoordinator
     @State private var readerMode: TPPPDFReaderMode = .reader
     @State private var shouldRequestPageSync = false
+    @State private var didMarkFirstPageRendered = false
 
     /// Publication-backed TPPPDFDocument shim used by the side panels.
     /// Built once at view init from the pre-loaded TOC + page count
@@ -90,6 +92,16 @@ struct ReadiumPDFReaderView: View {
             httpServer: httpServer,
             initialPageIndex: metadata.currentPage,
             onLocationChange: { locator in
+                // First emission means page 1 actually rendered — flip
+                // off the pending flag so NavigationHostView removes the
+                // ReadiumPDFLoadingView overlay. Publication-landed (~100ms)
+                // happens long before this; the user-perceived "blank"
+                // window covers the seconds it takes PDFNavigator to walk
+                // the LCP cross-ref table on the first page request.
+                if !didMarkFirstPageRendered {
+                    didMarkFirstPageRendered = true
+                    coordinator.markReadiumPDFFirstPageRendered(forBookId: book.identifier)
+                }
                 // `Locator.locations.position` is 1-indexed; Palace's
                 // metadata is 0-indexed. Keep metadata as-is so TOC and
                 // bookmarks keep using the existing page-number contract.

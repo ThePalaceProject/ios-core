@@ -17,6 +17,17 @@ final class ReaderService {
     private var redownloadObservers: [String: AnyCancellable] = [:]
     private var redownloadTimeouts: [String: Task<Void, Never>] = [:]
 
+    /// Generation counter per book id. Bumped every time `openPDF` starts a
+    /// new open and every time `releaseReadiumPDF` tears one down. The
+    /// async `libraryService.openBook` completion captures the generation
+    /// it was started under and bails out if it doesn't match — that's
+    /// what prevents a stale callback from a back-and-forth re-entry
+    /// storing the OLD publication on top of the NEW one (overlapping
+    /// loads). Also keyed off in `openPDF` itself: if a generation is
+    /// already in flight for this book, the second tap is coalesced.
+    private var openGenerationByBookId: [String: Int] = [:]
+    private var openInFlightBookIds: Set<String> = []
+
     private func topPresenter() -> UIViewController? {
         guard let root = UIApplication.shared.mainKeyWindow?.rootViewController else {
             Log.warn(#file, "No root view controller available — cannot present reader")
@@ -43,6 +54,12 @@ final class ReaderService {
     /// repopulates side panels instantly.
     @MainActor
     func releaseReadiumPDF(forBookIdentifier identifier: String) {
+        // Bump the generation so any in-flight openBook completion still
+        // pending for this book id no-ops when it fires — otherwise an
+        // exit-and-re-enter can land the OLD publication into the
+        // coordinator after the NEW open already started.
+        openGenerationByBookId[identifier, default: 0] += 1
+        openInFlightBookIds.remove(identifier)
         r3Owner.libraryService.releaseServedPublication(forBookIdentifier: identifier)
         AppContainer.production().navigationCoordinatorHub.coordinator?
             .removeReadiumPDF(forBookId: identifier)
@@ -74,11 +91,26 @@ final class ReaderService {
     func openPDF(_ book: TPPBook, onFinish: (() -> Void)? = nil) {
         guard let presenter = topPresenter() else { onFinish?(); return }
 
+        // Coalesce: if an open is already in flight for this book id, the
+        // second tap is a no-op rather than starting a parallel decrypt.
+        // Without this guard a double-tap on the Read button (or a swipe-
+        // back-and-re-tap before the first open finishes) spins up two
+        // concurrent libraryService.openBook flows, both holding the
+        // publication and both running the cross-ref AES decrypt walk.
+        if openInFlightBookIds.contains(book.identifier) {
+            Log.info(#file, "[PERF] [LCP-PDF] open coalesced — already in flight for \(book.identifier)")
+            onFinish?()
+            return
+        }
+        openInFlightBookIds.insert(book.identifier)
+        let generation = openGenerationByBookId[book.identifier, default: 0] + 1
+        openGenerationByBookId[book.identifier] = generation
+
         // [PERF] T0: Read button tapped → route push completion. Sets
         // the baseline for downstream stage timings so a single grep
         // over the log produces a per-stage breakdown.
         let openStartedAt = Date()
-        Log.info(#file, "[PERF] [LCP-PDF] T0 open requested: \(book.title) (\(book.identifier))")
+        Log.info(#file, "[PERF] [LCP-PDF] T0 open requested: \(book.title) (\(book.identifier)) gen=\(generation)")
 
         let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator
         coordinator?.store(book: book)
@@ -99,11 +131,23 @@ final class ReaderService {
         onFinish?()
 
         let libraryOpenStartedAt = Date()
-        r3Owner.libraryService.openBook(book, sender: presenter) { result in
+        r3Owner.libraryService.openBook(book, sender: presenter) { [weak self] result in
             let libraryOpenElapsedMs = Self.ms(since: libraryOpenStartedAt)
             switch result {
             case .success(let publication):
                 Task { @MainActor in
+                    guard let self else { return }
+                    // Stale-completion guard: if the user backed out (or
+                    // started a fresh open) while libraryService.openBook
+                    // was decrypting in the background, the generation
+                    // we started under no longer matches. Drop the
+                    // publication on the floor instead of storing it.
+                    let currentGeneration = self.openGenerationByBookId[book.identifier, default: 0]
+                    guard currentGeneration == generation else {
+                        Log.info(#file, "[PERF] [LCP-PDF] stale openBook completion ignored for \(book.identifier) (gen=\(generation) current=\(currentGeneration))")
+                        return
+                    }
+                    self.openInFlightBookIds.remove(book.identifier)
                     guard let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator else {
                         Log.error(#file, "📄 [Readium PDF] No NavigationCoordinator when publication landed")
                         return
@@ -153,12 +197,16 @@ final class ReaderService {
                     }
                 }
             case .failure(let error):
-                self.presentOpenFailureAlert(for: error, book: book, isRetry: false)
-                // Pop the route on failure — the user shouldn't be left
-                // sitting on a loading spinner.
-                coordinator?.removeReadiumPDF(forBookId: book.identifier)
-                if let path = coordinator?.path, path.count > 0 {
-                    coordinator?.path.removeLast()
+                Task { @MainActor in
+                    guard let self else { return }
+                    self.openInFlightBookIds.remove(book.identifier)
+                    self.presentOpenFailureAlert(for: error, book: book, isRetry: false)
+                    // Pop the route on failure — the user shouldn't be left
+                    // sitting on a loading spinner.
+                    coordinator?.removeReadiumPDF(forBookId: book.identifier)
+                    if let path = coordinator?.path, path.count > 0 {
+                        coordinator?.path.removeLast()
+                    }
                 }
             }
         }
