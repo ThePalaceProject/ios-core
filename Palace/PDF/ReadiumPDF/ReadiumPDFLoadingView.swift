@@ -143,7 +143,9 @@ private final class ProgressBridge: ObservableObject {
 
     /// User-facing status. Show a percentage once we're past the
     /// startup phases — common users care that progress is happening,
-    /// not which AES block is being decrypted.
+    /// not which AES block is being decrypted. Once we're near max,
+    /// switch to a "Finishing…" string so the user understands the
+    /// bar is about to flip to the reader, not stuck.
     private static func statusText(phase: LCPPDFOpenProgress.Phase, percent: Int) -> String {
         switch phase {
         case .idle:
@@ -151,6 +153,9 @@ private final class ProgressBridge: ObservableObject {
         case .preparing, .openingPublication:
             return NSLocalizedString("Preparing book…", comment: "")
         case .decryptingContent, .loadingFirstPage:
+            if percent >= 95 {
+                return NSLocalizedString("Finishing up…", comment: "")
+            }
             return String(
                 format: NSLocalizedString("Loading… %d%%", comment: ""),
                 percent

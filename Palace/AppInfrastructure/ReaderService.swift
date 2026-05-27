@@ -115,10 +115,25 @@ final class ReaderService {
         // the baseline for downstream stage timings so a single grep
         // over the log produces a per-stage breakdown.
         let openStartedAt = Date()
-        Log.info(#file, "[PERF] [LCP-PDF] T0 open requested: \(book.title) (\(book.identifier)) gen=\(generation)")
+        Log.info(#file, "[PERF] [LCP-PDF] T0 open requested: \(book.title) (\(book.identifier)) gen=\(generation), residentMB=\(Self.residentMemoryMB())")
 
         LCPPDFOpenProgress.shared.begin(bookIdentifier: book.identifier)
         LCPPDFOpenProgress.shared.setPhase(.openingPublication)
+
+        // Periodically log memory while the open is in flight so a
+        // post-mortem on an OOM crash can identify which phase tipped
+        // the device over its jetsam ceiling. Stops on its own when
+        // the progress reporter flips back to .idle.
+        Task.detached(priority: .utility) { [weak self] in
+            guard let self else { return }
+            while await LCPPDFOpenProgress.shared.phase != .idle {
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                let mb = Self.residentMemoryMB()
+                let blocks = await LCPPDFOpenProgress.shared.decryptedBlocks
+                let hits = await LCPPDFOpenProgress.shared.cachedHits
+                Log.info(#file, "[PERF] [LCP-PDF] residentMB=\(mb) blocks=\(blocks) cacheHits=\(hits) phase=\(await LCPPDFOpenProgress.shared.phase)")
+            }
+        }
 
         // LCP-PDF open on large Marketplace containers walks the PDF
         // cross-ref table through the LCP decrypt layer (hundreds of
@@ -308,6 +323,25 @@ final class ReaderService {
     /// the log line stays compact.
     private static func ms(since start: Date) -> Int {
         Int(Date().timeIntervalSince(start) * 1000)
+    }
+
+    /// Resident memory in MB, read from `mach_task_basic_info`. Used in
+    /// `[PERF] [LCP-PDF]` log lines to spot the open phase that pushes
+    /// the device over its jetsam ceiling — large LCP PDFs OOM'd on
+    /// device before we added the catalog pre-emptive clear, and the
+    /// log signal is what lets us tell whether the remaining pressure
+    /// is from PDFNavigator buffers, the decrypt cache, or something
+    /// upstream.
+    static func residentMemoryMB() -> Int {
+        var info = mach_task_basic_info()
+        var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size / MemoryLayout<natural_t>.size)
+        let result = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                task_info(mach_task_self_, task_flavor_t(MACH_TASK_BASIC_INFO), $0, &count)
+            }
+        }
+        guard result == KERN_SUCCESS else { return -1 }
+        return Int(info.resident_size / (1024 * 1024))
     }
 
     @MainActor
