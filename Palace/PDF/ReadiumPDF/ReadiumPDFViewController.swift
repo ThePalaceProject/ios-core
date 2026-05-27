@@ -58,9 +58,17 @@ final class ReadiumPDFViewController: UIViewController {
 
     private func installNavigator() {
         do {
+            // PP-4297: gate the system text-selection menu on the per-book
+            // DRM-protected flag. LCP-PDFs (the only books that reach this
+            // navigator today) get an empty action list — no selection
+            // handles, no Copy on long-press.
+            let config = PDFNavigatorViewController.Configuration(
+                editingActions: ReaderEditingActions.resolve(for: book)
+            )
             let nav = try PDFNavigatorViewController(
                 publication: publication,
                 initialLocation: nil,
+                config: config,
                 delegate: self,
                 httpServer: httpServer
             )
