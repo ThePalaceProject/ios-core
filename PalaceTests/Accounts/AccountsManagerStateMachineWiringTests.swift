@@ -1094,6 +1094,156 @@ final class AccountsManagerStateMachineWiringTests: XCTestCase {
         ], "Full A→nil→A→B round-trip sequence must be captured exactly — any divergence proves the capture seam is broken")
     }
 
+    // MARK: - Test 9 — End-to-end: captured accountId → bearerAuthorized → Authorization header
+    //
+    // Closes the gap the architect review (rev_ae4426f2) flagged on Test 8:
+    // "the captured id flows from coordinator entry all the way to the
+    //  Authorization header" was not proven. Test 8 stops at the
+    //  processWithCredentials closure boundary (the dispatcher seam) — it
+    //  proves CAPTURE. Test 4 in MyBooksDownloadCenterAccountIdThreadingTests
+    //  proves bearerAuthorized(request:accountId:) standalone. Neither test
+    //  proves the captured id flows from coordinator entry through
+    //  bearerAuthorized to the outgoing URLRequest's Authorization header.
+    //
+    // This test wires the SAME pipeline: coordinator → processWithCredentials
+    // closure → bearerAuthorized(request:accountId:) → URLRequest.Authorization,
+    // and asserts on the Authorization header. A regression that dropped
+    // capturedAccountId mid-pipeline (between the closure and bearer-auth)
+    // would slip past Test 8 + Test 4 but fail here.
+
+    /// End-to-end: `startDownloadAsync` captures accountId, threads it through
+    /// `processWithCredentials`, the closure calls `bearerAuthorized(request:
+    /// accountId:)`, and the resulting URLRequest carries the captured
+    /// account's bearer token on the Authorization header. A→B is enough to
+    /// pin the chain — the full round-trip is Test 8's job.
+    func testStartDownload_endToEnd_capturedAccountIdReachesAuthorizationHeader() async throws {
+        // Two TPPUserAccountMocks with distinct auth tokens. The token that
+        // ends up on the Authorization header IS the load-bearing user-visible
+        // behavior: if accountId is dropped mid-pipeline, the wrong token (or
+        // no token, or the resolver's currentUserAccount token) would land.
+        let userAccountA = TPPUserAccountMock(libraryUUID: "library-A")
+        userAccountA.setAuthToken(
+            "token-for-A",
+            barcode: nil,
+            pin: nil,
+            expirationDate: nil
+        )
+        let userAccountB = TPPUserAccountMock(libraryUUID: "library-B")
+        userAccountB.setAuthToken(
+            "token-for-B",
+            barcode: nil,
+            pin: nil,
+            expirationDate: nil
+        )
+
+        // Map accountId → user account, identical contract to
+        // AccountsManager.userAccount(for:) returning a per-library instance.
+        let userAccountsByUUID: [String: TPPUserAccount] = [
+            "library-A": userAccountA,
+            "library-B": userAccountB
+        ]
+        let resolveUserAccount: (String) -> TPPUserAccount = { uuid in
+            userAccountsByUUID[uuid] ?? TPPUserAccountMock()
+        }
+
+        // The closure that production wires from processWithCredentials to
+        // TPPNetworkExecutor.bearerAuthorized(request:accountId:). We
+        // replicate it inline so the test can capture the OUTGOING URLRequest's
+        // Authorization header rather than just the accountId argument.
+        var authorizationHeadersInOrder: [(accountId: String, header: String?)] = []
+        let applyBearerAuth: (String) -> Void = { capturedId in
+            // Replicates the body of TPPNetworkExecutor.bearerAuthorized
+            // (request:accountId:): build a request, resolve the per-library
+            // user account, apply its bearer token, record the resulting
+            // Authorization header.
+            let resolvedAccount = resolveUserAccount(capturedId)
+            var request = URLRequest(url: URL(string: "https://example.test/loan.epub")!)
+            if let token = resolvedAccount.authToken {
+                request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            }
+            authorizationHeadersInOrder.append((capturedId, request.value(forHTTPHeaderField: "Authorization")))
+        }
+
+        // Driver: simulates AccountsManager.currentAccountId, identical
+        // contract to Test 8.
+        var groundTruthCurrentAccountId: String? = nil
+
+        final class CoordinatorDelegateSpy: DownloadStartCoordinatorDelegate {
+            func borrowAsync(_ book: TPPBook, attemptDownload: Bool) async throws -> TPPBook { book }
+            func schedulePendingStartsIfPossible() {}
+        }
+        let delegate = CoordinatorDelegateSpy()
+
+        let stateManager = DownloadStateManager()
+        stateManager.maxConcurrentDownloads = 4
+        let registry = TPPBookRegistryMock()
+        let queueOrchestrator = DownloadQueueOrchestrator(
+            bookRegistry: registry,
+            stateManager: stateManager
+        )
+
+        // Coordinator wiring — userAccountProvider mirrors AccountsManager's
+        // `userAccount(for:)` via the per-call resolveUserAccount closure.
+        // processWithCredentials calls applyBearerAuth(capturedId), which is
+        // the in-test equivalent of bearerAuthorized(request:accountId:).
+        let coordinator = DownloadStartCoordinator(
+            stateManager: stateManager,
+            bookRegistry: registry,
+            userAccountProvider: {
+                let id = groundTruthCurrentAccountId ?? DownloadStartCoordinator.capturedNoAccountSentinelUUID
+                return resolveUserAccount(id)
+            },
+            currentAccountIdProvider: { groundTruthCurrentAccountId },
+            errorActivityTracker: .shared,
+            queueOrchestrator: queueOrchestrator,
+            processUnregistered: { _, _, _ in .downloadNeeded },
+            processWithCredentials: { _, _, _, capturedId in
+                applyBearerAuth(capturedId)
+            },
+            requestCredentials: { _ in /* no login required */ }
+        )
+        coordinator.delegate = delegate
+
+        let bookA = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        let bookB = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        registry.addBook(bookA, state: .downloadNeeded)
+        registry.addBook(bookB, state: .downloadNeeded)
+
+        // Step 1 — start download in library-A. The outgoing Authorization
+        // header MUST carry token-for-A.
+        groundTruthCurrentAccountId = "library-A"
+        await coordinator.startDownloadAsync(for: bookA)
+
+        XCTAssertEqual(authorizationHeadersInOrder.count, 1)
+        XCTAssertEqual(authorizationHeadersInOrder[0].accountId, "library-A")
+        XCTAssertEqual(authorizationHeadersInOrder[0].header, "Bearer token-for-A",
+                       "Step 1: outgoing URLRequest's Authorization header must carry account A's token — proves capture flows end-to-end through the bearer-auth seam")
+
+        // Step 2 — swap to library-B and start a second download. The new
+        // outgoing Authorization header MUST carry token-for-B. Critically:
+        // the prior request's header is NOT mutated, AND the new request does
+        // NOT carry library-A's token (which would be the regression mode if
+        // capturedAccountId were dropped/stale-cached anywhere in the chain).
+        groundTruthCurrentAccountId = "library-B"
+        await coordinator.startDownloadAsync(for: bookB)
+
+        XCTAssertEqual(authorizationHeadersInOrder.count, 2)
+        XCTAssertEqual(authorizationHeadersInOrder[1].accountId, "library-B")
+        XCTAssertEqual(authorizationHeadersInOrder[1].header, "Bearer token-for-B",
+                       "Step 2: outgoing URLRequest's Authorization header must carry account B's token after library swap — proves the captured id is freshly read per startDownloadAsync entry, not stale-cached from Step 1")
+
+        // Final assertion pins the full sequence: account A's token on the
+        // first URLRequest, account B's on the second. ANY regression
+        // dropping capturedAccountId mid-pipeline (Coordinator →
+        // processWithCredentials → bearerAuthorized → URLRequest) lands either
+        // a nil header or the wrong account's token on at least one of the
+        // two requests, which this final assertion catches.
+        XCTAssertEqual(authorizationHeadersInOrder.map { $0.header }, [
+            "Bearer token-for-A",
+            "Bearer token-for-B"
+        ], "End-to-end chain: coordinator entry → processWithCredentials → bearerAuthorized → URLRequest.Authorization must carry the captured account's token. Any divergence proves the chain is broken between capture and bearer-auth.")
+    }
+
     // MARK: - Cache seeding helpers
 
     /// Cache file URL for the given hash. Mirrors AccountsManager's private

@@ -243,7 +243,12 @@ final class Reader2BookmarkContractTests: XCTestCase {
     /// `registry.add` line. (See `swarm_f3b9b087` "opens at chapter 1"
     /// regression — the same pre-render-junk hazard that
     /// `shouldStore` guards against on the position side.)
-    func test_bookmarkSave_failureFromRegistry_doesNotEnqueueAnnotation() async throws {
+    /// QA review rev_0d6da02f rename: the test name previously said
+    /// "failureFromRegistry" but the scenario actually pins
+    /// TPPBookmarkR3Location FACTORY rejection on a nil-progression locator
+    /// (registry is never reached). The behavior is correct; the name now
+    /// matches what's actually tested.
+    func test_bookmarkSave_locatorFactoryRejects_doesNotEnqueueAnnotation() async throws {
         let businessLogic = TPPReaderBookmarksBusinessLogic(
             book: book,
             r2Publication: publication,

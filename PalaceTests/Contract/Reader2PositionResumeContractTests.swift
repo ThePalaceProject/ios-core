@@ -324,7 +324,15 @@ final class Reader2PositionResumeContractTests: XCTestCase {
     /// Regression caught: flipping the equality predicate (`!=`
     /// instead of `==`) would auto-trigger an alert on every
     /// same-content sync, persistently re-prompting the user.
-    func test_readerResume_synchronizerReturnsNewer_applies_andRecordsCrossFormatMapping() async throws {
+    /// QA review rev_0d6da02f rename: previous name implied "synchronizer
+    /// returns NEWER applies + records cross-format mapping" but the scenario
+    /// pins the OPPOSITE — Deviation 7's same-payload no-op short-circuit
+    /// (server payload identical to local locationString → no alert, no write,
+    /// no cross-format mapping). The behavior tested is correct; the name now
+    /// matches what's actually pinned. The "newer applies" path is a real
+    /// scenario worth pinning separately — flagged for a follow-up changeset
+    /// rather than retrofitted here.
+    func test_readerResume_synchronizerSamePayload_noopShortCircuits() async throws {
         let publication = makePublication()
 
         // The exact payload string that the synchronizer will compare

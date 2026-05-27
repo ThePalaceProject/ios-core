@@ -39,6 +39,18 @@
 //  precedence, MIME nesting) lives in `PalaceTests/Audiobook/Vendors/*` —
 //  this file is intentionally shallow.
 //
+//  Scope honesty (QA review rev_0d6da02f): these tests verify **adapter
+//  wire-through**, NOT playback-state advancement. The method names use
+//  `_wiresThrough*` rather than `_singleTrackLoadAndAdvance` to reflect
+//  this — the toolkit's 25+-revision regression history is largely about
+//  playback-engine bugs (chapter-transition crashes, position-write races,
+//  continuation-misuse SIGABRT) which live INSIDE `PalaceAudiobookToolkit`,
+//  not at the Palace-side adapter seam. This smoke matrix is the cheap
+//  first-line net for adapter-level regressions; playback-engine regressions
+//  belong to (a) toolkit-internal tests and (b) the simdrive E2E corpus
+//  under `.simdrive/replays/chaos/`. Do NOT rely on this file for playback
+//  coverage.
+//
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
 
@@ -158,7 +170,7 @@ final class AudiobookCrossVendorSmokeTests: XCTestCase {
     /// reached its factory seam with the right URL" — if the toolkit churn
     /// broke `prepareLCPSource`, this test fails before any deeper test
     /// has a chance.
-    func testSmoke_LCP_singleTrackLoadAndAdvance() async throws {
+    func testSmoke_LCP_wiresThroughToAudiobooksFactory() async throws {
         #if LCP
         let book = makeAudiobookBook()
 
@@ -253,7 +265,7 @@ final class AudiobookCrossVendorSmokeTests: XCTestCase {
     /// two-leg fulfill flow. First leg returns the bearer-token wrapper;
     /// second leg returns the real manifest. The adapter must surface the
     /// real manifest (NOT the wrapper) and invoke each leg exactly once.
-    func testSmoke_BearerToken_singleTrackLoadAndAdvance() async throws {
+    func testSmoke_BearerToken_wiresThroughTwoLegManifestFetch() async throws {
         let book = makeAudiobookBook()
         guard let fulfillURL = book.defaultAcquisition?.hrefURL else {
             return XCTFail("Mock book missing default acquisition URL — fixture invariant broken")
@@ -319,7 +331,7 @@ final class AudiobookCrossVendorSmokeTests: XCTestCase {
     /// OpenAccess smoke: single-leg manifest fetch returns the manifest
     /// JSON directly (no bearer-token wrapper). Adapter must propagate
     /// the manifest verbatim and invoke the network seam exactly once.
-    func testSmoke_OpenAccess_singleTrackLoadAndAdvance() async throws {
+    func testSmoke_OpenAccess_wiresThroughSingleLegManifestFetch() async throws {
         let book = makeAudiobookBook()
         guard let fulfillURL = book.defaultAcquisition?.hrefURL else {
             return XCTFail("Mock book missing default acquisition URL — fixture invariant broken")
@@ -417,7 +429,7 @@ final class AudiobookCrossVendorSmokeTests: XCTestCase {
     /// Adapter reads it via the injected file reader, no network, no
     /// keychain. With `bearerTokenFulfillURL` unset on the book, the
     /// refresh branch is skipped so the case runs keychain-free.
-    func testSmoke_LocalFile_singleTrackLoadAndAdvance() async throws {
+    func testSmoke_LocalFile_wiresThroughLocalManifestRead() async throws {
         let book = makeAudiobookBook()
 
         let downloadCenter = StubLocalDownloadCenter()
