@@ -81,9 +81,16 @@ class LocalBookContentService {
                 } else {
                     Log.info(#file, "Content file already missing (nothing to delete): \(bookURL.lastPathComponent)")
                 }
+                // Historical cleanup of the LCPPDFs-extracted temp PDF is
+                // obsolete post-migration to Readium PDFNavigator — pages
+                // stream on demand and there is no temp extract to delete.
                 #if LCP
-                if book.defaultBookContentType == .pdf {
-                    try LCPPDFs.deletePdfContent(url: bookURL)
+                // Drop the on-disk TOC snapshot AND the decrypted PDF
+                // extract so a re-borrow doesn't reuse stale cached
+                // content against a potentially different loan.
+                if book.defaultBookContentType == .pdf, let acct = currentAccount {
+                    ReadiumPDFTOCCache.invalidate(bookIdentifier: book.identifier, account: acct)
+                    LCPPDFDiskExtract.invalidate(bookIdentifier: book.identifier, account: acct)
                 }
                 #endif
             case .audiobook:

@@ -130,6 +130,25 @@ final class LibraryService: Loggable {
             log(.error, "Malformed self link: \(selfLink.href)")
         }
     }
+
+    /// Deregisters the HTTP-server endpoint that was created in
+    /// `preparePresentation` so the per-publication handlers +
+    /// resource transformers can be released. Call from the reader's
+    /// dismiss path — without this, every open accumulates a new
+    /// endpoint handler in `GCDHTTPServer.handlers` even after the
+    /// publication itself releases.
+    @MainActor
+    func releaseServedPublication(forBookIdentifier identifier: String) {
+        let endpoint = "/publications/\(identifier)"
+        do {
+            try httpServer.remove(at: endpoint)
+        } catch {
+            // Endpoint may already be gone (publication never opened
+            // via `preparePresentation`, or was served at a self-link
+            // URL instead). Not actionable; log and move on.
+            log(.debug, "GCDHTTPServer.remove(at: \(endpoint)) no-op: \(error.localizedDescription)")
+        }
+    }
     private func validatePublication(_ publication: Publication, for identifier: String, completion: (Result<Publication, LibraryServiceError>) -> Void) -> Bool {
         guard !publication.isRestricted else {
             stopOpeningIndicator(identifier: identifier)

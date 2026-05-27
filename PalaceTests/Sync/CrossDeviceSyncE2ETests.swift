@@ -87,8 +87,10 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
         userAccount.markLoggedIn()
 
         // Replace the library account's resolver so currentUserAccount
-        // returns our credentialed mock.
-        libraryAccount.userAccountResolver = { [unowned self] _ in self.userAccount }
+        // returns our credentialed mock. Capture directly to avoid IUO
+        // nil-unwrap when a stale URLSession callback fires after tearDown.
+        let resolvedUserAccount = userAccount!
+        libraryAccount.userAccountResolver = { _ in resolvedUserAccount }
 
         // Both devices use the same URLSession configuration with
         // HTTPStubURLProtocol — they both end up talking to backend.

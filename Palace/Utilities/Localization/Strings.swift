@@ -483,6 +483,7 @@ struct Strings {
 
     struct TPPPDFNavigation {
         static let resume = NSLocalizedString("Resume", comment: "A button to continue reading title.")
+        static let loadingPDF = NSLocalizedString("Loading…", comment: "Shown under the book title while an LCP-protected PDF is being decrypted and opened.")
     }
 
     struct TPPDeveloperSettingsTableViewController {
