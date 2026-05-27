@@ -46,11 +46,21 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
             .regular: (top: 0, bottom: 0)
         ]
 
+        // PP-4297: gate the system text-selection menu on the per-book
+        // DRM-protected flag. DRM titles get an empty action list (no
+        // long-press menu); non-DRM titles get Readium's defaults plus the
+        // Palace Highlight action.
+        let highlight = EditingAction(title: "Highlight",
+                                      action: #selector(highlightSelection))
+        let editingActions = ReaderEditingActions.resolve(
+            for: book,
+            isSample: forSample,
+            appending: [highlight]
+        )
+
         let config = EPUBNavigatorViewController.Configuration(
             preferences: preferences,
-            editingActions: EditingAction.defaultActions.appending(EditingAction(
-                                                                    title: "Highlight",
-                                                                    action: #selector(highlightSelection))),
+            editingActions: editingActions,
             contentInset: contentInset,
             decorationTemplates: HTMLDecorationTemplate.defaultTemplates(),
             debugState: true

@@ -643,6 +643,26 @@ public class TPPBook: NSObject, ObservableObject {
             path.types.contains(ContentTypeAdobeAdept)
         }
     }
+
+    /// True when any DRM scheme protects this book (Adobe ACS or Readium LCP,
+    /// across EPUB/PDF/audiobook content). Readers use this to gate the system
+    /// text-selection edit menu — DRM titles do not surface Copy/Cut/Paste/etc.
+    /// Walks the full nested acquisition chain so license types two levels
+    /// deep are still detected (cf. PP-4407 acquisition-chain regression).
+    @objc var isDRMProtected: Bool {
+        guard let acquisition = defaultAcquisition else { return false }
+        let paths = TPPOPDSAcquisitionPath.supportedAcquisitionPaths(
+            forAllowedTypes: TPPOPDSAcquisitionPath.supportedTypes(),
+            allowedRelations: NYPLOPDSAcquisitionRelationSetAll,
+            acquisitions: [acquisition]
+        )
+        return paths.contains { path in
+            path.types.contains(ContentTypeAdobeAdept) ||
+            path.types.contains(ContentTypeReadiumLCP) ||
+            path.types.contains(ContentTypePDFLCP) ||
+            path.types.contains(ContentTypeAudiobookLCP)
+        }
+    }
 }
 
 extension TPPBook: Identifiable {}

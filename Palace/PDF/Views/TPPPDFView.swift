@@ -16,7 +16,11 @@ import PDFKit
 struct TPPPDFView: View {
 
     let document: PDFDocument
-    let pdfView = PDFView()
+    // PP-4297: PalacePDFView subclass so we can gate Copy/Cut/Paste/Look
+    // Up/Share on long-press when the book is DRM-protected. The
+    // `allowsCopy` flag is applied below in `onAppear`, before any user
+    // interaction can reach the view.
+    let pdfView = PalacePDFView()
     private let pageChangePublisher = NotificationCenter.default.publisher(for: .PDFViewPageChanged)
 
     @EnvironmentObject var metadata: TPPPDFDocumentMetadata
@@ -64,6 +68,12 @@ struct TPPPDFView: View {
         }
         .navigationBarHidden(!showingDocumentInfo && !isVoiceOverRunning)
         .onAppear {
+            // PP-4297: DRM-protected titles must not expose Copy/Cut/Paste
+            // on long-press. Applying here (rather than at field init)
+            // because `metadata` is unavailable until the environment is
+            // injected, and the view is mounted before any long-press
+            // gesture can fire.
+            pdfView.allowsCopy = !metadata.book.isDRMProtected
             Task {
                 if let title = await fetchDocumentTitle() {
                     documentTitle = title
