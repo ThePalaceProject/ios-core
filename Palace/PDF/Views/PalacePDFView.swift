@@ -27,13 +27,15 @@ class PalacePDFView: PDFView {
     }
 
     override func buildMenu(with builder: UIMenuBuilder) {
+        // Defer to super first, then strip — defends against future PDFKit
+        // versions that insert items late in their buildMenu pass.
+        super.buildMenu(with: builder)
         if !allowsCopy {
             builder.remove(menu: .standardEdit)
             builder.remove(menu: .share)
             builder.remove(menu: .lookup)
             builder.remove(menu: .learn)
         }
-        super.buildMenu(with: builder)
     }
 
     /// Standard-edit selectors that long-press surfaces on a PDF text

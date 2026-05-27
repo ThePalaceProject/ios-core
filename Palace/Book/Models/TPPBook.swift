@@ -659,7 +659,6 @@ public class TPPBook: NSObject, ObservableObject {
         return paths.contains { path in
             path.types.contains(ContentTypeAdobeAdept) ||
             path.types.contains(ContentTypeReadiumLCP) ||
-            path.types.contains(ContentTypePDFLCP) ||
             path.types.contains(ContentTypeAudiobookLCP)
         }
     }
