@@ -92,7 +92,10 @@ final class CookiePersistenceTests: XCTestCase {
         userAccount.markLoggedIn()
 
         libraryAccount = TPPLibraryAccountMock()
-        libraryAccount.userAccountResolver = { [unowned self] _ in self.userAccount }
+        // Capture userAccount directly so a stale URLSession callback firing
+        // after tearDown nils self.userAccount can't crash on the IUO unwrap.
+        let resolvedUserAccount: TPPUserAccountCookieMock = userAccount
+        libraryAccount.userAccountResolver = { _ in resolvedUserAccount }
 
         executor = makeExecutor()
     }
