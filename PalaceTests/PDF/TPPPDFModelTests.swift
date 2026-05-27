@@ -311,50 +311,19 @@ final class TPPPDFReaderModeTests: XCTestCase {
 
 final class TPPPDFDocumentTests: XCTestCase {
 
-    // SRS: TPPPDFDocument non-encrypted init sets correct properties
-    func testPDFDocument_nonEncryptedInit() {
+    // Post-migration: TPPPDFDocument is the non-encrypted/open-access PDF
+    // wrapper only. LCP-protected PDFs are handled by Readium's
+    // PDFNavigator and no longer flow through this class. Tests that
+    // pinned the obsolete encrypted-data init / .isEncrypted /
+    // .encryptedDocument / .decrypt API surface are deleted with the
+    // production code that backed them.
+
+    // SRS: TPPPDFDocument from-data init exposes data field correctly
+    func testPDFDocument_initFromData_exposesData() {
         let data = Data([0x25, 0x50, 0x44, 0x46]) // %PDF header bytes
         let doc = TPPPDFDocument(data: data)
-        XCTAssertFalse(doc.isEncrypted)
         XCTAssertEqual(doc.data, data)
-        // A non-encrypted document has no encrypted counterpart
-        XCTAssertNil(doc.encryptedDocument, "Non-encrypted document should have nil encryptedDocument")
-        // The delegate is nil by default
         XCTAssertNil(doc.delegate, "Delegate should be nil on init")
-    }
-
-    // SRS: TPPPDFDocument encrypted init sets correct properties
-    func testPDFDocument_encryptedInit() {
-        let data = Data([0x00, 0x01, 0x02])
-        let doc = TPPPDFDocument(encryptedData: data) { data, _, _ in data }
-        XCTAssertTrue(doc.isEncrypted)
-        XCTAssertEqual(doc.data, data)
-        // Encrypted document should have nil regular document (uses encrypted path)
-        XCTAssertNil(doc.document, "Encrypted document should have nil .document property")
-        // The delegate is nil by default
-        XCTAssertNil(doc.delegate, "Delegate should be nil on init")
-    }
-
-    // SRS: TPPPDFDocument decrypt returns decrypted data when decryptor exists
-    func testPDFDocument_decryptWithDecryptor() {
-        let originalData = Data([0x01, 0x02, 0x03])
-        let decryptedData = Data([0x0A, 0x0B, 0x0C])
-        let doc = TPPPDFDocument(encryptedData: originalData) { _, _, _ in decryptedData }
-        let result = doc.decrypt(data: originalData, start: 0, end: 3)
-        XCTAssertEqual(result, decryptedData)
-    }
-
-    // SRS: TPPPDFDocument decrypt returns original data when no decryptor
-    func testPDFDocument_decryptWithoutDecryptor() {
-        let data = Data([0x01, 0x02, 0x03])
-        let doc = TPPPDFDocument(data: data)
-        let result = doc.decrypt(data: data, start: 0, end: 3)
-        XCTAssertEqual(result, data)
-        // decrypt must be a pure pass-through: result must equal input exactly
-        XCTAssertFalse(doc.isEncrypted, "Non-encrypted document must report isEncrypted = false")
-        // Calling decrypt with different bounds on the same data must still return the original
-        let resultAgain = doc.decrypt(data: data, start: 0, end: 3)
-        XCTAssertEqual(resultAgain, data, "Repeated decrypt calls must return same data for non-encrypted doc")
     }
 
     // SRS: TPPPDFDocument pageCount is 0 for invalid data
@@ -364,27 +333,6 @@ final class TPPPDFDocumentTests: XCTestCase {
         // With 0 pages, requesting page content should return nil
         XCTAssertNil(doc.size(page: 0), "size(page:) should return nil for invalid data")
         XCTAssertNil(doc.label(page: 0), "label(page:) should return nil for invalid data")
-    }
-
-    // SRS: TPPPDFDocument non-encrypted has nil encryptedDocument
-    func testPDFDocument_nonEncryptedHasNilEncryptedDocument() {
-        let doc = TPPPDFDocument(data: Data())
-        XCTAssertNil(doc.encryptedDocument)
-        // Non-encrypted document reports isEncrypted = false
-        XCTAssertFalse(doc.isEncrypted)
-        // Non-encrypted document's data field is accessible
-        XCTAssertEqual(doc.data, Data())
-    }
-
-    // SRS: TPPPDFDocument encrypted has nil regular document
-    func testPDFDocument_encryptedHasNilRegularDocument() {
-        let doc = TPPPDFDocument(encryptedData: Data()) { d, _, _ in d }
-        XCTAssertNil(doc.document)
-        // Encrypted document reports isEncrypted = true
-        XCTAssertTrue(doc.isEncrypted)
-        // encryptedDocument is the non-nil counterpart for the encrypted path
-        // (may still be nil if data is not a valid PDF, but isEncrypted flag is set)
-        XCTAssertEqual(doc.data, Data())
     }
 
     // SRS: TPPPDFDocument tableOfContents is empty for invalid data
@@ -397,15 +345,12 @@ final class TPPPDFDocumentTests: XCTestCase {
         XCTAssertNil(doc.preview(for: 0), "preview should be nil for document with no pages")
     }
 
-    // SRS: TPPPDFDocument delegate can be set
+    // SRS: TPPPDFDocument delegate defaults to nil and can be set
     func testPDFDocument_delegateCanBeSet() {
         let doc = TPPPDFDocument(data: Data())
         XCTAssertNil(doc.delegate)
-        // Encrypted variant also starts with nil delegate
-        let encDoc = TPPPDFDocument(encryptedData: Data()) { d, _, _ in d }
-        XCTAssertNil(encDoc.delegate, "Encrypted document delegate should also default to nil")
-        // Both documents have 0 pages when constructed with empty data
-        XCTAssertEqual(encDoc.pageCount, 0)
+        // Empty-data documents have 0 pages
+        XCTAssertEqual(doc.pageCount, 0)
     }
 
     // SRS: TPPPDFDocument size returns nil for invalid page

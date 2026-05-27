@@ -264,6 +264,20 @@ actor TPPBookCoverRegistry {
             return img
         }
 
+        // Memory pressure backoff: while an LCP PDF is opening, the
+        // decrypt walk + Readium page rendering consume large memory
+        // buffers; layering background cover prefetches on top is what
+        // tipped device opens into OOM (visible in the device log as
+        // "Memory warning received" followed by SIGABRT). Skip the
+        // network + decode here — callers see the same nil-on-miss
+        // they'd see during a transient network failure, and the
+        // catalog re-fetches naturally when the user scrolls back.
+        #if LCP
+        if LCPPDFOpenProgress.isOpenInProgress {
+            return nil
+        }
+        #endif
+
         guard let data = await sourceData(for: url) else { return nil }
 
         guard let image = Self.downsampleImage(

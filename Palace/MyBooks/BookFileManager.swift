@@ -110,13 +110,23 @@ class BookFileManager {
     /// File extension for the book's on-disk artefact. LCP audiobooks land
     /// as `.lcpa`, LCP PDFs as `.zip`, everything else as `.epub`. The LCP
     /// branches are compiled out of Palace-noDRM via `#if LCP`.
+    ///
+    /// LCP detection uses `hasLCPAcquisition` (recursive scan of the full
+    /// acquisition chain including indirect entries) rather than
+    /// `canOpenBook` (which inspects only `defaultAcquisition.type`).
+    /// Marketplace OPDS feeds wrap the LCP license in
+    /// `opds-publication+json → [LCP license → audiobook+lcp | application/pdf]`
+    /// with the LCP MIME *nested* in the indirect chain — `canOpenBook`
+    /// misses this and the file gets saved as `.epub`, breaking the LCP
+    /// extract pass. PP-4407 closed this for audiobooks; PP-4454 mirrors
+    /// the fix to PDFs.
     func pathExtension(for book: TPPBook?) -> String {
         #if LCP
         if let book = book {
-            if LCPAudiobooks.canOpenBook(book) {
+            if LCPAudiobooks.hasLCPAcquisition(book) {
                 return "lcpa"
             }
-            if LCPPDFs.canOpenBook(book) {
+            if LCPPDFs.hasLCPAcquisition(book) {
                 return "zip"
             }
         }
