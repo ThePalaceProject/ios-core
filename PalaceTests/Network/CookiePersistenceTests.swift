@@ -94,7 +94,9 @@ final class CookiePersistenceTests: XCTestCase {
         libraryAccount = TPPLibraryAccountMock()
         // Capture userAccount directly so a stale URLSession callback firing
         // after tearDown nils self.userAccount can't crash on the IUO unwrap.
-        let resolvedUserAccount: TPPUserAccountCookieMock = userAccount
+        // The property is typed `TPPUserAccountMock!` even though the actual
+        // instance is `TPPUserAccountCookieMock`; capture as the parent type.
+        let resolvedUserAccount: TPPUserAccountMock = userAccount
         libraryAccount.userAccountResolver = { _ in resolvedUserAccount }
 
         executor = makeExecutor()
