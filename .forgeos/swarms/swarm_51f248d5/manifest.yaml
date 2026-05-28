@@ -1,7 +1,7 @@
 swarm_id: swarm_51f248d5
 task: "3.2.0 close-out wave 2 — accountNotFound split + SignInModal SwiftUI refactor + apply arch1 wall-failure fixes"
 created_at: 2026-05-28
-status: triaged
+status: complete
 base_ref: swarm/swarm_c8fcab76-scaffold  # stacked on PR #1020
 modules:
   - name: A-AccountNotFound-EnumSplit
