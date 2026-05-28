@@ -392,6 +392,19 @@ Run these literal commands. Block before review if any fail:
 ORCH_WT="$(pwd)"  # already in orchestrator worktree
 SWARM_ID="<swarm_id>"
 
+# Check 0: Architect post-review present + APPROVED (per .forgeos/schemas/swarm-manifest-v2.md)
+ARCH_REVIEW=$(yq -r '.architect_review.verdict' .forgeos/swarms/$SWARM_ID/manifest.yaml 2>/dev/null)
+ARCH_SKIPPED=$(yq -r '.architect_review.skipped.reason' .forgeos/swarms/$SWARM_ID/manifest.yaml 2>/dev/null)
+if [ "$ARCH_REVIEW" = "BLOCKED" ]; then
+  echo "BLOCK: architect_review.verdict == BLOCKED. Address findings + re-run architect-reviewer agent."
+  exit 1
+fi
+if [ "$ARCH_REVIEW" != "APPROVED" ] && { [ -z "$ARCH_SKIPPED" ] || [ "$ARCH_SKIPPED" = "null" ]; }; then
+  echo "BLOCK: architect_review missing. Per Phase 1a, run architect-reviewer subagent before dispatching implementers."
+  echo "If skip is intentional (area-checklist-authoritative + delta-verified), populate architect_review.skipped.reason with justification per schemas/swarm-manifest-v2.md."
+  exit 1
+fi
+
 # Check 1: Submodule typechanges accidentally staged (PR #1018 arch1)
 if git diff --cached --name-only | grep -E "^(adept-ios|adobe-content-filter|ios-audiobook-overdrive|ios-tenprintcover|mobile-bookmark-spec|readium-sdk|readium-shared-js|adobe-rmsdk)$"; then
   echo "BLOCK: submodule typechanges staged — git restore --staged them"

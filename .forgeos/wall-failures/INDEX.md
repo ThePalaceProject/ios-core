@@ -4,6 +4,7 @@ One line per entry. Sortable by date, wall, status. Most recent first.
 
 | Date | PR | Wall | Severity | Status | Entry | One-line |
 |------|----|------|----------|--------|-------|----------|
+| 2026-05-28 | n/a (backtest) | reviewer | high | proposed | [backtest-2026-05-28](backtest-2026-05-28.md) | Paper analysis of 10 prior shipped bugs vs. SoD reviewer agent prompts — 0% definitive WOULD-CATCH; 5 prompt-addition recommendations |
 | 2026-05-27 | #1018 | implementer | high | proposed | [arch1-discipline](2026-05-27-pr1018-arch1.md) | 7 submodule gitlinks accidentally staged as symlinks |
 | 2026-05-27 | #1018 | contract | medium | proposed | [arch2-fake-wiring-test](2026-05-27-pr1018-arch2.md) | Wiring test claimed production round-trip but built fresh spies |
 | 2026-05-27 | #1018 | contract+implementer | high | proposed | [arch3-dead-classifier-call](2026-05-27-pr1018-arch3.md) | TPPNetworkResponder called classifier but only logged outcome — legacy path still ran |
