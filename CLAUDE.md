@@ -187,6 +187,14 @@ Per `.forgeos/wall-failures/` (lessons from PR #1018 reviewer-blocked findings +
 
 1. **SUT instantiation check** — for every test file you added or modified named `<SUT>Tests.swift` (e.g. `BookReturnServiceTests.swift`, `TPPNetworkResponderAuthCoordinatorTests.swift`), run `grep -c "<SUT>(" <test-file>`. The count must be ≥ 1. If you wrote a `BookReturnServiceAuthCoordinatorTests` that never constructs a `BookReturnService`, the test is theater — rewrite or rename. Catches PR #1018 qa2/qa3 (fake-test-instantiation).
 
+   **Method-level extension (added wave 4 / cs_9a267b63 escalation):** For each test METHOD whose name embeds a PascalCase production-class noun (e.g. `testX_TPPReauthenticatorPath_invokesY` embeds `TPPReauthenticator` and `Y`), the same test method's body must call `TPPReauthenticator(...)` (instantiation) or `TPPReauthenticator.method(...)` (static call) or have an explicit type annotation `: TPPReauthenticator`. Verify mechanically with:
+
+   ```bash
+   python3 scripts/check-test-name-vs-body.py PalaceTests/<your-modified-file>.swift
+   ```
+
+   A non-zero exit means the test name embeds a noun the body doesn't reference. Fake-wiring tests of this shape have escaped into the codebase twice (cs_847892e8 arch1 + cs_9a267b63 arch1) and the runnable script is the structural fix that makes the pattern impossible to land. The same script is wired into `.claude/skills/swarm/SKILL.md` Phase 4.5 check 5b so the orchestrator gates all diffed test files automatically.
+
 2. **Function-result usage check** — for every new production-code call to a function added or contracted-in, paste evidence the result is used (bound via `let outcome = ...`, pattern-matched, returned, or has a `// TODO(ticket): result intentionally discarded because <reason>` comment). `grep -E "= <fnName>\(|let _ = <fnName>" <prod-file>`. Catches PR #1018 arch3 (dishonest migration — classifier called but outcome only logged).
 
 3. **Multi-step test body check** — for every test name containing `across`, `twice`, `reset`, `retry`, `again`, `roundtrip`, `inProduction`, `viaX`: confirm the body literally does each step the name claims. A test named `testCoordinator_perBookCircuitBreaker_isStillHonored_acrossTwoSeparateAttempts` MUST drive two attempts; if the second-attempt half is in comments, the test is fluff. Catches PR #1018 qa1 (half-done test) and arch2 (fake wiring test).

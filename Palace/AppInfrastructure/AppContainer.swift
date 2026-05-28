@@ -30,14 +30,35 @@ struct AppContainer {
     /// lifetime.
     let authCoordinator: AuthCoordinator
 
+    /// Instance-local override for `signInModalSheetPresenter`. Production
+    /// `_cached` value has this as `nil` — the computed property falls
+    /// through to the static cache. Tests set this via
+    /// `withSignInModalSheetPresenter(_:)` to inject a spy without
+    /// disturbing the global `_signInModalSheetPresenter` cache. The
+    /// override stays as a `let` per struct value; the modifier produces
+    /// a NEW struct value rather than mutating `self`.
+    ///
+    /// swarm_d8f11437 Module B (wave 4) — closes wall-failure cs_9a267b63
+    /// by giving Module A's wiring test a no-bloat way to inject a spy
+    /// presenter into AppContainer-driven seams.
+    private let _signInModalSheetPresenterOverride: SignInModalSheetPresenter?
+
     /// SwiftUI-observable facade over the static `SignInModalPresenter`
     /// API (swarm_18b0d071 Module A wave 3). Wave 3 migrates ONE caller
     /// (`TPPReauthenticator`) to prove the pattern; wave 4 migrates the
     /// remaining 9 callers. Held by the container for app lifetime so
     /// SwiftUI consumers that bind to `$presentationState` observe the
     /// same instance across screens.
+    ///
+    /// Resolution order:
+    ///   1. Instance-local `_signInModalSheetPresenterOverride` (test seam,
+    ///      set via `withSignInModalSheetPresenter(_:)`).
+    ///   2. Static `_signInModalSheetPresenter` cache (production path).
+    ///   3. Lazy-init a fresh presenter wired to `self`, store in the
+    ///      static cache, return it.
     @MainActor
     var signInModalSheetPresenter: SignInModalSheetPresenter {
+        if let override = _signInModalSheetPresenterOverride { return override }
         if let cached = AppContainer._signInModalSheetPresenter { return cached }
         let presenter = SignInModalSheetPresenter(appContainer: self)
         AppContainer._signInModalSheetPresenter = presenter
@@ -45,6 +66,52 @@ struct AppContainer {
     }
 
     @MainActor private static var _signInModalSheetPresenter: SignInModalSheetPresenter?
+
+    /// Returns a copy of this container with `signInModalSheetPresenter`
+    /// resolved from `presenter` instead of the static cache.
+    ///
+    /// **Test-only seam.** Production code MUST NOT call this — the default
+    /// `signInModalSheetPresenter` resolved from `AppContainer.production()`
+    /// is the single composition-root instance held by the static cache.
+    /// This modifier exists so tests can inject a spy presenter via:
+    ///
+    /// ```swift
+    /// let testContainer = AppContainer.production()
+    ///     .withSignInModalSheetPresenter(spy)
+    /// ```
+    ///
+    /// then pass `testContainer` to a system-under-test whose code path
+    /// resolves `appContainer.signInModalSheetPresenter`. The override is
+    /// preferred over the static cache by the computed property; the
+    /// static cache itself is unaffected.
+    ///
+    /// Modifies a struct copy — does NOT mutate `self` or the static cache.
+    ///
+    /// swarm_d8f11437 Module B (wave 4) — closes wall-failure cs_9a267b63.
+    @MainActor
+    func withSignInModalSheetPresenter(_ presenter: SignInModalSheetPresenter) -> AppContainer {
+        return AppContainer(
+            bookRegistry: self.bookRegistry,
+            networkExecutor: self.networkExecutor,
+            networkQueue: self.networkQueue,
+            reachability: self.reachability,
+            accountsManager: self.accountsManager,
+            settings: self.settings,
+            downloadCenter: self.downloadCenter,
+            downloadAnnouncementService: self.downloadAnnouncementService,
+            debugSettings: self.debugSettings,
+            imageCache: self.imageCache,
+            imageLoader: self.imageLoader,
+            userAccountPublisher: self.userAccountPublisher,
+            opdsFeedService: self.opdsFeedService,
+            readerService: self.readerService,
+            navigationCoordinatorHub: self.navigationCoordinatorHub,
+            tabRouterHub: self.tabRouterHub,
+            drmAuthorizerProvider: self.drmAuthorizerProvider,
+            authCoordinator: self.authCoordinator,
+            signInModalSheetPresenterOverride: presenter
+        )
+    }
 
     // Lazy-init on MainActor: BookCellModelCache and SamplePreviewManager are
     // @MainActor-isolated, but `_cached`'s static-let initializer can run on
@@ -125,7 +192,8 @@ struct AppContainer {
         navigationCoordinatorHub: NavigationCoordinatorHub,
         tabRouterHub: AppTabRouterHub,
         drmAuthorizerProvider: @escaping () -> TPPDRMAuthorizing?,
-        authCoordinator: AuthCoordinator
+        authCoordinator: AuthCoordinator,
+        signInModalSheetPresenterOverride: SignInModalSheetPresenter? = nil
     ) {
         self.bookRegistry = bookRegistry
         self.networkExecutor = networkExecutor
@@ -145,6 +213,7 @@ struct AppContainer {
         self.tabRouterHub = tabRouterHub
         self.drmAuthorizerProvider = drmAuthorizerProvider
         self.authCoordinator = authCoordinator
+        self._signInModalSheetPresenterOverride = signInModalSheetPresenterOverride
     }
 
     static func production() -> AppContainer {
