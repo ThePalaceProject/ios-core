@@ -180,6 +180,74 @@ A test that doesn't kill any mutants should be rewritten to test the actual beha
 
 **Critical path tests must be air-tight.** For sign-in, borrow, download, DRM fulfillment, and payment flows: every branch must have a test, every error path must be exercised, and every test must kill at least one mutant. These paths handle user money and access — fluff is not acceptable here.
 
+## Definition of Done — paste evidence before declaring work complete
+
+Per `.forgeos/wall-failures/` (lessons from PR #1018 reviewer-blocked findings), every non-trivial work item — solo-agent or swarm — must pass these 6 self-checks BEFORE declaring READY or opening a PR. Paste the evidence in the commit body, the swarm transcript, or the user-facing summary. **Without evidence, the work is not done; it is "implemented but unverified."**
+
+1. **SUT instantiation check** — for every test file you added or modified named `<SUT>Tests.swift` (e.g. `BookReturnServiceTests.swift`, `TPPNetworkResponderAuthCoordinatorTests.swift`), run `grep -c "<SUT>(" <test-file>`. The count must be ≥ 1. If you wrote a `BookReturnServiceAuthCoordinatorTests` that never constructs a `BookReturnService`, the test is theater — rewrite or rename. Catches PR #1018 qa2/qa3 (fake-test-instantiation).
+
+2. **Function-result usage check** — for every new production-code call to a function added or contracted-in, paste evidence the result is used (bound via `let outcome = ...`, pattern-matched, returned, or has a `// TODO(ticket): result intentionally discarded because <reason>` comment). `grep -E "= <fnName>\(|let _ = <fnName>" <prod-file>`. Catches PR #1018 arch3 (dishonest migration — classifier called but outcome only logged).
+
+3. **Multi-step test body check** — for every test name containing `across`, `twice`, `reset`, `retry`, `again`, `roundtrip`, `inProduction`, `viaX`: confirm the body literally does each step the name claims. A test named `testCoordinator_perBookCircuitBreaker_isStillHonored_acrossTwoSeparateAttempts` MUST drive two attempts; if the second-attempt half is in comments, the test is fluff. Catches PR #1018 qa1 (half-done test) and arch2 (fake wiring test).
+
+4. **Scope coverage audit** — for every item in the original task (or contract, in swarm mode), confirm it's in your diff OR explicitly listed as a deferred scope item via the scope-deferral protocol below. Don't bury reductions in a gaps section while claiming done. Catches PR #1018 Module C scope-reduction.
+
+5. **Mutation pass (MANDATORY for critical paths)** — run `python3 scripts/palace_mutate.py --file <modified-file> --tests <test-class> --diff-only` for every modified production file in a critical path (`Palace/Audiobooks/`, `Palace/SignInLogic/`, `Palace/MyBooks/Download*`, `Palace/Packages/PalaceAuth/`, anything touching auth/borrow/return/DRM/credentials). Paste the kill rate. Must be ≥ 50% diff-scoped, ideally 100% on the touched lines. Catches PR #1018 qa1 (mutation deferred to integrator → half-done test shipped).
+
+6. **Build + verify-pr** — `xcodebuild ... build` clean and `scripts/verify-pr.sh --quick` PASS. Paste the tails.
+
+If you cannot produce evidence for all 6 checks applicable to your change, do NOT report READY. Either complete the missing check OR explicitly STOP with a scope-deferral proposal (below) so the user can decide.
+
+## Scope-deferral protocol — STOP, do not partial-ship
+
+If you discover you cannot complete the original scope within your time/context budget, **STOP and propose scope reduction explicitly** — do not silently ship partial work. The right response is:
+
+```
+BLOCKED: scope reduction proposal.
+
+Original scope: <N> sites / files / tests.
+I can land cleanly: <M>.
+Remaining <N - M> have <specific reason — entangled state-machine cleanup,
+unrecoverable test-fixture dependency, time budget exhausted>.
+
+Options for the user/orchestrator:
+  (a) extend my pass with more budget
+  (b) accept the reduction; track remaining as next-sprint scope
+  (c) split into <K> smaller passes
+
+I will not ship partial as READY without explicit direction.
+```
+
+Burying scope reductions in a "gaps" / "deferred" / "follow-up" section while claiming READY is the failure mode this protocol prevents. The decision point is the user's, not yours. This applies to single-agent work AND swarm implementers.
+
+Canonical bad pattern (PR #1018 Module C): "Migrated 2 of 7 contracted sites. READY FOR INTEGRATION (partial). Remaining 5 have entangled cleanup — see gaps." → forced an unplanned continuation pass. Correct response would have been BLOCKED with the 3-option proposal up front.
+
+## Risk-driven rigor bar
+
+The "swarm vs single-agent" decision is based on module count (≥2 modules = swarm). The "how much rigor" decision is **risk-based, not size-based**. A 30-LOC change to `BookReturnService` (critical-path return flow) gets the same rigor as a 500-LOC multi-module refactor — because the consequences of a bug are the same regardless of LOC.
+
+**Critical paths requiring architect + SoD review regardless of LOC count:**
+- `Palace/SignInLogic/`, `Palace/Packages/PalaceAuth/` — auth, sign-in, credential storage
+- `Palace/MyBooks/Borrow*`, `Palace/MyBooks/BookReturn*`, `Palace/MyBooks/Download*` — borrow / return / download / DRM fulfillment
+- `Palace/Audiobooks/` — audiobook playback (toolkit fragile per memory)
+- `Palace/Migrations/` — anything touching persistence schema
+- `Palace/Network/TPPNetworkResponder.swift`, `Palace/Network/TPPNetworkExecutor.swift` — the auth-error decision point
+
+For single-module work in a critical path, use the `/rigorous-fix` skill (or `/swarm --solo`) — runs architect + SoD review without parallel implementers. For 1-LOC trivial fixes in a critical path, still run `/forge-review` after coding. The bar is: *if a regression here would hit users, the review must happen.*
+
+For non-critical paths under 50 LOC, single-agent + `/clean-code` (which now includes the skeptic-pass greps) is sufficient.
+
+## Wall-failure catalog — every reviewer block becomes a permanent improvement
+
+When a reviewer BLOCKS a PR (whether via `/forge-review` or external code review), the finding is a **system bug**, not just an implementer bug. The system let it through; the wall has a hole. Per `.forgeos/wall-failures/README.md`:
+
+1. Within 24h of the block, create an entry at `.forgeos/wall-failures/YYYY-MM-DD-pr<NNNN>-<short-id>.md` using `TEMPLATE.md`.
+2. Classify which wall(s) should have caught it (contract / implementer / TDD / mutation / verify-pr / orchestrator / reviewer / hook).
+3. Propose a permanent fix — a contract clause, orchestrator check, implementer constraint, hook addition, CLAUDE.md edit — that makes the finding **structurally impossible to land**, not "more likely to be noticed."
+4. Within 1 week, apply the fix; link the commit back from the entry; update `INDEX.md` and `derived-improvements.md`.
+
+This is how the system gets less leaky over time. Without it, the same finding class can recur next swarm.
+
 **State-machine wiring tests must exercise round-trips, not just transitions.** Any code that drives a state machine (e.g. `_setState`, `setState`, reducer-action dispatches, accessor setters that write a terminal state) gets a test class that proves the **full lifecycle**, not just individual transitions. Required cycles:
 
 - **Write → reset → re-enter.** If a write can be undone (manually, via re-entry, or by a later setter call), a single test must drive the value through the cycle via the **production seam** (the public setter / driver function), not via direct `_setState` shortcuts. Direct shortcut writes prove the storage works; they don't prove the wiring works.

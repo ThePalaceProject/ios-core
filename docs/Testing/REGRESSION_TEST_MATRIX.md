@@ -107,9 +107,11 @@ Borrow and fulfillment paths branch by distributor. Every circulation row below 
 | E1-LCP | EPUB reading — LCP DRM | Same as E1 but with LCP-protected EPUB | *Cyber Risk* on Palace Marketplace | Manual | Same checks + license-file presence, stale-loan DRM error (F-038). |
 | E1-Adobe | EPUB reading — Adobe DRM | Same as E1 but with Adobe RMSDK | Any Adobe-fulfilled title | Manual | Same checks + Adobe activation must be live. Regression target: no `AdobeCertificate` crash. |
 | E2 | PDF reading | Open, navigate, zoom, annotate | PDF on any library | Manual | |
+| E2-Hang | PDF/EPUB open never completes | Open a borrowed title; assert reader renders content within 15s (no infinite spinner / blank screen). Cover **non-LCP-PDF** + **non-Marketplace EPUB** explicitly — PP-4454 only fixed Marketplace LCP-wrapped PDFs. | DRM-free PDF (Palace Bookshelf), DRM-free EPUB, Adobe EPUB | Manual | HelpSpot 17966 — Blake reports blank screen + infinite spinner on book open, survives reinstall + relogin. Verify the open-path is not silently failing for non-Marketplace titles after the PP-4454 recursive-predicate change. |
 | E3-FA | Audiobook — Findaway / AudioEngine | Play, skip 30s, scrub, TOC, bookmarks | Any Findaway title | Manual | Check skip direction (F-046), TOC visibility (F-047), playback position persists. |
 | E3-OD | Audiobook — Overdrive | Same as E3-FA but Overdrive distributor | *Catching Fire* on A1QA | Manual | Manifest format (F-053), token refresh before open. 2.x regressed open-failures (Crashlytics 25K non-fatals pre-fix). |
 | E3-LCP | Audiobook — LCP | Same as E3-FA but LCP distributor | *Animal Farm* on Palace Marketplace | Manual | F-057 (instant checkout + streaming), F-058 (all player bugs fixed). LCP session re-download on orphan (PP-3704). |
+| E3-LCP-Resume | LCP audiobook mid-book resume | Play through several chapters of a Marketplace LCP audiobook (10+ min in), pause, kill app, relaunch, reopen the title. Assert: position restored to pause point, Play resumes audio (engine starts, not just UI mount), no need to nav-away-and-back to unstick. Repeat across **first open** AND **subsequent open from a deep position**. | Multiple Marketplace LCP audiobooks (e.g. *Animal Farm* + one ≥6hr title) | Manual | HelpSpot 17964 — Carol on 3.0.3 reports one Marketplace audiobook played 14 chapters then refused to resume; multiple titles intermittently won't load. Broadens the known F-011 / PP-4436 "first-open hang" reproducer to also cover **resume from saved position after long playback**. If F-011 repros only on first open, this case is a new sibling — file as F-011 sibling. |
 | E3-OA | Audiobook — open-access | Same as E3-FA but DRM-free | Any open-access audiobook | Manual | Baseline no-DRM path. Covered by L4 in PP-4020. |
 | E4 | Audiobook background | Background playback, Bluetooth, lock screen, phone call, other-audio interruption | All distributors | Manual | Resume on BT reconnect (F-060), lock-screen controls (B1), phone-call interrupt (B2). |
 | E5 | Offline reading/listening | Read/listen without network | All distributors + DRM types | Manual | Verify downloaded content accessible, license doesn't re-validate if cached. |
@@ -156,6 +158,7 @@ Borrow and fulfillment paths branch by distributor. Every circulation row below 
 | N1 | Push delivery | Hold-available, loan-expiry notifications | `test-push-notifications.py` | Check event_type field (F-071) |
 | N2 | Push tap routing | Notification tap navigates correctly | Manual | Check router not nil (F-072) |
 | N3 | Deep-link nav | Notification opens correct tab/view | Manual | |
+| N4 | Hold-ready notification ↔ holds-list coherence | Place a hold that will fire; when "hold ready" push arrives, open the app from the notification. Assert: Holds tab shows the title in **Ready** state (not still queued, not missing). Then sign out + reinstall + sign back in — assert holds list survives the round-trip (PP-4258/4259 end-of-feed reconciliation must catch them). | All distributors with hold support; multi-hold account preferred | Manual | HelpSpot 17960 — Derryl (iPhone 13 iOS 26.4.2) got "ready" push but app holds list disagreed, then reinstall briefly wiped all holds. HelpSpot 17971 — Heather sees "queue position 1 for months" never advancing, survives reinstall. Verify PP-4258/4259 registry snapshot covers the **notification-triggered state path**, not just the catalog refresh path. |
 
 ### Performance
 
@@ -263,5 +266,6 @@ Auth area has good depth on SAML (3 test files), basic (`TPPBasicAuthTests`), cr
 
 ## Change log
 
+- 2026-05-27 — Added E2-Hang, E3-LCP-Resume, N4 from HelpSpot triage for the 3.2.0 regression. Sources: 17964 (Marketplace audiobook mid-book resume failure), 17960 + 17971 (hold-ready notification ↔ holds-list desync), 17966 (generic reader open hang outside Marketplace LCP PDFs). Each row pins the originating ticket so the link survives.
 - 2026-04-17 — Added test-fixture mapping, expanded auth types from 3 to 7, split B6 by distributor, added B7 (hold→loan), A3 by auth type, E1/E3/E6 split by DRM + distributor, added critical auth × distributor cross-product (9 rows), added Automation Gaps roadmap.
 - 2026-04-16 — Initial matrix from PP-4020 sprint findings.

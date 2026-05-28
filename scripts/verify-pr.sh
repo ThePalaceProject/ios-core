@@ -7,6 +7,12 @@
 #   scripts/verify-pr.sh                       # Run all checks
 #   scripts/verify-pr.sh --quick               # Skip mutation testing (faster)
 #   scripts/verify-pr.sh --report <file>       # Write JSON report to file
+#   scripts/verify-pr.sh --diff-baseline       # On test failures, re-run failing
+#                                              #   classes in isolation to distinguish
+#                                              #   pre-existing test-isolation flakes
+#                                              #   from branch-introduced regressions.
+#                                              #   Per .forgeos/wall-failures/ —
+#                                              #   PR #1018 lessons.
 #   scripts/verify-pr.sh --mutation-only       # Run ONLY the mutation step (skips
 #                                              # build/test/lint/coverage/a11y).
 #                                              # Used by the mutation-on-pr.yml
@@ -87,6 +93,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --quick) QUICK=true; shift ;;
     --report) REPORT_FILE="$2"; shift 2 ;;
+    --diff-baseline) DIFF_BASELINE=true; shift ;;
     --simdrive) SIMDRIVE=true; shift ;;
     --enforce-mutations) MUTATION_POLICY="enforce_all"; shift ;;
     --no-enforce-mutations) MUTATION_POLICY="advisory_all"; shift ;;
@@ -254,6 +261,66 @@ TEST_PASS=$(echo "$ROLLUP_LINES" | grep -o 'Executed [0-9]* tests\?' | grep -o '
 TEST_FAIL=$(echo "$ROLLUP_LINES" | grep -oE '[0-9]+ failures? \(' | grep -o '[0-9]*' | awk '{s+=$1} END {print s+0}')
 if [ "$TEST_FAIL" -eq 0 ] && [ "$TEST_PASS" -gt 0 ]; then
   record "unit_tests" "pass" "$TEST_PASS tests, 0 failures"
+elif [ "$DIFF_BASELINE" = "true" ] && [ "$TEST_FAIL" -gt 0 ]; then
+  # --diff-baseline: distinguish pre-existing test-isolation flakes from
+  # branch-introduced regressions. Extract failing class names from the
+  # most recent xcresult, re-run each class in isolation, and only fail
+  # the gate if a class fails in isolation too. Mirrors the manual triage
+  # for PR #1018 (9 "failures" all passed in isolation).
+  XCRESULT=$(find ~/Library/Developer/Xcode/DerivedData -name "*.xcresult" -mmin -30 -type d 2>/dev/null | head -1)
+  if [ -n "$XCRESULT" ] && command -v xcrun >/dev/null 2>&1; then
+    # Walk xcresult JSON to extract failing test-case node names → class names
+    FAILING_CLASSES=$(xcrun xcresulttool get test-results tests --path "$XCRESULT" --format json 2>/dev/null | \
+      python3 -c "
+import json, sys, re
+data = json.load(sys.stdin)
+classes = set()
+def walk(node, parent=''):
+    name = node.get('name', '')
+    full = f'{parent}/{name}' if parent else name
+    if node.get('result') == 'Failed':
+        # Test case path looks like 'Palace > PalaceTests > <Class> > <test>()'
+        parts = full.split(' > ')
+        if len(parts) >= 3:
+            cls = parts[-2]
+            if cls and re.match(r'^[A-Za-z_][A-Za-z0-9_]*Tests?$', cls):
+                classes.add(cls)
+    for child in node.get('children', []) + node.get('testNodes', []):
+        walk(child, full)
+walk(data)
+print('\n'.join(sorted(classes)))
+" 2>/dev/null | head -20)
+
+    if [ -n "$FAILING_CLASSES" ]; then
+      echo "  → --diff-baseline: re-running $(echo "$FAILING_CLASSES" | wc -l | tr -d ' ') failed class(es) in isolation..."
+      REAL_FAIL=0
+      FLAKE_COUNT=0
+      ONLY_TESTING_ARGS=""
+      for cls in $FAILING_CLASSES; do
+        ONLY_TESTING_ARGS="$ONLY_TESTING_ARGS -only-testing:PalaceTests/$cls"
+      done
+      # Single xcodebuild invocation with all failing classes — N classes in
+      # one build is much faster than N separate builds with cold derivedData.
+      ISOLATED_OUTPUT=$(xcodebuild -project Palace.xcodeproj -scheme Palace \
+        -destination "id=$SIM_ID" $ONLY_TESTING_ARGS test 2>&1 || true)
+      for cls in $FAILING_CLASSES; do
+        if echo "$ISOLATED_OUTPUT" | grep -qE "Test Suite '$cls' passed"; then
+          FLAKE_COUNT=$((FLAKE_COUNT + 1))
+        else
+          REAL_FAIL=$((REAL_FAIL + 1))
+        fi
+      done
+      if [ "$REAL_FAIL" -eq 0 ] && [ "$FLAKE_COUNT" -gt 0 ]; then
+        record "unit_tests" "pass" "$TEST_PASS tests, $TEST_FAIL fails — all $FLAKE_COUNT failing classes pass in isolation (pre-existing test-isolation flakes per --diff-baseline)"
+      else
+        record "unit_tests" "fail" "$TEST_PASS tests, $TEST_FAIL fails — $REAL_FAIL classes fail IN ISOLATION (real regression), $FLAKE_COUNT classes are isolation flakes"
+      fi
+    else
+      record "unit_tests" "fail" "$TEST_PASS tests, $TEST_FAIL failures (--diff-baseline could not extract class names from xcresult)"
+    fi
+  else
+    record "unit_tests" "fail" "$TEST_PASS tests, $TEST_FAIL failures (--diff-baseline requires xcrun + recent xcresult)"
+  fi
 else
   record "unit_tests" "fail" "$TEST_PASS tests, $TEST_FAIL failures"
 fi
