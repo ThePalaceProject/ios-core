@@ -76,6 +76,8 @@ struct SignInModalView: View {
             // works the same regardless of when the completion runs.
             dismiss()
         }
+        .accessibilityIdentifier("signInModal.cancel")
+        .accessibilityLabel(Strings.Generic.cancel)
     }
 }
 
