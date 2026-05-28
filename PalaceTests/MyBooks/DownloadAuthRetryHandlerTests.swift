@@ -437,6 +437,114 @@ final class DownloadAuthRetryHandlerTests: XCTestCase {
         XCTAssertTrue(spyDelegate.startDownloadCalls.isEmpty)
         XCTAssertTrue(spyDelegate.startBorrowCalls.isEmpty)
     }
+
+    // MARK: - .credentialPrompt strategy explicit coverage (NEEDS-TEST-3)
+    //
+    // Per `.forgeos/audits/phase7-DownloadAuthRetryHandler.md`, the
+    // `.credentialPrompt` case is implicitly grouped with `.none` in the
+    // `switch reauthStrategy { ... case .credentialPrompt, .none: }`. The
+    // existing test for `.tokenRefresh` proves one arm of the switch; this
+    // test proves the `.credentialPrompt` arm fires the SAME outcome
+    // (fall-through, returns false). Together with the SAML test (.browser)
+    // and the OIDC test (.browser), all four enum cases are pinned by
+    // behavior — defense in depth against a future refactor that flips
+    // `.credentialPrompt`'s handling without updating the switch.
+    //
+    // typeRaw "http://opds-spec.org/auth/basic" → .basic auth →
+    // .credentialPrompt reauthStrategy (see Account.swift:252).
+
+    /// Branch: 401 + has-creds + `.credentialPrompt` → falls through (returns
+    /// false) so caller's alert path runs. Pins the `.credentialPrompt` arm
+    /// of the exhaustive `switch reauthStrategy`. A mutant that re-routed
+    /// `.credentialPrompt` to a different arm would fail this test.
+    func testHandle_401_withCredentials_credentialPromptStrategy_fallsThroughReturnsFalse() {
+        userAccount._authDefinition = makeAuth(typeRaw: "http://opds-spec.org/auth/basic")
+        userAccount._credentials = .barcodeAndPin(barcode: "b", pin: "p")
+
+        registry.addBook(book, location: nil, state: .downloading,
+                         fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+
+        let task = makeFakeTask(statusCode: 401)
+        let handled = handler.handleAuthFailureIfApplicable(book: book, task: task,
+                                                            problemDoc: nil, failureError: nil)
+
+        XCTAssertFalse(handled,
+                       ".credentialPrompt + 401 + has-creds must fall through (caller alerts)")
+        XCTAssertFalse(reauthenticator.authenticateIfNeededCalled,
+                       ".credentialPrompt arm must NOT trigger sign-in modal at this site " +
+                       "(modal is only triggered when hasCredentials is false)")
+        XCTAssertTrue(spyDelegate.startDownloadCalls.isEmpty)
+    }
+
+    // MARK: - Re-auth cancellation guards (closes line-260 and line-286 mutants)
+    //
+    // Two re-auth completion paths gate the download retry:
+    //
+    //   :260 `presentSignInModal`         — guards `userAccount.hasCredentials()`
+    //   :286 `reauthenticate(retryWith…)` — guards `userAccount.authState == .loggedIn`
+    //
+    // If the user cancels the sign-in modal, the guard short-circuits and
+    // no retry fires. Existing tests prove the "success" arm (the modal
+    // succeeds, then retry fires) for both paths. The cancellation arm is
+    // uncovered: flipping `== .loggedIn` to `!= .loggedIn`, or removing the
+    // hasCredentials guard, would silently retry the download against an
+    // un-authenticated session — surfacing the same 401 in a loop.
+
+    /// Re-auth cancelled on the no-credentials path (line 260): user never
+    /// signed in, hasCredentials remains false, retry must NOT fire. Kills
+    /// any mutant that drops the hasCredentials check at line 260.
+    func testHandle_401_withoutCredentials_loginRequired_userCancelsSignIn_doesNotRetry() async throws {
+        userAccount._authDefinition = makeAuth(typeRaw: "http://opds-spec.org/auth/basic")
+        userAccount._credentials = nil
+        XCTAssertFalse(userAccount.hasCredentials())
+
+        // Re-auth completes WITHOUT setting credentials — simulates user
+        // closing the modal without signing in.
+        reauthenticator.onAuthenticate = { _, _ in /* user cancels */ }
+
+        let task = makeFakeTask(statusCode: 401)
+        let handled = handler.handleAuthFailureIfApplicable(book: book, task: task,
+                                                            problemDoc: nil, failureError: nil)
+
+        XCTAssertTrue(handled, "401 + no-creds must still claim the failure (modal presented)")
+        await waitForAsyncCleanup()
+
+        XCTAssertTrue(reauthenticator.authenticateIfNeededCalled,
+                      "Modal must be presented even if user cancels — claim happens at presentation time")
+        XCTAssertTrue(spyDelegate.startDownloadCalls.isEmpty,
+                      "User cancelled sign-in (no credentials) — retry MUST NOT fire. " +
+                      "A mutant that drops the hasCredentials guard at line 260 would silently retry.")
+    }
+
+    /// Re-auth cancelled on the OIDC browser path (line 286): user dismissed
+    /// the in-app browser, authState stayed `.credentialsStale`. Retry must
+    /// NOT fire. Kills the `authState == .loggedIn` -> `!= .loggedIn` mutant.
+    func testHandle_401_withCredentials_browserOIDC_userCancelsReauth_doesNotRetry() async throws {
+        userAccount._authDefinition = makeAuth(typeRaw: "http://palaceproject.io/authtype/OpenIDConnect")
+        userAccount._credentials = .barcodeAndPin(barcode: "b", pin: "p")
+
+        registry.addBook(book, location: nil, state: .downloading,
+                         fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+
+        // Re-auth completes WITHOUT calling markLoggedIn — the user dismissed
+        // the OIDC browser. The handler called `markCredentialsStale` earlier,
+        // so authState is now `.credentialsStale`, NOT `.loggedIn`. Guard at
+        // line 286 should short-circuit.
+        reauthenticator.onAuthenticate = { _, _ in /* user dismisses */ }
+
+        let task = makeFakeTask(statusCode: 401)
+        let handled = handler.handleAuthFailureIfApplicable(book: book, task: task,
+                                                            problemDoc: nil, failureError: nil)
+
+        XCTAssertTrue(handled)
+        await waitForAsyncCleanup()
+
+        XCTAssertTrue(reauthenticator.authenticateIfNeededCalled,
+                      "OIDC re-auth modal must be presented")
+        XCTAssertTrue(spyDelegate.startDownloadCalls.isEmpty,
+                      "User dismissed OIDC browser (authState != .loggedIn) — retry MUST NOT fire. " +
+                      "A mutant that flips `== .loggedIn` to `!= .loggedIn` at line 286 would silently retry.")
+    }
 }
 
 // MARK: - Spy

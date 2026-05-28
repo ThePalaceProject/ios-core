@@ -44,19 +44,35 @@ final class ForceResetTests: XCTestCase {
 
     /// Default state: the flag is not set, so consume returns false.
     func testConsume_whenFlagNeverSet_returnsFalse() {
+        // Pair-assert that the UserDefaults key is also still cleared after
+        // the consume call (no side-effect when nothing was there) AND a
+        // second consume still returns false — pinning idempotency.
+        XCTAssertNil(UserDefaults.standard.object(forKey: key),
+                     "Precondition: flag is not set in UserDefaults")
         XCTAssertFalse(
             TPPSignInBusinessLogic.consumeNextOIDCSessionEphemeralFlag(),
             "Fresh consume with no prior set must return false — silent SSO stays on by default"
+        )
+        XCTAssertFalse(
+            TPPSignInBusinessLogic.consumeNextOIDCSessionEphemeralFlag(),
+            "Repeated consume on never-set flag must remain false — no spurious latching"
         )
     }
 
     /// Set then immediately consume returns true exactly once.
     func testConsume_whenFlagSet_returnsTrueOnce() {
+        // Pair-assert the UserDefaults observable went from true→cleared so
+        // a mutation that returns true without actually consuming the
+        // underlying flag is caught.
         UserDefaults.standard.set(true, forKey: key)
+        XCTAssertTrue(UserDefaults.standard.bool(forKey: key),
+                      "Precondition: flag is set in UserDefaults")
 
         let first = TPPSignInBusinessLogic.consumeNextOIDCSessionEphemeralFlag()
 
         XCTAssertTrue(first, "First consume after set must return true so the next OIDC session uses ephemeral cookies")
+        XCTAssertFalse(UserDefaults.standard.bool(forKey: key),
+                       "Consume must clear the underlying UserDefaults flag — not just return true")
     }
 
     /// After one consume, the flag is cleared — subsequent consumes return false.
@@ -66,10 +82,13 @@ final class ForceResetTests: XCTestCase {
     func testConsume_secondCallAfterSet_returnsFalse() {
         UserDefaults.standard.set(true, forKey: key)
 
-        _ = TPPSignInBusinessLogic.consumeNextOIDCSessionEphemeralFlag()
+        let first = TPPSignInBusinessLogic.consumeNextOIDCSessionEphemeralFlag()
         let second = TPPSignInBusinessLogic.consumeNextOIDCSessionEphemeralFlag()
+        let third = TPPSignInBusinessLogic.consumeNextOIDCSessionEphemeralFlag()
 
+        XCTAssertTrue(first, "Sanity: first consume returns true")
         XCTAssertFalse(second, "Second consume must return false — flag is one-shot; silent SSO restored after one ephemeral session")
+        XCTAssertFalse(third, "Third consume must also return false — flag does not auto-reset between calls")
     }
 
     /// The consume side-effect (clearing the UserDefaults key) is verified

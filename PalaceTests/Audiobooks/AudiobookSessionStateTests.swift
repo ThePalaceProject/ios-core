@@ -150,12 +150,23 @@ final class AudiobookSessionStateTransitionTests: XCTestCase {
 
     /// SRS: AUDIO-001 -- Playback state machine transitions correctly
     func testSessionManager_skipToChapter_withoutManager_doesNotCrash() {
-        // Should be a no-op with no manager
+        // Defensive contract: skipToChapter must be a no-op when there is no
+        // underlying audiobook manager. Pair-assert that state stays `.idle`
+        // AND that isPlaying does not spuriously flip to true (which would
+        // indicate the call went deeper than a guard early-return).
+        let initialState = manager.state
+        let initialPlaying = manager.isPlaying
+
         manager.skipToChapter(at: 0)
         manager.skipToChapter(at: -1)
         manager.skipToChapter(at: 999)
-        // State must remain idle after all skip calls
-        XCTAssertEqual(manager.state, .idle, "State must remain idle after skipToChapter calls without a manager")
+
+        XCTAssertEqual(manager.state, .idle,
+                       "State must remain idle after skipToChapter calls without a manager")
+        XCTAssertEqual(manager.state, initialState,
+                       "State must equal the initial state — skip is a no-op without a manager")
+        XCTAssertEqual(manager.isPlaying, initialPlaying,
+                       "isPlaying must not spuriously flip — skip-without-manager must early-return cleanly")
     }
 
     /// SRS: AUDIO-001 -- Playback state machine transitions correctly

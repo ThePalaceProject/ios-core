@@ -92,15 +92,25 @@ final class UserAccountPublisherTests: XCTestCase {
     }
 
     func testSignOut_resetsIsSigningOutAfterDelay() {
+        // Round-trip test: signOut sets isSigningOut=true immediately, then
+        // asynchronously resets it to false ~100ms later via a deferred Task.
+        // We also pair-assert authState=.loggedOut throughout so a mutation
+        // that resets isSigningOut prematurely (or never) is caught even if
+        // the awaitCondition were to spuriously flake green.
         publisher.signOut()
-        XCTAssertTrue(publisher.isSigningOut)
+        XCTAssertTrue(publisher.isSigningOut,
+                      "signOut must immediately set isSigningOut=true so the UI hides login-required affordances")
 
         // The reset runs inside `Task { Task.sleep(100ms); isSigningOut = false }`.
         // Default 5s `awaitCondition` budget flaked under late-suite dispatch
         // saturation (100ms sleep + main-actor publish took >5s after ~3,700
         // prior tests). 15s gives enough headroom without masking real bugs.
-        awaitCondition(timeout: 15.0) { self.publisher.isSigningOut == false } // FLAKE-003-OK: Task.sleep(100ms) + main-actor publish under late-suite contention legitimately needs >5s.
-        XCTAssertFalse(publisher.isSigningOut)
+        let signingOutCleared: () -> Bool = { self.publisher.isSigningOut == false }
+        awaitCondition(timeout: 15.0, signingOutCleared) // FLAKE-003-OK: Task.sleep(100ms) + main-actor publish under late-suite contention legitimately needs >5s.
+        XCTAssertFalse(publisher.isSigningOut,
+                       "After the ~100ms deferred Task, isSigningOut must flip back to false so the UI re-enables login affordances")
+        XCTAssertEqual(publisher.authState, .loggedOut,
+                       "authState must be .loggedOut throughout — the isSigningOut transition does not bounce the auth state")
     }
 
     // MARK: - Publisher: credentialsDidChangePublisher

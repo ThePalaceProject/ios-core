@@ -161,6 +161,30 @@ public final class AudiobookSessionManager: ObservableObject {
     /// during cold launch / CarPlay background launch.
     private let navigationCoordinatorHubProvider: () -> NavigationCoordinatorHub
 
+    // MARK: - F-011 readiness-gate injection points
+    //
+    // PR #990 introduced a race where Palace's first `play(at:)` could fire
+    // before the toolkit's player coordinator finished initializing. These
+    // closures let production wire a real `PlayerReadinessProbe` (polls
+    // `Player.isLoaded`) and the real player-command forwarder, while tests
+    // inject deterministic stubs. See `PlaybackReadinessGate.swift`.
+
+    /// Builds a readiness probe for a given toolkit Player. The probe drives
+    /// a `PlaybackReadinessGate` until the player reports loaded.
+    private let readinessProbeFactory: @MainActor (Player) -> PlaybackReadinessProbing
+
+    /// Builds the play-command forwarder for a given toolkit Player. This
+    /// is the seam that lets unit tests assert on `play(at:)` invocation
+    /// counts without owning a real Player.
+    private let playbackCommandFactory: @MainActor (Player) -> PlaybackEngineCommanding
+
+    /// Total budget the readiness gate will wait for the toolkit's player
+    /// coordinator to finish initializing on the first open. 2.0s matches
+    /// the contract from `A-Audiobook-FirstOpen.md` — long enough for
+    /// realistic LCP / OpenAccess init, short enough that a stuck coordinator
+    /// surfaces a load failure rather than a permanent UI hang.
+    private let readinessTimeout: TimeInterval
+
     // MARK: - Initialization
 
     /// Designated init — every dependency is explicit. `private` so the
@@ -171,7 +195,10 @@ public final class AudiobookSessionManager: ObservableObject {
         settings: TPPSettings,
         reachabilityProvider: @escaping () -> Reachability,
         bookCoverRegistryProvider: @escaping () -> TPPBookCoverRegistry,
-        navigationCoordinatorHubProvider: @escaping () -> NavigationCoordinatorHub
+        navigationCoordinatorHubProvider: @escaping () -> NavigationCoordinatorHub,
+        readinessProbeFactory: @escaping @MainActor (Player) -> PlaybackReadinessProbing,
+        playbackCommandFactory: @escaping @MainActor (Player) -> PlaybackEngineCommanding,
+        readinessTimeout: TimeInterval
     ) {
         self.bookRegistry = bookRegistry
         self.accountsManager = accountsManager
@@ -179,6 +206,9 @@ public final class AudiobookSessionManager: ObservableObject {
         self.reachabilityProvider = reachabilityProvider
         self.bookCoverRegistryProvider = bookCoverRegistryProvider
         self.navigationCoordinatorHubProvider = navigationCoordinatorHubProvider
+        self.readinessProbeFactory = readinessProbeFactory
+        self.playbackCommandFactory = playbackCommandFactory
+        self.readinessTimeout = readinessTimeout
         Log.info(#file, "AudiobookSessionManager initialized")
         nowPlayingCoordinator = NowPlayingCoordinator()
         // Note: Remote commands are handled by the toolkit's MediaControlPublisher.
@@ -191,11 +221,22 @@ public final class AudiobookSessionManager: ObservableObject {
     /// thread the container down to here. Provider closures default to
     /// `.shared` accessors since AppContainer doesn't currently hold
     /// Reachability / TPPBookCoverRegistry / NavigationCoordinatorHub.
+    ///
+    /// `readinessProbeFactory` / `playbackCommandFactory` / `readinessTimeout`
+    /// default to production wiring (poll `Player.isLoaded`, forward to
+    /// `Player.play(at:)`, 2.0s budget). Tests pass deterministic stubs.
     convenience init(
         appContainer: AppContainer,
         reachabilityProvider: @escaping () -> Reachability = { AppContainer.production().reachability },
         bookCoverRegistryProvider: @escaping () -> TPPBookCoverRegistry = { TPPBookCoverRegistry.shared },
-        navigationCoordinatorHubProvider: @escaping () -> NavigationCoordinatorHub = { AppContainer.production().navigationCoordinatorHub }
+        navigationCoordinatorHubProvider: @escaping () -> NavigationCoordinatorHub = { AppContainer.production().navigationCoordinatorHub },
+        readinessProbeFactory: @escaping @MainActor (Player) -> PlaybackReadinessProbing = { player in
+            PlayerReadinessProbe(isLoadedSnapshot: { [weak player] in player?.isLoaded ?? false })
+        },
+        playbackCommandFactory: @escaping @MainActor (Player) -> PlaybackEngineCommanding = { player in
+            ToolkitPlayerCommand(player: player)
+        },
+        readinessTimeout: TimeInterval = 2.0
     ) {
         self.init(
             bookRegistry: appContainer.bookRegistry,
@@ -203,7 +244,10 @@ public final class AudiobookSessionManager: ObservableObject {
             settings: appContainer.settings,
             reachabilityProvider: reachabilityProvider,
             bookCoverRegistryProvider: bookCoverRegistryProvider,
-            navigationCoordinatorHubProvider: navigationCoordinatorHubProvider
+            navigationCoordinatorHubProvider: navigationCoordinatorHubProvider,
+            readinessProbeFactory: readinessProbeFactory,
+            playbackCommandFactory: playbackCommandFactory,
+            readinessTimeout: readinessTimeout
         )
     }
 
@@ -627,15 +671,41 @@ public final class AudiobookSessionManager: ObservableObject {
             return
         }
 
+        // F-011 fix (PR #990 toolkit overhaul regression): await the
+        // toolkit's player-coordinator-ready signal BEFORE issuing the
+        // first `play(at:)`. Pre-fix Palace fired play immediately and the
+        // player silently dropped it on first-open (engine still
+        // initializing), leaving NowPlaying UI mounted with no audio.
+        // See `audiobook_first_open_hang_3_2_0.md`.
+        //
+        // Probe + gate are torn down deterministically inside the Task —
+        // probe.stop() runs on every exit path so the timer doesn't leak
+        // even if the gate fails or times out.
+        let gate = PlaybackReadinessGate()
+        let probe = readinessProbeFactory(loaded.manager.audiobook.player)
+        let command = playbackCommandFactory(loaded.manager.audiobook.player)
+        let budget = readinessTimeout
+
         Task { @MainActor in
             loaded.playbackModel.currentLocation = initialPosition
             loaded.playbackModel.beginSaveSuppression(for: 3.0)
-            // Toolkit T1 migration: player.play(at:) is now `async throws`.
+            probe.start(driving: gate)
+            defer { probe.stop() }
             do {
-                try await loaded.manager.audiobook.player.play(at: initialPosition)
-                Log.info(#file, "🎵 Playback started at initial position")
+                try await PlaybackReadinessGate.awaitReadinessAndPlay(
+                    at: initialPosition,
+                    gate: gate,
+                    timeout: budget,
+                    command: command
+                )
+                Log.info(#file, "🎵 Playback started at initial position (post-readiness)")
+            } catch PlaybackReadinessError.timeout {
+                Log.error(#file, "First-open readiness gate timed out after \(budget)s — surfacing as load failure (PP-4436 / F-011)")
+                self.state = .error(bookId: book.identifier, message: "Playback engine did not initialize in time")
+                self.errorPublisher.send(.playerCreationFailed)
+                self.playbackStatePublisher.send(self.state)
             } catch {
-                Log.error(#file, "Playback start error: \(error)")
+                Log.error(#file, "Playback start error after readiness: \(error)")
             }
         }
 
