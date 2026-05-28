@@ -1,3 +1,14 @@
+---
+name: forgeos-lint-initial-report
+type: evolving
+status: active
+created: 2026-05-26
+last_refresh: 2026-05-26
+freshness_window: 365d
+owners: [general]
+description: Harness Lint — palace-ios
+---
+
 # Harness Lint — palace-ios
 
 - **Scope:** Palace/

@@ -3,6 +3,13 @@ name: regression
 description: Run a full release regression test — sets up workspace, runs automated tools, guides manual testing, generates report and Jira tickets. Use for release gates and QA cycles.
 argument-hint: <ticket> [--baseline-version X.X.X] [--candidate-version X.X.X]
 allowed-tools: Bash(*), Read, Write, Edit, Glob, Grep, Agent
+# doc-lifecycle metadata (added by Module B sweep)
+type: evolving
+status: active
+created: 2026-04-29
+last_refresh: 2026-05-15
+freshness_window: 365d
+owners: [general]
 ---
 
 # Palace iOS Release Regression

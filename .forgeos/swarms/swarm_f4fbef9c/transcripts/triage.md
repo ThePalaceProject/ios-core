@@ -1,3 +1,14 @@
+---
+name: swarm_f4fbef9c-transcript-triage
+type: ephemeral
+status: active
+created: 2026-05-21
+last_refresh: 2026-05-21
+freshness_window: 180d
+owners: [reader, audiobook]
+description: Swarm 2 (swarm_f4fbef9c) — Architect Triage
+---
+
 # Swarm 2 (swarm_f4fbef9c) — Architect Triage
 
 **Architect:** Opus 4.7 (1M)

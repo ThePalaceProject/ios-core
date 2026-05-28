@@ -1,3 +1,14 @@
+---
+name: swarm_81b5099e-plan
+type: immutable
+status: active
+created: 2026-05-18T19:30:00Z
+last_refresh: 2026-05-19
+freshness_window: never
+owners: [general]
+description: Phase 1 Plan — Account State Machine Migration (swarm_81b5099e)
+---
+
 # Phase 1 Plan — Account State Machine Migration (swarm_81b5099e)
 
 **Initiative:** init_dde7f99a · **ADR:** docs/architecture/account-state-machine.md

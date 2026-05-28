@@ -1,3 +1,14 @@
+---
+name: swarm_efd1f0c3-contract-T3-Rename-DownloadCoordinator
+type: immutable
+status: active
+created: 2026-05-21T00:00:00Z
+last_refresh: 2026-05-22
+freshness_window: never
+owners: [audiobook]
+description: "Bucket T3 — Rename toolkit's `AudiobookSessionManager` → `AudiobookDownloadCoordinator`"
+---
+
 # Bucket T3 — Rename toolkit's `AudiobookSessionManager` → `AudiobookDownloadCoordinator`
 
 ## Scope summary

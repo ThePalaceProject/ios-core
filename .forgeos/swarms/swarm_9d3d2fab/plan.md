@@ -1,3 +1,14 @@
+---
+name: swarm_9d3d2fab-plan
+type: immutable
+status: active
+created: 2026-05-21
+last_refresh: 2026-05-22
+freshness_window: never
+owners: [general]
+description: Swarm 9d3d2fab — CI-flake migration (Phase 1)
+---
+
 # Swarm 9d3d2fab — CI-flake migration (Phase 1)
 
 ## Goal

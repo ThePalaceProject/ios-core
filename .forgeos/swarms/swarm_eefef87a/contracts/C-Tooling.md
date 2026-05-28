@@ -1,3 +1,14 @@
+---
+name: swarm_eefef87a-contract-C-Tooling
+type: immutable
+status: active
+created: 2026-05-26T15:00:00Z
+last_refresh: 2026-05-27
+freshness_window: never
+owners: [accounts, mybooks]
+description: "Module C — Tooling: verify-pr.sh gate + critical-path ADR"
+---
+
 # Module C — Tooling: verify-pr.sh gate + critical-path ADR
 
 **Improvements #2 (script portion) and #3 (regex audit + ADR) merged into one tooling-side contract.** Reason: both edit `scripts/verify-pr.sh`. Merging into one implementer is the simplest disjoint partition.

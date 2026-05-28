@@ -1,3 +1,14 @@
+---
+name: swarm_f4fbef9c-transcript-C-Reader2Migration
+type: ephemeral
+status: active
+created: 2026-05-21
+last_refresh: 2026-05-21
+freshness_window: 180d
+owners: [reader]
+description: Module C — Reader2 + PDF Migration
+---
+
 # Module C — Reader2 + PDF Migration
 
 Status: complete

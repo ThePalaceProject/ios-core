@@ -1,3 +1,14 @@
+---
+name: swarm_f4fbef9c-transcript-B-AudiobookMigration
+type: ephemeral
+status: active
+created: 2026-05-21
+last_refresh: 2026-05-21
+freshness_window: 180d
+owners: [audiobook]
+description: Module B — Audiobook Migration Transcript
+---
+
 # Module B — Audiobook Migration Transcript
 
 Implementer: Module B

@@ -1,3 +1,14 @@
+---
+name: swarm-manifest-v2
+type: evolving
+status: active
+created: 2026-05-28
+last_refresh: 2026-05-28
+freshness_window: 365d
+owners: [general]
+description: Swarm manifest schema v2 — architect post-review enforcement
+---
+
 <!-- audit-verified: A4 from .forgeos/wall-failures/derived-improvements.md — this schema enforces architect post-review per PR #1018 architect under-estimating test surface 7x. -->
 
 # Swarm manifest schema v2 — architect post-review enforcement

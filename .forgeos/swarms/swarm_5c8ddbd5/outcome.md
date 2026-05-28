@@ -1,3 +1,14 @@
+---
+name: swarm_5c8ddbd5-outcome
+type: immutable
+status: active
+created: 2026-05-21
+last_refresh: 2026-05-21
+freshness_window: never
+owners: [general]
+description: Swarm 1 — Outcome
+---
+
 # Swarm 1 — Outcome
 
 **Status:** complete (open PR)

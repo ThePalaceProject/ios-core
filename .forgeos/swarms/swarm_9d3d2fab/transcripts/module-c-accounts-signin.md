@@ -1,3 +1,14 @@
+---
+name: swarm_9d3d2fab-transcript-module-c-accounts-signin
+type: ephemeral
+status: active
+created: 2026-05-21
+last_refresh: 2026-05-22
+freshness_window: 180d
+owners: [signin-modal]
+description: Module C — Accounts/SignIn (CI-flake migration)
+---
+
 # Module C — Accounts/SignIn (CI-flake migration)
 
 ## Scope (8 files)

@@ -57,6 +57,12 @@
             "command": "bash scripts/hooks/pre-critical-path-mutation.sh",
             "timeout": 5,
             "statusMessage": "Checking mutation evidence for critical-path changes..."
+          },
+          {
+            "type": "command",
+            "command": "bash scripts/hooks/pre-commit-doc-lifecycle.sh",
+            "timeout": 10,
+            "statusMessage": "Validating governance doc frontmatter..."
           }
         ]
       },

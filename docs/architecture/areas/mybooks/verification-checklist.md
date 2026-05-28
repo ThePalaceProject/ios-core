@@ -1,3 +1,14 @@
+---
+name: mybooks-verification-checklist
+type: evolving
+status: active
+created: 2026-05-28
+last_refresh: 2026-05-28
+freshness_window: 180d
+owners: [mybooks]
+description: Per-area verification reference; refresh before next swarm/rigorous-fix
+---
+
 <!-- audit-verified: file paths under Palace/MyBooks/, Palace/Book/UI/BookDetail/BorrowReducer.swift, and PalaceTests/{MyBooks,Contract,ViewModels}/ all verified via `ls` and `find` against current `chore/swarm-rigor-meta-improvement` HEAD (a71b070bf). Line citations for hasBorrowReauthBeenAttempted (BorrowOperation.swift:92, 601), tokenRefreshAttempts (TPPNetworkResponder.swift:34, 369), BookReturnService setProcessing/removeBook (BookReturnService.swift:139, 221) verified via grep. Contract snapshots inventoried from PalaceTests/Contract/__Snapshots__/. The Phase 7 audit synthesis at .forgeos/audits/phase7-synthesis-2026-05-26.md was confirmed referenced by phase7_borrow_path_regressions_2026_05_14.md. The PR #1018 *AuthCoordinator*Tests cited in the user prompt are NOT present locally on this branch and are listed as "scheduled" rather than "extant." -->
 
 # MyBooks area — verification checklist

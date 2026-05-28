@@ -1,3 +1,14 @@
+---
+name: swarm_81b5099e-transcript-Network-OPDS
+type: ephemeral
+status: active
+created: 2026-05-18T19:30:00Z
+last_refresh: 2026-05-19
+freshness_window: 180d
+owners: [network]
+description: Network-OPDS implementer transcript — swarm_81b5099e
+---
+
 # Network-OPDS implementer transcript — swarm_81b5099e
 
 ## Summary

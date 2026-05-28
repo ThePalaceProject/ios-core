@@ -1,3 +1,14 @@
+---
+name: swarm_f3b9b087-transcript-Audiobook-Position
+type: ephemeral
+status: active
+created: 2026-05-21T03:25:00Z
+last_refresh: 2026-05-21
+freshness_window: 180d
+owners: [audiobook]
+description: Audiobook-Position implementer transcript
+---
+
 # Audiobook-Position implementer transcript
 
 **Swarm:** `swarm_f3b9b087`

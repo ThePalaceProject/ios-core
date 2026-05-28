@@ -1,3 +1,14 @@
+---
+name: swarm_f4fbef9c-contract-A-PalaceReadingPositionSPM
+type: immutable
+status: active
+created: 2026-05-21
+last_refresh: 2026-05-21
+freshness_window: never
+owners: [reader, audiobook]
+description: "Module A — `PalaceReadingPosition` SPM package"
+---
+
 # Module A — `PalaceReadingPosition` SPM package
 
 **Status:** refined by architect 2026-05-21. See `transcripts/triage.md` Deviation 4 for the Platform-migration rationale.

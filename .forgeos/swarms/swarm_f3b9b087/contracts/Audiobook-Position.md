@@ -1,3 +1,14 @@
+---
+name: swarm_f3b9b087-contract-Audiobook-Position
+type: immutable
+status: active
+created: 2026-05-21T03:25:00Z
+last_refresh: 2026-05-21
+freshness_window: never
+owners: [audiobook]
+description: "Contract: Audiobook-Position"
+---
+
 # Contract: Audiobook-Position
 
 **Bucket items:** P0 #4, #5, P3 #10 (audiobook position state machine + TOC normalization)

@@ -1,3 +1,14 @@
+---
+name: swarm_81b5099e-contract-SignIn-AgeCheck-Notifications
+type: immutable
+status: active
+created: 2026-05-18T19:30:00Z
+last_refresh: 2026-05-19
+freshness_window: never
+owners: [signin-modal]
+description: "Contract: SignIn-AgeCheck-Notifications (swarm_81b5099e)"
+---
+
 # Contract: SignIn-AgeCheck-Notifications (swarm_81b5099e)
 
 **Sequence:** Parallel (after Accounts-Wiring merges).

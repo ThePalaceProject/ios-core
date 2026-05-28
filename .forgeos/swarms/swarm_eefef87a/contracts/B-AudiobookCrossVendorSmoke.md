@@ -1,3 +1,14 @@
+---
+name: swarm_eefef87a-contract-B-AudiobookCrossVendorSmoke
+type: immutable
+status: active
+created: 2026-05-26T15:00:00Z
+last_refresh: 2026-05-27
+freshness_window: never
+owners: [audiobook]
+description: Module B — Audiobook cross-vendor smoke (Swift tests only)
+---
+
 # Module B — Audiobook cross-vendor smoke (Swift tests only)
 
 **Improvement #2 from the A+ posture push (Swift portion).** Memory pin `reference_audiobook_toolkit_risk_profile.md` is load-bearing — read before writing. Module C owns the `scripts/verify-pr.sh` gating change; this module owns only the Swift smoke-test file that the gate invokes.

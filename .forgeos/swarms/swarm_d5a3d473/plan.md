@@ -1,3 +1,14 @@
+---
+name: swarm_d5a3d473-plan
+type: immutable
+status: active
+created: 2026-05-19T00:00:00Z
+last_refresh: 2026-05-19
+freshness_window: never
+owners: [general]
+description: Phase 1 Plan — Singleton Reduction (swarm_d5a3d473)
+---
+
 # Phase 1 Plan — Singleton Reduction (swarm_d5a3d473)
 
 **Initiative:** 3.2.0 singleton-reduction sweep · **Base:** develop

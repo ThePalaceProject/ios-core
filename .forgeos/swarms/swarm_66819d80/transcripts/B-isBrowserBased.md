@@ -1,3 +1,14 @@
+---
+name: swarm_66819d80-transcript-B-isBrowserBased
+type: ephemeral
+status: active
+created: 2026-05-27
+last_refresh: 2026-05-28
+freshness_window: 180d
+owners: [auth]
+description: "Module B transcript — `AccountDetails.Authentication.isBrowserBased`"
+---
+
 # Module B transcript — `AccountDetails.Authentication.isBrowserBased`
 
 **Swarm:** `swarm_66819d80`  •  **Implementer session:** 2026-05-27  •  **Base SHA:** `d7f115adeb69032fb3abed33ba07b3deeb245f4b`  •  **Branch:** `swarm/swarm_66819d80-scaffold`

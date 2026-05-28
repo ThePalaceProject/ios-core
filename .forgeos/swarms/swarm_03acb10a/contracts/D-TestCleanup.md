@@ -1,3 +1,14 @@
+---
+name: swarm_03acb10a-contract-D-TestCleanup
+type: immutable
+status: active
+created: 2026-05-21
+last_refresh: 2026-05-21
+freshness_window: never
+owners: [general]
+description: Module D — Test cleanup
+---
+
 # Module D — Test cleanup
 
 **Status:** REFINED post-triage — file list LOCKED.

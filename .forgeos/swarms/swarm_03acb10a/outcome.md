@@ -1,3 +1,14 @@
+---
+name: swarm_03acb10a-outcome
+type: immutable
+status: active
+created: 2026-05-21
+last_refresh: 2026-05-21
+freshness_window: never
+owners: [general]
+description: Swarm 3 — Outcome
+---
+
 # Swarm 3 — Outcome
 
 **Status:** complete (open PR)

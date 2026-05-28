@@ -1,3 +1,14 @@
+---
+name: auth-verification-checklist
+type: evolving
+status: active
+created: 2026-05-27
+last_refresh: 2026-05-27
+freshness_window: 180d
+owners: [auth]
+description: Per-area verification reference; refresh before next swarm/rigorous-fix
+---
+
 <!-- audit-verified: PR #1018 and swarm_66819d80 are real; I orchestrated this swarm today (2026-05-27 → 2026-05-28) and the artifacts referenced exist at .forgeos/swarms/swarm_66819d80/. Migration status per Section 1 was verified by grep/file-read during the swarm's Phase 4/4.5/5. -->
 
 # Auth area — verification checklist

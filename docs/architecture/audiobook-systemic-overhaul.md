@@ -1,3 +1,14 @@
+---
+name: audiobook-systemic-overhaul
+type: evolving
+status: active
+created: 2026-05-22
+last_refresh: 2026-05-22
+freshness_window: 365d
+owners: [general]
+description: "Audiobook Systemic Overhaul — Plan and Retrospective"
+---
+
 # Audiobook Systemic Overhaul — Plan and Retrospective
 
 > Three-phase refactor of the Palace-side audiobook stack to close six recurring failure surfaces. Originally drafted as a forward-looking ADR; reconstructed here after all three Palace-side phases shipped on **2026-05-21** (PRs #979 / #980 / #982).

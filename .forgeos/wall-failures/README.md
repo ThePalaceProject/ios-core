@@ -1,3 +1,14 @@
+---
+name: wall-failures-readme
+type: evolving
+status: active
+created: 2026-05-28
+last_refresh: 2026-05-28
+freshness_window: 365d
+owners: [general]
+description: Wall-failure catalog
+---
+
 # Wall-failure catalog
 
 **Purpose:** every reviewer-blocked finding is a system bug, not just an implementer bug. This catalog records what escaped, which wall should have caught it, and what permanent improvement closes the gap so the next swarm can't repeat it.
@@ -58,6 +69,7 @@ When classifying, pick the *innermost* wall that should have caught it:
 | **orchestrator** | Integration pass between implementer return and review | Orchestrator trusted the transcript without verifying claims |
 | **reviewer** | SoD architect or qa_test agent | Reviewer prompt didn't ask the right question |
 | **hook** | Pre-commit / pre-push enforcement | Hook didn't catch missing scope stanza for the change class |
+| **stale-doc** | Out-of-date documentation contributed to the failure | Engineer followed an area checklist that hadn't been refreshed in 11 months; the documented invariant had been broken by an intervening change without checklist update |
 
 ## Why this works
 

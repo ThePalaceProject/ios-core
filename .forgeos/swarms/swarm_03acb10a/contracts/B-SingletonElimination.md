@@ -1,3 +1,14 @@
+---
+name: swarm_03acb10a-contract-B-SingletonElimination
+type: immutable
+status: active
+created: 2026-05-21
+last_refresh: 2026-05-21
+freshness_window: never
+owners: [general]
+description: Module B — Singleton elimination
+---
+
 # Module B — Singleton elimination
 
 **Status:** REFINED post-triage.

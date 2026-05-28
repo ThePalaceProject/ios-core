@@ -1,3 +1,14 @@
+---
+name: swarm_d5a3d473-transcript-ImageLoading-Consolidation
+type: ephemeral
+status: active
+created: 2026-05-19T00:00:00Z
+last_refresh: 2026-05-20
+freshness_window: 180d
+owners: [general]
+description: Transcript — ImageLoading-Consolidation (swarm_d5a3d473, Track A)
+---
+
 # Transcript — ImageLoading-Consolidation (swarm_d5a3d473, Track A)
 
 ## 1. Summary

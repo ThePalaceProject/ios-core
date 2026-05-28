@@ -3,6 +3,13 @@ name: regression-qa
 description: Guide a QA tester through a manual release regression — setup, side-by-side testing, codebase-aware triage, report, and Jira tickets. No simdrive or maintainer-only tooling required. Use this when running a manual regression pass against a release candidate.
 argument-hint: <ticket> [--baseline-version X.Y.Z] [--candidate-version X.Y.Z]
 allowed-tools: Bash(*), Read, Write, Edit, Glob, Grep, Agent
+# doc-lifecycle metadata (added by Module B sweep)
+type: evolving
+status: active
+created: 2026-05-11
+last_refresh: 2026-05-11
+freshness_window: 365d
+owners: [general]
 ---
 
 # Palace iOS — QA Regression (manual)

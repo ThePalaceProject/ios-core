@@ -1,3 +1,14 @@
+---
+name: audiobook-verification-checklist
+type: evolving
+status: active
+created: 2026-05-28
+last_refresh: 2026-05-28
+freshness_window: 180d
+owners: [audiobook]
+description: Per-area verification reference; refresh before next swarm/rigorous-fix
+---
+
 <!-- audit-verified: file paths and line ranges in Section 1 verified by direct Read of Palace/Audiobooks/*.swift and Palace/CarPlay/*.swift on 2026-05-28. Test inventory in Section 6 verified by `find PalaceTests/Audiobook* PalaceTests/CarPlay -name '*.swift'` (37 files). Known-trap claims in Section 7 sourced from MEMORY.md entries explicitly listed in Section 9. Items I could not verify by reading code (regression history details, in-field crash signatures, sim-environment audio limitations) are attributed to their source memory or HelpSpot ticket and not asserted as live code state. -->
 
 # Audiobook area — verification checklist

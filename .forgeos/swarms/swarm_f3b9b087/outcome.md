@@ -1,3 +1,14 @@
+---
+name: swarm_f3b9b087-outcome
+type: immutable
+status: active
+created: 2026-05-21T03:25:00Z
+last_refresh: 2026-05-21
+freshness_window: never
+owners: [general]
+description: "Swarm Outcome — `swarm_f3b9b087` — 3.2.0 review-driven quality pass"
+---
+
 # Swarm Outcome — `swarm_f3b9b087` — 3.2.0 review-driven quality pass
 
 **Status:** complete

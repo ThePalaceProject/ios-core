@@ -1,3 +1,14 @@
+---
+name: swarm_dfdaf7ad-outcome
+type: immutable
+status: active
+created: 2026-05-19T00:00:00Z
+last_refresh: 2026-05-19
+freshness_window: never
+owners: [general]
+description: Outcome — swarm_dfdaf7ad (bundled)
+---
+
 # Outcome — swarm_dfdaf7ad (bundled)
 
 **Status:** bundled — single PR to `develop` ready for push

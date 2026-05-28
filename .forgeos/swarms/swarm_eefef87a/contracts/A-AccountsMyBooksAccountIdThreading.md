@@ -1,3 +1,14 @@
+---
+name: swarm_eefef87a-contract-A-AccountsMyBooksAccountIdThreading
+type: immutable
+status: active
+created: 2026-05-26T15:00:00Z
+last_refresh: 2026-05-27
+freshness_window: never
+owners: [mybooks]
+description: Module A — TPPUserAccount.sharedAccount() fallback removal (Option 1)
+---
+
 # Module A — TPPUserAccount.sharedAccount() fallback removal (Option 1)
 
 **Improvement #1 from the A+ posture push.** Auth-critical. Round-trip wiring test mandatory per `feedback_round_trip_wiring_tests.md`. Memory pin `reference_tpp_user_account_migration_retro.md` is load-bearing — read it before writing code.

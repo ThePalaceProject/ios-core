@@ -1,3 +1,14 @@
+---
+name: swarm_f3b9b087-contract-Notifications-OPDS-Errors
+type: immutable
+status: active
+created: 2026-05-21T03:25:00Z
+last_refresh: 2026-05-21
+freshness_window: never
+owners: [network]
+description: "Contract: Notifications-OPDS-Errors"
+---
+
 # Contract: Notifications-OPDS-Errors
 
 **Bucket items:** P1 #6 (Notifications-FCM SAML-stale retry) + P2 #9 (OPDS user-facing error strings) + P3 #11 (Info.plist UIBackgroundModes verify)

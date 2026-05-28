@@ -1,3 +1,14 @@
+---
+name: swarm_5c8ddbd5-contract-A-AdapterProtocol
+type: immutable
+status: active
+created: 2026-05-21
+last_refresh: 2026-05-21
+freshness_window: never
+owners: [network]
+description: Module A — AudiobookVendorAdapter protocol
+---
+
 # Module A — AudiobookVendorAdapter protocol
 
 ## In-scope files (exclusive write)

@@ -5,9 +5,27 @@ source: reviewer-block | shipped-bug | near-miss | retro-observation
 reviewer_ids: [rev_xxxxxxxx]
 changeset_id: cs_xxxxxxxx
 wall: contract | implementer | TDD | mutation | verify-pr | orchestrator | reviewer | hook
+walls: []  # array form, preferred for new entries; multiple walls can contribute.
+           # Values: contract | implementer | TDD | mutation | verify-pr | orchestrator | reviewer | hook | stale-doc
+           # Legacy single-value `wall:` above stays for backward compatibility.
 severity: low | medium | high | critical
-status: open | proposed | applied
+wall_status: open | proposed | applied
 applied_in: ""  # commit SHA or PR # where the permanent fix landed
+contributing_docs:  # optional; populate when a stale doc contributed to the failure.
+                    # Each entry: {path, last_refresh_at_failure, decay_days}
+                    # decay_days = (failure_date - last_refresh_at_failure)
+  # - path: docs/architecture/areas/<area>/verification-checklist.md
+  #   last_refresh_at_failure: YYYY-MM-DD
+  #   decay_days: 0
+# doc-lifecycle metadata (added by Module B sweep)
+name: wall-failures-template
+type: evolving
+status: active
+created: 2026-05-28
+last_refresh: 2026-05-28
+freshness_window: 365d
+owners: [general]
+description: Title — one-line summary of what escaped
 ---
 
 # Title — one-line summary of what escaped
@@ -33,6 +51,18 @@ Concrete and grep-able. *Not* "be more careful next time." Examples:
 - Add pre-commit hook: *"Block commits that add `_ = newFn()` without an inline `// rationale: ...` comment."*
 
 The fix should make the finding **structurally impossible to land**, not "more likely to be noticed."
+
+## Stale-doc contribution
+
+Fill this section only when `stale-doc` is in `walls:`. For each contributing doc:
+
+- **Doc path:** `docs/architecture/areas/<area>/verification-checklist.md`
+- **Last refresh before failure:** YYYY-MM-DD (commit SHA optional)
+- **Decay at failure:** N days (= failure_date − last_refresh)
+- **What the doc said vs. reality:** plain-English diff — the invariant the doc asserted and the intervening change that broke it without a checklist update.
+- **Freshness-window implication:** does this doc's category need a tighter refresh cadence? Link the proposed cadence change.
+
+If `stale-doc` is NOT in `walls:`, delete this section.
 
 ## Application log
 

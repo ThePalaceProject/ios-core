@@ -1,3 +1,14 @@
+---
+name: swarm_d5a3d473-contract-ImageLoading-Consolidation
+type: immutable
+status: active
+created: 2026-05-19T00:00:00Z
+last_refresh: 2026-05-19
+freshness_window: never
+owners: [general]
+description: "Contract: ImageLoading-Consolidation (swarm_d5a3d473, Track A)"
+---
+
 # Contract: ImageLoading-Consolidation (swarm_d5a3d473, Track A)
 
 **Sequence:** Parallel with Logging-TestSeams. File scopes are disjoint.

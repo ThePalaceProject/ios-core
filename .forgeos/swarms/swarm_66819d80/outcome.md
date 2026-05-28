@@ -1,3 +1,14 @@
+---
+name: swarm_66819d80-outcome
+type: immutable
+status: active
+created: 2026-05-27
+last_refresh: 2026-05-28
+freshness_window: never
+owners: [auth]
+description: swarm_66819d80 — outcome
+---
+
 # swarm_66819d80 — outcome
 
 **Status:** complete

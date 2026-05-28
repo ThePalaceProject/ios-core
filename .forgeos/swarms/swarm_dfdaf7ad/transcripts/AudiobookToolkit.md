@@ -1,3 +1,14 @@
+---
+name: swarm_dfdaf7ad-transcript-AudiobookToolkit
+type: ephemeral
+status: active
+created: 2026-05-19T00:00:00Z
+last_refresh: 2026-05-19
+freshness_window: 180d
+owners: [audiobook]
+description: Transcript — AudiobookToolkit (swarm_dfdaf7ad, HelpSpot 17865)
+---
+
 # Transcript — AudiobookToolkit (swarm_dfdaf7ad, HelpSpot 17865)
 
 ## Summary

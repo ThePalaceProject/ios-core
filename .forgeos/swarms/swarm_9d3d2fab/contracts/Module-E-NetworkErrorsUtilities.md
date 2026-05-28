@@ -1,3 +1,14 @@
+---
+name: swarm_9d3d2fab-contract-Module-E-NetworkErrorsUtilities
+type: immutable
+status: active
+created: 2026-05-21
+last_refresh: 2026-05-22
+freshness_window: never
+owners: [network]
+description: Module E — Network/Errors/Utilities (CI-flake migration)
+---
+
 # Module E — Network/Errors/Utilities (CI-flake migration)
 
 ## Files in scope (8)

@@ -1,3 +1,14 @@
+---
+name: swarm_f4fbef9c-contract-C-Reader2Migration
+type: immutable
+status: active
+created: 2026-05-21
+last_refresh: 2026-05-21
+freshness_window: never
+owners: [reader]
+description: Module C — Reader2 + PDF position-write migration
+---
+
 # Module C — Reader2 + PDF position-write migration
 
 **Status:** refined by architect 2026-05-21. PDF locked IN; one-line TPPBaseReaderViewController edit confirmed.

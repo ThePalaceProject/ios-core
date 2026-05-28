@@ -1,3 +1,14 @@
+---
+name: swarm_eefef87a-transcript-C-Tooling
+type: ephemeral
+status: active
+created: 2026-05-26T15:00:00Z
+last_refresh: 2026-05-27
+freshness_window: 180d
+owners: [accounts, mybooks]
+description: Module C — Tooling transcript
+---
+
 # Module C — Tooling transcript
 
 Status: complete

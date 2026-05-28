@@ -1,3 +1,14 @@
+---
+name: swarm_03acb10a-plan
+type: immutable
+status: active
+created: 2026-05-21
+last_refresh: 2026-05-21
+freshness_window: never
+owners: [general]
+description: Swarm 3 — Singleton Elimination + Async Sweep
+---
+
 # Swarm 3 — Singleton Elimination + Async Sweep
 
 **Phase 3 of [audiobook-systemic-overhaul](../../../docs/architecture/audiobook-systemic-overhaul.md).**

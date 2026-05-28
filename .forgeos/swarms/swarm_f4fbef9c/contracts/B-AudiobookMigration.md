@@ -1,3 +1,14 @@
+---
+name: swarm_f4fbef9c-contract-B-AudiobookMigration
+type: immutable
+status: active
+created: 2026-05-21
+last_refresh: 2026-05-21
+freshness_window: never
+owners: [audiobook]
+description: Module B — Audiobook position-write migration
+---
+
 # Module B — Audiobook position-write migration
 
 **Status:** refined by architect 2026-05-21. **Major scope correction** — see `transcripts/triage.md` Deviations 1, 2, 3.
