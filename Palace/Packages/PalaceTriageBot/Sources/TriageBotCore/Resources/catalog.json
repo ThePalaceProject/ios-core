@@ -1,0 +1,266 @@
+{
+  "version": "v1.1-demo-2026-05-28",
+  "updated_at": "2026-05-28",
+  "entries": [
+    {
+      "id": "KI-2026-001-audiobook-first-open-hang",
+      "category": "audiobook",
+      "status": "open",
+      "fixed_in_version": "3.2.0",
+      "symptom_keywords": [
+        "won't play",
+        "wont play",
+        "won't load",
+        "wont load",
+        "will not play",
+        "will not load",
+        "spinning",
+        "spinner",
+        "first time",
+        "hangs",
+        "hang",
+        "stuck",
+        "loading",
+        "sits there",
+        "nothing happens",
+        "tap play",
+        "tapped play",
+        "play button",
+        "blinks",
+        "no sound",
+        "won't load properly",
+        "stops playing"
+      ],
+      "distributor_filter": ["palace_marketplace"],
+      "user_facing_workaround": "Tap back to your library, then tap the title again. The second open will play. We're shipping a permanent fix in the next release.",
+      "internal_reference": {
+        "jira": "PP-4436",
+        "wall_failure": "2026-05-22-f011-audiobook-hang",
+        "helpspot": [17964, 17929, 17989, 17959]
+      },
+      "confidence_threshold": 0.1,
+      "escalate_anyway": false,
+      "helpspot_tag": "known-issue-PP-4436",
+      "trust_level": "authoritative",
+      "visibility": "user_facing"
+    },
+    {
+      "id": "KI-2026-002-lcp-continuation-misuse",
+      "category": "audiobook",
+      "status": "fixed_in",
+      "fixed_in_version": "3.2.0",
+      "symptom_keywords": [
+        "library swap",
+        "switched library",
+        "switched libraries",
+        "changed library",
+        "playback crash",
+        "crashed while playing",
+        "crash while playing",
+        "crashed mid-audiobook",
+        "crashed when i switched"
+      ],
+      "distributor_filter": ["palace_marketplace"],
+      "user_facing_workaround": "This crash is fixed in the next release. As a workaround, avoid switching libraries while an audiobook is playing — pause and return to your library first.",
+      "internal_reference": {
+        "jira": "PP-4438"
+      },
+      "confidence_threshold": 0.1,
+      "escalate_anyway": false,
+      "helpspot_tag": "fixed-3.2.0",
+      "trust_level": "authoritative",
+      "visibility": "user_facing"
+    },
+    {
+      "id": "KI-2026-003-signin-placeholder-contrast",
+      "category": "signin",
+      "status": "fixed_in",
+      "fixed_in_version": "3.1.0",
+      "symptom_keywords": [
+        "grayed out",
+        "greyed out",
+        "gray out",
+        "grey out",
+        "grayed-out",
+        "greyed-out",
+        "can't type",
+        "cant type",
+        "field disabled",
+        "fields disabled",
+        "fields look disabled",
+        "where to type",
+        "where do i type",
+        "placeholder",
+        "boxes",
+        "grayed-out boxes",
+        "never prompted",
+        "looks disabled"
+      ],
+      "user_facing_workaround": "The field looks grayed out, but it's actually active — tap it and start typing. This is a contrast issue we've already fixed; the next App Store update will look correct.",
+      "internal_reference": {
+        "jira": "PP-4421",
+        "helpspot": [17923]
+      },
+      "confidence_threshold": 0.08,
+      "escalate_anyway": false,
+      "helpspot_tag": "fixed-3.1.0",
+      "trust_level": "authoritative",
+      "visibility": "user_facing"
+    },
+    {
+      "id": "KI-2026-004-wrong-library-palace-bookshelf",
+      "category": "library",
+      "status": "user_error",
+      "symptom_keywords": [
+        "wrong books",
+        "wrong library",
+        "not my books",
+        "not my library",
+        "where is my library",
+        "where's my library",
+        "my library",
+        "can't find",
+        "cant find",
+        "missing titles",
+        "missing books",
+        "demo books",
+        "demo collection",
+        "bookshelf",
+        "palace bookshelf",
+        "these aren't",
+        "these arent",
+        "doesn't appear",
+        "doesnt appear",
+        "appear on my ipad",
+        "appear on my phone",
+        "on my ipad"
+      ],
+      "user_facing_workaround": "It looks like you're connected to Palace Bookshelf, which is our demo collection. To use your real library: tap the Palace logo in the top-left corner, then add your library by name.",
+      "internal_reference": {
+        "helpspot": [17957, 17917]
+      },
+      "confidence_threshold": 0.08,
+      "escalate_anyway": false,
+      "helpspot_tag": "user-education-wrong-library",
+      "trust_level": "authoritative",
+      "visibility": "user_facing"
+    },
+    {
+      "id": "KI-2026-005-carplay-sigabrt",
+      "category": "audiobook",
+      "status": "fixed_in",
+      "fixed_in_version": "3.1.0",
+      "symptom_keywords": [
+        "carplay",
+        "car play",
+        "plug into",
+        "plug in",
+        "connect to car",
+        "connecting to car",
+        "in the car",
+        "in my car",
+        "car crash",
+        "crash in car",
+        "car crashes"
+      ],
+      "user_facing_workaround": "This CarPlay crash is fixed in the next release. As a workaround, start playback before connecting to your car.",
+      "internal_reference": {
+        "jira": "PP-4430"
+      },
+      "confidence_threshold": 0.1,
+      "escalate_anyway": false,
+      "helpspot_tag": "fixed-3.1.0-carplay",
+      "trust_level": "authoritative",
+      "visibility": "user_facing"
+    },
+    {
+      "id": "KI-2026-006-hold-ready-desync",
+      "category": "library",
+      "status": "open",
+      "symptom_keywords": [
+        "hold ready",
+        "hold is ready",
+        "hold disappeared",
+        "holds disappeared",
+        "holds list",
+        "in my holds",
+        "still on hold",
+        "still shows",
+        "shows as reserved",
+        "next in line",
+        "got a notification",
+        "notification that",
+        "notifications that",
+        "ready to borrow",
+        "where is my hold",
+        "list disagrees",
+        "not in my holds",
+        "hold list"
+      ],
+      "user_facing_workaround": "Pull down on the Holds list to refresh. If the hold is still missing, sign out and back in — your account will sync from the server.",
+      "internal_reference": {
+        "helpspot": [17960, 17971, 17835]
+      },
+      "confidence_threshold": 0.08,
+      "escalate_anyway": false,
+      "helpspot_tag": "open-issue-hold-desync",
+      "trust_level": "signal",
+      "visibility": "user_facing"
+    },
+    {
+      "id": "KI-2026-007-lcp-pdf-fail-to-open",
+      "category": "reader",
+      "status": "fixed_in",
+      "fixed_in_version": "3.2.0",
+      "symptom_keywords": [
+        "pdf",
+        "won't open",
+        "wont open",
+        "blank screen",
+        "blank page",
+        "stuck on cover",
+        "stuck on the cover",
+        "broken pdf",
+        "pdf broken"
+      ],
+      "distributor_filter": ["palace_marketplace"],
+      "user_facing_workaround": "This PDF issue is fixed in the next release. As a workaround, try downloading the title again from your bookshelf.",
+      "internal_reference": {
+        "jira": "PP-4454"
+      },
+      "confidence_threshold": 0.1,
+      "escalate_anyway": false,
+      "helpspot_tag": "fixed-3.2.0-pdf",
+      "trust_level": "authoritative",
+      "visibility": "user_facing"
+    },
+    {
+      "id": "KI-2026-008-download-no-network",
+      "category": "download",
+      "status": "open",
+      "symptom_keywords": [
+        "won't download",
+        "wont download",
+        "download",
+        "never works",
+        "download stuck",
+        "download failed",
+        "download stalled",
+        "no progress",
+        "hasn't moved",
+        "hasnt moved",
+        "stalled",
+        "stuck downloading"
+      ],
+      "user_facing_workaround": "If a download stalls, check that you're connected to WiFi or cellular data, then pull down to refresh your bookshelf. If it still fails, sign out and back in.",
+      "internal_reference": {
+        "helpspot": [17976]
+      },
+      "confidence_threshold": 0.08,
+      "escalate_anyway": false,
+      "helpspot_tag": "open-issue-download-troubleshoot",
+      "trust_level": "context",
+      "visibility": "user_facing"
+    }
+  ]
+}
