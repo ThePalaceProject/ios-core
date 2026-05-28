@@ -198,31 +198,33 @@ final class SignInModalLifecycleTests: XCTestCase {
                        "Identifiable.id must encode libraryAccountID")
     }
 
-    // MARK: - Test 3 — wiring claim: TPPReauthenticator path
-    //                  invokes presentation via safelyPresent
+    // MARK: - Test 3 — presenter lifecycle:
+    //                  publishes state, invokes driver, clears state, forwards completion
 
-    /// CLAUDE.md DoD #3 + #7 (wiring-claim) — multi-step name
-    /// `_TPPReauthenticatorPath_invokesPresentationViaSafelyPresent`
-    /// — body MUST drive the production entry point (TPPReauthenticator
-    /// → AppContainer.production().signInModalSheetPresenter →
-    /// driver), proving the call chain is wired.
+    /// Pins the SignInModalSheetPresenter's `presentSignInModalForCurrentAccount`
+    /// lifecycle through the **driver seam** (NOT through the production
+    /// wiring chain). What's verified:
+    ///   - presentationState is published as .forCurrentAccount
+    ///   - the injected driver is invoked with the resolved libraryID
+    ///   - completion-side: presentationState clears back to nil
+    ///   - the caller's completion closure is forwarded and fires once
     ///
-    /// Coverage attestation (DoD #7): each cited production line is
-    /// exercised by this test:
-    ///   - SignInModalSheetPresenter.presentSignInModalForCurrentAccount
-    ///   - Sets presentationState = .forCurrentAccount (publish)
-    ///   - Invokes the injected driver with the resolved libraryID
-    ///   - Completion clears presentationState back to nil
-    ///   - Forwards the user completion
+    /// **NOT verified by this test** (per wall-failure entry
+    /// `.forgeos/wall-failures/2026-05-28-cs9a267b63-arch1.md`,
+    /// architect-reviewer rev_bc20951b finding 1):
+    ///   - That `TPPReauthenticator` actually calls this presenter — the
+    ///     migration is a single-line change at `TPPReauthenticator.swift:54`,
+    ///     grep-visible to any reviewer. `TPPReauthenticatorTests` separately
+    ///     covers `TPPReauthenticator.authenticateIfNeeded` behavior.
+    ///   - That the default driver actually reaches `TPPPresentationUtils.safelyPresent` —
+    ///     the default driver wires to `SignInModalPresenter.presentSignInModal(...)`,
+    ///     which is grep-visible at `SignInModalSheetPresenter.swift:DefaultPresentationDriver.makeDefault()`
+    ///     and the static call's existing tests cover the safelyPresent path.
     ///
-    /// We bypass the real static API (which would attempt to mount
-    /// UIKit) by injecting a fake driver. Test seam is the only way
-    /// to drive the multi-step path deterministically in unit-test
-    /// scope — the production wiring through TPPReauthenticator is
-    /// the same call chain, just with the default driver pointing at
-    /// `SignInModalPresenter.presentSignInModal(...)` which then
-    /// calls `TPPPresentationUtils.safelyPresent`.
-    func testPresenter_TPPReauthenticatorPath_invokesPresentationViaSafelyPresent() {
+    /// A true production-seam wiring test that drives `TPPReauthenticator().authenticateIfNeeded(...)`
+    /// with a spy presenter requires AppContainer testability changes — deferred
+    /// to wave 4 alongside the remaining 9-caller migration.
+    func testPresenter_presentForCurrentAccount_publishesState_invokesDriver_clearsState_firesCompletion() {
         let fakeDriver = FakePresentationDriver()
         let presenter = makePresenter(driver: fakeDriver.makeDriver(),
                                       currentAccountID: "test-lib-reauth")
