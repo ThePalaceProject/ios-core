@@ -23,13 +23,15 @@ enum TriageBotFactory {
     /// bundled KB can't be loaded (degenerate; bot is unusable in that case).
     @MainActor
     static func makeViewModel() -> Any? {
-        // Bundled catalog — synchronous load to keep this call site simple.
-        // Server-backed source (Phase 2) implements the same protocol and
-        // would slot in here without changes elsewhere.
-        let source = BundledCatalogSource()
+        // Synchronous load via BundledCatalogSource.loadCatalogSync(). The
+        // earlier semaphore-bridge implementation triggered iOS 26's "Hang
+        // Risk" runtime fault and intermittently returned nil on force-quit
+        // relaunch (chaos-qa F-004), which hid the Settings entry-point for
+        // the whole session. The work is genuinely synchronous (bundled
+        // JSON read + decode), so the sync path is correct here.
         let catalog: KBCatalog
         do {
-            catalog = try syncLoad(source: source)
+            catalog = try BundledCatalogSource.loadCatalogSync()
         } catch {
             Log.error(#file, "Triage bot: catalog load failed — \(error)")
             return nil
@@ -89,27 +91,6 @@ enum TriageBotFactory {
         )
     }
 
-    // MARK: - Helpers
-
-    /// Synchronous wrapper around the KnowledgeBaseSource async API. The
-    /// bundled source reads a small JSON file off disk — blocking briefly
-    /// on the main thread at Settings entry is acceptable. A server-backed
-    /// source would prefetch in AppDelegate.
-    private static func syncLoad(source: KnowledgeBaseSource) throws -> KBCatalog {
-        let semaphore = DispatchSemaphore(value: 0)
-        var result: Result<KBCatalog, Error>!
-        Task {
-            do {
-                let catalog = try await source.loadCatalog()
-                result = .success(catalog)
-            } catch {
-                result = .failure(error)
-            }
-            semaphore.signal()
-        }
-        semaphore.wait()
-        return try result.get()
-    }
 }
 
 // The TriageBotViewModel construction is wrapped in a generic helper because

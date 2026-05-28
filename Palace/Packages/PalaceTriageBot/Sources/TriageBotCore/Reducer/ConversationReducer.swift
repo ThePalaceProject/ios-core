@@ -183,6 +183,19 @@ public struct ConversationReducer: Sendable {
 
         case .userConfirmedTicketSubmit:
             guard case .drafting(let draft) = next.step else { return (next, effects) }
+            // Chaos-qa F-002: drop the ticketPreview from the message log
+            // when leaving .drafting so the user doesn't see active Send /
+            // Cancel buttons stacked next to the eventual "Sent" receipt.
+            // The preview was an in-the-moment affordance; once submission
+            // is in flight, replace it with a status line.
+            next.messages.removeAll { msg in
+                if case .ticketPreview = msg.kind { return true }
+                return false
+            }
+            next.messages.append(.init(
+                sender: .bot,
+                kind: .text("Sending your ticket…")
+            ))
             next.step = .submitting(ticket: draft)
             effects.append(.submitTicket(draft))
             effects.append(.emitTelemetry(.init(
@@ -191,6 +204,12 @@ public struct ConversationReducer: Sendable {
             )))
 
         case .userCancelledTicketSubmit:
+            // Same F-002 rationale on cancel: the preview card should not
+            // remain interactive after the user explicitly declined.
+            next.messages.removeAll { msg in
+                if case .ticketPreview = msg.kind { return true }
+                return false
+            }
             next.step = .sent(receipt: TicketReceipt(ticketId: "cancelled", submittedAt: Self.syntheticReceiptTimestamp))
             next.messages.append(.init(
                 sender: .bot,

@@ -53,6 +53,15 @@ public struct BundledCatalogSource: KnowledgeBaseSource {
     public init() {}
 
     public func loadCatalog() async throws -> KBCatalog {
+        try Self.loadCatalogSync()
+    }
+
+    /// Synchronous variant for callers that don't want to bridge async →
+    /// sync with a semaphore (which triggers iOS 26's "Hang Risk" runtime
+    /// warning per chaos-qa F-004). The underlying work — read the bundled
+    /// JSON file, decode — is genuinely synchronous; the async signature
+    /// exists for protocol conformance and future server-backed sources.
+    public static func loadCatalogSync() throws -> KBCatalog {
         guard let url = Bundle.module.url(forResource: "catalog", withExtension: "json") else {
             throw KBLoadError.catalogNotFound
         }

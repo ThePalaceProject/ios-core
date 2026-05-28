@@ -32,20 +32,36 @@ struct TicketPreviewCard: View {
                 }
             }
 
-            HStack {
-                Button {
-                    onAction(.cancel)
-                } label: {
-                    Text("Cancel").padding(.horizontal, 12).padding(.vertical, 8)
+            HStack(spacing: 8) {
+                // Chaos-qa F-003: explicit foreground + background colors so
+                // both buttons stay legible in dark mode. The old
+                // .borderedProminent rendered white-on-white on some iOS 26
+                // configurations — never rely on the implicit foreground.
+                Button { onAction(.cancel) } label: {
+                    Text("Cancel")
+                        .font(.body.weight(.semibold))
+                        .foregroundColor(.accentColor)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 9)
+                        .frame(maxWidth: .infinity)
+                        .background(Color.accentColor.opacity(0.12))
+                        .clipShape(Capsule())
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.plain)
+                .accessibilityLabel("Cancel — do not send the ticket")
 
-                Button {
-                    onAction(.send)
-                } label: {
-                    Text("Send").padding(.horizontal, 12).padding(.vertical, 8)
+                Button { onAction(.send) } label: {
+                    Text("Send")
+                        .font(.body.weight(.semibold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 9)
+                        .frame(maxWidth: .infinity)
+                        .background(Color.accentColor)
+                        .clipShape(Capsule())
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.plain)
+                .accessibilityLabel("Send ticket to support")
             }
         }
         .padding(14)

@@ -531,17 +531,9 @@ final class ResponseQualityTests: XCTestCase {
     // MARK: - Helpers
 
     private static func loadCatalog() throws -> KnowledgeBase {
-        let source = BundledCatalogSource()
-        var caught: Error?
-        var catalog: KBCatalog!
-        let group = DispatchGroup()
-        group.enter()
-        Task {
-            do { catalog = try await source.loadCatalog() } catch { caught = error }
-            group.leave()
-        }
-        group.wait()
-        if let e = caught { throw e }
+        // Use the synchronous loader directly — same fix as the production
+        // factory after chaos-qa F-004 flagged the semaphore-bridge pattern.
+        let catalog = try BundledCatalogSource.loadCatalogSync()
         return KnowledgeBase(catalog: catalog)
     }
 }

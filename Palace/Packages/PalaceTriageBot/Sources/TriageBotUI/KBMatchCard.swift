@@ -21,7 +21,12 @@ struct KBMatchCard: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack {
-                if entry.status == .fixedIn {
+                // Offer notify-me whenever we know the planned fix version,
+                // regardless of whether the bug is already shipped vs in flight.
+                // "status: open with fixed_in_version: 3.2.0" is the legitimate
+                // "in flight, planned for vN" state — chaos-qa F-001 caught
+                // that the old UI suppressed the notify button in that case.
+                if entry.fixedInVersion != nil {
                     actionButton("Notify me when fixed", systemImage: "bell.fill") {
                         onAction(.notifyMe)
                     }
@@ -51,8 +56,13 @@ struct KBMatchCard: View {
     @ViewBuilder private var statusBadge: some View {
         let (label, color): (String, Color) = {
             switch entry.status {
-            case .fixedIn: return ("Fixed in \(entry.fixedInVersion ?? "next release")", .green)
-            case .open: return ("Known issue — workaround available", .orange)
+            case .fixedIn:
+                return ("Fixed in \(entry.fixedInVersion ?? "next release")", .green)
+            case .open:
+                if let version = entry.fixedInVersion {
+                    return ("Known issue — fix coming in \(version)", .orange)
+                }
+                return ("Known issue — workaround available", .orange)
             case .userError: return ("Likely a setup mix-up", .blue)
             case .wontfix: return ("By design", .gray)
             case .duplicateOf: return ("Tracked", .gray)

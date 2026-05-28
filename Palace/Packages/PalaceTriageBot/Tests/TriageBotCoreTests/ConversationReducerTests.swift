@@ -144,6 +144,58 @@ final class ConversationReducerTests: XCTestCase {
         XCTAssertEqual(stored.ticketId, "HS-99999")
     }
 
+    // Chaos-qa F-002 regression: the ticketPreview message MUST be removed
+    // from the message stream when the user confirms or cancels submission.
+    // Without this, the UI renders an active preview card (Send/Cancel
+    // buttons) next to the eventual "Sent" receipt — two contradictory
+    // states visible at once.
+    func testConfirmSubmit_removesTicketPreviewFromMessages_F002() {
+        let reducer = makeReducer()
+        let draft = TicketDraft(
+            userDescription: "novel issue",
+            category: .reader,
+            context: ContextSnapshot(appVersion: "3", appBuild: "1", osVersion: "26", deviceModel: "x")
+        )
+        let initial = ConversationState(
+            step: .drafting(ticket: draft),
+            messages: [
+                .init(sender: .bot, kind: .text("Here's what I'll send:")),
+                .init(sender: .bot, kind: .ticketPreview(draft))
+            ]
+        )
+        let (next, _) = reducer.reduce(state: initial, action: .userConfirmedTicketSubmit)
+
+        let previewCount = next.messages.filter { msg in
+            if case .ticketPreview = msg.kind { return true }
+            return false
+        }.count
+        XCTAssertEqual(previewCount, 0, "ticketPreview must be removed from message stream when leaving .drafting")
+        XCTAssertTrue(next.messages.contains { msg in
+            if case .text(let t) = msg.kind { return t.contains("Sending") }
+            return false
+        }, "A status text should land where the preview was")
+    }
+
+    func testCancelSubmit_alsoRemovesTicketPreview_F002() {
+        let reducer = makeReducer()
+        let draft = TicketDraft(
+            userDescription: "test",
+            category: .reader,
+            context: ContextSnapshot(appVersion: "3", appBuild: "1", osVersion: "26", deviceModel: "x")
+        )
+        let initial = ConversationState(
+            step: .drafting(ticket: draft),
+            messages: [.init(sender: .bot, kind: .ticketPreview(draft))]
+        )
+        let (next, _) = reducer.reduce(state: initial, action: .userCancelledTicketSubmit)
+
+        let previewCount = next.messages.filter { msg in
+            if case .ticketPreview = msg.kind { return true }
+            return false
+        }.count
+        XCTAssertEqual(previewCount, 0, "Cancel must also drop the preview card; user explicitly declined")
+    }
+
     func testTicketSubmissionFailed_transitionsToError() {
         let reducer = makeReducer()
         let draft = TicketDraft(

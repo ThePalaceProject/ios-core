@@ -272,17 +272,8 @@ final class ResponseDeterminismTests: XCTestCase {
     // MARK: - Helpers
 
     private static func loadCatalog() throws -> KnowledgeBase {
-        let source = BundledCatalogSource()
-        var caught: Error?
-        var catalog: KBCatalog!
-        let group = DispatchGroup()
-        group.enter()
-        Task {
-            do { catalog = try await source.loadCatalog() } catch { caught = error }
-            group.leave()
-        }
-        group.wait()
-        if let e = caught { throw e }
+        // Same sync path as the production factory post-F-004.
+        let catalog = try BundledCatalogSource.loadCatalogSync()
         return KnowledgeBase(catalog: catalog)
     }
 }
