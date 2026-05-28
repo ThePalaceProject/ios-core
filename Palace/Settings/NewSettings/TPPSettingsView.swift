@@ -59,6 +59,7 @@ struct TPPSettingsView: View {
         List {
             librariesSection
             downloadsSection
+            supportSection
             infoSection
             developerSettingsSection
         }
@@ -121,6 +122,20 @@ struct TPPSettingsView: View {
                     .foregroundColor(.secondary)
             }
             .padding(.vertical, 4)
+        }
+    }
+
+    @ViewBuilder private var supportSection: some View {
+        // Gated entirely on the Firebase Remote Config kill-switch. When the
+        // flag is off (default in production), this section is absent from
+        // the list — no surface area for the bot at all.
+        if RemoteFeatureFlags.shared.isTriageBotEnabled, let chat = TriageBotSupportView() {
+            Section(header: Text("Support")) {
+                let wrapper = chat.anyView()
+                row(title: "Get Help", index: 10, selection: self.$selectedView, destination: wrapper)
+                    .accessibilityIdentifier("settings.row.getHelp")
+                    .accessibilityLabel("Get Help — chat with our support bot")
+            }
         }
     }
 
