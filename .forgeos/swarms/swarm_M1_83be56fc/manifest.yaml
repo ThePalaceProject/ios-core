@@ -2,7 +2,7 @@ swarm_id: swarm_M1_83be56fc
 wave: M1
 base_branch: swarm/swarm_d8f11437-scaffold
 base_pr_stack: [1020, 1022, 1023, 1024]
-status: triaged
+status: complete
 created: 2026-05-28
 risk_bar:
   A: critical_path_meta
