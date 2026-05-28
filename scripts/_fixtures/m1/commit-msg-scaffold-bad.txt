@@ -1,0 +1,12 @@
+[swarm_d8f11437] swarm scaffold: contracts + plan + manifest
+
+Wave 4 — 3 modules, base on PR #1023.
+A: SignInModal migration pass 2 of 2 — 11 callers + removes SignInModalHostingController + delete 4 predicate tests + true wiring test.
+B: AppContainer testability seam (Option c: withSignInModalSheetPresenter modifier).
+C: Runnable-grep rigor escalation — scripts/check-test-name-vs-body.py + Phase 4.5 wiring + CLAUDE.md DoD #1 extension.
+
+**Scope:** swarm scaffolding only.
+
+This commit removes SignInModalHostingController and extracts TPPReauthenticatorBlastRadiusReviewer into a separate file. It also fixes 15 manual-review findings.
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
