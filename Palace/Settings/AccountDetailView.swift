@@ -82,9 +82,7 @@ struct AccountDetailView: View {
         let needsSignIn = !viewModel.isSignedIn
         let needsReauth = forceReauthMode && viewModel.selectedUserAccount.authState == .credentialsStale
 
-        let isBrowserBasedAuth = viewModel.businessLogic.selectedAuthentication?.isOauth == true ||
-            viewModel.businessLogic.selectedAuthentication?.isSaml == true ||
-            viewModel.businessLogic.selectedAuthentication?.isOidc == true
+        let isBrowserBasedAuth = viewModel.businessLogic.selectedAuthentication?.isBrowserBased == true
 
         return (needsSignIn || needsReauth) && isBrowserBasedAuth
     }

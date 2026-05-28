@@ -663,7 +663,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
         }
 
         // reset authentication if needed
-        if authDef.isSaml || authDef.isOauth || authDef.isOidc {
+        if authDef.isBrowserBased {
             if !usingExistingCredentials {
                 // when the IdP session expired, force the user to pick the
                 // IdP again instead of reusing stale cookies/tokens

@@ -29,7 +29,8 @@ final class AppContainerImageLoaderInjectionTests: XCTestCase {
             readerService: production.readerService,
             navigationCoordinatorHub: production.navigationCoordinatorHub,
             tabRouterHub: production.tabRouterHub,
-            drmAuthorizerProvider: production.drmAuthorizerProvider
+            drmAuthorizerProvider: production.drmAuthorizerProvider,
+            authCoordinator: production.authCoordinator
         )
     }
 

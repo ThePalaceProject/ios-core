@@ -229,6 +229,23 @@ protocol AccountLogoDelegate: AnyObject {
             authType == .oidc
         }
 
+        /// True for authentication mechanisms that require an external
+        /// browser / web-sheet flow to re-authenticate (SAML IdP, OAuth
+        /// intermediary like Clever, OIDC provider). Use this to gate
+        /// behavior on "user must complete an interactive browser auth
+        /// to refresh credentials" — distinct from `needsAuth` (which
+        /// also includes in-app Basic + Token auth) and from
+        /// `isOauth || isOidc` (which excludes SAML and represents a
+        /// different concern, e.g. profile-fetch decisions).
+        ///
+        /// Substituted at six scattered predicate sites by Module B of
+        /// swarm_66819d80; broadens BorrowOperation / BookReturnService
+        /// browser-reauth routing to also cover OAuth-intermediary
+        /// (Clever). See `BorrowOperationCleverReauthTests`.
+        var isBrowserBased: Bool {
+            isOauth || isSaml || isOidc
+        }
+
         /// Describes how the app should re-authenticate when credentials expire.
         /// Use this instead of checking individual auth type booleans for re-auth decisions.
         enum ReauthStrategy {

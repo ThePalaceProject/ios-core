@@ -34,6 +34,7 @@
 
 import AuthenticationServices
 import Foundation
+import PalaceAuth
 import PalaceLogging
 import PalaceCatalog
 
@@ -273,6 +274,19 @@ final class BorrowOperation {
     /// a deterministic Bool.
     private let attemptOIDCReauth: () async -> Bool
 
+    /// swarm_66819d80 Module C: auth-refresh coordinator. When non-nil,
+    /// the SAML / generic browser sign-in modal dispatch inside
+    /// `handleBorrowAuthErrorIfNeeded` routes through the coordinator's
+    /// single seam instead of presenting the modal via the closure-injected
+    /// `presentSignInModal`. The per-book circuit breaker
+    /// (`hasBorrowReauthBeenAttempted`) STAYS — the coordinator is
+    /// process-wide single-flight, NOT per-book, so the per-book guard
+    /// is still required to prevent runaway retries for a specific book.
+    /// The static `attemptOIDCSilentReauth` helper also stays — only its
+    /// trigger routes through the coordinator's fallback on failure.
+    /// Optional so existing tests keep compiling without rework.
+    private let authCoordinator: AuthCoordinator?
+
     // MARK: - Init
 
     #if FEATURE_DRM_CONNECTOR
@@ -287,7 +301,8 @@ final class BorrowOperation {
         fetchBook: @escaping (URL, Bool, Bool) async throws -> TPPBook,
         presentBorrowErrorAlert: @escaping @MainActor (String, String, NSError?, TPPProblemDocument?, TPPBook, (() -> Void)?) -> Void,
         presentSignInModal: @escaping @MainActor (@escaping () -> Void) -> Void,
-        attemptOIDCReauth: @escaping () async -> Bool
+        attemptOIDCReauth: @escaping () async -> Bool,
+        authCoordinator: AuthCoordinator? = nil
     ) {
         self.bookRegistry = bookRegistry
         self.downloadAnnouncementService = downloadAnnouncementService
@@ -300,6 +315,7 @@ final class BorrowOperation {
         self.presentBorrowErrorAlert = presentBorrowErrorAlert
         self.presentSignInModal = presentSignInModal
         self.attemptOIDCReauth = attemptOIDCReauth
+        self.authCoordinator = authCoordinator
     }
     #else
     init(
@@ -312,7 +328,8 @@ final class BorrowOperation {
         fetchBook: @escaping (URL, Bool, Bool) async throws -> TPPBook,
         presentBorrowErrorAlert: @escaping @MainActor (String, String, NSError?, TPPProblemDocument?, TPPBook, (() -> Void)?) -> Void,
         presentSignInModal: @escaping @MainActor (@escaping () -> Void) -> Void,
-        attemptOIDCReauth: @escaping () async -> Bool
+        attemptOIDCReauth: @escaping () async -> Bool,
+        authCoordinator: AuthCoordinator? = nil
     ) {
         self.bookRegistry = bookRegistry
         self.downloadAnnouncementService = downloadAnnouncementService
@@ -324,6 +341,7 @@ final class BorrowOperation {
         self.presentBorrowErrorAlert = presentBorrowErrorAlert
         self.presentSignInModal = presentSignInModal
         self.attemptOIDCReauth = attemptOIDCReauth
+        self.authCoordinator = authCoordinator
     }
     #endif
 
@@ -559,9 +577,9 @@ final class BorrowOperation {
                 }
 
                 if problemDoc.type == TPPProblemDocument.TypeNoActiveLoan,
-                   (authDef?.isSaml == true || authDef?.isOidc == true),
+                   authDef?.isBrowserBased == true,
                    hasCredentials {
-                    Log.info(#file, "SAML/OIDC: 'no-active-loan' with active credentials — treating as auth error (PP-3716)")
+                    Log.info(#file, "Browser-based auth (SAML/OIDC/OAuth): 'no-active-loan' with active credentials — treating as auth error (PP-3716; swarm_66819d80 broadened from SAML+OIDC to include OAuth-intermediary)")
                     return true
                 }
             }
@@ -570,7 +588,7 @@ final class BorrowOperation {
                 return true
             }
 
-            return false
+            return true
         }()
 
         guard isAuthError else { return .showGenericError }
@@ -610,7 +628,11 @@ final class BorrowOperation {
             userAccount.markCredentialsStale()
         }
 
-        let needsBrowserReauth = (authDef?.isSaml == true || authDef?.isOidc == true) && hasCredentials
+        // Broadened from `(isSaml || isOidc)` to `isBrowserBased` by
+        // swarm_66819d80 so OAuth-intermediary (Clever) follows the same
+        // browser-reauth recovery path as SAML/OIDC. Pinned by
+        // `BorrowOperationCleverReauthTests`.
+        let needsBrowserReauth = (authDef?.isBrowserBased == true) && hasCredentials
         if needsBrowserReauth {
             if authDef?.isOidc == true {
                 Log.info(#file, "OIDC session expired during borrow - attempting silent re-auth via ASWebAuthenticationSession")
@@ -626,12 +648,44 @@ final class BorrowOperation {
                         }
                     }
                 } else {
+                    // swarm_66819d80 Module C: OIDC fallback routes through
+                    // coordinator when wired (modal flow is identical to
+                    // SAML at this point — IdP session needs interactive
+                    // re-establishment). Per Option A, only the FAILURE
+                    // path routes through the coordinator.
                     Log.info(#file, "OIDC silent re-auth failed/cancelled - falling back to sign-in modal")
-                    await presentSignInModalAndRetryBorrow(book: book, attemptDownload: attemptDownload, authLabel: "OIDC")
+                    if let coordinator = self.authCoordinator {
+                        await coordinatorRetryBorrow(
+                            book: book,
+                            attemptDownload: attemptDownload,
+                            coordinator: coordinator,
+                            reason: .oidcRefreshFailed,
+                            authLabel: "OIDC"
+                        )
+                    } else {
+                        await presentSignInModalAndRetryBorrow(book: book, attemptDownload: attemptDownload, authLabel: "OIDC")
+                    }
                 }
             } else {
-                Log.info(#file, "SAML session expired during borrow - credentials marked stale, triggering re-auth flow")
-                await presentSignInModalAndRetryBorrow(book: book, attemptDownload: attemptDownload, authLabel: "SAML")
+                // swarm_66819d80 Module C: SAML / OAuth-intermediary
+                // browser flow routes through coordinator when wired.
+                // Coordinator dispatches modal (always for SAML/OAuth-
+                // intermediary per its routing matrix).
+                Log.info(#file, "SAML/OAuth-intermediary session expired during borrow - credentials marked stale, triggering re-auth flow")
+                if let coordinator = self.authCoordinator {
+                    let reason: ReauthReason = (authDef?.isSaml == true)
+                        ? .samlSessionExpired
+                        : .invalidCredentials
+                    await coordinatorRetryBorrow(
+                        book: book,
+                        attemptDownload: attemptDownload,
+                        coordinator: coordinator,
+                        reason: reason,
+                        authLabel: (authDef?.isSaml == true) ? "SAML" : "OAuth-intermediary"
+                    )
+                } else {
+                    await presentSignInModalAndRetryBorrow(book: book, attemptDownload: attemptDownload, authLabel: "SAML")
+                }
             }
             return .routeToReauth
 
@@ -807,6 +861,59 @@ final class BorrowOperation {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                     session.start()
                 }
+            }
+        }
+    }
+
+    // MARK: - Coordinator-Routed Retry
+
+    /// swarm_66819d80 Module C: coordinator-routed reauth-then-retry.
+    /// Asks the coordinator to refresh credentials (it dispatches the
+    /// appropriate modal flow per IdP); on success clears the per-book
+    /// circuit breaker and retries the borrow. On failure leaves the
+    /// circuit breaker armed and lets the caller surface the alert.
+    private func coordinatorRetryBorrow(
+        book: TPPBook,
+        attemptDownload: Bool,
+        coordinator: AuthCoordinator,
+        reason: ReauthReason,
+        authLabel: String
+    ) async {
+        let outcome = await coordinator.refreshCredentialsIfNeeded(reason: reason)
+        switch outcome {
+        case .success:
+            guard self.userAccountProvider().hasCredentials() else {
+                Log.info(#file, "\(authLabel) coordinator refresh reported success but credentials missing — not retrying borrow for '\(book.title)'")
+                Self.clearBorrowReauthAttempted(for: book.identifier)
+                return
+            }
+            Log.info(#file, "\(authLabel) coordinator refresh succeeded, retrying borrow for '\(book.title)'")
+            Self.clearBorrowReauthAttempted(for: book.identifier)
+            Task { [weak self] in
+                do {
+                    _ = try await self?.borrowAsync(book, attemptDownload: attemptDownload)
+                } catch {
+                    Log.error(#file, "Retry borrow failed after \(authLabel) coordinator refresh: \(error.localizedDescription)")
+                }
+            }
+        case .failure(let cancellation):
+            Log.info(#file, "\(authLabel) coordinator declined refresh for '\(book.title)' — \(cancellation)")
+            // Per-book circuit-breaker contract: keep the breaker armed on
+            // `.userCancelled` / `.refreshAlreadyFailed` so the same book
+            // doesn't re-prompt the user on a subsequent borrow tap. The
+            // user explicitly said no (or the coordinator is in cooldown
+            // from a recent failure) — re-prompting on the next tap is
+            // exactly the loop the per-book breaker exists to prevent.
+            // Only clear on programming-error cancellations so a future
+            // tap can attempt fresh dispatch once the underlying problem
+            // (e.g., no active account) resolves.
+            switch cancellation {
+            case .userCancelled, .refreshAlreadyFailed:
+                // Keep breaker armed — book stays gated until retry button
+                // (explicit user action) clears or account-switch resets.
+                break
+            case .noActiveAccount, .unsupportedAuthenticationType:
+                Self.clearBorrowReauthAttempted(for: book.identifier)
             }
         }
     }

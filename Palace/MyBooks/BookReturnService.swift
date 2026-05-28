@@ -17,6 +17,7 @@
 
 import Foundation
 import UIKit
+import PalaceAuth
 import PalaceLogging
 import PalaceCatalog
 
@@ -46,6 +47,14 @@ final class BookReturnService {
     private let reauthenticator: Reauthenticator
     private let userRetryTracker: UserRetryTracker
 
+    /// swarm_66819d80 Module C: auth-refresh coordinator. Optional so
+    /// existing tests that supply only `reauthenticator` keep compiling;
+    /// production wiring (and any new test) injects the real coordinator
+    /// (or a `SpyAuthCoordinator`). When non-nil, the auth-error branch
+    /// in `returnBook` routes through this instead of the legacy
+    /// `reauthenticator.authenticateIfNeeded` closure.
+    private let authCoordinator: AuthCoordinator?
+
     /// Closure resolves the current user account each call so library
     /// switches mid-flow are observed correctly (matches MBDC's `userAccount`
     /// computed property semantics).
@@ -68,7 +77,8 @@ final class BookReturnService {
         reauthenticator: Reauthenticator,
         userRetryTracker: UserRetryTracker,
         userAccountProvider: @escaping () -> TPPUserAccount,
-        adobeDRMService: AdobeDRMService = .shared
+        adobeDRMService: AdobeDRMService = .shared,
+        authCoordinator: AuthCoordinator? = nil
     ) {
         self.bookRegistry = bookRegistry
         self.localContentService = localContentService
@@ -79,6 +89,7 @@ final class BookReturnService {
         self.userRetryTracker = userRetryTracker
         self.userAccountProvider = userAccountProvider
         self.adobeDRMService = adobeDRMService
+        self.authCoordinator = authCoordinator
     }
     #else
     init(
@@ -89,7 +100,8 @@ final class BookReturnService {
         bookmarkDeletionLog: TPPBookmarkDeletionLog,
         reauthenticator: Reauthenticator,
         userRetryTracker: UserRetryTracker,
-        userAccountProvider: @escaping () -> TPPUserAccount
+        userAccountProvider: @escaping () -> TPPUserAccount,
+        authCoordinator: AuthCoordinator? = nil
     ) {
         self.bookRegistry = bookRegistry
         self.localContentService = localContentService
@@ -99,6 +111,7 @@ final class BookReturnService {
         self.reauthenticator = reauthenticator
         self.userRetryTracker = userRetryTracker
         self.userAccountProvider = userAccountProvider
+        self.authCoordinator = authCoordinator
     }
     #endif
 
@@ -297,20 +310,51 @@ final class BookReturnService {
         }()
 
         if isAuthError {
-            let userAccount = userAccountProvider()
-            let authDef = userAccount.authDefinition
-            let needsBrowserReauth = (authDef?.isSaml == true || authDef?.isOidc == true)
-                && userAccount.hasCredentials()
-
-            if needsBrowserReauth {
-                // Force the SignInModal to drive a fresh browser auth instead
-                // of silently reusing the expired credentials.
-                Log.info(#file, "Auth error on return for SAML/OIDC account — marking credentials stale and presenting re-auth modal")
-                userAccount.markCredentialsStale()
-            } else {
-                Log.info(#file, "Auth error on return — triggering re-auth")
+            // swarm_66819d80 Module C: route through AuthCoordinator when
+            // it's wired (production). The coordinator owns mechanism
+            // dispatch (SAML/OIDC modal, basic silent refresh, etc.) and
+            // calls `markCredentialsStale()` internally — this site no
+            // longer carries IdP-dispatch knowledge.
+            //
+            // Legacy `reauthenticator.authenticateIfNeeded` fallback
+            // remains for tests that haven't been updated to inject a
+            // coordinator. Once every BookReturnService test passes a
+            // coordinator (spy or real), the fallback can be deleted and
+            // `authCoordinator` made non-optional.
+            if let coordinator = self.authCoordinator {
+                Log.info(#file, "Auth error on return — dispatching through AuthCoordinator")
+                Task { [weak self] in
+                    let outcome = await coordinator.refreshCredentialsIfNeeded(reason: .invalidCredentials)
+                    guard let self else { return }
+                    switch outcome {
+                    case .success:
+                        self.returnBook(withIdentifier: identifier, completion: completion)
+                    case .failure(let cancellation):
+                        Log.info(#file, "Coordinator declined to refresh — \(cancellation)")
+                        runOnMainAsync {
+                            self.downloadAnnouncementService.announceReturnFailed(for: book)
+                            completion?()
+                        }
+                    }
+                }
+                return
             }
 
+            // Legacy fallback (tests-only). Production AppContainer always
+            // injects the coordinator. Module B broadening preserved: for
+            // browser-based accounts (SAML/OIDC/OAuth-intermediary), mark
+            // credentials stale before reauth dispatch so the stale token
+            // isn't silently reused.
+            let userAccount = userAccountProvider()
+            let authDef = userAccount.authDefinition
+            let needsBrowserReauth = (authDef?.isBrowserBased == true)
+                && userAccount.hasCredentials()
+            if needsBrowserReauth {
+                Log.info(#file, "Auth error on return for browser-based account — marking credentials stale (legacy path)")
+                userAccount.markCredentialsStale()
+            } else {
+                Log.info(#file, "Auth error on return — legacy reauth path (no coordinator injected)")
+            }
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 let user = self.userAccountProvider()

@@ -54,7 +54,8 @@ final class AppContainerTests: XCTestCase {
             readerService: AppContainer.production().readerService,
             navigationCoordinatorHub: NavigationCoordinatorHub(),
             tabRouterHub: AppTabRouterHub(),
-            drmAuthorizerProvider: { nil }
+            drmAuthorizerProvider: { nil },
+            authCoordinator: AppContainer.production().authCoordinator
         )
         XCTAssertTrue(
             container.bookRegistry as AnyObject === mock,
@@ -91,7 +92,8 @@ final class AppContainerTests: XCTestCase {
             readerService: AppContainer.production().readerService,
             navigationCoordinatorHub: NavigationCoordinatorHub(),
             tabRouterHub: AppTabRouterHub(),
-            drmAuthorizerProvider: { nil }
+            drmAuthorizerProvider: { nil },
+            authCoordinator: AppContainer.production().authCoordinator
         )
         let containerB = AppContainer.production()
         XCTAssertFalse(

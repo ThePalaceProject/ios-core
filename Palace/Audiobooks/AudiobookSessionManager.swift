@@ -13,6 +13,7 @@ import Combine
 import Foundation
 import MediaPlayer
 import PalaceAudiobookToolkit
+import PalaceAuth
 import PalaceLogging
 import PalaceNetwork
 
@@ -1122,25 +1123,38 @@ public final class AudiobookSessionManager: ObservableObject {
             // underlying error code, HTTP status, track URL, and book id.
             Self.recordPlaybackFailure(error: error, position: position, bookId: bookId)
 
-            // PP-3703: When BiblioBoard bearer token refresh fails due to SAML session expiration
-            // (401 on CM fulfill link), trigger SAML re-login and then re-fetch fulfill to resume playback.
+            // PP-3703 (swarm_66819d80 Module C migration): When BiblioBoard
+            // bearer token refresh fails due to SAML session expiration
+            // (401 on CM fulfill link), the AuthCoordinator picks the
+            // mechanism (SAML/OIDC modal, basic silent refresh, etc.) so
+            // this site no longer carries IdP-dispatch knowledge. The
+            // `shouldTriggerSAMLReauthForPlaybackFailure` boundary
+            // predicate is preserved — it still gates whether we even ask
+            // the coordinator (cancellations and non-SAML accounts skip
+            // the entire path) — but the IdP-specific reauth (`new
+            // TPPReauthenticator()` + `markCredentialsStale()`) is
+            // collapsed into a single `refreshCredentialsIfNeeded` call.
             let userAccount = accountsManager.currentUserAccount
             if Self.shouldTriggerSAMLReauthForPlaybackFailure(error: error, userAccount: userAccount, currentBook: currentBook),
                let book = currentBook {
-                Log.info(#file, "SAML + BiblioBoard: Bearer token refresh failed (session expired) - triggering re-auth, will re-open audiobook after login")
-                userAccount.markCredentialsStale()
-                let reauthenticator = TPPReauthenticator()
-                reauthenticator.authenticateIfNeeded(userAccount, usingExistingCredentials: true) { [weak self] in
-                    Task { @MainActor in
+                Log.info(#file, "Playback failed with auth-required signal — dispatching through AuthCoordinator")
+                let coordinator = AppContainer.production().authCoordinator
+                Task { [weak self] in
+                    let outcome = await coordinator.refreshCredentialsIfNeeded(reason: .samlSessionExpired)
+                    await MainActor.run { [weak self] in
                         guard let self else { return }
                         guard self.currentBook?.identifier == book.identifier else { return }
-                        guard self.accountsManager.currentUserAccount.hasCredentials() else {
-                            Log.info(#file, "SAML re-auth cancelled or failed - not re-opening audiobook")
+                        switch outcome {
+                        case .success:
+                            Log.info(#file, "Coordinator re-auth succeeded - re-fetching fulfill link and resuming audiobook")
+                            Task { [weak self] in
+                                guard let self else { return }
+                                _ = await self.openAudiobook(book, startPlaying: true)
+                            }
+                        case .failure(let cancellation):
+                            Log.info(#file, "Coordinator re-auth did not resume audiobook — \(cancellation)")
                             self.errorPublisher.send(.notAuthenticated)
-                            return
                         }
-                        Log.info(#file, "SAML re-auth succeeded - re-fetching fulfill link and resuming audiobook")
-                        _ = await self.openAudiobook(book, startPlaying: true)
                     }
                 }
                 return

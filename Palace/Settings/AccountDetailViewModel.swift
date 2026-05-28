@@ -756,9 +756,7 @@ extension AccountDetailViewModel: TPPSignInOutBusinessLogicUIDelegate {
         // For browser-based auth (SAML, OAuth, OIDC), don't start a timeout here -
         // the user will be in a WebView / ASWebAuthenticationSession.
         // The timeout starts when the browser session dismisses.
-        let isBrowserBasedAuth = businessLogic.selectedAuthentication?.isSaml == true ||
-            businessLogic.selectedAuthentication?.isOauth == true ||
-            businessLogic.selectedAuthentication?.isOidc == true
+        let isBrowserBasedAuth = businessLogic.selectedAuthentication?.isBrowserBased == true
 
         if !isBrowserBasedAuth {
             startDRMProcessingTimeout()
