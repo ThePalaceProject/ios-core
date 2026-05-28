@@ -291,14 +291,23 @@ struct CatalogCacheMetadata: Codable {
             // Account state-machine wiring (3.2.0): Phase 1 — when the user
             // switches libraries, terminate any lingering `awaitReady()`
             // callers on the *prior* account with a definitive answer.
-            // `.accountNotFound` is the chosen terminal because `.notLoaded`
-            // would leave awaiters hanging until reselect; surfacing the
-            // error lets callers fail fast and (optionally) retry.
-            // Re-entering the same UUID later overwrites this through the
-            // `.basicInfoLoaded` path on the next preload/loadCatalogs.
+            // `.detailsEvicted(.libraryDeselected)` is the chosen terminal:
+            //   - `.notLoaded` would leave awaiters hanging until reselect.
+            //   - `.detailsFailed(.accountNotFound)` was the original
+            //     terminal (PR #961) and confused this eviction marker with
+            //     a real HTTP-404 load failure — `driveCurrentAccountAuthDoc
+            //     IfNeeded` had to special-case the conflation. PR #1021
+            //     (Module A, swarm_51f248d5) split the case so the two
+            //     meanings stop sharing storage; the driver READ matches on
+            //     `.detailsEvicted(.libraryDeselected)` directly.
+            // Awaiters on this terminal throw `AccountLoadError.evicted`
+            // (distinct from `.accountNotFound`) so consumers can decide
+            // whether to retry, re-resolve, or simply discard the request.
+            // Re-entering the same UUID later overwrites the marker through
+            // the `.basicInfoLoaded` path on the next preload/loadCatalogs.
             if let prev = previousAccountId, prev != newAccountId {
                 AccountStateStore.shared.setState(
-                    .detailsFailed(.accountNotFound(uuid: prev)),
+                    .detailsEvicted(.libraryDeselected(uuid: prev)),
                     for: prev
                 )
             }
@@ -955,14 +964,20 @@ struct CatalogCacheMetadata: Codable {
         switch AccountStateStore.shared.state(for: account.uuid) {
         case .detailsLoaded:
             return // terminal — `awaitReady()` awaiters resolve via the loaded details
-        case .detailsFailed(.accountNotFound):
-            // The `.accountNotFound` terminal is the eviction marker the
-            // `currentAccount` setter writes against the PRIOR uuid when the
-            // user switches libraries. If this account is back to being the
-            // current account, that marker is stale — re-drive the auth-doc
-            // fetch so awaitReady() callers (audiobook open, token refresh,
-            // bookmark sync, CarPlay auth) don't throw `.accountNotFound`
-            // forever after a swap-away/swap-back.
+        case .detailsEvicted(.libraryDeselected):
+            // `.detailsEvicted(.libraryDeselected)` is the eviction marker
+            // the `currentAccount` setter writes against the PRIOR uuid
+            // when the user switches libraries. If this account is back to
+            // being the current account, that marker is stale — re-drive
+            // the auth-doc fetch so awaitReady() callers (audiobook open,
+            // token refresh, bookmark sync, CarPlay auth) don't throw
+            // `.evicted` forever after a swap-away/swap-back.
+            //
+            // PR #1021 (Module A, swarm_51f248d5) split this case off from
+            // `.detailsFailed(.accountNotFound)` so the eviction marker
+            // stops sharing storage with the genuine HTTP-404 load failure
+            // below. Now a real `.accountNotFound` correctly hits the
+            // `.detailsFailed` arm and does NOT redrive.
             break
         case .detailsFailed:
             return // genuine load failure — caller must retry explicitly

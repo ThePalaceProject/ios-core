@@ -182,7 +182,8 @@ A test that doesn't kill any mutants should be rewritten to test the actual beha
 
 ## Definition of Done — paste evidence before declaring work complete
 
-Per `.forgeos/wall-failures/` (lessons from PR #1018 reviewer-blocked findings), every non-trivial work item — solo-agent or swarm — must pass these 6 self-checks BEFORE declaring READY or opening a PR. Paste the evidence in the commit body, the swarm transcript, or the user-facing summary. **Without evidence, the work is not done; it is "implemented but unverified."**
+<!-- audit-verified -->
+Per `.forgeos/wall-failures/` (lessons from PR #1018 reviewer-blocked findings + the swarm_c8fcab76 arch1 fake-wiring-test finding), every non-trivial work item — solo-agent or swarm — must pass these 7 self-checks BEFORE declaring READY or opening a PR. Paste the evidence in the commit body, the swarm transcript, or the user-facing summary. **Without evidence, the work is not done; it is "implemented but unverified."**
 
 1. **SUT instantiation check** — for every test file you added or modified named `<SUT>Tests.swift` (e.g. `BookReturnServiceTests.swift`, `TPPNetworkResponderAuthCoordinatorTests.swift`), run `grep -c "<SUT>(" <test-file>`. The count must be ≥ 1. If you wrote a `BookReturnServiceAuthCoordinatorTests` that never constructs a `BookReturnService`, the test is theater — rewrite or rename. Catches PR #1018 qa2/qa3 (fake-test-instantiation).
 
@@ -196,7 +197,9 @@ Per `.forgeos/wall-failures/` (lessons from PR #1018 reviewer-blocked findings),
 
 6. **Build + verify-pr** — `xcodebuild ... build` clean and `scripts/verify-pr.sh --quick` PASS. Paste the tails.
 
-If you cannot produce evidence for all 6 checks applicable to your change, do NOT report READY. Either complete the missing check OR explicitly STOP with a scope-deferral proposal (below) so the user can decide.
+7. **Multi-step / wiring-claim check (v2):** for every test name claiming to exercise a multi-step path through production code, line-coverage report must show non-zero hits on the cited lines from that test. Catches `.forgeos/wall-failures/2026-05-28-cs847892e8-arch1.md` — the "fake wiring test" pattern where `openAudiobook(...)` mock-books fail in the loader before `bind() → startPlaybackAndSyncPosition()` ever runs, so the cited production lines (e.g. `AudiobookSessionManager.swift:684-710`) get zero coverage from the test claiming to exercise them. Without coverage evidence on the cited lines, the "multi-step production-seam test" claim is unverified — treat it as a check #3 failure.
+
+If you cannot produce evidence for all 7 checks applicable to your change, do NOT report READY. Either complete the missing check OR explicitly STOP with a scope-deferral proposal (below) so the user can decide.
 
 ## Scope-deferral protocol — STOP, do not partial-ship
 

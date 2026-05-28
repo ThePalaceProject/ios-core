@@ -169,6 +169,7 @@ Your job:
        * "For tests whose name contains 'across', 'twice', 'reset',
          'retry', 'again': test body must call the production driver
          ≥2 times. Grep evidence required (PR #1018 qa1)."
+       * For every new try await / await boundary added in production code, the contract must include a grep showing a test that drives that exact line via the public entry point. If no such grep is possible (entry point requires unmockable dependencies), the implementer must STOP with BLOCKED + scope-deferral; the partial test does NOT satisfy the contract. (Catches swarm_c8fcab76 arch1 — `PlaybackReadinessGate.awaitReadinessAndPlay` called from `AudiobookSessionManager.swift:684-710` but tests drove the static method directly because `openAudiobook(...)`'s mock book failed in the loader before `bind()` ran.)
      Architects write these greps because the spec is fresh; orchestrator
      runs them at Phase 4.5; implementers paste evidence at completion.
 4. Write .forgeos/swarms/<swarm_id>/plan.md — human-readable summary:
@@ -451,6 +452,29 @@ for transcript in .forgeos/swarms/$SWARM_ID/transcripts/*.md; do
   if ! grep -q "definition-of-done evidence" "$transcript"; then
     echo "BLOCK: $transcript missing Definition-of-Done evidence section"
     exit 1
+  fi
+done
+
+# Check 5b: for every claimed production-seam test, confirm the body calls
+# the production entry point AND has no early-return mock that bypasses
+# the cited line range. (Catches swarm_c8fcab76 arch1 — AudiobookFirstOpenHangTests
+# called openAudiobook(...) on a mock book that failed in the loader before
+# bind() → startPlaybackAndSyncPosition() ran, so the cited wiring at
+# AudiobookSessionManager.swift:684-710 had zero coverage. Implementer
+# response should have been BLOCKED + scope-deferral.)
+for testfile in $(git diff --cached --name-only | grep -E "PalaceTests/.*Tests\.swift$"); do
+  # If the test name contains a multi-step / wiring claim, confirm the
+  # body literally calls the production entry point AND has no early-return
+  # mock that bypasses the cited line range.
+  if grep -qE "func test.*_(via|through|roundtrip|across|inProduction|Wiring)" "$testfile"; then
+    # Mechanical implementation is non-trivial (requires coverage report
+    # cross-reference); for now log a warning so the orchestrator does a
+    # manual review of every multi-step / wiring test in the diff.
+    echo "WARNING: $testfile has multi-step / wiring claim — manually verify production-seam path:"
+    echo "  - test must call the production entry point (not the static helper)"
+    echo "  - test must have no early-return mock that bypasses the cited line range"
+    echo "  - coverage report should show non-zero hits on the cited production lines"
+    # TODO: implement check 5b mechanically (coverage-report cross-reference) — for now, manual review.
   fi
 done
 

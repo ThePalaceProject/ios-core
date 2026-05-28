@@ -14,6 +14,7 @@
 //
 
 import XCTest
+import PalaceCatalog
 @testable import Palace
 
 final class AccountStateMachineTests: XCTestCase {
@@ -22,6 +23,24 @@ final class AccountStateMachineTests: XCTestCase {
 
     private func makeAccount() -> Account? {
         return AppContainer.production().accountsManager.accounts().first
+    }
+
+    /// Construct a fresh, isolated Account via the production
+    /// `Account(publication:imageCache:)` initializer. Used by the PR #1021
+    /// semantics tests so the SUT-instantiation DoD grep (#1) sees a direct
+    /// production-constructor call, and so each test's state-store key is
+    /// unique (avoids cross-test contamination via the shared store keyed
+    /// by uuid). Mirrors the constructor `loadAccountSetsAndAuthDoc` uses
+    /// when it builds Account instances from `OPDS2Publication.metadata`.
+    private func makeFreshAccount(uuid: String, title: String = "Module-A Test Library") -> Account {
+        let metadata = OPDS2Publication.Metadata(
+            updated: Date(),
+            description: "PR #1021 enum split semantics test",
+            id: uuid,
+            title: title
+        )
+        let pub = OPDS2Publication(links: [], metadata: metadata, images: nil)
+        return Account(publication: pub, imageCache: MockImageCache())
     }
 
     override func tearDown() {
@@ -206,6 +225,7 @@ final class AccountStateMachineTests: XCTestCase {
                 case .detailsLoading:     observed.append("detailsLoading")
                 case .detailsLoaded:      observed.append("detailsLoaded")
                 case .detailsFailed:      observed.append("detailsFailed")
+                case .detailsEvicted:     observed.append("detailsEvicted")
                 }
                 if observed.count == 3 { exp.fulfill(); break }
             }
@@ -221,5 +241,115 @@ final class AccountStateMachineTests: XCTestCase {
 
         XCTAssertEqual(observed, ["basicInfoLoaded", "detailsLoading", "detailsLoaded"],
                        "stateStream must emit current-then-transitions, in order")
+    }
+
+    // MARK: - Semantics tests for the .detailsEvicted / .accountNotFound split (PR #1021)
+
+    /// PR #1021 (Module A, swarm_51f248d5) split the dual-meaning
+    /// `.detailsFailed(.accountNotFound)` terminal into two distinct cases.
+    /// This test PINS the original semantics: `.detailsFailed(.accountNotFound)`
+    /// now means LITERALLY "the load pipeline produced an HTTP 404 /
+    /// catalog-removal" — NOT an eviction marker. `awaitReady()` callers
+    /// throw `AccountLoadError.accountNotFound` from the fast path.
+    ///
+    /// Kill case: any regression that aliases `.accountNotFound` to the new
+    /// eviction marker would change the thrown error type and fail this
+    /// test. Example: a buggy `awaitReady()` implementation that mapped
+    /// `.detailsFailed(.accountNotFound)` to `.evicted(.libraryDeselected)`
+    /// for "backward compatibility" with PR #961's overload.
+    func testDetailsFailedAccountNotFound_meansHTTP404_throwsAuthLoadError_fromAwaitReady() async {
+        let stagedUUID = "test-account-not-found-uuid-\(UUID().uuidString)"
+        let account = makeFreshAccount(uuid: stagedUUID)
+        account._setState(.detailsFailed(.accountNotFound(uuid: stagedUUID)))
+
+        do {
+            _ = try await account.awaitReady()
+            XCTFail("awaitReady() must throw when state is .detailsFailed(.accountNotFound)")
+        } catch let error as AccountLoadError {
+            if case .accountNotFound(let uuid) = error {
+                XCTAssertEqual(uuid, stagedUUID,
+                               ".accountNotFound must surface the carried UUID, not be re-mapped to .evicted")
+            } else {
+                XCTFail("Expected .accountNotFound (literal HTTP 404 semantics); got \(error) — PR #1021 split may have re-conflated the cases")
+            }
+        } catch {
+            XCTFail("Expected AccountLoadError.accountNotFound, got \(type(of: error)): \(error)")
+        }
+    }
+
+    /// PR #1021 (Module A, swarm_51f248d5) added the eviction-marker case.
+    /// This test PINS the new semantics: `.detailsEvicted(.libraryDeselected)`
+    /// means the user switched libraries away from this account — NOT a
+    /// load failure. `awaitReady()` callers throw the NEW
+    /// `AccountLoadError.evicted(reason:)` (distinct from `.accountNotFound`)
+    /// so consumers can disambiguate "library is gone" from "the load
+    /// pipeline broke" at the catch site.
+    ///
+    /// Kill case: a regression that mapped `.detailsEvicted` back to
+    /// `.detailsFailed(.accountNotFound)` for the awaitReady throw path
+    /// (re-conflation) would fail this test. So would forgetting to throw
+    /// anything at all — the test would hang and time out.
+    func testDetailsEvicted_libraryDeselected_throwsEvictionError_fromAwaitReady() async {
+        let stagedUUID = "test-evicted-library-uuid-\(UUID().uuidString)"
+        let account = makeFreshAccount(uuid: stagedUUID)
+        account._setState(.detailsEvicted(.libraryDeselected(uuid: stagedUUID)))
+
+        do {
+            _ = try await account.awaitReady()
+            XCTFail("awaitReady() must throw when state is .detailsEvicted(.libraryDeselected)")
+        } catch let error as AccountLoadError {
+            if case .evicted(let reason) = error {
+                if case .libraryDeselected(let uuid) = reason {
+                    XCTAssertEqual(uuid, stagedUUID,
+                                   ".libraryDeselected must surface the carried UUID")
+                } else {
+                    XCTFail("Expected .libraryDeselected, got \(reason)")
+                }
+            } else {
+                XCTFail("Expected AccountLoadError.evicted (distinct from .accountNotFound); got \(error). PR #1021 enum split was meant to make these throw distinguishable errors.")
+            }
+        } catch {
+            XCTFail("Expected AccountLoadError.evicted, got \(type(of: error)): \(error)")
+        }
+    }
+
+    /// Slow-path variant: stage `.notLoaded` so `awaitReady()` enters the
+    /// for-await stream loop, THEN flip to `.detailsEvicted(.libraryDeselected)`.
+    /// Pins that the slow path's switch arm also throws `.evicted` (not
+    /// `.accountNotFound`, not nothing). The fast-path test above could
+    /// pass against an implementation that only handles the synchronous
+    /// terminal — this one requires the stream-loop arm to be wired too.
+    func testAwaitReady_detailsEvictedArrivesViaStream_throwsEvictionError() async throws {
+        let stagedUUID = "test-stream-evicted-uuid-\(UUID().uuidString)"
+        let account = makeFreshAccount(uuid: stagedUUID)
+        account._setState(.notLoaded)
+
+        let exp = expectation(description: "awaitReady throws .evicted via stream")
+        let awaiterTask = Task {
+            do {
+                _ = try await account.awaitReady()
+                XCTFail("awaitReady() must throw on .detailsEvicted via stream")
+            } catch let error as AccountLoadError {
+                if case .evicted(.libraryDeselected(let uuid)) = error {
+                    XCTAssertEqual(uuid, stagedUUID,
+                                   ".evicted reason must carry the UUID from the staged eviction")
+                    exp.fulfill()
+                } else {
+                    XCTFail("Slow-path stream arm must throw .evicted; got \(error)")
+                }
+            } catch {
+                XCTFail("Expected AccountLoadError.evicted, got \(type(of: error)): \(error)")
+            }
+        }
+
+        // Give the awaiter a moment to subscribe to the stream.
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertFalse(awaiterTask.isCancelled, "Awaiter should be blocked on the stream, not cancelled")
+
+        // Flip to the eviction terminal — the slow path arm must catch it
+        // and throw `.evicted`.
+        account._setState(.detailsEvicted(.libraryDeselected(uuid: stagedUUID)))
+
+        await fulfillment(of: [exp], timeout: 2.0)
     }
 }

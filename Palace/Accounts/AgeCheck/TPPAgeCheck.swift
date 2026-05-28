@@ -82,7 +82,14 @@ protocol TPPAgeCheckValidationDelegate: AnyObject {
                     completion: completion
                 )
             }
-        case .detailsFailed:
+        case .detailsFailed, .detailsEvicted:
+            // Treat both terminals identically here: age-check cannot
+            // proceed without `AccountDetails`, so a failed load AND an
+            // evicted account both short-circuit to `completion(false)`.
+            // Disambiguation matters for the auth-doc driver
+            // (`AccountsManager.driveCurrentAccountAuthDocIfNeeded`), but
+            // for the consumer side a missing details payload is a
+            // missing details payload regardless of why.
             serialQueue.async { completion?(false) }
         case .notLoaded, .basicInfoLoaded, .detailsLoading:
             Task { [weak self] in
