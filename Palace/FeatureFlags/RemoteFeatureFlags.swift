@@ -35,6 +35,8 @@ final class RemoteFeatureFlags {
         case readingStatsEnabled = "reading_stats_enabled"
         case advancedTypographyEnabled = "advanced_typography_enabled"
         case resetAccountEnabled = "reset_account_enabled"
+        case triageBotEnabled = "triage_bot_enabled"
+        case triageBotTicketSubmissionEnabled = "triage_bot_ticket_submission_enabled"
 
         var defaultValue: Bool {
             switch self {
@@ -64,6 +66,10 @@ final class RemoteFeatureFlags {
                 return .opds2Enabled
             case .resetAccountEnabled:
                 return .resetAccountEnabled
+            case .triageBotEnabled:
+                return .triageBotEnabled
+            case .triageBotTicketSubmissionEnabled:
+                return .triageBotTicketSubmissionEnabled
             default:
                 return nil
             }
@@ -201,6 +207,33 @@ final class RemoteFeatureFlags {
             return override
         }
         return isFeatureEnabled(.resetAccountEnabled)
+    }
+
+    /// UserDefaults override that lets QA / support force the triage bot on
+    /// for a specific device without a Firebase round-trip. Settable from
+    /// `TPPDeveloperSettingsTableViewController`. Falls through to the
+    /// Remote Config flag when nil.
+    static let triageBotLocalOverrideKey = "RemoteFeatureFlags.triageBotLocalOverride"
+
+    /// Master kill-switch for the Palace Triage Bot. Defaults OFF in production.
+    /// Enable globally via Remote Config key `triage_bot_enabled`, or per-device
+    /// during the demo via the local override UserDefault. When false, the
+    /// Settings "Get Help" row, the floating help button, and every other
+    /// entry point are invisible — no surface area at all.
+    var isTriageBotEnabled: Bool {
+        if let override = UserDefaults.standard.object(forKey: Self.triageBotLocalOverrideKey) as? Bool {
+            return override
+        }
+        return isFeatureEnabled(.triageBotEnabled)
+    }
+
+    /// Whether the bot may post real HelpSpot tickets. When false but the bot
+    /// is otherwise enabled, the chat still drafts tickets and shows the
+    /// preview, but the confirm action copies the JSON payload to the
+    /// pasteboard instead of submitting. Used during the demo and during
+    /// staged rollout before HelpSpot rate-limit negotiation completes.
+    var isTriageBotTicketSubmissionEnabled: Bool {
+        isFeatureEnabled(.triageBotTicketSubmissionEnabled)
     }
 
     // MARK: - Device Info for Targeting
