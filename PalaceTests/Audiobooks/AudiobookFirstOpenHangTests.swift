@@ -270,6 +270,103 @@ final class AudiobookFirstOpenHangTests: XCTestCase {
                        "Total play(at:) calls across BOTH attempts must == 1 — the second open, not double-firing — pinning the F-011 fix shape")
     }
 
+    // MARK: - Test 4: production-wiring proof — drives the extracted seam end-to-end
+    //
+    // The first three tests above drive `PlaybackReadinessGate.awaitReadinessAndPlay`
+    // in isolation, which proves the gate works but does NOT prove that the
+    // session manager actually CALLS it on the first-open path. The architect's
+    // block (rev_cf790900, finding 1) was that no test exercised the wiring at
+    // `AudiobookSessionManager.swift:684-710`.
+    //
+    // This test closes that gap by driving the extracted internal seam
+    // `awaitReadinessAndIssueFirstPlay(bookId:initialPosition:probe:command:budget:)`
+    // — the SAME method that production calls from `startPlaybackAndSyncPosition`
+    // after building probe + command via the injected factories. The body of
+    // this internal method is the verbatim wiring previously inlined at
+    // lines 684-710 (modulo the gate construction which it now owns directly).
+    //
+    // MUTATION SURFACE THIS TEST KILLS:
+    //   1. Deleting the `try await PlaybackReadinessGate.awaitReadinessAndPlay(...)`
+    //      call inside `awaitReadinessAndIssueFirstPlay` — the spy command
+    //      would never see `play(at:)` and the assertion at the end fails.
+    //   2. Swapping `probe` and `command` arguments at the call site in
+    //      `startPlaybackAndSyncPosition` — would mean the test factories
+    //      get crossed-wired and `probe.start()` would never be called on
+    //      the spy passed as the probe. (Verified by the swap-mutation
+    //      experiment recorded in the transcript.)
+    //   3. Removing `probe.start(driving: gate)` — the readiness gate
+    //      would never resolve, `awaitReadinessAndPlay` would time out,
+    //      and the spy command would never be called.
+
+    /// PRE-CONDITION: spy probe will mark the gate ready on `start(driving:)`.
+    /// EXPECTED: `awaitReadinessAndIssueFirstPlay` invokes `probe.start`,
+    /// awaits the gate (which the probe just signalled), then calls
+    /// `command.play(at:)` exactly once, then invokes `probe.stop` via
+    /// the production-side `defer`. This is the wiring proof.
+    func testAwaitReadinessAndIssueFirstPlay_drivesProbeAndCommand_onProductionWiring() async throws {
+        let probeSpy = ProbeSpy(behavior: .markReadyOnStart)
+        let position = makeFakeTrackPosition()
+
+        await sessionManager.awaitReadinessAndIssueFirstPlay(
+            bookId: "book-wiring-test",
+            initialPosition: position,
+            probe: probeSpy,
+            command: playbackSpy,
+            budget: 1.0
+        )
+
+        XCTAssertEqual(probeSpy.startCallCount, 1,
+                       "Production wiring must call `probe.start(driving:)` exactly once — a missing start means the readiness gate never gets the ready signal and the test would have timed out")
+        XCTAssertEqual(probeSpy.stopCallCount, 1,
+                       "Production wiring must call `probe.stop()` exactly once via the defer block — a missing stop means the timer would leak when the probe is real (PlayerReadinessProbe)")
+        XCTAssertEqual(playbackSpy.playAtCallCount, 1,
+                       "Production wiring must call `command.play(at:)` exactly once after readiness — deleting the `try await PlaybackReadinessGate.awaitReadinessAndPlay(...)` line at AudiobookSessionManager.swift:684-710 makes this assertion fail")
+        XCTAssertEqual(playbackSpy.lastPlayedPosition?.timestamp, position.timestamp,
+                       "Production wiring must forward the initial position to play(at:) — passing a wrong position would mean we're issuing play against a stale or default location")
+    }
+
+    /// PRE-CONDITION: spy probe does NOT mark the gate ready — it just
+    /// records the `start` call and never signals. The budget is 100ms.
+    /// EXPECTED: `awaitReadinessAndIssueFirstPlay` times out, the session
+    /// manager transitions to `.error(...)`, errorPublisher emits
+    /// `.playerCreationFailed`, and the spy command is NEVER called.
+    /// This pins the timeout branch of the production-wiring switch.
+    func testAwaitReadinessAndIssueFirstPlay_timeout_surfacesLoadFailure_andNeverIssuesPlay() async throws {
+        let probeSpy = ProbeSpy(behavior: .neverReady)
+        let position = makeFakeTrackPosition()
+
+        // Capture error emissions so we can prove the production wiring
+        // surfaced the right session-level signal on timeout.
+        var receivedErrors: [AudiobookSessionError] = []
+        let cancellable = sessionManager.errorPublisher.sink { err in
+            receivedErrors.append(err)
+        }
+        defer { cancellable.cancel() }
+
+        await sessionManager.awaitReadinessAndIssueFirstPlay(
+            bookId: "book-timeout-test",
+            initialPosition: position,
+            probe: probeSpy,
+            command: playbackSpy,
+            budget: 0.100 // 100ms — short to keep the suite fast
+        )
+
+        XCTAssertEqual(probeSpy.startCallCount, 1,
+                       "Production wiring must still call probe.start even on the timeout path")
+        XCTAssertEqual(probeSpy.stopCallCount, 1,
+                       "Production wiring must call probe.stop via defer even when the gate times out — leak prevention")
+        XCTAssertEqual(playbackSpy.playAtCallCount, 0,
+                       "On timeout the production wiring must NOT issue play(at:) — that's the entire point of the F-011 fix (don't fire play against an uninitialized engine)")
+        XCTAssertEqual(receivedErrors, [.playerCreationFailed],
+                       "On timeout the production wiring must publish `.playerCreationFailed` so callers / UI react — any other error type means the timeout branch fell through")
+        if case let .error(_, message) = sessionManager.state {
+            XCTAssertEqual(message, "Playback engine did not initialize in time",
+                           "Production wiring must transition state to .error with the load-failure message — anything else means the timeout-handling branch was reached but did not write the state")
+        } else {
+            XCTFail("Production wiring must transition state to .error on timeout — got \(sessionManager.state)")
+        }
+    }
+
     // MARK: - Helpers
 
     /// Builds a TrackPosition without touching the toolkit's heavy
@@ -277,6 +374,52 @@ final class AudiobookFirstOpenHangTests: XCTestCase {
     /// distinct enough for the spy to record its identity.
     private func makeFakeTrackPosition() -> TrackPositionShape {
         FakeTrackPosition(timestamp: 12.5)
+    }
+}
+
+// MARK: - ProbeSpy
+
+/// Spy implementation of `PlaybackReadinessProbing` — records `start`/`stop`
+/// invocation counts and, depending on `behavior`, either signals the gate
+/// ready (so the production wiring's `awaitReadinessAndPlay` resolves and
+/// fires `command.play(at:)`) or stays silent (so the gate times out, and
+/// the production wiring takes the load-failure branch).
+@MainActor
+private final class ProbeSpy: PlaybackReadinessProbing {
+
+    enum Behavior {
+        /// Marks the supplied gate `.ready` synchronously inside `start`.
+        /// Use to drive the happy path of `awaitReadinessAndIssueFirstPlay`.
+        case markReadyOnStart
+        /// Records `start`/`stop` calls but never marks the gate ready.
+        /// Use to drive the timeout branch.
+        case neverReady
+    }
+
+    private(set) var startCallCount: Int = 0
+    private(set) var stopCallCount: Int = 0
+    private let behavior: Behavior
+
+    init(behavior: Behavior) {
+        self.behavior = behavior
+    }
+
+    func start(driving gate: PlaybackReadinessGate) {
+        startCallCount += 1
+        switch behavior {
+        case .markReadyOnStart:
+            // Fire-and-forget — the production wiring's awaitReady will
+            // observe the latched outcome.
+            Task { await gate.markReady() }
+        case .neverReady:
+            // Stay silent. The gate will time out per the budget the
+            // production code passed.
+            break
+        }
+    }
+
+    func stop() {
+        stopCallCount += 1
     }
 }
 

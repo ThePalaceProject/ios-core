@@ -13,7 +13,6 @@ import Combine
 import Foundation
 import MediaPlayer
 import PalaceAudiobookToolkit
-import PalaceAuth
 import PalaceLogging
 import PalaceNetwork
 
@@ -678,38 +677,27 @@ public final class AudiobookSessionManager: ObservableObject {
         // initializing), leaving NowPlaying UI mounted with no audio.
         // See `audiobook_first_open_hang_3_2_0.md`.
         //
-        // Probe + gate are torn down deterministically inside the Task —
-        // probe.stop() runs on every exit path so the timer doesn't leak
-        // even if the gate fails or times out.
-        let gate = PlaybackReadinessGate()
+        // The probe + command are built from the injected factories so
+        // tests can substitute spies; the readiness-gate sub-flow itself
+        // is extracted into `awaitReadinessAndIssueFirstPlay` so a wiring
+        // test can drive it directly without owning a real Player.
         let probe = readinessProbeFactory(loaded.manager.audiobook.player)
         let command = playbackCommandFactory(loaded.manager.audiobook.player)
         let budget = readinessTimeout
+        let bookId = book.identifier
 
         Task { @MainActor in
             loaded.playbackModel.currentLocation = initialPosition
             loaded.playbackModel.beginSaveSuppression(for: 3.0)
-            probe.start(driving: gate)
-            defer { probe.stop() }
-            do {
-                try await PlaybackReadinessGate.awaitReadinessAndPlay(
-                    at: initialPosition,
-                    gate: gate,
-                    timeout: budget,
-                    command: command
-                )
-                Log.info(#file, "🎵 Playback started at initial position (post-readiness)")
-            } catch PlaybackReadinessError.timeout {
-                Log.error(#file, "First-open readiness gate timed out after \(budget)s — surfacing as load failure (PP-4436 / F-011)")
-                self.state = .error(bookId: book.identifier, message: "Playback engine did not initialize in time")
-                self.errorPublisher.send(.playerCreationFailed)
-                self.playbackStatePublisher.send(self.state)
-            } catch {
-                Log.error(#file, "Playback start error after readiness: \(error)")
-            }
+            await self.awaitReadinessAndIssueFirstPlay(
+                bookId: bookId,
+                initialPosition: initialPosition,
+                probe: probe,
+                command: command,
+                budget: budget
+            )
         }
 
-        let bookId = book.identifier
         let audiobookRef = loaded.audiobook
         let playbackModelRef = loaded.playbackModel
         // `syncLocation(for:)` lives on the concrete TPPBookRegistry as an
@@ -773,6 +761,53 @@ public final class AudiobookSessionManager: ObservableObject {
         Task { @MainActor [weak playbackModel = loaded.playbackModel] in
             try? await Task.sleep(nanoseconds: 3_500_000_000)
             playbackModel?.persistLocation()
+        }
+    }
+
+    // MARK: - Readiness gate wiring (F-011)
+
+    /// Awaits readiness via the supplied probe + gate, then issues exactly
+    /// one `play(at:)` through the supplied command. On timeout, surfaces
+    /// the load failure on the session manager (`state = .error`,
+    /// `errorPublisher.send(.playerCreationFailed)`); on any other error
+    /// after readiness, the failure is logged but state is left to the
+    /// toolkit's regular failure path (which will fire `playbackFailed`).
+    ///
+    /// Extracted from `startPlaybackAndSyncPosition` for testability — the
+    /// production code path that runs at first-open lives entirely in this
+    /// method, so a wiring test that calls it with spy probe + command
+    /// proves the readiness-await-then-play sequencing fires.
+    ///
+    /// `internal` (not `private`) so `@testable import Palace` tests can
+    /// drive it directly with stubs; this is the only seam by which the
+    /// F-011 fix's wiring can be exercised without owning a full toolkit
+    /// `Player`.
+    @MainActor
+    internal func awaitReadinessAndIssueFirstPlay(
+        bookId: String,
+        initialPosition: TrackPositionShape,
+        probe: PlaybackReadinessProbing,
+        command: PlaybackEngineCommanding,
+        budget: TimeInterval
+    ) async {
+        let gate = PlaybackReadinessGate()
+        probe.start(driving: gate)
+        defer { probe.stop() }
+        do {
+            try await PlaybackReadinessGate.awaitReadinessAndPlay(
+                at: initialPosition,
+                gate: gate,
+                timeout: budget,
+                command: command
+            )
+            Log.info(#file, "🎵 Playback started at initial position (post-readiness)")
+        } catch PlaybackReadinessError.timeout {
+            Log.error(#file, "First-open readiness gate timed out after \(budget)s — surfacing as load failure (PP-4436 / F-011)")
+            self.state = .error(bookId: bookId, message: "Playback engine did not initialize in time")
+            self.errorPublisher.send(.playerCreationFailed)
+            self.playbackStatePublisher.send(self.state)
+        } catch {
+            Log.error(#file, "Playback start error after readiness: \(error)")
         }
     }
 

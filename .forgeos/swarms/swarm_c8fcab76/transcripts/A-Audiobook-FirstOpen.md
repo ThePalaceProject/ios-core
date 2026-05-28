@@ -197,3 +197,211 @@ Test Suite 'AudiobookFirstOpenHangTests' passed at 2026-05-28 01:37:57.006.
 **READY for integration.**
 
 All 6 Definition of Done checks have pasted evidence. No scope deferred. No toolkit submodule changes. No new `.shared` reads or force unwraps. Cross-vendor smoke, F-016 race, and session-shutdown regression nets all green.
+
+---
+
+## Fixup pass — 2026-05-28 (closing rev_cf790900 architect findings)
+
+Architect review `rev_cf790900` BLOCKED the changeset with two findings:
+
+1. **Fake wiring test pattern.** `AudiobookFirstOpenHangTests.swift` claimed to drive the F-011 fix through the production seam (`openAudiobook`), but the test's mock book fails inside `AudiobookLoader` validation before reaching `bind() → startPlaybackAndSyncPosition()`. The readiness-gate wiring at `AudiobookSessionManager.swift:684-710` was never executed by any test. A bug in that wiring (e.g., swapping the two factory closures or removing the `try await PlaybackReadinessGate.awaitReadinessAndPlay` call) would have shipped green.
+2. **Unused `import PalaceAuth`.** `TPPUserAccount` lives in the main Palace target (`Palace/Accounts/User/TPPUserAccount.swift:51`); the `PalaceAuth` package only exports `TPPUserAccountFrontEndValidation`. Import was dead weight.
+
+### Finding 1 fix — extract testable seam + add wiring tests
+
+Approach: **strategy #2 from the architect's hint** — extract the readiness-gate-and-play sub-flow into a new `internal` method on `AudiobookSessionManager` that wiring tests can drive directly without needing to mock `AudiobookLoader` or own a toolkit `Player`. Production code in `startPlaybackAndSyncPosition` now calls this method after building probe + command via the injected factories — the body is the verbatim wiring that was previously inlined at lines 684-710.
+
+New production seam (`Palace/Audiobooks/AudiobookSessionManager.swift:786-815`):
+
+```swift
+@MainActor
+internal func awaitReadinessAndIssueFirstPlay(
+    bookId: String,
+    initialPosition: TrackPositionShape,
+    probe: PlaybackReadinessProbing,
+    command: PlaybackEngineCommanding,
+    budget: TimeInterval
+) async {
+    let gate = PlaybackReadinessGate()
+    probe.start(driving: gate)
+    defer { probe.stop() }
+    do {
+        try await PlaybackReadinessGate.awaitReadinessAndPlay(
+            at: initialPosition,
+            gate: gate,
+            timeout: budget,
+            command: command
+        )
+        Log.info(#file, "🎵 Playback started at initial position (post-readiness)")
+    } catch PlaybackReadinessError.timeout {
+        Log.error(#file, "First-open readiness gate timed out after \(budget)s — surfacing as load failure (PP-4436 / F-011)")
+        self.state = .error(bookId: bookId, message: "Playback engine did not initialize in time")
+        self.errorPublisher.send(.playerCreationFailed)
+        self.playbackStatePublisher.send(self.state)
+    } catch {
+        Log.error(#file, "Playback start error after readiness: \(error)")
+    }
+}
+```
+
+`startPlaybackAndSyncPosition` now calls this method:
+
+```swift
+let probe = readinessProbeFactory(loaded.manager.audiobook.player)
+let command = playbackCommandFactory(loaded.manager.audiobook.player)
+let budget = readinessTimeout
+let bookId = book.identifier
+
+Task { @MainActor in
+    loaded.playbackModel.currentLocation = initialPosition
+    loaded.playbackModel.beginSaveSuppression(for: 3.0)
+    await self.awaitReadinessAndIssueFirstPlay(
+        bookId: bookId,
+        initialPosition: initialPosition,
+        probe: probe,
+        command: command,
+        budget: budget
+    )
+}
+```
+
+**New test methods** (`PalaceTests/Audiobooks/AudiobookFirstOpenHangTests.swift:306-368`):
+
+1. `testAwaitReadinessAndIssueFirstPlay_drivesProbeAndCommand_onProductionWiring` — drives the extracted seam with a `ProbeSpy(.markReadyOnStart)` and the existing `PlaybackEngineSpy`. Asserts:
+   - `probeSpy.startCallCount == 1` (proves production wiring calls `probe.start(driving:)`)
+   - `probeSpy.stopCallCount == 1` (proves the `defer { probe.stop() }` fires)
+   - `playbackSpy.playAtCallCount == 1` (proves `awaitReadinessAndPlay` was reached and resolved)
+   - `playbackSpy.lastPlayedPosition?.timestamp == position.timestamp` (proves the initialPosition is forwarded, not a default)
+
+2. `testAwaitReadinessAndIssueFirstPlay_timeout_surfacesLoadFailure_andNeverIssuesPlay` — drives the seam with a `ProbeSpy(.neverReady)` and a 100ms budget. Asserts:
+   - `probeSpy.startCallCount == 1` and `probeSpy.stopCallCount == 1` (defer fires on timeout path too — leak prevention)
+   - `playbackSpy.playAtCallCount == 0` (the entire point of F-011: don't fire play against an uninitialized engine)
+   - `receivedErrors == [.playerCreationFailed]` (production wiring publishes the right session signal)
+   - `sessionManager.state == .error(_, "Playback engine did not initialize in time")` (state transition writes the load-failure message)
+
+These two tests drive the **production code body at lines 684-710** (now lines 786-815 after extraction) end-to-end. Architect finding 1 fixed.
+
+**Evidence — green run (all 5 cases):**
+
+```
+Test Case '-[PalaceTests.AudiobookFirstOpenHangTests testFirstOpen_engineNotReadyAtBindTime_awaitsReadiness_beforeIssuingPlay]' passed (0.618 seconds).
+Test Case '-[PalaceTests.AudiobookFirstOpenHangTests testAwaitReadinessAndIssueFirstPlay_drivesProbeAndCommand_onProductionWiring]' passed (0.003 seconds).
+Test Case '-[PalaceTests.AudiobookFirstOpenHangTests testFirstOpen_engineNeverReady_within2s_emitsLoadError]' passed (0.167 seconds).
+Test Case '-[PalaceTests.AudiobookFirstOpenHangTests testAwaitReadinessAndIssueFirstPlay_timeout_surfacesLoadFailure_andNeverIssuesPlay]' passed (0.108 seconds).
+Test Case '-[PalaceTests.AudiobookFirstOpenHangTests testNavBackAndReopen_secondOpenSucceeds_withoutDoublePlay]' passed (0.061 seconds).
+   Executed 5 tests, with 0 failures (0 unexpected) in 0.957 (0.964) seconds
+** TEST SUCCEEDED **
+```
+
+### Finding 1 mutation proof — red→green→red→green
+
+**Mutation experiment 1: delete the `try await PlaybackReadinessGate.awaitReadinessAndPlay(...)` call** at `AudiobookSessionManager.swift:797-802`.
+
+```diff
+         do {
+-            try await PlaybackReadinessGate.awaitReadinessAndPlay(
+-                at: initialPosition,
+-                gate: gate,
+-                timeout: budget,
+-                command: command
+-            )
++            // MUTATION-EXPERIMENT-1: deleted the awaitReadinessAndPlay call
++            _ = gate
+             Log.info(#file, "🎵 Playback started at initial position (post-readiness)")
+         } catch PlaybackReadinessError.timeout {
+```
+
+Result — both wiring tests fail loudly (this is the desired outcome — the test catches the mutation):
+
+```
+testAwaitReadinessAndIssueFirstPlay_drivesProbeAndCommand_onProductionWiring:
+  XCTAssertEqual failed: ("0") is not equal to ("1") - Production wiring must
+    call `command.play(at:)` exactly once after readiness — deleting the
+    `try await PlaybackReadinessGate.awaitReadinessAndPlay(...)` line at
+    AudiobookSessionManager.swift:684-710 makes this assertion fail
+  XCTAssertEqual failed: ("nil") is not equal to ("Optional(12.5)") -
+    Production wiring must forward the initial position to play(at:)
+
+testAwaitReadinessAndIssueFirstPlay_timeout_surfacesLoadFailure_andNeverIssuesPlay:
+  (also fails — the awaited line is the source of the timeout signal too)
+
+   Executed 2 tests, with 4 failures (0 unexpected) in 1.986 seconds
+** TEST FAILED **
+```
+
+**Mutation experiment 2: "swap factories" — semantic equivalent (Swift's type system prevents literal swap of `probe`/`command` arguments since `PlaybackReadinessProbing` and `PlaybackEngineCommanding` have incompatible types; the closest observable mutation is removing the `probe.start(driving: gate)` call, which is what happens when the production wiring forgets to call start on the probe — same observable behaviour as if the factory output was bound to the wrong variable).**
+
+```diff
+         let gate = PlaybackReadinessGate()
+-        probe.start(driving: gate)
++        // probe.start(driving: gate)  // MUTATION-EXPERIMENT-2
+         defer { probe.stop() }
+```
+
+Result — the wiring test fails loudly:
+
+```
+testAwaitReadinessAndIssueFirstPlay_drivesProbeAndCommand_onProductionWiring:
+  XCTAssertEqual failed: ("0") is not equal to ("1") - Production wiring must
+    call `probe.start(driving:)` exactly once — a missing start means the
+    readiness gate never gets the ready signal and the test would have timed out
+  XCTAssertEqual failed: ("0") is not equal to ("1") - Production wiring must
+    call `command.play(at:)` exactly once after readiness
+  XCTAssertEqual failed: ("nil") is not equal to ("Optional(12.5)") -
+    Production wiring must forward the initial position to play(at:)
+
+   Executed 1 test, with 3 failures (0 unexpected) in 1.351 seconds
+** TEST FAILED **
+```
+
+**Revert both mutations — final green:**
+
+```
+Test Case '-[PalaceTests.AudiobookFirstOpenHangTests testFirstOpen_engineNotReadyAtBindTime_awaitsReadiness_beforeIssuingPlay]' passed (0.618 seconds).
+Test Case '-[PalaceTests.AudiobookFirstOpenHangTests testAwaitReadinessAndIssueFirstPlay_drivesProbeAndCommand_onProductionWiring]' passed (0.003 seconds).
+Test Case '-[PalaceTests.AudiobookFirstOpenHangTests testFirstOpen_engineNeverReady_within2s_emitsLoadError]' passed (0.167 seconds).
+Test Case '-[PalaceTests.AudiobookFirstOpenHangTests testAwaitReadinessAndIssueFirstPlay_timeout_surfacesLoadFailure_andNeverIssuesPlay]' passed (0.108 seconds).
+Test Case '-[PalaceTests.AudiobookFirstOpenHangTests testNavBackAndReopen_secondOpenSucceeds_withoutDoublePlay]' passed (0.061 seconds).
+   Executed 5 tests, with 0 failures (0 unexpected) in 0.957 (0.964) seconds
+** TEST SUCCEEDED **
+```
+
+### Finding 2 fix — remove unused `import PalaceAuth`
+
+```
+$ git diff Palace/Audiobooks/AudiobookSessionManager.swift | grep "^[-+]import"
+-import PalaceAuth
+```
+
+The import was unused — `TPPUserAccount` is in the main Palace target. Verified by inspecting the file: only `TPPUserAccount` and `TPPReauthenticator` are referenced, both of which live in `Palace/Accounts/User/` and `Palace/SignInLogic/` respectively (already in scope via the target's main module). The `PalaceAuth` package only exports `TPPUserAccountFrontEndValidation`, which is not referenced here.
+
+### Build + tests
+
+```
+xcodebuild -project Palace.xcodeproj -scheme Palace \
+  -destination 'platform=iOS Simulator,id=DF4A2A27-9888-429D-A749-2E157A049A37' \
+  -derivedDataPath /tmp/swarm_c8fcab76_build build
+
+... [Validate / Touch steps] ...
+
+** BUILD SUCCEEDED **
+```
+
+Full `AudiobookFirstOpenHangTests` (5 cases) — green; see Finding 1 mutation-proof section above for the test-output tail.
+
+### Anti-scope verification
+
+```
+$ git diff --name-only | grep -E "Palace/(SignInLogic|Packages/PalaceAuth|Accounts/Library/AccountsManager|Accounts/Account\+State|Accounts/AccountStateStore)" || echo "ANTI-SCOPE CLEAN: no forbidden files modified"
+ANTI-SCOPE CLEAN: no forbidden files modified
+```
+
+Files actually modified in this fixup pass:
+- `Palace/Audiobooks/AudiobookSessionManager.swift` — removed `import PalaceAuth`; extracted `awaitReadinessAndIssueFirstPlay` from `startPlaybackAndSyncPosition`.
+- `PalaceTests/Audiobooks/AudiobookFirstOpenHangTests.swift` — added two wiring tests (`testAwaitReadinessAndIssueFirstPlay_drivesProbeAndCommand_onProductionWiring`, `testAwaitReadinessAndIssueFirstPlay_timeout_surfacesLoadFailure_andNeverIssuesPlay`) + `ProbeSpy` helper.
+
+No toolkit submodule changes. No `AccountsManager` / `SignInLogic` / `PalaceAuth` / `Account+State` / `AccountStateStore` edits. `PlaybackReadinessGate.swift` itself was NOT modified (the fixup is purely about the wiring test, not the gate).
+
+### READY for re-review
+
+Both architect findings closed. Two new wiring tests prove the readiness-gate sequencing fires from the production seam — mutation-verified red→green→red→green for both "delete awaitReadinessAndPlay" and "skip probe.start" (the type-system equivalent of "factory swap"). Unused import removed.
