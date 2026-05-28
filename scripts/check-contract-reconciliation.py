@@ -88,8 +88,56 @@ class _Claim:
     source: str     # which input file the claim came from
 
 
+def _strip_non_claim_regions(text: str) -> str:
+    """Strip regions where claim-shaped text is NOT a fresh claim:
+
+    1. Fenced code blocks (```...```).
+    2. Blockquoted lines (prefix `> `).
+    3. Backtick-wrapped inline code (`code`) — preserves the line, drops the
+       quoted span so PascalCase names inside ``` don't trigger claim regexes.
+    4. Wall-failure / catalog reference sections — `## Related entries`, lines
+       starting with `- [...](...).md` that point at `.forgeos/wall-failures/`.
+
+    Architect rev_f1c4ea3c (M1 review): the contract reconciler reported a
+    false positive on M1's own commit body where "removes
+    SignInModalHostingController" appeared inside a wall-failure entry
+    description (which references the cs_a9735584 finding). Quoted
+    prior-language is NOT a fresh claim.
+    """
+    out_lines: list[str] = []
+    in_fence = False
+    for line in text.splitlines():
+        stripped = line.lstrip()
+        # Fence boundary
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        # Blockquote
+        if stripped.startswith("> "):
+            continue
+        # Wall-failure reference line
+        if "/wall-failures/" in line or "2026-05-28-backfill-" in line:
+            continue
+        # Strip backtick-wrapped inline code from the line (preserve the rest
+        # so legitimate claim language survives).
+        line = _BACKTICK_INLINE.sub("``", line)
+        out_lines.append(line)
+    return "\n".join(out_lines)
+
+
+_BACKTICK_INLINE = re.compile(r"`[^`\n]+`")
+
+
 def _parse_claims_from_text(text: str, source: str) -> list[_Claim]:
-    """Extract structured claims from a free-form text block."""
+    """Extract structured claims from a free-form text block.
+
+    Pre-filters via _strip_non_claim_regions to skip code blocks, blockquotes,
+    wall-failure reference lines, and inline-code-wrapped tokens — none of
+    those are fresh claims for the CURRENT commit (architect rev_f1c4ea3c).
+    """
+    text = _strip_non_claim_regions(text)
     claims: list[_Claim] = []
     for m in _REN_RE.finditer(text):
         claims.append(_Claim(kind="REN", args=(m.group(1), m.group(2)),

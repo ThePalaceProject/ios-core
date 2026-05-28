@@ -365,10 +365,25 @@ if [ "$MUTATION_ONLY" = "true" ]; then
   record "contract_reconciliation" "pass" "Skipped (--mutation-only)"
 elif [ -f scripts/check-contract-reconciliation.py ]; then
   CR_DIFF=$(mktemp -t cr-diff.XXXX)
+  CR_MSG=$(mktemp -t cr-msg.XXXX)
   git diff "$BASE"...HEAD > "$CR_DIFF" 2>/dev/null || true
-  CR_OUT=$(python3 scripts/check-contract-reconciliation.py --diff "$CR_DIFF" --quiet 2>&1)
+  # Capture HEAD commit subject + body as the claim source. Architect rev_f1c4ea3c
+  # caught the wiring gap where this script ran without a claim source and silently
+  # passed regardless of what the commit body claimed. Pass --commit-msg so the
+  # gate is no longer decorative.
+  git log -1 --format=%B HEAD > "$CR_MSG" 2>/dev/null || echo "" > "$CR_MSG"
+  # Also pass --intent if a matching intent file exists. Match on the commit
+  # subject's first 4 dash-separated tokens (e.g. "[swarm_M1_83be56fc] Module C ..."
+  # → "swarm-m1" matches `.forgeos/intent/swarm-m1-*.md`).
+  CR_INTENT_FLAG=""
+  CR_SUBJECT=$(head -1 "$CR_MSG" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9 ]//g' | awk '{print $1"-"$2}')
+  if [ -n "$CR_SUBJECT" ] && [ -d .forgeos/intent ]; then
+    CR_INTENT_MATCH=$(find .forgeos/intent -maxdepth 1 -name "*${CR_SUBJECT}*.md" -type f 2>/dev/null | head -1)
+    [ -n "$CR_INTENT_MATCH" ] && CR_INTENT_FLAG="--intent $CR_INTENT_MATCH"
+  fi
+  CR_OUT=$(python3 scripts/check-contract-reconciliation.py --diff "$CR_DIFF" --commit-msg "$CR_MSG" $CR_INTENT_FLAG --quiet 2>&1)
   CR_EXIT=$?
-  rm -f "$CR_DIFF"
+  rm -f "$CR_DIFF" "$CR_MSG"
   if [ "$CR_EXIT" -eq 0 ]; then
     record "contract_reconciliation" "pass" "All commit/PR/intent claims reconciled with diff"
   else

@@ -94,8 +94,30 @@ STAGED_CRITICAL=$(echo "$STAGED" | grep -E "$CRITICAL_PATH_REGEX" || true)
 # (stdin-only pipelines complicate the warn-vs-block decision because we run
 # 4 scripts; one tmpfile is simpler and lets each script read independently).
 M1_DIFF=$(mktemp -t m1-diff.XXXX)
-trap 'rm -f "$M1_DIFF"' EXIT
+M1_MSG=$(mktemp -t m1-msg.XXXX)
+trap 'rm -f "$M1_DIFF" "$M1_MSG"' EXIT
 git diff --cached > "$M1_DIFF" 2>/dev/null || true
+
+# Capture the in-progress commit message as the claim source for
+# check-contract-reconciliation.py. Architect rev_f1c4ea3c caught the wiring gap
+# where the contract gate ran without a claim source and silently passed regardless
+# of what the commit body claimed. Pre-commit context: `.git/COMMIT_EDITMSG` holds
+# the message currently being authored; fall back to HEAD's body if running outside
+# the normal commit flow (e.g. `--amend` mid-edit, manual invocation).
+if [[ -f "$REPO_ROOT_M1/.git/COMMIT_EDITMSG" ]]; then
+  cp "$REPO_ROOT_M1/.git/COMMIT_EDITMSG" "$M1_MSG"
+else
+  git -C "$REPO_ROOT_M1" log -1 --format=%B HEAD > "$M1_MSG" 2>/dev/null || echo "" > "$M1_MSG"
+fi
+
+# Resolve a matching intent file if one exists. Match on first 2 dash-separated
+# tokens of the commit subject.
+M1_INTENT_FLAG=""
+M1_SUBJECT=$(head -1 "$M1_MSG" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9 ]//g' | awk '{print $1"-"$2}')
+if [[ -n "$M1_SUBJECT" ]] && [[ -d "$REPO_ROOT_M1/.forgeos/intent" ]]; then
+  M1_INTENT_MATCH=$(find "$REPO_ROOT_M1/.forgeos/intent" -maxdepth 1 -name "*${M1_SUBJECT}*.md" -type f 2>/dev/null | head -1)
+  [[ -n "$M1_INTENT_MATCH" ]] && M1_INTENT_FLAG="--intent $M1_INTENT_MATCH"
+fi
 
 # Run all 4 scripts and bind exit codes individually.
 M1_FAIL=0
@@ -106,7 +128,14 @@ run_m1_check() {
     echo "  pre-commit M1: $name — script missing, skipping" >&2
     return 0
   fi
-  out=$(python3 "$REPO_ROOT_M1/$script" --diff "$M1_DIFF" --quiet 2>&1) || exit_code=$?
+  # check-contract-reconciliation.py needs a claim source (commit msg + optional
+  # intent) — without one it silently passes (architect rev_f1c4ea3c finding).
+  # All other scripts ignore extra flags.
+  if [[ "$name" = "contract_reconciliation" ]]; then
+    out=$(python3 "$REPO_ROOT_M1/$script" --diff "$M1_DIFF" --commit-msg "$M1_MSG" $M1_INTENT_FLAG --quiet 2>&1) || exit_code=$?
+  else
+    out=$(python3 "$REPO_ROOT_M1/$script" --diff "$M1_DIFF" --quiet 2>&1) || exit_code=$?
+  fi
   exit_code=${exit_code:-0}
   if [[ "$exit_code" -ne 0 ]]; then
     echo "  pre-commit M1: $name FAIL — $(echo "$out" | head -3 | tr '\n' ' ')" >&2
