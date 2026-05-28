@@ -1,3 +1,14 @@
+---
+name: swarm-workflow
+type: evolving
+status: active
+created: 2026-05-11
+last_refresh: 2026-05-11
+freshness_window: 365d
+owners: [general]
+description: "/swarm — multi-module orchestration loop"
+---
+
 # /swarm — multi-module orchestration loop
 
 This doc captures the **why** for the `/swarm` skill that lives at

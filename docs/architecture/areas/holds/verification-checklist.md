@@ -1,3 +1,14 @@
+---
+name: holds-verification-checklist
+type: evolving
+status: active
+created: 2026-05-28
+last_refresh: 2026-05-28
+freshness_window: 180d
+owners: [holds]
+description: Per-area verification reference; refresh before next swarm/rigorous-fix
+---
+
 <!-- audit-verified: All file paths and line numbers were spot-read against the working tree on 2026-05-28 (branch chore/swarm-rigor-meta-improvement). Palace/Holds/ contains exactly the 3 files listed in Section 1 per `ls Palace/Holds/`. Test inventory verified via `find PalaceTests -name '*Hold*Tests.swift'`. Regression matrix rows B3/B4/B7/C4/N1/N4 quoted from docs/Testing/REGRESSION_TEST_MATRIX.md. HelpSpot ticket numbers (17960 Derryl, 17971 Heather), F-numbers (F-035, F-065, F-072, F-081), and JIRA ticket IDs (PP-3702, PP-3811, PP-4020, PP-4258, PP-4259, PP-4358) sourced from the regression matrix + git log -- Palace/Holds/. NotificationService.swift line numbers (484-579) verified via Read of that range. -->
 
 # Holds area — verification checklist

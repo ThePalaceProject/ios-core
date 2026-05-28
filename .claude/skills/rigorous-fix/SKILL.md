@@ -2,6 +2,13 @@
 name: rigorous-fix
 description: Architect + SoD-review rigor for single-module critical-path changes that don't warrant a full /swarm but DO warrant more than bare /clean-code. Use when touching auth, sign-in, borrow, return, download, DRM fulfillment, audiobook playback, persistence migrations, or any code where a regression would hit users — regardless of LOC count. Invoke via "/rigorous-fix <task>" or when the user says "rigorous fix for X", "do this with SoD review", "critical path change to Y". For multi-module work, use /swarm. For non-critical bug fixes <50 LOC, /clean-code is sufficient.
 tools: Agent, Bash, Read, Write, Edit, Grep, Glob, mcp__forgeos__forge_propose_changeset, mcp__forgeos__forge_submit_evidence, mcp__forgeos__forge_check_gates, mcp__forgeos__forge_promote_gate, mcp__forgeos__forge_get_context
+# doc-lifecycle metadata (added by Module B sweep)
+type: evolving
+status: active
+created: 2026-05-28
+last_refresh: 2026-05-28
+freshness_window: 365d
+owners: [general]
 ---
 
 # /rigorous-fix — architect + SoD review for single-module critical-path work

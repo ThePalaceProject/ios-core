@@ -1,3 +1,14 @@
+---
+name: swarm_9d3d2fab-transcript-module-d-holds-bookdetail-catalog
+type: ephemeral
+status: active
+created: 2026-05-21
+last_refresh: 2026-05-22
+freshness_window: 180d
+owners: [holds]
+description: Module D — Holds/BookDetail/Catalog — transcript
+---
+
 # Module D — Holds/BookDetail/Catalog — transcript
 
 **Worktree:** `.claude/worktrees/swarm_9d3d2fab-d-holds-bookdetail-catalog`

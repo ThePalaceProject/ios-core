@@ -1,3 +1,14 @@
+---
+name: swarm_f3b9b087-transcript-Reader2-ReadState
+type: ephemeral
+status: active
+created: 2026-05-21T03:25:00Z
+last_refresh: 2026-05-21
+freshness_window: 180d
+owners: [reader]
+description: Implementer Transcript — Reader2-ReadState
+---
+
 # Implementer Transcript — Reader2-ReadState
 
 **Bucket:** Reader2-ReadState (P0 #1, #2, #3)

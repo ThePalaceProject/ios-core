@@ -1,3 +1,14 @@
+---
+name: swarm_f3b9b087-contract-Reader2-ReadState
+type: immutable
+status: active
+created: 2026-05-21T03:25:00Z
+last_refresh: 2026-05-21
+freshness_window: never
+owners: [reader]
+description: "Contract: Reader2-ReadState"
+---
+
 # Contract: Reader2-ReadState
 
 **Bucket items:** P0 #1, #2, #3 (read-position correctness — EPUB/PDF reader)

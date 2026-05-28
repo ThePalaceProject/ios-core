@@ -1,3 +1,14 @@
+---
+name: swarm_f3b9b087-contract-MyBooks-Borrow
+type: immutable
+status: active
+created: 2026-05-21T03:25:00Z
+last_refresh: 2026-05-21
+freshness_window: never
+owners: [mybooks]
+description: "Contract: MyBooks-Borrow"
+---
+
 # Contract: MyBooks-Borrow
 
 **Bucket items:** P2 #7, #8 + P3 #12 (BorrowOperation 401-no-problem-doc fallthrough + SQ-007 spinner cleanup + Downloads task-identifier recycle)

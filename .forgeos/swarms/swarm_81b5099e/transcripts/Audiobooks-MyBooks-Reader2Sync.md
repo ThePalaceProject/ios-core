@@ -1,3 +1,14 @@
+---
+name: swarm_81b5099e-transcript-Audiobooks-MyBooks-Reader2Sync
+type: ephemeral
+status: active
+created: 2026-05-18T19:30:00Z
+last_refresh: 2026-05-19
+freshness_window: 180d
+owners: [audiobook]
+description: "Transcript: Audiobooks-MyBooks-Reader2Sync (swarm_81b5099e)"
+---
+
 # Transcript: Audiobooks-MyBooks-Reader2Sync (swarm_81b5099e)
 
 **Module:** Audiobooks-MyBooks-Reader2Sync (parallel — Bucket A migration)

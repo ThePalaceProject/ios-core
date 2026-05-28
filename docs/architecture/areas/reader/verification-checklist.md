@@ -1,3 +1,14 @@
+---
+name: reader-verification-checklist
+type: evolving
+status: active
+created: 2026-05-28
+last_refresh: 2026-05-28
+freshness_window: 180d
+owners: [reader]
+description: Per-area verification reference; refresh before next swarm/rigorous-fix
+---
+
 <!-- audit-verified: file paths in Section 1 (Palace/Reader2/UI/TPPEPUBViewController.swift, Palace/Reader2/UI/ReaderEditingActions.swift, Palace/PDF/Views/PalacePDFView.swift, Palace/PDF/Views/TPPPDFView.swift, Palace/PDF/LCP/LCPPDFs.swift, Palace/PDF/ReadiumPDF/ReadiumPDFViewController.swift, Palace/AppInfrastructure/ReaderService.swift, Palace/AppInfrastructure/NavigationHostView.swift, Palace/Reader2/BusinessLogic/*) were all confirmed to exist via ls/grep on 2026-05-28. PR #1012 (PP-4297) and PR #1008 (PP-4454) verified in `git log --oneline origin/develop -- Palace/Reader2/ Palace/Reader3/`. `TPPBook.isDRMProtected` definition confirmed at Palace/Book/Models/TPPBook.swift:652. simdrive journeys enumerated from `.simdrive/journeys/reader2-*.yaml`. Regression matrix rows E1, E1-LCP, E1-Adobe, E2, E2-Hang verified in docs/Testing/REGRESSION_TEST_MATRIX.md. Reader3/ confirmed empty except for .DS_Store + an empty ReaderStackConfiguration/ subdirectory — there is no live "Reader3" code; PDF lives under Palace/PDF/. -->
 
 # Reader area — verification checklist

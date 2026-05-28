@@ -1,3 +1,14 @@
+---
+name: swarm_03acb10a-transcript-C-AsyncAfterSweep
+type: ephemeral
+status: active
+created: 2026-05-21
+last_refresh: 2026-05-21
+freshness_window: 180d
+owners: [general]
+description: Module C — AsyncAfter Sweep Transcript
+---
+
 # Module C — AsyncAfter Sweep Transcript
 
 Swarm: `swarm_03acb10a`

@@ -1,3 +1,14 @@
+---
+name: swarm_dfdaf7ad-transcript-Settings-AccountDetail
+type: ephemeral
+status: active
+created: 2026-05-19T00:00:00Z
+last_refresh: 2026-05-19
+freshness_window: 180d
+owners: [signin-modal]
+description: "Transcript: Settings-AccountDetail (swarm_dfdaf7ad)"
+---
+
 # Transcript: Settings-AccountDetail (swarm_dfdaf7ad)
 
 **HelpSpot:** 17923 — Sign-in placeholder reads as disabled

@@ -1,3 +1,14 @@
+---
+name: wall-failures-derived-improvements
+type: evolving
+status: active
+created: 2026-05-28
+last_refresh: 2026-05-28
+freshness_window: 365d
+owners: [general]
+description: Derived improvements
+---
+
 # Derived improvements
 
 Cluster-level fixes promoted from wall-failure entries. Each row links back to the entries that motivated it.

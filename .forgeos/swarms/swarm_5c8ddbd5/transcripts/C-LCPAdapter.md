@@ -1,3 +1,14 @@
+---
+name: swarm_5c8ddbd5-transcript-C-LCPAdapter
+type: ephemeral
+status: active
+created: 2026-05-21
+last_refresh: 2026-05-21
+freshness_window: 180d
+owners: [audiobook]
+description: Module C — LCP adapter + recursive acquisition predicate
+---
+
 # Module C — LCP adapter + recursive acquisition predicate
 
 **Status:** complete (transcript written by integrator after agent stream timeout — files were fully written and verified disjoint before timeout)

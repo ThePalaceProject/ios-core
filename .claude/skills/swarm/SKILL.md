@@ -2,6 +2,13 @@
 name: swarm
 description: Triage→dispatch→integrate→promote loop for multi-module Palace iOS work. Architect agent identifies touched modules, writes contract deltas, then parallel module-implementer subagents land changes against those contracts. forge-review and verify-pr.sh gate the integration. Use when a feature, refactor, or extraction touches ≥2 top-level Palace modules; for single-module work, do it directly. Invoke via "/swarm <task>" or when the user says "swarm this", "extract X via swarm", "run swarm for...", or asks to coordinate multi-module changes.
 tools: Agent, Bash, Read, Write, Edit, mcp__forgeos__forge_propose_changeset, mcp__forgeos__forge_submit_evidence, mcp__forgeos__forge_check_gates, mcp__forgeos__forge_promote_gate, mcp__forgeos__forge_get_context
+# doc-lifecycle metadata (added by Module B sweep)
+type: evolving
+status: active
+created: 2026-05-28
+last_refresh: 2026-05-28
+freshness_window: 365d
+owners: [general]
 ---
 
 # /swarm — multi-module orchestration loop

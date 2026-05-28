@@ -1,3 +1,14 @@
+---
+name: swarm_f4fbef9c-plan
+type: immutable
+status: active
+created: 2026-05-21
+last_refresh: 2026-05-21
+freshness_window: never
+owners: [general]
+description: Swarm 2 — PositionWriter Unification
+---
+
 # Swarm 2 — PositionWriter Unification
 
 **Phase 2 of [audiobook-systemic-overhaul](../../../docs/architecture/audiobook-systemic-overhaul.md).**

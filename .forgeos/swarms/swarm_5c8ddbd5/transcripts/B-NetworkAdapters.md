@@ -1,3 +1,14 @@
+---
+name: swarm_5c8ddbd5-transcript-B-NetworkAdapters
+type: ephemeral
+status: active
+created: 2026-05-21
+last_refresh: 2026-05-21
+freshness_window: 180d
+owners: [network]
+description: Module B transcript — Network Adapters
+---
+
 # Module B transcript — Network Adapters
 
 **Swarm:** `swarm_5c8ddbd5` (Audiobook Vendor Adapter Extraction)

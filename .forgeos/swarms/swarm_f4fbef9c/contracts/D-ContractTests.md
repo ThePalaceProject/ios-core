@@ -1,3 +1,14 @@
+---
+name: swarm_f4fbef9c-contract-D-ContractTests
+type: immutable
+status: active
+created: 2026-05-21
+last_refresh: 2026-05-21
+freshness_window: never
+owners: [reader, audiobook]
+description: Module D — Contract-snapshot tests
+---
+
 # Module D — Contract-snapshot tests
 
 **Status:** refined by architect 2026-05-21. Scenario count locked at 13.

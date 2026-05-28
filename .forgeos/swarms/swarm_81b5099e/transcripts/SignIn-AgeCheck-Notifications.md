@@ -1,3 +1,14 @@
+---
+name: swarm_81b5099e-transcript-SignIn-AgeCheck-Notifications
+type: ephemeral
+status: active
+created: 2026-05-18T19:30:00Z
+last_refresh: 2026-05-19
+freshness_window: 180d
+owners: [signin-modal]
+description: "Transcript: SignIn-AgeCheck-Notifications (swarm_81b5099e)"
+---
+
 # Transcript: SignIn-AgeCheck-Notifications (swarm_81b5099e)
 
 **Module:** SignIn-AgeCheck-Notifications (parallel batch, after Accounts-Wiring)

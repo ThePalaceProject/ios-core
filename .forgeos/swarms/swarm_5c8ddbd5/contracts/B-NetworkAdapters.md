@@ -1,3 +1,14 @@
+---
+name: swarm_5c8ddbd5-contract-B-NetworkAdapters
+type: immutable
+status: active
+created: 2026-05-21
+last_refresh: 2026-05-21
+freshness_window: never
+owners: [network]
+description: Module B — OpenAccess + BearerToken + LocalFile adapters
+---
+
 # Module B — OpenAccess + BearerToken + LocalFile adapters
 
 ## In-scope files (exclusive write)

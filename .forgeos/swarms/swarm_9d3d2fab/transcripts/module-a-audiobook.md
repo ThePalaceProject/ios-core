@@ -1,3 +1,14 @@
+---
+name: swarm_9d3d2fab-transcript-module-a-audiobook
+type: ephemeral
+status: active
+created: 2026-05-21
+last_refresh: 2026-05-22
+freshness_window: 180d
+owners: [audiobook]
+description: Module A — Audiobook (CI-flake migration) — transcript
+---
+
 # Module A — Audiobook (CI-flake migration) — transcript
 
 Swarm `swarm_9d3d2fab`, branch `swarm/swarm_9d3d2fab-a-audiobook`,

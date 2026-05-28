@@ -1,3 +1,14 @@
+---
+name: swarm_03acb10a-contract-A-AppContainerWiring
+type: immutable
+status: active
+created: 2026-05-21
+last_refresh: 2026-05-21
+freshness_window: never
+owners: [accounts]
+description: Module A — AppContainer audiobook wiring
+---
+
 # Module A — AppContainer audiobook wiring
 
 **Status:** REFINED post-triage.

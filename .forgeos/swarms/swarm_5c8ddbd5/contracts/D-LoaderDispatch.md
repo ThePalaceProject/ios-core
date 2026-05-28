@@ -1,3 +1,14 @@
+---
+name: swarm_5c8ddbd5-contract-D-LoaderDispatch
+type: immutable
+status: active
+created: 2026-05-21
+last_refresh: 2026-05-21
+freshness_window: never
+owners: [network]
+description: Module D — Loader dispatch rewrite + OPDS shape matrix tests
+---
+
 # Module D — Loader dispatch rewrite + OPDS shape matrix tests
 
 ## In-scope files (exclusive write)

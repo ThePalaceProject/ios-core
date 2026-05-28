@@ -1,3 +1,14 @@
+---
+name: swarm_66819d80-transcript-D-fixtures-gap-report
+type: ephemeral
+status: active
+created: 2026-05-27
+last_refresh: 2026-05-28
+freshness_window: 180d
+owners: [auth]
+description: Auth fixture gap report (Module D, swarm_66819d80)
+---
+
 # Auth fixture gap report (Module D, swarm_66819d80)
 
 **Generated:** 2026-05-27  •  **Inventory source:** `~/.simdrive/recordings/` (67 directories total; 5 auth-relevant)  •  **Catalog source:** `docs/3.2.0-auth-idp-catalog.md` (38 grounded rows + 11 UNKNOWN-pending-recording)

@@ -1,3 +1,14 @@
+---
+name: swarm_03acb10a-transcript-A-AppContainerWiring
+type: ephemeral
+status: active
+created: 2026-05-21
+last_refresh: 2026-05-21
+freshness_window: 180d
+owners: [accounts]
+description: Module A — AppContainer Audiobook Factory Wiring
+---
+
 # Module A — AppContainer Audiobook Factory Wiring
 
 Swarm: `swarm_03acb10a` (Phase 3 of audiobook systemic overhaul)

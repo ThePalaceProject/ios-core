@@ -1,3 +1,14 @@
+---
+name: swarm_81b5099e-contract-Accounts-Wiring
+type: immutable
+status: active
+created: 2026-05-18T19:30:00Z
+last_refresh: 2026-05-19
+freshness_window: never
+owners: [accounts]
+description: "Contract: Accounts-Wiring (swarm_81b5099e)"
+---
+
 # Contract: Accounts-Wiring (swarm_81b5099e)
 
 **Sequence:** PREREQUISITE — must merge before parallel implementers start.

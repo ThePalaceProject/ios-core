@@ -1,3 +1,14 @@
+---
+name: swarm_81b5099e-contract-Network-OPDS
+type: immutable
+status: active
+created: 2026-05-18T19:30:00Z
+last_refresh: 2026-05-19
+freshness_window: never
+owners: [network]
+description: "Contract: Network-OPDS (swarm_81b5099e)"
+---
+
 # Contract: Network-OPDS (swarm_81b5099e)
 
 **Sequence:** Parallel (after Accounts-Wiring merges).

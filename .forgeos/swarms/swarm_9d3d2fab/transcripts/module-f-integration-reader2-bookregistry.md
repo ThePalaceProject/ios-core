@@ -1,3 +1,14 @@
+---
+name: swarm_9d3d2fab-transcript-module-f-integration-reader2-bookregistry
+type: ephemeral
+status: active
+created: 2026-05-21
+last_refresh: 2026-05-22
+freshness_window: 180d
+owners: [reader]
+description: Module F — Integration / Reader2 / BookRegistry transcript
+---
+
 # Module F — Integration / Reader2 / BookRegistry transcript
 
 Worktree: `.claude/worktrees/swarm_9d3d2fab-f-integration-reader2-bookregistry`

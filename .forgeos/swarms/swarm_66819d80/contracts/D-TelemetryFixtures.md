@@ -1,3 +1,14 @@
+---
+name: swarm_66819d80-contract-D-TelemetryFixtures
+type: immutable
+status: active
+created: 2026-05-27
+last_refresh: 2026-05-28
+freshness_window: never
+owners: [auth]
+description: Module D — Telemetry instrumentation + simdrive fixture gap report
+---
+
 # Module D — Telemetry instrumentation + simdrive fixture gap report
 
 **Swarm:** `swarm_66819d80`  •  **Base SHA:** `d7f115adeb69032fb3abed33ba07b3deeb245f4b`  •  **Depends on:** Module A (must merge first); runs parallel to Module C

@@ -1,16 +1,27 @@
+---
+name: wall-failures-index
+type: evolving
+status: active
+created: 2026-05-28
+last_refresh: 2026-05-28
+freshness_window: 365d
+owners: [general]
+description: Wall-failure catalog — index
+---
+
 # Wall-failure catalog — index
 
 One line per entry. Sortable by date, wall, status. Most recent first.
 
-| Date | PR | Wall | Severity | Status | Entry | One-line |
-|------|----|------|----------|--------|-------|----------|
-| 2026-05-28 | n/a (backtest) | reviewer | high | proposed | [backtest-2026-05-28](backtest-2026-05-28.md) | Paper analysis of 10 prior shipped bugs vs. SoD reviewer agent prompts — 0% definitive WOULD-CATCH; 5 prompt-addition recommendations |
-| 2026-05-27 | #1018 | implementer | high | proposed | [arch1-discipline](2026-05-27-pr1018-arch1.md) | 7 submodule gitlinks accidentally staged as symlinks |
-| 2026-05-27 | #1018 | contract | medium | proposed | [arch2-fake-wiring-test](2026-05-27-pr1018-arch2.md) | Wiring test claimed production round-trip but built fresh spies |
-| 2026-05-27 | #1018 | contract+implementer | high | proposed | [arch3-dead-classifier-call](2026-05-27-pr1018-arch3.md) | TPPNetworkResponder called classifier but only logged outcome — legacy path still ran |
-| 2026-05-27 | #1018 | implementer+mutation | high | proposed | [qa1-half-done-test](2026-05-27-pr1018-qa1.md) | Circuit-breaker test ran ONE attempt; second half was comments |
-| 2026-05-27 | #1018 | contract+orchestrator | critical | proposed | [qa2-fake-test-instantiation](2026-05-27-pr1018-qa2.md) | TPPNetworkResponderAuthCoordinatorTests never instantiated TPPNetworkResponder |
-| 2026-05-27 | #1018 | contract+orchestrator | critical | proposed | [qa3-fake-test-instantiation](2026-05-27-pr1018-qa3.md) | BookReturnServiceAuthCoordinatorTests never instantiated BookReturnService |
+| Date | PR | Wall | Severity | Status | Contributing-docs? | Entry | One-line |
+|------|----|------|----------|--------|--------------------|-------|----------|
+| 2026-05-28 | n/a (backtest) | reviewer | high | proposed | N | [backtest-2026-05-28](backtest-2026-05-28.md) | Paper analysis of 10 prior shipped bugs vs. SoD reviewer agent prompts — 0% definitive WOULD-CATCH; 5 prompt-addition recommendations |
+| 2026-05-27 | #1018 | implementer | high | proposed | N | [arch1-discipline](2026-05-27-pr1018-arch1.md) | 7 submodule gitlinks accidentally staged as symlinks |
+| 2026-05-27 | #1018 | contract | medium | proposed | N | [arch2-fake-wiring-test](2026-05-27-pr1018-arch2.md) | Wiring test claimed production round-trip but built fresh spies |
+| 2026-05-27 | #1018 | contract+implementer | high | proposed | N | [arch3-dead-classifier-call](2026-05-27-pr1018-arch3.md) | TPPNetworkResponder called classifier but only logged outcome — legacy path still ran |
+| 2026-05-27 | #1018 | implementer+mutation | high | proposed | N | [qa1-half-done-test](2026-05-27-pr1018-qa1.md) | Circuit-breaker test ran ONE attempt; second half was comments |
+| 2026-05-27 | #1018 | contract+orchestrator | critical | proposed | N | [qa2-fake-test-instantiation](2026-05-27-pr1018-qa2.md) | TPPNetworkResponderAuthCoordinatorTests never instantiated TPPNetworkResponder |
+| 2026-05-27 | #1018 | contract+orchestrator | critical | proposed | N | [qa3-fake-test-instantiation](2026-05-27-pr1018-qa3.md) | BookReturnServiceAuthCoordinatorTests never instantiated BookReturnService |
 
 ## Cluster patterns (updated when a cluster emerges)
 

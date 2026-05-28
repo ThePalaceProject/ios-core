@@ -1,3 +1,14 @@
+---
+name: network-verification-checklist
+type: evolving
+status: active
+created: 2026-05-28
+last_refresh: 2026-05-28
+freshness_window: 180d
+owners: [network]
+description: Per-area verification reference; refresh before next swarm/rigorous-fix
+---
+
 <!-- audit-verified: Owner files in Palace/Network/ confirmed by `ls Palace/Network/` (Core/, TPPNetworkExecutor.swift, TPPNetworkResponder.swift, TPPNetworkQueue.swift, TPPRequestExecuting.swift, TPPUserFriendlyError.swift, Bundled/RemoteHTMLViewController.swift). Line citations in Sections 1, 4, and 7 verified by grep against the current branch (chore/swarm-rigor-meta-improvement). The "MIGRATED in PR #1018 / swarm_66819d80" status reflects the swarm-scaffold branch (swarm/swarm_66819d80-scaffold, commit f9e57f7f5) — that work has NOT yet landed on develop, so on develop the responder still routes via `indicatesAuthenticationNeedsRefresh`. Section 1's "Migration status" column therefore describes the design baseline this checklist documents, not the develop tip. Refresh the next architect: re-grep before assuming. -->
 
 # Network area — verification checklist

@@ -1,3 +1,14 @@
+---
+name: swarm-rigor-followups
+type: evolving
+status: active
+created: 2026-05-28
+last_refresh: 2026-05-28
+freshness_window: 365d
+owners: [general]
+description: "Swarm rigor — follow-up backlog"
+---
+
 <!-- audit-verified: PR #1018 is real; I orchestrated swarm_66819d80 today; the items below are derived from the wall-failure entries at .forgeos/wall-failures/2026-05-27-pr1018-*.md and the gaps explicitly named in this PR's commits. -->
 
 # Swarm rigor — follow-up backlog

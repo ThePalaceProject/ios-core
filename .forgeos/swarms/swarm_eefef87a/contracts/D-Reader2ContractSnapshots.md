@@ -1,3 +1,14 @@
+---
+name: swarm_eefef87a-contract-D-Reader2ContractSnapshots
+type: immutable
+status: active
+created: 2026-05-26T15:00:00Z
+last_refresh: 2026-05-27
+freshness_window: never
+owners: [reader]
+description: Module D — Reader2 contract-snapshot tests
+---
+
 # Module D — Reader2 contract-snapshot tests
 
 **Improvement #4 from the A+ posture push.** Reader2 (Readium 3.x WKWebView) is XCTest-invisible. Contract snapshots pin the dependency-call surface without WKWebView introspection.

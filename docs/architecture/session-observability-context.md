@@ -1,3 +1,14 @@
+---
+name: session-observability-context
+type: evolving
+status: active
+created: 2026-05-28
+last_refresh: 2026-05-28
+freshness_window: 365d
+owners: [general]
+description: Session-observability → session-start context (C2 stub)
+---
+
 <!-- audit-verified: C2 stub from .forgeos/wall-failures/derived-improvements.md — design + minimal scaffolding. Full implementation depends on Crashlytics MCP + HelpSpot MCP integration with files-about-to-be-edited inference. -->
 
 # Session-observability → session-start context (C2 stub)

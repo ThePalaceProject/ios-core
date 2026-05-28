@@ -1,3 +1,14 @@
+---
+name: swarm_9d3d2fab-transcript-module-e-network-errors-utilities
+type: ephemeral
+status: active
+created: 2026-05-21
+last_refresh: 2026-05-22
+freshness_window: 180d
+owners: [network]
+description: Module E — Network/Errors/Utilities — implementer transcript
+---
+
 # Module E — Network/Errors/Utilities — implementer transcript
 
 **Branch:** `swarm/swarm_9d3d2fab-e-network-errors-utilities`

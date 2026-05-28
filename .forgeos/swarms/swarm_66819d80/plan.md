@@ -1,3 +1,14 @@
+---
+name: swarm_66819d80-plan
+type: immutable
+status: active
+created: 2026-05-27
+last_refresh: 2026-05-28
+freshness_window: never
+owners: [auth]
+description: "Plan — swarm_66819d80: 3.2.0 auth architecture remediation (classifier + coordinator + isBrowserBased)"
+---
+
 # Plan — swarm_66819d80: 3.2.0 auth architecture remediation (classifier + coordinator + isBrowserBased)
 
 **Architect:** Maurice Carrier (this session)  •  **Base:** `origin/develop` @ `d7f115adeb69032fb3abed33ba07b3deeb245f4b`  •  **Branch:** `swarm/swarm_66819d80-scaffold`

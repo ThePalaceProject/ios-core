@@ -1,3 +1,14 @@
+---
+name: swarm_66819d80-transcript-D-TelemetryFixtures
+type: ephemeral
+status: active
+created: 2026-05-27
+last_refresh: 2026-05-28
+freshness_window: 180d
+owners: [auth]
+description: Module D — Telemetry + simdrive fixture gap report
+---
+
 # Module D — Telemetry + simdrive fixture gap report
 
 **Swarm:** `swarm_66819d80`  •  **Branch:** `swarm/swarm_66819d80-scaffold`  •  **Implementer:** subagent

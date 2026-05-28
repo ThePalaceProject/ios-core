@@ -1,3 +1,14 @@
+---
+name: swarm_81b5099e-transcript-Accounts-Wiring
+type: ephemeral
+status: active
+created: 2026-05-18T19:30:00Z
+last_refresh: 2026-05-19
+freshness_window: 180d
+owners: [accounts]
+description: "Transcript: Accounts-Wiring (swarm_81b5099e)"
+---
+
 # Transcript: Accounts-Wiring (swarm_81b5099e)
 
 **Module:** Accounts-Wiring (sequential prerequisite)

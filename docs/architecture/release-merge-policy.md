@@ -1,3 +1,14 @@
+---
+name: release-merge-policy
+type: evolving
+status: active
+created: 2026-05-26
+last_refresh: 2026-05-26
+freshness_window: 365d
+owners: [general]
+description: Release & Hotfix Merge Policy
+---
+
 # Release & Hotfix Merge Policy
 
 **TL;DR:** Merges into `main` use regular merge commits (`--no-ff`). Squash-merge is forbidden on `main`-bound work because it destroys commit SHAs, which causes the next release-branch → main merge to hit catastrophic conflicts even when content is logically identical.

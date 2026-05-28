@@ -1,3 +1,14 @@
+---
+name: swarm_03acb10a-transcript-triage
+type: ephemeral
+status: active
+created: 2026-05-21
+last_refresh: 2026-05-21
+freshness_window: 180d
+owners: [general]
+description: Swarm 3 Triage Transcript — swarm_03acb10a
+---
+
 # Swarm 3 Triage Transcript — swarm_03acb10a
 
 **Architect:** orchestrator agent

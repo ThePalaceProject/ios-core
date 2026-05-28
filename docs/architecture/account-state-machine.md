@@ -1,3 +1,14 @@
+---
+name: account-state-machine
+type: evolving
+status: active
+created: 2026-05-19
+last_refresh: 2026-05-19
+freshness_window: 365d
+owners: [general]
+description: "Account State Machine — Systemic Fix for the Load-Readiness Race Class"
+---
+
 # Account State Machine — Systemic Fix for the Load-Readiness Race Class
 
 **Status:** Proposed (2026-05-18) — PoC on `feature/account-state-machine-3.2.0`. Ships 3.2.0.

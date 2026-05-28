@@ -1,3 +1,14 @@
+---
+name: architecture-readme
+type: evolving
+status: active
+created: 2026-04-27
+last_refresh: 2026-05-22
+freshness_window: 365d
+owners: [general]
+description: Palace iOS Architecture Documentation
+---
+
 # Palace iOS Architecture Documentation
 
 Engineering decisions and case studies for major architectural work in this codebase. These docs capture *why* we did things, not just *what* — the rationale future maintainers (and outside contributors curious about the design) need.

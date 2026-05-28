@@ -1,3 +1,14 @@
+---
+name: swarm_9d3d2fab-contract-Module-B-MyBooks
+type: immutable
+status: active
+created: 2026-05-21
+last_refresh: 2026-05-22
+freshness_window: never
+owners: [mybooks]
+description: Module B — MyBooks (CI-flake migration + URLSession.shared sweep)
+---
+
 # Module B — MyBooks (CI-flake migration + URLSession.shared sweep)
 
 ## Files in scope (6)

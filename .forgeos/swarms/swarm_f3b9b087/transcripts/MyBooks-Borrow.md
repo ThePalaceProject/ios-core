@@ -1,3 +1,14 @@
+---
+name: swarm_f3b9b087-transcript-MyBooks-Borrow
+type: ephemeral
+status: active
+created: 2026-05-21T03:25:00Z
+last_refresh: 2026-05-21
+freshness_window: 180d
+owners: [mybooks]
+description: "MyBooks-Borrow implementer transcript — `swarm_f3b9b087`"
+---
+
 # MyBooks-Borrow implementer transcript — `swarm_f3b9b087`
 
 **Bucket:** P2 #7, P2 #8, P3 #12

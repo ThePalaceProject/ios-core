@@ -1,3 +1,14 @@
+---
+name: triad-retro-2026-04-27
+type: evolving
+status: active
+created: 2026-04-27
+last_refresh: 2026-05-06
+freshness_window: 365d
+owners: [general]
+description: "Architectural Triad — Retrospective (2026-04-27)"
+---
+
 # Architectural Triad — Retrospective (2026-04-27)
 
 > Retrospective on the [architectural triad epic](./architectural-triad.md) at the moment Phases 1–5 landed in PRs #866 + #867. What we delivered, what surprised us, what we'd change.

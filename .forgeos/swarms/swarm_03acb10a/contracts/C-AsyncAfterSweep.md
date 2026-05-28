@@ -1,3 +1,14 @@
+---
+name: swarm_03acb10a-contract-C-AsyncAfterSweep
+type: immutable
+status: active
+created: 2026-05-21
+last_refresh: 2026-05-21
+freshness_window: never
+owners: [general]
+description: Module C — AsyncAfter sweep (NowPlayingCoordinator only)
+---
+
 # Module C — AsyncAfter sweep (NowPlayingCoordinator only)
 
 **Status:** REFINED post-triage — **scope reduced to ONE file**.

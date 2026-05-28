@@ -1,3 +1,14 @@
+---
+name: swarm_f3b9b087-transcript-Notifications-OPDS-Errors
+type: ephemeral
+status: active
+created: 2026-05-21T03:25:00Z
+last_refresh: 2026-05-21
+freshness_window: 180d
+owners: [network]
+description: Implementer Transcript — Notifications-OPDS-Errors
+---
+
 # Implementer Transcript — Notifications-OPDS-Errors
 
 **Bucket:** P1 #6 (Notifications-FCM SAML-stale retry) + P2 #9 (OPDS user-facing error strings) + P3 #11 (Info.plist UIBackgroundModes verify)

@@ -1,3 +1,14 @@
+---
+name: parallel-agent-rebase-walkthrough
+type: evolving
+status: active
+created: 2026-04-27
+last_refresh: 2026-04-27
+freshness_window: 365d
+owners: [general]
+description: "Parallel-Agent Refactor — How We Ran 5 Concurrent Agents and Linearized the Stack"
+---
+
 # Parallel-Agent Refactor — How We Ran 5 Concurrent Agents and Linearized the Stack
 
 > A case study in how Phase 4 of the [architectural triad](./architectural-triad.md) was decomposed into 5 disjoint file partitions, run in parallel by independent agents on isolated branches, then merged into a single linear stack via cherry-pick + rebase. What worked, what we'd change.

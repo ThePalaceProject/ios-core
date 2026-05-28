@@ -1,3 +1,14 @@
+---
+name: swarm_f4fbef9c-transcript-A-PalaceReadingPositionSPM
+type: ephemeral
+status: active
+created: 2026-05-21
+last_refresh: 2026-05-21
+freshness_window: 180d
+owners: [reader, audiobook]
+description: Module A — PalaceReadingPosition SPM
+---
+
 # Module A — PalaceReadingPosition SPM
 
 Status: complete

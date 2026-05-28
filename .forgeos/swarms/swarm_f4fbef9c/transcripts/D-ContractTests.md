@@ -1,3 +1,14 @@
+---
+name: swarm_f4fbef9c-transcript-D-ContractTests
+type: ephemeral
+status: active
+created: 2026-05-21
+last_refresh: 2026-05-21
+freshness_window: 180d
+owners: [reader, audiobook]
+description: Module D — Contract Tests (transcript)
+---
+
 # Module D — Contract Tests (transcript)
 
 Swarm: `swarm_f4fbef9c` (Phase 2 — Audiobook systemic overhaul)

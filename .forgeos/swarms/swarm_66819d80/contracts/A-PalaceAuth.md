@@ -1,3 +1,14 @@
+---
+name: swarm_66819d80-contract-A-PalaceAuth
+type: immutable
+status: active
+created: 2026-05-27
+last_refresh: 2026-05-28
+freshness_window: never
+owners: [auth]
+description: "Module A — PalaceAuth: `AuthErrorClassifier` + `AuthCoordinator`"
+---
+
 # Module A — PalaceAuth: `AuthErrorClassifier` + `AuthCoordinator`
 
 **Swarm:** `swarm_66819d80`  •  **Base SHA:** `d7f115adeb69032fb3abed33ba07b3deeb245f4b`  •  **Depends on:** none (Day 1 parallel with Module B)

@@ -1,3 +1,14 @@
+---
+name: swarm_eefef87a-plan
+type: immutable
+status: active
+created: 2026-05-26T15:00:00Z
+last_refresh: 2026-05-27
+freshness_window: never
+owners: [general]
+description: "Swarm `swarm_eefef87a` — A+ Posture Push"
+---
+
 # Swarm `swarm_eefef87a` — A+ Posture Push
 
 Four parallel improvements to close documented-not-closed structural risks from the engineering-posture review (`.forgeos/audits/phase7-synthesis-2026-05-26.md`).

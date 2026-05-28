@@ -1,3 +1,14 @@
+---
+name: swarm_efd1f0c3-outcome
+type: immutable
+status: active
+created: 2026-05-21T00:00:00Z
+last_refresh: 2026-05-22
+freshness_window: never
+owners: [general]
+description: "Swarm Outcome — `swarm_efd1f0c3` — Audiobook toolkit overhaul (T1 + T2 + T3)"
+---
+
 # Swarm Outcome — `swarm_efd1f0c3` — Audiobook toolkit overhaul (T1 + T2 + T3)
 
 **Status:** complete

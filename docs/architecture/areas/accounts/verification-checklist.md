@@ -1,3 +1,14 @@
+---
+name: accounts-verification-checklist
+type: evolving
+status: active
+created: 2026-05-28
+last_refresh: 2026-05-28
+freshness_window: 180d
+owners: [accounts]
+description: Per-area verification reference; refresh before next swarm/rigorous-fix
+---
+
 <!-- audit-verified: All file:line citations below were re-confirmed against current HEAD on chore/swarm-rigor-meta-improvement (2026-05-28) by reading the cited source files and grepping for the cited symbols (e.g. `awaitReady`, `currentAccount =`, `_setState`, `.accountNotFound`, `noAccountSentinelUUID`). Recent commit history (14100c62a redrive fix, dce81974e currentAccount setter driver, 49c591b24 wiring-suite isolation flag, 222137d3a state machine PoC, e8cc87d26 develop merge) was verified via `git log --oneline origin/develop -- Palace/Accounts/`. Memories referenced (enum_conflation_account_not_found, phase1_account_state_machine_2026_05_19, reference_tpp_user_account_migration_retro, feedback_wiring_suite_test_isolation) were read in full and their claims cross-checked against current code. Sections marked UNKNOWN are explicitly flagged as unverified at refresh time. -->
 
 # Accounts area — verification checklist

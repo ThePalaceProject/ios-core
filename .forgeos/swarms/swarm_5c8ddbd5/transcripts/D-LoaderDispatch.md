@@ -1,3 +1,14 @@
+---
+name: swarm_5c8ddbd5-transcript-D-LoaderDispatch
+type: ephemeral
+status: active
+created: 2026-05-21
+last_refresh: 2026-05-21
+freshness_window: 180d
+owners: [network]
+description: Module D — Loader dispatch rewrite + OPDS shape matrix tests — transcript
+---
+
 # Module D — Loader dispatch rewrite + OPDS shape matrix tests — transcript
 
 **Status:** complete

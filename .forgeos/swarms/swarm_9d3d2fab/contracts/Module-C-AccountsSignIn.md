@@ -1,3 +1,14 @@
+---
+name: swarm_9d3d2fab-contract-Module-C-AccountsSignIn
+type: immutable
+status: active
+created: 2026-05-21
+last_refresh: 2026-05-22
+freshness_window: never
+owners: [signin-modal]
+description: Module C — Accounts/SignIn (CI-flake migration)
+---
+
 # Module C — Accounts/SignIn (CI-flake migration)
 
 ## Files in scope (8)

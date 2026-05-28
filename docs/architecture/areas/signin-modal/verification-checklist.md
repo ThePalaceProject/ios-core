@@ -1,3 +1,14 @@
+---
+name: signin-modal-verification-checklist
+type: evolving
+status: active
+created: 2026-05-28
+last_refresh: 2026-05-28
+freshness_window: 180d
+owners: [signin-modal]
+description: Per-area verification reference; refresh before next swarm/rigorous-fix
+---
+
 <!-- audit-verified: file list, line citations, call-site counts, test inventory, and commit SHAs (8ed7451c1 PR #905, ca5a2fb80/24dc6021d/9ffcfcfcf SignInModal predicate extraction, da9875e28 PR #907 SAML SwiftUI conversion) all confirmed via `ls Palace/SignInLogic/`, `git log --oneline origin/develop`, `grep -rn`, and `wc -l` on 2026-05-28. PP-4421 placeholder fix landed in `Palace/Settings/AccountDetailView.swift` lines 344 & 369 (verified). HelpSpot 17923 revert per `feedback_no_new_copy_without_design.md`. -->
 
 # Sign-in modal area — verification checklist

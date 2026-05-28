@@ -1,3 +1,14 @@
+---
+name: swarm_efd1f0c3-contract-T1-Player-Protocol-OpenAccess
+type: immutable
+status: active
+created: 2026-05-21T00:00:00Z
+last_refresh: 2026-05-22
+freshness_window: never
+owners: [audiobook]
+description: "Bucket T1 — `Player` async protocol + OpenAccessPlayer + LCPStreamingPlayer migration"
+---
+
 # Bucket T1 — `Player` async protocol + OpenAccessPlayer + LCPStreamingPlayer migration
 
 ## Scope summary

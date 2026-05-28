@@ -1,3 +1,14 @@
+---
+name: swarm_9d3d2fab-contract-Module-F-IntegrationReader2BookRegistry
+type: immutable
+status: active
+created: 2026-05-21
+last_refresh: 2026-05-22
+freshness_window: never
+owners: [reader]
+description: Module F — Integration/Reader2/BookRegistry (CI-flake migration)
+---
+
 # Module F — Integration/Reader2/BookRegistry (CI-flake migration)
 
 ## Files in scope (6)

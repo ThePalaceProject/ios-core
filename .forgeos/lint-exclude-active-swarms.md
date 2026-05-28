@@ -1,3 +1,14 @@
+---
+name: forgeos-lint-exclude-active-swarms
+type: evolving
+status: active
+created: 2026-05-26
+last_refresh: 2026-05-26
+freshness_window: 365d
+owners: [general]
+description: Files claimed by non-complete swarms — excluded from this cleanup PR
+---
+
 # Files claimed by non-complete swarms — excluded from this cleanup PR
 # Generated 2026-05-22T16:05:16Z from .forgeos/swarms/*/manifest.yaml status != complete
 

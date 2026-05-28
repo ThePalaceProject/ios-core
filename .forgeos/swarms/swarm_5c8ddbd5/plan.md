@@ -1,3 +1,14 @@
+---
+name: swarm_5c8ddbd5-plan
+type: immutable
+status: active
+created: 2026-05-21
+last_refresh: 2026-05-21
+freshness_window: never
+owners: [general]
+description: Swarm 1 — Audiobook Vendor Adapter Extraction
+---
+
 # Swarm 1 — Audiobook Vendor Adapter Extraction
 
 **Swarm ID:** `swarm_5c8ddbd5`

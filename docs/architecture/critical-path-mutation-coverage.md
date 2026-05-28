@@ -1,3 +1,14 @@
+---
+name: critical-path-mutation-coverage
+type: evolving
+status: active
+created: 2026-05-27
+last_refresh: 2026-05-27
+freshness_window: 365d
+owners: [general]
+description: "Critical-path mutation coverage — regex methodology"
+---
+
 # Critical-path mutation coverage — regex methodology
 
 <!-- audit-verified -->

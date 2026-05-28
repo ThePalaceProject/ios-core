@@ -1,3 +1,14 @@
+---
+name: swarm_03acb10a-transcript-B-SingletonElimination
+type: ephemeral
+status: active
+created: 2026-05-21
+last_refresh: 2026-05-21
+freshness_window: 180d
+owners: [general]
+description: Module B — Singleton Elimination — Transcript
+---
+
 # Module B — Singleton Elimination — Transcript
 
 Swarm: `swarm_03acb10a` (Phase 3 of audiobook systemic overhaul)

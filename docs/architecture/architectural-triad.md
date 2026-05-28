@@ -1,3 +1,14 @@
+---
+name: architectural-triad
+type: evolving
+status: active
+created: 2026-04-27
+last_refresh: 2026-04-27
+freshness_window: 365d
+owners: [general]
+description: "Architectural Triad — Plan and Decision Log"
+---
+
 # Architectural Triad — Plan and Decision Log
 
 > Multi-phase architectural work to close the gap between the modernize/whole-shot refactor's claimed state and the actual state. Three axes: dependency injection adoption, the Store reducer pattern, and the singleton / god-class purge.

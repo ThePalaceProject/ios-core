@@ -1,3 +1,14 @@
+---
+name: swarm_5c8ddbd5-contract-C-LCPAdapter
+type: immutable
+status: active
+created: 2026-05-21
+last_refresh: 2026-05-21
+freshness_window: never
+owners: [audiobook]
+description: Module C — LCP adapter + recursive acquisition predicate
+---
+
 # Module C — LCP adapter + recursive acquisition predicate
 
 ## In-scope files (exclusive write)
