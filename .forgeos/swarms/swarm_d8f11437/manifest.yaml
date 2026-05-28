@@ -1,0 +1,118 @@
+swarm_id: swarm_d8f11437
+wave: 4
+base_branch: swarm/swarm_18b0d071-scaffold
+base_pr: 1023
+parent_pr: 1022
+status: pending
+risk_bar:
+  A: critical_path  # SignInModal migration — 11 callers across SignInLogic, AppInfrastructure, Network, Holds, Book, MyBooks
+  B: critical_path  # AppContainer composition-root testability seam
+  C: standard  # Python script + swarm SKILL phase 4.5 + CLAUDE.md DoD doc update
+modules:
+  - id: A
+    name: SignInModal-migration-pass-2
+    contract: .forgeos/swarms/swarm_d8f11437/contracts/A-SignInModal-migration-pass-2.md
+    status: pending
+    files:
+      production_modified:
+        - Palace/AppInfrastructure/DLNavigator.swift
+        - Palace/Network/TPPNetworkExecutor.swift
+        - Palace/Holds/HoldsViewModel.swift
+        - Palace/SignInLogic/SignInModalPresenter+SignInModalPresenting.swift
+        - Palace/Book/UI/BookDetail/BookDetailViewModel.swift
+        - Palace/MyBooks/MyBooksDownloadCenter.swift
+        - Palace/MyBooks/TokenRefreshInterceptor.swift
+        - Palace/MyBooks/MyBooks/MyBooksViewModel.swift
+        - Palace/MyBooks/MyBooks/BookCell/BookCellModel.swift
+        - Palace/SignInLogic/SignInModalView.swift  # delete SignInModalHostingController class
+      tests_modified:
+        - PalaceTests/SignInLogic/SignInModalPredicateTests.swift  # delete 4 testShouldFireDismissCallback_*
+        - PalaceTests/SignInLogic/SignInModalLifecycleTests.swift  # add 3 state-transition tests + 1 wiring test
+      tests_read_only:
+        - PalaceTests/SignInLogic/TPPReauthenticatorTests.swift  # must still pass
+      depends_on_module: B  # Module A's wiring test uses Module B's AppContainer.withSignInModalSheetPresenter seam
+    risk: critical_path
+    reviewers_required: [architect, qa_test, clean_code]
+    estimated_loc: 400-600
+    deferral_note: |
+      Wave 5 removes the static SignInModalPresenter class entirely (wave 4 just stops calling
+      it from non-internal-driver production paths). Async variant of the sheet presenter
+      deferred to wave 5 if any consumer needs it.
+  - id: B
+    name: AppContainer-testability-seam
+    contract: .forgeos/swarms/swarm_d8f11437/contracts/B-AppContainer-testability-seam.md
+    status: pending
+    files:
+      production_modified:
+        - Palace/AppInfrastructure/AppContainer.swift  # add field + computed-property branch + modifier + augmented init
+      tests_new:
+        - PalaceTests/AppInfrastructure/AppContainerWithSignInModalSheetPresenterTests.swift  # 2 tests: override is preferred + production fallback
+    risk: critical_path
+    reviewers_required: [architect, qa_test, clean_code]
+    estimated_loc: 50-80  # 25 production + ~50 tests
+  - id: C
+    name: runnable-grep-rigor-escalation
+    contract: .forgeos/swarms/swarm_d8f11437/contracts/C-runnable-grep-rigor-escalation.md
+    status: pending
+    files:
+      tools_new:
+        - scripts/check-test-name-vs-body.py
+      tools_modified:
+        - .claude/skills/swarm/SKILL.md  # Phase 4.5 check 5b — replace doc-only with runnable invocation
+        - CLAUDE.md  # DoD check #1 extension to method-level
+    risk: standard
+    reviewers_required: [clean_code]  # process/script change, no critical-path code
+    estimated_loc: 150-250
+anti_scope:
+  - Palace/Audiobooks/
+  - Palace/Accounts/Library/AccountsManager.swift
+  - Palace/Accounts/Library/Account+State.swift
+  - Palace/Accounts/Library/AccountStateStore.swift
+  - Palace/SignInLogic/TPPSAMLHelper.swift
+  - Palace/SignInLogic/TPPSignInBusinessLogic.swift
+  - Palace/SignInLogic/TPPSignInBusinessLogic+SAML.swift
+  - worktree-refactor-saml-auth branch contents
+  - ios-audiobooktoolkit/
+  - async-variant of SignInModalSheetPresenter (wave 5)
+  - removal of static SignInModalPresenter class (wave 5)
+overlap_audit:
+  A_files:
+    - Palace/AppInfrastructure/DLNavigator.swift
+    - Palace/Network/TPPNetworkExecutor.swift
+    - Palace/Holds/HoldsViewModel.swift
+    - Palace/SignInLogic/SignInModalPresenter+SignInModalPresenting.swift
+    - Palace/Book/UI/BookDetail/BookDetailViewModel.swift
+    - Palace/MyBooks/MyBooksDownloadCenter.swift
+    - Palace/MyBooks/TokenRefreshInterceptor.swift
+    - Palace/MyBooks/MyBooks/MyBooksViewModel.swift
+    - Palace/MyBooks/MyBooks/BookCell/BookCellModel.swift
+    - Palace/SignInLogic/SignInModalView.swift
+    - PalaceTests/SignInLogic/SignInModalPredicateTests.swift
+    - PalaceTests/SignInLogic/SignInModalLifecycleTests.swift
+  B_files:
+    - Palace/AppInfrastructure/AppContainer.swift
+    - PalaceTests/AppInfrastructure/AppContainerWithSignInModalSheetPresenterTests.swift
+  C_files:
+    - scripts/check-test-name-vs-body.py
+    - .claude/skills/swarm/SKILL.md
+    - CLAUDE.md
+  shared_files: []
+  read_only_cross_refs:
+    A_reads_B:
+      - Palace/AppInfrastructure/AppContainer.swift  # Module A's wiring test calls B's `withSignInModalSheetPresenter`; Module A does NOT write to this file
+    C_validates_A:
+      - PalaceTests/SignInLogic/SignInModalLifecycleTests.swift  # Module C's script gates Module A's tests at Phase 4.5
+      - PalaceTests/SignInLogic/SignInModalPredicateTests.swift
+  verified_disjoint: true
+self_referential_rigor:
+  description: |
+    Module C's check-test-name-vs-body.py is the runnable-grep escalation
+    derived from wall-failure cs_9a267b63. Phase 4.5 runs it against the
+    test files Module A modifies. If Module A ships a test whose name
+    embeds a production-class noun the body doesn't instantiate (the
+    cs_9a267b63 shape), Module C's script BLOCKS at integration time —
+    the wall heals.
+  phase_4_5_gate: |
+    python3 scripts/check-test-name-vs-body.py PalaceTests/SignInLogic/SignInModalLifecycleTests.swift
+    python3 scripts/check-test-name-vs-body.py PalaceTests/SignInLogic/SignInModalPredicateTests.swift
+    # plus every other PalaceTests/**.swift file in the diff
