@@ -33,7 +33,38 @@ protocol Reauthenticator: NSObject {
     /// verify single-flight behavior at upstream call sites
     /// (e.g. `TokenRefreshInterceptor.isRequestingCredentials` dedupe).
     /// Not used for any production logic.
-    public private(set) var authenticateCallCount: Int = 0
+    internal private(set) var authenticateCallCount: Int = 0
+
+    /// Test-only override for the `AppContainer` from which the
+    /// `signInModalSheetPresenter` is resolved. Production reads through
+    /// `AppContainer.production()`; tests set this to a container built
+    /// via Module B's `withSignInModalSheetPresenter(_:)` modifier so a
+    /// spy presenter can be injected.
+    ///
+    /// **Scope:** the override is only consulted when XCTest is the host
+    /// process (`XCTestConfigurationFilePath` env var is set). In every
+    /// other build — sim runs, dev TestFlight, App Store — the override
+    /// is structurally ignored, so the seam cannot leak into user-visible
+    /// reauthentication paths even if a developer accidentally writes to
+    /// it from non-test code.
+    ///
+    /// swarm_d8f11437 Module A wave 4 — closes wall-failure cs_9a267b63
+    /// (architect rev_bc20951b). Without this seam, the wiring test
+    /// `testReauth_TPPReauthenticator_authenticateIfNeeded_drivesSpyPresenterViaAppContainerSeam`
+    /// cannot drive a spy presenter through the production
+    /// `authenticateIfNeeded` path.
+    ///
+    /// MUST be reset to nil in test teardown to avoid bleed between tests.
+    @MainActor
+    internal static var _testContainerOverride: AppContainer?
+
+    /// Tightens `#if DEBUG` to unit-test-only by checking for the XCTest
+    /// configuration env var. DEBUG also covers sim runs / dev TestFlight,
+    /// where a leaked override would silently re-route production reauth.
+    @MainActor
+    private static var isRunningUnderXCTest: Bool {
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+    }
 
     /// Re-authenticates the user. This may involve presenting the sign-in
     /// modal UI or not, depending on the sign-in business logic.
@@ -53,8 +84,15 @@ protocol Reauthenticator: NSObject {
             // swarm_18b0d071 Module A wave 3 — proof-of-pattern migration
             // from the static `SignInModalPresenter` API to the
             // SwiftUI-observable `SignInModalSheetPresenter` facade.
-            // Wave 4 migrates the remaining 9 call sites.
-            let presenter = AppContainer.production().signInModalSheetPresenter
+            // swarm_d8f11437 Module A wave 4 — completes the migration
+            // for the remaining 9 call sites; the test-only
+            // `_testContainerOverride` seam is consulted ONLY when running
+            // under XCTest (not in dev/sim/TestFlight builds), so the
+            // override cannot leak into user-visible reauthentication.
+            let container = TPPReauthenticator.isRunningUnderXCTest
+                ? (TPPReauthenticator._testContainerOverride ?? AppContainer.production())
+                : AppContainer.production()
+            let presenter = container.signInModalSheetPresenter
             presenter.presentSignInModalForCurrentAccount {
                 Log.info(#file, "TPPReauthenticator: Re-authentication completed")
                 authenticationCompletion?()
