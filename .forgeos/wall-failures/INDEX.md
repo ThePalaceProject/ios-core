@@ -15,6 +15,7 @@ One line per entry. Sortable by date, wall, status. Most recent first.
 
 | Date | PR | Wall | Severity | Status | Contributing-docs? | Entry | One-line |
 |------|----|------|----------|--------|--------------------|-------|----------|
+| 2026-05-28 | cs_847892e8 (swarm_c8fcab76) | contract+implementer+mutation | high | proposed | N | [arch1-fake-wiring-recurrence](2026-05-28-cs847892e8-arch1.md) | AudiobookFirstOpenHangTests recurrence of arch2 pattern — production wiring at AudiobookSessionManager.swift:684-710 never reached because rigor improvements (#1019) weren't on the base branch when this swarm dispatched |
 | 2026-05-28 | n/a (backtest) | reviewer | high | proposed | N | [backtest-2026-05-28](backtest-2026-05-28.md) | Paper analysis of 10 prior shipped bugs vs. SoD reviewer agent prompts — 0% definitive WOULD-CATCH; 5 prompt-addition recommendations |
 | 2026-05-27 | #1018 | implementer | high | proposed | N | [arch1-discipline](2026-05-27-pr1018-arch1.md) | 7 submodule gitlinks accidentally staged as symlinks |
 | 2026-05-27 | #1018 | contract | medium | proposed | N | [arch2-fake-wiring-test](2026-05-27-pr1018-arch2.md) | Wiring test claimed production round-trip but built fresh spies |
@@ -25,8 +26,10 @@ One line per entry. Sortable by date, wall, status. Most recent first.
 
 ## Cluster patterns (updated when a cluster emerges)
 
+- **fake-wiring-test (2)**: tests claim to exercise the production seam but the test setup short-circuits before the wired code runs. Sources: arch2 (PR #1018), arch1 (cs_847892e8). Cluster fix: contract template requires, for every new `try await`/`await` boundary in production, a grep showing a test that drives that exact line via the public entry point. Phase 4.5 skeptic check 5b: confirm body calls the production entry point AND has no early-return mock bypassing the cited line range.
 - **fake-test-instantiation (2)**: tests with names referencing a SUT they never instantiate. Source: contract + orchestrator. Cluster fix: contract template requires `grep -c "<SUT>(" <test-file>" ≥ 1` as a verification criterion; orchestrator runs the same grep at Phase 4.5.
 - **dishonest migration (1)**: production code calls new function and discards/ignores result while legacy path still runs. Source: contract + implementer. Cluster fix: contract template requires `grep -E "= newFn|let _ = newFn|newFn\(\).*outcome" + reviewer-checklist clause.
 - **half-done tests (1)**: test body has named scenario but commented-out steps. Source: implementer + mutation. Cluster fix: implementer self-check must run mutation before READY; mutation kill of newly-added test class < 100% on its own lines = block.
+- **rigor-propagation-lag (meta, from arch1)**: rigor-PR-derived contract changes (#1019) didn't take effect for the next-after-next swarm (c8fcab76) because they hadn't merged to develop when c8fcab76 dispatched. Cluster fix: fast-track rigor-PR merges; future-fix: have the architect fetch from the latest rigor branch even if it isn't yet merged.
 
 Re-evaluate clusters monthly OR after every ~10 entries.
