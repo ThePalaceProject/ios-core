@@ -978,6 +978,31 @@ struct CatalogCacheMetadata: Codable {
             // stops sharing storage with the genuine HTTP-404 load failure
             // below. Now a real `.accountNotFound` correctly hits the
             // `.detailsFailed` arm and does NOT redrive.
+            //
+            // FORWARD-COMPAT (added by swarm_18b0d071 wave 3 Module B):
+            // This arm matches ONLY `.libraryDeselected` today because
+            // that is the only known `AccountEvictionReason`. When a NEW
+            // `AccountEvictionReason` case is added in the future, the
+            // implementer must decide between two semantics:
+            //   (a) "Re-drive on re-entry" — same semantics as
+            //       `.libraryDeselected`: the eviction was triggered by a
+            //       reversible UX action (library swap, sign-out-on-
+            //       current, etc.). Add `case .detailsEvicted(.<newReason>):`
+            //       to THIS arm (alongside `.libraryDeselected`) so
+            //       awaitReady() callers can resume after re-entry.
+            //   (b) "Do NOT re-drive" — the eviction was triggered by an
+            //       irreversible state (account deleted server-side,
+            //       policy expiry, etc.). Add a NEW
+            //       `case .detailsEvicted(.<newReason>):` arm that
+            //       `return`s (mirroring the `.detailsFailed` arm below at
+            //       line ~983) so awaitReady() correctly surfaces the
+            //       failure to consumers instead of looping fetches.
+            // The `default` case is deliberately NOT added to this switch
+            // — Swift's switch-exhaustiveness check will fail at compile
+            // time when a new `AccountEvictionReason` case is added,
+            // forcing the future implementer to make the (a)/(b) decision
+            // explicit here rather than silently inheriting the wrong
+            // behaviour from a default fall-through.
             break
         case .detailsFailed:
             return // genuine load failure — caller must retry explicitly

@@ -373,6 +373,79 @@ final class TPPSAMLCookieExpirationTests: XCTestCase {
                        "Cookie expiring in the future should be kept")
     }
 
+    // MARK: - Test 16: All expired (3 cookies) → filters to empty, helper cookies stay nil
+    //
+    // Wave-3 swarm_18b0d071 Module B hardening — pins the contract that
+    // when ALL cached IdP cookies are expired, the filter strips them all
+    // before presenting the WebView and the helper's own `cookies` storage
+    // is NOT pre-populated from the expired set (only the post-redirect
+    // `loginCompletion` writes `cookies`, which is not driven by this test).
+    // Kill case: removing the `> Date()` filter would observe count == 3.
+
+    func testSAMLLogin_allCookiesExpired_filtersAllAndProceedsWithEmptyArray() {
+        let idpURL = URL(string: "https://idp.example.com/saml/login")!
+        mockContext.selectedIDP = makeTestIDP(url: idpURL)
+
+        let expired1 = makeTestCookie(name: "session_a", value: "1",
+                                      expiresDate: Date(timeIntervalSinceNow: -3600))
+        let expired2 = makeTestCookie(name: "session_b", value: "2",
+                                      expiresDate: Date(timeIntervalSinceNow: -1800))
+        let expired3 = makeTestCookie(name: "session_c", value: "3",
+                                      expiresDate: Date(timeIntervalSinceNow: -1))
+        mockContext.savedCookies = [expired1, expired2, expired3].compactMap { $0 }
+        XCTAssertEqual(mockContext.savedCookies.count, 3,
+                       "test fixture sanity: 3 expired cookies seeded")
+
+        samlHelper.logIn(loginCancelHandler: {})
+
+        XCTAssertTrue(mockPresenter.presentCalled,
+                      "presenter must still be called even when all cookies are expired")
+        XCTAssertEqual(mockPresenter.presentedCookies?.count, 0,
+                       "all 3 expired cookies must be filtered before reaching presenter")
+        XCTAssertNil(samlHelper.cookies,
+                     "helper.cookies must remain nil until loginCompletion fires post-redirect")
+    }
+
+    // MARK: - Test 17: Mixed (2 expired + 2 valid) → only valid passed, valid names preserved
+    //
+    // Wave-3 swarm_18b0d071 Module B hardening — pins both halves of the
+    // filter behaviour for the mixed case: expired entries are stripped
+    // AND valid entries are passed through unchanged with their names
+    // preserved. This is the test name's "filters expired + passes valid"
+    // claim verified literally (DoD #3 multi-step body check).
+    // Kill cases:
+    //   - removing the filter entirely → count == 4
+    //   - flipping the predicate to `< Date()` → count == 2 but containing the WRONG (expired) names
+
+    func testSAMLLogin_mixedExpiredAndValidCookies_filtersOnlyExpired_passesValid() {
+        let idpURL = URL(string: "https://idp.example.com/saml/login")!
+        mockContext.selectedIDP = makeTestIDP(url: idpURL)
+
+        let expired1 = makeTestCookie(name: "expired_session_x", value: "x",
+                                      expiresDate: Date(timeIntervalSinceNow: -7200))
+        let expired2 = makeTestCookie(name: "expired_session_y", value: "y",
+                                      expiresDate: Date(timeIntervalSinceNow: -1))
+        let valid1 = makeTestCookie(name: "valid_session_p", value: "p",
+                                    expiresDate: Date(timeIntervalSinceNow: 3600))
+        let valid2 = makeTestCookie(name: "valid_session_q", value: "q",
+                                    expiresDate: Date(timeIntervalSinceNow: 7200))
+        mockContext.savedCookies = [expired1, expired2, valid1, valid2].compactMap { $0 }
+        XCTAssertEqual(mockContext.savedCookies.count, 4,
+                       "test fixture sanity: 4 cookies (2 expired + 2 valid) seeded")
+
+        samlHelper.logIn(loginCancelHandler: {})
+
+        XCTAssertEqual(mockPresenter.presentedCookies?.count, 2,
+                       "exactly 2 valid cookies must reach the presenter (2 expired filtered)")
+        let passedNames = Set(mockPresenter.presentedCookies?.map(\.name) ?? [])
+        XCTAssertEqual(passedNames, ["valid_session_p", "valid_session_q"],
+                       "only the non-expired cookies' names must be passed through")
+        XCTAssertFalse(passedNames.contains("expired_session_x"),
+                       "expired_session_x must NOT be passed (predicate kill check)")
+        XCTAssertFalse(passedNames.contains("expired_session_y"),
+                       "expired_session_y must NOT be passed (predicate kill check)")
+    }
+
     // MARK: - Helpers
 
     private func makeTestIDP(url: URL) -> OPDS2SamlIDP? {

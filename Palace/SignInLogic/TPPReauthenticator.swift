@@ -50,8 +50,12 @@ protocol Reauthenticator: NSObject {
         Task { @MainActor in
             Log.info(#file, "TPPReauthenticator: Re-authentication requested, using existing credentials: \(usingExistingCredentials)")
 
-            // Use new SwiftUI sign-in modal
-            SignInModalPresenter.presentSignInModalForCurrentAccount {
+            // swarm_18b0d071 Module A wave 3 — proof-of-pattern migration
+            // from the static `SignInModalPresenter` API to the
+            // SwiftUI-observable `SignInModalSheetPresenter` facade.
+            // Wave 4 migrates the remaining 9 call sites.
+            let presenter = AppContainer.production().signInModalSheetPresenter
+            presenter.presentSignInModalForCurrentAccount {
                 Log.info(#file, "TPPReauthenticator: Re-authentication completed")
                 authenticationCompletion?()
             }
