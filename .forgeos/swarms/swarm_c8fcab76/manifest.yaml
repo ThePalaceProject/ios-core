@@ -1,0 +1,86 @@
+swarm_id: swarm_c8fcab76
+task: "3.2.0 close-out wave 1 — audiobook hang + Phase 7 followups + area checklists + test fluff"
+created_at: 2026-05-28
+status: triaged
+base_ref: origin/develop
+branch: swarm/swarm_c8fcab76-scaffold
+
+modules:
+  - name: A-Audiobook-FirstOpen
+    files_scope:
+      - "Palace/Audiobooks/AudiobookSessionManager.swift (modified — wire readiness gate into bind/startPlayback handoff)"
+      - "Palace/Audiobooks/AudiobookLoader.swift (modified — emit readiness future as additive LoadedAudiobook field IF needed)"
+      - "Palace/Audiobooks/AudiobookSessionManaging.swift (modified — internal protocol only if needed; no consumer surface changes)"
+      - "Palace/Audiobooks/PlaybackReadinessGate.swift (NEW — only if extracting from session manager)"
+      - "Palace/Audiobooks/NowPlayingCoordinator.swift (modified — ONLY if hang root cause is in nowplaying timer/state push)"
+      - "PalaceTests/Audiobooks/AudiobookFirstOpenHangTests.swift (NEW — three named cases)"
+      - "PalaceTests/Audiobooks/Mocks/ (MAY extend — document each new mock)"
+    contract_path: .forgeos/swarms/swarm_c8fcab76/contracts/A-Audiobook-FirstOpen.md
+    implementer_prompt: "PR #990 toolkit bump introduced an engine-not-ready race on first-open. Reproduce hang via AudiobookSessionManager.openAudiobook production seam in a new AudiobookFirstOpenHangTests.swift (three named cases). Fix is a Palace-side readiness await of the toolkit's coordinator-ready signal before issuing first play(at:). NO submodule changes (toolkit is highest-risk dependency — 25+ revs, frequent reverts). NO _setState shortcuts in tests. NO DispatchQueue.asyncAfter workarounds — use actor + async/await per feedback_swift_concurrency_over_gcd. CrossVendorSmoke + AudiobookOpenStateRaceTests must stay green. Critical-path mutation kill-rate ≥80% diff-scoped. Anti-scope: SignInLogic/, PalaceAuth/, AccountsManager.swift, Account+State.swift, AccountStateStore.swift."
+    prelude_domain: audiobook
+    rigor: critical-path
+    depends_on: []
+
+  - name: B-Phase7-Followups
+    files_scope:
+      - "PalaceTests/BookStateManagement/BookButtonMapperTests.swift (modified — add META exhaustive-switch regression test)"
+      - "PalaceTests/MyBooks/DownloadStartDispatcherTests.swift (modified — close mutation kill-rate gap)"
+      - "PalaceTests/MyBooks/DownloadAuthRetryHandlerTests.swift (modified — close mutation kill-rate gap)"
+      - "Palace/Book/UI/BookDetail/BookButtonMapper.swift (comment-only — defensive marker; behavior unchanged)"
+    contract_path: .forgeos/swarms/swarm_c8fcab76/contracts/B-Phase7-Followups.md
+    implementer_prompt: "Phase 7 audit follow-up. (1) PR #1006 already closed the SAMLStarted fall-through via exhaustive switch; architect verified (lines 37–68 of BookButtonMapper.swift, regression test at BookButtonMapperTests.swift:84). Your job: add META-regression test that pins the exhaustive-switch contract so a future PR cannot re-introduce default: return .unsupported silently. Use TPPBookState.allCases. (2) Close mutation kill-rate gaps in DownloadStartDispatcher, DownloadAuthRetryHandler, BookButtonMapper test files — run palace_mutate.py before/after, target ≥80% diff-scoped (100% ideal critical-path). Test-only / comment-only — DO NOT change production behavior; escalate if a mutant cannot be killed without production change. Anti-scope: same as Module A. EXCLUSIVE write on PalaceTests/MyBooks/Download*Tests.swift and PalaceTests/Book(/StateManagement)/BookButtonMapper*Tests.swift — Module D excludes these."
+    prelude_domain: mybooks
+    rigor: critical-path
+    depends_on: []
+
+  - name: C-Area-Checklists
+    files_scope:
+      - "docs/architecture/areas/mybooks/verification-checklist.md (NEW)"
+      - "docs/architecture/areas/audiobook/verification-checklist.md (NEW)"
+      - "docs/architecture/areas/accounts/verification-checklist.md (NEW)"
+    contract_path: .forgeos/swarms/swarm_c8fcab76/contracts/C-Area-Checklists.md
+    implementer_prompt: "Three per-area verification checklists modeled after docs/architecture/areas/auth/verification-checklist.md (PR #1019 template — may not exist at branch base; fallback documented in contract). Each must (a) cover area's critical-path invariants, (b) cite ≥3 source documents (audits/memory/architecture docs), (c) include grep-able verification commands, (d) have ≥3 <!-- audit-verified --> markers. DOCS-ONLY: zero .swift/.pbxproj/.py/.sh/.rb edits. If audit-before-assert.py absent, use manual-grep fallback in transcript. Even though accounts checklist DESCRIBES AccountsManager/Account+State/AccountStateStore, do NOT modify them — anti-scope deferred to wave 2."
+    prelude_domain: general
+    rigor: standard
+    depends_on: []
+
+  - name: D-Test-Fluff
+    files_scope:
+      - "PalaceTests/Audiobooks/*.swift (modified — only pre-existing files NOT owned by Module A; AudiobookFirstOpenHangTests.swift and CrossVendorSmokeTests.swift OFF-LIMITS)"
+      - "PalaceTests/SignInLogic/*.swift (modified — rewrite shallow violations)"
+      - "PalaceTests/Accounts/*.swift (modified — rewrite shallow violations; test rewrites needing AccountsManager/Account+State/AccountStateStore changes are ESCALATED)"
+      - "PalaceTests/Network/*.swift (modified — rewrite shallow violations)"
+      - "PalaceTests/MyBooks/*.swift EXCEPT Download*Tests.swift (modified — Download*Tests.swift OFF-LIMITS, Module B owns)"
+    contract_path: .forgeos/swarms/swarm_c8fcab76/contracts/D-Test-Fluff.md
+    implementer_prompt: "Rewrite 30–50 SHALLOW-001 violations from python3 scripts/lint-test-quality.py into real behavior tests per CLAUDE.md TDD rules. Cap to critical-path matchers PalaceTests/(Audiobooks|SignInLogic|MyBooks/Download-EXCEPT|Accounts|Network). EXCLUDE PalaceTests/MyBooks/Download*Tests.swift (Module B owns), PalaceTests/Book/BookButtonMapper*Tests.swift (Module B), PalaceTests/BookStateManagement/BookButtonMapperTests.swift (Module B), PalaceTests/Audiobooks/AudiobookFirstOpenHangTests.swift (Module A's new file), PalaceTests/Audiobooks/CrossVendorSmokeTests.swift (contract — read-only). Production code OFF-LIMITS: zero Palace/ edits. Replace 1:1 (never delete tests). Flag intentionally-shallow ObjC-bridge files with // INTENTIONALLY-SHALLOW comment + transcript entry. Anti-scope: any test rewrite requiring SignInLogic/, PalaceAuth/, AccountsManager.swift, Account+State.swift, AccountStateStore.swift production change is escalated."
+    prelude_domain: general
+    rigor: standard
+    depends_on: [A-Audiobook-FirstOpen]  # soft — D rebases off A if both touch a pre-existing audiobook test file
+
+dont_touch:
+  - Palace/SignInLogic/                                # Anti-scope: deferred to wave 2 after PR #1018 merges
+  - Palace/Packages/PalaceAuth/                        # Anti-scope: deferred to wave 2
+  - Palace/Accounts/Library/AccountsManager.swift      # Anti-scope: deferred to wave 2
+  - Palace/Accounts/Account+State.swift                # Anti-scope: deferred to wave 2
+  - Palace/Accounts/AccountStateStore.swift            # Anti-scope: deferred to wave 2
+  - ios-audiobooktoolkit/                              # Submodule — highest-risk dependency (25+ revs); Module A escalates BEFORE any bump
+  - PalaceTests/Audiobooks/CrossVendorSmokeTests.swift # Contract — verify-pr.sh references the class name; read-only for all modules
+  - .forgeos/swarms/swarm_eefef87a/                    # Prior swarm — read-only for context
+
+acceptance_gates:
+  - "scripts/verify-pr.sh --quick passes on the merged branch (build, tests, lint, coverage, accessibility)"
+  - "Module A: AudiobookFirstOpenHangTests three named cases exist + pass through openAudiobook production seam"
+  - "Module A: CrossVendorSmokeTests + AudiobookOpenStateRaceTests + AudiobookSessionManagerShutdownTests all green"
+  - "Module A: ios-audiobooktoolkit submodule diff is empty (no toolkit bump without orchestrator approval)"
+  - "Module A: mutation kill-rate ≥80% diff-scoped on AudiobookSessionManager.swift + AudiobookLoader.swift"
+  - "Module B: BookButtonMapper exhaustive-switch META test exists; grep -c 'default:' BookButtonMapper.swift == 0"
+  - "Module B: mutation kill-rate ≥80% diff-scoped on BookButtonMapper.swift, DownloadStartDispatcher.swift, DownloadAuthRetryHandler.swift"
+  - "Module B: zero production-behavior changes (test-only / comment-only diff in Palace/)"
+  - "Module C: three checklist files exist under docs/architecture/areas/; each ≥50 lines, ≥3 audit-verified markers, ≥3 cross-references"
+  - "Module C: zero non-doc edits (no .swift/.pbxproj/.py/.sh/.rb modifications)"
+  - "Module D: scripts/lint-test-quality.py total violations decreased by ≥30 and ≤60"
+  - "Module D: test cardinality preserved or grown (added test count ≥ removed test count)"
+  - "Module D: zero Palace/ edits; no banned patterns introduced in diff"
+  - "All modules: zero edits to anti-scope files (dont_touch list)"
+  - "mcp__forgeos__forge_check_gates: architect + qa_test gates satisfied for Modules A + B (critical-path)"
+  - "Per-module PRs against develop (4 PRs)"
