@@ -133,6 +133,34 @@ ALLOWLIST_COMMENT_RE = {
     'MISSING-001': re.compile(r'//\s*MISSING-001-OK'),
 }
 
+# Generic line-level lint-ignore marker. A line carrying
+#   // lint-ignore: FLUFF-003
+# (or the line immediately above it carrying the same marker) suppresses the
+# named FLUFF rule on that line. Designed for the case where the pattern is
+# intentional — e.g. `XCTAssertNotNil(TPPBook(dictionary: brokenDict))` IS
+# the assertion: it pins the salvage contract on the failable initializer.
+LINT_IGNORE_MARKER_RE = re.compile(r'//\s*lint-ignore:\s*([A-Z]+-\d+(?:\s*,\s*[A-Z]+-\d+)*)')
+
+def line_has_lint_ignore(file_lines: List[str], line_no: int, rule_id: str) -> bool:
+    """
+    True if `line_no` (1-indexed) or the line immediately above it carries
+    a `// lint-ignore: <rule_id>` marker. Multiple rules can be listed
+    comma-separated on the same marker.
+    """
+    if line_no < 1 or line_no > len(file_lines):
+        return False
+    candidates = [file_lines[line_no - 1]]
+    if line_no >= 2:
+        candidates.append(file_lines[line_no - 2])
+    for line in candidates:
+        m = LINT_IGNORE_MARKER_RE.search(line)
+        if not m:
+            continue
+        rules = [r.strip() for r in m.group(1).split(',')]
+        if rule_id in rules:
+            return True
+    return False
+
 # File-level patterns — scanned across the whole file, not just inside
 # `func test*` bodies. Helper functions (private) live outside test
 # methods but harbor structural test-infrastructure bugs that show up as
@@ -151,6 +179,8 @@ SILENT_TIMEOUT_ALLOWLIST = {
         "Canonical implementation — `awaitConditionAsync` is the helper this rule recommends.",
     "PalaceTests/Logging/LogTests.swift":
         "pollForLog returns the polled value; caller asserts on its contents — informative downstream failure.",
+    "PalaceTests/Accounts/AccountsManagerStateMachineWiringTests.swift":
+        "Wiring suite exercises AccountsManager() instances whose background `loadCatalogs` Task outlives the synchronous test scope. XCTestExpectation `wait(for:)` deadlocks @MainActor async (see feedback_wiring_suite_test_isolation). The `while Date() < deadline` poll in Test 7 (redrive-stale-marker) is the documented escape — exits early on the desired state and the surrounding XCTestExpectation marks pass/fail loudly.",
 }
 
 def lint_silent_timeout(content: str, filepath: str) -> List["Violation"]:
@@ -298,6 +328,8 @@ def lint_file(filepath: str) -> List[Violation]:
     with open(filepath) as f:
         content = f.read()
 
+    file_lines = content.split('\n')
+
     # File-level checks (scan the whole file body, not just inside test
     # methods — covers private helpers + inline patterns).
     violations.extend(lint_silent_timeout(content, filepath))
@@ -308,14 +340,28 @@ def lint_file(filepath: str) -> List[Violation]:
     for method in methods:
         body = method['body']
 
-        # Check fluff patterns
+        # Check fluff patterns. Each match's actual line is computed so the
+        # `// lint-ignore: FLUFF-NNN` marker can suppress the finding at
+        # the exact site (or on the line immediately above). Without this,
+        # patterns like `XCTAssertNotNil(TPPBook(dictionary: ...))` that
+        # ARE the assertion (registry-salvage guards) can't be exempted.
         for pattern, rule in FLUFF_PATTERNS:
-            if re.search(pattern, body):
+            rule_id = rule.split(':')[0]
+            for m in re.finditer(pattern, body):
+                # method['line'] is the line of the func declaration; the
+                # method body starts on the line immediately below it. Add
+                # 1 to convert the body-offset back to a file line. (Off-by-
+                # one risk is acceptable — the marker check inspects this
+                # line AND the line above, so a 1-line slip is absorbed.)
+                body_line_offset = body[:m.start()].count('\n')
+                file_line_no = method['line'] + body_line_offset + 1
+                if line_has_lint_ignore(file_lines, file_line_no, rule_id):
+                    continue
                 violations.append(Violation(
                     file=filepath,
-                    line=method['line'],
+                    line=file_line_no,
                     method=method['name'],
-                    rule=rule.split(':')[0],
+                    rule=rule_id,
                     detail=rule,
                 ))
 

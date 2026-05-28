@@ -7,6 +7,12 @@
 #   scripts/verify-pr.sh                       # Run all checks
 #   scripts/verify-pr.sh --quick               # Skip mutation testing (faster)
 #   scripts/verify-pr.sh --report <file>       # Write JSON report to file
+#   scripts/verify-pr.sh --diff-baseline       # On test failures, re-run failing
+#                                              #   classes in isolation to distinguish
+#                                              #   pre-existing test-isolation flakes
+#                                              #   from branch-introduced regressions.
+#                                              #   Per .forgeos/wall-failures/ —
+#                                              #   PR #1018 lessons.
 #   scripts/verify-pr.sh --mutation-only       # Run ONLY the mutation step (skips
 #                                              # build/test/lint/coverage/a11y).
 #                                              # Used by the mutation-on-pr.yml
@@ -70,7 +76,13 @@ MUTATION_MIN_KILL_RATE=50
 # Critical paths: every changed file matching one of these prefixes is held to
 # the strict kill-rate floor unless explicitly opted out via --no-enforce-mutations.
 # These are the user-money / access-bearing paths memory flagged as air-tight.
-CRITICAL_MUTATION_PATHS_REGEX='^Palace/(Audiobooks|SignInLogic|MyBooks/Download|Book/UI/BookDetail/BookButtonMapper)'
+#
+# Enumeration methodology, file-by-file inclusion list, and the Reader2
+# exemption (covered by Module D contract snapshots, not mutation) are
+# documented in `docs/architecture/critical-path-mutation-coverage.md`.
+# Re-run that audit after any file rename in the listed surfaces or any PR
+# that adds a new state machine, retry handler, or borrow/download/DRM router.
+CRITICAL_MUTATION_PATHS_REGEX='^Palace/(Audiobooks/|SignInLogic/|MyBooks/(Download|Borrow|BookSignInRedirectHandler|AdobeDRMHandler|LCPFulfillmentHandler|RightsManagementDispatcher|MyBooksDownload|BackgroundDownloadHandler|OverdriveDownloadHandler)|Book/UI/BookDetail/(BookButtonMapper|BorrowReducer)|Accounts/User/TPPUserAccount|Accounts/Library/AccountsManager|Network/TPPNetworkExecutor|Packages/PalaceAuth/)'
 # Sim selection. Honors the harness allocator's per-session UDID so parallel
 # agents on the same machine don't collide on one device. Falls back to the
 # pool default when the harness isn't claiming. CLAUDE.md: "NEVER hardcode a
@@ -81,6 +93,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --quick) QUICK=true; shift ;;
     --report) REPORT_FILE="$2"; shift 2 ;;
+    --diff-baseline) DIFF_BASELINE=true; shift ;;
     --simdrive) SIMDRIVE=true; shift ;;
     --enforce-mutations) MUTATION_POLICY="enforce_all"; shift ;;
     --no-enforce-mutations) MUTATION_POLICY="advisory_all"; shift ;;
@@ -104,7 +117,14 @@ detect_base_branch() {
 BASE=$(detect_base_branch)
 CHANGED_SWIFT=$(git diff --name-only "$BASE"...HEAD -- '*.swift' 2>/dev/null | grep -v 'Tests/' || true)
 CHANGED_TEST_SWIFT=$(git diff --name-only "$BASE"...HEAD -- '*.swift' 2>/dev/null | grep 'Tests/' || true)
-CHANGED_UI=$(echo "$CHANGED_SWIFT" | grep -E 'UI/|View|Cell|Controller' || true)
+# Scope a11y file picker to actual SwiftUI/UIKit view files. Exclude
+# non-view siblings (ViewModel, Model, Reducer, Service, Provider, Mapper,
+# Store, Coordinator, Builder, Dispatcher) that happen to substring-match
+# "View" or "Controller". Documented in feedback_verify_pr_false_positives.md.
+CHANGED_UI=$(echo "$CHANGED_SWIFT" \
+  | grep -E '(UI/|View|Cell|Controller)' \
+  | grep -Ev '(ViewModel|ViewState|Model|Reducer|Service|Provider|Mapper|Store|Coordinator|Builder|Dispatcher|Repository|Manager)\.swift$' \
+  || true)
 ALL_CHANGED=$(git diff --name-only "$BASE"...HEAD 2>/dev/null || true)
 
 # Docs-only fast-path. If every changed file matches a documentation or
@@ -164,6 +184,7 @@ if [ "$DOCS_ONLY" = "true" ]; then
   record "test_quality" "pass" "Skipped — docs-only PR (no test files changed)"
   record "coverage_floors" "pass" "Skipped — docs-only PR (no source files changed)"
   record "mutation" "pass" "Skipped — docs-only PR (no production Swift changed)"
+  record "audiobook_smoke" "pass" "Skipped — docs-only PR (no audiobook files changed)"
   record "accessibility" "pass" "Skipped — docs-only PR (no UI files changed)"
   TEST_PASS=0
   TEST_FAIL=0
@@ -240,6 +261,66 @@ TEST_PASS=$(echo "$ROLLUP_LINES" | grep -o 'Executed [0-9]* tests\?' | grep -o '
 TEST_FAIL=$(echo "$ROLLUP_LINES" | grep -oE '[0-9]+ failures? \(' | grep -o '[0-9]*' | awk '{s+=$1} END {print s+0}')
 if [ "$TEST_FAIL" -eq 0 ] && [ "$TEST_PASS" -gt 0 ]; then
   record "unit_tests" "pass" "$TEST_PASS tests, 0 failures"
+elif [ "$DIFF_BASELINE" = "true" ] && [ "$TEST_FAIL" -gt 0 ]; then
+  # --diff-baseline: distinguish pre-existing test-isolation flakes from
+  # branch-introduced regressions. Extract failing class names from the
+  # most recent xcresult, re-run each class in isolation, and only fail
+  # the gate if a class fails in isolation too. Mirrors the manual triage
+  # for PR #1018 (9 "failures" all passed in isolation).
+  XCRESULT=$(find ~/Library/Developer/Xcode/DerivedData -name "*.xcresult" -mmin -30 -type d 2>/dev/null | head -1)
+  if [ -n "$XCRESULT" ] && command -v xcrun >/dev/null 2>&1; then
+    # Walk xcresult JSON to extract failing test-case node names → class names
+    FAILING_CLASSES=$(xcrun xcresulttool get test-results tests --path "$XCRESULT" --format json 2>/dev/null | \
+      python3 -c "
+import json, sys, re
+data = json.load(sys.stdin)
+classes = set()
+def walk(node, parent=''):
+    name = node.get('name', '')
+    full = f'{parent}/{name}' if parent else name
+    if node.get('result') == 'Failed':
+        # Test case path looks like 'Palace > PalaceTests > <Class> > <test>()'
+        parts = full.split(' > ')
+        if len(parts) >= 3:
+            cls = parts[-2]
+            if cls and re.match(r'^[A-Za-z_][A-Za-z0-9_]*Tests?$', cls):
+                classes.add(cls)
+    for child in node.get('children', []) + node.get('testNodes', []):
+        walk(child, full)
+walk(data)
+print('\n'.join(sorted(classes)))
+" 2>/dev/null | head -20)
+
+    if [ -n "$FAILING_CLASSES" ]; then
+      echo "  → --diff-baseline: re-running $(echo "$FAILING_CLASSES" | wc -l | tr -d ' ') failed class(es) in isolation..."
+      REAL_FAIL=0
+      FLAKE_COUNT=0
+      ONLY_TESTING_ARGS=""
+      for cls in $FAILING_CLASSES; do
+        ONLY_TESTING_ARGS="$ONLY_TESTING_ARGS -only-testing:PalaceTests/$cls"
+      done
+      # Single xcodebuild invocation with all failing classes — N classes in
+      # one build is much faster than N separate builds with cold derivedData.
+      ISOLATED_OUTPUT=$(xcodebuild -project Palace.xcodeproj -scheme Palace \
+        -destination "id=$SIM_ID" $ONLY_TESTING_ARGS test 2>&1 || true)
+      for cls in $FAILING_CLASSES; do
+        if echo "$ISOLATED_OUTPUT" | grep -qE "Test Suite '$cls' passed"; then
+          FLAKE_COUNT=$((FLAKE_COUNT + 1))
+        else
+          REAL_FAIL=$((REAL_FAIL + 1))
+        fi
+      done
+      if [ "$REAL_FAIL" -eq 0 ] && [ "$FLAKE_COUNT" -gt 0 ]; then
+        record "unit_tests" "pass" "$TEST_PASS tests, $TEST_FAIL fails — all $FLAKE_COUNT failing classes pass in isolation (pre-existing test-isolation flakes per --diff-baseline)"
+      else
+        record "unit_tests" "fail" "$TEST_PASS tests, $TEST_FAIL fails — $REAL_FAIL classes fail IN ISOLATION (real regression), $FLAKE_COUNT classes are isolation flakes"
+      fi
+    else
+      record "unit_tests" "fail" "$TEST_PASS tests, $TEST_FAIL failures (--diff-baseline could not extract class names from xcresult)"
+    fi
+  else
+    record "unit_tests" "fail" "$TEST_PASS tests, $TEST_FAIL failures (--diff-baseline requires xcrun + recent xcresult)"
+  fi
 else
   record "unit_tests" "fail" "$TEST_PASS tests, $TEST_FAIL failures"
 fi
@@ -433,6 +514,47 @@ else
   record "mutation" "pass" "No production Swift files changed (skipped)"
 fi
 
+# 5b. Audiobook cross-vendor smoke (if audiobook files changed)
+# When any Palace/Audiobooks/ or ios-audiobooktoolkit/ file changes, run the
+# four-case smoke test (LCP / BearerToken / OpenAccess / LocalFile) that pins
+# the cross-vendor adapter contract. Skipped otherwise so non-audiobook PRs
+# don't eat the build/run cost. The gate fails if any smoke case fails — the
+# audiobook toolkit overhaul (PR #990 → F-011) is the historical reason this
+# gate exists: a vendor adapter regression slipped through because there was
+# no smoke net for "did the four adapters at least load and emit a session?"
+#
+# The test class lives in PalaceTests (owned by Module B of swarm_eefef87a).
+# We reference it as a -only-testing string, not a Swift import, so the gate
+# is robust if the file lands on develop before Module B's PR merges.
+echo "--- Audiobook Cross-Vendor Smoke ---"
+if [ "$MUTATION_ONLY" = "true" ]; then
+  record "audiobook_smoke" "pass" "Skipped (--mutation-only)"
+else
+  AUDIOBOOK_CHANGED=$(echo "$ALL_CHANGED" | grep -E '^Palace/Audiobooks/|^ios-audiobooktoolkit/' || true)
+  if [ -z "$AUDIOBOOK_CHANGED" ]; then
+    record "audiobook_smoke" "pass" "Skipped (no audiobook files changed)"
+  else
+    SMOKE_OUTPUT=$(xcodebuild -project Palace.xcodeproj -scheme Palace \
+      -destination "id=$SIM_ID" \
+      -only-testing:PalaceTests/AudiobookCrossVendorSmokeTests test 2>&1 || true)
+    # Same rollup parsing as the main unit-tests step — one Executed line per
+    # bundle rollup, count failures from the trailing "N failure(s)" token.
+    SMOKE_ROLLUP=$(echo "$SMOKE_OUTPUT" | grep -A1 "Test Suite '\(All tests\|Selected tests\)' \(passed\|failed\)")
+    SMOKE_PASS=$(echo "$SMOKE_ROLLUP" | grep -o 'Executed [0-9]* tests\?' | grep -o '[0-9]*' | awk '{s+=$1} END {print s+0}')
+    SMOKE_FAIL=$(echo "$SMOKE_ROLLUP" | grep -oE '[0-9]+ failures? \(' | grep -o '[0-9]*' | awk '{s+=$1} END {print s+0}')
+    if [ "${SMOKE_FAIL:-0}" -eq 0 ] && [ "${SMOKE_PASS:-0}" -gt 0 ]; then
+      record "audiobook_smoke" "pass" "${SMOKE_PASS} smoke case(s), 0 failures"
+    elif [ "${SMOKE_PASS:-0}" -eq 0 ]; then
+      # Zero executed with audiobook files changed = misconfiguration (the
+      # smoke test class may not have landed yet, or -only-testing matched
+      # zero classes). Fail loudly rather than silently rubber-stamp.
+      record "audiobook_smoke" "fail" "0 smoke cases executed — AudiobookCrossVendorSmokeTests class missing or unbuilt"
+    else
+      record "audiobook_smoke" "fail" "${SMOKE_PASS} smoke case(s), ${SMOKE_FAIL} failure(s)"
+    fi
+  fi
+fi
+
 # 6. Accessibility audit (if UI files changed)
 echo "--- Accessibility ---"
 if [ "$MUTATION_ONLY" = "true" ]; then
@@ -443,8 +565,11 @@ elif [ -n "$CHANGED_UI" ]; then
   while IFS= read -r ui_file; do
     [ -z "$ui_file" ] && continue
     [ ! -f "$ui_file" ] && continue
-    # Check for Button/Image without accessibilityIdentifier or accessibilityLabel
-    HAS_BUTTON=$(grep -c 'UIButton\|Button(' "$ui_file" 2>/dev/null || true)
+    # Check for Button/Image without accessibilityIdentifier or accessibilityLabel.
+    # Use a word-boundary regex on `Button(` so we don't substring-match
+    # method names like `removeProcessingButton(` on a ViewModel call site
+    # (see feedback_verify_pr_false_positives.md).
+    HAS_BUTTON=$(grep -cE '(^|[^A-Za-z0-9_])(UIButton|Button)\(' "$ui_file" 2>/dev/null || true)
     HAS_A11Y=$(grep -c 'accessibilityIdentifier\|accessibilityLabel\|isAccessibilityElement' "$ui_file" 2>/dev/null || true)
     if [ "${HAS_BUTTON:-0}" -gt 0 ] && [ "${HAS_A11Y:-0}" -eq 0 ]; then
       A11Y_ISSUES=$((A11Y_ISSUES + 1))

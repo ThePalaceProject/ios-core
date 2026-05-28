@@ -300,6 +300,23 @@ extension TPPNetworkExecutor {
 }
 
 extension TPPNetworkExecutor {
+    /// Legacy class-func bearer-auth applier. Resolves credentials through
+    /// `AppContainer.production().accountsManager.currentUserAccount` — which
+    /// re-reads the "current" account on every call. During a library swap
+    /// mid-download that resolution can transiently point at the wrong
+    /// account (the swap window), producing the spurious-login-modal class
+    /// of bugs.
+    ///
+    /// **Prefer the instance overload `bearerAuthorized(request:accountId:)`
+    /// for any new call site.** It uses the executor's injected
+    /// `accountsManager` and an explicit captured `accountId`, deterministically
+    /// closing the swap window.
+    ///
+    /// This static remains for legacy Objective-C / non-injected call sites
+    /// where threading a captured accountId would require lifting a lot of
+    /// upstream code. It is the **only** place in the file that resolves
+    /// `currentUserAccount` — that invariant is asserted by
+    /// `MyBooksDownloadCenterAccountIdThreadingTests`.
     @objc class func bearerAuthorized(request: URLRequest) -> URLRequest {
         var request = request
         let snapshot = AppContainer.production().accountsManager.currentUserAccount.credentialSnapshot()
@@ -310,6 +327,39 @@ extension TPPNetworkExecutor {
             request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
         } else {
             Log.warn(#file, "No auth token available for request to \(request.url?.host ?? "unknown") - hasCredentials: \(snapshot.hasCredentials)")
+            request.setValue("", forHTTPHeaderField: "Authorization")
+        }
+        return request
+    }
+
+    /// Apply the bearer token for an explicit `accountId`, eliminating the
+    /// transient `currentUserAccount` re-resolution window observed during
+    /// library swaps mid-download. The resolved snapshot is taken against
+    /// the executor's injected `accountsManager`, never through
+    /// `AppContainer.production()` — that singleton read is reserved for
+    /// the legacy no-arg overload above (the migration tail).
+    ///
+    /// Pass `nil` to fall back to the resolver — same behavior as the legacy
+    /// `bearerAuthorized(request:)` class func, but routed through the
+    /// instance so tests can substitute an injected `accountsManager`. Pass
+    /// a real UUID captured at download START to pin credentials to the
+    /// originally-selected account; downstream library swaps cannot affect
+    /// the resulting Authorization header.
+    @objc func bearerAuthorized(request: URLRequest, accountId: String?) -> URLRequest {
+        var request = request
+        // When `accountId` is non-nil, resolve directly against the
+        // injected accountsManager. When nil, fall back to `currentAccountId`
+        // — the legacy resolver path, but contained to this single instance
+        // method so test executors can supply a fixed accountsManager.
+        let resolvedId = accountId ?? accountsManager.currentAccountId ?? ""
+        let snapshot = accountsManager.userAccount(for: resolvedId).credentialSnapshot()
+
+        if let authToken = snapshot.authToken, !authToken.isEmpty {
+            let tokenPrefix = String(authToken.prefix(8))
+            Log.debug(#file, "Adding Bearer token (prefix: \(tokenPrefix)...) to request for \(request.url?.host ?? "unknown") (accountId: \(accountId ?? "<resolver-fallback>"))")
+            request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
+        } else {
+            Log.warn(#file, "No auth token available for request to \(request.url?.host ?? "unknown") - hasCredentials: \(snapshot.hasCredentials), accountId: \(accountId ?? "<resolver-fallback>")")
             request.setValue("", forHTTPHeaderField: "Authorization")
         }
         return request
