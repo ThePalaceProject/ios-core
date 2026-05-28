@@ -3,7 +3,7 @@ wave: 4
 base_branch: swarm/swarm_18b0d071-scaffold
 base_pr: 1023
 parent_pr: 1022
-status: pending
+status: complete
 risk_bar:
   A: critical_path  # SignInModal migration — 11 callers across SignInLogic, AppInfrastructure, Network, Holds, Book, MyBooks
   B: critical_path  # AppContainer composition-root testability seam
