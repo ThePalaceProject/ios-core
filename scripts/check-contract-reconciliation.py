@@ -95,14 +95,19 @@ def _strip_non_claim_regions(text: str) -> str:
     2. Blockquoted lines (prefix `> `).
     3. Backtick-wrapped inline code (`code`) — preserves the line, drops the
        quoted span so PascalCase names inside ``` don't trigger claim regexes.
-    4. Wall-failure / catalog reference sections — `## Related entries`, lines
-       starting with `- [...](...).md` that point at `.forgeos/wall-failures/`.
+    4. Wall-failure / catalog reference lines — any line containing
+       `/wall-failures/` or a date-prefixed backfill / wall-failure filename
+       (matches `YYYY-MM-DD-` followed by any short-id).
+    5. Double-quoted spans (`"..."` and `'...'`) — when authors quote
+       prior-language verbatim (e.g. "removes X"), they're not claiming X
+       removal as the current diff's action.
 
-    Architect rev_f1c4ea3c (M1 review): the contract reconciler reported a
-    false positive on M1's own commit body where "removes
-    SignInModalHostingController" appeared inside a wall-failure entry
-    description (which references the cs_a9735584 finding). Quoted
-    prior-language is NOT a fresh claim.
+    Architect rev_f1c4ea3c (M1 review): false positive on M1's own commit
+    body where `"removes SignInModalHostingController"` (a literal quote
+    of prior wave 4 claim-drift language) was parsed as a fresh claim.
+    Architect rev_4d2eb9dc (re-review): the original fix missed the most
+    common quoted-prose case — plain double-quoted strings in markdown
+    prose. This generalization covers (5).
     """
     out_lines: list[str] = []
     in_fence = False
@@ -117,17 +122,26 @@ def _strip_non_claim_regions(text: str) -> str:
         # Blockquote
         if stripped.startswith("> "):
             continue
-        # Wall-failure reference line
-        if "/wall-failures/" in line or "2026-05-28-backfill-" in line:
+        # Wall-failure reference line (date-generalized — works for any month
+        # not just 2026-05-28).
+        if "/wall-failures/" in line or _WALL_FAILURE_FILENAME.search(line):
             continue
         # Strip backtick-wrapped inline code from the line (preserve the rest
         # so legitimate claim language survives).
         line = _BACKTICK_INLINE.sub("``", line)
+        # Strip double-quoted and single-quoted spans (preserves surrounding
+        # prose). Quoted strings are typically prior-language references, not
+        # the current author's claim.
+        line = _DOUBLE_QUOTED.sub('""', line)
+        line = _SINGLE_QUOTED.sub("''", line)
         out_lines.append(line)
     return "\n".join(out_lines)
 
 
 _BACKTICK_INLINE = re.compile(r"`[^`\n]+`")
+_DOUBLE_QUOTED = re.compile(r'"[^"\n]+"')
+_SINGLE_QUOTED = re.compile(r"'[^'\n]+'")
+_WALL_FAILURE_FILENAME = re.compile(r"\b\d{4}-\d{2}-\d{2}-(backfill-)?(pr|cs)[a-z0-9_-]+\b")
 
 
 def _parse_claims_from_text(text: str, source: str) -> list[_Claim]:
