@@ -1,0 +1,69 @@
+swarm_id: swarm_M1_83be56fc
+wave: M1
+base_branch: swarm/swarm_d8f11437-scaffold
+base_pr_stack: [1020, 1022, 1023, 1024]
+status: triaged
+created: 2026-05-28
+risk_bar:
+  A: critical_path_meta
+  B: critical_path_meta
+  C: critical_path_meta
+modules:
+  - id: A
+    name: universal-rigor-scripts
+    contract: .forgeos/swarms/swarm_M1_83be56fc/contracts/A-universal-rigor-scripts.md
+    status: pending
+    files:
+      tools_new:
+        - scripts/check-contract-reconciliation.py
+        - scripts/check-blast-radius.py
+        - scripts/check-adjacency-staleness.py
+        - scripts/check-intent-recorded.py
+        - scripts/test_check_contract_reconciliation.py
+        - scripts/test_check_blast_radius.py
+        - scripts/test_check_adjacency_staleness.py
+        - scripts/test_check_intent_recorded.py
+    risk: critical_path_meta
+    estimated_loc: 1400-1800
+  - id: B
+    name: blast-radius-reviewer-agent
+    contract: .forgeos/swarms/swarm_M1_83be56fc/contracts/B-blast-radius-reviewer-agent.md
+    status: pending
+    files:
+      agents_new:
+        - .claude/agents/forge-blast-radius-reviewer.md
+      skills_modified:
+        - .claude/skills/clean-code/SKILL.md
+        - .claude/skills/rigorous-fix/SKILL.md
+        - .claude/skills/swarm/SKILL.md
+        - .claude/skills/forge-review/SKILL.md
+      depends_on_module: A
+    risk: critical_path_meta
+    estimated_loc: 500-700
+  - id: C
+    name: universal-application-and-backfill
+    contract: .forgeos/swarms/swarm_M1_83be56fc/contracts/C-universal-application-and-backfill.md
+    status: pending
+    files:
+      docs_modified:
+        - CLAUDE.md
+      tools_modified:
+        - scripts/verify-pr.sh
+        - scripts/git-hooks/pre-commit
+      skills_new:
+        - .claude/skills/intent/SKILL.md
+      audits_new:
+        - .forgeos/audits/backfill-2026-05-28.md
+      depends_on_module: [A, B]
+    risk: critical_path_meta
+    estimated_loc: 800-1200
+anti_scope:
+  - Palace/Audiobooks/
+  - ios-audiobooktoolkit/
+  - Palace/Accounts/
+  - Palace/SignInLogic/
+self_referential_rigor:
+  pre_dispatch_checks: Architect Phase 1a non-skippable; existing forge-architect-reviewer proxies blast-radius for M1 PR.
+  phase_4_5_gates: 4 new scripts run against M1 staged diff.
+backfill_audit:
+  target_prs: [1018, 1019, 1020, 1022, 1023, 1024]
