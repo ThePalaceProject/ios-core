@@ -1,7 +1,7 @@
 swarm_id: swarm_c8fcab76
 task: "3.2.0 close-out wave 1 — audiobook hang + Phase 7 followups + area checklists + test fluff"
 created_at: 2026-05-28
-status: triaged
+status: complete
 base_ref: origin/develop
 branch: swarm/swarm_c8fcab76-scaffold
 
