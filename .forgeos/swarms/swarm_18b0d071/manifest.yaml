@@ -3,7 +3,7 @@ wave: 3
 base_branch: swarm/swarm_51f248d5-scaffold
 base_pr: 1022
 parent_pr: 1020
-status: ready_to_dispatch
+status: complete
 risk_bar:
   A: critical_path  # SignInModal — Palace/SignInLogic
   B: critical_path  # SAML hardening + AccountsManager:967 — SAML has 25+ historical regressions
