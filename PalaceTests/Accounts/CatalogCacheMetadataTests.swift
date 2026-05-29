@@ -196,8 +196,15 @@ final class CatalogCacheMetadataTests: XCTestCase {
     func testIsBundled_DefaultsFalse_ForBackCompat() {
         // Convenience initializer omits isBundled so existing call sites
         // and legacy decoded metadata continue to behave like network caches.
+        // Pair-assert that the EXPLICIT isBundled=true overload IS true so
+        // a mutation that hard-codes isBundled=false (and ignores the
+        // explicit-initializer arg) is caught.
         let metadata = CatalogCacheMetadata(timestamp: Date(), hash: "h")
-        XCTAssertFalse(metadata.isBundled)
+        let explicitBundled = CatalogCacheMetadata(timestamp: Date(), hash: "h", isBundled: true)
+        XCTAssertFalse(metadata.isBundled,
+                       "Convenience initializer must default isBundled to false — preserves legacy network-cache semantics")
+        XCTAssertTrue(explicitBundled.isBundled,
+                      "Explicit isBundled=true must flow through — confirms the property isn't hard-coded false")
     }
 
     func testIsBundled_True_ForcesStaleness_RegardlessOfFreshTimestamp() {

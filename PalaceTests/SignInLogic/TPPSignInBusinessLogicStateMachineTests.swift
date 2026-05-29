@@ -160,11 +160,19 @@ final class TPPSignInBusinessLogicStateMachineTests: XCTestCase {
     // future refactor switched to force-unwrap or `try!`-await).
 
     func testIsSamlAuth_failedDetailsLoad_returnsFalse() {
+        // Pair-assert that .detailsLoading also returns false — so a mutation
+        // that crashes/returns true on .detailsFailed (but not loading) is
+        // caught. Pins the contract that NEITHER pre-loaded state surfaces
+        // a SAML "yes" answer.
         setLoadState(.detailsFailed(.malformedAuthDocument(reason: "missing auths array")))
+        let failedResult = businessLogic.isSamlPossible()
+        setLoadState(.detailsLoading)
+        let loadingResult = businessLogic.isSamlPossible()
 
-        let result = businessLogic.isSamlPossible()
-        XCTAssertFalse(result,
+        XCTAssertFalse(failedResult,
                        "isSamlPossible must return false on .detailsFailed — matches the legacy nil-semantic, does NOT crash")
+        XCTAssertFalse(loadingResult,
+                       "isSamlPossible must also return false on .detailsLoading — pre-load states do not advertise SAML")
     }
 
     // MARK: - Coverage of the other migrated sub-sites
@@ -175,9 +183,16 @@ final class TPPSignInBusinessLogicStateMachineTests: XCTestCase {
     // `loadedAccountDetails` regresses one of these tests.
 
     func testIsSamlPossible_loaded_returnsTrueWhenSamlAuthPresent() {
+        // Pair-assert that going BACK to .detailsLoading flips the predicate
+        // to false — pinning the contract is state-driven, not latched. A
+        // mutation that latches true after the first .detailsLoaded would be
+        // caught here.
         setLoadState(.detailsLoaded(realDetails))
         XCTAssertTrue(businessLogic.isSamlPossible(),
                       "isSamlPossible must reflect the loaded auths array — fixture contains a SAML auth")
+        setLoadState(.detailsLoading)
+        XCTAssertFalse(businessLogic.isSamlPossible(),
+                       "Reverting to .detailsLoading must flip isSamlPossible back to false — predicate is state-driven, not latched")
     }
 
     func testRegistrationIsPossible_loaded_returnsTrueWhenSignUpUrlPresent() {
@@ -226,10 +241,14 @@ final class TPPSignInBusinessLogicStateMachineTests: XCTestCase {
     func testShouldShowEULALink_loaded_reflectsEulaUrlAndSignInState() {
         // EULA link visibility = (loaded details has EULA URL) AND (not
         // signed in). Fixture has the EULA URL; user is not signed in;
-        // expect true.
+        // expect true. Pair-assert .detailsLoading returns false — pinning
+        // that the EULA visibility predicate is state-aware, not a constant.
         setLoadState(.detailsLoaded(realDetails))
         XCTAssertTrue(businessLogic.shouldShowEULALink(),
                       "shouldShowEULALink must be true on .detailsLoaded with EULA URL + not signed in")
+        setLoadState(.detailsLoading)
+        XCTAssertFalse(businessLogic.shouldShowEULALink(),
+                       ".detailsLoading must hide the EULA link — no URL available yet, predicate is state-driven")
     }
 
     func testSelectedAuthentication_loading_returnsNil() {
@@ -237,10 +256,17 @@ final class TPPSignInBusinessLogicStateMachineTests: XCTestCase {
         // getter must return nil (caller chooses an auth via the UI). On
         // .detailsLoading the legacy path read `details?.auths` → nil →
         // returned nil; the migration peeks `.loadState` → same nil
-        // result, same UI behavior.
+        // result, same UI behavior. Pair-assert that the result is also nil
+        // on .detailsFailed — pinning the full not-loaded family, not just
+        // the loading half.
         setLoadState(.detailsLoading)
+        let loadingResult = businessLogic.selectedAuthentication
+        setLoadState(.detailsFailed(.malformedAuthDocument(reason: "test")))
+        let failedResult = businessLogic.selectedAuthentication
 
-        XCTAssertNil(businessLogic.selectedAuthentication,
+        XCTAssertNil(loadingResult,
                      "selectedAuthentication must be nil while details are still loading")
+        XCTAssertNil(failedResult,
+                     "selectedAuthentication must also be nil on .detailsFailed — the whole pre-loaded family returns nil")
     }
 }
