@@ -1,0 +1,14 @@
+swarm_id: swarm_b503a876
+task: "Wave 2 — Fix 3 (HTTPStub) + Fix 4 (lints) + Fix 5 (scheme) + Fix 6 (actor-iso)"
+status: triaged
+mode: implementation
+created_at: 2026-05-29
+source: swarm_f88ae9e3/outcome.md
+discipline: tight  # commit body is canonical; minimal in-tree artifacts
+modules:
+  - A-httpstub-restructure
+  - B-lint-suite
+  - C-actor-isolation
+  - D-scheme-and-ci
+parallelism: full
+critical_path_module: C
