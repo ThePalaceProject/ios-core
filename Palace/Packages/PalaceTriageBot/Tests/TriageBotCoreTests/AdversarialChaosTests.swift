@@ -72,6 +72,34 @@ final class AdversarialChaosTests: XCTestCase {
 
     // MARK: - LocalClassifier degenerate cases
 
+    /// Chaos-qa F-002 (2026-05-29) regression: when a user's text overlaps
+    /// exactly ONE keyword with a KI, the local classifier must NOT
+    /// confidently suggest — single keyword overlap is not enough signal.
+    /// Escalating routes the case to the AI fallback (Claude) which has
+    /// semantic context to either confirm or reject. Before this rule,
+    /// "my library account keeps asking me to log in" matched KI-004
+    /// wrong-library at confidence 0.33 via the single token "my library",
+    /// misdirecting an auth complaint to demo-collection guidance.
+    func testClassifier_singleKeywordMatch_escalates_F002_regression() {
+        let kb = KnowledgeBase(catalog: KBCatalog(version: "test", updatedAt: "x", entries: [
+            KBEntry(
+                id: "KI-WRONG-LIB",
+                category: .library,
+                status: .userError,
+                symptomKeywords: ["wrong library", "demo books", "bookshelf"],
+                userFacingWorkaround: "...",
+                confidenceThreshold: 0.1
+            )
+        ]))
+        let result = LocalClassifier().classify(
+            userText: "I think I'm using the wrong library",
+            category: .library,
+            knowledgeBase: kb
+        )
+        XCTAssertEqual(result.decision, .escalate,
+            "Single keyword match must escalate — surfaces to AI fallback, not a confident wrong suggestion")
+    }
+
     func testClassifier_emptyKB_returnsEscalate() {
         let kb = KnowledgeBase(catalog: KBCatalog(version: "empty", updatedAt: "2026-05-28", entries: []))
         let result = LocalClassifier().classify(userText: "anything", knowledgeBase: kb)

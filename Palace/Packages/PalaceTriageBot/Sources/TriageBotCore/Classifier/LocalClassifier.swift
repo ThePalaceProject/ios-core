@@ -64,12 +64,22 @@ public struct LocalClassifier: Sendable {
         }
 
         // Suggest only when the top score clears the entry's own threshold
-        // AND beats the runner-up. Two guards:
+        // AND beats the runner-up. THREE guards:
         //   1. matchCountMargin ≥ 1 OR scoreMargin ≥ 0.1 — top must clearly lead
         //   2. runner-up score < 0.8 — when BOTH entries are at/near saturation
         //      (e.g. user stuffed keywords from multiple entries), we have
         //      genuine ambiguity and should disambiguate, not confidently pick.
-        // Without #2 the keyword-stuffing chaos test would over-promote.
+        //   3. top.matched.count ≥ 2 — chaos-qa F-002 (2026-05-29) showed
+        //      that a single keyword match like "my library" in KI-004
+        //      could route a generic auth-loop complaint to the wrong
+        //      workaround. Requiring ≥2 keyword matches for confident
+        //      LOCAL suggest means single-match-only inputs escalate
+        //      instead, which routes them to the AI fallback (Claude)
+        //      that has semantic understanding to either confirm or
+        //      reject the match. Cost: ~1 extra Claude call per
+        //      single-keyword-overlap input. Worth it — false positives
+        //      misdirect users; the AI fallback's whole purpose is to
+        //      catch them.
         let secondScore = ranked.count > 1 ? ranked[1].score : 0
         let secondMatchCount = ranked.count > 1 ? ranked[1].matched.count : 0
         let scoreMargin = top.score - secondScore
@@ -77,6 +87,7 @@ public struct LocalClassifier: Sendable {
 
         let runnerUpAlsoSaturated = secondScore >= 0.8
         if top.score >= top.entry.confidenceThreshold &&
+           top.matched.count >= 2 &&
            (matchCountMargin >= 1 || scoreMargin >= 0.1) &&
            !runnerUpAlsoSaturated {
             return ClassificationResult(
