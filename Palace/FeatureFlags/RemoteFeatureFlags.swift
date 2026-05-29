@@ -215,16 +215,28 @@ final class RemoteFeatureFlags {
     /// Remote Config flag when nil.
     static let triageBotLocalOverrideKey = "RemoteFeatureFlags.triageBotLocalOverride"
 
-    /// Master kill-switch for the Palace Triage Bot. Defaults OFF in production.
-    /// Enable globally via Remote Config key `triage_bot_enabled`, or per-device
-    /// during the demo via the local override UserDefault. When false, the
-    /// Settings "Get Help" row, the floating help button, and every other
-    /// entry point are invisible — no surface area at all.
+    /// Master kill-switch for the Palace Triage Bot. Defaults OFF in production,
+    /// but defaults ON in DEBUG builds so an engineer building from Xcode onto
+    /// a device or sim doesn't have to set anything — the feature is visible
+    /// automatically. TestFlight and App Store builds still respect the
+    /// Firebase Remote Config flag (default off), unchanged.
+    ///
+    /// Override precedence:
+    ///   1. UserDefaults local override (QA / staged demos)
+    ///   2. DEBUG build → true
+    ///   3. Firebase Remote Config
+    ///
+    /// When false, the Settings "Get Help" row, the floating help button, and
+    /// every other entry point are invisible — no surface area at all.
     var isTriageBotEnabled: Bool {
         if let override = UserDefaults.standard.object(forKey: Self.triageBotLocalOverrideKey) as? Bool {
             return override
         }
+        #if DEBUG
+        return true
+        #else
         return isFeatureEnabled(.triageBotEnabled)
+        #endif
     }
 
     /// Whether the bot may post real HelpSpot tickets. When false but the bot
@@ -232,8 +244,15 @@ final class RemoteFeatureFlags {
     /// preview, but the confirm action copies the JSON payload to the
     /// pasteboard instead of submitting. Used during the demo and during
     /// staged rollout before HelpSpot rate-limit negotiation completes.
+    ///
+    /// Same DEBUG-default-on policy as isTriageBotEnabled — dev builds get
+    /// the full email-gateway flow without per-device setup.
     var isTriageBotTicketSubmissionEnabled: Bool {
-        isFeatureEnabled(.triageBotTicketSubmissionEnabled)
+        #if DEBUG
+        return true
+        #else
+        return isFeatureEnabled(.triageBotTicketSubmissionEnabled)
+        #endif
     }
 
     // MARK: - Device Info for Targeting
