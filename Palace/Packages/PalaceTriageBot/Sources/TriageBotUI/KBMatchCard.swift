@@ -47,7 +47,7 @@ struct KBMatchCard: View {
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(Color.accentColor.opacity(0.4), lineWidth: 1)
+                .stroke(Color(.systemBlue).opacity(0.4), lineWidth: 1)
         )
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Known issue match: \(entry.id)")
@@ -83,7 +83,7 @@ struct KBMatchCard: View {
                 .font(.footnote.weight(.semibold))
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
-                .background(Color.accentColor.opacity(0.15))
+                .background(Color(.systemBlue).opacity(0.15))
                 .clipShape(Capsule())
         }
         .buttonStyle(.plain)

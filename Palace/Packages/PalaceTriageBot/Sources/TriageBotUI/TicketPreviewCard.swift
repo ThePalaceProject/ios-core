@@ -40,11 +40,11 @@ struct TicketPreviewCard: View {
                 Button { onAction(.cancel) } label: {
                     Text("Cancel")
                         .font(.body.weight(.semibold))
-                        .foregroundColor(.accentColor)
+                        .foregroundColor(Color(.systemBlue))
                         .padding(.horizontal, 14)
                         .padding(.vertical, 9)
                         .frame(maxWidth: .infinity)
-                        .background(Color.accentColor.opacity(0.12))
+                        .background(Color(.systemBlue).opacity(0.12))
                         .clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
@@ -57,7 +57,7 @@ struct TicketPreviewCard: View {
                         .padding(.horizontal, 14)
                         .padding(.vertical, 9)
                         .frame(maxWidth: .infinity)
-                        .background(Color.accentColor)
+                        .background(Color(.systemBlue))
                         .clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
