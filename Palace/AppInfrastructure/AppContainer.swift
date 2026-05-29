@@ -30,6 +30,22 @@ struct AppContainer {
     /// lifetime.
     let authCoordinator: AuthCoordinator
 
+    /// SwiftUI-observable facade over the static `SignInModalPresenter`
+    /// API (swarm_18b0d071 Module A wave 3). Wave 3 migrates ONE caller
+    /// (`TPPReauthenticator`) to prove the pattern; wave 4 migrates the
+    /// remaining 9 callers. Held by the container for app lifetime so
+    /// SwiftUI consumers that bind to `$presentationState` observe the
+    /// same instance across screens.
+    @MainActor
+    var signInModalSheetPresenter: SignInModalSheetPresenter {
+        if let cached = AppContainer._signInModalSheetPresenter { return cached }
+        let presenter = SignInModalSheetPresenter(appContainer: self)
+        AppContainer._signInModalSheetPresenter = presenter
+        return presenter
+    }
+
+    @MainActor private static var _signInModalSheetPresenter: SignInModalSheetPresenter?
+
     // Lazy-init on MainActor: BookCellModelCache and SamplePreviewManager are
     // @MainActor-isolated, but `_cached`'s static-let initializer can run on
     // any thread (first consumer of `production()` wins). Eager construction

@@ -186,9 +186,27 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
     }
 
     /// Cookies used to authenticate. Only required for the SAML flow.
-    /// TODO: Phase 5 follow-up — migrate callers to read from samlHelper.cookies,
-    /// then remove this property. Currently both businessLogic.cookies and
-    /// samlHelper.cookies are set by the legacy bridge during SAML login.
+    ///
+    /// TODO(wave-4-SignInModal-migration): the SAML refactor's Phases 1, 2,
+    /// and 4 (UI decoupling via `SAMLAuthContext` + `SAMLWebViewPresenting`
+    /// protocols; force-unwrap elimination; `ignoreSignedInState` →
+    /// `AuthReducer`) already landed via swarm_ea663ab6. What REMAINS from
+    /// `~/.claude/plans/calm-knitting-thunder.md` is:
+    ///   - Phase 3 cookie-validation deduplication (this `cookies` property
+    ///     duplicates `samlHelper.cookies`; both are written by
+    ///     `LegacySAMLAuthContext.handleSAMLRedirect`).
+    ///   - Phase 5 state isolation — moving the SAML-specific cookie cache
+    ///     onto the helper exclusively so the businessLogic doesn't
+    ///     maintain two parallel sources of truth.
+    /// Once `SignInModalSheetPresenter` (PR #1022) lands wave 4's migration
+    /// of the 9 remaining `SignInModalPresenter.presentSignInModal` call
+    /// sites, the cookies-duplication cleanup can be done in the same pass
+    /// (callers will read from `samlHelper.cookies` directly). Until then
+    /// both fields are maintained by `LegacySAMLAuthContext.handleSAMLRedirect`
+    /// and this property is kept as the legacy mirror.
+    ///
+    /// swarm_18b0d071 wave 3 Module B is a HARDENING pass — full migration
+    /// is explicitly deferred per the swarm's plan.md anti-scope section.
     @objc var cookies: [HTTPCookie]?
 
     // MARK: - SAML triad (helper + context + presenter)
