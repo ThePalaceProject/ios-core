@@ -37,6 +37,7 @@ final class RemoteFeatureFlags {
         case resetAccountEnabled = "reset_account_enabled"
         case triageBotEnabled = "triage_bot_enabled"
         case triageBotTicketSubmissionEnabled = "triage_bot_ticket_submission_enabled"
+        case triageBotAIFallbackEnabled = "triage_bot_ai_fallback_enabled"
 
         var defaultValue: Bool {
             switch self {
@@ -70,6 +71,8 @@ final class RemoteFeatureFlags {
                 return .triageBotEnabled
             case .triageBotTicketSubmissionEnabled:
                 return .triageBotTicketSubmissionEnabled
+            case .triageBotAIFallbackEnabled:
+                return .triageBotAIFallbackEnabled
             default:
                 return nil
             }
@@ -252,6 +255,22 @@ final class RemoteFeatureFlags {
         return true
         #else
         return isFeatureEnabled(.triageBotTicketSubmissionEnabled)
+        #endif
+    }
+
+    /// Whether the triage bot may consult the Claude-backed fallback
+    /// classifier when the local keyword matcher returns escalate. Defaults
+    /// OFF in production (no Anthropic traffic until a server-proxy path
+    /// is in place); defaults ON in DEBUG so dev/device builds exercise
+    /// the fallback when an ANTHROPIC_API_KEY is configured in the
+    /// engineer's Xcode scheme. Even when this flag is true, the
+    /// fallback only fires if the Keychain holds an API key — no key,
+    /// no Anthropic traffic.
+    var isTriageBotAIFallbackEnabled: Bool {
+        #if DEBUG
+        return true
+        #else
+        return isFeatureEnabled(.triageBotAIFallbackEnabled)
         #endif
     }
 

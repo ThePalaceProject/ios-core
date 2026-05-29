@@ -41,6 +41,12 @@ public struct ConversationState: Equatable, Sendable {
         case awaitingCategory
         case awaitingDescription(category: KBCategory)
         case awaitingFollowUp(category: KBCategory, candidate: String)
+        /// Local classifier escalated AND the AI fallback is wired — the
+        /// reducer is waiting for ClaudeFallbackClassifier to weigh in
+        /// before deciding whether to surface a KB match or escalate
+        /// straight to a ticket draft. Bot shows a thinking indicator
+        /// during this state.
+        case awaitingAIClassification(userText: String, category: KBCategory?)
         case matched(entryId: String)
         case drafting(ticket: TicketDraft)
         case submitting(ticket: TicketDraft)
@@ -85,4 +91,10 @@ public enum ConversationAction: Equatable, Sendable {
     case ticketSubmitted(TicketReceipt)
     case ticketSubmissionFailed(String)
     case inputChanged(String)
+    /// AI fallback returned a classification. Reducer routes to .matched
+    /// or .drafting based on the decision.
+    case aiFallbackResolved(ClassificationResult)
+    /// AI fallback couldn't run (offline, timeout, error, disabled). Reducer
+    /// falls through to the standard escalate path.
+    case aiFallbackUnavailable
 }

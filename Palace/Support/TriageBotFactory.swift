@@ -38,7 +38,27 @@ enum TriageBotFactory {
         }
 
         let kb = KnowledgeBase(catalog: catalog)
-        let reducer = ConversationReducer(knowledgeBase: kb)
+
+        // AI fallback: bootstraps the Anthropic API key from the
+        // ANTHROPIC_API_KEY env var (Xcode scheme, DEBUG only) into the
+        // Keychain on first call. If the key is present in the Keychain
+        // AND the Firebase RC kill-switch is on, wire ClaudeFallbackClassifier
+        // behind the local matcher. Otherwise the reducer's
+        // aiFallbackEnabled stays false and behavior is local-only
+        // (today's behavior — no regression).
+        let keyStore = AnthropicKeyStore()
+        let bootstrappedKey = keyStore.bootstrapFromEnvironmentIfNeeded()
+        let aiEnabled = RemoteFeatureFlags.shared.isTriageBotAIFallbackEnabled
+            && bootstrappedKey != nil
+
+        let fallbackClassifier: FallbackClassifier? = aiEnabled
+            ? ClaudeFallbackClassifier(keyProvider: { keyStore.read() })
+            : nil
+
+        let reducer = ConversationReducer(
+            knowledgeBase: kb,
+            aiFallbackEnabled: aiEnabled
+        )
 
         let contextProvider = DefaultIosContextProvider(
             palaceFields: { @Sendable in
@@ -73,7 +93,8 @@ enum TriageBotFactory {
             reducer: reducer,
             contextProvider: contextProvider,
             gateway: gateway,
-            sink: sink
+            sink: sink,
+            fallbackClassifier: fallbackClassifier
         )
     }
 
@@ -106,13 +127,15 @@ private extension TriageBotFactory {
         reducer: ConversationReducer,
         contextProvider: ContextProvider,
         gateway: TicketGateway,
-        sink: TelemetrySink
+        sink: TelemetrySink,
+        fallbackClassifier: FallbackClassifier?
     ) -> TriageBotViewModel {
         TriageBotViewModel(
             reducer: reducer,
             contextProvider: contextProvider,
             ticketGateway: gateway,
-            telemetry: sink
+            telemetry: sink,
+            fallbackClassifier: fallbackClassifier
         )
     }
 }
@@ -123,7 +146,8 @@ private extension TriageBotFactory {
         reducer: ConversationReducer,
         contextProvider: ContextProvider,
         gateway: TicketGateway,
-        sink: TelemetrySink
+        sink: TelemetrySink,
+        fallbackClassifier: FallbackClassifier?
     ) -> Any? {
         nil
     }

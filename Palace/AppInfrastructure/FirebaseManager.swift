@@ -58,6 +58,7 @@ final class FirebaseManager {
         case resetAccountEnabled = "reset_account_enabled"
         case triageBotEnabled = "triage_bot_enabled"
         case triageBotTicketSubmissionEnabled = "triage_bot_ticket_submission_enabled"
+        case triageBotAIFallbackEnabled = "triage_bot_ai_fallback_enabled"
     }
 
     // MARK: - Initialization
@@ -103,7 +104,8 @@ final class FirebaseManager {
             RemoteConfigKey.opds2Enabled.rawValue: NSNumber(value: true),
             RemoteConfigKey.resetAccountEnabled.rawValue: NSNumber(value: false),
             RemoteConfigKey.triageBotEnabled.rawValue: NSNumber(value: false),
-            RemoteConfigKey.triageBotTicketSubmissionEnabled.rawValue: NSNumber(value: false)
+            RemoteConfigKey.triageBotTicketSubmissionEnabled.rawValue: NSNumber(value: false),
+            RemoteConfigKey.triageBotAIFallbackEnabled.rawValue: NSNumber(value: false)
         ])
     }
 

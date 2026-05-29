@@ -12,6 +12,14 @@ public struct ConversationReducer: Sendable {
     public let classifier: LocalClassifier
     public let redactor: ContextRedactor
     public let knowledgeBase: KnowledgeBase
+    /// When true, local-classifier escalations route through
+    /// `.awaitingAIClassification` first so a network-backed
+    /// FallbackClassifier (ClaudeFallbackClassifier in production) gets a
+    /// chance to match. When false, the reducer's behavior is the original
+    /// keyword-only flow — escalate goes straight to .drafting.
+    /// Defaults to false so the existing 69-test suite stays green and
+    /// any consumer that doesn't wire a fallback gets predictable behavior.
+    public let aiFallbackEnabled: Bool
 
     /// Sentinel timestamp for receipts the reducer synthesizes for
     /// non-network paths (notify-me, cancel, dismiss). Keeps the response
@@ -24,11 +32,13 @@ public struct ConversationReducer: Sendable {
     public init(
         classifier: LocalClassifier = LocalClassifier(),
         redactor: ContextRedactor = ContextRedactor(),
-        knowledgeBase: KnowledgeBase
+        knowledgeBase: KnowledgeBase,
+        aiFallbackEnabled: Bool = false
     ) {
         self.classifier = classifier
         self.redactor = redactor
         self.knowledgeBase = knowledgeBase
+        self.aiFallbackEnabled = aiFallbackEnabled
     }
 
     /// Apply an action to a state. Returns the next state and a list of side
@@ -122,22 +132,85 @@ public struct ConversationReducer: Sendable {
                 )))
 
             case .escalate:
-                let draft = TicketDraft(
-                    userDescription: userText,
-                    category: category ?? .other,
-                    matchedEntryId: nil,
-                    context: next.context ?? emptyContext(),
-                    helpspotTags: ["triage-bot-escalate-novel"],
-                    priority: .normal
-                )
-                next.step = .drafting(ticket: draft)
-                next.messages.append(.init(
-                    sender: .bot,
-                    kind: .text("I haven't seen exactly that before — let me file a ticket so support can look. Here's what I'll send:")
-                ))
-                next.messages.append(.init(sender: .bot, kind: .ticketPreview(draft)))
-                effects.append(.emitTelemetry(.init(name: "triage_escalate_novel")))
+                if aiFallbackEnabled {
+                    // Local matcher had nothing — let the AI fallback weigh
+                    // in before we commit to escalating. UX: bot shows a
+                    // thinking indicator; ViewModel handles the
+                    // .runAIFallback effect by calling the
+                    // FallbackClassifier; result feeds back as
+                    // .aiFallbackResolved or .aiFallbackUnavailable.
+                    next.step = .awaitingAIClassification(userText: userText, category: category)
+                    next.messages.append(.init(
+                        sender: .bot,
+                        kind: .text("Let me check that more carefully…")
+                    ))
+                    effects.append(.runAIFallback(
+                        userText: userText,
+                        category: category,
+                        context: next.context
+                    ))
+                    effects.append(.emitTelemetry(.init(name: "triage_ai_fallback_invoked")))
+                } else {
+                    transitionToDrafting(
+                        state: &next,
+                        effects: &effects,
+                        userText: userText,
+                        category: category,
+                        matchedEntryId: nil,
+                        tagSuffix: "escalate-novel"
+                    )
+                }
             }
+
+        // MARK: - AI fallback resolution
+
+        case .aiFallbackResolved(let result):
+            guard case .awaitingAIClassification(let userText, let category) = next.step else {
+                return (next, effects)
+            }
+            next.lastClassification = result
+            switch result.decision {
+            case .suggest(let entryId):
+                next.step = .matched(entryId: entryId)
+                next.messages.append(.init(sender: .bot, kind: .kbMatch(entryId: entryId)))
+                effects.append(.emitTelemetry(.init(
+                    name: "triage_ai_fallback_match",
+                    parameters: [
+                        "entry_id": entryId,
+                        "confidence": String(format: "%.2f", result.confidence)
+                    ]
+                )))
+            case .disambiguate, .escalate:
+                // Either Claude wasn't confident enough or genuinely couldn't
+                // match — fall through to standard escalate behavior with
+                // the original user text + category preserved.
+                transitionToDrafting(
+                    state: &next,
+                    effects: &effects,
+                    userText: userText,
+                    category: category,
+                    matchedEntryId: nil,
+                    tagSuffix: "escalate-novel-after-ai-pass"
+                )
+            }
+
+        case .aiFallbackUnavailable:
+            guard case .awaitingAIClassification(let userText, let category) = next.step else {
+                return (next, effects)
+            }
+            // Offline / timeout / API key missing / rate-limit / parse error —
+            // any failure mode degrades to the standard escalate path. User
+            // never sees the failure as an error; they just get the ticket
+            // preview a moment later than they would have.
+            transitionToDrafting(
+                state: &next,
+                effects: &effects,
+                userText: userText,
+                category: category,
+                matchedEntryId: nil,
+                tagSuffix: "escalate-after-ai-unavailable"
+            )
+            effects.append(.emitTelemetry(.init(name: "triage_ai_fallback_unavailable")))
 
         case .userTappedNotifyMeOnFix(let entryId):
             // Synthesized marker receipt — no wall-clock timestamp.
@@ -281,6 +354,34 @@ public struct ConversationReducer: Sendable {
         return nil
     }
 
+    /// Shared escalation transition — used by both the local-only escalate
+    /// path AND the post-AI-fallback escalate path so the resulting message
+    /// stream + state is identical regardless of which classifier escalated.
+    private func transitionToDrafting(
+        state next: inout ConversationState,
+        effects: inout [ConversationEffect],
+        userText: String,
+        category: KBCategory?,
+        matchedEntryId: String?,
+        tagSuffix: String
+    ) {
+        let draft = TicketDraft(
+            userDescription: userText,
+            category: category ?? .other,
+            matchedEntryId: matchedEntryId,
+            context: next.context ?? emptyContext(),
+            helpspotTags: ["triage-bot-\(tagSuffix)"],
+            priority: .normal
+        )
+        next.step = .drafting(ticket: draft)
+        next.messages.append(.init(
+            sender: .bot,
+            kind: .text("I haven't seen exactly that before — let me file a ticket so support can look. Here's what I'll send:")
+        ))
+        next.messages.append(.init(sender: .bot, kind: .ticketPreview(draft)))
+        effects.append(.emitTelemetry(.init(name: "triage_escalate_\(tagSuffix.replacingOccurrences(of: "-", with: "_"))")))
+    }
+
     private func emptyContext() -> ContextSnapshot {
         ContextSnapshot(
             appVersion: "unknown",
@@ -298,4 +399,10 @@ public enum ConversationEffect: Equatable, Sendable {
     case captureContext
     case submitTicket(TicketDraft)
     case emitTelemetry(TelemetryEvent)
+    /// ViewModel hands this off to the wired FallbackClassifier
+    /// (ClaudeFallbackClassifier in production). On success it dispatches
+    /// `.aiFallbackResolved`, on any failure mode `.aiFallbackUnavailable`.
+    /// userText is the pre-sanitized version — sanitization happens inside
+    /// the classifier per the contract on `FallbackClassifier`.
+    case runAIFallback(userText: String, category: KBCategory?, context: ContextSnapshot?)
 }

@@ -23,18 +23,21 @@ public final class TriageBotViewModel: ObservableObject {
     private let contextProvider: ContextProvider
     private let ticketGateway: TicketGateway
     private let telemetry: TelemetrySink
+    private let fallbackClassifier: FallbackClassifier?
 
     public init(
         reducer: ConversationReducer,
         contextProvider: ContextProvider,
         ticketGateway: TicketGateway,
         telemetry: TelemetrySink,
+        fallbackClassifier: FallbackClassifier? = nil,
         initialState: ConversationState = ConversationState()
     ) {
         self.reducer = reducer
         self.contextProvider = contextProvider
         self.ticketGateway = ticketGateway
         self.telemetry = telemetry
+        self.fallbackClassifier = fallbackClassifier
         self.state = initialState
     }
 
@@ -64,6 +67,24 @@ public final class TriageBotViewModel: ObservableObject {
             }
         case .emitTelemetry(let event):
             telemetry.emit(event)
+        case .runAIFallback(let userText, let category, let context):
+            Task { [fallbackClassifier, knowledgeBase] in
+                guard let fallback = fallbackClassifier else {
+                    self.send(.aiFallbackUnavailable)
+                    return
+                }
+                do {
+                    let result = try await fallback.classify(
+                        userText: userText,
+                        category: category,
+                        context: context,
+                        knowledgeBase: knowledgeBase
+                    )
+                    self.send(.aiFallbackResolved(result))
+                } catch {
+                    self.send(.aiFallbackUnavailable)
+                }
+            }
         }
     }
 }
