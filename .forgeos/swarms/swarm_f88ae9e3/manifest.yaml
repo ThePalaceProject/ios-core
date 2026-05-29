@@ -1,6 +1,6 @@
 swarm_id: swarm_f88ae9e3
 task: "iOS test flakiness investigation"
-status: triaged
+status: investigation_complete
 mode: investigation_only  # NO code changes by implementers
 created_at: 2026-05-29
 architect_review:  # filled in by Phase 1a
