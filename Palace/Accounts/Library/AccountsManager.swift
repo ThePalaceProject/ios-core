@@ -179,6 +179,14 @@ struct CatalogCacheMetadata: Codable {
     ///
     /// swarm_4b64e4e0 Fix 2 — closes the H1 finding from swarm_f88ae9e3 A.
     private var backgroundFetchTask: Task<Void, Never>?
+
+    /// Test-only flag flipped to `true` inside `cancelBackgroundWork()` BEFORE
+    /// the `.cancel()` is issued on `backgroundFetchTask`. Used by
+    /// `AccountsManagerCancellationTests` to disambiguate "explicit cancel was
+    /// called" from "task handle was nilled out by some other path." swarm_4b64e4e0
+    /// qa-fixup — addresses qa_test concern about the prior single observation
+    /// surface conflating those two semantics.
+    private var _explicitCancelCalled: Bool = false
     #endif
 
     /// Initializer is `internal` rather than `private` so `AppContainer` can
@@ -1221,9 +1229,53 @@ extension AccountsManager {
     /// the prior `accountsManager` (vanishingly few in tests; none in
     /// production). Acceptable per swarm_4b64e4e0 outcome.md.
     func cancelBackgroundWork() {
+        // Order matters: flip the explicit-cancel flag BEFORE issuing the
+        // .cancel() so the observation surface
+        // `_backgroundFetchTaskWasExplicitlyCancelled` distinguishes "we
+        // called cancel" from "the handle was nilled by some other path."
+        // swarm_4b64e4e0 qa-fixup Fix 3.
+        _explicitCancelCalled = true
         backgroundFetchTask?.cancel()
         backgroundFetchTask = nil
         networkExecutor.cancelNonEssentialTasks()
+    }
+
+    /// Test-only setter that swaps a caller-provided Task into
+    /// `backgroundFetchTask`. Used by the race-guard test in
+    /// `AccountsManagerCancellationTests` to install a Task it controls (via
+    /// a CheckedContinuation) so it can drive cancel-mid-await semantics
+    /// without going through a live network round-trip. Returns the prior
+    /// task so the caller can restore it or cancel it as needed.
+    ///
+    /// swarm_4b64e4e0 qa-fixup Fix 2 — addresses qa_test concern that the
+    /// cooperative-cancel guard at line 651 of `fetchFromNetwork` has no
+    /// behavioral test covering the post-resume branch.
+    @discardableResult
+    func _injectBackgroundFetchTaskForTesting(_ task: Task<Void, Never>?) -> Task<Void, Never>? {
+        let prior = backgroundFetchTask
+        backgroundFetchTask = task
+        return prior
+    }
+
+    /// Test-only observation surface. Returns `true` iff `cancelBackgroundWork()`
+    /// was called on this instance (the flag is flipped BEFORE the underlying
+    /// `.cancel()` call so a partial cancel-then-throw cannot leave this
+    /// false). Pin this in tests when you want to prove the explicit
+    /// production seam was invoked, distinct from the task handle being nil.
+    ///
+    /// swarm_4b64e4e0 qa-fixup Fix 3.
+    var _backgroundFetchTaskWasExplicitlyCancelled: Bool {
+        return _explicitCancelCalled
+    }
+
+    /// Test-only observation surface. Returns `true` iff `backgroundFetchTask`
+    /// is currently `nil` (post-cancel cleanup OR pre-init OR opt-out
+    /// construction). Pin this in tests when you want to prove the handle
+    /// was nilled out.
+    ///
+    /// swarm_4b64e4e0 qa-fixup Fix 3.
+    var _backgroundFetchTaskHandleIsNil: Bool {
+        return backgroundFetchTask == nil
     }
 
     /// Test-only observation surface for `backgroundFetchTask`. Returns
@@ -1231,6 +1283,13 @@ extension AccountsManager {
     /// handle has been nilled out by `cancelBackgroundWork()`. Used by
     /// `AccountsManagerCancellationTests` to verify the cooperative-cancel
     /// invariant without poking at the private storage directly.
+    ///
+    /// - DEPRECATED in qa-fixup: this property conflates "explicit cancel
+    ///   was called" with "task handle was nilled." Prefer
+    ///   `_backgroundFetchTaskWasExplicitlyCancelled` AND
+    ///   `_backgroundFetchTaskHandleIsNil` together so a mutation that
+    ///   removes only ONE of the two effects fails its dedicated test.
+    @available(*, deprecated, message: "Use _backgroundFetchTaskWasExplicitlyCancelled + _backgroundFetchTaskHandleIsNil so cancel-vs-nil mutations are independently observable. See swarm_4b64e4e0 qa-fixup Fix 3.")
     var _backgroundFetchTaskIsCancelledOrCleared: Bool {
         guard let task = backgroundFetchTask else { return true }
         return task.isCancelled
