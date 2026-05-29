@@ -126,11 +126,17 @@ struct TPPSettingsView: View {
     }
 
     @ViewBuilder private var supportSection: some View {
-        // Gated entirely on the Firebase Remote Config kill-switch. When the
-        // flag is off (default in production), this section is absent from
-        // the list — no surface area for the bot at all.
-        if RemoteFeatureFlags.shared.isTriageBotEnabled, let chat = TriageBotSupportView() {
+        // Row visibility depends ONLY on the kill-switch (cheap UserDefaults
+        // check). The view factory runs at navigation time inside
+        // TriageBotSupportView's body, NOT here — chaos-qa F-005 found that
+        // calling the factory from every supportSection re-render could
+        // intermittently return nil after bg/fg cycling, silently hiding
+        // the row. With this shape the row is stable as long as the
+        // flag is on; any factory failure surfaces as an UnavailableView
+        // inside the chat surface instead of a disappeared Settings row.
+        if RemoteFeatureFlags.shared.isTriageBotEnabled {
             Section(header: Text("Support")) {
+                let chat = TriageBotSupportView()
                 let wrapper = chat.anyView()
                 row(title: "Get Help", index: 10, selection: self.$selectedView, destination: wrapper)
                     .accessibilityIdentifier("settings.row.getHelp")

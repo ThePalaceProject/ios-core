@@ -419,17 +419,25 @@ public struct ConversationReducer: Sendable {
             )))
 
         case .userCancelledTicketSubmit:
-            // Same F-002 rationale on cancel: the preview card should not
-            // remain interactive after the user explicitly declined.
+            // Drop the preview card so it can't be re-tapped (F-002 rationale).
             next.messages.removeAll { msg in
                 if case .ticketPreview = msg.kind { return true }
                 return false
             }
-            next.step = .sent(receipt: TicketReceipt(ticketId: "cancelled", submittedAt: Self.syntheticReceiptTimestamp))
+            // Chaos-qa F-001 (2026-05-29): the previous shape transitioned
+            // to .sent on cancel, which hid the input bar and stranded the
+            // user with no way to continue. Cancel should mean "I'm not
+            // ready to submit, let me start over" — so we return to
+            // .awaitingCategory and offer fresh category chips. The
+            // input bar becomes available again because awaitingCategory
+            // is in the isCompositionStep set.
+            next.step = .awaitingCategory
             next.messages.append(.init(
                 sender: .bot,
-                kind: .text("Cancelled — nothing was sent.")
+                kind: .text("No problem — nothing was sent. Want to try a different category or rephrase?")
             ))
+            next.messages.append(.init(sender: .bot, kind: .categoryChips))
+            effects.append(.emitTelemetry(.init(name: "triage_ticket_cancel_returned_to_chips")))
 
         case .ticketSubmitted(let receipt):
             next.step = .sent(receipt: receipt)

@@ -196,6 +196,31 @@ final class ConversationReducerTests: XCTestCase {
         XCTAssertEqual(previewCount, 0, "Cancel must also drop the preview card; user explicitly declined")
     }
 
+    /// Chaos-qa F-001 (2026-05-29) regression: cancelling a ticket draft
+    /// must transition back to .awaitingCategory (NOT .sent), so the input
+    /// bar remains available and the user can continue the conversation.
+    /// The previous shape stranded users in .sent with no input affordance.
+    func testCancelSubmit_returnsToAwaitingCategory_notSent_F001() {
+        let reducer = makeReducer()
+        let draft = TicketDraft(
+            userDescription: "test",
+            category: .reader,
+            context: ContextSnapshot(appVersion: "3", appBuild: "1", osVersion: "26", deviceModel: "x")
+        )
+        let initial = ConversationState(
+            step: .drafting(ticket: draft),
+            messages: [.init(sender: .bot, kind: .ticketPreview(draft))]
+        )
+        let (next, _) = reducer.reduce(state: initial, action: .userCancelledTicketSubmit)
+
+        XCTAssertEqual(next.step, .awaitingCategory,
+            "Cancel returns to awaitingCategory so input bar reappears")
+        XCTAssertTrue(next.messages.contains { msg in
+            if case .categoryChips = msg.kind { return true }
+            return false
+        }, "Fresh category chips must be offered so user can pick a different topic")
+    }
+
     func testTicketSubmissionFailed_transitionsToError() {
         let reducer = makeReducer()
         let draft = TicketDraft(

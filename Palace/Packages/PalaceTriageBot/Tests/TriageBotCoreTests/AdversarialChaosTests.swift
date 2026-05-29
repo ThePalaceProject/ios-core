@@ -206,7 +206,10 @@ final class AdversarialChaosTests: XCTestCase {
         XCTAssertGreaterThan(state.messages.count, firstCount, "Second .start appends — UI must not re-dispatch")
     }
 
-    func testReducer_cancelDuringSubmitting_movesToCancelledSent() {
+    func testReducer_cancelDuringSubmitting_returnsToAwaitingCategory() {
+        // Updated for chaos-qa F-001 (2026-05-29): cancel from any pre-sent
+        // state returns to .awaitingCategory so the input bar reappears.
+        // Previously this case transitioned to .sent which stranded the user.
         let reducer = makeReducer()
         let draft = TicketDraft(
             userDescription: "x",
@@ -215,10 +218,8 @@ final class AdversarialChaosTests: XCTestCase {
         )
         let submitting = ConversationState(step: .submitting(ticket: draft))
         let (next, _) = reducer.reduce(state: submitting, action: .userCancelledTicketSubmit)
-        guard case .sent(let receipt) = next.step else {
-            return XCTFail("Expected .sent after cancel, got \(next.step)")
-        }
-        XCTAssertEqual(receipt.ticketId, "cancelled")
+        XCTAssertEqual(next.step, .awaitingCategory,
+            "Cancel must return to awaitingCategory so the user can continue (F-001 regression contract)")
     }
 
     func testReducer_notifyMeOnArbitraryEntryId_doesNotCrash() {
