@@ -21,7 +21,7 @@ import Combine
 import PalaceCatalog
 @testable import Palace
 
-final class AccountsManagerStateMachineWiringTests: XCTestCase {
+final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
 
     // MARK: - Fixtures
 
@@ -31,17 +31,16 @@ final class AccountsManagerStateMachineWiringTests: XCTestCase {
 
     override func setUpWithError() throws {
         try super.setUpWithError()
-        // Eliminate the suite-ordering race: every `AccountsManager()` we
-        // construct in this class would otherwise spawn a background
-        // `loadCatalogs` that outlives the test and writes through to
-        // `AccountStateStore.shared` / `accountSets` at unpredictable times.
-        // Flipping this flag tells `AccountsManager.init()` to skip the
-        // background dispatch — tests that need `loadCatalogs` semantics
-        // call `manager.loadCatalogs(...)` explicitly. See
-        // feedback_wiring_suite_test_isolation.md for the underlying race.
-        #if DEBUG
-        AccountsManager.deferInitialLoadCatalogsForTesting = true
-        #endif
+        // `PalaceWiringTestCase.setUpWithError` has already:
+        //   - Invoked `SingletonResetRegistry.shared.invokeAll()` so the
+        //     prior method's residue (AccountStateStore, AppContainer,
+        //     stub session, etc.) is gone.
+        //   - Set `AccountsManager.deferInitialLoadCatalogsForTesting = true`
+        //     so every `makeFreshAccountsManager()` skip its background
+        //     `loadCatalogs` Task at init.
+        //   - Drained `cancellables` and cancelled any helper-minted
+        //     manager from the previous method.
+        // The remaining fixture work below is the per-test bundle-loading.
 
         let bundle = Bundle(for: type(of: self))
         feedURL = bundle.url(forResource: "OPDS2CatalogsFeed", withExtension: "json")
@@ -56,15 +55,21 @@ final class AccountsManagerStateMachineWiringTests: XCTestCase {
         authDoc = try OPDS2AuthenticationDocument.fromData(Data(contentsOf: authDocURL))
     }
 
-    override func tearDown() {
+    override func tearDownWithError() throws {
         // Clear the process-wide state store so transitions written by one
         // test don't leak into the next (the store is keyed by UUID, and the
         // OPDS2CatalogsFeed fixture reuses real library UUIDs).
+        //
+        // The base also calls AccountStateStore reset indirectly via the
+        // registry; the explicit call here is a belt-and-suspenders guard
+        // for tests that subscribed mid-body and may have written state
+        // AFTER the base's drain of cancellables but BEFORE the registry
+        // sweep.
         #if DEBUG
         AccountStateStore.shared._resetAllForTesting()
         AccountsManager.deferInitialLoadCatalogsForTesting = false
         #endif
-        super.tearDown()
+        try super.tearDownWithError()
     }
 
     // MARK: - Helpers
@@ -126,7 +131,7 @@ final class AccountsManagerStateMachineWiringTests: XCTestCase {
         // loadAccountSetsAndAuthDoc would overwrite our seed's state-store
         // contributions mid-assertion. We then wait briefly for the
         // background to settle.
-        let manager = AccountsManager()
+        let manager = makeFreshAccountsManager()
         // Drain the main queue so init's background loadCatalogs dispatch has
         // landed any main-thread completion blocks. Without network the
         // fetchFromNetwork Task fails fast without writing state, so the
@@ -194,7 +199,7 @@ final class AccountsManagerStateMachineWiringTests: XCTestCase {
     func testLoadCatalogs_currentAccountWithoutDetails_drivesDetailsLoading_thenLoaded() throws {
         let catalogs = try loadFeedCatalogs()
         let firstUUID = catalogs[0].metadata.id
-        let manager = AccountsManager()
+        let manager = makeFreshAccountsManager()
 
         // Set the current account to one of the fixture UUIDs so the
         // loadAccountSetsAndAuthDoc path will route through
@@ -279,7 +284,7 @@ final class AccountsManagerStateMachineWiringTests: XCTestCase {
         // loadCatalogs(nil); drain the main queue so any of its main-thread
         // completion blocks land before our reset below. Without network the
         // fetchFromNetwork Task fails fast without writing AccountStateStore.
-        let manager = AccountsManager()
+        let manager = makeFreshAccountsManager()
         drainMainQueue()
         drainMainQueue()
 
@@ -369,7 +374,7 @@ final class AccountsManagerStateMachineWiringTests: XCTestCase {
         let catalogs = try loadFeedCatalogs()
         let currentUUID = catalogs[0].metadata.id
 
-        let manager = AccountsManager()
+        let manager = makeFreshAccountsManager()
         // Drain the main queue so init's background loadCatalogs has a chance
         // to fail (no network → fast failure) before our reset below.
         drainMainQueue()
@@ -474,7 +479,7 @@ final class AccountsManagerStateMachineWiringTests: XCTestCase {
         XCTAssertNil(account.authenticationDocumentUrl,
                      "Test setup must produce an account with nil authenticationDocumentUrl")
 
-        let manager = AccountsManager()
+        let manager = makeFreshAccountsManager()
         let exp = expectation(description: "fetchAuthDocumentWithStateMachine completes")
 
         // Capture the transition stream so we can assert the SEQUENCE
@@ -550,7 +555,7 @@ final class AccountsManagerStateMachineWiringTests: XCTestCase {
         let pub = OPDS2Publication(links: [], metadata: metadata, images: nil)
         let account = Account(publication: pub, imageCache: MockImageCache())
 
-        let manager = AccountsManager()
+        let manager = makeFreshAccountsManager()
 
         // Track how many times `.detailsLoading` is set — that's our proxy
         // for "number of loader invocations", since the wiring fires
@@ -665,7 +670,7 @@ final class AccountsManagerStateMachineWiringTests: XCTestCase {
         UserDefaults.standard.set(accountA.uuid, forKey: currentAccountIdentifierKey)
         defer { UserDefaults.standard.removeObject(forKey: currentAccountIdentifierKey) }
 
-        let manager = AccountsManager()
+        let manager = makeFreshAccountsManager()
 
         // Act: switch currentAccount A → B. The setter must drive A to
         // `.detailsEvicted(.libraryDeselected)`. We bypass the accountSets
@@ -710,7 +715,7 @@ final class AccountsManagerStateMachineWiringTests: XCTestCase {
         // Seed disk cache + populate accountSets via preload so the
         // manager's currentAccount accessor can resolve UUIDs back to
         // Account instances after the switch.
-        let manager = AccountsManager()
+        let manager = makeFreshAccountsManager()
         // Drain the main queue so init's background loadCatalogs has a chance
         // to fail (no network → fast failure) before our reset below.
         drainMainQueue()
@@ -793,7 +798,7 @@ final class AccountsManagerStateMachineWiringTests: XCTestCase {
         UserDefaults.standard.set(accountA.uuid, forKey: currentAccountIdentifierKey)
         defer { UserDefaults.standard.removeObject(forKey: currentAccountIdentifierKey) }
 
-        let manager = AccountsManager()
+        let manager = makeFreshAccountsManager()
 
         // Switch A → B; A terminates at .detailsEvicted(.libraryDeselected).
         manager.currentAccount = accountB
@@ -876,7 +881,7 @@ final class AccountsManagerStateMachineWiringTests: XCTestCase {
         }
         let currentUUID = catalogs[0].metadata.id
 
-        let manager = AccountsManager()
+        let manager = makeFreshAccountsManager()
         let backgroundSettled = expectation(description: "background loadCatalogs settled")
         DispatchQueue.global().asyncAfter(deadline: .now() + 0.4) { backgroundSettled.fulfill() } // FLAKE-002-OK: background loadCatalogs settle window — see feedback_wiring_suite_test_isolation
         wait(for: [backgroundSettled], timeout: 2.0)
@@ -997,7 +1002,7 @@ final class AccountsManagerStateMachineWiringTests: XCTestCase {
         }
         let currentUUID = catalogs[0].metadata.id
 
-        let manager = AccountsManager()
+        let manager = makeFreshAccountsManager()
         // Drain the main queue so init's background loadCatalogs has a chance
         // to fail (no network → fast failure) before our reset below.
         drainMainQueue()
