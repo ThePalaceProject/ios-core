@@ -752,12 +752,19 @@ extension CarPlayTemplateManager: CPInterfaceControllerDelegate {
 // MARK: - CPNowPlayingTemplateObserver
 
 extension CarPlayTemplateManager: CPNowPlayingTemplateObserver {
-    func nowPlayingTemplateUpNextButtonTapped(_ nowPlayingTemplate: CPNowPlayingTemplate) {
+    // CPNowPlayingTemplateObserver is a CarPlay-framework protocol that's
+    // delivered on the CarPlay scene queue (nonisolated from Apple's side).
+    // We mark these methods `nonisolated` to satisfy the protocol cleanly,
+    // then hop to MainActor for any UI body. See
+    // `.forgeos/swarms/swarm_f88ae9e3/transcripts/E-actor-isolation-xcode-26-3.md`.
+    nonisolated func nowPlayingTemplateUpNextButtonTapped(_ nowPlayingTemplate: CPNowPlayingTemplate) {
         Log.info(#file, "CarPlay: Up next (chapters) button tapped")
-        showChapterList()
+        Task { @MainActor in
+            self.showChapterList()
+        }
     }
 
-    func nowPlayingTemplateAlbumArtistButtonTapped(_ nowPlayingTemplate: CPNowPlayingTemplate) {
+    nonisolated func nowPlayingTemplateAlbumArtistButtonTapped(_ nowPlayingTemplate: CPNowPlayingTemplate) {
         // Not used - we don't enable album artist button
     }
 }

@@ -125,3 +125,6 @@ palace-mutate-report.json
 
 # Swarm ephemeral artifacts — pruned after status:complete + 30d
 .forgeos/swarms/**/_ephemeral/
+
+# xcodebuild local DerivedData (per-worktree)
+.derived/

@@ -21,8 +21,41 @@ extension URLSession {
     /// fire callbacks on freed state long after the owning test method has
     /// returned, causing libdispatch use-after-free crashes on whichever
     /// unrelated test runs next.
+    ///
+    /// Preserved for the 33 legacy callers. New code SHOULD prefer
+    /// `URLSession.stubbed(handlers:)` (Wave 2, Module A) which returns a
+    /// fresh per-call session so that two tests cannot share handler
+    /// state through the same URLSession.
     static func stubbedSession() -> URLSession {
         return _sharedStubbedSession
+    }
+
+    /// Wave 2 (swarm_b503a876 Module A) — per-call factory that returns
+    /// a FRESH `URLSession` configured with `HTTPStubURLProtocol` plus
+    /// any additional URLProtocol classes the caller supplies (e.g. a
+    /// test-local mock protocol). No caching — every call yields a new
+    /// session whose lifetime the caller owns.
+    ///
+    /// The returned session is tracked via the Wave 1 reset registry
+    /// (`URLSession._resetStubbedSession` resetter), so any in-flight
+    /// task drains gracefully if the registry fires between this call
+    /// and `finishTasksAndInvalidate()`.
+    ///
+    /// **Lifecycle contract:** the caller MUST invalidate the returned
+    /// session before its owner goes out of scope — `tearDown` is the
+    /// natural seam. Use `finishTasksAndInvalidate()` (not
+    /// `invalidateAndCancel()`) so completion handlers from in-flight
+    /// tasks land on a still-live delegate queue.
+    ///
+    /// - Parameter handlers: Optional URLProtocol classes prepended
+    ///   ahead of `HTTPStubURLProtocol` in the session config so they
+    ///   get first crack at interception. Defaults to no additional
+    ///   handlers.
+    /// - Returns: A fresh URLSession owned by the caller.
+    static func stubbed(handlers: [URLProtocol.Type] = []) -> URLSession {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = handlers + [HTTPStubURLProtocol.self]
+        return URLSession(configuration: config)
     }
 
     /// Test-only: invalidate the cached stubbed session and rebuild on

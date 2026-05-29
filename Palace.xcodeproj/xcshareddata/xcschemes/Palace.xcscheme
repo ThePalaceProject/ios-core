@@ -83,9 +83,14 @@
          </BuildableReference>
       </CodeCoverageTargets>
       <Testables>
+         <!-- testExecutionOrdering attribute intentionally omitted on both Testables -->
+         <!-- to match Palace-noDRM.xcscheme's default-ordering posture for parity. -->
+         <!-- Per swarm_f88ae9e3 Investigator F: random ordering was the amplifier for -->
+         <!-- state-residue / teardown-leak / stub-race flakes (798 classes × 31% touch -->
+         <!-- shared singletons). Default ordering surfaces residue on consistent neighbor -->
+         <!-- pairs, making polluters bisectable. -->
          <TestableReference
-            skipped = "NO"
-            testExecutionOrdering = "random">
+            skipped = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "2D2B47711D08F807007F7764"
@@ -95,8 +100,7 @@
             </BuildableReference>
          </TestableReference>
          <TestableReference
-            skipped = "NO"
-            testExecutionOrdering = "random">
+            skipped = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "59D9CBF425FFDBC500C89B81"
