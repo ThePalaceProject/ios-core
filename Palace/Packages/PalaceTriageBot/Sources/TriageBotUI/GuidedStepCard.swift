@@ -19,10 +19,24 @@ struct GuidedStepCard: View {
     let onAction: (Action) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Step \(stepNumber) of \(totalSteps)")
-                .font(.caption.weight(.semibold))
-                .foregroundColor(.secondary)
+        VStack(alignment: .leading, spacing: BotUI.Spacing.medium) {
+            // Header — step counter + progress dots
+            HStack(spacing: BotUI.Spacing.small) {
+                Text("Step \(stepNumber) of \(totalSteps)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(.secondary)
+
+                Spacer()
+
+                // Compact progress: filled dots for completed/current, hollow for upcoming
+                HStack(spacing: 4) {
+                    ForEach(0..<totalSteps, id: \.self) { idx in
+                        Circle()
+                            .fill(idx <= stepNumber - 1 ? Color(.systemBlue) : Color(.tertiaryLabel))
+                            .frame(width: 6, height: 6)
+                    }
+                }
+            }
 
             Text(step.instruction)
                 .font(.body)
@@ -32,51 +46,27 @@ struct GuidedStepCard: View {
 
             Text(step.check)
                 .font(.body.weight(.medium))
+                .foregroundColor(.primary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            HStack(spacing: 8) {
-                Button { onAction(.didNotResolve) } label: {
-                    Text("No, still broken")
-                        .font(.body.weight(.semibold))
-                        .foregroundColor(Color(.systemBlue))
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 9)
-                        .frame(maxWidth: .infinity)
-                        .background(Color(.systemBlue).opacity(0.12))
-                        .clipShape(Capsule())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("This step did not fix the issue")
+            BotUI.YesNoButtons(
+                onYes: { onAction(.resolved) },
+                onNo: { onAction(.didNotResolve) }
+            )
 
-                Button { onAction(.resolved) } label: {
-                    Text("Yes, fixed it")
-                        .font(.body.weight(.semibold))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 9)
-                        .frame(maxWidth: .infinity)
-                        .background(Color(.systemGreen))
-                        .clipShape(Capsule())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("This step resolved the issue")
-            }
-
-            Button { onAction(.abandon) } label: {
-                Text("Skip troubleshooting and file a ticket")
+            Button {
+                onAction(.abandon)
+            } label: {
+                Label("Skip & file a ticket", systemImage: "chevron.right")
                     .font(.footnote)
                     .foregroundColor(.secondary)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Skip the remaining steps and file a support ticket instead")
+            .accessibilityLabel("Skip remaining steps and file a support ticket")
         }
-        .padding(14)
-        .background(Color(.tertiarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(Color(.systemBlue).opacity(0.4), lineWidth: 1)
-        )
+        .padding(BotUI.Spacing.cardPadding)
+        .background(BotUI.cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: BotUI.cardCornerRadius, style: .continuous))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Guided troubleshooting step \(stepNumber) of \(totalSteps)")
     }

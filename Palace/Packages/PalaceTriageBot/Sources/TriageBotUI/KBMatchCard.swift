@@ -20,37 +20,42 @@ struct KBMatchCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: BotUI.Spacing.medium) {
             statusBadge
 
             Text(entry.userFacingWorkaround)
                 .font(.body)
                 .fixedSize(horizontal: false, vertical: true)
 
-            // Primary action depends on whether the entry has guided steps.
-            // Entries WITH steps lead with "Walk me through this" — the
-            // honest path that doesn't assume a single workaround text will
-            // fix the user's specific situation. Notify-me + file-ticket
-            // remain available as secondary actions.
+            // Primary action — full width, can't be misread. Either the
+            // guided-flow entry point (preferred when steps exist) or the
+            // "file a ticket" path (when there's nothing to walk through).
             if hasGuidedSteps {
-                actionButton("Walk me through this", systemImage: "list.bullet.rectangle") {
-                    onAction(.walkMeThroughIt)
-                }
+                BotUI.PrimaryButton(
+                    title: "Walk me through it",
+                    systemImage: "list.bullet.rectangle"
+                ) { onAction(.walkMeThroughIt) }
+            } else {
+                BotUI.PrimaryButton(
+                    title: "File a ticket",
+                    systemImage: "envelope.fill"
+                ) { onAction(.fileAnyway) }
             }
 
-            HStack {
-                // Offer notify-me whenever we know the planned fix version,
-                // regardless of whether the bug is already shipped vs in flight.
-                // "status: open with fixed_in_version: 3.2.0" is the legitimate
-                // "in flight, planned for vN" state — chaos-qa F-001 caught
-                // that the old UI suppressed the notify button in that case.
+            // Secondary actions row. Single line, tight chips. Only shown
+            // when there ARE secondary actions to take.
+            HStack(spacing: BotUI.Spacing.small) {
                 if entry.fixedInVersion != nil {
-                    actionButton("Notify me when fixed", systemImage: "bell.fill") {
+                    BotUI.SecondaryChip(title: "Notify me", systemImage: "bell.fill") {
                         onAction(.notifyMe)
                     }
                 }
-                actionButton("File ticket anyway", systemImage: "envelope.fill") {
-                    onAction(.fileAnyway)
+                if hasGuidedSteps {
+                    // When guided flow is the primary, file-ticket becomes
+                    // a secondary "skip the steps" affordance.
+                    BotUI.SecondaryChip(title: "Just file a ticket", systemImage: "envelope") {
+                        onAction(.fileAnyway)
+                    }
                 }
             }
 
@@ -60,51 +65,37 @@ struct KBMatchCard: View {
             .font(.footnote)
             .foregroundColor(.secondary)
         }
-        .padding(14)
-        .background(Color(.tertiarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(Color(.systemBlue).opacity(0.4), lineWidth: 1)
-        )
+        .padding(BotUI.Spacing.cardPadding)
+        .background(BotUI.cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: BotUI.cardCornerRadius, style: .continuous))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Known issue match: \(entry.id)")
     }
 
     @ViewBuilder private var statusBadge: some View {
-        let (label, color): (String, Color) = {
+        let (label, symbol, color): (String, String, Color) = {
             switch entry.status {
             case .fixedIn:
-                return ("Fixed in \(entry.fixedInVersion ?? "next release")", .green)
+                return ("Fixed in \(entry.fixedInVersion ?? "next release")", "checkmark.seal.fill", .green)
             case .open:
                 if let version = entry.fixedInVersion {
-                    return ("Known issue — fix coming in \(version)", .orange)
+                    return ("Known issue — fix coming in \(version)", "wrench.and.screwdriver.fill", .orange)
                 }
-                return ("Known issue — workaround available", .orange)
-            case .userError: return ("Likely a setup mix-up", .blue)
-            case .wontfix: return ("By design", .gray)
-            case .duplicateOf: return ("Tracked", .gray)
+                return ("Known issue — workaround available", "exclamationmark.triangle.fill", .orange)
+            case .userError: return ("Likely a setup mix-up", "info.circle.fill", .blue)
+            case .wontfix: return ("By design", "info.circle", .gray)
+            case .duplicateOf: return ("Tracked", "tag.fill", .gray)
             }
         }()
-        Text(label)
-            .font(.caption.weight(.semibold))
-            .foregroundColor(color)
-    }
-
-    @ViewBuilder private func actionButton(
-        _ label: String,
-        systemImage: String,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            Label(label, systemImage: systemImage)
-                .font(.footnote.weight(.semibold))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(Color(.systemBlue).opacity(0.15))
-                .clipShape(Capsule())
+        Label {
+            Text(label)
+                .font(.caption.weight(.semibold))
+        } icon: {
+            Image(systemName: symbol)
+                .font(.caption.weight(.semibold))
         }
-        .buttonStyle(.plain)
+        .foregroundColor(color)
+        .lineLimit(2)
     }
 }
 #endif

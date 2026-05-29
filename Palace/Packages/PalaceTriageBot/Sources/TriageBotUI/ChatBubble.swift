@@ -7,32 +7,53 @@ struct ChatBubble: View {
     let sender: ConversationMessage.Sender
 
     var body: some View {
-        HStack {
-            if sender == .user { Spacer(minLength: 40) }
+        HStack(alignment: .bottom, spacing: BotUI.Spacing.small) {
+            if sender == .user { Spacer(minLength: 56) }
             Text(text)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(background)
+                .font(.body)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 9)
                 .foregroundColor(foreground)
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .background(background)
+                .clipShape(BubbleShape(sender: sender))
                 .accessibilityLabel(sender == .bot ? "Support bot says \(text)" : "You said \(text)")
-            if sender == .bot { Spacer(minLength: 40) }
+            if sender == .bot { Spacer(minLength: 56) }
         }
     }
 
-    // Same dark-mode failure mode as F-003 (TicketPreviewCard Send button):
-    // relying on `.accentColor` can render white-on-white depending on the
-    // host app's accent definition + iOS appearance. Use a guaranteed-distinct
-    // semantic color (`.systemBlue`, the iMessage convention) for user
-    // bubbles so the text always reads against the background, regardless
-    // of theme. Bot bubbles use the standard secondary surface, which is
-    // already appearance-safe.
-    private var background: Color {
-        sender == .user ? Color(.systemBlue) : Color(.secondarySystemBackground)
+    // Use `.systemBlue` (the iMessage convention) for user bubbles so the
+    // colour is guaranteed-distinct against the page background AND the
+    // `.white` foreground in all appearances. See the chaos-qa ChatBubble
+    // fix earlier in this branch for the underlying rationale.
+    private var background: AnyShapeStyle {
+        sender == .user
+            ? AnyShapeStyle(Color(.systemBlue))
+            : AnyShapeStyle(Material.regularMaterial)
     }
 
     private var foreground: Color {
-        sender == .user ? Color.white : Color(.label)
+        sender == .user ? .white : Color(.label)
+    }
+}
+
+/// iMessage-style asymmetric bubble — square corner on the side closest to
+/// the sender (right for user, left for bot), rounded on the other three.
+/// Subtle but reads as "from this side" without a tail.
+private struct BubbleShape: Shape {
+    let sender: ConversationMessage.Sender
+
+    func path(in rect: CGRect) -> Path {
+        let largeRadius: CGFloat = 18
+        let smallRadius: CGFloat = 4
+        let isUser = sender == .user
+        return Path(
+            roundedRect: rect,
+            topLeadingRadius: largeRadius,
+            bottomLeadingRadius: isUser ? largeRadius : smallRadius,
+            bottomTrailingRadius: isUser ? smallRadius : largeRadius,
+            topTrailingRadius: largeRadius
+        )
     }
 }
 #endif
