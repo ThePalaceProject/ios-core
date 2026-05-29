@@ -1,6 +1,6 @@
 swarm_id: swarm_4b64e4e0
 task: "Wave 1 iOS test-flakiness fix — PalaceTestSetup XCTestObservation + AppContainer reset seam"
-status: triaged
+status: bundled
 mode: implementation
 created_at: 2026-05-29
 architect_review:
