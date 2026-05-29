@@ -20,8 +20,15 @@ struct ChatBubble: View {
         }
     }
 
+    // Same dark-mode failure mode as F-003 (TicketPreviewCard Send button):
+    // relying on `.accentColor` can render white-on-white depending on the
+    // host app's accent definition + iOS appearance. Use a guaranteed-distinct
+    // semantic color (`.systemBlue`, the iMessage convention) for user
+    // bubbles so the text always reads against the background, regardless
+    // of theme. Bot bubbles use the standard secondary surface, which is
+    // already appearance-safe.
     private var background: Color {
-        sender == .user ? Color.accentColor : Color(.secondarySystemBackground)
+        sender == .user ? Color(.systemBlue) : Color(.secondarySystemBackground)
     }
 
     private var foreground: Color {
