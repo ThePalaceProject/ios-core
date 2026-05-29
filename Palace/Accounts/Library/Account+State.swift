@@ -35,12 +35,31 @@ extension Account {
     /// Forward-only under the cold-launch path; cycles only on library
     /// reselect (reset to `.notLoaded`) or user-initiated retry of a
     /// failed load (`.detailsFailed` → `.detailsLoading`).
+    ///
+    /// `.detailsFailed` carries the LITERAL semantics of "the load
+    /// pipeline produced an error" (HTTP failure, schema mismatch, etc.).
+    /// `.detailsEvicted` is a SIBLING terminal carrying eviction-marker
+    /// semantics — written by the `currentAccount` setter against the
+    /// PRIOR uuid on a library switch so awaiters can fail fast instead
+    /// of hanging. The two are deliberately distinct so consumers
+    /// (`driveCurrentAccountAuthDocIfNeeded`, `awaitReady()`, age-check)
+    /// can disambiguate at switch arms without sharing storage.
     public enum LoadState: Sendable {
         case notLoaded
         case basicInfoLoaded
         case detailsLoading
         case detailsLoaded(AccountDetails)
         case detailsFailed(AccountLoadError)
+        /// Eviction marker — written against the prior account UUID when
+        /// the user switches libraries. NOT a "load failed" — the account
+        /// may still be perfectly valid; it's just no longer current. Any
+        /// awaiter on the prior UUID observes the terminal and fails fast
+        /// with `AccountLoadError.evicted(reason:)` so it doesn't hang
+        /// indefinitely waiting for a transition that will never come on
+        /// the prior account's stream. Re-entering the same UUID later
+        /// overwrites this through the `.basicInfoLoaded` path on the
+        /// next preload/loadCatalogs.
+        case detailsEvicted(AccountEvictionReason)
     }
 
     /// Current load state for this account. Defaults to `.notLoaded`
@@ -83,6 +102,8 @@ extension Account {
             return details
         case .detailsFailed(let error):
             throw error
+        case .detailsEvicted(let reason):
+            throw AccountLoadError.evicted(reason: reason)
         case .notLoaded, .basicInfoLoaded, .detailsLoading:
             break
         }
@@ -95,6 +116,8 @@ extension Account {
                 return details
             case .detailsFailed(let error):
                 throw error
+            case .detailsEvicted(let reason):
+                throw AccountLoadError.evicted(reason: reason)
             case .notLoaded, .basicInfoLoaded, .detailsLoading:
                 continue
             }
@@ -137,5 +160,30 @@ public enum AccountLoadError: Error, Equatable, Sendable {
     /// AccountsManager doesn't know about this UUID. Caller should not
     /// have a reference to the Account at all in this case, but the
     /// load pipeline can race library-removal in rare cases.
+    ///
+    /// LITERAL semantics only — a genuine HTTP 404 / catalog-removal /
+    /// race in the load pipeline. NOT to be used as an eviction marker
+    /// on library switch — use `LoadState.detailsEvicted` for that.
     case accountNotFound(uuid: String)
+
+    /// `awaitReady()` observed a `.detailsEvicted` terminal — the account
+    /// is no longer current (user switched libraries). Distinct from
+    /// `.accountNotFound` (which means real load failure) so awaiters can
+    /// disambiguate "give up because the library is gone" from "the load
+    /// pipeline broke." Surfacing the reason lets callers decide whether
+    /// to retry, re-resolve, or simply discard the request.
+    case evicted(reason: AccountEvictionReason)
+}
+
+/// Reasons an account's LoadState may transition to `.detailsEvicted`.
+/// Distinct from `AccountLoadError` because eviction is NOT a load
+/// failure — the underlying account may still be perfectly valid; it
+/// just stopped being the user-relevant one.
+public enum AccountEvictionReason: Equatable, Sendable {
+    /// User switched libraries away from this account.
+    /// Awaiters on the prior account observe this terminal so they can
+    /// fail-fast instead of hanging. Re-entering this UUID overwrites
+    /// the marker via the basicInfoLoaded path on the next preload/
+    /// loadCatalogs.
+    case libraryDeselected(uuid: String)
 }

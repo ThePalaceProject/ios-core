@@ -92,7 +92,11 @@ final class AccountsManagerStateMachineWiringTests: XCTestCase {
         case .detailsFailed(let err):
             if case .accountNotFound = err { return "detailsFailed.accountNotFound" }
             if case .authDocumentFetchFailed = err { return "detailsFailed.authDocumentFetchFailed" }
+            if case .evicted = err { return "detailsFailed.evicted" }
             return "detailsFailed.other"
+        case .detailsEvicted(let reason):
+            if case .libraryDeselected = reason { return "detailsEvicted.libraryDeselected" }
+            return "detailsEvicted.other"
         }
     }
 
@@ -621,14 +625,21 @@ final class AccountsManagerStateMachineWiringTests: XCTestCase {
                        "Single-flight guard must produce exactly one .detailsLoading transition for two concurrent callers on the same UUID; got \(count)")
     }
 
-    // MARK: - Test 5: Library reselect → .detailsFailed(.accountNotFound) for prior
+    // MARK: - Test 5: Library reselect → .detailsEvicted(.libraryDeselected) for prior
 
     /// Contract: when the user switches libraries, awaiters subscribed to
     /// the PRIOR account's stream must observe a terminal
-    /// `.detailsFailed(.accountNotFound)`. Without this, an awaiter that
+    /// `.detailsEvicted(.libraryDeselected)`. Without this, an awaiter that
     /// took a reference to the prior Account before the switch would hang
     /// forever — the prior UUID's state stream would never transition.
-    func testLibraryReselect_priorAccount_terminatesWithAccountNotFound() throws {
+    ///
+    /// PR #1021 (Module A, swarm_51f248d5) split this terminal off from
+    /// the formerly-shared `.detailsFailed(.accountNotFound)` so the
+    /// eviction marker no longer collides with the genuine HTTP-404 load
+    /// failure surfaced from `fetchAuthDocumentWithStateMachine`. See
+    /// Test 8 (`testDriveCurrentAccountAuthDoc_realAccountNotFound_doesNotRedrive`)
+    /// for the consumer-disambiguation half of the split.
+    func testLibraryReselect_priorAccount_terminatesWithLibraryDeselected() throws {
         let catalogs = try loadFeedCatalogs()
         guard catalogs.count >= 2 else {
             throw XCTSkip("Fixture needs at least 2 catalogs to test reselect")
@@ -657,24 +668,25 @@ final class AccountsManagerStateMachineWiringTests: XCTestCase {
         let manager = AccountsManager()
 
         // Act: switch currentAccount A → B. The setter must drive A to
-        // `.detailsFailed(.accountNotFound)`. We bypass the accountSets
+        // `.detailsEvicted(.libraryDeselected)`. We bypass the accountSets
         // lookup by using accountB directly — the setter only reads
         // newValue?.uuid for the comparison.
         manager.currentAccount = accountB
 
-        // Assert: A's terminal state is .accountNotFound; B is untouched
-        // by the reselect path itself (its state is whatever it was —
-        // .notLoaded in this isolated test, since no preload ran).
+        // Assert: A's terminal state is .detailsEvicted(.libraryDeselected);
+        // B is untouched by the reselect path itself (its state is
+        // whatever it was — .notLoaded in this isolated test, since no
+        // preload ran).
         switch AccountStateStore.shared.state(for: accountA.uuid) {
-        case .detailsFailed(let err):
-            if case .accountNotFound(let uuid) = err {
+        case .detailsEvicted(let reason):
+            if case .libraryDeselected(let uuid) = reason {
                 XCTAssertEqual(uuid, accountA.uuid,
-                               ".accountNotFound must carry the prior account's UUID, not the new one")
+                               ".libraryDeselected must carry the prior account's UUID, not the new one")
             } else {
-                XCTFail("Expected .accountNotFound, got \(err)")
+                XCTFail("Expected .libraryDeselected, got \(reason)")
             }
         default:
-            XCTFail("Prior account must terminate in .detailsFailed(.accountNotFound) after reselect; got \(label(AccountStateStore.shared.state(for: accountA.uuid)))")
+            XCTFail("Prior account must terminate in .detailsEvicted(.libraryDeselected) after reselect; got \(label(AccountStateStore.shared.state(for: accountA.uuid)))")
         }
     }
 
@@ -760,7 +772,7 @@ final class AccountsManagerStateMachineWiringTests: XCTestCase {
     // MARK: - Test 6: Re-entry after reselect resets state
 
     /// Contract: after a library reselect terminates the prior UUID at
-    /// `.detailsFailed(.accountNotFound)`, re-entering that UUID (user
+    /// `.detailsEvicted(.libraryDeselected)`, re-entering that UUID (user
     /// switches back) must NOT leave the awaiter stuck on the prior
     /// terminal. The next `_setState` write (via preload or
     /// `fetchAuthDocumentWithStateMachine`) cleanly overwrites it because
@@ -783,15 +795,15 @@ final class AccountsManagerStateMachineWiringTests: XCTestCase {
 
         let manager = AccountsManager()
 
-        // Switch A → B; A terminates at .accountNotFound.
+        // Switch A → B; A terminates at .detailsEvicted(.libraryDeselected).
         manager.currentAccount = accountB
 
         // Verify the terminal A state.
         switch AccountStateStore.shared.state(for: accountA.uuid) {
-        case .detailsFailed:
+        case .detailsEvicted(.libraryDeselected):
             break
         default:
-            XCTFail("Setup precondition: A must be .detailsFailed after A→B switch")
+            XCTFail("Setup precondition: A must be .detailsEvicted(.libraryDeselected) after A→B switch; got \(label(AccountStateStore.shared.state(for: accountA.uuid)))")
         }
 
         // Capture A's stream so we can assert the re-entry transition emits.
@@ -810,7 +822,7 @@ final class AccountsManagerStateMachineWiringTests: XCTestCase {
         // Re-drive A via the basicInfoLoaded path (this is exactly what
         // preload would do on the next cold launch / library list re-render).
         // The wiring contract is that `_setState` overwrites cleanly — even
-        // when going from a `.detailsFailed` terminal back to an earlier
+        // when going from a `.detailsEvicted` terminal back to an earlier
         // ordinal state. CurrentValueSubject.send always broadcasts.
         accountA._setState(.basicInfoLoaded)
 
@@ -826,7 +838,7 @@ final class AccountsManagerStateMachineWiringTests: XCTestCase {
         }
 
         // Stream observer must have witnessed the basicInfoLoaded
-        // transition AFTER the detailsFailed terminal — this is the
+        // transition AFTER the detailsEvicted terminal — this is the
         // kill condition for a wiring that dedupes equal states
         // (a broken `setState` that no-ops if old==new would never emit).
         XCTAssertTrue(observed.contains("basicInfoLoaded"),
@@ -836,20 +848,28 @@ final class AccountsManagerStateMachineWiringTests: XCTestCase {
     // MARK: - Test 7: driveCurrentAccountAuthDocIfNeeded re-drives stale eviction marker
 
     /// Contract: when the user switches libraries away from A and then back to A
-    /// (A → B → A), the helper must NOT short-circuit on the `.detailsFailed(
-    /// .accountNotFound)` terminal that the setter wrote during the A → B step.
-    /// That marker is an eviction signal for awaiters on the PRIOR account; once
-    /// A is the current account again, the marker is stale.
+    /// (A → B → A), the helper must NOT short-circuit on the
+    /// `.detailsEvicted(.libraryDeselected)` terminal that the setter wrote
+    /// during the A → B step. That marker is an eviction signal for awaiters
+    /// on the PRIOR account; once A is the current account again, the marker
+    /// is stale.
     ///
     /// Without the redrive: awaitReady() callers (audiobook open, token refresh,
-    /// bookmark sync, CarPlay auth) hit the `.detailsFailed` fast-path and throw
-    /// `.accountNotFound` forever on the swap-back — exactly the audiobook-open
+    /// bookmark sync, CarPlay auth) hit the eviction terminal fast-path and
+    /// throw `.evicted` forever on the swap-back — exactly the audiobook-open
     /// "Please sign in" regression observed in field reports.
     ///
-    /// Kill case: removing the `.detailsFailed(.accountNotFound)` branch from the
-    /// helper's switch makes this test observe the stale terminal instead of a
-    /// drive transition.
-    func testDriveCurrentAccountAuthDoc_staleAccountNotFoundMarker_redrives() throws {
+    /// PR #1021 (Module A, swarm_51f248d5) is the structural fix: the eviction
+    /// marker now lives in its own enum case (`.detailsEvicted(.libraryDeselected)`)
+    /// rather than sharing storage with `.detailsFailed(.accountNotFound)`.
+    /// `driveCurrentAccountAuthDocIfNeeded` matches the new case and redrives;
+    /// the kill case (a regression that drops the `.detailsEvicted`
+    /// disambiguation) lets the stale terminal stick.
+    ///
+    /// Kill case: removing the `.detailsEvicted(.libraryDeselected)` branch
+    /// from the helper's switch makes this test observe the stale terminal
+    /// instead of a drive transition.
+    func testDriveCurrentAccountAuthDoc_staleEvictionMarker_redrives() throws {
         let catalogs = try loadFeedCatalogs()
         guard catalogs.count >= 1 else {
             throw XCTSkip("Fixture needs at least 1 catalog")
@@ -885,18 +905,18 @@ final class AccountsManagerStateMachineWiringTests: XCTestCase {
 
         // Stage the stale eviction marker — what the setter would have written
         // against this UUID during a prior A → B switch.
-        account._setState(.detailsFailed(.accountNotFound(uuid: currentUUID)))
-        if case .detailsFailed(.accountNotFound) = AccountStateStore.shared.state(for: currentUUID) {
+        account._setState(.detailsEvicted(.libraryDeselected(uuid: currentUUID)))
+        if case .detailsEvicted(.libraryDeselected) = AccountStateStore.shared.state(for: currentUUID) {
             // OK
         } else {
-            XCTFail("Setup precondition: state must be .detailsFailed(.accountNotFound)")
+            XCTFail("Setup precondition: state must be .detailsEvicted(.libraryDeselected)")
             return
         }
 
         // Act: drive. With the fix, the helper recognizes the eviction marker as
         // stale-for-the-current-account and re-fires the fetch — which moves
         // state through .detailsLoading. Without the fix, the helper short-
-        // circuits and state stays at .detailsFailed(.accountNotFound).
+        // circuits and state stays at .detailsEvicted(.libraryDeselected).
         manager.driveCurrentAccountAuthDocIfNeeded()
 
         // Assert: state moved past the stale terminal within a bounded window.
@@ -905,7 +925,7 @@ final class AccountsManagerStateMachineWiringTests: XCTestCase {
         // `.detailsFailed(.authDocumentFetchFailed)` are acceptable downstream
         // terminals depending on the network availability of the test env. The
         // kill condition is the marker staying put.
-        let moved = expectation(description: "state moved off stale .accountNotFound")
+        let moved = expectation(description: "state moved off stale .detailsEvicted")
         var observedFinalState: Account.LoadState = AccountStateStore.shared.state(for: currentUUID)
         let deadline = Date().addingTimeInterval(3.0)
         DispatchQueue.global().async {
@@ -916,11 +936,14 @@ final class AccountsManagerStateMachineWiringTests: XCTestCase {
                     observedFinalState = s
                     moved.fulfill()
                     return
-                case .detailsFailed(let err):
-                    if case .accountNotFound = err {
-                        Thread.sleep(forTimeInterval: 0.05) // FLAKE-001-OK: redrive yield, intentional
-                        continue
-                    }
+                case .detailsEvicted(.libraryDeselected):
+                    Thread.sleep(forTimeInterval: 0.05) // FLAKE-001-OK: redrive yield, intentional
+                    continue
+                case .detailsFailed:
+                    // Any .detailsFailed terminal (e.g. .authDocumentFetchFailed
+                    // from the test env's lack of network) proves the fetch
+                    // was re-fired — the eviction marker was NOT respected as
+                    // a short-circuit. That's the success path for this test.
                     observedFinalState = s
                     moved.fulfill()
                     return
@@ -934,14 +957,130 @@ final class AccountsManagerStateMachineWiringTests: XCTestCase {
         switch observedFinalState {
         case .detailsLoading, .detailsLoaded:
             break // fix is in — drive fired and state moved through .detailsLoading
-        case .detailsFailed(let err):
-            if case .accountNotFound = err {
-                XCTFail("driveCurrentAccountAuthDocIfNeeded must redrive past a stale .accountNotFound marker for the current account; observed terminal stayed at \(label(observedFinalState))")
-            }
-            // .detailsFailed(.authDocumentFetchFailed) is also acceptable — proves
-            // the fetch was re-fired (it just failed in the test env without network).
+        case .detailsEvicted(.libraryDeselected):
+            XCTFail("driveCurrentAccountAuthDocIfNeeded must redrive past a stale .detailsEvicted(.libraryDeselected) marker for the current account; observed terminal stayed at \(label(observedFinalState))")
+        case .detailsFailed:
+            // .detailsFailed(.authDocumentFetchFailed) is acceptable — proves
+            // the fetch was re-fired (it just failed in the test env without
+            // network). The kill condition is the eviction marker staying put.
+            break
         default:
-            XCTFail("Helper must drive past stale .accountNotFound marker; observed \(label(observedFinalState))")
+            XCTFail("Helper must drive past stale .detailsEvicted(.libraryDeselected) marker; observed \(label(observedFinalState))")
+        }
+    }
+
+    // MARK: - Test 10: real .detailsFailed(.accountNotFound) does NOT redrive (consumer disambiguation)
+
+    /// Contract (Module A semantics test #3, swarm_51f248d5): a genuine
+    /// `.detailsFailed(.accountNotFound)` terminal MUST NOT trigger the
+    /// `driveCurrentAccountAuthDocIfNeeded` redrive arm. The redrive is only
+    /// for `.detailsEvicted(.libraryDeselected)` — the eviction marker the
+    /// `currentAccount` setter writes on library switch. A real HTTP 404 /
+    /// catalog-removal at `fetchAuthDocumentWithStateMachine` failure path
+    /// is a load-pipeline error and the helper must respect it (the
+    /// existing `.detailsFailed` arm returns early).
+    ///
+    /// Without this disambiguation, prior to PR #1021 the `.accountNotFound`
+    /// case carried two orthogonal meanings (real failure AND eviction
+    /// marker) and the helper had to special-case the conflation, which
+    /// caused real `.accountNotFound` failures to also redrive — hammering
+    /// the load endpoint into a tight retry loop. Splitting the enum
+    /// (Module A) is the root fix; this test pins the new behavior.
+    ///
+    /// Kill case: a regression that re-conflates the two meanings (e.g. by
+    /// adding `.detailsFailed(.accountNotFound)` to the redrive arm) would
+    /// observe a `.detailsLoading` transition here and fail the assertion.
+    func testDriveCurrentAccountAuthDoc_realAccountNotFound_doesNotRedrive() throws {
+        let catalogs = try loadFeedCatalogs()
+        guard catalogs.count >= 1 else {
+            throw XCTSkip("Fixture needs at least 1 catalog")
+        }
+        let currentUUID = catalogs[0].metadata.id
+
+        let manager = AccountsManager()
+        // Drain the main queue so init's background loadCatalogs has a chance
+        // to fail (no network → fast failure) before our reset below.
+        drainMainQueue()
+        drainMainQueue()
+
+        let activeHash = TPPConfiguration.customUrlHash()
+            ?? (TPPSettings().useBetaLibraries
+                ? TPPConfiguration.betaUrlHash
+                : TPPConfiguration.prodUrlHash)
+        try seedDiskCache(for: activeHash, data: feedData)
+        defer { tearDownDiskCache(for: activeHash) }
+
+        UserDefaults.standard.set(currentUUID, forKey: currentAccountIdentifierKey)
+        defer { UserDefaults.standard.removeObject(forKey: currentAccountIdentifierKey) }
+
+        #if DEBUG
+        AccountStateStore.shared._resetAllForTesting()
+        #endif
+
+        manager.preloadAccountsFromDiskCacheSync()
+
+        guard let account = manager.currentAccount else {
+            XCTFail("Setup: currentAccount must resolve after preload"); return
+        }
+        XCTAssertEqual(account.uuid, currentUUID,
+                       "Setup precondition: currentAccount must resolve to the seeded UUID")
+
+        // Stage a REAL .accountNotFound (NOT an eviction marker). Simulates
+        // the `fetchAuthDocumentWithStateMachine` failure path producing an
+        // .accountNotFound error — a real load pipeline error, not a library
+        // switch eviction.
+        account._setState(.detailsFailed(.accountNotFound(uuid: currentUUID)))
+        if case .detailsFailed(.accountNotFound) = AccountStateStore.shared.state(for: currentUUID) {
+            // OK — pre-state pinned
+        } else {
+            XCTFail("Setup precondition: state must be .detailsFailed(.accountNotFound)")
+            return
+        }
+
+        // Subscribe to the state stream BEFORE the drive call. We use the
+        // stream rather than polling because the redrive (if it fires) is
+        // synchronous on `_setState(.detailsLoading)` and would emit an
+        // observable transition. Absence of any post-initial emission is
+        // the success signal.
+        var emissionsAfterInitial: [String] = []
+        let initialEmission = expectation(description: "stream emits initial terminal value")
+        let streamTask = Task {
+            var isFirst = true
+            for await state in account.stateStream {
+                if isFirst {
+                    isFirst = false
+                    initialEmission.fulfill()
+                    continue
+                }
+                emissionsAfterInitial.append(self.label(state))
+            }
+        }
+        wait(for: [initialEmission], timeout: 1.0)
+
+        // Act: call the helper. With the enum split in place, the genuine
+        // `.detailsFailed(.accountNotFound)` MUST hit the `.detailsFailed`
+        // catch-all arm and short-circuit — NOT the
+        // `.detailsEvicted(.libraryDeselected)` redrive arm.
+        manager.driveCurrentAccountAuthDocIfNeeded()
+
+        // Drain the main queue so any unwanted Combine/notification emission
+        // dispatched by the driver lands before we assert silence below.
+        drainMainQueue()
+        streamTask.cancel()
+
+        // Assert: no transition fired after subscribe. A regression that
+        // re-conflated the cases would observe a `.detailsLoading` emission
+        // (the redrive arm fires `_setState(.detailsLoading)` synchronously
+        // inside `fetchAuthDocumentWithStateMachine`).
+        XCTAssertTrue(emissionsAfterInitial.isEmpty,
+                      "Real .detailsFailed(.accountNotFound) must NOT trigger the eviction-marker redrive; observed emissions: \(emissionsAfterInitial). A .detailsLoading emission proves the helper re-conflated the two semantics.")
+
+        // Final state must still be the real-failure terminal we set up.
+        switch AccountStateStore.shared.state(for: currentUUID) {
+        case .detailsFailed(.accountNotFound):
+            break // expected: helper respected the real failure
+        default:
+            XCTFail("Final state must remain .detailsFailed(.accountNotFound) — helper must not redrive a genuine load failure; got \(label(AccountStateStore.shared.state(for: currentUUID)))")
         }
     }
 

@@ -80,6 +80,7 @@ Either you (main agent) OR a spawned Plan subagent produces a fix-contract at `.
 - `grep -rn "<legacy fn name>" Palace/<area>/` returns zero hits post-fix (if migrating)
 - Mutation kill ≥ 80% on <changed file> (diff-only)
 - Test name multi-step keywords match body multi-step calls
+- For every new try await / await boundary added in production code, the contract must include a grep showing a test that drives that exact line via the public entry point. If no such grep is possible (entry point requires unmockable dependencies), STOP with BLOCKED + scope-deferral; the partial test does NOT satisfy the contract. (Catches the swarm_c8fcab76 arch1 pattern — `PlaybackReadinessGate.awaitReadinessAndPlay` called from `AudiobookSessionManager.swift:684-710` but tests drove the static method directly because `openAudiobook(...)`'s mock book failed in the loader before `bind()` ran.)
 
 ## Tests required
 - Behavior tests (must catch regression of the bug being fixed)

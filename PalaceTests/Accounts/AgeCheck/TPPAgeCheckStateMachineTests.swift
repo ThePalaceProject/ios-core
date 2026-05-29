@@ -134,6 +134,34 @@ final class TPPAgeCheckStateMachineTests: XCTestCase {
                        ".detailsFailed must produce completion(false) — matches the legacy details == nil branch and does NOT crash")
     }
 
+    // MARK: - testAgeCheck_evictedDetails_completionFalse
+    //
+    // Contract: on `.detailsEvicted` (the sibling case introduced by the
+    // accountNotFound enum split — eviction-marker semantics, set when the
+    // library is swapped away), age-check has the same observable behavior
+    // as `.detailsFailed` (no AccountDetails available → completion(false)).
+    // Today the bucket arm is shared; this test pins the contract so a
+    // future split of the two arms cannot silently regress.
+
+    func testAgeCheck_evictedDetails_completionFalse() {
+        let evictionUUID = UUID().uuidString
+        setLoadState(.detailsEvicted(.libraryDeselected(uuid: evictionUUID)))
+
+        let exp = expectation(description: "completion fires with false on .detailsEvicted")
+        var captured: Bool?
+        ageCheck.verifyCurrentAccountAgeRequirement(
+            userAccountProvider: userAccountProviderMock,
+            currentLibraryAccountProvider: libraryAccountProviderMock
+        ) { aboveAgeLimit in
+            captured = aboveAgeLimit
+            exp.fulfill()
+        }
+
+        wait(for: [exp], timeout: 2.0)
+        XCTAssertEqual(captured, false,
+                       ".detailsEvicted must produce completion(false) — same observable behavior as .detailsFailed (no AccountDetails). Pins the contract so a future split of the bucket arm cannot silently regress.")
+    }
+
     // MARK: - Edge: nil current account still surfaces completion(false)
     //
     // The migration's guard for `nil` current account hops onto the
