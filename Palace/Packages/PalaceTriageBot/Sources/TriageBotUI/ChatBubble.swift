@@ -16,7 +16,7 @@ struct ChatBubble: View {
                 .padding(.vertical, 9)
                 .foregroundColor(foreground)
                 .background(background)
-                .clipShape(BubbleShape(sender: sender))
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                 .accessibilityLabel(sender == .bot ? "Support bot says \(text)" : "You said \(text)")
             if sender == .bot { Spacer(minLength: 56) }
         }
@@ -34,26 +34,6 @@ struct ChatBubble: View {
 
     private var foreground: Color {
         sender == .user ? .white : Color(.label)
-    }
-}
-
-/// iMessage-style asymmetric bubble — square corner on the side closest to
-/// the sender (right for user, left for bot), rounded on the other three.
-/// Subtle but reads as "from this side" without a tail.
-private struct BubbleShape: Shape {
-    let sender: ConversationMessage.Sender
-
-    func path(in rect: CGRect) -> Path {
-        let largeRadius: CGFloat = 18
-        let smallRadius: CGFloat = 4
-        let isUser = sender == .user
-        return Path(
-            roundedRect: rect,
-            topLeadingRadius: largeRadius,
-            bottomLeadingRadius: isUser ? largeRadius : smallRadius,
-            bottomTrailingRadius: isUser ? smallRadius : largeRadius,
-            topTrailingRadius: largeRadius
-        )
     }
 }
 #endif

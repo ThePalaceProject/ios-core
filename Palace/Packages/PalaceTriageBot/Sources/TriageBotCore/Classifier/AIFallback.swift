@@ -86,8 +86,15 @@ public enum AIFallbackPromptBuilder {
         if let category {
             lines.append("Category the user picked: \(category.rawValue)")
         }
-        if let context, let dist = context.distributor {
-            lines.append("Distributor: \(dist)")
+        if let context {
+            lines.append("User's app version: \(context.appVersion) (build \(context.appBuild))")
+            if let dist = context.distributor {
+                lines.append("Distributor: \(dist)")
+            }
+            lines.append("Platform: \(context.platform) \(context.osVersion)")
+            if let channel = context.buildChannel {
+                lines.append("Build channel: \(channel)")
+            }
         }
         lines.append("")
         lines.append("User's description (already sanitized of credentials / emails / UUIDs):")
@@ -97,6 +104,7 @@ public enum AIFallbackPromptBuilder {
         lines.append("")
         lines.append("Pick the single KB entry that best matches the user's symptom, OR return no match if nothing fits.")
         lines.append("Respect distributor_filter — don't match an entry whose distributor_filter excludes the user's distributor.")
+        lines.append("Respect fixed_in_version — if an entry's fixed_in_version is at or below the user's current app version, that bug is theoretically fixed for them. DO NOT match such an entry as if the workaround applies. If the user IS hitting that symptom on a build that should have the fix, treat it as a regression candidate and return no match (the bot will escalate with the user's version captured).")
         lines.append("Be conservative: false positives (matching the wrong entry) are worse than false negatives (escalating).")
         lines.append("")
         lines.append("Return ONLY this JSON shape, no prose, no markdown:")

@@ -18,12 +18,24 @@ public struct LocalClassifier: Sendable {
         knowledgeBase kb: KnowledgeBase
     ) -> ClassificationResult {
         let normalized = userText.lowercased()
-        let candidates: [KBEntry]
+        let rawCandidates: [KBEntry]
         if let category {
-            candidates = kb.entries(in: category)
+            rawCandidates = kb.entries(in: category)
                 .filter { entry in passesContextFilters(entry: entry, context: context) }
         } else {
-            candidates = kb.entries(matching: context)
+            rawCandidates = kb.entries(matching: context)
+        }
+
+        // Version-aware filter — don't surface a `fixed_in` entry to a user
+        // who's already on / past the fix version. They have the fix; if
+        // they're still hitting the symptom, it's a regression candidate
+        // that needs to escalate, not a workaround they've already
+        // implicitly accepted. Entries without `fixed_in_version`, entries
+        // with `status: open`, or contexts without an app version all pass
+        // through unfiltered.
+        let candidates = rawCandidates.filter { entry in
+            guard entry.status == .fixedIn else { return true }
+            return !FixVersionGate.userAlreadyHasFix(for: entry, userAppVersion: context?.appVersion)
         }
 
         guard !candidates.isEmpty else {
