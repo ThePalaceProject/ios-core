@@ -39,6 +39,13 @@ struct TicketPreviewCard: View {
                 if let trace = draft.resolutionTrace {
                     row("Steps tried", value: "\(trace.attempts.count) (\(trace.outcome.rawValue.replacingOccurrences(of: "_", with: " ")))")
                 }
+                if let followUp = draft.escalationFollowUp {
+                    let value: String = {
+                        if let answer = followUp.answer, !answer.isEmpty { return answer }
+                        return "(skipped)"
+                    }()
+                    row("Your answer", value: value)
+                }
             }
 
             HStack(spacing: BotUI.Spacing.small) {

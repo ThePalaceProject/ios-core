@@ -78,6 +78,11 @@
         "wall_failure": "2026-05-22-f011-audiobook-hang",
         "helpspot": [17964, 17929, 17989, 17959]
       },
+      "escalation_follow_up": {
+        "prompt": "Before I send this to support — which audiobook title is doing this? It helps them spot patterns across publishers.",
+        "placeholder": "e.g. The Midnight Library by Matt Haig",
+        "diagnostic": "audiobook.followup_title_captured"
+      },
       "confidence_threshold": 0.1,
       "escalate_anyway": false,
       "helpspot_tag": "known-issue-PP-4436",
@@ -244,6 +249,11 @@
       "internal_reference": {
         "helpspot": [17957, 17917]
       },
+      "escalation_follow_up": {
+        "prompt": "Quick question before I file this — which library are you trying to add? (City, county, or system name is fine.)",
+        "placeholder": "e.g. Brooklyn Public Library",
+        "diagnostic": "library.followup_name_captured"
+      },
       "confidence_threshold": 0.08,
       "escalate_anyway": false,
       "helpspot_tag": "user-education-wrong-library",
@@ -293,6 +303,11 @@
       ],
       "internal_reference": {
         "jira": "PP-4430"
+      },
+      "escalation_follow_up": {
+        "prompt": "Before I escalate — what car model + year are you using, and is it wired CarPlay or wireless? Helps us repro on the same setup.",
+        "placeholder": "e.g. 2021 Honda Civic, wired",
+        "diagnostic": "carplay.followup_car_captured"
       },
       "confidence_threshold": 0.1,
       "escalate_anyway": false,
@@ -350,6 +365,11 @@
       "internal_reference": {
         "helpspot": [17960, 17971, 17835]
       },
+      "escalation_follow_up": {
+        "prompt": "Which book title is showing the hold-ready issue? Support can check the catalog directly.",
+        "placeholder": "e.g. Tomorrow, and Tomorrow, and Tomorrow",
+        "diagnostic": "holds.followup_title_captured"
+      },
       "confidence_threshold": 0.08,
       "escalate_anyway": false,
       "helpspot_tag": "open-issue-hold-desync",
@@ -398,6 +418,11 @@
       ],
       "internal_reference": {
         "jira": "PP-4454"
+      },
+      "escalation_follow_up": {
+        "prompt": "Which PDF title won't open? Support can verify the file on their end.",
+        "placeholder": "e.g. The Pragmatic Programmer",
+        "diagnostic": "pdf.followup_title_captured"
       },
       "confidence_threshold": 0.1,
       "escalate_anyway": false,
@@ -458,6 +483,11 @@
       ],
       "internal_reference": {
         "helpspot": [17976]
+      },
+      "escalation_follow_up": {
+        "prompt": "Which book title is stuck downloading? And are you on WiFi or cellular?",
+        "placeholder": "e.g. Demon Copperhead, on WiFi",
+        "diagnostic": "download.followup_title_captured"
       },
       "confidence_threshold": 0.08,
       "escalate_anyway": false,

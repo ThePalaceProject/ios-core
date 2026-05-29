@@ -56,6 +56,14 @@ public struct ConversationState: Equatable, Sendable {
         /// `attempts` accumulates every Yes/No into a trace that's attached
         /// to the escalation ticket if all steps fail.
         case guidedStep(entryId: String, stepIndex: Int, startedAt: Date, attempts: [StepAttempt])
+        /// Bot is asking the user a specific follow-up question right
+        /// before filing an escalation ticket ("Which library?", "Which
+        /// book title?"). The user's reply or skip becomes
+        /// `TicketDraft.escalationFollowUp` so support sees the
+        /// structured context immediately. `pendingDraft` is the
+        /// almost-final ticket — we only add the follow-up answer
+        /// before transitioning to .drafting.
+        case awaitingEscalationFollowUp(prompt: String, pendingDraft: TicketDraft)
         case drafting(ticket: TicketDraft)
         case submitting(ticket: TicketDraft)
         case sent(receipt: TicketReceipt)
@@ -110,6 +118,10 @@ public enum ConversationAction: Equatable, Sendable {
     /// than the legacy binary Yes/No, which assumes every "yes" means
     /// "the whole issue is fixed."
     case userSelectedStepResponse(stepId: String, responseIndex: Int)
+    /// User submitted their answer to the escalation follow-up question
+    /// (or tapped Skip — `answer == nil`). Reducer merges the answer
+    /// into the pending draft and transitions to `.drafting`.
+    case userAnsweredEscalationFollowUp(answer: String?)
     /// User abandoned the guided flow (e.g. tapped "skip to summary" or
     /// "just file a ticket" mid-walkthrough). Reducer records the trace
     /// with outcome=abandoned and escalates.

@@ -16,6 +16,11 @@ public struct TicketDraft: Codable, Equatable, Sendable {
     /// and the timing — gives support the difference between "couldn't fix
     /// it" and "tried steps 1, 2, 3 over 4 minutes, none worked."
     public let resolutionTrace: ResolutionTrace?
+    /// Present when the bot asked an escalation follow-up question
+    /// (e.g. "Which library are you trying to add?") and the user either
+    /// answered or skipped. Support sees this in the email body so they
+    /// don't have to ask for context that's already been collected.
+    public let escalationFollowUp: EscalationFollowUpAnswer?
 
     public enum Priority: String, Codable, Sendable {
         case low      // user accepted bot's match, filing for impact tracking only
@@ -30,7 +35,8 @@ public struct TicketDraft: Codable, Equatable, Sendable {
         context: ContextSnapshot,
         helpspotTags: [String] = [],
         priority: Priority = .normal,
-        resolutionTrace: ResolutionTrace? = nil
+        resolutionTrace: ResolutionTrace? = nil,
+        escalationFollowUp: EscalationFollowUpAnswer? = nil
     ) {
         self.userDescription = userDescription
         self.category = category
@@ -39,6 +45,7 @@ public struct TicketDraft: Codable, Equatable, Sendable {
         self.helpspotTags = helpspotTags
         self.priority = priority
         self.resolutionTrace = resolutionTrace
+        self.escalationFollowUp = escalationFollowUp
     }
 }
 

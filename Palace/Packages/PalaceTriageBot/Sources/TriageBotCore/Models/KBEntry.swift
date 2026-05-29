@@ -64,6 +64,11 @@ public struct KBEntry: Codable, Equatable, Identifiable, Sendable {
     /// Entries without steps render the legacy single-card behavior. See
     /// KBStep + ResolutionTrace.
     public let userFacingSteps: [KBStep]?
+    /// Optional structured question asked right before the bot files an
+    /// escalation ticket for this entry. Gives support a specific piece
+    /// of context up front ("which library?", "which book title?") so
+    /// triage doesn't start with a "couldn't find my library" ticket.
+    public let escalationFollowUp: KBEscalationFollowUp?
     public let internalReference: KBInternalReference?
     public let confidenceThreshold: Double
     public let escalateAnyway: Bool
@@ -82,6 +87,7 @@ public struct KBEntry: Codable, Equatable, Identifiable, Sendable {
         case iosVersionFilter = "ios_version_filter"
         case userFacingWorkaround = "user_facing_workaround"
         case userFacingSteps = "user_facing_steps"
+        case escalationFollowUp = "escalation_follow_up"
         case internalReference = "internal_reference"
         case confidenceThreshold = "confidence_threshold"
         case escalateAnyway = "escalate_anyway"
@@ -101,6 +107,7 @@ public struct KBEntry: Codable, Equatable, Identifiable, Sendable {
         iosVersionFilter: [String]? = nil,
         userFacingWorkaround: String,
         userFacingSteps: [KBStep]? = nil,
+        escalationFollowUp: KBEscalationFollowUp? = nil,
         internalReference: KBInternalReference? = nil,
         confidenceThreshold: Double = 0.6,
         escalateAnyway: Bool = false,
@@ -118,6 +125,7 @@ public struct KBEntry: Codable, Equatable, Identifiable, Sendable {
         self.iosVersionFilter = iosVersionFilter
         self.userFacingWorkaround = userFacingWorkaround
         self.userFacingSteps = userFacingSteps
+        self.escalationFollowUp = escalationFollowUp
         self.internalReference = internalReference
         self.confidenceThreshold = confidenceThreshold
         self.escalateAnyway = escalateAnyway

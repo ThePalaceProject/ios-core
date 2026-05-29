@@ -85,38 +85,69 @@ public struct SupportChatView: View {
         }
     }
 
+    private struct InputBarConfig {
+        let isCompositionStep: Bool
+        let isFollowUpStep: Bool
+        let placeholder: String
+    }
+
+    private var inputBarConfig: InputBarConfig {
+        switch viewModel.state.step {
+        case .awaitingDescription, .awaitingFollowUp, .awaitingCategory:
+            return InputBarConfig(isCompositionStep: true, isFollowUpStep: false, placeholder: "Describe what's happening…")
+        case .awaitingEscalationFollowUp:
+            return InputBarConfig(isCompositionStep: true, isFollowUpStep: true, placeholder: "Type your answer (or tap Skip)…")
+        default:
+            return InputBarConfig(isCompositionStep: false, isFollowUpStep: false, placeholder: "Describe what's happening…")
+        }
+    }
+
     @ViewBuilder private var inputBar: some View {
-        let isCompositionStep: Bool = {
-            switch viewModel.state.step {
-            case .awaitingDescription, .awaitingFollowUp, .awaitingCategory:
-                return true
-            default:
-                return false
-            }
-        }()
+        let config = inputBarConfig
+        let isFollowUpStep = config.isFollowUpStep
+        let placeholder = config.placeholder
 
-        if isCompositionStep {
-            HStack(spacing: 8) {
-                TextField(
-                    "Describe what's happening…",
-                    text: Binding(
-                        get: { viewModel.state.inputText },
-                        set: { viewModel.send(.inputChanged($0)) }
-                    ),
-                    axis: .vertical
-                )
-                .textFieldStyle(.roundedBorder)
-                .lineLimit(1...4)
-                .accessibilityLabel("Describe what's happening")
+        if config.isCompositionStep {
+            VStack(spacing: 6) {
+                HStack(spacing: 8) {
+                    TextField(
+                        placeholder,
+                        text: Binding(
+                            get: { viewModel.state.inputText },
+                            set: { viewModel.send(.inputChanged($0)) }
+                        ),
+                        axis: .vertical
+                    )
+                    .textFieldStyle(.roundedBorder)
+                    .lineLimit(1...4)
+                    .accessibilityLabel(placeholder)
 
-                Button {
-                    viewModel.send(.userSubmittedDescription)
-                } label: {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .font(.title2)
+                    Button {
+                        if isFollowUpStep {
+                            let trimmed = viewModel.state.inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+                            viewModel.send(.userAnsweredEscalationFollowUp(answer: trimmed.isEmpty ? nil : trimmed))
+                        } else {
+                            viewModel.send(.userSubmittedDescription)
+                        }
+                    } label: {
+                        Image(systemName: "arrow.up.circle.fill")
+                            .font(.title2)
+                    }
+                    .disabled(!isFollowUpStep && viewModel.state.inputText.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .accessibilityLabel(isFollowUpStep ? "Send answer" : "Send")
                 }
-                .disabled(viewModel.state.inputText.trimmingCharacters(in: .whitespaces).isEmpty)
-                .accessibilityLabel("Send")
+                if isFollowUpStep {
+                    Button {
+                        viewModel.send(.userAnsweredEscalationFollowUp(answer: nil))
+                    } label: {
+                        Label("Skip this question", systemImage: "chevron.right")
+                            .font(.footnote)
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .accessibilityLabel("Skip this follow-up question and file the ticket without an answer")
+                }
             }
             .padding(.horizontal)
             .padding(.vertical, 8)

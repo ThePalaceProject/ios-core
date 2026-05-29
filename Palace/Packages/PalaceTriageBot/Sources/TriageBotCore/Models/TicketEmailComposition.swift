@@ -52,6 +52,16 @@ public enum TicketEmailComposition {
             }
             lines.append("")
         }
+        if let followUp = draft.escalationFollowUp {
+            lines.append("Follow-up question asked before filing:")
+            lines.append("  Q: \(followUp.prompt)")
+            if let answer = followUp.answer, !answer.isEmpty {
+                lines.append("  A: \(answer)")
+            } else {
+                lines.append("  A: (user skipped)")
+            }
+            lines.append("")
+        }
         lines.append("Environment:")
         let ctx = draft.context
         lines.append("  App: \(ctx.appVersion) (\(ctx.appBuild))")

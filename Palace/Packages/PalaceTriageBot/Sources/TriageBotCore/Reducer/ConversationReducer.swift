@@ -239,8 +239,16 @@ public struct ConversationReducer: Sendable {
                 helpspotTags: [entry.helpspotTag ?? "triage-bot-known-issue", "user-requested-followup"],
                 priority: .low
             )
-            next.step = .drafting(ticket: draft)
-            next.messages.append(.init(sender: .bot, kind: .ticketPreview(draft)))
+            // Route through the follow-up gate too — even when the user
+            // explicitly bails on the workaround, the entry's structured
+            // follow-up question still adds value to support's ticket.
+            askEscalationFollowUpOrDraft(
+                state: &next,
+                effects: &effects,
+                entryId: entryId,
+                draft: draft,
+                tagSuffix: "user-file-anyway"
+            )
             effects.append(.emitTelemetry(.init(
                 name: "triage_user_file_anyway",
                 parameters: ["entry_id": entryId]
@@ -497,6 +505,48 @@ public struct ConversationReducer: Sendable {
             // treat follow-up as a category re-prompt and let the user
             // re-describe the issue.
             break
+
+        case .userAnsweredEscalationFollowUp(let answer):
+            guard case .awaitingEscalationFollowUp(let prompt, let pendingDraft) = next.step else {
+                return (next, effects)
+            }
+            // Merge the answer (or skip marker) into the draft and proceed
+            // to the standard drafting / preview flow.
+            let enriched = TicketDraft(
+                userDescription: pendingDraft.userDescription,
+                category: pendingDraft.category,
+                matchedEntryId: pendingDraft.matchedEntryId,
+                context: pendingDraft.context,
+                helpspotTags: pendingDraft.helpspotTags + [
+                    answer == nil ? "escalation-follow-up-skipped" : "escalation-follow-up-answered"
+                ],
+                priority: pendingDraft.priority,
+                resolutionTrace: pendingDraft.resolutionTrace,
+                escalationFollowUp: EscalationFollowUpAnswer(prompt: prompt, answer: answer)
+            )
+            next.step = .drafting(ticket: enriched)
+            next.inputText = ""
+            // Append a user-side message showing what they answered (or a
+            // "(skipped)" marker) so the chat history reads naturally.
+            if let answer, !answer.isEmpty {
+                next.messages.append(.init(sender: .user, kind: .text(answer)))
+            } else {
+                next.messages.append(.init(
+                    sender: .bot,
+                    kind: .text("(skipped)")
+                ))
+            }
+            next.messages.append(.init(
+                sender: .bot,
+                kind: .text("Thanks. Here's what I'll send to support:")
+            ))
+            next.messages.append(.init(sender: .bot, kind: .ticketPreview(enriched)))
+            effects.append(.emitTelemetry(.init(
+                name: answer == nil ? "triage_escalation_followup_skipped" : "triage_escalation_followup_answered",
+                parameters: [
+                    "entry_id": pendingDraft.matchedEntryId ?? "(none)"
+                ]
+            )))
         }
 
         return (next, effects)
@@ -544,6 +594,12 @@ public struct ConversationReducer: Sendable {
     /// Shared escalation transition — used by both the local-only escalate
     /// path AND the post-AI-fallback escalate path so the resulting message
     /// stream + state is identical regardless of which classifier escalated.
+    ///
+    /// If the matched entry defines an `escalationFollowUp`, pauses to ask
+    /// the question first and routes through `.awaitingEscalationFollowUp`
+    /// — the answer attaches to the draft and the user lands at the
+    /// preview a moment later. Entries without a follow-up go straight to
+    /// the preview (current behavior).
     private func transitionToDrafting(
         state next: inout ConversationState,
         effects: inout [ConversationEffect],
@@ -560,12 +616,46 @@ public struct ConversationReducer: Sendable {
             helpspotTags: ["triage-bot-\(tagSuffix)"],
             priority: .normal
         )
-        next.step = .drafting(ticket: draft)
-        next.messages.append(.init(
-            sender: .bot,
-            kind: .text("I haven't seen exactly that before — let me file a ticket so support can look. Here's what I'll send:")
-        ))
-        next.messages.append(.init(sender: .bot, kind: .ticketPreview(draft)))
+        askEscalationFollowUpOrDraft(
+            state: &next,
+            effects: &effects,
+            entryId: matchedEntryId,
+            draft: draft,
+            tagSuffix: tagSuffix
+        )
+    }
+
+    /// Pivots between "ask a follow-up question first" and "go straight
+    /// to the ticket preview" based on whether the matched entry has an
+    /// `escalationFollowUp` defined. Used by both transitionToDrafting
+    /// and escalateWithTrace so the contract is consistent.
+    private func askEscalationFollowUpOrDraft(
+        state next: inout ConversationState,
+        effects: inout [ConversationEffect],
+        entryId: String?,
+        draft: TicketDraft,
+        tagSuffix: String
+    ) {
+        if let entryId,
+           let entry = knowledgeBase.entry(id: entryId),
+           let followUp = entry.escalationFollowUp {
+            next.step = .awaitingEscalationFollowUp(prompt: followUp.prompt, pendingDraft: draft)
+            next.messages.append(.init(
+                sender: .bot,
+                kind: .text("Before I file this — \(followUp.prompt) (Tap Skip if you'd rather not say.)")
+            ))
+            effects.append(.emitTelemetry(.init(
+                name: "triage_escalation_followup_asked",
+                parameters: ["entry_id": entryId]
+            )))
+        } else {
+            next.step = .drafting(ticket: draft)
+            next.messages.append(.init(
+                sender: .bot,
+                kind: .text("I haven't seen exactly that before — let me file a ticket so support can look. Here's what I'll send:")
+            ))
+            next.messages.append(.init(sender: .bot, kind: .ticketPreview(draft)))
+        }
         effects.append(.emitTelemetry(.init(name: "triage_escalate_\(tagSuffix.replacingOccurrences(of: "-", with: "_"))")))
     }
 
@@ -592,12 +682,29 @@ public struct ConversationReducer: Sendable {
             priority: .normal,
             resolutionTrace: trace
         )
-        next.step = .drafting(ticket: draft)
-        next.messages.append(.init(
-            sender: .bot,
-            kind: .text("That didn't fix it. I'll file a ticket with the exact steps you tried so support can pick up where we left off.")
-        ))
-        next.messages.append(.init(sender: .bot, kind: .ticketPreview(draft)))
+        // Same follow-up gate as transitionToDrafting — if the entry has
+        // an escalationFollowUp, ask it first; otherwise go straight to
+        // the ticket preview. Acknowledgment text leads either way so the
+        // chat reads naturally.
+        if let entry = knowledgeBase.entry(id: matchedEntryId),
+           let followUp = entry.escalationFollowUp {
+            next.step = .awaitingEscalationFollowUp(prompt: followUp.prompt, pendingDraft: draft)
+            next.messages.append(.init(
+                sender: .bot,
+                kind: .text("That didn't resolve it. Before I file the ticket — \(followUp.prompt) (Tap Skip if you'd rather not say.)")
+            ))
+            effects.append(.emitTelemetry(.init(
+                name: "triage_escalation_followup_asked",
+                parameters: ["entry_id": matchedEntryId]
+            )))
+        } else {
+            next.step = .drafting(ticket: draft)
+            next.messages.append(.init(
+                sender: .bot,
+                kind: .text("That didn't fix it. I'll file a ticket with the exact steps you tried so support can pick up where we left off.")
+            ))
+            next.messages.append(.init(sender: .bot, kind: .ticketPreview(draft)))
+        }
         effects.append(.emitTelemetry(.init(
             name: "triage_escalate_\(tagSuffix.replacingOccurrences(of: "-", with: "_"))",
             parameters: [
