@@ -58,6 +58,12 @@ public struct KBEntry: Codable, Equatable, Identifiable, Sendable {
     public let authTypeFilter: [String]?
     public let iosVersionFilter: [String]?
     public let userFacingWorkaround: String
+    /// Optional ordered list of troubleshooting steps. When present, the
+    /// bot offers a "Walk me through this" path that drives the user
+    /// through them one at a time, asking "did that work?" after each.
+    /// Entries without steps render the legacy single-card behavior. See
+    /// KBStep + ResolutionTrace.
+    public let userFacingSteps: [KBStep]?
     public let internalReference: KBInternalReference?
     public let confidenceThreshold: Double
     public let escalateAnyway: Bool
@@ -75,6 +81,7 @@ public struct KBEntry: Codable, Equatable, Identifiable, Sendable {
         case authTypeFilter = "auth_type_filter"
         case iosVersionFilter = "ios_version_filter"
         case userFacingWorkaround = "user_facing_workaround"
+        case userFacingSteps = "user_facing_steps"
         case internalReference = "internal_reference"
         case confidenceThreshold = "confidence_threshold"
         case escalateAnyway = "escalate_anyway"
@@ -93,6 +100,7 @@ public struct KBEntry: Codable, Equatable, Identifiable, Sendable {
         authTypeFilter: [String]? = nil,
         iosVersionFilter: [String]? = nil,
         userFacingWorkaround: String,
+        userFacingSteps: [KBStep]? = nil,
         internalReference: KBInternalReference? = nil,
         confidenceThreshold: Double = 0.6,
         escalateAnyway: Bool = false,
@@ -109,6 +117,7 @@ public struct KBEntry: Codable, Equatable, Identifiable, Sendable {
         self.authTypeFilter = authTypeFilter
         self.iosVersionFilter = iosVersionFilter
         self.userFacingWorkaround = userFacingWorkaround
+        self.userFacingSteps = userFacingSteps
         self.internalReference = internalReference
         self.confidenceThreshold = confidenceThreshold
         self.escalateAnyway = escalateAnyway

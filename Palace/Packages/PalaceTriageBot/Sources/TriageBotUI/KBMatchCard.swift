@@ -7,10 +7,17 @@ struct KBMatchCard: View {
         case notifyMe
         case fileAnyway
         case dismiss
+        /// User opted into the multi-step troubleshooting flow. Only
+        /// dispatched when the entry has `userFacingSteps` populated.
+        case walkMeThroughIt
     }
 
     let entry: KBEntry
     let onAction: (Action) -> Void
+
+    private var hasGuidedSteps: Bool {
+        (entry.userFacingSteps?.isEmpty == false)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -19,6 +26,17 @@ struct KBMatchCard: View {
             Text(entry.userFacingWorkaround)
                 .font(.body)
                 .fixedSize(horizontal: false, vertical: true)
+
+            // Primary action depends on whether the entry has guided steps.
+            // Entries WITH steps lead with "Walk me through this" — the
+            // honest path that doesn't assume a single workaround text will
+            // fix the user's specific situation. Notify-me + file-ticket
+            // remain available as secondary actions.
+            if hasGuidedSteps {
+                actionButton("Walk me through this", systemImage: "list.bullet.rectangle") {
+                    onAction(.walkMeThroughIt)
+                }
+            }
 
             HStack {
                 // Offer notify-me whenever we know the planned fix version,

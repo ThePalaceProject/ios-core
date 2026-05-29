@@ -64,6 +64,18 @@ public struct SupportChatView: View {
                     handleKBAction(action, entryId: entryId)
                 }
             }
+        case .guidedStep(let entryId, let stepIndex):
+            if let entry = entry(for: entryId),
+               let steps = entry.userFacingSteps,
+               stepIndex < steps.count {
+                GuidedStepCard(
+                    stepNumber: stepIndex + 1,
+                    totalSteps: steps.count,
+                    step: steps[stepIndex]
+                ) { action in
+                    handleGuidedStepAction(action, stepId: steps[stepIndex].id)
+                }
+            }
         case .ticketPreview(let draft):
             TicketPreviewCard(draft: draft) { action in
                 handleTicketPreviewAction(action)
@@ -123,6 +135,19 @@ public struct SupportChatView: View {
             viewModel.send(.userTappedFileTicketAnyway)
         case .dismiss:
             viewModel.send(.userTappedDismiss)
+        case .walkMeThroughIt:
+            viewModel.send(.userTappedStartGuidedFlow(entryId: entryId))
+        }
+    }
+
+    private func handleGuidedStepAction(_ action: GuidedStepCard.Action, stepId: String) {
+        switch action {
+        case .resolved:
+            viewModel.send(.userConfirmedStepResolved(stepId: stepId))
+        case .didNotResolve:
+            viewModel.send(.userConfirmedStepDidNotResolve(stepId: stepId))
+        case .abandon:
+            viewModel.send(.userTappedAbandonGuidedFlow)
         }
     }
 

@@ -42,6 +42,16 @@ public enum TicketEmailComposition {
         lines.append("Category: \(draft.category.rawValue)")
         lines.append("Priority: \(draft.priority.rawValue)")
         lines.append("")
+        if let trace = draft.resolutionTrace {
+            lines.append("Guided troubleshooting trace:")
+            lines.append("  Entry: \(trace.entryId)")
+            lines.append("  Outcome: \(trace.outcome.rawValue)")
+            lines.append("  Steps attempted (in order):")
+            for (i, attempt) in trace.attempts.enumerated() {
+                lines.append("    \(i + 1). \(attempt.stepId) → \(attempt.outcome.rawValue)")
+            }
+            lines.append("")
+        }
         lines.append("Environment:")
         let ctx = draft.context
         lines.append("  App: \(ctx.appVersion) (\(ctx.appBuild))")

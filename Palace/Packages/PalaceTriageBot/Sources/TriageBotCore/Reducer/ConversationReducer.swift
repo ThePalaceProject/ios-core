@@ -254,6 +254,148 @@ public struct ConversationReducer: Sendable {
             ))
             effects.append(.emitTelemetry(.init(name: "triage_user_dismiss")))
 
+        // MARK: - Guided troubleshooting flow
+
+        case .userTappedStartGuidedFlow(let entryId):
+            guard let entry = knowledgeBase.entry(id: entryId),
+                  let steps = entry.userFacingSteps,
+                  !steps.isEmpty else {
+                return (next, effects)
+            }
+            let startedAt = Date()
+            next.step = .guidedStep(
+                entryId: entryId,
+                stepIndex: 0,
+                startedAt: startedAt,
+                attempts: []
+            )
+            next.messages.append(.init(
+                sender: .bot,
+                kind: .text("Let's walk through this together. \(steps.count) thing\(steps.count == 1 ? "" : "s") to try.")
+            ))
+            next.messages.append(.init(
+                sender: .bot,
+                kind: .guidedStep(entryId: entryId, stepIndex: 0)
+            ))
+            effects.append(.emitTelemetry(.init(
+                name: "triage_guided_flow_started",
+                parameters: ["entry_id": entryId, "step_count": String(steps.count)]
+            )))
+
+        case .userConfirmedStepResolved(let stepId):
+            guard case .guidedStep(let entryId, _, let startedAt, var attempts) = next.step else {
+                return (next, effects)
+            }
+            attempts.append(StepAttempt(stepId: stepId, outcome: .resolved, timestamp: Date()))
+            let trace = ResolutionTrace(
+                entryId: entryId,
+                attempts: attempts,
+                startedAt: startedAt,
+                endedAt: Date(),
+                outcome: .resolved
+            )
+            next.step = .sent(receipt: TicketReceipt(
+                ticketId: "guided-resolved-\(entryId)-\(stepId)",
+                submittedAt: Self.syntheticReceiptTimestamp
+            ))
+            next.messages.append(.init(
+                sender: .bot,
+                kind: .text("Glad that worked. I've recorded which step did the trick — that helps us tune the workaround for the next person.")
+            ))
+            effects.append(.emitTelemetry(.init(
+                name: "triage_guided_step_resolved",
+                parameters: [
+                    "entry_id": entryId,
+                    "step_id": stepId,
+                    "steps_attempted": String(attempts.count)
+                ]
+            )))
+            // Phase 2: persist trace to a local backfill log so a server-
+            // backed catalog source can ingest per-step success rates.
+            _ = trace
+
+        case .userConfirmedStepDidNotResolve(let stepId):
+            guard case .guidedStep(let entryId, let stepIndex, let startedAt, var attempts) = next.step,
+                  let entry = knowledgeBase.entry(id: entryId),
+                  let steps = entry.userFacingSteps else {
+                return (next, effects)
+            }
+            attempts.append(StepAttempt(stepId: stepId, outcome: .didNotResolve, timestamp: Date()))
+
+            let nextIndex = stepIndex + 1
+            if nextIndex < steps.count {
+                next.step = .guidedStep(
+                    entryId: entryId,
+                    stepIndex: nextIndex,
+                    startedAt: startedAt,
+                    attempts: attempts
+                )
+                next.messages.append(.init(
+                    sender: .bot,
+                    kind: .text("OK, let's try one more thing.")
+                ))
+                next.messages.append(.init(
+                    sender: .bot,
+                    kind: .guidedStep(entryId: entryId, stepIndex: nextIndex)
+                ))
+                effects.append(.emitTelemetry(.init(
+                    name: "triage_guided_step_advanced",
+                    parameters: [
+                        "entry_id": entryId,
+                        "step_id": stepId,
+                        "next_index": String(nextIndex)
+                    ]
+                )))
+            } else {
+                // Steps exhausted — escalate with the full trace attached.
+                let trace = ResolutionTrace(
+                    entryId: entryId,
+                    attempts: attempts,
+                    startedAt: startedAt,
+                    endedAt: Date(),
+                    outcome: .escalatedAfterStepsExhausted
+                )
+                escalateWithTrace(
+                    state: &next,
+                    effects: &effects,
+                    userText: lastUserText(next.messages) ?? "(no description)",
+                    category: entry.category,
+                    matchedEntryId: entryId,
+                    trace: trace,
+                    helpspotTag: entry.helpspotTag ?? "triage-bot-known-issue",
+                    tagSuffix: "escalate-after-guided-flow-exhausted"
+                )
+            }
+
+        case .userTappedAbandonGuidedFlow:
+            guard case .guidedStep(let entryId, _, let startedAt, var attempts) = next.step,
+                  let entry = knowledgeBase.entry(id: entryId) else {
+                return (next, effects)
+            }
+            // Record an abandon marker so the trace shows the user explicitly
+            // exited rather than completing the flow. Useful signal: "step 2
+            // is where most users give up."
+            if let lastStep = attempts.last?.stepId {
+                attempts.append(StepAttempt(stepId: lastStep, outcome: .abandoned, timestamp: Date()))
+            }
+            let trace = ResolutionTrace(
+                entryId: entryId,
+                attempts: attempts,
+                startedAt: startedAt,
+                endedAt: Date(),
+                outcome: .abandoned
+            )
+            escalateWithTrace(
+                state: &next,
+                effects: &effects,
+                userText: lastUserText(next.messages) ?? "(no description)",
+                category: entry.category,
+                matchedEntryId: entryId,
+                trace: trace,
+                helpspotTag: entry.helpspotTag ?? "triage-bot-known-issue",
+                tagSuffix: "escalate-after-guided-flow-abandoned"
+            )
+
         case .userConfirmedTicketSubmit:
             guard case .drafting(let draft) = next.step else { return (next, effects) }
             // Chaos-qa F-002: drop the ticketPreview from the message log
@@ -380,6 +522,45 @@ public struct ConversationReducer: Sendable {
         ))
         next.messages.append(.init(sender: .bot, kind: .ticketPreview(draft)))
         effects.append(.emitTelemetry(.init(name: "triage_escalate_\(tagSuffix.replacingOccurrences(of: "-", with: "_"))")))
+    }
+
+    /// Escalation path used when a guided-flow attempt either exhausts all
+    /// steps or the user abandons mid-flow. Attaches the full
+    /// ResolutionTrace to the TicketDraft so support sees exactly what was
+    /// tried, in what order, and how long the user spent.
+    private func escalateWithTrace(
+        state next: inout ConversationState,
+        effects: inout [ConversationEffect],
+        userText: String,
+        category: KBCategory,
+        matchedEntryId: String,
+        trace: ResolutionTrace,
+        helpspotTag: String,
+        tagSuffix: String
+    ) {
+        let draft = TicketDraft(
+            userDescription: userText,
+            category: category,
+            matchedEntryId: matchedEntryId,
+            context: next.context ?? emptyContext(),
+            helpspotTags: [helpspotTag, "guided-flow-\(trace.outcome.rawValue)"],
+            priority: .normal,
+            resolutionTrace: trace
+        )
+        next.step = .drafting(ticket: draft)
+        next.messages.append(.init(
+            sender: .bot,
+            kind: .text("That didn't fix it. I'll file a ticket with the exact steps you tried so support can pick up where we left off.")
+        ))
+        next.messages.append(.init(sender: .bot, kind: .ticketPreview(draft)))
+        effects.append(.emitTelemetry(.init(
+            name: "triage_escalate_\(tagSuffix.replacingOccurrences(of: "-", with: "_"))",
+            parameters: [
+                "entry_id": matchedEntryId,
+                "attempts_count": String(trace.attempts.count),
+                "outcome": trace.outcome.rawValue
+            ]
+        )))
     }
 
     private func emptyContext() -> ContextSnapshot {

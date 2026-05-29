@@ -11,6 +11,11 @@ public struct TicketDraft: Codable, Equatable, Sendable {
     public let context: ContextSnapshot
     public let helpspotTags: [String]
     public let priority: Priority
+    /// Present when the user worked through a guided troubleshooting flow
+    /// before escalating. Lists every step attempted, the outcome of each,
+    /// and the timing — gives support the difference between "couldn't fix
+    /// it" and "tried steps 1, 2, 3 over 4 minutes, none worked."
+    public let resolutionTrace: ResolutionTrace?
 
     public enum Priority: String, Codable, Sendable {
         case low      // user accepted bot's match, filing for impact tracking only
@@ -24,7 +29,8 @@ public struct TicketDraft: Codable, Equatable, Sendable {
         matchedEntryId: String? = nil,
         context: ContextSnapshot,
         helpspotTags: [String] = [],
-        priority: Priority = .normal
+        priority: Priority = .normal,
+        resolutionTrace: ResolutionTrace? = nil
     ) {
         self.userDescription = userDescription
         self.category = category
@@ -32,6 +38,7 @@ public struct TicketDraft: Codable, Equatable, Sendable {
         self.context = context
         self.helpspotTags = helpspotTags
         self.priority = priority
+        self.resolutionTrace = resolutionTrace
     }
 }
 

@@ -41,6 +41,26 @@
       ],
       "distributor_filter": ["palace_marketplace"],
       "user_facing_workaround": "Tap back to your library, then tap the title again. The second open will play. We're shipping a permanent fix in the next release.",
+      "user_facing_steps": [
+        {
+          "id": "ki001-step1-tap-back-tap-again",
+          "instruction": "Tap back to your library list, then tap the audiobook title again. This usually clears the hang on the second open.",
+          "check": "Did it start playing this time?",
+          "diagnostic": "audiobook.first_reopen_attempt"
+        },
+        {
+          "id": "ki001-step2-force-quit",
+          "instruction": "Force-quit Palace: swipe up from the bottom of the screen and pause, then swipe up on Palace's preview to close it. Reopen Palace and tap the audiobook again.",
+          "check": "Plays now?",
+          "diagnostic": "audiobook.cold_relaunch_attempt"
+        },
+        {
+          "id": "ki001-step3-sign-out-in",
+          "instruction": "In Settings → Libraries, tap your library, scroll down and tap Sign Out. Sign back in and try the audiobook.",
+          "check": "Plays after sign-in?",
+          "diagnostic": "audiobook.session_reset_attempt"
+        }
+      ],
       "internal_reference": {
         "jira": "PP-4436",
         "wall_failure": "2026-05-22-f011-audiobook-hang",
@@ -70,6 +90,20 @@
       ],
       "distributor_filter": ["palace_marketplace"],
       "user_facing_workaround": "This crash is fixed in the next release. As a workaround, avoid switching libraries while an audiobook is playing — pause and return to your library first.",
+      "user_facing_steps": [
+        {
+          "id": "ki002-step1-update",
+          "instruction": "Check the App Store for a Palace update — this crash is fixed in version 3.2.0 or later. Update if available, then try again.",
+          "check": "Are you now on 3.2.0 or later, and the crash gone?",
+          "diagnostic": "audiobook.recheck_after_update"
+        },
+        {
+          "id": "ki002-step2-avoid-mid-playback-switch",
+          "instruction": "Until the update is on the App Store: pause the audiobook and return to your library list BEFORE switching to a different library. Then switch.",
+          "check": "Does the crash stop happening when you pause first?",
+          "diagnostic": "audiobook.pause_before_switch"
+        }
+      ],
       "internal_reference": {
         "jira": "PP-4438"
       },
@@ -105,6 +139,14 @@
         "looks disabled"
       ],
       "user_facing_workaround": "The field looks grayed out, but it's actually active — tap it and start typing. This is a contrast issue we've already fixed; the next App Store update will look correct.",
+      "user_facing_steps": [
+        {
+          "id": "ki003-step1-tap-the-field",
+          "instruction": "The fields LOOK disabled because of a contrast issue, but they're active. Tap directly inside the first field — the keyboard should appear and you can start typing your library card / barcode.",
+          "check": "Did the keyboard come up and let you type?",
+          "diagnostic": "signin.tapped_through_low_contrast_field"
+        }
+      ],
       "internal_reference": {
         "jira": "PP-4421",
         "helpspot": [17923]
@@ -143,6 +185,26 @@
         "on my ipad"
       ],
       "user_facing_workaround": "It looks like you're connected to Palace Bookshelf, which is our demo collection. To use your real library: tap the Palace logo in the top-left corner, then add your library by name.",
+      "user_facing_steps": [
+        {
+          "id": "ki004-step1-open-library-picker",
+          "instruction": "Tap the Palace logo in the top-left corner of the screen. A list of your libraries should slide in.",
+          "check": "Did the library list appear?",
+          "diagnostic": "library.opened_picker"
+        },
+        {
+          "id": "ki004-step2-add-real-library",
+          "instruction": "Tap 'Add Library' at the top of that list. In the search box, type your actual library's name (not 'Palace Bookshelf'). Tap your library when it appears.",
+          "check": "Were you able to find and add your real library?",
+          "diagnostic": "library.added_real_library"
+        },
+        {
+          "id": "ki004-step3-sign-in",
+          "instruction": "Sign in with your library card / barcode. Once signed in, your library's books should appear on the Catalog tab.",
+          "check": "Are your books showing now?",
+          "diagnostic": "library.signed_in_real_library"
+        }
+      ],
       "internal_reference": {
         "helpspot": [17957, 17917]
       },
@@ -171,6 +233,20 @@
         "car crashes"
       ],
       "user_facing_workaround": "This CarPlay crash is fixed in the next release. As a workaround, start playback before connecting to your car.",
+      "user_facing_steps": [
+        {
+          "id": "ki005-step1-update",
+          "instruction": "Check the App Store — this CarPlay crash is fixed in version 3.1.0 or later. Update if available.",
+          "check": "Are you now on 3.1.0+, and the crash gone when you connect to CarPlay?",
+          "diagnostic": "carplay.recheck_after_update"
+        },
+        {
+          "id": "ki005-step2-start-playback-first",
+          "instruction": "Until the update is installed: open the audiobook and tap Play BEFORE you connect to CarPlay. Once it's playing, then plug in / connect.",
+          "check": "Does the crash stop when you start playback first?",
+          "diagnostic": "carplay.preplay_then_connect"
+        }
+      ],
       "internal_reference": {
         "jira": "PP-4430"
       },
@@ -205,6 +281,20 @@
         "hold list"
       ],
       "user_facing_workaround": "Pull down on the Holds list to refresh. If the hold is still missing, sign out and back in — your account will sync from the server.",
+      "user_facing_steps": [
+        {
+          "id": "ki006-step1-pull-refresh",
+          "instruction": "Open the Holds tab. Pull down on the list and release — it should refresh from the server.",
+          "check": "Is the ready hold showing up in the list now?",
+          "diagnostic": "holds.pull_to_refresh"
+        },
+        {
+          "id": "ki006-step2-sign-out-in",
+          "instruction": "Go to Settings → Libraries → tap your library → Sign Out. Sign back in. Then check the Holds tab again.",
+          "check": "Is the ready hold visible after sign-in?",
+          "diagnostic": "holds.session_reset"
+        }
+      ],
       "internal_reference": {
         "helpspot": [17960, 17971, 17835]
       },
@@ -232,6 +322,20 @@
       ],
       "distributor_filter": ["palace_marketplace"],
       "user_facing_workaround": "This PDF issue is fixed in the next release. As a workaround, try downloading the title again from your bookshelf.",
+      "user_facing_steps": [
+        {
+          "id": "ki007-step1-pull-refresh-and-reopen",
+          "instruction": "Go to My Books, pull down to refresh, then tap the PDF title to reopen it.",
+          "check": "Did the PDF render this time?",
+          "diagnostic": "pdf.pull_refresh_and_reopen"
+        },
+        {
+          "id": "ki007-step2-delete-and-redownload",
+          "instruction": "On My Books, swipe left on the PDF title and tap Delete to remove the downloaded copy. Then tap Read / Download to fetch it again.",
+          "check": "Does the freshly-downloaded copy open?",
+          "diagnostic": "pdf.delete_and_redownload"
+        }
+      ],
       "internal_reference": {
         "jira": "PP-4454"
       },
@@ -260,6 +364,26 @@
         "stuck downloading"
       ],
       "user_facing_workaround": "If a download stalls, check that you're connected to WiFi or cellular data, then pull down to refresh your bookshelf. If it still fails, sign out and back in.",
+      "user_facing_steps": [
+        {
+          "id": "ki008-step1-check-connection",
+          "instruction": "Check the top-right of your screen — do you see WiFi or cellular signal? If you're in airplane mode or your WiFi dropped, toggle it back on.",
+          "check": "Is your connection up, and the download resuming?",
+          "diagnostic": "download.connection_check"
+        },
+        {
+          "id": "ki008-step2-pull-refresh",
+          "instruction": "Open My Books. Pull down on the list and release to refresh. Tap the stalled title — it should resume.",
+          "check": "Did the download resume after refresh?",
+          "diagnostic": "download.pull_to_refresh"
+        },
+        {
+          "id": "ki008-step3-sign-out-in",
+          "instruction": "Go to Settings → Libraries → your library → Sign Out. Sign back in. Then re-attempt the download from My Books or the Catalog.",
+          "check": "Does the download complete after sign-in?",
+          "diagnostic": "download.session_reset"
+        }
+      ],
       "internal_reference": {
         "helpspot": [17976]
       },

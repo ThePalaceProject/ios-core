@@ -12,6 +12,9 @@ public struct ConversationMessage: Equatable, Identifiable, Sendable {
         case text(String)
         case categoryChips
         case kbMatch(entryId: String)
+        /// One step in a guided troubleshooting flow. Renders the step's
+        /// instruction + check question + Yes/No buttons.
+        case guidedStep(entryId: String, stepIndex: Int)
         case ticketPreview(TicketDraft)
         case ticketReceipt(TicketReceipt)
     }
@@ -48,6 +51,11 @@ public struct ConversationState: Equatable, Sendable {
         /// during this state.
         case awaitingAIClassification(userText: String, category: KBCategory?)
         case matched(entryId: String)
+        /// User is walking through a multi-step resolution flow for this
+        /// entry. `stepIndex` is the current step in `entry.userFacingSteps`.
+        /// `attempts` accumulates every Yes/No into a trace that's attached
+        /// to the escalation ticket if all steps fail.
+        case guidedStep(entryId: String, stepIndex: Int, startedAt: Date, attempts: [StepAttempt])
         case drafting(ticket: TicketDraft)
         case submitting(ticket: TicketDraft)
         case sent(receipt: TicketReceipt)
@@ -86,6 +94,20 @@ public enum ConversationAction: Equatable, Sendable {
     case userTappedNotifyMeOnFix(entryId: String)
     case userTappedFileTicketAnyway
     case userTappedDismiss
+    /// User opted into the guided troubleshooting flow from the KB match
+    /// card. Reducer transitions to `.guidedStep(entryId, 0, ...)`.
+    case userTappedStartGuidedFlow(entryId: String)
+    /// User confirmed the current step fixed their issue. Reducer records
+    /// the resolved StepAttempt and transitions to a friendly close-out.
+    case userConfirmedStepResolved(stepId: String)
+    /// User confirmed the current step did NOT fix their issue. Reducer
+    /// either advances to the next step or, if exhausted, escalates with
+    /// the full ResolutionTrace attached.
+    case userConfirmedStepDidNotResolve(stepId: String)
+    /// User abandoned the guided flow (e.g. tapped "skip to summary" or
+    /// "just file a ticket" mid-walkthrough). Reducer records the trace
+    /// with outcome=abandoned and escalates.
+    case userTappedAbandonGuidedFlow
     case userConfirmedTicketSubmit
     case userCancelledTicketSubmit
     case ticketSubmitted(TicketReceipt)
