@@ -65,9 +65,29 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
         // for tests that subscribed mid-body and may have written state
         // AFTER the base's drain of cancellables but BEFORE the registry
         // sweep.
+        //
+        // NOTE (swarm_4b64e4e0 Wave 1d): we deliberately do NOT set
+        // `AccountsManager.deferInitialLoadCatalogsForTesting = false` here.
+        // The post-test observer fires `_resetForTesting()` which rebuilds
+        // the cached `AppContainer`; the newly-constructed cached
+        // `AccountsManager` reads this flag at `init` to decide whether to
+        // spawn its background `loadCatalogs` Task. If the flag flipped to
+        // false between this tearDown and the next test's setUp, the rebuild
+        // window would let the cached manager kick off a `loadCatalogs` Task
+        // that writes 1142 bundled-registry accounts to
+        // `accounts_catalog_<hash>.json` on disk — overwriting any 171-
+        // account fixture seed the next test writes to the same hash,
+        // mid-test. The resulting failure mode is the next test's
+        // `manager.preloadAccountsFromDiskCacheSync()` reading the bundled
+        // 1142 instead of the seeded 171, then `account(currentUUID)`
+        // returning nil because the bundled set doesn't carry the fixture's
+        // UUID space. See the wave 1d transcript for the full forensic.
+        // PalaceTestSetup.bootstrap() pins the flag to true at bundle-load
+        // time; PalaceWiringTestCase.setUpWithError repins it on each setUp.
+        // Leaving it true on tearDown keeps the inter-test cached-rebuild
+        // window deterministic.
         #if DEBUG
         AccountStateStore.shared._resetAllForTesting()
-        AccountsManager.deferInitialLoadCatalogsForTesting = false
         #endif
         try super.tearDownWithError()
     }

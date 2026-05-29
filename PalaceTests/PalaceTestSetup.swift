@@ -43,6 +43,30 @@ class PalaceTestSetup: NSObject {
 
         NoNetworkURLProtocol.enable()
 
+        // swarm_4b64e4e0 Wave 1d fix — pin the
+        // `deferInitialLoadCatalogsForTesting` flag to `true` BEFORE any test
+        // can lazy-trigger `AppContainer.production()`. Without this, the
+        // very first cached AppContainer (built by any incidental
+        // `AppContainer.production()` call — there are dozens of default-arg
+        // sites) fires its `AccountsManager.init` background `loadCatalogs`
+        // Task with the flag at its default `false`. That Task then runs the
+        // bundled-registry cold-load path and the network refresh, writing
+        // 1142+ bundled account entries to `accounts_catalog_<hash>.json`
+        // on disk — OVERWRITING any 171-account fixture seed a wiring test
+        // later writes to the same hash, mid-test. The result is the failure
+        // mode `testDriveCurrentAccountAuthDoc_terminalState_isNoOp` ::
+        // `Setup: currentAccount must resolve after preload` — the test's
+        // explicit `preloadAccountsFromDiskCacheSync()` parses the BUNDLED
+        // 1142 accounts (none of which carry the fixture's UUID space) and
+        // `account(currentUUID)` returns nil. Tests that need the background
+        // `loadCatalogs` to fire (e.g. `AppContainerResetTests`) explicitly
+        // flip the flag back to `false` in their own setUp. Wiring suite
+        // tests inherit `true` and stay deterministic. See the wave 1d
+        // transcript for the full forensic.
+        #if DEBUG
+        AccountsManager.deferInitialLoadCatalogsForTesting = true
+        #endif
+
         let obs = PalaceSingletonResetObserver()
         XCTestObservationCenter.shared.addTestObserver(obs)
         observer = obs

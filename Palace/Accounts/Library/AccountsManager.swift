@@ -167,7 +167,22 @@ struct CatalogCacheMetadata: Codable {
     /// to keep the flag flip scoped. NOT compiled into release builds.
     ///
     /// See `feedback_wiring_suite_test_isolation.md` for the underlying race.
-    internal static var deferInitialLoadCatalogsForTesting: Bool = false
+    ///
+    /// swarm_4b64e4e0 Wave 1d — default value now derives from
+    /// `XCTestConfigurationFilePath` env var. When this process is hosting
+    /// XCTest, the flag defaults to `true` so the very first cached
+    /// `AppContainer.production()` call (which may happen before any test's
+    /// setUp — e.g. via a static `let` or default arg in a class touched by
+    /// the test runner's discovery phase) doesn't fire a background
+    /// `loadCatalogs` Task that races with later test-fixture seeds. Tests
+    /// that need the background `loadCatalogs` to fire (e.g.
+    /// `AppContainerResetTests`) explicitly flip the flag back to `false`
+    /// in their own setUp. Production runs (no `XCTestConfigurationFilePath`
+    /// in the env) keep the original `false` default so the background load
+    /// fires as designed.
+    internal static var deferInitialLoadCatalogsForTesting: Bool = {
+        return ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+    }()
 
     /// Test-only handle to the post-init background `loadCatalogs` task so
     /// `cancelBackgroundWork()` can issue cooperative cancellation. Only ever
