@@ -1,0 +1,28 @@
+{
+  "success": true,
+  "xcresult_path": "TestResults.xcresult",
+  "api_used": "none",
+  "build": {
+    "status": "failed",
+    "errors": [
+      "Testing cancelled because the build failed.",
+      "This Copy Files build phase contains a reference to a missing file 'OverdriveProcessor.framework'."
+    ],
+    "warnings": [
+      "Skipping duplicate build file in Compile Sources build phase: /Users/runner/work/ios-core/ios-core/PalaceTests/CatalogDomain/CatalogProblemDocumentTests.swift",
+      "Skipping duplicate build file in Compile Sources build phase: /Users/runner/work/ios-core/ios-core/PalaceTests/CatalogDomain/CatalogLaneAssemblyTests.swift"
+    ]
+  },
+  "summary": {
+    "tests": 0,
+    "passed": 0,
+    "failed": 0,
+    "skipped": 0,
+    "duration": 0,
+    "duration_formatted": "<1ms",
+    "pass_rate": "N/A"
+  },
+  "tests": [],
+  "classes": {},
+  "failed_tests": []
+}
