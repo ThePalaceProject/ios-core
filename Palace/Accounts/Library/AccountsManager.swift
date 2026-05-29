@@ -630,6 +630,14 @@ struct CatalogCacheMetadata: Codable {
         // still runs to pick up anything that changed since the snapshot
         // was cut, so this is purely a fast-path for cold first launch.
         if let bundledData = BundledRegistrySnapshot.load() {
+            // Cooperative-cancel guard: if our enclosing Task was cancelled
+            // between the bundled-load decision and the disk write, skip the
+            // cache write. Mirrors the guard in `fetchFromNetwork` on the
+            // post-await branch. Without this, a cancelled background
+            // `loadCatalogs` Task can still race a fixture-seeded test:
+            // cancel→continue→write-bundled-snapshot overwrites the test's
+            // 171-account fixture with the 1142 bundled accounts on disk.
+            if Task.isCancelled { return }
             Log.info(#file, "First launch — loading bundled registry snapshot for hash \(hash), dataSize=\(bundledData.count)")
             // isBundled=true keeps the cache flagged as non-authoritative so
             // every subsequent loadCatalogs call still triggers refresh until
