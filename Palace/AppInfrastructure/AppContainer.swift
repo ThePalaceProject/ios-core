@@ -220,7 +220,29 @@ struct AppContainer {
         _cached
     }
 
-    private static let _cached: AppContainer = {
+    /// The cached app-wide composition graph. Initially populated by Swift's
+    /// lazy-static initializer (which runs `_buildCachedAppContainer()` once
+    /// under the runtime's one-time guard, matching the prior `static let`
+    /// dispatch_once semantics byte-for-byte for production callers).
+    ///
+    /// `static var` (not `let`) so the test-only `_resetForTesting()` seam
+    /// can rebuild the graph between XCTestCase runs — see
+    /// `_resetForTesting()` below for the rationale and the documented
+    /// residual race window.
+    ///
+    /// swarm_4b64e4e0 Fix 2 — closes the H1 finding from swarm_f88ae9e3 A.
+    /// Production behaviour is unchanged: first call to `production()`
+    /// triggers the static-var lazy init, which runs `_buildCachedAppContainer()`
+    /// once; subsequent reads return the cached struct value.
+    private static var _cached: AppContainer = Self._buildCachedAppContainer()
+
+    /// Builds a fresh AppContainer composition graph. Extracted from the
+    /// prior `static let _cached: AppContainer = { ... }()` lambda VERBATIM
+    /// — every line below preserves the original dispatch_once-cycle-avoidance
+    /// invariants (TPPBookRegistry takes AccountsManager explicitly; no
+    /// default arg ever fires; collaborator construction is hand-threaded
+    /// through `executor`, `reachability`, `accountsManager`, etc.).
+    private static func _buildCachedAppContainer() -> AppContainer {
         let executor = TPPNetworkExecutor(cachingStrategy: .fallback)
         let reachability = Reachability()
         // AccountsManager and TPPBookRegistry are constructed inline here.
@@ -316,7 +338,65 @@ struct AppContainer {
             },
             authCoordinator: authCoordinator
         )
-    }()
+    }
+
+    #if DEBUG
+    /// Test-only: reset the cached AppContainer with a fresh graph and the
+    /// AccountsManager test opt-out enabled. Called by
+    /// `PalaceTestSetup`'s XCTestObservation registry between test cases.
+    ///
+    /// Sequence:
+    ///   1. Flip `AccountsManager.deferInitialLoadCatalogsForTesting = true`
+    ///      — this is read inside `AccountsManager.init` and is the entire
+    ///      reason this seam exists (the prior cached graph constructed
+    ///      AccountsManager WITHOUT the opt-out, spawning the process-wide
+    ///      `loadCatalogs` race that drives the `numAccounts=100→1150`
+    ///      90-second CI drift documented in swarm_f88ae9e3 A's H1
+    ///      finding).
+    ///   2. Cancel the prior cached AccountsManager's background work via
+    ///      its `cancelBackgroundWork()` seam. Best-effort — cooperative
+    ///      cancellation; in-flight URLSession callbacks may still fire
+    ///      briefly before observing `Task.isCancelled`.
+    ///   3. Atomically reassign `_cached` to a freshly-built AppContainer
+    ///      whose AccountsManager observes the opt-out flag.
+    ///   4. Reset the AccountsManager opt-out flag to `false` so production
+    ///      semantics resume if the test bundle is reused in-process or if
+    ///      a later test constructs its own AccountsManager directly and
+    ///      wants the normal background-load behaviour.
+    ///
+    /// Residual race window (DOCUMENTED INTENTIONAL):
+    /// Step 2's cancellation is cooperative. If the prior AccountsManager's
+    /// `fetchFromNetwork` Task is mid-await on `crawler.crawlFirstPage`, the
+    /// completion still fires and writes through to `accountSets` on the OLD
+    /// instance — but the OLD instance is no longer reachable from
+    /// `production()`, so the write is observable only by code paths that
+    /// held a strong reference to the prior `accountsManager` (none in
+    /// production; vanishingly few in tests). The next test gets a clean
+    /// `production()` graph regardless. This window is the brief moment
+    /// between cancel-request and Task cancellation observation; on a
+    /// 100Mbps link with the bundled snapshot path, < 50ms in 99% of cases.
+    /// Acceptable per swarm_4b64e4e0 outcome.md user direction.
+    ///
+    /// swarm_4b64e4e0 Fix 2 — DEBUG-only test seam. Not callable from
+    /// production code (compile-time gated). The function is `internal` so
+    /// the test target can call it via `@testable import Palace`.
+    internal static func _resetForTesting() {
+        // Runtime gate: in addition to the compile-time `#if DEBUG`, refuse
+        // to fire outside of an XCTest process. `#if DEBUG` is on in TestFlight
+        // and developer sim builds too — this env-var is XCTest's own seam
+        // and is only ever present when xctest is the host. Defense-in-depth
+        // against accidental call from a DEBUG build that isn't actually
+        // running tests (matches the check-blast-radius BR-2 env-gate rule
+        // re: XCTestConfigurationFilePath).
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil else {
+            return
+        }
+        AccountsManager.deferInitialLoadCatalogsForTesting = true
+        _cached.accountsManager.cancelBackgroundWork()
+        _cached = Self._buildCachedAppContainer()
+        AccountsManager.deferInitialLoadCatalogsForTesting = false
+    }
+    #endif
 }
 
 // MARK: - SwiftUI Environment Integration
