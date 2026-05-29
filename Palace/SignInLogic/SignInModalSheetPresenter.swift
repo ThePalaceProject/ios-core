@@ -12,13 +12,15 @@
 //  the modal — preserving the HelpSpot 17716 presenter-chain safety
 //  net (Blocker 2 Option c, resolved in the swarm contract).
 //
-//  Wave 3 ships:
-//   - This file (presenter + protocol + state enum + driver typealias).
-//   - AppContainer wiring (`signInModalSheetPresenter`).
-//   - Migration of ONE caller: `TPPReauthenticator`. The other 9
-//     callers stay on the static API; wave 4 migrates them.
-//   - `SignInModalHostingController` STAYS in wave 3; deletion is
-//     deferred to wave 4 once all callers are migrated.
+//  Wave 3 + 4 history:
+//   - Wave 3 shipped this file (presenter + protocol + state enum + driver
+//     typealias), the AppContainer wiring (`signInModalSheetPresenter`),
+//     and the proof-of-pattern migration of `TPPReauthenticator`.
+//   - Wave 4 migrated the remaining 10 caller sites + replaced
+//     `SignInModalHostingController` with `fileprivate
+//     SignInModalDismissalHosting` (same behavior, file-scope visibility).
+//     The HelpSpot-17716 "fire-once-after-fully-dismissed" invariant is
+//     preserved by the replacement.
 //
 //  Tests: `PalaceTests/SignInLogic/SignInModalLifecycleTests.swift`.
 //
@@ -60,7 +62,7 @@ enum SignInPresentationState: Identifiable, Equatable {
 /// API; tests inject a fake to avoid mounting UIKit. The driver MUST
 /// fire the completion exactly once after the underlying modal
 /// dismisses fully (production driver wires this through
-/// `SignInModalHostingController.onDidFullyDismiss` for free —
+/// `SignInModalDismissalHosting.onDidFullyDismiss` for free —
 /// guarantee preserved).
 typealias SignInModalPresentationDriver = (
     _ libraryAccountID: String,
@@ -90,7 +92,7 @@ final class SignInModalSheetPresenter: NSObject, SignInModalSheetPresenting, Obs
     /// in flight. Set immediately before invoking the driver, cleared
     /// from the driver's completion (which fires after the UIKit
     /// dismissal transition completes — see
-    /// `SignInModalHostingController.onDidFullyDismiss`).
+    /// `SignInModalDismissalHosting.onDidFullyDismiss`).
     @Published private(set) var presentationState: SignInPresentationState?
 
     /// Strong reference to the app container. Used so the driver can
@@ -228,7 +230,7 @@ final class SignInModalSheetPresenter: NSObject, SignInModalSheetPresenting, Obs
             // Clear state BEFORE firing the user completion so any
             // downstream sheet-presentation triggered by the
             // completion observes a clean presenter chain (same
-            // ordering as `SignInModalHostingController.onDidFullyDismiss`
+            // ordering as `SignInModalDismissalHosting.onDidFullyDismiss`
             // already guarantees for the static API).
             self.presentationState = nil
             self.inFlight = false

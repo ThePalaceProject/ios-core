@@ -652,15 +652,19 @@ extension BookCellModel {
     func didSelectDownload() {
         let account = accountsManager.currentUserAccount
         if account.needsAuth && !account.hasCredentials() {
-            SignInModalPresenter.presentSignInModalForCurrentAccount(accountsManager: accountsManager) { [weak self] in
-                guard let self else { return }
-                // Only proceed if user successfully logged in, not if they cancelled
-                guard accountsManager.currentUserAccount.hasCredentials() else {
-                    Log.info(#file, "Sign-in cancelled or failed, not starting download")
-                    return
+            // swarm_d8f11437 Module A wave 4 — migrated to AppContainer-
+            // injected sheet presenter. accountsManager retained on the
+            // post-dismiss closure side for the `hasCredentials()` gate.
+            AppContainer.production().signInModalSheetPresenter
+                .presentSignInModalForCurrentAccount { [weak self] in
+                    guard let self else { return }
+                    // Only proceed if user successfully logged in, not if they cancelled
+                    guard accountsManager.currentUserAccount.hasCredentials() else {
+                        Log.info(#file, "Sign-in cancelled or failed, not starting download")
+                        return
+                    }
+                    self.startDownloadNow()
                 }
-                self.startDownloadNow()
-            }
             return
         }
         startDownloadNow()
@@ -677,24 +681,27 @@ extension BookCellModel {
         isLoading = true
         let account = accountsManager.currentUserAccount
         if account.needsAuth && !account.hasCredentials() {
-            SignInModalPresenter.presentSignInModalForCurrentAccount(accountsManager: accountsManager) { [weak self] in
-                guard let self else { return }
-                // Only proceed if user successfully logged in, not if they cancelled
-                guard accountsManager.currentUserAccount.hasCredentials() else {
-                    Log.info(#file, "Sign-in cancelled or failed, not proceeding with reservation")
-                    self.isLoading = false
-                    return
-                }
-                NotificationService.requestAuthorization()
-                Task {
-                    do {
-                        _ = try await self.downloadCenter.borrowAsync(self.book, attemptDownload: false)
-                    } catch {
-                        Log.error(#file, "Failed to borrow book: \(error.localizedDescription)")
+            // swarm_d8f11437 Module A wave 4 — migrated to AppContainer-
+            // injected sheet presenter.
+            AppContainer.production().signInModalSheetPresenter
+                .presentSignInModalForCurrentAccount { [weak self] in
+                    guard let self else { return }
+                    // Only proceed if user successfully logged in, not if they cancelled
+                    guard accountsManager.currentUserAccount.hasCredentials() else {
+                        Log.info(#file, "Sign-in cancelled or failed, not proceeding with reservation")
+                        self.isLoading = false
+                        return
                     }
-                    self.isLoading = false
+                    NotificationService.requestAuthorization()
+                    Task {
+                        do {
+                            _ = try await self.downloadCenter.borrowAsync(self.book, attemptDownload: false)
+                        } catch {
+                            Log.error(#file, "Failed to borrow book: \(error.localizedDescription)")
+                        }
+                        self.isLoading = false
+                    }
                 }
-            }
             return
         }
         NotificationService.requestAuthorization()

@@ -604,11 +604,14 @@ protocol AnnotationsManager {
 
     /// State-machine-aware accessor used by Phase 2 (Bucket B) sync
     /// gates. Returns `nil` until the account is in `.detailsLoaded` —
-    /// the same nil-tolerance the legacy `account.details?` reads
-    /// provided, but no longer races a partially-populated auth doc.
-    /// Bookmark sync is a best-effort silent-failure path per the ADR,
-    /// so a false during the loading window is correct (the next render
-    /// after `.detailsLoaded` fires re-enables the sync paths).
+    /// any other state (`.notLoaded`, `.basicInfoLoaded`, `.detailsLoading`,
+    /// `.detailsFailed`, or the `.detailsEvicted` eviction-marker added by
+    /// the swarm_51f248d5 enum split) yields nil. This preserves the
+    /// nil-tolerance the legacy `account.details?` reads provided, but no
+    /// longer races a partially-populated auth doc. Bookmark sync is a
+    /// best-effort silent-failure path per the ADR, so nil during the
+    /// loading window is correct (the next render after `.detailsLoaded`
+    /// fires re-enables the sync paths).
     fileprivate static func loadedDetails(of account: Account?) -> AccountDetails? {
         guard let account = account,
               case .detailsLoaded(let details) = account.loadState else {

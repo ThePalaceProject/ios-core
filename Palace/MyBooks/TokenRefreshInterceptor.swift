@@ -272,7 +272,11 @@ final class TokenRefreshInterceptor {
         }
         #endif
 
-        SignInModalPresenter.presentSignInModalForCurrentAccount { [weak self, weak delegate] in
+        // swarm_d8f11437 Module A wave 4 — migrated to AppContainer-
+        // injected sheet presenter. Single-flight `isRequestingCredentials`
+        // dedupe at line 265 still owns the concurrent-401 guard.
+        AppContainer.production().signInModalSheetPresenter
+            .presentSignInModalForCurrentAccount { [weak self, weak delegate] in
             guard let self = self, let delegate = delegate else { return }
 
             Task { @MainActor [weak self, weak delegate] in

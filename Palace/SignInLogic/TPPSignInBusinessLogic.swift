@@ -280,11 +280,12 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
 
     /// State-machine-aware synchronous read of `AccountDetails`. Returns
     /// `nil` when details have not yet transitioned to `.detailsLoaded`
-    /// (i.e. `.notLoaded`, `.basicInfoLoaded`, `.detailsLoading`, or
-    /// `.detailsFailed`). This preserves the legacy `account.details?`
-    /// nil-tolerance for sync UI/`@objc` callers that cannot adopt the
-    /// async `awaitReady()` gate without cascading `async` upward through
-    /// SwiftUI/UIKit render paths.
+    /// (i.e. `.notLoaded`, `.basicInfoLoaded`, `.detailsLoading`,
+    /// `.detailsFailed`, or `.detailsEvicted` — the eviction-marker
+    /// sibling added by the swarm_51f248d5 enum split). This preserves the
+    /// legacy `account.details?` nil-tolerance for sync UI/`@objc` callers
+    /// that cannot adopt the async `awaitReady()` gate without cascading
+    /// `async` upward through SwiftUI/UIKit render paths.
     ///
     /// Bucket A migration policy (per ADR `docs/architecture/account-state-machine.md`):
     /// the 6 sub-sites in this file are sync property getters / `@objc`

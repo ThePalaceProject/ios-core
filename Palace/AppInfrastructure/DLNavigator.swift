@@ -83,13 +83,18 @@ class DLNavigator {
             return
         }
         Task { @MainActor in
-            SignInModalPresenter.presentSignInModalForCurrentAccount {
-                let accountList = TPPAccountList { account in
-                    MyBooksViewModel(appContainer: .production()).authenticateAndLoad(account: account)
+            // swarm_d8f11437 Module A wave 4 — migrated from static
+            // `SignInModalPresenter.presentSignInModalForCurrentAccount`
+            // to the AppContainer-injected `SignInModalSheetPresenter` so
+            // SwiftUI consumers and test seams observe the same instance.
+            AppContainer.production().signInModalSheetPresenter
+                .presentSignInModalForCurrentAccount {
+                    let accountList = TPPAccountList { account in
+                        MyBooksViewModel(appContainer: .production()).authenticateAndLoad(account: account)
+                    }
+                    let nav = UINavigationController(rootViewController: accountList)
+                    topViewController.present(nav, animated: true)
                 }
-                let nav = UINavigationController(rootViewController: accountList)
-                topViewController.present(nav, animated: true)
-            }
         }
     }
 

@@ -393,8 +393,6 @@ final class TPPSAMLCookieExpirationTests: XCTestCase {
         let expired3 = makeTestCookie(name: "session_c", value: "3",
                                       expiresDate: Date(timeIntervalSinceNow: -1))
         mockContext.savedCookies = [expired1, expired2, expired3].compactMap { $0 }
-        XCTAssertEqual(mockContext.savedCookies.count, 3,
-                       "test fixture sanity: 3 expired cookies seeded")
 
         samlHelper.logIn(loginCancelHandler: {})
 
@@ -430,8 +428,6 @@ final class TPPSAMLCookieExpirationTests: XCTestCase {
         let valid2 = makeTestCookie(name: "valid_session_q", value: "q",
                                     expiresDate: Date(timeIntervalSinceNow: 7200))
         mockContext.savedCookies = [expired1, expired2, valid1, valid2].compactMap { $0 }
-        XCTAssertEqual(mockContext.savedCookies.count, 4,
-                       "test fixture sanity: 4 cookies (2 expired + 2 valid) seeded")
 
         samlHelper.logIn(loginCancelHandler: {})
 

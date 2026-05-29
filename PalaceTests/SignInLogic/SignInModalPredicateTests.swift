@@ -3,14 +3,19 @@
 //  PalaceTests
 //
 //  Closes the SignInModalView 0% mutation kill rate identified in the
-//  2026-05-11 regression. Both predicates were extracted into static
-//  helpers so the mutation gate can verify a regression to the inverted
-//  branch is caught by a focused unit test rather than escaping as a
-//  stuck-modal user report.
+//  2026-05-11 regression. The `shouldAutoDismiss` predicate was extracted
+//  into a static helper so the mutation gate can verify a regression to
+//  the inverted branch is caught by a focused unit test rather than
+//  escaping as a stuck-modal user report.
 //
 //  Mutation surface covered:
 //    - `SignInModalView.shouldAutoDismiss(authState:)` — `==` flip on .loggedIn
-//    - `SignInModalHostingController.shouldFireDismissCallback(...)` — `==` flip on presentingViewController
+//
+//  swarm_d8f11437 Module A wave 4 — the 4 `shouldFireDismissCallback`
+//  tests were removed when the wave-4 migration deleted
+//  `SignInModalHostingController` (the predicate's home). The
+//  once-after-fully-dismissed semantics are now pinned at the presenter
+//  level via SignInModalLifecycleTests.swift's state-transition tests.
 //
 
 import XCTest
@@ -53,57 +58,4 @@ final class SignInModalPredicateTests: XCTestCase {
                       "Sanity-check: .loggedIn still dismisses — pin that the predicate isn't a constant false")
     }
 
-    // MARK: - shouldFireDismissCallback
-
-    func testShouldFireDismissCallback_firstTimeAndDismissed_returnsTrue() {
-        // The truthy branch — first-time, fully dismissed. Pair-assert the
-        // boundary on the firedOnce side: once we've fired, the same fully-
-        // dismissed state must return false. Pins the firedOnce predicate.
-        XCTAssertTrue(SignInModalHostingController<EmptyView>.shouldFireDismissCallback(
-            firedOnce: false,
-            presentingViewController: nil
-        ), "First-time + no presenter must fire the callback")
-        XCTAssertFalse(SignInModalHostingController<EmptyView>.shouldFireDismissCallback(
-            firedOnce: true,
-            presentingViewController: nil
-        ), "Subsequent (firedOnce=true) + no presenter must NOT fire — idempotent")
-    }
-
-    func testShouldFireDismissCallback_firstTimeButStillPresented_returnsFalse() {
-        // The protective guard: viewDidDisappear fires during normal
-        // nav-stack pushes BEFORE the modal is actually torn down. The
-        // hosting controller still has a presentingViewController.
-        // Firing the callback here would race the in-flight dismissal
-        // and lock the BookDetail half-sheet (the bug this guard exists
-        // to prevent).
-        let presenter = UIViewController()
-        XCTAssertFalse(SignInModalHostingController<EmptyView>.shouldFireDismissCallback(
-            firedOnce: false,
-            presentingViewController: presenter
-        ))
-    }
-
-    func testShouldFireDismissCallback_alreadyFired_returnsFalse() {
-        // The idempotency branch — once fired, stays false regardless of
-        // presenter state. Pair-assert both presenter states so a mutation
-        // that drops the firedOnce check (and relies entirely on presenter)
-        // would surface here.
-        XCTAssertFalse(SignInModalHostingController<EmptyView>.shouldFireDismissCallback(
-            firedOnce: true,
-            presentingViewController: nil
-        ), "firedOnce=true must suppress the callback even when fully dismissed")
-        let presenter = UIViewController()
-        XCTAssertFalse(SignInModalHostingController<EmptyView>.shouldFireDismissCallback(
-            firedOnce: true,
-            presentingViewController: presenter
-        ), "firedOnce=true must suppress the callback even when still presented")
-    }
-
-    func testShouldFireDismissCallback_alreadyFiredAndStillPresented_returnsFalse() {
-        let presenter = UIViewController()
-        XCTAssertFalse(SignInModalHostingController<EmptyView>.shouldFireDismissCallback(
-            firedOnce: true,
-            presentingViewController: presenter
-        ))
-    }
 }

@@ -6,7 +6,7 @@ tools: Agent, Bash, Read, Write, Edit, mcp__forgeos__forge_propose_changeset, mc
 type: evolving
 status: active
 created: 2026-05-28
-last_refresh: 2026-05-28
+last_refresh: 2026-05-29
 freshness_window: 365d
 owners: [general]
 ---
@@ -455,28 +455,25 @@ for transcript in .forgeos/swarms/$SWARM_ID/transcripts/*.md; do
   fi
 done
 
-# Check 5b: for every claimed production-seam test, confirm the body calls
-# the production entry point AND has no early-return mock that bypasses
-# the cited line range. (Catches swarm_c8fcab76 arch1 — AudiobookFirstOpenHangTests
-# called openAudiobook(...) on a mock book that failed in the loader before
-# bind() → startPlaybackAndSyncPosition() ran, so the cited wiring at
-# AudiobookSessionManager.swift:684-710 had zero coverage. Implementer
-# response should have been BLOCKED + scope-deferral.)
-for testfile in $(git diff --cached --name-only | grep -E "PalaceTests/.*Tests\.swift$"); do
-  # If the test name contains a multi-step / wiring claim, confirm the
-  # body literally calls the production entry point AND has no early-return
-  # mock that bypasses the cited line range.
-  if grep -qE "func test.*_(via|through|roundtrip|across|inProduction|Wiring)" "$testfile"; then
-    # Mechanical implementation is non-trivial (requires coverage report
-    # cross-reference); for now log a warning so the orchestrator does a
-    # manual review of every multi-step / wiring test in the diff.
-    echo "WARNING: $testfile has multi-step / wiring claim — manually verify production-seam path:"
-    echo "  - test must call the production entry point (not the static helper)"
-    echo "  - test must have no early-return mock that bypasses the cited line range"
-    echo "  - coverage report should show non-zero hits on the cited production lines"
-    # TODO: implement check 5b mechanically (coverage-report cross-reference) — for now, manual review.
-  fi
-done
+# Check 5b: runnable test-name-vs-body audit. For every multi-step-named
+# test in the diff, the body must reference the embedded PascalCase
+# production-class noun (instantiation, static call, or type annotation).
+# Catches the fake-wiring-test pattern documented in:
+#   - .forgeos/wall-failures/2026-05-28-cs847892e8-arch1.md (AudiobookSessionManager)
+#   - .forgeos/wall-failures/2026-05-28-cs9a267b63-arch1.md (TPPReauthenticator)
+# Both are the same shape: name promises wiring through class X; body never
+# touches X. Documentation-only fixes (CLAUDE.md DoD check #7) didn't prevent
+# recurrence — this is the runnable-grep escalation.
+DIFF_TESTS=$(git diff --cached --name-only | grep -E "PalaceTests/.*Tests\.swift$" || true)
+if [ -n "$DIFF_TESTS" ]; then
+  python3 scripts/check-test-name-vs-body.py $DIFF_TESTS || {
+    echo "BLOCK: scripts/check-test-name-vs-body.py reported fake-wiring test(s)"
+    echo "  Wall-failure shape: .forgeos/wall-failures/2026-05-28-cs9a267b63-arch1.md"
+    echo "  Action: either instantiate the embedded production-class noun in the test body,"
+    echo "          or rename the test to not embed it (only the name promises the wiring)."
+    exit 1
+  }
+fi
 
 # Check 6: Verify-pr.sh --quick with diff-baseline (auto-flake comparison)
 scripts/verify-pr.sh --quick --diff-baseline || {
