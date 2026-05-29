@@ -46,18 +46,30 @@
           "id": "ki001-step1-tap-back-tap-again",
           "instruction": "Tap back to your library list, then tap the audiobook title again. This usually clears the hang on the second open.",
           "check": "Did it start playing this time?",
+          "responses": [
+            { "label": "Still stuck", "outcome": "advance", "diagnostic": "audiobook.reopen_did_not_resolve" },
+            { "label": "Yes, playing", "outcome": "resolved", "diagnostic": "audiobook.reopen_resolved" }
+          ],
           "diagnostic": "audiobook.first_reopen_attempt"
         },
         {
           "id": "ki001-step2-force-quit",
           "instruction": "Force-quit Palace: swipe up from the bottom of the screen and pause, then swipe up on Palace's preview to close it. Reopen Palace and tap the audiobook again.",
           "check": "Plays now?",
+          "responses": [
+            { "label": "Still nothing", "outcome": "advance", "diagnostic": "audiobook.cold_relaunch_did_not_resolve" },
+            { "label": "Yes, playing", "outcome": "resolved", "diagnostic": "audiobook.cold_relaunch_resolved" }
+          ],
           "diagnostic": "audiobook.cold_relaunch_attempt"
         },
         {
           "id": "ki001-step3-sign-out-in",
           "instruction": "In Settings → Libraries, tap your library, scroll down and tap Sign Out. Sign back in and try the audiobook.",
           "check": "Plays after sign-in?",
+          "responses": [
+            { "label": "Still broken", "outcome": "escalate", "diagnostic": "audiobook.session_reset_did_not_resolve" },
+            { "label": "Yes, fixed!", "outcome": "resolved", "diagnostic": "audiobook.session_reset_resolved" }
+          ],
           "diagnostic": "audiobook.session_reset_attempt"
         }
       ],
@@ -95,12 +107,20 @@
           "id": "ki002-step1-update",
           "instruction": "Check the App Store for a Palace update — this crash is fixed in version 3.2.0 or later. Update if available, then try again.",
           "check": "Are you now on 3.2.0 or later, and the crash gone?",
+          "responses": [
+            { "label": "Crash still happens", "outcome": "advance", "diagnostic": "lcp.update_did_not_resolve" },
+            { "label": "Yes, all good", "outcome": "resolved", "diagnostic": "lcp.update_resolved" }
+          ],
           "diagnostic": "audiobook.recheck_after_update"
         },
         {
           "id": "ki002-step2-avoid-mid-playback-switch",
           "instruction": "Until the update is on the App Store: pause the audiobook and return to your library list BEFORE switching to a different library. Then switch.",
           "check": "Does the crash stop happening when you pause first?",
+          "responses": [
+            { "label": "Still crashing", "outcome": "escalate", "diagnostic": "lcp.pause_workaround_failed" },
+            { "label": "Yes, no more crashes", "outcome": "resolved", "diagnostic": "lcp.pause_workaround_resolved" }
+          ],
           "diagnostic": "audiobook.pause_before_switch"
         }
       ],
@@ -144,6 +164,10 @@
           "id": "ki003-step1-tap-the-field",
           "instruction": "The fields LOOK disabled because of a contrast issue, but they're active. Tap directly inside the first field — the keyboard should appear and you can start typing your library card / barcode.",
           "check": "Did the keyboard come up and let you type?",
+          "responses": [
+            { "label": "Field stays unresponsive", "outcome": "escalate", "diagnostic": "signin.field_unresponsive" },
+            { "label": "Yes, typing now", "outcome": "resolved", "diagnostic": "signin.typed_in_field" }
+          ],
           "diagnostic": "signin.tapped_through_low_contrast_field"
         }
       ],
@@ -190,18 +214,30 @@
           "id": "ki004-step1-open-library-picker",
           "instruction": "Tap the Palace logo in the top-left corner of the screen. A list of your libraries should slide in.",
           "check": "Did the library list appear?",
+          "responses": [
+            { "label": "Can't see it", "outcome": "escalate", "diagnostic": "library.picker_did_not_appear" },
+            { "label": "Yes, list appeared", "outcome": "advance", "diagnostic": "library.picker_appeared" }
+          ],
           "diagnostic": "library.opened_picker"
         },
         {
           "id": "ki004-step2-add-real-library",
           "instruction": "Tap 'Add Library' at the top of that list. In the search box, type your actual library's name (not 'Palace Bookshelf'). Tap your library when it appears.",
           "check": "Were you able to find and add your real library?",
+          "responses": [
+            { "label": "Can't find it", "outcome": "escalate", "diagnostic": "library.add_search_no_results" },
+            { "label": "Yes, added", "outcome": "advance", "diagnostic": "library.added_real_library" }
+          ],
           "diagnostic": "library.added_real_library"
         },
         {
           "id": "ki004-step3-sign-in",
           "instruction": "Sign in with your library card / barcode. Once signed in, your library's books should appear on the Catalog tab.",
           "check": "Are your books showing now?",
+          "responses": [
+            { "label": "Still not showing", "outcome": "escalate", "diagnostic": "library.signin_books_missing" },
+            { "label": "Yes, all good!", "outcome": "resolved", "diagnostic": "library.signed_in_books_visible" }
+          ],
           "diagnostic": "library.signed_in_real_library"
         }
       ],
@@ -238,12 +274,20 @@
           "id": "ki005-step1-update",
           "instruction": "Check the App Store — this CarPlay crash is fixed in version 3.1.0 or later. Update if available.",
           "check": "Are you now on 3.1.0+, and the crash gone when you connect to CarPlay?",
+          "responses": [
+            { "label": "Still crashing", "outcome": "advance", "diagnostic": "carplay.update_did_not_resolve" },
+            { "label": "Yes, no more crash", "outcome": "resolved", "diagnostic": "carplay.update_resolved" }
+          ],
           "diagnostic": "carplay.recheck_after_update"
         },
         {
           "id": "ki005-step2-start-playback-first",
           "instruction": "Until the update is installed: open the audiobook and tap Play BEFORE you connect to CarPlay. Once it's playing, then plug in / connect.",
           "check": "Does the crash stop when you start playback first?",
+          "responses": [
+            { "label": "Still crashes", "outcome": "escalate", "diagnostic": "carplay.preplay_did_not_resolve" },
+            { "label": "Yes, working", "outcome": "resolved", "diagnostic": "carplay.preplay_resolved" }
+          ],
           "diagnostic": "carplay.preplay_then_connect"
         }
       ],
@@ -286,12 +330,20 @@
           "id": "ki006-step1-pull-refresh",
           "instruction": "Open the Holds tab. Pull down on the list and release — it should refresh from the server.",
           "check": "Is the ready hold showing up in the list now?",
+          "responses": [
+            { "label": "Still missing", "outcome": "advance", "diagnostic": "holds.refresh_did_not_resolve" },
+            { "label": "Yes, found it", "outcome": "resolved", "diagnostic": "holds.refresh_resolved" }
+          ],
           "diagnostic": "holds.pull_to_refresh"
         },
         {
           "id": "ki006-step2-sign-out-in",
           "instruction": "Go to Settings → Libraries → tap your library → Sign Out. Sign back in. Then check the Holds tab again.",
           "check": "Is the ready hold visible after sign-in?",
+          "responses": [
+            { "label": "Still missing", "outcome": "escalate", "diagnostic": "holds.signin_did_not_resolve" },
+            { "label": "Yes, all good", "outcome": "resolved", "diagnostic": "holds.signin_resolved" }
+          ],
           "diagnostic": "holds.session_reset"
         }
       ],
@@ -327,12 +379,20 @@
           "id": "ki007-step1-pull-refresh-and-reopen",
           "instruction": "Go to My Books, pull down to refresh, then tap the PDF title to reopen it.",
           "check": "Did the PDF render this time?",
+          "responses": [
+            { "label": "Still blank", "outcome": "advance", "diagnostic": "pdf.refresh_did_not_resolve" },
+            { "label": "Yes, opens now", "outcome": "resolved", "diagnostic": "pdf.refresh_resolved" }
+          ],
           "diagnostic": "pdf.pull_refresh_and_reopen"
         },
         {
           "id": "ki007-step2-delete-and-redownload",
           "instruction": "On My Books, swipe left on the PDF title and tap Delete to remove the downloaded copy. Then tap Read / Download to fetch it again.",
           "check": "Does the freshly-downloaded copy open?",
+          "responses": [
+            { "label": "Still won't open", "outcome": "escalate", "diagnostic": "pdf.redownload_did_not_resolve" },
+            { "label": "Yes, working", "outcome": "resolved", "diagnostic": "pdf.redownload_resolved" }
+          ],
           "diagnostic": "pdf.delete_and_redownload"
         }
       ],
@@ -369,18 +429,30 @@
           "id": "ki008-step1-check-connection",
           "instruction": "Check the top-right of your screen — do you see WiFi or cellular signal? If you're in airplane mode or your WiFi dropped, toggle it back on.",
           "check": "Is your connection up, and the download resuming?",
+          "responses": [
+            { "label": "Connection good, still stuck", "outcome": "advance", "diagnostic": "download.connection_ok_but_stuck" },
+            { "label": "Yes, resuming", "outcome": "resolved", "diagnostic": "download.connection_fix_resolved" }
+          ],
           "diagnostic": "download.connection_check"
         },
         {
           "id": "ki008-step2-pull-refresh",
           "instruction": "Open My Books. Pull down on the list and release to refresh. Tap the stalled title — it should resume.",
           "check": "Did the download resume after refresh?",
+          "responses": [
+            { "label": "Still stuck", "outcome": "advance", "diagnostic": "download.refresh_did_not_resolve" },
+            { "label": "Yes, downloading", "outcome": "resolved", "diagnostic": "download.refresh_resolved" }
+          ],
           "diagnostic": "download.pull_to_refresh"
         },
         {
           "id": "ki008-step3-sign-out-in",
           "instruction": "Go to Settings → Libraries → your library → Sign Out. Sign back in. Then re-attempt the download from My Books or the Catalog.",
           "check": "Does the download complete after sign-in?",
+          "responses": [
+            { "label": "Still stuck", "outcome": "escalate", "diagnostic": "download.signin_did_not_resolve" },
+            { "label": "Yes, fixed", "outcome": "resolved", "diagnostic": "download.signin_resolved" }
+          ],
           "diagnostic": "download.session_reset"
         }
       ],

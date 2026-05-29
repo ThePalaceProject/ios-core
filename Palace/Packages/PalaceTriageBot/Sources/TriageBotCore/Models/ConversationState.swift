@@ -104,6 +104,12 @@ public enum ConversationAction: Equatable, Sendable {
     /// either advances to the next step or, if exhausted, escalates with
     /// the full ResolutionTrace attached.
     case userConfirmedStepDidNotResolve(stepId: String)
+    /// User picked a specific response on a step with explicit
+    /// `responses` defined. Reducer routes by the response's
+    /// `outcome` (resolved / advance / escalate) — semantically richer
+    /// than the legacy binary Yes/No, which assumes every "yes" means
+    /// "the whole issue is fixed."
+    case userSelectedStepResponse(stepId: String, responseIndex: Int)
     /// User abandoned the guided flow (e.g. tapped "skip to summary" or
     /// "just file a ticket" mid-walkthrough). Reducer records the trace
     /// with outcome=abandoned and escalates.

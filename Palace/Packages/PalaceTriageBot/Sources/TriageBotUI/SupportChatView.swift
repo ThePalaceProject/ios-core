@@ -142,6 +142,8 @@ public struct SupportChatView: View {
 
     private func handleGuidedStepAction(_ action: GuidedStepCard.Action, stepId: String) {
         switch action {
+        case .selectedResponse(let index):
+            viewModel.send(.userSelectedStepResponse(stepId: stepId, responseIndex: index))
         case .resolved:
             viewModel.send(.userConfirmedStepResolved(stepId: stepId))
         case .didNotResolve:

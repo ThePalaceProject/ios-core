@@ -22,17 +22,67 @@ public struct KBStep: Codable, Equatable, Sendable, Identifiable {
     public let id: String
     /// What the user should do. Imperative, short, no jargon.
     public let instruction: String
-    /// The follow-up question that gates Yes/No. Short.
+    /// The follow-up question. Should be answerable by one of the
+    /// `responses` below.
     public let check: String
+    /// Optional explicit response options. When provided, the UI renders
+    /// these labels (instead of generic "Still broken / Fixed it") AND
+    /// the reducer routes by each response's `outcome` — diagnostic
+    /// intermediate steps can map a "yes" to `.advance` (proceed to the
+    /// next step) rather than always meaning `.resolved`. When nil, the
+    /// UI falls back to the legacy Yes/No pair (treating Yes as
+    /// `.resolved` and No as `.advance`/`.escalate` per step position).
+    public let responses: [KBStepResponse]?
     /// Optional telemetry tag — emitted on resolved + not-resolved events
     /// so support can see per-step success rates without naming-convention
     /// guessing later.
     public let diagnostic: String?
 
-    public init(id: String, instruction: String, check: String, diagnostic: String? = nil) {
+    public init(
+        id: String,
+        instruction: String,
+        check: String,
+        responses: [KBStepResponse]? = nil,
+        diagnostic: String? = nil
+    ) {
         self.id = id
         self.instruction = instruction
         self.check = check
+        self.responses = responses
+        self.diagnostic = diagnostic
+    }
+}
+
+/// One answer the user can give to a step's check question. Carries both
+/// the patron-facing label AND the semantic meaning the reducer needs to
+/// pick the right next state.
+public struct KBStepResponse: Codable, Equatable, Sendable {
+    /// What the user sees on the button. Should answer the step's check
+    /// in patron-natural language ("Yes, list appeared", "No, still
+    /// broken", "Crashes a different way now").
+    public let label: String
+    /// What this answer means for the state machine.
+    public let outcome: Outcome
+    /// Optional per-response telemetry tag — separates "step 1 answered
+    /// 'list appeared'" from "step 1 answered 'never saw a list'" so
+    /// support sees which branch each user took, not just resolved-vs-not.
+    public let diagnostic: String?
+
+    public enum Outcome: String, Codable, Sendable {
+        /// User's issue is fixed. Close out, record success.
+        case resolved
+        /// Step did its job but we're not done — try the next step.
+        /// (Diagnostic intermediate steps where "yes" doesn't mean the
+        /// whole issue is fixed.)
+        case advance
+        /// Skip remaining steps and file a ticket. Attaches the trace
+        /// so support sees what was tried.
+        case escalate
+    }
+
+    public init(label: String, outcome: Outcome, diagnostic: String? = nil) {
+        self.label = label
+        self.outcome = outcome
         self.diagnostic = diagnostic
     }
 }

@@ -367,6 +367,43 @@ public struct ConversationReducer: Sendable {
                 )
             }
 
+        case .userSelectedStepResponse(let stepId, let responseIndex):
+            // Outcome-driven routing. Looks up the response's `.outcome`
+            // and dispatches to the same internal handlers as the legacy
+            // resolved/didNotResolve actions. Means a single step with
+            // explicit responses can behave differently per branch —
+            // diagnostic intermediate steps map "yes" to `.advance`
+            // (not "resolved"), final steps map "yes" to `.resolved`.
+            guard case .guidedStep(let entryId, _, _, _) = next.step,
+                  let entry = knowledgeBase.entry(id: entryId),
+                  let steps = entry.userFacingSteps,
+                  let step = steps.first(where: { $0.id == stepId }),
+                  let responses = step.responses,
+                  responseIndex >= 0, responseIndex < responses.count else {
+                return (next, effects)
+            }
+            let response = responses[responseIndex]
+            switch response.outcome {
+            case .resolved:
+                let (resolvedNext, resolvedEffects) = reduce(
+                    state: next,
+                    action: .userConfirmedStepResolved(stepId: stepId)
+                )
+                return (resolvedNext, effects + resolvedEffects)
+            case .advance:
+                let (advancedNext, advancedEffects) = reduce(
+                    state: next,
+                    action: .userConfirmedStepDidNotResolve(stepId: stepId)
+                )
+                return (advancedNext, effects + advancedEffects)
+            case .escalate:
+                let (abandonNext, abandonEffects) = reduce(
+                    state: next,
+                    action: .userTappedAbandonGuidedFlow
+                )
+                return (abandonNext, effects + abandonEffects)
+            }
+
         case .userTappedAbandonGuidedFlow:
             guard case .guidedStep(let entryId, _, let startedAt, var attempts) = next.step,
                   let entry = knowledgeBase.entry(id: entryId) else {
