@@ -99,6 +99,23 @@ class PalaceWiringTestCase: XCTestCase {
         #if DEBUG
         AccountsManager.deferInitialLoadCatalogsForTesting = true
         #endif
+
+        // Wipe the on-disk OPDS2 catalog cache. The bundled-registry
+        // snapshot path inside `AccountsManager.loadCatalogs()` writes
+        // `accounts_catalog_<hash>.json` and the matching metadata file
+        // into the app's Application Support directory (see
+        // `AccountsManager.swift:841`/`:851`). When the pre-push gate
+        // runs the wiring class AFTER `AccountsManagerHelpersTests` or
+        // `AccountsManagerCancellationTests` — both of which explicitly
+        // call `loadCatalogs()` — those bundled writes survive into the
+        // wiring test methods. Wiring tests then call
+        // `preloadAccountsFromDiskCacheSync()` and observe ~1142 bundled
+        // accounts instead of the 171-entry fixture seed they injected,
+        // which flips `currentAccount` away from the expected fixture
+        // entry and fails `testLoadCatalogs_warmPath_drivesCurrentAccountPastBasicInfoLoaded`.
+        // This is the same prefix list `AccountsManager.clearCache()`
+        // uses at runtime.
+        purgeAccountsDiskCacheForWiringTests()
     }
 
     override func tearDownWithError() throws {
@@ -117,6 +134,13 @@ class PalaceWiringTestCase: XCTestCase {
         for manager in managers {
             manager.cancelBackgroundWork()
         }
+
+        // Symmetry with setUp: wipe the on-disk OPDS2 catalog cache so
+        // any bundled-registry snapshot a wiring test write through
+        // `loadCatalogs()` cannot leak into the next XCTestCase class
+        // that runs in this process. See setUpWithError for the failure
+        // mode.
+        purgeAccountsDiskCacheForWiringTests()
 
         try super.tearDownWithError()
     }
@@ -151,5 +175,48 @@ class PalaceWiringTestCase: XCTestCase {
         configure(manager)
         managersToCancelOnTearDown.append(manager)
         return manager
+    }
+
+    // MARK: - Disk-cache cleanup
+
+    /// Remove every on-disk catalog/auth/crawl cache file in the test
+    /// process's Application Support sandbox so the next wiring test
+    /// starts from a cold-cache baseline. Mirrors the prefix list
+    /// `AccountsManager.clearCache()` uses at runtime:
+    ///
+    ///  - `accounts_catalog_<hash>.json`           (bundled or network catalog blob)
+    ///  - `accounts_catalog_metadata_<hash>.json`  (timestamp + isBundled flag)
+    ///  - `library_list_*`                         (raw library-registry list cache)
+    ///  - `authentication_document_*`              (per-library auth-doc cache)
+    ///  - `crawl_state_*`                          (per-hash crawl-state JSON)
+    ///
+    /// Missing files (cold-start) and missing directory are silently
+    /// ignored — both are valid pre-test states.
+    private func purgeAccountsDiskCacheForWiringTests() {
+        let prefixes = [
+            "library_list_",
+            "accounts_catalog_",
+            "accounts_catalog_metadata_",
+            "authentication_document_",
+            "crawl_state_",
+        ]
+        let fm = FileManager.default
+        guard let appSupport = try? fm.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: false
+        ) else { return }
+        guard let files = try? fm.contentsOfDirectory(
+            at: appSupport,
+            includingPropertiesForKeys: nil
+        ) else { return }
+
+        for file in files {
+            let name = file.lastPathComponent
+            if prefixes.contains(where: { name.hasPrefix($0) }) {
+                try? fm.removeItem(at: file)
+            }
+        }
     }
 }
