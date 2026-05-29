@@ -1,0 +1,36 @@
+diff --git a/Palace/SignInLogic/SignInModalHostingController.swift b/Palace/SignInLogic/SignInModalHostingController.swift
+deleted file mode 100644
+index aaaa111..0000000
+--- a/Palace/SignInLogic/SignInModalHostingController.swift
++++ /dev/null
+@@ -1,12 +0,0 @@
+-//  SignInModalHostingController.swift
+-
+-import UIKit
+-
+-final class SignInModalHostingController: UIHostingController<SignInModalView> {
+-    var onDidFullyDismiss: (() -> Void)?
+-
+-    override func viewDidDisappear(_ animated: Bool) {
+-        super.viewDidDisappear(animated)
+-        onDidFullyDismiss?()
+-    }
+-}
+diff --git a/Palace/SignInLogic/SignInModalDismissalHosting.swift b/Palace/SignInLogic/SignInModalDismissalHosting.swift
+new file mode 100644
+index 0000000..bbbb222
+--- /dev/null
++++ b/Palace/SignInLogic/SignInModalDismissalHosting.swift
+@@ -0,0 +1,12 @@
++//  SignInModalDismissalHosting.swift
++
++import UIKit
++
++fileprivate final class SignInModalDismissalHosting: UIHostingController<SignInModalView> {
++    var onDidFullyDismiss: (() -> Void)?
++
++    override func viewDidDisappear(_ animated: Bool) {
++        super.viewDidDisappear(animated)
++        onDidFullyDismiss?()
++    }
++}

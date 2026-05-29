@@ -39,7 +39,7 @@ Critical paths per CLAUDE.md:
 | Modules | ≥2 | 1 |
 | Implementers | N parallel | 1 (you, the main agent) |
 | Architect | Yes (full Phase 0 recon + contracts) | Yes (lighter — read area's verification-checklist.md, produce a fix-contract) |
-| Reviewers | architect + qa_test via /forge-review | architect + qa_test via /forge-review |
+| Reviewers | architect + qa_test + blast_radius via /forge-review | architect + qa_test + blast_radius via /forge-review |
 | Phase 4.5 skeptic pass | Yes | Yes (against your own work) |
 | Definition of Done evidence | Required per implementer | Required from you |
 | Wall-failure catalog integration | Yes — every block becomes an entry | Yes — every block becomes an entry |
@@ -94,6 +94,42 @@ Either you (main agent) OR a spawned Plan subagent produces a fix-contract at `.
 - verify-pr.sh --quick --diff-baseline PASS
 ```
 
+### Phase 1a — Architect post-review (NON-SKIPPABLE for /rigorous-fix)
+
+After producing the fix-contract, **spawn `forge-architect-reviewer` subagent before proceeding to Phase 2**. The architect-reviewer reads the fix-contract, the area's verification-checklist, and the current diff (if any code is staged) and emits an APPROVED / BLOCKED verdict.
+
+This phase was OPTIONAL prior to 2026-05-28 — swarm `swarm_M1_83be56fc` made it MANDATORY for /rigorous-fix because critical-path work is exactly the class where a bad contract propagates into a hard-to-revert regression. The architect can be wrong; the architect-reviewer is your second pair of eyes BEFORE you touch code.
+
+Spawn pattern:
+
+```
+Agent
+  subagent_type: forge-architect-reviewer
+  description: Architect post-review of <task> fix-contract
+  prompt: |
+    project_id: <pid>
+    changeset_id: (pre-changeset — not yet created; refer to fix-contract path)
+    branch: <branch>
+    worktree_path: <pwd>
+    base_ref: origin/develop
+
+    Read the fix-contract at .forgeos/changesets/<branch>/fix-contract.md.
+    Read the area's verification-checklist at docs/architecture/areas/<area>/verification-checklist.md (if present).
+    Verify:
+      1. The fix-contract's scope matches the codebase reality (run greps the contract cites).
+      2. Off-limits lists are complete — sibling patterns not silently in scope.
+      3. Verification criteria are syntactically valid and catch the failure modes claimed.
+      4. The task is genuinely single-module per CLAUDE.md "Risk-driven rigor bar" — if multi-module slipped through, recommend /swarm instead.
+    Submit BLOCKED/APPROVED via Write to .forgeos/changesets/<branch>/architect-review.md
+    (the changeset doesn't exist yet at this point — Phase 2 creates it).
+```
+
+Skip permitted ONLY in two cases:
+1. The area has a current `docs/architecture/areas/<area>/verification-checklist.md` AND your fix-contract matches it 1:1 (delta-verified against the checklist).
+2. Trivial 1-LOC fix in a critical path (still run /forge-review at the end per CLAUDE.md).
+
+If the architect-reviewer returns BLOCKED, fix the contract, re-spawn, do not proceed to Phase 2 until APPROVED.
+
 ### Phase 2 — ForgeOS changeset + Definition of Done
 
 Create the changeset before code:
@@ -117,13 +153,13 @@ You wrote the code. You verify it the same way you'd verify a subagent's work:
 
 If any check fails, fix it BEFORE invoking /forge-review. Don't ask the reviewers to catch what you should have.
 
-### Phase 4 — /forge-review (architect + qa_test SoD)
+### Phase 4 — /forge-review (architect + qa_test + blast_radius SoD)
 
 ```
 /forge-review
 ```
 
-Same SoD pattern as /swarm. If BLOCKED:
+Same SoD pattern as /swarm. Reviewer count is **3**: `architect`, `qa_test`, and `blast_radius` (universal floor). The blast_radius reviewer is mandatory regardless of gate template per swarm `swarm_M1_83be56fc` (2026-05-28) — closes the 11-finding gap waves 1-4 surfaced AFTER architect + qa_test review. If BLOCKED by any of the three:
 1. Create a wall-failure entry per `.forgeos/wall-failures/README.md`.
 2. Fix the finding.
 3. Re-run /forge-review.

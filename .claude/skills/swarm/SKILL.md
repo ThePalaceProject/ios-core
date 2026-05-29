@@ -221,7 +221,9 @@ Submit a BLOCKED/APPROVED verdict via Write to
 re-runs with the findings. If APPROVED, proceed to Phase 1b.
 ```
 
-Cost: 1 extra agent invocation, ~10 minutes. Catches scope-misestimation before it propagates to all N implementers' contracts. Skip only if the architect is producing a contract for a domain we've swarmed in before AND a `docs/architecture/areas/<area>/verification-checklist.md` exists for the area — in that case the checklist already encodes the architect's truth-table and the post-review is redundant.
+Cost: 1 extra agent invocation, ~10 minutes. Catches scope-misestimation before it propagates to all N implementers' contracts.
+
+**Phase 1a is NON-SKIPPABLE for any module marked `risk: critical_path` or `risk: critical_path_meta` in `manifest.yaml`.** Skipping is permitted ONLY for all-standard swarms (every module is `risk: standard`) AND every touched area has a current `docs/architecture/areas/<area>/verification-checklist.md`. Even one critical-path module in the swarm forces Phase 1a. This rule was added 2026-05-28 as part of swarm `swarm_M1_83be56fc` — waves 1-4 surfaced critical-path-meta findings where Phase 1a would have caught contract scope-misestimation before any implementer ran. For non-critical-path domains where we've swarmed before AND the area-checklist is authoritative, the checklist already encodes the architect's truth-table and the post-review is redundant — record `architect_review.skipped.reason` in manifest.yaml per `.forgeos/schemas/swarm-manifest-v2.md`.
 
 ### Phase 1b: Commit scaffolding IMMEDIATELY (do not defer)
 
@@ -475,7 +477,31 @@ if [ -n "$DIFF_TESTS" ]; then
   }
 fi
 
-# Check 6: Verify-pr.sh --quick with diff-baseline (auto-flake comparison)
+# Check 6: Universal rigor scripts (M1 floor — swarm_M1_83be56fc, 2026-05-28)
+# Wraps wave-1-4 manual-review findings into machine-checkable form.
+# Contract reconciliation + blast-radius + intent-recorded BLOCK on exit 1.
+# Adjacency-staleness is WARN-only (always exit 0, count warnings).
+python3 scripts/check-contract-reconciliation.py --quiet ; CR_EXIT=$?
+python3 scripts/check-blast-radius.py --quiet            ; BR_EXIT=$?
+python3 scripts/check-adjacency-staleness.py --quiet     ; AS_EXIT=$?  # warn-only
+python3 scripts/check-intent-recorded.py --quiet         ; IR_EXIT=$?
+if [ "${CR_EXIT:-0}" -ne 0 ]; then
+  echo "BLOCK: check-contract-reconciliation.py exit $CR_EXIT — diff doesn't deliver contract/commit claims"
+  exit 1
+fi
+if [ "${BR_EXIT:-0}" -ne 0 ]; then
+  echo "BLOCK: check-blast-radius.py exit $BR_EXIT — new public API surface / #if DEBUG leak / test-seam bypass"
+  exit 1
+fi
+if [ "${IR_EXIT:-0}" -ne 0 ]; then
+  echo "BLOCK: check-intent-recorded.py exit $IR_EXIT — ≥10 prod-LOC change without .forgeos/intent/<name>.md"
+  exit 1
+fi
+if [ "${AS_EXIT:-0}" -ne 0 ]; then
+  echo "WARN: check-adjacency-staleness.py exit $AS_EXIT — adjacent docs/tests stale (advisory only)"
+fi
+
+# Check 7: Verify-pr.sh --quick with diff-baseline (auto-flake comparison)
 scripts/verify-pr.sh --quick --diff-baseline || {
   # Distinguish new failures from pre-existing flakes (--diff-baseline reruns failing classes against base SHA)
   echo "BLOCK: verify-pr.sh failed AND failures are NOT pre-existing flakes — see output"
@@ -485,7 +511,7 @@ scripts/verify-pr.sh --quick --diff-baseline || {
 
 The two `python3 ~/harness/core/lib/*` scripts are stubs to be implemented (see `docs/architecture/swarm-rigor-followups.md` for spec). Until they exist, run the underlying greps manually using the contract's Verification criteria block.
 
-4. **Resolve any skeptic-pass blocks**: send the relevant implementer back with the specific finding. Do NOT proceed to Phase 5 until all 6 checks pass.
+4. **Resolve any skeptic-pass blocks**: send the relevant implementer back with the specific finding. Do NOT proceed to Phase 5 until all 7 checks pass (Check 6 added for M1 universal rigor floor; Check 7 is the renamed verify-pr.sh step).
 5. **Run verify-pr.sh again** after gap resolution.
 
 If verify-pr.sh fails after Phase 4.5: small failures fix directly; large failures (whole module broken) re-spawn that one implementer with the failure log + the successful sibling work as context.
@@ -496,7 +522,7 @@ If verify-pr.sh fails after Phase 4.5: small failures fix directly; large failur
 mcp__forgeos__forge_submit_evidence  (unit_test, lint, build evidence per gate)
 ```
 
-Then invoke `/forge-review` (the existing skill) — it spawns architect + qa_test reviewer subagents. Read their verdicts.
+Then invoke `/forge-review` (the existing skill) — it spawns **3 reviewer subagents**: `forge-architect-reviewer`, `forge-qa-reviewer`, and `forge-blast-radius-reviewer` (universal floor — runs on every PR regardless of gate template per swarm `swarm_M1_83be56fc`, 2026-05-28). Read all three verdicts. Any BLOCKED verdict — including blast_radius even if no gate formally required it — blocks promotion of every gate until addressed.
 
 If reviewers reject:
 1. Read the rejection findings.

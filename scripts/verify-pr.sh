@@ -355,6 +355,113 @@ else
   record "test_quality" "pass" "Lint script not found (skipped)"
 fi
 
+# 3a. Contract reconciliation (M1 universal-rigor-floor gate)
+# Reconciles "removes X" / "deletes X" / "migrates Y to Z" / "renames X to Y" /
+# "adds field A to type B" claims in the commit body / PR body / intent file
+# against the staged-diff (HEAD vs base). Catches the contract-vs-diff drift
+# class surfaced in waves 1-4. See `scripts/check-contract-reconciliation.py`.
+echo "--- Contract reconciliation ---"
+if [ "$MUTATION_ONLY" = "true" ]; then
+  record "contract_reconciliation" "pass" "Skipped (--mutation-only)"
+elif [ -f scripts/check-contract-reconciliation.py ]; then
+  CR_DIFF=$(mktemp -t cr-diff.XXXX)
+  CR_MSG=$(mktemp -t cr-msg.XXXX)
+  git diff "$BASE"...HEAD > "$CR_DIFF" 2>/dev/null || true
+  # Capture HEAD commit subject + body as the claim source. Architect rev_f1c4ea3c
+  # caught the wiring gap where this script ran without a claim source and silently
+  # passed regardless of what the commit body claimed. Pass --commit-msg so the
+  # gate is no longer decorative.
+  git log -1 --format=%B HEAD > "$CR_MSG" 2>/dev/null || echo "" > "$CR_MSG"
+  # Also pass --intent if a matching intent file exists. Match on the commit
+  # subject's first 4 dash-separated tokens (e.g. "[swarm_M1_83be56fc] Module C ..."
+  # → "swarm-m1" matches `.forgeos/intent/swarm-m1-*.md`).
+  CR_INTENT_FLAG=""
+  CR_SUBJECT=$(head -1 "$CR_MSG" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9 ]//g' | awk '{print $1"-"$2}')
+  if [ -n "$CR_SUBJECT" ] && [ -d .forgeos/intent ]; then
+    CR_INTENT_MATCH=$(find .forgeos/intent -maxdepth 1 -name "*${CR_SUBJECT}*.md" -type f 2>/dev/null | head -1)
+    [ -n "$CR_INTENT_MATCH" ] && CR_INTENT_FLAG="--intent $CR_INTENT_MATCH"
+  fi
+  CR_OUT=$(python3 scripts/check-contract-reconciliation.py --diff "$CR_DIFF" --commit-msg "$CR_MSG" $CR_INTENT_FLAG --quiet 2>&1)
+  CR_EXIT=$?
+  rm -f "$CR_DIFF" "$CR_MSG"
+  if [ "$CR_EXIT" -eq 0 ]; then
+    record "contract_reconciliation" "pass" "All commit/PR/intent claims reconciled with diff"
+  else
+    record "contract_reconciliation" "fail" "Unreconciled claims: $(echo "$CR_OUT" | head -3 | tr '\n' ' ')"
+  fi
+else
+  record "contract_reconciliation" "pass" "check-contract-reconciliation.py not found (skipped)"
+fi
+
+# 3b. Blast-radius (M1 universal-rigor-floor gate)
+# Scans the diff for new public/open symbols, #if DEBUG production reach,
+# test-only public(private(set)) counters, container-init churn, and
+# discarded function results without `// TODO(ticket):` justification.
+# High-severity findings block. See `scripts/check-blast-radius.py`.
+echo "--- Blast-radius ---"
+if [ "$MUTATION_ONLY" = "true" ]; then
+  record "blast_radius" "pass" "Skipped (--mutation-only)"
+elif [ -f scripts/check-blast-radius.py ]; then
+  BR_DIFF=$(mktemp -t br-diff.XXXX)
+  git diff "$BASE"...HEAD > "$BR_DIFF" 2>/dev/null || true
+  BR_OUT=$(python3 scripts/check-blast-radius.py --diff "$BR_DIFF" --quiet 2>&1)
+  BR_EXIT=$?
+  rm -f "$BR_DIFF"
+  if [ "$BR_EXIT" -eq 0 ]; then
+    record "blast_radius" "pass" "No high-severity blast-radius findings"
+  else
+    record "blast_radius" "fail" "High-severity findings: $(echo "$BR_OUT" | head -3 | tr '\n' ' ')"
+  fi
+else
+  record "blast_radius" "pass" "check-blast-radius.py not found (skipped)"
+fi
+
+# 3c. Adjacency staleness (M1 universal-rigor-floor gate, warn-only)
+# Greps comments in the surviving codebase for references to removed/renamed
+# declarations in the diff. Always passes; counts warnings.
+# See `scripts/check-adjacency-staleness.py`.
+echo "--- Adjacency staleness ---"
+if [ "$MUTATION_ONLY" = "true" ]; then
+  record "adjacency_staleness" "pass" "Skipped (--mutation-only)"
+elif [ -f scripts/check-adjacency-staleness.py ]; then
+  ADJ_DIFF=$(mktemp -t adj-diff.XXXX)
+  git diff "$BASE"...HEAD > "$ADJ_DIFF" 2>/dev/null || true
+  ADJ_OUT=$(python3 scripts/check-adjacency-staleness.py --diff "$ADJ_DIFF" --quiet 2>&1)
+  ADJ_EXIT=$?
+  rm -f "$ADJ_DIFF"
+  ADJ_WARN_COUNT=$(echo "$ADJ_OUT" | grep -c "ADJ-STALE" || true)
+  if [ "$ADJ_EXIT" -eq 0 ]; then
+    record "adjacency_staleness" "pass" "0 stale-comment references"
+  else
+    # warn-only: still record pass, but surface the count
+    record "adjacency_staleness" "pass" "${ADJ_WARN_COUNT:-0} stale-comment warning(s) — non-blocking"
+  fi
+else
+  record "adjacency_staleness" "pass" "check-adjacency-staleness.py not found (skipped)"
+fi
+
+# 3d. Intent recorded (M1 universal-rigor-floor gate)
+# Requires a `.forgeos/intent/<name>.md` for diffs ≥10 prod LOC under Palace/.
+# Intent file must have frontmatter (name/created/author) + body sections
+# (## Claims / ## Anti-claims / ## Files in scope). See `scripts/check-intent-recorded.py`.
+echo "--- Intent recorded ---"
+if [ "$MUTATION_ONLY" = "true" ]; then
+  record "intent_recorded" "pass" "Skipped (--mutation-only)"
+elif [ -f scripts/check-intent-recorded.py ]; then
+  IR_DIFF=$(mktemp -t ir-diff.XXXX)
+  git diff "$BASE"...HEAD > "$IR_DIFF" 2>/dev/null || true
+  IR_OUT=$(python3 scripts/check-intent-recorded.py --diff "$IR_DIFF" --quiet 2>&1)
+  IR_EXIT=$?
+  rm -f "$IR_DIFF"
+  if [ "$IR_EXIT" -eq 0 ]; then
+    record "intent_recorded" "pass" "Intent file present (or below threshold)"
+  else
+    record "intent_recorded" "fail" "Intent missing/invalid: $(echo "$IR_OUT" | head -3 | tr '\n' ' ')"
+  fi
+else
+  record "intent_recorded" "pass" "check-intent-recorded.py not found (skipped)"
+fi
+
 # 4. Coverage floors
 echo "--- Coverage Floors ---"
 if [ "$MUTATION_ONLY" = "true" ]; then

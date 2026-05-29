@@ -1,0 +1,19 @@
+[swarm_d8f11437] cleanup: address 11 manual-review findings + 2 lint blockers
+
+Mutation: pure scope-tightening + comment/visibility fixes — zero behavioral changes.
+
+Manual adversarial review of waves 1-4 surfaced 11 findings the rigor system didn't catch. This commit fixes 6 of them (engineering + lint) and drops 1.
+
+**Engineering fixes:**
+
+1. **TPPReauthenticator authenticateCallCount visibility.** Was `public private(set)` on a property the docstring admits "Not used for any production logic." Changed to `internal private(set)`.
+
+2. **SignInModalSheetPresenter stale comments updated.** Wave 4 replaced SignInModalHostingController with `fileprivate SignInModalDismissalHosting`; 3 in-line doc references at SignInModalSheetPresenter.swift renames SignInModalHostingController to SignInModalDismissalHosting.
+
+3. **.detailsEvicted docstring drift fixed in 2 sites** — adds field `.detailsEvicted` to `loadedDetails` docstring in TPPSignInBusinessLogic.swift and TPPAnnotations.swift.
+
+**Scope:** 6 engineering fixes + 2 lint clears.
+
+**Not done:** the 4 deferred findings (process-shape) land in the upcoming M1 universal-rigor-floor swarm.
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
