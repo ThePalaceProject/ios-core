@@ -180,8 +180,11 @@ public final class AudiobookSessionManager: ObservableObject {
     /// Total budget the readiness gate will wait for the toolkit's player
     /// coordinator to finish initializing on the first open. 2.0s matches
     /// the contract from `A-Audiobook-FirstOpen.md` — long enough for
-    /// realistic LCP / OpenAccess init, short enough that a stuck coordinator
-    /// surfaces a load failure rather than a permanent UI hang.
+    /// realistic Findaway / OpenAccess init (~80ms typical), short enough
+    /// that a stuck coordinator surfaces a load failure rather than a
+    /// permanent UI hang. The gate is bypassed entirely for LCP audiobooks
+    /// (see FINDING-B note in `startPlaybackAndSyncPosition`) where this
+    /// timeout would otherwise mis-fire.
     private let readinessTimeout: TimeInterval
 
     // MARK: - Initialization
@@ -223,7 +226,9 @@ public final class AudiobookSessionManager: ObservableObject {
     ///
     /// `readinessProbeFactory` / `playbackCommandFactory` / `readinessTimeout`
     /// default to production wiring (poll `Player.isLoaded`, forward to
-    /// `Player.play(at:)`, 2.0s budget). Tests pass deterministic stubs.
+    /// `Player.play(at:)`, 2.0s budget). LCP audiobooks bypass the gate
+    /// entirely — see the FINDING-B note in `startPlaybackAndSyncPosition`.
+    /// Tests pass shorter values to keep suite time down.
     convenience init(
         appContainer: AppContainer,
         reachabilityProvider: @escaping () -> Reachability = { AppContainer.production().reachability },
@@ -326,7 +331,19 @@ public final class AudiobookSessionManager: ObservableObject {
         let isSameBook = currentBook?.identifier == book.identifier
 
         if state.isActive {
-            await stopPlayback(dismissPhoneUI: !isSameBook)
+            // FINDING-D: skip the teardown's final-position save when re-opening
+            // the SAME book; the prior loan's live position would otherwise
+            // leak into the freshly-borrowed registry record. Decision is
+            // delegated to `PlaybackOpenPolicy.decide` so mutation tests pin
+            // the predicate semantics; see `AudiobookPositionPolicy.swift`.
+            let decision = PlaybackOpenPolicy.decide(
+                isReBorrowOfSameBook: isSameBook,
+                hasDecryptor: false  // not yet known; teardown decision only depends on isSameBook
+            )
+            await stopPlayback(
+                dismissPhoneUI: !isSameBook,
+                persistFinalPosition: decision.persistFinalPositionOnTeardown
+            )
         }
 
         if let error = await validateRequirements(for: book) {
@@ -505,9 +522,17 @@ public final class AudiobookSessionManager: ObservableObject {
     /// Stops playback and clears current session, atomically releasing the
     /// DRM decryptor alongside the manager/audiobook/playbackModel. This is
     /// the only place the previous LCP Publication's file handles are dropped.
-    /// - Parameter dismissPhoneUI: Whether to dismiss the player UI on the phone (default: true)
-    public func stopPlayback(dismissPhoneUI: Bool = true) async {
-        Log.info(#file, "Stopping playback (dismissPhoneUI: \(dismissPhoneUI))")
+    /// - Parameters:
+    ///   - dismissPhoneUI: Whether to dismiss the player UI on the phone (default: true)
+    ///   - persistFinalPosition: Whether to save the current live position to the
+    ///     registry as part of teardown (default: true). Set to `false` when
+    ///     tearing down to re-open the SAME book — between the prior session's
+    ///     last save and now the user may have returned and re-borrowed the
+    ///     book; saving a stale "live" position would inject it into the
+    ///     freshly-borrowed registry record, making the next open seek to a
+    ///     pre-return offset. (FINDING-D: position-leak-across-reborrow.)
+    public func stopPlayback(dismissPhoneUI: Bool = true, persistFinalPosition: Bool = true) async {
+        Log.info(#file, "Stopping playback (dismissPhoneUI: \(dismissPhoneUI), persistFinalPosition: \(persistFinalPosition))")
 
         // Cancel any in-flight loader so its completion is ignored.
         currentLoader?.cancel()
@@ -515,11 +540,13 @@ public final class AudiobookSessionManager: ObservableObject {
 
         let bookId = currentBook?.identifier
 
-        // Prefer the live position from the player over the cached value, which
-        // may lag behind if the user scrubbed or the position update hadn't fired yet.
-        let livePosition = manager?.audiobook.player.currentTrackPosition ?? currentPosition
-        if let position = livePosition {
-            manager?.saveLocation(position)
+        if persistFinalPosition {
+            // Prefer the live position from the player over the cached value, which
+            // may lag behind if the user scrubbed or the position update hadn't fired yet.
+            let livePosition = manager?.audiobook.player.currentTrackPosition ?? currentPosition
+            if let position = livePosition {
+                manager?.saveLocation(position)
+            }
         }
 
         managerCancellables.removeAll()
@@ -685,17 +712,45 @@ public final class AudiobookSessionManager: ObservableObject {
         let command = playbackCommandFactory(loaded.manager.audiobook.player)
         let budget = readinessTimeout
         let bookId = book.identifier
+        // FINDING-B: LCP-streaming players (Palace Marketplace) expose
+        // `isLoaded` as a function of AVPlayer.timeControlStatus == .playing —
+        // which requires `play()` to have already been called. The pre-play
+        // readiness gate (introduced by PR #1020 for the Findaway/OpenAccess
+        // first-open hang in F-011) would therefore deadlock on LCP: we'd
+        // wait forever for an isLoaded signal that only fires AFTER the very
+        // play call we're trying to gate. LCPStreamingPlayer has its own
+        // internal 30s load timeout that surfaces a .failed playback state
+        // if the engine genuinely doesn't start, so the gate's hang-
+        // detection role is already covered by the toolkit on this path.
+        // Skip the gate for LCP audiobooks; keep it for the non-decryptor
+        // (Findaway / OpenAccess / Overdrive) paths where it does its job.
+        // Decision is delegated to `PlaybackOpenPolicy.decideForLoad` so both
+        // the `decryptor != nil` predicate AND the `hasDecryptor →
+        // bypassReadinessGate` mapping are mutation-testable from
+        // `PlaybackOpenPolicyTests`. See `AudiobookPositionPolicy.swift`.
+        let isLCPAudiobook = PlaybackOpenPolicy.decideForLoad(
+            decryptor: loaded.decryptor
+        ).bypassReadinessGate
 
         Task { @MainActor in
             loaded.playbackModel.currentLocation = initialPosition
             loaded.playbackModel.beginSaveSuppression(for: 3.0)
-            await self.awaitReadinessAndIssueFirstPlay(
-                bookId: bookId,
-                initialPosition: initialPosition,
-                probe: probe,
-                command: command,
-                budget: budget
-            )
+            if isLCPAudiobook {
+                do {
+                    try await command.play(at: initialPosition)
+                    Log.info(#file, "🎵 Playback started at initial position (LCP path — gate bypassed)")
+                } catch {
+                    Log.error(#file, "Playback start error (LCP path): \(error)")
+                }
+            } else {
+                await self.awaitReadinessAndIssueFirstPlay(
+                    bookId: bookId,
+                    initialPosition: initialPosition,
+                    probe: probe,
+                    command: command,
+                    budget: budget
+                )
+            }
         }
 
         let audiobookRef = loaded.audiobook
@@ -1280,7 +1335,9 @@ public final class AudiobookSessionManager: ObservableObject {
                 Log.info(#file, "Cold-load failure detected — dismissing player UI and showing unavailable alert")
                 Task { [weak self] in
                     guard let self else { return }
-                    await self.stopPlayback(dismissPhoneUI: true)
+                    // Cold-load failure path: the player never started, so
+                    // there is no meaningful "live position" to persist.
+                    await self.stopPlayback(dismissPhoneUI: true, persistFinalPosition: false)
                     await MainActor.run {
                         let alert = TPPAlertUtils.alert(
                             title: NSLocalizedString("Audiobook Unavailable", comment: "Title when a cold-load playback failure dismisses the player"),

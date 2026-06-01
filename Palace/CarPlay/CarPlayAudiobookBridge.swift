@@ -188,7 +188,9 @@ final class CarPlayAudiobookBridge: ObservableObject {
     /// Phone UI is only dismissed when switching to a different book (handled in openAudiobook).
     func stopCurrentPlayback() {
         Task {
-            await sessionManager.stopPlayback(dismissPhoneUI: false)
+            // CarPlay-initiated stop: the user is intentionally ending this
+            // session, so persist the final position (default behavior).
+            await sessionManager.stopPlayback(dismissPhoneUI: false, persistFinalPosition: true)
         }
         Log.info(#file, "CarPlay: Stopped playback")
     }
