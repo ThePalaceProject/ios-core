@@ -10,6 +10,14 @@ struct AppTabHostView: View {
     private let appContainer: AppContainer
     let bookRegistry: TPPBookRegistryProvider
     @StateObject private var catalogViewModel: CatalogViewModel
+    /// Module B (swarm_0b7616e7) — single ActiveSessionsViewModel for
+    /// the app lifetime. Constructed here (composition root for the
+    /// Continue Reading + Continue Listening rows) and threaded into
+    /// `CatalogView`. The viewmodel observes `bookRegistry`,
+    /// `audiobookSession`, and `.TPPCurrentAccountDidChange` internally,
+    /// so it does not need to be re-created across tab switches or
+    /// library swaps.
+    @StateObject private var activeSessionsViewModel: ActiveSessionsViewModel
 
     init(appContainer: AppContainer = .production()) {
         self.appContainer = appContainer
@@ -33,11 +41,29 @@ struct AppTabHostView: View {
             bookRegistry: appContainer.bookRegistry,
             imageCache: appContainer.imageCache
         ))
+        // Module B (swarm_0b7616e7) composition root for the Continue
+        // Reading row's data source. `DefaultRecentlyReadingService` is
+        // a pure function of `bookRegistry.myBooks` + saved location, so
+        // it carries no extra dependencies and lives as long as the
+        // viewmodel does. Initial state seeds synchronously inside the
+        // viewmodel `init` so the first CatalogView body sees the rows
+        // populated where applicable.
+        let recentlyReading = DefaultRecentlyReadingService(
+            bookRegistry: appContainer.bookRegistry
+        )
+        _activeSessionsViewModel = StateObject(wrappedValue: ActiveSessionsViewModel(
+            recentlyReadingService: recentlyReading,
+            audiobookSession: appContainer.audiobookSession
+        ))
     }
 
     var body: some View {
         TabView(selection: $router.selected) {
-            NavigationHostView(rootView: CatalogView(viewModel: catalogViewModel))
+            NavigationHostView(rootView: CatalogView(
+                viewModel: catalogViewModel,
+                activeSessionsViewModel: activeSessionsViewModel,
+                appContainer: appContainer
+            ))
                 .environmentObject(router)
                 .tabItem {
                     VStack {
@@ -75,6 +101,35 @@ struct AppTabHostView: View {
                 .accessibilityIdentifier(AccessibilityID.TabBar.settingsTab)
         }
         .tint(Color.accentColor)
+        .safeAreaInset(edge: .bottom) {
+            // Module D (swarm_0b7616e7) — root-level mini-player. Visible
+            // when `presenter.hasActiveSession && !presenter.isReaderActive`
+            // (§7.3 Option α). The presenter, `isPlayingProvider`, and
+            // `coverImageProvider` resolve through `appContainer` so a
+            // single composition root drives both production and tests
+            // (via `withAudiobookSessionPresenter(_:)`).
+            AudiobookMiniPlayerView(
+                presenter: appContainer.audiobookSessionPresenter,
+                isPlayingProvider: { [appContainer] in appContainer.audiobookSession.isPlaying },
+                coverImageProvider: { [appContainer] in appContainer.audiobookSession.coverImage },
+                togglePlayPauseAction: { [appContainer] in appContainer.audiobookSession.togglePlayPause() }
+            )
+        }
+        .fullScreenCover(isPresented: Binding(
+            // Module D (swarm_0b7616e7) — root-level full-player presentation.
+            // Binds the SwiftUI `isPresented` to the presenter's
+            // `isPlayerExpanded` @Published value so:
+            //   - tap on mini-player → `presenter.expand()` flips to true → cover shows
+            //   - swipe-down inside the cover → `presenter.minimize()` flips to false → cover dismisses
+            //   - `presenter.presentOnFirstOpen()` (called during F-011) flips true synchronously
+            //     before the readiness gate → cover-art lockup visible during load
+            get: { appContainer.audiobookSessionPresenter.isPlayerExpanded },
+            set: { appContainer.audiobookSessionPresenter.isPlayerExpanded = $0 }
+        )) {
+            AudiobookFullPlayerCoverContainer(
+                presenter: appContainer.audiobookSessionPresenter
+            )
+        }
         .onAppear {
             appContainer.tabRouterHub.router = router
             appContainer.tabRouterHub.applyPending()

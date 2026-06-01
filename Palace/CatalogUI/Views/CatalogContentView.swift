@@ -11,10 +11,29 @@ struct CatalogContentView: View {
     let onEntryPointSelected: (CatalogFilter) -> Void
     let onFacetSelected: (CatalogFilter) -> Void
     let onRefresh: () async -> Void
+    /// Module B (swarm_0b7616e7) — drives the "Continue Listening" +
+    /// "Continue Reading" hero rows prepended above `selectorsView`.
+    /// Injected from `CatalogView`; non-optional so the view always has a
+    /// source of truth (an empty viewmodel renders zero rows — see
+    /// `ContinueRowSection`).
+    @ObservedObject var activeSessions: ActiveSessionsViewModel
+    /// Tap on a Continue Reading card. Routed by `CatalogView` to
+    /// `ReaderService.openEPUB` / `.openPDF` per content type.
+    let onResumeReading: (TPPBook) -> Void
+    /// Tap on a Continue Listening card. Routed by `CatalogView` to
+    /// `AudiobookSessionPresenter.expand()` so the full player surfaces
+    /// (§11 row 3, design doc).
+    let onResumeListening: (TPPBook) -> Void
     var bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            ContinueRowSection(
+                viewModel: activeSessions,
+                onResumeReading: onResumeReading,
+                onResumeListening: onResumeListening
+            )
+
             selectorsView
 
             ScrollViewReader { proxy in

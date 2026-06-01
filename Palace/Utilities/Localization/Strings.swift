@@ -31,6 +31,38 @@ struct Strings {
         static let rightBarButtonItem = NSLocalizedString("Next", comment: "Button title for completing age verification")
     }
 
+    struct CatalogContinueRows {
+        static let continueListeningTitle = NSLocalizedString(
+            "Continue Listening",
+            comment: "Title above the Catalog hero row that resumes the active audiobook session."
+        )
+        static let continueReadingTitle = NSLocalizedString(
+            "Continue Reading",
+            comment: "Title above the Catalog hero row that resumes the most-recent in-progress ebook."
+        )
+        static let continueListeningHint = NSLocalizedString(
+            "Opens the audiobook player.",
+            comment: "VoiceOver hint for the Continue Listening row card; activating it expands the audiobook player."
+        )
+        static let continueReadingHint = NSLocalizedString(
+            "Opens the book at your last position.",
+            comment: "VoiceOver hint for the Continue Reading row card; activating it opens the reader at the saved position."
+        )
+        static let currentlyPlaying = NSLocalizedString(
+            "currently playing",
+            comment: "VoiceOver fragment appended to a Continue Listening row card when the audiobook is actively playing."
+        )
+        static func byAuthor(_ author: String) -> String {
+            String(
+                format: NSLocalizedString(
+                    "by %@",
+                    comment: "VoiceOver fragment '%@' is an author name — used in Continue Listening / Continue Reading card labels."
+                ),
+                author
+            )
+        }
+    }
+
     struct Announcments {
         static let alertTitle = NSLocalizedString("Announcement", comment: "")
         static let ok = NSLocalizedString("OK", comment: "Button to dismiss announcement alert")
@@ -127,6 +159,19 @@ struct Strings {
         static let playAudiobook = NSLocalizedString("Play", comment: "VoiceOver: Play audiobook")
         static let pauseAudiobook = NSLocalizedString("Pause", comment: "VoiceOver: Pause audiobook")
         static let skipBack30 = NSLocalizedString("Skip back 30 seconds", comment: "VoiceOver: Rewind audiobook 30 seconds")
+        // Accessibility - Audiobook mini-player (swarm_0b7616e7 Module D)
+        static let nowPlayingLabelTitleAndAuthor = NSLocalizedString(
+            "Now playing: %1$@ by %2$@. Double-tap to expand.",
+            comment: "VoiceOver: Combined accessibility label for the audiobook mini-player, including title and author"
+        )
+        static let nowPlayingLabelTitleOnly = NSLocalizedString(
+            "Now playing: %1$@. Double-tap to expand.",
+            comment: "VoiceOver: Combined accessibility label for the audiobook mini-player when no author is available"
+        )
+        static let expandPlayerHint = NSLocalizedString(
+            "Expands the full audiobook player",
+            comment: "VoiceOver hint announced for the audiobook mini-player explaining that tapping expands the full player"
+        )
 
         // Accessibility - EPUB Reader (Full Keyboard Access)
         static let bookReader = NSLocalizedString("Book reader", comment: "VoiceOver: Accessibility label for the book reading area")

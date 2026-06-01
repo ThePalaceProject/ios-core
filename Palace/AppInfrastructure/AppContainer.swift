@@ -43,6 +43,20 @@ struct AppContainer {
     /// presenter into AppContainer-driven seams.
     private let _signInModalSheetPresenterOverride: SignInModalSheetPresenter?
 
+    /// Instance-local override for `audiobookSessionPresenter`. Production
+    /// containers leave this `nil` — the computed property falls through
+    /// to the static cache. Tests set this via
+    /// `withAudiobookSessionPresenter(_:)` to inject a spy without
+    /// disturbing the global `_audiobookSessionPresenter` cache. The
+    /// override stays as a `let` per struct value; the modifier produces a
+    /// NEW struct value rather than mutating `self`.
+    ///
+    /// swarm_0b7616e7 Module C — mirrors the
+    /// `_signInModalSheetPresenterOverride` precedent so Module D's tests
+    /// 12-13 (AppTabHostView mini-player + fullScreenCover bindings) can
+    /// inject a spy presenter without going through the static cache.
+    private let _audiobookSessionPresenterOverride: AudiobookSessionPresenter?
+
     /// SwiftUI-observable facade over the static `SignInModalPresenter`
     /// API (swarm_18b0d071 Module A wave 3). Wave 3 migrates ONE caller
     /// (`TPPReauthenticator`) to prove the pattern; wave 4 migrates the
@@ -109,7 +123,60 @@ struct AppContainer {
             tabRouterHub: self.tabRouterHub,
             drmAuthorizerProvider: self.drmAuthorizerProvider,
             authCoordinator: self.authCoordinator,
-            signInModalSheetPresenterOverride: presenter
+            signInModalSheetPresenterOverride: presenter,
+            audiobookSessionPresenterOverride: self._audiobookSessionPresenterOverride
+        )
+    }
+
+    /// Returns a copy of this container with `audiobookSessionPresenter`
+    /// resolved from `presenter` instead of the static cache.
+    ///
+    /// **Test-only seam.** Production code MUST NOT call this — the default
+    /// `audiobookSessionPresenter` resolved from `AppContainer.production()`
+    /// is the single composition-root instance held by the static cache.
+    /// This modifier exists so tests can inject a spy presenter via:
+    ///
+    /// ```swift
+    /// let testContainer = AppContainer.production()
+    ///     .withAudiobookSessionPresenter(spy)
+    /// ```
+    ///
+    /// then pass `testContainer` to a system-under-test whose code path
+    /// resolves `appContainer.audiobookSessionPresenter`. The override is
+    /// preferred over the static cache by the computed property; the
+    /// static cache itself is unaffected.
+    ///
+    /// Modifies a struct copy — does NOT mutate `self` or the static cache.
+    /// Chaining with `withSignInModalSheetPresenter(_:)` preserves both
+    /// overrides because each modifier forwards the other's override.
+    ///
+    /// swarm_0b7616e7 Module C — unblocks Module D's tests 12-13 which
+    /// inject a spy presenter into AppTabHostView-driven seams. Mirrors
+    /// the `withSignInModalSheetPresenter(_:)` precedent from
+    /// swarm_d8f11437 Module B (wave 4).
+    @MainActor
+    func withAudiobookSessionPresenter(_ presenter: AudiobookSessionPresenter) -> AppContainer {
+        return AppContainer(
+            bookRegistry: self.bookRegistry,
+            networkExecutor: self.networkExecutor,
+            networkQueue: self.networkQueue,
+            reachability: self.reachability,
+            accountsManager: self.accountsManager,
+            settings: self.settings,
+            downloadCenter: self.downloadCenter,
+            downloadAnnouncementService: self.downloadAnnouncementService,
+            debugSettings: self.debugSettings,
+            imageCache: self.imageCache,
+            imageLoader: self.imageLoader,
+            userAccountPublisher: self.userAccountPublisher,
+            opdsFeedService: self.opdsFeedService,
+            readerService: self.readerService,
+            navigationCoordinatorHub: self.navigationCoordinatorHub,
+            tabRouterHub: self.tabRouterHub,
+            drmAuthorizerProvider: self.drmAuthorizerProvider,
+            authCoordinator: self.authCoordinator,
+            signInModalSheetPresenterOverride: self._signInModalSheetPresenterOverride,
+            audiobookSessionPresenterOverride: presenter
         )
     }
 
@@ -153,6 +220,29 @@ struct AppContainer {
         return session
     }
 
+    /// Process-wide audiobook session presenter — the root-level
+    /// SwiftUI-observable bridge between the manager's published state and
+    /// the mini-player + full-screen-cover surfaces Module D wires into
+    /// `AppTabHostView`. Lazy + cached the same way `audiobookSession` is.
+    ///
+    /// Resolution order (mirrors `signInModalSheetPresenter`):
+    ///   1. Instance-local `_audiobookSessionPresenterOverride` (test seam,
+    ///      set via `withAudiobookSessionPresenter(_:)`).
+    ///   2. Static `_audiobookSessionPresenter` cache (production path).
+    ///   3. Lazy-init a fresh presenter wired to `self.audiobookSession`,
+    ///      store in the static cache, return it.
+    ///
+    /// swarm_0b7616e7 Module C — introduced for P3 of the in-app audiobook
+    /// navigation design (`docs/architecture/in-app-navigation-during-playback.md`).
+    @MainActor
+    var audiobookSessionPresenter: AudiobookSessionPresenter {
+        if let override = _audiobookSessionPresenterOverride { return override }
+        if let cached = AppContainer._audiobookSessionPresenter { return cached }
+        let presenter = AudiobookSessionPresenter(sessionManager: self.audiobookSession)
+        AppContainer._audiobookSessionPresenter = presenter
+        return presenter
+    }
+
     /// Process-wide playback bootstrapper. Owns the warm-start CarPlay
     /// session-initialization invariant previously held by
     /// `PlaybackBootstrapper.shared`. The provider closure resolves the
@@ -172,6 +262,7 @@ struct AppContainer {
     @MainActor private static var _bookCellModelCache: BookCellModelCache?
     @MainActor private static var _samplePreviewManager: SamplePreviewManager?
     @MainActor private static var _audiobookSession: AudiobookSessionManager?
+    @MainActor private static var _audiobookSessionPresenter: AudiobookSessionPresenter?
     @MainActor private static var _playbackBootstrapper: PlaybackBootstrapper?
 
     init(
@@ -193,7 +284,8 @@ struct AppContainer {
         tabRouterHub: AppTabRouterHub,
         drmAuthorizerProvider: @escaping () -> TPPDRMAuthorizing?,
         authCoordinator: AuthCoordinator,
-        signInModalSheetPresenterOverride: SignInModalSheetPresenter? = nil
+        signInModalSheetPresenterOverride: SignInModalSheetPresenter? = nil,
+        audiobookSessionPresenterOverride: AudiobookSessionPresenter? = nil
     ) {
         self.bookRegistry = bookRegistry
         self.networkExecutor = networkExecutor
@@ -214,6 +306,7 @@ struct AppContainer {
         self.drmAuthorizerProvider = drmAuthorizerProvider
         self.authCoordinator = authCoordinator
         self._signInModalSheetPresenterOverride = signInModalSheetPresenterOverride
+        self._audiobookSessionPresenterOverride = audiobookSessionPresenterOverride
     }
 
     static func production() -> AppContainer {

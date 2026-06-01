@@ -1,11 +1,19 @@
 import SwiftUI
 import UIKit
+import PalaceLogging
 
 struct CatalogView: View {
     // MARK: - Properties
     @EnvironmentObject private var coordinator: NavigationCoordinator
     @StateObject private var viewModel: CatalogViewModel
     @StateObject private var logoObserver = CatalogLogoObserver()
+    /// Module B (swarm_0b7616e7) — drives the Continue Listening +
+    /// Continue Reading rows at the top of the catalog. Held as
+    /// `@ObservedObject` so the owner (`AppTabHostView`) controls the
+    /// lifecycle — the viewmodel is process-wide and outlives any single
+    /// CatalogView instance (library swaps + tab-switches re-create
+    /// `CatalogView`, not the viewmodel).
+    @ObservedObject private var activeSessionsViewModel: ActiveSessionsViewModel
     @State private var currentAccountUUID: String = ""
     @State private var showAccountDialog: Bool = false
     @State private var showAddLibrarySheet: Bool = false
@@ -13,12 +21,24 @@ struct CatalogView: View {
 
     private let accountsManager: AccountsManager
     private let settings: TPPSettings
+    /// Resolves `ReaderService` + `AudiobookSessionPresenter` for the
+    /// resume taps. Held as an `AppContainer` so test injection can
+    /// supply a spy presenter via `withAudiobookSessionPresenter(_:)`.
+    private let appContainer: AppContainer
 
     // MARK: - Initialization
-    init(viewModel: CatalogViewModel, accountsManager: AccountsManager = AppContainer.production().accountsManager, settings: TPPSettings = AppContainer.production().settings) {
+    init(
+        viewModel: CatalogViewModel,
+        activeSessionsViewModel: ActiveSessionsViewModel,
+        accountsManager: AccountsManager = AppContainer.production().accountsManager,
+        settings: TPPSettings = AppContainer.production().settings,
+        appContainer: AppContainer = AppContainer.production()
+    ) {
         _viewModel = StateObject(wrappedValue: viewModel)
+        self.activeSessionsViewModel = activeSessionsViewModel
         self.accountsManager = accountsManager
         self.settings = settings
+        self.appContainer = appContainer
     }
 
     // MARK: - Body
@@ -151,7 +171,10 @@ private extension CatalogView {
                 onFacetSelected: { facet in
                     Task { await viewModel.applyFacet(facet) }
                 },
-                onRefresh: { await viewModel.refresh() }
+                onRefresh: { await viewModel.refresh() },
+                activeSessions: activeSessionsViewModel,
+                onResumeReading: { book in resumeReading(book) },
+                onResumeListening: { book in resumeListening(book) }
             )
             .accessibilityIdentifier(AccessibilityID.Catalog.scrollView)
             .accessibilityLabel(Strings.Generic.catalogRegion)
@@ -286,5 +309,57 @@ private extension CatalogView {
             }
             .padding(.vertical, 17)
         }
+    }
+}
+
+// MARK: - Module B (swarm_0b7616e7) — Continue Reading / Listening seams
+//
+// These two helpers are the production seams that `ContinueRowSection`'s
+// tap closures route through (wired in `CatalogContentView`'s
+// `onResumeReading` / `onResumeListening` parameters). They live in a
+// file-internal extension (not `private`) so
+// `CatalogViewContinueRowsIntegrationTests` can drive them directly
+// without spinning up the full SwiftUI view tree. `ReaderService` is
+// concrete (not protocol-extracted yet) — the integration test for the
+// reader path uses a source-level wiring check; see the test file's
+// "Test 3" header for the scope-deferral rationale.
+
+extension CatalogView {
+    /// Continue Reading row tap. Routes to the existing reader-open flow
+    /// (`ReaderService.openEPUB` for `.epub`, `.openPDF` for `.pdf`).
+    /// Audiobook content is filtered upstream by `RecentlyReadingService`,
+    /// so any non-epub / non-pdf here is a programming error — we no-op
+    /// silently rather than crash, and rely on the source filter as the
+    /// honest contract.
+    @MainActor
+    func resumeReading(_ book: TPPBook) {
+        let readerService = appContainer.readerService
+        switch book.defaultBookContentType {
+        case .epub:
+            readerService.openEPUB(book)
+        case .pdf:
+            readerService.openPDF(book, onFinish: nil)
+        case .audiobook, .unsupported:
+            // Defensive: upstream `RecentlyReadingService` filters these
+            // out; logging keeps the silent no-op observable in production
+            // if the filter ever drifts.
+            Log.warn(#file, "resumeReading invoked for unsupported content type — skipping")
+        }
+    }
+
+    /// Continue Listening row tap. Per §11 row 3 of the in-app
+    /// navigation design, a session that surfaces on this row IS the
+    /// active session — so the right idiom is "expand the player," not
+    /// "re-open the book." We route through the root-level presenter
+    /// (Module C) so the full-screen cover takes over from the catalog.
+    @MainActor
+    func resumeListening(_ book: TPPBook) {
+        // `book` is unused here intentionally — the presenter already
+        // mirrors the active session's book via `currentBook`. The closure
+        // accepts the book so future paths (e.g. tapping a non-active
+        // entry once "recently listened" history lands) can branch on
+        // identity without re-architecting the closure signature.
+        _ = book
+        appContainer.audiobookSessionPresenter.expand()
     }
 }
