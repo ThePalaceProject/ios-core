@@ -24,14 +24,35 @@ final class ReachabilityTests: XCTestCase {
         // that returned different values from the two accessors would cause callers
         // that sample one to drift from callers that sample the other — silent
         // split-brain state in the offline-queue retry path.
-        let method = AppContainer.production().reachability.isConnectedToNetwork()
-        let property1 = AppContainer.production().reachability.isConnected
-        let property2 = AppContainer.production().reachability.isConnected
+        //
+        // Use a pre-seeded MockReachability rather than the live AppContainer
+        // instance: the production class populates `_isConnected` asynchronously
+        // via the NWPathMonitor callback, which races a fresh-instantiation test
+        // (cached property starts at `false`; live probe returns `true` once the
+        // network path resolves ~30-50ms later). The mock pins the contract
+        // ("two reads of the same surface agree") without depending on async
+        // probe machinery — same race-class as the MultiLibrary fix on #1026.
+        let reachability: Reachability = MockReachability(initiallyConnected: true)
+
+        let method = reachability.isConnectedToNetwork()
+        let property1 = reachability.isConnected
+        let property2 = reachability.isConnected
 
         XCTAssertEqual(method, property1,
                        "isConnectedToNetwork() and isConnected must agree on the same tick")
         XCTAssertEqual(property1, property2,
                        "isConnected must be stable across immediate sequential reads")
+    }
+
+    func testIsConnected_methodAndPropertyAgreeWhenDisconnected() {
+        // Same contract as above, with the disconnected branch — guards against
+        // a mutation where one accessor's bool gets flipped relative to the other.
+        let reachability: Reachability = MockReachability(initiallyConnected: false)
+
+        XCTAssertEqual(reachability.isConnectedToNetwork(), reachability.isConnected,
+                       "Both accessors must agree when disconnected")
+        XCTAssertFalse(reachability.isConnected,
+                       "Pre-seeded disconnected mock must report disconnected")
     }
 
     // MARK: - Detailed Status

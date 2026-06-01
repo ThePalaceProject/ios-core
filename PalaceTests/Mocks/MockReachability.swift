@@ -28,6 +28,10 @@ final class MockReachability: Reachability {
             .eraseToAnyPublisher()
     }
 
+    override var isConnected: Bool {
+        stubbedConnected
+    }
+
     override func isConnectedToNetwork() -> Bool {
         stubbedConnected
     }

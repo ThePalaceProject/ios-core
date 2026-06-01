@@ -37,7 +37,11 @@ open class Reachability: NSObject {
     }
 
     private var _isConnected = false
-    public private(set) var isConnected: Bool {
+    /// `open` so test doubles (e.g. `MockReachability`) can override the getter
+    /// to return a deterministic value. The production setter remains private —
+    /// only the `NWPathMonitor` callback in `startMonitoring()` writes the value
+    /// at runtime.
+    open private(set) var isConnected: Bool {
         get { stateLock.lock(); defer { stateLock.unlock() }; return _isConnected }
         set { stateLock.lock(); _isConnected = newValue; stateLock.unlock() }
     }
