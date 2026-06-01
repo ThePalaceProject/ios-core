@@ -402,7 +402,10 @@ struct AppContainer {
 // MARK: - SwiftUI Environment Integration
 
 private struct AppContainerKey: EnvironmentKey {
-    static let defaultValue = AppContainer.production()
+    // Computed so SwiftUI re-routes through production() on every access.
+    // When `_resetForTesting()` rebuilds `_cached`, this default tracks the rebuild
+    // instead of capturing the pre-reset instance once at first read.
+    static var defaultValue: AppContainer { AppContainer.production() }
 }
 
 extension EnvironmentValues {
