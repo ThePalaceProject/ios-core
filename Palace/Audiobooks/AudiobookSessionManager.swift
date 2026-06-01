@@ -331,15 +331,19 @@ public final class AudiobookSessionManager: ObservableObject {
         let isSameBook = currentBook?.identifier == book.identifier
 
         if state.isActive {
-            // Skip the teardown's final-position save when re-opening the SAME
-            // book: the user may have returned + re-borrowed since the prior
-            // session was active, and the prior session's "live" position is
-            // stale for the new loan. Writing it would land in the freshly-
-            // borrowed registry record and make the new open seek to the
-            // pre-return offset (FINDING-D / HelpSpot 17988 Iron Flame
-            // "missing first hour" cluster). For a switch to a different
-            // book, the prior book's position is still valid — persist it.
-            await stopPlayback(dismissPhoneUI: !isSameBook, persistFinalPosition: !isSameBook)
+            // FINDING-D: skip the teardown's final-position save when re-opening
+            // the SAME book; the prior loan's live position would otherwise
+            // leak into the freshly-borrowed registry record. Decision is
+            // delegated to `PlaybackOpenPolicy.decide` so mutation tests pin
+            // the predicate semantics; see `AudiobookPositionPolicy.swift`.
+            let decision = PlaybackOpenPolicy.decide(
+                isReBorrowOfSameBook: isSameBook,
+                hasDecryptor: false  // not yet known; teardown decision only depends on isSameBook
+            )
+            await stopPlayback(
+                dismissPhoneUI: !isSameBook,
+                persistFinalPosition: decision.persistFinalPositionOnTeardown
+            )
         }
 
         if let error = await validateRequirements(for: book) {
@@ -720,7 +724,13 @@ public final class AudiobookSessionManager: ObservableObject {
         // detection role is already covered by the toolkit on this path.
         // Skip the gate for LCP audiobooks; keep it for the non-decryptor
         // (Findaway / OpenAccess / Overdrive) paths where it does its job.
-        let isLCPAudiobook = loaded.decryptor != nil
+        // Decision is delegated to `PlaybackOpenPolicy.decideForLoad` so both
+        // the `decryptor != nil` predicate AND the `hasDecryptor →
+        // bypassReadinessGate` mapping are mutation-testable from
+        // `PlaybackOpenPolicyTests`. See `AudiobookPositionPolicy.swift`.
+        let isLCPAudiobook = PlaybackOpenPolicy.decideForLoad(
+            decryptor: loaded.decryptor
+        ).bypassReadinessGate
 
         Task { @MainActor in
             loaded.playbackModel.currentLocation = initialPosition

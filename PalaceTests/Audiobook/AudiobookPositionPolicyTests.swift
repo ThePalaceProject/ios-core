@@ -293,6 +293,114 @@ final class ChapterTOCNormalizerTests: XCTestCase {
     }
 }
 
+// MARK: - PlaybackOpenPolicy
+//
+// Pins the 2x2 truth table for the openAudiobook teardown + gate-bypass
+// decisions. Both predicates protect against a real, real-device-verified
+// regression class:
+//
+//   FINDING-D (HelpSpot 17988 Iron Flame "missing first hour"): same-book
+//   teardown must NOT save the prior session's live position into the
+//   freshly-borrowed registry record. Predicate flip:
+//   `persistFinalPositionOnTeardown` = `!isReBorrowOfSameBook`.
+//
+//   FINDING-B (HelpSpot 17981 / 17989 / 18002 "won't play"): LCP audiobooks
+//   must NOT wait on the pre-play readiness gate (LCPStreamingPlayer.isLoaded
+//   only flips after AVPlayer.playing, which requires play() — deadlock).
+//   Predicate flip: `bypassReadinessGate` = `hasDecryptor`.
+//
+// Mutation surface this class kills:
+//   * Flipping `hasDecryptor` to `!hasDecryptor` (or `== nil` to `!= nil` at
+//     the production call site in AudiobookSessionManager.startPlaybackAndSyncPosition)
+//     reintroduces FINDING-B and fails Test 3 / Test 4.
+//   * Flipping `!isReBorrowOfSameBook` to `isReBorrowOfSameBook` (or removing
+//     the `!`) reintroduces FINDING-D and fails Test 1 / Test 2.
+//   * Swapping the struct field assignments fails all four tests.
+
+final class PlaybackOpenPolicyTests: XCTestCase {
+
+    // Test 1 — FINDING-D regression guard: re-borrow of same book must
+    // suppress the teardown's final-position save.
+    func testDecide_reBorrowOfSameBook_doesNotPersistFinalPosition() {
+        let decision = PlaybackOpenPolicy.decide(
+            isReBorrowOfSameBook: true,
+            hasDecryptor: false
+        )
+        XCTAssertFalse(decision.persistFinalPositionOnTeardown,
+                       "Same-book teardown must suppress save — otherwise the stale prior-loan position leaks into the freshly-borrowed registry record (FINDING-D / HelpSpot 17988)")
+    }
+
+    // Test 2 — control case for FINDING-D: different-book switch must
+    // persist the prior session's position normally.
+    func testDecide_switchToDifferentBook_persistsFinalPosition() {
+        let decision = PlaybackOpenPolicy.decide(
+            isReBorrowOfSameBook: false,
+            hasDecryptor: false
+        )
+        XCTAssertTrue(decision.persistFinalPositionOnTeardown,
+                      "Switching to a different book must persist the prior book's position — the prior loan is still active, the position is still valid for that loan")
+    }
+
+    // Test 3 — FINDING-B regression guard: LCP audiobook must bypass the
+    // pre-play readiness gate.
+    func testDecide_lcpAudiobook_bypassesReadinessGate() {
+        let decision = PlaybackOpenPolicy.decide(
+            isReBorrowOfSameBook: false,
+            hasDecryptor: true
+        )
+        XCTAssertTrue(decision.bypassReadinessGate,
+                      "LCP path must bypass the gate — LCPStreamingPlayer.isLoaded only flips true after AVPlayer.playing, which requires play() to have been called, so a pre-play gate deadlocks (FINDING-B / HelpSpot 17981/17989/18002)")
+    }
+
+    // Test 4 — control case for FINDING-B: non-LCP audiobook must keep
+    // the gate intact (that's where F-011 / PP-4436 originally fired).
+    func testDecide_nonLCPAudiobook_keepsReadinessGate() {
+        let decision = PlaybackOpenPolicy.decide(
+            isReBorrowOfSameBook: false,
+            hasDecryptor: false
+        )
+        XCTAssertFalse(decision.bypassReadinessGate,
+                       "Non-LCP path (Findaway / Overdrive / OpenAccess) must keep the gate — that's where F-011 first-open hang originally repro'd, and these players' isLoaded reflects manifest-load not audio-play, so the gate works correctly there")
+    }
+
+    // Test 5 — decideForLoad call-site adapter: nil decryptor maps to
+    // "no bypass" (gate stays in place for Findaway / OpenAccess /
+    // Overdrive — that's where F-011 originally fired). Pins the
+    // `decryptor != nil` predicate inside the adapter so a call-site
+    // mutation (`!= nil` → `== nil`) at production line 732 fails the test.
+    func testDecideForLoad_nilDecryptor_keepsGate() {
+        let decision = PlaybackOpenPolicy.decideForLoad(decryptor: nil)
+        XCTAssertFalse(decision.bypassReadinessGate,
+                       "nil decryptor (non-LCP path) must keep the gate — flipping `!= nil` to `== nil` at AudiobookSessionManager.swift would lose F-011 protection on Findaway/OpenAccess and falsely bypass for them")
+    }
+
+    // Test 6 — decideForLoad call-site adapter: non-nil decryptor maps to
+    // "bypass gate" (LCP path). Pins the production call site at line 732.
+    func testDecideForLoad_nonNilDecryptor_bypassesGate() {
+        let fakeDecryptor = NSObject()  // any non-nil AnyObject works — decideForLoad only checks identity
+        let decision = PlaybackOpenPolicy.decideForLoad(decryptor: fakeDecryptor)
+        XCTAssertTrue(decision.bypassReadinessGate,
+                      "non-nil decryptor (LCP path) must bypass the gate — flipping `!= nil` to `== nil` at AudiobookSessionManager.swift would deadlock LCP playback again (FINDING-B)")
+    }
+
+    // Test 7 — the two predicates are independent: the 2x2 truth table.
+    // Pins that `isReBorrowOfSameBook` and `hasDecryptor` don't accidentally
+    // share state via a struct field swap.
+    func testDecide_predicates_areIndependent() {
+        let same_lcp = PlaybackOpenPolicy.decide(isReBorrowOfSameBook: true, hasDecryptor: true)
+        XCTAssertFalse(same_lcp.persistFinalPositionOnTeardown,
+                       "Same-book LCP must still suppress teardown save")
+        XCTAssertTrue(same_lcp.bypassReadinessGate,
+                      "Same-book LCP must still bypass the gate")
+
+        let different_nonlcp = PlaybackOpenPolicy.decide(isReBorrowOfSameBook: false, hasDecryptor: false)
+        XCTAssertTrue(different_nonlcp.persistFinalPositionOnTeardown,
+                      "Different-book non-LCP must persist teardown save")
+        XCTAssertFalse(different_nonlcp.bypassReadinessGate,
+                       "Different-book non-LCP must keep the gate")
+    }
+}
+
 // MARK: - Spy logger
 
 /// Test spy for `AudiobookPositionLogging`. Records every call so tests
