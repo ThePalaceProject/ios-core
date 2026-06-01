@@ -302,6 +302,12 @@ extension OPDS2Publication {
             contributors = ["nrt": narrators.map { $0.name }]
         }
 
+        // PP-4463: the lightweight `OPDS2Publication.Metadata` used here does
+        // not decode `belongsTo` (only the full metadata does). Lightweight
+        // publications back catalog grid cells, which don't display series
+        // info — the SERIES row on Book Detail is driven exclusively by the
+        // `OPDS2FullPublication.toBook()` path below.
+
         return TPPBook(
             acquisitions: acquisitions,
             authors: authors,
@@ -431,6 +437,12 @@ extension OPDS2FullPublication {
         // Extract special links
         let specialLinks = OPDS2BookBridge.extractSpecialLinks(from: links)
 
+        // PP-4463: surface OPDS2 `belongsTo.series[]` into TPPBook so the Book
+        // Detail SERIES row can render. Mirrors OPDS2BookBridge.toBook() above.
+        let firstSeries = metadata.belongsTo?.series?.first
+        let seriesURL = firstSeries?.links?.first?.hrefURL
+        let seriesName = firstSeries?.name
+
         return TPPBook(
             acquisitions: acquisitions,
             authors: authors,
@@ -450,7 +462,8 @@ extension OPDS2FullPublication {
             alternateURL: specialLinks.alternate,
             relatedWorksURL: specialLinks.related,
             previewLink: previewAcquisition,
-            seriesURL: nil,
+            seriesURL: seriesURL,
+            seriesName: seriesName,
             revokeURL: specialLinks.revoke,
             reportURL: specialLinks.report,
             timeTrackingURL: specialLinks.timeTracking,

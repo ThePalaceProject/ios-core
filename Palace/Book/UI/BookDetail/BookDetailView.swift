@@ -591,6 +591,12 @@ struct BookDetailView: View {
                     value: book.distributor,
                     accessibilityID: AccessibilityID.BookDetail.distributorLabel)
 
+            // PP-4463: series row links to the same destination as the bottom
+            // series carousel — CatalogLaneMoreView keyed on book.seriesURL.
+            // Hidden entirely when either the name or the URL is missing so
+            // the Information block stays free of empty rows (AC #2).
+            seriesRow(book: book)
+
             Spacer()
         }
     }
@@ -617,6 +623,38 @@ struct BookDetailView: View {
         Text(label)
             .palaceFont(.caption, weight: .bold)
             .lineLimit(1)
+    }
+
+    /// PP-4463: SERIES information row. Renders only when the book carries
+    /// both a series name and series URL (AC #2). The series name is wrapped
+    /// in a NavigationLink whose destination matches the existing series-lane
+    /// "More" affordance at the bottom of the screen — `CatalogLaneMoreView`
+    /// keyed on `book.seriesURL` — so the row is an alternate path to the
+    /// same list, not a new navigation paradigm (AC #4).
+    @ViewBuilder
+    private func seriesRow(book: TPPBook) -> some View {
+        if let seriesName = book.seriesName, !seriesName.isEmpty,
+           let seriesURL = book.seriesURL {
+            HStack(alignment: .top, spacing: 10) {
+                infoLabel(label: DisplayStrings.series.uppercased())
+                    .frame(minWidth: 100, alignment: .leading)
+                    .fixedSize(horizontal: true, vertical: false)
+                NavigationLink(destination: CatalogLaneMoreView(url: seriesURL, appContainer: appContainer)) {
+                    Text(seriesName)
+                        .font(.subheadline)
+                        .underline()
+                        .lineLimit(nil)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .foregroundColor(.primary)
+                }
+                .accessibilityIdentifier(AccessibilityID.BookDetail.seriesLink)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(DisplayStrings.series): \(seriesName)")
+            .accessibilityAddTraits(.isLink)
+            .accessibilityIdentifier(AccessibilityID.BookDetail.seriesLabel)
+        }
     }
 
     @ViewBuilder private func infoValue(value: String) -> some View {

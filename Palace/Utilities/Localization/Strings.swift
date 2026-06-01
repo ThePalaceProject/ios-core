@@ -668,6 +668,7 @@ struct Strings {
         static let category = NSLocalizedString("Category", comment: "")
         static let categories = NSLocalizedString("Categories", comment: "")
         static let distributor = NSLocalizedString("Distributor", comment: "")
+        static let series = NSLocalizedString("Series", comment: "Book detail metadata label introducing the series this title belongs to")
         static let narrators = NSLocalizedString("Narrators", comment: "")
         static let duration = NSLocalizedString("Duration", comment: "")
         static let more = NSLocalizedString("More", comment: "")
