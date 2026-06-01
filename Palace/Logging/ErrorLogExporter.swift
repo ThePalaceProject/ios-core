@@ -464,44 +464,58 @@ struct ErrorLogData {
     let deviceInfo: String
 }
 
-/// Mail composer delegate
-@MainActor
+/// Mail composer delegate.
+///
+/// `MFMailComposeViewControllerDelegate` is declared `nonisolated` by Apple; a
+/// class-level `@MainActor` conformer crosses isolation at the protocol method
+/// under Xcode 26.3 default strict-concurrency. We drop class-level
+/// `@MainActor`, mark the delegate method `nonisolated`, and hop to MainActor
+/// inside the body for the UIKit work (`dismiss`, `UIAlertController`,
+/// `present`). The `shared` singleton is now isolation-free; correctness rests
+/// on the body being the only mutation site. See
+/// `.forgeos/swarms/swarm_f88ae9e3/transcripts/E-actor-isolation-xcode-26-3.md`.
 private class MailComposerDelegate: NSObject, MFMailComposeViewControllerDelegate {
     static let shared = MailComposerDelegate()
 
-    func mailComposeController(
+    nonisolated func mailComposeController(
         _ controller: MFMailComposeViewController,
         didFinishWith result: MFMailComposeResult,
         error: Error?
     ) {
-        controller.dismiss(animated: true)
+        // `controller` arrives by parameter (no captured state); the closure
+        // body below executes its UIKit work on the main actor.
+        let resultCopy = result
+        let errorCopy = error
+        Task { @MainActor in
+            controller.dismiss(animated: true)
 
-        guard let presentingVC = controller.presentingViewController else { return }
+            guard let presentingVC = controller.presentingViewController else { return }
 
-        switch result {
-        case .sent:
-            let alert = UIAlertController(
-                title: "Logs Sent",
-                message: "Thank you! Your diagnostic logs have been sent to the Palace team.",
-                preferredStyle: .alert
-            )
-            alert.addAction(UIAlertAction(title: "OK", style: .default))
-            presentingVC.present(alert, animated: true)
+            switch resultCopy {
+            case .sent:
+                let alert = UIAlertController(
+                    title: "Logs Sent",
+                    message: "Thank you! Your diagnostic logs have been sent to the Palace team.",
+                    preferredStyle: .alert
+                )
+                alert.addAction(UIAlertAction(title: "OK", style: .default))
+                presentingVC.present(alert, animated: true)
 
-        case .failed:
-            let alert = UIAlertController(
-                title: "Send Failed",
-                message: error?.localizedDescription ?? "Failed to send logs. Please try again.",
-                preferredStyle: .alert
-            )
-            alert.addAction(UIAlertAction(title: "OK", style: .default))
-            presentingVC.present(alert, animated: true)
+            case .failed:
+                let alert = UIAlertController(
+                    title: "Send Failed",
+                    message: errorCopy?.localizedDescription ?? "Failed to send logs. Please try again.",
+                    preferredStyle: .alert
+                )
+                alert.addAction(UIAlertAction(title: "OK", style: .default))
+                presentingVC.present(alert, animated: true)
 
-        case .cancelled, .saved:
-            break
+            case .cancelled, .saved:
+                break
 
-        @unknown default:
-            break
+            @unknown default:
+                break
+            }
         }
     }
 }

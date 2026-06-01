@@ -63,6 +63,7 @@ cd "$REPO_ROOT"
 QUICK=false
 REPORT_FILE=""
 SIMDRIVE=false
+DIFF_BASELINE=false
 # Mutation policy tri-state:
 #   default        — critical paths strict, others advisory
 #   enforce_all    — every changed file strict (--enforce-mutations)
@@ -461,6 +462,45 @@ elif [ -f scripts/check-intent-recorded.py ]; then
 else
   record "intent_recorded" "pass" "check-intent-recorded.py not found (skipped)"
 fi
+
+# 3e. Wave 2 lint suite (warn-only initial state — Wave 3 cleanup PR escalates)
+# Five stdlib-Python scripts that catch test-fluff / singleton-leak / sleep /
+# protocol-isolation / tautology patterns at lint time. ALL warn-only here: we
+# capture stderr, log a one-line summary, and never block. Wave 3 escalates the
+# applicable scripts to blocking once the existing-violation baseline is cleared.
+# Source: swarm_b503a876 Module B (Wave 2 lint suite).
+W2_LINT_DIFF=$(mktemp -t w2-lint-diff.XXXX)
+git diff "$BASE"...HEAD > "$W2_LINT_DIFF" 2>/dev/null || true
+
+run_w2_warn() {
+  local name="$1" script="$2"
+  if [ "$MUTATION_ONLY" = "true" ]; then
+    record "$name" "pass" "Skipped (--mutation-only)"
+    return
+  fi
+  if [ ! -f "scripts/$script" ]; then
+    record "$name" "pass" "scripts/$script not found (skipped)"
+    return
+  fi
+  echo "--- W2 lint: $name (warn-only) ---"
+  local out
+  out=$(python3 "scripts/$script" --diff "$W2_LINT_DIFF" --quiet 2>&1) || true
+  local count
+  count=$(echo "$out" | grep -cE "(SINGLETON-LEAK|KEYCHAIN-GUARD|SLEEP-IN-TEST|PROTOCOL-ISO|TEST-TAUTOLOGY)" || true)
+  if [ "${count:-0}" -gt 0 ]; then
+    record "$name" "pass" "${count} finding(s) — warn-only (Wave 3 will escalate)"
+  else
+    record "$name" "pass" "0 findings"
+  fi
+}
+
+run_w2_warn "w2_singleton_leaks"        "check-singleton-leaks.py"
+run_w2_warn "w2_keychain_guard"         "check-keychain-guard-coverage.py"
+run_w2_warn "w2_sleep_in_tests"         "check-sleep-in-tests.py"
+run_w2_warn "w2_protocol_isolation"     "check-protocol-isolation.py"
+run_w2_warn "w2_test_tautology"         "check-test-tautology.py"
+
+rm -f "$W2_LINT_DIFF"
 
 # 4. Coverage floors
 echo "--- Coverage Floors ---"

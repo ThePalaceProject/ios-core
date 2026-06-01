@@ -197,6 +197,41 @@ EOF
   esac
 fi
 
+# =============================================================================
+# Wave 2 lint suite (swarm_b503a876 Module B) — warn-only initial state
+# =============================================================================
+#
+# Five lint scripts catching test-fluff / singleton-leak / sleep /
+# protocol-isolation / tautology patterns at commit time. ALL warn-only here:
+# we run, print the count to stderr, and never block. Wave 3 cleanup PR will
+# escalate the applicable scripts to the M1 tri-state once the existing
+# baseline is cleared.
+#
+# Each script reads the staged diff and prints findings to stderr. The
+# pre-commit failure budget is unaffected — Wave 2 is a leading indicator,
+# not a gate, until Wave 3 closes the baseline.
+
+run_w2_warn() {
+  local name="$1" script="$2"
+  if [[ ! -f "$REPO_ROOT_M1/scripts/$script" ]]; then
+    return 0
+  fi
+  local out exit_code=0
+  out=$(python3 "$REPO_ROOT_M1/scripts/$script" --diff "$M1_DIFF" --quiet 2>&1) || exit_code=$?
+  if [[ "$exit_code" -ne 0 ]]; then
+    local count
+    count=$(echo "$out" | grep -cE "(SINGLETON-LEAK|KEYCHAIN-GUARD|SLEEP-IN-TEST|PROTOCOL-ISO|TEST-TAUTOLOGY)" || true)
+    echo "  pre-commit W2 (warn-only): $name — ${count:-0} finding(s) [Wave 3 will escalate]" >&2
+  fi
+  return 0
+}
+
+run_w2_warn "singleton_leaks"    "check-singleton-leaks.py"
+run_w2_warn "keychain_guard"     "check-keychain-guard-coverage.py"
+run_w2_warn "sleep_in_tests"     "check-sleep-in-tests.py"
+run_w2_warn "protocol_isolation" "check-protocol-isolation.py"
+run_w2_warn "test_tautology"     "check-test-tautology.py"
+
 # Friendly nudge — non-blocking. Only print if anything is staged at all.
 echo "pre-commit: ok. Tip — run 'scripts/verify-pr.sh --quick' before pushing."
 exit 0

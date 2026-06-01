@@ -7,7 +7,13 @@ import PalaceCatalog
 final class HoldsBookViewModel: ObservableObject, Identifiable {
     let book: TPPBook
 
-    var id: String { book.identifier }
+    // Identifiable conformance: `book` is a `let TPPBook`, immutable reference;
+    // `identifier` access is safe from nonisolated contexts. Annotating
+    // `nonisolated` lets us satisfy `Identifiable` (a nonisolated marker
+    // protocol) without the "crosses into main actor" warning under Xcode 26.3
+    // default strict-concurrency. See
+    // `.forgeos/swarms/swarm_f88ae9e3/transcripts/E-actor-isolation-xcode-26-3.md`.
+    nonisolated var id: String { book.identifier }
 
     var isReserved: Bool {
         var reservedFlag = false
