@@ -81,7 +81,7 @@ protocol AudiobookSessionManaging: AnyObject {
     func cyclePlaybackRate() -> PlaybackRate
 
     /// Stops playback and clears the current session.
-    func stopPlayback(dismissPhoneUI: Bool) async
+    func stopPlayback(dismissPhoneUI: Bool, persistFinalPosition: Bool) async
 
     /// Updates the cover image for Now Playing display.
     func updateCoverImage(_ image: UIImage?)
