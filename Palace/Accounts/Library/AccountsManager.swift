@@ -167,7 +167,41 @@ struct CatalogCacheMetadata: Codable {
     /// to keep the flag flip scoped. NOT compiled into release builds.
     ///
     /// See `feedback_wiring_suite_test_isolation.md` for the underlying race.
-    internal static var deferInitialLoadCatalogsForTesting: Bool = false
+    ///
+    /// swarm_4b64e4e0 Wave 1d — default value now derives from
+    /// `XCTestConfigurationFilePath` env var. When this process is hosting
+    /// XCTest, the flag defaults to `true` so the very first cached
+    /// `AppContainer.production()` call (which may happen before any test's
+    /// setUp — e.g. via a static `let` or default arg in a class touched by
+    /// the test runner's discovery phase) doesn't fire a background
+    /// `loadCatalogs` Task that races with later test-fixture seeds. Tests
+    /// that need the background `loadCatalogs` to fire (e.g.
+    /// `AppContainerResetTests`) explicitly flip the flag back to `false`
+    /// in their own setUp. Production runs (no `XCTestConfigurationFilePath`
+    /// in the env) keep the original `false` default so the background load
+    /// fires as designed.
+    internal static var deferInitialLoadCatalogsForTesting: Bool = {
+        return ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+    }()
+
+    /// Test-only handle to the post-init background `loadCatalogs` task so
+    /// `cancelBackgroundWork()` can issue cooperative cancellation. Only ever
+    /// non-nil under DEBUG builds AND when `deferInitialLoadCatalogsForTesting`
+    /// was `false` at init time. Production reads this field implicitly via
+    /// `cancelBackgroundWork()` (called by `AppContainer._resetForTesting()`);
+    /// production does NOT pay the storage cost in release builds because the
+    /// whole field is `#if DEBUG`-gated.
+    ///
+    /// swarm_4b64e4e0 Fix 2 — closes the H1 finding from swarm_f88ae9e3 A.
+    private var backgroundFetchTask: Task<Void, Never>?
+
+    /// Test-only flag flipped to `true` inside `cancelBackgroundWork()` BEFORE
+    /// the `.cancel()` is issued on `backgroundFetchTask`. Used by
+    /// `AccountsManagerCancellationTests` to disambiguate "explicit cancel was
+    /// called" from "task handle was nilled out by some other path." swarm_4b64e4e0
+    /// qa-fixup — addresses qa_test concern about the prior single observation
+    /// surface conflating those two semantics.
+    private var _explicitCancelCalled: Bool = false
     #endif
 
     /// Initializer is `internal` rather than `private` so `AppContainer` can
@@ -208,11 +242,19 @@ struct CatalogCacheMetadata: Codable {
             // explicitly. Production never takes this branch.
             return
         }
-        #endif
-
+        // DEBUG-only arm: use `Task.detached` so the background work is
+        // cancellable from `cancelBackgroundWork()` (called by
+        // `AppContainer._resetForTesting()`). Production continues to use
+        // `DispatchQueue.global(qos: .background).async` — byte-identical to
+        // the prior behaviour. swarm_4b64e4e0 Fix 2.
+        backgroundFetchTask = Task.detached(priority: .background) { [weak self] in
+            self?.loadCatalogs(completion: nil)
+        }
+        #else
         DispatchQueue.global(qos: .background).async { [weak self] in
             self?.loadCatalogs(completion: nil)
         }
+        #endif
     }
 
     /// Hydrate `accountSets[accountSet]` from the on-disk OPDS2 catalog cache
@@ -588,6 +630,14 @@ struct CatalogCacheMetadata: Codable {
         // still runs to pick up anything that changed since the snapshot
         // was cut, so this is purely a fast-path for cold first launch.
         if let bundledData = BundledRegistrySnapshot.load() {
+            // Cooperative-cancel guard: if our enclosing Task was cancelled
+            // between the bundled-load decision and the disk write, skip the
+            // cache write. Mirrors the guard in `fetchFromNetwork` on the
+            // post-await branch. Without this, a cancelled background
+            // `loadCatalogs` Task can still race a fixture-seeded test:
+            // cancel→continue→write-bundled-snapshot overwrites the test's
+            // 171-account fixture with the 1142 bundled accounts on disk.
+            if Task.isCancelled { return }
             Log.info(#file, "First launch — loading bundled registry snapshot for hash \(hash), dataSize=\(bundledData.count)")
             // isBundled=true keeps the cache flagged as non-authoritative so
             // every subsequent loadCatalogs call still triggers refresh until
@@ -622,6 +672,14 @@ struct CatalogCacheMetadata: Codable {
 
             // Step 1: Fetch first page for immediate display
             let firstPageResult = await crawler.crawlFirstPage(baseURL: targetUrl)
+            // Cooperative cancellation observation (swarm_4b64e4e0 Fix 2):
+            // if `cancelBackgroundWork()` was called while we were awaiting
+            // `crawlFirstPage`, drop the result on the floor instead of
+            // writing through to `accountSets` / `cacheAccountsCatalogData`.
+            // Without this, a test that `_resetForTesting()`s the AppContainer
+            // mid-fetch still sees the prior `AccountsManager`'s response
+            // land in its caches a few ms later.
+            if Task.isCancelled { return }
 
             switch firstPageResult {
             case .success(let firstPageData, let firstPage):
@@ -1172,6 +1230,92 @@ extension AccountsManager {
     /// reachable from outside the class.
     func _testSetAccountSet(_ accounts: [Account], forKey key: String) {
         performWrite { self.accountSets[key] = accounts }
+    }
+
+    /// Test-only: cancel the in-flight background `loadCatalogs` Task (if any)
+    /// and the network executor's non-essential URL session tasks. Cooperative
+    /// — returns immediately after issuing the cancel; observation is delegated
+    /// to the Task's own `Task.isCancelled` check inside `fetchFromNetwork`.
+    /// Idempotent: safe to call repeatedly. Does NOT mutate persistent state;
+    /// only cancels in-flight async work.
+    ///
+    /// Production-safe — guarded by `#if DEBUG` and called only from
+    /// `AppContainer._resetForTesting()`. swarm_4b64e4e0 Fix 2 — closes the
+    /// H1 finding from swarm_f88ae9e3 A.
+    ///
+    /// Residual race window (documented intentional): if `loadCatalogs` is
+    /// already past the post-await `Task.isCancelled` check inside
+    /// `fetchFromNetwork`, the network response still lands in `accountSets`
+    /// on the OLD AccountsManager instance — but the OLD instance is no
+    /// longer reachable from `AppContainer.production()` post-reset, so the
+    /// write is observable only by code paths holding a strong reference to
+    /// the prior `accountsManager` (vanishingly few in tests; none in
+    /// production). Acceptable per swarm_4b64e4e0 outcome.md.
+    func cancelBackgroundWork() {
+        // Order matters: flip the explicit-cancel flag BEFORE issuing the
+        // .cancel() so the observation surface
+        // `_backgroundFetchTaskWasExplicitlyCancelled` distinguishes "we
+        // called cancel" from "the handle was nilled by some other path."
+        // swarm_4b64e4e0 qa-fixup Fix 3.
+        _explicitCancelCalled = true
+        backgroundFetchTask?.cancel()
+        backgroundFetchTask = nil
+        networkExecutor.cancelNonEssentialTasks()
+    }
+
+    /// Test-only setter that swaps a caller-provided Task into
+    /// `backgroundFetchTask`. Used by the race-guard test in
+    /// `AccountsManagerCancellationTests` to install a Task it controls (via
+    /// a CheckedContinuation) so it can drive cancel-mid-await semantics
+    /// without going through a live network round-trip. Returns the prior
+    /// task so the caller can restore it or cancel it as needed.
+    ///
+    /// swarm_4b64e4e0 qa-fixup Fix 2 — addresses qa_test concern that the
+    /// cooperative-cancel guard at line 651 of `fetchFromNetwork` has no
+    /// behavioral test covering the post-resume branch.
+    @discardableResult
+    func _injectBackgroundFetchTaskForTesting(_ task: Task<Void, Never>?) -> Task<Void, Never>? {
+        let prior = backgroundFetchTask
+        backgroundFetchTask = task
+        return prior
+    }
+
+    /// Test-only observation surface. Returns `true` iff `cancelBackgroundWork()`
+    /// was called on this instance (the flag is flipped BEFORE the underlying
+    /// `.cancel()` call so a partial cancel-then-throw cannot leave this
+    /// false). Pin this in tests when you want to prove the explicit
+    /// production seam was invoked, distinct from the task handle being nil.
+    ///
+    /// swarm_4b64e4e0 qa-fixup Fix 3.
+    var _backgroundFetchTaskWasExplicitlyCancelled: Bool {
+        return _explicitCancelCalled
+    }
+
+    /// Test-only observation surface. Returns `true` iff `backgroundFetchTask`
+    /// is currently `nil` (post-cancel cleanup OR pre-init OR opt-out
+    /// construction). Pin this in tests when you want to prove the handle
+    /// was nilled out.
+    ///
+    /// swarm_4b64e4e0 qa-fixup Fix 3.
+    var _backgroundFetchTaskHandleIsNil: Bool {
+        return backgroundFetchTask == nil
+    }
+
+    /// Test-only observation surface for `backgroundFetchTask`. Returns
+    /// `true` if the task is currently in a cancelled state OR if the task
+    /// handle has been nilled out by `cancelBackgroundWork()`. Used by
+    /// `AccountsManagerCancellationTests` to verify the cooperative-cancel
+    /// invariant without poking at the private storage directly.
+    ///
+    /// - DEPRECATED in qa-fixup: this property conflates "explicit cancel
+    ///   was called" with "task handle was nilled." Prefer
+    ///   `_backgroundFetchTaskWasExplicitlyCancelled` AND
+    ///   `_backgroundFetchTaskHandleIsNil` together so a mutation that
+    ///   removes only ONE of the two effects fails its dedicated test.
+    @available(*, deprecated, message: "Use _backgroundFetchTaskWasExplicitlyCancelled + _backgroundFetchTaskHandleIsNil so cancel-vs-nil mutations are independently observable. See swarm_4b64e4e0 qa-fixup Fix 3.")
+    var _backgroundFetchTaskIsCancelledOrCleared: Bool {
+        guard let task = backgroundFetchTask else { return true }
+        return task.isCancelled
     }
 }
 #endif

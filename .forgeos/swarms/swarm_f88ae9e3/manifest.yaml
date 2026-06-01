@@ -1,0 +1,166 @@
+swarm_id: swarm_f88ae9e3
+task: "iOS test flakiness investigation"
+status: investigation_complete
+mode: investigation_only  # NO code changes by implementers
+created_at: 2026-05-29
+architect_review:  # filled in by Phase 1a
+
+problem_summary: |
+  Develop CI red since 2026-05-28 14:44 UTC (8 consecutive failures).
+  PRs #1020-#1025 all UNSTABLE despite correct content (admin-merged).
+  M1's targeted 23-class pre-push gate PASSES — flake is in the full suite,
+  not in the changed code. CI evidence shows 5 distinct structural patterns
+  (state residue, async teardown, keychain entitlement, stub race, actor
+  isolation) amplified by random test execution ordering. Goal: unified
+  permanent-fix plan, NOT implementation.
+
+modules:
+  - name: A-singleton-residue
+    contract_path: .forgeos/swarms/swarm_f88ae9e3/contracts/A-singleton-residue.md
+    files_scope:
+      read_only:
+        - PalaceTests/Accounts/
+        - PalaceTests/ViewModels/
+        - PalaceTests/MyBooks/
+        - PalaceTests/SignInLogic/
+        - PalaceTests/Integration/
+        - PalaceTests/Chaos/ChaosFaultInjectionTests.swift
+        - PalaceTests/CoverageGapTests3.swift
+        - PalaceTests/ButtonStateTests.swift
+        - Palace/Accounts/Library/AccountsManager.swift  # reference: skipBackgroundLoadCatalogs at L157
+    implementer_prompt_short: |
+      Enumerate every PalaceTests file that mutates a real singleton (.shared,
+      .production(), UserDefaults.standard, NotificationCenter.default) without
+      a corresponding reset in tearDown/tearDownWithError. Output file:line
+      table with HIGH/MED/LOW severity. Do NOT edit any files. See contract.
+
+  - name: B-async-combine-teardown
+    contract_path: .forgeos/swarms/swarm_f88ae9e3/contracts/B-async-combine-teardown.md
+    files_scope:
+      read_only:
+        - PalaceTests/Contract/
+        - PalaceTests/Audiobooks/
+        - PalaceTests/MyBooks/
+        - PalaceTests/CatalogUI/
+        - PalaceTests/CarPlay/
+        - PalaceTests/Security/
+        - PalaceTests/Integration/
+        - PalaceTests/XCTestCase+drainMainQueue.swift  # reference helper
+    implementer_prompt_short: |
+      Enumerate every PalaceTests file that fires Task{}/Task.detached or stores
+      Set<AnyCancellable> without a paired drain/cancel in tearDown. Also list
+      every Task.sleep/Thread.sleep occurrence in test bodies (vs mock fixtures).
+      Output file:line table with HIGH/MED/LOW. Do NOT edit any files.
+
+  - name: C-keychain-entitlement
+    contract_path: .forgeos/swarms/swarm_f88ae9e3/contracts/C-keychain-entitlement.md
+    files_scope:
+      read_only:
+        - PalaceTests/  # full scan
+        - PalaceTests/Keychain/KeychainAvailability.swift  # reference guard
+        - Palace/Packages/PalaceKeychain/  # SPM module
+    implementer_prompt_short: |
+      Set-difference: every test file that uses TPPUserAccount.shared/.sharedAccount,
+      TPPKeychain, or transitively a sign-in business-logic method, MINUS every file
+      that calls KeychainAvailability.skipIfUnavailable() in setUpWithError. Output
+      the gap list with severity. Do NOT edit any files.
+
+  - name: D-network-stub-race
+    contract_path: .forgeos/swarms/swarm_f88ae9e3/contracts/D-network-stub-race.md
+    files_scope:
+      read_only:
+        - PalaceTests/HTTPStubURLProtocol.swift  # framework, read-only
+        - PalaceTests/URLSession+Stubbing.swift  # framework, read-only
+        - PalaceTests/NoNetworkURLProtocol.swift  # framework, read-only
+        - PalaceTests/SignInLogic/
+        - PalaceTests/MyBooks/Download*.swift
+        - PalaceTests/Integration/
+        - PalaceTests/Sync/
+        - PalaceTests/OPDS2/
+        - PalaceTests/DRM/LCPCharacterizationTests.swift
+        - PalaceTests/Security/
+    implementer_prompt_short: |
+      Enumerate the 33 PalaceTests files using HTTPStubURLProtocol/stubbedSession.
+      For each, classify stub teardown discipline (clean/missing/mixed-session).
+      Note URL-key collisions across files. Output table with HIGH/MED/LOW. Do
+      NOT edit any files.
+
+  - name: E-actor-isolation-xcode-26-3
+    contract_path: .forgeos/swarms/swarm_f88ae9e3/contracts/E-actor-isolation-xcode-26-3.md
+    files_scope:
+      read_only:
+        - Palace/CarPlay/CarPlayTemplateManager.swift
+        - Palace/Holds/HoldsViewModel.swift
+        - Palace/Settings/AccountDetailViewModel.swift
+        - Palace/Logging/ErrorLogExporter.swift
+        - Palace/SignInLogic/TPPSignInBusinessLogicUIDelegate.swift
+        - Palace/Network/  # URLSession delegate conformances
+        - Palace/AppInfrastructure/  # UN* delegates
+        - ios-audiobooktoolkit/PalaceAudiobookToolkit/Player/
+    implementer_prompt_short: |
+      Enumerate every @MainActor class that conforms to a known-nonisolated
+      Apple or internal protocol. For each: classify as ANNOTATE_PROTOCOL,
+      ADD_PRECONCURRENCY, SPLIT_NONISOLATED_FACADE, or ISOLATE_TO_MAINACTOR
+      shape. Flag Swift 6 blockers. Cleanly separate Palace/ from
+      ios-audiobooktoolkit/. Do NOT edit any files.
+
+  - name: F-suite-ordering-amplifier
+    contract_path: .forgeos/swarms/swarm_f88ae9e3/contracts/F-suite-ordering-amplifier.md
+    files_scope:
+      read_only:
+        - Palace.xcodeproj/xcshareddata/xcschemes/Palace.xcscheme
+        - Palace.xcodeproj/xcshareddata/xcschemes/Palace-noDRM.xcscheme
+        - Palace.xcodeproj/  # search for .xctestplan
+        - PalaceTests/PalaceTestSetup.swift
+        - scripts/verify-pr.sh
+    implementer_prompt_short: |
+      Confirm testExecutionOrdering=random in both schemes. Audit PalaceTestSetup
+      for global resets. Identify M1's 23-class subset and why it's immune.
+      Cross-reference Investigator A's HIGH findings to identify pair-wise
+      ordering flake candidates. Output narrative + table. Do NOT edit anything.
+
+anti_scope:
+  - Any production-code edits in Palace/
+  - Any test-file edits in PalaceTests/
+  - Any scheme / xctestplan / pbxproj edits
+  - Any DI refactor proposal beyond flagging
+  - Swift 6 mode enablement decision
+  - ios-audiobooktoolkit code changes (submodule has separate pipeline)
+  - simdrive / UI test changes
+
+dispatch_order:
+  wave_1: [A, B, C, D, E, F]  # all six in parallel; no sequential dependency
+
+acceptance_criteria:
+  unified_report_must_include:
+    - per_category_finding_counts_with_severity
+    - top_20_highest_severity_findings_across_all_categories
+    - structural_fix_proposals  # base classes, lint scripts, CI gates — NOT per-test fixes
+    - sequencing_recommendation  # which structural fix lands first
+    - stop_the_bleeding_patch_list  # 5-10 specific test files that, if fixed now, restore green
+    - re_flake_prevention_checklist  # paste into CLAUDE.md TDD section
+    - wall_failure_entry_stubs  # one per category, for .forgeos/wall-failures/
+
+risks:
+  - A_D_overlap: AppContainer.urlSession swap counts in both
+  - B_F_overlap: Task mutating singleton mid-tearDown counts in three
+  - E_overscope: ios-audiobooktoolkit Sendable warnings ship via different pipeline
+  - G_H_merged: simulator state + date-now lacked evidence — investigators flag if discovered
+  - wiring_mitigation_exists: skipBackgroundLoadCatalogs already at AccountsManager.swift:157
+                              — A treats as coverage gap, not capability gap
+
+evidence_anchors:
+  ci_run: "PR #1020 / run 26593379677"
+  ci_log_dates: "2026-05-28 18:19 - 18:39 UTC"
+  damning_lines:
+    - "numAccounts=100 → numAccounts=1150 in same process, 90s apart"
+    - "TokenRefreshOnForegroundTests.test_ConcurrentForegroundRequests_ProduceOneTokenRefresh failed (30.353s)"
+    - "Failed to ADD/REMOVE keychain. Error: -34018 (errSecMissingEntitlement)"
+    - "Sign-in redirection error: missing payload Code=314 (fabricated test URL escaped stub)"
+    - "CarPlayTemplateManager / HoldsViewModel / AccountDetailViewModel — main actor conformance crosses (Xcode 26.3)"
+  memory_pins_referenced:
+    - feedback_wiring_suite_test_isolation
+    - feedback_keychain_test_guard
+    - feedback_ci_safe_tests
+    - feedback_verify_pr_false_positives
+    - regression_develop_2026_05_11_evening
