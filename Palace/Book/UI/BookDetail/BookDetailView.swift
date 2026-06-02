@@ -32,6 +32,13 @@ struct BookDetailView: View {
     @AccessibilityFocusState private var isTitleFocused: Bool
     @State private var initialLayoutComplete: Bool = false
     @State private var currentOrientation: UIDeviceOrientation = UIDevice.current.orientation
+    /// Tracks whether this view instance has already laid out its collapsing
+    /// header. `.onAppear` fires again on back-navigation (e.g. returning from
+    /// the series list), but the ScrollView keeps its scrolled-down position —
+    /// so re-running the expand reset would leave an expanded header stranded
+    /// over scrolled content. Reset the header only on the first appearance and
+    /// preserve the collapsed/expanded state on subsequent re-appearances.
+    @State private var hasAppeared: Bool = false
 
     private let scaleAnimation = Animation.linear(duration: 0.35)
 
@@ -79,6 +86,9 @@ struct BookDetailView: View {
                         let newSummary = viewModel.book.summary ?? ""
                         if self.descriptionText != newSummary { self.descriptionText = newSummary }
                         proxy.scrollTo(0, anchor: .top)
+                        // A genuinely new book scrolls back to the top, so the
+                        // collapsing header must expand to match (see hasAppeared).
+                        expandHeader()
                     } else {
                         let newSummary = viewModel.book.summary ?? self.descriptionText
                         if self.descriptionText != newSummary { self.descriptionText = newSummary }
@@ -89,12 +99,14 @@ struct BookDetailView: View {
                 headerColor = Color(viewModel.book.dominantUIColor)
                 lastBookIdentifier = viewModel.book.identifier
 
-                showCompactHeader = false
-                headerHeight = viewModel.isFullSize ? 300 : 225
-                imageScale = 1.0
-                imageOpacity = 1.0
-                titleOpacity = 1.0
-                lastOffset = 0
+                // Only reset the collapsing header on the first appearance.
+                // On back-navigation the ScrollView retains its offset, so
+                // preserving the header state keeps it in sync with the
+                // scroll position instead of snapping back to fully expanded.
+                if !hasAppeared {
+                    hasAppeared = true
+                    expandHeader()
+                }
 
                 viewModel.fetchRelatedBooks()
                 Task { await viewModel.hydrateMetadataIfNeeded() }
@@ -584,18 +596,20 @@ struct BookDetailView: View {
             infoRow(label: DisplayStrings.published.uppercased(),
                     value: book.published?.monthDayYearString,
                     accessibilityID: AccessibilityID.BookDetail.publishedLabel)
+
+            // PP-4463: series row links to the same destination as the bottom
+            // series carousel — CatalogLaneMoreView keyed on book.seriesURL.
+            // Hidden entirely when either the name or the URL is missing so
+            // the Information block stays free of empty rows (AC #2).
+            // Positioned right after PUBLISHED per design.
+            seriesRow(book: book)
+
             infoRow(label: DisplayStrings.publisher.uppercased(),
                     value: book.publisher,
                     accessibilityID: AccessibilityID.BookDetail.publisherLabel)
             infoRow(label: DisplayStrings.distributor.uppercased(),
                     value: book.distributor,
                     accessibilityID: AccessibilityID.BookDetail.distributorLabel)
-
-            // PP-4463: series row links to the same destination as the bottom
-            // series carousel — CatalogLaneMoreView keyed on book.seriesURL.
-            // Hidden entirely when either the name or the URL is missing so
-            // the Information block stays free of empty rows (AC #2).
-            seriesRow(book: book)
 
             Spacer()
         }
@@ -805,6 +819,18 @@ struct BookDetailView: View {
                 viewModel.showHalfSheet.toggle()
             }
         }
+    }
+
+    /// Resets the collapsing header to fully expanded. Shared by the
+    /// first-appearance path and the new-book path (both land the scroll at
+    /// the top, so the header must match).
+    private func expandHeader() {
+        showCompactHeader = false
+        headerHeight = viewModel.isFullSize ? 300 : 225
+        imageScale = 1.0
+        imageOpacity = 1.0
+        titleOpacity = 1.0
+        lastOffset = 0
     }
 
     private func updateHeaderHeight(for offset: CGFloat) {

@@ -235,9 +235,15 @@ import PalaceLogging
   }
 
   private func parseSeries(from entryXML: TPPXML) {
-    if let seriesXML = entryXML.firstChild(withName: "Series"),
-       let linkXML = seriesXML.firstChild(withName: "link") {
-      seriesLink = TPPOPDSLink(xml: linkXML)
+    // Palace OPDS 1.x feeds serve the series element as `<schema:series>`.
+    // `TPPXML` parses with namespace processing on, so the matched name is the
+    // lowercase local name `series`. Some feeds/fixtures use `Series`; match
+    // either casing rather than the qualified prefix.
+    guard let seriesXML = entryXML.firstChild(withName: "series")
+            ?? entryXML.firstChild(withName: "Series"),
+          let linkXML = seriesXML.firstChild(withName: "link") else {
+      return
     }
+    seriesLink = TPPOPDSLink(xml: linkXML)
   }
 }

@@ -206,9 +206,9 @@ final class OPDSParsingTests: XCTestCase {
             <id>urn:uuid:series-001</id>
             <title>Book One of the Series</title>
             <updated>2024-01-20T08:00:00Z</updated>
-            <schema:Series>
+            <schema:series name="The Test Series">
                 <link href="http://example.org/series/test-series" rel="series" title="The Test Series" schema:position="1"/>
-            </schema:Series>
+            </schema:series>
             <link href="http://example.org/entry" rel="alternate" type="application/atom+xml"/>
             <link href="http://example.org/acquire" rel="http://opds-spec.org/acquisition/open-access" type="application/epub+zip"/>
         </entry>
@@ -1193,10 +1193,15 @@ final class OPDSParsingTests: XCTestCase {
 
     // MARK: - Series Metadata (PP-4463)
 
-    /// PP-4463: when the OPDS 1.x feed serves `<Series><link/></Series>`,
+    /// PP-4463: when the OPDS 1.x feed serves `<schema:series><link/></schema:series>`,
     /// the entry's `seriesLink` must surface both the href and the title.
     /// TPPBook downstream pulls `.title` into `seriesName` and `.href` into
     /// `seriesURL`; the Book Detail SERIES row keys off both.
+    ///
+    /// Fixture mirrors the real Palace feed shape: a lowercase `schema:series`
+    /// element (local name `series` after namespace processing) wrapping a
+    /// `rel="series"` link. The earlier capital-`Series` fixture never matched
+    /// the live feed casing, so it masked the parser's case-sensitive lookup.
     func testSeriesLinkParsedFromEntry() {
         let entryWithSeries = """
             <entry xmlns="http://www.w3.org/2005/Atom"
@@ -1204,9 +1209,9 @@ final class OPDSParsingTests: XCTestCase {
                 <id>urn:uuid:series-001</id>
                 <title>Foundation: Book 1</title>
                 <updated>2024-01-20T08:00:00Z</updated>
-                <schema:Series>
-                    <link href="http://example.org/series/foundation" title="Foundation"/>
-                </schema:Series>
+                <schema:series name="Foundation">
+                    <link href="http://example.org/series/foundation" rel="series" title="Foundation"/>
+                </schema:series>
             </entry>
             """
 
@@ -1225,7 +1230,8 @@ final class OPDSParsingTests: XCTestCase {
     }
 
     /// End-to-end OPDS1 → TPPBook conversion: the series row's two inputs
-    /// (`seriesName`, `seriesURL`) reach the model from `<Series><link/></Series>`.
+    /// (`seriesName`, `seriesURL`) reach the model from the real-feed
+    /// `<schema:series name="…"><link rel="series" title="…"/></schema:series>`.
     func testTPPBookFromEntry_populatesSeriesNameAndURLFromSeriesLink() {
         let entryWithSeries = """
             <entry xmlns="http://www.w3.org/2005/Atom"
@@ -1234,9 +1240,9 @@ final class OPDSParsingTests: XCTestCase {
                 <title>Foundation: Book 1</title>
                 <updated>2024-01-20T08:00:00Z</updated>
                 <link href="http://example.org/borrow" type="application/epub+zip" rel="http://opds-spec.org/acquisition/borrow"/>
-                <schema:Series>
-                    <link href="http://example.org/series/foundation" title="Foundation"/>
-                </schema:Series>
+                <schema:series name="Foundation">
+                    <link href="http://example.org/series/foundation" rel="series" title="Foundation"/>
+                </schema:series>
             </entry>
             """
 
