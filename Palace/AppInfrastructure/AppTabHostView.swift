@@ -10,6 +10,11 @@ struct AppTabHostView: View {
     private let appContainer: AppContainer
     let bookRegistry: TPPBookRegistryProvider
     @StateObject private var catalogViewModel: CatalogViewModel
+    /// Owned once here (NOT created inline in `body`). `MyBooksViewModel.init`
+    /// runs `loadData()`/`registerNotifications()` synchronously, so building
+    /// it in `tabViewContent` allocated a fresh, self-publishing view-model on
+    /// every re-render → "update multiple times per frame" → main-thread freeze.
+    @StateObject private var myBooksViewModel: MyBooksViewModel
     /// Module B (swarm_0b7616e7) — single ActiveSessionsViewModel for
     /// the app lifetime. Constructed here (composition root for the
     /// Continue Reading + Continue Listening rows) and threaded into
@@ -72,6 +77,7 @@ struct AppTabHostView: View {
             bookRegistry: appContainer.bookRegistry,
             imageCache: appContainer.imageCache
         ))
+        _myBooksViewModel = StateObject(wrappedValue: MyBooksViewModel(appContainer: appContainer))
         // Module B (swarm_0b7616e7) composition root for the Continue
         // Reading row's data source. `DefaultRecentlyReadingService` is
         // a pure function of `bookRegistry.myBooks` + saved location, so
@@ -112,6 +118,7 @@ struct AppTabHostView: View {
         if inAppPlaybackNavEnabled {
             AudiobookMiniPlayerView(
                 presenter: appContainer.audiobookSessionPresenter,
+                progress: appContainer.audiobookSessionPresenter.progress,
                 audiobookSession: appContainer.audiobookSession
             )
         }
@@ -190,7 +197,7 @@ struct AppTabHostView: View {
                 .tag(AppTab.catalog)
                 .accessibilityIdentifier(AccessibilityID.TabBar.catalogTab)
 
-            NavigationHostView(rootView: MyBooksView(model: MyBooksViewModel(appContainer: appContainer), appContainer: appContainer))
+            NavigationHostView(rootView: MyBooksView(model: myBooksViewModel, appContainer: appContainer))
                 .safeAreaInset(edge: .bottom, content: miniPlayerInset)
                 .tabItem {
                     VStack {

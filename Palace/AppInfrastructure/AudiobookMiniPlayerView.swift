@@ -18,10 +18,11 @@
 //      cover (44x44) | title+author+time+scrubber | skipBack/playPause/
 //      skipForward. All controls maintain 44pt min hit targets at AX5.
 //    - `.ultraThinMaterial` background for the SwiftUI-modern look.
-//    - All state reads off `presenter.@Published` props (no more closure
-//      providers): `presenter.isPlaying`, `presenter.coverImage`,
-//      `presenter.playbackProgress`, `presenter.currentLocation`,
-//      `presenter.currentBook`.
+//    - State reads off `presenter` (`isPlaying`, `coverImage`, `currentBook`)
+//      and the separate high-frequency `progress` object
+//      (`progress.playbackProgress`, `progress.currentLocation`) so per-tick
+//      scrubber updates re-render only this leaf, not the presenter's root
+//      observer (`AppTabHostView`).
 //    - Actions route through the injected `audiobookSession` parameter
 //      (`AudiobookSessionManaging`): `togglePlayPause()`, `skipBack()`,
 //      `skipForward()`. The skip methods are new on the protocol
@@ -44,6 +45,10 @@ import UIKit
 struct AudiobookMiniPlayerView: View {
 
     @ObservedObject var presenter: AudiobookSessionPresenter
+
+    /// High-frequency scrubber state, observed here rather than via the
+    /// presenter so per-tick progress re-renders only this leaf (not the root).
+    @ObservedObject var progress: AudiobookPlaybackProgress
 
     /// Session manager used for transport actions (play/pause + 30s skips).
     /// Injected so tests can substitute a `SpyShimSession` or any
@@ -204,7 +209,7 @@ struct AudiobookMiniPlayerView: View {
     }
 
     private var scrubber: some View {
-        ProgressView(value: presenter.playbackProgress.isFinite ? min(max(presenter.playbackProgress, 0), 1) : 0,
+        ProgressView(value: progress.playbackProgress.isFinite ? min(max(progress.playbackProgress, 0), 1) : 0,
                      total: 1.0)
             .progressViewStyle(.linear)
             .tint(.accentColor)
@@ -220,7 +225,7 @@ struct AudiobookMiniPlayerView: View {
     /// whole-book duration (not chapter) because the scrubber is also
     /// whole-book — keeping the label and scrubber semantically aligned.
     private var timeLabel: String {
-        guard let position = presenter.currentLocation else {
+        guard let position = progress.currentLocation else {
             return "--:-- / --:--"
         }
         let elapsed = position.durationToSelf()

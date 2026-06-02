@@ -104,24 +104,12 @@ class AudiobookSessionPresenter: ObservableObject {
     /// `coverImageProvider` parameter on `AudiobookMiniPlayerView`.
     @Published private(set) var coverImage: UIImage?
 
-    /// Current track position, mirrored from `playbackModel.$currentLocation`
-    /// (the only `@Published public` field on the toolkit's
-    /// `AudiobookPlaybackModel`). Cleared in `clearActiveSession()` /
-    /// re-subscribed in `adoptPlaybackModel(_:)`.
-    ///
-    /// Polish-phase addition — drives the time label + scrubber on the
-    /// mini-player.
-    @Published private(set) var currentLocation: TrackPosition?
-
-    /// Normalized 0.0...1.0 playback progress across the whole audiobook.
-    /// Derived from `currentLocation` via a Combine `.map` (see
-    /// `subscribeToPlaybackModelCurrentLocation`). The toolkit's
-    /// `playbackProgress` field is internal-default and unreachable; this
-    /// derivation is the public surface.
-    ///
-    /// Polish-phase addition — drives the `ProgressView` scrubber on the
-    /// mini-player chrome.
-    @Published private(set) var playbackProgress: Double = 0
+    /// High-frequency playback position/progress lives on a SEPARATE
+    /// observable so per-tick updates re-render only the scrubber leaves
+    /// (mini/full player) — not every `@ObservedObject` of the presenter.
+    /// Observing these on the presenter re-rendered the root `AppTabHostView`
+    /// (all tabs) on every tick and froze the UI.
+    let progress = AudiobookPlaybackProgress()
 
     /// The playback model for the active session, mirrored from the session
     /// manager. The mini-player + full-player views observe this for chrome
@@ -218,8 +206,8 @@ class AudiobookSessionPresenter: ObservableObject {
         isPlayerExpanded = false
         isPlaying = false
         coverImage = nil
-        currentLocation = nil
-        playbackProgress = 0
+        progress.currentLocation = nil
+        progress.playbackProgress = 0
         playbackModelCancellables.removeAll()
     }
 
@@ -306,8 +294,8 @@ class AudiobookSessionPresenter: ObservableObject {
     }
 
     /// Subscribes to `model.$currentLocation` and mirrors into
-    /// `presenter.currentLocation`; derives `playbackProgress` via a
-    /// `.map` against the track's total duration.
+    /// `progress.currentLocation`; derives `progress.playbackProgress`
+    /// against the track's total duration.
     ///
     /// Stored in `playbackModelCancellables` (NOT `cancellables`) so
     /// `adoptPlaybackModel(_:)` can cancel them cleanly before
@@ -363,8 +351,8 @@ class AudiobookSessionPresenter: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] position in
                 guard let self = self else { return }
-                self.currentLocation = position
-                self.playbackProgress = Self.normalizedProgress(for: position)
+                self.progress.currentLocation = position
+                self.progress.playbackProgress = Self.normalizedProgress(for: position)
             }
             .store(in: &playbackModelCancellables)
     }
@@ -406,4 +394,13 @@ class AudiobookSessionPresenter: ObservableObject {
         // pre-load 0.0) don't drive the scrubber out of bounds.
         return min(max(progress, 0), 1)
     }
+}
+
+/// High-frequency playback position/progress, deliberately split out of
+/// `AudiobookSessionPresenter`. Only the scrubber leaves observe it, so
+/// per-tick updates never re-render the presenter's root observer
+/// (`AppTabHostView`). Do not fold these back onto the presenter.
+final class AudiobookPlaybackProgress: ObservableObject {
+    @Published var currentLocation: TrackPosition?
+    @Published var playbackProgress: Double = 0
 }

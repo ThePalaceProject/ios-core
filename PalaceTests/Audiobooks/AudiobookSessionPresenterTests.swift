@@ -413,7 +413,7 @@ final class AudiobookSessionPresenterTests: XCTestCase {
         // Step 1: clear the active session (drops playbackModelCancellables).
         presenter.clearActiveSession()
         XCTAssertNil(presenter.coverImage, "Step 1: clearActiveSession drops cover")
-        XCTAssertNil(presenter.currentLocation, "Step 1: clearActiveSession drops currentLocation")
+        XCTAssertNil(presenter.progress.currentLocation, "Step 1: clearActiveSession drops currentLocation")
 
         // Step 2: the long-lived playbackStatePublisher subscription must
         // STILL work after the playback-model-scoped cancellables were
@@ -461,9 +461,9 @@ final class AudiobookSessionPresenterTests: XCTestCase {
                      "clearActiveSession must clear coverImage so the next session starts fresh — a regression that forgets this leaks the prior book's cover into the new mini-player")
         XCTAssertFalse(presenter.isPlaying,
                        "clearActiveSession must clear isPlaying so the next mini-player render doesn't briefly show pause for the new book")
-        XCTAssertNil(presenter.currentLocation,
+        XCTAssertNil(presenter.progress.currentLocation,
                      "clearActiveSession must clear currentLocation so the next mini-player render doesn't show the prior book's elapsed time")
-        XCTAssertEqual(presenter.playbackProgress, 0,
+        XCTAssertEqual(presenter.progress.playbackProgress, 0,
                        "clearActiveSession must reset playbackProgress to 0 so the scrubber doesn't briefly show the prior book's progress")
     }
 }

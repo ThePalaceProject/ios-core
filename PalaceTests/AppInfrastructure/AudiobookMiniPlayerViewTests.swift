@@ -55,6 +55,7 @@ final class AudiobookMiniPlayerViewTests: XCTestCase {
     private func makeSUT() -> AudiobookMiniPlayerView {
         return AudiobookMiniPlayerView(
             presenter: spyPresenter,
+            progress: spyPresenter.progress,
             audiobookSession: spySession
         )
     }
@@ -335,11 +336,14 @@ final class AudiobookMiniPlayerViewTests: XCTestCase {
         // (the static helper covers the arithmetic path).
         let sut = makeSUT()
 
-        // The scrubber binds to `presenter.playbackProgress`. Verify the
+        // The scrubber binds to `progress.playbackProgress` (split off the
+        // presenter so per-tick updates re-render only this leaf). Verify the
         // initial value is the documented zero AND that the SUT reads
-        // from the SAME presenter instance (not a copied snapshot).
-        XCTAssertEqual(sut.presenter.playbackProgress, 0,
-                       "PRECONDITION: presenter starts at zero progress")
+        // from the SAME progress instance (not a copied snapshot).
+        XCTAssertEqual(sut.progress.playbackProgress, 0,
+                       "PRECONDITION: progress starts at zero")
+        XCTAssertTrue(sut.progress === spyPresenter.progress,
+                      "SUT must hold the presenter's progress object by reference so scrubber updates flow through")
         XCTAssertTrue(sut.presenter === spyPresenter,
                       "SUT must hold the injected presenter by reference (not copy) — proves @ObservedObject is wired so scrubber updates flow through")
         // Also exercise the static helper boundary the scrubber's value
