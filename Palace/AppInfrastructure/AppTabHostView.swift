@@ -146,7 +146,7 @@ struct AppTabHostView: View {
     /// forever (with 30s timeout → `LoadingErrorView`).
     @ViewBuilder
     private var persistentFullPlayerOverlay: some View {
-        if audiobookSessionPresenter.playbackModel != nil {
+        if inAppPlaybackNavEnabled, audiobookSessionPresenter.playbackModel != nil {
             // Use UIScreen.main.bounds for the full-screen size — the
             // GeometryReader approach was constrained to the TabView's
             // available area (which excludes the system tab bar +

@@ -188,6 +188,14 @@ public final class AudiobookSessionManager: ObservableObject {
     /// coordinator.popToRoot` pair at develop lines 560-566.
     private let audiobookSessionPresenterProvider: @MainActor () -> AudiobookSessionPresenter
 
+    /// Resolves whether the in-app-playback-nav feature is enabled. Gates
+    /// which presentation `presentSession` drives: off → the legacy
+    /// full-screen pushed `.audio` route; on → the root-level presenter
+    /// (mini-player + full-player overlay). Production default reads
+    /// `RemoteFeatureFlags.shared`; tests inject a fixed value so the
+    /// flag-branch decision is exercised without touching UserDefaults.
+    private let inAppPlaybackNavEnabledProvider: () -> Bool
+
     // MARK: - F-011 readiness-gate injection points
     //
     // PR #990 introduced a race where Palace's first `play(at:)` could fire
@@ -227,6 +235,7 @@ public final class AudiobookSessionManager: ObservableObject {
         bookCoverRegistryProvider: @escaping () -> TPPBookCoverRegistry,
         navigationCoordinatorHubProvider: @escaping () -> NavigationCoordinatorHub,
         audiobookSessionPresenterProvider: @escaping @MainActor () -> AudiobookSessionPresenter,
+        inAppPlaybackNavEnabledProvider: @escaping () -> Bool,
         readinessProbeFactory: @escaping @MainActor (Player) -> PlaybackReadinessProbing,
         playbackCommandFactory: @escaping @MainActor (Player) -> PlaybackEngineCommanding,
         readinessTimeout: TimeInterval
@@ -238,6 +247,7 @@ public final class AudiobookSessionManager: ObservableObject {
         self.bookCoverRegistryProvider = bookCoverRegistryProvider
         self.navigationCoordinatorHubProvider = navigationCoordinatorHubProvider
         self.audiobookSessionPresenterProvider = audiobookSessionPresenterProvider
+        self.inAppPlaybackNavEnabledProvider = inAppPlaybackNavEnabledProvider
         self.readinessProbeFactory = readinessProbeFactory
         self.playbackCommandFactory = playbackCommandFactory
         self.readinessTimeout = readinessTimeout
@@ -265,6 +275,7 @@ public final class AudiobookSessionManager: ObservableObject {
         bookCoverRegistryProvider: @escaping () -> TPPBookCoverRegistry = { TPPBookCoverRegistry.shared },
         navigationCoordinatorHubProvider: @escaping () -> NavigationCoordinatorHub = { AppContainer.production().navigationCoordinatorHub },
         audiobookSessionPresenterProvider: @escaping @MainActor () -> AudiobookSessionPresenter = { AppContainer.production().audiobookSessionPresenter },
+        inAppPlaybackNavEnabledProvider: @escaping () -> Bool = { RemoteFeatureFlags.shared.isInAppPlaybackNavEnabled },
         readinessProbeFactory: @escaping @MainActor (Player) -> PlaybackReadinessProbing = { player in
             PlayerReadinessProbe(isLoadedSnapshot: { [weak player] in player?.isLoaded ?? false })
         },
@@ -281,6 +292,7 @@ public final class AudiobookSessionManager: ObservableObject {
             bookCoverRegistryProvider: bookCoverRegistryProvider,
             navigationCoordinatorHubProvider: navigationCoordinatorHubProvider,
             audiobookSessionPresenterProvider: audiobookSessionPresenterProvider,
+            inAppPlaybackNavEnabledProvider: inAppPlaybackNavEnabledProvider,
             readinessProbeFactory: readinessProbeFactory,
             playbackCommandFactory: playbackCommandFactory,
             readinessTimeout: readinessTimeout
@@ -817,15 +829,35 @@ public final class AudiobookSessionManager: ObservableObject {
 
     private func presentCoverArtAndNavigation(for book: TPPBook, loaded: LoadedAudiobook) {
         loadCoverArt(for: book, into: loaded.playbackModel)
-        // swarm_0b7616e7 Module C — drive the root-level presenter instead
-        // of pushing an `.audio` route onto the per-tab nav stack. Wraps
-        // the presenter call in `pushSessionToPresenter` (internal seam)
-        // so the migration tests can drive the presenter-side branch
-        // without owning a full `LoadedAudiobook` (the toolkit's
-        // `AudiobookManager` is a protocol with `AudiobookPlaybackModel`
-        // depending on a fully-graphed `Audiobook` + `Manifest`, which
-        // is impractical to construct from a unit test).
-        pushSessionToPresenter(book: book, playbackModel: loaded.playbackModel)
+        presentSession(book: book, playbackModel: loaded.playbackModel)
+    }
+
+    /// Flag-gated presentation decision. The in-app-nav feature only changes
+    /// how the player is presented when `in_app_playback_nav_enabled` is on:
+    /// off → the original full-screen pushed `.audio` route; on → the
+    /// root-level presenter (mini-player + full-player overlay).
+    ///
+    /// `internal` so the migration tests can drive each branch with a spy
+    /// coordinator hub (off) or spy presenter (on) without owning a
+    /// `LoadedAudiobook`. `playbackModel` is optional for the same reason as
+    /// `pushSessionToPresenter` — production passes the loaded model, tests
+    /// pass nil. In production the model is always present, so the off-branch
+    /// `storeAudioModel` always runs.
+    @MainActor
+    internal func presentSession(book: TPPBook, playbackModel: AudiobookPlaybackModel?) {
+        if inAppPlaybackNavEnabledProvider() {
+            pushSessionToPresenter(book: book, playbackModel: playbackModel)
+        } else {
+            let route = BookRoute(id: book.identifier)
+            if let coordinator = navigationCoordinatorHubProvider().coordinator {
+                if let playbackModel = playbackModel {
+                    coordinator.storeAudioModel(playbackModel, forBookId: route.id)
+                }
+                coordinator.pushAudioRoute(route)
+            } else {
+                Log.info(#file, "No navigation coordinator (CarPlay background launch?) — playback will start without phone UI")
+            }
+        }
     }
 
     /// Loads cover art into the playback model — both the low-res cached
