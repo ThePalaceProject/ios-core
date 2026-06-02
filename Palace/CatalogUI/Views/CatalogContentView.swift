@@ -26,13 +26,35 @@ struct CatalogContentView: View {
     let onResumeListening: (TPPBook) -> Void
     var bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry
 
+    /// Subscribes to the developer-settings local override so the view
+    /// re-renders the moment the dev toggle flips. The actual gating
+    /// decision delegates to `RemoteFeatureFlags.shared
+    /// .isInAppPlaybackNavEnabled`, which combines the override (wins
+    /// when set) with the Firebase Remote Config `in_app_playback_nav_enabled`
+    /// value (fallback). Reading the @AppStorage value inside
+    /// `inAppPlaybackNavEnabled` registers the SwiftUI observation
+    /// against the same UserDefaults key the dev toggle writes to.
+    @AppStorage("RemoteFeatureFlags.inAppPlaybackNavLocalOverride")
+    private var inAppPlaybackNavLocalOverride: Bool = false
+
+    private var inAppPlaybackNavEnabled: Bool {
+        _ = inAppPlaybackNavLocalOverride  // trigger SwiftUI observation
+        return RemoteFeatureFlags.shared.isInAppPlaybackNavEnabled
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            ContinueRowSection(
-                viewModel: activeSessions,
-                onResumeReading: onResumeReading,
-                onResumeListening: onResumeListening
-            )
+            // Feature-flagged (in_app_playback_nav_enabled): hides the
+            // Continue Reading / Continue Listening hero rows when off.
+            // The viewmodel still runs (subscriptions stay live so the
+            // flag flip is instant); only the rendering is gated.
+            if inAppPlaybackNavEnabled {
+                ContinueRowSection(
+                    viewModel: activeSessions,
+                    onResumeReading: onResumeReading,
+                    onResumeListening: onResumeListening
+                )
+            }
 
             selectorsView
 

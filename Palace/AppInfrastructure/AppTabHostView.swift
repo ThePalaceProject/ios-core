@@ -28,6 +28,22 @@ struct AppTabHostView: View {
     /// own `@ObservedObject`) re-renders when the presenter publishes.
     @ObservedObject private var audiobookSessionPresenter: AudiobookSessionPresenter
 
+    /// Subscribes to the developer-settings local override so the view
+    /// re-renders the moment the dev toggle flips. The actual gating
+    /// decision delegates to `RemoteFeatureFlags.shared
+    /// .isInAppPlaybackNavEnabled`, which combines the override (wins
+    /// when set) with the Firebase Remote Config `in_app_playback_nav_enabled`
+    /// value (fallback). Reading the @AppStorage value inside
+    /// `inAppPlaybackNavEnabled` registers the SwiftUI observation
+    /// against the same UserDefaults key the dev toggle writes to.
+    @AppStorage("RemoteFeatureFlags.inAppPlaybackNavLocalOverride")
+    private var inAppPlaybackNavLocalOverride: Bool = false
+
+    private var inAppPlaybackNavEnabled: Bool {
+        _ = inAppPlaybackNavLocalOverride  // trigger SwiftUI observation
+        return RemoteFeatureFlags.shared.isInAppPlaybackNavEnabled
+    }
+
     init(appContainer: AppContainer = .production()) {
         self.appContainer = appContainer
         self.bookRegistry = appContainer.bookRegistry
@@ -86,10 +102,19 @@ struct AppTabHostView: View {
     // source of truth.
     @ViewBuilder
     private func miniPlayerInset() -> some View {
-        AudiobookMiniPlayerView(
-            presenter: appContainer.audiobookSessionPresenter,
-            audiobookSession: appContainer.audiobookSession
-        )
+        // Feature-flagged (in_app_playback_nav_enabled): hides the
+        // persistent mini-player chrome above the tab bar when off.
+        // The presenter + AppContainer wiring stay in place so the
+        // flag flip is instant; only the inset rendering is gated.
+        // Returning EmptyView from a `safeAreaInset(.bottom)` builder
+        // collapses the inset to zero height, which restores the
+        // pre-feature tab-bar layout.
+        if inAppPlaybackNavEnabled {
+            AudiobookMiniPlayerView(
+                presenter: appContainer.audiobookSessionPresenter,
+                audiobookSession: appContainer.audiobookSession
+            )
+        }
     }
 
     var body: some View {
