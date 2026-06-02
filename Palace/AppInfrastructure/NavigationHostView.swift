@@ -122,17 +122,19 @@ struct NavigationHostView<Content: View>: View {
                         } else {
                             EmptyView()
                         }
-                    case .audio:
-                        // Post-Module-C (swarm_0b7616e7) the audio route is no
-                        // longer pushed onto any per-tab nav stack — playback
-                        // is presented via the root `fullScreenCover` driven
-                        // by `presenter.isPlayerExpanded` on `AppTabHostView`.
-                        // The enum case stays for legacy compat per design doc
-                        // §6.2 point 3, but the destination renderer is dead
-                        // code; render `EmptyView` so we never accidentally
-                        // double-host the player chrome if a legacy code path
-                        // still calls `pushAudioRoute`.
-                        EmptyView()
+                    case .audio(let bookRoute):
+                        // When `in_app_playback_nav_enabled` is OFF the player
+                        // is presented via this pushed route (the original
+                        // presentation). When ON, the route is never pushed —
+                        // `AudiobookSessionManager.presentSession` drives the
+                        // root presenter instead and the chrome renders from
+                        // `AppTabHostView`'s persistent full-player overlay.
+                        if let model = coordinator.resolveAudioModel(for: bookRoute) {
+                            AudiobookPlayerView(model: model)
+                                .toolbar(.hidden, for: .tabBar)
+                        } else {
+                            EmptyView()
+                        }
                     @unknown default:
                         EmptyView()
                     }
