@@ -530,6 +530,51 @@ public final class AudiobookSessionManager: ObservableObject {
         Log.debug(#file, "Skipping to chapter: '\(chapter.title)'")
     }
 
+    /// Default skip interval (seconds) used by `skipBack()` / `skipForward()`.
+    /// Palace standardizes on 30s in both directions to match the SF Symbols
+    /// `gobackward.30` / `goforward.30` glyphs the mini-player + full player
+    /// chrome render. Exposed `internal static` so the polish-phase mini-
+    /// player tests can pin the value without dragging the toolkit's
+    /// `DefaultAudiobookManager.skipTimeInterval` (which is `internal`) into
+    /// the assertion.
+    static let defaultSkipInterval: TimeInterval = 30
+
+    /// Skips the playhead backward by `defaultSkipInterval` seconds.
+    /// Wraps the toolkit's `Player.skipPlayhead(_:)` async signature
+    /// (`Player.swift:108`) in a `Task { @MainActor in ... }` boundary so the
+    /// sync `AudiobookSessionManaging` protocol surface stays simple — same
+    /// async→sync pattern as `skipToChapter(at:)` at lines 524-528. The
+    /// async result (resulting `TrackPosition?`) is intentionally discarded
+    /// because the toolkit fires its own `positionPublisher` updates which
+    /// the presenter mirrors via `playbackModel.$currentLocation`.
+    ///
+    /// in-app-nav-polish-2026-06-01 — added so the root-level mini-player
+    /// chrome can drive 30s rewind without reaching for the toolkit type
+    /// directly (`AudiobookPlaybackModel.audiobookManager` is internal-only).
+    public func skipBack() {
+        guard let manager = manager else {
+            Log.warn(#file, "Cannot skipBack — no active manager")
+            return
+        }
+        Task { @MainActor in
+            _ = await manager.audiobook.player.skipPlayhead(-Self.defaultSkipInterval)
+        }
+        Log.debug(#file, "Skipping back \(Self.defaultSkipInterval)s")
+    }
+
+    /// Skips the playhead forward by `defaultSkipInterval` seconds. See
+    /// `skipBack()` for the async-boundary rationale.
+    public func skipForward() {
+        guard let manager = manager else {
+            Log.warn(#file, "Cannot skipForward — no active manager")
+            return
+        }
+        Task { @MainActor in
+            _ = await manager.audiobook.player.skipPlayhead(Self.defaultSkipInterval)
+        }
+        Log.debug(#file, "Skipping forward \(Self.defaultSkipInterval)s")
+    }
+
     /// Cycles through playback rates. Driven by CarPlay / remote-control
     /// "change playback rate" commands — the now-playing screen UI uses the
     /// speed bottom sheet instead of cycling.
@@ -636,10 +681,19 @@ public final class AudiobookSessionManager: ObservableObject {
         audiobookSessionPresenterProvider().clearActiveSession()
     }
 
-    /// Updates cover image (called when image loads asynchronously)
+    /// Updates cover image (called when image loads asynchronously).
+    ///
+    /// Forwards to the root-level presenter so the mini-player + full player
+    /// chrome see the new image without polling. Async hi-res replacements
+    /// arrive AFTER the initial `adoptPlaybackModel(_:)` snapshot (lo-res
+    /// sync, hi-res via the `loadCoverArt(for:into:)` Task) — without this
+    /// forward, the presenter's `coverImage` would stay at lo-res for the
+    /// rest of the session even though `sessionManager.coverImage` got
+    /// upgraded. in-app-nav-polish-2026-06-01.
     public func updateCoverImage(_ image: UIImage?) {
         coverImage = image
         nowPlayingCoordinator?.updateArtwork(image)
+        audiobookSessionPresenterProvider().adoptCoverImage(image)
     }
 
     // MARK: - Manager Binding (Direct, post-load)

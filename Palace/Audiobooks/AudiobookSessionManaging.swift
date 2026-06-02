@@ -77,6 +77,24 @@ protocol AudiobookSessionManaging: AnyObject {
     /// Skips to a specific chapter by index.
     func skipToChapter(at index: Int)
 
+    /// Skips the playhead backward by the toolkit's default skip interval
+    /// (30s). Wraps `Player.skipPlayhead(_:)` (async) on the underlying
+    /// `AudiobookManager.audiobook.player` via a `Task { @MainActor in ... }`
+    /// boundary — same async→sync pattern used by `skipToChapter(at:)` at
+    /// `AudiobookSessionManager.swift:524-528`. Routed through this protocol
+    /// (not via `playbackModel.audiobookManager` directly) because
+    /// `AudiobookPlaybackModel.audiobookManager` is internal-default access
+    /// in the toolkit and unreachable from Palace consumers.
+    ///
+    /// swarm polish phase (in-app-nav-polish-2026-06-01) — added so the
+    /// mini-player chrome can drive 30s rewind from the root-level
+    /// presenter surface without leaking the toolkit type.
+    func skipBack()
+
+    /// Skips the playhead forward by the toolkit's default skip interval
+    /// (30s). See `skipBack()` for the toolkit-routing rationale.
+    func skipForward()
+
     /// Cycles through available playback rates and returns the new rate.
     func cyclePlaybackRate() -> PlaybackRate
 

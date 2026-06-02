@@ -374,11 +374,14 @@ private final class FakeRowSectionAudiobookSessionManager: AudiobookSessionManag
     func openAudiobook(_ book: TPPBook, startPlaying: Bool) async -> Result<Void, AudiobookSessionError> {
         return .failure(.unknown("FakeRowSectionAudiobookSessionManager"))
     }
+    /// Polish-phase no-op skip implementations.
     func play() {}
     func pause() {}
     func togglePlayPause() {}
     func skipToChapter(at index: Int) {}
+    func skipBack() {}
+    func skipForward() {}
     func cyclePlaybackRate() -> PlaybackRate { return .normalTime }
-    func stopPlayback(dismissPhoneUI: Bool) async {}
+    func stopPlayback(dismissPhoneUI: Bool, persistFinalPosition: Bool) async {}
     func updateCoverImage(_ image: UIImage?) {}
 }

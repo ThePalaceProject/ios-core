@@ -50,6 +50,11 @@ final class SpyAudiobookSessionPresenter: AudiobookSessionPresenter {
     private(set) var adoptBookCallCount: Int = 0
     private(set) var adoptPlaybackModelCallCount: Int = 0
     private(set) var clearActiveSessionCallCount: Int = 0
+    /// Polish-phase: counts adoptCoverImage invocations (forwarded from
+    /// `AudiobookSessionManager.updateCoverImage(_:)` for async hi-res
+    /// arrivals). The most recently forwarded image is stored for assertion.
+    private(set) var adoptCoverImageCallCount: Int = 0
+    private(set) var lastAdoptedCoverImage: UIImage?
 
     /// FIFO log of adopted book identifiers — used by Test 6
     /// (`switchingAudiobooks_clearsPreviousPlaybackModel`) to prove the
@@ -103,6 +108,12 @@ final class SpyAudiobookSessionPresenter: AudiobookSessionPresenter {
         super.clearActiveSession()
     }
 
+    override func adoptCoverImage(_ image: UIImage?) {
+        adoptCoverImageCallCount += 1
+        lastAdoptedCoverImage = image
+        super.adoptCoverImage(image)
+    }
+
     // MARK: - Test-only helpers
 
     /// Directly drives `hasActiveSession` for setup convenience — the
@@ -152,6 +163,13 @@ final class SpyShimSession: AudiobookSessionManaging {
     let chapterUpdatePublisher = PassthroughSubject<(chapters: [Chapter], current: Chapter?), Never>()
     let errorPublisher = PassthroughSubject<AudiobookSessionError, Never>()
 
+    /// Polish-phase counters — let polish-phase tests assert that the
+    /// mini-player chrome's skip buttons routed through this shim once
+    /// each (presenter wires the buttons to `audiobookSession.skipBack()`
+    /// / `audiobookSession.skipForward()` via AppContainer).
+    private(set) var skipBackCallCount: Int = 0
+    private(set) var skipForwardCallCount: Int = 0
+
     @discardableResult
     func openAudiobook(_ book: TPPBook, startPlaying: Bool) async -> Result<Void, AudiobookSessionError> {
         .failure(.unknown("spy shim"))
@@ -160,8 +178,10 @@ final class SpyShimSession: AudiobookSessionManaging {
     func pause() {}
     func togglePlayPause() {}
     func skipToChapter(at index: Int) {}
+    func skipBack() { skipBackCallCount += 1 }
+    func skipForward() { skipForwardCallCount += 1 }
     func cyclePlaybackRate() -> PlaybackRate { .normalTime }
-    func stopPlayback(dismissPhoneUI: Bool) async {}
+    func stopPlayback(dismissPhoneUI: Bool, persistFinalPosition: Bool) async {}
     func updateCoverImage(_ image: UIImage?) {}
 }
 

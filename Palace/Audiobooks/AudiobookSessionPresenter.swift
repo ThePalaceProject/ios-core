@@ -12,6 +12,27 @@
 //  any per-tab nav stack; instead, the presenter drives a root-level
 //  fullScreenCover and a persistent mini-player above the tab bar.
 //
+//  Polish-phase additions (in-app-nav-polish-2026-06-01):
+//    - `isPlaying`, `coverImage`, `currentLocation`, `playbackProgress`
+//      published mirrors so the mini-player chrome (now full controls +
+//      scrubber) reads its entire state off the presenter rather than
+//      closure-injected providers.
+//    - `isPlaying` is derived from the same `playbackStatePublisher` sink
+//      that drives `hasActiveSession`.
+//    - `currentLocation` mirrors `playbackModel.$currentLocation` (the only
+//      `@Published public` field on `AudiobookPlaybackModel` — toolkit's
+//      `coverImage` / `playbackProgress` are internal-default).
+//    - `playbackProgress` is derived from `currentLocation` via a Combine
+//      `.map` against `position.durationToSelf() / tracks.totalDuration`.
+//    - `coverImage` snapshots from `sessionManager.coverImage` at
+//      `adoptPlaybackModel` time, and is updated for async hi-res arrivals
+//      via the new `adoptCoverImage(_:)` method (called from
+//      `AudiobookSessionManager.updateCoverImage(_:)`).
+//    - `adoptPlaybackModel(_:)` clears a separate `playbackModelCancellables`
+//      set BEFORE installing new subscriptions so the audiobook-switch
+//      path (PP-3783) doesn't leak the prior `$currentLocation` sink —
+//      pinned by `testPresenter_adoptsNewPlaybackModel_clearsPriorCurrentLocationSubscription`.
+//
 //  Design intent:
 //    - The presenter OBSERVES (does not call) the session manager. The
 //      published mirror of session state lets SwiftUI views bind to a
@@ -63,6 +84,45 @@ class AudiobookSessionPresenter: ObservableObject {
     /// `playbackStatePublisher` subscription.
     @Published private(set) var hasActiveSession: Bool = false
 
+    /// True when the current session is actively playing (not loading or
+    /// paused). Drives the mini-player + full player play/pause glyph and
+    /// accessibility label. Derived from the same `playbackStatePublisher`
+    /// sink that drives `hasActiveSession` so a single publisher event
+    /// updates both fields atomically.
+    ///
+    /// Polish-phase addition — replaces the closure-injected
+    /// `isPlayingProvider` parameter on `AudiobookMiniPlayerView`.
+    @Published private(set) var isPlaying: Bool = false
+
+    /// Cover image for the current session, mirrored from the session
+    /// manager's `coverImage` accessor. Initial value is snapshotted in
+    /// `adoptPlaybackModel(_:)`; async hi-res arrivals come via
+    /// `adoptCoverImage(_:)` (called from
+    /// `AudiobookSessionManager.updateCoverImage(_:)`).
+    ///
+    /// Polish-phase addition — replaces the closure-injected
+    /// `coverImageProvider` parameter on `AudiobookMiniPlayerView`.
+    @Published private(set) var coverImage: UIImage?
+
+    /// Current track position, mirrored from `playbackModel.$currentLocation`
+    /// (the only `@Published public` field on the toolkit's
+    /// `AudiobookPlaybackModel`). Cleared in `clearActiveSession()` /
+    /// re-subscribed in `adoptPlaybackModel(_:)`.
+    ///
+    /// Polish-phase addition — drives the time label + scrubber on the
+    /// mini-player.
+    @Published private(set) var currentLocation: TrackPosition?
+
+    /// Normalized 0.0...1.0 playback progress across the whole audiobook.
+    /// Derived from `currentLocation` via a Combine `.map` (see
+    /// `subscribeToPlaybackModelCurrentLocation`). The toolkit's
+    /// `playbackProgress` field is internal-default and unreachable; this
+    /// derivation is the public surface.
+    ///
+    /// Polish-phase addition — drives the `ProgressView` scrubber on the
+    /// mini-player chrome.
+    @Published private(set) var playbackProgress: Double = 0
+
     /// The playback model for the active session, mirrored from the session
     /// manager. The mini-player + full-player views observe this for chrome
     /// updates (title, cover, play/pause). Cleared on stopPlayback by the
@@ -90,7 +150,20 @@ class AudiobookSessionPresenter: ObservableObject {
     // MARK: - Private state
 
     private let sessionManager: AudiobookSessionManaging
+
+    /// Long-lived subscriptions — bound to the manager's publishers at
+    /// init time and never replaced.
     private var cancellables = Set<AnyCancellable>()
+
+    /// Playback-model-scoped subscriptions. Cleared in
+    /// `adoptPlaybackModel(_:)` BEFORE installing new ones so the audiobook-
+    /// switch path (PP-3783) doesn't leak the prior `$currentLocation` sink.
+    /// Separating this from `cancellables` is what makes the "re-subscribe
+    /// cleanly" round-trip test work — re-using `cancellables` would either
+    /// leak both subscriptions (silently mirroring the wrong model) or
+    /// cancel the long-lived `playbackStatePublisher` sink alongside the
+    /// short-lived `$currentLocation` sink.
+    private var playbackModelCancellables = Set<AnyCancellable>()
 
     // MARK: - Init
 
@@ -133,11 +206,20 @@ class AudiobookSessionPresenter: ObservableObject {
     /// Distinct from `minimize()`: `minimize()` only hides the full player;
     /// `clearActiveSession()` tears down everything (no mini-player either).
     /// Both run during stopPlayback (clear first, then collapse).
+    ///
+    /// Polish-phase: also clears the new `coverImage` / `currentLocation` /
+    /// `playbackProgress` mirrors AND drops the `playbackModelCancellables`
+    /// set so the next `adoptPlaybackModel(_:)` starts from a clean slate.
     func clearActiveSession() {
         playbackModel = nil
         currentBook = nil
         hasActiveSession = false
         isPlayerExpanded = false
+        isPlaying = false
+        coverImage = nil
+        currentLocation = nil
+        playbackProgress = 0
+        playbackModelCancellables.removeAll()
     }
 
     /// Adopts the book identity for the current session. Called by the
@@ -161,22 +243,122 @@ class AudiobookSessionPresenter: ObservableObject {
     /// position, chapter) and chrome (cover art) from a single source.
     ///
     /// Split from `adoptBook(_:)` — see `adoptBook` documentation.
+    ///
+    /// Polish-phase semantics: ALWAYS clears `playbackModelCancellables`
+    /// before installing new subscriptions so the audiobook-switch path
+    /// (PP-3783) re-subscribes cleanly. Without this, the second
+    /// audiobook's positions never propagate because the prior model's
+    /// `$currentLocation` sink stays alive and overwrites the new one.
     func adoptPlaybackModel(_ model: AudiobookPlaybackModel) {
+        // Drop prior playback-model subscriptions BEFORE writing the new
+        // model so a `$playbackModel` subscriber won't briefly see the old
+        // model + new subscription set (race window during switch).
+        playbackModelCancellables.removeAll()
         self.playbackModel = model
+
+        // Snapshot initial cover from the manager so the mini-player gets
+        // an image immediately on bind. Async hi-res replacements come via
+        // `adoptCoverImage(_:)` (forwarded from
+        // `AudiobookSessionManager.updateCoverImage(_:)`).
+        self.coverImage = sessionManager.coverImage
+
+        subscribeToPlaybackModelCurrentLocation(model)
+    }
+
+    /// Updates the presenter's mirrored cover image. Called from
+    /// `AudiobookSessionManager.updateCoverImage(_:)` for both the lo-res
+    /// snapshot at bind time AND the async hi-res replacement that arrives
+    /// after `loadCoverArt(for:into:)`'s Task completes. Polish-phase
+    /// addition — the toolkit's `AudiobookPlaybackModel.coverImage` is
+    /// internal-default and unreachable via Combine, so this forwarding
+    /// path is the only way Palace consumers can see hi-res cover updates.
+    func adoptCoverImage(_ image: UIImage?) {
+        self.coverImage = image
     }
 
     // MARK: - Subscriptions
 
-    /// Wires `hasActiveSession` to `playbackStatePublisher`. The manager
-    /// emits on every state transition; we derive the bool from
-    /// `AudiobookSessionState.isActive` (loading / playing / paused → true;
-    /// idle / error → false).
+    /// Wires `hasActiveSession` AND `isPlaying` to `playbackStatePublisher`.
+    /// The manager emits on every state transition; we derive both bools
+    /// from the same sink so a single publisher event updates both fields
+    /// atomically (no observer can see them out of sync).
+    ///
+    /// - `hasActiveSession` is true for loading / playing / paused
+    ///   (`AudiobookSessionState.isActive`) — mini-player visibility.
+    /// - `isPlaying` is true ONLY for the `.playing(_)` case — drives the
+    ///   play/pause glyph. Loading / paused render the pause glyph (so
+    ///   tapping resumes), playing renders pause, idle / error don't show
+    ///   the mini-player at all.
     private func subscribeToSessionState() {
         sessionManager.playbackStatePublisher
             .receive(on: DispatchQueue.main)
             .sink { [weak self] state in
-                self?.hasActiveSession = state.isActive
+                guard let self = self else { return }
+                self.hasActiveSession = state.isActive
+                if case .playing = state {
+                    self.isPlaying = true
+                } else {
+                    self.isPlaying = false
+                }
             }
             .store(in: &cancellables)
+    }
+
+    /// Subscribes to `model.$currentLocation` and mirrors into
+    /// `presenter.currentLocation`; derives `playbackProgress` via a
+    /// `.map` against the track's total duration.
+    ///
+    /// Stored in `playbackModelCancellables` (NOT `cancellables`) so
+    /// `adoptPlaybackModel(_:)` can cancel them cleanly before
+    /// re-subscribing for the next model — the PP-3783 audiobook-switch
+    /// case. See `playbackModelCancellables` doc-comment for why two
+    /// separate cancellable sets exist.
+    private func subscribeToPlaybackModelCurrentLocation(_ model: AudiobookPlaybackModel) {
+        model.$currentLocation
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] position in
+                guard let self = self else { return }
+                self.currentLocation = position
+                self.playbackProgress = Self.normalizedProgress(for: position)
+            }
+            .store(in: &playbackModelCancellables)
+    }
+
+    /// Pure helper — computes 0.0...1.0 progress for a position against
+    /// its track's total duration. Returns 0 for nil position or
+    /// non-positive duration (avoids /0). Extracted `static` so the
+    /// arithmetic is unit-testable without spinning up a real
+    /// `AudiobookPlaybackModel`.
+    ///
+    /// Mutates: a regression that drops the `> 0` duration guard would
+    /// return NaN/Inf for empty audiobooks; the polish-phase tests pin
+    /// the boundary explicitly via `normalizedProgressFromRawValues`.
+    static func normalizedProgress(for position: TrackPosition?) -> Double {
+        guard let position = position else { return 0 }
+        return normalizedProgressFromRawValues(
+            elapsed: position.durationToSelf(),
+            totalDuration: position.tracks.totalDuration
+        )
+    }
+
+    /// Pure-arithmetic mirror of `normalizedProgress(for:)` that takes
+    /// primitive `TimeInterval` inputs — exists so unit tests can pin
+    /// the `> 0` guard + clamp boundary mutations without spinning up
+    /// a real `TrackPosition` (which requires toolkit Audiobook/Manifest
+    /// fixtures). The two functions share the same arithmetic; the
+    /// optional-handling shell is `normalizedProgress(for:)` above.
+    ///
+    /// Mutates:
+    ///   - `> 0` → `>= 0`: with totalDuration == 0, original returns 0
+    ///     (safe), mutant returns NaN (0/0). Test pins this.
+    ///   - `> 0` → `< 0`: with totalDuration == 1, original returns
+    ///     elapsed/1, mutant returns 0 (because 1 < 0 is false → enters
+    ///     guard → returns 0). Test pins this.
+    static func normalizedProgressFromRawValues(elapsed: TimeInterval, totalDuration: TimeInterval) -> Double {
+        guard totalDuration > 0 else { return 0 }
+        let progress = elapsed / totalDuration
+        // Clamp to [0, 1] so toolkit edge cases (saved position past EOF,
+        // pre-load 0.0) don't drive the scrubber out of bounds.
+        return min(max(progress, 0), 1)
     }
 }

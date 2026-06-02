@@ -159,6 +159,8 @@ struct Strings {
         static let playAudiobook = NSLocalizedString("Play", comment: "VoiceOver: Play audiobook")
         static let pauseAudiobook = NSLocalizedString("Pause", comment: "VoiceOver: Pause audiobook")
         static let skipBack30 = NSLocalizedString("Skip back 30 seconds", comment: "VoiceOver: Rewind audiobook 30 seconds")
+        static let skipForward30 = NSLocalizedString("Skip forward 30 seconds", comment: "VoiceOver: Skip audiobook forward 30 seconds")
+        static let dismissPlayer = NSLocalizedString("Dismiss player", comment: "VoiceOver: Done button on the full audiobook player, dismisses to the mini-player")
         // Accessibility - Audiobook mini-player (swarm_0b7616e7 Module D)
         static let nowPlayingLabelTitleAndAuthor = NSLocalizedString(
             "Now playing: %1$@ by %2$@. Double-tap to expand.",

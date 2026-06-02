@@ -405,12 +405,19 @@ private final class FakeAudiobookSessionManager: AudiobookSessionManaging {
         return .failure(.unknown("FakeAudiobookSessionManager"))
     }
 
+    /// Polish-phase counters for skip controls — assert mini-player chrome
+    /// wiring without needing a real toolkit Player.
+    private(set) var skipBackCallCount: Int = 0
+    private(set) var skipForwardCallCount: Int = 0
+
     func play() {}
     func pause() {}
     func togglePlayPause() {}
     func skipToChapter(at index: Int) {}
+    func skipBack() { skipBackCallCount += 1 }
+    func skipForward() { skipForwardCallCount += 1 }
     func cyclePlaybackRate() -> PlaybackRate { return .normalTime }
-    func stopPlayback(dismissPhoneUI: Bool) async {}
+    func stopPlayback(dismissPhoneUI: Bool, persistFinalPosition: Bool) async {}
     func updateCoverImage(_ image: UIImage?) {}
 }
 

@@ -104,15 +104,14 @@ struct AppTabHostView: View {
         .safeAreaInset(edge: .bottom) {
             // Module D (swarm_0b7616e7) — root-level mini-player. Visible
             // when `presenter.hasActiveSession && !presenter.isReaderActive`
-            // (§7.3 Option α). The presenter, `isPlayingProvider`, and
-            // `coverImageProvider` resolve through `appContainer` so a
-            // single composition root drives both production and tests
-            // (via `withAudiobookSessionPresenter(_:)`).
+            // (§7.3 Option α). Polish-phase (in-app-nav-polish-2026-06-01):
+            // all chrome reads off `presenter.@Published` props; transport
+            // actions route through the injected `audiobookSession` so
+            // skip-back / skip-forward / play-pause go through one composition
+            // root for both production and tests.
             AudiobookMiniPlayerView(
                 presenter: appContainer.audiobookSessionPresenter,
-                isPlayingProvider: { [appContainer] in appContainer.audiobookSession.isPlaying },
-                coverImageProvider: { [appContainer] in appContainer.audiobookSession.coverImage },
-                togglePlayPauseAction: { [appContainer] in appContainer.audiobookSession.togglePlayPause() }
+                audiobookSession: appContainer.audiobookSession
             )
         }
         .fullScreenCover(isPresented: Binding(

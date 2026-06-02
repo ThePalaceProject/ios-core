@@ -317,11 +317,15 @@ private final class FakeIntegrationAudiobookSession: AudiobookSessionManaging {
     func openAudiobook(_ book: TPPBook, startPlaying: Bool) async -> Result<Void, AudiobookSessionError> {
         return .failure(.unknown("FakeIntegrationAudiobookSession"))
     }
+    /// Polish-phase no-op skip implementations — integration tests don't
+    /// drive these; their absence would block compilation.
     func play() {}
     func pause() {}
     func togglePlayPause() {}
     func skipToChapter(at index: Int) {}
+    func skipBack() {}
+    func skipForward() {}
     func cyclePlaybackRate() -> PlaybackRate { return .normalTime }
-    func stopPlayback(dismissPhoneUI: Bool) async {}
+    func stopPlayback(dismissPhoneUI: Bool, persistFinalPosition: Bool) async {}
     func updateCoverImage(_ image: UIImage?) {}
 }
