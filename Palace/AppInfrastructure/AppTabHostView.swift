@@ -57,6 +57,25 @@ struct AppTabHostView: View {
         ))
     }
 
+    // Mini-player inset modifier. Applied to each tab's NavigationHostView
+    // rather than the TabView root because `.safeAreaInset(.bottom)` on a
+    // TabView intercepts taps on the system tab bar on pre-iOS-18 SwiftUI
+    // (the inset region renders above the tab bar but extends the touch
+    // area to cover it). Per-tab application keeps the mini-player ABOVE
+    // each tab's nav-stack content and BELOW the system tab bar, which is
+    // the standard Apple Music / Audible layout.
+    //
+    // All 4 inset instances observe the same presenter, so the mini-player
+    // chrome renders consistently across tabs and reflects the single
+    // source of truth.
+    @ViewBuilder
+    private func miniPlayerInset() -> some View {
+        AudiobookMiniPlayerView(
+            presenter: appContainer.audiobookSessionPresenter,
+            audiobookSession: appContainer.audiobookSession
+        )
+    }
+
     var body: some View {
         TabView(selection: $router.selected) {
             NavigationHostView(rootView: CatalogView(
@@ -65,6 +84,7 @@ struct AppTabHostView: View {
                 appContainer: appContainer
             ))
                 .environmentObject(router)
+                .safeAreaInset(edge: .bottom, content: miniPlayerInset)
                 .tabItem {
                     VStack {
                         Image("Catalog").renderingMode(.template)
@@ -75,6 +95,7 @@ struct AppTabHostView: View {
                 .accessibilityIdentifier(AccessibilityID.TabBar.catalogTab)
 
             NavigationHostView(rootView: MyBooksView(model: MyBooksViewModel(appContainer: appContainer), appContainer: appContainer))
+                .safeAreaInset(edge: .bottom, content: miniPlayerInset)
                 .tabItem {
                     VStack {
                         Image("MyBooks").renderingMode(.template)
@@ -85,6 +106,7 @@ struct AppTabHostView: View {
                 .accessibilityIdentifier(AccessibilityID.TabBar.myBooksTab)
 
             NavigationHostView(rootView: HoldsView(appContainer: appContainer))
+                .safeAreaInset(edge: .bottom, content: miniPlayerInset)
                 .tabItem {
                     VStack {
                         Image("Holds").renderingMode(.template)
@@ -96,24 +118,12 @@ struct AppTabHostView: View {
                 .accessibilityIdentifier(AccessibilityID.TabBar.holdsTab)
 
             NavigationHostView(rootView: TPPSettingsView())
+                .safeAreaInset(edge: .bottom, content: miniPlayerInset)
                 .tabItem { Label(Strings.Settings.settings, systemImage: "gearshape") }
                 .tag(AppTab.settings)
                 .accessibilityIdentifier(AccessibilityID.TabBar.settingsTab)
         }
         .tint(Color.accentColor)
-        .safeAreaInset(edge: .bottom) {
-            // Module D (swarm_0b7616e7) — root-level mini-player. Visible
-            // when `presenter.hasActiveSession && !presenter.isReaderActive`
-            // (§7.3 Option α). Polish-phase (in-app-nav-polish-2026-06-01):
-            // all chrome reads off `presenter.@Published` props; transport
-            // actions route through the injected `audiobookSession` so
-            // skip-back / skip-forward / play-pause go through one composition
-            // root for both production and tests.
-            AudiobookMiniPlayerView(
-                presenter: appContainer.audiobookSessionPresenter,
-                audiobookSession: appContainer.audiobookSession
-            )
-        }
         .fullScreenCover(isPresented: Binding(
             // Module D (swarm_0b7616e7) — root-level full-player presentation.
             // Binds the SwiftUI `isPresented` to the presenter's

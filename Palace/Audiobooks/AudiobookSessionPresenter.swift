@@ -170,6 +170,7 @@ class AudiobookSessionPresenter: ObservableObject {
     init(sessionManager: AudiobookSessionManaging) {
         self.sessionManager = sessionManager
         subscribeToSessionState()
+        subscribeToAppLifecycle()
     }
 
     // MARK: - Public API (open for spying)
@@ -313,6 +314,34 @@ class AudiobookSessionPresenter: ObservableObject {
     /// re-subscribing for the next model — the PP-3783 audiobook-switch
     /// case. See `playbackModelCancellables` doc-comment for why two
     /// separate cancellable sets exist.
+    /// Re-snap UI mirrors from the session manager on app foreground.
+    ///
+    /// Why: while the app is backgrounded, the toolkit's
+    /// `playbackStatePublisher` may have emitted (e.g. lock-screen
+    /// play/pause from `MPNowPlayingInfoCenter`) and our sink updated the
+    /// `@Published` mirrors. But if a publisher fired AT the foreground
+    /// boundary it can be missed by SwiftUI's diffing — especially the
+    /// `coverImage` update from an async cover-art Task that completed
+    /// during background. Re-snapping `isPlaying` + `coverImage` from the
+    /// session manager on `willEnterForegroundNotification` guarantees
+    /// the chrome reflects truth the moment the user sees it.
+    ///
+    /// User-reported symptom this fixes: "playback stops for audiobooks
+    /// when backgrounded" — actually the audio kept playing, but the play
+    /// glyph stayed stuck on play and the cover stayed blank, making the
+    /// user believe playback had stopped.
+    private func subscribeToAppLifecycle() {
+        NotificationCenter.default
+            .publisher(for: UIApplication.willEnterForegroundNotification)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let self = self else { return }
+                self.isPlaying = self.sessionManager.isPlaying
+                self.coverImage = self.sessionManager.coverImage
+            }
+            .store(in: &cancellables)
+    }
+
     private func subscribeToPlaybackModelCurrentLocation(_ model: AudiobookPlaybackModel) {
         model.$currentLocation
             .receive(on: DispatchQueue.main)
