@@ -352,7 +352,9 @@ final class ActiveSessionsViewModelTests: XCTestCase {
 @MainActor
 private final class SpyRecentlyReadingService: RecentlyReadingService {
     var stubbedResult: [ContinueReadingItem] = []
+    var stubbedRecentlyOpenedAudiobook: TPPBook?
     private(set) var recentlyReadingCallCount = 0
+    private(set) var recentlyOpenedAudiobookCallCount = 0
     private var observers: [(Int, () -> Void)] = []
 
     func recentlyReading() -> [ContinueReadingItem] {
@@ -364,6 +366,11 @@ private final class SpyRecentlyReadingService: RecentlyReadingService {
         }
         observers.removeAll(where: { (baseline, _) in count > baseline })
         return stubbedResult
+    }
+
+    func recentlyOpenedAudiobook() -> TPPBook? {
+        recentlyOpenedAudiobookCallCount += 1
+        return stubbedRecentlyOpenedAudiobook
     }
 
     /// Returns an opaque token; caller keeps it alive until the wait

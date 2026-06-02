@@ -344,12 +344,15 @@ final class ContinueRowSectionTests: XCTestCase {
 @MainActor
 private final class SpyRowSectionRecentlyReadingService: RecentlyReadingService {
     var stubbedResult: [ContinueReadingItem] = []
+    var stubbedRecentlyOpenedAudiobook: TPPBook?
     private(set) var callCount: Int = 0
 
     func recentlyReading() -> [ContinueReadingItem] {
         callCount += 1
         return stubbedResult
     }
+
+    func recentlyOpenedAudiobook() -> TPPBook? { return stubbedRecentlyOpenedAudiobook }
 }
 
 // MARK: - FakeRowSectionAudiobookSessionManager

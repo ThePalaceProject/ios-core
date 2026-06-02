@@ -303,4 +303,103 @@ final class DefaultRecentlyReadingServiceTests: XCTestCase {
         }
         return location
     }
+
+    // MARK: - recentlyOpenedAudiobook (cold-launch fallback)
+
+    /// Polish-phase (in-app-nav-polish-2026-06-02): when the registry
+    /// holds multiple audiobooks and the open tracker records different
+    /// timestamps, the service returns the audiobook with the most
+    /// recent wall-clock open. This is the seam the Continue row uses
+    /// to surface the right audiobook on cold launch — previous
+    /// behavior fell back to the older ebook because no live session
+    /// was available.
+    func testRecentlyOpenedAudiobook_returnsAudiobookWithLatestOpenTimestamp() {
+        let older = Date(timeIntervalSince1970: 1_700_000_000)
+        let newer = Date(timeIntervalSince1970: 1_700_000_500)
+
+        let audiobookOlder = makeAudiobook(id: "ab-older")
+        let audiobookNewer = makeAudiobook(id: "ab-newer")
+        registry.myBooks = [audiobookOlder, audiobookNewer]
+
+        let tracker = StubBookOpenTracker(openTimes: [
+            "ab-older": older,
+            "ab-newer": newer
+        ])
+        let service = DefaultRecentlyReadingService(
+            bookRegistry: registry,
+            bookOpenTracker: tracker
+        )
+
+        let result = service.recentlyOpenedAudiobook()
+        XCTAssertEqual(result?.identifier, "ab-newer",
+                       "Most-recent open time MUST win regardless of registry order")
+    }
+
+    /// Cold-launch contract: ebooks in the registry must NOT be returned
+    /// by `recentlyOpenedAudiobook()` even if they have a newer open
+    /// time than the only audiobook — the method is audiobook-typed,
+    /// and the ActiveSessionsViewModel uses it specifically to populate
+    /// the listening row when no live session is active.
+    func testRecentlyOpenedAudiobook_excludesEbooks_evenWhenEbookOpenedMoreRecently() {
+        let audiobookOpenedAt = Date(timeIntervalSince1970: 1_700_000_000)
+        let epubOpenedAt = Date(timeIntervalSince1970: 1_700_000_500) // newer
+
+        let audiobook = makeAudiobook(id: "ab-only")
+        let epub = makeEpub(id: "epub-newer")
+        registry.myBooks = [audiobook, epub]
+
+        let tracker = StubBookOpenTracker(openTimes: [
+            "ab-only": audiobookOpenedAt,
+            "epub-newer": epubOpenedAt
+        ])
+        let service = DefaultRecentlyReadingService(
+            bookRegistry: registry,
+            bookOpenTracker: tracker
+        )
+
+        let result = service.recentlyOpenedAudiobook()
+        XCTAssertEqual(result?.identifier, "ab-only",
+                       "Ebook MUST NOT be returned by audiobook-typed accessor")
+    }
+
+    /// When no tracker is injected (legacy callers / older test setups),
+    /// the method MUST return nil rather than fall back to registry
+    /// order — without an open-time signal there's no honest answer.
+    func testRecentlyOpenedAudiobook_returnsNil_whenNoTrackerInjected() {
+        let audiobook = makeAudiobook(id: "ab-only")
+        registry.myBooks = [audiobook]
+
+        let service = DefaultRecentlyReadingService(bookRegistry: registry)
+        XCTAssertNil(service.recentlyOpenedAudiobook(),
+                     "MUST return nil without a tracker — no fallback to registry order")
+    }
+
+    /// When the tracker is present but has no recorded opens for any
+    /// audiobook in the registry, return nil. Validates the compactMap
+    /// filter (audiobooks without a recorded open are dropped).
+    func testRecentlyOpenedAudiobook_returnsNil_whenNoAudiobookHasRecordedOpen() {
+        let audiobook = makeAudiobook(id: "ab-never-opened")
+        registry.myBooks = [audiobook]
+
+        let tracker = StubBookOpenTracker(openTimes: [:])
+        let service = DefaultRecentlyReadingService(
+            bookRegistry: registry,
+            bookOpenTracker: tracker
+        )
+
+        XCTAssertNil(service.recentlyOpenedAudiobook())
+    }
+}
+
+// MARK: - StubBookOpenTracker
+
+/// In-memory `BookOpenTracking` stub for the cold-launch fallback tests.
+/// `recordOpened(_:)` is a no-op because these tests only exercise the
+/// read path — open times come pre-seeded via the initializer.
+@MainActor
+private final class StubBookOpenTracker: BookOpenTracking {
+    private var openTimes: [String: Date]
+    init(openTimes: [String: Date]) { self.openTimes = openTimes }
+    func recordOpened(_ bookId: String, at date: Date) { openTimes[bookId] = date }
+    func lastOpened(_ bookId: String) -> Date? { return openTimes[bookId] }
 }

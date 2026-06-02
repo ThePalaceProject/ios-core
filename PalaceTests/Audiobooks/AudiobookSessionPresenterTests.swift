@@ -251,7 +251,10 @@ final class AudiobookSessionPresenterTests: XCTestCase {
     /// asserts on the presenter's published mirrored state. Without
     /// this, the assertion races the sink and intermittently fails.
     private func spinRunLoopForPublisherDelivery() {
-        RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+        // 50ms — empirically large enough to outrun CI scheduler jitter that
+        // caused intermittent failures at 10ms. Each call adds ~50ms to the
+        // suite walltime; current usage (~10 sites) ≈ +0.5s total.
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
     }
 
     func testPresenter_expand_minimize_expandAgain_drivesIsPlayerExpandedCorrectly_acrossThreeTransitions() {

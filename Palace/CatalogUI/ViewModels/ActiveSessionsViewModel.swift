@@ -182,17 +182,34 @@ final class ActiveSessionsViewModel: ObservableObject {
 
     // MARK: Internal helpers
 
-    /// Builds zero-or-more `ContinueListeningItem` from the current
-    /// audiobook session. Today we surface at most one entry (the active
-    /// session), but the array shape is preserved so a future "recently
-    /// listened" history can extend the row without changing the public
-    /// surface.
+    /// Builds zero-or-more `ContinueListeningItem` from either:
+    ///   - the current audiobook session (if one is active), OR
+    ///   - the most-recently-opened audiobook from the open-time tracker
+    ///     (when there's no active session — typical cold-launch case).
+    ///
+    /// Polish-phase (in-app-nav-polish-2026-06-01): the fallback is new.
+    /// Without it, on cold launch after the user previously listened to
+    /// an audiobook, the Continue row's `mostRecent` falls back to any
+    /// in-progress ebook (which is older than the audiobook open) —
+    /// users reported: "after changing to an audiobook from an ebook
+    /// and quitting the app, on reopen the ebook is the continue reading
+    /// option, not the audiobook."
     private func currentListeningItems() -> [ContinueListeningItem] {
-        // §11 decision: threshold is `> 0` seconds. A session that has
-        // never advanced past timestamp 0.0 is not "in progress" and
-        // does not surface as a Continue Listening candidate.
         guard listeningRowLimit > 0 else { return [] }
-        guard let book = audiobookSession.currentBook else { return [] }
+        if let item = activeSessionListeningItem() {
+            return Array([item].prefix(listeningRowLimit))
+        }
+        if let item = recentlyOpenedListeningItem() {
+            return Array([item].prefix(listeningRowLimit))
+        }
+        return []
+    }
+
+    /// The currently-active audiobook session, if any. §11 threshold:
+    /// requires `> 0` seconds of playback (a paused-but-never-advanced
+    /// session is not "in progress").
+    private func activeSessionListeningItem() -> ContinueListeningItem? {
+        guard let book = audiobookSession.currentBook else { return nil }
         let state = audiobookSession.state
 
         let isPlaying: Bool
@@ -202,22 +219,17 @@ final class ActiveSessionsViewModel: ObservableObject {
         case .paused:
             isPlaying = false
         case .idle, .loading, .error:
-            return []
+            return nil
         }
 
-        // For playing/paused states we additionally require a non-zero
-        // position. A `.paused(bookId:)` session that the user just
-        // opened — but never advanced — is not "in progress."
         let timestamp = audiobookSession.currentPosition?.timestamp ?? 0
-        guard timestamp > 0 else { return [] }
+        guard timestamp > 0 else { return nil }
 
-        // `Chapter.title` is non-optional `String`; we still wrap as
-        // optional so future cases (no current chapter, empty title)
-        // surface as nil at the Module B consumer site.
         let chapterTitle: String? = audiobookSession.currentChapter
             .map { $0.title }
             .flatMap { $0.isEmpty ? nil : $0 }
-        let item = ContinueListeningItem(
+
+        return ContinueListeningItem(
             bookId: book.identifier,
             book: book,
             isCurrentlyPlaying: isPlaying,
@@ -225,6 +237,23 @@ final class ActiveSessionsViewModel: ObservableObject {
             progressFraction: nil,
             progressLabel: nil
         )
-        return Array([item].prefix(listeningRowLimit))
+    }
+
+    /// Cold-launch fallback — the most-recently-opened audiobook per
+    /// the wall-clock open tracker, surfaced as a Continue candidate
+    /// (not actively playing, no chapter/progress info because there's
+    /// no live session to query).
+    private func recentlyOpenedListeningItem() -> ContinueListeningItem? {
+        guard let book = recentlyReadingService.recentlyOpenedAudiobook() else {
+            return nil
+        }
+        return ContinueListeningItem(
+            bookId: book.identifier,
+            book: book,
+            isCurrentlyPlaying: false,
+            chapterTitle: nil,
+            progressFraction: nil,
+            progressLabel: nil
+        )
     }
 }
