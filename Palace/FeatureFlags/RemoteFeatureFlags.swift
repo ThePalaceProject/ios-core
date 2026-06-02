@@ -242,21 +242,36 @@ final class RemoteFeatureFlags {
         #endif
     }
 
+    /// UserDefaults override for ticket submission. Mirrors the master
+    /// `triageBotLocalOverrideKey` pattern so QA can toggle independently
+    /// from `TPPDeveloperSettingsTableViewController`.
+    static let triageBotTicketSubmissionLocalOverrideKey = "RemoteFeatureFlags.triageBotTicketSubmissionLocalOverride"
+
     /// Whether the bot may post real HelpSpot tickets. When false but the bot
     /// is otherwise enabled, the chat still drafts tickets and shows the
     /// preview, but the confirm action copies the JSON payload to the
     /// pasteboard instead of submitting. Used during the demo and during
     /// staged rollout before HelpSpot rate-limit negotiation completes.
     ///
-    /// Same DEBUG-default-on policy as isTriageBotEnabled — dev builds get
-    /// the full email-gateway flow without per-device setup.
+    /// Override precedence:
+    ///   1. UserDefaults local override (QA toggle)
+    ///   2. DEBUG build → true
+    ///   3. Firebase Remote Config
     var isTriageBotTicketSubmissionEnabled: Bool {
+        if let override = UserDefaults.standard.object(forKey: Self.triageBotTicketSubmissionLocalOverrideKey) as? Bool {
+            return override
+        }
         #if DEBUG
         return true
         #else
         return isFeatureEnabled(.triageBotTicketSubmissionEnabled)
         #endif
     }
+
+    /// UserDefaults override for AI fallback. Mirrors the master
+    /// `triageBotLocalOverrideKey` pattern so QA can toggle independently
+    /// from `TPPDeveloperSettingsTableViewController`.
+    static let triageBotAIFallbackLocalOverrideKey = "RemoteFeatureFlags.triageBotAIFallbackLocalOverride"
 
     /// Whether the triage bot may consult the Claude-backed fallback
     /// classifier when the local keyword matcher returns escalate. Defaults
@@ -266,7 +281,15 @@ final class RemoteFeatureFlags {
     /// engineer's Xcode scheme. Even when this flag is true, the
     /// fallback only fires if the Keychain holds an API key — no key,
     /// no Anthropic traffic.
+    ///
+    /// Override precedence:
+    ///   1. UserDefaults local override (QA toggle)
+    ///   2. DEBUG build → true
+    ///   3. Firebase Remote Config
     var isTriageBotAIFallbackEnabled: Bool {
+        if let override = UserDefaults.standard.object(forKey: Self.triageBotAIFallbackLocalOverrideKey) as? Bool {
+            return override
+        }
         #if DEBUG
         return true
         #else

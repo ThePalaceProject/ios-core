@@ -14,6 +14,13 @@ struct TPPSettingsView: View {
 
     @AppStorage(TPPSettings.showDeveloperSettingsKey) private var showDeveloperSettings: Bool = false
     @AppStorage(TPPSettings.downloadOnlyOnWiFiKey) private var downloadOnlyOnWiFi: Bool = false
+    /// Subscribes to the dev-settings triage bot local override so the
+    /// support section appears/disappears the moment the toggle flips.
+    /// Effective gating still goes through
+    /// `RemoteFeatureFlags.shared.isTriageBotEnabled` (which folds in the
+    /// DEBUG-default-on and Firebase fallback). The @AppStorage read in
+    /// `supportSection` registers the SwiftUI observation.
+    @AppStorage("RemoteFeatureFlags.triageBotLocalOverride") private var triageBotLocalOverride: Bool = false
     @State private var selectedView: Int? = 0
     @State private var orientation: UIDeviceOrientation = UIDevice.current.orientation
     @State private var showAddLibrarySheet: Bool = false
@@ -134,6 +141,10 @@ struct TPPSettingsView: View {
         // the row. With this shape the row is stable as long as the
         // flag is on; any factory failure surfaces as an UnavailableView
         // inside the chat surface instead of a disappeared Settings row.
+        // Touching `triageBotLocalOverride` registers the @AppStorage
+        // dependency; the effective value still folds in DEBUG-default-on
+        // and Firebase via `isTriageBotEnabled`.
+        let _ = triageBotLocalOverride
         if RemoteFeatureFlags.shared.isTriageBotEnabled {
             Section(header: Text("Support")) {
                 let chat = TriageBotSupportView()

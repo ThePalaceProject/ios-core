@@ -10,6 +10,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     var loadingView: UIView?
     enum Section: Int, CaseIterable {
         case librarySettings = 0
+        case triageBot
         case libraryRegistryDebugging
         case dataManagement
         case developerTools
@@ -31,6 +32,9 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     private let errorSimulationCellIdentifier = "errorSimulationCell"
     private let badgeLoggingCellIdentifier = "badgeLoggingCell"
     private let testHoldsCellIdentifier = "testHoldsCell"
+    private let triageBotEnabledCellIdentifier = "triageBotEnabledCell"
+    private let triageBotTicketSubmissionCellIdentifier = "triageBotTicketSubmissionCell"
+    private let triageBotAIFallbackCellIdentifier = "triageBotAIFallbackCell"
 
     private var pushNotificationsStatus = false
     private let settings: TPPSettings
@@ -80,6 +84,9 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: errorSimulationCellIdentifier)
         self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: badgeLoggingCellIdentifier)
         self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: testHoldsCellIdentifier)
+        self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: triageBotEnabledCellIdentifier)
+        self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: triageBotTicketSubmissionCellIdentifier)
+        self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: triageBotAIFallbackCellIdentifier)
     }
 
     // MARK: - UITableViewDataSource
@@ -88,6 +95,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         guard let sectionType = Section(rawValue: section) else { return 0 }
         switch sectionType {
         case .librarySettings: return 2
+        case .triageBot: return 3  // enabled + ticket submission + AI fallback
         case .developerTools: return 2
         case .pushNotificationTesting: return 3
         case .badgeTesting:
@@ -123,6 +131,12 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
             switch indexPath.row {
             case 0: return cellForBetaLibraries()
             default: return cellForLCPPassphrase()
+            }
+        case .triageBot:
+            switch indexPath.row {
+            case 0: return cellForTriageBotEnabled()
+            case 1: return cellForTriageBotTicketSubmission()
+            default: return cellForTriageBotAIFallback()
             }
         case .libraryRegistryDebugging: return cellForCustomRegsitry()
         case .dataManagement: return cellForClearCache()
@@ -175,6 +189,8 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         switch sectionType {
         case .librarySettings:
             return "Library Settings"
+        case .triageBot:
+            return "Triage Bot"
         case .libraryRegistryDebugging:
             return "Library Registry Debugging"
         case .dataManagement:
@@ -227,6 +243,70 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         cell.textLabel?.minimumScaleFactor = 0.5
         cell.accessoryView = createSwitch(isOn: settings.enterLCPPassphraseManually, action: #selector(enterLCPPassphraseSwitchDidChange))
         return cell
+    }
+
+    // MARK: - Triage Bot
+
+    /// Master kill-switch toggle. Writes the
+    /// `RemoteFeatureFlags.triageBotLocalOverrideKey` UserDefault so it
+    /// wins over the DEBUG-default-on policy and the Firebase Remote
+    /// Config value. Initial state reflects the effective flag
+    /// (`isTriageBotEnabled`) so QA sees the live behavior.
+    private func cellForTriageBotEnabled() -> UITableViewCell {
+        guard let cell = tableView.dequeueReusableCell(withIdentifier: triageBotEnabledCellIdentifier) else {
+            fatalError("Failed to dequeue cell with identifier \(triageBotEnabledCellIdentifier)")
+        }
+        cell.selectionStyle = .none
+        cell.textLabel?.text = "Enabled (master)"
+        cell.textLabel?.adjustsFontSizeToFitWidth = true
+        cell.textLabel?.minimumScaleFactor = 0.5
+        cell.accessoryView = createSwitch(
+            isOn: RemoteFeatureFlags.shared.isTriageBotEnabled,
+            action: #selector(triageBotEnabledSwitchDidChange)
+        )
+        return cell
+    }
+
+    private func cellForTriageBotTicketSubmission() -> UITableViewCell {
+        guard let cell = tableView.dequeueReusableCell(withIdentifier: triageBotTicketSubmissionCellIdentifier) else {
+            fatalError("Failed to dequeue cell with identifier \(triageBotTicketSubmissionCellIdentifier)")
+        }
+        cell.selectionStyle = .none
+        cell.textLabel?.text = "Ticket Submission (HelpSpot)"
+        cell.textLabel?.adjustsFontSizeToFitWidth = true
+        cell.textLabel?.minimumScaleFactor = 0.5
+        cell.accessoryView = createSwitch(
+            isOn: RemoteFeatureFlags.shared.isTriageBotTicketSubmissionEnabled,
+            action: #selector(triageBotTicketSubmissionSwitchDidChange)
+        )
+        return cell
+    }
+
+    private func cellForTriageBotAIFallback() -> UITableViewCell {
+        guard let cell = tableView.dequeueReusableCell(withIdentifier: triageBotAIFallbackCellIdentifier) else {
+            fatalError("Failed to dequeue cell with identifier \(triageBotAIFallbackCellIdentifier)")
+        }
+        cell.selectionStyle = .none
+        cell.textLabel?.text = "AI Fallback (Claude)"
+        cell.textLabel?.adjustsFontSizeToFitWidth = true
+        cell.textLabel?.minimumScaleFactor = 0.5
+        cell.accessoryView = createSwitch(
+            isOn: RemoteFeatureFlags.shared.isTriageBotAIFallbackEnabled,
+            action: #selector(triageBotAIFallbackSwitchDidChange)
+        )
+        return cell
+    }
+
+    @objc func triageBotEnabledSwitchDidChange(sender: UISwitch) {
+        UserDefaults.standard.set(sender.isOn, forKey: RemoteFeatureFlags.triageBotLocalOverrideKey)
+    }
+
+    @objc func triageBotTicketSubmissionSwitchDidChange(sender: UISwitch) {
+        UserDefaults.standard.set(sender.isOn, forKey: RemoteFeatureFlags.triageBotTicketSubmissionLocalOverrideKey)
+    }
+
+    @objc func triageBotAIFallbackSwitchDidChange(sender: UISwitch) {
+        UserDefaults.standard.set(sender.isOn, forKey: RemoteFeatureFlags.triageBotAIFallbackLocalOverrideKey)
     }
 
     private func cellForCustomRegsitry() -> UITableViewCell {
@@ -641,7 +721,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
             }
         #endif
 
-        case .librarySettings, .libraryRegistryDebugging, nil:
+        case .librarySettings, .triageBot, .libraryRegistryDebugging, nil:
             break
         }
     }
