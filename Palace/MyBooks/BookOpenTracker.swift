@@ -22,12 +22,27 @@
 
 import Foundation
 
+/// Posted on `.default` notification center every time a book open is
+/// recorded via `BookOpenTracker.recordOpened(_:at:)`. The Continue
+/// row's viewmodel subscribes to this so the row updates immediately
+/// when the user opens a new ebook (without this, the row stayed
+/// stale until the next registry-state change — user feedback:
+/// "the continue cell doesn't update when user starts reading a new
+/// book"). The notification carries the bookId in
+/// `userInfo["bookId"]` for callers that need to filter; the
+/// viewmodel currently re-derives everything, so it doesn't.
+extension Notification.Name {
+    static let palaceBookOpenedDidRecord = Notification.Name("PalaceBookOpenedDidRecord")
+}
+
 /// Records and looks up the most-recent wall-clock open time for a
 /// book. Polish-phase addition (in-app-nav-polish-2026-06-01) for the
 /// user-reported "wrong last-read book" bug.
 protocol BookOpenTracking {
     /// Records that the user opened the book identified by `bookId` at
-    /// `date` (defaults to now). Overwrites any prior entry.
+    /// `date` (defaults to now). Overwrites any prior entry. Posts
+    /// `.palaceBookOpenedDidRecord` so reactive consumers (the
+    /// Continue row's viewmodel) can refresh immediately.
     func recordOpened(_ bookId: String, at date: Date)
 
     /// Returns the most-recent recorded open time for `bookId`, or
@@ -45,13 +60,16 @@ extension BookOpenTracking {
 final class BookOpenTracker: BookOpenTracking {
     private let userDefaults: UserDefaults
     private let storageKey: String
+    private let notificationCenter: NotificationCenter
 
     init(
         userDefaults: UserDefaults = .standard,
-        storageKey: String = "TPPBookLastOpenedAt"
+        storageKey: String = "TPPBookLastOpenedAt",
+        notificationCenter: NotificationCenter = .default
     ) {
         self.userDefaults = userDefaults
         self.storageKey = storageKey
+        self.notificationCenter = notificationCenter
     }
 
     func recordOpened(_ bookId: String, at date: Date) {
@@ -59,6 +77,11 @@ final class BookOpenTracker: BookOpenTracking {
         var dict = currentMap()
         dict[bookId] = date
         userDefaults.set(dict, forKey: storageKey)
+        notificationCenter.post(
+            name: .palaceBookOpenedDidRecord,
+            object: nil,
+            userInfo: ["bookId": bookId]
+        )
     }
 
     func lastOpened(_ bookId: String) -> Date? {

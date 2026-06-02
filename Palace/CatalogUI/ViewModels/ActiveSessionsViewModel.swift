@@ -40,6 +40,14 @@ struct ContinueListeningItem: Identifiable, Equatable {
     /// Optional human-readable progress label (e.g. "12:34 / 45:00").
     /// Nil when not derivable from the audiobook session.
     let progressLabel: String?
+    /// Wall-clock timestamp used by `mostRecent` selection to decide
+    /// which item the user touched last. Set to `Date()` for a live
+    /// active session (because it's literally in flight right now —
+    /// always wins against any reading item); set to
+    /// `bookOpenTracker.lastOpened(_:)` for the cold-launch fallback
+    /// (because we need an honest comparison against the reading
+    /// item's `lastReadAt`).
+    let lastTouchedAt: Date
 
     /// Identity for SwiftUI diffing is `bookId` (the active audiobook).
     /// Display fields like `isCurrentlyPlaying` legitimately flip between
@@ -146,6 +154,19 @@ final class ActiveSessionsViewModel: ObservableObject {
             .sink { [weak self] _ in self?.refresh() }
             .store(in: &cancellables)
 
+        // Subscribe to BookOpenTracker open-record events so the
+        // Continue row updates immediately when the user opens a new
+        // ebook or audiobook (registry state alone doesn't change on
+        // re-open, so without this the row stayed stale until the
+        // next download/return/library-swap — user feedback: "the
+        // continue cell doesn't update when user starts reading a
+        // new book").
+        notificationCenter
+            .publisher(for: .palaceBookOpenedDidRecord)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.refresh() }
+            .store(in: &cancellables)
+
         // Seed the initial state synchronously so the first SwiftUI body
         // pass sees the right values.
         refresh()
@@ -164,20 +185,37 @@ final class ActiveSessionsViewModel: ObservableObject {
         )
     }
 
-    /// Pure helper — picks the single "most recent" candidate. Active
-    /// audiobook session wins because it's by definition in flight right
-    /// now; reading falls back to the lastReadAt-ordered first entry.
+    /// Pure helper — picks the single "most recent" candidate by
+    /// comparing wall-clock timestamps: `ContinueListeningItem
+    /// .lastTouchedAt` vs `ContinueReadingItem.lastReadAt`. The bigger
+    /// timestamp wins; ties go to listening because a live or
+    /// fresher-by-microseconds audiobook session is more likely to
+    /// match what the user expects when they tap "Continue."
+    ///
+    /// Live audiobook sessions are built with `lastTouchedAt = Date()`
+    /// at refresh time, so they always beat any older reading entry.
+    /// Cold-launch fallback audiobooks are built with the tracker's
+    /// recorded open time, so they only beat a reading item if the
+    /// user genuinely opened the audiobook last.
+    ///
     /// Returns nil when both empty.
     ///
-    /// Extracted `static` so the polish-phase tests can pin the priority
-    /// without spinning up a full viewmodel + dependencies.
+    /// Extracted `static` so the polish-phase tests can pin the
+    /// priority without spinning up a full viewmodel + dependencies.
     static func deriveMostRecent(
         listening: ContinueListeningItem?,
         reading: ContinueReadingItem?
     ) -> ContinueRowItem? {
-        if let listening = listening { return .listening(listening) }
-        if let reading = reading { return .reading(reading) }
-        return nil
+        switch (listening, reading) {
+        case let (l?, r?):
+            return l.lastTouchedAt >= r.lastReadAt ? .listening(l) : .reading(r)
+        case let (l?, nil):
+            return .listening(l)
+        case let (nil, r?):
+            return .reading(r)
+        case (nil, nil):
+            return nil
+        }
     }
 
     // MARK: Internal helpers
@@ -235,7 +273,11 @@ final class ActiveSessionsViewModel: ObservableObject {
             isCurrentlyPlaying: isPlaying,
             chapterTitle: chapterTitle,
             progressFraction: nil,
-            progressLabel: nil
+            progressLabel: nil,
+            // Live session — set to "now" so this item always wins
+            // against any reading entry. The session IS the most recent
+            // touch by definition.
+            lastTouchedAt: Date()
         )
     }
 
@@ -244,16 +286,21 @@ final class ActiveSessionsViewModel: ObservableObject {
     /// (not actively playing, no chapter/progress info because there's
     /// no live session to query).
     private func recentlyOpenedListeningItem() -> ContinueListeningItem? {
-        guard let book = recentlyReadingService.recentlyOpenedAudiobook() else {
+        guard let entry = recentlyReadingService.recentlyOpenedAudiobook() else {
             return nil
         }
         return ContinueListeningItem(
-            bookId: book.identifier,
-            book: book,
+            bookId: entry.book.identifier,
+            book: entry.book,
             isCurrentlyPlaying: false,
             chapterTitle: nil,
             progressFraction: nil,
-            progressLabel: nil
+            progressLabel: nil,
+            // Fallback path — use the tracker's recorded open time so
+            // `deriveMostRecent` can honestly compare against the
+            // reading item's lastReadAt. If the user opened an ebook
+            // more recently than this audiobook, the ebook wins.
+            lastTouchedAt: entry.openedAt
         )
     }
 }

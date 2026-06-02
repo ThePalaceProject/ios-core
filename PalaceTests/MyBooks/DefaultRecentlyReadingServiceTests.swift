@@ -331,8 +331,10 @@ final class DefaultRecentlyReadingServiceTests: XCTestCase {
         )
 
         let result = service.recentlyOpenedAudiobook()
-        XCTAssertEqual(result?.identifier, "ab-newer",
+        XCTAssertEqual(result?.book.identifier, "ab-newer",
                        "Most-recent open time MUST win regardless of registry order")
+        XCTAssertEqual(result?.openedAt, newer,
+                       "openedAt MUST be the tracker's recorded date for the winning book")
     }
 
     /// Cold-launch contract: ebooks in the registry must NOT be returned
@@ -358,7 +360,7 @@ final class DefaultRecentlyReadingServiceTests: XCTestCase {
         )
 
         let result = service.recentlyOpenedAudiobook()
-        XCTAssertEqual(result?.identifier, "ab-only",
+        XCTAssertEqual(result?.book.identifier, "ab-only",
                        "Ebook MUST NOT be returned by audiobook-typed accessor")
     }
 

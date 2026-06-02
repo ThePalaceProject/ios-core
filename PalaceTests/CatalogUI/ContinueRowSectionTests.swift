@@ -101,7 +101,8 @@ final class ContinueRowSectionTests: XCTestCase {
             isCurrentlyPlaying: isPlaying,
             chapterTitle: "Chapter 1",
             progressFraction: nil,
-            progressLabel: "12:34 / 45:00"
+            progressLabel: "12:34 / 45:00",
+            lastTouchedAt: Date()
         )
     }
 
@@ -344,7 +345,7 @@ final class ContinueRowSectionTests: XCTestCase {
 @MainActor
 private final class SpyRowSectionRecentlyReadingService: RecentlyReadingService {
     var stubbedResult: [ContinueReadingItem] = []
-    var stubbedRecentlyOpenedAudiobook: TPPBook?
+    var stubbedRecentlyOpenedAudiobook: (book: TPPBook, openedAt: Date)?
     private(set) var callCount: Int = 0
 
     func recentlyReading() -> [ContinueReadingItem] {
@@ -352,7 +353,7 @@ private final class SpyRowSectionRecentlyReadingService: RecentlyReadingService 
         return stubbedResult
     }
 
-    func recentlyOpenedAudiobook() -> TPPBook? { return stubbedRecentlyOpenedAudiobook }
+    func recentlyOpenedAudiobook() -> (book: TPPBook, openedAt: Date)? { return stubbedRecentlyOpenedAudiobook }
 }
 
 // MARK: - FakeRowSectionAudiobookSessionManager

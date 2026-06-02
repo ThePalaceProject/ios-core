@@ -60,13 +60,16 @@ struct ContinueReadingItem: Identifiable, Equatable {
 protocol RecentlyReadingService {
     func recentlyReading() -> [ContinueReadingItem]
     /// Most-recently-opened audiobook (via the wall-clock open-time
-    /// tracker), regardless of whether there's an active session right
-    /// now. Used by `ActiveSessionsViewModel` as a fallback for the
-    /// Continue row's `mostRecent` candidate when the app cold-launches
-    /// after the user previously listened to an audiobook — without
-    /// this, the row would fall back to the older ebook even though
-    /// the audiobook is what the user touched last.
-    func recentlyOpenedAudiobook() -> TPPBook?
+    /// tracker), along with that open timestamp, regardless of whether
+    /// there's an active session right now. Used by
+    /// `ActiveSessionsViewModel` as a fallback for the Continue row's
+    /// `mostRecent` candidate when the app cold-launches after the
+    /// user previously listened to an audiobook. The open timestamp
+    /// is returned so callers can compare it against a recently-opened
+    /// ebook's `lastReadAt` to pick whichever the user touched most
+    /// recently (without the timestamp, the row would always prefer
+    /// the audiobook even when a more-recently-opened ebook exists).
+    func recentlyOpenedAudiobook() -> (book: TPPBook, openedAt: Date)?
 }
 
 // MARK: - DefaultRecentlyReadingService
@@ -159,16 +162,16 @@ final class DefaultRecentlyReadingService: RecentlyReadingService {
     /// Used by `ActiveSessionsViewModel` as the fallback for the
     /// Continue row's `mostRecent` candidate when there's no active
     /// audiobook session right now (cold launch).
-    func recentlyOpenedAudiobook() -> TPPBook? {
+    func recentlyOpenedAudiobook() -> (book: TPPBook, openedAt: Date)? {
         guard let bookOpenTracker = bookOpenTracker else { return nil }
         return bookRegistry.myBooks
             .filter { $0.defaultBookContentType == .audiobook }
-            .compactMap { book -> (TPPBook, Date)? in
+            .compactMap { book -> (book: TPPBook, openedAt: Date)? in
                 guard let date = bookOpenTracker.lastOpened(book.identifier) else { return nil }
-                return (book, date)
+                return (book: book, openedAt: date)
             }
-            .sorted { $0.1 > $1.1 }
-            .first?.0
+            .sorted { $0.openedAt > $1.openedAt }
+            .first
     }
 
     // MARK: - Internal helpers

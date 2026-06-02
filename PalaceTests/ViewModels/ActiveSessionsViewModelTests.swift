@@ -186,6 +186,126 @@ final class ActiveSessionsViewModelTests: XCTestCase {
                              "Posting TPPBookRegistryStateDidChange MUST trigger a re-query")
     }
 
+    // MARK: - Test 6b: BookOpenTracker notification triggers refresh
+
+    /// Polish-phase (in-app-nav-polish-2026-06-02): when the user opens
+    /// a new book (audiobook or ebook), `BookOpenTracker.recordOpened(_:)`
+    /// posts `.palaceBookOpenedDidRecord`. The Continue row's viewmodel
+    /// must re-derive immediately — without this subscription, the row
+    /// stayed stale until the next registry-state change.
+    ///
+    /// User feedback that drove this: "the continue cell doesn't update
+    /// when user starts reading a new book".
+    func testRefresh_firesOnBookOpenedNotification() {
+        let viewModel = ActiveSessionsViewModel(
+            recentlyReadingService: spyService,
+            audiobookSession: fakeSession,
+            notificationCenter: notificationCenter
+        )
+
+        let baselineCalls = spyService.recentlyReadingCallCount
+        XCTAssertGreaterThanOrEqual(baselineCalls, 1,
+                                    "init MUST query the service at least once")
+
+        let exp = expectation(description: "Service queried after .palaceBookOpenedDidRecord")
+        let observer = spyService.observeNextCall(after: baselineCalls) {
+            exp.fulfill()
+        }
+
+        notificationCenter.post(
+            name: .palaceBookOpenedDidRecord,
+            object: nil,
+            userInfo: ["bookId": "AB-NEW"]
+        )
+
+        wait(for: [exp], timeout: 0.5)
+        _ = observer
+
+        XCTAssertGreaterThan(spyService.recentlyReadingCallCount, baselineCalls,
+                             "Posting .palaceBookOpenedDidRecord MUST trigger a re-query")
+        _ = viewModel
+    }
+
+    // MARK: - Test 6c: deriveMostRecent picks by timestamp
+
+    /// Polish-phase (in-app-nav-polish-2026-06-02): when there's no
+    /// live audiobook session, the cold-launch fallback supplies a
+    /// listening item built from `BookOpenTracker`. That item must
+    /// NOT unconditionally win against a more-recently-opened reading
+    /// item — otherwise the user opens a new ebook and the Continue
+    /// row still shows the older audiobook (user feedback: "the
+    /// continue cell doesn't update when user starts reading a new
+    /// book").
+    func testDeriveMostRecent_picksReadingWhenReadingIsNewerThanListening() {
+        let listening = ContinueListeningItem(
+            bookId: "AB-OLDER",
+            book: makeBook(id: "AB-OLDER"),
+            isCurrentlyPlaying: false,
+            chapterTitle: nil,
+            progressFraction: nil,
+            progressLabel: nil,
+            lastTouchedAt: Date(timeIntervalSince1970: 1_700_000_000)
+        )
+        let reading = ContinueReadingItem(
+            bookId: "EPUB-NEWER",
+            book: makeBook(id: "EPUB-NEWER"),
+            contentType: .epub,
+            lastReadAt: Date(timeIntervalSince1970: 1_700_000_500),
+            progressFraction: 0.5,
+            progressLabel: "Chapter 1"
+        )
+
+        let result = ActiveSessionsViewModel.deriveMostRecent(
+            listening: listening,
+            reading: reading
+        )
+
+        switch result {
+        case .reading(let item):
+            XCTAssertEqual(item.bookId, "EPUB-NEWER",
+                           "Reading item with newer lastReadAt MUST win against older listening item — would regress to old 'listening always wins' behavior if this fails")
+        default:
+            XCTFail("Expected .reading('EPUB-NEWER'), got \(String(describing: result))")
+        }
+    }
+
+    /// Symmetric — listening wins when it has the newer timestamp.
+    /// A live audiobook session is built with `lastTouchedAt = Date()`
+    /// at refresh time, which is always newer than any reading item's
+    /// `lastReadAt`, so live sessions still always win.
+    func testDeriveMostRecent_picksListeningWhenListeningIsNewerThanReading() {
+        let listening = ContinueListeningItem(
+            bookId: "AB-NEWER",
+            book: makeBook(id: "AB-NEWER"),
+            isCurrentlyPlaying: true,
+            chapterTitle: "Chapter 1",
+            progressFraction: nil,
+            progressLabel: nil,
+            lastTouchedAt: Date(timeIntervalSince1970: 1_700_000_500)
+        )
+        let reading = ContinueReadingItem(
+            bookId: "EPUB-OLDER",
+            book: makeBook(id: "EPUB-OLDER"),
+            contentType: .epub,
+            lastReadAt: Date(timeIntervalSince1970: 1_700_000_000),
+            progressFraction: 0.5,
+            progressLabel: "Chapter 1"
+        )
+
+        let result = ActiveSessionsViewModel.deriveMostRecent(
+            listening: listening,
+            reading: reading
+        )
+
+        switch result {
+        case .listening(let item):
+            XCTAssertEqual(item.bookId, "AB-NEWER",
+                           "Listening with newer lastTouchedAt MUST win against older reading item")
+        default:
+            XCTFail("Expected .listening('AB-NEWER'), got \(String(describing: result))")
+        }
+    }
+
     // MARK: - Test 7: audiobook session publisher triggers refresh
 
     func testRefresh_firesOnAudiobookSessionStatePublisher() {
@@ -352,7 +472,7 @@ final class ActiveSessionsViewModelTests: XCTestCase {
 @MainActor
 private final class SpyRecentlyReadingService: RecentlyReadingService {
     var stubbedResult: [ContinueReadingItem] = []
-    var stubbedRecentlyOpenedAudiobook: TPPBook?
+    var stubbedRecentlyOpenedAudiobook: (book: TPPBook, openedAt: Date)?
     private(set) var recentlyReadingCallCount = 0
     private(set) var recentlyOpenedAudiobookCallCount = 0
     private var observers: [(Int, () -> Void)] = []
@@ -368,7 +488,7 @@ private final class SpyRecentlyReadingService: RecentlyReadingService {
         return stubbedResult
     }
 
-    func recentlyOpenedAudiobook() -> TPPBook? {
+    func recentlyOpenedAudiobook() -> (book: TPPBook, openedAt: Date)? {
         recentlyOpenedAudiobookCallCount += 1
         return stubbedRecentlyOpenedAudiobook
     }

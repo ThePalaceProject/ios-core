@@ -294,9 +294,9 @@ final class CatalogViewContinueRowsIntegrationTests: XCTestCase {
 @MainActor
 private final class SpyIntegrationRecentlyReadingService: RecentlyReadingService {
     var stubbedResult: [ContinueReadingItem] = []
-    var stubbedRecentlyOpenedAudiobook: TPPBook?
+    var stubbedRecentlyOpenedAudiobook: (book: TPPBook, openedAt: Date)?
     func recentlyReading() -> [ContinueReadingItem] { return stubbedResult }
-    func recentlyOpenedAudiobook() -> TPPBook? { return stubbedRecentlyOpenedAudiobook }
+    func recentlyOpenedAudiobook() -> (book: TPPBook, openedAt: Date)? { return stubbedRecentlyOpenedAudiobook }
 }
 
 // MARK: - FakeIntegrationAudiobookSession
