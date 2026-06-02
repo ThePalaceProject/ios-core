@@ -328,4 +328,5 @@ private final class FakeIntegrationAudiobookSession: AudiobookSessionManaging {
     func cyclePlaybackRate() -> PlaybackRate { return .normalTime }
     func stopPlayback(dismissPhoneUI: Bool, persistFinalPosition: Bool) async {}
     func updateCoverImage(_ image: UIImage?) {}
+    func recoverPlaybackForForegroundEntry() {}
 }

@@ -126,18 +126,17 @@ final class ContinueRowSectionTests: XCTestCase {
         XCTAssertTrue(viewModel.continueListening.isEmpty,
                       "PRECONDITION: viewmodel must seed continueListening == []")
 
-        // Structural empty-branch guard: source-level proof that the
-        // view returns `EmptyView()` when both arrays are empty. SwiftUI
-        // runtime introspection can't reliably differentiate EmptyView
-        // from VStack-with-no-children without ViewInspector — the source
-        // check is honest and catches the mutation we care about
-        // (dropping the empty-branch guard).
+        // Polish-phase (in-app-nav-polish-2026-06-01) — single-row
+        // collapsible UX. The view now gates on `viewModel.mostRecent`
+        // (which is nil when both reading + listening are empty); empty
+        // branch returns `EmptyView()`.
+        XCTAssertNil(viewModel.mostRecent,
+                     "Viewmodel MUST surface mostRecent == nil when both arrays are empty so the section renders EmptyView")
         let source = try Self.readContinueRowSectionSource()
         XCTAssertTrue(source.contains("EmptyView()"),
-                      "ContinueRowSection MUST emit `EmptyView()` when both arrays are empty so the Catalog top-of-feed chrome is unchanged")
-        XCTAssertTrue(source.contains("viewModel.continueListening.isEmpty") &&
-                      source.contains("viewModel.continueReading.isEmpty"),
-                      "ContinueRowSection MUST gate the empty branch on BOTH arrays being empty")
+                      "ContinueRowSection MUST emit `EmptyView()` when mostRecent is nil")
+        XCTAssertTrue(source.contains("viewModel.mostRecent"),
+                      "ContinueRowSection MUST gate the rendered branch on `viewModel.mostRecent` (polish-phase single-row)")
     }
 
     // MARK: - Test 2 — listening row data flows when populated
@@ -205,9 +204,9 @@ final class ContinueRowSectionTests: XCTestCase {
     // MARK: - Test 4 — Audible row order
 
     /// PRE: both reading + listening arrays populated.
-    /// EXPECTED: source order in ContinueRowSection puts the listening
-    /// branch BEFORE the reading branch (§11 row 4 — Audible pattern).
-    /// Mutates: swapping the two `if !isEmpty` branches in `body` fails.
+    /// EXPECTED: polish-phase single-row UX — `mostRecent` prefers
+    /// listening when present (actively in flight). Mutates: reversing
+    /// the priority in `deriveMostRecent` fails this assertion.
     func testContinueRowSection_listeningRowPrecedesReadingRow() throws {
         let audiobook = makeBook(id: "AB1", title: "Audio Title One")
         fakeSession.currentBook = audiobook
@@ -220,19 +219,24 @@ final class ContinueRowSectionTests: XCTestCase {
         XCTAssertEqual(viewModel.continueListening.count, 1, "PRECONDITION: listening populated")
         XCTAssertEqual(viewModel.continueReading.count, 1, "PRECONDITION: reading populated")
 
-        // §11 row 4 pinned in the view's source. SwiftUI's runtime hierarchy
-        // is not introspectable without ViewInspector; the structural source
-        // order IS the contract — flipping the two `if !isEmpty` branches
-        // would surface here as `listeningRowIdx > readingRowIdx`.
-        let source = try Self.readContinueRowSectionSource()
-        let listeningRowIdx = source.range(of: "ContinueListeningRow(")?.lowerBound
-        let readingRowIdx = source.range(of: "ContinueReadingRow(")?.lowerBound
-        guard let listeningRowIdx, let readingRowIdx else {
-            XCTFail("ContinueRowSection MUST instantiate both ContinueListeningRow and ContinueReadingRow in its body — source did not find both call sites")
-            return
+        // Polish-phase priority pin: listening wins over reading when both
+        // are present. The collapsible single-row UX shows the active
+        // audiobook (in flight RIGHT NOW) ahead of any past reading.
+        guard case .listening(let item)? = viewModel.mostRecent else {
+            return XCTFail("mostRecent MUST be .listening when both populated (active session takes priority)")
         }
-        XCTAssertLessThan(listeningRowIdx, readingRowIdx,
-                          "§11 row 4 (Audible pattern): ContinueListeningRow MUST be instantiated before ContinueReadingRow in the view's body")
+        XCTAssertEqual(item.bookId, "AB1",
+                       "mostRecent.listening MUST carry the active audiobook")
+
+        // Polish-phase priority is enforced at the viewmodel layer (see
+        // earlier guard); the view now renders the single mostRecent
+        // candidate. Source-level pin: the view dispatches on the enum
+        // case in its onTap closure (`case .listening:` / `case .reading:`)
+        // — flipping the priority in `deriveMostRecent` shows up via the
+        // earlier `guard case .listening` failure.
+        let source = try Self.readContinueRowSectionSource()
+        XCTAssertTrue(source.contains("case .listening:") && source.contains("case .reading:"),
+                      "ContinueRowSection MUST dispatch on the ContinueRowItem enum so listening vs reading routes to the correct resume handler")
     }
 
     // MARK: - Source helper
@@ -384,4 +388,5 @@ private final class FakeRowSectionAudiobookSessionManager: AudiobookSessionManag
     func cyclePlaybackRate() -> PlaybackRate { return .normalTime }
     func stopPlayback(dismissPhoneUI: Bool, persistFinalPosition: Bool) async {}
     func updateCoverImage(_ image: UIImage?) {}
+    func recoverPlaybackForForegroundEntry() {}
 }

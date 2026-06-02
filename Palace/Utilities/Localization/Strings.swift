@@ -52,6 +52,18 @@ struct Strings {
             "currently playing",
             comment: "VoiceOver fragment appended to a Continue Listening row card when the audiobook is actively playing."
         )
+        static let continueHeader = NSLocalizedString(
+            "Continue",
+            comment: "Polish-phase: collapsible single-row title above the most-recent Continue Reading/Listening item on the Catalog top."
+        )
+        static let expandHint = NSLocalizedString(
+            "Expands to show the most recent book.",
+            comment: "VoiceOver hint for the Continue section header when collapsed."
+        )
+        static let collapseHint = NSLocalizedString(
+            "Collapses the Continue section.",
+            comment: "VoiceOver hint for the Continue section header when expanded."
+        )
         static func byAuthor(_ author: String) -> String {
             String(
                 format: NSLocalizedString(
@@ -125,6 +137,7 @@ struct Strings {
 
         // Accessibility - General
         static let audiobook = NSLocalizedString("Audiobook", comment: "VoiceOver: Indicates the book is an audiobook")
+        static let ebook = NSLocalizedString("Ebook", comment: "VoiceOver: Indicates the book is an ebook (used by polish-phase Continue row).")
         static let switchLibrary = NSLocalizedString("Switch Library", comment: "VoiceOver: Button to switch between libraries")
         static let searchBooks = NSLocalizedString("Search Books", comment: "VoiceOver: Button to search for books")
         static let searchCatalog = NSLocalizedString("Search Catalog", comment: "VoiceOver: Button to search the catalog")

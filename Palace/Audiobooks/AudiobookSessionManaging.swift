@@ -103,6 +103,21 @@ protocol AudiobookSessionManaging: AnyObject {
 
     /// Updates the cover image for Now Playing display.
     func updateCoverImage(_ image: UIImage?)
+
+    /// Re-primes playback after the app returns to foreground from a
+    /// long background pause. iOS can evict the AVPlayer buffer while
+    /// suspended, leaving the toolkit's `Player.isLoaded == false` on
+    /// re-entry — `AudiobookPlayerView` then shows `LoadingView` and
+    /// (after 30s) `LoadingErrorView`.
+    ///
+    /// This method re-activates the audio session and re-issues the play
+    /// call if `isPlaying` was true at background time, restarting the
+    /// buffer fetch. Idempotent: safe to call when already playing or
+    /// paused. No-op when there's no active session.
+    ///
+    /// Polish-phase addition (in-app-nav-polish-2026-06-01) for the
+    /// "playback freezes when backgrounded" user-reported regression.
+    func recoverPlaybackForForegroundEntry()
 }
 
 // MARK: - AudiobookSessionManager Conformance

@@ -183,5 +183,6 @@ final class SpyShimSession: AudiobookSessionManaging {
     func cyclePlaybackRate() -> PlaybackRate { .normalTime }
     func stopPlayback(dismissPhoneUI: Bool, persistFinalPosition: Bool) async {}
     func updateCoverImage(_ image: UIImage?) {}
+    func recoverPlaybackForForegroundEntry() {}
 }
 

@@ -338,6 +338,22 @@ class AudiobookSessionPresenter: ObservableObject {
                 guard let self = self else { return }
                 self.isPlaying = self.sessionManager.isPlaying
                 self.coverImage = self.sessionManager.coverImage
+
+                // Polish-phase background-freeze fix: when the app backgrounds
+                // mid-playback, iOS can evict the AVPlayer buffer and the
+                // toolkit's `Player.isLoaded` flips to false. On re-entry,
+                // `AudiobookPlayerView` shows its `LoadingView`; if the player
+                // doesn't reload within 30s it transitions to `LoadingErrorView`
+                // — which the user perceives as "re-opening gets stuck in a
+                // loading state and then errors."
+                //
+                // Recovery: if we still have an active session AND the
+                // manager believes playback is in flight, ask the manager
+                // to re-prime — re-activates the audio session and re-issues
+                // play, restarting buffering. Idempotent if already playing.
+                if self.hasActiveSession {
+                    self.sessionManager.recoverPlaybackForForegroundEntry()
+                }
             }
             .store(in: &cancellables)
     }

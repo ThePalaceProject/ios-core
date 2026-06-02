@@ -533,6 +533,40 @@ public final class AudiobookSessionManager: ObservableObject {
         playbackStatePublisher.send(newState)
     }
 
+    /// Polish-phase background-freeze recovery
+    /// (in-app-nav-polish-2026-06-01). Called from
+    /// `AudiobookSessionPresenter.subscribeToAppLifecycle` on
+    /// `UIApplication.willEnterForegroundNotification` when there's an
+    /// active session.
+    ///
+    /// Strategy:
+    ///   1. Re-activate the audio session via PlaybackBootstrapper so a
+    ///      transient background-time deactivation doesn't leave AVPlayer
+    ///      starved.
+    ///   2. If the manager believes playback was in flight (state was
+    ///      `.playing` when we backgrounded), call `play()` to nudge the
+    ///      toolkit's player out of any stalled buffer-empty state. This
+    ///      is the operative recovery: AVPlayer re-fetches its buffer and
+    ///      `Player.isLoaded` re-flips to true, dismissing the toolkit's
+    ///      LoadingView before the 30s `LoadingErrorView` timer fires.
+    public func recoverPlaybackForForegroundEntry() {
+        guard let _ = manager else { return }
+        // Re-prime the audio session — bootstrapper's ensureInitialized is
+        // idempotent and re-activates AVAudioSession if it had been
+        // deactivated. AudiobookSessionManager doesn't hold an `appContainer`
+        // reference (its convenience init pulls deps off the production
+        // container and stores them as separate fields), so we reach the
+        // bootstrapper directly via the cached production accessor — same
+        // pattern other recovery paths use (e.g.,
+        // `navigationCoordinatorHubProvider` default).
+        AppContainer.production().playbackBootstrapper.ensureInitialized()
+        if case .playing = state {
+            // Was playing pre-background; ask the toolkit to resume.
+            // `manager.play()` is idempotent.
+            play()
+        }
+    }
+
     /// Skips to a specific chapter
     public func skipToChapter(at index: Int) {
         guard let manager = manager,

@@ -50,6 +50,34 @@ struct ContinueListeningItem: Identifiable, Equatable {
     }
 }
 
+// MARK: - ContinueRowItem
+
+/// Type-erased polish-phase single-row "Continue" candidate. Either
+/// reading or listening — whichever is most recent. Drives the
+/// collapsible single-row UX (the user's "should be collapsible, and
+/// maybe only show the last book" feedback).
+enum ContinueRowItem: Equatable {
+    case reading(ContinueReadingItem)
+    case listening(ContinueListeningItem)
+
+    var bookId: String {
+        switch self {
+        case .reading(let r): return r.bookId
+        case .listening(let l): return l.bookId
+        }
+    }
+
+    var book: TPPBook {
+        switch self {
+        case .reading(let r): return r.book
+        case .listening(let l): return l.book
+        }
+    }
+
+    var title: String { book.title ?? "" }
+    var author: String { book.authors ?? "" }
+}
+
 // MARK: - ActiveSessionsViewModel
 
 @MainActor
@@ -59,6 +87,14 @@ final class ActiveSessionsViewModel: ObservableObject {
 
     @Published private(set) var continueReading: [ContinueReadingItem] = []
     @Published private(set) var continueListening: [ContinueListeningItem] = []
+
+    /// Single most-recent "Continue" candidate across BOTH reading and
+    /// listening. Drives the polish-phase single-row UX (the user's
+    /// "should be collapsible, and maybe only show the last book"
+    /// feedback). Prefers an active audiobook session (always most
+    /// recent because actively in flight); falls back to the most-recent
+    /// reading item; nil when neither is available.
+    @Published private(set) var mostRecent: ContinueRowItem?
 
     // MARK: Dependencies
 
@@ -122,6 +158,26 @@ final class ActiveSessionsViewModel: ObservableObject {
         let readingCandidates = recentlyReadingService.recentlyReading()
         continueReading = Array(readingCandidates.prefix(readingRowLimit))
         continueListening = currentListeningItems()
+        mostRecent = Self.deriveMostRecent(
+            listening: continueListening.first,
+            reading: continueReading.first
+        )
+    }
+
+    /// Pure helper — picks the single "most recent" candidate. Active
+    /// audiobook session wins because it's by definition in flight right
+    /// now; reading falls back to the lastReadAt-ordered first entry.
+    /// Returns nil when both empty.
+    ///
+    /// Extracted `static` so the polish-phase tests can pin the priority
+    /// without spinning up a full viewmodel + dependencies.
+    static func deriveMostRecent(
+        listening: ContinueListeningItem?,
+        reading: ContinueReadingItem?
+    ) -> ContinueRowItem? {
+        if let listening = listening { return .listening(listening) }
+        if let reading = reading { return .reading(reading) }
+        return nil
     }
 
     // MARK: Internal helpers
