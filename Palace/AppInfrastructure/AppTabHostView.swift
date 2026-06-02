@@ -93,6 +93,61 @@ struct AppTabHostView: View {
     }
 
     var body: some View {
+        ZStack(alignment: .bottom) {
+            tabViewContent
+            persistentFullPlayerOverlay
+        }
+    }
+
+    /// Persistent full-player overlay — keeps the toolkit's
+    /// `AudiobookPlayerView` mounted across minimize/expand cycles so its
+    /// `onDisappear` (which calls the DESTRUCTIVE `playbackModel.stop()`
+    /// → `audiobookManager.unload()`) never fires. The view is animated
+    /// off-screen (`offset(y:)`) when minimized rather than removed from
+    /// the hierarchy.
+    ///
+    /// User-reported bug this fixes: "playback doesn't play when
+    /// audiobook is minimized; gets stuck loading when opened from the
+    /// minimized playback." Caused by the toolkit unloading the player
+    /// on view-disappear, so re-expand had no buffered audio and
+    /// `player.isLoaded == false` → toolkit's `LoadingView` shown
+    /// forever (with 30s timeout → `LoadingErrorView`).
+    @ViewBuilder
+    private var persistentFullPlayerOverlay: some View {
+        if audiobookSessionPresenter.playbackModel != nil {
+            // Use UIScreen.main.bounds for the full-screen size — the
+            // GeometryReader approach was constrained to the TabView's
+            // available area (which excludes the system tab bar +
+            // mini-player safeAreaInset), so the overlay didn't fully
+            // cover the chrome below.
+            //
+            // Background extends edge-to-edge (`.ignoresSafeArea()` on
+            // the Color), but the CONTENT respects safe area so the
+            // chevron-down Done button doesn't render behind the status
+            // bar. Without this split, the button's `.padding(.top, 12)`
+            // resolves to ~12pt from screen-top — clipped under the
+            // notch — and the user can't tap it.
+            let screenHeight = UIScreen.main.bounds.height
+            AudiobookFullPlayerCoverContainer(
+                presenter: audiobookSessionPresenter
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(.systemBackground).ignoresSafeArea())
+            // Content respects TOP safe area (chevron-down Done button
+            // sits below status bar). Content extends through BOTTOM
+            // safe area so the tab bar doesn't peek behind the player
+            // when expanded.
+            .ignoresSafeArea(edges: .bottom)
+            .offset(y: audiobookSessionPresenter.isPlayerExpanded ? 0 : screenHeight)
+            .animation(
+                UIAccessibility.isReduceMotionEnabled ? nil : .easeInOut(duration: 0.3),
+                value: audiobookSessionPresenter.isPlayerExpanded
+            )
+            .allowsHitTesting(audiobookSessionPresenter.isPlayerExpanded)
+        }
+    }
+
+    private var tabViewContent: some View {
         TabView(selection: $router.selected) {
             NavigationHostView(rootView: CatalogView(
                 viewModel: catalogViewModel,
@@ -140,22 +195,14 @@ struct AppTabHostView: View {
                 .accessibilityIdentifier(AccessibilityID.TabBar.settingsTab)
         }
         .tint(Color.accentColor)
-        .fullScreenCover(isPresented: $audiobookSessionPresenter.isPlayerExpanded) {
-            // Module D (swarm_0b7616e7) — root-level full-player presentation.
-            // Uses the `@ObservedObject`'s projected-value binding so SwiftUI
-            // re-evaluates this modifier whenever `isPlayerExpanded` flips:
-            //   - tap on mini-player → `presenter.expand()` flips to true → cover shows
-            //   - swipe-down inside the cover → `presenter.minimize()` flips to false → cover dismisses
-            //   - `presenter.presentOnFirstOpen()` (called during F-011) flips true synchronously
-            //     before the readiness gate → cover-art lockup visible during load
-            //
-            // Polish-phase fix (in-app-nav-polish-2026-06-01): replaced the
-            // manual `Binding(get:set:)` form which did NOT trigger SwiftUI
-            // body re-evaluation when the presenter's @Published flipped.
-            AudiobookFullPlayerCoverContainer(
-                presenter: audiobookSessionPresenter
-            )
-        }
+        // Polish-phase (in-app-nav-polish-2026-06-01): the full-player
+        // is no longer hosted in a fullScreenCover (the cover's dismiss
+        // unmounted the toolkit's AudiobookPlayerView, which fires
+        // playbackModel.stop() in its onDisappear → unloads the player).
+        // It's now rendered in `persistentFullPlayerOverlay` at the
+        // ZStack root, animated off-screen on minimize, so its
+        // onDisappear never fires and playback survives minimize/expand
+        // cycles intact.
         .onAppear {
             appContainer.tabRouterHub.router = router
             appContainer.tabRouterHub.applyPending()
