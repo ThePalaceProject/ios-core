@@ -347,19 +347,32 @@ extension CatalogView {
         }
     }
 
-    /// Continue Listening row tap. Per §11 row 3 of the in-app
-    /// navigation design, a session that surfaces on this row IS the
-    /// active session — so the right idiom is "expand the player," not
-    /// "re-open the book." We route through the root-level presenter
-    /// (Module C) so the full-screen cover takes over from the catalog.
+    /// Continue Listening row tap. Two branches per the polish-phase
+    /// fallback (in-app-nav-polish-2026-06-02):
+    ///   1. If there's an active audiobook session for the tapped book,
+    ///      expand the player (no need to re-open — same idiom as before).
+    ///   2. Otherwise (cold-launch fallback case — no live session, the
+    ///      item came from `recentlyOpenedAudiobook()`), trigger the
+    ///      audiobook open flow. The session manager calls
+    ///      `presenter.presentOnFirstOpen()` synchronously, so the
+    ///      full-screen player surfaces immediately while the async
+    ///      readiness gate proceeds.
     @MainActor
     func resumeListening(_ book: TPPBook) {
-        // `book` is unused here intentionally — the presenter already
-        // mirrors the active session's book via `currentBook`. The closure
-        // accepts the book so future paths (e.g. tapping a non-active
-        // entry once "recently listened" history lands) can branch on
-        // identity without re-architecting the closure signature.
-        _ = book
-        appContainer.audiobookSessionPresenter.expand()
+        let session = appContainer.audiobookSession
+        if let active = session.currentBook, active.identifier == book.identifier {
+            appContainer.audiobookSessionPresenter.expand()
+            return
+        }
+        // Cold-launch fallback: no live session for this book. Kick off
+        // openAudiobook(_:startPlaying:) — user explicitly tapped
+        // Continue, so `startPlaying: true` matches user intent. Result
+        // is intentionally discarded here because the session manager
+        // surfaces errors through `errorPublisher` (consumed by
+        // AudiobookSessionPresenter) — no double-reporting at the
+        // call site.
+        Task { @MainActor in
+            _ = await session.openAudiobook(book, startPlaying: true)
+        }
     }
 }
