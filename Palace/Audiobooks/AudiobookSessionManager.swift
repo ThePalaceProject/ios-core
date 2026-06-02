@@ -354,6 +354,11 @@ public final class AudiobookSessionManager: ObservableObject {
     @discardableResult
     public func openAudiobook(_ book: TPPBook, startPlaying: Bool = true) async -> Result<Void, AudiobookSessionError> {
         Log.info(#file, "Opening audiobook: '\(book.title)' (id: \(book.identifier))")
+        // Polish-phase (in-app-nav-polish-2026-06-01): record wall-clock
+        // open time so the Continue Reading row's sort surfaces the real
+        // last-touched book even when the audiobook position-save flow
+        // hasn't yet written its first timeStamp. Idempotent overwrite.
+        AppContainer.production().bookOpenTracker.recordOpened(book.identifier)
 
         if case .loading(let loadingId) = state, loadingId == book.identifier {
             Log.warn(#file, "Audiobook already loading: \(book.identifier)")

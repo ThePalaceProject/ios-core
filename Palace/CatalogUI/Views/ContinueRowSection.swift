@@ -33,11 +33,13 @@ struct ContinueRowSection: View {
     let onResumeReading: (TPPBook) -> Void
     let onResumeListening: (TPPBook) -> Void
 
-    /// Collapsible state. Defaults to collapsed (per user feedback:
-    /// "can take up a lot of screen real estate"). The user expands by
-    /// tapping the header chevron; collapse state is purely UI-local and
-    /// not persisted across launches.
-    @State private var isExpanded: Bool = false
+    /// Collapsible state. Defaults to OPEN on first launch (per user
+    /// feedback after the initial collapsed default — "should default
+    /// to open on first launch"). Persisted across launches via
+    /// `@AppStorage` so a user who collapses it sees it stay collapsed
+    /// next launch; a user who hasn't touched it gets the default
+    /// open experience.
+    @AppStorage("ContinueRowSection.isExpanded") private var isExpanded: Bool = true
 
     var body: some View {
         if let item = viewModel.mostRecent {

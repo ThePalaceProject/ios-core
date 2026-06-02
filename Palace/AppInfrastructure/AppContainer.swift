@@ -220,6 +220,21 @@ struct AppContainer {
         return session
     }
 
+    /// Polish-phase (in-app-nav-polish-2026-06-01) — wall-clock open-time
+    /// tracker keyed by book identifier. Used by `RecentlyReadingService`
+    /// to surface the genuinely last-opened book on the Continue Reading
+    /// row (without it, EPUB/PDF locations fall back to `book.updated`
+    /// from the OPDS feed and the row shows the wrong book). Audiobook
+    /// + reader open-paths record into this tracker.
+    @MainActor
+    var bookOpenTracker: BookOpenTracking {
+        if let cached = AppContainer._bookOpenTracker { return cached }
+        let tracker = BookOpenTracker()
+        AppContainer._bookOpenTracker = tracker
+        return tracker
+    }
+    @MainActor private static var _bookOpenTracker: BookOpenTracking?
+
     /// Process-wide audiobook session presenter — the root-level
     /// SwiftUI-observable bridge between the manager's published state and
     /// the mini-player + full-screen-cover surfaces Module D wires into

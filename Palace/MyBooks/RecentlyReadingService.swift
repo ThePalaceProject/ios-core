@@ -73,11 +73,21 @@ final class DefaultRecentlyReadingService: RecentlyReadingService {
     /// Clock injection lets tests pin "now" without freezing wall time.
     /// The default (`Date.init`) makes production callers ergonomic.
     private let clock: () -> Date
+    /// Polish-phase (in-app-nav-polish-2026-06-01) — optional source of
+    /// truth for the actual wall-clock open time of each book. When
+    /// provided, its `lastOpened(_:)` value takes priority over the
+    /// renderer-specific timestamp parsing fallback (which for
+    /// EPUB/PDF degrades to `book.updated` and produces wrong sort).
+    /// Optional so existing tests + production callers that don't
+    /// inject it keep their pre-polish behavior.
+    private let bookOpenTracker: BookOpenTracking?
 
     init(bookRegistry: TPPBookRegistryProvider,
-         clock: @escaping () -> Date = Date.init) {
+         clock: @escaping () -> Date = Date.init,
+         bookOpenTracker: BookOpenTracking? = nil) {
         self.bookRegistry = bookRegistry
         self.clock = clock
+        self.bookOpenTracker = bookOpenTracker
     }
 
     func recentlyReading() -> [ContinueReadingItem] {
@@ -101,11 +111,22 @@ final class DefaultRecentlyReadingService: RecentlyReadingService {
                 return nil
             }
             let parsed = parseLocation(location, fallbackUpdated: book.updated, now: now)
+            // Polish-phase last-read accuracy fix
+            // (in-app-nav-polish-2026-06-01): prefer the BookOpenTracker's
+            // wall-clock open time over parsed location timestamp /
+            // book.updated fallback. Without this, EPUB / PDF locations
+            // (which don't embed a timeStamp in their JSON) all fall back
+            // to `book.updated` — the OPDS feed's catalog-update date —
+            // so the Continue Reading row shows the book with the
+            // newest catalog entry, NOT the book the user actually
+            // opened most recently.
+            let openedAt = bookOpenTracker?.lastOpened(book.identifier)
+            let lastReadAt = openedAt ?? parsed.lastReadAt
             return ContinueReadingItem(
                 bookId: book.identifier,
                 book: book,
                 contentType: contentType,
-                lastReadAt: parsed.lastReadAt,
+                lastReadAt: lastReadAt,
                 progressFraction: parsed.progressFraction,
                 progressLabel: parsed.progressLabel
             )

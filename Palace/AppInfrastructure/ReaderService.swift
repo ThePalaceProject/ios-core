@@ -72,6 +72,12 @@ final class ReaderService {
 
     @MainActor
     func openEPUB(_ book: TPPBook) {
+        // Polish-phase (in-app-nav-polish-2026-06-01): record wall-clock
+        // open time so RecentlyReadingService's Continue Reading row
+        // sort is correct. EPUB location JSON does NOT embed a
+        // timeStamp; without this record the row falls back to
+        // `book.updated` (OPDS catalog date) and shows the wrong book.
+        AppContainer.production().bookOpenTracker.recordOpened(book.identifier)
         openEPUBInternal(book, isRetry: false)
     }
 
@@ -111,6 +117,8 @@ final class ReaderService {
     /// Cached extract on disk → re-opens skip the decrypt entirely.
     @MainActor
     func openPDF(_ book: TPPBook, onFinish: (() -> Void)? = nil) {
+        // Polish-phase (in-app-nav-polish-2026-06-01) — see openEPUB.
+        AppContainer.production().bookOpenTracker.recordOpened(book.identifier)
         guard let presenter = topPresenter() else { onFinish?(); return }
 
         if openInFlightBookIds.contains(book.identifier) {

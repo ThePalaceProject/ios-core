@@ -64,7 +64,8 @@ struct AppTabHostView: View {
         // viewmodel `init` so the first CatalogView body sees the rows
         // populated where applicable.
         let recentlyReading = DefaultRecentlyReadingService(
-            bookRegistry: appContainer.bookRegistry
+            bookRegistry: appContainer.bookRegistry,
+            bookOpenTracker: appContainer.bookOpenTracker
         )
         _activeSessionsViewModel = StateObject(wrappedValue: ActiveSessionsViewModel(
             recentlyReadingService: recentlyReading,
