@@ -129,12 +129,11 @@ final class ActiveSessionsViewModel: ObservableObject {
         self.readingRowLimit = max(0, readingRowLimit)
         self.listeningRowLimit = max(0, listeningRowLimit)
 
-        // Subscribe to registry-state changes (books added/removed/state
-        // transitions) so the Continue Reading row refreshes as soon as a
-        // download completes or a book is returned.
+        // Debounced: the startup registry-state burst would otherwise run one
+        // full myBooks scan per notification on the main thread (froze launch).
         notificationCenter
             .publisher(for: .TPPBookRegistryStateDidChange)
-            .receive(on: RunLoop.main)
+            .debounce(for: .milliseconds(200), scheduler: RunLoop.main)
             .sink { [weak self] _ in self?.refresh() }
             .store(in: &cancellables)
 
