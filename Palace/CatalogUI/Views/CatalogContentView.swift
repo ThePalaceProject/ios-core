@@ -106,7 +106,8 @@ private extension CatalogContentView {
                 ForEach(Array(lanes.enumerated()), id: \.element.id) { idx, lane in
                     CatalogLaneRowView(
                         title: lane.title,
-                        books: lane.books.map { bookRegistry.updatedBookMetadata($0) ?? $0 },
+                        // Read-only: updatedBookMetadata writes + disk-saves on the main thread (froze render).
+                        books: lane.books.map { bookRegistry.book(forIdentifier: $0.identifier) ?? $0 },
                         moreURL: lane.moreURL,
                         onSelect: onBookSelected,
                         onMoreTapped: onLaneMoreTapped,
