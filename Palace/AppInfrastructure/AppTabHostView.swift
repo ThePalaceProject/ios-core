@@ -18,10 +18,25 @@ struct AppTabHostView: View {
     /// so it does not need to be re-created across tab switches or
     /// library swaps.
     @StateObject private var activeSessionsViewModel: ActiveSessionsViewModel
+    /// Polish-phase (in-app-nav-polish-2026-06-01) reactivity fix:
+    /// `AppTabHostView` must observe the presenter directly so SwiftUI
+    /// re-evaluates `body` when `isPlayerExpanded` flips (mini-player tap
+    /// → expand → fullScreenCover presents). Without this `@ObservedObject`,
+    /// the `fullScreenCover(isPresented:)` Binding never sees the change
+    /// because the binding's `get` closure reads a value SwiftUI is not
+    /// tracking — only the inner `AudiobookMiniPlayerView` (which has its
+    /// own `@ObservedObject`) re-renders when the presenter publishes.
+    @ObservedObject private var audiobookSessionPresenter: AudiobookSessionPresenter
 
     init(appContainer: AppContainer = .production()) {
         self.appContainer = appContainer
         self.bookRegistry = appContainer.bookRegistry
+        // Bind the presenter via the property wrapper's projected value so
+        // the @ObservedObject reactivity is installed before any body
+        // evaluation. The presenter itself is process-cached on the
+        // AppContainer so this read returns the same instance the mini-
+        // player + manager + CarPlay bridge all use.
+        self._audiobookSessionPresenter = ObservedObject(initialValue: appContainer.audiobookSessionPresenter)
         let client = URLSessionNetworkClient()
         let parser = OPDSParser()
         let api = DefaultCatalogAPI(client: client, parser: parser, featureFlags: RemoteFeatureFlags.shared)
@@ -124,19 +139,20 @@ struct AppTabHostView: View {
                 .accessibilityIdentifier(AccessibilityID.TabBar.settingsTab)
         }
         .tint(Color.accentColor)
-        .fullScreenCover(isPresented: Binding(
+        .fullScreenCover(isPresented: $audiobookSessionPresenter.isPlayerExpanded) {
             // Module D (swarm_0b7616e7) — root-level full-player presentation.
-            // Binds the SwiftUI `isPresented` to the presenter's
-            // `isPlayerExpanded` @Published value so:
+            // Uses the `@ObservedObject`'s projected-value binding so SwiftUI
+            // re-evaluates this modifier whenever `isPlayerExpanded` flips:
             //   - tap on mini-player → `presenter.expand()` flips to true → cover shows
             //   - swipe-down inside the cover → `presenter.minimize()` flips to false → cover dismisses
             //   - `presenter.presentOnFirstOpen()` (called during F-011) flips true synchronously
             //     before the readiness gate → cover-art lockup visible during load
-            get: { appContainer.audiobookSessionPresenter.isPlayerExpanded },
-            set: { appContainer.audiobookSessionPresenter.isPlayerExpanded = $0 }
-        )) {
+            //
+            // Polish-phase fix (in-app-nav-polish-2026-06-01): replaced the
+            // manual `Binding(get:set:)` form which did NOT trigger SwiftUI
+            // body re-evaluation when the presenter's @Published flipped.
             AudiobookFullPlayerCoverContainer(
-                presenter: appContainer.audiobookSessionPresenter
+                presenter: audiobookSessionPresenter
             )
         }
         .onAppear {

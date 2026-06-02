@@ -490,6 +490,7 @@ public final class AudiobookSessionManager: ObservableObject {
 
         manager.play()
         nowPlayingCoordinator?.setPlaybackState(playing: true)
+        publishPlaybackStateChange(isPlaying: true)
     }
 
     /// Pauses the current audiobook
@@ -501,6 +502,7 @@ public final class AudiobookSessionManager: ObservableObject {
 
         manager.pause()
         nowPlayingCoordinator?.setPlaybackState(playing: false)
+        publishPlaybackStateChange(isPlaying: false)
     }
 
     /// Toggles play/pause
@@ -510,6 +512,25 @@ public final class AudiobookSessionManager: ObservableObject {
         } else {
             play()
         }
+    }
+
+    /// Polish-phase reactivity fix (in-app-nav-polish-2026-06-01).
+    /// Updates the manager's published `state` AND fires
+    /// `playbackStatePublisher` so the presenter's `@Published isPlaying`
+    /// mirror flips reactively, driving the mini-player + full-player
+    /// glyph updates and the CarPlay bridge.
+    ///
+    /// Pre-polish: `play()` / `pause()` updated only the Now Playing
+    /// center; the publisher never fired on user-initiated play/pause —
+    /// the mini-player glyph stayed stuck on the pre-tap value, which
+    /// the user reported as "none of the buttons work."
+    private func publishPlaybackStateChange(isPlaying: Bool) {
+        guard let bookId = currentBook?.identifier else { return }
+        let newState: AudiobookSessionState = isPlaying
+            ? .playing(bookId: bookId)
+            : .paused(bookId: bookId)
+        state = newState
+        playbackStatePublisher.send(newState)
     }
 
     /// Skips to a specific chapter
