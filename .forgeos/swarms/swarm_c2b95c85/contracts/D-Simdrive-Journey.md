@@ -62,32 +62,35 @@ The journey YAML must:
 
 ## Verification criteria (MANDATORY)
 
-1. **Journey YAML exists and validates:**
+1. **Journey YAML exists:**
    ```bash
    test -f .simdrive/journeys/PP-4161-streaming-html-reader.yaml && echo OK
-   ~/harness/bin/harness simdrive validate-journey .simdrive/journeys/PP-4161-streaming-html-reader.yaml
    ```
-   (If `validate-journey` subcommand doesn't exist, use the simdrive MCP
-   `mcp__simdrive__validate_replay name=PP-4161-streaming-html-reader` or
-   document the manual lint outcome.)
 
-2. **Baselines exist for each step:**
+2. **Journey validates via simdrive MCP** (preflight-confirmed v2 per Phase 1a
+   advisory D: `harness simdrive validate-journey` does NOT exist; use the
+   MCP `validate_replay` instead):
+   ```
+   mcp__simdrive__validate_replay name=PP-4161-streaming-html-reader
+   ```
+   Returns success — paste the MCP response.
+
+3. **Baselines exist for each step:**
    ```bash
    ls .simdrive/fixtures/baselines/*/PP-4161-streaming/ | wc -l
    ```
    Should return ≥ N×2 where N is the step count (each step has .png + .json).
 
-3. **Recording path exists:**
+4. **Recording path exists:**
    ```bash
    test -d ~/.simdrive/recordings/PP-4161-streaming-html-reader/ && echo OK
    ```
 
-4. **Journey replays end-to-end:**
-   ```bash
-   ~/harness/bin/harness simdrive replay PP-4161-streaming-html-reader \
-     --on-drift halt --drift-threshold 0.85
+5. **Journey replays end-to-end via simdrive MCP:**
    ```
-   Returns success exit code.
+   mcp__simdrive__replay name=PP-4161-streaming-html-reader on_drift=halt drift_threshold=0.85
+   ```
+   Returns success — paste the MCP response.
 
 5. **No production-code edits:**
    ```bash

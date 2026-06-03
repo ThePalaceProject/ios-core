@@ -40,11 +40,14 @@ on lyrasis-reads staging via a new simdrive journey. Ship pass on
    `Palace/MyBooks/MyBooks/BookCell/ButtonView/BookButtonType.swift`. Adding
    the new case is a MyBooks edit, not a Book edit. Module C owns it.
 
-2. **Exhaustive-switch count is 8, not 5.** Intent listed 5 switch sites; reality
-   includes 4 internal switches in `BookButtonType.swift` itself (`displaysIndicator`,
-   `isDisabled`, `title`, `title(for:)`), plus `HalfSheetview.swift` has TWO
+2. **Exhaustive-switch count is 9, not 5** (corrected v2 per Phase 1a F1 + F5).
+   Intent listed 5 switch sites; reality includes 5 internal switches in
+   `BookButtonType.swift` itself (`displaysIndicator`, `isDisabled`, `title`,
+   `title(for:)`, `buttonStyle`), plus `HalfSheetview.swift` has TWO
    (full-size + compact), plus 3 in `BookCellModel.swift`, plus
-   `BookButtonsView.swift` (accessibility ID). Module C's contract enumerates all 8.
+   `BookButtonsView.swift` (accessibility ID), plus
+   `Palace/MyBooks/MyBooks/BookCell/NormalBookCell.swift:218` (Phase 1a F1).
+   Module C's contract enumerates all 9.
 
 3. **BorrowReducer does NOT have an exhaustive switch over BookButtonType cases.**
    Intent claimed BorrowReducer would fail to compile when a case is added.
@@ -71,16 +74,29 @@ on lyrasis-reads staging via a new simdrive journey. Ship pass on
    remains. OPDS1 entry parsing is now in `Palace/Packages/PalaceCatalog/`.
    Intent's OPDS1 mention applies to the SPM, not the Palace/OPDS/ dir.
 
-8. **MyBooks registry semantics for streaming-borrowed state.** Intent said
-   "TPPBookRegistry recognizes streaming as borrowed; no download required."
-   Minimal-surface approach: after a successful borrow for a streaming-HTML
-   title, set the registry directly to `.downloadSuccessful` (matching what
-   an already-downloaded asset would yield). `BookButtonState.buttonTypes`'s
-   `.downloadSuccessful` branch then adds `.readStreaming` for streaming-HTML
-   titles via its existing `defaultBookContentType` switch. No new `TPPBookState`
-   case. This is the change that makes Module C `critical_path`.
+8. **MyBooks registry semantics for streaming-borrowed state — REVISED v2 to
+   Option (c).** Intent said "TPPBookRegistry recognizes streaming as borrowed;
+   no download required." Phase 1a F3 flagged that the original architect plan
+   ("set registry directly to `.downloadSuccessful` after streaming borrow")
+   didn't specify a call site, leaving the implementer to invent the
+   architecture mid-flight. **Adopted v2 Option (c): purely presentation-layer
+   mapping.** `BookButtonState.buttonTypes(book:)` `.downloadNeeded` branch's
+   inner switch over `defaultBookContentType` returns `[.readStreaming, .return]`
+   for streaming-HTML books. After borrow, the registry transitions to its
+   NORMAL `.downloadNeeded` state — no state-machine change, no
+   borrow-completion edit, no MyBooksDownloadCenter edit. Module C stays
+   `critical_path` (still touches MyBooks display logic gating user access to
+   content), but is now strictly additive in display rules. No new `TPPBookState`
+   case.
 
-9. **Module B can be authored speculatively in parallel to A.** The
+9. **TPPBookContentType switch sites: 7, not 6** (corrected v2 per Phase 1a F2).
+   The architect's original 6-site enumeration missed
+   `Palace/MyBooks/LocalBookContentService.swift:77` — exhaustive switch over
+   `defaultBookContentType` that compile-errors on a new case. Added to Module C
+   scope; the streamingHTML arm is `break` with the comment "streaming-HTML has
+   no local on-device asset to delete."
+
+10. **Module B can be authored speculatively in parallel to A.** The
    `StreamingReaderViewModel` API surface (init takes a `URL` + a
    `StreamingReaderProgressStoring` protocol + a `bookID: String`) doesn't
    depend on A; only the *consumer* in Module C does. So B and A truly run in

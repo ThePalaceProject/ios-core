@@ -39,7 +39,7 @@ import `PalaceCatalog` to reference `ContentTypeStreamingHTML` if needed.
 
 Production:
 - `Palace/Packages/PalaceCatalog/Sources/PalaceCatalog/TPPOPDSAcquisitionPath.swift`
-- `Palace/OPDS2/Models/OPDS2PublicationExtended.swift` (BOTH `toBook()` filter sites: lightweight `:264-282` AND full `:384-398`)
+- `Palace/OPDS2/Models/OPDS2PublicationExtended.swift` (**test-coverage only** per Phase 1a advisory B — the filter at `:270-282` AND `:386-398` is generic and unblocks automatically once `supportedTypes()` contains `ContentTypeStreamingHTML`. No production-code edit at the filter sites is strictly required; only edit if a comment update is desired.)
 - `Palace/Book/Models/TPPContentType.swift`
 - `Palace/Book/Models/TPPBookContentTypeConverter.swift`
 - `Palace/Book/Models/TPPBook.swift` (additive `isStreamingHTML` only)
@@ -126,11 +126,16 @@ Tooling:
    ```
    Must return ≥ 1.
 
-6. **OPDS2 filter no longer drops streaming-media at lightweight site:**
+6. **OPDS2 filter no longer drops streaming-media — verified by test, not grep**
+   (corrected v2 per Phase 1a advisory A — the old grep `'streaming-media' ≥ 1`
+   passes on the existing PR #847 comment at line 266 alone, so it doesn't
+   actually verify behavior). Required evidence:
    ```bash
-   grep -n 'streaming-media\|ContentTypeStreamingHTML' Palace/OPDS2/Models/OPDS2PublicationExtended.swift
+   xcodebuild ... -only-testing:PalaceTests/OPDS2PublicationExtendedTests/testOPDS2Publication_toBook_streamingMediaOnlyAcquisition_doesNotDrop test 2>&1 | grep -E "Test Case '.+' passed"
+   xcodebuild ... -only-testing:PalaceTests/OPDS2PublicationExtendedTests/testOPDS2FullPublication_toBook_streamingMediaOnlyAcquisition_doesNotDrop test 2>&1 | grep -E "Test Case '.+' passed"
    ```
-   Should return ≥ 1 hit AND the line above the line 270-282 `guard hasOpenablePath` should reflect the change (visual review).
+   Both test cases must pass. (Test pass = filter accepts streaming-media =
+   behavior verified.)
 
 7. **Both OPDS2 toBook sites have the filter passthrough:**
    ```bash

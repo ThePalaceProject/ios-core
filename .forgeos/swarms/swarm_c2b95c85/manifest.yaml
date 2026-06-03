@@ -45,11 +45,14 @@ modules:
   - name: C-BookButton-Presenter-Wiring
     letter: C
     risk: critical_path
+    contract_version: 2  # v2 incorporates Phase 1a findings F1-F5 — see architect-review.md
     files_scope:
-      - "Palace/MyBooks/MyBooks/BookCell/ButtonView/BookButtonType.swift (modified — add .readStreaming case + update 4 internal exhaustive switches: displaysIndicator, isDisabled, title, title(for:), buttonStyle)"
+      - "Palace/MyBooks/MyBooks/BookCell/ButtonView/BookButtonType.swift (modified — add .readStreaming case + update 5 internal exhaustive switches: displaysIndicator, isDisabled, title, title(for:), buttonStyle)"
       - "Palace/MyBooks/MyBooks/BookCell/ButtonView/BookButtonsView.swift (modified — add .readStreaming accessibility ID case at line 71)"
-      - "Palace/MyBooks/MyBooks/BookCell/BookCellModel.swift (modified — update 3 exhaustive switches at :478, :493, :501 to include .readStreaming; extend didSelectRead :564 switch over defaultBookContentType to add case .streamingHTML)"
-      - "Palace/MyBooks/MyBooks/BookCell/ButtonView/BookButtonState.swift (modified — extend buttonTypes(book:) .downloadSuccessful/.used branches' inner switch over defaultBookContentType to add case .streamingHTML: buttons.append(.readStreaming))"
+      - "Palace/MyBooks/MyBooks/BookCell/BookCellModel.swift (modified — update 3 exhaustive switches at :478, :493, :501 to include .readStreaming; extend didSelectRead :564 switch over defaultBookContentType to add case .streamingHTML routing to coordinator)"
+      - "Palace/MyBooks/MyBooks/BookCell/NormalBookCell.swift (modified — exhaustive switch at :218; add .readStreaming arm to the model.callDelegate(for:type) branch) [v2 ADDED per Phase 1a F1]"
+      - "Palace/MyBooks/MyBooks/BookCell/ButtonView/BookButtonState.swift (modified — v2 Option (c): .downloadNeeded branch's inner switch over defaultBookContentType returns [.readStreaming, .return] for .streamingHTML; .downloadSuccessful + .used branches also add the case for parity)"
+      - "Palace/MyBooks/LocalBookContentService.swift (modified — switch at :77; case .streamingHTML: break with comment 'streaming-HTML has no local on-device asset to delete') [v2 ADDED per Phase 1a F2]"
       - "Palace/Book/UI/BookDetail/BookDetailView.swift (modified — update switch at :756 to add .readStreaming branch; route to viewModel.handleAction)"
       - "Palace/Book/UI/BookDetail/BookDetailViewModel.swift (modified — update switch at :617 to add .readStreaming → didSelectReadStreaming; extend openBook switch at :847 to add case .streamingHTML routing to StreamingReaderView presentation; add didSelectReadStreaming(for:) method)"
       - "Palace/Book/UI/BookDetail/HalfSheetview.swift (modified — update BOTH switches at :94 and :123 to include .readStreaming)"
@@ -60,13 +63,14 @@ modules:
       - "Palace/AppInfrastructure/NavigationHostView.swift (modified — add .streamingHTML route render branch if AppRoute case added)"
       - "Palace/Utilities/Localization/Strings.swift (modified — Strings.BookButton.readStreaming if a distinct label is wanted; Strings.BookDetailView.streamingHTMLContentType for format row)"
       - "Palace/Utilities/Testing/AccessibilityIdentifiers.swift (modified — AccessibilityID.BookDetail.readStreamingButton)"
-      - "PalaceTests/Book/BookButtonMapperTests.swift (modified — streaming-HTML borrowed yields [.readStreaming]; pre-borrow yields [.get])"
-      - "PalaceTests/MyBooks/BookCellModelTests.swift (modified or NEW — didSelectRead routes streaming-HTML to StreamingReaderView presenter; offline pre-flight handles .readStreaming)"
-      - "PalaceTests/ViewModels/BookDetailViewModelTests.swift (modified — handleAction(.readStreaming) routes to didSelectReadStreaming; openBook(.streamingHTML) presents StreamingReaderView)"
-      - "PalaceTests/Contract/StreamingReaderPresentationContractTests.swift (NEW — pin the borrow→present call order for streaming-HTML titles)"
+      - "PalaceTests/BookStateManagement/BookButtonMapperTests.swift (modified — canonical class; add streaming-HTML cases for .downloadNeeded, .downloadSuccessful, .unregistered) [v2 FIXED per Phase 1a F4]"
+      - "PalaceTests/MyBooks/BookCellModelStreamingHTMLTests.swift (NEW — didSelectRead streaming-HTML route; sits alongside existing BookCellModelOfflineTests.swift) [v2 FIXED per Phase 1a F4]"
+      - "PalaceTests/Book/BookDetailViewModelTests.swift (modified — handleAction(.readStreaming) + openBook(.streamingHTML) + didSelectReadStreaming assertions) [v2 FIXED per Phase 1a F4 — actual path is PalaceTests/Book/, not PalaceTests/ViewModels/]"
+      - "PalaceTests/Contract/StreamingReaderPresentationContractTests.swift (NEW — pin handleAction → present call order for streaming-HTML titles)"
+      - "PalaceTests/Book/BookButtonTypeMetaTests.swift (NEW — exhaustive case coverage META regression)"
     contract_path: .forgeos/swarms/swarm_c2b95c85/contracts/C-BookButton-Presenter-Wiring.md
     depends_on: [A, B]
-    implementer_prompt_summary: "Add BookButtonType.readStreaming case, update all 8+ exhaustive switches across Book/UI/BookDetail + MyBooks/BookCell, extend the TPPBookContentType switches in BookCellModel/BookService/BookDetailViewModel/BookButtonState/CatalogView/TPPBook+Extensions to handle .streamingHTML, and wire BookDetailViewModel.didSelectReadStreaming → present StreamingReaderView via NavigationCoordinator. Critical-path mutation kill-rate ≥80% diff-scoped on touched MyBooks files. No new TPPBookState case — streaming-HTML titles set registry to .downloadSuccessful directly after borrow."
+    implementer_prompt_summary: "v2 Option (c) — purely presentation. Add BookButtonType.readStreaming case, update all 9 exhaustive switches across MyBooks/ + Book/UI/BookDetail/, extend the 7 TPPBookContentType switches across Book/MyBooks/CatalogUI to handle .streamingHTML, and wire BookDetailViewModel.didSelectReadStreaming → present StreamingReaderView via NavigationCoordinator. The 'streaming = no download' semantic is the BookButtonState.downloadNeeded → [.readStreaming, .return] mapping for streamingHTML books — NO registry-state shortcut, NO new TPPBookState case, NO edits to MyBooksDownloadCenter / Borrow* / Download* / BookReturn* / Background* files. Critical-path mutation kill-rate ≥80% diff-scoped on touched MyBooks files."
 
   - name: D-Simdrive-Journey
     letter: D
@@ -87,6 +91,8 @@ dont_touch:
   - Palace/MyBooks/Borrow*.swift
   - Palace/MyBooks/BookReturn*.swift
   - Palace/MyBooks/Download*.swift
+  - Palace/MyBooks/Background*.swift                       # v2 — Option (c) excludes Background* edits
+  - Palace/MyBooks/MyBooksDownloadCenter.swift             # v2 — Option (c) excludes MyBooksDownloadCenter edits
   - Palace/Network/TPPNetworkExecutor.swift
   - Palace/Network/TPPNetworkResponder.swift
   - Palace/Holds/
@@ -114,14 +120,55 @@ acceptance_gates:
   - "mcp__forgeos__forge_check_gates: architect + qa_test gates satisfied"
 
 architect_review:
-  reviewer_agent_id: null
-  verdict: null
-  at: null
-  reviewed_files:
-    - .forgeos/swarms/swarm_c2b95c85/plan.md
-    - .forgeos/swarms/swarm_c2b95c85/contracts/A-Format-Recognition.md
-    - .forgeos/swarms/swarm_c2b95c85/contracts/B-StreamingReader.md
-    - .forgeos/swarms/swarm_c2b95c85/contracts/C-BookButton-Presenter-Wiring.md
-    - .forgeos/swarms/swarm_c2b95c85/contracts/D-Simdrive-Journey.md
-    - .forgeos/intent/pp-4161-streaming-html-reader.md
-  findings: null
+  round_1:
+    reviewer_agent_id: general-purpose
+    verdict: BLOCKED
+    at: 2026-06-03T14:00:00Z
+    review_file: .forgeos/swarms/swarm_c2b95c85/architect-review.md
+    reviewed_files:
+      - .forgeos/swarms/swarm_c2b95c85/plan.md
+      - .forgeos/swarms/swarm_c2b95c85/contracts/A-Format-Recognition.md
+      - .forgeos/swarms/swarm_c2b95c85/contracts/B-StreamingReader.md
+      - .forgeos/swarms/swarm_c2b95c85/contracts/C-BookButton-Presenter-Wiring.md
+      - .forgeos/swarms/swarm_c2b95c85/contracts/D-Simdrive-Journey.md
+      - .forgeos/intent/pp-4161-streaming-html-reader.md
+    findings:
+      blocking:
+        - id: F1
+          title: "NormalBookCell.swift:218 missing from Contract C files_scope (exhaustive BookButtonType switch)"
+          file: Palace/MyBooks/MyBooks/BookCell/NormalBookCell.swift
+          fix_applied: "Added to Module C files_scope. BookButtonType switch-site count: 8 → 9."
+        - id: F2
+          title: "LocalBookContentService.swift:77 missing from Contract C files_scope (exhaustive TPPBookContentType switch)"
+          file: Palace/MyBooks/LocalBookContentService.swift
+          fix_applied: "Added to Module C files_scope. TPPBookContentType switch-site count: 6 → 7. Minimal edit: case .streamingHTML: break with explanatory comment."
+        - id: F3
+          title: "Linchpin 'set registry to .downloadSuccessful after streaming-HTML borrow' call site unspecified"
+          file: null
+          fix_applied: "Adopted reviewer-recommended Option (c) — purely presentation-layer mapping. BookButtonState.buttonTypes(book:) .downloadNeeded branch returns [.readStreaming, .return] for streamingHTML books. NO registry-state shortcut. NO new TPPBookState case. NO edits to MyBooksDownloadCenter / Borrow* / Download* / BookReturn* / Background* files. Module C scope is smaller AND honestly bounded."
+        - id: F4
+          title: "Three wrong test file paths in Contract C verification block"
+          file: null
+          fix_applied: "BookCellModelTests.swift → BookCellModelStreamingHTMLTests.swift (new); ViewModels/BookDetailViewModelTests.swift → Book/BookDetailViewModelTests.swift; Book/BookButtonMapperTests.swift (Extended class) → BookStateManagement/BookButtonMapperTests.swift (canonical class)."
+        - id: F5
+          title: "Internal arithmetic inconsistency: BookButtonType internal switch count (4 vs 5)"
+          file: null
+          fix_applied: "Standardized on 5 across plan.md §Risks #2, Contract C files_scope text, and Contract C verification grep #2 (now expects BookButtonType.swift ≥ 6: case + 5 internal switches)."
+      advisory:
+        - id: A
+          title: "Contract A grep #6 (streaming-media presence in OPDS2PublicationExtended.swift) is too weak — passes on the existing PR #847 comment alone"
+          fix_applied: "Replaced with xcodebuild test-case-pass assertion for the new testOPDS2Publication_toBook_streamingMediaOnlyAcquisition_doesNotDrop test."
+        - id: B
+          title: "Contract A files_scope over-claims OPDS2PublicationExtended.swift production edits — filter is generic, unblocks automatically"
+          fix_applied: "Re-worded files_scope to flag test-coverage-only; production code edit at filter sites is optional (only for comment update if desired)."
+        - id: C
+          title: "Contract C grep #3 should iterate 7 files, not 6 (add LocalBookContentService.swift)"
+          fix_applied: "Verification grep #3 in Contract C now iterates 7 files including LocalBookContentService.swift."
+        - id: D
+          title: "Contract D validate-journey subcommand existence unconfirmed"
+          fix_applied: "Pre-flighted — harness simdrive validate-journey does NOT exist; only {status, upgrade, sessions}. Contract D verification rewritten to use mcp__simdrive__validate_replay + mcp__simdrive__replay directly."
+    re_review_required: true
+  round_2:
+    reviewer_agent_id: pending
+    verdict: pending  # to-fill after architect-reviewer is re-spawned with v2 contracts
+    at: pending
