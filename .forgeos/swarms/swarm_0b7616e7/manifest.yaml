@@ -1,0 +1,317 @@
+swarm_id: swarm_0b7616e7
+task: "In-app navigation during audiobook playback \u2014 Audible-style persistent\
+  \ mini-player + Continue Reading/Listening Catalog rows (P1+P2+P3+P4 of docs/architecture/in-app-navigation-during-playback.md)"
+base_ref: design/in-app-navigation-during-playback
+base_branch: swarm/swarm_0b7616e7-scaffold
+created_at: 2026-06-01
+status: complete
+target_release: 3.3.0
+risk_bar:
+  A: standard
+  B: standard
+  C: critical_path
+  D: critical_path
+modules:
+- id: A
+  name: RecentlyReading-ActiveSessions
+  contract: .forgeos/swarms/swarm_0b7616e7/contracts/A-RecentlyReading-ActiveSessions.md
+  status: pending
+  risk: standard
+  reviewers_required:
+  - architect
+  - qa_test
+  - clean_code
+  estimated_loc: 250-400
+  files:
+    production_new:
+    - Palace/MyBooks/RecentlyReadingService.swift
+    - Palace/CatalogUI/ViewModels/ActiveSessionsViewModel.swift
+    production_modified: []
+    tests_new:
+    - PalaceTests/MyBooks/DefaultRecentlyReadingServiceTests.swift
+    - PalaceTests/ViewModels/ActiveSessionsViewModelTests.swift
+    tests_modified: []
+    tests_read_only:
+    - PalaceTests/Mocks/*
+  depends_on_module: null
+  can_parallel_with:
+  - C
+  deferral_note: 'If TPPBookLocation.locationString JSON timestamp parsing entangles
+    across renderers,
+
+    ship with progressFraction: nil for unknown renderers and document the gap rather
+
+    than parsing wrong. Module B renders a fallback "Continue reading" CTA without
+    progress text.
+
+    '
+- id: B
+  name: Catalog-ContinueRows-UI
+  contract: .forgeos/swarms/swarm_0b7616e7/contracts/B-Catalog-ContinueRows-UI.md
+  status: pending
+  risk: standard
+  reviewers_required:
+  - architect
+  - qa_test
+  - clean_code
+  estimated_loc: 150-300
+  files:
+    production_new:
+    - Palace/CatalogUI/Views/ContinueRowSection.swift
+    production_modified:
+    - Palace/CatalogUI/Views/CatalogContentView.swift
+    - Palace/CatalogUI/Views/CatalogView.swift
+    - Palace/AppInfrastructure/AppTabHostView.swift
+    tests_new:
+    - PalaceTests/CatalogUI/ContinueRowSectionTests.swift
+    - PalaceTests/CatalogUI/CatalogViewContinueRowsIntegrationTests.swift
+  depends_on_module: A
+  can_parallel_with:
+  - D
+  deferral_note: 'If ReaderService is not protocol-extracted, defer the ReaderService
+    integration test
+
+    to a follow-up rather than blocking on protocol extraction.
+
+    '
+- id: C
+  name: AudiobookSessionPresenter-and-Migration
+  contract: .forgeos/swarms/swarm_0b7616e7/contracts/C-AudiobookSessionPresenter-and-Migration.md
+  status: pending
+  risk: critical_path
+  reviewers_required:
+  - architect
+  - qa_test
+  - clean_code
+  - blast_radius
+  estimated_loc: 250-400
+  files:
+    production_new:
+    - Palace/Audiobooks/AudiobookSessionPresenter.swift
+    production_modified:
+    - Palace/Audiobooks/AudiobookSessionManager.swift
+    - Palace/CarPlay/CarPlayAudiobookBridge.swift
+    - Palace/AppInfrastructure/AppContainer.swift
+    tests_new:
+    - PalaceTests/Audiobooks/AudiobookSessionPresenterTests.swift
+    - PalaceTests/Audiobooks/AudiobookSessionManagerPresenterMigrationTests.swift
+    tests_modified:
+    - PalaceTests/CarPlay/CarPlayAudiobookBridgeTests.swift
+    tests_read_only:
+    - PalaceTests/Audiobooks/AudiobookSessionManagerTests.swift
+  depends_on_module: null
+  can_parallel_with:
+  - A
+  smoke_gates_required:
+  - 'CarPlay smoke: PalaceTests/CarPlay/CarPlayAudiobookBridgeTests'
+  - LCP streaming smoke if class exists (search PalaceTests/Audiobooks/LCP*Tests)
+  deferral_note: 'If coordinator.popToRoot() removal in stopPlayback entangles with
+    per-tab back-stack
+
+    state we need to preserve, keep popToRoot as a no-op pass-through with TODO ticket
+
+    rather than silently leaving both code paths active.
+
+    '
+- id: D
+  name: AppTabHost-MiniPlayer-and-FullCover
+  contract: .forgeos/swarms/swarm_0b7616e7/contracts/D-AppTabHost-MiniPlayer-and-FullCover.md
+  status: pending
+  risk: critical_path
+  reviewers_required:
+  - architect
+  - qa_test
+  - clean_code
+  - blast_radius
+  estimated_loc: 200-350
+  files:
+    production_new:
+    - Palace/AppInfrastructure/AudiobookMiniPlayerView.swift
+    - Palace/AppInfrastructure/AudiobookFullPlayerCoverContainer.swift
+    - Palace/AppInfrastructure/IsReaderActiveTrackingModifier.swift
+    production_modified:
+    - Palace/AppInfrastructure/AppTabHostView.swift
+    - Palace/AppInfrastructure/NavigationHostView.swift
+    tests_new:
+    - PalaceTests/AppInfrastructure/AudiobookMiniPlayerViewTests.swift
+    - PalaceTests/AppInfrastructure/AudiobookFullPlayerCoverContainerTests.swift
+    - PalaceTests/AppInfrastructure/IsReaderActiveTrackingModifierTests.swift
+    - PalaceTests/AppInfrastructure/AppTabHostMiniPlayerIntegrationTests.swift
+  depends_on_module: C
+  can_parallel_with:
+  - B
+  manual_smoke_evidence_required:
+  - Settings tab mini-player visibility screenshot
+  - Reader route (EPUB or PDF) mini-player suppression screenshot
+  deferral_note: 'If ViewInspector / SwiftUI testing infrastructure is missing for
+    on-appear/disappear/
+
+    gesture/integration tests, ship behavior-only tests that invoke the modifier closure
+
+    directly rather than authoring fluff tests that do not exercise the SwiftUI lifecycle.
+
+    '
+anti_scope:
+- Palace/Audiobooks/NowPlayingCoordinator.swift
+- Palace/Audiobooks/PlaybackBootstrapper.swift
+- Palace/AppInfrastructure/NavigationCoordinator.swift
+- Palace/AppRoute.audio
+- Palace/Reader2/
+- Palace/Reader3/
+- Palace/PDF/
+- "iPad split-view (\xA710 out of scope)"
+- "PiP / mini-reader for ebooks (\xA710 out of scope)"
+- "Listen-along sync mode (\xA710 out of scope)"
+- "New persisted state schema (\xA710 out of scope \u2014 reuse TPPBookLocation +\
+  \ AudiobookSessionManager state)"
+- Adobe RMSDK / LCP DRM code paths
+- ios-audiobooktoolkit submodule
+- release/3.2.0
+- develop branch direct edits
+- main branch direct edits
+overlap_audit:
+  cross_module_file: Palace/AppInfrastructure/AppTabHostView.swift
+  modified_by:
+  - B
+  - D
+  conflict_likelihood: low
+  resolution: "B modifies the init body (adds StateObject ActiveSessionsViewModel\
+    \ construction);\nD modifies the body computed property (adds safeAreaInset +\
+    \ fullScreenCover modifier chain).\nDistinct named blocks \u2014 mechanical resolution.\n\
+    Sequencing: B merges first in Phase 2, D rebases on B's merge commit. Orchestrator\n\
+    hand-resolves any conflict during Phase 2 integration.\n"
+dependency_graph:
+- A blocks B
+- C blocks D
+- A parallel with C
+- B parallel with D (Phase 2)
+phase_sequencing:
+  phase_1:
+    dispatch:
+    - A
+    - C
+    integration: merge A + C onto swarm scaffold; run verify-pr.sh --quick
+  phase_2:
+    dispatch:
+    - B
+    - D
+    integration: merge B first, rebase D, run verify-pr.sh --quick --enforce-mutations
+  phase_3:
+    forge_review: all 4 modules, with reviewers_required per module
+    promote: promote ForgeOS gates; open PR to develop
+architect_review:
+  verdict: APPROVED-after-fix
+  reviewed_at: 2026-06-01
+  reviewer: architect-reviewer-phase-1a
+  review_path: .forgeos/swarms/swarm_0b7616e7/architect-review.md
+  reviewed_files:
+  - .forgeos/swarms/swarm_0b7616e7/plan.md
+  - .forgeos/swarms/swarm_0b7616e7/contracts/A-RecentlyReading-ActiveSessions.md
+  - .forgeos/swarms/swarm_0b7616e7/contracts/B-Catalog-ContinueRows-UI.md
+  - .forgeos/swarms/swarm_0b7616e7/contracts/C-AudiobookSessionPresenter-and-Migration.md
+  - .forgeos/swarms/swarm_0b7616e7/contracts/D-AppTabHost-MiniPlayer-and-FullCover.md
+  - docs/architecture/in-app-navigation-during-playback.md
+  findings:
+    critical: []
+    significant:
+    - "S1: swarm scaffold is behind develop on Palace/Audiobooks/AudiobookSessionManager.swift\
+      \ \u2014 missing fd4378d95 (FINDING-B/D). stopPlayback signature is OLD and\
+      \ \xA77.5 LCP-skip cited in Contract C does not exist on this base. Rebase scaffold\
+      \ onto develop OR cherry-pick fd4378d95 before dispatch."
+    - 'S2: Contract C verification criteria 5 + 13 reference PalaceTests/CarPlay/CarPlayAudiobookBridgeTests.swift
+      which does not exist. Update to PalaceTests/CarPlay/CarPlayTests.swift (or specify
+      the new sibling file the implementer is expected to author).'
+    - 'S3: Contract C does not add the AppContainer.withAudiobookSessionPresenter(_:)
+      test-seam modifier. Module D''s tests 12-13 will block on this. Add the ~25
+      LOC modifier to Contract C scope, following the withSignInModalSheetPresenter
+      precedent at AppContainer.swift:33-92.'
+    advisory:
+    - 'A1: Contract C tests 2/3/4 spy on final class NavigationCoordinator (no protocol,
+      no mock, off-limits to modify). Implementer should be guided toward state-based
+      assertion via presenter side effects rather than spinning on a spy seam that
+      does not exist.'
+    - 'A2: Contract C verification criterion 14 cites PalaceTests/Audiobooks/LCP*Tests*
+      which has no files. LCP tests live at PalaceTests/LCP/. Update cite.'
+    - 'A3: Module D verification criterion 3 (.tracksReaderActive >= 3 hits in NavigationHostView)
+      is structurally correct as a floor, but implementer should be told the modifier
+      needs to wrap each rendered reader sub-branch (e.g. both EPUB sub-branches inside
+      .epub case) not just the case label, else mini-player leaks on one of the two
+      EPUB paths.'
+  findings_addressed:
+  - "S1 (kept base on develop, not rebased on fix branch): Contract C now pins all\
+    \ line refs to develop's ACTUAL state (verified by greps). stopPlayback signature\
+    \ line 509: dismissPhoneUI: Bool = true async (OLD signature preserved, no persistFinalPosition).\
+    \ presentCoverArtAndNavigation lines 633-655, coordinator block 647-654. dismissPlayerOnPhone\
+    \ lines 560-566. The #if LCP block at 532-534 is the only LCP-specific code on\
+    \ develop; \xA77.5 invariant reinterpreted as 'do not touch lines 532-534, awaitReadinessAndIssueFirstPlay\
+    \ at 786, readiness Task at 689-699, probe defaults at 232-238.' Rebasing to fix\
+    \ branch declined \u2014 fix branch is in-flight in a parallel session and is\
+    \ not on develop; pinning to develop is structurally correct."
+  - 'S2 (CarPlay test class names fixed): Contract C now cites PalaceTests/CarPlay/CarPlayTests.swift
+    as the canonical CarPlay test home with 7 existing XCTest classes. Implementer
+    extends this file with a NEW class CarPlayAudiobookBridgePresenterMigrationTests
+    (hosts tests 7-8) rather than authoring a phantom CarPlayAudiobookBridgeTests.swift.
+    Verification criterion 13 -only-testing selectors updated to the real class names:
+    CarPlayTests, CarPlayIntegrationTests, CarPlayNowPlayingTemplateTests, CarPlayChapterListTests,
+    CarPlayPlaybackErrorTests, CarPlayAudiobookBridgePresenterMigrationTests.'
+  - 'S3 (AppContainer test seam added to Contract C scope): Contract C now requires
+    Module C to add _audiobookSessionPresenterOverride field + withAudiobookSessionPresenter(_:)
+    modifier + extended init signature (defaulted-nil audiobookSessionPresenterOverride
+    param), mirroring withSignInModalSheetPresenter precedent at AppContainer lines
+    33-114. Estimated LOC bumped from 250-400 to 275-425 to reflect the +25 LOC modifier
+    scope. Existing AppContainerTests.swift call sites (lines 40-59, 78-97) continue
+    to compile because the new init param is defaulted.'
+  - "A1 (NavigationCoordinator spy strategy clarified): Contract C's 'Spy strategy'\
+    \ subsection now explicitly documents that NavigationCoordinator is final + has\
+    \ no protocol + is off-limits. Implementer has TWO viable paths: (1) spy presenter\
+    \ via audiobookSessionPresenterProvider for presenter-side assertions (tests 1,\
+    \ 5, 6); (2) live NavigationCoordinator + NavigationCoordinatorHub (both have\
+    \ no-arg inits, verified at AppContainerTests.swift lines 55, 93), assert on observable\
+    \ state \u2014 coordinator.path.isEmpty, coordinator.audioModelById[bookId] ==\
+    \ nil (tests 2, 3, 4). Tests 2-4 reworded to use live-coordinator observable-state\
+    \ assertions."
+  - "A2 (LCP test home fixed): Verification criterion 14 now cites PalaceTests/LCP/\
+    \ (the real home \u2014 verified files: LCPAudiobooksTests.swift, LCPLibraryServiceTests.swift,\
+    \ LCPPassphraseReadinessTests.swift, LCPSessionOrphaningTests.swift). Implementer\
+    \ runs LCPAudiobooksTests + LCPSessionOrphaningTests; the latter covers the stale-LCP-Publication\
+    \ race that the #if LCP block at lines 532-534 protects."
+  - "A3 (sub-branch coverage clarified in Contract D): Contract D NavigationHostView\
+    \ integration now explicitly says the modifier MUST wrap each rendered reader\
+    \ sub-branch (both EPUB sub-branches inside .epub case, all three PDF sub-branches\
+    \ inside .pdf case) NOT the case label. EmptyView fallback sub-branches do NOT\
+    \ need the modifier. Verification grep floor of 3 remains (catches missing-an-entire-case);\
+    \ thorough per-sub-branch application yields 5-6 hits \u2014 both accepted."
+  declined:
+  - "Rebasing the swarm scaffold onto the in-flight fix branch fd4378d95 (S1 'preferred'\
+    \ fix): the fix branch lives in a parallel session and is NOT on develop yet.\
+    \ Pinning Contract C's line refs and behavior claims to develop's actual state\
+    \ is the structurally correct choice \u2014 the swarm targets develop, not the\
+    \ fix branch. If/when fd4378d95 merges to develop ahead of this swarm, the orchestrator\
+    \ can rebase the scaffold and the line refs shift mechanically without contract\
+    \ logic changes (noted in Contract C's 'Base branch note' section). This is standard\
+    \ branching hygiene; the architect review v1 explicitly listed this as 'OR (lower-cost):\
+    \ cherry-pick fd4378d95' so it's already a sanctioned alternative."
+  re_pass_completed_at: 2026-06-01
+  re_pass_actual_minutes: ~25
+  re_pass_scope_actual: Contract C rewritten (corrected line refs to develop, corrected
+    test class names, added withAudiobookSessionPresenter(_:) modifier to scope, clarified
+    spy strategy for tests 2-4 to use live-coordinator observable state). Contract
+    D updated with A3 sub-branch coverage clarification. Manifest verdict block updated.
+    architect-review.md gets v2 appendix.
+recon_docs:
+- docs/architecture/in-app-navigation-during-playback.md
+forgeos:
+  initiative_id: init_f5117cd1
+  changeset_id: cs_c96660a2
+  risk_score: 40
+  recommended_preset: startup
+  gates_promoted:
+    review: rev_ba7b3031 (architect APPROVED)
+    testing: rev_59805862 (qa_test APPROVED)
+    release: promoted
+  wall_failures_created:
+  - .forgeos/wall-failures/2026-06-01-cs_c96660a2-implementer-A-false-pass.md
+  blast_radius_review: rev_ec525403 APPROVED (universal floor, not a required role
+    on this gate template)
+outcome_path: .forgeos/swarms/swarm_0b7616e7/outcome.md
+completed_at: '2026-06-01'

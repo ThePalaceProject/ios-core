@@ -35,6 +35,13 @@ final class RemoteFeatureFlags {
         case readingStatsEnabled = "reading_stats_enabled"
         case advancedTypographyEnabled = "advanced_typography_enabled"
         case resetAccountEnabled = "reset_account_enabled"
+        /// Gates the in-app playback-navigation feature (swarm_0b7616e7 +
+        /// polish 2026-06-02): Continue Reading/Listening hero rows on
+        /// the Catalog top, the persistent mini-player chrome above the
+        /// tab bar, and the tap-to-resume routing that wires both to
+        /// `AudiobookSessionPresenter`. Default OFF — the feature is
+        /// opt-in via the developer settings toggle until broad rollout.
+        case inAppPlaybackNavEnabled = "in_app_playback_nav_enabled"
 
         var defaultValue: Bool {
             switch self {
@@ -64,6 +71,8 @@ final class RemoteFeatureFlags {
                 return .opds2Enabled
             case .resetAccountEnabled:
                 return .resetAccountEnabled
+            case .inAppPlaybackNavEnabled:
+                return .inAppPlaybackNavEnabled
             default:
                 return nil
             }
@@ -201,6 +210,33 @@ final class RemoteFeatureFlags {
             return override
         }
         return isFeatureEnabled(.resetAccountEnabled)
+    }
+
+    /// UserDefaults override that lets QA / a developer toggle the
+    /// in-app playback nav feature without a Firebase round-trip.
+    /// Settable from `TPPDeveloperSettingsTableViewController`. Falls
+    /// through to the Remote Config flag when nil. Mirrors the
+    /// `resetAccountLocalOverrideKey` pattern.
+    static let inAppPlaybackNavLocalOverrideKey = "RemoteFeatureFlags.inAppPlaybackNavLocalOverride"
+
+    /// Whether the in-app playback navigation feature is enabled:
+    /// Continue Reading/Listening hero rows on the Catalog top, the
+    /// persistent mini-player above the tab bar, and the tap-to-resume
+    /// routing that wires both to `AudiobookSessionPresenter`. Default
+    /// OFF; gateable via the developer settings toggle (local override)
+    /// or `in_app_playback_nav_enabled` in Remote Config (broad rollout).
+    ///
+    /// When false, the Continue row and mini-player are not rendered;
+    /// the persistent full-player overlay still surfaces when an
+    /// audiobook is opened (so playback always has a UI). Minimize
+    /// hides the overlay; without a mini-player to re-expand from, the
+    /// user re-enters playback via My Books / Catalog the same way they
+    /// did before the feature shipped.
+    var isInAppPlaybackNavEnabled: Bool {
+        if let override = UserDefaults.standard.object(forKey: Self.inAppPlaybackNavLocalOverrideKey) as? Bool {
+            return override
+        }
+        return isFeatureEnabled(.inAppPlaybackNavEnabled)
     }
 
     // MARK: - Device Info for Targeting

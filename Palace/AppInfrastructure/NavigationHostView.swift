@@ -18,8 +18,12 @@ struct NavigationHostView<Content: View>: View {
                 .onAppear { AppContainer.production().navigationCoordinatorHub.coordinator = coordinator }
                 .fullScreenCover(item: $coordinator.presentedEPUBSample) { epubData in
                     if let book = coordinator.resolveBook(for: BookRoute(id: epubData.bookId)) {
+                        // §7.3 Option α — sample EPUB modal is a reader
+                        // sub-branch; mini-player must suppress while it's
+                        // presented. Architect A3 — apply per sub-branch.
                         EPUBReaderView(book: book, publication: epubData.publication, forSample: true)
                             .environmentObject(coordinator)
+                            .tracksReaderActive(appContainer.audiobookSessionPresenter)
                     }
                 }
                 .navigationDestination(for: AppRoute.self) { route in
@@ -53,6 +57,13 @@ struct NavigationHostView<Content: View>: View {
                         // publication landed in the coordinator showed
                         // the user a blank navigator while the hundreds
                         // of decrypt calls walked the PDF cross-ref.
+                        //
+                        // §7.3 Option α + architect A3 — `.tracksReaderActive(_:)`
+                        // is applied per-sub-branch (NOT on the case label) so
+                        // each rendered PDF view's appearance lifecycle drives
+                        // the mini-player suppression flag. EmptyView fallback
+                        // does NOT need the modifier (no reader → no
+                        // suppression needed).
                         if let (publication, metadata) = coordinator.resolveReadiumPDF(for: bookRoute),
                            let book = coordinator.resolveBook(for: bookRoute),
                            let httpServer = AppContainer.production().readerService.httpServer {
@@ -73,6 +84,7 @@ struct NavigationHostView<Content: View>: View {
                                 }
                             }
                             .toolbar(.hidden, for: .tabBar)
+                            .tracksReaderActive(appContainer.audiobookSessionPresenter)
                         } else if coordinator.isReadiumPDFPending(for: bookRoute),
                                   let book = coordinator.resolveBook(for: bookRoute) {
                             // Publication hasn't landed yet — show a
@@ -81,33 +93,45 @@ struct NavigationHostView<Content: View>: View {
                             // seeing a frozen book-detail page.
                             ReadiumPDFLoadingView(book: book)
                                 .toolbar(.hidden, for: .tabBar)
+                                .tracksReaderActive(appContainer.audiobookSessionPresenter)
                         } else if let (document, metadata) = coordinator.resolvePDF(for: bookRoute) {
                             TPPPDFReaderView(document: document)
                                 .environmentObject(metadata)
                                 .toolbar(.hidden, for: .tabBar)
+                                .tracksReaderActive(appContainer.audiobookSessionPresenter)
                         } else {
                             EmptyView()
                         }
                     case .epub(let bookRoute):
+                        // §7.3 Option α + architect A3 — `.tracksReaderActive(_:)`
+                        // is applied per-sub-branch (NOT on the case label)
+                        // because each EPUB render path has its own onAppear /
+                        // onDisappear lifecycle. EmptyView fallback does not
+                        // get the modifier.
                         if let pubData = coordinator.resolveEPUBPublication(for: bookRoute),
                            let book = coordinator.resolveBook(for: bookRoute) {
                             EPUBReaderView(book: book, publication: pubData.0, forSample: pubData.1)
                                 .environmentObject(coordinator)
+                                .tracksReaderActive(appContainer.audiobookSessionPresenter)
                         } else if let vc = coordinator.resolveEPUBController(for: bookRoute) {
                             UIViewControllerWrapper(vc, updater: { _ in })
                                 .navigationBarBackButtonHidden(true)
                                 .toolbar(.hidden, for: .navigationBar)
                                 .toolbar(.hidden, for: .tabBar)
+                                .tracksReaderActive(appContainer.audiobookSessionPresenter)
                         } else {
                             EmptyView()
                         }
                     case .audio(let bookRoute):
+                        // When `in_app_playback_nav_enabled` is OFF the player
+                        // is presented via this pushed route (the original
+                        // presentation). When ON, the route is never pushed —
+                        // `AudiobookSessionManager.presentSession` drives the
+                        // root presenter instead and the chrome renders from
+                        // `AppTabHostView`'s persistent full-player overlay.
                         if let model = coordinator.resolveAudioModel(for: bookRoute) {
                             AudiobookPlayerView(model: model)
-                            .toolbar(.hidden, for: .tabBar)
-                            // CarMode prototype — not compiled
-                            // .overlay { CarModeEntryButton ... }
-                            // .fullScreenCover { CarModeView ... }
+                                .toolbar(.hidden, for: .tabBar)
                         } else {
                             EmptyView()
                         }

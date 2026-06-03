@@ -601,3 +601,104 @@ class CarPlayPlaybackErrorTests: XCTestCase {
                       "Playback state should be one of the known values")
     }
 }
+
+// MARK: - CarPlayAudiobookBridgePresenterMigrationTests
+
+/// swarm_0b7616e7 Module C — pins the migration of
+/// `CarPlayAudiobookBridge.dismissBookOnPhone()` off the legacy
+/// `coordinator.removeAudioModel + coordinator.popToRoot` pair onto
+/// `presenter.minimize()`.
+///
+/// Two pins:
+///
+///   7. `dismissBookOnPhone()` calls `presenter.minimize()` — proves the
+///      migration landed by observing the presenter's `isPlayerExpanded`
+///      flip from true → false through the production presenter
+///      resolved via `AppContainer.production().audiobookSessionPresenter`.
+///      A regression that left the legacy `coordinator.removeAudioModel +
+///      popToRoot` pair in place (and dropped the migration's
+///      `presenter.minimize()` call) would fail to flip
+///      `isPlayerExpanded`.
+///
+///   8. `dismissBookOnPhone()` does NOT clear the session — the session
+///      stays active so the mini-player remains visible on the phone.
+///      CarPlay disconnect is a UI dismiss, not a playback stop. A
+///      regression that wired dismissBookOnPhone to stopPlayback would
+///      kill the session and fail.
+///
+/// Test placement note: this is a NEW XCTest class added to the existing
+/// `PalaceTests/CarPlay/CarPlayTests.swift` per the contract's S2 fix
+/// (the canonical CarPlay test home; avoids a phantom-file ref). It
+/// preserves all 7 existing CarPlay test classes.
+@MainActor
+final class CarPlayAudiobookBridgePresenterMigrationTests: XCTestCase {
+
+    // Per qa-reviewer warning on cs_c96660a2 (Phase 5 forge-review):
+    // CarPlayAudiobookBridge.dismissBookOnPhone() resolves the presenter
+    // via AppContainer.production() — there's no DI seam at the bridge
+    // level (intentional; widening it would touch blast-radius). Tests
+    // therefore share the production presenter cache. Order-independence
+    // is restored by explicit setUp/tearDown reset of presenter state.
+    //
+    // We do NOT use withAudiobookSessionPresenter(_:) here: the override
+    // is instance-local on the AppContainer copy, but the bridge
+    // re-resolves via a fresh AppContainer.production() call inside
+    // dismissBookOnPhone, which has no override. Resetting the shared
+    // presenter state in setUp/tearDown is the right shape for this
+    // production-callsite-without-DI pattern.
+
+    private var presenter: AudiobookSessionPresenter { AppContainer.production().audiobookSessionPresenter }
+
+    override func setUp() async throws {
+        try await super.setUp()
+        await MainActor.run { resetPresenterState() }
+    }
+
+    override func tearDown() async throws {
+        await MainActor.run { resetPresenterState() }
+        try await super.tearDown()
+    }
+
+    private func resetPresenterState() {
+        let p = presenter
+        p.minimize()
+        p.clearActiveSession()
+    }
+
+    /// Test 7 — `dismissBookOnPhone()` calls `presenter.minimize()`.
+    ///
+    /// Pre-state: presenter expanded via `expand()` so the minimize flip
+    /// is observable. Post-state: presenter collapsed.
+    func testCarPlayBridge_dismissBookOnPhone_callsPresenterMinimize() {
+        presenter.expand()
+        XCTAssertTrue(presenter.isPlayerExpanded,
+                      "PRECONDITION: presenter must be expanded so minimize()'s flip is observable")
+
+        let bridge = CarPlayAudiobookBridge()
+        bridge.dismissBookOnPhone()
+
+        XCTAssertFalse(presenter.isPlayerExpanded,
+                       "Migrated dismissBookOnPhone must call presenter.minimize() — a regression that left the legacy `coordinator.removeAudioModel + popToRoot` in place (and dropped the migration's presenter.minimize() call) would fail to flip isPlayerExpanded back to false")
+    }
+
+    /// Test 8 — `dismissBookOnPhone()` does NOT clear the session.
+    func testCarPlayBridge_dismissBookOnPhone_doesNotKillSession() {
+        let session = AppContainer.production().audiobookSession
+
+        // Drive the presenter into an active state via the session's
+        // publisher seam — proves the bridge dismiss does NOT touch
+        // session state.
+        session.playbackStatePublisher.send(.playing(bookId: "test-active"))
+        RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+        XCTAssertTrue(presenter.hasActiveSession,
+                      "PRECONDITION: presenter must report active session before bridge dismiss")
+
+        let bridge = CarPlayAudiobookBridge()
+        bridge.dismissBookOnPhone()
+
+        XCTAssertTrue(presenter.hasActiveSession,
+                      "After CarPlay dismiss, presenter.hasActiveSession must STILL be true — the session stays active so the mini-player remains visible on the phone. A regression that wired dismissBookOnPhone to stopPlayback (or clearActiveSession) would kill the session and fail.")
+        XCTAssertFalse(presenter.isPlayerExpanded,
+                       "The full player UI did dismiss (minimize → false), confirming dismissBookOnPhone reached presenter.minimize()")
+    }
+}

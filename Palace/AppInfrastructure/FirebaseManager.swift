@@ -56,6 +56,7 @@ final class FirebaseManager {
         case carPlayEnabled = "carplay_enabled"
         case opds2Enabled = "opds2_enabled"
         case resetAccountEnabled = "reset_account_enabled"
+        case inAppPlaybackNavEnabled = "in_app_playback_nav_enabled"
     }
 
     // MARK: - Initialization
@@ -99,7 +100,8 @@ final class FirebaseManager {
             RemoteConfigKey.circuitBreakerEnabled.rawValue: NSNumber(value: true),
             RemoteConfigKey.carPlayEnabled.rawValue: NSNumber(value: true),
             RemoteConfigKey.opds2Enabled.rawValue: NSNumber(value: true),
-            RemoteConfigKey.resetAccountEnabled.rawValue: NSNumber(value: false)
+            RemoteConfigKey.resetAccountEnabled.rawValue: NSNumber(value: false),
+            RemoteConfigKey.inAppPlaybackNavEnabled.rawValue: NSNumber(value: false)
         ])
     }
 

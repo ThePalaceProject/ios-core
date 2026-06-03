@@ -10,6 +10,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     var loadingView: UIView?
     enum Section: Int, CaseIterable {
         case librarySettings = 0
+        case featureFlags
         case libraryRegistryDebugging
         case dataManagement
         case developerTools
@@ -31,6 +32,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     private let errorSimulationCellIdentifier = "errorSimulationCell"
     private let badgeLoggingCellIdentifier = "badgeLoggingCell"
     private let testHoldsCellIdentifier = "testHoldsCell"
+    private let inAppPlaybackNavCellIdentifier = "inAppPlaybackNavCell"
 
     private var pushNotificationsStatus = false
     private let settings: TPPSettings
@@ -80,6 +82,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: errorSimulationCellIdentifier)
         self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: badgeLoggingCellIdentifier)
         self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: testHoldsCellIdentifier)
+        self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: inAppPlaybackNavCellIdentifier)
     }
 
     // MARK: - UITableViewDataSource
@@ -88,6 +91,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         guard let sectionType = Section(rawValue: section) else { return 0 }
         switch sectionType {
         case .librarySettings: return 2
+        case .featureFlags: return 1
         case .developerTools: return 2
         case .pushNotificationTesting: return 3
         case .badgeTesting:
@@ -124,6 +128,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
             case 0: return cellForBetaLibraries()
             default: return cellForLCPPassphrase()
             }
+        case .featureFlags: return cellForInAppPlaybackNav()
         case .libraryRegistryDebugging: return cellForCustomRegsitry()
         case .dataManagement: return cellForClearCache()
         case .developerTools:
@@ -175,6 +180,8 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         switch sectionType {
         case .librarySettings:
             return "Library Settings"
+        case .featureFlags:
+            return "Feature Flags"
         case .libraryRegistryDebugging:
             return "Library Registry Debugging"
         case .dataManagement:
@@ -233,6 +240,31 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         let cell = TPPRegistryDebuggingCell()
         cell.delegate = self
         return cell
+    }
+
+    /// Local-override toggle for the in-app playback navigation feature
+    /// (swarm_0b7616e7 + polish 2026-06-02). Mirrors the
+    /// `cellForBetaLibraries` shape — single switch, no subtitle.
+    /// Writes via `inAppPlaybackNavSwitchDidChange(_:)` to the
+    /// `RemoteFeatureFlags.inAppPlaybackNavLocalOverrideKey` UserDefault,
+    /// so the flag flips immediately without a Firebase round-trip.
+    private func cellForInAppPlaybackNav() -> UITableViewCell {
+        guard let cell = tableView.dequeueReusableCell(withIdentifier: inAppPlaybackNavCellIdentifier) else {
+            fatalError("Failed to dequeue cell with identifier \(inAppPlaybackNavCellIdentifier)")
+        }
+        cell.selectionStyle = .none
+        cell.textLabel?.text = "In-App Playback Navigation"
+        cell.textLabel?.adjustsFontSizeToFitWidth = true
+        cell.textLabel?.minimumScaleFactor = 0.5
+        cell.accessoryView = createSwitch(
+            isOn: RemoteFeatureFlags.shared.isInAppPlaybackNavEnabled,
+            action: #selector(inAppPlaybackNavSwitchDidChange)
+        )
+        return cell
+    }
+
+    @objc func inAppPlaybackNavSwitchDidChange(sender: UISwitch) {
+        UserDefaults.standard.set(sender.isOn, forKey: RemoteFeatureFlags.inAppPlaybackNavLocalOverrideKey)
     }
 
     private func cellForClearCache() -> UITableViewCell {
@@ -641,7 +673,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
             }
         #endif
 
-        case .librarySettings, .libraryRegistryDebugging, nil:
+        case .librarySettings, .featureFlags, .libraryRegistryDebugging, nil:
             break
         }
     }
