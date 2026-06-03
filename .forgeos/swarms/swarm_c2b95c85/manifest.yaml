@@ -4,7 +4,12 @@ intent_file: .forgeos/intent/pp-4161-streaming-html-reader.md
 base_ref: feat/PP-4161-streaming-html-reader
 branch: swarm/swarm_c2b95c85-scaffold
 created_at: 2026-06-03
-status: triaged
+status: in-flight
+forgeos:
+  project_id: proj_87884c17
+  initiative_id: init_cc8762f9
+  changeset_id: cs_e0f586cc
+  dashboard_url: https://forgeos.synctek.io/initiatives/init_cc8762f9
 
 modules:
   - name: A-Format-Recognition
