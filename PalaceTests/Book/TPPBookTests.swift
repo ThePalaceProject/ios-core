@@ -486,6 +486,50 @@ final class TPPBookTests: XCTestCase {
         XCTAssertEqual(book.bookDuration, "", "bookDuration must store empty string as empty string")
     }
 
+    // MARK: - PP-4161: isStreamingHTML
+
+    /// PP-4161: a book whose ONLY acquisition is a streaming-HTML leaf
+    /// must report `isStreamingHTML == true`. Drives the Book Detail
+    /// "Read" button routing to the new streaming reader.
+    func testTPPBook_isStreamingHTML_streamingMediaOnly_returnsTrue() {
+        let leaf = TPPOPDSIndirectAcquisition(
+            type: ContentTypeStreamingHTML,
+            indirectAcquisitions: []
+        )
+        let streamingAcquisition = TPPOPDSAcquisition(
+            relation: .borrow,
+            type: ContentTypeOPDSPublication,
+            hrefURL: URL(string: "https://example.com/borrow/streaming")!,
+            indirectAcquisitions: [leaf],
+            availability: TPPOPDSAcquisitionAvailabilityUnlimited()
+        )
+        let book = makeBook(acquisitions: [streamingAcquisition])
+
+        XCTAssertTrue(book.isStreamingHTML,
+                      "A streaming-HTML-only book must report isStreamingHTML == true")
+        XCTAssertEqual(book.defaultBookContentType, .streamingHTML,
+                       "defaultBookContentType must resolve to .streamingHTML for streaming-HTML-only books")
+        XCTAssertFalse(book.isAudiobook, "Streaming-HTML is not an audiobook")
+    }
+
+    /// PP-4161: a plain EPUB book must NOT report isStreamingHTML.
+    /// Catches a mutant that flipped the predicate to always-true.
+    func testTPPBook_isStreamingHTML_epubOnly_returnsFalse() {
+        let book = makeBook()
+        XCTAssertFalse(book.isStreamingHTML,
+                       "An EPUB-only book must NOT report isStreamingHTML")
+        XCTAssertEqual(book.defaultBookContentType, .epub)
+    }
+
+    /// PP-4161: a book with NO acquisitions (unsupported content type)
+    /// must NOT report isStreamingHTML. Catches a mutant that returned
+    /// `defaultBookContentType != .epub` style negation.
+    func testTPPBook_isStreamingHTML_unsupported_returnsFalse() {
+        let book = makeBook(acquisitions: [])
+        XCTAssertFalse(book.isStreamingHTML)
+        XCTAssertEqual(book.defaultBookContentType, .unsupported)
+    }
+
     // MARK: - Default Book Content Type
 
     func test_defaultBookContentType_epub() {

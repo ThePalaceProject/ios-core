@@ -9,6 +9,9 @@
 import Foundation
 
 class TPPBookContentTypeConverter: NSObject {
+    /// PP-4161 / F-011: exhaustive — NO `default:` clause. The next enum-case
+    /// addition to `TPPBookContentType` must compile-error here so the
+    /// conversion stays honest. Do not reintroduce a default arm.
     @objc class func stringValue(of bookContentType: TPPBookContentType) -> String {
         switch bookContentType {
         case .epub:
@@ -19,8 +22,8 @@ class TPPBookContentTypeConverter: NSObject {
             return "PDF"
         case .unsupported:
             return "Unsupported"
-        default:
-            return "Unexpected enum value: \(bookContentType.rawValue)"
+        case .streamingHTML:
+            return "StreamingHTML"
         }
     }
 }

@@ -190,3 +190,7 @@ case + converter exhaustiveness pin. The supported-types / supported-subtypes
 plumbing in PalaceCatalog is purely additive — no Module C consumer touches
 this file. Anti-scope: Palace/MyBooks/, Palace/Book/UI/, Palace/ReaderStreaming/,
 all of dont_touch in manifest.yaml.
+
+## Land receipt
+
+Landed in commit for Module A (PP-4161 Wave 1). All Verification criteria #1-#10 satisfied; SUT instantiation greps pass; build SUCCEEDED on Palace + Palace-noDRM targets; transcript at `.forgeos/swarms/swarm_c2b95c85/transcripts/A.md`.

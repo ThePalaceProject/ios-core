@@ -105,6 +105,14 @@ public class TPPBook: NSObject, ObservableObject {
         defaultBookContentType == .audiobook
     }
 
+    /// PP-4161: True when the book's default acquisition resolves to the
+    /// LibrarySimplified streaming-media MIME. Book Detail routes the
+    /// "Read" action to the streaming reader and MyBooks treats the title
+    /// as no-download (the asset is fetched on demand by the WKWebView).
+    @objc var isStreamingHTML: Bool {
+        defaultBookContentType == .streamingHTML
+    }
+
     @objc var hasDuration: Bool {
         !(bookDuration?.isEmpty ?? true)
     }
