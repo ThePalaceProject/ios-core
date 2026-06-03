@@ -116,3 +116,9 @@ merged before you start — the journey records against working production
 code. Pre-grant permissions before `session_start`. Always `observe` with
 `annotate=true` before `tap text=...`. Re-observe after every navigation.
 SSIM gating 0.85 with `on_drift: warn`. NO production edits.
+
+## Land receipt
+
+Landed after three escalation cycles. Recording captured the merged Wave 1+2+v2.2-reverted+Wave 4 build on the iPhone 16 Pro sim against the live Palace Bookshelf staging OPDS feed. End-to-end verification proves: catalog visibility (Wave 1), 2-tap Borrow→Read flow (Wave 4 dispatcher + Module C BookButtonState mapping), reader presentation (Module B), scroll-restore wiring (verified by unit tests; live-page calibration deferred).
+
+Baselines pre-date the UX close-button removal (system back chevron is the only dismiss affordance after Maurice's call). Documented in the PR body.
