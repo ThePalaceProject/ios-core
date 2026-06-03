@@ -408,3 +408,12 @@ Anti-scope: PalaceCatalog/, OPDS2/, Reader2/, Reader3/, Audiobooks/,
 SignInLogic/, MyBooks/Borrow*, MyBooks/Download*, MyBooks/BookReturn*,
 MyBooks/Background*, MyBooks/MyBooksDownloadCenter.swift, Network/, plus all
 dont_touch in manifest.yaml.
+
+## Land receipt
+
+Landed as ONE bundled commit per orchestrator's choice-A consolidation:
+- v2.1: BookButtonType.readStreaming + 9 switch sites + BookButtonState .downloadNeeded mapping + BorrowOperation:454 guard
+- v2.2: .get-routing hotfix attempted (didSelectReserve route) — REVERTED in Wave 4 after Module D dogfood proved borrowAsync also fails on open-access
+- Wave 4 Path X (final): revert v2.2; DownloadStartDispatcher.processDownloadWithCredentials streaming-HTML early-return reusing existing open-access branch at processUnregisteredState:150
+
+BorrowOperation:454 guard is dead code on the happy path under Wave 4 (no production caller routes streamingHTML into borrowAsync) but kept as defense-in-depth. Cell-side BookCellModel.callDelegate(.get) audited; same fix shape applied.

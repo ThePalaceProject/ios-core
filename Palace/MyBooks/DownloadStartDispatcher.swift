@@ -190,6 +190,18 @@ final class DownloadStartDispatcher {
         capturedAccountId: String
     ) {
         guard let delegate else { return }
+        // PP-4161 Wave 4 (Path X): streaming-HTML titles are online-only.
+        // After `processUnregisteredState` sets the registry to
+        // `.downloadNeeded` via the open-access branch (L150-159), there is
+        // no local asset to download. Module C's `BookButtonState` mapping
+        // turns `.downloadNeeded` + streamingHTML into [.readStreaming,
+        // .return]; the user taps Read to present `StreamingReaderView`.
+        // Early-return here so we don't fall through to startBorrow (no
+        // borrow link) or the asset-download URL fetch (which would 200 an
+        // HTML page that the OPDS / EPUB pipeline can't decode).
+        if book.defaultBookContentType == .streamingHTML {
+            return
+        }
         if state == .unregistered || state == .holding {
             delegate.startBorrow(for: book, attemptDownload: true, borrowCompletion: nil)
             return

@@ -65,6 +65,10 @@ private var fulfillURLVariableKey: UInt8 = 0
         case .pdf: return DisplayStrings.pdfContentType
         case .audiobook: return DisplayStrings.audiobookContentType
         case .unsupported: return DisplayStrings.unsupportedContentType
+        // PP-4161: streaming-media (text/html) renders via the in-app web
+        // reader. The format label is informational only — users tap Read to
+        // open the WKWebView shell.
+        case .streamingHTML: return DisplayStrings.streamingHTMLContentType
         }
     }
 
@@ -83,7 +87,11 @@ extension TPPBook {
         case .audiobook:
             guard let sampleType = SampleType(rawValue: acquisition.type) else { return nil }
             return AudiobookSample(url: acquisition.hrefURL, type: sampleType)
-        default:
+        case .streamingHTML:
+            // PP-4161: streaming-media titles don't surface preview samples —
+            // the asset is the page itself, online-only. Tap Read to open.
+            return nil
+        case .unsupported:
             return nil
         }
     }

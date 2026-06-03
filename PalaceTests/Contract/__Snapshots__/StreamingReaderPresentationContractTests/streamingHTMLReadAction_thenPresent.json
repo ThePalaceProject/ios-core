@@ -1,0 +1,22 @@
+[
+  {
+    "args" : {
+      "pathCount" : "0"
+    },
+    "method" : "precondition:pathEmpty"
+  },
+  {
+    "args" : {
+      "bookID" : "contract-book-001",
+      "resolved" : "true"
+    },
+    "method" : "observed:bookStored"
+  },
+  {
+    "args" : {
+      "expectedRouteCase" : "streamingHTML",
+      "pathCount" : "1"
+    },
+    "method" : "observed:routePushed"
+  }
+]

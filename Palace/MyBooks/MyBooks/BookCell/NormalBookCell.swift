@@ -220,7 +220,7 @@ struct NormalBookCell: View {
                 accessibleWithAnimation(.spring()) { self.showHalfSheet = false }
             case .get, .reserve, .download, .read, .listen, .retry, .cancel,
                  .sample, .audiobookSample, .remove, .cancelHold,
-                 .manageHold, .return, .returning:
+                 .manageHold, .return, .returning, .readStreaming:
                 model.callDelegate(for: type)
                 accessibleWithAnimation(.spring()) { self.showHalfSheet = model.showHalfSheet }
             }
