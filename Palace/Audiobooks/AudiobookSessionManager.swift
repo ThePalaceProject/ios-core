@@ -158,7 +158,43 @@ public final class AudiobookSessionManager: ObservableObject {
     /// Navigation hub resolved lazily — the hub itself is process-wide and
     /// references a UIKit coordinator that isn't valid at construction time
     /// during cold launch / CarPlay background launch.
+    ///
+    /// Note (swarm_0b7616e7 Module C): on develop's base this is consumed by
+    /// `dismissPlayerOnPhone(bookId:)` and `presentCoverArtAndNavigation(...)`
+    /// for the `pushAudioRoute` / `removeAudioModel` / `popToRoot` calls.
+    /// After this contract lands those calls move to the presenter, but the
+    /// hub provider stays alive for legacy compat (per §6.2 point 3 — the
+    /// NavigationCoordinator audio-route surface remains until a follow-up
+    /// swarm removes it).
     private let navigationCoordinatorHubProvider: () -> NavigationCoordinatorHub
+
+    /// Resolves the root-level audiobook session presenter. Set via the
+    /// AppContainer convenience init (`audiobookSessionPresenterProvider`
+    /// closure parameter) — production default routes through
+    /// `AppContainer.production().audiobookSessionPresenter` so the
+    /// process-wide cached presenter is reused; tests pass a closure
+    /// returning a spy presenter so the migration tests can assert on
+    /// `presentOnFirstOpen()` / `adoptBook(_:)` / `adoptPlaybackModel(_:)`
+    /// / `clearActiveSession()` calls without touching AppContainer.
+    ///
+    /// `@MainActor` on the closure type so callers can reach
+    /// `AppContainer.production().audiobookSessionPresenter` (which is
+    /// `@MainActor`-isolated) from the default factory without a Swift
+    /// 6 isolation error.
+    ///
+    /// swarm_0b7616e7 Module C — replaces the legacy
+    /// `coordinator.storeAudioModel + coordinator.pushAudioRoute` pair at
+    /// develop lines 647-654 + `coordinator.removeAudioModel +
+    /// coordinator.popToRoot` pair at develop lines 560-566.
+    private let audiobookSessionPresenterProvider: @MainActor () -> AudiobookSessionPresenter
+
+    /// Resolves whether the in-app-playback-nav feature is enabled. Gates
+    /// which presentation `presentSession` drives: off → the legacy
+    /// full-screen pushed `.audio` route; on → the root-level presenter
+    /// (mini-player + full-player overlay). Production default reads
+    /// `RemoteFeatureFlags.shared`; tests inject a fixed value so the
+    /// flag-branch decision is exercised without touching UserDefaults.
+    private let inAppPlaybackNavEnabledProvider: () -> Bool
 
     // MARK: - F-011 readiness-gate injection points
     //
@@ -198,6 +234,8 @@ public final class AudiobookSessionManager: ObservableObject {
         reachabilityProvider: @escaping () -> Reachability,
         bookCoverRegistryProvider: @escaping () -> TPPBookCoverRegistry,
         navigationCoordinatorHubProvider: @escaping () -> NavigationCoordinatorHub,
+        audiobookSessionPresenterProvider: @escaping @MainActor () -> AudiobookSessionPresenter,
+        inAppPlaybackNavEnabledProvider: @escaping () -> Bool,
         readinessProbeFactory: @escaping @MainActor (Player) -> PlaybackReadinessProbing,
         playbackCommandFactory: @escaping @MainActor (Player) -> PlaybackEngineCommanding,
         readinessTimeout: TimeInterval
@@ -208,6 +246,8 @@ public final class AudiobookSessionManager: ObservableObject {
         self.reachabilityProvider = reachabilityProvider
         self.bookCoverRegistryProvider = bookCoverRegistryProvider
         self.navigationCoordinatorHubProvider = navigationCoordinatorHubProvider
+        self.audiobookSessionPresenterProvider = audiobookSessionPresenterProvider
+        self.inAppPlaybackNavEnabledProvider = inAppPlaybackNavEnabledProvider
         self.readinessProbeFactory = readinessProbeFactory
         self.playbackCommandFactory = playbackCommandFactory
         self.readinessTimeout = readinessTimeout
@@ -234,6 +274,8 @@ public final class AudiobookSessionManager: ObservableObject {
         reachabilityProvider: @escaping () -> Reachability = { AppContainer.production().reachability },
         bookCoverRegistryProvider: @escaping () -> TPPBookCoverRegistry = { TPPBookCoverRegistry.shared },
         navigationCoordinatorHubProvider: @escaping () -> NavigationCoordinatorHub = { AppContainer.production().navigationCoordinatorHub },
+        audiobookSessionPresenterProvider: @escaping @MainActor () -> AudiobookSessionPresenter = { AppContainer.production().audiobookSessionPresenter },
+        inAppPlaybackNavEnabledProvider: @escaping () -> Bool = { RemoteFeatureFlags.shared.isInAppPlaybackNavEnabled },
         readinessProbeFactory: @escaping @MainActor (Player) -> PlaybackReadinessProbing = { player in
             PlayerReadinessProbe(isLoadedSnapshot: { [weak player] in player?.isLoaded ?? false })
         },
@@ -249,6 +291,8 @@ public final class AudiobookSessionManager: ObservableObject {
             reachabilityProvider: reachabilityProvider,
             bookCoverRegistryProvider: bookCoverRegistryProvider,
             navigationCoordinatorHubProvider: navigationCoordinatorHubProvider,
+            audiobookSessionPresenterProvider: audiobookSessionPresenterProvider,
+            inAppPlaybackNavEnabledProvider: inAppPlaybackNavEnabledProvider,
             readinessProbeFactory: readinessProbeFactory,
             playbackCommandFactory: playbackCommandFactory,
             readinessTimeout: readinessTimeout
@@ -322,6 +366,11 @@ public final class AudiobookSessionManager: ObservableObject {
     @discardableResult
     public func openAudiobook(_ book: TPPBook, startPlaying: Bool = true) async -> Result<Void, AudiobookSessionError> {
         Log.info(#file, "Opening audiobook: '\(book.title)' (id: \(book.identifier))")
+        // Polish-phase (in-app-nav-polish-2026-06-01): record wall-clock
+        // open time so the Continue Reading row's sort surfaces the real
+        // last-touched book even when the audiobook position-save flow
+        // hasn't yet written its first timeStamp. Idempotent overwrite.
+        AppContainer.production().bookOpenTracker.recordOpened(book.identifier)
 
         if case .loading(let loadingId) = state, loadingId == book.identifier {
             Log.warn(#file, "Audiobook already loading: \(book.identifier)")
@@ -458,6 +507,7 @@ public final class AudiobookSessionManager: ObservableObject {
 
         manager.play()
         nowPlayingCoordinator?.setPlaybackState(playing: true)
+        publishPlaybackStateChange(isPlaying: true)
     }
 
     /// Pauses the current audiobook
@@ -469,6 +519,7 @@ public final class AudiobookSessionManager: ObservableObject {
 
         manager.pause()
         nowPlayingCoordinator?.setPlaybackState(playing: false)
+        publishPlaybackStateChange(isPlaying: false)
     }
 
     /// Toggles play/pause
@@ -476,6 +527,59 @@ public final class AudiobookSessionManager: ObservableObject {
         if isPlaying {
             pause()
         } else {
+            play()
+        }
+    }
+
+    /// Polish-phase reactivity fix (in-app-nav-polish-2026-06-01).
+    /// Updates the manager's published `state` AND fires
+    /// `playbackStatePublisher` so the presenter's `@Published isPlaying`
+    /// mirror flips reactively, driving the mini-player + full-player
+    /// glyph updates and the CarPlay bridge.
+    ///
+    /// Pre-polish: `play()` / `pause()` updated only the Now Playing
+    /// center; the publisher never fired on user-initiated play/pause —
+    /// the mini-player glyph stayed stuck on the pre-tap value, which
+    /// the user reported as "none of the buttons work."
+    private func publishPlaybackStateChange(isPlaying: Bool) {
+        guard let bookId = currentBook?.identifier else { return }
+        let newState: AudiobookSessionState = isPlaying
+            ? .playing(bookId: bookId)
+            : .paused(bookId: bookId)
+        state = newState
+        playbackStatePublisher.send(newState)
+    }
+
+    /// Polish-phase background-freeze recovery
+    /// (in-app-nav-polish-2026-06-01). Called from
+    /// `AudiobookSessionPresenter.subscribeToAppLifecycle` on
+    /// `UIApplication.willEnterForegroundNotification` when there's an
+    /// active session.
+    ///
+    /// Strategy:
+    ///   1. Re-activate the audio session via PlaybackBootstrapper so a
+    ///      transient background-time deactivation doesn't leave AVPlayer
+    ///      starved.
+    ///   2. If the manager believes playback was in flight (state was
+    ///      `.playing` when we backgrounded), call `play()` to nudge the
+    ///      toolkit's player out of any stalled buffer-empty state. This
+    ///      is the operative recovery: AVPlayer re-fetches its buffer and
+    ///      `Player.isLoaded` re-flips to true, dismissing the toolkit's
+    ///      LoadingView before the 30s `LoadingErrorView` timer fires.
+    public func recoverPlaybackForForegroundEntry() {
+        guard let _ = manager else { return }
+        // Re-prime the audio session — bootstrapper's ensureInitialized is
+        // idempotent and re-activates AVAudioSession if it had been
+        // deactivated. AudiobookSessionManager doesn't hold an `appContainer`
+        // reference (its convenience init pulls deps off the production
+        // container and stores them as separate fields), so we reach the
+        // bootstrapper directly via the cached production accessor — same
+        // pattern other recovery paths use (e.g.,
+        // `navigationCoordinatorHubProvider` default).
+        AppContainer.production().playbackBootstrapper.ensureInitialized()
+        if case .playing = state {
+            // Was playing pre-background; ask the toolkit to resume.
+            // `manager.play()` is idempotent.
             play()
         }
     }
@@ -496,6 +600,51 @@ public final class AudiobookSessionManager: ObservableObject {
         }
 
         Log.debug(#file, "Skipping to chapter: '\(chapter.title)'")
+    }
+
+    /// Default skip interval (seconds) used by `skipBack()` / `skipForward()`.
+    /// Palace standardizes on 30s in both directions to match the SF Symbols
+    /// `gobackward.30` / `goforward.30` glyphs the mini-player + full player
+    /// chrome render. Exposed `internal static` so the polish-phase mini-
+    /// player tests can pin the value without dragging the toolkit's
+    /// `DefaultAudiobookManager.skipTimeInterval` (which is `internal`) into
+    /// the assertion.
+    static let defaultSkipInterval: TimeInterval = 30
+
+    /// Skips the playhead backward by `defaultSkipInterval` seconds.
+    /// Wraps the toolkit's `Player.skipPlayhead(_:)` async signature
+    /// (`Player.swift:108`) in a `Task { @MainActor in ... }` boundary so the
+    /// sync `AudiobookSessionManaging` protocol surface stays simple — same
+    /// async→sync pattern as `skipToChapter(at:)` at lines 524-528. The
+    /// async result (resulting `TrackPosition?`) is intentionally discarded
+    /// because the toolkit fires its own `positionPublisher` updates which
+    /// the presenter mirrors via `playbackModel.$currentLocation`.
+    ///
+    /// in-app-nav-polish-2026-06-01 — added so the root-level mini-player
+    /// chrome can drive 30s rewind without reaching for the toolkit type
+    /// directly (`AudiobookPlaybackModel.audiobookManager` is internal-only).
+    public func skipBack() {
+        guard let manager = manager else {
+            Log.warn(#file, "Cannot skipBack — no active manager")
+            return
+        }
+        Task { @MainActor in
+            _ = await manager.audiobook.player.skipPlayhead(-Self.defaultSkipInterval)
+        }
+        Log.debug(#file, "Skipping back \(Self.defaultSkipInterval)s")
+    }
+
+    /// Skips the playhead forward by `defaultSkipInterval` seconds. See
+    /// `skipBack()` for the async-boundary rationale.
+    public func skipForward() {
+        guard let manager = manager else {
+            Log.warn(#file, "Cannot skipForward — no active manager")
+            return
+        }
+        Task { @MainActor in
+            _ = await manager.audiobook.player.skipPlayhead(Self.defaultSkipInterval)
+        }
+        Log.debug(#file, "Skipping forward \(Self.defaultSkipInterval)s")
     }
 
     /// Cycles through playback rates. Driven by CarPlay / remote-control
@@ -583,19 +732,48 @@ public final class AudiobookSessionManager: ObservableObject {
         Log.info(#file, "Playback stopped and session cleared")
     }
 
-    /// Dismisses the audiobook player view on the phone
-    private func dismissPlayerOnPhone(bookId: String) {
-        if let coordinator = navigationCoordinatorHubProvider().coordinator {
-            Log.info(#file, "Dismissing player UI on phone for book: \(bookId)")
+    /// Dismisses the audiobook player view on the phone.
+    ///
+    /// Mirrors the flag-gated presentation in `presentSession`: the dismiss
+    /// must undo whatever the present path did.
+    ///   - Flag ON: the presenter owns the player chrome (mini-player + root
+    ///     overlay), so clearing it IS the dismiss. No nav stack is touched —
+    ///     `popToRoot` would wipe whatever non-audio route the user had pushed
+    ///     (book detail, settings subview), violating PP-3783's "back-stack
+    ///     preserved" UX.
+    ///   - Flag OFF: the player was pushed as an `.audio` route, so the
+    ///     dismiss pops that route and drops the cached model. `pop()` (not
+    ///     `popToRoot()`) removes only the top `.audio` route, preserving any
+    ///     underlying non-audio route per PP-3783.
+    ///
+    /// `internal` so `@testable import Palace` tests can drive either branch
+    /// directly without going through the full `stopPlayback` lifecycle
+    /// (which would also tear down the toolkit manager — requiring a
+    /// fully-stubbed `AudiobookManager`).
+    @MainActor
+    internal func dismissPlayerOnPhone(bookId: String) {
+        Log.info(#file, "Dismissing player UI on phone for book: \(bookId)")
+        if inAppPlaybackNavEnabledProvider() {
+            audiobookSessionPresenterProvider().clearActiveSession()
+        } else if let coordinator = navigationCoordinatorHubProvider().coordinator {
             coordinator.removeAudioModel(forBookId: bookId)
-            coordinator.popToRoot()
+            coordinator.pop()
         }
     }
 
-    /// Updates cover image (called when image loads asynchronously)
+    /// Updates cover image (called when image loads asynchronously).
+    ///
+    /// Forwards to the root-level presenter so the mini-player + full player
+    /// chrome see the new image without polling. Async hi-res replacements
+    /// arrive AFTER the initial `adoptPlaybackModel(_:)` snapshot (lo-res
+    /// sync, hi-res via the `loadCoverArt(for:into:)` Task) — without this
+    /// forward, the presenter's `coverImage` would stay at lo-res for the
+    /// rest of the session even though `sessionManager.coverImage` got
+    /// upgraded. in-app-nav-polish-2026-06-01.
     public func updateCoverImage(_ image: UIImage?) {
         coverImage = image
         nowPlayingCoordinator?.updateArtwork(image)
+        audiobookSessionPresenterProvider().adoptCoverImage(image)
     }
 
     // MARK: - Manager Binding (Direct, post-load)
@@ -658,27 +836,98 @@ public final class AudiobookSessionManager: ObservableObject {
     }
 
     private func presentCoverArtAndNavigation(for book: TPPBook, loaded: LoadedAudiobook) {
+        loadCoverArt(for: book, into: loaded.playbackModel)
+        presentSession(book: book, playbackModel: loaded.playbackModel)
+    }
+
+    /// Flag-gated presentation decision. The in-app-nav feature only changes
+    /// how the player is presented when `in_app_playback_nav_enabled` is on:
+    /// off → the original full-screen pushed `.audio` route; on → the
+    /// root-level presenter (mini-player + full-player overlay).
+    ///
+    /// `internal` so the migration tests can drive each branch with a spy
+    /// coordinator hub (off) or spy presenter (on) without owning a
+    /// `LoadedAudiobook`. `playbackModel` is optional for the same reason as
+    /// `pushSessionToPresenter` — production passes the loaded model, tests
+    /// pass nil. In production the model is always present, so the off-branch
+    /// `storeAudioModel` always runs.
+    @MainActor
+    internal func presentSession(book: TPPBook, playbackModel: AudiobookPlaybackModel?) {
+        if inAppPlaybackNavEnabledProvider() {
+            pushSessionToPresenter(book: book, playbackModel: playbackModel)
+        } else {
+            let route = BookRoute(id: book.identifier)
+            if let coordinator = navigationCoordinatorHubProvider().coordinator {
+                if let playbackModel = playbackModel {
+                    coordinator.storeAudioModel(playbackModel, forBookId: route.id)
+                }
+                coordinator.pushAudioRoute(route)
+            } else {
+                Log.info(#file, "No navigation coordinator (CarPlay background launch?) — playback will start without phone UI")
+            }
+        }
+    }
+
+    /// Loads cover art into the playback model — both the low-res cached
+    /// copy (synchronous) and the high-res registry copy (async). Split
+    /// from `presentCoverArtAndNavigation` so the presenter-side call
+    /// can be driven independently from tests without constructing a full
+    /// `LoadedAudiobook` shape.
+    private func loadCoverArt(for book: TPPBook, into playbackModel: AudiobookPlaybackModel) {
         if let lowRes = book.coverImage ?? book.thumbnailImage {
-            loaded.playbackModel.updateCoverImage(lowRes)
+            playbackModel.updateCoverImage(lowRes)
             updateCoverImage(lowRes)
         }
         let coverRegistry = bookCoverRegistryProvider()
-        Task { [weak self, weak playbackModel = loaded.playbackModel] in
+        Task { [weak self, weak playbackModel] in
             guard let img = await coverRegistry.coverImage(for: book) else { return }
             await MainActor.run {
                 playbackModel?.updateCoverImageAnimated(img)
                 self?.updateCoverImage(img)
             }
         }
+    }
 
-        let route = BookRoute(id: book.identifier)
-        if let coordinator = navigationCoordinatorHubProvider().coordinator {
-            Log.debug(#file, "Presenting audiobook player route for \(book.identifier)")
-            coordinator.storeAudioModel(loaded.playbackModel, forBookId: route.id)
-            coordinator.pushAudioRoute(route)
-        } else {
-            Log.info(#file, "No navigation coordinator (CarPlay background launch?) — playback will start without phone UI")
+    /// Drives the root-level presenter on a fresh open.
+    ///
+    /// The legacy `coordinator.storeAudioModel + pushAudioRoute` pair is
+    /// gone; the mini-player + fullScreenCover Module D wires into
+    /// AppTabHostView render off the presenter's `playbackModel` +
+    /// `currentBook` + `isPlayerExpanded` published values.
+    ///
+    /// F-011 preservation (§7.4): `presentOnFirstOpen()` is called
+    /// SYNCHRONOUSLY here, BEFORE the readiness-gate Task in
+    /// `startPlaybackAndSyncPosition` runs (`bind` calls
+    /// `presentCoverArtAndNavigation` → `pushSessionToPresenter` first,
+    /// then `startPlaybackAndSyncPosition`). This means the full player
+    /// is expanded showing cover art + loading state while the readiness
+    /// gate awaits — pre-presenter behavior was driven by
+    /// `pushAudioRoute`'s NavigationStack push, which had the same
+    /// synchronous-before-the-Task ordering.
+    ///
+    /// `internal` so `@testable import Palace` migration tests can drive
+    /// the presenter-side branch directly with a spy presenter via the
+    /// `audiobookSessionPresenterProvider` closure. The function is the
+    /// production seam — what `presentCoverArtAndNavigation` calls — so
+    /// driving it directly is honest end-state coverage of the migrated
+    /// behavior.
+    ///
+    /// `playbackModel` is optional: production callers pass the loaded
+    /// model; migration tests pass nil because the toolkit's
+    /// `AudiobookPlaybackModel(audiobookManager:)` requires a full
+    /// `Audiobook` + `Manifest` graph that's impractical to construct
+    /// from XCTest. The presenter records the calls regardless; absence
+    /// of a real model in the test does not weaken the migration
+    /// assertion.
+    @MainActor
+    internal func pushSessionToPresenter(book: TPPBook, playbackModel: AudiobookPlaybackModel?) {
+        let presenter = audiobookSessionPresenterProvider()
+        presenter.adoptBook(book)
+        if let playbackModel = playbackModel {
+            presenter.adoptPlaybackModel(playbackModel)
         }
+        presenter.presentOnFirstOpen()
+        Log.debug(#file, "Presenting audiobook session via root presenter for \(book.identifier)")
     }
 
     private func startPlaybackAndSyncPosition(for book: TPPBook, loaded: LoadedAudiobook) {

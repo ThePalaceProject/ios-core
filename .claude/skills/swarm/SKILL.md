@@ -371,15 +371,55 @@ self-verify and PASTE evidence in the transcript before declaring done:
 6. **Build verification** — `xcodebuild ... build` clean. Paste the
    tail.
 
+7. **Test-run verification with xcresult evidence (MANDATORY — wall-failure
+   2026-06-01 Option A)** — for every test claim in your transcript,
+   run the EXACT `-only-testing:` selectors that match your DoD #1 SUT
+   instantiation claims and PASTE the xcresult bundle absolute path:
+
+   ```bash
+   DD=/tmp/dd-${MOD}-${RANDOM}
+   xcodebuild -project Palace.xcodeproj -scheme Palace \
+     -destination "platform=iOS Simulator,id=141BD227-6E9A-4409-8D99-2D4FE818238D" \
+     -derivedDataPath "$DD" \
+     -only-testing:PalaceTests/<YourTestClass1> \
+     -only-testing:PalaceTests/<YourTestClass2> \
+     test 2>&1 | tee /tmp/test-${MOD}.log
+   ```
+
+   In your transcript, paste:
+   - The xcresult bundle absolute path (find via `ls "$DD/Logs/Test/"*.xcresult`).
+     The orchestrator MUST be able to `xcrun xcresulttool get test-results tests
+     --path <bundle>` on this path and find your claimed tests.
+   - The exact `Executed N tests, with 0 failures` line.
+   - Per-method test names list (use
+     `xcrun xcresulttool get test-results tests --path <bundle> | jq '.testNodes[] | .. | objects | select(.nodeType=="Test Case") | .name'`).
+
+   Narrative claims like "16/16 pass" without a verifiable xcresult bundle
+   are NOT acceptable. The wall-failure entry
+   `.forgeos/wall-failures/2026-06-01-cs_c96660a2-implementer-A-false-pass.md`
+   documents the canonical false-PASS pattern (Module A reported PASS while
+   ordering test actually failed; caught at Phase 4.5 only because the
+   integrator re-ran tests). Option A makes the implementer claim
+   falsifiable by the orchestrator.
+
 Report:
 - summary: 3-5 bullets on what you did
 - files: list of modified/added paths
 - tests: list of test files + key test names
 - gaps: anything the integrator needs to know
-- definition-of-done evidence: paste the 6 checks above with output
+- definition-of-done evidence: paste the 7 checks above with output
 
-If you cannot produce evidence for all 6 checks, report BLOCKED with
+If you cannot produce evidence for all 7 checks, report BLOCKED with
 which check failed and why. Do NOT report READY without the evidence.
+
+**Transcript MUST be at the contract-specified path** so the integrator
+finds it without manual copying. Write to:
+  `.forgeos/swarms/<swarm_id>/transcripts/<MOD>.md`
+where `<MOD>` is your module letter (A/B/C/D/...). The integrator stages
+all transcripts (commits them on the orchestrator branch) at Phase 4.
+DO NOT write transcripts to any other path; DO NOT leave them outside
+the `.forgeos/swarms/<swarm_id>/` tree — they will be lost when the
+integrator copies from your worktree.
 ```
 
 Use `run_in_background: false` (foreground) for the parallel dispatch — you need the results before integrating. Multiple Agent calls in a single message run concurrently.
@@ -507,6 +547,40 @@ scripts/verify-pr.sh --quick --diff-baseline || {
   echo "BLOCK: verify-pr.sh failed AND failures are NOT pre-existing flakes — see output"
   exit 1
 }
+
+# Check 8: Re-run each implementer's claimed test selectors on the merged
+# state (wall-failure 2026-06-01 Option B — orchestrator side of the
+# false-PASS-report fix). The Phase 3 implementer prompt's DoD #7 now
+# requires them to paste an xcresult bundle path; this check confirms
+# the SAME selectors pass on the integrated branch.
+#
+# Why: Module A on swarm_0b7616e7 reported "16/16 pass" while the
+# RecentlyReadingService ordering test actually failed on identical
+# code. The implementer wall leaked; this check catches it before the
+# reviewer wall has to.
+SIM_ID="${SIM_ID:-141BD227-6E9A-4409-8D99-2D4FE818238D}"
+for transcript in .forgeos/swarms/$SWARM_ID/transcripts/*.md; do
+  # Extract -only-testing: selectors from the transcript (implementers
+  # paste them inline as part of DoD #6/#7).
+  SELECTORS=$(grep -oE -- '-only-testing:[^ ]+' "$transcript" | sort -u | head -20)
+  if [ -z "$SELECTORS" ]; then
+    echo "WARN: no -only-testing selectors found in $transcript (Phase 3 DoD #7 violation — implementer didn't paste runnable evidence)"
+    continue
+  fi
+  DD=/tmp/dd-orch-recheck-$RANDOM
+  if ! xcodebuild -project Palace.xcodeproj -scheme Palace \
+        -destination "platform=iOS Simulator,id=$SIM_ID" \
+        -derivedDataPath "$DD" \
+        $SELECTORS test 2>&1 | tee /tmp/orch-recheck.log | \
+        grep -qE "Executed [0-9]+ tests, with 0 failures"; then
+    echo "BLOCK: implementer claimed tests pass but they FAIL on the merged orchestrator state."
+    echo "  Transcript: $transcript"
+    echo "  Selectors:  $SELECTORS"
+    echo "  Log:        /tmp/orch-recheck.log"
+    echo "  Canonical wall-failure: .forgeos/wall-failures/2026-06-01-cs_c96660a2-implementer-A-false-pass.md"
+    exit 1
+  fi
+done
 ```
 
 The two `python3 ~/harness/core/lib/*` scripts are stubs to be implemented (see `docs/architecture/swarm-rigor-followups.md` for spec). Until they exist, run the underlying greps manually using the contract's Verification criteria block.

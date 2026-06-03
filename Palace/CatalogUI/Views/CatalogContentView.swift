@@ -11,10 +11,51 @@ struct CatalogContentView: View {
     let onEntryPointSelected: (CatalogFilter) -> Void
     let onFacetSelected: (CatalogFilter) -> Void
     let onRefresh: () async -> Void
+    /// Module B (swarm_0b7616e7) — drives the "Continue Listening" +
+    /// "Continue Reading" hero rows prepended above `selectorsView`.
+    /// Injected from `CatalogView`; non-optional so the view always has a
+    /// source of truth (an empty viewmodel renders zero rows — see
+    /// `ContinueRowSection`).
+    @ObservedObject var activeSessions: ActiveSessionsViewModel
+    /// Tap on a Continue Reading card. Routed by `CatalogView` to
+    /// `ReaderService.openEPUB` / `.openPDF` per content type.
+    let onResumeReading: (TPPBook) -> Void
+    /// Tap on a Continue Listening card. Routed by `CatalogView` to
+    /// `AudiobookSessionPresenter.expand()` so the full player surfaces
+    /// (§11 row 3, design doc).
+    let onResumeListening: (TPPBook) -> Void
     var bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry
+
+    /// Subscribes to the developer-settings local override so the view
+    /// re-renders the moment the dev toggle flips. The actual gating
+    /// decision delegates to `RemoteFeatureFlags.shared
+    /// .isInAppPlaybackNavEnabled`, which combines the override (wins
+    /// when set) with the Firebase Remote Config `in_app_playback_nav_enabled`
+    /// value (fallback). Reading the @AppStorage value inside
+    /// `inAppPlaybackNavEnabled` registers the SwiftUI observation
+    /// against the same UserDefaults key the dev toggle writes to.
+    @AppStorage("RemoteFeatureFlags.inAppPlaybackNavLocalOverride")
+    private var inAppPlaybackNavLocalOverride: Bool = false
+
+    private var inAppPlaybackNavEnabled: Bool {
+        _ = inAppPlaybackNavLocalOverride  // trigger SwiftUI observation
+        return RemoteFeatureFlags.shared.isInAppPlaybackNavEnabled
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            // Feature-flagged (in_app_playback_nav_enabled): hides the
+            // Continue Reading / Continue Listening hero rows when off.
+            // The viewmodel still runs (subscriptions stay live so the
+            // flag flip is instant); only the rendering is gated.
+            if inAppPlaybackNavEnabled {
+                ContinueRowSection(
+                    viewModel: activeSessions,
+                    onResumeReading: onResumeReading,
+                    onResumeListening: onResumeListening
+                )
+            }
+
             selectorsView
 
             ScrollViewReader { proxy in
@@ -65,7 +106,8 @@ private extension CatalogContentView {
                 ForEach(Array(lanes.enumerated()), id: \.element.id) { idx, lane in
                     CatalogLaneRowView(
                         title: lane.title,
-                        books: lane.books.map { bookRegistry.updatedBookMetadata($0) ?? $0 },
+                        // Read-only: updatedBookMetadata writes + disk-saves on the main thread (froze render).
+                        books: lane.books.map { bookRegistry.book(forIdentifier: $0.identifier) ?? $0 },
                         moreURL: lane.moreURL,
                         onSelect: onBookSelected,
                         onMoreTapped: onLaneMoreTapped,
