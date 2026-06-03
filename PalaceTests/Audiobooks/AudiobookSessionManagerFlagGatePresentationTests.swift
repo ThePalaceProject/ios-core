@@ -107,4 +107,50 @@ final class AudiobookSessionManagerFlagGatePresentationTests: XCTestCase {
         XCTAssertEqual(spyPresenter.presentOnFirstOpenCallCount, 0,
                        "Flag OFF must NOT drive the root presenter — the presentation must not change while the feature is disabled")
     }
+
+    // MARK: - Dismiss (symmetric with present — must undo what present did)
+
+    /// Flag ON → dismiss clears the presenter and leaves the coordinator
+    /// stack untouched (the ON presentation never pushed a route).
+    ///
+    /// Mutates: if `dismissPlayerOnPhone` dropped the flag gate and always
+    /// popped, `clearActiveSessionCallCount` would be 0 and this fails.
+    func testDismissPlayerOnPhone_flagOn_clearsPresenter_andDoesNotPopCoordinator() {
+        flagEnabled = true
+        let book = TPPBookMocker.mockBook(distributorType: .OpenAccessAudiobook)
+        // Pre-existing non-audio route — must survive the dismiss (PP-3783).
+        realCoordinator.path.append(AppRoute.bookDetail(BookRoute(id: "preexisting")))
+
+        sessionManager.dismissPlayerOnPhone(bookId: book.identifier)
+
+        XCTAssertEqual(spyPresenter.clearActiveSessionCallCount, 1,
+                       "Flag ON dismiss must clear the presenter — that IS the dismiss for the root-overlay presentation")
+        XCTAssertEqual(realCoordinator.path.count, 1,
+                       "Flag ON dismiss must NOT pop the coordinator — the pre-existing route must be preserved")
+    }
+
+    /// Flag OFF → dismiss pops the pushed `.audio` route and does NOT clear
+    /// the presenter (which was never driven). The underlying non-audio
+    /// route must survive — `pop()` removes only the top route (PP-3783).
+    ///
+    /// Mutates: if `dismissPlayerOnPhone` always cleared the presenter
+    /// (dropping the flag gate), the stuck `.audio` route would never pop —
+    /// `path.count` would stay 2 and this fails. This is the bug the
+    /// architect review caught: a flag-off open with no programmatic dismiss.
+    func testDismissPlayerOnPhone_flagOff_popsAudioRoute_preservesUnderlyingRoute() {
+        flagEnabled = false
+        let book = TPPBookMocker.mockBook(distributorType: .OpenAccessAudiobook)
+        // User was in book detail, then opened the audiobook (flag-off push).
+        realCoordinator.path.append(AppRoute.bookDetail(BookRoute(id: "preexisting")))
+        sessionManager.presentSession(book: book, playbackModel: nil)
+        XCTAssertEqual(realCoordinator.path.count, 2,
+                       "PRECONDITION: book-detail route + pushed .audio route")
+
+        sessionManager.dismissPlayerOnPhone(bookId: book.identifier)
+
+        XCTAssertEqual(realCoordinator.path.count, 1,
+                       "Flag OFF dismiss must pop the .audio route, leaving the underlying book-detail route (PP-3783) — without this the player route stays stuck on screen")
+        XCTAssertEqual(spyPresenter.clearActiveSessionCallCount, 0,
+                       "Flag OFF dismiss must NOT touch the presenter — it was never driven")
+    }
 }

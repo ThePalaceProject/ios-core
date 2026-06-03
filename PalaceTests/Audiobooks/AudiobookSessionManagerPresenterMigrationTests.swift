@@ -71,10 +71,16 @@ final class AudiobookSessionManagerPresenterMigrationTests: XCTestCase {
         //   2. `navigationCoordinatorHubProvider` returns the real hub,
         //      so Path-2 tests can observe `coordinator.path` /
         //      `coordinator.resolveAudioModel(...)` post-call.
+        // These tests pin the in-app-nav flag-ON presenter migration, so the
+        // flag is forced ON — otherwise `dismissPlayerOnPhone` would take the
+        // flag-OFF legacy pop path and the presenter-clear assertions would
+        // not apply. The flag-OFF presentation is covered separately by
+        // AudiobookSessionManagerFlagGatePresentationTests.
         sessionManager = AudiobookSessionManager(
             appContainer: AppContainer.production(),
             navigationCoordinatorHubProvider: { [unowned self] in self.realHub },
-            audiobookSessionPresenterProvider: { [unowned self] in self.spyPresenter }
+            audiobookSessionPresenterProvider: { [unowned self] in self.spyPresenter },
+            inAppPlaybackNavEnabledProvider: { true }
         )
     }
 

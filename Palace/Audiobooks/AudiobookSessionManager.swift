@@ -734,23 +734,31 @@ public final class AudiobookSessionManager: ObservableObject {
 
     /// Dismisses the audiobook player view on the phone.
     ///
-    /// swarm_0b7616e7 Module C — replaces the legacy
-    /// `coordinator.removeAudioModel + coordinator.popToRoot` pair with a
-    /// presenter clear. The audio model is now owned by the presenter (not
-    /// the NavigationCoordinator's `audioModelById` cache), so dropping the
-    /// mirrored fields IS the dismiss. There is no `.audio` route on any
-    /// nav stack after migration — `popToRoot` would wipe whatever
-    /// non-audio route the user had pushed (book detail, settings subview,
-    /// catalog lane) which violates PP-3783's "back-stack preserved" UX.
+    /// Mirrors the flag-gated presentation in `presentSession`: the dismiss
+    /// must undo whatever the present path did.
+    ///   - Flag ON: the presenter owns the player chrome (mini-player + root
+    ///     overlay), so clearing it IS the dismiss. No nav stack is touched —
+    ///     `popToRoot` would wipe whatever non-audio route the user had pushed
+    ///     (book detail, settings subview), violating PP-3783's "back-stack
+    ///     preserved" UX.
+    ///   - Flag OFF: the player was pushed as an `.audio` route, so the
+    ///     dismiss pops that route and drops the cached model. `pop()` (not
+    ///     `popToRoot()`) removes only the top `.audio` route, preserving any
+    ///     underlying non-audio route per PP-3783.
     ///
-    /// `internal` so `@testable import Palace` migration tests can drive
-    /// the presenter-clear path directly without going through the full
-    /// `stopPlayback` lifecycle (which would also tear down the toolkit
-    /// manager — requiring a fully-stubbed `AudiobookManager`).
+    /// `internal` so `@testable import Palace` tests can drive either branch
+    /// directly without going through the full `stopPlayback` lifecycle
+    /// (which would also tear down the toolkit manager — requiring a
+    /// fully-stubbed `AudiobookManager`).
     @MainActor
     internal func dismissPlayerOnPhone(bookId: String) {
         Log.info(#file, "Dismissing player UI on phone for book: \(bookId)")
-        audiobookSessionPresenterProvider().clearActiveSession()
+        if inAppPlaybackNavEnabledProvider() {
+            audiobookSessionPresenterProvider().clearActiveSession()
+        } else if let coordinator = navigationCoordinatorHubProvider().coordinator {
+            coordinator.removeAudioModel(forBookId: bookId)
+            coordinator.pop()
+        }
     }
 
     /// Updates cover image (called when image loads asynchronously).
