@@ -601,6 +601,121 @@ final class OPDS2PublicationExtendedTests: XCTestCase {
         XCTAssertEqual(book?.bookDuration, "45:00")
     }
 
+    // MARK: - Series Metadata (PP-4463)
+
+    /// PP-4463: when an OPDS2 publication carries `belongsTo.series[]`,
+    /// `OPDS2FullPublication.toBook()` must surface the first series's name
+    /// and the href of its first link onto the resulting `TPPBook`. The Book
+    /// Detail SERIES row keys off both fields; dropping either hides the row.
+    func testFullPublication_seriesNameAndURL_extractedFromBelongsTo() {
+        let seriesLink = OPDS2Link(href: "https://example.com/series/foundation")
+        let series = OPDS2Collection(name: "Foundation", links: [seriesLink])
+        let metadata = OPDS2FullMetadata(
+            identifier: "urn:test:series",
+            title: "Foundation: Book 1",
+            belongsTo: OPDS2BelongsTo(series: [series])
+        )
+        let pub = OPDS2FullPublication(
+            metadata: metadata,
+            links: [
+                OPDS2Link(
+                    href: "https://example.com/borrow",
+                    type: "application/epub+zip",
+                    rel: "http://opds-spec.org/acquisition/borrow"
+                )
+            ],
+            images: nil
+        )
+
+        let book = pub.toBook()
+
+        XCTAssertEqual(book?.seriesName, "Foundation",
+                       "Series name from belongsTo.series.first.name must reach TPPBook.seriesName")
+        XCTAssertEqual(book?.seriesURL?.absoluteString,
+                       "https://example.com/series/foundation",
+                       "Series link href from belongsTo.series.first.links.first must reach TPPBook.seriesURL")
+    }
+
+    func testFullPublication_seriesNil_whenBelongsToAbsent() {
+        let pub = OPDS2FullPublication(
+            metadata: makeMinimalMetadata(),
+            links: [
+                OPDS2Link(
+                    href: "https://example.com/borrow",
+                    type: "application/epub+zip",
+                    rel: "http://opds-spec.org/acquisition/borrow"
+                )
+            ],
+            images: nil
+        )
+
+        let book = pub.toBook()
+
+        XCTAssertNil(book?.seriesName,
+                     "seriesName must be nil when belongsTo is absent — guards against a mutant that defaults to empty string")
+        XCTAssertNil(book?.seriesURL,
+                     "seriesURL must be nil when belongsTo is absent")
+    }
+
+    /// `OPDS2BelongsTo.series` is `[OPDS2Collection]?` — the toBook conversion
+    /// picks the FIRST entry. Pin that contract: if a feed somehow ships an
+    /// empty series array, the row stays hidden rather than crashing.
+    func testFullPublication_seriesNil_whenBelongsToSeriesEmpty() {
+        let metadata = OPDS2FullMetadata(
+            identifier: "urn:test:empty-series",
+            title: "Standalone",
+            belongsTo: OPDS2BelongsTo(series: [])
+        )
+        let pub = OPDS2FullPublication(
+            metadata: metadata,
+            links: [
+                OPDS2Link(
+                    href: "https://example.com/borrow",
+                    type: "application/epub+zip",
+                    rel: "http://opds-spec.org/acquisition/borrow"
+                )
+            ],
+            images: nil
+        )
+
+        let book = pub.toBook()
+
+        XCTAssertNil(book?.seriesName,
+                     "Empty belongsTo.series array must yield nil seriesName, not a crash")
+        XCTAssertNil(book?.seriesURL)
+    }
+
+    /// A series may exist with no navigation link (rare but valid per spec).
+    /// In that case `seriesName` is populated but `seriesURL` is nil, which
+    /// the Book Detail view's render predicate treats as "hide the row" —
+    /// there's no destination to navigate to.
+    func testFullPublication_seriesNameOnly_whenLinksAbsent() {
+        let series = OPDS2Collection(name: "Mystery Series", links: nil)
+        let metadata = OPDS2FullMetadata(
+            identifier: "urn:test:nolink",
+            title: "Unlinked Series Title",
+            belongsTo: OPDS2BelongsTo(series: [series])
+        )
+        let pub = OPDS2FullPublication(
+            metadata: metadata,
+            links: [
+                OPDS2Link(
+                    href: "https://example.com/borrow",
+                    type: "application/epub+zip",
+                    rel: "http://opds-spec.org/acquisition/borrow"
+                )
+            ],
+            images: nil
+        )
+
+        let book = pub.toBook()
+
+        XCTAssertEqual(book?.seriesName, "Mystery Series",
+                       "seriesName must still extract from the collection even when links is nil")
+        XCTAssertNil(book?.seriesURL,
+                     "seriesURL must be nil when the series collection carries no links")
+    }
+
     func testFullPublicationToBookReturnsNilWithNoAcquisitions() {
         let pub = OPDS2FullPublication(
             metadata: makeMinimalMetadata(),

@@ -449,10 +449,18 @@ if [ "$MUTATION_ONLY" = "true" ]; then
   record "intent_recorded" "pass" "Skipped (--mutation-only)"
 elif [ -f scripts/check-intent-recorded.py ]; then
   IR_DIFF=$(mktemp -t ir-diff.XXXX)
+  IR_MSG=$(mktemp -t ir-msg.XXXX)
   git diff "$BASE"...HEAD > "$IR_DIFF" 2>/dev/null || true
-  IR_OUT=$(python3 scripts/check-intent-recorded.py --diff "$IR_DIFF" --quiet 2>&1)
+  # Pass HEAD's commit subject so the intent-name → subject match runs.
+  # Without this, the check sees the diff but has no subject to match
+  # `.forgeos/intent/<name>.md`'s `name:` field against, and bails out
+  # with INTENT-MISSING even when the intent file exists and matches.
+  git log -1 --format="%s" > "$IR_MSG" 2>/dev/null || true
+  IR_OUT=$(python3 scripts/check-intent-recorded.py --diff "$IR_DIFF" \
+                                                   --commit-msg "$IR_MSG" \
+                                                   --quiet 2>&1)
   IR_EXIT=$?
-  rm -f "$IR_DIFF"
+  rm -f "$IR_DIFF" "$IR_MSG"
   if [ "$IR_EXIT" -eq 0 ]; then
     record "intent_recorded" "pass" "Intent file present (or below threshold)"
   else

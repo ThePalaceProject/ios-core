@@ -139,6 +139,8 @@ public enum AccessibilityID {
         public static let publishedLabel = "bookDetail.publishedLabel"
         public static let publisherLabel = "bookDetail.publisherLabel"
         public static let distributorLabel = "bookDetail.distributorLabel"
+        public static let seriesLabel = "bookDetail.seriesLabel"
+        public static let seriesLink = "bookDetail.seriesLink"
         public static let relatedBooksSection = "bookDetail.relatedBooksSection"
     }
 

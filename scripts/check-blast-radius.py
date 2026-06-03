@@ -90,10 +90,19 @@ _CONTAINER_FILE_RE = re.compile(r"(?:^|/)[A-Z]\w*Container\.swift$")
 _INIT_RE = re.compile(r"^\s*(?:public\s+|internal\s+)?(?:convenience\s+)?init\s*\(")
 
 # Test/sample/preview-style files that don't ship to production:
+#
+# `Utilities/Testing/` is the canonical home for shared testing infrastructure
+# that BOTH production code and tests import — e.g. AccessibilityIdentifiers.swift,
+# which exposes `public static let` constants set by SwiftUI views in production
+# (`view.accessibilityIdentifier(...)`) and read by UI tests from a separate
+# test target (`app.buttons[AccessibilityID.X.Y]`). The `public` visibility is
+# required for cross-target consumption; flagging every new identifier as a
+# BR-1 blast-radius finding would block routine UI-test instrumentation work.
 _NON_PROD_PATH_SUBSTRINGS = (
     "PalaceTests/",
     "Tests/",
     "TestSupport/",
+    "Utilities/Testing/",
     "Preview Content/",
     "Mocks/",
     ".forgeos/",
