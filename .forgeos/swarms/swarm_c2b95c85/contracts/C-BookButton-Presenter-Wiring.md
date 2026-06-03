@@ -9,14 +9,32 @@ diff-scoped on touched MyBooks files.
 
 **v2 changes from architect post-review (Phase 1a, 2026-06-03):**
 - Adopts Option (c) for the linchpin question — Module C is now **purely
-  presentation-layer**. No registry-state shortcut. `BookButtonState` maps
-  streaming-HTML books from `.downloadNeeded` directly to `[.readStreaming, .return]`
-  (skipping the normal Get → Download → Read flow). No edits to MyBooksDownloadCenter,
-  borrow-completion files, or anything in `MyBooks/Borrow*` / `MyBooks/Download*`.
+  presentation-layer** for the post-borrow display state. `BookButtonState`
+  maps streaming-HTML books from `.downloadNeeded` directly to
+  `[.readStreaming, .return]` (skipping the normal Get → Download → Read flow).
 - Adds `Palace/MyBooks/MyBooks/BookCell/NormalBookCell.swift:218` to scope (F1).
 - Adds `Palace/MyBooks/LocalBookContentService.swift:77` to scope (F2).
 - Fixes 3 wrong test file paths (F4).
 - Standardizes BookButtonType internal switch count to 5 (F5).
+
+**v2.1 changes from round-2 architect post-review (Phase 1a round 2, 2026-06-03):**
+- **Advisory F (controlled scope exception):** `Palace/MyBooks/BorrowOperation.swift:453`
+  added to scope as a **one-line guard exception** — without it, the
+  auto-download chain (`BorrowOperation` → `startDownload(...)` → MBDC →
+  `DownloadStartDispatcher`) fires for streamingHTML books post-borrow, fails
+  (no downloadable asset), and lands them in `.downloadFailed` → un-readable.
+  The minimal correctness fix: `&& !borrowedBook.isStreamingHTML` added to the
+  existing condition. No other Borrow*/Download* edits. This is THE narrow
+  scope-exception to `MyBooks/Borrow*.swift` `dont_touch` — explicitly authorized.
+- **Advisory E:** Contract C wording — `.downloadNeeded` branch is currently
+  `if/else`, not a switch. Implementer must INTRODUCE a switch over
+  `defaultBookContentType` for streamingHTML detection (or use a sibling
+  `if book.isStreamingHTML { return [.readStreaming, .return] }` guard before
+  the existing if/else). Implementer's choice; the contract describes the
+  semantic outcome, not the syntactic shape.
+- **Advisories G + H:** acceptance_gates in manifest.yaml updated (counts
+  9-not-8, 7-not-6; removed stale `setState(.downloadSuccessful)` shortcut
+  reference).
 
 ## Goal
 
@@ -130,6 +148,16 @@ diff-scoped on touched MyBooks files.
    `processingButtons.insert(.readStreaming)` →
    `coordinator.presentStreamingReader(book:)` (or `.push(.streamingHTML(...))`).
 
+9. **Borrow-chain guard for streaming-HTML (mandatory — advisory F).**
+   `testBorrowOperation_borrowSucceeded_streamingHTMLBook_doesNotCallStartDownload`
+   in `PalaceTests/MyBooks/BorrowOperationStreamingHTMLTests.swift` (NEW).
+   Construct a `BorrowOperation` with a `MockBorrowDelegate` (spy on
+   `startDownload`), drive a successful borrow for a streamingHTML book that
+   resolves to `.downloadNeeded`, assert delegate's `startDownload(for:withRequest:)`
+   was NEVER called. Companion positive test: same setup for an EPUB book
+   asserts `startDownload` IS called once. Pins the guard against future
+   regression.
+
 ## Files scoped to THIS implementer
 
 Production (15 files):
@@ -147,6 +175,9 @@ Production (15 files):
 - `Palace/MyBooks/MyBooks/BookCell/BookCellModel.swift` (`:564` `didSelectRead` content-type switch — case `.streamingHTML` routes to coordinator presentation)
 - `Palace/MyBooks/MyBooks/BookCell/ButtonView/BookButtonState.swift` (`.downloadNeeded` + `.downloadSuccessful` + `.used` inner switches over `defaultBookContentType`)
 - `Palace/MyBooks/LocalBookContentService.swift` (`:77` switch — case `.streamingHTML: break` with comment "streaming-HTML has no local on-device asset") **[ADDED v2 per F2]**
+
+**Borrow-chain guard (v2.1 controlled scope exception per advisory F):**
+- `Palace/MyBooks/BorrowOperation.swift` (`:453` — add `&& !borrowedBook.isStreamingHTML` to the existing `if attemptDownload && mapping.state == .downloadNeeded` condition; comment justifies "streaming-HTML has no downloadable asset; readStreaming is the terminal action"). This is the ONE file in `MyBooks/Borrow*` that may be touched — explicitly authorized as a v2.1 scope exception.
 - `Palace/Book/UI/BookDetail/BookDetailViewModel.swift` (`openBook` switch at `:847` — case `.streamingHTML` presents StreamingReaderView)
 - `Palace/Book/UI/BookDetail/BookService.swift` (`dispatchOpen` switch at `:49` — case `.streamingHTML` presents StreamingReaderView)
 - `Palace/Book/Models/TPPBook+Extensions.swift` (`format` switch `:63` + `sample` switch `:79` — display strings)
@@ -159,12 +190,13 @@ Production (15 files):
 - `Palace/Utilities/Localization/Strings.swift` (`Strings.BookButton.readStreaming` + `Strings.BookDetailView.streamingHTMLContentType`)
 - `Palace/Utilities/Testing/AccessibilityIdentifiers.swift` (`AccessibilityID.BookDetail.readStreamingButton`)
 
-Tests (5 files):
+Tests (6 files):
 - `PalaceTests/BookStateManagement/BookButtonMapperTests.swift` (modify — canonical class; add streaming-HTML cases for `.downloadNeeded`, `.downloadSuccessful`, `.unregistered`) **[FIXED v2 per F4 — canonical class location, not the Extended file in PalaceTests/Book/]**
 - `PalaceTests/MyBooks/BookCellModelStreamingHTMLTests.swift` (NEW — `didSelectRead` streaming-HTML route assertions; sits alongside the existing `BookCellModelOfflineTests.swift`) **[FIXED v2 per F4 — new file name; the file `PalaceTests/MyBooks/BookCellModelTests.swift` does not exist]**
 - `PalaceTests/Book/BookDetailViewModelTests.swift` (modify — handleAction + openBook + didSelectReadStreaming assertions) **[FIXED v2 per F4 — actual path is `PalaceTests/Book/`, not `PalaceTests/ViewModels/`]**
 - `PalaceTests/Contract/StreamingReaderPresentationContractTests.swift` (NEW)
 - `PalaceTests/Book/BookButtonTypeMetaTests.swift` (NEW — exhaustive case coverage META regression)
+- `PalaceTests/MyBooks/BorrowOperationStreamingHTMLTests.swift` (NEW — streaming-HTML borrow does NOT call startDownload; EPUB borrow DOES) **[ADDED v2.1 per advisory F]**
 
 ## Files explicitly OFF-LIMITS
 
@@ -172,7 +204,8 @@ Tests (5 files):
 - `Palace/OPDS2/` — Module A
 - `Palace/Book/Models/TPPContentType.swift`, `TPPBookContentTypeConverter.swift`, `TPPBook.swift` (additive scope) — Module A
 - `Palace/ReaderStreaming/` — Module B (consume only — DO NOT modify B's files)
-- `Palace/MyBooks/Borrow*.swift`, `Palace/MyBooks/Download*.swift`, `Palace/MyBooks/BookReturn*.swift`, `Palace/MyBooks/Background*.swift`, `Palace/MyBooks/MyBooksDownloadCenter.swift` — anti-claim (NO borrow / download / return changes; v2 Option (c) makes these untouchable)
+- `Palace/MyBooks/Borrow*.swift` EXCEPT the one-line guard at `BorrowOperation.swift:453` (v2.1 advisory F scope exception above)
+- `Palace/MyBooks/Download*.swift`, `Palace/MyBooks/BookReturn*.swift`, `Palace/MyBooks/Background*.swift`, `Palace/MyBooks/MyBooksDownloadCenter.swift` — anti-claim (NO borrow / download / return changes; v2 Option (c) keeps these untouched)
 - `Palace/Reader2/`, `Palace/Reader3/`, `Palace/Audiobooks/` — anti-claim
 - `Palace/SignInLogic/`, `Palace/Packages/PalaceAuth/`, `Palace/Network/` — anti-claim
 - ios-audiobooktoolkit submodule — anti-claim
@@ -237,17 +270,28 @@ Tests (5 files):
    ```
    Should be empty (no new defaults).
 
-5. **BorrowReducer untouched (anti-claim verification — v2 makes this extra-strict):**
+5. **BorrowReducer + Download/Return chain untouched (anti-claim verification — v2 strict; v2.1 narrow exception for BorrowOperation.swift one-line guard):**
    ```bash
+   # BorrowReducer + all download/return/background files must be UNCHANGED:
    git diff origin/feat/PP-4161-streaming-html-reader --name-only -- \
      Palace/Book/UI/BookDetail/BorrowReducer.swift \
-     Palace/MyBooks/Borrow*.swift \
      Palace/MyBooks/Download*.swift \
      Palace/MyBooks/BookReturn*.swift \
      Palace/MyBooks/MyBooksDownloadCenter.swift \
      Palace/MyBooks/Background*.swift
    ```
-   Must return empty. (v2 Option (c) — purely presentation. No borrow/download/return edits.)
+   Must return empty.
+
+   ```bash
+   # BorrowOperation.swift IS allowed exactly ONE diff (the v2.1 advisory F guard):
+   git diff origin/feat/PP-4161-streaming-html-reader --stat -- Palace/MyBooks/BorrowOperation.swift
+   ```
+   Must show ≤ 3 insertions / ≤ 3 deletions (one-line condition tweak + comment).
+   The diff must contain `isStreamingHTML` — verify with:
+   ```bash
+   git diff origin/feat/PP-4161-streaming-html-reader -- Palace/MyBooks/BorrowOperation.swift | grep -c 'isStreamingHTML'
+   ```
+   Must return ≥ 1.
 
 6. **didSelectReadStreaming exists and is called by handleAction:**
    ```bash

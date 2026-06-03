@@ -280,3 +280,180 @@ Five blocking findings, three of which are real spec gaps that would force imple
 If the architect rewrites Module C to use option (c) for F3 (BookButtonState presentation-only mapping with no state-machine change), Module C's `critical_path` classification can stay (still touches MyBooks display logic) and the contract becomes meaningfully smaller AND honest. That's the recommended path.
 
 Re-emit Contracts A and C with the fixes above, then re-review for APPROVE.
+
+## Round 2 verification
+
+**Reviewer:** general-purpose (Phase 1a round 2)
+**At:** 2026-06-03T14:39:00Z
+**Verdict:** APPROVED with two new advisories (E + F)
+
+### Per-finding verification
+
+**F1 — NormalBookCell.swift in Contract C `files_scope`:** PASS.
+```
+$ grep -c 'NormalBookCell.swift' .forgeos/swarms/swarm_c2b95c85/contracts/C-BookButton-Presenter-Wiring.md
+4
+$ grep -c 'NormalBookCell' .forgeos/swarms/swarm_c2b95c85/manifest.yaml
+3
+```
+Contract C `files_scope` line `Palace/MyBooks/MyBooks/BookCell/NormalBookCell.swift (exhaustive switch at :218 — add .readStreaming to the model.callDelegate(for: type) arm) [ADDED v2 per F1]` is present. Verification grep #2 enumerates `NormalBookCell.swift` with expected `≥ 1`. Manifest `fix_applied` annotation matches.
+
+**F2 — LocalBookContentService.swift in Contract C `files_scope`:** PASS.
+```
+$ grep -c 'LocalBookContentService.swift' .forgeos/swarms/swarm_c2b95c85/contracts/C-BookButton-Presenter-Wiring.md
+4
+$ grep -c 'LocalBookContentService' .forgeos/swarms/swarm_c2b95c85/manifest.yaml
+5
+```
+Contract C `files_scope` line `Palace/MyBooks/LocalBookContentService.swift (:77 switch — case .streamingHTML: break with comment "streaming-HTML has no local on-device asset") [ADDED v2 per F2]` present. Verification grep #3 now iterates 7 files (includes LocalBookContentService.swift). Confirmed `.deleteLocalContent` semantics is correct — no on-device asset for streaming-HTML, so `break` is the right arm.
+
+**F3 — Option (c) adopted, no registry-state shortcut:** PASS.
+```
+$ grep -c 'Option (c)' .forgeos/swarms/swarm_c2b95c85/contracts/C-BookButton-Presenter-Wiring.md
+4
+$ grep -c 'set registry directly to .downloadSuccessful' .forgeos/swarms/swarm_c2b95c85/contracts/C-BookButton-Presenter-Wiring.md
+0
+```
+Implementation guidance is `.downloadNeeded` → `[.readStreaming, .return]` mapping for streamingHTML — pure presentation. dont_touch additions confirmed:
+```
+$ grep 'MyBooksDownloadCenter\|Background\*' .forgeos/swarms/swarm_c2b95c85/manifest.yaml
+... implementer_prompt_summary mentions both ...
+  - Palace/MyBooks/Background*.swift                       # v2 — Option (c) excludes Background* edits
+  - Palace/MyBooks/MyBooksDownloadCenter.swift             # v2 — Option (c) excludes MyBooksDownloadCenter edits
+```
+Both new dont_touch entries present.
+
+**F4 — Wrong test paths corrected:** PASS.
+```
+$ grep -c 'PalaceTests/BookStateManagement/BookButtonMapperTests.swift' .forgeos/swarms/swarm_c2b95c85/contracts/C-BookButton-Presenter-Wiring.md
+4
+$ grep -c 'PalaceTests/MyBooks/BookCellModelStreamingHTMLTests.swift' .forgeos/swarms/swarm_c2b95c85/contracts/C-BookButton-Presenter-Wiring.md
+3
+$ grep -c 'PalaceTests/Book/BookDetailViewModelTests.swift' .forgeos/swarms/swarm_c2b95c85/contracts/C-BookButton-Presenter-Wiring.md
+3
+$ grep -c 'PalaceTests/ViewModels/BookDetailViewModelTests' .forgeos/swarms/swarm_c2b95c85/contracts/C-BookButton-Presenter-Wiring.md
+0
+```
+Existence confirmed:
+```
+$ ls PalaceTests/BookStateManagement/BookButtonMapperTests.swift     # exists
+$ ls PalaceTests/Book/BookDetailViewModelTests.swift                  # exists
+$ ls -d PalaceTests/MyBooks/                                          # directory exists; BookCellModelStreamingHTMLTests.swift is NEW (sibling of BookCellModelOfflineTests.swift)
+```
+`-only-testing` selectors at verification #11 correctly reference the canonical classes.
+
+**F5 — BookButtonType internal switch count standardized at 5:** PASS.
+```
+$ grep -c '5 internal switches' .forgeos/swarms/swarm_c2b95c85/plan.md
+1
+$ grep -c '≥ 6' .forgeos/swarms/swarm_c2b95c85/contracts/C-BookButton-Presenter-Wiring.md
+1
+```
+plan.md §Risks #2 reads "5 internal switches in BookButtonType.swift itself"; Contract C verification grep #2 expects `BookButtonType.swift ≥ 6 (case + 5 internal switches)`. Consistent across plan, contract `files_scope` text, and verification expectation.
+
+**Advisory A — Contract A grep #6 replaced with test-pass assertion:** PASS.
+```
+$ grep -c 'testOPDS2Publication_toBook_streamingMediaOnlyAcquisition_doesNotDrop' .forgeos/swarms/swarm_c2b95c85/contracts/A-Format-Recognition.md
+2
+```
+Test-pass assertion is now the verification, not the brittle comment-line grep.
+
+**Advisory B — Contract A flags test-coverage-only on OPDS2PublicationExtended.swift:** PASS.
+```
+$ grep -c 'test-coverage only' .forgeos/swarms/swarm_c2b95c85/contracts/A-Format-Recognition.md
+1
+```
+Filter behavior unblocks automatically once `supportedTypes()` lists ContentTypeStreamingHTML; no production-code edit needed at the two toBook sites.
+
+**Advisory C — Contract C grep #3 iterates 7 files:** PASS.
+Grep #3's `for f in ...` loop enumerates `BookCellModel.swift`, `BookButtonState.swift`, `LocalBookContentService.swift`, `BookService.swift`, `BookDetailViewModel.swift`, `TPPBook+Extensions.swift`, `CatalogView.swift` — exactly 7 files. Each expected `≥ 1`.
+
+**Advisory D — Contract D uses MCP, not the non-existent harness subcommand:** PASS.
+```
+$ grep -c 'mcp__simdrive__validate_replay\|mcp__simdrive__replay' .forgeos/swarms/swarm_c2b95c85/contracts/D-Simdrive-Journey.md
+2
+$ grep -c 'harness simdrive validate-journey' .forgeos/swarms/swarm_c2b95c85/contracts/D-Simdrive-Journey.md
+1
+```
+The single remaining `harness simdrive validate-journey` hit is in an EXPLANATORY comment ("does NOT exist; use the MCP validate_replay instead"), not in a command-to-run block. Acceptable — fix is correctly recorded for the reader.
+
+### Check 1 — critical_path classification under v2
+
+Module C still touches MyBooks display logic that gates user access (BookButtonState chooses the buttons the user sees). A bug here (e.g., streamingHTML book maps to empty button set, or to `[.download]` instead of `[.readStreaming]`) gates a user from opening their borrowed content. `critical_path` classification is **defensible and recommended-keep**. Mutation kill-rate ≥80% diff-scoped is correct rigor.
+
+### Check 2 — does the v2 BookButtonState change compile?
+
+Inspected `Palace/MyBooks/MyBooks/BookCell/ButtonView/BookButtonState.swift` (current HEAD):
+- `.downloadNeeded` branch (lines 59-65) is a **flat `if/else`** over `currentUserAccount.authDefinition`, NOT a switch over `defaultBookContentType`. Contract C says "extend the inner switch" — there is NO inner switch to extend. The implementer must **introduce** a new switch over `book.defaultBookContentType` inside the `.downloadNeeded` arm.
+- `.downloadSuccessful, .used` branch (lines 67-74) IS a real switch over `defaultBookContentType` with cases `.audiobook`, `.pdf/.epub`, `.unsupported`. Once Module A lands `.streamingHTML`, this switch becomes non-exhaustive and breaks. Contract C correctly says the implementer adds `case .streamingHTML: buttons.append(.readStreaming)` here.
+
+This is **not blocking** — the implementer will figure out from the existing code that they need to introduce a new switch in `.downloadNeeded`. But the contract wording ("extend the inner switch") is misleading; it should say "introduce an inner switch over `defaultBookContentType` inside the `.downloadNeeded` arm so streamingHTML maps to `[.readStreaming, .return]` while all other content types preserve the existing `[.download, .return]` / `[.download, .remove]` behavior." Filed below as advisory **E**.
+
+### Check 3 — sibling consumers of .downloadNeeded that auto-trigger download
+
+Surveyed all `.downloadNeeded` references in `Palace/MyBooks/` and `Palace/Book/UI/BookDetail/`. Critical finding:
+
+`Palace/MyBooks/BorrowOperation.swift:453`:
+```swift
+// F-014: ... fire startDownload whenever the borrow lands on .downloadNeeded
+if attemptDownload && mapping.state == .downloadNeeded {
+    await MainActor.run { [weak self] in
+        self?.delegate?.startDownload(for: borrowedBook, withRequest: nil)
+    }
+}
+```
+
+And `Palace/MyBooks/DownloadStartDispatcher.swift:248`:
+```swift
+if state == .downloadNeeded && currentBook.defaultAcquisitionIfBorrow != nil {
+    // ... auto-borrow with attemptDownload: true ...
+}
+```
+
+Trace for streaming-HTML book:
+1. User taps `.get` (from `.canBorrow` state) → `BookDetailViewModel.handleAction(.get)` → `didSelectDownload` → `downloadCenter.startDownload(for:)`.
+2. `DownloadStartDispatcher` sees `.downloadNeeded` + has borrow acquisition → calls `startBorrow(attemptDownload: true)`.
+3. Borrow succeeds → registry → `.downloadNeeded`.
+4. `BorrowOperation:453` triggers `startDownload` again → enters fulfillment for a streaming-media MIME asset.
+
+Module C's Option (c) is a presentation-layer fix that **does NOT prevent the production auto-download chain from firing for streaming-HTML books**. Whether the fulfilled `startDownload` for a streaming-media MIME no-ops gracefully, fails silently, or leaves a stray local file is currently UNTESTED. The contract puts `Borrow*` and `Download*` and `MyBooksDownloadCenter` in `dont_touch` — so the implementer cannot patch this even if they discover a regression mid-flight.
+
+This is the **most material new finding** in round 2. Filed as advisory **F** below. Severity: advisory (not blocking), because:
+- (i) The behavior of `startDownload` for a streaming-media MIME might be a benign no-op (`DownloadStartCoordinator.processWithCredentials` might log warn + return without persisting an asset; needs verification).
+- (ii) The simdrive journey in Module D will catch a user-visible regression (e.g., spinning download progress + downloadFailed banner) but it is run at the end of the wave, not as a Module C gate.
+- (iii) The "right" architectural fix is a one-line guard at `BorrowOperation:453` (`&& mapping.book.defaultBookContentType != .streamingHTML`) or at `DownloadStartDispatcher:248`. Both are in dont_touch.
+
+Recommendation: surface explicitly in plan.md §Risks as item #10. EITHER (a) extend Module C scope to include a single-line guard at one of those two sites with explicit test coverage proving the auto-download is skipped for streamingHTML, OR (b) add a Module C test that drives the full `.get → borrow → post-borrow state` chain for a streamingHTML book and asserts `bookRegistry.state` is `.downloadNeeded` (not stuck `.downloading` or `.downloadFailed`) after a 5-second timeout — proving the auto-download chain no-ops harmlessly. Approach (b) keeps Option (c)'s anti-scope discipline intact; approach (a) buys correctness with a tiny scope exception.
+
+### Check 4 — Module B compile-time dependency on A
+
+Inspected Contract B's `What public types/protocols` block: `StreamingReaderViewController.init(book: TPPBook, ...)`, `StreamingReaderViewModel.init(book: TPPBook, ...)`. **TPPBook only** — no reference to `.streamingHTML` or `ContentTypeStreamingHTML`. Module B has no compile-time dependency on Module A. Wave 1 parallel dispatch (A + B) is safe.
+
+### New issues (advisory)
+
+**E. Contract C BookButtonState change wording — "extend the inner switch" is misleading because there is no existing switch in `.downloadNeeded`.** The implementer must INTRODUCE a new switch over `defaultBookContentType` inside the `.downloadNeeded` arm, while extending the existing switch in `.downloadSuccessful, .used`. Severity: advisory. Fix: re-word the Contract C `files_scope` entry for BookButtonState.swift to "Introduce a switch over `book.defaultBookContentType` inside the `.downloadNeeded` branch returning `[.readStreaming, .return]` for `.streamingHTML` and preserving the existing `[.download, .return]` / `[.download, .remove]` behavior for all other cases; extend the existing inner switch in `.downloadSuccessful, .used` to add `case .streamingHTML: buttons.append(.readStreaming)`."
+
+**F. Production auto-download chain (BorrowOperation:453 + DownloadStartDispatcher:248) still fires for streaming-HTML books under Option (c).** Module C scope is presentation-only, so it cannot patch the chain. Without explicit test coverage proving graceful no-op, regression risk is real (user taps Get → spurious downloadFailed banner / stuck downloading state / phantom local file). Severity: advisory (not blocking) because the implementer can address with a Module C test (approach (b)) that proves the chain no-ops harmlessly OR escalate via scope-deferral protocol with a one-line guard exception (approach (a)). Plan.md §Risks should add this as item #10 with the two recommended approaches documented so the implementer doesn't discover it mid-flight.
+
+**G. Stale acceptance gates in manifest.yaml.** Lines 112-113 still reference "8 switch sites" and "6 production files":
+```
+- "Module C: BookButtonType has case .readStreaming; grep -c 'case .readStreaming' across the 8 switch sites returns 8+"
+- "Module C: TPPBookContentType switches updated in 6 production files; none introduces a new default: clause"
+```
+Both numbers should be bumped to 9 and 7 respectively per F1+F2. Severity: advisory (cosmetic; the per-finding `fix_applied` annotations correctly say 9 and 7).
+
+**H. Stale acceptance gate #116.** `"Module C: contract-snapshot test pins borrow → registry.setState(.downloadSuccessful) → present StreamingReaderView call order"` — this references the round-1 registry-state shortcut that Option (c) explicitly removed. The actual contract test #8 pins `handleAction(.readStreaming) → processingButtons.insert(.readStreaming) → coordinator.presentStreamingReader(book:)`. Severity: advisory. Fix: re-word the acceptance gate to match the v2 contract test #8 description.
+
+### Final verdict
+
+**APPROVED** with advisories E + F + G + H. Orchestrator may proceed to Phase 2 (ForgeOS changeset propose) + Phase 3 (dispatch implementers).
+
+The five blocking findings (F1–F5) from round 1 are cleanly resolved in v2. The four round-1 advisories (A–D) are correctly applied. The v2 rewrite to Option (c) is a meaningful improvement — Module C is now genuinely smaller and the contract is honest about its scope.
+
+The two new findings introduced by the v2 scope-narrowing are advisories, not blockers:
+- E (wording) is a contract-doc fix the implementer can navigate around.
+- F (auto-download chain) needs ONE of two responses: a Module C test demonstrating graceful no-op OR an explicit scope exception. Recommend the orchestrator add plan.md §Risks #10 documenting both approaches so the implementer addresses it consciously rather than discovering it mid-PR.
+- G + H are stale-text cleanup in the manifest acceptance_gates; non-blocking but should be cleaned before release.
+
+Module-A + Module-B parallel wave dispatch is safe. Module-C critical_path classification stays. Mutation kill-rate ≥80% diff-scoped on BookButtonState + BookButtonType + BookCellModel remains the right rigor bar.
+

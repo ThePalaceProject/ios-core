@@ -53,6 +53,7 @@ modules:
       - "Palace/MyBooks/MyBooks/BookCell/NormalBookCell.swift (modified — exhaustive switch at :218; add .readStreaming arm to the model.callDelegate(for:type) branch) [v2 ADDED per Phase 1a F1]"
       - "Palace/MyBooks/MyBooks/BookCell/ButtonView/BookButtonState.swift (modified — v2 Option (c): .downloadNeeded branch's inner switch over defaultBookContentType returns [.readStreaming, .return] for .streamingHTML; .downloadSuccessful + .used branches also add the case for parity)"
       - "Palace/MyBooks/LocalBookContentService.swift (modified — switch at :77; case .streamingHTML: break with comment 'streaming-HTML has no local on-device asset to delete') [v2 ADDED per Phase 1a F2]"
+      - "Palace/MyBooks/BorrowOperation.swift (modified — ONE-LINE GUARD at :453: append `&& !borrowedBook.isStreamingHTML` to the existing `if attemptDownload && mapping.state == .downloadNeeded` condition; prevents auto-download of non-existent asset for streaming-HTML books that would land them in .downloadFailed) [v2.1 ADDED per Phase 1a round-2 advisory F — narrow scope exception to MyBooks/Borrow*.swift dont_touch]"
       - "Palace/Book/UI/BookDetail/BookDetailView.swift (modified — update switch at :756 to add .readStreaming branch; route to viewModel.handleAction)"
       - "Palace/Book/UI/BookDetail/BookDetailViewModel.swift (modified — update switch at :617 to add .readStreaming → didSelectReadStreaming; extend openBook switch at :847 to add case .streamingHTML routing to StreamingReaderView presentation; add didSelectReadStreaming(for:) method)"
       - "Palace/Book/UI/BookDetail/HalfSheetview.swift (modified — update BOTH switches at :94 and :123 to include .readStreaming)"
@@ -68,6 +69,7 @@ modules:
       - "PalaceTests/Book/BookDetailViewModelTests.swift (modified — handleAction(.readStreaming) + openBook(.streamingHTML) + didSelectReadStreaming assertions) [v2 FIXED per Phase 1a F4 — actual path is PalaceTests/Book/, not PalaceTests/ViewModels/]"
       - "PalaceTests/Contract/StreamingReaderPresentationContractTests.swift (NEW — pin handleAction → present call order for streaming-HTML titles)"
       - "PalaceTests/Book/BookButtonTypeMetaTests.swift (NEW — exhaustive case coverage META regression)"
+      - "PalaceTests/MyBooks/BorrowOperationStreamingHTMLTests.swift (NEW — streaming-HTML borrow does NOT trigger startDownload; EPUB borrow DOES — regression net for advisory F guard) [v2.1 ADDED]"
     contract_path: .forgeos/swarms/swarm_c2b95c85/contracts/C-BookButton-Presenter-Wiring.md
     depends_on: [A, B]
     implementer_prompt_summary: "v2 Option (c) — purely presentation. Add BookButtonType.readStreaming case, update all 9 exhaustive switches across MyBooks/ + Book/UI/BookDetail/, extend the 7 TPPBookContentType switches across Book/MyBooks/CatalogUI to handle .streamingHTML, and wire BookDetailViewModel.didSelectReadStreaming → present StreamingReaderView via NavigationCoordinator. The 'streaming = no download' semantic is the BookButtonState.downloadNeeded → [.readStreaming, .return] mapping for streamingHTML books — NO registry-state shortcut, NO new TPPBookState case, NO edits to MyBooksDownloadCenter / Borrow* / Download* / BookReturn* / Background* files. Critical-path mutation kill-rate ≥80% diff-scoped on touched MyBooks files."
@@ -88,7 +90,7 @@ dont_touch:
   - Palace/Audiobooks/
   - Palace/SignInLogic/
   - Palace/Packages/PalaceAuth/
-  - Palace/MyBooks/Borrow*.swift
+  - Palace/MyBooks/Borrow*.swift                           # v2.1 EXCEPT BorrowOperation.swift:453 one-line guard per advisory F
   - Palace/MyBooks/BookReturn*.swift
   - Palace/MyBooks/Download*.swift
   - Palace/MyBooks/Background*.swift                       # v2 — Option (c) excludes Background* edits
@@ -109,11 +111,12 @@ acceptance_gates:
   - "Module B: 4 new files exist in Palace/ReaderStreaming/; pbxproj has entries for Palace + Palace-noDRM targets"
   - "Module B: StreamingReaderViewModel tests instantiate the SUT (grep -c 'StreamingReaderViewModel(' ≥ 1)"
   - "Module B: StreamingReaderProgressStore round-trip + malformed-state tests exist"
-  - "Module C: BookButtonType has case .readStreaming; grep -c 'case .readStreaming' across the 8 switch sites returns 8+"
-  - "Module C: TPPBookContentType switches updated in 6 production files; none introduces a new default: clause"
+  - "Module C: BookButtonType has case .readStreaming; grep -c 'case .readStreaming' across the 9 switch sites returns 9+ [v2.1 corrected per advisory G — was 8]"
+  - "Module C: TPPBookContentType .streamingHTML is handled in 7 production switch sites; no NEW default: clause introduced where absent [v2.1 corrected per advisory G — was 6]"
   - "Module C: mutation kill-rate ≥80% diff-scoped on BookCellModel + BookButtonType + BookButtonState"
-  - "Module C: BookButtonMapperTests covers streaming-HTML positive yields [.readStreaming]"
-  - "Module C: contract-snapshot test pins borrow → registry.setState(.downloadSuccessful) → present StreamingReaderView call order"
+  - "Module C: BookButtonMapperTests covers streaming-HTML for .downloadNeeded yields [.readStreaming, .return] AND .downloadSuccessful yields .readStreaming"
+  - "Module C: contract-snapshot test pins viewModel.handleAction(.readStreaming) → processingButtons.insert(.readStreaming) → coordinator.presentStreamingReader(book:) call order [v2.1 corrected per advisory H — was setState(.downloadSuccessful) which Option (c) removed]"
+  - "Module C v2.1: BorrowOperation.swift:453 guard exception verified — diff contains 'isStreamingHTML' AND ≤3 insertions; BorrowOperationStreamingHTMLTests proves streamingHTML books do NOT trigger startDownload (advisory F)"
   - "Module D: .simdrive/journeys/PP-4161-streaming-html-reader.yaml validates; structural checks include 'Close', web content"
   - "All modules: zero edits to anti-scope files (dont_touch list)"
   - "Critical-path architect post-review: APPROVED (recorded in manifest.architect_review)"
@@ -169,6 +172,25 @@ architect_review:
           fix_applied: "Pre-flighted — harness simdrive validate-journey does NOT exist; only {status, upgrade, sessions}. Contract D verification rewritten to use mcp__simdrive__validate_replay + mcp__simdrive__replay directly."
     re_review_required: true
   round_2:
-    reviewer_agent_id: pending
-    verdict: pending  # to-fill after architect-reviewer is re-spawned with v2 contracts
-    at: pending
+    reviewer_agent_id: general-purpose
+    verdict: APPROVED
+    at: 2026-06-03T14:39:00Z
+    review_file: .forgeos/swarms/swarm_c2b95c85/architect-review.md
+    summary: "All five blocking findings (F1-F5) and four advisories (A-D) from round 1 are cleanly resolved. Option (c) for F3 (pure presentation, no registry shortcut) is correctly adopted. Four new ADVISORY findings filed for v2 hygiene — none blocking."
+    advisories:
+      - id: E
+        title: "Contract C BookButtonState wording — `.downloadNeeded` arm has no existing inner switch over defaultBookContentType (current code is flat if/else over authDefinition). Implementer must INTRODUCE a switch, not extend one. Re-word the files_scope text."
+        severity: advisory
+      - id: F
+        title: "Production auto-download chain (BorrowOperation:453 + DownloadStartDispatcher:248) still fires for streaming-HTML books under Option (c). Module C scope is presentation-only — cannot patch. Needs EITHER (a) tiny scope exception with a one-line guard at BorrowOperation:453 (`&& mapping.book.defaultBookContentType != .streamingHTML`) OR (b) a Module C test driving .get → borrow → post-borrow state for a streamingHTML book and asserting bookRegistry.state remains .downloadNeeded (not .downloading or .downloadFailed) — proving graceful no-op."
+        severity: advisory
+        recommended_action: "Add as plan.md §Risks #10 so the implementer addresses it consciously rather than discovering mid-flight."
+      - id: G
+        title: "Stale acceptance gates lines 112-113 — still say '8 switch sites' and '6 production files'; should be '9' and '7' per F1+F2."
+        severity: advisory
+        fix: "Bump numbers in acceptance_gates to match v2 fix_applied annotations."
+      - id: H
+        title: "Stale acceptance gate line 116 — references 'borrow → registry.setState(.downloadSuccessful) → present' which was the round-1 approach Option (c) removed. v2 contract test #8 pins handleAction(.readStreaming) → processingButtons.insert → coordinator.presentStreamingReader."
+        severity: advisory
+        fix: "Re-word acceptance gate to match v2 contract test #8."
+    re_review_required: false

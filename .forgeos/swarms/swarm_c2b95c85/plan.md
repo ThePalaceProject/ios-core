@@ -96,6 +96,16 @@ on lyrasis-reads staging via a new simdrive journey. Ship pass on
    scope; the streamingHTML arm is `break` with the comment "streaming-HTML has
    no local on-device asset to delete."
 
+11. **Borrow-chain auto-download fires for streamingHTML — v2.1 advisory F.**
+    `BorrowOperation.swift:453` fires `startDownload(for: book, ...)` on
+    `.downloadNeeded`. Without a guard, streaming-HTML books borrow → registry
+    `.downloadNeeded` → auto-download → MBDC tries to download a non-existent
+    asset → fails → `.downloadFailed` → user can't tap Read. Module C scope
+    extended with a **one-line guard exception** at `BorrowOperation.swift:453`
+    (`&& !borrowedBook.isStreamingHTML`). This is THE narrow scope exception
+    to `MyBooks/Borrow*.swift` `dont_touch` and is documented in Contract C
+    v2.1 + has a regression test (`BorrowOperationStreamingHTMLTests`).
+
 10. **Module B can be authored speculatively in parallel to A.** The
    `StreamingReaderViewModel` API surface (init takes a `URL` + a
    `StreamingReaderProgressStoring` protocol + a `bookID: String`) doesn't
