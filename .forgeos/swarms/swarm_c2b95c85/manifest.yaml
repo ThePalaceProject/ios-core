@@ -1,0 +1,127 @@
+swarm_id: swarm_c2b95c85
+task: "PP-4161 — in-app WKWebView streaming reader for LibrarySimplified streaming-media (text/html) OPDS publications"
+intent_file: .forgeos/intent/pp-4161-streaming-html-reader.md
+base_ref: feat/PP-4161-streaming-html-reader
+branch: swarm/swarm_c2b95c85-scaffold
+created_at: 2026-06-03
+status: triaged
+
+modules:
+  - name: A-Format-Recognition
+    letter: A
+    risk: standard
+    files_scope:
+      - "Palace/Packages/PalaceCatalog/Sources/PalaceCatalog/TPPOPDSAcquisitionPath.swift (modified — add ContentTypeStreamingHTML constant + supportedTypes + supportedSubtypes leaf)"
+      - "Palace/OPDS2/Models/OPDS2PublicationExtended.swift (modified — pass-through streaming-media filter at BOTH toBook sites: lightweight :270-282 and full :386-398)"
+      - "Palace/Book/Models/TPPContentType.swift (modified — add .streamingHTML enum case + recognition in from(mimeType:))"
+      - "Palace/Book/Models/TPPBookContentTypeConverter.swift (modified — explicit .streamingHTML case; drop default: for exhaustiveness)"
+      - "Palace/Book/Models/TPPBook.swift (modified — TPPBook.isStreamingHTML computed property; verify defaultBookContentType resolves to .streamingHTML when the only leaf is streaming-media)"
+      - "PalaceTests/OPDS2/OPDS2PublicationExtendedTests.swift (modified — streaming-media-only pub no longer dropped; both toBook variants)"
+      - "PalaceTests/Book/TPPBookTests.swift (modified — isStreamingHTML positive + negative)"
+      - "PalaceTests/Book/TPPContentTypeTests.swift (NEW — from(mimeType:) for ContentTypeStreamingHTML)"
+      - "PalaceTests/Book/TPPBookContentTypeConverterTests.swift (NEW or modified — stringValue(of:) for .streamingHTML)"
+      - "Palace/Packages/PalaceCatalog/Tests/PalaceCatalogTests/TPPOPDSAcquisitionPathTests.swift (modified or NEW — supportedTypes/supportedSubtypes include streaming-media)"
+    contract_path: .forgeos/swarms/swarm_c2b95c85/contracts/A-Format-Recognition.md
+    depends_on: []
+    implementer_prompt_summary: "Land the new ContentTypeStreamingHTML MIME constant in PalaceCatalog, plumb it through TPPOPDSAcquisitionPath.supportedTypes + supportedSubtypes (under ContentTypeOPDSPublication), add the .streamingHTML case to TPPBookContentType + the converter, expose TPPBook.isStreamingHTML, and reverse the PR #847 filter at BOTH OPDS2 toBook sites. Tests-first per CLAUDE.md TDD. No UI changes."
+
+  - name: B-StreamingReader
+    letter: B
+    risk: standard
+    files_scope:
+      - "Palace/ReaderStreaming/StreamingReaderViewController.swift (NEW — UIKit shell, WKWebView, Close bar button)"
+      - "Palace/ReaderStreaming/StreamingReaderViewModel.swift (NEW — @MainActor ObservableObject, URL, progress persistence, navigation delegate)"
+      - "Palace/ReaderStreaming/StreamingReaderProgressStore.swift (NEW — protocol + UserDefaults-backed implementation, key prefix palace.streamingReader.progress.<bookID>)"
+      - "Palace/ReaderStreaming/StreamingReaderView.swift (NEW — SwiftUI UIViewControllerRepresentable wrapper)"
+      - "Palace/Utilities/Localization/Strings.swift (modified — add Strings.StreamingReader.* namespace: close, connectionRequired, loadError)"
+      - "Palace/Utilities/Testing/AccessibilityIdentifiers.swift (modified — add AccessibilityID.StreamingReader.{closeButton, webView, errorContainer})"
+      - "Palace.xcodeproj/project.pbxproj (modified — add 4 new .swift files to Palace + Palace-noDRM via scripts/pbxproj_add_swift.rb; add new ReaderStreaming group)"
+      - "PalaceTests/ReaderStreaming/StreamingReaderViewModelTests.swift (NEW — progress save on dismiss, restore on open, malformed-state safe handling)"
+      - "PalaceTests/ReaderStreaming/StreamingReaderProgressStoreTests.swift (NEW — round-trip write/read, prefix scoping, malformed JSON fallback)"
+    contract_path: .forgeos/swarms/swarm_c2b95c85/contracts/B-StreamingReader.md
+    depends_on: []
+    implementer_prompt_summary: "Build the new Palace/ReaderStreaming/ module: WKWebView-backed UIKit VC + SwiftUI wrapper, protocol-fronted UserDefaults progress store, ObservableObject view model. No JS bridge, no annotation layer, no font/theme controls. Online-only — render Strings.StreamingReader.connectionRequired when offline. Tests inject a FakeStreamingReaderProgressStore. Use scripts/pbxproj_add_swift.rb for project file edits — no hand-editing pbxproj."
+
+  - name: C-BookButton-Presenter-Wiring
+    letter: C
+    risk: critical_path
+    files_scope:
+      - "Palace/MyBooks/MyBooks/BookCell/ButtonView/BookButtonType.swift (modified — add .readStreaming case + update 4 internal exhaustive switches: displaysIndicator, isDisabled, title, title(for:), buttonStyle)"
+      - "Palace/MyBooks/MyBooks/BookCell/ButtonView/BookButtonsView.swift (modified — add .readStreaming accessibility ID case at line 71)"
+      - "Palace/MyBooks/MyBooks/BookCell/BookCellModel.swift (modified — update 3 exhaustive switches at :478, :493, :501 to include .readStreaming; extend didSelectRead :564 switch over defaultBookContentType to add case .streamingHTML)"
+      - "Palace/MyBooks/MyBooks/BookCell/ButtonView/BookButtonState.swift (modified — extend buttonTypes(book:) .downloadSuccessful/.used branches' inner switch over defaultBookContentType to add case .streamingHTML: buttons.append(.readStreaming))"
+      - "Palace/Book/UI/BookDetail/BookDetailView.swift (modified — update switch at :756 to add .readStreaming branch; route to viewModel.handleAction)"
+      - "Palace/Book/UI/BookDetail/BookDetailViewModel.swift (modified — update switch at :617 to add .readStreaming → didSelectReadStreaming; extend openBook switch at :847 to add case .streamingHTML routing to StreamingReaderView presentation; add didSelectReadStreaming(for:) method)"
+      - "Palace/Book/UI/BookDetail/HalfSheetview.swift (modified — update BOTH switches at :94 and :123 to include .readStreaming)"
+      - "Palace/Book/UI/BookDetail/BookService.swift (modified — extend dispatchOpen switch at :49 to add case .streamingHTML routing to StreamingReaderView presentation)"
+      - "Palace/Book/Models/TPPBook+Extensions.swift (modified — extend format computed prop switch at :63 to add case .streamingHTML: DisplayStrings.streamingHTMLContentType; extend sample switch at :79)"
+      - "Palace/CatalogUI/Views/CatalogView.swift (modified — extend resumeReading switch at :337 to handle .streamingHTML case — defensively skip with Log.warn, mirroring .audiobook handling, since RecentlyReadingService filters)"
+      - "Palace/AppInfrastructure/NavigationCoordinator.swift (modified — add .streamingHTML AppRoute case if route-based presentation is chosen, OR a payload-store streamingReaderById dict — implementer chooses based on whether streaming reader is pushed or sheet-presented)"
+      - "Palace/AppInfrastructure/NavigationHostView.swift (modified — add .streamingHTML route render branch if AppRoute case added)"
+      - "Palace/Utilities/Localization/Strings.swift (modified — Strings.BookButton.readStreaming if a distinct label is wanted; Strings.BookDetailView.streamingHTMLContentType for format row)"
+      - "Palace/Utilities/Testing/AccessibilityIdentifiers.swift (modified — AccessibilityID.BookDetail.readStreamingButton)"
+      - "PalaceTests/Book/BookButtonMapperTests.swift (modified — streaming-HTML borrowed yields [.readStreaming]; pre-borrow yields [.get])"
+      - "PalaceTests/MyBooks/BookCellModelTests.swift (modified or NEW — didSelectRead routes streaming-HTML to StreamingReaderView presenter; offline pre-flight handles .readStreaming)"
+      - "PalaceTests/ViewModels/BookDetailViewModelTests.swift (modified — handleAction(.readStreaming) routes to didSelectReadStreaming; openBook(.streamingHTML) presents StreamingReaderView)"
+      - "PalaceTests/Contract/StreamingReaderPresentationContractTests.swift (NEW — pin the borrow→present call order for streaming-HTML titles)"
+    contract_path: .forgeos/swarms/swarm_c2b95c85/contracts/C-BookButton-Presenter-Wiring.md
+    depends_on: [A, B]
+    implementer_prompt_summary: "Add BookButtonType.readStreaming case, update all 8+ exhaustive switches across Book/UI/BookDetail + MyBooks/BookCell, extend the TPPBookContentType switches in BookCellModel/BookService/BookDetailViewModel/BookButtonState/CatalogView/TPPBook+Extensions to handle .streamingHTML, and wire BookDetailViewModel.didSelectReadStreaming → present StreamingReaderView via NavigationCoordinator. Critical-path mutation kill-rate ≥80% diff-scoped on touched MyBooks files. No new TPPBookState case — streaming-HTML titles set registry to .downloadSuccessful directly after borrow."
+
+  - name: D-Simdrive-Journey
+    letter: D
+    risk: standard
+    files_scope:
+      - ".simdrive/journeys/PP-4161-streaming-html-reader.yaml (NEW — catalog → sign in → search urn:uuid:84dac408-77ce-4afc-8393-9e0ced7ea3ef → book detail → Read → scroll → Close → reopen → verify saved position)"
+      - ".simdrive/fixtures/baselines/3.2.0/PP-4161-streaming/ (NEW — per-step PNG + JSON baselines)"
+    contract_path: .forgeos/swarms/swarm_c2b95c85/contracts/D-Simdrive-Journey.md
+    depends_on: [C]
+    implementer_prompt_summary: "Record a simdrive journey YAML against the repro book (urn:uuid:84dac408-77ce-4afc-8393-9e0ced7ea3ef on lyrasis-reads staging). Tier1 blocking, SSIM gating 0.85, structural checks: streaming reader chrome (Close button), web content visible. NO production code edits."
+
+dont_touch:
+  - Palace/Reader2/
+  - Palace/Reader3/
+  - Palace/Audiobooks/
+  - Palace/SignInLogic/
+  - Palace/Packages/PalaceAuth/
+  - Palace/MyBooks/Borrow*.swift
+  - Palace/MyBooks/BookReturn*.swift
+  - Palace/MyBooks/Download*.swift
+  - Palace/Network/TPPNetworkExecutor.swift
+  - Palace/Network/TPPNetworkResponder.swift
+  - Palace/Holds/
+  - Palace/Migrations/
+  - Palace/Book/UI/BookDetail/BorrowReducer.swift
+  - ios-audiobooktoolkit/
+  - .simdrive/_archive/
+
+acceptance_gates:
+  - "scripts/verify-pr.sh --quick passes on the merged branch"
+  - "Module A: ContentTypeStreamingHTML constant exists in PalaceCatalog; supportedTypes() and supportedSubtypes(forType: ContentTypeOPDSPublication) both contain it"
+  - "Module A: OPDS2 streaming-media-only publication is no longer dropped at BOTH toBook sites"
+  - "Module A: TPPBookContentType.from(mimeType: ContentTypeStreamingHTML) returns .streamingHTML; TPPBook.isStreamingHTML true positive + false negative both covered"
+  - "Module B: 4 new files exist in Palace/ReaderStreaming/; pbxproj has entries for Palace + Palace-noDRM targets"
+  - "Module B: StreamingReaderViewModel tests instantiate the SUT (grep -c 'StreamingReaderViewModel(' ≥ 1)"
+  - "Module B: StreamingReaderProgressStore round-trip + malformed-state tests exist"
+  - "Module C: BookButtonType has case .readStreaming; grep -c 'case .readStreaming' across the 8 switch sites returns 8+"
+  - "Module C: TPPBookContentType switches updated in 6 production files; none introduces a new default: clause"
+  - "Module C: mutation kill-rate ≥80% diff-scoped on BookCellModel + BookButtonType + BookButtonState"
+  - "Module C: BookButtonMapperTests covers streaming-HTML positive yields [.readStreaming]"
+  - "Module C: contract-snapshot test pins borrow → registry.setState(.downloadSuccessful) → present StreamingReaderView call order"
+  - "Module D: .simdrive/journeys/PP-4161-streaming-html-reader.yaml validates; structural checks include 'Close', web content"
+  - "All modules: zero edits to anti-scope files (dont_touch list)"
+  - "Critical-path architect post-review: APPROVED (recorded in manifest.architect_review)"
+  - "mcp__forgeos__forge_check_gates: architect + qa_test gates satisfied"
+
+architect_review:
+  reviewer_agent_id: null
+  verdict: null
+  at: null
+  reviewed_files:
+    - .forgeos/swarms/swarm_c2b95c85/plan.md
+    - .forgeos/swarms/swarm_c2b95c85/contracts/A-Format-Recognition.md
+    - .forgeos/swarms/swarm_c2b95c85/contracts/B-StreamingReader.md
+    - .forgeos/swarms/swarm_c2b95c85/contracts/C-BookButton-Presenter-Wiring.md
+    - .forgeos/swarms/swarm_c2b95c85/contracts/D-Simdrive-Journey.md
+    - .forgeos/intent/pp-4161-streaming-html-reader.md
+  findings: null
