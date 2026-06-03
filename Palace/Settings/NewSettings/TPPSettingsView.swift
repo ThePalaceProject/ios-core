@@ -14,6 +14,13 @@ struct TPPSettingsView: View {
 
     @AppStorage(TPPSettings.showDeveloperSettingsKey) private var showDeveloperSettings: Bool = false
     @AppStorage(TPPSettings.downloadOnlyOnWiFiKey) private var downloadOnlyOnWiFi: Bool = false
+    /// Subscribes to the dev-settings triage bot local override so the
+    /// support section appears/disappears the moment the toggle flips.
+    /// Effective gating still goes through
+    /// `RemoteFeatureFlags.shared.isTriageBotEnabled` (which folds in the
+    /// DEBUG-default-on and Firebase fallback). The @AppStorage read in
+    /// `supportSection` registers the SwiftUI observation.
+    @AppStorage("RemoteFeatureFlags.triageBotLocalOverride") private var triageBotLocalOverride: Bool = false
     @State private var selectedView: Int? = 0
     @State private var orientation: UIDeviceOrientation = UIDevice.current.orientation
     @State private var showAddLibrarySheet: Bool = false
@@ -59,6 +66,7 @@ struct TPPSettingsView: View {
         List {
             librariesSection
             downloadsSection
+            supportSection
             infoSection
             developerSettingsSection
         }
@@ -121,6 +129,30 @@ struct TPPSettingsView: View {
                     .foregroundColor(.secondary)
             }
             .padding(.vertical, 4)
+        }
+    }
+
+    @ViewBuilder private var supportSection: some View {
+        // Row visibility depends ONLY on the kill-switch (cheap UserDefaults
+        // check). The view factory runs at navigation time inside
+        // TriageBotSupportView's body, NOT here — chaos-qa F-005 found that
+        // calling the factory from every supportSection re-render could
+        // intermittently return nil after bg/fg cycling, silently hiding
+        // the row. With this shape the row is stable as long as the
+        // flag is on; any factory failure surfaces as an UnavailableView
+        // inside the chat surface instead of a disappeared Settings row.
+        // Touching `triageBotLocalOverride` registers the @AppStorage
+        // dependency; the effective value still folds in DEBUG-default-on
+        // and Firebase via `isTriageBotEnabled`.
+        let _ = triageBotLocalOverride
+        if RemoteFeatureFlags.shared.isTriageBotEnabled {
+            Section(header: Text("Support")) {
+                let chat = TriageBotSupportView()
+                let wrapper = chat.anyView()
+                row(title: "Get Help", index: 10, selection: self.$selectedView, destination: wrapper)
+                    .accessibilityIdentifier("settings.row.getHelp")
+                    .accessibilityLabel("Get Help — chat with our support bot")
+            }
         }
     }
 

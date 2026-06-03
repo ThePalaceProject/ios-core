@@ -35,6 +35,9 @@ final class RemoteFeatureFlags {
         case readingStatsEnabled = "reading_stats_enabled"
         case advancedTypographyEnabled = "advanced_typography_enabled"
         case resetAccountEnabled = "reset_account_enabled"
+        case triageBotEnabled = "triage_bot_enabled"
+        case triageBotTicketSubmissionEnabled = "triage_bot_ticket_submission_enabled"
+        case triageBotAIFallbackEnabled = "triage_bot_ai_fallback_enabled"
         /// Gates the in-app playback-navigation feature (swarm_0b7616e7 +
         /// polish 2026-06-02): Continue Reading/Listening hero rows on
         /// the Catalog top, the persistent mini-player chrome above the
@@ -71,6 +74,12 @@ final class RemoteFeatureFlags {
                 return .opds2Enabled
             case .resetAccountEnabled:
                 return .resetAccountEnabled
+            case .triageBotEnabled:
+                return .triageBotEnabled
+            case .triageBotTicketSubmissionEnabled:
+                return .triageBotTicketSubmissionEnabled
+            case .triageBotAIFallbackEnabled:
+                return .triageBotAIFallbackEnabled
             case .inAppPlaybackNavEnabled:
                 return .inAppPlaybackNavEnabled
             default:
@@ -210,6 +219,91 @@ final class RemoteFeatureFlags {
             return override
         }
         return isFeatureEnabled(.resetAccountEnabled)
+    }
+
+    /// UserDefaults override that lets QA / support force the triage bot on
+    /// for a specific device without a Firebase round-trip. Settable from
+    /// `TPPDeveloperSettingsTableViewController`. Falls through to the
+    /// Remote Config flag when nil.
+    static let triageBotLocalOverrideKey = "RemoteFeatureFlags.triageBotLocalOverride"
+
+    /// Master kill-switch for the Palace Triage Bot. Defaults OFF in production,
+    /// but defaults ON in DEBUG builds so an engineer building from Xcode onto
+    /// a device or sim doesn't have to set anything — the feature is visible
+    /// automatically. TestFlight and App Store builds still respect the
+    /// Firebase Remote Config flag (default off), unchanged.
+    ///
+    /// Override precedence:
+    ///   1. UserDefaults local override (QA / staged demos)
+    ///   2. DEBUG build → true
+    ///   3. Firebase Remote Config
+    ///
+    /// When false, the Settings "Get Help" row, the floating help button, and
+    /// every other entry point are invisible — no surface area at all.
+    var isTriageBotEnabled: Bool {
+        if let override = UserDefaults.standard.object(forKey: Self.triageBotLocalOverrideKey) as? Bool {
+            return override
+        }
+        #if DEBUG
+        return true
+        #else
+        return isFeatureEnabled(.triageBotEnabled)
+        #endif
+    }
+
+    /// UserDefaults override for ticket submission. Mirrors the master
+    /// `triageBotLocalOverrideKey` pattern so QA can toggle independently
+    /// from `TPPDeveloperSettingsTableViewController`.
+    static let triageBotTicketSubmissionLocalOverrideKey = "RemoteFeatureFlags.triageBotTicketSubmissionLocalOverride"
+
+    /// Whether the bot may post real HelpSpot tickets. When false but the bot
+    /// is otherwise enabled, the chat still drafts tickets and shows the
+    /// preview, but the confirm action copies the JSON payload to the
+    /// pasteboard instead of submitting. Used during the demo and during
+    /// staged rollout before HelpSpot rate-limit negotiation completes.
+    ///
+    /// Override precedence:
+    ///   1. UserDefaults local override (QA toggle)
+    ///   2. DEBUG build → true
+    ///   3. Firebase Remote Config
+    var isTriageBotTicketSubmissionEnabled: Bool {
+        if let override = UserDefaults.standard.object(forKey: Self.triageBotTicketSubmissionLocalOverrideKey) as? Bool {
+            return override
+        }
+        #if DEBUG
+        return true
+        #else
+        return isFeatureEnabled(.triageBotTicketSubmissionEnabled)
+        #endif
+    }
+
+    /// UserDefaults override for AI fallback. Mirrors the master
+    /// `triageBotLocalOverrideKey` pattern so QA can toggle independently
+    /// from `TPPDeveloperSettingsTableViewController`.
+    static let triageBotAIFallbackLocalOverrideKey = "RemoteFeatureFlags.triageBotAIFallbackLocalOverride"
+
+    /// Whether the triage bot may consult the Claude-backed fallback
+    /// classifier when the local keyword matcher returns escalate. Defaults
+    /// OFF in production (no Anthropic traffic until a server-proxy path
+    /// is in place); defaults ON in DEBUG so dev/device builds exercise
+    /// the fallback when an ANTHROPIC_API_KEY is configured in the
+    /// engineer's Xcode scheme. Even when this flag is true, the
+    /// fallback only fires if the Keychain holds an API key — no key,
+    /// no Anthropic traffic.
+    ///
+    /// Override precedence:
+    ///   1. UserDefaults local override (QA toggle)
+    ///   2. DEBUG build → true
+    ///   3. Firebase Remote Config
+    var isTriageBotAIFallbackEnabled: Bool {
+        if let override = UserDefaults.standard.object(forKey: Self.triageBotAIFallbackLocalOverrideKey) as? Bool {
+            return override
+        }
+        #if DEBUG
+        return true
+        #else
+        return isFeatureEnabled(.triageBotAIFallbackEnabled)
+        #endif
     }
 
     /// UserDefaults override that lets QA / a developer toggle the
