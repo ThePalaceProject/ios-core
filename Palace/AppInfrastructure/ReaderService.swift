@@ -72,6 +72,18 @@ final class ReaderService {
 
     @MainActor
     func openEPUB(_ book: TPPBook) {
+        // Polish-phase (in-app-nav-polish-2026-06-01): record wall-clock
+        // open time so RecentlyReadingService's Continue Reading row
+        // sort is correct. EPUB location JSON does NOT embed a
+        // timeStamp; without this record the row falls back to
+        // `book.updated` (OPDS catalog date) and shows the wrong book.
+        AppContainer.production().bookOpenTracker.recordOpened(book.identifier)
+        // Polish-phase ("should close" UX): switching from audiobook to
+        // ebook fully closes the audiobook session — not just suppresses
+        // the mini-player chrome. User explicitly asked for this: opening
+        // the reader is a content-switch, not a side activity. The
+        // audiobook can be re-opened from My Books to resume.
+        Self.stopActiveAudiobookSessionIfNeeded()
         openEPUBInternal(book, isRetry: false)
     }
 
@@ -111,6 +123,9 @@ final class ReaderService {
     /// Cached extract on disk → re-opens skip the decrypt entirely.
     @MainActor
     func openPDF(_ book: TPPBook, onFinish: (() -> Void)? = nil) {
+        // Polish-phase (in-app-nav-polish-2026-06-01) — see openEPUB.
+        AppContainer.production().bookOpenTracker.recordOpened(book.identifier)
+        Self.stopActiveAudiobookSessionIfNeeded()
         guard let presenter = topPresenter() else { onFinish?(); return }
 
         if openInFlightBookIds.contains(book.identifier) {
@@ -593,5 +608,32 @@ final class ReaderService {
 
         readerVC.hidesBottomBarWhenPushed = true
         return readerVC
+    }
+
+    // MARK: - Polish-phase: stop audiobook on reader open
+
+    /// Called from `openEPUB(_:)` / `openPDF(_:onFinish:)` to terminate
+    /// any in-flight audiobook session BEFORE pushing the reader. The
+    /// user explicitly requested this behavior (vs the prior chrome-only
+    /// suppression): switching from an audiobook to an ebook is a
+    /// content-switch, not a side activity — the audio session fully
+    /// closes (player unloaded, mini-player + full player removed, Now
+    /// Playing chrome cleared, presenter `clearActiveSession` fires).
+    /// The audiobook can be re-opened from My Books to resume from the
+    /// last-saved position.
+    ///
+    /// No-op when there's no active session. Fires
+    /// `stopPlayback(dismissPhoneUI: true, persistFinalPosition: true)`
+    /// so the user's listening position is saved before tear-down.
+    @MainActor
+    private static func stopActiveAudiobookSessionIfNeeded() {
+        let session = AppContainer.production().audiobookSession
+        guard session.state.isActive else { return }
+        Task { @MainActor in
+            await session.stopPlayback(
+                dismissPhoneUI: true,
+                persistFinalPosition: true
+            )
+        }
     }
 }

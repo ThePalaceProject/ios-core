@@ -584,7 +584,10 @@ extension TPPNetworkExecutor {
                             await MainActor.run {
                                 self.accountsManager.userAccount(for: capturedAccountId ?? self.accountsManager.currentAccountId ?? "").markCredentialsStale()
                                 if capturedAccountId == nil || capturedAccountId == self.accountsManager.currentAccountId {
-                                    SignInModalPresenter.presentSignInModalForCurrentAccount(completion: nil)
+                                    // swarm_d8f11437 Module A wave 4 — migrated to
+                                    // AppContainer-injected sheet presenter.
+                                    AppContainer.production().signInModalSheetPresenter
+                                        .presentSignInModalForCurrentAccount(completion: nil)
                                 }
                             }
                         }

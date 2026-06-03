@@ -585,7 +585,10 @@ import OverdriveProcessor
             userAccountProvider: resolveAccountForBorrow,
             credentialRequestState: self.credentialRequestState,
             presentSignInModal: { completion in
-                SignInModalPresenter.presentSignInModalForCurrentAccount(completion: completion)
+                // swarm_d8f11437 Module A wave 4 — migrated to
+                // AppContainer-injected sheet presenter.
+                AppContainer.production().signInModalSheetPresenter
+                    .presentSignInModalForCurrentAccount(completion: completion)
             },
             isAdobeDRMExpired: {
                 #if FEATURE_DRM_CONNECTOR
@@ -775,7 +778,10 @@ import OverdriveProcessor
             )
         }
         let presentSignInModalClosure: @MainActor (@escaping () -> Void) -> Void = { completion in
-            SignInModalPresenter.presentSignInModalForCurrentAccount(completion: completion)
+            // swarm_d8f11437 Module A wave 4 — migrated to
+            // AppContainer-injected sheet presenter.
+            AppContainer.production().signInModalSheetPresenter
+                .presentSignInModalForCurrentAccount(completion: completion)
         }
         let attemptOIDCReauthClosure: () async -> Bool = {
             await BorrowOperation.attemptOIDCSilentReauth(userAccount: resolveAccountForBorrowOp())

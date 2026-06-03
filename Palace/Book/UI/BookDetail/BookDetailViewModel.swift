@@ -499,7 +499,8 @@ final class BookDetailViewModel: ObservableObject {
             alternateURL: current.alternateURL,
             relatedWorksURL: current.relatedWorksURL,
             previewLink: current.previewLink ?? fresh.previewLink,
-            seriesURL: current.seriesURL,
+            seriesURL: current.seriesURL ?? fresh.seriesURL,
+            seriesName: (current.seriesName?.isEmpty ?? true) ? fresh.seriesName : current.seriesName,
             revokeURL: current.revokeURL,
             reportURL: current.reportURL,
             timeTrackingURL: current.timeTrackingURL,
@@ -700,40 +701,45 @@ final class BookDetailViewModel: ObservableObject {
                     Log.info(#file, "[SAML-REAUTH] ensureAuthAndExecute presenting modal: needsSignIn=\(needsSignIn) needsReauth=\(needsReauth)")
                     let halfSheetWasShowing = self.showHalfSheet
                     self.showHalfSheet = false
-                    SignInModalPresenter.presentSignInModalForCurrentAccount(accountsManager: self.accountsManager) { [weak self] in
-                        guard let self else { return }
-                        let post = self.accountsManager.currentUserAccount
-                        // Proceed only if the user actually re-authenticated
-                        // — they have credentials AND state is loggedIn.
-                        // Cancelling the modal leaves authState unchanged
-                        // (still .credentialsStale) and we should NOT call
-                        // the action; otherwise we'd hand the reader a stale
-                        // book and reproduce the original hang.
-                        guard post.hasCredentials() && post.authState == .loggedIn else {
-                            Log.info(#file, "[SAML-REAUTH] Sign-in cancelled or incomplete (hasCredentials=\(post.hasCredentials()) authState=\(post.authState)) — not proceeding with action")
-                            // Clear ALL processing state. A bailed-out modal can
-                            // leave .read/.listen/.reserve/etc. stuck in the set,
-                            // and `handleAction` ignores any tap whose button is
-                            // already processing — i.e. the next Read tap is
-                            // silently dropped until the view is recreated.
-                            self.processingButtons.removeAll()
-                            // Restore the half-sheet so the patron can retry. We
-                            // only re-show it if the caller had it open before
-                            // the modal stole the screen (e.g. download in
-                            // flight); pure book-detail actions like Read don't
-                            // use the half-sheet and shouldn't summon it now.
+                    // swarm_d8f11437 Module A wave 4 — migrated to
+                    // AppContainer-injected sheet presenter. self.accountsManager
+                    // is the same `_cached` singleton the presenter resolves
+                    // internally, so the behavior is preserved.
+                    AppContainer.production().signInModalSheetPresenter
+                        .presentSignInModalForCurrentAccount { [weak self] in
+                            guard let self else { return }
+                            let post = self.accountsManager.currentUserAccount
+                            // Proceed only if the user actually re-authenticated
+                            // — they have credentials AND state is loggedIn.
+                            // Cancelling the modal leaves authState unchanged
+                            // (still .credentialsStale) and we should NOT call
+                            // the action; otherwise we'd hand the reader a stale
+                            // book and reproduce the original hang.
+                            guard post.hasCredentials() && post.authState == .loggedIn else {
+                                Log.info(#file, "[SAML-REAUTH] Sign-in cancelled or incomplete (hasCredentials=\(post.hasCredentials()) authState=\(post.authState)) — not proceeding with action")
+                                // Clear ALL processing state. A bailed-out modal can
+                                // leave .read/.listen/.reserve/etc. stuck in the set,
+                                // and `handleAction` ignores any tap whose button is
+                                // already processing — i.e. the next Read tap is
+                                // silently dropped until the view is recreated.
+                                self.processingButtons.removeAll()
+                                // Restore the half-sheet so the patron can retry. We
+                                // only re-show it if the caller had it open before
+                                // the modal stole the screen (e.g. download in
+                                // flight); pure book-detail actions like Read don't
+                                // use the half-sheet and shouldn't summon it now.
+                                if halfSheetWasShowing {
+                                    self.showHalfSheet = true
+                                }
+                                return
+                            }
+                            // Restore the half-sheet on the success path too — it
+                            // was only dismissed to make room for the SAML modal.
                             if halfSheetWasShowing {
                                 self.showHalfSheet = true
                             }
-                            return
+                            action()
                         }
-                        // Restore the half-sheet on the success path too — it
-                        // was only dismissed to make room for the SAML modal.
-                        if halfSheetWasShowing {
-                            self.showHalfSheet = true
-                        }
-                        action()
-                    }
                     return
                 }
                 action()

@@ -397,17 +397,24 @@ final class TPPSignInBusinessLogicSignOutTests: XCTestCase {
     func test_signOut_resetsBookRegistry() {
         // Sign-out must reset the book registry FOR THIS LIBRARY so the
         // next user's book state doesn't leak across. The mock's `reset(_:)`
-        // flips isSyncing=false, but more importantly we set isSyncing=true
-        // before sign-out and assert the production code's call to reset()
-        // returns it to false — direct observation that reset() was reached.
+        // both flips isSyncing=false AND clears the registry dictionary —
+        // we observe BOTH of those side-effects to prove reset() was the
+        // method called (not some other path that only updates one flag).
         seedSignedInBasicUserWithAdobe()
         bookRegistry.isSyncing = true
-        XCTAssertTrue(bookRegistry.isSyncing, "precondition: a sync was 'in flight'")
+        // Seed a fake record in the registry so the post-condition clear
+        // is observable (otherwise the empty-before/empty-after registry
+        // wouldn't catch a missed reset call).
+        let fakeBook = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        let fakeRecord = TPPBookRegistryRecord(book: fakeBook, location: nil, state: .downloadSuccessful, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+        bookRegistry.registry[fakeBook.identifier] = fakeRecord
 
         businessLogic.performLogOut()
         awaitDeauthorize()
 
         XCTAssertFalse(bookRegistry.isSyncing,
                        "Sign-out must reset() the book registry — the mock's reset(_:) clears isSyncing")
+        XCTAssertTrue(bookRegistry.registry.isEmpty,
+                      "Sign-out must reset() the book registry — the mock's reset(_:) clears the registry dictionary; observing this proves reset() ran, not just isSyncing flipping")
     }
 }

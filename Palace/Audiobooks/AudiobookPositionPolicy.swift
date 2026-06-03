@@ -198,6 +198,62 @@ public enum ChapterTOCNormalizer {
     }
 }
 
+// MARK: - Open-audiobook gate/teardown decision
+
+/// Pure decision struct for the two openAudiobook-time policy questions
+/// the session manager has to answer when re-entering playback. Both
+/// predicates protect against real, real-device-verified regressions:
+///
+///   * `persistFinalPositionOnTeardown` — when `openAudiobook` is called
+///     while a prior session for the SAME book identifier is still active
+///     (typical when a user returns + re-borrows + taps Listen), the
+///     prior session's teardown must NOT save its live position to the
+///     registry. Otherwise the stale offset gets written into the freshly-
+///     borrowed registry record and the new open seeks there.
+///     (FINDING-D / HelpSpot 17988 Iron Flame "missing first hour".)
+///
+///   * `bypassReadinessGate` — `LCPStreamingPlayer.isLoaded` only flips
+///     to true once `AVPlayer.timeControlStatus == .playing`, which
+///     requires `play()` to have been called. A pre-play readiness gate
+///     therefore deadlocks LCP. The toolkit has its own internal 30s
+///     load timeout that surfaces `.failed`, so the gate's hang-
+///     detection role is already covered for LCP. Bypass on this path.
+///     (FINDING-B / HelpSpot 17981 / 17989 / 18002 "won't play".)
+public struct PlaybackOpenDecision: Equatable {
+    public let bypassReadinessGate: Bool
+    public let persistFinalPositionOnTeardown: Bool
+}
+
+public enum PlaybackOpenPolicy {
+    /// - Parameters:
+    ///   - isReBorrowOfSameBook: `currentBook?.identifier == book.identifier`
+    ///     at the moment `openAudiobook` is entered. True implies the user
+    ///     is re-opening the same book — possibly after a return + reborrow
+    ///     cycle that the session manager has no other signal for.
+    ///   - hasDecryptor: `loaded.decryptor != nil` on the freshly-loaded
+    ///     audiobook. True implies LCP (via `LCPAdapter`); false implies
+    ///     Findaway / Overdrive / OpenAccess / BearerToken.
+    public static func decide(
+        isReBorrowOfSameBook: Bool,
+        hasDecryptor: Bool
+    ) -> PlaybackOpenDecision {
+        PlaybackOpenDecision(
+            bypassReadinessGate: hasDecryptor,
+            persistFinalPositionOnTeardown: !isReBorrowOfSameBook
+        )
+    }
+
+    /// Production call-site adapter for the LCP-bypass decision. Accepts
+    /// the freshly-loaded audiobook's decryptor reference and folds the
+    /// `decryptor != nil` predicate into the decision. Extracted so the
+    /// `!= nil` predicate is itself mutation-testable from a unit test —
+    /// `startPlaybackAndSyncPosition`'s call-site mutation
+    /// (`!= nil` → `== nil`) would otherwise be silent.
+    public static func decideForLoad(decryptor: AnyObject?) -> PlaybackOpenDecision {
+        decide(isReBorrowOfSameBook: false, hasDecryptor: decryptor != nil)
+    }
+}
+
 // MARK: - Position diagnostics logger
 
 /// Logging seam for the audiobook position pipeline. Production binds to

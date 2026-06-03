@@ -11,6 +11,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     enum Section: Int, CaseIterable {
         case librarySettings = 0
         case triageBot
+        case featureFlags
         case libraryRegistryDebugging
         case dataManagement
         case developerTools
@@ -35,6 +36,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     private let triageBotEnabledCellIdentifier = "triageBotEnabledCell"
     private let triageBotTicketSubmissionCellIdentifier = "triageBotTicketSubmissionCell"
     private let triageBotAIFallbackCellIdentifier = "triageBotAIFallbackCell"
+    private let inAppPlaybackNavCellIdentifier = "inAppPlaybackNavCell"
 
     private var pushNotificationsStatus = false
     private let settings: TPPSettings
@@ -87,6 +89,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: triageBotEnabledCellIdentifier)
         self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: triageBotTicketSubmissionCellIdentifier)
         self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: triageBotAIFallbackCellIdentifier)
+        self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: inAppPlaybackNavCellIdentifier)
     }
 
     // MARK: - UITableViewDataSource
@@ -96,6 +99,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         switch sectionType {
         case .librarySettings: return 2
         case .triageBot: return 3  // enabled + ticket submission + AI fallback
+        case .featureFlags: return 1
         case .developerTools: return 2
         case .pushNotificationTesting: return 3
         case .badgeTesting:
@@ -138,6 +142,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
             case 1: return cellForTriageBotTicketSubmission()
             default: return cellForTriageBotAIFallback()
             }
+        case .featureFlags: return cellForInAppPlaybackNav()
         case .libraryRegistryDebugging: return cellForCustomRegsitry()
         case .dataManagement: return cellForClearCache()
         case .developerTools:
@@ -191,6 +196,8 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
             return "Library Settings"
         case .triageBot:
             return "Triage Bot"
+        case .featureFlags:
+            return "Feature Flags"
         case .libraryRegistryDebugging:
             return "Library Registry Debugging"
         case .dataManagement:
@@ -313,6 +320,31 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         let cell = TPPRegistryDebuggingCell()
         cell.delegate = self
         return cell
+    }
+
+    /// Local-override toggle for the in-app playback navigation feature
+    /// (swarm_0b7616e7 + polish 2026-06-02). Mirrors the
+    /// `cellForBetaLibraries` shape — single switch, no subtitle.
+    /// Writes via `inAppPlaybackNavSwitchDidChange(_:)` to the
+    /// `RemoteFeatureFlags.inAppPlaybackNavLocalOverrideKey` UserDefault,
+    /// so the flag flips immediately without a Firebase round-trip.
+    private func cellForInAppPlaybackNav() -> UITableViewCell {
+        guard let cell = tableView.dequeueReusableCell(withIdentifier: inAppPlaybackNavCellIdentifier) else {
+            fatalError("Failed to dequeue cell with identifier \(inAppPlaybackNavCellIdentifier)")
+        }
+        cell.selectionStyle = .none
+        cell.textLabel?.text = "In-App Playback Navigation"
+        cell.textLabel?.adjustsFontSizeToFitWidth = true
+        cell.textLabel?.minimumScaleFactor = 0.5
+        cell.accessoryView = createSwitch(
+            isOn: RemoteFeatureFlags.shared.isInAppPlaybackNavEnabled,
+            action: #selector(inAppPlaybackNavSwitchDidChange)
+        )
+        return cell
+    }
+
+    @objc func inAppPlaybackNavSwitchDidChange(sender: UISwitch) {
+        UserDefaults.standard.set(sender.isOn, forKey: RemoteFeatureFlags.inAppPlaybackNavLocalOverrideKey)
     }
 
     private func cellForClearCache() -> UITableViewCell {
@@ -721,7 +753,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
             }
         #endif
 
-        case .librarySettings, .triageBot, .libraryRegistryDebugging, nil:
+        case .librarySettings, .triageBot, .featureFlags, .libraryRegistryDebugging, nil:
             break
         }
     }

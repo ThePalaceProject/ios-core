@@ -7,6 +7,14 @@ DerivedData
 .vscode
 Build
 adobe-rmsdk
+
+# Swift Package Manager build artifacts. Apply at any depth so nested
+# packages under Palace/Packages/<name>/ are covered without each one
+# needing its own .gitignore. Without this, cross-branch builds (e.g.
+# building feat/palace-triage-bot-ios-demo and then switching branches)
+# leak empty package shells with .build/ + .swiftpm/ into git status.
+**/.build/
+**/.swiftpm/
 .accesslint-cache/
 accesslint-reports/
 artifacts/

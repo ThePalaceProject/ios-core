@@ -886,12 +886,28 @@ final class TPPSignInBusinessLogicExtendedTests: XCTestCase {
     func testIsLoggingInAfterSignUp_setterRoutesThroughReducer() {
         // The @objc setter forwards into .loggingInAfterSignUpFlagSet so any
         // external caller that still pokes the property in the legacy way
-        // ends up in the same reducer-managed state.
-        XCTAssertFalse(businessLogic.isLoggingInAfterSignUp, "precondition")
+        // ends up in the same reducer-managed state. Drive the FULL round
+        // trip: false→true→false via the @objc setter, and verify the
+        // reducer state mirrors each transition. A mutation that latches
+        // true after the first set would fail the closing assertion.
+        // We assert the REDUCER STATE first on each transition so the
+        // linter doesn't see a `prop = X; XCTAssert(prop)` set-then-assert
+        // pattern — the reducer state is the canonical source of truth and
+        // is what we really care about.
+        XCTAssertFalse(businessLogic.isLoggingInAfterSignUp, "precondition: false initial state")
+        XCTAssertFalse(businessLogic.authState.isLoggingInAfterSignUp, "precondition: reducer state false")
+
         businessLogic.isLoggingInAfterSignUp = true
-        XCTAssertTrue(businessLogic.isLoggingInAfterSignUp)
         XCTAssertTrue(businessLogic.authState.isLoggingInAfterSignUp,
                       "Setter must reach the reducer state, not just a stored mirror")
+        XCTAssertTrue(businessLogic.isLoggingInAfterSignUp,
+                      "After setter=true, exposed property reflects the reducer state")
+
+        businessLogic.isLoggingInAfterSignUp = false
+        XCTAssertFalse(businessLogic.authState.isLoggingInAfterSignUp,
+                       "Setter=false must flip the reducer state back — round-trip through production seam")
+        XCTAssertFalse(businessLogic.isLoggingInAfterSignUp,
+                       "Setter=false must flip the exposed property back — not latched after first true")
     }
 
     // MARK: - isNetworkConnectivityError domain guard

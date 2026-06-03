@@ -188,21 +188,30 @@ final class CarPlayAudiobookBridge: ObservableObject {
     /// Phone UI is only dismissed when switching to a different book (handled in openAudiobook).
     func stopCurrentPlayback() {
         Task {
-            await sessionManager.stopPlayback(dismissPhoneUI: false)
+            // CarPlay-initiated stop: the user is intentionally ending this
+            // session, so persist the final position (default behavior).
+            await sessionManager.stopPlayback(dismissPhoneUI: false, persistFinalPosition: true)
         }
         Log.info(#file, "CarPlay: Stopped playback")
     }
 
-    /// Dismisses the audiobook view on the phone
+    /// Dismisses the audiobook view on the phone.
+    ///
+    /// swarm_0b7616e7 Module C — replaces the legacy
+    /// `coordinator.removeAudioModel + coordinator.popToRoot` pair with a
+    /// presenter minimize. The session itself remains active (mini-player
+    /// stays visible on the phone — that's the P3 win); only the
+    /// full-screen player UI is dismissed. CarPlay disconnect should
+    /// NEVER stop phone playback — phone-side handling owns its own
+    /// lifecycle.
+    ///
+    /// We use the AppContainer-resolved presenter so production and any
+    /// `withAudiobookSessionPresenter(_:)` test-seam override share the
+    /// same instance the rest of the app sees.
     func dismissBookOnPhone() {
-        Task {
-            if let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator,
-               let bookId = currentBook?.identifier {
-                Log.info(#file, "CarPlay: Dismissing book view on phone")
-                coordinator.removeAudioModel(forBookId: bookId)
-                coordinator.popToRoot()
-            }
-        }
+        Log.info(#file, "CarPlay: Dismissing book view on phone via presenter.minimize()")
+        let presenter = AppContainer.production().audiobookSessionPresenter
+        presenter.minimize()
     }
 
     /// Checks if user is authenticated.

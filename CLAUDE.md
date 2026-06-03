@@ -182,9 +182,18 @@ A test that doesn't kill any mutants should be rewritten to test the actual beha
 
 ## Definition of Done — paste evidence before declaring work complete
 
-Per `.forgeos/wall-failures/` (lessons from PR #1018 reviewer-blocked findings), every non-trivial work item — solo-agent or swarm — must pass these 6 self-checks BEFORE declaring READY or opening a PR. Paste the evidence in the commit body, the swarm transcript, or the user-facing summary. **Without evidence, the work is not done; it is "implemented but unverified."**
+<!-- audit-verified -->
+Per `.forgeos/wall-failures/` (lessons from PR #1018 reviewer-blocked findings + the swarm_c8fcab76 arch1 fake-wiring-test finding), every non-trivial work item — solo-agent or swarm — must pass these 7 self-checks BEFORE declaring READY or opening a PR. Paste the evidence in the commit body, the swarm transcript, or the user-facing summary. **Without evidence, the work is not done; it is "implemented but unverified."**
 
 1. **SUT instantiation check** — for every test file you added or modified named `<SUT>Tests.swift` (e.g. `BookReturnServiceTests.swift`, `TPPNetworkResponderAuthCoordinatorTests.swift`), run `grep -c "<SUT>(" <test-file>`. The count must be ≥ 1. If you wrote a `BookReturnServiceAuthCoordinatorTests` that never constructs a `BookReturnService`, the test is theater — rewrite or rename. Catches PR #1018 qa2/qa3 (fake-test-instantiation).
+
+   **Method-level extension (added wave 4 / cs_9a267b63 escalation):** For each test METHOD whose name embeds a PascalCase production-class noun (e.g. `testX_TPPReauthenticatorPath_invokesY` embeds `TPPReauthenticator` and `Y`), the same test method's body must call `TPPReauthenticator(...)` (instantiation) or `TPPReauthenticator.method(...)` (static call) or have an explicit type annotation `: TPPReauthenticator`. Verify mechanically with:
+
+   ```bash
+   python3 scripts/check-test-name-vs-body.py PalaceTests/<your-modified-file>.swift
+   ```
+
+   A non-zero exit means the test name embeds a noun the body doesn't reference. Fake-wiring tests of this shape have escaped into the codebase twice (cs_847892e8 arch1 + cs_9a267b63 arch1) and the runnable script is the structural fix that makes the pattern impossible to land. The same script is wired into `.claude/skills/swarm/SKILL.md` Phase 4.5 check 5b so the orchestrator gates all diffed test files automatically.
 
 2. **Function-result usage check** — for every new production-code call to a function added or contracted-in, paste evidence the result is used (bound via `let outcome = ...`, pattern-matched, returned, or has a `// TODO(ticket): result intentionally discarded because <reason>` comment). `grep -E "= <fnName>\(|let _ = <fnName>" <prod-file>`. Catches PR #1018 arch3 (dishonest migration — classifier called but outcome only logged).
 
@@ -196,7 +205,15 @@ Per `.forgeos/wall-failures/` (lessons from PR #1018 reviewer-blocked findings),
 
 6. **Build + verify-pr** — `xcodebuild ... build` clean and `scripts/verify-pr.sh --quick` PASS. Paste the tails.
 
-If you cannot produce evidence for all 6 checks applicable to your change, do NOT report READY. Either complete the missing check OR explicitly STOP with a scope-deferral proposal (below) so the user can decide.
+7. **Multi-step / wiring-claim check (v2):** for every test name claiming to exercise a multi-step path through production code, line-coverage report must show non-zero hits on the cited lines from that test. Catches `.forgeos/wall-failures/2026-05-28-cs847892e8-arch1.md` — the "fake wiring test" pattern where `openAudiobook(...)` mock-books fail in the loader before `bind() → startPlaybackAndSyncPosition()` ever runs, so the cited production lines (e.g. `AudiobookSessionManager.swift:684-710`) get zero coverage from the test claiming to exercise them. Without coverage evidence on the cited lines, the "multi-step production-seam test" claim is unverified — treat it as a check #3 failure.
+
+8. **Contract reconciliation** — for non-trivial work (≥10 prod LOC), every "removes X" / "deletes X" / "migrates Y to Z" / "renames X to Y" / "adds field A to type B" claim in your commit body, PR body, or `.forgeos/intent/<name>.md` must reconcile against the staged diff. Run `python3 scripts/check-contract-reconciliation.py --commit-msg <file>` — exit 0 means all claims supported. Catches cluster pattern from waves 1-4. Paste exit code.
+
+9. **Blast-radius check** — for ANY commit, run `python3 scripts/check-blast-radius.py --quiet`. Exit 0 means no new public API surface, no `#if DEBUG` on production paths, no test-only AppContainer init params, no discarded function results without `// TODO(ticket):` justification. High-severity findings block. Paste exit code.
+
+10. **Adjacency staleness check** — for ANY commit removing/renaming a production type, run `python3 scripts/check-adjacency-staleness.py --quiet`. Warn-only. Paste output.
+
+If you cannot produce evidence for all 10 checks applicable to your change, do NOT report READY. Either complete the missing check OR explicitly STOP with a scope-deferral proposal (below) so the user can decide.
 
 ## Scope-deferral protocol — STOP, do not partial-ship
 

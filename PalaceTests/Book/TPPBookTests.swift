@@ -42,7 +42,8 @@ final class TPPBookTests: XCTestCase {
         reportURL: URL? = URL(string: "http://example.com/report"),
         timeTrackingURL: URL? = URL(string: "http://example.com/timetracking"),
         contributors: [String: Any]? = nil,
-        bookDuration: String? = nil
+        bookDuration: String? = nil,
+        seriesName: String? = nil
     ) -> TPPBook {
         let acq = acquisitions ?? [TPPFake.genericAcquisition]
         return TPPBook(
@@ -65,6 +66,7 @@ final class TPPBookTests: XCTestCase {
             relatedWorksURL: relatedWorksURL,
             previewLink: previewLink,
             seriesURL: seriesURL,
+            seriesName: seriesName,
             revokeURL: revokeURL,
             reportURL: reportURL,
             timeTrackingURL: timeTrackingURL,
@@ -151,6 +153,115 @@ final class TPPBookTests: XCTestCase {
 
         XCTAssertEqual(restored?.subtitle, "Vol. 1")
         XCTAssertEqual(restored?.summary, "An epic tale")
+    }
+
+    // MARK: - Series Metadata (PP-4463)
+
+    /// PP-4463: the Book Detail SERIES row is gated on both `seriesName` and
+    /// `seriesURL`. Persistence must round-trip both — a registry reload that
+    /// dropped one but kept the other would hide the row on subsequent
+    /// app launches even though the catalog feed delivered it.
+    func test_dictionaryRoundTrip_preservesSeriesName() {
+        let book = makeBook(
+            seriesURL: URL(string: "http://example.com/series/foundation"),
+            seriesName: "Foundation"
+        )
+        let restored = TPPBook(dictionary: book.dictionaryRepresentation())
+
+        XCTAssertEqual(restored?.seriesName, "Foundation",
+                       "Round-trip must preserve seriesName — the Book Detail SERIES row's label")
+        XCTAssertEqual(restored?.seriesURL?.absoluteString,
+                       "http://example.com/series/foundation",
+                       "Round-trip must preserve seriesURL — the SERIES row's navigation destination")
+    }
+
+    func test_dictionaryRepresentation_writesSeriesNameUnderSeriesNameKey() {
+        let book = makeBook(seriesName: "The Foundation Trilogy")
+        let dict = book.dictionaryRepresentation()
+
+        XCTAssertEqual(dict[SeriesNameKey] as? String, "The Foundation Trilogy",
+                       "dictionaryRepresentation must surface seriesName under SeriesNameKey")
+    }
+
+    func test_dictionaryInit_readsSeriesNameFromSeriesNameKey() {
+        let acqs = [TPPFake.genericAcquisition.dictionaryRepresentation()]
+        let book = TPPBook(dictionary: [
+            "acquisitions": acqs,
+            "categories": ["Fiction"],
+            "id": "series-restore",
+            "title": "Foundation",
+            "updated": "2024-01-01T00:00:00Z",
+            SeriesNameKey: "The Foundation Trilogy"
+        ])
+
+        XCTAssertEqual(book?.seriesName, "The Foundation Trilogy",
+                       "Dictionary init must read seriesName when SeriesNameKey is present")
+    }
+
+    func test_dictionaryInit_seriesNameNilWhenKeyAbsent() {
+        let acqs = [TPPFake.genericAcquisition.dictionaryRepresentation()]
+        let book = TPPBook(dictionary: [
+            "acquisitions": acqs,
+            "categories": ["Fiction"],
+            "id": "no-series",
+            "title": "Standalone Novel",
+            "updated": "2024-01-01T00:00:00Z"
+        ])
+
+        XCTAssertNil(book?.seriesName,
+                     "Dictionary init must leave seriesName nil when SeriesNameKey is absent — guards against a mutant that defaults to empty string")
+    }
+
+    /// Books from the loans feed sometimes ship lean (missing series metadata
+    /// even when the catalog version had it). The merge guard must NOT wipe
+    /// the previously-enriched seriesName when the fresh entry has nothing.
+    func test_mergingPreservingMetadata_preservesSelfSeriesNameWhenFreshIsEmpty() {
+        let selfBook = makeBook(
+            seriesURL: URL(string: "http://example.com/series/foundation"),
+            seriesName: "Foundation"
+        )
+        let leanFresh = makeBook(seriesURL: nil, seriesName: nil)
+
+        let merged = selfBook.mergingPreservingMetadata(from: leanFresh)
+
+        XCTAssertEqual(merged.seriesName, "Foundation",
+                       "Lean fresh entry must not wipe previously-enriched seriesName")
+        XCTAssertEqual(merged.seriesURL?.absoluteString,
+                       "http://example.com/series/foundation",
+                       "Lean fresh entry must not wipe previously-enriched seriesURL")
+    }
+
+    func test_mergingPreservingMetadata_takesFreshSeriesNameWhenPresent() {
+        let selfBook = makeBook(
+            seriesURL: URL(string: "http://example.com/series/old"),
+            seriesName: "Old Series Name"
+        )
+        let fresh = makeBook(
+            seriesURL: URL(string: "http://example.com/series/new"),
+            seriesName: "Updated Series Name"
+        )
+
+        let merged = selfBook.mergingPreservingMetadata(from: fresh)
+
+        XCTAssertEqual(merged.seriesName, "Updated Series Name",
+                       "Non-empty fresh seriesName must replace self's value — state-carrying field")
+    }
+
+    func test_bookWithMetadata_takesSeriesNameFromMetadataBook() {
+        let selfBook = makeBook(identifier: "self-id", seriesName: nil)
+        let metadataBook = makeBook(
+            identifier: "meta-id",
+            seriesURL: URL(string: "http://example.com/series/foundation"),
+            seriesName: "Foundation"
+        )
+
+        let merged = selfBook.bookWithMetadata(from: metadataBook)
+
+        XCTAssertEqual(merged.seriesName, "Foundation",
+                       "bookWithMetadata must pull seriesName from the metadata source")
+        XCTAssertEqual(merged.seriesURL?.absoluteString,
+                       "http://example.com/series/foundation",
+                       "bookWithMetadata must also pull seriesURL from the metadata source")
     }
 
     // MARK: - Dictionary Init Edge Cases
