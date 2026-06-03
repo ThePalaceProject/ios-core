@@ -40,6 +40,7 @@ let PreviewURLKey = "preview-url"
 let ReportURLKey = "report-url"
 let RevokeURLKey = "revoke-url"
 let SeriesLinkKey = "series-link"
+let SeriesNameKey = "series-name"
 let SubtitleKey = "subtitle"
 let SummaryKey = "summary"
 let TitleKey = "title"
@@ -66,6 +67,12 @@ public class TPPBook: NSObject, ObservableObject {
     @objc var relatedWorksURL: URL?
     @objc var previewLink: TPPOPDSAcquisition?
     @objc var seriesURL: URL?
+
+    /// PP-4463: display label for the series this title belongs to. Sourced from
+    /// the OPDS1 `<Series><link title="…"/>` attribute or the OPDS2
+    /// `metadata.belongsTo.series[].name`. Used by the Book Detail screen's
+    /// SERIES row; combined with `seriesURL` to make the row a tappable link.
+    @objc var seriesName: String?
     @objc var revokeURL: URL?
     @objc var reportURL: URL?
     @objc var timeTrackingURL: URL?
@@ -124,6 +131,7 @@ public class TPPBook: NSObject, ObservableObject {
         relatedWorksURL: URL?,
         previewLink: TPPOPDSAcquisition?,
         seriesURL: URL?,
+        seriesName: String? = nil,
         revokeURL: URL?,
         reportURL: URL?,
         timeTrackingURL: URL?,
@@ -152,6 +160,7 @@ public class TPPBook: NSObject, ObservableObject {
         self.relatedWorksURL = relatedWorksURL
         self.previewLink = previewLink
         self.seriesURL = seriesURL
+        self.seriesName = seriesName
         self.revokeURL = revokeURL
         self.reportURL = reportURL
         self.timeTrackingURL = timeTrackingURL
@@ -220,6 +229,7 @@ public class TPPBook: NSObject, ObservableObject {
             relatedWorksURL: entry.relatedWorks?.href,
             previewLink: entry.previewLink,
             seriesURL: entry.seriesLink?.href,
+            seriesName: entry.seriesLink?.title,
             revokeURL: revoke,
             reportURL: report,
             timeTrackingURL: entry.timeTrackingLink?.href,
@@ -325,6 +335,7 @@ public class TPPBook: NSObject, ObservableObject {
             relatedWorksURL: URL(string: dictionary[RelatedURLKey] as? String ?? ""),
             previewLink: (dictionary[PreviewURLKey] as? NSDictionary).flatMap { TPPOPDSAcquisition.acquisition(withDictionary: $0) },
             seriesURL: URL(string: dictionary[SeriesLinkKey] as? String ?? ""),
+            seriesName: dictionary[SeriesNameKey] as? String,
             revokeURL: revokeURL,
             reportURL: reportURL,
             timeTrackingURL: URL(string: dictionary[TimeTrackingURLURLKey] as? String ?? ""),
@@ -357,6 +368,7 @@ public class TPPBook: NSObject, ObservableObject {
             relatedWorksURL: book.relatedWorksURL,
             previewLink: book.previewLink,
             seriesURL: book.seriesURL,
+            seriesName: book.seriesName,
             revokeURL: self.revokeURL,
             reportURL: self.reportURL,
             timeTrackingURL: self.timeTrackingURL,
@@ -410,6 +422,7 @@ public class TPPBook: NSObject, ObservableObject {
             relatedWorksURL: fresh.relatedWorksURL ?? self.relatedWorksURL,
             previewLink: fresh.previewLink ?? self.previewLink,
             seriesURL: fresh.seriesURL ?? self.seriesURL,
+            seriesName: preferNonEmpty(fresh.seriesName, self.seriesName),
             revokeURL: fresh.revokeURL ?? self.revokeURL,
             reportURL: fresh.reportURL ?? self.reportURL,
             timeTrackingURL: fresh.timeTrackingURL ?? self.timeTrackingURL,
@@ -452,6 +465,7 @@ public class TPPBook: NSObject, ObservableObject {
             ReportURLKey: reportURL?.absoluteString as Any,
             RevokeURLKey: revokeURL?.absoluteString as Any,
             SeriesLinkKey: seriesURL?.absoluteString as Any,
+            SeriesNameKey: seriesName as Any,
             PreviewURLKey: previewLink?.dictionaryRepresentation() as Any,
             SubtitleKey: subtitle as Any,
             SummaryKey: summary as Any,
