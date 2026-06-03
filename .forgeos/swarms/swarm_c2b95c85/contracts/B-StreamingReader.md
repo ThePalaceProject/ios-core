@@ -240,3 +240,7 @@ plus all dont_touch in manifest.yaml. No JS bridge, no annotation layer, no
 TOC/font/theme/print/share. Online-only — render an `.offline` state when
 unreachable, NEVER attempt to cache the asset. Protocol-fronted progress store
 so tests inject a fake. Use `actor`/`async-await` over GCD/closures.
+
+## Land receipt
+
+Landed across two commits: initial Module B (this contract) + B-scroll-restore follow-up (JS retry-loop for WKWebView reflow race). Plus UX polish — explicit Close UIBarButtonItem removed in favor of NavigationStack back chevron; `Strings.StreamingReader.close` and `AccessibilityID.StreamingReader.closeButton` dropped as dead code.
