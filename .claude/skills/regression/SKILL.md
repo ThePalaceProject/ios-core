@@ -109,7 +109,9 @@ at 0% kill rate this way.
 
 This is the highest-value phase. Read `TEST_MATRIX.md` and walk through each priority tier.
 
-### Driving the sim: `simdrive` (MCP, current version 0.3.0a1)
+### Driving the sim: `simdrive` (MCP)
+
+Run `~/harness/bin/harness simdrive status` to confirm the current installed version before driving — do not assume a pinned version here.
 
 `simdrive` is the canonical iOS sim driver. Real CoreSimulator HID input — taps focus
 UITextFields and accept keyboard input on iOS 26+ (the v15/v16 cliclick path didn't).
@@ -133,11 +135,11 @@ After upgrade, run `/mcp` reload so new MCP tools become available.
 - `swipe`, `type_text` (with optional `tap_first`), `press_key`
 - `record_start` / `record_stop` / `replay` — replay supports `mask_regions` + auto-load `ssim_masks` from YAML
 
-*Diagnostics + perf (new in 0.3.0a1)*
+*Diagnostics + perf*
 - `app_state`, `apps`, `crashes`, `doctor`, `memory`
 - `perf` (snapshot), `perf_baseline` (labeled), `perf_compare` (returns severity: low/medium/high)
 
-*Robustness (new in 0.3.0a1)*
+*Robustness*
 - `pre_grant_permissions` — `simctl privacy grant` BEFORE launch (avoids SpringBoard PIDChange race)
 - `set_appearance` — light/dark mode
 - `dismiss_first_launch_alerts` — handles the 1-in-4 Allow-button-misses race
