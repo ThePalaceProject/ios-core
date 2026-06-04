@@ -22,7 +22,14 @@ final class AccountStateMachineTests: XCTestCase {
     // MARK: - Helpers
 
     private func makeAccount() -> Account? {
-        return AppContainer.production().accountsManager.accounts().first
+        // Rationale: the fresh AccountsManager from makeTestAppContainer() has
+        // deferInitialLoadCatalogsForTesting = true, so its in-memory accounts
+        // have no `details` populated. Several tests here (terminalDetailsLoaded,
+        // multi-awaiter) require `.details` and `_setState(.detailsLoaded(...))`
+        // to succeed, which traps on a fresh manager. Migrating this seam
+        // requires test-side fixture builders for AccountDetails that don't
+        // currently exist. Tracked as residue for a follow-up.
+        return AppContainer.production().accountsManager.accounts().first // MIGRATED-DEFERRED: swarm_5b500284 — fresh AccountsManager lacks details fixtures
     }
 
     /// Construct a fresh, isolated Account via the production

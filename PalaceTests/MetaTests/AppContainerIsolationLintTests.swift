@@ -122,6 +122,31 @@ final class AppContainerIsolationLintTests: XCTestCase {
     // SUT. swarm_47883816 follow-up should evaluate whether these
     // can be split into unit + integration tests.
     "Network/TPPNetworkExecutorTests.swift",
+    // Added swarm_5b500284 (G2 audit, G3 promote): production-identity-pin
+    // files where reading `AppContainer.production()` IS the test
+    // contract. Migrating to `makeTestAppContainer()` would invalidate
+    // the assertion under test. See `.forgeos/swarms/swarm_5b500284/
+    // transcripts/G2.md` "Not migrated" section for per-file rationale.
+
+    // Tests `_resetForTesting()`'s effect on the static `_cached` field —
+    // reading production() is the only way to observe the cache rebuild.
+    "AppInfrastructure/AppContainerResetTests.swift",
+    // Pins `audiobookSession` / `playbackBootstrapper` static-cache
+    // identity across `production()` reads ("must share a single
+    // instance across all AppContainer.production() reads").
+    "AppInfrastructure/AppContainerAudiobookFactoryTests.swift",
+    // `testProductionContainer_exposesNonNilImageLoader` directly pins
+    // the production graph; helper `makeProductionLikeContainer(imageLoader:)`
+    // clones from production fields.
+    "AppInfrastructure/AppContainerImageLoaderInjectionTests.swift",
+    // Pins the static-cache short-circuit semantics of the
+    // `withSignInModalSheetPresenter(_:)` modifier; cached presenter
+    // identity IS the SUT.
+    "AppInfrastructure/AppContainerWithSignInModalSheetPresenterTests.swift",
+    // `testAppContainerProduction_wiresAuthCoordinator` asserts
+    // `container.authCoordinator === again.authCoordinator` across
+    // production() calls — identity is load-bearing.
+    "AppInfrastructure/AuthCoordinatorTelemetryTests.swift",
   ]
 
   /// Per-line inline marker that exempts a single AppContainer.production()

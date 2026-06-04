@@ -792,7 +792,7 @@ final class DownloadProgressPublisherTests: XCTestCase {
 
     func testProgressPublisher_emitsProgressUpdates() {
         // Given a download center
-        let downloadCenter = AppContainer.production().downloadCenter
+        let downloadCenter = makeTestAppContainer().downloadCenter
 
         // Setup expectation for progress updates
         let progressExpectation = expectation(description: "Progress update received")
@@ -818,7 +818,7 @@ final class DownloadProgressPublisherTests: XCTestCase {
 
     func testProgressPublisher_emitsMultipleUpdates() {
         // Given a download center
-        let downloadCenter = AppContainer.production().downloadCenter
+        let downloadCenter = makeTestAppContainer().downloadCenter
 
         // Setup expectation for multiple progress updates
         let progressExpectation = expectation(description: "Multiple progress updates received")
@@ -855,7 +855,7 @@ final class FileURLGenerationTests: XCTestCase {
 
     func testFileUrl_epubBook_hasEpubExtension() {
         // Given a download center and EPUB book
-        let downloadCenter = AppContainer.production().downloadCenter
+        let downloadCenter = makeTestAppContainer().downloadCenter
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
 
         // Note: This test verifies the pathExtension method behavior
@@ -867,7 +867,7 @@ final class FileURLGenerationTests: XCTestCase {
 
     func testFileUrl_contentDirectoryExists() {
         // Given a download center
-        let downloadCenter = AppContainer.production().downloadCenter
+        let downloadCenter = makeTestAppContainer().downloadCenter
 
         // When getting content directory
         let testAccountId = "test-account-\(UUID().uuidString)"
@@ -887,7 +887,7 @@ final class FileURLGenerationTests: XCTestCase {
 
     func testFileUrl_deterministicForSameIdentifier() {
         // Given a download center
-        let downloadCenter = AppContainer.production().downloadCenter
+        let downloadCenter = makeTestAppContainer().downloadCenter
 
         // When generating file URL for same identifier multiple times
         // Note: We need a registered book for fileUrl to work
@@ -1138,7 +1138,7 @@ final class DiskBudgetTests: XCTestCase {
 
     func testContentDirectory_createdOnAccess() {
         // Given a download center
-        let downloadCenter = AppContainer.production().downloadCenter
+        let downloadCenter = makeTestAppContainer().downloadCenter
         let testAccountId = "test-disk-budget-\(UUID().uuidString)"
 
         // When accessing content directory
