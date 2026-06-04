@@ -17,10 +17,21 @@ final class AudiobookSessionStateTransitionTests: XCTestCase {
     /// Locally-constructed session manager — Module B replaced the singleton,
     /// so each test gets a fresh instance with no pollution to reset.
     private var manager: AudiobookSessionManager!
+    /// Per-test isolated container — built via `makeTestAppContainer()` so
+    /// each test method gets a fresh service graph (no cross-test pollution
+    /// through `AppContainer._cached`).
+    private var appContainer: AppContainer!
 
     override func setUp() async throws {
         try await super.setUp()
-        manager = AudiobookSessionManager(appContainer: AppContainer.production())
+        appContainer = makeTestAppContainer()
+        manager = AudiobookSessionManager(appContainer: appContainer)
+    }
+
+    override func tearDown() async throws {
+        manager = nil
+        appContainer = nil
+        try await super.tearDown()
     }
 
     // MARK: - State Enum Tests

@@ -83,16 +83,23 @@ final class AudiobookFirstOpenHangTests: XCTestCase {
     /// invocations into this spy so assertions are deterministic.
     private var playbackSpy: PlaybackEngineSpy!
 
+    /// Per-test isolated container — built via `makeTestAppContainer()` so
+    /// each test method gets a fresh service graph (no cross-test pollution
+    /// through `AppContainer._cached`).
+    private var appContainer: AppContainer!
+
     override func setUp() async throws {
         try await super.setUp()
         playbackSpy = PlaybackEngineSpy()
-        sessionManager = AudiobookSessionManager(appContainer: AppContainer.production())
+        appContainer = makeTestAppContainer()
+        sessionManager = AudiobookSessionManager(appContainer: appContainer)
     }
 
     override func tearDown() async throws {
         await sessionManager?.stopPlayback(dismissPhoneUI: false)
         sessionManager = nil
         playbackSpy = nil
+        appContainer = nil
         try await super.tearDown()
     }
 

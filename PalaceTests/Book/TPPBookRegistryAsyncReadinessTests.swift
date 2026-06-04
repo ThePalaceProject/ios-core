@@ -100,14 +100,18 @@ final class TPPBookRegistryAsyncReadinessTests: XCTestCase {
     /// observable surface that pre-Phase-1 callers depended on (so
     /// `.accountNotFound` keeps meaning "can't sync; try again later").
     func testIntegration_underDetailsFailed_throwsAccountNotFound() async throws {
-        let accountsMgr = AppContainer.production().accountsManager
+        // Rationale: integration test pins behavior against the production
+        // graph. Fresh test container traps when seeded account is set to
+        // .detailsFailed and syncAsync runs through the downstream state
+        // machine. Tracked for follow-up.
+        let accountsMgr = AppContainer.production().accountsManager // MIGRATED-DEFERRED: swarm_5b500284 — integration test pins production graph
         let (account, cleanup) = seedAccountIfNeeded(on: accountsMgr,
                                                     fixtureId: "test-registry-async-\(UUID().uuidString)")
         defer { cleanup() }
 
         account._setState(.detailsFailed(.authDocumentFetchFailed(underlyingDescription: "test HTTP 503")))
 
-        guard let registry = AppContainer.production().bookRegistry as? TPPBookRegistry else {
+        guard let registry = AppContainer.production().bookRegistry as? TPPBookRegistry else { // MIGRATED-DEFERRED: swarm_5b500284 — integration test pins production graph
             throw XCTSkip("Production bookRegistry must be the concrete TPPBookRegistry type")
         }
 

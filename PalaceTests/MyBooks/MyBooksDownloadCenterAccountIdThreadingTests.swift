@@ -361,7 +361,7 @@ final class MyBooksDownloadCenterAccountIdThreadingTests: XCTestCase {
         // were empty, the path bypassed the injected manager — the
         // forbidden production-singleton route.
         XCTAssertTrue(manager.userAccountForCalls.contains(accountIdB),
-                      "instance overload must resolve credentials through the INJECTED accountsManager.userAccount(for:), proving no AppContainer.production() path was taken")
+                      "instance overload must resolve credentials through the INJECTED accountsManager.userAccount(for:), proving no production-singleton path was taken")
         XCTAssertFalse(manager.userAccountForCalls.contains("ghost-current"),
                        "instance overload with explicit accountId must NOT read currentAccountId or currentUserAccount — those are the legacy swap-window paths")
     }
