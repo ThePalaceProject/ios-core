@@ -23,7 +23,7 @@ class CarPlayTests: XCTestCase {
         // Arrange & Act
         // Module B: replaced Palace.AudiobookSessionManager.shared with locally-constructed
         // instance via AppContainer. Module D will idiomize.
-        let sessionManager = Palace.AudiobookSessionManager(appContainer: AppContainer.production())
+        let sessionManager = Palace.AudiobookSessionManager(appContainer: makeTestAppContainer())
 
         // Assert - session manager starts with no active book
         XCTAssertNil(sessionManager.currentBook, "Session manager should not have a book initially")
@@ -47,7 +47,7 @@ class CarPlayTests: XCTestCase {
 
     func testCarPlayImageProvider_GeneratesPlaceholder() {
         // Arrange
-        let imageProvider = CarPlayImageProvider(imageLoader: AppContainer.production().imageLoader)
+        let imageProvider = CarPlayImageProvider(imageLoader: makeTestAppContainer().imageLoader)
         let book = TPPBookMocker.snapshotAudiobook()
 
         // Act
@@ -230,13 +230,13 @@ class CarPlayIntegrationTests: XCTestCase {
         XCTAssertNil(bridge.currentBook, "Bridge should have no book initially")
         XCTAssertNil(bridge.currentChapter, "Bridge should have no chapter initially")
         // Image provider must also initialize independently and be a distinct instance from bridge
-        let imageProvider = CarPlayImageProvider(imageLoader: AppContainer.production().imageLoader)
+        let imageProvider = CarPlayImageProvider(imageLoader: makeTestAppContainer().imageLoader)
         XCTAssertTrue(imageProvider !== bridge as AnyObject, "Image provider and bridge must be distinct objects")
     }
 
     func testCarPlay_ImageProvider_CachesBehavior() {
         // Arrange
-        let imageProvider = CarPlayImageProvider(imageLoader: AppContainer.production().imageLoader)
+        let imageProvider = CarPlayImageProvider(imageLoader: makeTestAppContainer().imageLoader)
         let book = TPPBookMocker.snapshotAudiobook()
 
         // Act - Request same book twice
@@ -333,7 +333,7 @@ class CarPlayLibraryRefreshTests: XCTestCase {
     func testCarPlay_LibraryName_CanBeUpdated() {
         // Verify that AccountsManager can provide a current account
         // This is used to update the library name in CarPlay
-        let accountsManager = AppContainer.production().accountsManager
+        let accountsManager = makeTestAppContainer().accountsManager
 
         // In test environment, may or may not have a current account
         // But the manager should be accessible
@@ -350,7 +350,7 @@ class CarPlayLibraryRefreshTests: XCTestCase {
         // hitting it exercises the registry's read path end-to-end —
         // registry construction, account scoping, and the filter — rather
         // than just confirming the singleton was wired up.
-        let registry = AppContainer.production().bookRegistry
+        let registry = makeTestAppContainer().bookRegistry
         let books = registry.myBooks
         XCTAssertNotNil(books, "myBooks must return a non-nil array (possibly empty)")
     }
@@ -434,8 +434,8 @@ class CarPlayNowPlayingTemplateTests: XCTestCase {
     /// Image loading should not depend on Now Playing state.
     func testCarPlayImageProvider_InitializesIndependently() {
         // Arrange & Act
-        let imageProvider = CarPlayImageProvider(imageLoader: AppContainer.production().imageLoader)
-        let imageProvider2 = CarPlayImageProvider(imageLoader: AppContainer.production().imageLoader)
+        let imageProvider = CarPlayImageProvider(imageLoader: makeTestAppContainer().imageLoader)
+        let imageProvider2 = CarPlayImageProvider(imageLoader: makeTestAppContainer().imageLoader)
 
         // Assert - Each instance is independent (not a shared singleton)
         XCTAssertNotNil(imageProvider, "Image provider should initialize without CarPlay connection")
@@ -647,7 +647,7 @@ final class CarPlayAudiobookBridgePresenterMigrationTests: XCTestCase {
     // presenter state in setUp/tearDown is the right shape for this
     // production-callsite-without-DI pattern.
 
-    private var presenter: AudiobookSessionPresenter { AppContainer.production().audiobookSessionPresenter }
+    private var presenter: AudiobookSessionPresenter { AppContainer.production().audiobookSessionPresenter } // MIGRATED-DEFERRED: swarm_47883816 — production() resolution IS the test contract (no DI seam at this callsite)
 
     override func setUp() async throws {
         try await super.setUp()
@@ -683,7 +683,7 @@ final class CarPlayAudiobookBridgePresenterMigrationTests: XCTestCase {
 
     /// Test 8 — `dismissBookOnPhone()` does NOT clear the session.
     func testCarPlayBridge_dismissBookOnPhone_doesNotKillSession() {
-        let session = AppContainer.production().audiobookSession
+        let session = AppContainer.production().audiobookSession // MIGRATED-DEFERRED: swarm_47883816 — production() resolution IS the test contract (no DI seam at this callsite)
 
         // Drive the presenter into an active state via the session's
         // publisher seam — proves the bridge dismiss does NOT touch

@@ -123,7 +123,7 @@ final class ButtonStateTests: XCTestCase {
     }
 
     // MARK: - Downloading Tests
-    // Note: Button behavior depends on TPPUserAccount.sharedAccount().authDefinition
+    // Note: Button behavior depends on TPPUserAccount.sharedAccount().authDefinition // MIGRATED: comment-only reference, no call site
     // In test environment without auth, .remove is used instead of .return
 
     func testDownloadNeededEpub() {
@@ -167,7 +167,7 @@ final class ButtonStateTests: XCTestCase {
     }
 
     // MARK: - Post-Download & Unsupported Tests
-    // Note: Button behavior depends on TPPUserAccount.sharedAccount().authDefinition
+    // Note: Button behavior depends on TPPUserAccount.sharedAccount().authDefinition // MIGRATED: comment-only reference, no call site
     // In test environment without auth, .remove is used instead of .return
 
     func testDownloadSuccessfulEpub() {

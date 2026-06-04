@@ -25,7 +25,7 @@
 import XCTest
 @testable import Palace
 
-final class TPPBookRegistryLargeCorpusTests: XCTestCase {
+class TPPBookRegistryLargeCorpusTests: PalaceWiringTestCase {
 
     private var account: String!
     private var store: BookRegistryStore!
@@ -36,11 +36,11 @@ final class TPPBookRegistryLargeCorpusTests: XCTestCase {
     /// also the in-memory record count we re-read.
     private let corpusCount = 5000
 
-    override func setUp() {
-        super.setUp()
+    override func setUpWithError() throws {
+        try super.setUpWithError()
         account = "test-large-corpus-\(UUID().uuidString)"
         store = BookRegistryStore()
-        accountsManager = AccountsManager()
+        accountsManager = makeFreshAccountsManager()
         sync = BookRegistrySync(
             store: store,
             accountsManager: accountsManager,
@@ -49,7 +49,7 @@ final class TPPBookRegistryLargeCorpusTests: XCTestCase {
         )
     }
 
-    override func tearDown() {
+    override func tearDownWithError() throws {
         if let url = sync?.registryUrl(for: account)?.deletingLastPathComponent() {
             try? FileManager.default.removeItem(at: url)
         }
@@ -57,7 +57,7 @@ final class TPPBookRegistryLargeCorpusTests: XCTestCase {
         store = nil
         sync = nil
         accountsManager = nil
-        super.tearDown()
+        try super.tearDownWithError()
     }
 
     // MARK: - Helpers

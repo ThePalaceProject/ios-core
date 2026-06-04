@@ -222,7 +222,9 @@ final class ChaosFaultInjectionTests: XCTestCase {
     let url = URL(string: "https://chaos.test/annotations")!
 
     let reauth = TPPReauthenticatorMock()
-    let user = TPPUserAccount.sharedAccount()
+    // Factory-minted isolated account — keychain-namespaced under a fresh
+    // 'test-uuid-…' so this chaos scenario can't pollute neighbouring tests.
+    let user = TPPUserAccountTestFactory.makeIsolated()
 
     var plan = ChaosURLProtocol.Plan()
     plan.unauthorizedOnRequest = 2

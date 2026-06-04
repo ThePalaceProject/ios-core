@@ -33,7 +33,7 @@ import PalaceCatalog
 @testable import Palace
 
 @MainActor
-final class BorrowAndDownloadIntegrationTests: XCTestCase {
+class BorrowAndDownloadIntegrationTests: PalaceWiringTestCase {
 
     // MARK: - Real collaborators
 
@@ -50,7 +50,8 @@ final class BorrowAndDownloadIntegrationTests: XCTestCase {
     /// observation, and the real registry for download / return).
     private var operationRegistry: TPPBookRegistryMock!
     private var userAccount: TPPUserAccountMock!
-    private var cancellables: Set<AnyCancellable>!
+    // NOTE: `cancellables` is inherited from PalaceWiringTestCase and drained
+    // automatically on tearDown. Don't shadow it locally.
 
     /// Borrow-operation closure recorders. Driving these from the test
     /// instead of the network mirrors the production seam — BorrowOperation
@@ -72,13 +73,12 @@ final class BorrowAndDownloadIntegrationTests: XCTestCase {
                                              sessionConfiguration: config,
                                              delegateQueue: OperationQueue.main)
 
-        accountsManager = AccountsManager()
+        accountsManager = makeFreshAccountsManager()
         bookRegistry = TPPBookRegistry(accountsManager: accountsManager, imageLoader: AppContainer.production().imageLoader)
         operationRegistry = TPPBookRegistryMock()
         userAccount = TPPUserAccountMock()
         stateManager = DownloadStateManager()
         reachability = MockReachability(initiallyConnected: true)
-        cancellables = []
 
         downloadCenter = MyBooksDownloadCenter(
             bookRegistry: operationRegistry,
@@ -94,7 +94,6 @@ final class BorrowAndDownloadIntegrationTests: XCTestCase {
     override func tearDown() {
         BorrowOperation.clearAllBorrowReauthState()
         HTTPStubURLProtocol.reset()
-        cancellables = nil
         downloadCenter = nil
         reachability = nil
         stateManager = nil

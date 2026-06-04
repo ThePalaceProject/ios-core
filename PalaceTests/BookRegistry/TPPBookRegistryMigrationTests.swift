@@ -25,18 +25,18 @@
 import XCTest
 @testable import Palace
 
-final class TPPBookRegistryMigrationTests: XCTestCase {
+class TPPBookRegistryMigrationTests: PalaceWiringTestCase {
 
     private var account: String!
     private var store: BookRegistryStore!
     private var sync: BookRegistrySync!
     private var accountsManager: AccountsManager!
 
-    override func setUp() {
-        super.setUp()
+    override func setUpWithError() throws {
+        try super.setUpWithError()
         account = "test-migration-\(UUID().uuidString)"
         store = BookRegistryStore()
-        accountsManager = AccountsManager()
+        accountsManager = makeFreshAccountsManager()
         sync = BookRegistrySync(
             store: store,
             accountsManager: accountsManager,
@@ -45,7 +45,7 @@ final class TPPBookRegistryMigrationTests: XCTestCase {
         )
     }
 
-    override func tearDown() {
+    override func tearDownWithError() throws {
         if let url = sync?.registryUrl(for: account)?.deletingLastPathComponent() {
             try? FileManager.default.removeItem(at: url)
         }
@@ -53,7 +53,7 @@ final class TPPBookRegistryMigrationTests: XCTestCase {
         store = nil
         sync = nil
         accountsManager = nil
-        super.tearDown()
+        try super.tearDownWithError()
     }
 
     // MARK: - Helpers

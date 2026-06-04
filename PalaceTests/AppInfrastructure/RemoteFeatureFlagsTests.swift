@@ -118,21 +118,31 @@ final class RemoteFeatureFlagsTests: XCTestCase {
     /// The flag must default OFF in production. Support enables it per-patron
     /// via Firebase Remote Config; if we ever default it ON, the destructive
     /// Reset button ships to every patron unexpectedly.
+    ///
+    /// Uses the DI seam introduced by swarm_47883816 Module D so the
+    /// override-key state lives in a per-test isolated UserDefaults
+    /// suite instead of `UserDefaults.standard`. Reading via a
+    /// purpose-built `RemoteFeatureFlags(defaults:)` proves the
+    /// behavior on the SAME store the test asserts against — the
+    /// previous `.shared` version was racing whatever the rest of the
+    /// suite had left in `.standard`.
     func testIsResetAccountEnabled_defaultsOff_withoutOverrideOrFirebase() {
-        UserDefaults.standard.removeObject(forKey: RemoteFeatureFlags.resetAccountLocalOverrideKey)
-        defer { UserDefaults.standard.removeObject(forKey: RemoteFeatureFlags.resetAccountLocalOverrideKey) }
+        let isolatedDefaults = testUserDefaults()
+        let flags = RemoteFeatureFlags(defaults: isolatedDefaults)
 
-        XCTAssertFalse(RemoteFeatureFlags.shared.isResetAccountEnabled,
+        // Fresh suite — no override key set, no Firebase.
+        XCTAssertFalse(flags.isResetAccountEnabled,
                        "Reset Account button must default OFF when no override and no Firebase remote value")
     }
 
     /// The local UserDefaults override is the per-device QA escape hatch. A
     /// `true` value must enable the flag even when the remote default is OFF.
     func testIsResetAccountEnabled_localOverrideTrue_enablesFlag() {
-        UserDefaults.standard.set(true, forKey: RemoteFeatureFlags.resetAccountLocalOverrideKey)
-        defer { UserDefaults.standard.removeObject(forKey: RemoteFeatureFlags.resetAccountLocalOverrideKey) }
+        let isolatedDefaults = testUserDefaults()
+        isolatedDefaults.set(true, forKey: RemoteFeatureFlags.resetAccountLocalOverrideKey)
+        let flags = RemoteFeatureFlags(defaults: isolatedDefaults)
 
-        XCTAssertTrue(RemoteFeatureFlags.shared.isResetAccountEnabled,
+        XCTAssertTrue(flags.isResetAccountEnabled,
                       "Local override = true must enable the Reset Account button regardless of remote config")
     }
 
@@ -140,10 +150,11 @@ final class RemoteFeatureFlagsTests: XCTestCase {
     /// from forcing the button on for a specific QA device that's been
     /// explicitly opted out.
     func testIsResetAccountEnabled_localOverrideFalse_disablesFlag() {
-        UserDefaults.standard.set(false, forKey: RemoteFeatureFlags.resetAccountLocalOverrideKey)
-        defer { UserDefaults.standard.removeObject(forKey: RemoteFeatureFlags.resetAccountLocalOverrideKey) }
+        let isolatedDefaults = testUserDefaults()
+        isolatedDefaults.set(false, forKey: RemoteFeatureFlags.resetAccountLocalOverrideKey)
+        let flags = RemoteFeatureFlags(defaults: isolatedDefaults)
 
-        XCTAssertFalse(RemoteFeatureFlags.shared.isResetAccountEnabled,
+        XCTAssertFalse(flags.isResetAccountEnabled,
                        "Local override = false must disable the Reset Account button regardless of remote config")
     }
 
