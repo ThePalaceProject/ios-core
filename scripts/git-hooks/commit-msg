@@ -2,15 +2,22 @@
 # commit-msg
 #
 # Purpose:
-#   For commits that touch ≥50 lines of production Swift/Obj-C code, require
-#   the commit body to acknowledge what was deferred or out-of-scope. This
-#   nudges authors to be honest about scope rather than burying loose ends in
-#   a one-line subject. Outside contributors and small commits pass through
-#   unchanged.
+#   1. M1 message-dependent gates — contract-reconciliation and
+#      intent-recorded validate claims in the commit message against the
+#      staged diff. They run HERE (not in pre-commit) because this is the
+#      first hook stage where git provides the real in-progress message
+#      ($1); at pre-commit time COMMIT_EDITMSG still holds the PREVIOUS
+#      commit's message, so reading it there validates stale claims.
+#   2. For commits that touch ≥50 lines of production Swift/Obj-C code,
+#      require the commit body to acknowledge what was deferred or
+#      out-of-scope. This nudges authors to be honest about scope rather
+#      than burying loose ends in a one-line subject. Outside contributors
+#      and small commits pass through unchanged.
 #
 #   If the maintainer's local agent harness is installed
-#   (~/harness/core/hooks/commit-msg-stanza.sh), exec to it — that version
-#   has richer behavior tied to ForgeOS changesets.
+#   (~/harness/core/hooks/commit-msg-stanza.sh), exec to it for step 2 —
+#   that version has richer behavior tied to ForgeOS changesets. The M1
+#   gates run before the exec either way.
 #
 # Install:
 #   git config core.hooksPath scripts/git-hooks
@@ -24,6 +31,54 @@ set -euo pipefail
 MSG_FILE="${1:-}"
 if [[ -z "$MSG_FILE" || ! -f "$MSG_FILE" ]]; then
   exit 0
+fi
+
+# =============================================================================
+# M1 Universal-Rigor Floor — message-dependent gates
+# =============================================================================
+# Same tri-state escalation as pre-commit's diff-only gates; the shared logic
+# lives in m1-rigor-lib.sh. Skipped entirely when nothing is staged (e.g.
+# `--allow-empty`, merge-conflict resolution flows with empty index diffs).
+
+HOOK_DIR_M1="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT_M1="$(cd "$HOOK_DIR_M1/../.." && pwd)"
+
+if [[ -n "$(git diff --cached --name-only --diff-filter=AM 2>/dev/null || true)" ]]; then
+  M1_HOOK_NAME="commit-msg"
+  # shellcheck source=scripts/git-hooks/m1-rigor-lib.sh
+  source "$REPO_ROOT_M1/scripts/git-hooks/m1-rigor-lib.sh"
+  m1_compute_mode
+
+  M1_DIFF=$(mktemp -t m1-diff.XXXX)
+  trap 'rm -f "$M1_DIFF"' EXIT
+  git diff --cached > "$M1_DIFF" 2>/dev/null || true
+
+  # Resolve a matching intent file if one exists. Match on first 2
+  # dash-separated tokens of the commit subject — taken from the REAL
+  # message file git handed us, not COMMIT_EDITMSG.
+  M1_INTENT_FLAG=()
+  M1_SUBJECT=$(grep -v '^#' "$MSG_FILE" | head -1 | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9 ]//g' | awk '{print $1"-"$2}')
+  if [[ -n "$M1_SUBJECT" ]] && [[ -d "$REPO_ROOT_M1/.forgeos/intent" ]]; then
+    M1_INTENT_MATCH=$(find "$REPO_ROOT_M1/.forgeos/intent" -maxdepth 1 -name "*${M1_SUBJECT}*.md" -type f 2>/dev/null | head -1)
+    [[ -n "$M1_INTENT_MATCH" ]] && M1_INTENT_FLAG=(--intent "$M1_INTENT_MATCH")
+  fi
+
+  echo "commit-msg M1: prod-LOC added=$PROD_LOC_ADDED critical=$([[ -n "$STAGED_CRITICAL" ]] && echo yes || echo no) mode=$M1_MODE"
+
+  M1_FAIL=0
+  # check-contract-reconciliation.py needs a claim source (commit msg +
+  # optional intent) — without one it silently passes (architect rev_f1c4ea3c
+  # finding). check-intent-recorded.py needs `--commit-msg` to match the
+  # subject against the intent file's `name:` field. The `[@]+` guard keeps
+  # the empty-array expansion safe under `set -u` on macOS's bash 3.2.
+  if ! run_m1_check "contract_reconciliation" "scripts/check-contract-reconciliation.py" --commit-msg "$MSG_FILE" ${M1_INTENT_FLAG[@]+"${M1_INTENT_FLAG[@]}"}; then
+    M1_FAIL=$((M1_FAIL + 1))
+  fi
+  if ! run_m1_check "intent_recorded" "scripts/check-intent-recorded.py" --commit-msg "$MSG_FILE"; then
+    M1_FAIL=$((M1_FAIL + 1))
+  fi
+
+  m1_enforce "$M1_FAIL"
 fi
 
 HARNESS_HOOK="$HOME/harness/core/hooks/commit-msg-stanza.sh"

@@ -54,148 +54,50 @@ EOF
 fi
 
 # =============================================================================
-# M1 Universal-Rigor Floor (swarm_M1_83be56fc) — tri-state escalation
+# M1 Universal-Rigor Floor (swarm_M1_83be56fc) — diff-only gates
 # =============================================================================
 #
-# Applies the 4 universal-rigor scripts against the STAGED diff and escalates
-# block/warn behavior by risk:
+# Runs the DIFF-ONLY universal-rigor scripts against the STAGED diff with
+# tri-state block/warn escalation (see m1-rigor-lib.sh for the mode table).
 #
-#   <10 added prod-LOC under Palace/                → warn-only
-#   ≥10 prod-LOC AND no critical-path file          → block on
-#                                                     contract-reconciliation /
-#                                                     blast-radius / intent FAIL
-#   ANY critical-path prefix file in the stage      → ALWAYS-BLOCK on any FAIL
+# The message-dependent gates (contract-reconciliation, intent-recorded) run
+# in the commit-msg hook, NOT here: pre-commit fires before git writes the
+# new commit message, so COMMIT_EDITMSG still holds the PREVIOUS commit's
+# message at this stage. An earlier revision of this hook read it anyway and
+# validated stale claims — a leftover "removes X" phrase from the last commit
+# blocked clean commits, and claims in the commit actually being authored
+# were never checked. commit-msg receives the real message file as $1.
 #
 # Bypass: `git commit --no-verify` (per project policy — emergency-only,
 # rationale required in the commit body).
-#
-# Per the swarm contract, the scripts live at scripts/check-*.py and read a
-# unified diff via stdin or `--diff`. We pass the staged diff captured from
-# `git diff --cached`. The intent / commit-msg fields are optional (the intent
-# script's threshold-loc gate handles non-applicable diffs by passing).
-
-CRITICAL_PATH_REGEX='^(Palace/SignInLogic/|Palace/Packages/PalaceAuth/|Palace/Audiobooks/|Palace/MyBooks/(Download|Borrow|BookReturn)|Palace/Network/TPPNetworkExecutor\.swift|Palace/Network/TPPNetworkResponder\.swift|Palace/Migrations/)'
 
 # Resolve the script directory (the hook lives in scripts/git-hooks/) so the
 # floor still works when the hook is invoked via core.hooksPath or symlink.
 HOOK_DIR_M1="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT_M1="$(cd "$HOOK_DIR_M1/../.." && pwd)"
 
-# Added prod-LOC under Palace/ in the staged diff (excludes deletions and
-# Tests/). `|| true` guards against grep's nonzero-on-no-match exit under
-# `set -e` (the pipeline ran fine but grep returned 1).
-PROD_LOC_ADDED=$( { git diff --cached --numstat -- 'Palace/**/*.swift' 2>/dev/null || true; } \
-  | { grep -v '/Tests/' || true; } \
-  | awk 'BEGIN{s=0} $1 ~ /^[0-9]+$/ {s+=$1} END{print s+0}')
-
-STAGED_CRITICAL=$(echo "$STAGED" | grep -E "$CRITICAL_PATH_REGEX" || true)
+M1_HOOK_NAME="pre-commit"
+# shellcheck source=scripts/git-hooks/m1-rigor-lib.sh
+source "$REPO_ROOT_M1/scripts/git-hooks/m1-rigor-lib.sh"
+m1_compute_mode
 
 # Capture the staged diff once and feed it to each script via a temp file
-# (stdin-only pipelines complicate the warn-vs-block decision because we run
-# 4 scripts; one tmpfile is simpler and lets each script read independently).
+# (one tmpfile is simpler than stdin pipelines and lets each script read
+# independently).
 M1_DIFF=$(mktemp -t m1-diff.XXXX)
-M1_MSG=$(mktemp -t m1-msg.XXXX)
-trap 'rm -f "$M1_DIFF" "$M1_MSG"' EXIT
+trap 'rm -f "$M1_DIFF"' EXIT
 git diff --cached > "$M1_DIFF" 2>/dev/null || true
-
-# Capture the in-progress commit message as the claim source for
-# check-contract-reconciliation.py. Architect rev_f1c4ea3c caught the wiring gap
-# where the contract gate ran without a claim source and silently passed regardless
-# of what the commit body claimed. Pre-commit context: `.git/COMMIT_EDITMSG` holds
-# the message currently being authored; fall back to HEAD's body if running outside
-# the normal commit flow (e.g. `--amend` mid-edit, manual invocation).
-if [[ -f "$REPO_ROOT_M1/.git/COMMIT_EDITMSG" ]]; then
-  cp "$REPO_ROOT_M1/.git/COMMIT_EDITMSG" "$M1_MSG"
-else
-  git -C "$REPO_ROOT_M1" log -1 --format=%B HEAD > "$M1_MSG" 2>/dev/null || echo "" > "$M1_MSG"
-fi
-
-# Resolve a matching intent file if one exists. Match on first 2 dash-separated
-# tokens of the commit subject.
-M1_INTENT_FLAG=""
-M1_SUBJECT=$(head -1 "$M1_MSG" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9 ]//g' | awk '{print $1"-"$2}')
-if [[ -n "$M1_SUBJECT" ]] && [[ -d "$REPO_ROOT_M1/.forgeos/intent" ]]; then
-  M1_INTENT_MATCH=$(find "$REPO_ROOT_M1/.forgeos/intent" -maxdepth 1 -name "*${M1_SUBJECT}*.md" -type f 2>/dev/null | head -1)
-  [[ -n "$M1_INTENT_MATCH" ]] && M1_INTENT_FLAG="--intent $M1_INTENT_MATCH"
-fi
-
-# Run all 4 scripts and bind exit codes individually.
-M1_FAIL=0
-run_m1_check() {
-  local name="$1" script="$2"
-  local out exit_code
-  if [[ ! -f "$REPO_ROOT_M1/$script" ]]; then
-    echo "  pre-commit M1: $name — script missing, skipping" >&2
-    return 0
-  fi
-  # check-contract-reconciliation.py needs a claim source (commit msg + optional
-  # intent) — without one it silently passes (architect rev_f1c4ea3c finding).
-  # All other scripts ignore extra flags.
-  if [[ "$name" = "contract_reconciliation" ]]; then
-    out=$(python3 "$REPO_ROOT_M1/$script" --diff "$M1_DIFF" --commit-msg "$M1_MSG" $M1_INTENT_FLAG --quiet 2>&1) || exit_code=$?
-  else
-    out=$(python3 "$REPO_ROOT_M1/$script" --diff "$M1_DIFF" --quiet 2>&1) || exit_code=$?
-  fi
-  exit_code=${exit_code:-0}
-  if [[ "$exit_code" -ne 0 ]]; then
-    echo "  pre-commit M1: $name FAIL — $(echo "$out" | head -3 | tr '\n' ' ')" >&2
-    return 1
-  fi
-  return 0
-}
-
-# Tri-state decision: critical → always-block on any FAIL; ≥10 LOC → block on
-# any FAIL; <10 LOC → warn-only (print, but never block).
-if [[ -n "$STAGED_CRITICAL" ]]; then
-  M1_MODE="block-always"
-elif [[ "$PROD_LOC_ADDED" -ge 10 ]]; then
-  M1_MODE="block-on-fail"
-else
-  M1_MODE="warn-only"
-fi
 
 echo "pre-commit M1: prod-LOC added=$PROD_LOC_ADDED critical=$([[ -n "$STAGED_CRITICAL" ]] && echo yes || echo no) mode=$M1_MODE"
 
-if ! run_m1_check "contract_reconciliation" "scripts/check-contract-reconciliation.py"; then
-  M1_FAIL=$((M1_FAIL + 1))
-fi
+M1_FAIL=0
 if ! run_m1_check "blast_radius" "scripts/check-blast-radius.py"; then
   M1_FAIL=$((M1_FAIL + 1))
 fi
 # Adjacency is warn-only at the hook layer too.
 run_m1_check "adjacency_staleness" "scripts/check-adjacency-staleness.py" || true
-if ! run_m1_check "intent_recorded" "scripts/check-intent-recorded.py"; then
-  M1_FAIL=$((M1_FAIL + 1))
-fi
 
-if [[ "$M1_FAIL" -gt 0 ]]; then
-  case "$M1_MODE" in
-    block-always)
-      cat >&2 <<EOF
-
-ERROR: pre-commit M1 floor — staged diff touches critical-path files; $M1_FAIL universal-rigor check(s) FAILED.
-
-Critical-path file(s) staged:
-$(echo "$STAGED_CRITICAL" | sed 's/^/  - /')
-
-Fix the failures above, or — for an emergency commit — use \`git commit --no-verify\` and include a rationale stanza in the commit body.
-EOF
-      exit 1
-      ;;
-    block-on-fail)
-      cat >&2 <<EOF
-
-ERROR: pre-commit M1 floor — $PROD_LOC_ADDED prod-LOC staged (≥10); $M1_FAIL universal-rigor check(s) FAILED.
-
-Fix the failures above, or — for an emergency commit — use \`git commit --no-verify\` and include a rationale stanza in the commit body.
-EOF
-      exit 1
-      ;;
-    warn-only)
-      echo "  pre-commit M1: $M1_FAIL check(s) failed (warn-only — <10 prod-LOC, non-critical)" >&2
-      ;;
-  esac
-fi
+m1_enforce "$M1_FAIL"
 
 # Friendly nudge — non-blocking. Only print if anything is staged at all.
 echo "pre-commit: ok. Tip — run 'scripts/verify-pr.sh --quick' before pushing."

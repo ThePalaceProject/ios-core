@@ -63,6 +63,10 @@ cd "$REPO_ROOT"
 QUICK=false
 REPORT_FILE=""
 SIMDRIVE=false
+# Default for --diff-baseline; without this the `elif [ "$DIFF_BASELINE" ...`
+# branch dies with "unbound variable" under `set -u` whenever the unit-test
+# pass condition is false.
+DIFF_BASELINE=false
 # Mutation policy tri-state:
 #   default        — critical paths strict, others advisory
 #   enforce_all    — every changed file strict (--enforce-mutations)
