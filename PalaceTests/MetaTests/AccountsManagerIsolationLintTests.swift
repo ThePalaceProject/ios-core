@@ -69,6 +69,10 @@ final class AccountsManagerIsolationLintTests: XCTestCase {
         // PalaceWiringTestCase does. Owned by sibling swarm contract.
         "Support/TestAppContainerFactory.swift",
         "Support/TestAppContainerFactoryTests.swift",
+        // Module E's TearDownRequired lint contains "AccountsManager("
+        // as a polluter-substring fixture; it cannot avoid the literal
+        // without breaking its own scanner. Self-referential exemption.
+        "MetaTests/TearDownRequiredLintTests.swift",
     ]
 
     /// True if `url` lives under PalaceTests/Mocks/ (recursive).

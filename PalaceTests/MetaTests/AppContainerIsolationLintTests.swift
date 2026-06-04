@@ -97,6 +97,10 @@ final class AppContainerIsolationLintTests: XCTestCase {
     // Lint test source itself — references the banned pattern in
     // string literals for detection. Banning it would be self-defeating.
     "MetaTests/AppContainerIsolationLintTests.swift",
+    // Sibling meta-lint added by E (TearDown rule) — contains polluter
+    // substrings as test fixtures for its own scanner. Self-referential
+    // exemption mirrors the rule above.
+    "MetaTests/TearDownRequiredLintTests.swift",
     // C-owned sibling factory tests — until C's package commits, the
     // file references production() in its TPPUserAccount cache-isolation
     // assertions. Folded into whitelist by orchestrator E post-C.
