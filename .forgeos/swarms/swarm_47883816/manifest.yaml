@@ -1,7 +1,7 @@
 swarm_id: swarm_47883816
 task: "test pollution sweep — eliminate cross-test state leaks across PalaceTests/"
 created_at: 2026-06-04
-status: triaged
+status: complete
 base_ref: origin/develop
 branch: swarm/swarm_47883816-scaffold
 project_id: proj_87884c17
@@ -182,3 +182,6 @@ modules:
       Classify as (i) utility drainer, (ii) test-only awaited, (iii)
       production fire-and-forget. Default: audit doc only.
     depends_on: []
+
+status_updates:
+  - {status: complete, at: 2026-06-04, outcome: outcome.md, reviews: [rev_3d7c432d, rev_5f8e37a9, rev_1dfc9e56]}
