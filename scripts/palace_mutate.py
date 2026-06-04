@@ -266,13 +266,21 @@ def run_targeted_tests(test_class_paths: list[str], timeout: int = _DEFAULT_TARG
     only_testing_args: list[str] = []
     for path in test_class_paths:
         only_testing_args.extend(["-only-testing:" + path])
+    # Parallel swarm agents need to point xcodebuild at a per-worktree DerivedData
+    # directory so they don't fight over the default `~/Library/Developer/Xcode/DerivedData/Palace-*`
+    # build database. PALACE_MUTATE_DERIVED_DATA_PATH lets an outer harness pin a
+    # private DD; unset = use default (single-agent dev flow).
+    derived_data_args: list[str] = []
+    dd_path = os.environ.get("PALACE_MUTATE_DERIVED_DATA_PATH")
+    if dd_path:
+        derived_data_args = ["-derivedDataPath", dd_path]
     cmd = [
         "xcodebuild",
         "-project", "Palace.xcodeproj",
         "-scheme", "Palace",
         "-destination", f"platform=iOS Simulator,id={SIM_ID}",
         "test",
-    ] + only_testing_args
+    ] + derived_data_args + only_testing_args
     try:
         result = subprocess.run(
             cmd,

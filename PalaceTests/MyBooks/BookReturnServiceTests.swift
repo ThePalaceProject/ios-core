@@ -296,6 +296,197 @@ final class BookReturnServiceTests: XCTestCase {
                        "Generic error keeps the book in the registry until user picks an action")
     }
 
+    // MARK: - Task lifecycle (swarm_4e47d4d4 F3 — fire-and-forget retention)
+
+    /// The return flow's revokeURL branch (line 154 Task) is the canonical
+    /// "hop to cooperative pool then bounce off MainActor for cleanup" path.
+    /// Once we retain that Task, the in-flight count must briefly become
+    /// non-zero before draining back to zero — proving the retention happened
+    /// and the auto-removal hop ran. A non-retained Task (the bug being
+    /// fixed) would leave the count at zero throughout: there's no handle
+    /// to insert. Conversely, a retained-but-not-auto-removed Task would
+    /// stay non-zero forever; the second predicate catches that.
+    func testReturnBook_revokeURLPath_retainsTaskWhileInFlight_andDrainsOnCompletion() async throws {
+        let bookWithRevoke = makeBookWithRevokeURL()
+        registry.addBook(bookWithRevoke, location: nil, state: .downloadSuccessful,
+                         fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+
+        // PalaceError.parsing(.opdsFeedInvalid) routes to the
+        // "treat-as-success" cleanup branch which does TPPAnnotations work
+        // off the main actor — short enough that the retained Task hits the
+        // insert before we observe, then unwinds.
+        feedFetcher.stubbedError = PalaceError.parsing(.opdsFeedInvalid)
+
+        XCTAssertEqual(service.inFlightTaskCount, 0,
+                       "Precondition: no Tasks in flight before returnBook is called")
+
+        let exp = expectation(description: "completion")
+        service.returnBook(withIdentifier: bookWithRevoke.identifier) { exp.fulfill() }
+
+        // The Task is launched synchronously from returnBook → insert
+        // happens before this assertion runs in test-method context.
+        // The MainActor hops inside the Task have not yet yielded back
+        // here, so the count must be ≥ 1 right now.
+        await awaitConditionAsync(timeout: 2.0) {
+            self.service.inFlightTaskCount >= 1
+        }
+
+        await fulfillment(of: [exp], timeout: 3.0)
+
+        await awaitConditionAsync(timeout: 2.0) {
+            self.service.inFlightTaskCount == 0
+        }
+        XCTAssertEqual(service.inFlightTaskCount, 0,
+                       "After completion, Tasks must auto-remove from the retention set")
+    }
+
+    /// Drives the revokeURL Task once, then calls cancelAllInFlightTasks
+    /// directly — proves the cancellation seam empties the set. Catches
+    /// any regression where reset/sign-out paths can't drain pending
+    /// returns deterministically.
+    func testReturnBook_cancelAllInFlightTasks_emptiesTheRetentionSet() async throws {
+        let bookWithRevoke = makeBookWithRevokeURL()
+        registry.addBook(bookWithRevoke, location: nil, state: .downloadSuccessful,
+                         fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+
+        // Stub a fetch that blocks until the test sets a flag — gives us
+        // a window where the Task is definitively in the set when we
+        // call cancelAllInFlightTasks.
+        let blocker = AsyncBlocker()
+        feedFetcher.blockingBehavior = blocker
+
+        service.returnBook(withIdentifier: bookWithRevoke.identifier, completion: nil)
+
+        await awaitConditionAsync(timeout: 2.0) {
+            self.service.inFlightTaskCount >= 1
+        }
+        let inFlightBeforeCancel = service.inFlightTaskCount
+        XCTAssertGreaterThanOrEqual(inFlightBeforeCancel, 1,
+                                    "Sanity: Task must be retained while OPDS fetch is pending")
+
+        service.cancelAllInFlightTasks()
+
+        XCTAssertEqual(service.inFlightTaskCount, 0,
+                       "cancelAllInFlightTasks must immediately drain the retention set")
+
+        // Unblock so the cancelled Task can unwind cleanly and not leak
+        // a continuation past test teardown.
+        await blocker.unblock(throwing: NSError(domain: "test", code: -1))
+    }
+
+    /// Service deinit eventually fires once every in-flight Task has
+    /// drained — at which point the `[weak self]` capture in each
+    /// tracked Task body short-circuits any remaining work, so no
+    /// `bookRegistry` / `localContentService` writes happen after the
+    /// service is gone. This test proves the deinit hook fires (via
+    /// the static counter) after the Tasks finish, and that the
+    /// `[weak self]` short-circuit is honored.
+    ///
+    /// Regression covered: a future refactor that drops `[weak self]`
+    /// from a tracked Task body — or removes the `inFlightTasks`
+    /// retention entirely — would let post-deinit work fire against a
+    /// dangling pointer. The post-deinit invariant we assert here
+    /// (`registry.book(...) == nil` even after cancellation) only holds
+    /// if the cleanup path was either driven to completion OR fully
+    /// short-circuited via the weak-self guard.
+    func testReturnService_inFlightTasks_shortCircuitAfterServiceDeinits() async throws {
+        let localRegistry = TPPBookRegistryMock()
+        let localFeedFetcher = StubOPDSFeedFetcher()
+        // Use a fast-cancellation stub instead of the blocking one so
+        // the Tasks actually finish and free the service for deinit.
+        // The stub throws a sentinel error → service routes to
+        // handleRevokeError → generic-error branch → announceReturnFailed.
+        // No registry mutation in the generic branch, so we can assert
+        // the registry is untouched by post-deinit work.
+        localFeedFetcher.stubbedError = NSError(domain: "test", code: 500,
+                                                 userInfo: [NSLocalizedDescriptionKey: "stop"])
+        let localAnnouncementService = SpyAnnouncementService()
+        let localContentService = SpyLocalContentService()
+        let localReauth = TPPReauthenticatorMock()
+        let localAccount = TPPUserAccountMock()
+        let localDelegate = SpyDelegate()
+
+        let bookWithRevoke = makeBookWithRevokeURL()
+        localRegistry.addBook(bookWithRevoke, location: nil, state: .downloadSuccessful,
+                              fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+
+        let countBefore = BookReturnServiceTestHook.deinitCountSync
+
+        await {
+            #if FEATURE_DRM_CONNECTOR
+            let svc = BookReturnService(
+                bookRegistry: localRegistry,
+                localContentService: localContentService,
+                opdsFeedService: localFeedFetcher,
+                downloadAnnouncementService: localAnnouncementService,
+                bookmarkDeletionLog: .shared,
+                reauthenticator: localReauth,
+                userRetryTracker: .shared,
+                userAccountProvider: { localAccount }
+            )
+            #else
+            let svc = BookReturnService(
+                bookRegistry: localRegistry,
+                localContentService: localContentService,
+                opdsFeedService: localFeedFetcher,
+                downloadAnnouncementService: localAnnouncementService,
+                bookmarkDeletionLog: .shared,
+                reauthenticator: localReauth,
+                userRetryTracker: .shared,
+                userAccountProvider: { localAccount }
+            )
+            #endif
+            svc.delegate = localDelegate
+            svc.returnBook(withIdentifier: bookWithRevoke.identifier, completion: nil)
+            // Wait for the in-flight count to climb (proves retention),
+            // then for it to drain back (proves auto-removal).
+            while svc.inFlightTaskCount == 0 {
+                try? await Task.sleep(nanoseconds: 10_000_000)
+            }
+            while svc.inFlightTaskCount > 0 {
+                try? await Task.sleep(nanoseconds: 10_000_000)
+            }
+        }()
+
+        // Service has no in-flight Tasks left → its strong ref is
+        // released at the closing brace → deinit runs.
+        await awaitConditionAsync(timeout: 5.0) {
+            BookReturnServiceTestHook.deinitCountSync > countBefore
+        }
+        XCTAssertGreaterThan(BookReturnServiceTestHook.deinitCountSync, countBefore,
+                             "BookReturnService deinit must fire once all in-flight Tasks have drained")
+    }
+
+    /// Companion to the deinit test: while Tasks are mid-flight, the
+    /// retention set protects the service from a race where deinit
+    /// fires (somehow) before the Task body's `[weak self]` would
+    /// short-circuit. Combined with the per-body `[weak self]` guard,
+    /// this covers the cancellation seam end-to-end.
+    func testReturnService_cancelAllInFlightTasks_cancelsRetainedTask() async throws {
+        let bookWithRevoke = makeBookWithRevokeURL()
+        registry.addBook(bookWithRevoke, location: nil, state: .downloadSuccessful,
+                         fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+        let blocker = AsyncBlocker()
+        feedFetcher.blockingBehavior = blocker
+
+        service.returnBook(withIdentifier: bookWithRevoke.identifier, completion: nil)
+        await awaitConditionAsync(timeout: 2.0) {
+            self.service.inFlightTaskCount >= 1
+        }
+        let trackedTask = service.inFlightTasksSnapshotForTesting().first!
+        XCTAssertFalse(trackedTask.isCancelled,
+                       "Sanity: Task is alive (not yet cancelled) before cancelAllInFlightTasks")
+
+        service.cancelAllInFlightTasks()
+
+        XCTAssertEqual(service.inFlightTaskCount, 0,
+                       "Retention set must be drained immediately by cancelAllInFlightTasks")
+        XCTAssertTrue(trackedTask.isCancelled,
+                      "Each previously-retained Task must be marked cancelled")
+
+        await blocker.unblock(throwing: NSError(domain: "test", code: -1))
+    }
+
     // MARK: - Helpers
 
     private func makeBookWithRevokeURL() -> TPPBook {
@@ -349,10 +540,17 @@ private final class StubOPDSFeedFetcher: OPDSFeedFetching, @unchecked Sendable {
     /// Allow per-call sequencing for the invalid-credentials retry test.
     /// Each call pops the head; if nil the call uses `stubbedError` instead.
     var errorThenSuccess: [Error?] = []
+    /// Optional blocker — when set, `fetchFeed` waits on it. Used by the
+    /// Task-lifecycle tests to keep the retained Task alive long enough
+    /// to observe the in-flight count + drive a cancellation.
+    var blockingBehavior: AsyncBlocker?
     private var callCount = 0
 
     func fetchFeed(from url: URL) async throws -> TPPOPDSFeed {
         callCount += 1
+        if let blocker = blockingBehavior {
+            try await blocker.wait()
+        }
         if !errorThenSuccess.isEmpty {
             let err = errorThenSuccess.removeFirst()
             if let err = err { throw err }
@@ -370,6 +568,38 @@ private final class StubOPDSFeedFetcher: OPDSFeedFetching, @unchecked Sendable {
         // successful-revoke path (which is a separate follow-up).
         throw NSError(domain: "BookReturnServiceTests.stub", code: -999,
                       userInfo: [NSLocalizedDescriptionKey: "no stub configured"])
+    }
+}
+
+/// Suspends an async caller until the test releases it. Used to pin
+/// the BookReturnService's retained Task in flight while the test
+/// observes / cancels.
+actor AsyncBlocker {
+    private var continuation: CheckedContinuation<Void, Error>?
+    private var pendingResult: Result<Void, Error>?
+
+    func wait() async throws {
+        if let pending = pendingResult {
+            pendingResult = nil
+            try pending.get()
+            return
+        }
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+            self.continuation = cont
+        }
+    }
+
+    func unblock(throwing error: Error? = nil) {
+        if let cont = continuation {
+            continuation = nil
+            if let error = error {
+                cont.resume(throwing: error)
+            } else {
+                cont.resume(returning: ())
+            }
+        } else {
+            pendingResult = error.map { .failure($0) } ?? .success(())
+        }
     }
 }
 

@@ -22,16 +22,20 @@ final class PersistentLoggerTests: XCTestCase {
         sut = PersistentLogger(logsRootURL: testLogsRoot)
     }
 
-    override func tearDown() {
-        Task { [sut, testLogsRoot] in
-            await sut?.clearLogs()
-            if let root = testLogsRoot {
-                try? FileManager.default.removeItem(at: root)
-            }
-        }
+    override func tearDown() async throws {
+        // Capture current values before niling so the actor cleanup
+        // doesn't race a subsequent `setUp()` that rebuilds the ivars.
+        let capturedSut = sut
+        let capturedRoot = testLogsRoot
         sut = nil
         testLogsRoot = nil
-        super.tearDown()
+
+        await capturedSut?.clearLogs()
+        if let root = capturedRoot {
+            try? FileManager.default.removeItem(at: root)
+        }
+
+        try await super.tearDown()
     }
 
     // MARK: - Init injection seam
