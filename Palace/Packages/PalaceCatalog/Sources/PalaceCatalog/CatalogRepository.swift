@@ -37,6 +37,13 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
     /// `nil` is treated as the "anonymous / pre-account" scope.
     private let accountIDProvider: () -> String?
 
+    /// `UserDefaults` backing store for the `lastAppLaunchKey` heuristic
+    /// (drives `needsBackgroundRefresh` and the 7-day URLCache wipe).
+    /// Production callers use `.standard`; tests inject a per-suite
+    /// `UserDefaults(suiteName:)` so the last-launch timestamp cannot
+    /// leak across tests. There is NO fallback once injected.
+    private let defaults: UserDefaults
+
     /// Dedicated cache for format entry points, keyed by groups-feed URL.
     /// Pre-warmed by loadTopLevelCatalog so search can display the format picker immediately
     /// without an extra network round-trip when the user first opens search.
@@ -66,10 +73,12 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
         now().timeIntervalSince(entry.timestamp) > 86400
     }
 
-    public init(api: CatalogAPI) {
+    // PUBLIC_INTENT: defaults: arg added by swarm_cd181acd D-cleanup to inject UserDefaults for per-test isolation. Default `.standard` preserves all production callers.
+    public init(api: CatalogAPI, defaults: UserDefaults = .standard) {
         self.api = api
         self.now = Date.init
         self.accountIDProvider = { nil }
+        self.defaults = defaults
         self.checkStaleCacheStatus()
         self.subscribeToMemoryWarning()
     }
@@ -78,10 +87,12 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
     /// account/library UUID. Pass a closure rather than a snapshot so that
     /// the repository sees the *current* account each call — the value
     /// changes when the user switches libraries.
-    public init(api: CatalogAPI, accountID: @escaping () -> String?) {
+    // PUBLIC_INTENT: defaults: arg added by swarm_cd181acd D-cleanup; same rationale as the no-accountID overload above.
+    public init(api: CatalogAPI, accountID: @escaping () -> String?, defaults: UserDefaults = .standard) {
         self.api = api
         self.now = Date.init
         self.accountIDProvider = accountID
+        self.defaults = defaults
         self.checkStaleCacheStatus()
         self.subscribeToMemoryWarning()
     }
@@ -90,10 +101,12 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
     /// should use `init(api:)` which defaults `now` to `Date.init`. This overload
     /// is `public` only to be reachable from `PalaceTests` (which imports
     /// `PalaceCatalog` without `@testable`).
-    public init(api: CatalogAPI, now: @escaping () -> Date) {
+    // PUBLIC_INTENT: defaults: arg added by swarm_cd181acd D-cleanup; same rationale. Test-only initializer reachable from PalaceTests without @testable.
+    public init(api: CatalogAPI, now: @escaping () -> Date, defaults: UserDefaults = .standard) {
         self.api = api
         self.now = now
         self.accountIDProvider = { nil }
+        self.defaults = defaults
         self.checkStaleCacheStatus()
         self.subscribeToMemoryWarning()
     }
@@ -101,10 +114,12 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
     /// Test-only initializer that injects both a clock and an account-ID
     /// provider. Used by cache-isolation tests to simulate library switches
     /// deterministically.
-    public init(api: CatalogAPI, accountID: @escaping () -> String?, now: @escaping () -> Date) {
+    // PUBLIC_INTENT: defaults: arg added by swarm_cd181acd D-cleanup; same rationale. Test-only initializer for cache-isolation tests.
+    public init(api: CatalogAPI, accountID: @escaping () -> String?, now: @escaping () -> Date, defaults: UserDefaults = .standard) {
         self.api = api
         self.now = now
         self.accountIDProvider = accountID
+        self.defaults = defaults
         self.checkStaleCacheStatus()
         self.subscribeToMemoryWarning()
     }
@@ -150,7 +165,7 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
     /// Check if cache is stale - clear URLCache but keep memory cache for stale-while-revalidate
     private func checkStaleCacheStatus() {
         let currentDate = now()
-        let lastLaunch = UserDefaults.standard.object(forKey: Self.lastAppLaunchKey) as? Date ?? .distantPast
+        let lastLaunch = defaults.object(forKey: Self.lastAppLaunchKey) as? Date ?? .distantPast
         let daysSinceLastLaunch = Calendar.current.dateComponents([.day], from: lastLaunch, to: currentDate).day ?? 0
 
         if daysSinceLastLaunch >= 7 {
@@ -163,7 +178,7 @@ public final class CatalogRepository: CatalogRepositoryProtocol {
             needsBackgroundRefresh = true
         }
 
-        UserDefaults.standard.set(currentDate, forKey: Self.lastAppLaunchKey)
+        defaults.set(currentDate, forKey: Self.lastAppLaunchKey)
     }
 
     public func loadTopLevelCatalog(at url: URL) async throws -> CatalogFeed? {

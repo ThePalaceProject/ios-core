@@ -29,21 +29,14 @@ final class UserDefaultsIsolationLintTests: XCTestCase {
         // clear its own suite.
         "Support/XCTestCase+testUserDefaults.swift",
 
-        // Files where the test owns the UserDefaults state end-to-end
-        // BUT the production class under test still reads
-        // `UserDefaults.standard` directly — these are the
-        // documented gaps tracked by `D-deferred-production-DI.md`.
-        // Migrating them requires adding DI to production classes that
-        // are out of D's scope (per contract anti-claim). Listed here
-        // so the lint stays accurate; STRIP when production gets DI.
-        "Accounts/AccountDetailsURLTests.swift",
-        "Accounts/AccountsManagerStateMachineWiringTests.swift",
-        "Accounts/AccountsManagerTests.swift",
-        "Bookmarks/TPPBookmarkDeletionLogTests.swift",
-        "CatalogDomain/CatalogCacheKeyAndIsolationTests.swift",
-        "CatalogDomain/CatalogRepositoryStaleWhileRevalidateTests.swift",
-        "CoverageGapTests.swift",
-        "SignInLogic/ForceResetTests.swift",
+        // swarm_cd181acd D-cleanup landed DI seams on AccountDetails,
+        // AccountsManager, TPPBookmarkDeletionLog, CatalogRepository,
+        // and TPPSignInBusinessLogic+ForceReset; the eight previously
+        // deferred test files now use `testUserDefaults()` and have
+        // been removed from this whitelist. Future test files that
+        // reach into `.standard` will trip the warn-only lint and the
+        // author can either migrate (the seam exists now) or add a
+        // justified entry here.
 
         // The lint test itself references the string literally in
         // assertion bodies — that's a self-reference, not a violation.

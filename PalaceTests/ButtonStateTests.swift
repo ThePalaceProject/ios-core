@@ -11,6 +11,10 @@ import XCTest
 
 final class ButtonStateTests: XCTestCase {
 
+    override func tearDown() {
+        super.tearDown()
+    }
+
     private var testAudiobook: TPPBook {
         TPPBook(dictionary: [
                     "acquisitions": [TPPFake.genericAudiobookAcquisition.dictionaryRepresentation()],

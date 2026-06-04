@@ -10,6 +10,10 @@ import XCTest
 
 final class AccountSwitchCleanupTests: XCTestCase {
 
+    override func tearDown() {
+        super.tearDown()
+    }
+
     // MARK: - cancelNonEssentialTasks
 
     func testCancelNonEssentialTasks_WithNoActiveTasks_ExecutorRemainsUsable() {

@@ -10,6 +10,10 @@ import XCTest
 
 final class ErrorLogExporterTests: XCTestCase {
 
+    override func tearDown() {
+        super.tearDown()
+    }
+
     // MARK: - ErrorLogData Tests
 
     func testErrorLogData_initializesWithAllFields() {

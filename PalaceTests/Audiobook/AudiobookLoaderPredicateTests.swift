@@ -24,6 +24,10 @@ import XCTest
 
 final class AudiobookLoaderPredicateTests: XCTestCase {
 
+    override func tearDown() {
+        super.tearDown()
+    }
+
     // MARK: - hasRefreshableCredentials
 
     private let validTokenURL = URL(string: "https://library.test/token")!

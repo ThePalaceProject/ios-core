@@ -8,6 +8,10 @@ import SwiftUI
 /// reaching for the legacy singletons.
 final class AppContainerImageLoaderInjectionTests: XCTestCase {
 
+    override func tearDown() {
+        super.tearDown()
+    }
+
     // MARK: - Helpers
 
     private func makeProductionLikeContainer(imageLoader: ImageLoading) -> AppContainer {

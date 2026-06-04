@@ -28,6 +28,10 @@ import XCTest
 @MainActor
 final class TestAppContainerFactoryTests: XCTestCase {
 
+  override func tearDown() {
+    super.tearDown()
+  }
+
   // MARK: - Behaviour 1: fresh instance per call
 
   /// Two consecutive `makeTestAppContainer()` calls MUST hand back containers

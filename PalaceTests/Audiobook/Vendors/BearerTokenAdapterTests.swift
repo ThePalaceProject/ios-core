@@ -27,6 +27,10 @@ import XCTest
 @MainActor
 final class BearerTokenAdapterTests: XCTestCase {
 
+    override func tearDown() {
+        super.tearDown()
+    }
+
     // MARK: - Stubs
 
     private final class StubNetwork: AudiobookManifestNetworkFetching {

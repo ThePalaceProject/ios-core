@@ -23,13 +23,16 @@ final class TPPBookmarkDeletionLogTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        UserDefaults.standard.removeObject(forKey: "TPPBookmarkDeletionLog")
-        deletionLog = TPPBookmarkDeletionLog.shared
+        // swarm_cd181acd D-cleanup: construct a fresh TPPBookmarkDeletionLog
+        // backed by a per-test UserDefaults suite (instead of mutating the
+        // `.shared` singleton's `.standard` backing store). The injected
+        // suite is wiped by `SingletonResetRegistry` when the test finishes.
+        deletionLog = TPPBookmarkDeletionLog(defaults: testUserDefaults())
     }
 
     override func tearDown() {
         deletionLog.clearAllDeletions(forBook: testBookId)
-        UserDefaults.standard.removeObject(forKey: "TPPBookmarkDeletionLog")
+        deletionLog = nil
         super.tearDown()
     }
 

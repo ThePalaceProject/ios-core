@@ -11,6 +11,10 @@ import XCTest
 /// methods exercise `testUserDefaults()` directly.
 final class XCTestCase_testUserDefaultsTests: XCTestCase {
 
+    override func tearDown() {
+        super.tearDown()
+    }
+
     // MARK: - Isolation
 
     /// Two calls to `testUserDefaults()` inside the same test must

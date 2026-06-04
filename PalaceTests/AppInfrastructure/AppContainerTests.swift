@@ -11,6 +11,10 @@ import SwiftUI
 /// through the same production factory used by the app entry points.
 final class AppContainerTests: XCTestCase {
 
+    override func tearDown() {
+        super.tearDown()
+    }
+
     // MARK: - Production Factory
 
     /// `AppContainer.production()` is the single composition root the app

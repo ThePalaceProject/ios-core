@@ -38,6 +38,10 @@ import XCTest
 
 final class MyBooksDownloadCenterAccountIdThreadingTests: XCTestCase {
 
+    override func tearDown() {
+        super.tearDown()
+    }
+
     // MARK: - Fixtures
 
     /// Two distinct accountIds we'll route credentials against in the tests.

@@ -225,7 +225,10 @@ def _scan(added: list[_AddedLine]) -> list[_Finding]:
                 # Don't double-flag as BR-1.
                 continue
 
-        # BR-1 — new public/open declaration.
+        # BR-1 — new public/open declaration. Skipped when the preceding
+        # comment block carries a `PUBLIC_INTENT:` annotation (the same
+        # opt-in the pre-public-surface-drift hook already honors —
+        # documented in reference memory + .forgeos pin from PR #1035).
         if _PUBLIC_DECL_RE.match(text):
             # Honor `// PUBLIC_INTENT: <rationale>` annotation on a preceding
             # comment line. Intentional SPM-public additions and other

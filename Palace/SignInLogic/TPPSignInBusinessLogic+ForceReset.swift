@@ -50,15 +50,31 @@ extension TPPSignInBusinessLogic {
     public static let nextOIDCSessionEphemeralKey =
         "PalaceForceReset.nextOIDCSessionEphemeral"
 
+    /// `UserDefaults` backing store for the one-shot ephemeral-session
+    /// flag. Production code reads `.standard` (the default); tests
+    /// swap a per-suite `UserDefaults(suiteName:)` for isolation and
+    /// restore the prior value in tearDown. There is NO fallback —
+    /// once swapped, every read/write goes through this property only.
+    ///
+    /// Why `static var` instead of an init parameter: this extension
+    /// adds two `static` methods (`consumeNextOIDCSessionEphemeralFlag`)
+    /// and one `instance` method (`performForceReset`) that all touch
+    /// the same flag, and Swift does not allow stored properties on
+    /// extensions — including init injection. A swappable `static var`
+    /// is the minimum-surface seam that lets both the static and
+    /// instance call sites share one backing store.
+    // PUBLIC_INTENT: swarm_cd181acd D-cleanup. Extension methods access UserDefaults via this property; static var is the only injectable seam (extensions can't have stored instance properties or init injection). Default `.standard` preserves all production callers.
+    public static var forceResetUserDefaults: UserDefaults = .standard
+
     /// Reads-and-clears the one-shot ephemeral-session flag. Returns true
     /// exactly once after `performForceReset` set it; subsequent reads
     /// return false until the next reset. The OIDC sign-in code calls this
     /// to decide whether to force `prefersEphemeralWebBrowserSession = true`
     /// for this single session, defeating Safari-shared-cookie reuse.
     @objc public static func consumeNextOIDCSessionEphemeralFlag() -> Bool {
-        let value = UserDefaults.standard.bool(forKey: nextOIDCSessionEphemeralKey)
+        let value = forceResetUserDefaults.bool(forKey: nextOIDCSessionEphemeralKey)
         if value {
-            UserDefaults.standard.removeObject(forKey: nextOIDCSessionEphemeralKey)
+            forceResetUserDefaults.removeObject(forKey: nextOIDCSessionEphemeralKey)
             Log.info(#file, "[RESET_ACCOUNT] consumed nextOIDCSessionEphemeral flag — next ASWebAuthenticationSession will use ephemeral cookies")
         }
         return value
@@ -126,7 +142,7 @@ extension TPPSignInBusinessLogic {
         // 5. Set the one-shot ephemeral-session flag for the next OIDC
         //    sign-in. Defeats Safari-shared-cookie reuse that otherwise
         //    survives app deletion for OIDC libraries.
-        UserDefaults.standard.set(true, forKey: Self.nextOIDCSessionEphemeralKey)
+        Self.forceResetUserDefaults.set(true, forKey: Self.nextOIDCSessionEphemeralKey)
         Log.info(#file, "[RESET_ACCOUNT] step 5 ok — nextOIDCSessionEphemeral flag set")
 
         // 6. WKWebsiteDataStore — ALL data types, unconditionally. This is

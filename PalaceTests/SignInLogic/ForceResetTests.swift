@@ -28,15 +28,27 @@ import XCTest
 final class ForceResetTests: XCTestCase {
 
     private let key = TPPSignInBusinessLogic.nextOIDCSessionEphemeralKey
+    private var defaults: UserDefaults!
+    private var savedDefaults: UserDefaults!
 
     override func setUp() {
         super.setUp()
-        // Each test starts from a clean flag state.
-        UserDefaults.standard.removeObject(forKey: key)
+        // swarm_cd181acd D-cleanup: swap the extension's static
+        // `forceResetUserDefaults` for a per-test isolated suite so the
+        // one-shot ephemeral flag cannot leak between tests.
+        // `static var` swap-and-restore is the chosen seam because Swift
+        // extensions cannot hold stored properties (so no init-DI path).
+        savedDefaults = TPPSignInBusinessLogic.forceResetUserDefaults
+        defaults = testUserDefaults()
+        TPPSignInBusinessLogic.forceResetUserDefaults = defaults
     }
 
     override func tearDown() {
-        UserDefaults.standard.removeObject(forKey: key)
+        // Restore the production .standard default so this test's swap
+        // can't bleed into the next test class running in this process.
+        TPPSignInBusinessLogic.forceResetUserDefaults = savedDefaults
+        defaults = nil
+        savedDefaults = nil
         super.tearDown()
     }
 
@@ -47,8 +59,8 @@ final class ForceResetTests: XCTestCase {
         // Pair-assert that the UserDefaults key is also still cleared after
         // the consume call (no side-effect when nothing was there) AND a
         // second consume still returns false — pinning idempotency.
-        XCTAssertNil(UserDefaults.standard.object(forKey: key),
-                     "Precondition: flag is not set in UserDefaults")
+        XCTAssertNil(defaults.object(forKey: key),
+                     "Precondition: flag is not set in the injected UserDefaults suite")
         XCTAssertFalse(
             TPPSignInBusinessLogic.consumeNextOIDCSessionEphemeralFlag(),
             "Fresh consume with no prior set must return false — silent SSO stays on by default"
@@ -64,14 +76,14 @@ final class ForceResetTests: XCTestCase {
         // Pair-assert the UserDefaults observable went from true→cleared so
         // a mutation that returns true without actually consuming the
         // underlying flag is caught.
-        UserDefaults.standard.set(true, forKey: key)
-        XCTAssertTrue(UserDefaults.standard.bool(forKey: key),
-                      "Precondition: flag is set in UserDefaults")
+        defaults.set(true, forKey: key)
+        XCTAssertTrue(defaults.bool(forKey: key),
+                      "Precondition: flag is set in the injected UserDefaults suite")
 
         let first = TPPSignInBusinessLogic.consumeNextOIDCSessionEphemeralFlag()
 
         XCTAssertTrue(first, "First consume after set must return true so the next OIDC session uses ephemeral cookies")
-        XCTAssertFalse(UserDefaults.standard.bool(forKey: key),
+        XCTAssertFalse(defaults.bool(forKey: key),
                        "Consume must clear the underlying UserDefaults flag — not just return true")
     }
 
@@ -80,7 +92,7 @@ final class ForceResetTests: XCTestCase {
     /// the next sign-in only, then silently restore default behavior so future
     /// borrow-time silent-SSO still works.
     func testConsume_secondCallAfterSet_returnsFalse() {
-        UserDefaults.standard.set(true, forKey: key)
+        defaults.set(true, forKey: key)
 
         let first = TPPSignInBusinessLogic.consumeNextOIDCSessionEphemeralFlag()
         let second = TPPSignInBusinessLogic.consumeNextOIDCSessionEphemeralFlag()
@@ -95,13 +107,13 @@ final class ForceResetTests: XCTestCase {
     /// directly so a future refactor that returns true without clearing
     /// would fail this test.
     func testConsume_clearsTheUserDefaultsKey() {
-        UserDefaults.standard.set(true, forKey: key)
-        XCTAssertTrue(UserDefaults.standard.bool(forKey: key), "Pre-condition: flag is set in UserDefaults")
+        defaults.set(true, forKey: key)
+        XCTAssertTrue(defaults.bool(forKey: key), "Pre-condition: flag is set in the injected UserDefaults suite")
 
         _ = TPPSignInBusinessLogic.consumeNextOIDCSessionEphemeralFlag()
 
         XCTAssertFalse(
-            UserDefaults.standard.bool(forKey: key),
+            defaults.bool(forKey: key),
             "Consume must remove the key from UserDefaults so the next read returns false"
         )
     }
@@ -110,7 +122,7 @@ final class ForceResetTests: XCTestCase {
     /// future refactor that latches the flag permanently after first set.
     func testConsume_supportsMultipleSetThenConsumeCycles() {
         for cycle in 1...3 {
-            UserDefaults.standard.set(true, forKey: key)
+            defaults.set(true, forKey: key)
             XCTAssertTrue(
                 TPPSignInBusinessLogic.consumeNextOIDCSessionEphemeralFlag(),
                 "Cycle \(cycle): set-then-consume must return true"
@@ -135,7 +147,7 @@ final class ForceResetTests: XCTestCase {
         // "Safari cookie reuse defeat" is the part that survives across
         // app deletion. Test the exact contract: flag is set, next OIDC
         // sign-in consumes it as true.
-        UserDefaults.standard.set(true, forKey: key)
+        defaults.set(true, forKey: key)
 
         XCTAssertTrue(
             TPPSignInBusinessLogic.consumeNextOIDCSessionEphemeralFlag(),
