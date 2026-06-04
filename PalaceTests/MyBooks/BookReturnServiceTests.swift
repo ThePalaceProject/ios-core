@@ -377,11 +377,13 @@ private final class SpyLocalContentService: LocalBookContentService {
     var deleteForIdentifierCalls: [String] = []
 
     init() {
-        // Use AppContainer.production() defaults; we don't actually delete
-        // any files because the spy short-circuits via override.
+        // Use a fresh test-factory container's accountsManager; we don't
+        // actually delete any files because the spy short-circuits via
+        // override. The factory yields a per-call fresh service graph with
+        // no `AppContainer._cached` mutation.
         super.init(
             bookRegistry: TPPBookRegistryMock(),
-            accountsManager: AppContainer.production().accountsManager,
+            accountsManager: makeTestAppContainer().accountsManager,
             bookFileManager: BookFileManager(bookRegistry: TPPBookRegistryMock()),
             fileManager: .default
         )

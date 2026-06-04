@@ -36,6 +36,10 @@ final class AudiobookSessionManagerFlagGatePresentationTests: XCTestCase {
     private var flagEnabled = false
 
     private var sessionManager: AudiobookSessionManager!
+    /// Per-test isolated container — built via `makeTestAppContainer()` so
+    /// each test method gets a fresh service graph (no cross-test pollution
+    /// through `AppContainer._cached`).
+    private var appContainer: AppContainer!
 
     override func setUp() async throws {
         try await super.setUp()
@@ -43,9 +47,10 @@ final class AudiobookSessionManagerFlagGatePresentationTests: XCTestCase {
         realCoordinator = NavigationCoordinator()
         realHub = NavigationCoordinatorHub()
         realHub.coordinator = realCoordinator
+        appContainer = makeTestAppContainer()
 
         sessionManager = AudiobookSessionManager(
-            appContainer: AppContainer.production(),
+            appContainer: appContainer,
             navigationCoordinatorHubProvider: { [unowned self] in self.realHub },
             audiobookSessionPresenterProvider: { [unowned self] in self.spyPresenter },
             inAppPlaybackNavEnabledProvider: { [unowned self] in self.flagEnabled }
@@ -58,6 +63,7 @@ final class AudiobookSessionManagerFlagGatePresentationTests: XCTestCase {
         spyPresenter = nil
         realCoordinator = nil
         realHub = nil
+        appContainer = nil
         try await super.tearDown()
     }
 

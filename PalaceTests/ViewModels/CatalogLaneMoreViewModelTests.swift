@@ -29,11 +29,12 @@ final class CatalogLaneMoreViewModelTests: XCTestCase {
 
     private func createViewModel(title: String = "Test", urlString: String = "https://example.com/feed") -> CatalogLaneMoreViewModel {
         let url = URL(string: urlString)!
+        let appContainer = makeTestAppContainer()
         return CatalogLaneMoreViewModel(
             title: title,
             url: url,
-            bookRegistry: AppContainer.production().bookRegistry,
-            bookCellModelCache: AppContainer.production().bookCellModelCache
+            bookRegistry: appContainer.bookRegistry,
+            bookCellModelCache: appContainer.bookCellModelCache
         )
     }
 

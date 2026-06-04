@@ -314,9 +314,11 @@ private final class SpyLocalContentService: LocalBookContentService {
     var deleteForIdentifierCalls: [String] = []
 
     init() {
+        // Use a fresh test-factory container's accountsManager; spy short-
+        // circuits real file deletion via the deleteLocalContent overrides.
         super.init(
             bookRegistry: TPPBookRegistryMock(),
-            accountsManager: AppContainer.production().accountsManager,
+            accountsManager: makeTestAppContainer().accountsManager,
             bookFileManager: BookFileManager(bookRegistry: TPPBookRegistryMock()),
             fileManager: .default
         )

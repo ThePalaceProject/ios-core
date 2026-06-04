@@ -42,10 +42,15 @@ import PalaceCatalog
 final class AudiobookOpenStateRaceTests: XCTestCase {
 
     private var libraryMock: TPPLibraryAccountMock!
+    /// Per-test isolated container — built via `makeTestAppContainer()` so
+    /// each test method gets a fresh service graph (no cross-test pollution
+    /// through `AppContainer._cached`).
+    private var appContainer: AppContainer!
 
     override func setUp() {
         super.setUp()
         libraryMock = TPPLibraryAccountMock()
+        appContainer = makeTestAppContainer()
     }
 
     override func tearDown() {
@@ -53,6 +58,7 @@ final class AudiobookOpenStateRaceTests: XCTestCase {
         AccountStateStore.shared._resetAllForTesting()
         #endif
         libraryMock = nil
+        appContainer = nil
         super.tearDown()
     }
 
@@ -144,7 +150,7 @@ final class AudiobookOpenStateRaceTests: XCTestCase {
     /// other downstream error (e.g. `.manifestLoadFailed`) which would
     /// indicate the gate ran but its error wasn't honored.
     func testIntegration_openAudiobook_underDetailsFailed_returnsNotAuthenticated() async throws {
-        let accountsMgr = AppContainer.production().accountsManager
+        let accountsMgr = appContainer.accountsManager
         let (account, cleanup) = seedAccountIfNeeded(on: accountsMgr,
                                                     fixtureId: "test-audiobook-race-\(UUID().uuidString)")
         defer { cleanup() }
@@ -152,7 +158,7 @@ final class AudiobookOpenStateRaceTests: XCTestCase {
         account._setState(.detailsFailed(.authDocumentFetchFailed(underlyingDescription: "test HTTP 503")))
 
         let book = TPPBookMocker.mockBook(title: "Failed-State Audiobook", authors: "Test")
-        let result = await AppContainer.production().audiobookSession.openAudiobook(book, startPlaying: false)
+        let result = await appContainer.audiobookSession.openAudiobook(book, startPlaying: false)
 
         switch result {
         case .failure(.notAuthenticated):

@@ -16,16 +16,19 @@ final class BookRegistrySyncTests: XCTestCase {
 
     private var store: BookRegistryStore!
     private var syncManager: BookRegistrySync!
+    private var accountsManager: AccountsManager!
     private var tempDirectory: URL!
 
     override func setUp() {
         super.setUp()
         store = BookRegistryStore()
+        let appContainer = makeTestAppContainer()
+        accountsManager = appContainer.accountsManager
         syncManager = BookRegistrySync(
             store: store,
-            accountsManager: AppContainer.production().accountsManager,
-            downloadCenterProvider: { AppContainer.production().downloadCenter },
-            opdsFeedServiceProvider: { AppContainer.production().opdsFeedService }
+            accountsManager: appContainer.accountsManager,
+            downloadCenterProvider: { appContainer.downloadCenter },
+            opdsFeedServiceProvider: { appContainer.opdsFeedService }
         )
 
         // Create a temp directory for registry file I/O tests
@@ -38,6 +41,7 @@ final class BookRegistrySyncTests: XCTestCase {
         try? FileManager.default.removeItem(at: tempDirectory)
         tempDirectory = nil
         syncManager = nil
+        accountsManager = nil
         store = nil
         super.tearDown()
     }
@@ -232,7 +236,7 @@ final class BookRegistrySyncTests: XCTestCase {
     func test_validateDownloadedContent_marksDownloadNeededWhenFileMissing() {
         // This test relies on the fact that no actual book file exists for our fake book,
         // so downloadSuccessful books should be marked as downloadNeeded.
-        // However, validateDownloadedContent requires AppContainer.production().accountsManager to have a
+        // However, validateDownloadedContent requires the test accountsManager to have a
         // current account, which won't be set in unit tests. We verify the store mutation
         // mechanism instead.
 
@@ -415,12 +419,12 @@ final class BookRegistrySyncTests: XCTestCase {
         // If currentState is .syncing, sync() should short-circuit.
         // Same simulator-sign-in caveat as test_sync_withNoCurrentAccount_isNoOp:
         // when A1QA (or any account) is signed in on the host simulator,
-        // AppContainer.production().accountsManager.currentAccount?.loansUrl is
+        // the test accountsManager.currentAccount?.loansUrl is
         // set, and sync() proceeds past the .syncing guard to invoke setState.
         // Skip in environments where a current account is present — the
         // re-entrancy guard's setState-suppression is only observable in a
         // clean environment.
-        try XCTSkipIf(AppContainer.production().accountsManager.currentAccount?.loansUrl != nil,
+        try XCTSkipIf(accountsManager.currentAccount?.loansUrl != nil,
                       "Skipping: simulator has an active currentAccount; this test requires a clean environment")
 
         var received: [TPPBookRegistry.RegistryState] = []
@@ -480,11 +484,11 @@ final class BookRegistrySyncTests: XCTestCase {
 
     func test_sync_withNoCurrentAccount_isNoOp() throws {
         // This test is sensitive to simulator sign-in state: when A1QA is signed in
-        // on the host simulator, AppContainer.production().accountsManager.currentAccount?.loansUrl is
+        // on the host simulator, the test accountsManager.currentAccount?.loansUrl is
         // set (not nil), so sync() proceeds instead of short-circuiting. Skip in
         // environments where a current account is present — the no-op behavior is
         // only observable in a clean environment.
-        try XCTSkipIf(AppContainer.production().accountsManager.currentAccount?.loansUrl != nil,
+        try XCTSkipIf(accountsManager.currentAccount?.loansUrl != nil,
                       "Skipping: simulator has an active currentAccount; this test requires a clean environment")
 
         var received: [TPPBookRegistry.RegistryState] = []

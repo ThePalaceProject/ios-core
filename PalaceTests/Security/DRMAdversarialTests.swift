@@ -16,16 +16,22 @@ import XCTest
 final class DRMAdversarialTests: XCTestCase {
 
     private var session: URLSession!
+    /// Per-test isolated container — built via `makeTestAppContainer()` so
+    /// each test method gets a fresh service graph (no cross-test pollution
+    /// through `AppContainer._cached`).
+    private var appContainer: AppContainer!
 
     override func setUp() {
         super.setUp()
         HTTPStubURLProtocol.reset()
         session = URLSession.stubbedSession()
+        appContainer = makeTestAppContainer()
     }
 
     override func tearDown() {
         HTTPStubURLProtocol.reset()
         session = nil
+        appContainer = nil
         super.tearDown()
     }
 
@@ -123,7 +129,7 @@ final class DRMAdversarialTests: XCTestCase {
         // should NOT trigger reauthenticator (which showed a sign-in modal).
         // Instead it should just log a warning, because activation is now
         // handled before fulfillment.
-        let downloadCenter = AppContainer.production().downloadCenter
+        let downloadCenter = appContainer.downloadCenter
         // This should not present any UI — just log
         downloadCenter.didIgnoreFulfillmentWithNoAuthorizationPresent()
         // If we got here without a crash or modal presentation, the test passes.
