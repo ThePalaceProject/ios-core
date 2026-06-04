@@ -9,7 +9,30 @@ import XCTest
 @testable import Palace
 
 /// SRS: NET-003 — Offline queue stores failed requests
+@MainActor
 class NetworkQueueTests: XCTestCase {
+
+    /// Per-test container — built fresh in `setUp` via the
+    /// `makeTestAppContainer()` factory (swarm_47883816 work package A).
+    /// Replaces the prior pattern that reached into
+    /// `AppContainer.production().networkQueue` on every test method, which
+    /// silently shared NetworkQueue state across the suite. NetworkQueue's
+    /// SQLite-backed offline store + serial dispatch queue makes order-
+    /// dependent test pollution especially insidious — a fresh queue per
+    /// test isolates `migrate()` calls and `addRequest()` writes.
+    private var appContainer: AppContainer!
+
+    // MARK: - Lifecycle
+
+    override func setUp() {
+        super.setUp()
+        appContainer = makeTestAppContainer()
+    }
+
+    override func tearDown() {
+        appContainer = nil
+        super.tearDown()
+    }
 
     // MARK: - Static Properties
 
@@ -39,7 +62,7 @@ class NetworkQueueTests: XCTestCase {
     }
 
     func testMaxRetriesInQueueIsFive() {
-        let queue = AppContainer.production().networkQueue
+        let queue = appContainer.networkQueue
         XCTAssertEqual(queue.MaxRetriesInQueue, 5)
         XCTAssertGreaterThan(queue.MaxRetriesInQueue, 0, "Retry limit must be positive")
         XCTAssertLessThanOrEqual(queue.MaxRetriesInQueue, 10,
@@ -66,24 +89,24 @@ class NetworkQueueTests: XCTestCase {
     // MARK: - Queue Instance
 
     func testSharedInstanceIsSingleton() {
-        let a = AppContainer.production().networkQueue
-        let b = AppContainer.production().networkQueue
+        let a = appContainer.networkQueue
+        let b = appContainer.networkQueue
         XCTAssertTrue(a === b, "sharedInstance must return the same object on every access")
         XCTAssertEqual(ObjectIdentifier(a), ObjectIdentifier(b), "Both references must have identical object identity")
     }
 
     func testObjCSharedReturnsInstance() {
-        let instance = AppContainer.production().networkQueue
+        let instance = appContainer.networkQueue
         XCTAssertNotNil(instance)
         // The ObjC @objc factory must return the same singleton as the Swift property
-        XCTAssertTrue(instance === AppContainer.production().networkQueue,
+        XCTAssertTrue(instance === appContainer.networkQueue,
                       "ObjC shared() and Swift sharedInstance must be the same object")
     }
 
     // MARK: - Add Request (Integration)
 
     func testAddRequestDoesNotCrash() {
-        let queue = AppContainer.production().networkQueue
+        let queue = appContainer.networkQueue
         // Migrate first to set up the table
         queue.migrate()
 
@@ -103,7 +126,7 @@ class NetworkQueueTests: XCTestCase {
     }
 
     func testAddRequestWithHeadersDoesNotCrash() {
-        let queue = AppContainer.production().networkQueue
+        let queue = appContainer.networkQueue
         queue.migrate()
 
         let url = URL(string: "https://example.com/api/test")!
@@ -123,7 +146,7 @@ class NetworkQueueTests: XCTestCase {
     // MARK: - Migration
 
     func testMigrateDoesNotCrash() {
-        let queue = AppContainer.production().networkQueue
+        let queue = appContainer.networkQueue
         queue.migrate()
 
         let expectation = expectation(description: "Migration completes")
@@ -138,7 +161,7 @@ class NetworkQueueTests: XCTestCase {
     }
 
     func testMigrateCanBeCalledMultipleTimes() {
-        let queue = AppContainer.production().networkQueue
+        let queue = appContainer.networkQueue
         queue.migrate()
         queue.migrate()
 

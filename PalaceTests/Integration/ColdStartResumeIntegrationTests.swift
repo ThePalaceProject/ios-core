@@ -31,18 +31,18 @@
 import XCTest
 @testable import Palace
 
-final class ColdStartResumeIntegrationTests: XCTestCase {
+class ColdStartResumeIntegrationTests: PalaceWiringTestCase {
 
     private var account: String!
     private var store: BookRegistryStore!
     private var sync: BookRegistrySync!
     private var accountsManager: AccountsManager!
 
-    override func setUp() {
-        super.setUp()
+    override func setUpWithError() throws {
+        try super.setUpWithError()
         HTTPStubURLProtocol.reset()
         account = "test-coldstart-\(UUID().uuidString)"
-        accountsManager = AccountsManager()
+        accountsManager = makeFreshAccountsManager()
         store = BookRegistryStore()
         sync = BookRegistrySync(
             store: store,
@@ -52,7 +52,7 @@ final class ColdStartResumeIntegrationTests: XCTestCase {
         )
     }
 
-    override func tearDown() {
+    override func tearDownWithError() throws {
         HTTPStubURLProtocol.reset()
         if let regUrl = sync?.registryUrl(for: account)?.deletingLastPathComponent() {
             try? FileManager.default.removeItem(at: regUrl)
@@ -66,7 +66,7 @@ final class ColdStartResumeIntegrationTests: XCTestCase {
         store = nil
         accountsManager = nil
         account = nil
-        super.tearDown()
+        try super.tearDownWithError()
     }
 
     // MARK: - Helpers

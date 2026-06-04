@@ -136,16 +136,96 @@ def _parse_commit_subject(commit_msg_text: str) -> str:
     return ""
 
 
+# PP-4161 follow-up: strip noise prefixes like `[swarm_xxx]` or `[wave 4]`
+# before tokenizing the commit subject. Without this, the 4-consecutive
+# match window gets shifted by the prefix tokens and even subjects that
+# clearly correspond to an intent file fail to match.
+_NOISE_PREFIX_RE = re.compile(r"^\s*\[[^\]]+\]\s*")
+
+# Ticket-key form — matches "PP-4161", "PP 4161", "JIRA-123", etc.
+# Used to give ticket-keyed subjects a shorter path to matching the intent
+# file's ticket-key, even when their content tokens differ.
+_TICKET_KEY_RE = re.compile(
+    r"\b([a-z]{2,6})[\s\-]?(\d{2,6})\b",
+    re.IGNORECASE,
+)
+
+
+def _strip_noise_prefixes(text: str) -> str:
+    """Iteratively strip `[bracketed]` noise prefixes from the front of a subject.
+
+    Example: `[swarm_c2b95c85] [wave 4] PP-4161 ...` → `PP-4161 ...`.
+    Keeps stripping until the first non-prefix token is reached.
+    """
+    while True:
+        new = _NOISE_PREFIX_RE.sub("", text)
+        if new == text:
+            return text
+        text = new
+
+
+def _extract_ticket_keys(text: str) -> set[str]:
+    """Return the set of normalized ticket-keys (e.g. {'pp-4161'}) in `text`."""
+    keys: set[str] = set()
+    for m in _TICKET_KEY_RE.finditer(text):
+        prefix = m.group(1).lower()
+        number = m.group(2)
+        keys.add(f"{prefix}-{number}")
+    return keys
+
+
 def _tokenize(text: str) -> list[str]:
     return [t.lower() for t in _WORDLIKE_RE.findall(text)]
 
 
 def _has_consecutive_token_match(subject: str, name: str, min_run: int) -> bool:
-    """True if `name` shares ≥`min_run` consecutive tokens with `subject`."""
-    subj_tokens = _tokenize(subject)
+    """True if `name` shares ≥`min_run` consecutive tokens with `subject`.
+
+    Multi-strategy matching, in order of preference:
+
+    1. **Ticket-key + 2-consecutive content-token overlap.** When the subject
+       and the intent name share a ticket-key (e.g. both contain `PP-4161`
+       after normalization across `PP-4161` / `PP 4161` / `PP4161` forms),
+       accept on ≥2 consecutive content-token overlap. This is the common
+       case for ticket-driven work; the original 4-consecutive bar broke
+       on swarm-prefixed subjects (`[swarm_xxx] PP-4161 Module A: ...`).
+    2. **Original 4-consecutive shared-token match** (after noise-prefix
+       stripping) — preserves prior behavior for non-ticket-keyed names.
+    3. **Loose single-name match** for very short token sets — preserved
+       from the prior implementation as a fallback.
+
+    The noise-prefix strip removes `[bracketed]` prefixes from the subject
+    before tokenization so swarm-id / wave-id prefixes don't shift the
+    match window past the meaningful content tokens.
+    """
+    subject_stripped = _strip_noise_prefixes(subject)
+
+    # Strategy 1: ticket-key + 2-consecutive content overlap.
+    subj_keys = _extract_ticket_keys(subject_stripped)
+    name_keys = _extract_ticket_keys(name)
+    shared_keys = subj_keys & name_keys
+    if shared_keys:
+        # Re-tokenize with the ticket-key tokens collapsed to a single sentinel
+        # so the consecutive-content-token check focuses on the non-key tokens.
+        subj_content = _tokens_without_keys(subject_stripped, shared_keys)
+        name_content = _tokens_without_keys(name, shared_keys)
+        # 2-consecutive is the lower bar for ticket-keyed names; it still
+        # rejects unrelated commits (subject "PP-4161 typo fix" vs intent
+        # "pp-4161-streaming-html-reader" would share `pp-4161` but have
+        # disjoint content tokens `[typo, fix]` vs `[streaming, html, reader]`).
+        for i in range(len(subj_content) - 1):
+            window = subj_content[i:i + 2]
+            for j in range(len(name_content) - 1):
+                if name_content[j:j + 2] == window:
+                    return True
+        # Fall through to strategy 2 — the ticket-key alone isn't enough
+        # without some content overlap.
+
+    # Strategy 2 (original): 4-consecutive shared-token match.
+    subj_tokens = _tokenize(subject_stripped)
     name_tokens = _tokenize(name)
     if len(subj_tokens) < min_run or len(name_tokens) < min_run:
-        # Allow looser single-name match when one side has few tokens.
+        # Strategy 3: loose single-name fallback for very short token sets.
         return any(n in subj_tokens for n in name_tokens) and len(
             set(name_tokens) & set(subj_tokens)) >= max(1, len(name_tokens) - 1)
     for i in range(len(subj_tokens) - min_run + 1):
@@ -154,6 +234,23 @@ def _has_consecutive_token_match(subject: str, name: str, min_run: int) -> bool:
             if name_tokens[j:j + min_run] == window:
                 return True
     return False
+
+
+def _tokens_without_keys(text: str, keys: set[str]) -> list[str]:
+    """Tokenize `text` while dropping tokens that are part of a ticket-key.
+
+    Helper for the ticket-key match strategy: lets us check content-token
+    overlap after the shared ticket-key is excluded so the key itself
+    doesn't double-count as a "consecutive match."
+    """
+    key_token_parts: set[str] = set()
+    for key in keys:
+        # Each key is `<prefix>-<number>`; strip dash, lowercase, split.
+        # Both tokens get dropped from the consecutive-content window.
+        prefix, number = key.split("-", 1)
+        key_token_parts.add(prefix.lower())
+        key_token_parts.add(number)
+    return [t for t in _tokenize(text) if t not in key_token_parts]
 
 
 def _parse_intent(path: Path) -> _IntentValidation:

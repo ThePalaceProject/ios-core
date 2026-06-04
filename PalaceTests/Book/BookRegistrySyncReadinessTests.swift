@@ -128,7 +128,11 @@ final class BookRegistrySyncReadinessTests: XCTestCase {
                                                     fixtureId: "test-sync-readiness-\(UUID().uuidString)")
         defer { cleanup() }
 
-        let userAccount = TPPUserAccount.sharedAccount(libraryUUID: account.uuid)
+        // Integration test reads the production-cached account's credentials
+        // state to gate the sync. The factory-isolated account is not the
+        // account the production `BookRegistrySync` reads through, so
+        // substituting the factory here would defeat the test's premise.
+        let userAccount = TPPUserAccount.sharedAccount(libraryUUID: account.uuid) // MIGRATED: keep — reads production-cached account for sync-gate integration check
         guard userAccount.hasCredentials() else {
             // The DI seam puts an Account into accountSets but doesn't
             // mint keychain credentials — sync bails at the hasCredentials

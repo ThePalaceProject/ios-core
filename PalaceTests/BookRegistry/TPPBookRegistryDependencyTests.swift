@@ -31,7 +31,7 @@
 import XCTest
 @testable import Palace
 
-final class TPPBookRegistryDependencyTests: XCTestCase {
+class TPPBookRegistryDependencyTests: PalaceWiringTestCase {
 
     // MARK: - Init contract
 
@@ -42,7 +42,7 @@ final class TPPBookRegistryDependencyTests: XCTestCase {
     /// catches the dispatch_once trap. Together they prevent the cycle from
     /// silently coming back.
     func testInit_takesAccountsManagerExplicitly() {
-        let accountsManager = AccountsManager()
+        let accountsManager = makeFreshAccountsManager()
         let registry = TPPBookRegistry(accountsManager: accountsManager, imageLoader: AppContainer.production().imageLoader)
 
         // The registry exists and has access to its dependency. We assert via
@@ -60,7 +60,7 @@ final class TPPBookRegistryDependencyTests: XCTestCase {
     /// reaches back into AppContainer.production(). This is the contract
     /// that broke the cycle.
     func testWithAccount_inheritsParentAccountsManager() {
-        let accountsManager = AccountsManager()
+        let accountsManager = makeFreshAccountsManager()
         let registry = TPPBookRegistry(accountsManager: accountsManager, imageLoader: AppContainer.production().imageLoader)
 
         // The block executes synchronously and receives a different instance

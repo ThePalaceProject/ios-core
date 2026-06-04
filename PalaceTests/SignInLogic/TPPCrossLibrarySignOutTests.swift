@@ -6,7 +6,7 @@
 //
 //  Bug: Signing out of a non-active library would clear the *active* library's
 //  credentials instead, because the error handler in performLogOut() called
-//  TPPUserAccount.sharedAccount().removeAll() (which defaults to currentAccountId)
+//  TPPUserAccount.sharedAccount().removeAll() (which defaults to currentAccountId) // MIGRATED: comment-only reference, no call site
 //  instead of self.userAccount.removeAll() (which is scoped to the target library).
 //
 //  Also fixes unscoped sharedAccount() calls in refreshAuthIfNeeded and logIn

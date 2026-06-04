@@ -34,19 +34,20 @@ import XCTest
 import Combine
 @testable import Palace
 
-final class TPPBookRegistryPersistenceTests: XCTestCase {
+class TPPBookRegistryPersistenceTests: PalaceWiringTestCase {
 
     private var account: String!
     private var store: BookRegistryStore!
     private var sync: BookRegistrySync!
     private var accountsManager: AccountsManager!
-    private var cancellables: Set<AnyCancellable>!
+    // NOTE: `cancellables` is inherited from PalaceWiringTestCase and drained
+    // automatically on tearDown. Don't shadow it locally.
 
-    override func setUp() {
-        super.setUp()
+    override func setUpWithError() throws {
+        try super.setUpWithError()
         account = "test-persistence-\(UUID().uuidString)"
         store = BookRegistryStore()
-        accountsManager = AccountsManager()
+        accountsManager = makeFreshAccountsManager()
         // Lazy-resolved providers — never invoked unless we save records in a
         // file-tracking state (.downloading/.downloadSuccessful/.used/...). All
         // persistence round-trip tests below use `.holding`, which bypasses the
@@ -57,10 +58,9 @@ final class TPPBookRegistryPersistenceTests: XCTestCase {
             downloadCenterProvider: { AppContainer.production().downloadCenter },
             opdsFeedServiceProvider: { AppContainer.production().opdsFeedService }
         )
-        cancellables = []
     }
 
-    override func tearDown() {
+    override func tearDownWithError() throws {
         // Best-effort cleanup of the on-disk registry directory for this test.
         if let url = sync?.registryUrl(for: account)?.deletingLastPathComponent() {
             try? FileManager.default.removeItem(at: url)
@@ -69,8 +69,7 @@ final class TPPBookRegistryPersistenceTests: XCTestCase {
         store = nil
         sync = nil
         accountsManager = nil
-        cancellables = nil
-        super.tearDown()
+        try super.tearDownWithError()
     }
 
     // MARK: - Helpers
@@ -244,7 +243,7 @@ final class TPPBookRegistryPersistenceTests: XCTestCase {
     /// inside setState — the registry must publish state transitions to
     /// downstream subscribers.
     func testBookStatePublisher_FiresOnDownloadingToDownloadedTransition() {
-        let registry = TPPBookRegistry(accountsManager: AccountsManager(), imageLoader: AppContainer.production().imageLoader)
+        let registry = TPPBookRegistry(accountsManager: makeFreshAccountsManager(), imageLoader: AppContainer.production().imageLoader)
         let book = TPPBookMocker.mockBook(identifier: "publisher-transition-\(UUID().uuidString)",
                                           title: "Transition Test",
                                           distributorType: .EpubZip)
@@ -270,7 +269,7 @@ final class TPPBookRegistryPersistenceTests: XCTestCase {
     /// updateBook with the same book must NOT spuriously emit a state event
     /// when its state doesn't change.
     func testBookStatePublisher_DoesNotFireOnNoOpUpdateBook() {
-        let registry = TPPBookRegistry(accountsManager: AccountsManager(), imageLoader: AppContainer.production().imageLoader)
+        let registry = TPPBookRegistry(accountsManager: makeFreshAccountsManager(), imageLoader: AppContainer.production().imageLoader)
         let book = TPPBookMocker.mockBook(identifier: "no-op-update-\(UUID().uuidString)",
                                           title: "No-op Update",
                                           distributorType: .EpubZip)

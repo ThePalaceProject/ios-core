@@ -89,7 +89,10 @@ final class SignInModalLifecycleTests: XCTestCase {
                                currentAccountID: String? = "test-lib-current",
                                needsAuthForCurrent: Bool = true)
     -> SignInModalSheetPresenter {
-        let container = AppContainer.production()
+        // swarm_47883816 work package A — replace AppContainer.production()
+        // with a fresh isolated container per call so the presenter does not
+        // observe production-singleton state mid-test.
+        let container = makeTestAppContainer()
         return SignInModalSheetPresenter(
             appContainer: container,
             currentAccountIDProvider: { currentAccountID },
@@ -322,7 +325,7 @@ final class SignInModalLifecycleTests: XCTestCase {
         // Hold completion so we can pin the mid-presentation state.
         fakeDriver.fireCompletionsSynchronously = false
         let presenter = SignInModalSheetPresenter(
-            appContainer: AppContainer.production(),
+            appContainer: makeTestAppContainer(),
             currentAccountIDProvider: { "lib-idle" },
             needsAuthProvider: { _ in true },
             driver: fakeDriver.makeDriver()
@@ -354,7 +357,7 @@ final class SignInModalLifecycleTests: XCTestCase {
         let fakeDriver = FakePresentationDriver()
         fakeDriver.fireCompletionsSynchronously = false
         let presenter = SignInModalSheetPresenter(
-            appContainer: AppContainer.production(),
+            appContainer: makeTestAppContainer(),
             currentAccountIDProvider: { "lib-cycle" },
             needsAuthProvider: { _ in true },
             driver: fakeDriver.makeDriver()
@@ -405,7 +408,7 @@ final class SignInModalLifecycleTests: XCTestCase {
         let fakeDriver = FakePresentationDriver()
         fakeDriver.fireCompletionsSynchronously = false
         let presenter = SignInModalSheetPresenter(
-            appContainer: AppContainer.production(),
+            appContainer: makeTestAppContainer(),
             currentAccountIDProvider: { "lib-roundtrip" },
             needsAuthProvider: { _ in true },
             driver: fakeDriver.makeDriver()
@@ -517,7 +520,7 @@ final class SignInModalLifecycleTests: XCTestCase {
         // real production class, but its driver is observable.
         let recorder = SpyDriverRecorder()
         let spy = SignInModalSheetPresenter(
-            appContainer: AppContainer.production(),
+            appContainer: AppContainer.production(), // MIGRATED-DEFERRED: swarm_47883816 — test exercises `_testContainerOverride ?? AppContainer.production()` resolution semantics; the production singleton IS the SUT.
             currentAccountIDProvider: { "lib-wiring-test" },
             needsAuthProvider: { _ in true },
             driver: recorder.makeDriver()
@@ -527,7 +530,7 @@ final class SignInModalLifecycleTests: XCTestCase {
         // modifier. The resulting container's computed
         // `signInModalSheetPresenter` returns the spy first (override
         // branch precedes the static cache short-circuit).
-        let testContainer = AppContainer.production().withSignInModalSheetPresenter(spy)
+        let testContainer = AppContainer.production().withSignInModalSheetPresenter(spy) // MIGRATED-DEFERRED: swarm_47883816 — withSignInModalSheetPresenter() returns a struct derived FROM the production cache; substituting makeTestAppContainer() would break the seam being tested.
 
         // Sanity-check the seam itself before driving TPPReauthenticator
         // — pin that the override is actually returned by the computed

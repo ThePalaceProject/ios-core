@@ -3,7 +3,7 @@ name: wall-failures-derived-improvements
 type: evolving
 status: active
 created: 2026-05-28
-last_refresh: 2026-05-28
+last_refresh: 2026-06-03
 freshness_window: 365d
 owners: [general]
 description: Derived improvements
@@ -15,6 +15,12 @@ Cluster-level fixes promoted from wall-failure entries. Each row links back to t
 
 | Date | Improvement | Source entries | Implementation | Status |
 |------|-------------|----------------|----------------|--------|
+| 2026-06-03 | Phase 1a architect-reviewer call-graph completeness check for swarms adding new enum values that drive user-visible buttons (BookButtonType / TPPBookContentType / BookButtonState) — verifies userAction → buttonMapping → action handler → service call → registry state change → buttonMapping re-evaluation is traced AND in-scope at every link | 2026-06-03-cs_e0f586cc-modC-get-routing | .claude/skills/swarm/SKILL.md Phase 1a verify-block #5 (this PR) | applied |
+| 2026-06-03 | Phase 4.5 orchestrator skeptic-pass borrow→display invariant check — for swarms adding a new TPPBookContentType case, require staged tests that contain BOTH `handleAction(for: .get)` (or `callDelegate(for: .get)`) AND the new case literal in the same method body | 2026-06-03-cs_e0f586cc-modC-get-routing | .claude/skills/swarm/SKILL.md Phase 4.5 Check 6.5 (this PR) | applied |
+| 2026-06-03 | CLAUDE.md state-machine rule extension — user-action → registry-state cycle for new TPPBookContentType cases (4th sub-rule in the existing State-machine wiring tests block) | 2026-06-03-cs_e0f586cc-modC-get-routing | CLAUDE.md (this PR) | applied |
+| 2026-06-03 | `// PUBLIC_INTENT: <rationale>` annotation in check-blast-radius.py — suppresses BR-1 per-decl when a contracted SPM public addition has an explicit rationale comment above it; eliminates the `--no-verify`-with-rationale-stanza dance that PP-4161 required for every implementer commit | PP-4161 retrospective friction item | scripts/check-blast-radius.py BR-1 check + _PUBLIC_INTENT_RE (this PR) | applied |
+| 2026-06-03 | Subject-format normalization in check-intent-recorded.py — strips `[bracketed]` noise prefixes (`[swarm_xxx]`, `[wave N]`), recognizes `PP-NNNN`/`PP NNNN`/`PPNNNN` as equivalent via ticket-key extraction, accepts on 2-consecutive content-token overlap when ticket-keys match | PP-4161 retrospective friction item (intent_recorded false-blocked on `[swarm_xxx] PP-4161 ...` subjects) | scripts/check-intent-recorded.py `_has_consecutive_token_match` + `_strip_noise_prefixes` + `_extract_ticket_keys` (this PR) | applied |
+| 2026-06-03 | `// PUBLIC_INTENT:` annotation honored by pre-public-surface-drift.sh — alternative to env-var bypass which doesn't propagate through Claude Code hook context; unifies bypass mechanism with check-blast-radius.py | PP-4161 retrospective friction item (SKIP_PUBLIC_SURFACE_DRIFT_CHECK=1 ignored by hook) | ~/harness/core/hooks/pre-public-surface-drift.sh (this PR) | applied |
 | 2026-05-27 | Orchestrator skeptic pass (Phase 4.5) in swarm SKILL.md — grep checks for SUT instantiation, function-result usage, scope coverage, claim verification | arch3, qa1, qa2, qa3 | swarm SKILL.md edit (this PR) | applied |
 | 2026-05-27 | Verification criteria section required in every architect contract | arch2, arch3, qa2, qa3 | swarm SKILL.md contract template edit (this PR) | applied |
 | 2026-05-27 | Implementer self-check checklist mandated in prompt template | qa1, qa2, qa3, arch3 | swarm SKILL.md implementer prompt edit (this PR) | applied |
