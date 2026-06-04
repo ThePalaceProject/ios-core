@@ -1,8 +1,8 @@
 {
   "module": "MyBooks",
-  "generated_at": "2026-05-12T16:15:16+00:00",
-  "file_count": 54,
-  "shared_singleton_reads": 12,
+  "generated_at": "2026-06-03T17:51:23+00:00",
+  "file_count": 56,
+  "shared_singleton_reads": 11,
   "public_types": [
     {
       "name": "Configuration",
@@ -16,7 +16,7 @@
       "name": "MyBooksDownloadCenter",
       "kind": "class",
       "file": "MyBooksDownloadCenter.swift",
-      "line": 23
+      "line": 24
     },
     {
       "name": "MyBooksDownloadInfo",
@@ -58,7 +58,7 @@
       "name": "authenticateAndLoad",
       "kind": "func",
       "file": "MyBooks/MyBooksViewModel.swift",
-      "line": 241
+      "line": 245
     },
     {
       "name": "canCompleteDownload",
@@ -70,55 +70,55 @@
       "name": "cancelDownload",
       "kind": "func",
       "file": "MyBooksDownloadCenter.swift",
-      "line": 1044
+      "line": 1201
     },
     {
       "name": "downloadInfo",
       "kind": "func",
       "file": "MyBooksDownloadCenter.swift",
-      "line": 1257
+      "line": 1418
     },
     {
       "name": "downloadProgress",
       "kind": "func",
       "file": "MyBooksDownloadCenter.swift",
-      "line": 1494
+      "line": 1655
     },
     {
       "name": "enforceContentDiskBudgetIfNeeded",
       "kind": "func",
       "file": "MyBooksDownloadCenter.swift",
-      "line": 1369
+      "line": 1530
     },
     {
       "name": "fileUrl",
       "kind": "func",
       "file": "MyBooksDownloadCenter.swift",
-      "line": 1443
+      "line": 1604
     },
     {
       "name": "limitActiveDownloads",
       "kind": "func",
       "file": "MyBooksDownloadCenter.swift",
-      "line": 1390
+      "line": 1551
     },
     {
       "name": "pauseAllDownloads",
       "kind": "func",
       "file": "MyBooksDownloadCenter.swift",
-      "line": 1394
+      "line": 1555
     },
     {
       "name": "resumeIntelligentDownloads",
       "kind": "func",
       "file": "MyBooksDownloadCenter.swift",
-      "line": 1398
+      "line": 1559
     },
     {
       "name": "returnBook",
       "kind": "func",
       "file": "MyBooksDownloadCenter.swift",
-      "line": 1066
+      "line": 1223
     },
     {
       "name": "rightsManagement",
@@ -142,7 +142,7 @@
       "name": "startDownload",
       "kind": "func",
       "file": "MyBooksDownloadCenter.swift",
-      "line": 911
+      "line": 1068
     },
     {
       "name": "updateAccount",
@@ -154,7 +154,7 @@
       "name": "updateButtons",
       "kind": "func",
       "file": "MyBooks/BookCell/BookCellModel.swift",
-      "line": 440
+      "line": 459
     },
     {
       "name": "withDownloadProgress",
@@ -192,9 +192,14 @@
       "line": 5
     },
     {
+      "name": "BookOpenTracking",
+      "file": "BookOpenTracker.swift",
+      "line": 41
+    },
+    {
       "name": "BookReturnServiceDelegate",
       "file": "BookReturnService.swift",
-      "line": 28
+      "line": 29
     },
     {
       "name": "BookSignInRedirectHandlerDelegate",
@@ -209,7 +214,7 @@
     {
       "name": "BorrowOperationDelegate",
       "file": "BorrowOperation.swift",
-      "line": 45
+      "line": 46
     },
     {
       "name": "CredentialPromptCoordinatorDelegate",
@@ -224,7 +229,7 @@
     {
       "name": "DownloadAuthRetryHandlerDelegate",
       "file": "DownloadAuthRetryHandler.swift",
-      "line": 32
+      "line": 33
     },
     {
       "name": "DownloadCancellationHandlerDelegate",
@@ -297,6 +302,11 @@
       "line": 31
     },
     {
+      "name": "RecentlyReadingService",
+      "file": "RecentlyReadingService.swift",
+      "line": 59
+    },
+    {
       "name": "RightsManagementDispatcherDelegate",
       "file": "RightsManagementDispatcher.swift",
       "line": 45
@@ -304,7 +314,7 @@
     {
       "name": "TokenRefreshInterceptorDelegate",
       "file": "TokenRefreshInterceptor.swift",
-      "line": 18
+      "line": 19
     }
   ]
 }

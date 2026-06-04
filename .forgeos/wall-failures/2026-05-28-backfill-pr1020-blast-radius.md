@@ -7,8 +7,8 @@ changeset_id: cs_pr1020_backfill
 wall: blast-radius
 walls: [blast-radius, verify-pr, hook]
 severity: high
-wall_status: proposed
-applied_in: ""
+wall_status: applied
+applied_in: "PR #1025"
 contributing_docs: []
 name: backfill-pr1020-blast-radius
 type: snapshot

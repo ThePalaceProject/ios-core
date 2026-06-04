@@ -1,10 +1,29 @@
 {
   "module": "AppInfrastructure",
-  "generated_at": "2026-05-12T16:15:16+00:00",
-  "file_count": 21,
-  "shared_singleton_reads": 30,
-  "public_types": [],
+  "generated_at": "2026-06-03T17:51:23+00:00",
+  "file_count": 27,
+  "shared_singleton_reads": 42,
+  "public_types": [
+    {
+      "name": "AuthDecisionEvent",
+      "kind": "struct",
+      "file": "Telemetry/AuthDecisionEvent.swift",
+      "line": 29
+    },
+    {
+      "name": "AuthDecisionRecorder",
+      "kind": "class",
+      "file": "Telemetry/AuthDecisionRecorder.swift",
+      "line": 30
+    }
+  ],
   "objc_surface": [
+    {
+      "name": "APIKeys",
+      "kind": "class",
+      "file": "APIKeys.swift",
+      "line": 3
+    },
     {
       "name": "NSNotification",
       "kind": "extension",
@@ -129,19 +148,19 @@
       "name": "handleMemoryWarning",
       "kind": "func",
       "file": "TPPAppDelegate.swift",
-      "line": 600
+      "line": 655
     },
     {
       "name": "handlePowerModeChanged",
       "kind": "func",
       "file": "TPPAppDelegate.swift",
-      "line": 617
+      "line": 672
     },
     {
       "name": "handleThermalStateChanged",
       "kind": "func",
       "file": "TPPAppDelegate.swift",
-      "line": 613
+      "line": 668
     },
     {
       "name": "iconColor",

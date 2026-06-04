@@ -1,8 +1,8 @@
 {
   "module": "Settings",
-  "generated_at": "2026-05-12T16:15:16+00:00",
+  "generated_at": "2026-06-03T17:51:23+00:00",
   "file_count": 37,
-  "shared_singleton_reads": 22,
+  "shared_singleton_reads": 23,
   "public_types": [],
   "objc_surface": [
     {
@@ -111,7 +111,7 @@
       "name": "badgeLoggingSwitchDidChange",
       "kind": "func",
       "file": "DeveloperSettings/TPPDeveloperSettingsTableViewController.swift",
-      "line": 306
+      "line": 312
     },
     {
       "name": "catalogDidLoad",
@@ -135,7 +135,7 @@
       "name": "dismissLogPreview",
       "kind": "func",
       "file": "DeveloperSettings/TPPDeveloperSettingsTableViewController.swift",
-      "line": 878
+      "line": 870
     },
     {
       "name": "dismissRegistration",
@@ -144,10 +144,10 @@
       "line": 614
     },
     {
-      "name": "incrementalSpeedSliderSwitchDidChange",
+      "name": "inAppPlaybackNavSwitchDidChange",
       "kind": "func",
       "file": "DeveloperSettings/TPPDeveloperSettingsTableViewController.swift",
-      "line": 288
+      "line": 266
     },
     {
       "name": "makeSwiftUIView",
