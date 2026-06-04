@@ -162,6 +162,33 @@ final class LibrariesSectionViewModelTests: XCTestCase {
         XCTAssertFalse(sut.isSwitching, "Overlay must come down once the auth doc finishes.")
     }
 
+    /// The add-library path: TPPSettingsView's sheet callback hands a
+    /// freshly picked account straight to `switchToAccount` — the account
+    /// is NOT yet in `accounts`. The optimistic resort must insert it as
+    /// the first row, and the completion (which the view uses to jump to
+    /// the Catalog tab) must still fire when the environment reports ready.
+    func test_switchToAccount_newlyAddedAccount_insertsItFirst_andFiresCompletion() {
+        let bookshelf = makeAccount(uuid: "bookshelf", name: "Palace Bookshelf")
+        let added = makeAccount(uuid: "added", name: "Freshly Added Library")
+        let env = FakeLibrariesEnvironment(currentUUID: bookshelf.uuid, persisted: [bookshelf])
+        env.lookupResponses = [bookshelf.uuid: bookshelf]
+        let sut = LibrariesSectionViewModel(environment: env, observeNotifications: false)
+        XCTAssertEqual(sut.accounts.map { $0.uuid }, ["bookshelf"], "Sanity: added isn't in the list yet.")
+
+        let exp = expectation(description: "completion fires so the view can jump to the Catalog tab")
+        sut.switchToAccount(added) { exp.fulfill() }
+
+        XCTAssertEqual(env.switchedTo, ["added"], "Environment switch chain must run for the new account.")
+        XCTAssertEqual(sut.accounts.first?.uuid, "added",
+                       "Account absent from the list must be inserted as the first (active) row.")
+        XCTAssertEqual(sut.currentAccountUUID, "added")
+        XCTAssertTrue(sut.isSwitching)
+
+        env.fireSwitchCompletion(for: "added")
+        wait(for: [exp], timeout: 1.0)
+        XCTAssertFalse(sut.isSwitching)
+    }
+
     func test_switchToAccount_isNoOpForCurrentAccount() {
         let bookshelf = makeAccount(uuid: "bookshelf", name: "Palace Bookshelf")
         let env = FakeLibrariesEnvironment(currentUUID: bookshelf.uuid, persisted: [bookshelf])

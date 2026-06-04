@@ -122,8 +122,16 @@ struct TPPSettingsView: View {
             UIViewControllerWrapper(
                 TPPAccountList { account in
                     DispatchQueue.main.async {
-                        MyBooksViewModel(appContainer: .production()).loadAccount(account)
+                        // Adding a library goes through the same switch
+                        // chain as tapping an existing row: dismiss the
+                        // picker, show the loading overlay while the auth
+                        // doc loads, then jump to the Catalog tab so the
+                        // user lands in the new library instead of being
+                        // parked on Settings.
                         librariesVM.showAddLibrarySheet = false
+                        librariesVM.switchToAccount(account) {
+                            AppContainer.production().tabRouterHub.navigate(to: .catalog)
+                        }
                     }
                 },
                 updater: { _ in }
@@ -143,6 +151,9 @@ struct TPPSettingsView: View {
                             } label: {
                                 Label(Strings.Generic.delete, systemImage: "trash")
                             }
+                            // The app-wide accent overrides the destructive
+                            // role's default; pin the iOS-standard red.
+                            .tint(.red)
                         }
                     }
             }
