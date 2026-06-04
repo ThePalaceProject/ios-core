@@ -39,6 +39,8 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from _checklib import read_diff
+
 # --- Patterns --------------------------------------------------------------
 
 _REMOVED_DECL_RE = re.compile(
@@ -156,14 +158,7 @@ def _scan_file_for_comment_ref(path: Path, names: set[str]) -> list[_Finding]:
 
 # --- CLI -------------------------------------------------------------------
 
-def _read_diff(path: str | None) -> str:
-    if path is None or path == "-":
-        return sys.stdin.read()
-    p = Path(path)
-    if not p.is_file():
-        print(f"ERROR: diff file not found: {path}", file=sys.stderr)
-        sys.exit(2)
-    return p.read_text(encoding="utf-8", errors="replace")
+_read_diff = read_diff  # shared with scripts/_checklib.py
 
 
 def _default_root() -> Path:

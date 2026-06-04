@@ -728,6 +728,109 @@ final class OPDS2PublicationExtendedTests: XCTestCase {
         XCTAssertNil(pub.toBook(), "toBook should return nil if no acquisition links exist")
     }
 
+    // MARK: - PP-4161: Streaming-HTML pass-through (both toBook sites)
+
+    /// PP-4161: lightweight `OPDS2Publication.toBook()` must NOT drop a
+    /// publication whose only acquisition leaf is the LibrarySimplified
+    /// streaming-media MIME. Pre-fix, the `hasOpenablePath` guard
+    /// (lines 270-282) rejected streaming-media because
+    /// `TPPOPDSAcquisitionPath.supportedTypes()` excluded it. This test
+    /// fails until Module A adds `ContentTypeStreamingHTML` to
+    /// `supportedTypes()` + the `supportedSubtypes(forType: ContentTypeOPDSPublication)`
+    /// leaf set in PalaceCatalog — proving the filter behaviour, not the
+    /// production-code edit at the filter site (which is generic).
+    func testOPDS2Publication_toBook_streamingMediaOnlyAcquisition_doesNotDrop() {
+        let indirect = OPDS2IndirectAcquisition(
+            type: ContentTypeStreamingHTML,
+            child: nil
+        )
+        let link = OPDS2Link(
+            href: "https://example.com/borrow/streaming",
+            type: ContentTypeOPDSPublication,
+            rel: "http://opds-spec.org/acquisition/borrow",
+            properties: OPDS2LinkProperties(indirectAcquisition: [indirect])
+        )
+        let metadata = OPDS2Publication.Metadata(
+            id: "urn:uuid:84dac408-77ce-4afc-8393-9e0ced7ea3ef",
+            title: "Streaming-HTML Test Publication"
+        )
+        let publication = OPDS2Publication(
+            links: [link],
+            metadata: metadata,
+            images: nil
+        )
+
+        let book = publication.toBook()
+
+        XCTAssertNotNil(book,
+                        "Streaming-media-only publications must NOT be dropped by the hasOpenablePath filter once supportedTypes() includes ContentTypeStreamingHTML")
+        XCTAssertEqual(book?.identifier,
+                       "urn:uuid:84dac408-77ce-4afc-8393-9e0ced7ea3ef",
+                       "Identifier must round-trip through toBook unchanged")
+        XCTAssertEqual(book?.defaultBookContentType, .streamingHTML,
+                       "Resulting TPPBook must report .streamingHTML so Book Detail routes to the streaming reader")
+    }
+
+    /// PP-4161: parallel filter at `OPDS2FullPublication.toBook()`
+    /// (lines 386-398). Same contract — streaming-media-only publications
+    /// pass through. Pins the second `hasOpenablePath` site.
+    func testOPDS2FullPublication_toBook_streamingMediaOnlyAcquisition_doesNotDrop() {
+        let indirect = OPDS2IndirectAcquisition(
+            type: ContentTypeStreamingHTML,
+            child: nil
+        )
+        let link = OPDS2Link(
+            href: "https://example.com/borrow/streaming-full",
+            type: ContentTypeOPDSPublication,
+            rel: "http://opds-spec.org/acquisition/borrow",
+            properties: OPDS2LinkProperties(indirectAcquisition: [indirect])
+        )
+        let metadata = OPDS2FullMetadata(
+            identifier: "urn:uuid:full-streaming-test",
+            title: "Full Streaming-HTML Publication"
+        )
+        let publication = OPDS2FullPublication(
+            metadata: metadata,
+            links: [link],
+            images: nil
+        )
+
+        let book = publication.toBook()
+
+        XCTAssertNotNil(book,
+                        "Full-publication streaming-media-only books must NOT be dropped by the parallel hasOpenablePath filter")
+        XCTAssertEqual(book?.identifier, "urn:uuid:full-streaming-test")
+        XCTAssertEqual(book?.defaultBookContentType, .streamingHTML)
+    }
+
+    /// Sanity: a publication whose ONLY acquisition is a truly unsupported
+    /// MIME (e.g. text/csv) is still dropped. Catches a mutant that made
+    /// the filter universally permissive after the streaming-HTML edit.
+    func testOPDS2Publication_toBook_trulyUnsupportedFormat_stillDropped() {
+        let indirect = OPDS2IndirectAcquisition(
+            type: "text/csv",
+            child: nil
+        )
+        let link = OPDS2Link(
+            href: "https://example.com/borrow/unsupported",
+            type: ContentTypeOPDSPublication,
+            rel: "http://opds-spec.org/acquisition/borrow",
+            properties: OPDS2LinkProperties(indirectAcquisition: [indirect])
+        )
+        let metadata = OPDS2Publication.Metadata(
+            id: "urn:test:unsupported",
+            title: "Unsupported Format Publication"
+        )
+        let publication = OPDS2Publication(
+            links: [link],
+            metadata: metadata,
+            images: nil
+        )
+
+        XCTAssertNil(publication.toBook(),
+                     "Publications with truly unsupported formats (text/csv) must still be dropped by hasOpenablePath")
+    }
+
     // MARK: - Helpers
 
     private func makeMinimalMetadata(identifier: String = "urn:test:minimal") -> OPDS2FullMetadata {

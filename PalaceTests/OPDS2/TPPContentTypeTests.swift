@@ -66,6 +66,33 @@ final class TPPContentTypeTests: XCTestCase {
         // Empty and nil must both map to unsupported
         XCTAssertEqual(TPPBookContentType.from(mimeType: nil), .unsupported)
     }
+
+    // MARK: - PP-4161: Streaming-HTML MIME recognition
+
+    /// PP-4161: `TPPBookContentType.from(mimeType:)` must recognize the
+    /// LibrarySimplified streaming-media MIME and return `.streamingHTML`.
+    /// Without this, books with only a streaming-HTML acquisition leaf
+    /// resolve to `.unsupported` and the catalog filter drops them.
+    func testTPPBookContentType_from_streamingMediaMIME_returnsStreamingHTML() {
+        let result = TPPBookContentType.from(mimeType: ContentTypeStreamingHTML)
+        XCTAssertEqual(result, .streamingHTML)
+        // Must NOT collapse into any other known content type
+        XCTAssertNotEqual(result, .unsupported,
+                          "Streaming-HTML must be a first-class content type, not unsupported")
+        XCTAssertNotEqual(result, .epub)
+        XCTAssertNotEqual(result, .pdf)
+        XCTAssertNotEqual(result, .audiobook)
+    }
+
+    /// A plain `text/html` MIME (no LibrarySimplified profile parameter)
+    /// must NOT be recognized as streaming-HTML — the profile parameter is
+    /// the contract between the CM feed and the iOS streaming reader.
+    func testTPPBookContentType_from_plainTextHtml_returnsUnsupported() {
+        let result = TPPBookContentType.from(mimeType: "text/html")
+        XCTAssertEqual(result, .unsupported,
+                       "Plain text/html (without the streaming-media profile) is not a recognized content type")
+        XCTAssertNotEqual(result, .streamingHTML)
+    }
 }
 
 // MARK: - SampleType Tests

@@ -781,6 +781,14 @@ struct BookDetailView: View {
                 viewModel.showHalfSheet.toggle()
             }
 
+        case .readStreaming:
+            // PP-4161: route straight through the view model — no half-sheet,
+            // no sign-in detour. The reader is presented by
+            // NavigationCoordinator's streamingHTML route; if the user isn't
+            // signed in they wouldn't have a borrowed streaming-HTML book in
+            // the first place (the button only surfaces post-borrow).
+            viewModel.handleAction(for: buttonType)
+
         case .return, .remove, .cancelHold:
             if needsAuth {
                 // Present sign-in for return/cancel actions

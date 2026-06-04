@@ -1,9 +1,27 @@
 {
   "module": "Accounts",
-  "generated_at": "2026-05-12T16:15:16+00:00",
-  "file_count": 21,
-  "shared_singleton_reads": 13,
+  "generated_at": "2026-06-03T17:51:23+00:00",
+  "file_count": 26,
+  "shared_singleton_reads": 19,
   "public_types": [
+    {
+      "name": "AccountEvictionReason",
+      "kind": "enum",
+      "file": "Library/Account+State.swift",
+      "line": 182
+    },
+    {
+      "name": "AccountLoadError",
+      "kind": "enum",
+      "file": "Library/Account+State.swift",
+      "line": 150
+    },
+    {
+      "name": "AccountStateStore",
+      "kind": "class",
+      "file": "Library/AccountStateStore.swift",
+      "line": 33
+    },
     {
       "name": "DRMObject",
       "kind": "class",
@@ -15,6 +33,12 @@
       "kind": "class",
       "file": "User/UserProfileDocument.swift",
       "line": 29
+    },
+    {
+      "name": "LoadState",
+      "kind": "enum",
+      "file": "Library/Account+State.swift",
+      "line": 47
     },
     {
       "name": "Settings",
@@ -34,7 +58,7 @@
       "name": "Account",
       "kind": "class",
       "file": "Library/Account.swift",
-      "line": 505
+      "line": 534
     },
     {
       "name": "AccountDetails",
@@ -46,7 +70,7 @@
       "name": "AccountsManager",
       "kind": "class",
       "file": "Library/AccountsManager.swift",
-      "line": 68
+      "line": 108
     },
     {
       "name": "Authentication",
@@ -70,7 +94,7 @@
       "name": "LoginKeyboard",
       "kind": "enum",
       "file": "Library/Account.swift",
-      "line": 720
+      "line": 787
     },
     {
       "name": "OPDS2SamlIDP",
@@ -112,13 +136,13 @@
       "name": "TPPCurrentLibraryAccountProvider",
       "kind": "protocol",
       "file": "Library/AccountsManager.swift",
-      "line": 48
+      "line": 88
     },
     {
       "name": "TPPLibraryAccountsProvider",
       "kind": "protocol",
       "file": "Library/AccountsManager.swift",
-      "line": 61
+      "line": 101
     },
     {
       "name": "TPPSignedInStateProvider",
@@ -142,13 +166,13 @@
       "name": "TPPUserAccountResolving",
       "kind": "protocol",
       "file": "Library/AccountsManager.swift",
-      "line": 56
+      "line": 96
     },
     {
       "name": "URLType",
       "kind": "enum",
       "file": "Library/Account.swift",
-      "line": 711
+      "line": 778
     },
     {
       "name": "UserAccountAuthHelper",
@@ -169,6 +193,12 @@
       "line": 43
     },
     {
+      "name": "flushPendingForTests",
+      "kind": "func",
+      "file": "AgeCheck/TPPAgeCheck.swift",
+      "line": 203
+    },
+    {
       "name": "hidePickerView",
       "kind": "func",
       "file": "AgeCheck/TPPAgeCheckViewController.swift",
@@ -178,85 +208,85 @@
       "name": "loadAuthenticationDocument",
       "kind": "func",
       "file": "Library/Account.swift",
-      "line": 562
+      "line": 629
     },
     {
       "name": "setAdobeToken",
       "kind": "func",
       "file": "User/TPPUserAccount.swift",
-      "line": 346
+      "line": 359
     },
     {
       "name": "setAdobeToken",
       "kind": "func",
       "file": "User/TPPUserAccount.swift",
-      "line": 361
+      "line": 374
     },
     {
       "name": "setAdobeVendor",
       "kind": "func",
       "file": "User/TPPUserAccount.swift",
-      "line": 355
+      "line": 368
     },
     {
       "name": "setAuthToken",
       "kind": "func",
       "file": "User/TPPUserAccount.swift",
-      "line": 383
+      "line": 396
     },
     {
       "name": "setAuthorizationIdentifier",
       "kind": "func",
       "file": "User/TPPUserAccount.swift",
-      "line": 372
+      "line": 385
     },
     {
       "name": "setBarcode",
       "kind": "func",
       "file": "User/TPPUserAccount.swift",
-      "line": 341
+      "line": 354
     },
     {
       "name": "setCookies",
       "kind": "func",
       "file": "User/TPPUserAccount.swift",
-      "line": 395
+      "line": 417
     },
     {
       "name": "setDeviceID",
       "kind": "func",
       "file": "User/TPPUserAccount.swift",
-      "line": 413
+      "line": 435
     },
     {
       "name": "setLicensor",
       "kind": "func",
       "file": "User/TPPUserAccount.swift",
-      "line": 367
+      "line": 380
     },
     {
       "name": "setPatron",
       "kind": "func",
       "file": "User/TPPUserAccount.swift",
-      "line": 377
+      "line": 390
     },
     {
       "name": "setProvider",
       "kind": "func",
       "file": "User/TPPUserAccount.swift",
-      "line": 401
+      "line": 423
     },
     {
       "name": "setUserID",
       "kind": "func",
       "file": "User/TPPUserAccount.swift",
-      "line": 407
+      "line": 429
     },
     {
       "name": "updateAccountSetFromNotification",
       "kind": "func",
       "file": "Library/AccountsManager.swift",
-      "line": 741
+      "line": 1172
     }
   ],
   "public_functions": [],
@@ -265,6 +295,11 @@
       "name": "AccountLogoDelegate",
       "file": "Library/Account.swift",
       "line": 31
+    },
+    {
+      "name": "BundleResourceResolving",
+      "file": "Library/BundledRegistrySnapshot.swift",
+      "line": 6
     },
     {
       "name": "CatalogFeedPreloading",
@@ -299,12 +334,12 @@
     {
       "name": "TPPCurrentLibraryAccountProvider",
       "file": "Library/AccountsManager.swift",
-      "line": 48
+      "line": 88
     },
     {
       "name": "TPPLibraryAccountsProvider",
       "file": "Library/AccountsManager.swift",
-      "line": 61
+      "line": 101
     },
     {
       "name": "TPPSignedInStateProvider",
@@ -319,7 +354,7 @@
     {
       "name": "TPPUserAccountResolving",
       "file": "Library/AccountsManager.swift",
-      "line": 56
+      "line": 96
     }
   ]
 }

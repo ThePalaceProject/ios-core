@@ -7,7 +7,7 @@
           {
             "type": "command",
             "command": "bash scripts/hooks/session-start.sh",
-            "timeout": 5,
+            "timeout": 45,
             "statusMessage": "Loading governance requirements..."
           }
         ]

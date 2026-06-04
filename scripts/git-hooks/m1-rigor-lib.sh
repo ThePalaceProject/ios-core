@@ -49,6 +49,16 @@ m1_compute_mode() {
   else
     M1_MODE="warn-only"
   fi
+
+  # Merge commits integrate already-reviewed branch code — the authored-change
+  # floor must not re-litigate it. Merging develop into a feature branch would
+  # otherwise re-flag develop's already-merged public API / `#if DEBUG` blocks
+  # (which passed review on their own PRs) as if the merge author introduced
+  # them. Demote to warn-only: the checks still run and surface findings, they
+  # just don't block a legitimate integration merge.
+  if git rev-parse -q --verify MERGE_HEAD >/dev/null 2>&1; then
+    M1_MODE="warn-only"
+  fi
 }
 
 # run_m1_check <name> <script-relpath> [extra script flags...]

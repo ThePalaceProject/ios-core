@@ -7,8 +7,8 @@ changeset_id: cs_pr1022_backfill
 wall: contract
 walls: [contract, verify-pr, hook]
 severity: high
-wall_status: proposed
-applied_in: ""
+wall_status: applied
+applied_in: "PR #1025"
 contributing_docs: []
 name: backfill-pr1022-claim-drift
 type: snapshot

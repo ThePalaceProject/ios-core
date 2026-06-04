@@ -450,7 +450,8 @@ final class BorrowOperation {
             // whenever the borrow lands on .downloadNeeded. .holding (hold placed,
             // not yet ready) and other terminal-after-borrow states correctly
             // skip the chain — there's nothing to download yet.
-            if attemptDownload && mapping.state == .downloadNeeded {
+            // PP-4161 advisory F: streaming-HTML has no downloadable asset; readStreaming is the terminal action.
+            if attemptDownload && mapping.state == .downloadNeeded && !borrowedBook.isStreamingHTML {
                 await MainActor.run { [weak self] in
                     self?.delegate?.startDownload(for: borrowedBook, withRequest: nil)
                 }

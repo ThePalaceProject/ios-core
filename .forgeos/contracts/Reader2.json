@@ -1,8 +1,8 @@
 {
   "module": "Reader2",
-  "generated_at": "2026-05-12T16:15:16+00:00",
-  "file_count": 69,
-  "shared_singleton_reads": 11,
+  "generated_at": "2026-06-03T17:51:23+00:00",
+  "file_count": 73,
+  "shared_singleton_reads": 19,
   "public_types": [
     {
       "name": "AdobeRightsParser",
@@ -26,7 +26,7 @@
       "name": "AudiobookBookmarkBusinessLogic",
       "kind": "class",
       "file": "Bookmarks/AudiobookBookmarkBusinessLogic.swift",
-      "line": 13
+      "line": 14
     },
     {
       "name": "DRMDataResource",
@@ -94,7 +94,7 @@
       "name": "AudiobookBookmarkBusinessLogic",
       "kind": "class",
       "file": "Bookmarks/AudiobookBookmarkBusinessLogic.swift",
-      "line": 13
+      "line": 14
     },
     {
       "name": "LCPLibraryService",
@@ -160,7 +160,7 @@
       "name": "closeEPUB",
       "kind": "func",
       "file": "UI/TPPEPUBViewController.swift",
-      "line": 448
+      "line": 482
     },
     {
       "name": "config",
@@ -220,13 +220,19 @@
       "name": "goBackward",
       "kind": "func",
       "file": "UI/TPPBaseReaderViewController.swift",
-      "line": 515
+      "line": 567
     },
     {
       "name": "goForward",
       "kind": "func",
       "file": "UI/TPPBaseReaderViewController.swift",
-      "line": 522
+      "line": 574
+    },
+    {
+      "name": "handleMemoryWarning",
+      "kind": "func",
+      "file": "ReaderStackConfiguration/LCP/TPPLCPClient.swift",
+      "line": 40
     },
     {
       "name": "hasExpired",
@@ -238,7 +244,7 @@
       "name": "highlightSelection",
       "kind": "func",
       "file": "UI/TPPEPUBViewController.swift",
-      "line": 661
+      "line": 695
     },
     {
       "name": "hrefKey",
@@ -259,22 +265,34 @@
       "line": 52
     },
     {
+      "name": "keyCommandCloseReader",
+      "kind": "func",
+      "file": "UI/TPPEPUBViewController.swift",
+      "line": 393
+    },
+    {
       "name": "keyCommandGoBackward",
       "kind": "func",
       "file": "UI/TPPEPUBViewController.swift",
-      "line": 350
+      "line": 375
     },
     {
       "name": "keyCommandGoForward",
       "kind": "func",
       "file": "UI/TPPEPUBViewController.swift",
-      "line": 356
+      "line": 381
+    },
+    {
+      "name": "keyCommandShowSettings",
+      "kind": "func",
+      "file": "UI/TPPEPUBViewController.swift",
+      "line": 397
     },
     {
       "name": "keyCommandToggleUI",
       "kind": "func",
       "file": "UI/TPPEPUBViewController.swift",
-      "line": 362
+      "line": 387
     },
     {
       "name": "licenseExtension",
@@ -307,28 +325,22 @@
       "line": 87
     },
     {
-      "name": "postQueuedReadPositionInSerialQueue",
-      "kind": "func",
-      "file": "BusinessLogic/TPPLastReadPositionPoster.swift",
-      "line": 91
-    },
-    {
       "name": "presentEPUBSearch",
       "kind": "func",
       "file": "UI/TPPEPUBViewController.swift",
-      "line": 511
+      "line": 545
     },
     {
       "name": "presentPositionsVC",
       "kind": "func",
       "file": "UI/TPPBaseReaderViewController.swift",
-      "line": 384
+      "line": 436
     },
     {
       "name": "presentUserSettings",
       "kind": "func",
       "file": "UI/TPPEPUBViewController.swift",
-      "line": 500
+      "line": 534
     },
     {
       "name": "previous",
@@ -358,7 +370,7 @@
       "name": "toggleBookmark",
       "kind": "func",
       "file": "UI/TPPBaseReaderViewController.swift",
-      "line": 407
+      "line": 459
     },
     {
       "name": "userDidRefreshBookmarks",
@@ -370,7 +382,7 @@
       "name": "voiceOverStatusDidChange",
       "kind": "func",
       "file": "UI/TPPBaseReaderViewController.swift",
-      "line": 480
+      "line": 532
     }
   ],
   "public_functions": [],
@@ -404,6 +416,11 @@
       "name": "ModuleDelegate",
       "file": "ReaderPresentation/ReaderModule.swift",
       "line": 19
+    },
+    {
+      "name": "NavigatorGoTo",
+      "file": "UI/ReaderInitialLocationNavigator.swift",
+      "line": 39
     },
     {
       "name": "ReaderFormatModule",

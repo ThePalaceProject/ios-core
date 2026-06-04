@@ -357,4 +357,123 @@ final class BookButtonMapperTests: XCTestCase {
             "book would render as .unsupported, leaving the user with no actionable button."
         )
     }
+
+    // MARK: - PP-4161 streaming-HTML button-type mapping
+    //
+    // These tests pin the Option (c) presentation-layer semantic: a streaming-
+    // HTML book in `.downloadNeeded` maps to `[.readStreaming, .return]`
+    // (skipping the normal Download phase), and in `.downloadSuccessful` also
+    // surfaces `.readStreaming` (legacy state carryover). The contract for
+    // these tests lives in `.forgeos/swarms/swarm_c2b95c85/contracts/C-BookButton-Presenter-Wiring.md`
+    // test contracts #1-#3.
+
+    /// Helper: build a streaming-HTML-only book (single acquisition leaf with
+    /// the streaming-media MIME). Matches the canonical OPDS chain used in
+    /// `TPPBookTests.testTPPBook_isStreamingHTML_streamingMediaOnly_returnsTrue`.
+    private func makeStreamingHTMLBook() -> TPPBook {
+        let leaf = TPPOPDSIndirectAcquisition(
+            type: ContentTypeStreamingHTML,
+            indirectAcquisitions: []
+        )
+        let acquisition = TPPOPDSAcquisition(
+            relation: .borrow,
+            type: ContentTypeOPDSPublication,
+            hrefURL: URL(string: "https://example.com/streaming-html/\(UUID().uuidString)")!,
+            indirectAcquisitions: [leaf],
+            availability: TPPOPDSAcquisitionAvailabilityUnlimited()
+        )
+        return TPPBook(
+            acquisitions: [acquisition],
+            authors: [TPPBookAuthor(authorName: "Streaming Author", relatedBooksURL: nil)],
+            categoryStrings: ["Streaming"],
+            distributor: "Lyrasis Streaming",
+            identifier: "streaming-html-\(UUID().uuidString)",
+            imageURL: nil,
+            imageThumbnailURL: nil,
+            published: Date(),
+            publisher: "Test Publisher",
+            subtitle: nil,
+            summary: "Streaming-HTML test fixture",
+            title: "Streaming-Only Title",
+            updated: Date(),
+            annotationsURL: nil,
+            analyticsURL: nil,
+            alternateURL: nil,
+            relatedWorksURL: nil,
+            previewLink: nil,
+            seriesURL: nil,
+            revokeURL: URL(string: "https://example.com/revoke"),
+            reportURL: nil,
+            timeTrackingURL: nil,
+            contributors: [:],
+            bookDuration: nil,
+            imageCache: MockImageCache()
+        )
+    }
+
+    /// Contract test #1: streaming-HTML book in `.downloadNeeded` must map to
+    /// `[.readStreaming, .return]` — NOT `[.download, .return]`. This pins
+    /// the entire "streaming = no download" semantic at the presentation
+    /// layer. A mutant that flips the inner switch's `case .streamingHTML`
+    /// arm to fall through to the EPUB/PDF branch would yield `[.download,
+    /// .return]` and this test fails.
+    func testBookButtonState_buttonTypes_streamingHTMLDownloadNeeded_yieldsReadStreamingAndReturn() {
+        let book = makeStreamingHTMLBook()
+        XCTAssertEqual(book.defaultBookContentType, .streamingHTML,
+                       "precondition: book must resolve to .streamingHTML")
+
+        let buttons = BookButtonState.downloadNeeded.buttonTypes(book: book, previewEnabled: false)
+
+        XCTAssertTrue(buttons.contains(.readStreaming),
+                      "streaming-HTML in .downloadNeeded must surface .readStreaming (got \(buttons))")
+        XCTAssertTrue(buttons.contains(.return),
+                      "streaming-HTML in .downloadNeeded must surface .return alongside .readStreaming")
+        XCTAssertFalse(buttons.contains(.download),
+                       "streaming-HTML must NOT surface .download — that's the bug this test prevents")
+        XCTAssertFalse(buttons.contains(.remove),
+                       "streaming-HTML books are borrowed (revokable), so .return is correct, not .remove")
+    }
+
+    /// Contract test #2: streaming-HTML book in `.downloadSuccessful` (legacy
+    /// state from a prior session) still uses the streaming reader — there's
+    /// no local asset to read. Catches a mutant that drops the streamingHTML
+    /// arm from the `.downloadSuccessful, .used` switch.
+    func testBookButtonState_buttonTypes_streamingHTMLDownloadSuccessful_yieldsReadStreaming() {
+        let book = makeStreamingHTMLBook()
+
+        let buttons = BookButtonState.downloadSuccessful.buttonTypes(book: book, previewEnabled: false)
+
+        XCTAssertTrue(buttons.contains(.readStreaming),
+                      "streaming-HTML in .downloadSuccessful must surface .readStreaming, NOT .read or .listen")
+        XCTAssertFalse(buttons.contains(.read),
+                       ".read would route to the EPUB reader — wrong content type")
+        XCTAssertFalse(buttons.contains(.listen),
+                       ".listen would route to the audiobook player — wrong content type")
+    }
+
+    /// Contract test #3: streaming-HTML book in `.unregistered` (pre-borrow)
+    /// goes through `stateForAvailability` which only knows about
+    /// availability, not content type. With `.unlimited` availability the
+    /// book is `.canBorrow`, which yields `[.get]`. Confirms the pre-borrow
+    /// flow is unchanged.
+    func testBookButtonState_buttonTypes_streamingHTMLUnregistered_yieldsGet() {
+        let book = makeStreamingHTMLBook()
+        let availability = book.defaultAcquisition?.availability
+        let buttonState = BookButtonMapper.map(
+            registryState: .unregistered,
+            availability: availability,
+            isProcessingDownload: false
+        )
+        XCTAssertEqual(buttonState, .canBorrow,
+                       "Unlimited availability must map to .canBorrow regardless of content type")
+
+        let buttons = buttonState.buttonTypes(book: book, previewEnabled: false)
+
+        XCTAssertTrue(buttons.contains(.get),
+                      "Pre-borrow streaming-HTML book must show .get like any other unborrowed title")
+        XCTAssertFalse(buttons.contains(.readStreaming),
+                       "Pre-borrow must NOT show .readStreaming — user hasn't borrowed yet")
+        XCTAssertFalse(buttons.contains(.return),
+                       "Pre-borrow must NOT show .return — there's nothing to return")
+    }
 }

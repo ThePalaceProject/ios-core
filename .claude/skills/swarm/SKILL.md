@@ -6,7 +6,7 @@ tools: Agent, Bash, Read, Write, Edit, mcp__forgeos__forge_propose_changeset, mc
 type: evolving
 status: active
 created: 2026-05-28
-last_refresh: 2026-06-03
+last_refresh: 2026-06-04
 freshness_window: 365d
 owners: [general]
 ---
@@ -538,11 +538,12 @@ fi
 # Check 6: Universal rigor scripts (M1 floor — swarm_M1_83be56fc, 2026-05-28)
 # Wraps wave-1-4 manual-review findings into machine-checkable form.
 # Contract reconciliation + blast-radius + intent-recorded BLOCK on exit 1.
-# Adjacency-staleness is WARN-only (always exit 0, count warnings).
+# Adjacency-staleness + superpartner-spectrum are WARN-only (count, don't block).
 python3 scripts/check-contract-reconciliation.py --quiet ; CR_EXIT=$?
 python3 scripts/check-blast-radius.py --quiet            ; BR_EXIT=$?
 python3 scripts/check-adjacency-staleness.py --quiet     ; AS_EXIT=$?  # warn-only
 python3 scripts/check-intent-recorded.py --quiet         ; IR_EXIT=$?
+python3 scripts/check-superpartner-spectrum.py --quiet   ; SPS_EXIT=$?  # warn-only
 if [ "${CR_EXIT:-0}" -ne 0 ]; then
   echo "BLOCK: check-contract-reconciliation.py exit $CR_EXIT — diff doesn't deliver contract/commit claims"
   exit 1
@@ -557,6 +558,9 @@ if [ "${IR_EXIT:-0}" -ne 0 ]; then
 fi
 if [ "${AS_EXIT:-0}" -ne 0 ]; then
   echo "WARN: check-adjacency-staleness.py exit $AS_EXIT — adjacent docs/tests stale (advisory only)"
+fi
+if [ "${SPS_EXIT:-0}" -ne 0 ]; then
+  echo "WARN: check-superpartner-spectrum.py exit $SPS_EXIT — new code (func/case/state) with no matching test; add a test or mark it // no-superpartner: (advisory only)"
 fi
 
 # Check 6.5: Borrow→display invariant for new TPPBookContentType cases
@@ -659,7 +663,28 @@ If approved on first review: proceed. (Note: this should become less common over
 
 Promote ForgeOS gates: `mcp__forgeos__forge_promote_gate` for each.
 
-Write `.forgeos/swarms/<swarm_id>/outcome.md` with: status, modules touched, files changed, tests added, reviewer verdicts (both rounds if any), total agent count, lessons learned, **list of wall-failure entries created and their `applied_in` status**.
+**Submit one ADR per architectural decision in the contracts (MANDATORY since v3 ADR ledger, 2026-06-03).** The architect's per-module contracts at `.forgeos/swarms/<swarm_id>/contracts/<module>.md` are the ground truth for what architectural choices were made. Each contract that defines a new abstraction, protocol surface, lifecycle, state-machine, or boundary needs to land as `architecture_decision` evidence so it shows up in `forge_list_adrs` and is reconcilable by future reviewers.
+
+For each contract that records a real decision (skip mechanical / format-only contracts):
+
+```
+mcp__forgeos__forge_submit_evidence:
+  project_id: <pid>
+  changeset_id: <swarm changeset_id from Phase 2>
+  type: architecture_decision
+  summary: <contract title — short, fits in 240 chars>
+  metadata:
+    decision: <one-clause WHAT was decided, ≤ 500 chars>
+    context: <the problem the decision solves, paste from the contract's "Motivation" or "Why" section>
+    consequences: <what callers / future work / new constraints look like, paste from "Implications" or "Tradeoffs">
+    area: <best match — architecture | audiobooks | accounts | governance | testing | release | ...>
+    alternatives_considered:
+      - { option: "<rejected option>", rejected_because: "<reason>" }
+```
+
+Each contract becomes one ADR. Submit them serially. If the contract bundles multiple decisions (e.g., A: protocol shape + B: lifecycle ownership), split into two submissions. The architect's contract titles + acceptance criteria are usually directly usable as `decision` + `consequences` after trimming. Skip wall-failures here — they go through `scripts/forgeos-submit-wall-failure.py` separately per `.forgeos/wall-failures/README.md` workflow step 4.
+
+Write `.forgeos/swarms/<swarm_id>/outcome.md` with: status, modules touched, files changed, tests added, reviewer verdicts (both rounds if any), total agent count, lessons learned, **list of wall-failure entries created and their `applied_in` status**, and **list of ADR ids submitted with the modules they cover** (`adr_<8hex>` for each contract). The outcome.md ADR list is the human-readable counterpart to the ForgeOS ledger entries.
 
 Update manifest.yaml status: `complete`.
 

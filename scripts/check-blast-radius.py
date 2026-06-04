@@ -51,15 +51,13 @@ import argparse
 import re
 import sys
 from dataclasses import dataclass
-from pathlib import Path
 
-# --- Severity ladder -------------------------------------------------------
+from _checklib import SEVERITY_RANK, at_or_above, iter_hunk_lines, read_diff
 
-_SEVERITY_RANK = {"low": 0, "medium": 1, "high": 2}
+# --- Severity ladder (shared with scripts/_checklib.py) --------------------
 
-
-def _at_or_above(level: str, floor: str) -> bool:
-    return _SEVERITY_RANK.get(level, 0) >= _SEVERITY_RANK.get(floor, 2)
+_SEVERITY_RANK = SEVERITY_RANK
+_at_or_above = at_or_above
 
 
 # --- Diff parsing ----------------------------------------------------------
@@ -70,10 +68,6 @@ class _AddedLine:
     line_no: int             # line number in the post-image file
     text: str                # added line content (no leading "+")
     docstring_block: str     # preceding /// or // comment block, joined
-
-# Regex anchors
-_FILE_HDR_RE = re.compile(r"^\+\+\+ b/(.+)$")
-_HUNK_HDR_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@")
 
 # Detection patterns
 _PUBLIC_DECL_RE = re.compile(
@@ -139,53 +133,46 @@ def _is_non_prod_swift(path: str) -> bool:
 
 
 def _parse_diff(diff_text: str) -> list[_AddedLine]:
-    """Yield post-image added Swift lines with line numbers + preceding doc block."""
-    lines = diff_text.splitlines()
-    added: list[_AddedLine] = []
-    current_path: str | None = None
-    current_line_no: int = 0
-    last_doc_block: list[str] = []
+    """Yield post-image added Swift lines with line numbers + preceding doc block.
 
-    for raw in lines:
-        m_file = _FILE_HDR_RE.match(raw)
-        if m_file:
-            current_path = m_file.group(1)
-            current_line_no = 0
+    Built on the shared iter_hunk_lines() primitive. Doc-block accumulation is
+    reset at every file change and hunk boundary; with iter_hunk_lines the hunk
+    boundary is detected as a non-contiguous post-image line number (the prior
+    hand-rolled parser reset on the `@@` header — equivalent, since within a
+    hunk added/context lines are always contiguous and removed lines don't
+    advance the counter).
+    """
+    added: list[_AddedLine] = []
+    last_doc_block: list[str] = []
+    prev_path: str | None = None
+    prev_line_no: int | None = None
+
+    for dl in iter_hunk_lines(diff_text):
+        if dl.kind == "-":
+            # Removed lines don't advance the post-image counter or doc block.
+            continue
+        # Reset the doc block at a file change or a hunk boundary (non-contiguous
+        # post-image line number).
+        if dl.file_path != prev_path or (
+            prev_line_no is not None and dl.line_no != prev_line_no + 1
+        ):
             last_doc_block = []
-            continue
-        if current_path is None:
-            continue
-        m_hunk = _HUNK_HDR_RE.match(raw)
-        if m_hunk:
-            current_line_no = int(m_hunk.group(1)) - 1
-            last_doc_block = []
-            continue
-        if raw.startswith("+++") or raw.startswith("---"):
-            continue
-        if raw.startswith("+") and not raw.startswith("+++"):
-            current_line_no += 1
-            text = raw[1:]
+        prev_path = dl.file_path
+        prev_line_no = dl.line_no
+
+        if dl.kind == "+":
             doc_join = "\n".join(last_doc_block[-12:])
             added.append(_AddedLine(
-                file_path=current_path,
-                line_no=current_line_no,
-                text=text,
+                file_path=dl.file_path,
+                line_no=dl.line_no,
+                text=dl.text,
                 docstring_block=doc_join,
             ))
-            stripped = text.lstrip()
-            if stripped.startswith("///") or stripped.startswith("//"):
-                last_doc_block.append(stripped)
-            elif stripped:
-                last_doc_block = []
-            continue
-        if raw.startswith(" "):
-            current_line_no += 1
-            stripped = raw[1:].lstrip()
-            if stripped.startswith("///") or stripped.startswith("//"):
-                last_doc_block.append(stripped)
-            elif stripped:
-                last_doc_block = []
-        # Removed lines ("-...") don't advance post-image line numbers.
+        stripped = dl.text.lstrip()
+        if stripped.startswith("///") or stripped.startswith("//"):
+            last_doc_block.append(stripped)
+        elif stripped:
+            last_doc_block = []
     return added
 
 
@@ -327,14 +314,7 @@ def _scan(added: list[_AddedLine]) -> list[_Finding]:
 
 # --- CLI -------------------------------------------------------------------
 
-def _read_diff(path: str | None) -> str:
-    if path is None or path == "-":
-        return sys.stdin.read()
-    p = Path(path)
-    if not p.is_file():
-        print(f"ERROR: diff file not found: {path}", file=sys.stderr)
-        sys.exit(2)
-    return p.read_text(encoding="utf-8", errors="replace")
+_read_diff = read_diff  # shared with scripts/_checklib.py
 
 
 def main(argv: list[str]) -> int:

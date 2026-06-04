@@ -13,6 +13,11 @@ enum AppRoute: Hashable {
     case pdf(BookRoute)
     case audio(BookRoute)
     case epub(BookRoute)
+    /// PP-4161: in-app WKWebView reader for `text/html;profile=streaming-media`
+    /// titles. Pushed (mirrors Reader2/Reader3) rather than sheet-presented
+    /// so back-gesture / swipe-down dismiss behaves the same as the other
+    /// readers and the route appears in NavigationPath for back-stack support.
+    case streamingHTML(BookRoute)
 }
 
 /// Lightweight, hashable identifier for a book navigation route.

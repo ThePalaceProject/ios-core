@@ -135,6 +135,17 @@ struct NavigationHostView<Content: View>: View {
                         } else {
                             EmptyView()
                         }
+                    case .streamingHTML(let bookRoute):
+                        // PP-4161: in-app WKWebView reader. The book payload is
+                        // resolved from the coordinator's bookById storage —
+                        // BookDetailViewModel.presentStreamingReader stores
+                        // before pushing.
+                        if let book = coordinator.resolveBook(for: bookRoute) {
+                            StreamingReaderView(book: book)
+                                .toolbar(.hidden, for: .tabBar)
+                        } else {
+                            EmptyView()
+                        }
                     @unknown default:
                         EmptyView()
                     }

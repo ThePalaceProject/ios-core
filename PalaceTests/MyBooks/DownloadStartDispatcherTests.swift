@@ -699,6 +699,176 @@ final class DownloadStartDispatcherTests: XCTestCase {
         XCTAssertEqual(registry.state(for: book.identifier), .holding,
                        "Completion's warn-arm must NOT mutate the registry — it only logs")
     }
+
+    // MARK: - PP-4161 Wave 4 (Path X): streaming-HTML early-return
+    //
+    // Production code at DownloadStartDispatcher.swift:192-203 (the 4-arg
+    // `processDownloadWithCredentials` variant) gains a streaming-HTML
+    // short-circuit BEFORE the borrow branch:
+    //
+    //     if book.defaultBookContentType == .streamingHTML { return }
+    //     if state == .unregistered || state == .holding { startBorrow(...); return }
+    //
+    // Rationale: streaming-HTML titles have no downloadable asset (the only
+    // acquisition leaf is `text/html;profile=streaming-media`). The OPDS
+    // `processUnregisteredState` open-access branch (L150-159) already
+    // transitions the registry to `.downloadNeeded` for them — there's
+    // nothing for `startBorrow` (no `rel="borrow"`) or
+    // `processRegularDownload` (no decodable asset) to do.
+    //
+    // The user-facing seam this early-return enables: once the registry is
+    // `.downloadNeeded` + content type is streamingHTML, Module C's
+    // `BookButtonState.downloadNeeded` mapping surfaces
+    // `[.readStreaming, .return]` so the next tap opens the streaming
+    // reader.
+
+    /// Build a streamingHTML book: borrow → indirect → text/html
+    /// streaming-media leaf. Matches the OPDS acquisition chain that
+    /// surfaces `.streamingHTML` from `defaultBookContentType` (which
+    /// walks the indirect chain and inspects the leaf MIME type).
+    private func streamingHTMLBook(
+        relation: TPPOPDSAcquisitionRelation = .openAccess,
+        url: URL = URL(string: "https://example.com/streaming")!
+    ) -> TPPBook {
+        let leaf = TPPOPDSIndirectAcquisition(
+            type: ContentTypeStreamingHTML,
+            indirectAcquisitions: []
+        )
+        let acquisition = TPPOPDSAcquisition(
+            relation: relation,
+            type: ContentTypeOPDSPublication,
+            hrefURL: url,
+            indirectAcquisitions: [leaf],
+            availability: TPPOPDSAcquisitionAvailabilityUnlimited()
+        )
+        return TPPBook(
+            acquisitions: [acquisition],
+            authors: [TPPBookAuthor(authorName: "Author", relatedBooksURL: nil)],
+            categoryStrings: ["Streaming"],
+            distributor: "Streaming Distributor",
+            identifier: UUID().uuidString,
+            imageURL: nil,
+            imageThumbnailURL: nil,
+            published: Date(),
+            publisher: nil,
+            subtitle: nil,
+            summary: nil,
+            title: "Streaming Test Book",
+            updated: Date(),
+            annotationsURL: nil,
+            analyticsURL: nil,
+            alternateURL: nil,
+            relatedWorksURL: nil,
+            previewLink: nil,
+            seriesURL: nil,
+            revokeURL: nil,
+            reportURL: nil,
+            timeTrackingURL: nil,
+            contributors: [:],
+            bookDuration: nil,
+            imageCache: MockImageCache()
+        )
+    }
+
+    /// Path X early-return: a streamingHTML book passed to
+    /// `processDownloadWithCredentials` at `.downloadNeeded` must NOT
+    /// route to `startBorrow` (no borrow link) NOR to `addDownloadTask`
+    /// (no decodable asset). The dispatcher returns immediately, leaving
+    /// the registry in `.downloadNeeded` so the cell's button mapping
+    /// surfaces `.readStreaming` on the next render.
+    ///
+    /// Kills the inverse mutant (dropping the streamingHTML guard, which
+    /// would let the call fall through into the asset-download path and
+    /// hit `addDownloadTask` with an HTML URL the EPUB pipeline can't
+    /// decode).
+    func testProcessDownloadWithCredentials_streamingHTMLBook_returnsEarlyWithoutCallingStartBorrow() {
+        let book = streamingHTMLBook()
+        XCTAssertEqual(book.defaultBookContentType, .streamingHTML,
+                       "precondition: streamingHTMLBook() must resolve to .streamingHTML")
+        registry.addBook(book, location: nil, state: .downloadNeeded,
+                         fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+
+        dispatcher.processDownloadWithCredentials(
+            for: book, withState: .downloadNeeded, andRequest: nil
+        )
+
+        XCTAssertTrue(spyDelegate.startBorrowCalls.isEmpty,
+                      "streamingHTML at .downloadNeeded MUST NOT call startBorrow — " +
+                      "no `rel=\"borrow\"` exists; the early-return at " +
+                      "DownloadStartDispatcher.processDownloadWithCredentials must fire.")
+        XCTAssertTrue(spyDelegate.addDownloadTaskCalls.isEmpty,
+                      "streamingHTML at .downloadNeeded MUST NOT call addDownloadTask — " +
+                      "there is no downloadable asset to fetch.")
+        XCTAssertTrue(spyDelegate.samlHandlerCalls.isEmpty,
+                      "streamingHTML MUST NOT enter the SAML handler either.")
+        XCTAssertTrue(spyDelegate.failWithWifiCalls.isEmpty,
+                      "streamingHTML early-return MUST fire BEFORE the Wi-Fi-only guard.")
+    }
+
+    /// Same path, but with state `.unregistered`. Without the early-return,
+    /// the `.unregistered`/`.holding` arm would call `startBorrow` against
+    /// a book that has no borrow link — landing the user in a borrow-failed
+    /// alert chain. The early-return suppresses this.
+    func testProcessDownloadWithCredentials_streamingHTMLBook_unregisteredState_alsoReturnsEarly() {
+        let book = streamingHTMLBook()
+        registry.addBook(book, location: nil, state: .unregistered,
+                         fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+
+        dispatcher.processDownloadWithCredentials(
+            for: book, withState: .unregistered, andRequest: nil
+        )
+
+        XCTAssertTrue(spyDelegate.startBorrowCalls.isEmpty,
+                      "streamingHTML at .unregistered MUST NOT call startBorrow — " +
+                      "the early-return suppresses the borrow attempt that would " +
+                      "otherwise hit the borrow-routing arm.")
+        XCTAssertTrue(spyDelegate.addDownloadTaskCalls.isEmpty)
+    }
+
+    /// Regression net: EPUB books still route through the normal branches.
+    /// A mutant that over-applies the streamingHTML guard to all content
+    /// types (e.g. unconditionally returning early) would silently kill
+    /// the EPUB borrow path; this test catches that.
+    func testProcessDownloadWithCredentials_epubBook_stillCallsStartBorrow() {
+        let book = borrowableBook() // EPUB by default in the existing helper
+        XCTAssertNotEqual(book.defaultBookContentType, .streamingHTML,
+                          "precondition: borrowableBook() must NOT report streamingHTML")
+        registry.addBook(book, location: nil, state: .unregistered,
+                         fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+
+        dispatcher.processDownloadWithCredentials(
+            for: book, withState: .unregistered, andRequest: nil
+        )
+
+        XCTAssertEqual(spyDelegate.startBorrowCalls.count, 1,
+                       "EPUB at .unregistered MUST still route to startBorrow — " +
+                       "the streamingHTML early-return must NOT over-apply.")
+        XCTAssertEqual(spyDelegate.startBorrowCalls.first?.book.identifier, book.identifier)
+    }
+
+    /// Wire check: `processUnregisteredState` already handles streamingHTML
+    /// books the same as EPUB open-access (no content-type inspection in
+    /// the open-access branch). Pins this assumption so a future refactor
+    /// that special-cases the unregistered seed doesn't silently break the
+    /// flow.
+    func testProcessUnregisteredState_streamingHTMLOpenAccessBook_transitionsToDownloadNeeded() {
+        let book = streamingHTMLBook(relation: .openAccess)
+        XCTAssertEqual(book.defaultBookContentType, .streamingHTML,
+                       "precondition: book must resolve to streamingHTML")
+        XCTAssertNil(book.defaultAcquisitionIfBorrow,
+                     "precondition: streamingHTML book has no borrow link")
+        XCTAssertNotNil(book.defaultAcquisitionIfOpenAccess,
+                        "precondition: streamingHTML book has an open-access acquisition")
+
+        let state = dispatcher.processUnregisteredState(for: book, location: nil, loginRequired: false)
+
+        XCTAssertEqual(state, .downloadNeeded,
+                       "Open-access streamingHTML must seed to .downloadNeeded — " +
+                       "the open-access branch at processUnregisteredState L150-159 " +
+                       "is content-type-agnostic by design.")
+        XCTAssertEqual(spyDelegate.addBookCalls.map { $0.identifier }, [book.identifier],
+                       "Book must be added to the registry with .downloadNeeded state.")
+    }
 }
 
 // MARK: - SpyDispatcherDelegate

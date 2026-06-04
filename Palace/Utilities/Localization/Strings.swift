@@ -544,6 +544,10 @@ struct Strings {
         static let pdfContentType = NSLocalizedString("PDF", comment: "PDF")
         static let audiobookContentType = NSLocalizedString("Audiobook", comment: "Audiobook")
         static let unsupportedContentType = NSLocalizedString("Unsupported format", comment: "Unsupported format")
+        /// PP-4161: format-row label for `text/html;profile=streaming-media`
+        /// titles. Shown in the BookDetail "Format" row alongside ePub / PDF /
+        /// Audiobook.
+        static let streamingHTMLContentType = NSLocalizedString("Web Article", comment: "Format label for streaming-media (text/html) titles.")
     }
 
     struct TPPPDFNavigation {
@@ -779,6 +783,10 @@ struct Strings {
         static let cancelHold = NSLocalizedString("Cancel Hold", comment: "")
         static let otherBooks = NSLocalizedString("Other books by this author", comment: "")
         static let close = NSLocalizedString("Close", comment: "")
+        /// PP-4161: terminal action label for streaming-HTML titles. Reuses
+        /// the "Read" wording — the user-facing affordance is the same, only
+        /// the underlying renderer differs (in-app WKWebView vs Reader2).
+        static let readStreaming = NSLocalizedString("Read", comment: "Action button title to open a borrowed streaming-media (text/html) title in the in-app web reader.")
     }
 
     struct HoldsView {
@@ -791,6 +799,26 @@ struct Strings {
         static let syncFailedMessage = NSLocalizedString(
             "There was a problem loading your holds. Please try again later.",
             comment: "Error message when holds sync fails"
+        )
+    }
+
+    // PP-4161: copy for the new streaming-media reader chrome. Online-only
+    // experience; the offline state surfaces `connectionRequired` plus a
+    // Retry button per the reader's `.offline` state. Dismissal is via the
+    // system back chevron from the NavigationStack push — no explicit close
+    // bar button (see StreamingReaderViewController for the UX rationale).
+    struct StreamingReader {
+        static let connectionRequired = NSLocalizedString(
+            "Connection Required",
+            comment: "Title shown in the streaming reader when the device is offline; the asset is online-only and cannot be cached."
+        )
+        static let loadError = NSLocalizedString(
+            "We couldn't load this title. Please check your connection and try again.",
+            comment: "Error message shown when the streaming reader's web view fails to load the title."
+        )
+        static let retry = NSLocalizedString(
+            "Retry",
+            comment: "Button title in the streaming reader's offline / failed state — re-evaluates reachability and retries the load."
         )
     }
 }

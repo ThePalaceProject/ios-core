@@ -633,11 +633,28 @@ final class BookDetailViewModel: ObservableObject {
 
         case .download, .get, .retry:
             self.downloadProgress = 0
+            // PP-4161 Wave 4 (Path X): streaming-HTML titles funnel through
+            // the same didSelectDownload path as every other content type.
+            // DownloadStartDispatcher.processUnregisteredState already sets
+            // the registry to .downloadNeeded via the open-access branch,
+            // and processDownloadWithCredentials early-returns for
+            // streamingHTML (no asset to download). The button set then
+            // maps to [.readStreaming, .return] on next render, so the
+            // user taps Read on a second tap.
             didSelectDownload(for: book)
         // Don't remove processing here - will be removed when state changes to .downloading or .downloadFailed
 
         case .read, .listen:
             didSelectRead(for: book) {
+                self.removeProcessingButton(button)
+            }
+
+        case .readStreaming:
+            // PP-4161: streaming-HTML titles don't go through ensureAuthAndExecute
+            // / openBook; the asset is online-only and presented directly via
+            // the NavigationCoordinator streamingHTML route. processingButtons
+            // is cleared after the route push completes.
+            didSelectReadStreaming(for: book) {
                 self.removeProcessingButton(button)
             }
 
@@ -869,6 +886,16 @@ final class BookDetailViewModel: ObservableObject {
                     completion?()
                 }
             }
+        case .streamingHTML:
+            // PP-4161: streaming-media titles use the in-app WKWebView reader
+            // presented via NavigationCoordinator. Note: handleAction(.readStreaming)
+            // is the canonical entry point; this case handles the rare path
+            // where some other call site funnels a streamingHTML book through
+            // openBook(_:completion:) (e.g. a coordinator-level resume).
+            Log.debug(#file, "  → Opening as STREAMING-HTML")
+            presentStreamingReader(resolvedBook)
+            processingButtons.removeAll()
+            completion?()
         default:
             Log.error(#file, "  ❌ UNSUPPORTED CONTENT TYPE - showing error to user")
             processingButtons.removeAll()
@@ -888,6 +915,32 @@ final class BookDetailViewModel: ObservableObject {
 
     func openAudiobook(_ book: TPPBook, completion: (() -> Void)? = nil) {
         BookService.open(book, onFinish: completion)
+    }
+
+    // MARK: - Streaming HTML Reader (PP-4161)
+
+    /// Presents the in-app WKWebView reader for streaming-media (text/html)
+    /// titles. Distinct from `didSelectRead` because there's no auth document
+    /// dependency (no DRM grant), no openBook dispatch (no LCP / Readium /
+    /// audiobook session), and no `BookService.open` reentrancy guard — we
+    /// route straight to `NavigationCoordinator.push(.streamingHTML(...))`.
+    @MainActor
+    func didSelectReadStreaming(for book: TPPBook, completion: (() -> Void)? = nil) {
+        TPPCirculationAnalytics.postEvent("open_book", withBook: book)
+        presentStreamingReader(book)
+        completion?()
+    }
+
+    /// Pushes the streamingHTML route on the navigation coordinator after
+    /// storing the book payload so the destination resolver can look it up.
+    @MainActor
+    private func presentStreamingReader(_ book: TPPBook) {
+        guard let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator else {
+            Log.warn(#file, "No NavigationCoordinator available — cannot present streaming reader for \(book.identifier)")
+            return
+        }
+        coordinator.store(book: book)
+        coordinator.push(.streamingHTML(BookRoute(id: book.identifier)))
     }
 
     private func getLCPLicenseURL(for book: TPPBook) -> URL? {

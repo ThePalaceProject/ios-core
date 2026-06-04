@@ -74,6 +74,20 @@ enum BookService {
                 }
                 _ = await AppContainer.production().audiobookSession.openAudiobook(book, startPlaying: true)
             }
+        case .streamingHTML:
+            // PP-4161: streaming-HTML titles route through NavigationCoordinator
+            // directly — no AudiobookSessionManager-style lifecycle owner,
+            // no LCP / DRM grant, no on-disk asset.
+            Task { @MainActor in
+                defer {
+                    openingBooks.remove(book.identifier)
+                    onFinish?()
+                }
+                if let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator {
+                    coordinator.store(book: book)
+                    coordinator.push(.streamingHTML(BookRoute(id: book.identifier)))
+                }
+            }
         default:
             openingBooks.remove(book.identifier)
             onFinish?()

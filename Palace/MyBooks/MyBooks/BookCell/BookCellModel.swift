@@ -481,6 +481,14 @@ extension BookCellModel {
                 presentOfflineAlert()
                 return
             }
+        case .readStreaming:
+            // PP-4161: streaming-media reader needs network too — the asset
+            // is online-only. Same pre-flight as download/get so the user
+            // doesn't tap through to a doomed WKWebView load.
+            if !reachability.isConnectedToNetwork() {
+                presentOfflineAlert()
+                return
+            }
         case .read, .listen, .cancel, .close, .sample, .audiobookSample,
              .remove, .cancelHold, .manageHold, .return, .returning:
             break
@@ -494,12 +502,23 @@ extension BookCellModel {
         case .download, .retry, .get, .reserve, .remove, .returning, .cancel:
             isLoading = true
         case .read, .listen, .close, .sample, .audiobookSample,
-             .cancelHold, .manageHold, .return:
+             .cancelHold, .manageHold, .return, .readStreaming:
+            // .readStreaming presents the reader directly — loading state is
+            // owned by the StreamingReaderViewModel after presentation. No
+            // cell-level spinner so the tap → present transition stays snappy.
             break
         }
 
         switch action {
         case .download, .retry, .get:
+            // PP-4161 Wave 4 (Path X): streaming-HTML titles funnel through
+            // didSelectDownload like every other content type.
+            // DownloadStartDispatcher.processDownloadWithCredentials early-
+            // returns for streamingHTML so the asset-download attempt is
+            // suppressed; the registry transitions to .downloadNeeded via
+            // processUnregisteredState's open-access branch, and the cell's
+            // button set then surfaces [.readStreaming, .return] on next
+            // render.
             didSelectDownload()
         case .reserve:
             didSelectReserve()
@@ -548,7 +567,10 @@ extension BookCellModel {
             }
         case .sample, .audiobookSample:
             didSelectSample()
-        case .read, .listen:
+        case .read, .listen, .readStreaming:
+            // PP-4161: all three terminal "open the content" actions funnel
+            // through didSelectRead — the content-type switch inside picks
+            // the right renderer.
             didSelectRead()
         case .close:
             return
@@ -588,6 +610,16 @@ extension BookCellModel {
             self.isLoading = false
         case .audiobook:
             openAudiobookFromCell()
+        case .streamingHTML:
+            // PP-4161: streaming-media titles present via the
+            // NavigationCoordinator's streamingHTML route. No on-disk asset,
+            // no reader-service round-trip — just push the route and let
+            // StreamingReaderView own the lifecycle from there.
+            if let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator {
+                coordinator.store(book: book)
+                coordinator.push(.streamingHTML(BookRoute(id: book.identifier)))
+            }
+            self.isLoading = false
         default:
             self.isLoading = false
         }

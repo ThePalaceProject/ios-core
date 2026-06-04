@@ -32,6 +32,31 @@ Skip:
 
 ## Process
 
+### 0. Check for existing ADRs in the touched areas (MANDATORY since 2026-06-03 v3 ADR ledger)
+
+Before drafting the intent, query the ForgeOS ADR ledger for each module the change will touch. Even an approximate module list is fine — refine after step 1 if needed.
+
+```bash
+# For each module the change will touch:
+python3 -c "
+import sys, subprocess, json
+# Use the MCP via the agent, or hit the engine HTTP API directly
+"
+```
+
+In practice: call `mcp__forgeos__forge_list_adrs(project_id=proj_87884c17, area=<module>)` for each likely area. For Palace iOS the common area names are: `architecture`, `audiobooks`, `accounts`, `release`, `governance`, `testing`.
+
+For every ADR returned, read its `decision`, `context`, and `consequences`. Decide which of three categories your change falls into:
+
+1. **Extends an existing ADR.** The change implements or refines a prior decision. Note the relevant `adr_id`(s) in your intent file under a new `**ADR refs:**` line at the top of the body.
+2. **Narrows or scope-shifts an existing ADR.** The change deliberately reduces or shifts an ADR's scope without invalidating it (e.g., the ADR said "do this everywhere"; you're doing it in 5 of 7 sites and deferring the rest). Document the deferral in Anti-claims AND under a `**ADR refs:**` line.
+3. **Contradicts or supersedes an existing ADR.** The change reverses or replaces a prior decision. This is a hard stop:
+   - You MUST add a new `## Decision reversal` section to the intent file that explicitly names the ADR being superseded and explains why the prior reasoning no longer holds.
+   - You MUST commit to submitting a new ADR via `forge_submit_evidence(type="architecture_decision", metadata.supersedes=<old_adr_id>)` as part of the change — record this as a Claim in the intent.
+   - The architect-reviewer will block the PR if you contradict an ADR without superseding it explicitly.
+
+If `forge_list_adrs` returns zero results for every queried area, note it under `**ADR refs:**` as `none — no prior decisions recorded for the touched areas`. That's a valid outcome; just don't skip the check.
+
 ### 1. Resolve the intent file path
 
 Pick a slug describing the change:

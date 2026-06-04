@@ -25,14 +25,15 @@ If any of these are missing, ask before proceeding.
 2. **Read the diff.** Run `git -C <worktree_path> diff <base_ref>...HEAD --stat` first for shape, then `git diff <base_ref>...HEAD` for content. Read every changed hunk.
 3. **Read the commit message(s), intent file, and contract.** `git -C <worktree_path> log --format=%B <base_ref>..HEAD`. Also read `.forgeos/intent/<name>.md` (if present), any `.forgeos/swarms/<id>/contracts/*.md`, and the PR body — these are the **claims** you'll reconcile against the diff.
 4. **Read project conventions.** CLAUDE.md at the worktree root. CLAUDE.local.md if present. `~/harness/core/AGENT_HANDBOOK.md` for harness-wide constraints.
-5. **Run the 4 universal scripts as evidence.** Each emits machine-readable findings; you cite them in your review. Run from `<worktree_path>`:
+5. **Run the 5 universal scripts as evidence.** Each emits machine-readable findings; you cite them in your review. Run from `<worktree_path>`:
    ```bash
    python3 scripts/check-contract-reconciliation.py --quiet ; echo "exit=$?"
    python3 scripts/check-blast-radius.py --quiet            ; echo "exit=$?"
    python3 scripts/check-adjacency-staleness.py --quiet     ; echo "exit=$?"
    python3 scripts/check-intent-recorded.py --quiet         ; echo "exit=$?"
+   python3 scripts/check-superpartner-spectrum.py --quiet   ; echo "exit=$?"
    ```
-   Exit 0 = clean. Exit 1 = blocking finding. Adjacency is warn-only (exit 0 even on findings).
+   Exit 0 = clean. Exit 1 = blocking finding. Adjacency and superpartner-spectrum are warn-only for now (treat their exit-1 as a flag to investigate, not an automatic block — confirm by reading whether the cited new code genuinely lacks a real test).
 6. **Optionally fetch SharedMind patterns.** `forge_query_mind` for `blast-radius`, `api-surface-leak`, `test-seam-bypass` patterns related to changed modules.
 7. **Evaluate against the 6 review criteria** (below) and build structured findings. Cite file:line for every observation. Cross-reference script output with manual reading — scripts seed your audit, your judgment finalizes it.
 8. **Submit the review** via `forge_submit_review` with role=`blast_radius`, an honest verdict, structured findings, and a ≤250-word notes summary. Then report to the caller (≤250 words): verdict, top 3 findings, anything you couldn't fully evaluate.
@@ -45,6 +46,7 @@ If any of these are missing, ask before proceeding.
 - **What new inits/methods change the framework's public ABI?** New `public init`, removed/renamed `public` symbol, added `@objc` annotation, changed function signature on a `public` type — each is a binary compatibility concern. The PR body / contract must declare any deliberate ABI change.
 - **What seams claim to enable injection but are bypassed by callers using static factories?** If `AppContainer.production()` is the documented injection point but a new file calls `TPPNetworkExecutor.shared` directly, the seam is decorative, not load-bearing. Grep for `.shared`, static factories, and singletons accessed inside files the diff added.
 - **What claims in the contract / commit body / PR body are not delivered by the diff?** "Removes X" → `grep -n "<symbol>"` still finds it. "Migrates Y to Z" → both Y and Z present. "Adds field A to type B" → field A absent. The `check-contract-reconciliation.py` script catches the literal pattern; you confirm semantically.
+- **What new code shipped with no matching test?** `check-superpartner-spectrum.py` flags new functions, enum cases, and state changes that no test references. Treat its findings as leads, not verdicts (it's warn-only and matches generously): for each flagged item, read whether a real test exercises it. If not, and it's on a critical path, that's a block-worthy gap — unless the author marked it `// no-superpartner: <reason>` with a justification you find honest. A new enum case with no test pinning its meaning is the canonical case to push on (see the `.accountNotFound` dual-meaning wall-failure).
 
 ## Verdict rules
 

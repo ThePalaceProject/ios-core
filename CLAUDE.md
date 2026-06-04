@@ -183,7 +183,7 @@ A test that doesn't kill any mutants should be rewritten to test the actual beha
 ## Definition of Done — paste evidence before declaring work complete
 
 <!-- audit-verified -->
-Per `.forgeos/wall-failures/` (lessons from PR #1018 reviewer-blocked findings + the swarm_c8fcab76 arch1 fake-wiring-test finding), every non-trivial work item — solo-agent or swarm — must pass these 7 self-checks BEFORE declaring READY or opening a PR. Paste the evidence in the commit body, the swarm transcript, or the user-facing summary. **Without evidence, the work is not done; it is "implemented but unverified."**
+Per `.forgeos/wall-failures/` (lessons from PR #1018 reviewer-blocked findings + the swarm_c8fcab76 arch1 fake-wiring-test finding), every non-trivial work item — solo-agent or swarm — must pass these 11 self-checks BEFORE declaring READY or opening a PR. Paste the evidence in the commit body, the swarm transcript, or the user-facing summary. **Without evidence, the work is not done; it is "implemented but unverified."**
 
 1. **SUT instantiation check** — for every test file you added or modified named `<SUT>Tests.swift` (e.g. `BookReturnServiceTests.swift`, `TPPNetworkResponderAuthCoordinatorTests.swift`), run `grep -c "<SUT>(" <test-file>`. The count must be ≥ 1. If you wrote a `BookReturnServiceAuthCoordinatorTests` that never constructs a `BookReturnService`, the test is theater — rewrite or rename. Catches PR #1018 qa2/qa3 (fake-test-instantiation).
 
@@ -213,7 +213,9 @@ Per `.forgeos/wall-failures/` (lessons from PR #1018 reviewer-blocked findings +
 
 10. **Adjacency staleness check** — for ANY commit removing/renaming a production type, run `python3 scripts/check-adjacency-staleness.py --quiet`. Warn-only. Paste output.
 
-If you cannot produce evidence for all 10 checks applicable to your change, do NOT report READY. Either complete the missing check OR explicitly STOP with a scope-deferral proposal (below) so the user can decide.
+11. **Test-pairing check (superpartner spectrum)** — for ANY commit, run `python3 scripts/check-superpartner-spectrum.py --quiet`. Flags new functions, enum cases, and state changes that have no matching test in the diff. Add a test that references the item, or mark it intentional with `// no-superpartner: <reason>`. Warn-only for now (promotion path in `docs/architecture/superpartner-spectrum.md`); high-severity findings are on critical paths and should be cleared, not ignored. This is the fast "is there a test at all?" floor — mutation testing (`palace_mutate.py`, check #5) remains the proof that the test catches bugs. Paste exit code.
+
+If you cannot produce evidence for all 11 checks applicable to your change, do NOT report READY. Either complete the missing check OR explicitly STOP with a scope-deferral proposal (below) so the user can decide.
 
 ## Scope-deferral protocol — STOP, do not partial-ship
 
@@ -253,6 +255,14 @@ The "swarm vs single-agent" decision is based on module count (≥2 modules = sw
 For single-module work in a critical path, use the `/rigorous-fix` skill (or `/swarm --solo`) — runs architect + SoD review without parallel implementers. For 1-LOC trivial fixes in a critical path, still run `/forge-review` after coding. The bar is: *if a regression here would hit users, the review must happen.*
 
 For non-critical paths under 50 LOC, single-agent + `/clean-code` (which now includes the skeptic-pass greps) is sufficient.
+
+## Architect reviewer canon
+
+For structural review — new abstractions, type-hierarchy changes, protocol surfaces, concurrency model shifts — consult [`.forgeos/reviewer-refs/architect-swift-canon.md`](./.forgeos/reviewer-refs/architect-swift-canon.md) as a **lens, not a checklist**. It covers Swift-native architecture defaults (POP, value semantics, structured concurrency), SOLID translated to Swift mechanisms, a GoF → Swift-idiom translation table (with anti-translations called out), and a smell vocabulary the architect can cite in findings.
+
+The canon and the [wall-failures catalog](./.forgeos/wall-failures/) are complements: the canon is *what good Swift architecture looks like*; the wall-failures are *what we've actually shipped that broke*. When they agree, the finding is strong. When they disagree, **trust the wall-failures** — they're real incidents from this codebase.
+
+Skip the canon for mechanical changes (renames, formatting, dependency bumps) where structure isn't the question. Do not pattern-match findings to canon entries to seem rigorous — approval still requires a real reason; rejection still requires a concrete failure mode.
 
 ## Wall-failure catalog — every reviewer block becomes a permanent improvement
 
@@ -391,6 +401,6 @@ Test library credentials live in your local environment (e.g. `~/.simdrive/crede
 - `.simdrive/replays/chaos/` — curated mutation-killing replay corpus (active, gates `chaos-replay-on-pr.yml`)
 - `.simdrive/_archive/journeys/`, `.simdrive/_archive/replays/`, `.simdrive/_archive/{personas,products,evidence}/`, `.simdrive/_archive/REGRESSION_PLAN.md` — old SpecterQA corpus (do not extend)
 - `~/.simdrive/sessions/<id>/observations/` — per-session screenshots + SoM annotations
-- `scripts/specterqa-*.sh`, `scripts/fix-replay-assertions.py` — legacy build/coverage tooling kept for archive-replay; do not author new SpecterQA scripts
+- `scripts/fix-replay-assertions.py`, `scripts/fix-replay-timing.py` — legacy replay-fixup tooling kept for archive-replay; do not author new SpecterQA scripts
 
 When in doubt, run `~/harness/bin/harness simdrive status` to confirm version + active sessions.

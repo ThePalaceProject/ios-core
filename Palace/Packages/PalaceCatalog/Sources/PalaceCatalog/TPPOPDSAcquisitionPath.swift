@@ -20,6 +20,15 @@ public let ContentTypeAudiobookZip = "application/audiobook+zip"
 public let ContentTypeBiblioboard = "application/json"
 public let ContentTypeOPDSPublication = "application/opds-publication+json"
 
+/// PP-4161: LibrarySimplified streaming-media profile of `text/html`. Books
+/// whose only acquisition leaf carries this MIME render via the in-app
+/// `Palace/ReaderStreaming/` WKWebView shell — no on-device asset, no DRM.
+/// Reverses the PR #847 drop in `OPDS2PublicationExtended.toBook()`: once
+/// this constant is in `supportedTypes()` + the OPDS-publication subtype
+/// set, the generic `hasOpenablePath` filter passes streaming-media-only
+/// publications through automatically.
+public let ContentTypeStreamingHTML = "text/html;profile=http://librarysimplified.org/terms/profiles/streaming-media"
+
 // MARK: - TPPOPDSAcquisitionPath
 
 @objc public class TPPOPDSAcquisitionPath: NSObject {
@@ -62,7 +71,8 @@ public let ContentTypeOPDSPublication = "application/opds-publication+json"
       ContentTypeAdobeAdept,
       ContentTypeReadiumLCP,
       ContentTypeAudiobookLCP,
-      ContentTypeReadiumLCPPDF
+      ContentTypeReadiumLCPPDF,
+      ContentTypeStreamingHTML
     ]
   }
 
@@ -107,7 +117,8 @@ public let ContentTypeOPDSPublication = "application/opds-publication+json"
         ContentTypeOctetStream,
         ContentTypeReadiumLCP,
         ContentTypeAudiobookZip,
-        ContentTypeAudiobookLCP
+        ContentTypeAudiobookLCP,
+        ContentTypeStreamingHTML
       ]
     ]
 

@@ -1,8 +1,8 @@
 {
   "module": "Utilities",
-  "generated_at": "2026-05-12T16:15:16+00:00",
-  "file_count": 66,
-  "shared_singleton_reads": 13,
+  "generated_at": "2026-06-03T17:51:23+00:00",
+  "file_count": 68,
+  "shared_singleton_reads": 9,
   "public_types": [
     {
       "name": "AccessibilityID",
@@ -14,7 +14,7 @@
       "name": "AudiobookPlayer",
       "kind": "enum",
       "file": "Testing/AccessibilityIdentifiers.swift",
-      "line": 219
+      "line": 226
     },
     {
       "name": "BookDetail",
@@ -44,7 +44,7 @@
       "name": "Common",
       "kind": "enum",
       "file": "Testing/AccessibilityIdentifiers.swift",
-      "line": 283
+      "line": 290
     },
     {
       "name": "DismissKeyboardOnTap",
@@ -62,13 +62,13 @@
       "name": "EPUBReader",
       "kind": "enum",
       "file": "Testing/AccessibilityIdentifiers.swift",
-      "line": 295
+      "line": 302
     },
     {
       "name": "ErrorAlert",
       "kind": "enum",
       "file": "Testing/AccessibilityIdentifiers.swift",
-      "line": 368
+      "line": 375
     },
     {
       "name": "GeneralCache",
@@ -80,7 +80,7 @@
       "name": "Holds",
       "kind": "enum",
       "file": "Testing/AccessibilityIdentifiers.swift",
-      "line": 166
+      "line": 173
     },
     {
       "name": "ImageCache",
@@ -95,6 +95,18 @@
       "line": 4
     },
     {
+      "name": "ImageLoader",
+      "kind": "class",
+      "file": "ImageCache/ImageLoaderImpl.swift",
+      "line": 15
+    },
+    {
+      "name": "ImageLoading",
+      "kind": "protocol",
+      "file": "ImageCache/ImageLoading.swift",
+      "line": 19
+    },
+    {
       "name": "JWK",
       "kind": "struct",
       "file": "JWK/JWK.swift",
@@ -104,13 +116,13 @@
       "name": "LibraryPicker",
       "kind": "enum",
       "file": "Testing/AccessibilityIdentifiers.swift",
-      "line": 346
+      "line": 353
     },
     {
       "name": "MyBooks",
       "kind": "enum",
       "file": "Testing/AccessibilityIdentifiers.swift",
-      "line": 143
+      "line": 150
     },
     {
       "name": "NYPLDateSuffixType",
@@ -122,7 +134,7 @@
       "name": "PDFReader",
       "kind": "enum",
       "file": "Testing/AccessibilityIdentifiers.swift",
-      "line": 324
+      "line": 331
     },
     {
       "name": "Search",
@@ -134,13 +146,13 @@
       "name": "Settings",
       "kind": "enum",
       "file": "Testing/AccessibilityIdentifiers.swift",
-      "line": 187
+      "line": 194
     },
     {
       "name": "SignIn",
       "kind": "enum",
       "file": "Testing/AccessibilityIdentifiers.swift",
-      "line": 267
+      "line": 274
     },
     {
       "name": "TabBar",
@@ -152,7 +164,7 @@
       "name": "Tutorial",
       "kind": "enum",
       "file": "Testing/AccessibilityIdentifiers.swift",
-      "line": 357
+      "line": 364
     }
   ],
   "objc_surface": [
@@ -400,6 +412,11 @@
     }
   ],
   "internal_protocols": [
+    {
+      "name": "DeviceSpecificErrorMonitoring",
+      "file": "DeviceSpecificErrorMonitor.swift",
+      "line": 17
+    },
     {
       "name": "NYPLBackgroundWorkOwner",
       "file": "Concurrency/TPPBackgroundExecutor.swift",

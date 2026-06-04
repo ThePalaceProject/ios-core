@@ -24,6 +24,10 @@ enum BookButtonType: String {
     case manageHold
     case `return`
     case returning
+    /// PP-4161: terminal action for `streaming-media` (text/html) titles.
+    /// Borrowed streaming-HTML books show this in place of `.read` / `.listen`;
+    /// tapping presents the in-app `StreamingReaderView` (no download).
+    case readStreaming
 
     var localizedTitle: String {
         NSLocalizedString(self.rawValue, comment: "Book Action Button title")
@@ -34,7 +38,7 @@ enum BookButtonType: String {
         // flags this if BookButtonType gains a case, so an indicator
         // decision can't be silently defaulted to `false`.
         switch self {
-        case .read, .remove, .get, .download, .listen:
+        case .read, .remove, .get, .download, .listen, .readStreaming:
             true
         case .reserve, .retry, .cancel, .close, .sample, .audiobookSample,
              .cancelHold, .manageHold, .return, .returning:
@@ -49,9 +53,15 @@ enum BookButtonType: String {
         switch self {
         case .read, .listen, .remove:
             false
+        // PP-4161: streaming-HTML reader is online-only — surface the same
+        // reachability gate as the network-bound actions so users can't tap
+        // through to an empty web view that's going to fail loadProvisional
+        // anyway. (StreamingReaderViewModel will still render `.offline`,
+        // but disabling the button at the BookDetail level matches the
+        // pre-flight UX everywhere else.)
         case .get, .reserve, .download, .retry, .cancel, .close,
              .sample, .audiobookSample, .cancelHold, .manageHold,
-             .return, .returning:
+             .return, .returning, .readStreaming:
             !AppContainer.production().reachability.isConnectedToNetwork()
         }
     }
@@ -77,6 +87,9 @@ extension BookButtonType {
         case .manageHold: DisplayStrings.manageHold
         case .cancelHold: DisplayStrings.cancelHold
         case .close: DisplayStrings.close
+        // PP-4161: reuse the existing "Read" label for streaming-HTML titles.
+        // Same affordance from the user's perspective, different render path.
+        case .readStreaming: DisplayStrings.readStreaming
         }
     }
 
@@ -89,7 +102,8 @@ extension BookButtonType {
         case .sample, .audiobookSample:
             return AppContainer.production().samplePreviewManager.isShowingPreview(for: book) ? DisplayStrings.close : DisplayStrings.preview
         case .get, .reserve, .download, .read, .listen, .retry, .cancel,
-             .close, .remove, .cancelHold, .manageHold, .return, .returning:
+             .close, .remove, .cancelHold, .manageHold, .return, .returning,
+             .readStreaming:
             return title
         }
     }
@@ -98,7 +112,7 @@ extension BookButtonType {
         switch self {
         case .sample, .audiobookSample, .close:
             .tertiary
-        case .get, .reserve, .download, .read, .listen, .retry, .returning, .manageHold:
+        case .get, .reserve, .download, .read, .listen, .retry, .returning, .manageHold, .readStreaming:
             .primary
         case .return, .cancel, .remove:
             .secondary

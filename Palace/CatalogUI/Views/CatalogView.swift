@@ -339,10 +339,13 @@ extension CatalogView {
             readerService.openEPUB(book)
         case .pdf:
             readerService.openPDF(book, onFinish: nil)
-        case .audiobook, .unsupported:
+        case .audiobook, .unsupported, .streamingHTML:
             // Defensive: upstream `RecentlyReadingService` filters these
             // out; logging keeps the silent no-op observable in production
-            // if the filter ever drifts.
+            // if the filter ever drifts. PP-4161: streamingHTML titles
+            // belong in the streaming reader, not the continue-reading row —
+            // RecentlyReadingService is expected to filter them as it does
+            // .audiobook.
             Log.warn(#file, "resumeReading invoked for unsupported content type — skipping")
         }
     }

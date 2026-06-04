@@ -95,6 +95,11 @@ class LocalBookContentService {
                 #endif
             case .audiobook:
                 try deleteLocalAudiobookContent(forAudiobook: book, at: bookURL)
+            case .streamingHTML:
+                // PP-4161: streaming-HTML has no local on-device asset to
+                // delete. The reader streams from the server every open;
+                // returning the title is the only side effect of "remove".
+                break
             case .unsupported:
                 Log.warn(#file, "Unsupported content type for deletion.")
             }

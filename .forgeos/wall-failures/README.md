@@ -3,7 +3,7 @@ name: wall-failures-readme
 type: evolving
 status: active
 created: 2026-05-28
-last_refresh: 2026-05-28
+last_refresh: 2026-06-03
 freshness_window: 365d
 owners: [general]
 description: Wall-failure catalog
@@ -45,8 +45,15 @@ Each blocked finding becomes a permanent system improvement. After ~5-10 swarms,
 1. **Inside 24h:** create a wall-failure entry using `TEMPLATE.md`. Name: `YYYY-MM-DD-<pr>-<short-id>.md`.
 2. **Same session:** classify which "wall" should have caught it (see categories below).
 3. **Same session:** propose a permanent fix — a contract clause, orchestrator check, implementer constraint, hook, gate, or test pattern that would have prevented it.
-4. **Within 1 week:** apply the proposed fix (skill update, CLAUDE.md edit, hook change, etc.) and link the commit/PR back from the entry.
-5. **Add a line to `INDEX.md`** so the catalog stays navigable.
+4. **Same session:** submit the lesson to the ForgeOS ADR ledger so it's discoverable via `forge_list_adrs` + reviewer agents, not just by grep:
+   ```bash
+   python3 scripts/forgeos-submit-wall-failure.py .forgeos/wall-failures/<entry>.md
+   # optional: --area <topic-specific area> if the failure is auth/audiobooks/etc.,
+   #          --changeset <cs_xxxxxxxx> if you have an active changeset to attach to
+   ```
+   The script writes `adr_ref: adr_<8hex>` back into the entry's frontmatter and is idempotent on re-run. Without this step, the wall-failure stays write-only — future reviewers and `intent` skill can't discover it.
+5. **Within 1 week:** apply the proposed fix (skill update, CLAUDE.md edit, hook change, etc.) and link the commit/PR back from the entry.
+6. **Add a line to `INDEX.md`** so the catalog stays navigable.
 
 ### Once per month (or every ~10 entries)
 

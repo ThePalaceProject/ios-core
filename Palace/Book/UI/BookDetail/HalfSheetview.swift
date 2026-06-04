@@ -95,7 +95,13 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
                     case .close:
                         viewModel.bookState = originalState
                         dismiss()
-                    case .read, .listen:
+                    case .read, .listen, .readStreaming:
+                        // PP-4161: .readStreaming joins .read / .listen as a
+                        // terminal "open the content" affordance from the
+                        // half-sheet. The DispatchQueue.main.async hop is the
+                        // same — let the half-sheet finish its dismissal
+                        // animation before the reader presentation steals the
+                        // screen.
                         didChangeState = true
                         DispatchQueue.main.async {
                             viewModel.handleAction(for: type)
@@ -124,7 +130,13 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
                     case .close:
                         viewModel.bookState = originalState
                         dismiss()
-                    case .read, .listen:
+                    case .read, .listen, .readStreaming:
+                        // PP-4161: .readStreaming joins .read / .listen as a
+                        // terminal "open the content" affordance from the
+                        // half-sheet. The DispatchQueue.main.async hop is the
+                        // same — let the half-sheet finish its dismissal
+                        // animation before the reader presentation steals the
+                        // screen.
                         didChangeState = true
                         DispatchQueue.main.async {
                             viewModel.handleAction(for: type)
