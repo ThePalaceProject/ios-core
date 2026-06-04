@@ -16,6 +16,20 @@ final class BookDetailMetadataHydrationTests: XCTestCase {
 
     private let alternateURL = URL(string: "https://example.org/works/abc")!
 
+    /// Per-test isolated AppContainer (swarm_47883816 work package A).
+    /// Replaces ~30 in-test reads of `AppContainer.production().*`.
+    private var appContainer: AppContainer!
+
+    override func setUp() {
+        super.setUp()
+        appContainer = makeTestAppContainer()
+    }
+
+    override func tearDown() {
+        appContainer = nil
+        super.tearDown()
+    }
+
     // MARK: - Hydration triggers when metadata is missing
 
     func testHydrate_WhenAllTargetFieldsEmpty_PopulatesFromAlternateFeed() async throws {
@@ -38,12 +52,12 @@ final class BookDetailMetadataHydrationTests: XCTestCase {
         let vm = BookDetailViewModel(
             book: sparse,
             registry: TPPBookRegistryMock(),
-            downloadCenter: AppContainer.production().downloadCenter,
-            accountsManager: AppContainer.production().accountsManager,
+            downloadCenter: appContainer.downloadCenter,
+            accountsManager: appContainer.accountsManager,
             settings: TPPSettings(),
-            opdsFeedService: AppContainer.production().opdsFeedService,
-            samplePreviewManager: AppContainer.production().samplePreviewManager,
-            readerService: AppContainer.production().readerService,
+            opdsFeedService: appContainer.opdsFeedService,
+            samplePreviewManager: appContainer.samplePreviewManager,
+            readerService: appContainer.readerService,
             metadataHydrator: { url in
                 fetchedURL = url
                 return fresh
@@ -74,12 +88,12 @@ final class BookDetailMetadataHydrationTests: XCTestCase {
         let vm = BookDetailViewModel(
             book: populated,
             registry: TPPBookRegistryMock(),
-            downloadCenter: AppContainer.production().downloadCenter,
-            accountsManager: AppContainer.production().accountsManager,
+            downloadCenter: appContainer.downloadCenter,
+            accountsManager: appContainer.accountsManager,
             settings: TPPSettings(),
-            opdsFeedService: AppContainer.production().opdsFeedService,
-            samplePreviewManager: AppContainer.production().samplePreviewManager,
-            readerService: AppContainer.production().readerService,
+            opdsFeedService: appContainer.opdsFeedService,
+            samplePreviewManager: appContainer.samplePreviewManager,
+            readerService: appContainer.readerService,
             metadataHydrator: { _ in
                 fetchCount += 1
                 return nil
@@ -105,12 +119,12 @@ final class BookDetailMetadataHydrationTests: XCTestCase {
         let vm = BookDetailViewModel(
             book: sparseWithoutAlt,
             registry: TPPBookRegistryMock(),
-            downloadCenter: AppContainer.production().downloadCenter,
-            accountsManager: AppContainer.production().accountsManager,
+            downloadCenter: appContainer.downloadCenter,
+            accountsManager: appContainer.accountsManager,
             settings: TPPSettings(),
-            opdsFeedService: AppContainer.production().opdsFeedService,
-            samplePreviewManager: AppContainer.production().samplePreviewManager,
-            readerService: AppContainer.production().readerService,
+            opdsFeedService: appContainer.opdsFeedService,
+            samplePreviewManager: appContainer.samplePreviewManager,
+            readerService: appContainer.readerService,
             metadataHydrator: { _ in
                 fetchCount += 1
                 return nil
@@ -161,12 +175,12 @@ final class BookDetailMetadataHydrationTests: XCTestCase {
         let vm = BookDetailViewModel(
             book: sparse,
             registry: TPPBookRegistryMock(),
-            downloadCenter: AppContainer.production().downloadCenter,
-            accountsManager: AppContainer.production().accountsManager,
+            downloadCenter: appContainer.downloadCenter,
+            accountsManager: appContainer.accountsManager,
             settings: TPPSettings(),
-            opdsFeedService: AppContainer.production().opdsFeedService,
-            samplePreviewManager: AppContainer.production().samplePreviewManager,
-            readerService: AppContainer.production().readerService,
+            opdsFeedService: appContainer.opdsFeedService,
+            samplePreviewManager: appContainer.samplePreviewManager,
+            readerService: appContainer.readerService,
             metadataHydrator: { _ in fresh }
         )
 
@@ -265,12 +279,12 @@ final class BookDetailMetadataHydrationTests: XCTestCase {
         let vm = BookDetailViewModel(
             book: sparse,
             registry: TPPBookRegistryMock(),
-            downloadCenter: AppContainer.production().downloadCenter,
-            accountsManager: AppContainer.production().accountsManager,
+            downloadCenter: appContainer.downloadCenter,
+            accountsManager: appContainer.accountsManager,
             settings: TPPSettings(),
-            opdsFeedService: AppContainer.production().opdsFeedService,
-            samplePreviewManager: AppContainer.production().samplePreviewManager,
-            readerService: AppContainer.production().readerService,
+            opdsFeedService: appContainer.opdsFeedService,
+            samplePreviewManager: appContainer.samplePreviewManager,
+            readerService: appContainer.readerService,
             metadataHydrator: { _ in fresh }
         )
 
@@ -300,12 +314,12 @@ final class BookDetailMetadataHydrationTests: XCTestCase {
         let vm = BookDetailViewModel(
             book: mostlyPopulated,
             registry: TPPBookRegistryMock(),
-            downloadCenter: AppContainer.production().downloadCenter,
-            accountsManager: AppContainer.production().accountsManager,
+            downloadCenter: appContainer.downloadCenter,
+            accountsManager: appContainer.accountsManager,
             settings: TPPSettings(),
-            opdsFeedService: AppContainer.production().opdsFeedService,
-            samplePreviewManager: AppContainer.production().samplePreviewManager,
-            readerService: AppContainer.production().readerService,
+            opdsFeedService: appContainer.opdsFeedService,
+            samplePreviewManager: appContainer.samplePreviewManager,
+            readerService: appContainer.readerService,
             metadataHydrator: { _ in fetchCount += 1; return nil }
         )
 

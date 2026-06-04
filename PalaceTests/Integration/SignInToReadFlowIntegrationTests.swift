@@ -29,7 +29,7 @@ import PalaceCatalog
 @testable import Palace
 
 @MainActor
-final class SignInToReadFlowIntegrationTests: XCTestCase {
+class SignInToReadFlowIntegrationTests: PalaceWiringTestCase {
 
     // MARK: - Real collaborators
 
@@ -56,7 +56,8 @@ final class SignInToReadFlowIntegrationTests: XCTestCase {
     private var drmAuthorizer: TPPDRMAuthorizingMock!
     private var bookDownloadsCenterMock: TPPMyBooksDownloadsCenterMock!
     private var accountsManager: AccountsManager!
-    private var cancellables: Set<AnyCancellable>!
+    // NOTE: `cancellables` is inherited from PalaceWiringTestCase and drained
+    // automatically on tearDown. Don't shadow it locally.
 
     /// Reader-open events fired by the flow under test (collected via
     /// notification observation rather than a stubbed reader controller —
@@ -86,9 +87,8 @@ final class SignInToReadFlowIntegrationTests: XCTestCase {
         uiDelegate = TPPSignInOutBusinessLogicUIDelegateMock()
         drmAuthorizer = TPPDRMAuthorizingMock()
         bookDownloadsCenterMock = TPPMyBooksDownloadsCenterMock()
-        accountsManager = AccountsManager()
+        accountsManager = makeFreshAccountsManager()
         bookRegistry = TPPBookRegistry(accountsManager: accountsManager, imageLoader: AppContainer.production().imageLoader)
-        cancellables = []
 
         businessLogic = TPPSignInBusinessLogic(
             libraryAccountID: libraryMock.tppAccountUUID,
@@ -122,7 +122,6 @@ final class SignInToReadFlowIntegrationTests: XCTestCase {
             readerOpenedObserver = nil
         }
         HTTPStubURLProtocol.reset()
-        cancellables = nil
         businessLogic.userAccount.removeAll()
         businessLogic = nil
         networkExecutor = nil

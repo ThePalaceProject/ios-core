@@ -1,0 +1,61 @@
+# E-teardown-baseline.txt
+# swarm_47883816 work package E — TearDownRequiredLintTests baseline.
+#
+# Each line is a path RELATIVE TO REPO ROOT (one PalaceTests/... entry per line).
+# Files listed here contain at least one polluter substring
+# (`.shared`, `AccountsManager(`, `AppContainer.production()`,
+# `NotificationCenter.default.addObserver`, `UserDefaults.standard.set`)
+# AND extend `XCTestCase` directly AND lack any of:
+#   - override func tearDown()
+#   - override func tearDownWithError()
+#   - override func tearDown() async throws
+#
+# The lint exempts these files so the test suite stays green at landing
+# time. Going forward:
+#
+#   - Adding a NEW file to this list is rejected by the lint — that is
+#     the structural protection. New tests must declare tearDown.
+#   - Removing a file from the list (because the file gained a tearDown,
+#     migrated to PalaceWiringTestCase, or no longer touches polluters)
+#     is encouraged. The list is a shrink-only ratchet.
+#
+# Snapshot date: 2026-06-04. Snapshot generated mechanically by
+# scripts/teardown_baseline.sh (a one-shot in the swarm E transcript).
+# Lines starting with `#` and blank lines are ignored by the reader.
+PalaceTests/Accounts/AccountSwitchCleanupTests.swift
+PalaceTests/AppInfrastructure/AppContainerAudiobookFactoryTests.swift
+PalaceTests/AppInfrastructure/AppContainerAuthCoordinatorWiringTests.swift
+PalaceTests/AppInfrastructure/AppContainerImageLoaderInjectionTests.swift
+PalaceTests/AppInfrastructure/AppContainerTests.swift
+PalaceTests/AppInfrastructure/AppContainerWithSignInModalSheetPresenterTests.swift
+PalaceTests/AppInfrastructure/AuthCoordinatorTelemetryTests.swift
+PalaceTests/AppInfrastructure/RemoteFeatureFlagsTests.swift
+PalaceTests/Audiobook/AudiobookLoaderPredicateTests.swift
+PalaceTests/Audiobook/Vendors/BearerTokenAdapterTests.swift
+PalaceTests/Audiobook/Vendors/OpenAccessAdapterTests.swift
+PalaceTests/Audiobooks/AudiobookLoaderFinalizeBuildTests.swift
+PalaceTests/Audiobooks/AudiobookSessionManagerShutdownTests.swift
+PalaceTests/Audiobooks/AudiobookSessionStateTests.swift
+PalaceTests/Audiobooks/PlaybackBootstrapperTests.swift
+PalaceTests/Book/TPPBookDRMProtectedTests.swift
+PalaceTests/ButtonStateTests.swift
+PalaceTests/CatalogDomain/CatalogLaneSortingTests.swift
+PalaceTests/Contract/PositionWriterContractTests.swift
+PalaceTests/CoverageGapTests3.swift
+PalaceTests/Logging/DeviceLogCollectorTests.swift
+PalaceTests/Logging/ErrorLogExporterTests.swift
+PalaceTests/Logging/LogTests.swift
+PalaceTests/MyBooks/MyBooksDownloadCenterAccountIdThreadingTests.swift
+PalaceTests/Network/ReachabilityTests.swift
+PalaceTests/Notifications/NotificationSyncThrottleTests.swift
+PalaceTests/OPDS2/OPDS2CatalogWiringTests.swift
+PalaceTests/ProblemReportEmailTests.swift
+PalaceTests/Reader/ReaderEditingActionsTests.swift
+PalaceTests/Reader2/Typography/FontManagerTests.swift
+PalaceTests/SignInLogic/SignInModalLifecycleTests.swift
+PalaceTests/Support/TestAppContainerFactoryTests.swift
+PalaceTests/Support/TPPUserAccountTestFactoryTests.swift
+PalaceTests/Support/XCTestCase+testUserDefaults.swift
+PalaceTests/Support/XCTestCase+testUserDefaultsTests.swift
+PalaceTests/TPPUserNotificationsTests.swift
+PalaceTests/VisualRegression/AnonymousBorrowFixtureTests.swift

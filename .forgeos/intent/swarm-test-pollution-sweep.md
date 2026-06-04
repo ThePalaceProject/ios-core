@@ -1,10 +1,20 @@
 ---
-name: test-pollution-sweep
+name: swarm test pollution sweep
+author: maurice.carrier
 swarm_id: swarm_47883816
 created: 2026-06-04
 type: refactor
 risk: standard
 ---
+
+## Claims
+See work-packages A–F below.
+
+## Anti-claims
+See anti-claims section below.
+
+## Files in scope
+See files-in-scope section below.
 
 # Test pollution sweep — eliminate cross-test state leaks across PalaceTests/
 

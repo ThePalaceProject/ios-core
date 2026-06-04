@@ -250,21 +250,31 @@ final class SyncDeletionGuardTests: XCTestCase {
 final class PostUpdateMigrationTests: XCTestCase {
 
     private let buildKey = "TPPMigrationManager.lastLaunchBuild"
+    /// Per-test isolated UserDefaults — these tests re-implement the
+    /// migration-detection comparison locally; they don't call
+    /// `TPPMigrationManager` so they own the storage end-to-end and
+    /// don't need a production DI seam to be correct under isolation.
+    private var isolatedDefaults: UserDefaults!
+
+    override func setUp() {
+        super.setUp()
+        isolatedDefaults = testUserDefaults()
+    }
 
     override func tearDown() {
-        // Clean up test state
-        UserDefaults.standard.removeObject(forKey: buildKey)
+        // Resetter clears the suite at testCaseDidFinish — no manual cleanup needed.
+        isolatedDefaults = nil
         super.tearDown()
     }
 
     func testPostUpdateDetection_differentBuild_isDetected() {
         // Given: A previous build number stored
-        UserDefaults.standard.set("400", forKey: buildKey)
+        isolatedDefaults.set("400", forKey: buildKey)
 
         let currentBuild = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "0"
 
         // Then: If current build differs from stored, an update occurred
-        let lastBuild = UserDefaults.standard.string(forKey: buildKey)
+        let lastBuild = isolatedDefaults.string(forKey: buildKey)
         let isUpdate = lastBuild != nil && lastBuild != currentBuild
 
         XCTAssertTrue(isUpdate || currentBuild == "400",
@@ -273,25 +283,24 @@ final class PostUpdateMigrationTests: XCTestCase {
 
     func testPostUpdateDetection_sameBuild_isNotDetected() {
         let currentBuild = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "0"
-        UserDefaults.standard.set(currentBuild, forKey: buildKey)
+        isolatedDefaults.set(currentBuild, forKey: buildKey)
 
-        let lastBuild = UserDefaults.standard.string(forKey: buildKey)
+        let lastBuild = isolatedDefaults.string(forKey: buildKey)
         let isUpdate = lastBuild != nil && lastBuild != currentBuild
 
         XCTAssertFalse(isUpdate, "Should not detect update when build is the same")
     }
 
     func testPostUpdateDetection_firstLaunch_isNotUpdate() {
-        UserDefaults.standard.removeObject(forKey: buildKey)
-
-        let lastBuild = UserDefaults.standard.string(forKey: buildKey)
+        // Fresh suite — key is unset by construction.
+        let lastBuild = isolatedDefaults.string(forKey: buildKey)
         let isUpdate = lastBuild != nil
 
         XCTAssertFalse(isUpdate, "First launch (no stored build) should not be treated as update")
         XCTAssertNil(lastBuild, "No build should be stored on first launch")
         // Contrast: after storing a value, it should be detectable
-        UserDefaults.standard.set("1", forKey: buildKey)
-        XCTAssertNotNil(UserDefaults.standard.string(forKey: buildKey),
+        isolatedDefaults.set("1", forKey: buildKey)
+        XCTAssertNotNil(isolatedDefaults.string(forKey: buildKey),
                         "After storing a build, it must be retrievable")
     }
 
