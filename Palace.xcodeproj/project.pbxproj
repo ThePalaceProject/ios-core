@@ -2028,7 +2028,6 @@
 		119BEBB819902A8800121439 /* TPPOpenSearchDescription.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TPPOpenSearchDescription.m; sourceTree = "<group>"; };
 		11C5DD14197727A6005A9945 /* TPPKeychain.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TPPKeychain.h; sourceTree = "<group>"; };
 		11C5DD15197727A6005A9945 /* TPPKeychain.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TPPKeychain.m; sourceTree = "<group>"; };
-		11D521991A44980D00636240 /* librmservices_iphone.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = librmservices_iphone.a; path = "../../Code/RMSDK-10_0_2014-08-25/samples/rmservices/build/xc3/build/Release-iphoneos/librmservices_iphone.a"; sourceTree = "<group>"; };
 		11D5219B1A449ABA00636240 /* libstdc++.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = "libstdc++.dylib"; path = "usr/lib/libstdc++.dylib"; sourceTree = SDKROOT; };
 		11F54C1D194109120086FCAF /* main.xml */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xml; path = main.xml; sourceTree = "<group>"; };
 		11F54C2419410BE40086FCAF /* single_entry.xml */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xml; path = single_entry.xml; sourceTree = "<group>"; };
@@ -5026,7 +5025,6 @@
 				1146EE3F1A5DD071009F7576 /* CoreText.framework */,
 				112492571A5B5B690054D6E2 /* libstdc++.6.dylib */,
 				11D5219B1A449ABA00636240 /* libstdc++.dylib */,
-				11D521991A44980D00636240 /* librmservices_iphone.a */,
 				119503EA1993F91E009FB788 /* libc++.dylib */,
 				119503E81993F919009FB788 /* libz.dylib */,
 				119503E61993F914009FB788 /* libxml2.dylib */,
