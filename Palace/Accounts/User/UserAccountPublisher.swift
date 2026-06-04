@@ -29,6 +29,30 @@ final class UserAccountPublisher: ObservableObject {
     @Published private(set) var patronName: String?
     @Published private(set) var isSigningOut: Bool = false
 
+    // MARK: - Deferred Reset Task Retention
+    //
+    // signOut() schedules a Task that flips `isSigningOut` back to `false` after
+    // ~100ms so subscribers can react to the transient "is signing out" state.
+    // The Task is retained here so:
+    //   1. A second signOut() before the first reset fires cancels the prior
+    //      pending Task (no accumulation of in-flight resets).
+    //   2. deinit cancels any pending Task so cross-test state pollution from
+    //      a Task that outlives the publisher cannot occur.
+    //   3. Tests can `await publisher.pendingSignOutResetTask?.value` for
+    //      deterministic completion instead of polling.
+    private(set) var pendingSignOutResetTask: Task<Void, Never>?
+
+    deinit {
+        // Cancel any pending reset Task so it doesn't outlive the publisher
+        // and try to write into `isSigningOut` after the owning context has
+        // gone away. `pendingSignOutResetTask` is MainActor-isolated; snapshot
+        // it and cancel from a MainActor hop to satisfy strict concurrency.
+        let snapshot = pendingSignOutResetTask
+        Task { @MainActor in
+            snapshot?.cancel()
+        }
+    }
+
     // MARK: - Publishers
 
     /// Publishes when account credentials change (sign in/out)
@@ -116,10 +140,18 @@ final class UserAccountPublisher: ObservableObject {
         barcode = nil
         patronName = nil
 
-        // Reset flag after a brief delay to allow subscribers to react
-        Task {
+        // Cancel any in-flight reset from a prior signOut() before scheduling
+        // a fresh one; without this, rapid consecutive signOut() calls
+        // accumulated independent Tasks that all raced to flip the flag.
+        pendingSignOutResetTask?.cancel()
+
+        // Reset flag after a brief delay to allow subscribers to react.
+        // Retained on `pendingSignOutResetTask` so tests can await it and
+        // deinit can cancel any still-pending reset.
+        pendingSignOutResetTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 100_000_000) // 0.1s
-            isSigningOut = false
+            guard !Task.isCancelled else { return }
+            self?.isSigningOut = false
         }
     }
 }
