@@ -16,6 +16,10 @@ import XCTest
 /// can't be easily mocked, so we test the decision logic directly.
 final class NotificationSyncThrottleTests: XCTestCase {
 
+    override func tearDown() {
+        super.tearDown()
+    }
+
     private let throttleSeconds: TimeInterval = 30
 
     /// Simulates the syncWithThrottle decision logic.

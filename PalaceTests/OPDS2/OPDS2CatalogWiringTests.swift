@@ -14,6 +14,10 @@ import PalaceCatalog
 @MainActor
 final class OPDS2CatalogWiringTests: XCTestCase {
 
+    override func tearDown() {
+        super.tearDown()
+    }
+
     // MARK: - OPDSParser Format Detection
 
     func testParser_detectsOPDS2JSON() throws {

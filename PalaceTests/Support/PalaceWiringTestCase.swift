@@ -177,6 +177,29 @@ class PalaceWiringTestCase: XCTestCase {
         return manager
     }
 
+    /// DI-aware overload: construct a fresh `AccountsManager` backed by an
+    /// explicit `UserDefaults` instance. Wires the same opt-out flag pin
+    /// + `cancelBackgroundWork()` registration as the no-arg variant.
+    ///
+    /// swarm_cd181acd D-cleanup: lets wiring tests seed
+    /// `currentAccountIdentifierKey` into a per-test isolated suite (via
+    /// `testUserDefaults()`) instead of mutating `UserDefaults.standard`,
+    /// so cross-test pollution through that key is structurally
+    /// impossible.
+    @discardableResult
+    func makeFreshAccountsManager(
+        defaults: UserDefaults,
+        _ configure: (AccountsManager) -> Void = { _ in }
+    ) -> AccountsManager {
+        #if DEBUG
+        AccountsManager.deferInitialLoadCatalogsForTesting = true
+        #endif
+        let manager = AccountsManager(defaults: defaults)
+        configure(manager)
+        managersToCancelOnTearDown.append(manager)
+        return manager
+    }
+
     // MARK: - Disk-cache cleanup
 
     /// Remove every on-disk catalog/auth/crawl cache file in the test

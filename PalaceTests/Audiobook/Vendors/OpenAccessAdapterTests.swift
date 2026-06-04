@@ -22,6 +22,10 @@ import XCTest
 @MainActor
 final class OpenAccessAdapterTests: XCTestCase {
 
+    override func tearDown() {
+        super.tearDown()
+    }
+
     // MARK: - Stub network
 
     private final class StubNetwork: AudiobookManifestNetworkFetching {

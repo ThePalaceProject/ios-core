@@ -219,13 +219,17 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
     func testLoadCatalogs_currentAccountWithoutDetails_drivesDetailsLoading_thenLoaded() throws {
         let catalogs = try loadFeedCatalogs()
         let firstUUID = catalogs[0].metadata.id
-        let manager = makeFreshAccountsManager()
+        // swarm_cd181acd D-cleanup: per-test isolated UserDefaults suite
+        // wired into the AccountsManager so the
+        // `currentAccountIdentifierKey` write below cannot leak across
+        // tests via `.standard`.
+        let defaults = testUserDefaults()
+        let manager = makeFreshAccountsManager(defaults: defaults)
 
         // Set the current account to one of the fixture UUIDs so the
         // loadAccountSetsAndAuthDoc path will route through
         // fetchAuthDocumentWithStateMachine for it.
-        UserDefaults.standard.set(firstUUID, forKey: currentAccountIdentifierKey)
-        defer { UserDefaults.standard.removeObject(forKey: currentAccountIdentifierKey) }
+        defaults.set(firstUUID, forKey: currentAccountIdentifierKey)
 
         // Run the wiring path. Use the prod hash so the manager's
         // `currentAccount` lookup finds our fixture accounts.
@@ -300,11 +304,16 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
         let catalogs = try loadFeedCatalogs()
         let currentUUID = catalogs[0].metadata.id
 
+        // swarm_cd181acd D-cleanup: per-test isolated UserDefaults suite
+        // wired into the AccountsManager so the
+        // `currentAccountIdentifierKey` write below cannot leak via
+        // `.standard`.
+        let defaults = testUserDefaults()
         // Construct the manager FIRST. Its init fires a background
         // loadCatalogs(nil); drain the main queue so any of its main-thread
         // completion blocks land before our reset below. Without network the
         // fetchFromNetwork Task fails fast without writing AccountStateStore.
-        let manager = makeFreshAccountsManager()
+        let manager = makeFreshAccountsManager(defaults: defaults)
         drainMainQueue()
         drainMainQueue()
 
@@ -320,8 +329,7 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
 
         // Set the current account BEFORE preload so manager.currentAccount
         // resolves to a fixture UUID once accountSets is populated.
-        UserDefaults.standard.set(currentUUID, forKey: currentAccountIdentifierKey)
-        defer { UserDefaults.standard.removeObject(forKey: currentAccountIdentifierKey) }
+        defaults.set(currentUUID, forKey: currentAccountIdentifierKey)
 
         // Reset state for known subjects so the assertion below isn't
         // observing the background's leftovers.
@@ -394,7 +402,9 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
         let catalogs = try loadFeedCatalogs()
         let currentUUID = catalogs[0].metadata.id
 
-        let manager = makeFreshAccountsManager()
+        // swarm_cd181acd D-cleanup: per-test isolated UserDefaults suite.
+        let defaults = testUserDefaults()
+        let manager = makeFreshAccountsManager(defaults: defaults)
         // Drain the main queue so init's background loadCatalogs has a chance
         // to fail (no network → fast failure) before our reset below.
         drainMainQueue()
@@ -407,8 +417,7 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
         try seedDiskCache(for: activeHash, data: feedData)
         defer { tearDownDiskCache(for: activeHash) }
 
-        UserDefaults.standard.set(currentUUID, forKey: currentAccountIdentifierKey)
-        defer { UserDefaults.standard.removeObject(forKey: currentAccountIdentifierKey) }
+        defaults.set(currentUUID, forKey: currentAccountIdentifierKey)
 
         #if DEBUG
         AccountStateStore.shared._resetAllForTesting()
@@ -686,11 +695,13 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
             XCTFail("Pre-state: accountA must be in .detailsLoaded")
         }
 
-        // Set up: simulate currentAccountId pointing at A.
-        UserDefaults.standard.set(accountA.uuid, forKey: currentAccountIdentifierKey)
-        defer { UserDefaults.standard.removeObject(forKey: currentAccountIdentifierKey) }
+        // swarm_cd181acd D-cleanup: per-test isolated UserDefaults suite
+        // wired into the AccountsManager so the
+        // `currentAccountIdentifierKey` write cannot leak via `.standard`.
+        let defaults = testUserDefaults()
+        defaults.set(accountA.uuid, forKey: currentAccountIdentifierKey)
 
-        let manager = makeFreshAccountsManager()
+        let manager = makeFreshAccountsManager(defaults: defaults)
 
         // Act: switch currentAccount A → B. The setter must drive A to
         // `.detailsEvicted(.libraryDeselected)`. We bypass the accountSets
@@ -732,10 +743,12 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
         let priorUUID = catalogs[0].metadata.id
         let newUUID = catalogs[1].metadata.id
 
+        // swarm_cd181acd D-cleanup: per-test isolated UserDefaults suite.
+        let defaults = testUserDefaults()
         // Seed disk cache + populate accountSets via preload so the
         // manager's currentAccount accessor can resolve UUIDs back to
         // Account instances after the switch.
-        let manager = makeFreshAccountsManager()
+        let manager = makeFreshAccountsManager(defaults: defaults)
         // Drain the main queue so init's background loadCatalogs has a chance
         // to fail (no network → fast failure) before our reset below.
         drainMainQueue()
@@ -748,8 +761,7 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
         try seedDiskCache(for: activeHash, data: feedData)
         defer { tearDownDiskCache(for: activeHash) }
 
-        UserDefaults.standard.set(priorUUID, forKey: currentAccountIdentifierKey)
-        defer { UserDefaults.standard.removeObject(forKey: currentAccountIdentifierKey) }
+        defaults.set(priorUUID, forKey: currentAccountIdentifierKey)
 
         #if DEBUG
         AccountStateStore.shared._resetAllForTesting()
@@ -815,10 +827,11 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
         accountA.authenticationDocument = authDoc
         accountA._setState(.detailsLoaded(accountA.details!))
 
-        UserDefaults.standard.set(accountA.uuid, forKey: currentAccountIdentifierKey)
-        defer { UserDefaults.standard.removeObject(forKey: currentAccountIdentifierKey) }
+        // swarm_cd181acd D-cleanup: per-test isolated UserDefaults suite.
+        let defaults = testUserDefaults()
+        defaults.set(accountA.uuid, forKey: currentAccountIdentifierKey)
 
-        let manager = makeFreshAccountsManager()
+        let manager = makeFreshAccountsManager(defaults: defaults)
 
         // Switch A → B; A terminates at .detailsEvicted(.libraryDeselected).
         manager.currentAccount = accountB
@@ -901,7 +914,9 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
         }
         let currentUUID = catalogs[0].metadata.id
 
-        let manager = makeFreshAccountsManager()
+        // swarm_cd181acd D-cleanup: per-test isolated UserDefaults suite.
+        let defaults = testUserDefaults()
+        let manager = makeFreshAccountsManager(defaults: defaults)
         let backgroundSettled = expectation(description: "background loadCatalogs settled")
         DispatchQueue.global().asyncAfter(deadline: .now() + 0.4) { backgroundSettled.fulfill() } // FLAKE-002-OK: background loadCatalogs settle window — see feedback_wiring_suite_test_isolation
         wait(for: [backgroundSettled], timeout: 2.0)
@@ -913,8 +928,7 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
         try seedDiskCache(for: activeHash, data: feedData)
         defer { tearDownDiskCache(for: activeHash) }
 
-        UserDefaults.standard.set(currentUUID, forKey: currentAccountIdentifierKey)
-        defer { UserDefaults.standard.removeObject(forKey: currentAccountIdentifierKey) }
+        defaults.set(currentUUID, forKey: currentAccountIdentifierKey)
 
         #if DEBUG
         AccountStateStore.shared._resetAllForTesting()
@@ -1022,7 +1036,9 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
         }
         let currentUUID = catalogs[0].metadata.id
 
-        let manager = makeFreshAccountsManager()
+        // swarm_cd181acd D-cleanup: per-test isolated UserDefaults suite.
+        let defaults = testUserDefaults()
+        let manager = makeFreshAccountsManager(defaults: defaults)
         // Drain the main queue so init's background loadCatalogs has a chance
         // to fail (no network → fast failure) before our reset below.
         drainMainQueue()
@@ -1035,8 +1051,7 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
         try seedDiskCache(for: activeHash, data: feedData)
         defer { tearDownDiskCache(for: activeHash) }
 
-        UserDefaults.standard.set(currentUUID, forKey: currentAccountIdentifierKey)
-        defer { UserDefaults.standard.removeObject(forKey: currentAccountIdentifierKey) }
+        defaults.set(currentUUID, forKey: currentAccountIdentifierKey)
 
         #if DEBUG
         AccountStateStore.shared._resetAllForTesting()

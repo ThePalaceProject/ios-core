@@ -17,6 +17,10 @@ import OSLog
 
 final class AudioBookmarkGapTests: XCTestCase {
 
+    override func tearDown() {
+        super.tearDown()
+    }
+
     /// Coverage Gap: AudioBookmark — verify creation and basic properties
     func testAudioBookmark_creation_storesBasicProperties() {
         let bookmark = AudioBookmark(

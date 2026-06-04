@@ -31,6 +31,10 @@ import Combine
 @MainActor
 final class SignInModalLifecycleTests: XCTestCase {
 
+    override func tearDown() {
+        super.tearDown()
+    }
+
     // MARK: - Helpers
 
     /// Captures every emission from `presenter.$presentationState` into

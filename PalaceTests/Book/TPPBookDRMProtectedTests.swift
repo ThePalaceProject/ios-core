@@ -16,6 +16,10 @@ import PalaceCatalog
 
 final class TPPBookIsDRMProtectedTests: XCTestCase {
 
+    override func tearDown() {
+        super.tearDown()
+    }
+
     private static let testURL = URL(string: "https://test.example.com/borrow")!
 
     private func makeBook(

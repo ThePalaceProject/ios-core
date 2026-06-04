@@ -12,7 +12,11 @@ import PalaceCatalog
 @testable import Palace
 
 final class CatalogLaneSortingTests: XCTestCase {
-  
+
+  override func tearDown() {
+    super.tearDown()
+  }
+
   // MARK: - extractFacets Tests
   
   /// PP-3629: Verify extractFacets parses sort facets from an OPDS grouped feed

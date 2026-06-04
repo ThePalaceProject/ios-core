@@ -25,6 +25,10 @@ final class TPPUserAccountTestFactoryTests: XCTestCase {
         try KeychainAvailability.skipIfUnavailable()
     }
 
+    override func tearDownWithError() throws {
+        try super.tearDownWithError()
+    }
+
     // MARK: - Invariant 1: each call mints a fresh UUID-namespaced account
 
     func testMakeIsolated_eachCallReturnsDistinctLibraryUUID() {

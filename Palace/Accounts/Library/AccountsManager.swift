@@ -127,6 +127,14 @@ struct CatalogCacheMetadata: Codable {
 
     let ageCheck: TPPAgeCheckVerifying
     private let settings: TPPSettings
+
+    /// `UserDefaults` backing store for the persisted
+    /// `currentAccountIdentifierKey` read/written by `currentAccountId`.
+    /// Production callers use the no-arg `init()` which binds `.standard`;
+    /// tests inject a per-suite `UserDefaults(suiteName:)` via the
+    /// explicit initializer so two tests touching the current-account
+    /// key cannot pollute each other. There is NO fallback once injected.
+    private let defaults: UserDefaults
     /// Lazy-resolved from AppContainer to break the singleton init cycle:
     /// AccountsManager is constructed inline by AppContainer._cached's
     /// initializer, so we cannot read AppContainer.production() during this
@@ -208,7 +216,12 @@ struct CatalogCacheMetadata: Codable {
     /// construct the single live instance directly. Outside of `AppContainer`
     /// (and tests that need an isolated instance), do not call this directly
     /// — read `appContainer.accountsManager` instead.
-    override init() {
+    ///
+    /// - Parameter defaults: UserDefaults backing store for
+    ///   `currentAccountIdentifierKey` reads/writes. Defaults to `.standard`
+    ///   so production callers stay green; tests pass a per-suite instance.
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
         self.settings = TPPSettings()
         self.accountSet = TPPConfiguration.customUrlHash()
             ?? (settings.useBetaLibraries
@@ -399,10 +412,10 @@ struct CatalogCacheMetadata: Codable {
     }
 
     private(set) var currentAccountId: String? {
-        get { UserDefaults.standard.string(forKey: currentAccountIdentifierKey) }
+        get { defaults.string(forKey: currentAccountIdentifierKey) }
         set {
             Log.debug(#file, "Setting currentAccountId to \(newValue ?? "N/A")")
-            UserDefaults.standard.set(newValue, forKey: currentAccountIdentifierKey)
+            defaults.set(newValue, forKey: currentAccountIdentifierKey)
         }
     }
 
@@ -447,16 +460,16 @@ struct CatalogCacheMetadata: Codable {
             seeded.append(account)
             self.accountSets[seedKey] = seeded
         }
-        let previousId = UserDefaults.standard.string(forKey: currentAccountIdentifierKey)
-        UserDefaults.standard.set(account.uuid, forKey: currentAccountIdentifierKey)
+        let previousId = defaults.string(forKey: currentAccountIdentifierKey)
+        defaults.set(account.uuid, forKey: currentAccountIdentifierKey)
         return {
             self.performWrite {
                 self.accountSets[seedKey]?.removeAll { $0.uuid == account.uuid }
             }
             if let prev = previousId {
-                UserDefaults.standard.set(prev, forKey: currentAccountIdentifierKey)
+                self.defaults.set(prev, forKey: currentAccountIdentifierKey)
             } else {
-                UserDefaults.standard.removeObject(forKey: currentAccountIdentifierKey)
+                self.defaults.removeObject(forKey: currentAccountIdentifierKey)
             }
         }
     }

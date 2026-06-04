@@ -17,6 +17,11 @@ final class ProblemReportEmailTests: XCTestCase {
         emailService = ProblemReportEmail.sharedInstance
     }
 
+    override func tearDown() {
+        emailService = nil
+        super.tearDown()
+    }
+
     // MARK: - generateBody Tests
 
     func testGenerateBody_withBook_containsBookInfo() {
