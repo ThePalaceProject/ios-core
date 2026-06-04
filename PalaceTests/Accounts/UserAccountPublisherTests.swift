@@ -91,26 +91,93 @@ final class UserAccountPublisherTests: XCTestCase {
         XCTAssertTrue(publisher.isSigningOut)
     }
 
-    func testSignOut_resetsIsSigningOutAfterDelay() {
+    func testSignOut_resetsIsSigningOutAfterDelay() async {
         // Round-trip test: signOut sets isSigningOut=true immediately, then
         // asynchronously resets it to false ~100ms later via a deferred Task.
         // We also pair-assert authState=.loggedOut throughout so a mutation
         // that resets isSigningOut prematurely (or never) is caught even if
-        // the awaitCondition were to spuriously flake green.
+        // an awaitCondition were to spuriously flake green.
         publisher.signOut()
         XCTAssertTrue(publisher.isSigningOut,
                       "signOut must immediately set isSigningOut=true so the UI hides login-required affordances")
 
-        // The reset runs inside `Task { Task.sleep(100ms); isSigningOut = false }`.
-        // Default 5s `awaitCondition` budget flaked under late-suite dispatch
-        // saturation (100ms sleep + main-actor publish took >5s after ~3,700
-        // prior tests). 15s gives enough headroom without masking real bugs.
-        let signingOutCleared: () -> Bool = { self.publisher.isSigningOut == false }
-        awaitCondition(timeout: 15.0, signingOutCleared) // FLAKE-003-OK: Task.sleep(100ms) + main-actor publish under late-suite contention legitimately needs >5s.
+        // FLAKE-003-OK retired: now that signOut() retains the reset Task on
+        // `pendingSignOutResetTask`, the test awaits the Task directly for
+        // deterministic completion. No more polling against a 100ms sleep
+        // under late-suite dispatch saturation.
+        await publisher.pendingSignOutResetTask?.value
         XCTAssertFalse(publisher.isSigningOut,
-                       "After the ~100ms deferred Task, isSigningOut must flip back to false so the UI re-enables login affordances")
+                       "After awaiting the deferred Task, isSigningOut must be false so the UI re-enables login affordances")
         XCTAssertEqual(publisher.authState, .loggedOut,
                        "authState must be .loggedOut throughout — the isSigningOut transition does not bounce the auth state")
+    }
+
+    // MARK: - Deferred Reset Task Retention (F-iii'-3)
+
+    func testSignOut_deferredResetTask_isRetained() {
+        // signOut() must store the deferred reset Task on `pendingSignOutResetTask`
+        // so callers (tests, deinit, subsequent signOuts) can address it.
+        XCTAssertNil(publisher.pendingSignOutResetTask,
+                     "Before signOut, no deferred reset Task should exist")
+
+        publisher.signOut()
+
+        XCTAssertNotNil(publisher.pendingSignOutResetTask,
+                        "signOut() must retain the deferred 100ms reset Task on pendingSignOutResetTask")
+    }
+
+    func testSignOut_calledTwice_cancelsFirstResetTask() async {
+        // Two rapid signOut() calls must cancel the prior pending reset Task.
+        // Without retention, prior implementation accumulated independent Tasks
+        // that all raced to flip isSigningOut=false.
+        publisher.signOut()
+        guard let firstTask = publisher.pendingSignOutResetTask else {
+            return XCTFail("First signOut() must retain a pending reset Task")
+        }
+        XCTAssertFalse(firstTask.isCancelled,
+                       "Immediately after signOut, the freshly-scheduled Task must not yet be cancelled")
+
+        publisher.signOut()
+        guard let secondTask = publisher.pendingSignOutResetTask else {
+            return XCTFail("Second signOut() must retain a fresh pending reset Task")
+        }
+        XCTAssertTrue(firstTask.isCancelled,
+                      "A second signOut() must cancel the previously-scheduled reset Task to avoid accumulation")
+        XCTAssertFalse(secondTask.isCancelled,
+                       "The second Task must be freshly-scheduled and not itself cancelled — distinct from firstTask")
+
+        // Drain the second Task so the test completes without leaving a
+        // dangling Task that could hop after tearDown.
+        await secondTask.value
+        XCTAssertFalse(publisher.isSigningOut,
+                       "After draining the second deferred reset, isSigningOut must be false")
+    }
+
+    func testSignOut_deinit_cancelsPendingReset() async {
+        // Build a publisher in a child scope; capture the Task before releasing.
+        // After the publisher goes out of scope, the pending Task must be cancelled
+        // so it cannot publish into a no-longer-observed state.
+        var localPublisher: UserAccountPublisher? = UserAccountPublisher()
+        localPublisher?.markLoggedIn()
+        localPublisher?.signOut()
+
+        guard let capturedTask = localPublisher?.pendingSignOutResetTask else {
+            return XCTFail("signOut() on a fresh publisher must retain a pending reset Task")
+        }
+
+        // Release the publisher — deinit must schedule a cancel.
+        localPublisher = nil
+
+        // The deinit hops to MainActor to issue the cancel; yield to let that
+        // run. A timed loop tolerates any test-bed scheduling jitter without
+        // depending on a fixed wall-clock duration.
+        for _ in 0..<50 {
+            if capturedTask.isCancelled { break }
+            await Task.yield()
+            try? await Task.sleep(nanoseconds: 10_000_000) // 10ms
+        }
+        XCTAssertTrue(capturedTask.isCancelled,
+                      "deinit must cancel the pending reset Task so it cannot outlive the publisher")
     }
 
     // MARK: - Publisher: credentialsDidChangePublisher

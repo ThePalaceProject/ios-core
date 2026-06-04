@@ -67,6 +67,29 @@ final class BookReturnService {
     private let adobeDRMService: AdobeDRMService
     #endif
 
+    // MARK: - In-flight Task retention (swarm_4e47d4d4 F3)
+
+    /// Retained handles for the fire-and-forget Tasks launched from the
+    /// return state machine: the OPDS revoke fetch + cleanup hops (line
+    /// 154-style), the coordinator and legacy reauth retry hops, the
+    /// alert presentation hop, and the post-return sync hop. Previously
+    /// each Task was leaked once dispatched — if the service was torn
+    /// down (deinit, sign-out, library swap) before the Task completed,
+    /// the Task kept running and wrote into `bookRegistry` /
+    /// `localContentService` / `bookmarkDeletionLog` after the owning
+    /// context expired. Retaining lets `cancelAllInFlightTasks()` (called
+    /// from `deinit` and any reset path) deterministically drop the
+    /// orphaned work. Tasks remove themselves from the set when their
+    /// body finishes so the set never grows unbounded.
+    ///
+    /// Guarded by `inFlightLock` rather than an actor annotation —
+    /// `BookReturnService` is callable from non-MainActor contexts
+    /// (MBDC) and the Task bodies straddle the cooperative pool and the
+    /// main actor. NSLock is the lowest-blast-radius primitive that
+    /// keeps both safe.
+    private var inFlightTasks: Set<Task<Void, Never>> = []
+    private let inFlightLock = NSLock()
+
     #if FEATURE_DRM_CONNECTOR
     init(
         bookRegistry: TPPBookRegistryProvider,
@@ -115,6 +138,109 @@ final class BookReturnService {
     }
     #endif
 
+    deinit {
+        // Note: `self.inFlightTasks` strongly retains every in-flight
+        // `Task<Void, Never>` value (which in turn keeps the runtime's
+        // backing Job alive while its body is still suspended). That
+        // means `deinit` will not normally fire while a Task is still
+        // suspended on an `await` — there is no opportunity to cancel
+        // from here. The cancellation seam is therefore
+        // `cancelAllInFlightTasks()` (call it explicitly from
+        // sign-out, library-swap, or any reset path that wants to
+        // abandon pending returns). The defensive guarantee for
+        // already-launched Tasks is the `[weak self]` capture at the
+        // top of each tracked Task body: once the service eventually
+        // does deinit, the body's first `guard let self` short-circuits
+        // and the remaining work unwinds without touching
+        // `bookRegistry` / `localContentService` /
+        // `bookmarkDeletionLog`.
+        BookReturnServiceTestHook.recordDeinit()
+    }
+
+    // MARK: - Task lifecycle
+
+    /// Cancels every retained in-flight Task and clears the tracking
+    /// set. Call from any reset / sign-out / library-switch path that
+    /// wants to abandon pending returns without waiting for them.
+    /// Tasks check `Task.isCancelled` at every `await` hop so
+    /// already-started Tasks unwind without re-entering registry
+    /// mutations after cancellation.
+    func cancelAllInFlightTasks() {
+        let snapshot: Set<Task<Void, Never>>
+        inFlightLock.lock()
+        snapshot = inFlightTasks
+        inFlightTasks.removeAll()
+        inFlightLock.unlock()
+        for task in snapshot {
+            task.cancel()
+        }
+    }
+
+    /// Test/audit hook: number of retained Tasks currently in flight.
+    /// Internal because the count is part of the cancellation contract
+    /// (tests verify the set is populated when a return-flow Task is
+    /// running and drained once it completes or is cancelled).
+    var inFlightTaskCount: Int {
+        inFlightLock.lock()
+        defer { inFlightLock.unlock() }
+        return inFlightTasks.count
+    }
+
+    /// Test-only snapshot of the retained Tasks so a test can prove
+    /// `deinit` cancelled a specific Task. Returning the Set copy is
+    /// safe because Task itself is `Sendable`.
+    internal func inFlightTasksSnapshotForTesting() -> Set<Task<Void, Never>> {
+        inFlightLock.lock()
+        defer { inFlightLock.unlock() }
+        return inFlightTasks
+    }
+
+    /// Wraps a fire-and-forget Task in the retention + auto-removal
+    /// dance. Inserts the handle into `inFlightTasks` before the body
+    /// runs, then removes it when the body returns. The auto-removal
+    /// touches the lock once; auto-removal itself isn't tracked
+    /// because it does no real work beyond a set mutation.
+    @discardableResult
+    private func launchTrackedTask(
+        _ body: @escaping @Sendable () async -> Void
+    ) -> Task<Void, Never> {
+        var task: Task<Void, Never>!
+        task = Task { [weak self] in
+            await body()
+            guard let self else { return }
+            self.inFlightLock.lock()
+            self.inFlightTasks.remove(task)
+            self.inFlightLock.unlock()
+        }
+        inFlightLock.lock()
+        inFlightTasks.insert(task)
+        inFlightLock.unlock()
+        return task
+    }
+
+    /// MainActor-isolated sibling of `launchTrackedTask` for the
+    /// branches that already pinned themselves to MainActor (the
+    /// reauthenticator-completion hop, the alert-presentation hop).
+    /// The auto-removal step runs in the closing MainActor scope so
+    /// callers don't have to thread the lock through their UI work.
+    @discardableResult
+    private func launchTrackedMainActorTask(
+        _ body: @escaping @MainActor () async -> Void
+    ) -> Task<Void, Never> {
+        var task: Task<Void, Never>!
+        task = Task { @MainActor [weak self] in
+            await body()
+            guard let self else { return }
+            self.inFlightLock.lock()
+            self.inFlightTasks.remove(task)
+            self.inFlightLock.unlock()
+        }
+        inFlightLock.lock()
+        inFlightTasks.insert(task)
+        inFlightLock.unlock()
+        return task
+    }
+
     // MARK: - returnBook
 
     func returnBook(withIdentifier identifier: String, completion: (() -> Void)? = nil) {
@@ -151,9 +277,9 @@ final class BookReturnService {
 
         bookRegistry.setProcessing(true, for: book.identifier)
 
-        Task { [weak self] in
+        launchTrackedTask { [weak self] in
             guard let self, let revokeURL = book.revokeURL else {
-                await MainActor.run {
+                await MainActor.run { [weak self] in
                     self?.bookRegistry.setProcessing(false, for: book.identifier)
                     self?.downloadAnnouncementService.announceReturnFailed(for: book)
                     completion?()
@@ -323,7 +449,7 @@ final class BookReturnService {
             // `authCoordinator` made non-optional.
             if let coordinator = self.authCoordinator {
                 Log.info(#file, "Auth error on return — dispatching through AuthCoordinator")
-                Task { [weak self] in
+                launchTrackedTask { [weak self] in
                     let outcome = await coordinator.refreshCredentialsIfNeeded(reason: .invalidCredentials)
                     guard let self else { return }
                     switch outcome {
@@ -355,7 +481,7 @@ final class BookReturnService {
             } else {
                 Log.info(#file, "Auth error on return — legacy reauth path (no coordinator injected)")
             }
-            Task { @MainActor [weak self] in
+            launchTrackedMainActorTask { [weak self] in
                 guard let self else { return }
                 let user = self.userAccountProvider()
                 self.reauthenticator.authenticateIfNeeded(user, usingExistingCredentials: false) { [weak self] in
@@ -374,7 +500,7 @@ final class BookReturnService {
         }
 
         // All other errors — show alert with problem document if available
-        Task { @MainActor [weak self] in
+        launchTrackedMainActorTask { [weak self] in
             guard let self else { return }
             self.presentReturnFailureAlert(
                 error: error,
@@ -452,7 +578,7 @@ final class BookReturnService {
     /// `TPPSyncFailed` so the Reservations tab can show the sync error
     /// banner; completion is always called so the return UI is dismissed.
     private func performPostReturnSyncThen(completion: @escaping () -> Void) {
-        Task { [weak self] in
+        launchTrackedTask { [weak self] in
             do {
                 // Use the injected `bookRegistry` rather than reaching into
                 // AppContainer here, so unit tests can substitute a registry
@@ -469,5 +595,42 @@ final class BookReturnService {
             }
             runOnMainAsync(completion)
         }
+    }
+}
+
+// MARK: - Test hook (swarm_4e47d4d4 F3)
+
+/// Static counter that lets the F3 deinit test prove the service's
+/// deinit ran for a specific instance without relying on weak-ref
+/// timing. Production code only writes to this counter from `deinit`;
+/// nothing else touches it.
+///
+/// Internal-only — accessible from PalaceTests via `@testable import
+/// Palace` but not exported publicly.
+internal enum BookReturnServiceTestHook {
+    private static let lock = NSLock()
+    private static var _deinitCount = 0
+
+    static func recordDeinit() {
+        lock.lock()
+        _deinitCount += 1
+        lock.unlock()
+    }
+
+    /// Async accessor — used in test arrange / assert hops.
+    static var deinitCount: Int {
+        get async {
+            lock.lock()
+            defer { lock.unlock() }
+            return _deinitCount
+        }
+    }
+
+    /// Sync accessor — used inside `awaitConditionAsync` predicates
+    /// which are non-async closures.
+    static var deinitCountSync: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return _deinitCount
     }
 }
