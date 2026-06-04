@@ -101,10 +101,16 @@ git diff --cached > "$M1_DIFF" 2>/dev/null || true
 # Capture the in-progress commit message as the claim source for
 # check-contract-reconciliation.py. Architect rev_f1c4ea3c caught the wiring gap
 # where the contract gate ran without a claim source and silently passed regardless
-# of what the commit body claimed. Pre-commit context: `.git/COMMIT_EDITMSG` holds
-# the message currently being authored; fall back to HEAD's body if running outside
-# the normal commit flow (e.g. `--amend` mid-edit, manual invocation).
-if [[ -f "$REPO_ROOT_M1/.git/COMMIT_EDITMSG" ]]; then
+# of what the commit body claimed. Pre-commit context: COMMIT_EDITMSG holds the
+# message currently being authored. In a linked worktree the file lives under
+# `.git/worktrees/<name>/COMMIT_EDITMSG`, not the main repo's `.git/`; resolve
+# the actual gitdir via `git rev-parse --git-dir` so worktree commits still
+# surface the in-progress subject to the downstream gates. Fall back to HEAD's
+# body if running outside the normal commit flow (e.g. `--amend` mid-edit).
+M1_GITDIR=$(git rev-parse --git-dir 2>/dev/null)
+if [[ -n "$M1_GITDIR" ]] && [[ -f "$M1_GITDIR/COMMIT_EDITMSG" ]]; then
+  cp "$M1_GITDIR/COMMIT_EDITMSG" "$M1_MSG"
+elif [[ -f "$REPO_ROOT_M1/.git/COMMIT_EDITMSG" ]]; then
   cp "$REPO_ROOT_M1/.git/COMMIT_EDITMSG" "$M1_MSG"
 else
   git -C "$REPO_ROOT_M1" log -1 --format=%B HEAD > "$M1_MSG" 2>/dev/null || echo "" > "$M1_MSG"
@@ -130,9 +136,15 @@ run_m1_check() {
   fi
   # check-contract-reconciliation.py needs a claim source (commit msg + optional
   # intent) — without one it silently passes (architect rev_f1c4ea3c finding).
-  # All other scripts ignore extra flags.
+  # check-intent-recorded.py also needs `--commit-msg` to match the in-progress
+  # subject against the intent file's `name:` field; without it the script
+  # reports INTENT-MISSING ("no commit subject to match an intent file against")
+  # even when an intent file is present and the subject matches. All other
+  # scripts ignore extra flags.
   if [[ "$name" = "contract_reconciliation" ]]; then
     out=$(python3 "$REPO_ROOT_M1/$script" --diff "$M1_DIFF" --commit-msg "$M1_MSG" $M1_INTENT_FLAG --quiet 2>&1) || exit_code=$?
+  elif [[ "$name" = "intent_recorded" ]]; then
+    out=$(python3 "$REPO_ROOT_M1/$script" --diff "$M1_DIFF" --commit-msg "$M1_MSG" --quiet 2>&1) || exit_code=$?
   else
     out=$(python3 "$REPO_ROOT_M1/$script" --diff "$M1_DIFF" --quiet 2>&1) || exit_code=$?
   fi
@@ -164,6 +176,11 @@ if ! run_m1_check "blast_radius" "scripts/check-blast-radius.py"; then
 fi
 # Adjacency is warn-only at the hook layer too.
 run_m1_check "adjacency_staleness" "scripts/check-adjacency-staleness.py" || true
+# Superpartner spectrum flags new code (functions / enum cases / state changes)
+# that has no matching test. Warn-only for now; promote to blocking by moving
+# this under the `if ! ...; then M1_FAIL++` form once we've confirmed it isn't
+# noisy on real changes. See scripts/check-superpartner-spectrum.py.
+run_m1_check "superpartner_spectrum" "scripts/check-superpartner-spectrum.py" || true
 if ! run_m1_check "intent_recorded" "scripts/check-intent-recorded.py"; then
   M1_FAIL=$((M1_FAIL + 1))
 fi

@@ -1,0 +1,23 @@
+diff --git a/Palace/MyBooks/BorrowOperation.swift b/Palace/MyBooks/BorrowOperation.swift
+index 1111111..2222222 100644
+--- a/Palace/MyBooks/BorrowOperation.swift
++++ b/Palace/MyBooks/BorrowOperation.swift
+@@ -10,3 +10,6 @@ final class BorrowOperation {
+     func existing() {}
++
++    func computeRenewalEligibility(for book: TPPBook) -> Bool {
++        return book.isRenewable && !book.isExpired
++    }
+ }
+diff --git a/PalaceTests/MyBooks/BorrowOperationTests.swift b/PalaceTests/MyBooks/BorrowOperationTests.swift
+index 3333333..4444444 100644
+--- a/PalaceTests/MyBooks/BorrowOperationTests.swift
++++ b/PalaceTests/MyBooks/BorrowOperationTests.swift
+@@ -20,3 +20,8 @@ final class BorrowOperationTests: XCTestCase {
+     func existingTest() {}
++
++    func testComputeRenewalEligibility_whenExpired_returnsFalse() {
++        let op = BorrowOperation()
++        XCTAssertFalse(op.computeRenewalEligibility(for: expiredBook))
++    }
+ }

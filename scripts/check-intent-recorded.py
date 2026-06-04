@@ -41,6 +41,8 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from _checklib import read_diff
+
 # --- Required intent shape -------------------------------------------------
 
 _REQUIRED_FRONTMATTER_KEYS = ("name", "created", "author")
@@ -213,14 +215,7 @@ def _find_matching_intent(intent_dir: Path, commit_subject: str
 
 # --- CLI -------------------------------------------------------------------
 
-def _read_diff(path: str | None) -> str:
-    if path is None or path == "-":
-        return sys.stdin.read()
-    p = Path(path)
-    if not p.is_file():
-        print(f"ERROR: diff file not found: {path}", file=sys.stderr)
-        sys.exit(2)
-    return p.read_text(encoding="utf-8", errors="replace")
+_read_diff = read_diff  # shared with scripts/_checklib.py
 
 
 def _read_commit_msg(path: str | None) -> str:

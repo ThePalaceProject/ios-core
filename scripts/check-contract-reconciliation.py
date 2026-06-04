@@ -60,6 +60,8 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from _checklib import read_diff
+
 # --- Claim grammars --------------------------------------------------------
 
 _REM_RE = re.compile(r"\bremoves?\s+`?([A-Z][\w\.]+)`?",
@@ -433,10 +435,7 @@ def _read_path(path: str | None, label: str) -> str:
     return p.read_text(encoding="utf-8", errors="replace")
 
 
-def _read_diff(path: str | None) -> str:
-    if path is None or path == "-":
-        return sys.stdin.read()
-    return _read_path(path, "diff")
+_read_diff = read_diff  # shared with scripts/_checklib.py
 
 
 def main(argv: list[str]) -> int:
