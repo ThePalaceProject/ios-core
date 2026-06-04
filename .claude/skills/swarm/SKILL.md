@@ -6,7 +6,7 @@ tools: Agent, Bash, Read, Write, Edit, mcp__forgeos__forge_propose_changeset, mc
 type: evolving
 status: active
 created: 2026-05-28
-last_refresh: 2026-06-03
+last_refresh: 2026-06-04
 freshness_window: 365d
 owners: [general]
 ---
@@ -215,11 +215,24 @@ Verify:
    catch the failure modes they claim to.
 4. Cross-module dependencies in `depends_on` are accurate (e.g., if C
    depends on A, does C's contract actually need A's seam?)
-5. For contracts introducing new abstractions, type-hierarchy changes,
-   protocol surfaces, or concurrency-model shifts, consult
-   `.forgeos/reviewer-refs/architect-swift-canon.md` as a LENS (not a
-   checklist) and weigh `.forgeos/wall-failures/` over the canon when
-   they disagree.
+5. **Call-graph completeness for new content-type behavior** (added 2026-06-03
+   per PP-4161 wall-failure). For any swarm that introduces a new value to
+   an enum that drives user-visible buttons or content-type routing
+   (`BookButtonType`, `TPPBookContentType`, `BookButtonState`, similar)
+   AND specifies new behavior gated by that value (e.g. "for `.streamingHTML`
+   books, the button is `.readStreaming`"), verify the FULL call graph from
+   `userAction → buttonMapping → action handler → service call → registry
+   state change → buttonMapping re-evaluation` is traced AND every transition
+   in that graph has either (a) an existing handler that does the right
+   thing for the new value or (b) is in scope to be patched. Grep evidence
+   required for each link in the chain. **This is the check that PP-4161
+   needed and didn't have: Module C contract pinned the post-borrow display
+   rule (BookButtonState.downloadNeeded → [.readStreaming, .return] for
+   streamingHTML) but didn't verify any production path could transition
+   the registry from `.unregistered` → `.downloadNeeded` for the new content
+   type. Module D simdrive dogfood caught it via two layered escalations
+   (v2.2 hotfix attempt + Wave 4 Path X final fix) instead of catching it
+   here in Phase 1a.**
 
 Submit a BLOCKED/APPROVED verdict via Write to
 .forgeos/swarms/<swarm_id>/architect-review.md. If BLOCKED, the architect
@@ -548,6 +561,35 @@ if [ "${AS_EXIT:-0}" -ne 0 ]; then
 fi
 if [ "${SPS_EXIT:-0}" -ne 0 ]; then
   echo "WARN: check-superpartner-spectrum.py exit $SPS_EXIT — new code (func/case/state) with no matching test; add a test or mark it // no-superpartner: (advisory only)"
+fi
+
+# Check 6.5: Borrow→display invariant for new TPPBookContentType cases
+# (PP-4161 wall-failure 2026-06-03). For any swarm that adds a new
+# TPPBookContentType case, the test set must include at least one
+# integration-style test that drives the full user-action → registry-state
+# → button-mapping cycle from `.unregistered` for the new case. Without
+# this, unit tests can pin the post-state display rule without proving
+# any production path actually reaches it (the v2.2 → Wave 4 escalation
+# pattern). Grep heuristic: for every `+case <newCase>:` added to a
+# TPPBookContentType switch (across files), require at least one staged
+# test method that contains BOTH `handleAction(for: .get)` (or the
+# cell-side `callDelegate(for: .get)`) AND the new content-type literal
+# in the same method body.
+if git diff --cached -- 'Palace/Book/Models/TPPContentType.swift' 'Palace/Book/Models/TPP*.swift' 2>/dev/null | grep -qE "^\+\s*case\s+\w+"; then
+  # New TPPBookContentType case added — find it and verify integration test exists.
+  NEW_CT_CASES=$(git diff --cached -- 'Palace/Book/Models/TPPContentType.swift' 2>/dev/null | grep -oE "^\+\s*case\s+\w+" | sed -E 's/^\+\s*case\s+//' | sort -u)
+  for case_name in $NEW_CT_CASES; do
+    # Look for staged test files referencing both .get handleAction AND the new case literal.
+    if ! git diff --cached --name-only | grep "PalaceTests/.*Tests\.swift$" | xargs grep -l "handleAction(for: \.get)\|callDelegate(for: \.get)" 2>/dev/null | xargs grep -l "\.${case_name}\b" 2>/dev/null >/dev/null; then
+      echo "BLOCK: TPPBookContentType.${case_name} added but no integration-style test drives"
+      echo "       handleAction(for: .get) / callDelegate(for: .get) for that content type."
+      echo "  Wall-failure: PP-4161 (.forgeos/wall-failures/2026-06-03-cs_e0f586cc-modC-get-routing.md)"
+      echo "  Pattern: tests pin destination state without proving production path reaches it."
+      echo "  Action: add a test that drives the borrow → display cycle from .unregistered"
+      echo "          for .${case_name}, e.g. testBookDetailViewModel_handleAction_getFor${case_name^}Book_*"
+      exit 1
+    fi
+  done
 fi
 
 # Check 7: Verify-pr.sh --quick with diff-baseline (auto-flake comparison)

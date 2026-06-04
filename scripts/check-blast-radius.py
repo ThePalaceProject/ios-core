@@ -8,6 +8,11 @@ Operates on a unified-diff file (defaults to `git diff --staged` if omitted).
 Categories detected (severity in parentheses):
 
   BR-1 (high)   New `public` / `open` symbols on non-test Swift files.
+                Suppress per-decl by adding `// PUBLIC_INTENT: <rationale>`
+                on the comment line(s) above the declaration. Suppression is
+                intentional for contracted SPM API additions (e.g. a `public
+                let ContentTypeFoo` consumed by downstream modules) where
+                the rationale lives in the comment + audit trail.
   BR-2 (high)   New `#if DEBUG` / `#if !DEBUG` blocks on non-test Swift files.
                 Demoted to medium when the block also references an XCTest
                 env-var gate (e.g. `XCTestConfigurationFilePath`) — that
@@ -82,6 +87,21 @@ _DISCARD_RE = re.compile(r"^\s*let\s+_\s*=\s*(\w[\w\.]*)\s*\(")
 _TODO_TICKET_RE = re.compile(r"//\s*TODO\([A-Z]+-\d+\)")
 _CONTAINER_FILE_RE = re.compile(r"(?:^|/)[A-Z]\w*Container\.swift$")
 _INIT_RE = re.compile(r"^\s*(?:public\s+|internal\s+)?(?:convenience\s+)?init\s*\(")
+
+# Honor `// PUBLIC_INTENT: <rationale>` annotation on a comment line
+# preceding a new `public`/`open` declaration. Intentional SPM-public
+# additions (e.g. a `public let ContentTypeFoo` in a Catalog package
+# consumed by downstream modules) shouldn't force `--no-verify`. The
+# rationale lives in the comment + the audit trail; this check just
+# confirms the author thought about it. Pattern accepts `///` or `//`
+# style comments and any case-insensitive `PUBLIC_INTENT[:|—|-] <text>`.
+# Lineage: derived from PP-4161 swarm wall-failure entry where every
+# intentional SPM public addition forced `--no-verify` because no
+# annotation mechanism existed.
+_PUBLIC_INTENT_RE = re.compile(
+    r"//+\s*PUBLIC_INTENT\s*[:\-—]\s*\S",
+    re.IGNORECASE,
+)
 
 # Test/sample/preview-style files that don't ship to production:
 #
@@ -207,13 +227,23 @@ def _scan(added: list[_AddedLine]) -> list[_Finding]:
 
         # BR-1 — new public/open declaration.
         if _PUBLIC_DECL_RE.match(text):
+            # Honor `// PUBLIC_INTENT: <rationale>` annotation on a preceding
+            # comment line. Intentional SPM-public additions and other
+            # contracted public surfaces (e.g. a `public let` in a Catalog
+            # package referenced by downstream consumers) shouldn't force
+            # `--no-verify`. The rationale lives in the comment and the audit
+            # trail; the check just confirms the author thought about it.
+            if _PUBLIC_INTENT_RE.search(entry.docstring_block):
+                continue
             findings.append(_Finding(
                 code="BR-1",
                 severity="high",
                 file_path=path,
                 line_no=entry.line_no,
                 description=(f"new `public`/`open` declaration on prod file "
-                             f"— justify or downgrade to `internal`"),
+                             f"— justify or downgrade to `internal` "
+                             f"(add `// PUBLIC_INTENT: <rationale>` above the "
+                             f"decl to suppress this for contracted SPM API)"),
             ))
 
         # BR-2 — #if DEBUG block on prod file. Demoted to medium if the

@@ -36,17 +36,14 @@ import XCTest
 import PalaceCatalog
 @testable import Palace
 
-final class AccountsManagerCancellationTests: XCTestCase {
-
-    // MARK: - Setup / Teardown
-
-    override func tearDown() {
-        // Restore production semantics for any later test class in the suite.
-        AccountsManager.deferInitialLoadCatalogsForTesting = false
-        super.tearDown()
-    }
+class AccountsManagerCancellationTests: PalaceWiringTestCase {
 
     // MARK: - Tests
+    //
+    // PalaceWiringTestCase pins `deferInitialLoadCatalogsForTesting = true`
+    // for every test in this class so each `makeFreshAccountsManager()` call
+    // returns an opt-out instance with no live background task. Tests that
+    // need a live task install one via `_injectBackgroundFetchTaskForTesting`.
 
     /// Constructing an AccountsManager with the test opt-out flag set means
     /// `cancelBackgroundWork()` operates on a manager that has NO live
@@ -60,8 +57,8 @@ final class AccountsManagerCancellationTests: XCTestCase {
     /// opt-out instance. No task, no crash, no state mutation.
     func testCancelBackgroundWork_onOptOutInstance_isSafeNoOp() {
         // Arrange: opt-out flag ON → no background task spawned at init.
-        AccountsManager.deferInitialLoadCatalogsForTesting = true
-        let manager = AccountsManager()
+        // `makeFreshAccountsManager()` pins the flag to true internally.
+        let manager = makeFreshAccountsManager()
 
         // Seed a deterministic two-account bucket so we can assert post-cancel
         // state equals pre-cancel state. Without seeding, `accounts()` may be
@@ -128,8 +125,8 @@ final class AccountsManagerCancellationTests: XCTestCase {
     ///
     /// Multi-step body: seed → snapshot → cancel → cancel → cancel → assert.
     func testCancelBackgroundWork_isIdempotent() {
-        AccountsManager.deferInitialLoadCatalogsForTesting = true
-        let manager = AccountsManager()
+        // `makeFreshAccountsManager()` pins the opt-out flag to true.
+        let manager = makeFreshAccountsManager()
 
         // Seed a bucket so we can assert idempotence preserves persistent
         // state across three consecutive cancel calls. Replaces the prior
@@ -196,14 +193,44 @@ final class AccountsManagerCancellationTests: XCTestCase {
     /// Multi-step body: clear flag → construct (spawns task) → cancel →
     /// assert both observation properties.
     func testCancelBackgroundWork_onLiveInstance_cancelsTheTask() {
-        // Arrange: flag OFF → AccountsManager.init spawns the background task.
-        AccountsManager.deferInitialLoadCatalogsForTesting = false
-        let manager = AccountsManager()
+        // Arrange: opt-out construction (clean) + inject a controlled live
+        // Task that mirrors the shape of the real `backgroundFetchTask`.
+        // The injection seam (`_injectBackgroundFetchTaskForTesting`) is the
+        // documented test pin for exercising the live-task cancel path
+        // without paying the cost of a real `loadCatalogs()` round-trip or
+        // leaking a real network task across test boundaries. swarm_47883816
+        // Module B switched away from a flag=false helper because that
+        // helper's flag-flip mutation survived testCaseDidFinish observation
+        // (AppContainer._resetForTesting resets the flag to false), polluting
+        // the next test's `makeFreshAccountsManager()` initialization path.
+        let manager = makeFreshAccountsManager()
 
-        // Pre-cancel: explicit-cancel flag has never been set.
+        // Spawn a long-running task that suspends indefinitely so the cancel
+        // has something real to act on (mirrors `Task.detached { loadCatalogs() }`
+        // in AccountsManager.init under flag=false). The task uses
+        // `withCheckedContinuation` so it suspends until cancelled — the
+        // production task's structure is the same family.
+        let injectedTask = Task<Void, Never>(priority: .background) {
+            await withCheckedContinuation { (_: CheckedContinuation<Void, Never>) in
+                // Intentionally never resume — cancellation is the only way out.
+            }
+        }
+        manager._injectBackgroundFetchTaskForTesting(injectedTask)
+
+        // Pre-state: explicit-cancel flag has never been set, the handle is
+        // now NOT nil (we just injected a task), and the injected task is
+        // not yet cancelled.
         XCTAssertFalse(
             manager._backgroundFetchTaskWasExplicitlyCancelled,
             "Pre-cancel: explicit-cancel flag must be false on a fresh instance"
+        )
+        XCTAssertFalse(
+            manager._backgroundFetchTaskHandleIsNil,
+            "Pre-cancel: with the injected task, the handle must NOT be nil"
+        )
+        XCTAssertFalse(
+            injectedTask.isCancelled,
+            "Pre-cancel: injected task must be live"
         )
 
         // Act: cancel.
@@ -212,9 +239,10 @@ final class AccountsManagerCancellationTests: XCTestCase {
         // Assert BOTH observation surfaces independently. The test FAILS if:
         //   - the `_explicitCancelCalled = true` line is removed (first
         //     assertion fails);
+        //   - the `backgroundFetchTask?.cancel()` line is removed (third
+        //     assertion fails — the injected task wouldn't see cancellation);
         //   - the `backgroundFetchTask = nil` line is removed (second
-        //     assertion fails because the task may still be in flight on a
-        //     slow CI run and would not yet be nil).
+        //     assertion fails — the handle would still point at the task).
         XCTAssertTrue(
             manager._backgroundFetchTaskWasExplicitlyCancelled,
             "After cancelBackgroundWork on a live-task instance, explicit-cancel flag must be true"
@@ -222,6 +250,10 @@ final class AccountsManagerCancellationTests: XCTestCase {
         XCTAssertTrue(
             manager._backgroundFetchTaskHandleIsNil,
             "After cancelBackgroundWork on a live-task instance, task handle must be nilled out"
+        )
+        XCTAssertTrue(
+            injectedTask.isCancelled,
+            "After cancelBackgroundWork on a live-task instance, the injected task must be cancelled — kills the mutant that drops `backgroundFetchTask?.cancel()`"
         )
     }
 
@@ -236,8 +268,8 @@ final class AccountsManagerCancellationTests: XCTestCase {
     ///
     /// Multi-step body: seed → snapshot → cancel → re-read → assert equal.
     func testCancelBackgroundWork_doesNotMutatePersistentAccountSets() {
-        AccountsManager.deferInitialLoadCatalogsForTesting = true
-        let manager = AccountsManager()
+        // `makeFreshAccountsManager()` pins the opt-out flag to true.
+        let manager = makeFreshAccountsManager()
 
         // Arrange: seed two account sentinels into a known bucket so we can
         // assert the cancel preserves them.
@@ -291,8 +323,8 @@ final class AccountsManagerCancellationTests: XCTestCase {
     func testCancelBackgroundWork_whileFetchInFlight_doesNotCommitToAccountSets() {
         // Arrange: opt-out so init does not spawn its own background task —
         // we want the only task in flight to be the one we control.
-        AccountsManager.deferInitialLoadCatalogsForTesting = true
-        let manager = AccountsManager()
+        // `makeFreshAccountsManager()` pins the opt-out flag to true.
+        let manager = makeFreshAccountsManager()
 
         // Seed a sentinel bucket so we can prove `accountSets` is byte-for-
         // byte identical pre- and post-resume. A real fetchFromNetwork

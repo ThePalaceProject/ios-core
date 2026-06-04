@@ -15,6 +15,23 @@ import Combine
 
 @objcMembers class TPPSettings: NSObject, NYPLFeedURLProvider, TPPAgeCheckChoiceStorage {
 
+    // MARK: - Dependencies
+
+    /// `UserDefaults` backing store. Production callers use the no-arg
+    /// initializer which binds `.standard`; tests inject a per-suite
+    /// `UserDefaults(suiteName:)` via the explicit initializer so
+    /// two tests touching the same key cannot pollute each other.
+    /// There is NO fallback — once injected, every read/write below
+    /// goes through `defaults` only.
+    private let defaults: UserDefaults
+
+    /// Designated initializer. Defaults to `.standard` so all
+    /// production call sites stay green; tests pass a fresh suite.
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        super.init()
+    }
+
     // MARK: - Combine Publishers
 
     /// Publishes when any setting changes (replaces `.TPPSettingsDidChange` notification)
@@ -58,13 +75,13 @@ import Combine
     // Set to nil (the default) if no custom feed should be used.
     var customMainFeedURL: URL? {
         get {
-            return UserDefaults.standard.url(forKey: TPPSettings.customMainFeedURLKey)
+            return defaults.url(forKey: TPPSettings.customMainFeedURLKey)
         }
         set(customUrl) {
             if customUrl == self.customMainFeedURL {
                 return
             }
-            UserDefaults.standard.set(customUrl, forKey: TPPSettings.customMainFeedURLKey)
+            defaults.set(customUrl, forKey: TPPSettings.customMainFeedURLKey)
             settingsChangedSubject.send()
             NotificationCenter.default.post(name: Notification.Name.TPPSettingsDidChange, object: self)
         }
@@ -72,13 +89,13 @@ import Combine
 
     var accountMainFeedURL: URL? {
         get {
-            return UserDefaults.standard.url(forKey: TPPSettings.accountMainFeedURLKey)
+            return defaults.url(forKey: TPPSettings.accountMainFeedURLKey)
         }
         set(mainFeedUrl) {
             if mainFeedUrl == self.accountMainFeedURL {
                 return
             }
-            UserDefaults.standard.set(mainFeedUrl, forKey: TPPSettings.accountMainFeedURLKey)
+            defaults.set(mainFeedUrl, forKey: TPPSettings.accountMainFeedURLKey)
             settingsChangedSubject.send()
             NotificationCenter.default.post(name: Notification.Name.TPPSettingsDidChange, object: self)
         }
@@ -86,28 +103,28 @@ import Combine
 
     var userPresentedAgeCheck: Bool {
         get {
-            UserDefaults.standard.bool(forKey: TPPSettings.userPresentedAgeCheckKey)
+            defaults.bool(forKey: TPPSettings.userPresentedAgeCheckKey)
         }
         set {
-            UserDefaults.standard.set(newValue, forKey: TPPSettings.userPresentedAgeCheckKey)
+            defaults.set(newValue, forKey: TPPSettings.userPresentedAgeCheckKey)
         }
     }
 
     var userHasAcceptedEULA: Bool {
         get {
-            UserDefaults.standard.bool(forKey: TPPSettings.userHasAcceptedEULAKey)
+            defaults.bool(forKey: TPPSettings.userHasAcceptedEULAKey)
         }
         set {
-            UserDefaults.standard.set(newValue, forKey: TPPSettings.userHasAcceptedEULAKey)
+            defaults.set(newValue, forKey: TPPSettings.userHasAcceptedEULAKey)
         }
     }
 
     var useBetaLibraries: Bool {
         get {
-            UserDefaults.standard.bool(forKey: TPPSettings.useBetaLibrariesKey)
+            defaults.bool(forKey: TPPSettings.useBetaLibrariesKey)
         }
         set {
-            UserDefaults.standard.set(newValue, forKey: TPPSettings.useBetaLibrariesKey)
+            defaults.set(newValue, forKey: TPPSettings.useBetaLibrariesKey)
             useBetaChangedSubject.send(newValue)
             NotificationCenter.default.post(name: NSNotification.Name.TPPUseBetaDidChange,
                                             object: self)
@@ -116,37 +133,37 @@ import Combine
 
     var appVersion: String? {
         get {
-            UserDefaults.standard.string(forKey: TPPSettings.versionKey)
+            defaults.string(forKey: TPPSettings.versionKey)
         }
         set(versionString) {
-            UserDefaults.standard.set(versionString, forKey: TPPSettings.versionKey)
+            defaults.set(versionString, forKey: TPPSettings.versionKey)
         }
     }
 
     var customLibraryRegistryServer: String? {
         get {
-            UserDefaults.standard.string(forKey: TPPSettings.customLibraryRegistryKey)
+            defaults.string(forKey: TPPSettings.customLibraryRegistryKey)
         }
         set(customServer) {
-            UserDefaults.standard.set(customServer, forKey: TPPSettings.customLibraryRegistryKey)
+            defaults.set(customServer, forKey: TPPSettings.customLibraryRegistryKey)
         }
     }
 
     var enterLCPPassphraseManually: Bool {
         get {
-            UserDefaults.standard.bool(forKey: TPPSettings.enterLCPPassphraseManually)
+            defaults.bool(forKey: TPPSettings.enterLCPPassphraseManually)
         }
         set {
-            UserDefaults.standard.set(newValue, forKey: TPPSettings.enterLCPPassphraseManually)
+            defaults.set(newValue, forKey: TPPSettings.enterLCPPassphraseManually)
         }
     }
 
     var downloadOnlyOnWiFi: Bool {
         get {
-            UserDefaults.standard.bool(forKey: TPPSettings.downloadOnlyOnWiFiKey)
+            defaults.bool(forKey: TPPSettings.downloadOnlyOnWiFiKey)
         }
         set {
-            UserDefaults.standard.set(newValue, forKey: TPPSettings.downloadOnlyOnWiFiKey)
+            defaults.set(newValue, forKey: TPPSettings.downloadOnlyOnWiFiKey)
         }
     }
 

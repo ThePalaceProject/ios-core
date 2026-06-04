@@ -63,6 +63,10 @@ cd "$REPO_ROOT"
 QUICK=false
 REPORT_FILE=""
 SIMDRIVE=false
+# Default for --diff-baseline; without this the `elif [ "$DIFF_BASELINE" ...`
+# branch dies with "unbound variable" under `set -u` whenever the unit-test
+# pass condition is false.
+DIFF_BASELINE=false
 # Mutation policy tri-state:
 #   default        — critical paths strict, others advisory
 #   enforce_all    — every changed file strict (--enforce-mutations)
@@ -440,45 +444,29 @@ else
     "All commit/PR/intent claims reconciled with diff" \
     --commit-msg "$CR_MSG" "${CR_INTENT_FLAG[@]}"
 
-  echo "--- Blast-radius ---"
-  run_m1_check "blast_radius" "check-blast-radius.py" "block" \
-    "No high-severity blast-radius findings"
-
-  echo "--- Adjacency staleness ---"
-  run_m1_check "adjacency_staleness" "check-adjacency-staleness.py" "warn" \
-    "0 stale-comment references"
-
-  echo "--- Superpartner spectrum ---"
-  run_m1_check "superpartner_spectrum" "check-superpartner-spectrum.py" "warn" \
-    "All new code has a matching test"
-
-  echo "--- Intent recorded ---"
-  run_m1_check "intent_recorded" "check-intent-recorded.py" "block" \
-    "Intent file present (or below threshold)" \
-    --commit-msg "$IR_MSG"
-
-  # Test-name-vs-body is file-based (not diff-based): pass the diffed test
-  # files directly. Warn-only — the same fake-wiring shape is gated as blocking
-  # in the swarm skill Phase 4.5; here it surfaces on every PR self-check.
-  # Previously this check ran only in the swarm skill; the audit flagged the
-  # gap that solo-agent PRs never saw it.
-  echo "--- Test name vs body ---"
-  # Only feed test files that still exist on disk (a diff can name deleted
-  # files; the script exits 2 on a missing path).
-  TNVB_FILES=""
-  while IFS= read -r tf; do
-    [ -n "$tf" ] && [ -f "$tf" ] && TNVB_FILES="$TNVB_FILES$tf"$'\n'
-  done <<< "$CHANGED_TEST_SWIFT"
-  if [ -n "$TNVB_FILES" ]; then
-    TNVB_OUT=$(echo "$TNVB_FILES" | tr '\n' '\0' \
-      | xargs -0 python3 scripts/check-test-name-vs-body.py --quiet 2>&1)
-    TNVB_EXIT=$?
-    if [ "$TNVB_EXIT" -eq 0 ]; then
-      record "test_name_vs_body" "pass" "0 fake-wiring tests in changed test files"
-    else
-      TNVB_COUNT=$(echo "$TNVB_OUT" | grep -c "no reference" || true)
-      record "test_name_vs_body" "pass" "${TNVB_COUNT:-0} fake-wiring finding(s) — warn-only"
-    fi
+# 3d. Intent recorded (M1 universal-rigor-floor gate)
+# Requires a `.forgeos/intent/<name>.md` for diffs ≥10 prod LOC under Palace/.
+# Intent file must have frontmatter (name/created/author) + body sections
+# (## Claims / ## Anti-claims / ## Files in scope). See `scripts/check-intent-recorded.py`.
+echo "--- Intent recorded ---"
+if [ "$MUTATION_ONLY" = "true" ]; then
+  record "intent_recorded" "pass" "Skipped (--mutation-only)"
+elif [ -f scripts/check-intent-recorded.py ]; then
+  IR_DIFF=$(mktemp -t ir-diff.XXXX)
+  IR_MSG=$(mktemp -t ir-msg.XXXX)
+  git diff "$BASE"...HEAD > "$IR_DIFF" 2>/dev/null || true
+  # Pass HEAD's commit subject so the intent-name → subject match runs.
+  # Without this, the check sees the diff but has no subject to match
+  # `.forgeos/intent/<name>.md`'s `name:` field against, and bails out
+  # with INTENT-MISSING even when the intent file exists and matches.
+  git log -1 --format="%s" > "$IR_MSG" 2>/dev/null || true
+  IR_OUT=$(python3 scripts/check-intent-recorded.py --diff "$IR_DIFF" \
+                                                   --commit-msg "$IR_MSG" \
+                                                   --quiet 2>&1)
+  IR_EXIT=$?
+  rm -f "$IR_DIFF" "$IR_MSG"
+  if [ "$IR_EXIT" -eq 0 ]; then
+    record "intent_recorded" "pass" "Intent file present (or below threshold)"
   else
     record "test_name_vs_body" "pass" "No changed test files"
   fi

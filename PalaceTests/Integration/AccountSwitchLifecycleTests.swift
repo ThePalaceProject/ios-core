@@ -37,7 +37,7 @@
 import XCTest
 @testable import Palace
 
-final class AccountSwitchLifecycleTests: XCTestCase {
+class AccountSwitchLifecycleTests: PalaceWiringTestCase {
 
     /// Two distinct library UUIDs so the per-library account cache keeps
     /// state separate.
@@ -58,7 +58,7 @@ final class AccountSwitchLifecycleTests: XCTestCase {
         // keychain actually round-trips.
         try KeychainAvailability.skipIfUnavailable()
         HTTPStubURLProtocol.reset()
-        accountsManager = AccountsManager()
+        accountsManager = makeFreshAccountsManager()
         store = BookRegistryStore()
         sync = BookRegistrySync(
             store: store,
@@ -68,7 +68,7 @@ final class AccountSwitchLifecycleTests: XCTestCase {
         )
     }
 
-    override func tearDown() {
+    override func tearDownWithError() throws {
         HTTPStubURLProtocol.reset()
         // Best-effort cleanup of any registry directories written by tests.
         if let urlA = sync?.registryUrl(for: libraryA)?.deletingLastPathComponent() {
@@ -83,7 +83,7 @@ final class AccountSwitchLifecycleTests: XCTestCase {
         sync = nil
         store = nil
         accountsManager = nil
-        super.tearDown()
+        try super.tearDownWithError()
     }
 
     // MARK: - Helpers

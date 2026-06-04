@@ -23,6 +23,14 @@ final class RemoteFeatureFlags {
     private let fetchInterval: TimeInterval = 3600 // 1 hour
     private let lock = NSLock()
 
+    /// `UserDefaults` backing store for local-override reads (CarPlay
+    /// cache, reset-account override, triage-bot override, etc.).
+    /// `.shared` binds `.standard`; tests construct a fresh instance
+    /// via the explicit initializer with a per-suite
+    /// `UserDefaults(suiteName:)` so override checks don't leak
+    /// across tests. There is NO fallback once injected.
+    private let defaults: UserDefaults
+
     // MARK: - Feature Flag Keys
 
     enum FeatureFlag: String {
@@ -35,6 +43,9 @@ final class RemoteFeatureFlags {
         case readingStatsEnabled = "reading_stats_enabled"
         case advancedTypographyEnabled = "advanced_typography_enabled"
         case resetAccountEnabled = "reset_account_enabled"
+        case triageBotEnabled = "triage_bot_enabled"
+        case triageBotTicketSubmissionEnabled = "triage_bot_ticket_submission_enabled"
+        case triageBotAIFallbackEnabled = "triage_bot_ai_fallback_enabled"
         /// Gates the in-app playback-navigation feature (swarm_0b7616e7 +
         /// polish 2026-06-02): Continue Reading/Listening hero rows on
         /// the Catalog top, the persistent mini-player chrome above the
@@ -71,6 +82,12 @@ final class RemoteFeatureFlags {
                 return .opds2Enabled
             case .resetAccountEnabled:
                 return .resetAccountEnabled
+            case .triageBotEnabled:
+                return .triageBotEnabled
+            case .triageBotTicketSubmissionEnabled:
+                return .triageBotTicketSubmissionEnabled
+            case .triageBotAIFallbackEnabled:
+                return .triageBotAIFallbackEnabled
             case .inAppPlaybackNavEnabled:
                 return .inAppPlaybackNavEnabled
             default:
@@ -94,7 +111,15 @@ final class RemoteFeatureFlags {
 
     // MARK: - Initialization
 
-    private init() {}
+    /// Designated initializer. Defaults to `.standard` so the
+    /// `static let shared = RemoteFeatureFlags()` site keeps working
+    /// unchanged. Tests construct a per-suite instance with their
+    /// own `UserDefaults(suiteName:)` to isolate override-key state.
+    /// Access stays `internal` (not `public`) — production code uses
+    /// `.shared`; only the test target needs the seam.
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
 
     // MARK: - Setup
 
@@ -161,10 +186,10 @@ final class RemoteFeatureFlags {
     /// Uses Firebase Remote Config for runtime control.
     var isCarPlayEnabled: Bool {
         let remoteValue = isFeatureEnabled(.carPlayEnabled)
-        let previousCached: Bool? = UserDefaults.standard.object(forKey: Self.carPlayEnabledCacheKey) != nil
-            ? UserDefaults.standard.bool(forKey: Self.carPlayEnabledCacheKey)
+        let previousCached: Bool? = defaults.object(forKey: Self.carPlayEnabledCacheKey) != nil
+            ? defaults.bool(forKey: Self.carPlayEnabledCacheKey)
             : nil
-        UserDefaults.standard.set(remoteValue, forKey: Self.carPlayEnabledCacheKey)
+        defaults.set(remoteValue, forKey: Self.carPlayEnabledCacheKey)
 
         if let prev = previousCached, prev != remoteValue {
             Log.info(#file, "🚗 CarPlay feature flag changed: \(prev) → \(remoteValue)")
@@ -176,8 +201,8 @@ final class RemoteFeatureFlags {
     /// Cached CarPlay enabled value for use during early app lifecycle
     /// (before Remote Config is fetched). Returns the last known value.
     var isCarPlayEnabledCached: Bool {
-        if UserDefaults.standard.object(forKey: Self.carPlayEnabledCacheKey) != nil {
-            let cached = UserDefaults.standard.bool(forKey: Self.carPlayEnabledCacheKey)
+        if defaults.object(forKey: Self.carPlayEnabledCacheKey) != nil {
+            let cached = defaults.bool(forKey: Self.carPlayEnabledCacheKey)
             Log.debug(#file, "🚗 CarPlay feature flag (cached): \(cached)")
             return cached
         }
@@ -206,10 +231,95 @@ final class RemoteFeatureFlags {
     /// or globally via `reset_account_enabled` (broad rollout). Local override
     /// via `resetAccountLocalOverrideKey` UserDefault is for QA only.
     var isResetAccountEnabled: Bool {
-        if let override = UserDefaults.standard.object(forKey: Self.resetAccountLocalOverrideKey) as? Bool {
+        if let override = defaults.object(forKey: Self.resetAccountLocalOverrideKey) as? Bool {
             return override
         }
         return isFeatureEnabled(.resetAccountEnabled)
+    }
+
+    /// UserDefaults override that lets QA / support force the triage bot on
+    /// for a specific device without a Firebase round-trip. Settable from
+    /// `TPPDeveloperSettingsTableViewController`. Falls through to the
+    /// Remote Config flag when nil.
+    static let triageBotLocalOverrideKey = "RemoteFeatureFlags.triageBotLocalOverride"
+
+    /// Master kill-switch for the Palace Triage Bot. Defaults OFF in production,
+    /// but defaults ON in DEBUG builds so an engineer building from Xcode onto
+    /// a device or sim doesn't have to set anything — the feature is visible
+    /// automatically. TestFlight and App Store builds still respect the
+    /// Firebase Remote Config flag (default off), unchanged.
+    ///
+    /// Override precedence:
+    ///   1. UserDefaults local override (QA / staged demos)
+    ///   2. DEBUG build → true
+    ///   3. Firebase Remote Config
+    ///
+    /// When false, the Settings "Get Help" row, the floating help button, and
+    /// every other entry point are invisible — no surface area at all.
+    var isTriageBotEnabled: Bool {
+        if let override = defaults.object(forKey: Self.triageBotLocalOverrideKey) as? Bool {
+            return override
+        }
+        #if DEBUG
+        return true
+        #else
+        return isFeatureEnabled(.triageBotEnabled)
+        #endif
+    }
+
+    /// UserDefaults override for ticket submission. Mirrors the master
+    /// `triageBotLocalOverrideKey` pattern so QA can toggle independently
+    /// from `TPPDeveloperSettingsTableViewController`.
+    static let triageBotTicketSubmissionLocalOverrideKey = "RemoteFeatureFlags.triageBotTicketSubmissionLocalOverride"
+
+    /// Whether the bot may post real HelpSpot tickets. When false but the bot
+    /// is otherwise enabled, the chat still drafts tickets and shows the
+    /// preview, but the confirm action copies the JSON payload to the
+    /// pasteboard instead of submitting. Used during the demo and during
+    /// staged rollout before HelpSpot rate-limit negotiation completes.
+    ///
+    /// Override precedence:
+    ///   1. UserDefaults local override (QA toggle)
+    ///   2. DEBUG build → true
+    ///   3. Firebase Remote Config
+    var isTriageBotTicketSubmissionEnabled: Bool {
+        if let override = defaults.object(forKey: Self.triageBotTicketSubmissionLocalOverrideKey) as? Bool {
+            return override
+        }
+        #if DEBUG
+        return true
+        #else
+        return isFeatureEnabled(.triageBotTicketSubmissionEnabled)
+        #endif
+    }
+
+    /// UserDefaults override for AI fallback. Mirrors the master
+    /// `triageBotLocalOverrideKey` pattern so QA can toggle independently
+    /// from `TPPDeveloperSettingsTableViewController`.
+    static let triageBotAIFallbackLocalOverrideKey = "RemoteFeatureFlags.triageBotAIFallbackLocalOverride"
+
+    /// Whether the triage bot may consult the Claude-backed fallback
+    /// classifier when the local keyword matcher returns escalate. Defaults
+    /// OFF in production (no Anthropic traffic until a server-proxy path
+    /// is in place); defaults ON in DEBUG so dev/device builds exercise
+    /// the fallback when an ANTHROPIC_API_KEY is configured in the
+    /// engineer's Xcode scheme. Even when this flag is true, the
+    /// fallback only fires if the Keychain holds an API key — no key,
+    /// no Anthropic traffic.
+    ///
+    /// Override precedence:
+    ///   1. UserDefaults local override (QA toggle)
+    ///   2. DEBUG build → true
+    ///   3. Firebase Remote Config
+    var isTriageBotAIFallbackEnabled: Bool {
+        if let override = defaults.object(forKey: Self.triageBotAIFallbackLocalOverrideKey) as? Bool {
+            return override
+        }
+        #if DEBUG
+        return true
+        #else
+        return isFeatureEnabled(.triageBotAIFallbackEnabled)
+        #endif
     }
 
     /// UserDefaults override that lets QA / a developer toggle the
@@ -233,7 +343,7 @@ final class RemoteFeatureFlags {
     /// user re-enters playback via My Books / Catalog the same way they
     /// did before the feature shipped.
     var isInAppPlaybackNavEnabled: Bool {
-        if let override = UserDefaults.standard.object(forKey: Self.inAppPlaybackNavLocalOverrideKey) as? Bool {
+        if let override = defaults.object(forKey: Self.inAppPlaybackNavLocalOverrideKey) as? Bool {
             return override
         }
         return isFeatureEnabled(.inAppPlaybackNavEnabled)

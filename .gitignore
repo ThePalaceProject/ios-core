@@ -24,6 +24,8 @@ tools/*
 **/ReaderClientCert.sig
 **/APIKeys.swift
 Carthage*
+.build/
+**/.build/
 **/TPPSecrets.swift
 **/GoogleService-Info.plist
 fastlane/report.xml

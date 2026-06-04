@@ -17,25 +17,30 @@ final class HoldsViewModelTests: XCTestCase {
 
     private var cancellables: Set<AnyCancellable> = []
     private var mockRegistry: TPPBookRegistryMock!
+    /// Per-test isolated AppContainer (swarm_47883816 work package A) —
+    /// replaces AppContainer.production() reads in createViewModel/makeSignedInViewModel.
+    private var appContainer: AppContainer!
 
     override func setUp() {
         super.setUp()
         cancellables = []
         mockRegistry = TPPBookRegistryMock()
+        appContainer = makeTestAppContainer()
     }
 
     override func tearDown() {
         cancellables.removeAll()
         mockRegistry = nil
+        appContainer = nil
         super.tearDown()
     }
 
     private func createViewModel() -> HoldsViewModel {
         HoldsViewModel(
             bookRegistry: mockRegistry,
-            accountsManager: AppContainer.production().accountsManager,
+            accountsManager: appContainer.accountsManager,
             settings: TPPSettings(),
-            debugSettings: AppContainer.production().debugSettings
+            debugSettings: appContainer.debugSettings
         )
     }
 
@@ -437,16 +442,21 @@ final class HoldsSyncFailureTests: XCTestCase {
 
     private var cancellables: Set<AnyCancellable> = []
     private var mockRegistry: TPPBookRegistryMock!
+    /// Per-test isolated AppContainer (swarm_47883816 work package A) —
+    /// replaces AppContainer.production() reads in createViewModel/makeSignedInViewModel.
+    private var appContainer: AppContainer!
 
     override func setUp() {
         super.setUp()
         cancellables = []
         mockRegistry = TPPBookRegistryMock()
+        appContainer = makeTestAppContainer()
     }
 
     override func tearDown() {
         cancellables.removeAll()
         mockRegistry = nil
+        appContainer = nil
         super.tearDown()
     }
 
@@ -459,9 +469,9 @@ final class HoldsSyncFailureTests: XCTestCase {
     private func makeSignedInViewModel() -> HoldsViewModel {
         HoldsViewModel(
             bookRegistry: mockRegistry,
-            accountsManager: AppContainer.production().accountsManager,
+            accountsManager: appContainer.accountsManager,
             settings: TPPSettings(),
-            debugSettings: AppContainer.production().debugSettings,
+            debugSettings: appContainer.debugSettings,
             hasCredentials: { true }
         )
     }
@@ -588,9 +598,9 @@ final class HoldsSyncFailureTests: XCTestCase {
         // real code path (TPPSyncFailed for an authenticated, uncached user).
         let viewModel = HoldsViewModel(
             bookRegistry: mockRegistry,
-            accountsManager: AppContainer.production().accountsManager,
+            accountsManager: appContainer.accountsManager,
             settings: TPPSettings(),
-            debugSettings: AppContainer.production().debugSettings,
+            debugSettings: appContainer.debugSettings,
             hasCredentials: { true }
         )
 
@@ -620,9 +630,9 @@ final class HoldsSyncFailureTests: XCTestCase {
 
         let viewModel = HoldsViewModel(
             bookRegistry: mockRegistry,
-            accountsManager: AppContainer.production().accountsManager,
+            accountsManager: appContainer.accountsManager,
             settings: TPPSettings(),
-            debugSettings: AppContainer.production().debugSettings
+            debugSettings: appContainer.debugSettings
         )
         XCTAssertEqual(viewModel.reservedBookVMs.count, 1)
 
@@ -649,9 +659,9 @@ final class HoldsSyncFailureTests: XCTestCase {
         // handles the anonymous case; an error banner here is noise.
         let viewModel = HoldsViewModel(
             bookRegistry: mockRegistry,
-            accountsManager: AppContainer.production().accountsManager,
+            accountsManager: appContainer.accountsManager,
             settings: TPPSettings(),
-            debugSettings: AppContainer.production().debugSettings,
+            debugSettings: appContainer.debugSettings,
             hasCredentials: { false }
         )
         XCTAssertTrue(viewModel.visibleBooks.isEmpty, "Precondition: no cached holds")
@@ -682,9 +692,9 @@ final class HoldsSyncFailureTests: XCTestCase {
     func testSyncFailure_AnonymousLibrary_SuppressesErrorBanner_EvenWhenHasCredentialsRacesTrue() async {
         let viewModel = HoldsViewModel(
             bookRegistry: mockRegistry,
-            accountsManager: AppContainer.production().accountsManager,
+            accountsManager: appContainer.accountsManager,
             settings: TPPSettings(),
-            debugSettings: AppContainer.production().debugSettings,
+            debugSettings: appContainer.debugSettings,
             // Simulate the AccountsManager race: stale lastKnownCurrentUserAccount
             // returns the previous (signed-in) library, so hasCredentials() is true.
             hasCredentials: { true },
@@ -709,9 +719,9 @@ final class HoldsSyncFailureTests: XCTestCase {
     func testSyncFailure_LibraryNeedsAuth_AndHasCredentials_ShowsBanner() async {
         let viewModel = HoldsViewModel(
             bookRegistry: mockRegistry,
-            accountsManager: AppContainer.production().accountsManager,
+            accountsManager: appContainer.accountsManager,
             settings: TPPSettings(),
-            debugSettings: AppContainer.production().debugSettings,
+            debugSettings: appContainer.debugSettings,
             hasCredentials: { true },
             currentLibraryNeedsAuth: { true }
         )
@@ -734,9 +744,9 @@ final class HoldsSyncFailureTests: XCTestCase {
         // Authenticated user — sync failed for a real reason. Banner still appears.
         let viewModel = HoldsViewModel(
             bookRegistry: mockRegistry,
-            accountsManager: AppContainer.production().accountsManager,
+            accountsManager: appContainer.accountsManager,
             settings: TPPSettings(),
-            debugSettings: AppContainer.production().debugSettings,
+            debugSettings: appContainer.debugSettings,
             hasCredentials: { true }
         )
 
