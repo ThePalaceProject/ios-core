@@ -1,0 +1,184 @@
+swarm_id: swarm_47883816
+task: "test pollution sweep — eliminate cross-test state leaks across PalaceTests/"
+created_at: 2026-06-04
+status: triaged
+base_ref: origin/develop
+branch: swarm/swarm_47883816-scaffold
+project_id: proj_87884c17
+intent_file: .forgeos/intent/test-pollution-sweep.md
+risk: standard
+phasing: |
+  A is phased to Option (b) per architect recommendation: top-concentration files migrated this swarm,
+  long tail tracked in A-deferred-files.txt for a follow-up shrink swarm.
+
+architect_review:
+  reviewer_agent_id: a2b90d8cb8576c369
+  verdict: APPROVED_WITH_NOTES
+  at: 2026-06-04
+  non_blocking_notes:
+    - "Deferred list has zero structural protection — orchestrator to cap the deferred-list size at the baseline that A produces, so it cannot grow in subsequent PRs (lint enforces baseline)."
+    - "Independent recount: A-deferred-files ~55 (better than plan's 71); implementer A produces precise list at lint-write time."
+    - "Critical-path files in deferred list (BookReturnService*, AudiobookSessionManager*, TPPSignInOIDCTests, CredentialGuardTests, TokenRefreshAndRetryQueueTests) should be prioritized in follow-up swarm."
+    - "C should use comment-marker pattern (not line numbers) for CoverageGapTests3 identity-check whitelist."
+    - "F should record JIRA ticket bodies in audit transcript if category-3 findings exist."
+  reviewed_files:
+    - .forgeos/swarms/swarm_47883816/plan.md
+    - .forgeos/swarms/swarm_47883816/contracts/A-AppContainerIsolation.md
+    - .forgeos/swarms/swarm_47883816/contracts/B-AccountsManagerIsolation.md
+    - .forgeos/swarms/swarm_47883816/contracts/C-TPPUserAccountIsolation.md
+    - .forgeos/swarms/swarm_47883816/contracts/D-UserDefaultsIsolation.md
+    - .forgeos/swarms/swarm_47883816/contracts/E-MetaTestsLintExpansion.md
+    - .forgeos/swarms/swarm_47883816/contracts/F-FireAndForgetAudit.md
+    - .forgeos/intent/test-pollution-sweep.md
+
+modules:
+  - name: A
+    title: AppContainerIsolation
+    risk: standard
+    files_scope:
+      - PalaceTests/Support/TestAppContainerFactory.swift
+      - PalaceTests/Support/TestAppContainerFactoryTests.swift
+      - PalaceTests/MetaTests/AppContainerIsolationLintTests.swift
+      - PalaceTests/BookRegistry/TPPBookRegistryIntegrationTests.swift
+      - PalaceTests/MyBooks/MyBooksViewModelTests.swift
+      - PalaceTests/ViewModels/BookDetailMetadataHydrationTests.swift
+      - PalaceTests/AppInfrastructure/AppContainerTests.swift
+      - PalaceTests/Network/TPPNetworkExecutorTests.swift
+      - PalaceTests/ViewModels/ViewModelComputedPropertyTests.swift
+      - PalaceTests/Book/BookDetailViewModelTests.swift
+      - PalaceTests/Holds/HoldsViewModelTests.swift
+      - PalaceTests/BookStateManagement/BookCellModelStateTests.swift
+      - PalaceTests/Performance/BookCellModelCacheTests.swift
+      - PalaceTests/CarPlay/CarPlayTests.swift
+      - PalaceTests/AppInfrastructure/AppContainerAuthCoordinatorWiringTests.swift
+      - PalaceTests/SignInLogic/SignInModalLifecycleTests.swift
+      - PalaceTests/Network/NetworkQueueTests.swift
+      - .forgeos/swarms/swarm_47883816/A-deferred-files.txt
+    files_off_limits:
+      - All B-, C-, D-, E-owned files
+      - Palace/** (production)
+      - PalaceTests/Mocks/**
+      - PalaceTests/Support/PalaceWiringTestCase.swift
+    contract_path: .forgeos/swarms/swarm_47883816/contracts/A-AppContainerIsolation.md
+    implementer_prompt_summary: |
+      Create makeTestAppContainer() factory in PalaceTests/Support/.
+      Migrate ~14 top-concentration test files away from
+      AppContainer.production(). Add lint with whitelist + deferred list.
+      Create A-deferred-files.txt enumerating the 71 files left for
+      follow-up swarm. Phased Option (b).
+    depends_on: []
+
+  - name: B
+    title: AccountsManagerIsolation
+    risk: standard
+    files_scope:
+      - PalaceTests/MetaTests/AccountsManagerIsolationLintTests.swift
+      - PalaceTests/Integration/AccountSwitchLifecycleTests.swift
+      - PalaceTests/Integration/SignInToReadFlowIntegrationTests.swift
+      - PalaceTests/Integration/ColdStartResumeIntegrationTests.swift
+      - PalaceTests/Integration/BorrowAndDownloadIntegrationTests.swift
+      - PalaceTests/Accounts/AccountsManagerCancellationTests.swift
+      - PalaceTests/BookRegistry/TPPBookRegistryPersistenceTests.swift
+      - PalaceTests/BookRegistry/TPPBookRegistryDependencyTests.swift
+      - PalaceTests/BookRegistry/TPPBookRegistryAtomicWriteTests.swift
+      - PalaceTests/BookRegistry/TPPBookRegistryLargeCorpusTests.swift
+      - PalaceTests/BookRegistry/TPPBookRegistryMigrationTests.swift
+    files_off_limits:
+      - All A-, C-, D-, E-owned files
+      - Palace/**
+      - PalaceTests/Support/PalaceWiringTestCase.swift (signature changes need approval)
+    contract_path: .forgeos/swarms/swarm_47883816/contracts/B-AccountsManagerIsolation.md
+    implementer_prompt_summary: |
+      Migrate 17 raw AccountsManager() calls in 10 files to the
+      PalaceWiringTestCase.makeFreshAccountsManager() seam (subclass or
+      static adapter per file). Add lint banning bare AccountsManager(
+      outside whitelist.
+    depends_on: []
+
+  - name: C
+    title: TPPUserAccountIsolation
+    risk: standard
+    files_scope:
+      - PalaceTests/Support/TPPUserAccountTestFactory.swift
+      - PalaceTests/Support/TPPUserAccountTestFactoryTests.swift
+      - PalaceTests/MetaTests/TPPUserAccountIsolationLintTests.swift
+      - PalaceTests/ViewModels/AccountDetailViewModelTests.swift
+      - PalaceTests/Accounts/AccountSwitchCleanupTests.swift
+      - PalaceTests/Security/AuthFlowSecurityTests.swift
+      - PalaceTests/Book/BookRegistrySyncReadinessTests.swift
+      - PalaceTests/Chaos/ChaosFaultInjectionTests.swift
+      - PalaceTests/CoverageGapTests3.swift
+      - PalaceTests/ButtonStateTests.swift
+      - PalaceTests/SignInLogic/TPPCrossLibrarySignOutTests.swift
+    files_off_limits:
+      - All A-, B-, D-, E-owned files
+      - Palace/** (especially TPPUserAccount.swift — no init seam in this swarm)
+    contract_path: .forgeos/swarms/swarm_47883816/contracts/C-TPPUserAccountIsolation.md
+    implementer_prompt_summary: |
+      Create TPPUserAccountTestFactory.makeIsolated(libraryUUID:) using
+      UUID-namespaced init(libraryUUID:). Register SingletonResetRegistry
+      resetter to clear per-test keychain residue. Migrate 31 sharedAccount
+      call sites. Add lint banning sharedAccount outside whitelist.
+    depends_on: []
+
+  - name: D
+    title: UserDefaultsIsolation
+    risk: standard
+    files_scope:
+      - PalaceTests/Support/XCTestCase+testUserDefaults.swift
+      - PalaceTests/Support/XCTestCase+testUserDefaultsTests.swift
+      - PalaceTests/MetaTests/UserDefaultsIsolationLintTests.swift
+      - PalaceTests/CoverageGapTests.swift
+      - PalaceTests/Settings/DownloadOnlyOnWiFiTests.swift
+      - PalaceTests/CatalogDomain/CatalogCacheKeyAndIsolationTests.swift
+      - PalaceTests/CatalogDomain/CatalogRepositoryStaleWhileRevalidateTests.swift
+      - PalaceTests/Audiobook/AudiobookIssueFixTests.swift
+      - PalaceTests/AppInfrastructure/RemoteFeatureFlagsTests.swift
+      - PalaceTests/Bookmarks/TPPBookmarkDeletionLogTests.swift
+      - PalaceTests/SignInLogic/ForceResetTests.swift
+      - PalaceTests/Accounts/AccountDetailsURLTests.swift
+      - PalaceTests/Accounts/AccountsManagerStateMachineWiringTests.swift
+      - PalaceTests/Accounts/AccountsManagerTests.swift
+      - Palace/Settings/TPPSettings.swift  # implementer verifies exact path
+      - Palace/FeatureFlags/RemoteFeatureFlags.swift  # implementer verifies exact path
+    files_off_limits:
+      - All A-, B-, C-, E-owned files
+      - Palace/** OUTSIDE the audited DI pair (TPPSettings + RemoteFeatureFlags)
+    contract_path: .forgeos/swarms/swarm_47883816/contracts/D-UserDefaultsIsolation.md
+    implementer_prompt_summary: |
+      Create XCTestCase.testUserDefaults() helper. Migrate test sites
+      that own UserDefaults state to it. Audit production interaction
+      per-site: add minimum DI seam to TPPSettings + RemoteFeatureFlags
+      (no fallbacks); document gaps elsewhere. Lint warn-only initially.
+    depends_on: []
+
+  - name: E
+    title: MetaTestsLintExpansion
+    risk: standard
+    files_scope:
+      - PalaceTests/MetaTests/MockIsolationLintTests.swift
+      - PalaceTests/MetaTests/TearDownRequiredLintTests.swift
+    files_off_limits:
+      - All A-, B-, C-, D-owned NEW lint files
+      - All production code
+    contract_path: .forgeos/swarms/swarm_47883816/contracts/E-MetaTestsLintExpansion.md
+    implementer_prompt_summary: |
+      Expand MockIsolationLintTests rules from PalaceTests/Mocks/ to all
+      of PalaceTests/** with documented exception list. Add
+      TearDownRequiredLintTests requiring override func tearDown on any
+      test class referencing polluter patterns.
+    depends_on: [A, B, C, D]
+
+  - name: F
+    title: FireAndForgetAudit
+    risk: standard
+    files_scope:
+      - .forgeos/swarms/swarm_47883816/transcripts/F-audit.md
+    files_off_limits:
+      - All code files (unless ≤2 trivial fixes — pre-clear with orchestrator)
+    contract_path: .forgeos/swarms/swarm_47883816/contracts/F-FireAndForgetAudit.md
+    implementer_prompt_summary: |
+      Audit 170 Task/DispatchQueue.async occurrences in PalaceTests/.
+      Classify as (i) utility drainer, (ii) test-only awaited, (iii)
+      production fire-and-forget. Default: audit doc only.
+    depends_on: []
