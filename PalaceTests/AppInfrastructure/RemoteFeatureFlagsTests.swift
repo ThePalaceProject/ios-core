@@ -10,6 +10,10 @@ import XCTest
 
 final class RemoteFeatureFlagsTests: XCTestCase {
 
+    override func tearDown() {
+        super.tearDown()
+    }
+
     // MARK: - Shared Instance
 
     func testShared_isNotNil() {

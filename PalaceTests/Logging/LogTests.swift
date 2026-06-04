@@ -12,6 +12,10 @@ import PalaceLogging
 
 final class LogTests: XCTestCase {
 
+    override func tearDown() {
+        super.tearDown()
+    }
+
     // MARK: - Subsystem Tests
 
     func testSubsystem_isCorrectValue() {

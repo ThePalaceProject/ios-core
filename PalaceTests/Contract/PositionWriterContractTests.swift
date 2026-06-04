@@ -154,6 +154,10 @@ private final class FrozenClock: @unchecked Sendable {
 /// sequence into the adapter as a JSON snapshot.
 final class PositionWriterContractTests: XCTestCase {
 
+    override func tearDown() {
+        super.tearDown()
+    }
+
     // MARK: 1. First save in window → network.post fires immediately
 
     /// Pins: a `save` against a fresh-state writer triggers exactly one

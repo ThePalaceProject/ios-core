@@ -26,6 +26,10 @@ import XCTest
 @MainActor
 final class AppContainerWithSignInModalSheetPresenterTests: XCTestCase {
 
+    override func tearDown() {
+        super.tearDown()
+    }
+
     // MARK: - Helpers
 
     /// Builds a distinct presenter against the production container.

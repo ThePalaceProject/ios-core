@@ -67,6 +67,7 @@ final class CatalogCacheKeyAndIsolationTests: XCTestCase {
     // MARK: - Fixtures
 
     private var api: CatalogAPIMock!
+    private var defaults: UserDefaults!
     private static let lastAppLaunchKey = "CatalogRepository.lastAppLaunch"
 
     /// Mutable clock — drives the stale-while-revalidate logic deterministically.
@@ -80,16 +81,17 @@ final class CatalogCacheKeyAndIsolationTests: XCTestCase {
         super.setUp()
         api = CatalogAPIMock()
         testAccountID = nil
-        // Reset the last-launch heuristic so each test starts with a
-        // deterministic needsBackgroundRefresh state. We re-seed in
-        // `makeRepository` if we want needsBackgroundRefresh=false.
-        UserDefaults.standard.removeObject(forKey: Self.lastAppLaunchKey)
+        // swarm_cd181acd D-cleanup: per-test isolated UserDefaults suite
+        // for the `lastAppLaunchKey` heuristic — no `.standard` writes.
+        // The suite is dropped by `SingletonResetRegistry` when the test
+        // finishes.
+        defaults = testUserDefaults()
     }
 
     override func tearDown() {
         api = nil
         testAccountID = nil
-        UserDefaults.standard.removeObject(forKey: Self.lastAppLaunchKey)
+        defaults = nil
         super.tearDown()
     }
 
@@ -97,14 +99,15 @@ final class CatalogCacheKeyAndIsolationTests: XCTestCase {
 
     private func makeRepository(seedLastLaunchToNow: Bool = true) -> CatalogRepository {
         if seedLastLaunchToNow {
-            UserDefaults.standard.set(testNow, forKey: Self.lastAppLaunchKey)
+            defaults.set(testNow, forKey: Self.lastAppLaunchKey)
         }
         return CatalogRepository(
             api: api,
             accountID: { [weak self] in self?.testAccountID },
             now: { [weak self] in
                 self?.testNow ?? Date(timeIntervalSince1970: 0)
-            }
+            },
+            defaults: defaults
         )
     }
 

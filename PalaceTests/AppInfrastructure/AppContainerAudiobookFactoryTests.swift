@@ -16,6 +16,10 @@ import XCTest
 
 final class AppContainerAudiobookFactoryTests: XCTestCase {
 
+    override func tearDown() {
+        super.tearDown()
+    }
+
     /// `audiobookSession` must return the same instance on repeated reads —
     /// the cache cell `_audiobookSession` is the single source of truth. A
     /// regression that drops the cache (e.g. constructs a fresh manager per

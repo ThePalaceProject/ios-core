@@ -12,6 +12,10 @@ import Network
 
 final class ReachabilityTests: XCTestCase {
 
+    override func tearDown() {
+        super.tearDown()
+    }
+
     // Removed testShared_isNotNil and testShared_returnsSameInstance: both
     // tested `static let shared` non-nil / identity, which Swift guarantees.
     //

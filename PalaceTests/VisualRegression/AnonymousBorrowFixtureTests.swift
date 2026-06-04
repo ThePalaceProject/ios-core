@@ -12,6 +12,10 @@ import XCTest
 
 final class AnonymousBorrowBaselineFixtureTests: XCTestCase {
 
+  override func tearDown() {
+    super.tearDown()
+  }
+
   // MARK: - 02 after-allow-notif
 
   func test_02_afterAllowNotif_libraryPickerShowsPalaceBookshelfAtTop() throws {

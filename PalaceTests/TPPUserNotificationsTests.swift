@@ -11,6 +11,10 @@ import XCTest
 /// Tests for NotificationService hold availability and badge functionality
 final class TPPUserNotificationsTests: XCTestCase {
 
+    override func tearDown() {
+        super.tearDown()
+    }
+
     // MARK: - Singleton Tests
 
     /// `NotificationService.shared` must remain a singleton across calls

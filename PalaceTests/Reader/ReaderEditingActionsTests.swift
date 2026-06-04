@@ -14,6 +14,10 @@ import ReadiumNavigator
 
 final class ReaderEditingActionsTests: XCTestCase {
 
+    override func tearDown() {
+        super.tearDown()
+    }
+
     private static let testURL = URL(string: "https://test.example.com/borrow")!
 
     // MARK: - Test fixtures
