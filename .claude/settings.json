@@ -88,7 +88,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 scripts/hooks/audit-before-assert.py",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/scripts/hooks/audit-before-assert.py\"",
             "timeout": 5,
             "statusMessage": "Auditing factual claims..."
           }
