@@ -141,9 +141,31 @@ modules:
     depends_on: []
 
 architect_review:
-  # populated by forge-architect-reviewer in Phase 1a — leave blank now
-  reviewer_agent_id: ""
-  verdict: ""
-  at: ""
-  reviewed_files: []
-  findings: ""
+  reviewer_agent_id: forge-architect-reviewer-subagent
+  verdict: APPROVED-WITH-CHANGES
+  at: 2026-06-05T16:57:00Z
+  reviewed_files:
+    - .forgeos/swarms/swarm_162a3219/plan.md
+    - .forgeos/swarms/swarm_162a3219/manifest.yaml
+    - .forgeos/swarms/swarm_162a3219/contracts/Module-A-Phase35-Meta.md
+    - .forgeos/swarms/swarm_162a3219/contracts/Module-B-ForeignHost401Detector.md
+    - .forgeos/swarms/swarm_162a3219/contracts/Module-C-AudiobookPlaytimesLifecycle.md
+    - .forgeos/swarms/swarm_162a3219/contracts/Module-D1-LCPAcquisitionChainRecursive.md
+    - .forgeos/swarms/swarm_162a3219/contracts/Module-D2-SwiftUIPlaceholderA11yDetector.md
+    - .forgeos/swarms/swarm_162a3219/contracts/Module-D3-CompletionNilErrorSuppression.md
+    - .forgeos/swarms/swarm_162a3219/contracts/Module-D4-NSErrorProblemDocPreservation.md
+    - .forgeos/swarms/swarm_162a3219/contracts/Module-D5-NotificationCenterObserverStorage.md
+    - .forgeos/swarms/swarm_162a3219/contracts/Module-D6-D-scan-Semantic.md
+    - Palace/Network/TPPNetworkResponder.swift
+    - Palace/Network/TPPNetworkExecutor.swift
+    - Palace/MyBooks/TokenRefreshInterceptor.swift
+    - Palace/MyBooks/DownloadAuthRetryHandler.swift
+    - Palace/Audiobooks/Tracker/AudiobookDataManager.swift
+    - Palace/Audiobooks/LCP/LCPAudiobooks.swift
+    - Palace/Audiobooks/AudiobookSessionManager.swift
+    - Palace/Accounts/Library/AccountsManager.swift
+    - Palace/SignInLogic/TPPSignInBusinessLogic+OAuth.swift
+    - Palace/SignInLogic/TPPSignInBusinessLogic+SignOut.swift
+    - Palace/AppInfrastructure/TPPAppDelegate.swift
+    - Palace/Notifications/NotificationService.swift
+  findings: ".forgeos/swarms/swarm_162a3219/architect-review.md — 4 required changes before Phase 2 dispatch: (B) detector predicate too narrow misses TPPNetworkExecutor.swift:582 nsError.code==401 site, (C) drop incorrect PUBLIC_INTENT requirement (BR-4 does not apply to non-Container internal class), (D1) wrong scan dirs Reader3 nonexistent + missing Audiobooks where original PP-4407 lives, (D3) trigger too broad false-positives OAuth success path. Dependency graph: 9-way parallel dispatch approved; A is soft-dep only."

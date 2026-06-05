@@ -52,7 +52,12 @@ After PR #1044, the 3 known foreign-host 401 dispatch sites are guarded:
 - `Palace/MyBooks/TokenRefreshInterceptor.swift` line ~106 (uses inline `authSurfaceHosts` guard)
 - `Palace/MyBooks/DownloadAuthRetryHandler.swift` line ~212 (uses inline `authSurfaceHosts` guard)
 
-**Predicted survivors: 0.** The architect's pre-run scan via grep (`grep -B 5 -A 15 "statusCode == 401" Palace/**/*.swift` against the 5 known 401 sites enumerated in `fix-contract.md` § 4) suggests the only post-#1044 dispatches are these three, and all reference `authSurfaceHosts`/`currentAccountHostsProvider` in their enclosing function body.
+**Predicted survivors: 1 (revised post-Phase-1a review).** Beyond the `statusCode == 401` literal, the architect-reviewer caught a sibling semantic site:
+- `Palace/Network/TPPNetworkExecutor.swift:582-585` dispatches `markCredentialsStale()` on `userAccount(for: capturedAccountId ?? currentAccountId ?? "")` when `nsError.code == 401`. The `??` fallback to current account is NOT host-scoped — same bug class as PR #1044, different syntax.
+
+**Detector predicate (Phase-1a-revised):** extend to also match `nsError.code == 401`, `error.code == 401`, `(error as NSError).code == 401` when paired with credential-stale dispatch in the same function scope. Mirror the same `// no-host-scoping:` annotation escape hatch. The architect's original predicate matched only `statusCode == 401` literal and would have missed this site.
+
+The 3 known PR #1044 sites remain guarded; the new survivor will be wiped using the same canonical pattern (inline host-scope guard before the mark-stale + dispatch, or replacement of the `??` fallback with an `authSurfaceHosts`-checking branch).
 
 **Possible false-positive sites that need `// no-host-scoping:`:**
 - `Palace/SignInLogic/TPPSignInBusinessLogic+SignOut.swift` — sign-out flow may dispatch `markCredentialsStale` in a 401-adjacent path. If detector flags, annotate with `// no-host-scoping: explicit sign-out; current account by definition`.
