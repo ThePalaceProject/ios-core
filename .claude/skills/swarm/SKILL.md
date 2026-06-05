@@ -6,7 +6,7 @@ tools: Agent, Bash, Read, Write, Edit, mcp__forgeos__forge_propose_changeset, mc
 type: evolving
 status: active
 created: 2026-05-28
-last_refresh: 2026-06-04
+last_refresh: 2026-06-05
 freshness_window: 365d
 owners: [general]
 ---
@@ -450,6 +450,8 @@ After all implementers return:
 2. **Run module contract check**: `python3 scripts/export-module-contracts.py --check`. If any module's public surface changed without a contract update, flag it (the architect's contract is supposed to capture all public changes).
 3. **Resolve gaps**: integrator (you) handles cross-module wiring, AppContainer composition, anything implementers flagged. Make these changes directly — don't re-spawn.
 
+**Phase 4.0a — Class-scan from implementer transcripts.** Before running the Phase 4.5 skeptic-pass, read each transcript's `class_scan:` block (if any). For every class identified, confirm the implementer either (a) executed the Tier 1/2 scan and either wiped survivors or filed scope-deferral, or (b) committed a Tier 3 detector at `scripts/check-<wall-id>.py` + wiring + tests. If a class was identified but NO detector landed and NO deferral ticket was filed, that's a Phase 3.5 violation — send the implementer back. See `/rigorous-fix` Phase 3.5 for the full 5-step loop + 3-tier mechanism + discipline guardrails, and `docs/architecture/phase-3.5-class-scan.md` for the architecture-level rationale. **A swarm implementer who finds a class but does not land Tier 3 has shipped against the wall-failure catalog rules.**
+
 ### Phase 4.5: Orchestrator skeptic pass (MANDATORY before Phase 5)
 
 The reviewers will catch what's left after this pass — but the cheaper it is to catch upstream, the faster the loop. PR #1018 reviewers caught 4 of 6 issues that this skeptic pass would have caught at integration time, saving a full reviewer round-trip.
@@ -562,6 +564,24 @@ fi
 if [ "${SPS_EXIT:-0}" -ne 0 ]; then
   echo "WARN: check-superpartner-spectrum.py exit $SPS_EXIT — new code (func/case/state) with no matching test; add a test or mark it // no-superpartner: (advisory only)"
 fi
+
+# Check 6.4: Phase 3.5 class-scan reconciliation (META — every implementer)
+# For each transcript that recorded a `class_scan:` block, verify either
+# (a) a Tier 3 detector landed at scripts/check-<wall-id>.py + tests +
+# verify-pr.sh wire-in, OR (b) a scope-deferral ticket is filed in
+# .forgeos/followups/. A class identified but un-codified violates Phase 3.5
+# (see /rigorous-fix Phase 3.5 + docs/architecture/phase-3.5-class-scan.md).
+for transcript in .forgeos/swarms/$SWARM_ID/transcripts/*.md; do
+  if grep -qE "^class_scan:|## Class scan" "$transcript"; then
+    # Implementer claimed a class scan; require detector or deferral evidence.
+    if ! grep -qE "scripts/check-.+\.py|deferral.*followups/" "$transcript"; then
+      echo "BLOCK: $transcript records a class_scan but neither a detector"
+      echo "       (scripts/check-<wall-id>.py) nor a scope-deferral ticket is"
+      echo "       referenced. Phase 3.5 violation — see /rigorous-fix Phase 3.5."
+      exit 1
+    fi
+  fi
+done
 
 # Check 6.5: Borrow→display invariant for new TPPBookContentType cases
 # (PP-4161 wall-failure 2026-06-03). For any swarm that adds a new

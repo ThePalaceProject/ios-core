@@ -582,6 +582,11 @@ extension TPPNetworkExecutor {
                         if let nsError = error as? NSError, nsError.code == 401 {
                             Log.info(#file, "Token refresh failed due to invalid credentials - marking credentials stale for account \(capturedAccountId ?? "current")")
                             await MainActor.run {
+                                // capturedAccountId is bound at refresh-start time by the closure
+                                // capture, so this mark-stale is already scoped to the originating
+                                // account, not the current account at 401-receipt time. See
+                                // .forgeos/changesets/fix-icarus-cross-host-logout/fix-contract.md.
+                                // no-host-scoping: closure-bound capturedAccountId (see comment above)
                                 self.accountsManager.userAccount(for: capturedAccountId ?? self.accountsManager.currentAccountId ?? "").markCredentialsStale()
                                 if capturedAccountId == nil || capturedAccountId == self.accountsManager.currentAccountId {
                                     // swarm_d8f11437 Module A wave 4 — migrated to

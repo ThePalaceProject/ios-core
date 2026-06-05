@@ -103,3 +103,10 @@ Create `.forgeos/wall-failures/2026-06-05-pr1018-icarus-cross-host-logout.md` fr
 - `Palace/Packages/PalaceAuth/Tests/PalaceAuthTests/AuthErrorClassifierPropertyTests.swift` — extend here.
 - Audiobook playtimes tracker: in `ios-audiobooktoolkit` submodule (grep `playtimes` / "uploading audiobook tracker data").
 - Regression commit: `f380e37c3` (PR #1018). 3.1.0 baseline: `git show 3.1.0:Palace/Network/TPPNetworkResponder.swift`.
+
+## Resolution log
+
+| Bug | Resolved by | Date | Owning file | Notes |
+|-----|-------------|------|-------------|-------|
+| Bug B (playtimes cross-host upload) | swarm_162a3219 / Module C | 2026-06-05 | `Palace/Audiobooks/Tracker/AudiobookDataManager.swift` | Cross-account scope guard added to `syncValues()`: queued entries whose `libraryId` does not match `currentAccountIdProvider()` are skipped (POST never fires) but retained in the queue for flush on switch-back. `subscribeToAccountChanges()` observes `.TPPCurrentAccountDidChange` for diagnostic logging only (no destructive queue clear). Background-task counting fixed so the all-skip case ends `endBackgroundTask` cleanly. Commit SHA: TBD (filled in by integrator). |
+| Bug A (action-endpoint 401 misattribution) | swarm_162a3219 / Module B (handled by foreign-host-401 detector + parallel inline guards) | 2026-06-05 | `Palace/Network/TPPNetworkResponder.swift`, `Palace/MyBooks/TokenRefreshInterceptor.swift`, `Palace/MyBooks/DownloadAuthRetryHandler.swift` | Per Module B's contract; tracked separately. |

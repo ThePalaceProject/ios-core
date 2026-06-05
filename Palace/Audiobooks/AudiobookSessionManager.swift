@@ -79,6 +79,27 @@ public enum AudiobookSessionError: Error, Equatable {
 
 /// Singleton manager that owns audiobook playback state.
 /// Thread-safe via MainActor isolation.
+///
+/// **Account-switch contract for the playtimes tracker (Bug B, swarm_162a3219).**
+///
+/// On `AccountsManager.currentAccount.didSet`, the manager calls
+/// `cleanupActiveContentBeforeAccountSwitch(...)` which fires
+/// `networkExecutor.cancelNonEssentialTasks()` to kill any in-flight
+/// playtimes POSTs and posts `.TPPCurrentAccountDidChange`. The
+/// per-book `AudiobookTimeTracker` is per-library-by-construction (its
+/// `libraryId` is captured at init), but the `AudiobookDataManager`
+/// queue is process-wide: it holds entries for every library the user
+/// has played from since the last successful sync.
+///
+/// `AudiobookDataManager.syncValues()` carries the cross-account scope
+/// guard: each queued entry is compared against
+/// `currentAccountIdProvider()` and uploads for non-matching libraries
+/// are SKIPPED. The skipped entries stay in the queue and flush when
+/// the user switches back. The session manager itself takes no
+/// additional action on account switch — the tracker contract owns
+/// the upload-side scoping. See
+/// `.forgeos/handoffs/2026-06-05-icarus-cross-host-logout-regression.md`
+/// §2 Bug B for the regression history.
 @MainActor
 public final class AudiobookSessionManager: ObservableObject {
 

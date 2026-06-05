@@ -264,39 +264,18 @@ final class AudiobookLoaderOPDSShapeMatrixTests: XCTestCase {
                        "BearerToken must NOT claim this fixture")
     }
 
-    /// Row 3 — META-TEST. Same `/groups/` JSON fixture as Row 2, but with
-    /// the OLD property-check loader (LCP predicate is `canOpenBook`,
-    /// which inspects only the top-level type). This MUST route WRONG —
-    /// to OpenAccess instead of LCP — proving the architectural
-    /// improvement: only the recursive predicate catches the Marketplace
-    /// shape.
+    /// Row 3 — META-TEST. **Retired by swarm_162a3219 / Module D1.**
     ///
-    /// If this test fails, it means either:
-    ///   (a) `canOpenBook` was upgraded to walk indirectAcquisitions — in
-    ///       which case Row 2 already catches the regression and this row
-    ///       is redundant; OR
-    ///   (b) the adapter chain is no longer using the predicate at all —
-    ///       which would be a different (worse) regression.
-    /// Either way, this row failing is a signal to revisit the chain.
-    func testMatrix_OPDS2JSONFeedNestedLCP_propertyCheckLoaderWouldHaveFailed() {
-        // Same fixture as Row 2.
-        let book = makeBook(acquisitions: [
-            acquisition(
-                type: opdsPublicationMIME,
-                indirect: [
-                    indirect(lcpLicenseMIME, [indirect(audiobookLCPMIME)])
-                ]
-            )
-        ])
-        let spies = makePropertyCheckChainSpies()
-
-        runLoad(book: book, chain: spies.chain)
-
-        XCTAssertEqual(spies.lcp?.resolveCallCount, 0,
-                       "Property-check LCP predicate (top-level only) MUST miss this Marketplace fixture — that's the PP-4407 bug")
-        XCTAssertEqual(spies.openAccess.resolveCallCount, 1,
-                       "Property-check loader misroutes to OpenAccess (the PP-4407 failure path) — pinned as documentation of the architectural improvement")
-    }
+    /// This row originally pinned `canOpenBook`'s narrow top-level
+    /// predicate misrouting Marketplace fixtures to OpenAccess (the
+    /// PP-4407 bug). Module D1 (swarm_162a3219) upgraded `canOpenBook`
+    /// to delegate to `hasLCPAcquisition` — eliminating the divergence.
+    /// Per the original author's documented contingency (case (a)):
+    /// "Row 2 already catches the regression and this row is redundant."
+    ///
+    /// Row 2 (`testMatrix_OPDS2JSONFeedNestedLCP_routesToLCPAdapter`)
+    /// remains as the PP-4407 kill point. Row 3 deleted to honor the
+    /// author's explicit guidance.
 #endif
 
     /// Row 4 — Findaway-typed manifest. Findaway DRM is handled inside

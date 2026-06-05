@@ -1,7 +1,7 @@
 swarm_id: swarm_162a3219
 task: "Phase 3.5 META + foreign-host 401 detector + audiobook playtimes lifecycle (Bug B) + 30-day class-detectable audit (5 detectors + 1 D-scan)"
 created_at: 2026-06-05
-status: triaged
+status: bundled
 base_ref: origin/develop
 parent_branch: fix/icarus-cross-host-logout
 worktree_path: .claude/worktrees/swarm_162a3219-orchestrator

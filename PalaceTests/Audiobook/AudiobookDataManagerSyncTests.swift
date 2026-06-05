@@ -119,11 +119,20 @@ final class AudiobookDataManagerNetworkSyncTests: XCTestCase {
     private var dataManager: AudiobookDataManager!
     private var testStoreURL: URL!
 
+    // Tests below don't exercise the cross-account scope guard added by
+    // swarm_162a3219 / Module C. They inject a "permissive" provider that
+    // mirrors whatever libraryId is currently queued so the guard is
+    // transparent here. The lifecycle suite
+    // (`AudiobookPlaytimesLifecycleTests`) pins the cross-account behavior.
     override func setUp() {
         super.setUp()
         clearAudiobookTimeTrackerStore()
         mockNetworkExecutor = MockNetworkExecutorForSync()
-        dataManager = AudiobookDataManager(syncTimeInterval: 3600, networkService: mockNetworkExecutor)
+        dataManager = AudiobookDataManager(
+            syncTimeInterval: 3600,
+            networkService: mockNetworkExecutor,
+            currentAccountIdProvider: { [weak self] in self?.dataManager?.store.queue.first?.libraryId }
+        )
         dataManager.store.queue.removeAll()
         dataManager.store.urls.removeAll()
         // Drain any reachability-triggered initial syncValues call that the
@@ -314,7 +323,13 @@ final class AudiobookDataManagerErrorHandlingTests: XCTestCase {
         super.setUp()
         clearAudiobookTimeTrackerStore()
         mockNetworkExecutor = MockNetworkExecutorForSync()
-        dataManager = AudiobookDataManager(syncTimeInterval: 3600, networkService: mockNetworkExecutor)
+        // Permissive cross-account provider — these error-handling tests
+        // don't exercise the scope guard added by swarm_162a3219 / Module C.
+        dataManager = AudiobookDataManager(
+            syncTimeInterval: 3600,
+            networkService: mockNetworkExecutor,
+            currentAccountIdProvider: { [weak self] in self?.dataManager?.store.queue.first?.libraryId }
+        )
         dataManager.store.queue.removeAll()
         dataManager.store.urls.removeAll()
         // Drain the constructor's reachability-triggered initial syncValues
@@ -581,7 +596,13 @@ final class AudiobookDataManagerEmptyQueueTests: XCTestCase {
         super.setUp()
         clearAudiobookTimeTrackerStore()
         mockNetworkExecutor = MockNetworkExecutorForSync()
-        dataManager = AudiobookDataManager(syncTimeInterval: 3600, networkService: mockNetworkExecutor)
+        // Permissive cross-account provider — empty-queue tests assert no
+        // POST fires regardless of the scope guard's verdict.
+        dataManager = AudiobookDataManager(
+            syncTimeInterval: 3600,
+            networkService: mockNetworkExecutor,
+            currentAccountIdProvider: { [weak self] in self?.dataManager?.store.queue.first?.libraryId }
+        )
         dataManager.store.queue.removeAll()
         dataManager.store.urls.removeAll()
     }

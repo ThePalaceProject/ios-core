@@ -418,6 +418,12 @@ if [ "$MUTATION_ONLY" = "true" ]; then
   record "superpartner_spectrum" "pass" "Skipped (--mutation-only)"
   record "intent_recorded" "pass" "Skipped (--mutation-only)"
   record "test_name_vs_body" "pass" "Skipped (--mutation-only)"
+  record "foreign_host_401_scoping" "pass" "Skipped (--mutation-only)"
+  record "lcp_acquisition_recursive" "pass" "Skipped (--mutation-only)"
+  record "completion_nil_error_suppression" "pass" "Skipped (--mutation-only)"
+  record "nserror_problemdoc_preservation" "pass" "Skipped (--mutation-only)"
+  record "swiftui_placeholder_a11y" "pass" "Skipped (--mutation-only)"
+  record "notification_center_observer_storage" "pass" "Skipped (--mutation-only)"
 else
   # Shared staged diff for every diff-based gate.
   M1_DIFF=$(mktemp -t m1-diff.XXXX)
@@ -470,6 +476,26 @@ elif [ -f scripts/check-intent-recorded.py ]; then
   else
     record "test_name_vs_body" "pass" "No changed test files"
   fi
+
+  # Phase 3.5 detectors (swarm_162a3219) — class-detectable wall-failure
+  # detectors. Each runs against the shared $M1_DIFF and records pass/fail
+  # via the same run_m1_check helper. Block-mode on high-severity classes
+  # (foreign-host 401 + LCP recursive + completion-nil-error +
+  # NSError-problemdoc); warn-mode on lower-severity ones (SwiftUI a11y +
+  # NotificationCenter observer).
+  echo "--- Phase 3.5 class-detectable detectors ---"
+  run_m1_check "foreign_host_401_scoping" "check-foreign-host-401-scoping.py" "block" \
+    "No 401 dispatch site missing current-account host scoping"
+  run_m1_check "lcp_acquisition_recursive" "check-lcp-acquisition-recursive.py" "block" \
+    "No LCP acquisition predicate inspects only defaultAcquisition.type"
+  run_m1_check "completion_nil_error_suppression" "check-completion-nil-error-suppression.py" "block" \
+    "No completion(nil, title, message) sites suppress consumer alert path"
+  run_m1_check "nserror_problemdoc_preservation" "check-nserror-problemdoc-preservation.py" "block" \
+    "No NSError construction discards in-scope TPPProblemDocument context"
+  run_m1_check "swiftui_placeholder_a11y" "check-swiftui-placeholder-a11y.py" "warn" \
+    "No SwiftUI placeholder/label without .accessibilityLabel"
+  run_m1_check "notification_center_observer_storage" "check-notification-center-observer-storage.py" "warn" \
+    "No NotificationCenter observer registered without storage/removal"
 
   rm -f "$M1_DIFF" "$CR_MSG" "$IR_MSG"
 fi

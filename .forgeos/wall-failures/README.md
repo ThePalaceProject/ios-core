@@ -3,7 +3,7 @@ name: wall-failures-readme
 type: evolving
 status: active
 created: 2026-05-28
-last_refresh: 2026-06-03
+last_refresh: 2026-06-05
 freshness_window: 365d
 owners: [general]
 description: Wall-failure catalog
@@ -54,6 +54,46 @@ Each blocked finding becomes a permanent system improvement. After ~5-10 swarms,
    The script writes `adr_ref: adr_<8hex>` back into the entry's frontmatter and is idempotent on re-run. Without this step, the wall-failure stays write-only — future reviewers and `intent` skill can't discover it.
 5. **Within 1 week:** apply the proposed fix (skill update, CLAUDE.md edit, hook change, etc.) and link the commit/PR back from the entry.
 6. **Add a line to `INDEX.md`** so the catalog stays navigable.
+
+### Detector requirement (2026-06-05, swarm_162a3219)
+
+Every wall-failure entry MUST have either:
+
+- `detector_script: scripts/check-<wall-id>.py` in frontmatter AND a `## Detector script` section in the body describing the catch-pattern + linking to `scripts/test_check_<wall-id>.py`, OR
+- `no-detector: <reason>` in frontmatter — only acceptable when the class is semantic-only and a static script genuinely cannot encode it (e.g., "behavior depends on runtime state in a 3rd-party library"). The reason must be specific; "too hard" is not acceptable.
+
+The entry's `detector_status:` is one of:
+
+- `built` — script + tests landed in the same PR as the wall-failure entry
+- `queued` — entry exists, detector pending in a named follow-up PR (record the PR number)
+- `no-detector` — justification recorded in frontmatter and body
+
+A wall-failure entry without one of these is `wall_status: open` regardless of whether the one-time fix landed. **The detector is the wall — the wipe is just the incident response.** See `/rigorous-fix` Phase 3.5 (`.claude/skills/rigorous-fix/SKILL.md`) for the 5-step loop + 3-tier mechanism + discipline guardrails that produce the detector.
+
+This convention applies forward (every new entry must comply); backfill of existing entries is a separate pass tracked in `derived-improvements.md`.
+
+Schema example for an entry's frontmatter:
+
+```yaml
+---
+date: 2026-06-05
+pr: "#1044"
+walls: [reviewer, contract]
+severity: high
+wall_status: applied
+detector_script: scripts/check-foreign-host-401-scoping.py
+detector_status: built
+...
+---
+```
+
+Or, when no static detector is feasible:
+
+```yaml
+detector_script: ""
+no-detector: "Class is semantic — depends on 3rd-party AVPlayer runtime callback timing; no AST/grep pattern can encode the failure shape."
+detector_status: no-detector
+```
 
 ### Once per month (or every ~10 entries)
 

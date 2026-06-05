@@ -129,8 +129,16 @@ final class LCPAcquisitionPredicateTests: XCTestCase {
 
         XCTAssertTrue(LCPAudiobooks.hasLCPAcquisition(book),
                       "Marketplace /groups/ JSON shape (LCP nested in indirectAcquisitions) must match — PP-4407 kill point")
-        XCTAssertFalse(LCPAudiobooks.canOpenBook(book),
-                      "Legacy canOpenBook MUST return false on this fixture — divergence asserts that hasLCPAcquisition is doing real recursive work, not duplicating canOpenBook")
+        // swarm_162a3219 / Module D1: `canOpenBook` now delegates to
+        // `hasLCPAcquisition` (the canonical recursive predicate). The
+        // historical divergence — `canOpenBook` narrow + `hasLCPAcquisition`
+        // recursive — was the PP-4407 bug shape. Locking equivalence
+        // pins the architectural improvement.
+        XCTAssertTrue(LCPAudiobooks.canOpenBook(book),
+                      "canOpenBook MUST agree with hasLCPAcquisition on Marketplace fixtures — swarm_162a3219 closed the PP-4407 class")
+        XCTAssertEqual(LCPAudiobooks.canOpenBook(book),
+                       LCPAudiobooks.hasLCPAcquisition(book),
+                       "canOpenBook and hasLCPAcquisition must agree on all LCP fixtures post-swarm_162a3219")
     }
 
     // NOTE: a `testHasLCPAcquisition_doublyNestedIndirectChain_returnsTrue`
