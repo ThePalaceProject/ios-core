@@ -15,7 +15,6 @@ import UIKit
 import PalaceAudiobookToolkit
 import ReadiumShared
 import ReadiumLCP
-import ReadiumAdapterLCPSQLite
 
 @objc class LCPLibraryService: NSObject, DRMLibraryService {
 
@@ -36,27 +35,25 @@ import ReadiumAdapterLCPSQLite
     private var lcpService: LCPService? {
         serviceQueue.sync {
             if _lcpService == nil {
-                do {
-                    let licenseRepo = try LCPSQLiteLicenseRepository()
-                    let passphraseRepo = try LCPSQLitePassphraseRepository()
+                serviceLock.lock()
+                defer { serviceLock.unlock() }
 
-                    serviceLock.lock()
-                    defer { serviceLock.unlock() }
+                // Readium 3.8.0+: license/passphrase storage moved from the
+                // deprecated SQLite repositories to the Keychain repositories
+                // (more secure, survives reinstall, iCloud-syncable). Existing
+                // patrons' SQLite data is carried over once by
+                // `LCPKeychainMigration` (run at launch); a license that hasn't
+                // migrated yet simply re-validates from its stored `.lcpl`.
+                let licenseRepo = LCPKeychainLicenseRepository()
+                let passphraseRepo = LCPKeychainPassphraseRepository()
 
-                    _lcpService = LCPService(
-                        client: TPPLCPClient(),
-                        licenseRepository: licenseRepo,
-                        passphraseRepository: passphraseRepo,
-                        assetRetriever: AssetRetriever(httpClient: LCPCredentialStrippingHTTPClient()),
-                        httpClient: LCPCredentialStrippingHTTPClient()
-                    )
-                } catch {
-                    TPPErrorLogger.logError(error, summary: "Failed to initialize LCPService", metadata: [
-                        "error": error.localizedDescription,
-                        "errorType": String(describing: type(of: error))
-                    ])
-                    return nil
-                }
+                _lcpService = LCPService(
+                    client: TPPLCPClient(),
+                    licenseRepository: licenseRepo,
+                    passphraseRepository: passphraseRepo,
+                    assetRetriever: AssetRetriever(httpClient: LCPCredentialStrippingHTTPClient()),
+                    httpClient: LCPCredentialStrippingHTTPClient()
+                )
             }
             return _lcpService
         }

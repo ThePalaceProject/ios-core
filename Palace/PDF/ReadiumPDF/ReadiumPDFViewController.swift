@@ -13,7 +13,6 @@ import SwiftUI
 import PalaceLogging
 import ReadiumShared
 import ReadiumNavigator
-import ReadiumAdapterGCDWebServer
 
 /// Bridges Readium's `PDFNavigatorViewController` into Palace's reading-position
 /// sync (via `onLocationChange`) without Palace-layer code depending on
@@ -22,7 +21,6 @@ final class ReadiumPDFViewController: UIViewController {
 
     private let publication: Publication
     private let book: TPPBook
-    private let httpServer: GCDHTTPServer
 
     /// Legacy page index from the pre-migration pipeline (0-indexed). We can't
     /// build an accurate Locator at init time because `positionsByReadingOrder`
@@ -39,10 +37,9 @@ final class ReadiumPDFViewController: UIViewController {
     /// `TPPPDFDocumentMetadata.currentPage` → `TPPBookRegistry.setLocation`).
     var onLocationChange: ((Locator) -> Void)?
 
-    init(publication: Publication, book: TPPBook, httpServer: GCDHTTPServer, initialPageIndex: Int?) {
+    init(publication: Publication, book: TPPBook, initialPageIndex: Int?) {
         self.publication = publication
         self.book = book
-        self.httpServer = httpServer
         self.initialPageIndex = initialPageIndex
         super.init(nibName: nil, bundle: nil)
     }
@@ -65,12 +62,13 @@ final class ReadiumPDFViewController: UIViewController {
             let config = PDFNavigatorViewController.Configuration(
                 editingActions: ReaderEditingActions.resolve(for: book)
             )
+            // Readium 3.9.0: the PDF navigator no longer needs an HTTP server;
+            // it reads publication resources directly. Use the no-server init.
             let nav = try PDFNavigatorViewController(
                 publication: publication,
                 initialLocation: nil,
                 config: config,
-                delegate: self,
-                httpServer: httpServer
+                delegate: self
             )
             addChild(nav)
             view.addSubview(nav.view)
@@ -155,7 +153,6 @@ extension ReadiumPDFViewController: PDFNavigatorDelegate {
 struct ReadiumPDFContainer: UIViewControllerRepresentable {
     let publication: Publication
     let book: TPPBook
-    let httpServer: GCDHTTPServer
     let initialPageIndex: Int?
     let onLocationChange: (Locator) -> Void
 
@@ -163,7 +160,6 @@ struct ReadiumPDFContainer: UIViewControllerRepresentable {
         let vc = ReadiumPDFViewController(
             publication: publication,
             book: book,
-            httpServer: httpServer,
             initialPageIndex: initialPageIndex
         )
         vc.onLocationChange = onLocationChange

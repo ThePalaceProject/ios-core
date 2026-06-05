@@ -57,7 +57,6 @@ final class ReaderModule: ReaderModuleAPI {
     var formatModules: [ReaderFormatModule] = []
 
     init(delegate: ModuleDelegate?,
-         resourcesServer: HTTPServer,
          bookRegistry: TPPBookRegistryProvider,
          userAccount: TPPUserAccount = AppContainer.production().accountsManager.currentUserAccount) {
         self.delegate = delegate
@@ -66,7 +65,7 @@ final class ReaderModule: ReaderModuleAPI {
         self.progressSynchronizer = TPPLastReadPositionSynchronizer(bookRegistry: bookRegistry)
 
         formatModules = [
-            EPUBModule(delegate: self.delegate, resourcesServer: resourcesServer)
+            EPUBModule(delegate: self.delegate)
         ]
     }
 

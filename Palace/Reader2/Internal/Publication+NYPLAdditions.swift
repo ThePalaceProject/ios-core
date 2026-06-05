@@ -27,7 +27,7 @@ extension Publication {
         // The Publication stores all bookmarks (and TOC; positions in general) in
         // the `readingOrder` list. Each `Link` stores its metadata in a
         // `properties` dictionary.
-        return readingOrder.first { $0.properties["id"] as? String == idref }
+        return readingOrder.first { $0.properties["id"]?.string == idref }
     }
 
     /// Derives the `idref` (often used in Readium 1) from a Readium 2 `href`.
@@ -45,7 +45,7 @@ extension Publication {
     /// be usable in R1 contexts.
     func idref(forHref href: String) -> String? {
         let link = Link(href: href)
-        return link.properties["id"] as? String
+        return link.properties["id"]?.string
     }
 
     /// Shortcut helper to get the publication ID.

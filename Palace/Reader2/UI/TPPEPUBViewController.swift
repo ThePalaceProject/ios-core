@@ -28,7 +28,6 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
     init(publication: Publication,
          book: TPPBook,
          initialLocation: Locator?,
-         resourcesServer: HTTPServer,
          preferences: EPUBPreferences = TPPReaderPreferencesLoad(),
          forSample: Bool = false,
          navigationHub: NavigationCoordinatorHub = AppContainer.production().navigationCoordinatorHub) throws {
@@ -66,11 +65,13 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
             debugState: true
         )
 
+        // Readium 3.8.0+: the EPUB navigator serves publication resources via
+        // an internal custom URL-scheme handler and no longer needs an HTTP
+        // server. The `httpServer:` init is deprecated; use the no-server init.
         let navigator = try EPUBNavigatorViewController(
             publication: publication,
             initialLocation: initialLocation,
-            config: config,
-            httpServer: resourcesServer
+            config: config
         )
 
         super.init(navigator: navigator, publication: publication, book: book, forSample: forSample, initialLocation: initialLocation)

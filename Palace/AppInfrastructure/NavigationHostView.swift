@@ -65,14 +65,12 @@ struct NavigationHostView<Content: View>: View {
                         // does NOT need the modifier (no reader → no
                         // suppression needed).
                         if let (publication, metadata) = coordinator.resolveReadiumPDF(for: bookRoute),
-                           let book = coordinator.resolveBook(for: bookRoute),
-                           let httpServer = AppContainer.production().readerService.httpServer {
+                           let book = coordinator.resolveBook(for: bookRoute) {
                             let toc = coordinator.resolveReadiumPDFTableOfContents(for: bookRoute)
                             ZStack {
                                 ReadiumPDFReaderView(
                                     publication: publication,
                                     book: book,
-                                    httpServer: httpServer,
                                     tableOfContents: toc?.toc ?? [],
                                     pageCount: toc?.pageCount ?? 0
                                 )

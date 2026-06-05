@@ -114,7 +114,7 @@ class TPPLastReadPositionPoster {
     /// it round-trips through `TPPAnnotations.postReadingPosition`'s
     /// existing `selectorValue` parameter.
     private func makeSnapshot(from locator: Locator) -> PositionSnapshot? {
-        guard let selectorValue = locator.jsonString else { return nil }
+        guard let selectorValue = try? locator.jsonString() else { return nil }
         return PositionSnapshot(
             bookID: book.identifier,
             format: .epubLocator,

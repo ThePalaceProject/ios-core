@@ -250,8 +250,14 @@ public actor DRMDataResource: Resource {
 
 extension ResourceProperties {
     public var length: UInt64? {
-        get { self["length"] }
-        set { self["length"] = newValue }
+        // Readium 3.9.0: ResourceProperties values must be JSONValueEncodable
+        // *and* JSONValueDecodable. UInt64 is only Encodable, so persist as Int
+        // (which conforms to both) and bridge to UInt64 at this typed accessor.
+        get {
+            let value: Int? = self["length"]
+            return value.map(UInt64.init)
+        }
+        set { self["length"] = newValue.map { Int($0) } }
     }
 }
 
