@@ -67,6 +67,15 @@ final class DownloadAuthRetryHandler {
     /// resolution semantics — survives library switches mid-flow.
     private let userAccountProvider: () -> TPPUserAccount
 
+    /// Foreign-host guard provider — see `AuthErrorClassifier.currentAccountHostsProvider`.
+    /// Returns the set of lowercased hosts that constitute the CURRENT
+    /// account's auth surface; when the failing task's host is outside
+    /// this set, the handler short-circuits BEFORE marking credentials
+    /// stale or dispatching the coordinator. `nil` provider disables
+    /// the guard (legacy behavior). See wall-failure
+    /// 2026-06-05-pr1018-icarus-cross-host-logout.md.
+    private let currentAccountHostsProvider: (@Sendable () -> Set<String>?)?
+
     /// Retained handles for the fire-and-forget Tasks launched from the
     /// re-auth dispatch branches (swarm_47883816 F-iii'-1). Previously
     /// each Task was leaked once dispatched — if the handler was torn
@@ -88,7 +97,8 @@ final class DownloadAuthRetryHandler {
         reauthenticator: Reauthenticator,
         alertPresenter: DownloadAlertPresenter,
         userAccountProvider: @escaping () -> TPPUserAccount,
-        authCoordinator: AuthCoordinator? = nil
+        authCoordinator: AuthCoordinator? = nil,
+        currentAccountHostsProvider: (@Sendable () -> Set<String>?)? = nil
     ) {
         self.stateManager = stateManager
         self.bookRegistry = bookRegistry
@@ -96,6 +106,7 @@ final class DownloadAuthRetryHandler {
         self.alertPresenter = alertPresenter
         self.userAccountProvider = userAccountProvider
         self.authCoordinator = authCoordinator
+        self.currentAccountHostsProvider = currentAccountHostsProvider
     }
 
     deinit {
@@ -208,6 +219,26 @@ final class DownloadAuthRetryHandler {
         let originalURL = task.originalRequest?.url
         let httpResponse = task.response as? HTTPURLResponse
         let reauthStrategy = userAccount.authDefinition?.reauthStrategy ?? .none
+
+        // Foreign-host guard (Bug A fix — PR #1018 cross-host regression).
+        // A 401 from a host outside the current account's auth surface is
+        // never an expiry of the current account's session — short-circuit
+        // BEFORE marking stale or dispatching the coordinator. The
+        // base-domain `isSameDomain` check inside
+        // `indicatesAuthenticationNeedsRefresh` does NOT catch this because
+        // two libraries can share base `palaceproject.io` (e.g.
+        // `gorgon.staging.palaceproject.io` vs
+        // `minotaur.dev.palaceproject.io`). Nil/empty hosts set = legacy
+        // behavior (cold launch). See wall-failure
+        // 2026-06-05-pr1018-icarus-cross-host-logout.md.
+        if httpResponse?.statusCode == 401,
+           let host = originalURL?.host?.lowercased(),
+           let hosts = currentAccountHostsProvider?(),
+           !hosts.isEmpty,
+           !hosts.contains(host) {
+            Log.info(#file, "Foreign-host 401 from \(host) (current account hosts: \(hosts.sorted())) — not our account's session; skipping mark-stale + coordinator dispatch")
+            return false
+        }
 
         if httpResponse?.indicatesAuthenticationNeedsRefresh(with: problemDoc, originalRequestURL: originalURL) == true {
             // If user has credentials but got 401, this is a session/token expiry issue

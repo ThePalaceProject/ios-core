@@ -49,14 +49,40 @@ public struct AuthErrorClassifier: Sendable {
     /// `mechanismProvider`. `nil` provider yields `libraryUUID == nil`.
     private let libraryUUIDProvider: @Sendable () -> String?
 
+    /// Closure returning the set of lowercased hosts that constitute the
+    /// CURRENT account's auth surface (auth-doc / catalog / loans /
+    /// home-page hosts). Used by Rule 4b to short-circuit a 401 from a
+    /// host outside that set as `.ok` ("not our account's session").
+    ///
+    /// Returning `nil` or an empty set disables the host-scoping rule —
+    /// the classifier falls back to legacy behavior. Cold-launch trade-off:
+    /// while the auth document is still loading, the set is empty and a
+    /// 401 from any host is classified per the legacy rules. Better that
+    /// transient window than false-blocking a real 401.
+    ///
+    /// Fixes a regression where a cross-host 401 (e.g. an A1QA audiobook
+    /// playtimes POST to `gorgon.staging.palaceproject.io` while the
+    /// active account is on `minotaur.dev.palaceproject.io`) was
+    /// mis-attributed to the current OIDC/SAML account. The existing
+    /// base-domain `isSameDomain` guard does not catch this — both hosts
+    /// share `palaceproject.io`. See
+    /// `.forgeos/wall-failures/2026-06-05-pr1018-icarus-cross-host-logout.md`.
+    private let currentAccountHostsProvider: @Sendable () -> Set<String>?
+
+    // PUBLIC_INTENT: enables current-account host scoping to prevent cross-host 401
+    // mis-attribution (PR #1018 regression fix). Default `{ nil }` preserves legacy
+    // behavior for existing callers; production wires the closure to the active
+    // account's auth-surface hosts.
     public init(
         recorder: AuthDecisionRecording = NullAuthDecisionRecorder(),
         mechanismProvider: @escaping @Sendable () -> AuthMechanism? = { nil },
-        libraryUUIDProvider: @escaping @Sendable () -> String? = { nil }
+        libraryUUIDProvider: @escaping @Sendable () -> String? = { nil },
+        currentAccountHostsProvider: @escaping @Sendable () -> Set<String>? = { nil }
     ) {
         self.recorder = recorder
         self.mechanismProvider = mechanismProvider
         self.libraryUUIDProvider = libraryUUIDProvider
+        self.currentAccountHostsProvider = currentAccountHostsProvider
     }
 
     /// Map a response tuple to the discrete outcome.
@@ -141,8 +167,38 @@ public struct AuthErrorClassifier: Sendable {
 
         // Rule 4: cross-domain 401 → .ok (third-party CDN, not our creds).
         // Delegates to the existing helper so we don't duplicate the rule.
+        // Base-domain match: e.g. cdn.palaceproject.io and
+        // gorgon.palaceproject.io share base `palaceproject.io` → same.
         if status == 401, let originalURL = originalRequestURL,
            !response.isSameDomain(as: originalURL) {
+            return .ok
+        }
+
+        // Rule 4b: foreign-host 401 → .ok (not our account's session).
+        //
+        // The base-domain check in Rule 4 catches biblioboard vs
+        // palaceproject CDN, but it does NOT catch the case where two
+        // library backends share the SAME base domain but live on
+        // different hosts — e.g. `gorgon.staging.palaceproject.io`
+        // (A1QA) vs `minotaur.dev.palaceproject.io` (Icarus). A 401
+        // from a host outside the current account's auth surface is
+        // never an expiry of the current account's session; classify
+        // as `.ok` so the responder + sibling sites short-circuit
+        // before marking the current account stale or dispatching the
+        // coordinator. PR #1018 regression fix; see wall-failure
+        // 2026-06-05-pr1018-icarus-cross-host-logout.md.
+        //
+        // Empty set is treated like a nil provider (legacy behavior):
+        // during cold launch the auth document is still loading, so
+        // false-blocking a real 401 would be worse than the transient
+        // legacy-behavior window. Case-insensitive comparison is
+        // belt-and-braces — Account.authSurfaceHosts also lowercases.
+        if status == 401,
+           let originalURL = originalRequestURL,
+           let host = originalURL.host?.lowercased(),
+           let currentHosts = currentAccountHostsProvider(),
+           !currentHosts.isEmpty,
+           !currentHosts.contains(host) {
             return .ok
         }
 

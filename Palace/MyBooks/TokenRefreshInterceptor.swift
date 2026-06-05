@@ -68,14 +68,26 @@ final class TokenRefreshInterceptor {
     /// site — the coordinator only owns credentials refresh.
     private let authCoordinator: AuthCoordinator?
 
+    /// Foreign-host guard provider. Returns the set of lowercased hosts
+    /// that constitute the CURRENT account's auth surface; when the
+    /// failing task's host is outside this set, the interceptor
+    /// short-circuits BEFORE marking credentials stale or dispatching
+    /// the coordinator. `nil` provider disables the guard (legacy
+    /// behavior). See `AuthErrorClassifier.currentAccountHostsProvider`
+    /// for rationale + wall-failure
+    /// 2026-06-05-pr1018-icarus-cross-host-logout.md.
+    private let currentAccountHostsProvider: (@Sendable () -> Set<String>?)?
+
     // MARK: - Init
 
     init(reauthenticator: Reauthenticator = TPPReauthenticator(),
          userRetryTracker: UserRetryTracker = .shared,
-         authCoordinator: AuthCoordinator? = nil) {
+         authCoordinator: AuthCoordinator? = nil,
+         currentAccountHostsProvider: (@Sendable () -> Set<String>?)? = nil) {
         self.reauthenticator = reauthenticator
         self.userRetryTracker = userRetryTracker
         self.authCoordinator = authCoordinator
+        self.currentAccountHostsProvider = currentAccountHostsProvider
     }
 
     // MARK: - Download Failure with Auth Check
@@ -99,6 +111,26 @@ final class TokenRefreshInterceptor {
 
         let originalURL = task.originalRequest?.url
         let httpResponse = task.response as? HTTPURLResponse
+
+        // Foreign-host guard (Bug A fix — PR #1018 cross-host regression).
+        // A 401 from a host outside the current account's auth surface
+        // is never an expiry of the current account's session — short-
+        // circuit BEFORE marking stale or dispatching the coordinator.
+        // The base-domain `isSameDomain` check inside
+        // `indicatesAuthenticationNeedsRefresh` does NOT catch this
+        // because two libraries can share base `palaceproject.io` (e.g.
+        // `gorgon.staging.palaceproject.io` vs
+        // `minotaur.dev.palaceproject.io`). Nil/empty hosts set = legacy
+        // behavior (cold launch). See wall-failure
+        // 2026-06-05-pr1018-icarus-cross-host-logout.md.
+        if httpResponse?.statusCode == 401,
+           let host = originalURL?.host?.lowercased(),
+           let hosts = currentAccountHostsProvider?(),
+           !hosts.isEmpty,
+           !hosts.contains(host) {
+            Log.info(#file, "Foreign-host 401 from \(host) (current account hosts: \(hosts.sorted())) — not our account's session; skipping mark-stale + coordinator dispatch")
+            return false
+        }
 
         // Check if response indicates authentication needs refresh
         let reauthStrategy = userAccount.authDefinition?.reauthStrategy ?? .none

@@ -256,6 +256,8 @@ For single-module work in a critical path, use the `/rigorous-fix` skill (or `/s
 
 For non-critical paths under 50 LOC, single-agent + `/clean-code` (which now includes the skeptic-pass greps) is sufficient.
 
+**Auth-error host scoping (added 2026-06-05 per wall-failure `2026-06-05-pr1018-icarus-cross-host-logout.md`):** any 401 / credentials-stale decision must be scoped to the current account's auth-surface host. A 401 from a non-account host is never an account session expiry. Reviewers BLOCK any auth-error decision path that does not provably consult a current-account host set — base-domain matching (`URLResponse.isSameDomain`) is insufficient when multiple library backends share a base domain (true for every `*.palaceproject.io` library). The canonical mechanism is `Account.authSurfaceHosts` exposed via `AuthErrorClassifier.currentAccountHostsProvider` (the classifier returns `.ok` on a foreign-host 401), with parallel inline guards at the two legacy sibling sites `Palace/MyBooks/TokenRefreshInterceptor.swift` and `Palace/MyBooks/DownloadAuthRetryHandler.swift`. Property-fuzz Invariant 8 in `AuthErrorClassifierPropertyTests` enforces this structurally.
+
 ## Architect reviewer canon
 
 For structural review — new abstractions, type-hierarchy changes, protocol surfaces, concurrency model shifts — consult [`.forgeos/reviewer-refs/architect-swift-canon.md`](./.forgeos/reviewer-refs/architect-swift-canon.md) as a **lens, not a checklist**. It covers Swift-native architecture defaults (POP, value semantics, structured concurrency), SOLID translated to Swift mechanisms, a GoF → Swift-idiom translation table (with anti-translations called out), and a smell vocabulary the architect can cite in findings.

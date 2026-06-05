@@ -577,6 +577,34 @@ protocol AccountLogoDelegate: AnyObject {
         return details?.needsAuth
     }
 
+    // PUBLIC_INTENT: exposes the set of hosts that constitute this account's
+    // auth surface (auth-doc, catalog, loans, home-page). Consumed by
+    // AuthErrorClassifier's `currentAccountHostsProvider` closure and the two
+    // legacy sibling auth-classification sites (TokenRefreshInterceptor,
+    // DownloadAuthRetryHandler) to short-circuit a 401 from a foreign host as
+    // "not our account's session" — fixes the cross-host logout regression
+    // documented in .forgeos/wall-failures/2026-06-05-pr1018-icarus-cross-host-logout.md.
+    //
+    // Hosts are lowercased AT THE PRODUCER (defense-in-depth against a
+    // consumer that forgets to lowercase). Empty set is the cold-launch
+    // signal — auth doc not yet loaded; consumers must fall back to legacy
+    // behavior (do not false-block) when this is empty.
+    var authSurfaceHosts: Set<String> {
+        var hosts = Set<String>()
+        for raw in [authenticationDocumentUrl, catalogUrl, homePageUrl] {
+            if let str = raw,
+               let url = URL(string: str),
+               let host = url.host?.lowercased(),
+               !host.isEmpty {
+                hosts.insert(host)
+            }
+        }
+        if let loansHost = details?.loansUrl?.host?.lowercased(), !loansHost.isEmpty {
+            hosts.insert(loansHost)
+        }
+        return hosts
+    }
+
     init(publication: OPDS2Publication, imageCache: ImageCacheType) {
         name = publication.metadata.title
         subtitle = publication.metadata.description

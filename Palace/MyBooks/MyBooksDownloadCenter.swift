@@ -382,7 +382,12 @@ import OverdriveProcessor
         // to nil-init so callers (production + tests) can substitute mocks.
         self.tokenInterceptor = tokenInterceptor ?? TokenRefreshInterceptor(
             reauthenticator: reauthenticator,
-            authCoordinator: authCoordinator
+            authCoordinator: authCoordinator,
+            // Foreign-host guard (PR #1018 cross-host regression fix —
+            // wall-failure 2026-06-05-pr1018-icarus-cross-host-logout.md).
+            currentAccountHostsProvider: {
+                AppContainer.production().accountsManager.currentAccount?.authSurfaceHosts
+            }
         )
         self.backgroundDownloadHandler = backgroundDownloadHandler ?? BackgroundDownloadHandler()
         // Parses URL session download completions before MBDC's per-
@@ -508,7 +513,12 @@ import OverdriveProcessor
             reauthenticator: reauthenticator,
             alertPresenter: self.alertPresenter,
             userAccountProvider: resolveAccount,
-            authCoordinator: authCoordinator
+            authCoordinator: authCoordinator,
+            // Foreign-host guard (PR #1018 cross-host regression fix —
+            // wall-failure 2026-06-05-pr1018-icarus-cross-host-logout.md).
+            currentAccountHostsProvider: {
+                AppContainer.production().accountsManager.currentAccount?.authSurfaceHosts
+            }
         )
         // DownloadThrottlingService shares the same DownloadStateManager
         // MBDC owns so cap + suspend/resume policy stays coherent with the

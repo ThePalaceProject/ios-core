@@ -293,6 +293,100 @@ final class DownloadAuthRetryHandlerAuthCoordinatorTests: XCTestCase {
         XCTAssertEqual(spyDelegate.startDownloadCalls.count, 1,
                        "Coordinator success on PP-3716 path → startDownload retry")
     }
+
+    // MARK: - Foreign-host guard (PR #1018 cross-host regression fix)
+
+    /// Air-tight test for the foreign-host short-circuit. With a current-
+    /// account auth surface of `{minotaur.dev.palaceproject.io}` and a
+    /// 401 download failure from `gorgon.staging.palaceproject.io/...`,
+    /// the handler MUST:
+    ///   - Return false (failure not claimed by this layer)
+    ///   - NOT mark the current account's credentials stale
+    ///   - NOT dispatch the coordinator
+    ///   - NOT trigger startDownload retry
+    ///
+    /// SAML scenario chosen because SAML always routes to modal — most
+    /// fragile path per the dispatch matrix. Without the foreign-host
+    /// guard, a download retry for a book whose library is no longer
+    /// active would mark stale + pop the modal for the current account.
+    ///
+    /// Wall-failure 2026-06-05-pr1018-icarus-cross-host-logout.md.
+    func testForeignHost_401_SAML_doesNotMarkCredentialsStale_doesNotDispatchCoordinator() async throws {
+        let (coordinator, _, modal, userAcctSpy, _) = SpyAuthCoordinatorFactory.make(
+            mechanism: .saml,
+            stubModalResult: true
+        )
+
+        handler = DownloadAuthRetryHandler(
+            stateManager: stateManager,
+            bookRegistry: registry,
+            reauthenticator: reauthenticator,
+            alertPresenter: alertPresenter,
+            userAccountProvider: { [unowned self] in self.userAccount },
+            authCoordinator: coordinator,
+            currentAccountHostsProvider: { Set(["minotaur.dev.palaceproject.io"]) }
+        )
+        handler.delegate = spyDelegate
+
+        userAccount._authDefinition = makeAuth(typeRaw: "http://librarysimplified.org/authtype/SAML-2.0")
+        userAccount._credentials = .barcodeAndPin(barcode: "b", pin: "p")
+        registry.addBook(book, location: nil, state: .downloading,
+                         fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+
+        // 401 from a host OUTSIDE the current account's auth surface
+        let foreignURL = URL(string: "https://gorgon.staging.palaceproject.io/a1qa-test/fulfillment/abc")!
+        let task = makeFakeTask(statusCode: 401, url: foreignURL)
+        let handled = handler.handleAuthFailureIfApplicable(book: book, task: task, problemDoc: nil, failureError: nil)
+        XCTAssertFalse(handled,
+                       "Foreign-host 401 must NOT be claimed by the handler — falls through to the caller's normal failure path. Regression: returning true would mean the handler still 'handled' the foreign 401 via the modal path.")
+
+        await waitForAsyncCleanup()
+
+        XCTAssertEqual(modal.presentCallCount, 0,
+                       "Foreign-host 401 MUST NOT dispatch the coordinator — the whole point of the guard is to skip the modal for the current account when the 401 belongs to a DIFFERENT account's session.")
+        XCTAssertEqual(userAcctSpy.markCredentialsStaleCallCount, 0,
+                       "Foreign-host 401 MUST NOT mark the current account's credentials stale.")
+        XCTAssertEqual(spyDelegate.startDownloadCalls.count, 0,
+                       "No retry: foreign-host 401 is not the current account's session. Regression here would mean we retried a download for a book that's no longer ours.")
+        XCTAssertNotEqual(registry.state(for: book.identifier), .SAMLStarted,
+                          "Per-book state must NOT flip to .SAMLStarted on a foreign-host 401 — that would force the user into a SAML reauth flow they don't need.")
+    }
+
+    /// Belt-and-braces: nil provider preserves legacy dispatch. Without
+    /// this test, a refactor that flipped the default from `nil` to
+    /// `{ Set<String>() }` would silently change behavior.
+    func testForeignHost_401_SAML_withNilProvider_fallsBackToLegacyDispatch() async throws {
+        let (coordinator, _, modal, _, _) = SpyAuthCoordinatorFactory.make(
+            mechanism: .saml,
+            stubModalResult: true
+        )
+
+        // currentAccountHostsProvider intentionally OMITTED (defaults to nil)
+        handler = DownloadAuthRetryHandler(
+            stateManager: stateManager,
+            bookRegistry: registry,
+            reauthenticator: reauthenticator,
+            alertPresenter: alertPresenter,
+            userAccountProvider: { [unowned self] in self.userAccount },
+            authCoordinator: coordinator
+        )
+        handler.delegate = spyDelegate
+
+        userAccount._authDefinition = makeAuth(typeRaw: "http://librarysimplified.org/authtype/SAML-2.0")
+        userAccount._credentials = .barcodeAndPin(barcode: "b", pin: "p")
+        registry.addBook(book, location: nil, state: .downloading,
+                         fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+
+        // Same foreign URL — but provider is nil so legacy dispatch fires
+        let foreignURL = URL(string: "https://gorgon.staging.palaceproject.io/a1qa-test/fulfillment/abc")!
+        let task = makeFakeTask(statusCode: 401, url: foreignURL)
+        _ = handler.handleAuthFailureIfApplicable(book: book, task: task, problemDoc: nil, failureError: nil)
+
+        await waitForAsyncCleanup()
+
+        XCTAssertEqual(modal.presentCallCount, 1,
+                       "Nil provider preserves legacy behavior — SAML 401 still dispatches the coordinator → modal. A regression where nil is treated as empty-set would silently disable the legacy dispatch.")
+    }
 }
 
 // MARK: - File-private spy delegate

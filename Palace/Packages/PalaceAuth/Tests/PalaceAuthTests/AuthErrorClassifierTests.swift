@@ -150,6 +150,147 @@ final class AuthErrorClassifierTests: XCTestCase {
         XCTAssertEqual(outcome, .reauthRequired(reason: .unknown401))
     }
 
+    // MARK: - Rule 4b: foreign-host 401 -> .ok (PR #1018 cross-host regression fix)
+
+    /// CRITICAL — the device-reproduced Icarus regression. An Icarus
+    /// (`minotaur.dev.palaceproject.io`) account is current; a 401 arrives
+    /// from `gorgon.staging.palaceproject.io` (A1QA playtimes upload). The
+    /// hosts share base domain `palaceproject.io`, so the existing Rule 4
+    /// (base-domain cross-domain) does NOT fire. Rule 4b MUST fire and
+    /// short-circuit to `.ok` — otherwise the responder dispatches a
+    /// modal for the wrong account every minute.
+    func testClassify_401FromForeignHost_withCurrentAccountHostsProvider_returnsOk() {
+        let hostScopedClassifier = AuthErrorClassifier(
+            currentAccountHostsProvider: { Set(["minotaur.dev.palaceproject.io"]) }
+        )
+        let foreignHostURL = URL(string: "https://gorgon.staging.palaceproject.io/a1qa-test/playtimes/14/URI/urn:uuid:2265844e-0")!
+        let outcome = hostScopedClassifier.classify(
+            response: httpResponse(url: foreignHostURL, status: 401),
+            problemDocument: nil,
+            body: nil,
+            originalRequestURL: foreignHostURL
+        )
+        XCTAssertEqual(outcome, .ok,
+                       "401 from a host outside the current account's auth surface MUST classify as .ok — would otherwise mis-attribute a foreign library's 401 to the current OIDC/SAML account and pop a sign-in modal for the wrong account.")
+    }
+
+    /// Inverse of the foreign-host test: when the 401 is from a host THAT
+    /// IS in the current account's auth-surface set, Rule 4b must NOT
+    /// fire — the classifier falls through to legacy 401 handling and
+    /// returns `.reauthRequired`. Without this we'd block legitimate
+    /// session-expired 401s for the current account.
+    func testClassify_401FromCurrentAccountHost_withCurrentAccountHostsProvider_returnsReauthRequired() {
+        let hostScopedClassifier = AuthErrorClassifier(
+            currentAccountHostsProvider: { Set(["minotaur.dev.palaceproject.io"]) }
+        )
+        let homeHostURL = URL(string: "https://minotaur.dev.palaceproject.io/icarus-test-library/borrow/123")!
+        let outcome = hostScopedClassifier.classify(
+            response: httpResponse(url: homeHostURL, status: 401),
+            problemDocument: nil,
+            body: nil,
+            originalRequestURL: homeHostURL
+        )
+        XCTAssertEqual(outcome, .reauthRequired(reason: .unknown401),
+                       "401 from a host IN the current account's auth surface MUST NOT be short-circuited by Rule 4b — legacy 401 handling applies (bare-401 → .reauthRequired(.unknown401)). A regression that always returns .ok would silently swallow real session-expired 401s.")
+    }
+
+    /// Backward-compat: a classifier constructed without a host provider
+    /// must behave EXACTLY as it did pre-fix — Rule 4b is dormant, the
+    /// 401 falls through to legacy handling. Without this, the fix would
+    /// change the behavior of every existing test that uses the
+    /// no-arg `AuthErrorClassifier()` initializer.
+    func testClassify_401WithDefaultProvider_fallsBackToLegacyBehavior() {
+        let outcome = classifier.classify(
+            response: httpResponse(url: URL(string: "https://gorgon.staging.palaceproject.io/x")!, status: 401),
+            problemDocument: nil,
+            body: nil,
+            originalRequestURL: URL(string: "https://gorgon.staging.palaceproject.io/x")!
+        )
+        XCTAssertEqual(outcome, .reauthRequired(reason: .unknown401),
+                       "Default `{ nil }` provider MUST disable Rule 4b — legacy 401 behavior preserved for all callers that don't opt in. Regression here would change behavior for every existing classifier call site.")
+    }
+
+    /// Cold-launch trade-off: while the auth document is loading, the
+    /// account's `authSurfaceHosts` is empty. Treating an empty set as
+    /// "block everything not in the (empty) set" would falsely-block
+    /// real 401s during cold launch. Empty MUST fall back to legacy
+    /// behavior — same as nil provider.
+    func testClassify_401WithEmptyCurrentAccountHostsSet_fallsBackToLegacyBehavior() {
+        let coldLaunchClassifier = AuthErrorClassifier(
+            currentAccountHostsProvider: { Set<String>() }
+        )
+        let url = URL(string: "https://gorgon.staging.palaceproject.io/playtimes/14")!
+        let outcome = coldLaunchClassifier.classify(
+            response: httpResponse(url: url, status: 401),
+            problemDocument: nil,
+            body: nil,
+            originalRequestURL: url
+        )
+        XCTAssertEqual(outcome, .reauthRequired(reason: .unknown401),
+                       "Empty hosts set must be treated as 'no info, don't scope' (legacy fallback) — false-blocking a real 401 during cold launch is worse than the transient legacy-behavior window.")
+    }
+
+    /// Belt-and-braces case-insensitive comparison. `URL.host` returns
+    /// whatever case the URL string used; `Account.authSurfaceHosts`
+    /// lowercases at the producer, so the classifier lowercases at the
+    /// consumer too. A regression that drops either side would
+    /// false-block a 401 whose URL happens to come back from a
+    /// proxy-rewritten capitalized host.
+    func testClassify_401FromCurrentAccountHost_caseInsensitiveMatch_returnsReauthRequired() {
+        let hostScopedClassifier = AuthErrorClassifier(
+            currentAccountHostsProvider: { Set(["minotaur.dev.palaceproject.io"]) }
+        )
+        let mixedCaseURL = URL(string: "https://Minotaur.Dev.PalaceProject.io/icarus-test-library/borrow/123")!
+        let outcome = hostScopedClassifier.classify(
+            response: httpResponse(url: mixedCaseURL, status: 401),
+            problemDocument: nil,
+            body: nil,
+            originalRequestURL: mixedCaseURL
+        )
+        XCTAssertEqual(outcome, .reauthRequired(reason: .unknown401),
+                       "Case-insensitive host matching: 'Minotaur.Dev.PalaceProject.io' (mixed) must match 'minotaur.dev.palaceproject.io' (lowercase set entry). A regression here would treat the request as foreign-host and silently drop a real session-expired 401.")
+    }
+
+    /// Rule 4 + Rule 4b ordering pin. When BOTH would yield `.ok`, Rule 4
+    /// must fire first. The test drives a request where the response
+    /// host crosses a true base-domain boundary AND the request host is
+    /// outside the current-account set. Both rules would return `.ok`;
+    /// the test passing on this input doesn't prove ORDER per se, but
+    /// the assertion plus the no-provider variant of the same scenario
+    /// (Rule 4 alone) pins that Rule 4 isn't being silently bypassed.
+    func testClassify_401_baseDomainCrossOrigin_andForeignHost_returnsOkViaRule4() {
+        let hostScopedClassifier = AuthErrorClassifier(
+            currentAccountHostsProvider: { Set(["minotaur.dev.palaceproject.io"]) }
+        )
+        let originalURL = URL(string: "https://gorgon.staging.palaceproject.io/some/loans/path")!
+        let crossDomainResponseURL = URL(string: "https://library.biblioboard.com/blob/xyz")!
+        let response = httpResponse(url: crossDomainResponseURL, status: 401)
+
+        let outcome = hostScopedClassifier.classify(
+            response: response,
+            problemDocument: nil,
+            body: nil,
+            originalRequestURL: originalURL
+        )
+        XCTAssertEqual(outcome, .ok,
+                       "Both Rule 4 (true cross-base-domain CDN) and Rule 4b (foreign host) would yield .ok; Rule 4 must fire first because it's checked first. A future refactor that swaps the order should still produce .ok (both apply), but if Rule 4 is removed entirely, this test pins that the foreign-host check at least covers the case.")
+
+        // Pair with the no-provider variant — proves Rule 4 alone still
+        // catches the true cross-base-domain CDN even when Rule 4b is
+        // dormant. If a regression removed Rule 4 but kept Rule 4b, this
+        // pair would still pass because Rule 4b matches the request host
+        // not being in the (nil) set. Pin both: with the default
+        // `{ nil }` provider, Rule 4 must still fire on this same input.
+        let outcomeNoProvider = classifier.classify(
+            response: response,
+            problemDocument: nil,
+            body: nil,
+            originalRequestURL: originalURL
+        )
+        XCTAssertEqual(outcomeNoProvider, .ok,
+                       "Rule 4 (base-domain cross-domain) must still fire on its own with the default `{ nil }` provider — this is the pre-existing CDN guard and removing it would break biblioboard.com flows.")
+    }
+
     // MARK: - Rule 5: 401 + recoverable problem doc -> .reauthRequired(specific)
 
     func testClassify_401WithTokenExpired_returnsReauthRequiredExpiredToken() {

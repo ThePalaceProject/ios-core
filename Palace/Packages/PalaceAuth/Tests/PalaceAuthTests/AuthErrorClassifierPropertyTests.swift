@@ -41,6 +41,82 @@ final class AuthErrorClassifierPropertyTests: XCTestCase {
         }
     }
 
+    /// Invariant 8 — Rule 4b foreign-host short-circuit must hold
+    /// uniformly across the property-fuzz input space.
+    ///
+    /// Drives a classifier with a non-empty `currentAccountHostsProvider`.
+    /// Half the trials use a host that IS in the provided set (positive
+    /// case — Rule 4b must NOT fire); half use a host OUTSIDE the set
+    /// (foreign case — Rule 4b MUST fire and yield `.ok` for status 401).
+    /// Without the 50/50 split, an "always returns .ok" regression in
+    /// Rule 4b would silently pass.
+    ///
+    /// Wall-failure 2026-06-05-pr1018-icarus-cross-host-logout.md.
+    func testInvariant8_foreignHost401_alwaysYieldsOk() {
+        var rng = SeededRNG(seed: Self.seed &+ 1)
+
+        // Two disjoint host sets so we can choose the request URL's host
+        // to be either "in-set" or "foreign" deterministically per trial.
+        let inSetHosts: Set<String> = ["minotaur.dev.palaceproject.io", "icarus.staging.palaceproject.io"]
+        let foreignHosts: Set<String> = ["gorgon.staging.palaceproject.io", "alt.dev.palaceproject.io"]
+
+        let scopedClassifier = AuthErrorClassifier(
+            currentAccountHostsProvider: { inSetHosts }
+        )
+
+        for trial in 0..<Self.trialCount {
+            // Half-and-half: even trials use in-set hosts, odd trials use foreign.
+            let useForeignHost = (trial % 2 == 1)
+            let hosts = useForeignHost ? foreignHosts : inSetHosts
+            let hostList = Array(hosts)
+            let host = hostList[Int(rng.next() % UInt64(hostList.count))]
+            let path = "/scoped-fuzz/\(trial)"
+            // Force-unwrap here is a fixture; if it ever returns nil the test setup is broken.
+            guard let url = URL(string: "https://\(host)\(path)") else {
+                XCTFail("trial #\(trial) — failed to build URL from host \(host)")
+                continue
+            }
+            let status = StatusCodePool.random(using: &rng)
+            let response = HTTPURLResponse(
+                url: url,
+                statusCode: status,
+                httpVersion: nil,
+                headerFields: nil
+            )
+
+            let outcome = scopedClassifier.classify(
+                response: response,
+                problemDocument: nil,
+                body: nil,
+                originalRequestURL: url
+            )
+
+            if status == 401 && useForeignHost {
+                // Positive Rule 4b case — foreign-host 401 must short-circuit to .ok.
+                // (Rule 4 won't fire here because response.url and originalURL share
+                // the same host in this generator, so base-domain matching returns
+                // true.)
+                XCTAssertEqual(
+                    outcome, .ok,
+                    "trial #\(trial) — foreign-host 401 (host=\(host), in-set=\(inSetHosts)) MUST yield .ok. Regression: Rule 4b silently dropped or always-returns-non-ok."
+                )
+            } else if status == 401 && !useForeignHost {
+                // Negative case — in-set 401 must NOT be short-circuited by
+                // Rule 4b. The outcome may be `.reauthRequired` (bare 401)
+                // or other 401-handling per the legacy rules, but it must
+                // not be `.ok` *because of Rule 4b*. (Rule 4 won't fire
+                // since response and original share host.)
+                XCTAssertNotEqual(
+                    outcome, .ok,
+                    "trial #\(trial) — in-set 401 (host=\(host) ∈ \(inSetHosts)) MUST NOT short-circuit to .ok. Regression: Rule 4b became always-returns-.ok and would silently swallow real session-expired 401s."
+                )
+            }
+            // For non-401 statuses, Rule 4b is dormant; standard invariants
+            // (covered by Invariants 1-7 in `testInvariants_acrossGeneratedInputs`)
+            // continue to hold and aren't re-asserted here.
+        }
+    }
+
     // MARK: - Invariant block
 
     private func assertInvariants(input: GeneratedInput, outcome: AuthOutcome, trial: Int) {
