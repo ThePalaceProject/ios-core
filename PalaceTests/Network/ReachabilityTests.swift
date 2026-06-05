@@ -6,44 +6,134 @@
 //
 
 import XCTest
-import PalaceNetwork
+import Network
+@testable import PalaceNetwork
 @testable import Palace
 
 final class ReachabilityTests: XCTestCase {
 
-    override func tearDown() {
-        super.tearDown()
-    }
-
     // Removed testShared_isNotNil and testShared_returnsSameInstance: both
     // tested `static let shared` non-nil / identity, which Swift guarantees.
+    //
+    // Removed testIsConnected_methodAndPropertyAgreeAndAreStable: it read the
+    // LIVE network monitor via the production app-container's reachability on
+    // three separate ticks and asserted the cached `isConnected` property agreed
+    // with the synchronous `isConnectedToNetwork()` probe. Those two are different
+    // sources with different update timing — `isConnected` starts `false` and
+    // only updates asynchronously after `startMonitoring()`'s path handler fires,
+    // while `isConnectedToNetwork()` reads the live path synchronously — so the
+    // "must agree on the same tick" invariant was false by design and the test
+    // was an inherent CI timing race (it blocked PRs #1029/#1030/#1032/#1037-9).
+    // The real mapping logic it half-covered is now pinned deterministically
+    // below via the pure `Reachability.detailedStatus(...)` seam — no live
+    // network and no production-singleton read (the latter also tripped the
+    // AppContainer isolation lint, which is why this file leaves its deferred
+    // list).
 
-    // MARK: - Connection API (non-asserting on value — CI has variable connectivity)
+    // MARK: - Detailed Status mapping (deterministic — pure function, no live path)
 
-    func testIsConnected_methodAndPropertyAgreeAndAreStable() {
-        // Reachability exposes both isConnected (property) and isConnectedToNetwork()
-        // (method). They MUST return the same bool, and back-to-back reads of the
-        // property must be stable (connectivity can't flip in the microsecond between
-        // two reads; if it did, the publisher machinery would be broken). A mutation
-        // that returned different values from the two accessors would cause callers
-        // that sample one to drift from callers that sample the other — silent
-        // split-brain state in the offline-queue retry path.
-        let method = AppContainer.production().reachability.isConnectedToNetwork()
-        let property1 = AppContainer.production().reachability.isConnected
-        let property2 = AppContainer.production().reachability.isConnected
+    func testDetailedStatus_satisfiedWiFi_reportsConnectedViaWiFi() {
+        let result = Reachability.detailedStatus(
+            status: .satisfied, usesWiFi: true, usesCellular: false,
+            usesEthernet: false, isExpensive: false, isConstrained: false)
 
-        XCTAssertEqual(method, property1,
-                       "isConnectedToNetwork() and isConnected must agree on the same tick")
-        XCTAssertEqual(property1, property2,
-                       "isConnected must be stable across immediate sequential reads")
+        XCTAssertTrue(result.isConnected)
+        XCTAssertEqual(result.connectionType, "WiFi")
+        XCTAssertEqual(result.details, "Connected via WiFi")
     }
 
-    // MARK: - Detailed Status
+    func testDetailedStatus_satisfiedCellular_reportsConnectedViaCellular() {
+        let result = Reachability.detailedStatus(
+            status: .satisfied, usesWiFi: false, usesCellular: true,
+            usesEthernet: false, isExpensive: false, isConstrained: false)
+
+        XCTAssertTrue(result.isConnected)
+        XCTAssertEqual(result.connectionType, "Cellular")
+        XCTAssertEqual(result.details, "Connected via Cellular")
+    }
+
+    func testDetailedStatus_satisfiedEthernet_reportsConnectedViaEthernet() {
+        let result = Reachability.detailedStatus(
+            status: .satisfied, usesWiFi: false, usesCellular: false,
+            usesEthernet: true, isExpensive: false, isConstrained: false)
+
+        XCTAssertTrue(result.isConnected)
+        XCTAssertEqual(result.connectionType, "Ethernet")
+        XCTAssertEqual(result.details, "Connected via Ethernet")
+    }
+
+    func testDetailedStatus_satisfiedUnknownInterface_reportsUnknownType() {
+        // Satisfied path with no recognized interface flag → "Unknown" type,
+        // bare "Connected" details. Pins the default-branch values so a mutation
+        // that dropped the initial assignments would be caught.
+        let result = Reachability.detailedStatus(
+            status: .satisfied, usesWiFi: false, usesCellular: false,
+            usesEthernet: false, isExpensive: false, isConstrained: false)
+
+        XCTAssertTrue(result.isConnected)
+        XCTAssertEqual(result.connectionType, "Unknown")
+        XCTAssertEqual(result.details, "Connected")
+    }
+
+    func testDetailedStatus_expensiveAndConstrained_appendBothFlags() {
+        let result = Reachability.detailedStatus(
+            status: .satisfied, usesWiFi: true, usesCellular: false,
+            usesEthernet: false, isExpensive: true, isConstrained: true)
+
+        XCTAssertTrue(result.isConnected)
+        XCTAssertEqual(result.details, "Connected via WiFi (Expensive) (Constrained)",
+                       "expensive and constrained flags must both append, in order")
+    }
+
+    func testDetailedStatus_expensiveOnly_appendsExpensiveNotConstrained() {
+        // Independent-flag check: isExpensive must gate ONLY the "(Expensive)"
+        // suffix. A mutation swapping the two conditionals would fail here.
+        let result = Reachability.detailedStatus(
+            status: .satisfied, usesWiFi: true, usesCellular: false,
+            usesEthernet: false, isExpensive: true, isConstrained: false)
+
+        XCTAssertTrue(result.details.contains("(Expensive)"))
+        XCTAssertFalse(result.details.contains("(Constrained)"))
+    }
+
+    func testDetailedStatus_unsatisfied_reportsNoConnection() {
+        let result = Reachability.detailedStatus(
+            status: .unsatisfied, usesWiFi: false, usesCellular: false,
+            usesEthernet: false, isExpensive: false, isConstrained: false)
+
+        XCTAssertFalse(result.isConnected)
+        XCTAssertEqual(result.connectionType, "None")
+        XCTAssertEqual(result.details, "No network connection")
+    }
+
+    func testDetailedStatus_requiresConnection_reportsPending() {
+        let result = Reachability.detailedStatus(
+            status: .requiresConnection, usesWiFi: false, usesCellular: false,
+            usesEthernet: false, isExpensive: false, isConstrained: false)
+
+        XCTAssertFalse(result.isConnected)
+        XCTAssertEqual(result.connectionType, "Pending")
+        XCTAssertEqual(result.details, "Connection required but not established")
+    }
+
+    func testDetailedStatus_wifiTakesPrecedenceOverCellular() {
+        // The switch checks WiFi before cellular; when both flags are set
+        // (e.g. a transitional path), WiFi must win. Pins the branch ordering.
+        let result = Reachability.detailedStatus(
+            status: .satisfied, usesWiFi: true, usesCellular: true,
+            usesEthernet: false, isExpensive: false, isConstrained: false)
+
+        XCTAssertEqual(result.connectionType, "WiFi")
+    }
+
+    // MARK: - Public API smoke (value-agnostic — safe on any CI connectivity)
 
     func testGetDetailedConnectivityStatus_returnsNonEmptyFields() {
-        let status = AppContainer.production().reachability.getDetailedConnectivityStatus()
+        // Constructs Reachability directly — no production-singleton read, no
+        // live-network value assertion. Only checks the contract that the fields
+        // are always populated regardless of the runner's connectivity.
+        let status = Reachability().getDetailedConnectivityStatus()
 
-        // connectionType and details should always be populated (even "None" / "Unknown")
         XCTAssertFalse(status.connectionType.isEmpty, "Connection type should not be empty")
         XCTAssertFalse(status.details.isEmpty, "Details should not be empty")
     }

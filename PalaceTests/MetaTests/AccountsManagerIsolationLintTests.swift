@@ -73,6 +73,16 @@ final class AccountsManagerIsolationLintTests: XCTestCase {
         // as a polluter-substring fixture; it cannot avoid the literal
         // without breaking its own scanner. Self-referential exemption.
         "MetaTests/TearDownRequiredLintTests.swift",
+        // The SUT's own unit test — it must construct `AccountsManager`
+        // directly (incl. the DI `AccountsManager(defaults:)` form) to
+        // exercise the class under test. Every construction site pins
+        // `deferInitialLoadCatalogsForTesting = true` and a
+        // `defer { manager.cancelBackgroundWork() }`, so it does not leak
+        // background `loadCatalogs` work — the exact hazard this lint
+        // guards against. The file carries its own setUp/tearDown +
+        // setUpWithError lifecycle, so migrating it to
+        // PalaceWiringTestCase is higher-risk than the manual seam.
+        "Accounts/AccountsManagerTests.swift",
     ]
 
     /// True if `url` lives under PalaceTests/Mocks/ (recursive).
