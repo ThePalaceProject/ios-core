@@ -1,0 +1,149 @@
+swarm_id: swarm_162a3219
+task: "Phase 3.5 META + foreign-host 401 detector + audiobook playtimes lifecycle (Bug B) + 30-day class-detectable audit (5 detectors + 1 D-scan)"
+created_at: 2026-06-05
+status: triaged
+base_ref: origin/develop
+parent_branch: fix/icarus-cross-host-logout
+worktree_path: .claude/worktrees/swarm_162a3219-orchestrator
+scaffold_branch: swarm/swarm_162a3219-scaffold
+
+recon_docs:
+  - .forgeos/changesets/fix-icarus-cross-host-logout/fix-contract.md
+  - .forgeos/wall-failures/2026-06-05-pr1018-icarus-cross-host-logout.md
+  - .forgeos/handoffs/2026-06-05-icarus-cross-host-logout-regression.md
+  - docs/architecture/areas/auth/verification-checklist.md
+  - docs/architecture/areas/audiobook/verification-checklist.md
+  - .forgeos/schemas/swarm-manifest-v2.md
+
+modules:
+  - name: A-Phase35-Meta
+    files_scope:
+      - .claude/skills/rigorous-fix/SKILL.md
+      - .claude/skills/swarm/SKILL.md
+      - .forgeos/wall-failures/README.md
+      - .forgeos/wall-failures/TEMPLATE.md
+      - .forgeos/wall-failures/derived-improvements.md
+      - docs/architecture/phase-3.5-class-scan.md
+    contract_path: .forgeos/swarms/swarm_162a3219/contracts/Module-A-Phase35-Meta.md
+    implementer_prompt_summary: "Insert Phase 3.5 5-step loop + 3-tier mechanism into /rigorous-fix; add Phase 4.0a reference in /swarm; add detector_script requirement to wall-failures README+TEMPLATE; record cluster improvement in derived-improvements.md; create standalone docs/architecture/phase-3.5-class-scan.md."
+    risk: critical_path_meta
+    depends_on: []
+
+  - name: B-ForeignHost401Detector
+    files_scope:
+      - scripts/check-foreign-host-401-scoping.py
+      - scripts/test_check_foreign_host_401_scoping.py
+      - scripts/tests/fixtures/foreign_host_401/
+      - scripts/verify-pr.sh
+      - scripts/hooks/pre-commit-foreign-host-401-scoping.sh
+      - .claude/settings.json
+      - .forgeos/wall-failures/2026-06-05-pr1018-icarus-cross-host-logout.md  # frontmatter+body backfill only
+    contract_path: .forgeos/swarms/swarm_162a3219/contracts/Module-B-ForeignHost401Detector.md
+    implementer_prompt_summary: "Build the FH-1 detector mirroring check-blast-radius.py shape; 6 pytest tests + 4 fixture Swift files; wire into verify-pr.sh both --quick and full + .claude/settings.json PreToolUse; scan Palace/ post-#1044 (predicted 0 survivors, wipe any survivor with the PR #1044 canonical pattern); backfill detector_script: into the existing wall-failure entry."
+    risk: critical_path
+    depends_on: [A-Phase35-Meta]
+
+  - name: C-AudiobookPlaytimesLifecycle
+    files_scope:
+      - Palace/Audiobooks/Tracker/AudiobookDataManager.swift
+      - Palace/Audiobooks/AudiobookSessionManager.swift  # comment block only
+      - Palace/AppInfrastructure/AppContainer.swift  # conditional wire-in
+      - PalaceTests/Audiobooks/AudiobookPlaytimesLifecycleTests.swift
+      - PalaceTests/Mocks/SpyAudiobookNetworkExecutor.swift
+      - .forgeos/handoffs/2026-06-05-icarus-cross-host-logout-regression.md
+    contract_path: .forgeos/swarms/swarm_162a3219/contracts/Module-C-AudiobookPlaytimesLifecycle.md
+    implementer_prompt_summary: "Add currentAccountIdProvider closure to AudiobookDataManager; guard cross-account uploads in syncValues without clearing the queue; observe .TPPCurrentAccountDidChange; round-trip wiring test PER CLAUDE.md state-machine rule; cross-vendor rationale documented (vendor-agnostic upload layer — single library-switch test covers); mutation kill ≥80% diff-only on AudiobookDataManager.swift; resolve Bug B in handoff doc."
+    risk: critical_path
+    depends_on: []
+
+  - name: D1-LCPAcquisitionChainRecursive
+    files_scope:
+      - scripts/check-lcp-acquisition-recursive.py
+      - scripts/test_check_lcp_acquisition_recursive.py
+      - scripts/tests/fixtures/lcp_acquisition/
+      - scripts/verify-pr.sh
+      - scripts/hooks/pre-commit-lcp-acquisition-recursive.sh
+      - .claude/settings.json
+      - .forgeos/wall-failures/2026-06-05-pp4407-lcp-acquisition-recursive.md
+      - .forgeos/wall-failures/INDEX.md
+    contract_path: .forgeos/swarms/swarm_162a3219/contracts/Module-D1-LCPAcquisitionChainRecursive.md
+    implementer_prompt_summary: "Build detector for the PP-4407 / PP-4454 class; recursive predicate check; 5 pytest tests + 4 fixtures; wire-in; new wall-failure entry per Module A TEMPLATE convention."
+    risk: critical_path
+    depends_on: [A-Phase35-Meta]
+
+  - name: D2-SwiftUIPlaceholderA11y
+    files_scope:
+      - scripts/check-swiftui-placeholder-a11y.py
+      - scripts/test_check_swiftui_placeholder_a11y.py
+      - scripts/tests/fixtures/swiftui_placeholder/
+      - scripts/verify-pr.sh
+      - scripts/hooks/pre-commit-swiftui-placeholder-a11y.sh
+      - .claude/settings.json
+      - .forgeos/wall-failures/2026-06-05-pp4421-swiftui-placeholder-a11y.md
+      - .forgeos/wall-failures/INDEX.md
+    contract_path: .forgeos/swarms/swarm_162a3219/contracts/Module-D2-SwiftUIPlaceholderA11yDetector.md
+    implementer_prompt_summary: "Build detector for the PP-4421 placeholder-reads-as-disabled class; 4 pytest tests + fixtures; wire-in; wall-failure entry."
+    risk: standard
+    depends_on: [A-Phase35-Meta]
+
+  - name: D3-CompletionNilErrorSuppression
+    files_scope:
+      - scripts/check-completion-nil-error-suppression.py
+      - scripts/test_check_completion_nil_error_suppression.py
+      - scripts/tests/fixtures/completion_nil_error/
+      - scripts/verify-pr.sh
+      - scripts/hooks/pre-commit-completion-nil-error-suppression.sh
+      - .claude/settings.json
+      - .forgeos/wall-failures/2026-06-05-pp4419-completion-nil-error-suppression.md
+      - .forgeos/wall-failures/INDEX.md
+    contract_path: .forgeos/swarms/swarm_162a3219/contracts/Module-D3-CompletionNilErrorSuppression.md
+    implementer_prompt_summary: "Build detector for the PP-4419 SAML silent-failure class (completion(nil, title, message) where consumer guards on let error); 5 pytest tests + fixtures; wire-in; wall-failure entry."
+    risk: critical_path
+    depends_on: [A-Phase35-Meta]
+
+  - name: D4-NSErrorProblemDocPreservation
+    files_scope:
+      - scripts/check-nserror-problemdoc-preservation.py
+      - scripts/test_check_nserror_problemdoc_preservation.py
+      - scripts/tests/fixtures/nserror_problemdoc/
+      - scripts/verify-pr.sh
+      - scripts/hooks/pre-commit-nserror-problemdoc-preservation.sh
+      - .claude/settings.json
+      - .forgeos/wall-failures/2026-06-05-pp3956-nserror-problemdoc-preservation.md
+      - .forgeos/wall-failures/INDEX.md
+    contract_path: .forgeos/swarms/swarm_162a3219/contracts/Module-D4-NSErrorProblemDocPreservation.md
+    implementer_prompt_summary: "Build detector for the PP-3956 NSError problemDocument-discard class; 5 pytest tests + fixtures; wire-in; wall-failure entry."
+    risk: critical_path
+    depends_on: [A-Phase35-Meta]
+
+  - name: D5-NotificationCenterObserverStorage
+    files_scope:
+      - scripts/check-notification-observer-storage.py
+      - scripts/test_check_notification_observer_storage.py
+      - scripts/tests/fixtures/notification_observer/
+      - scripts/verify-pr.sh
+      - scripts/hooks/pre-commit-notification-observer-storage.sh
+      - .claude/settings.json
+      - .forgeos/wall-failures/2026-06-05-pp4329-notification-observer-storage.md
+      - .forgeos/wall-failures/INDEX.md
+    contract_path: .forgeos/swarms/swarm_162a3219/contracts/Module-D5-NotificationCenterObserverStorage.md
+    implementer_prompt_summary: "Build detector for the PP-4329 observer-leak class; 4 pytest tests + fixtures; wire-in; wall-failure entry."
+    risk: standard
+    depends_on: [A-Phase35-Meta]
+
+  - name: D6-D-scan-Semantic
+    files_scope:
+      - .forgeos/swarms/swarm_162a3219/d-scan/
+      - .forgeos/followups/swarm_162a3219.md
+    contract_path: .forgeos/swarms/swarm_162a3219/contracts/Module-D6-D-scan-Semantic.md
+    implementer_prompt_summary: "Spawn 3 Explore subagents for class-semantic bugs (HelpSpot 17865 NowPlaying BG; PP-4420 lock-screen freeze; PP-4326 VoiceOver row activation). Outcome doc per ticket + queue follow-up Jira tickets. No production code changes."
+    risk: standard
+    depends_on: []
+
+architect_review:
+  # populated by forge-architect-reviewer in Phase 1a — leave blank now
+  reviewer_agent_id: ""
+  verdict: ""
+  at: ""
+  reviewed_files: []
+  findings: ""
