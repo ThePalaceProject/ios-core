@@ -16,6 +16,7 @@ PalaceTests/Audiobooks/AudiobookSessionManagerPresenterMigrationTests.swift
 PalaceTests/Audiobooks/AudiobookSessionManagerShutdownTests.swift
 PalaceTests/Audiobooks/AudiobookSessionStateTests.swift
 PalaceTests/Audiobooks/PlaybackBootstrapperTests.swift
+PalaceTests/Book/BookDetailViewModelTests.swift
 PalaceTests/Book/BookRegistrySyncTests.swift
 PalaceTests/Book/TPPBookRegistryAsyncReadinessTests.swift
 PalaceTests/Bookmarks/TPPAnnotationsTests.swift
@@ -27,7 +28,9 @@ PalaceTests/CatalogDomain/CatalogLaneSortingTests.swift
 PalaceTests/CatalogUI/CatalogSearchViewModelTests.swift
 PalaceTests/CatalogUI/CatalogViewModelTests.swift
 PalaceTests/Contract/BookReturnServiceContractTests.swift
+PalaceTests/Contract/StreamingReaderPresentationContractTests.swift
 PalaceTests/MyBooks/BookCellModelOfflineTests.swift
+PalaceTests/MyBooks/BookCellModelStreamingHTMLTests.swift
 PalaceTests/MyBooks/BookContentResetServiceTests.swift
 PalaceTests/MyBooks/BookFileManagerTests.swift
 PalaceTests/MyBooks/BookReturnCleverReauthTests.swift
@@ -42,7 +45,6 @@ PalaceTests/Network/AccountAwareNetworkTests.swift
 PalaceTests/Network/CredentialGuardTests.swift
 PalaceTests/Network/MultiLibraryTokenIsolationTests.swift
 PalaceTests/Network/NetworkRetryTests.swift
-PalaceTests/Network/ReachabilityTests.swift
 PalaceTests/Network/SAMLCookieSyncTests.swift
 PalaceTests/Network/TokenRefreshAndRetryQueueTests.swift
 PalaceTests/OPDS2/OPDS2CatalogWiringTests.swift

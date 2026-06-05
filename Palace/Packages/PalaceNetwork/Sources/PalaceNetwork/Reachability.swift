@@ -118,28 +118,50 @@ open class Reachability: NSObject {
 
     public func getDetailedConnectivityStatus() -> (isConnected: Bool, connectionType: String, details: String) {
         let currentPath = connectionMonitor.currentPath
+        return Reachability.detailedStatus(
+            status: currentPath.status,
+            usesWiFi: currentPath.usesInterfaceType(.wifi),
+            usesCellular: currentPath.usesInterfaceType(.cellular),
+            usesEthernet: currentPath.usesInterfaceType(.wiredEthernet),
+            isExpensive: currentPath.isExpensive,
+            isConstrained: currentPath.isConstrained
+        )
+    }
 
-        switch currentPath.status {
+    /// Pure mapping from a network path's status + interface flags to the
+    /// detailed connectivity tuple. Extracted from `getDetailedConnectivityStatus()`
+    /// so the branch logic is deterministically unit-testable without a live
+    /// `NWPathMonitor` — the live path is the only non-deterministic input, and
+    /// this function takes it as a parameter instead of reading it.
+    static func detailedStatus(
+        status: NWPath.Status,
+        usesWiFi: Bool,
+        usesCellular: Bool,
+        usesEthernet: Bool,
+        isExpensive: Bool,
+        isConstrained: Bool
+    ) -> (isConnected: Bool, connectionType: String, details: String) {
+        switch status {
         case .satisfied:
             var connectionType = "Unknown"
             var details = "Connected"
 
-            if currentPath.usesInterfaceType(.wifi) {
+            if usesWiFi {
                 connectionType = "WiFi"
                 details += " via WiFi"
-            } else if currentPath.usesInterfaceType(.cellular) {
+            } else if usesCellular {
                 connectionType = "Cellular"
                 details += " via Cellular"
-            } else if currentPath.usesInterfaceType(.wiredEthernet) {
+            } else if usesEthernet {
                 connectionType = "Ethernet"
                 details += " via Ethernet"
             }
 
-            if currentPath.isExpensive {
+            if isExpensive {
                 details += " (Expensive)"
             }
 
-            if currentPath.isConstrained {
+            if isConstrained {
                 details += " (Constrained)"
             }
 
