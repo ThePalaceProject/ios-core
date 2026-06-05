@@ -99,9 +99,12 @@ final class AccountModelGapTests: XCTestCase {
 
     /// Coverage Gap: AccountDetails — verify eulaIsAccepted persists via UserDefaults
     func testAccountDetails_eulaIsAccepted_persistsAcrossObjectRecreation() {
-        // Arrange: use a fresh UUID to avoid state pollution
+        // Arrange: use a fresh UUID and per-test isolated UserDefaults suite
+        // (swarm_cd181acd D-cleanup) so the persisted EULA dict cannot
+        // leak across tests. Both AccountDetails instances below share
+        // the same suite to exercise the round-trip.
         let uuid = "coverage-gap-eula-\(UUID().uuidString)"
-        defer { UserDefaults.standard.removeObject(forKey: uuid) }
+        let defaults = testUserDefaults()
 
         let json: [String: Any] = [
             "id": uuid, "title": "Test",
@@ -113,12 +116,12 @@ final class AccountModelGapTests: XCTestCase {
         ]
         let data = try! JSONSerialization.data(withJSONObject: json)
         let doc = try! OPDS2AuthenticationDocument.fromData(data)
-        let details1 = AccountDetails(authenticationDocument: doc, uuid: uuid)
+        let details1 = AccountDetails(authenticationDocument: doc, uuid: uuid, defaults: defaults)
         XCTAssertFalse(details1.eulaIsAccepted, "New AccountDetails should have eulaIsAccepted=false by default")
 
         // Act: accept EULA and create a second AccountDetails over the same UUID
         details1.eulaIsAccepted = true
-        let details2 = AccountDetails(authenticationDocument: doc, uuid: uuid)
+        let details2 = AccountDetails(authenticationDocument: doc, uuid: uuid, defaults: defaults)
 
         // Assert: the acceptance persisted to UserDefaults and was read back
         XCTAssertTrue(details2.eulaIsAccepted,
@@ -127,9 +130,11 @@ final class AccountModelGapTests: XCTestCase {
 
     /// Coverage Gap: AccountDetails — verify syncPermissionGranted persists via UserDefaults
     func testAccountDetails_syncPermissionGranted_persistsAcrossObjectRecreation() {
-        // Arrange: use a fresh UUID to isolate state
+        // Arrange: use a fresh UUID and per-test isolated UserDefaults suite
+        // (swarm_cd181acd D-cleanup) so the persisted sync dict cannot
+        // leak across tests.
         let uuid = "coverage-gap-sync-\(UUID().uuidString)"
-        defer { UserDefaults.standard.removeObject(forKey: uuid) }
+        let defaults = testUserDefaults()
 
         let json: [String: Any] = [
             "id": uuid, "title": "Test",
@@ -141,12 +146,12 @@ final class AccountModelGapTests: XCTestCase {
         ]
         let data = try! JSONSerialization.data(withJSONObject: json)
         let doc = try! OPDS2AuthenticationDocument.fromData(data)
-        let details1 = AccountDetails(authenticationDocument: doc, uuid: uuid)
+        let details1 = AccountDetails(authenticationDocument: doc, uuid: uuid, defaults: defaults)
         XCTAssertTrue(details1.syncPermissionGranted, "New AccountDetails should default syncPermissionGranted to true")
 
         // Act: revoke sync permission, then recreate over the same UUID
         details1.syncPermissionGranted = false
-        let details2 = AccountDetails(authenticationDocument: doc, uuid: uuid)
+        let details2 = AccountDetails(authenticationDocument: doc, uuid: uuid, defaults: defaults)
 
         // Assert: the revocation survived object recreation
         XCTAssertFalse(details2.syncPermissionGranted,

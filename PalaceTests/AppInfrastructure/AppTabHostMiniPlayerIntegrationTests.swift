@@ -48,7 +48,7 @@ final class AppTabHostMiniPlayerIntegrationTests: XCTestCase {
     override func setUp() async throws {
         try await super.setUp()
         spyPresenter = SpyAudiobookSessionPresenter()
-        testContainer = AppContainer.production().withAudiobookSessionPresenter(spyPresenter)
+        testContainer = makeTestAppContainer().withAudiobookSessionPresenter(spyPresenter)
     }
 
     override func tearDown() async throws {

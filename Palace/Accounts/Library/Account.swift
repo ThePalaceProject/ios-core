@@ -377,8 +377,13 @@ protocol AccountLogoDelegate: AnyObject {
         }
     }
 
-    init(authenticationDocument: OPDS2AuthenticationDocument, uuid: String) {
-        defaults = .standard
+    /// Designated initializer. `defaults` defaults to `.standard` so
+    /// production callers keep working unchanged; tests inject a per-suite
+    /// `UserDefaults(suiteName:)` so per-UUID dictionary writes (EULA,
+    /// syncPermissionGranted, urlEULA, etc.) cannot leak across tests.
+    /// There is NO fallback once injected.
+    init(authenticationDocument: OPDS2AuthenticationDocument, uuid: String, defaults: UserDefaults = .standard) {
+        self.defaults = defaults
         self.uuid = uuid
 
         auths = authenticationDocument.authentication?.map({ (opdsAuth) -> Authentication in

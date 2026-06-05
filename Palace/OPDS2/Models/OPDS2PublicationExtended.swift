@@ -261,12 +261,11 @@ extension OPDS2Publication {
             return nil
         }
 
-        // Drop publications whose only formats this client can't render
-        // (e.g. Palace Bookshelf books offered solely as text/html
-        // streaming-media — iOS has no in-app web reader). Other Palace
-        // clients can show these; a future "Open in browser" action could
-        // bring them back in. For now they would otherwise appear in the
-        // catalog with no actionable buttons.
+        // Drop publications whose only formats this client can't render.
+        // `TPPOPDSAcquisitionPath.supportedTypes()` enumerates what we can
+        // open — anything outside that set produces button-less ghosts in
+        // the catalog. Note: text/html streaming-media is supported as of
+        // PP-4161 via the in-app WKWebView reader.
         let supportedTypes = TPPOPDSAcquisitionPath.supportedTypes()
         let hasOpenablePath = acquisitions.contains { acq in
             !TPPOPDSAcquisitionPath.supportedAcquisitionPaths(

@@ -32,6 +32,7 @@ final class CatalogRepositoryStaleWhileRevalidateTests: XCTestCase {
     // MARK: - Fixtures
 
     private var api: CatalogAPIMock!
+    private var defaults: UserDefaults!
     private let testURL = URL(string: "https://library.example.com/catalog")!
     private let secondURL = URL(string: "https://library.example.com/catalog/other")!
 
@@ -50,18 +51,20 @@ final class CatalogRepositoryStaleWhileRevalidateTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        // Reset the last-launch persistence so each test gets a deterministic
-        // `needsBackgroundRefresh` state (specifically: true on first
-        // construction, because lastLaunch defaults to .distantPast).
-        // Tests that need `needsBackgroundRefresh = false` overwrite the key
-        // BEFORE constructing the repository.
-        UserDefaults.standard.removeObject(forKey: Self.lastAppLaunchKey)
+        // swarm_cd181acd D-cleanup: per-test isolated UserDefaults suite
+        // for the `lastAppLaunchKey` heuristic — no `.standard` writes.
+        // Each test starts with a fresh empty suite (lastLaunch defaults
+        // to .distantPast inside checkStaleCacheStatus, which gives
+        // `needsBackgroundRefresh = true`). Tests that need
+        // `needsBackgroundRefresh = false` seed the key BEFORE
+        // constructing the repository via `makeRepository`.
+        defaults = testUserDefaults()
         api = CatalogAPIMock()
     }
 
     override func tearDown() {
         api = nil
-        UserDefaults.standard.removeObject(forKey: Self.lastAppLaunchKey)
+        defaults = nil
         super.tearDown()
     }
 
@@ -77,11 +80,15 @@ final class CatalogRepositoryStaleWhileRevalidateTests: XCTestCase {
         // which forces the stale-while-revalidate branch for fresh caches and
         // ruins the fresh-cache assertions below.
         if seedLastLaunchToNow {
-            UserDefaults.standard.set(testNow, forKey: Self.lastAppLaunchKey)
+            defaults.set(testNow, forKey: Self.lastAppLaunchKey)
         }
-        return CatalogRepository(api: api, now: { [weak self] in
-            self?.testNow ?? Date(timeIntervalSince1970: 0)
-        })
+        return CatalogRepository(
+            api: api,
+            now: { [weak self] in
+                self?.testNow ?? Date(timeIntervalSince1970: 0)
+            },
+            defaults: defaults
+        )
     }
 
     /// Poll an async predicate until it holds or the timeout elapses. Used

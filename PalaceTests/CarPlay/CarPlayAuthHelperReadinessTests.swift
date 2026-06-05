@@ -102,7 +102,12 @@ final class CarPlayAuthHelperReadinessTests: XCTestCase {
     // MARK: - Integration: full migrated path (when production accountsManager has currentAccount)
 
     func testIntegration_underDetailsFailed_returnsFalse() async throws {
-        let accountsMgr = AppContainer.production().accountsManager
+        // Rationale: integration test pins behavior against the production
+        // AccountsManager's seed graph. Fresh test manager from
+        // makeTestAppContainer() causes a state-machine trap when seeded
+        // account is set to .detailsFailed and CarPlayAuthHelper.isAuthenticated
+        // reads downstream state. Tracked for follow-up.
+        let accountsMgr = AppContainer.production().accountsManager // MIGRATED-DEFERRED: swarm_5b500284 — integration test pins production seed graph
         let (currentAccount, cleanup) = seedAccountIfNeeded(on: accountsMgr,
                                                             fixtureId: "test-carplay-auth-\(UUID().uuidString)")
         defer { cleanup() }

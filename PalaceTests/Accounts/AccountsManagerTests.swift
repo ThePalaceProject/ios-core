@@ -35,15 +35,18 @@ final class AccountsManagerTests: XCTestCase {
         super.setUp()
         cancellables = Set<AnyCancellable>()
         mockLibraryAccountProvider = TPPLibraryAccountMock()
-
-        // Clear any previously stored account identifier
-        UserDefaults.standard.removeObject(forKey: currentAccountIdentifierKey)
+        // swarm_cd181acd D-cleanup: no `.standard.removeObject(forKey:)`
+        // here. Tests that need an isolated `currentAccountIdentifierKey`
+        // suite construct a fresh `AccountsManager(defaults:)` with a
+        // per-test `testUserDefaults()`. AppContainer.production()-based
+        // tests continue to share the production `.standard` graph (their
+        // teardown is handled by `SingletonResetRegistry` via the
+        // AppContainer post-test reset observer).
     }
 
     override func tearDown() {
         cancellables = nil
         mockLibraryAccountProvider = nil
-        UserDefaults.standard.removeObject(forKey: currentAccountIdentifierKey)
         super.tearDown()
     }
 
@@ -113,29 +116,47 @@ final class AccountsManagerTests: XCTestCase {
     // MARK: - Current Account Tests
 
     func testCurrentAccountId_AfterExplicitClear_ReturnsNilFromDefaults() {
-        // Arrange: Write a known value, then clear it
-        UserDefaults.standard.set("urn:uuid:temp-value", forKey: currentAccountIdentifierKey)
-        XCTAssertEqual(UserDefaults.standard.string(forKey: currentAccountIdentifierKey),
-                       "urn:uuid:temp-value", "Precondition: value was written")
+        // Arrange: AccountsManager backed by an isolated per-test
+        // UserDefaults suite (swarm_cd181acd D-cleanup). Drive via the
+        // production seam — defaults.set + defaults.removeObject under
+        // currentAccountIdentifierKey — to assert the manager's getter
+        // reflects what the injected suite holds.
+        let defaults = testUserDefaults()
+        #if DEBUG
+        AccountsManager.deferInitialLoadCatalogsForTesting = true
+        #endif
+        let manager = AccountsManager(defaults: defaults)
+        defer { manager.cancelBackgroundWork() }
 
-        // Act: clear the key (simulates what setUp does)
-        UserDefaults.standard.removeObject(forKey: currentAccountIdentifierKey)
+        defaults.set("urn:uuid:temp-value", forKey: currentAccountIdentifierKey)
+        XCTAssertEqual(manager.currentAccountId, "urn:uuid:temp-value",
+                       "Precondition: AccountsManager reads back the value written to the injected suite")
 
-        // Assert: the key is gone — not a non-empty string
-        let storedValue = UserDefaults.standard.string(forKey: currentAccountIdentifierKey)
-        XCTAssertNil(storedValue,
-                     "currentAccountId should be nil after the key is explicitly removed from UserDefaults")
+        // Act: clear the key through the same injected suite.
+        defaults.removeObject(forKey: currentAccountIdentifierKey)
+
+        // Assert: the manager's getter agrees the key is gone.
+        XCTAssertNil(manager.currentAccountId,
+                     "currentAccountId should be nil after the key is explicitly removed from the injected UserDefaults suite")
     }
 
     func testCurrentAccountId_PersistsToUserDefaults() {
-        // Given: A specific account ID
+        // Arrange: AccountsManager + isolated suite (swarm_cd181acd D-cleanup).
+        let defaults = testUserDefaults()
+        #if DEBUG
+        AccountsManager.deferInitialLoadCatalogsForTesting = true
+        #endif
+        let manager = AccountsManager(defaults: defaults)
+        defer { manager.cancelBackgroundWork() }
         let testAccountId = "urn:uuid:test-persistence-check"
 
-        // When: Setting via UserDefaults directly (simulating what currentAccountId setter does)
-        UserDefaults.standard.set(testAccountId, forKey: currentAccountIdentifierKey)
+        // Act: write directly into the injected suite (production seam) so
+        // the manager observes the write on next read.
+        defaults.set(testAccountId, forKey: currentAccountIdentifierKey)
 
-        // Then: Should be retrievable and match exactly
-        let retrievedId = UserDefaults.standard.string(forKey: currentAccountIdentifierKey)
+        // Assert: the manager's currentAccountId reflects the write AND
+        // preserves the URN prefix.
+        let retrievedId = manager.currentAccountId
         XCTAssertEqual(retrievedId, testAccountId)
         XCTAssertTrue(retrievedId?.hasPrefix("urn:uuid:") == true,
                       "Stored account ID must preserve the URN prefix")

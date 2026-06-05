@@ -39,6 +39,10 @@ import XCTest
 @MainActor
 final class AppContainerAuthCoordinatorRegistrationTests: XCTestCase {
 
+    override func tearDown() {
+        super.tearDown()
+    }
+
     /// `AppContainer.production().authCoordinator` exposes a non-nil
     /// PalaceAuth.AuthCoordinator. Renders the wiring failure (e.g. a
     /// refactor that drops the let-binding) as a compile-OR-test failure

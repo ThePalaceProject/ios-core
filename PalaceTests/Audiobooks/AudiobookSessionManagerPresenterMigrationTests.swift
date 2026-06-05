@@ -59,12 +59,18 @@ final class AudiobookSessionManagerPresenterMigrationTests: XCTestCase {
     private var realCoordinator: NavigationCoordinator!
     private var realHub: NavigationCoordinatorHub!
 
+    /// Per-test isolated container — built via `makeTestAppContainer()` so
+    /// each test method gets a fresh service graph (no cross-test pollution
+    /// through `AppContainer._cached`).
+    private var appContainer: AppContainer!
+
     override func setUp() async throws {
         try await super.setUp()
         spyPresenter = SpyAudiobookSessionPresenter()
         realCoordinator = NavigationCoordinator()
         realHub = NavigationCoordinatorHub()
         realHub.coordinator = realCoordinator
+        appContainer = makeTestAppContainer()
 
         // Manager is constructed with BOTH seams overridden:
         //   1. `audiobookSessionPresenterProvider` returns the spy.
@@ -77,7 +83,7 @@ final class AudiobookSessionManagerPresenterMigrationTests: XCTestCase {
         // not apply. The flag-OFF presentation is covered separately by
         // AudiobookSessionManagerFlagGatePresentationTests.
         sessionManager = AudiobookSessionManager(
-            appContainer: AppContainer.production(),
+            appContainer: appContainer,
             navigationCoordinatorHubProvider: { [unowned self] in self.realHub },
             audiobookSessionPresenterProvider: { [unowned self] in self.spyPresenter },
             inAppPlaybackNavEnabledProvider: { true }
@@ -90,6 +96,7 @@ final class AudiobookSessionManagerPresenterMigrationTests: XCTestCase {
         spyPresenter = nil
         realCoordinator = nil
         realHub = nil
+        appContainer = nil
         try await super.tearDown()
     }
 

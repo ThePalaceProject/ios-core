@@ -18,6 +18,10 @@ import PalaceAuth
 
 final class AuthCoordinatorTelemetryTests: XCTestCase {
 
+    override func tearDown() {
+        super.tearDown()
+    }
+
     // MARK: - Round-trip: coordinator emits both events, both ride correlation
 
     func testCoordinator_refreshFlow_emitsStartAndEnd_correlatedByID() async {

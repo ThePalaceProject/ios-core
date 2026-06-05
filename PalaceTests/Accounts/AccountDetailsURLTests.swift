@@ -15,18 +15,24 @@ import PalaceCatalog
 final class AccountDetailsURLTests: XCTestCase {
 
     private var sut: AccountDetails!
+    private var defaults: UserDefaults!
     private let testUUID = "test-account-url-\(UUID().uuidString)"
 
     override func setUpWithError() throws {
         try super.setUpWithError()
-        // Clean any existing defaults for our test UUID
-        UserDefaults.standard.removeObject(forKey: testUUID)
+        // swarm_cd181acd D-cleanup: per-test isolated UserDefaults instead
+        // of mutating `.standard`. Every `AccountDetails` constructed in
+        // this file shares the same per-test suite so persistence reads
+        // (eulaIsAccepted, syncPermissionGranted, urlEULA dict, etc.)
+        // observe the same store, and the suite is dropped by
+        // `SingletonResetRegistry` when the test finishes.
+        defaults = testUserDefaults()
         sut = try makeAccountDetails(uuid: testUUID)
     }
 
     override func tearDown() {
-        UserDefaults.standard.removeObject(forKey: testUUID)
         sut = nil
+        defaults = nil
         super.tearDown()
     }
 
@@ -122,8 +128,8 @@ final class AccountDetailsURLTests: XCTestCase {
         let url = URL(string: "https://example.com/persisted")!
         sut.setURL(url, forLicense: .eula)
 
-        // Verify UserDefaults was updated
-        let savedDict = UserDefaults.standard.value(forKey: testUUID) as? [String: AnyObject]
+        // Verify the injected per-test UserDefaults suite was updated
+        let savedDict = defaults.value(forKey: testUUID) as? [String: AnyObject]
         XCTAssertNotNil(savedDict)
         XCTAssertEqual(savedDict?["urlEULA"] as? String, "https://example.com/persisted")
     }
@@ -200,7 +206,8 @@ final class AccountDetailsURLTests: XCTestCase {
     func testDebugDescription_ReflectsSupportsSimplyESync_WhenUserProfileUrlPresent() {
         // Arrange: create AccountDetails whose auth document includes a user-profile link
         let uuid = "test-debug-desc-\(UUID().uuidString)"
-        defer { UserDefaults.standard.removeObject(forKey: uuid) }
+        // Per-test UserDefaults suite — no manual cleanup of `.standard`
+        // needed because the suite is dropped by SingletonResetRegistry.
 
         let json: [String: Any] = [
             "id": uuid,
@@ -221,7 +228,7 @@ final class AccountDetailsURLTests: XCTestCase {
             "features": ["enabled": [], "disabled": []]
         ]
         guard let doc = makeAuthenticationDocument(from: json) else { return }
-        let details = AccountDetails(authenticationDocument: doc, uuid: uuid)
+        let details = AccountDetails(authenticationDocument: doc, uuid: uuid, defaults: defaults)
 
         // Act
         let description = details.debugDescription
@@ -236,7 +243,8 @@ final class AccountDetailsURLTests: XCTestCase {
     func testDefaultAuth_WithOAuthAndBasic_PrefersBasicOverOAuth() {
         // Arrange: create AccountDetails with both OAuth and basic auth
         let uuid = "test-defaultauth-\(UUID().uuidString)"
-        defer { UserDefaults.standard.removeObject(forKey: uuid) }
+        // Per-test UserDefaults suite — no manual cleanup of `.standard`
+        // needed because the suite is dropped by SingletonResetRegistry.
 
         let json: [String: Any] = [
             "id": uuid,
@@ -259,7 +267,7 @@ final class AccountDetailsURLTests: XCTestCase {
             "features": ["enabled": [], "disabled": []]
         ]
         guard let doc = makeAuthenticationDocument(from: json) else { return }
-        let details = AccountDetails(authenticationDocument: doc, uuid: uuid)
+        let details = AccountDetails(authenticationDocument: doc, uuid: uuid, defaults: defaults)
 
         // Act
         let defaultAuth = details.defaultAuth
@@ -296,7 +304,7 @@ final class AccountDetailsURLTests: XCTestCase {
 
         let data = try JSONSerialization.data(withJSONObject: json)
         let doc = try OPDS2AuthenticationDocument.fromData(data)
-        return AccountDetails(authenticationDocument: doc, uuid: uuid)
+        return AccountDetails(authenticationDocument: doc, uuid: uuid, defaults: defaults)
     }
 
     /// Builds an OPDS2AuthenticationDocument from a fixture dictionary, failing

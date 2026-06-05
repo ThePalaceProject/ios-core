@@ -2028,7 +2028,6 @@
 		119BEBB819902A8800121439 /* TPPOpenSearchDescription.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TPPOpenSearchDescription.m; sourceTree = "<group>"; };
 		11C5DD14197727A6005A9945 /* TPPKeychain.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TPPKeychain.h; sourceTree = "<group>"; };
 		11C5DD15197727A6005A9945 /* TPPKeychain.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = TPPKeychain.m; sourceTree = "<group>"; };
-		11D521991A44980D00636240 /* librmservices_iphone.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = librmservices_iphone.a; path = "../../Code/RMSDK-10_0_2014-08-25/samples/rmservices/build/xc3/build/Release-iphoneos/librmservices_iphone.a"; sourceTree = "<group>"; };
 		11D5219B1A449ABA00636240 /* libstdc++.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = "libstdc++.dylib"; path = "usr/lib/libstdc++.dylib"; sourceTree = SDKROOT; };
 		11F54C1D194109120086FCAF /* main.xml */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xml; path = main.xml; sourceTree = "<group>"; };
 		11F54C2419410BE40086FCAF /* single_entry.xml */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xml; path = single_entry.xml; sourceTree = "<group>"; };
@@ -2406,7 +2405,6 @@
 		733E3E05257ED49C00BEBA32 /* xcode-settings.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "xcode-settings.sh"; sourceTree = "<group>"; };
 		733E3E06257ED49C00BEBA32 /* ios-binaries-upload.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "ios-binaries-upload.sh"; sourceTree = "<group>"; };
 		733E3E07257ED49C00BEBA32 /* xcode-archive.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "xcode-archive.sh"; sourceTree = "<group>"; };
-		733E3E08257ED49D00BEBA32 /* archive-and-upload-adhoc.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "archive-and-upload-adhoc.sh"; sourceTree = "<group>"; };
 		733E3E09257ED49D00BEBA32 /* xcode-export-adhoc.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "xcode-export-adhoc.sh"; sourceTree = "<group>"; };
 		733FF9BD2530F9E700CDAA13 /* TPPSignInBusinessLogic+OAuth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPSignInBusinessLogic+OAuth.swift"; sourceTree = "<group>"; };
 		7340DA6124B7E45C00361387 /* URLResponse+NYPL.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "URLResponse+NYPL.swift"; sourceTree = "<group>"; };
@@ -2421,8 +2419,6 @@
 		735771AA2537650E00067CEA /* NYPLLibraryAccountsProviderMock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NYPLLibraryAccountsProviderMock.swift; sourceTree = "<group>"; };
 		735771AD2537687D00067CEA /* TPPURLSettingsProviderMock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPURLSettingsProviderMock.swift; sourceTree = "<group>"; };
 		735771B02537691800067CEA /* TPPDRMAuthorizingMock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPDRMAuthorizingMock.swift; sourceTree = "<group>"; };
-		7358A94B25898F4200E66D34 /* firebase-upload-symbols.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "firebase-upload-symbols.sh"; sourceTree = "<group>"; };
-		7358A9532589A70B00E66D34 /* decode-install-secrets.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "decode-install-secrets.sh"; sourceTree = "<group>"; };
 		735DD0BD252299A90096D1F9 /* UIColor+NYPLAdditionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UIColor+NYPLAdditionsTests.swift"; sourceTree = "<group>"; };
 		735F41A2243E381D00046182 /* String+NYPLAdditionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "String+NYPLAdditionsTests.swift"; sourceTree = "<group>"; };
 		735FC2D42485C178009CF11E /* SwiftSoup.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftSoup.framework; path = "../r2-navigator-swift/Carthage/Build/iOS/SwiftSoup.framework"; sourceTree = "<group>"; };
@@ -2430,7 +2426,6 @@
 		73609AD8245B53CB00F0E08B /* update-certificates.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; name = "update-certificates.sh"; path = "scripts/update-certificates.sh"; sourceTree = SOURCE_ROOT; };
 		7360D0D424BFCB9700C8AD16 /* TPPUserFriendlyError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPUserFriendlyError.swift; sourceTree = "<group>"; };
 		7364D69B2492A38C0087B056 /* Publication+NYPLAdditions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Publication+NYPLAdditions.swift"; sourceTree = "<group>"; };
-		7364FC6025B7C5AB00B0A9FD /* firebase-upload.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "firebase-upload.sh"; sourceTree = "<group>"; };
 		73668D395F71A962A961AB94 /* ContractSnapshot.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ContractSnapshot.swift; sourceTree = "<group>"; };
 		7375AE5925382AC900C85211 /* TPPUserAccountMock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPUserAccountMock.swift; sourceTree = "<group>"; };
 		737B9F83244FC648002B4464 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = SOURCE_ROOT; };
@@ -2475,8 +2470,6 @@
 		73C3CF5925CB8D6100CA8166 /* NYPLNetworkExecutorMock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NYPLNetworkExecutorMock.swift; sourceTree = "<group>"; };
 		73CDA120243EDAD8009CC6A6 /* URLRequest+Logging.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "URLRequest+Logging.swift"; sourceTree = "<group>"; };
 		73CEF82F252699C9006B2820 /* FirebaseCrashlytics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = FirebaseCrashlytics.framework; path = Carthage/Build/iOS/FirebaseCrashlytics.framework; sourceTree = "<group>"; };
-		73CEF8352526FE80006B2820 /* run */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = run; sourceTree = "<group>"; };
-		73CEF8362526FE80006B2820 /* upload-symbols */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.executable"; path = "upload-symbols"; sourceTree = "<group>"; };
 		73D1CD4CDD735A3008ACCD5F /* AudiobookBookmarkBusinessLogicPositionWriteTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AudiobookBookmarkBusinessLogicPositionWriteTests.swift; sourceTree = "<group>"; };
 		73DA43A12404B4A900985482 /* Cartfile */ = {isa = PBXFileReference; lastKnownFileType = text; path = Cartfile; sourceTree = SOURCE_ROOT; };
 		73DA43A32404B92E00985482 /* Cartfile.resolved */ = {isa = PBXFileReference; lastKnownFileType = text; path = Cartfile.resolved; sourceTree = SOURCE_ROOT; };
@@ -3422,13 +3415,6 @@
 			path = Fixtures;
 			sourceTree = "<group>";
 		};
-		00A47EFA42C356655C47CFAF /* CarMode */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			path = CarMode;
-			sourceTree = "<group>";
-		};
 		013986F9DDA5FDDCAF628DE6 /* OPDS2 */ = {
 			isa = PBXGroup;
 			children = (
@@ -3647,7 +3633,6 @@
 		21E7E07424FEA7C100189224 /* Audiobooks */ = {
 			isa = PBXGroup;
 			children = (
-				D1086607A3EC89E861F37B82 /* CarMode */,
 				E795A7622A74072500314EC8 /* Tracker */,
 				218D0CF925715EF700E81705 /* LCP */,
 				21E7E07924FEA7D700189224 /* DPLA */,
@@ -3728,13 +3713,6 @@
 			path = Platform;
 			sourceTree = "<group>";
 		};
-		2A234B732B9A9604F5535E1E /* JWK */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			path = JWK;
-			sourceTree = "<group>";
-		};
 		2CA47E30A2714FA00C4D8027 /* Models */ = {
 			isa = PBXGroup;
 			children = (
@@ -3764,13 +3742,6 @@
 				06784DE00D5161E7071843F0 /* StringHTMLEntitiesTests.swift */,
 			);
 			path = Extensions;
-			sourceTree = "<group>";
-		};
-		414C44192994727E12161F72 /* Social */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			path = Social;
 			sourceTree = "<group>";
 		};
 		41514C9E35D6E001ED308146 /* BookCell */ = {
@@ -4076,7 +4047,6 @@
 				11068C54196DD37900E8A94B /* TPPNull.m */,
 				E551116D283C93BC0095E723 /* EmailAddress.swift */,
 				34BD75A5447FB7BD0DA90F57 /* SendableSubject.swift */,
-				2A234B732B9A9604F5535E1E /* JWK */,
 				E48AE22D7C0BC6134885E9F0 /* TPPProcessInfo.swift */,
 			);
 			path = Utilities;
@@ -4502,12 +4472,9 @@
 		73CEF8332526FE80006B2820 /* scripts */ = {
 			isa = PBXGroup;
 			children = (
-				73CEF8342526FE80006B2820 /* firebase */,
 				73EB0B7F2582CCE9006BC997 /* build-3rd-party-dependencies.sh */,
 				73DA43A62404BA5600985482 /* build-carthage.sh */,
 				73609AD8245B53CB00F0E08B /* update-certificates.sh */,
-				7358A9532589A70B00E66D34 /* decode-install-secrets.sh */,
-				733E3E08257ED49D00BEBA32 /* archive-and-upload-adhoc.sh */,
 				733E3E07257ED49C00BEBA32 /* xcode-archive.sh */,
 				733E3E09257ED49D00BEBA32 /* xcode-export-adhoc.sh */,
 				731272AC259CF6F90032D7B4 /* xcode-export-appstore.sh */,
@@ -4515,8 +4482,6 @@
 				733E3E05257ED49C00BEBA32 /* xcode-settings.sh */,
 				733E3E06257ED49C00BEBA32 /* ios-binaries-upload.sh */,
 				7312725C259A9AB00032D7B4 /* ios-binaries-check.sh */,
-				7364FC6025B7C5AB00B0A9FD /* firebase-upload.sh */,
-				7358A94B25898F4200E66D34 /* firebase-upload-symbols.sh */,
 				731272B1259CFB180032D7B4 /* testflight-upload.sh */,
 				73EB0B802582CD59006BC997 /* bootstrap-drm.sh */,
 				73EB0B812582CD59006BC997 /* setup-repo-drm.sh */,
@@ -4524,15 +4489,6 @@
 			);
 			path = scripts;
 			sourceTree = SOURCE_ROOT;
-		};
-		73CEF8342526FE80006B2820 /* firebase */ = {
-			isa = PBXGroup;
-			children = (
-				73CEF8352526FE80006B2820 /* run */,
-				73CEF8362526FE80006B2820 /* upload-symbols */,
-			);
-			path = firebase;
-			sourceTree = "<group>";
 		};
 		73CEF839252706E3006B2820 /* PalaceConfig */ = {
 			isa = PBXGroup;
@@ -4675,7 +4631,6 @@
 		78D761BECF1895ABCF338A3A /* Audiobooks */ = {
 			isa = PBXGroup;
 			children = (
-				00A47EFA42C356655C47CFAF /* CarMode */,
 				D8594B752B9EB47CACE89C7C /* SAMLPlusBiblioBoardExpirationTests.swift */,
 				9363B8BAFC71462390D7DD31 /* AudiobookLoadFailureSAMLReauthTests.swift */,
 				438565F54D10DB92E170C1AB /* Mocks */,
@@ -5026,7 +4981,6 @@
 				1146EE3F1A5DD071009F7576 /* CoreText.framework */,
 				112492571A5B5B690054D6E2 /* libstdc++.6.dylib */,
 				11D5219B1A449ABA00636240 /* libstdc++.dylib */,
-				11D521991A44980D00636240 /* librmservices_iphone.a */,
 				119503EA1993F91E009FB788 /* libc++.dylib */,
 				119503E81993F919009FB788 /* libz.dylib */,
 				119503E61993F914009FB788 /* libxml2.dylib */,
@@ -5115,10 +5069,8 @@
 				D62D168E304A0769D3AADCF2 /* Security */,
 				B3DC95991AADEE7FEF8F1A0A /* Property */,
 				B276B087059115995C1F90B8 /* Fuzz */,
-				414C44192994727E12161F72 /* Social */,
 				27DB62D5741293F240E7596F /* Platform */,
 				78D761BECF1895ABCF338A3A /* Audiobooks */,
-				AB8405417D83EA32553756F8 /* Discovery */,
 				83FDAE786C460F0C949A083F /* Stats */,
 				E50546782E62020D007CCFAB /* URLSession+Stubbing.swift */,
 				E50546762E6201E6007CCFAB /* HTTPStubURLProtocol.swift */,
@@ -5177,7 +5129,6 @@
 				1CC8CE574CA000058042E18B /* CatalogUI */,
 				BEA1A694D8EE1D2F8DEAE840 /* MyBooks */,
 				9DBC860BC4C3D6C0D59C6ECD /* Reader */,
-				C14BBADBC3C41A234E486466 /* Snapshots */,
 				48C00A8C2B07228C81A846CB /* ViewModels */,
 				0DFA52843241739C5213AD8F /* Network */,
 				D1950C4D48EB8C2AB9397903 /* PDF */,
@@ -5280,13 +5231,6 @@
 			);
 			name = BusinessLogic;
 			path = BusinessLogic;
-			sourceTree = "<group>";
-		};
-		AB8405417D83EA32553756F8 /* Discovery */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			path = Discovery;
 			sourceTree = "<group>";
 		};
 		AF7180D5A9E0A6119249B567 /* Contract */ = {
@@ -5527,13 +5471,6 @@
 			path = BookRegistry;
 			sourceTree = "<group>";
 		};
-		C14BBADBC3C41A234E486466 /* Snapshots */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			path = Snapshots;
-			sourceTree = "<group>";
-		};
 		C2C1A4564EE2DAE41C449950 /* Stats */ = {
 			isa = PBXGroup;
 			children = (
@@ -5639,13 +5576,6 @@
 				DD2979A9E5BF9E88707C9BC2 /* BundledRegistrySnapshotTests.swift */,
 			);
 			path = Crawl;
-			sourceTree = "<group>";
-		};
-		D1086607A3EC89E861F37B82 /* CarMode */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			path = CarMode;
 			sourceTree = "<group>";
 		};
 		D1950C4D48EB8C2AB9397903 /* PDF */ = {
@@ -5853,41 +5783,9 @@
 			path = AccountList;
 			sourceTree = "<group>";
 		};
-		E5AD72CF2E5520FB005A8070 /* API */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			path = API;
-			sourceTree = "<group>";
-		};
-		E5AD72D12E5520FB005A8070 /* Models */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			path = Models;
-			sourceTree = "<group>";
-		};
-		E5AD72D32E5520FB005A8070 /* Parsing */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			path = Parsing;
-			sourceTree = "<group>";
-		};
-		E5AD72D52E5520FB005A8070 /* Repository */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			path = Repository;
-			sourceTree = "<group>";
-		};
 		E5AD72D62E5520FB005A8070 /* CatalogDomain */ = {
 			isa = PBXGroup;
 			children = (
-				E5AD72CF2E5520FB005A8070 /* API */,
-				E5AD72D12E5520FB005A8070 /* Models */,
-				E5AD72D32E5520FB005A8070 /* Parsing */,
-				E5AD72D52E5520FB005A8070 /* Repository */,
 			);
 			path = CatalogDomain;
 			sourceTree = "<group>";

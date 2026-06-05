@@ -322,7 +322,7 @@ private final class SpyLocalContentRecorder: LocalBookContentService {
         self.log = log
         super.init(
             bookRegistry: TPPBookRegistryMock(),
-            accountsManager: AppContainer.production().accountsManager,
+            accountsManager: makeTestAppContainer().accountsManager,
             bookFileManager: BookFileManager(bookRegistry: TPPBookRegistryMock()),
             fileManager: .default
         )

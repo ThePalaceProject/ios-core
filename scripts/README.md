@@ -49,7 +49,6 @@ These five scripts handle most of the day-to-day work. Read these first if you o
 | `xcode-export.sh` | Unified export driver. `--format adhoc` or `--format appstore`. Sources `xcode-settings.sh` once, branches on format. | invoked by the two shims below; new call sites should use this directly |
 | `xcode-export-adhoc.sh` | Thin shim → `xcode-export.sh --format adhoc`. Kept so `upload*.yml` CI workflows don't break. | `upload*.yml` |
 | `xcode-export-appstore.sh` | Thin shim → `xcode-export.sh --format appstore`. Kept so `upload*.yml` CI workflows don't break. | `upload*.yml` |
-| `archive-and-upload-adhoc.sh` | Archive + ad-hoc export + upload in one step. | dev/local |
 | `add_palace_catalog_package.rb` | Wires the local PalaceCatalog SPM package into `Palace.xcodeproj`. | one-shot, dev/local |
 | `add_palace_keychain_package.rb` | Wires PalaceKeychain SPM package into the project. | one-shot, dev/local |
 | `add_palace_logging_package.rb` | Wires PalaceLogging SPM package into the project. | one-shot, dev/local |
@@ -120,7 +119,6 @@ These five scripts handle most of the day-to-day work. Read these first if you o
 
 | Script | What it does | Called by |
 |--------|--------------|-----------|
-| `accessibility-lint.sh` | Runs AccessLint accessibility analysis on the project. | `ledger.yml` |
 | `a11y-coverage.py` | Measures VoiceOver label coverage against a simdrive fixture. | dev/local |
 | `snapshot-library-registry.py` | Snapshots the library registry JSON and diffs against live; surfaces account/auth-doc drift. | dev/local, drift-investigation |
 | `check_registry_snapshot_freshness.sh` | CI guard that fails if the committed registry snapshot is older than the live registry. | `ledger.yml` |
@@ -136,13 +134,9 @@ These five scripts handle most of the day-to-day work. Read these first if you o
 | `ios-check-version.sh` | Validates the build number against tags before upload. | `upload*.yml`, `check-build-number.yml` |
 | `ios-binaries-check.sh` | Checks whether a binary with the current build number already exists. | `check-build-number.yml` |
 | `ios-binaries-upload.sh` | Uploads exported `.ipa` to the Palace binaries bucket. | `upload*.yml` |
-| `firebase-upload.sh` | Uploads an `.ipa` to Firebase App Distribution. | `upload*.yml` |
-| `firebase-upload-symbols.sh` | Uploads dSYMs to Firebase. | `upload*.yml` |
-| `testflight-upload.sh` | Uploads an `.ipa` to TestFlight. | `upload*.yml` |
+| `testflight-upload.sh` | Uploads an `.ipa` to TestFlight. | dev/local (manual maintainer run) |
 | `install-profile.sh` | Installs a distribution provisioning profile on the CI runner. | `upload*.yml` |
-| `decode-install-secrets.sh` | Creates a build keychain and installs the Apple distribution identity. | `upload*.yml` |
 | `update-certificates.sh` | Refreshes the developer certificates checked into `mobile-certificates`. | dev/local |
-| `firebase/` | Firebase CLI helpers and config. | `firebase-upload*.sh` |
 
 ### Crash and Jira reporting
 

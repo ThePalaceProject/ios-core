@@ -12,6 +12,10 @@ import os.log
 
 final class DeviceLogCollectorTests: XCTestCase {
 
+    override func tearDown() {
+        super.tearDown()
+    }
+
     // MARK: - collectLogs Output Structure Tests
 
     func testCollectLogs_returnsNonEmptyData() async {

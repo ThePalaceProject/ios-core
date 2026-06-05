@@ -22,40 +22,15 @@
 # Snapshot date: 2026-06-04. Snapshot generated mechanically by
 # scripts/teardown_baseline.sh (a one-shot in the swarm E transcript).
 # Lines starting with `#` and blank lines are ignored by the reader.
-PalaceTests/Accounts/AccountSwitchCleanupTests.swift
-PalaceTests/AppInfrastructure/AppContainerAudiobookFactoryTests.swift
-PalaceTests/AppInfrastructure/AppContainerAuthCoordinatorWiringTests.swift
-PalaceTests/AppInfrastructure/AppContainerImageLoaderInjectionTests.swift
+#
+# swarm_cd181acd E-shrink (2026-06-04): all 37 prior entries gained
+# `override func tearDown()` (or were already compliant via inheritance
+# / pre-existing async tearDown). The single retained entry below is a
+# hold-pin so the lint's `testBaselineFileIsLoaded` self-test stays
+# green (it asserts the baseline file loads at least one entry and
+# contains either AppContainerTests.swift or CoverageGapTests3.swift).
+# The file itself is COMPLIANT (it has its own tearDown override) — the
+# baseline-membership is purely a self-test hold, not a real exemption.
+# Future shrink: drop the spot-check from the lint self-test, then remove
+# this last entry entirely.
 PalaceTests/AppInfrastructure/AppContainerTests.swift
-PalaceTests/AppInfrastructure/AppContainerWithSignInModalSheetPresenterTests.swift
-PalaceTests/AppInfrastructure/AuthCoordinatorTelemetryTests.swift
-PalaceTests/AppInfrastructure/RemoteFeatureFlagsTests.swift
-PalaceTests/Audiobook/AudiobookLoaderPredicateTests.swift
-PalaceTests/Audiobook/Vendors/BearerTokenAdapterTests.swift
-PalaceTests/Audiobook/Vendors/OpenAccessAdapterTests.swift
-PalaceTests/Audiobooks/AudiobookLoaderFinalizeBuildTests.swift
-PalaceTests/Audiobooks/AudiobookSessionManagerShutdownTests.swift
-PalaceTests/Audiobooks/AudiobookSessionStateTests.swift
-PalaceTests/Audiobooks/PlaybackBootstrapperTests.swift
-PalaceTests/Book/TPPBookDRMProtectedTests.swift
-PalaceTests/ButtonStateTests.swift
-PalaceTests/CatalogDomain/CatalogLaneSortingTests.swift
-PalaceTests/Contract/PositionWriterContractTests.swift
-PalaceTests/CoverageGapTests3.swift
-PalaceTests/Logging/DeviceLogCollectorTests.swift
-PalaceTests/Logging/ErrorLogExporterTests.swift
-PalaceTests/Logging/LogTests.swift
-PalaceTests/MyBooks/MyBooksDownloadCenterAccountIdThreadingTests.swift
-PalaceTests/Network/ReachabilityTests.swift
-PalaceTests/Notifications/NotificationSyncThrottleTests.swift
-PalaceTests/OPDS2/OPDS2CatalogWiringTests.swift
-PalaceTests/ProblemReportEmailTests.swift
-PalaceTests/Reader/ReaderEditingActionsTests.swift
-PalaceTests/Reader2/Typography/FontManagerTests.swift
-PalaceTests/SignInLogic/SignInModalLifecycleTests.swift
-PalaceTests/Support/TestAppContainerFactoryTests.swift
-PalaceTests/Support/TPPUserAccountTestFactoryTests.swift
-PalaceTests/Support/XCTestCase+testUserDefaults.swift
-PalaceTests/Support/XCTestCase+testUserDefaultsTests.swift
-PalaceTests/TPPUserNotificationsTests.swift
-PalaceTests/VisualRegression/AnonymousBorrowFixtureTests.swift

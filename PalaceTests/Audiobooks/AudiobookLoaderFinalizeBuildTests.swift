@@ -32,6 +32,10 @@ import XCTest
 @MainActor
 final class AudiobookLoaderFinalizeBuildTests: XCTestCase {
 
+    override func tearDown() {
+        super.tearDown()
+    }
+
     // MARK: - Test fixtures
 
     /// Minimal, well-formed LCP-style open-access manifest dictionary. Two

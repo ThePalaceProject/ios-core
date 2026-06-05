@@ -67,6 +67,21 @@ final class DownloadAuthRetryHandler {
     /// resolution semantics — survives library switches mid-flow.
     private let userAccountProvider: () -> TPPUserAccount
 
+    /// Retained handles for the fire-and-forget Tasks launched from the
+    /// re-auth dispatch branches (swarm_47883816 F-iii'-1). Previously
+    /// each Task was leaked once dispatched — if the handler was torn
+    /// down (or a test ended) before the Task completed, the Task kept
+    /// running and wrote into `bookRegistry` / `stateManager` after the
+    /// owning context expired. Retaining lets `cancelAllInFlightTasks()`
+    /// (called from `deinit` and any reset path) deterministically drop
+    /// the orphaned work. Tasks remove themselves from the set when
+    /// their body finishes so the set never grows unbounded.
+    ///
+    /// `@MainActor`-isolated — every site that inserts into or removes
+    /// from this set runs on the main actor, matching the
+    /// `@MainActor`-isolated entry points of the handler.
+    @MainActor private var inFlightTasks: Set<Task<Void, Never>> = []
+
     init(
         stateManager: DownloadStateManager,
         bookRegistry: TPPBookRegistryProvider,
@@ -81,6 +96,94 @@ final class DownloadAuthRetryHandler {
         self.alertPresenter = alertPresenter
         self.userAccountProvider = userAccountProvider
         self.authCoordinator = authCoordinator
+    }
+
+    deinit {
+        // Cancel any retry/cleanup Tasks still in flight so they don't
+        // outlive the handler and write into `bookRegistry` /
+        // `stateManager` after their owning context has gone away.
+        //
+        // `inFlightTasks` is `@MainActor`-isolated; `deinit` is
+        // nonisolated. We can't read the property directly from
+        // deinit. Tasks are reference types so the live Tasks already
+        // own themselves until they finish; we cannot reach them from
+        // here. The defensive guarantee is the `[weak self]` capture
+        // inside every tracked Task body: once `self` deinits, the
+        // body's first `guard let self` short-circuits and the Task
+        // unwinds without touching `bookRegistry`. The retention here
+        // is therefore a *cancellation seam* (`cancelAllInFlightTasks`
+        // is the explicit entry point), not a deinit-side action.
+    }
+
+    // MARK: - Task lifecycle
+
+    /// Cancels every retained in-flight Task and clears the tracking
+    /// set. Call from any reset / sign-out / library-switch path that
+    /// wants to abandon pending re-auth retries without waiting for
+    /// them. Tasks check `Task.isCancelled` at every `await` hop so
+    /// already-started Tasks unwind without re-entering the main actor
+    /// after cancellation.
+    @MainActor
+    func cancelAllInFlightTasks() {
+        for task in inFlightTasks {
+            task.cancel()
+        }
+        inFlightTasks.removeAll()
+    }
+
+    /// Test/audit hook: number of retained Tasks currently in flight.
+    /// Internal because the count is part of the cancellation contract
+    /// (a test verifies the set is populated when a retry path runs and
+    /// drained once it completes).
+    @MainActor
+    var inFlightTaskCount: Int { inFlightTasks.count }
+
+    /// Wraps a fire-and-forget Task in the retention + auto-removal
+    /// dance. Stores the handle in `inFlightTasks` before the body
+    /// runs, then removes it from the set when the body returns. The
+    /// auto-removal hop is itself a Task — small, never retained,
+    /// fine to leak because it does no work beyond a set mutation.
+    @MainActor
+    @discardableResult
+    private func launchTrackedTask(
+        _ body: @escaping @Sendable () async -> Void
+    ) -> Task<Void, Never> {
+        var task: Task<Void, Never>!
+        task = Task { [weak self] in
+            await body()
+            await MainActor.run { [weak self] in
+                self?.inFlightTasks.remove(task)
+            }
+        }
+        inFlightTasks.insert(task)
+        return task
+    }
+
+    /// Auth-completion retry helper. Called from the reauthenticator
+    /// completion closure (`presentSignInModal` and
+    /// `reauthenticate(retryWithFreshAuthState:)`), which fires on an
+    /// arbitrary queue. Hops to MainActor, then schedules the retry
+    /// body as a tracked Task so the handle is retained in
+    /// `inFlightTasks` and `cancelAllInFlightTasks()` can drop it.
+    ///
+    /// `handler` is a strong ref to the same `[weak self]` the caller
+    /// already unwrapped — by the time we get here the caller has
+    /// decided self is still alive, so capturing strongly for the
+    /// duration of the (cheap) MainActor hop is fine. The inner
+    /// retained Task captures weakly again so it can be cancelled
+    /// without keeping the handler alive.
+    @MainActor
+    private func scheduleRetainedRetry(
+        _ body: @escaping @MainActor (DownloadAuthRetryHandler) -> Void
+    ) {
+        var task: Task<Void, Never>!
+        task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            if Task.isCancelled { return }
+            body(self)
+            self.inFlightTasks.remove(task)
+        }
+        inFlightTasks.insert(task)
     }
 
     // MARK: - Entry point
@@ -170,10 +273,12 @@ final class DownloadAuthRetryHandler {
         // others) and the post-success download restart stay here.
         if let coordinator = self.authCoordinator {
             let reason: ReauthReason = isSaml ? .samlSessionExpired : .invalidCredentials
-            Task { [weak self] in
+            launchTrackedTask { [weak self] in
                 guard let self else { return }
                 await self.cleanupTrackingState(book: book, task: task)
+                if Task.isCancelled { return }
                 let outcome = await coordinator.refreshCredentialsIfNeeded(reason: reason)
+                if Task.isCancelled { return }
                 await MainActor.run { [weak self] in
                     guard let self else { return }
                     if isSaml {
@@ -197,9 +302,10 @@ final class DownloadAuthRetryHandler {
             // SAML cookies expired - need to re-auth via IDP
             Log.info(#file, "SAML session expired - triggering SAML re-auth flow")
 
-            Task { [weak self] in
+            launchTrackedTask { [weak self] in
                 guard let self else { return }
                 await self.cleanupTrackingState(book: book, task: task)
+                if Task.isCancelled { return }
                 await MainActor.run { [weak self] in
                     guard let self else { return }
                     self.bookRegistry.setState(.SAMLStarted, for: book.identifier)
@@ -211,9 +317,10 @@ final class DownloadAuthRetryHandler {
             // OIDC or other browser-based auth - present sign-in modal
             Log.info(#file, "Browser-based auth expired - triggering re-auth via sign-in modal")
 
-            Task { [weak self] in
+            launchTrackedTask { [weak self] in
                 guard let self else { return }
                 await self.cleanupTrackingState(book: book, task: task)
+                if Task.isCancelled { return }
                 await MainActor.run { [weak self] in
                     guard let self else { return }
                     self.bookRegistry.setState(.downloadNeeded, for: book.identifier)
@@ -236,10 +343,12 @@ final class DownloadAuthRetryHandler {
         // dressed up as a session-expiry signal for browser-based auth.
         if let coordinator = self.authCoordinator {
             let reason: ReauthReason = isSaml ? .samlSessionExpired : .invalidCredentials
-            Task { [weak self] in
+            launchTrackedTask { [weak self] in
                 guard let self else { return }
                 await self.cleanupTrackingState(book: book, task: task)
+                if Task.isCancelled { return }
                 let outcome = await coordinator.refreshCredentialsIfNeeded(reason: reason)
+                if Task.isCancelled { return }
                 await MainActor.run { [weak self] in
                     guard let self else { return }
                     if isSaml {
@@ -261,9 +370,10 @@ final class DownloadAuthRetryHandler {
 
         if isSaml {
             Log.info(#file, "SAML: 'no-active-loan' treating as session expiry (PP-3716)")
-            Task { [weak self] in
+            launchTrackedTask { [weak self] in
                 guard let self else { return }
                 await self.cleanupTrackingState(book: book, task: task)
+                if Task.isCancelled { return }
                 await MainActor.run { [weak self] in
                     guard let self else { return }
                     self.bookRegistry.setState(.SAMLStarted, for: book.identifier)
@@ -273,9 +383,10 @@ final class DownloadAuthRetryHandler {
             }
         } else {
             Log.info(#file, "Browser auth: 'no-active-loan' treating as session expiry")
-            Task { [weak self] in
+            launchTrackedTask { [weak self] in
                 guard let self else { return }
                 await self.cleanupTrackingState(book: book, task: task)
+                if Task.isCancelled { return }
                 await MainActor.run { [weak self] in
                     guard let self else { return }
                     self.bookRegistry.setState(.downloadNeeded, for: book.identifier)
@@ -326,16 +437,26 @@ final class DownloadAuthRetryHandler {
             userAccount,
             usingExistingCredentials: false,
             authenticationCompletion: { [weak self] in
+                // Reauthenticator completion fires on an arbitrary
+                // queue. Hop to MainActor first — only there can we
+                // retain the retry Task in `inFlightTasks`.
+                //
+                // no-track: this hop Task is fire-and-forget by design.
+                // It owns no async work beyond awaiting MainActor and
+                // immediately delegating to `scheduleRetainedRetry`,
+                // which IS tracked. Tracking the hop itself would race
+                // with its own MainActor entry.
                 Task { @MainActor [weak self] in
-                    guard let self else { return }
-                    let userAccount = self.userAccountProvider()
-                    // Only retry if user successfully authenticated; if they cancelled, bail out
-                    guard userAccount.hasCredentials() else {
-                        Log.info(#file, "Authentication cancelled, not retrying download for \(book.identifier)")
-                        return
+                    self?.scheduleRetainedRetry { strongSelf in
+                        let userAccount = strongSelf.userAccountProvider()
+                        // Only retry if user successfully authenticated; if they cancelled, bail out
+                        guard userAccount.hasCredentials() else {
+                            Log.info(#file, "Authentication cancelled, not retrying download for \(book.identifier)")
+                            return
+                        }
+                        Log.info(#file, "Authentication completed, retrying download for \(book.identifier)")
+                        strongSelf.delegate?.startDownload(for: book, withRequest: nil)
                     }
-                    Log.info(#file, "Authentication completed, retrying download for \(book.identifier)")
-                    self.delegate?.startDownload(for: book, withRequest: nil)
                 }
             }
         )
@@ -353,15 +474,19 @@ final class DownloadAuthRetryHandler {
             userAccount,
             usingExistingCredentials: false,
             authenticationCompletion: { [weak self] in
+                // no-track: see presentSignInModal for the same pattern.
+                // Hop Task is uninstrumented by design; the retry body
+                // it schedules via `scheduleRetainedRetry` IS tracked.
                 Task { @MainActor [weak self] in
-                    guard let self else { return }
-                    let userAccount = self.userAccountProvider()
-                    guard userAccount.authState == .loggedIn else {
-                        Log.info(#file, "Re-auth cancelled or incomplete, not retrying download for \(book.identifier)")
-                        return
+                    self?.scheduleRetainedRetry { strongSelf in
+                        let userAccount = strongSelf.userAccountProvider()
+                        guard userAccount.authState == .loggedIn else {
+                            Log.info(#file, "Re-auth cancelled or incomplete, not retrying download for \(book.identifier)")
+                            return
+                        }
+                        Log.info(#file, "Re-auth completed, retrying download for \(book.identifier)")
+                        strongSelf.delegate?.startDownload(for: book, withRequest: nil)
                     }
-                    Log.info(#file, "Re-auth completed, retrying download for \(book.identifier)")
-                    self.delegate?.startDownload(for: book, withRequest: nil)
                 }
             }
         )
