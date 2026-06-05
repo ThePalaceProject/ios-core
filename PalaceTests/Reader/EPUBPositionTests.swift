@@ -8,6 +8,7 @@
 //
 
 import XCTest
+import ReadiumShared
 @testable import Palace
 
 final class EPUBPositionTests: XCTestCase {
@@ -116,5 +117,78 @@ final class EPUBPositionTests: XCTestCase {
                              "Throttling interval must be positive to prevent infinite sync loops")
         XCTAssertLessThan(TPPLastReadPositionPoster.throttlingInterval, 60,
                           "Throttling interval must be less than 60s to ensure position is saved frequently enough")
+    }
+
+    // MARK: - Locator round-trip (PP-4340 JSONValue migration)
+
+    /// Covers the serialization path changed by the Readium 3.9.0 JSONValue
+    /// migration: `init?(locator:)` reads `otherLocations[cssSelector]?.string`
+    /// and serializes via the new Foundation `jsonString(from:)` helper, and
+    /// `convertToLocator` rebuilds `otherLocations` as `[String: JSONValue]`.
+    /// A regression on any changed line — dropping `.string`, failing to wrap
+    /// the value in `JSONValue`, or a broken serializer — breaks this
+    /// round-trip while leaving the pre-existing string/dictionary tests green.
+    func testLocatorRoundTrip_preservesCssSelectorPositionProgression_throughJSONValue() async {
+        let publication = Self.makeTestPublication()
+        guard let href = AnyURL(string: "/chapter1.xhtml") else {
+            return XCTFail("invalid test href")
+        }
+        let original = Locator(
+            href: href,
+            mediaType: .xhtml,
+            title: "Chapter One",
+            locations: Locator.Locations(
+                progression: 0.5,
+                totalProgression: 0.25,
+                position: 7,
+                otherLocations: ["cssSelector": .string("#para-3")]
+            )
+        )
+
+        guard let bookLocation = TPPBookLocation(locator: original,
+                                                 type: "LocatorHrefProgression",
+                                                 publication: publication) else {
+            return XCTFail("TPPBookLocation(locator:) returned nil")
+        }
+        // The `?.string` read + `jsonString(from:)` serializer must have emitted the selector.
+        XCTAssertTrue(bookLocation.locationString.contains("#para-3"),
+                      "cssSelector must appear in the serialized locationString")
+
+        let restored = await bookLocation.convertToLocator(publication: publication)
+        XCTAssertEqual(restored?.locations.otherLocations["cssSelector"]?.string, "#para-3",
+                       "cssSelector must survive the JSONValue bridge in convertToLocator")
+        XCTAssertEqual(restored?.locations.position, 7)
+        XCTAssertEqual(restored?.locations.progression, 0.5)
+        XCTAssertEqual(restored?.title, "Chapter One")
+    }
+
+    /// Edge: no cssSelector exercises the `?? ""` / `?? [:]` branches — the
+    /// round-trip must still succeed and must not fabricate a non-empty selector.
+    func testLocatorRoundTrip_withoutCssSelector_succeedsAndPreservesPosition() async {
+        let publication = Self.makeTestPublication()
+        guard let href = AnyURL(string: "/chapter1.xhtml") else {
+            return XCTFail("invalid test href")
+        }
+        let original = Locator(
+            href: href,
+            mediaType: .xhtml,
+            locations: Locator.Locations(progression: 0.1, totalProgression: 0.1, position: 2)
+        )
+        guard let bookLocation = TPPBookLocation(locator: original,
+                                                 type: "LocatorHrefProgression",
+                                                 publication: publication) else {
+            return XCTFail("TPPBookLocation(locator:) returned nil")
+        }
+        let restored = await bookLocation.convertToLocator(publication: publication)
+        XCTAssertNotNil(restored, "round-trip must succeed without a cssSelector")
+        XCTAssertEqual(restored?.locations.position, 2)
+        XCTAssertEqual(restored?.locations.otherLocations["cssSelector"]?.string ?? "", "",
+                       "no real selector should be fabricated when none was provided")
+    }
+
+    private static func makeTestPublication() -> Publication {
+        let metadata = Metadata(title: "Test", languages: ["en"])
+        let readingOrder = [Link(href: "/chapter1.xhtml", mediaType: .xhtml)]
+        return Publication(manifest: Manifest(metadata: metadata, readingOrder: readingOrder))
     }
 }
