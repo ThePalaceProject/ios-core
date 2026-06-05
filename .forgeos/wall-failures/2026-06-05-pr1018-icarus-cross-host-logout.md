@@ -3,12 +3,12 @@ date: 2026-06-05
 pr: "#1018"
 source: shipped-bug
 reviewer_ids: []
-changeset_id: cs_TBD-on-promote
+changeset_id: cs_4a299dad
 wall: contract
 walls: [contract, TDD, reviewer, stale-doc]
 severity: critical
-wall_status: proposed
-applied_in: ""
+wall_status: applied
+applied_in: "3aa106262"
 contributing_docs:
   - path: docs/architecture/areas/auth/verification-checklist.md
     last_refresh_at_failure: 2026-05-28
@@ -148,7 +148,7 @@ The class is closed when:
 
 - 2026-06-05 — wall-failure entry created from `.forgeos/handoffs/2026-06-05-icarus-cross-host-logout-regression.md`. Fix proposed at `.forgeos/changesets/fix-icarus-cross-host-logout/fix-contract.md`. Jira: PP-4436 (3.2.0 regression pass — no dedicated ticket per user 2026-06-05).
 - 2026-06-05 — architect post-review verdict APPROVED-WITH-CHANGES; changes applied to fix-contract (sibling-site scope expansion, mutation threshold to 100%, Rule 4 + Rule 4b ordering test, property-fuzz 50/50 split, count corrected 4→5). Trail in fix-contract.md § 9.
-- TBD — fix landed in `<commit-SHA>` (PR #TBD). Update `applied_in:` frontmatter.
+- 2026-06-05 — fix landed in commit 3aa106262 (PR # pending push). SoD reviews APPROVED: architect rev_03082d0d + qa_test rev_20a08a03. ForgeOS gates review/testing/release all passed (cs_4a299dad). Mutation diff-only kill: 100% on both sibling sites (DownloadAuthRetryHandler 2/2 + TokenRefreshInterceptor 2/2). Status: applied.
 - TBD — next swarm review of an auth-error decision path: confirm the architect-reviewer prompt enforces the host-scoping question per Proposed Fix item 6.
 - TBD — observation pass: did Wall-failure class recur in next ≥3 auth-touching PRs?
 
