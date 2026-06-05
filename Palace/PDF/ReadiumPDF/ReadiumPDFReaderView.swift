@@ -18,7 +18,6 @@
 
 import SwiftUI
 import ReadiumShared
-import ReadiumAdapterGCDWebServer
 import PalaceUIKit
 
 struct ReadiumPDFReaderView: View {
@@ -27,7 +26,6 @@ struct ReadiumPDFReaderView: View {
 
     let publication: Publication
     let book: TPPBook
-    let httpServer: GCDHTTPServer
 
     @EnvironmentObject var metadata: TPPPDFDocumentMetadata
     @EnvironmentObject var coordinator: NavigationCoordinator
@@ -40,10 +38,9 @@ struct ReadiumPDFReaderView: View {
     /// snapshot so the side panels stay referentially stable.
     private let document: TPPPDFDocument
 
-    init(publication: Publication, book: TPPBook, httpServer: GCDHTTPServer, tableOfContents: [TPPPDFLocation], pageCount: Int) {
+    init(publication: Publication, book: TPPBook, tableOfContents: [TPPPDFLocation], pageCount: Int) {
         self.publication = publication
         self.book = book
-        self.httpServer = httpServer
         self.document = TPPPDFDocument(tableOfContents: tableOfContents, pageCount: pageCount)
     }
 
@@ -89,7 +86,6 @@ struct ReadiumPDFReaderView: View {
         ReadiumPDFContainer(
             publication: publication,
             book: book,
-            httpServer: httpServer,
             initialPageIndex: metadata.currentPage,
             onLocationChange: { locator in
                 // First emission means page 1 actually rendered — flip

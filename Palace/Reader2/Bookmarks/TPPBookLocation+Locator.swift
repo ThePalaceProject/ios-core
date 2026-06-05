@@ -17,10 +17,10 @@ extension TPPBookLocation {
             TPPBookLocation.bookProgressKey: locator.locations.totalProgression ?? 0.0,
             TPPBookLocation.titleKey: locator.title ?? "",
             TPPBookLocation.positionKey: locator.locations.position ?? 0,
-            TPPBookLocation.cssSelector: locator.locations.otherLocations[TPPBookLocation.cssSelector] ?? ""
+            TPPBookLocation.cssSelector: locator.locations.otherLocations[TPPBookLocation.cssSelector]?.string ?? ""
         ]
 
-        guard let jsonString = serializeJSONString(dict) else {
+        guard let jsonString = TPPBookLocation.jsonString(from: dict) else {
             Log.warn(#file, "Failed to serialize JSON string from dictionary - \(dict.debugDescription)")
             return nil
         }
@@ -60,12 +60,24 @@ extension TPPBookLocation {
             TPPBookLocation.cssSelector: cssSelector ?? ""
         ]
 
-        guard let jsonString = serializeJSONString(dict) else {
+        guard let jsonString = TPPBookLocation.jsonString(from: dict) else {
             Log.warn(#file, "Failed to serialize JSON string from dictionary - \(dict.debugDescription)")
             return nil
         }
 
         self.init(locationString: jsonString, renderer: renderer)
+    }
+
+    /// Serializes a location dictionary to a JSON string. Replaces Readium's
+    /// `serializeJSONString` free function, removed in the 3.9.0 JSONValue
+    /// migration. The payload is a plain Foundation `[String: Any]`, so
+    /// Foundation's `JSONSerialization` is the natural fit and round-trips with
+    /// the `JSONSerialization.jsonObject` deserialization in `convertToLocator`.
+    private static func jsonString(from dict: [String: Any]) -> String? {
+        guard let data = try? JSONSerialization.data(withJSONObject: dict, options: []) else {
+            return nil
+        }
+        return String(data: data, encoding: .utf8)
     }
 
     func convertToLocator(publication: Publication) async -> Locator? {
@@ -95,7 +107,7 @@ extension TPPBookLocation {
             progression: dict[TPPBookLocation.chapterProgressKey] as? Double,
             totalProgression: dict[TPPBookLocation.bookProgressKey] as? Double,
             position: position,
-            otherLocations: dict[TPPBookLocation.cssSelector].map { [TPPBookLocation.cssSelector: $0] } ?? [:]
+            otherLocations: JSONValue(dict[TPPBookLocation.cssSelector]).map { [TPPBookLocation.cssSelector: $0] } ?? [:]
         )
 
         return Locator(

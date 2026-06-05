@@ -1,7 +1,6 @@
 import UIKit
 import Combine
 import ReadiumShared
-import ReadiumAdapterGCDWebServer
 import PalaceLogging
 #if LCP
 import ReadiumLCP
@@ -38,20 +37,11 @@ final class ReaderService {
         return base
     }
 
-    /// Exposes the shared `GCDHTTPServer` so the PDF navigator (and any other
-    /// Readium-backed view) can serve decrypted publication resources through
-    /// the same server the EPUB path already uses — one server, one endpoint
-    /// registry, one lifecycle.
-    var httpServer: ReadiumAdapterGCDWebServer.GCDHTTPServer? {
-        r3Owner.libraryService.httpServer
-    }
-
     /// Tears down all in-memory state for an LCP-protected PDF: drops the
-    /// `Publication` from the navigation coordinator, removes the
-    /// `GCDHTTPServer` endpoint that was registered for the publication,
-    /// and clears the pending-open marker. The TOC + page-count snapshot
-    /// is intentionally preserved across this teardown so a re-open
-    /// repopulates side panels instantly.
+    /// `Publication` from the navigation coordinator and clears the
+    /// pending-open marker. The TOC + page-count snapshot is intentionally
+    /// preserved across this teardown so a re-open repopulates side panels
+    /// instantly.
     @MainActor
     func releaseReadiumPDF(forBookIdentifier identifier: String) {
         // Bump the generation so any in-flight openBook completion still
@@ -65,7 +55,6 @@ final class ReaderService {
         if LCPPDFOpenProgress.shared.bookIdentifier == identifier {
             LCPPDFOpenProgress.shared.finish()
         }
-        r3Owner.libraryService.releaseServedPublication(forBookIdentifier: identifier)
         AppContainer.production().navigationCoordinatorHub.coordinator?
             .removeReadiumPDF(forBookId: identifier)
     }
@@ -243,15 +232,14 @@ final class ReaderService {
                                     return
                                 }
                                 Log.info(#file, "[PERF] [LCP-PDF] T3 extracted+ready (+\(Self.ms(since: openStartedAt))ms total, extract=\(extractMs)ms)")
-                                // Release Readium publication — its work
-                                // is done, free its memory now.
-                                self.r3Owner.libraryService.releaseServedPublication(forBookIdentifier: bookIdentifier)
+                                // Readium publication's work is done (decrypt
+                                // context provided) — drop it; ARC frees it as
+                                // the enclosing closure's reference goes away.
                                 self.handOffExtractedPDF(at: extractedURL, for: book, openStartedAt: openStartedAt)
                             }
                         } catch {
                             Log.error(#file, "[PERF] [LCP-PDF] extract failed: \(error)")
                             await MainActor.run {
-                                self.r3Owner.libraryService.releaseServedPublication(forBookIdentifier: bookIdentifier)
                                 self.abortRunawayOpen(for: book)
                             }
                         }
@@ -260,7 +248,6 @@ final class ReaderService {
                     // Non-LCP build (open-source) — should never reach
                     // here because openPDF is only invoked for LCP books,
                     // but bail safely if it does.
-                    self.r3Owner.libraryService.releaseServedPublication(forBookIdentifier: book.identifier)
                     self.abortRunawayOpen(for: book)
                     #endif
                 }
