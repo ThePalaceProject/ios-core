@@ -34,19 +34,18 @@ public class TPPKeychainVariable<VariableType>: Keyable {
     }
 
     public func read() -> VariableType? {
+        // Read the cached value from *inside* the synchronized block so the
+        // return is serialized with every write/invalidate. Returning
+        // `cachedValue` after the block races a concurrent `write(nil)` (e.g.
+        // sign-out vs. a background network thread reading credentials) and
+        // tears the value → EXC_BAD_ACCESS (Crashlytics 0bbbd8fe).
         transaction.perform {
-            // If currently cached value is valid, return from cache
-            guard !alreadyInited else { return }
-
-            // Otherwise, obtain the latest value from keychain
-            cachedValue = TPPKeychain.shared.object(forKey: key) as? VariableType
-
-            // set a flag indicating that current cache is good to use
-            alreadyInited = true
+            if !alreadyInited {
+                cachedValue = TPPKeychain.shared.object(forKey: key) as? VariableType
+                alreadyInited = true
+            }
+            return cachedValue
         }
-
-        // return cached value
-        return cachedValue
     }
 
     public func write(_ newValue: VariableType?) {
@@ -80,15 +79,20 @@ public class TPPKeychainVariable<VariableType>: Keyable {
 
 public class TPPKeychainCodableVariable<VariableType: Codable>: TPPKeychainVariable<VariableType> {
     public override func read() -> VariableType? {
+        // Return from inside the synchronized block — see base `read()`. The
+        // unsynchronized `return cachedValue` after the block is the
+        // EXC_BAD_ACCESS race (Crashlytics 0bbbd8fe): a background URLSession
+        // continuation reading `TPPUserAccount.credentials` tore a
+        // `TPPCredentials` mid sign-out `write(nil)`.
         transaction.perform {
-            guard !alreadyInited else { return }
+            guard !alreadyInited else { return cachedValue }
 
             // Try new format first (direct JSON), then fall back to old format (NSKeyedArchiver-wrapped)
             if let jsonData = readJSONDataDirectly(forKey: key) {
                 do {
                     cachedValue = try JSONDecoder().decode(VariableType.self, from: jsonData)
                     alreadyInited = true
-                    return
+                    return cachedValue
                 } catch {
                     Log.error(#file, "Failed to decode JSON keychain data for key \(key): \(error)")
                 }
@@ -102,7 +106,7 @@ public class TPPKeychainCodableVariable<VariableType: Codable>: TPPKeychainVaria
 
                     // Migrate to new format
                     writeJSONDataDirectly(legacyData, forKey: key)
-                    return
+                    return cachedValue
                 } catch {
                     Log.error(#file, "Failed to decode legacy keychain data for key \(key): \(error)")
                 }
@@ -110,8 +114,8 @@ public class TPPKeychainCodableVariable<VariableType: Codable>: TPPKeychainVaria
 
             cachedValue = nil
             alreadyInited = true
+            return cachedValue
         }
-        return cachedValue
     }
 
     public override func write(_ newValue: VariableType?) {
@@ -353,11 +357,17 @@ public class TPPKeychainVariableTransaction {
         self.accountInfoQueue.setSpecific(key: queueKey, value: ())
     }
 
-    public func perform(tasks: () -> Void) {
+    @discardableResult
+    // PUBLIC_INTENT: pre-existing public PalaceKeychain SPM API consumed
+    // cross-package by TPPUserAccount; signature generalized from
+    // `(() -> Void)` to `<T>(() -> T) -> T` so read() can return its value
+    // from inside the synchronized block (the EXC_BAD_ACCESS race fix). Not
+    // new surface.
+    public func perform<T>(_ tasks: () -> T) -> T {
         if DispatchQueue.getSpecific(key: queueKey) != nil {
-            tasks()
+            return tasks()
         } else {
-            accountInfoQueue.sync {
+            return accountInfoQueue.sync {
                 tasks()
             }
         }
