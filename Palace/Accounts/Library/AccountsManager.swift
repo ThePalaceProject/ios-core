@@ -1204,12 +1204,14 @@ struct CatalogCacheMetadata: Codable {
     func clearCache() {
         // network cache
         networkExecutor.clearCache()
-        // file caches — delete all files matching known prefixes
+        // file caches — delete all files matching known prefixes written to the
+        // Application Support root. (`authentication_document_` was removed: no
+        // code path writes a file with that prefix — auth docs live in `Account`
+        // state / are re-fetched, not persisted as files — so it cleared nothing.)
         let prefixes = [
             "library_list_",
             "accounts_catalog_",
             "accounts_catalog_metadata_",
-            "authentication_document_",
             "crawl_state_",
         ]
         let fm = FileManager.default
