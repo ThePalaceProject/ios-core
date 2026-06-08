@@ -218,4 +218,44 @@ final class TPPNetworkResponderAuthCoordinatorTests: XCTestCase {
         XCTAssertEqual(outcome, .ok,
                        "Cross-domain 401 must classify as .ok so the responder's third-party CDN guard fires — regression here would dispatch coordinator on every CDN 401")
     }
+
+    /// Foreign-host 401 (request host outside current-account auth surface)
+    /// must classify as `.ok` — pins the Rule 4b seam the responder's
+    /// `handleExpiredTokenIfNeeded` consumes. This is the exact device-
+    /// reproduced regression: an A1QA audiobook playtimes POST to
+    /// `gorgon.staging.palaceproject.io` while the active account is
+    /// Icarus on `minotaur.dev.palaceproject.io`. The existing base-
+    /// domain Rule 4 doesn't fire (both share `palaceproject.io`) and
+    /// without Rule 4b the responder dispatches `AuthCoordinator
+    /// .refreshCredentialsIfNeeded(.oidcRefreshFailed)` for the wrong
+    /// account every minute.
+    ///
+    /// Pins the responder's production wiring: at TPPNetworkResponder.swift
+    /// line 465 the classifier is constructed with a closure that reads
+    /// `AppContainer.production().accountsManager.currentAccount?
+    /// .authSurfaceHosts`. A regression that drops the closure (or
+    /// passes `{ nil }`) would revert to legacy behavior and re-introduce
+    /// the per-minute modal. The seam test asserts the classifier's Rule 4b
+    /// itself works; the responder wiring at line 465 is the structural
+    /// pairing.
+    ///
+    /// Wall-failure 2026-06-05-pr1018-icarus-cross-host-logout.md.
+    func testClassifier_seam_401_foreignHost_returnsOk_preservingResponderForeignHostGuard() {
+        let classifier = AuthErrorClassifier(
+            currentAccountHostsProvider: { Set(["minotaur.dev.palaceproject.io"]) }
+        )
+        let foreignURL = URL(string: "https://gorgon.staging.palaceproject.io/a1qa-test/playtimes/14/URI/urn:uuid:2265844e-0")!
+        let response = HTTPURLResponse(url: foreignURL, statusCode: 401,
+                                       httpVersion: "HTTP/1.1", headerFields: nil)!
+
+        let outcome = classifier.classify(
+            response: response,
+            problemDocument: nil,
+            body: nil,
+            originalRequestURL: foreignURL
+        )
+
+        XCTAssertEqual(outcome, .ok,
+                       "Foreign-host 401 (request host not in current account's auth surface) must classify as .ok so the responder's `outcome == .ok` short-circuit at line 477 fires BEFORE the mark-stale + coordinator-dispatch path at lines 482-513. Regression here would re-introduce the PR #1018 Icarus per-minute modal.")
+    }
 }

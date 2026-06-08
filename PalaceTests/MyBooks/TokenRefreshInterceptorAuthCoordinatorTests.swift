@@ -306,4 +306,92 @@ final class TokenRefreshInterceptorAuthCoordinatorTests: XCTestCase {
         XCTAssertEqual(mockRegistry.state(for: book.identifier), .SAMLStarted,
                        "Per-book .SAMLStarted state still flips at this call site")
     }
+
+    // MARK: - Foreign-host guard (PR #1018 cross-host regression fix)
+
+    /// Air-tight test for the foreign-host short-circuit. With a current-
+    /// account auth surface of `{minotaur.dev.palaceproject.io}` and a
+    /// 401 download failure from `gorgon.staging.palaceproject.io/...`,
+    /// the interceptor MUST:
+    ///   - Return false (failure not claimed by this layer)
+    ///   - NOT mark the current account's credentials stale
+    ///   - NOT dispatch the coordinator
+    ///
+    /// This is the SAML scenario (most fragile per the dispatch matrix —
+    /// SAML always routes to modal). Without the foreign-host guard, the
+    /// existing SAML-on-401 path would mark stale + dispatch the
+    /// coordinator → modal pops for the wrong account on every
+    /// foreign-library download retry.
+    ///
+    /// Wall-failure 2026-06-05-pr1018-icarus-cross-host-logout.md.
+    func testForeignHost_401_SAML_doesNotMarkCredentialsStale_doesNotDispatchCoordinator() async throws {
+        let (coordinator, _, modal, userAcctSpy, _) = SpyAuthCoordinatorFactory.make(
+            mechanism: .saml,
+            stubModalResult: true
+        )
+        interceptor = TokenRefreshInterceptor(
+            reauthenticator: mockReauthenticator,
+            authCoordinator: coordinator,
+            currentAccountHostsProvider: { Set(["minotaur.dev.palaceproject.io"]) }
+        )
+        interceptor.delegate = mockDelegate
+
+        mockUserAccount._authDefinition = makeAuth(typeRaw: "http://librarysimplified.org/authtype/SAML-2.0")
+        mockUserAccount._credentials = .barcodeAndPin(barcode: "b", pin: "p")
+        let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        mockRegistry.addBook(book, location: nil, state: .downloading,
+                             fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+
+        // 401 from a host OUTSIDE the current account's auth surface
+        let foreignURL = URL(string: "https://gorgon.staging.palaceproject.io/a1qa-test/loans/123")!
+        let task = makeFakeTask(statusCode: 401, url: foreignURL)
+        let handled = interceptor.handleDownloadFailureWithAuthCheck(
+            for: book, task: task, problemDoc: nil, failureError: nil
+        )
+        XCTAssertFalse(handled,
+                       "Foreign-host 401 must NOT be claimed by the interceptor — falls through to the caller's normal alert path (no auth action taken). Regression: returning true here would mean the interceptor still 'handled' it via the modal path.")
+
+        await waitForAsyncCleanup()
+
+        XCTAssertEqual(modal.presentCallCount, 0,
+                       "Foreign-host 401 MUST NOT dispatch the coordinator — the whole point of the guard is to skip the modal for the current account when the 401 belongs to a DIFFERENT account's session.")
+        XCTAssertEqual(userAcctSpy.markCredentialsStaleCallCount, 0,
+                       "Foreign-host 401 MUST NOT mark the current account's credentials stale — that's the latent bug that pre-PR #1018 was passive (no modal) and post-#1018 became active (modal every minute).")
+        XCTAssertEqual(mockDelegate.startDownloadCalls.count, 0,
+                       "No retry: foreign-host 401 is bubbled up to the caller. Regression here would mean we retried a download for a book that's no longer ours.")
+    }
+
+    /// Belt-and-braces: a nil provider preserves legacy behavior. Without
+    /// this test, a refactor that flipped the default from `nil` to
+    /// `{ Set<String>() }` would silently change behavior.
+    func testForeignHost_401_SAML_withNilProvider_fallsBackToLegacyDispatch() async throws {
+        let (coordinator, _, modal, _, _) = SpyAuthCoordinatorFactory.make(
+            mechanism: .saml,
+            stubModalResult: true
+        )
+        // currentAccountHostsProvider intentionally OMITTED (defaults to nil)
+        interceptor = TokenRefreshInterceptor(
+            reauthenticator: mockReauthenticator,
+            authCoordinator: coordinator
+        )
+        interceptor.delegate = mockDelegate
+
+        mockUserAccount._authDefinition = makeAuth(typeRaw: "http://librarysimplified.org/authtype/SAML-2.0")
+        mockUserAccount._credentials = .barcodeAndPin(barcode: "b", pin: "p")
+        let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        mockRegistry.addBook(book, location: nil, state: .downloading,
+                             fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+
+        // Same foreign URL — but provider is nil so legacy dispatch fires
+        let foreignURL = URL(string: "https://gorgon.staging.palaceproject.io/a1qa-test/loans/123")!
+        let task = makeFakeTask(statusCode: 401, url: foreignURL)
+        _ = interceptor.handleDownloadFailureWithAuthCheck(
+            for: book, task: task, problemDoc: nil, failureError: nil
+        )
+
+        await waitForAsyncCleanup()
+
+        XCTAssertEqual(modal.presentCallCount, 1,
+                       "Nil provider preserves legacy behavior — SAML 401 still dispatches the coordinator → modal. A regression where nil is treated as empty-set would silently disable the legacy dispatch.")
+    }
 }

@@ -462,7 +462,17 @@ private func handleExpiredTokenIfNeeded(for response: HTTPURLResponse,
     // markCredentialsStale + refreshTokenAndResume because the task-resume
     // semantics are responder-owned (the coordinator's silent path can
     // refresh the token but won't re-run THIS URLSessionTask).
-    let classifier = AuthErrorClassifier()
+    // Wire the classifier with the current account's auth-surface hosts so
+    // Rule 4b (foreign-host 401 → .ok) short-circuits a 401 from a host
+    // outside the current account's surface (e.g. a lingering A1QA playtimes
+    // upload to gorgon.staging while the active account is Icarus on
+    // minotaur.dev). See wall-failure
+    // 2026-06-05-pr1018-icarus-cross-host-logout.md.
+    let classifier = AuthErrorClassifier(
+        currentAccountHostsProvider: {
+            AppContainer.production().accountsManager.currentAccount?.authSurfaceHosts
+        }
+    )
     let outcome = classifier.classify(
         response: response,
         problemDocument: nil,
