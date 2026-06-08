@@ -55,7 +55,6 @@ final class FirebaseManager {
         case circuitBreakerEnabled = "circuit_breaker_enabled"
         case carPlayEnabled = "carplay_enabled"
         case opds2Enabled = "opds2_enabled"
-        case resetAccountEnabled = "reset_account_enabled"
         case triageBotEnabled = "triage_bot_enabled"
         case triageBotTicketSubmissionEnabled = "triage_bot_ticket_submission_enabled"
         case triageBotAIFallbackEnabled = "triage_bot_ai_fallback_enabled"
@@ -103,7 +102,6 @@ final class FirebaseManager {
             RemoteConfigKey.circuitBreakerEnabled.rawValue: NSNumber(value: true),
             RemoteConfigKey.carPlayEnabled.rawValue: NSNumber(value: true),
             RemoteConfigKey.opds2Enabled.rawValue: NSNumber(value: true),
-            RemoteConfigKey.resetAccountEnabled.rawValue: NSNumber(value: false),
             RemoteConfigKey.triageBotEnabled.rawValue: NSNumber(value: false),
             RemoteConfigKey.triageBotTicketSubmissionEnabled.rawValue: NSNumber(value: false),
             RemoteConfigKey.triageBotAIFallbackEnabled.rawValue: NSNumber(value: false),
