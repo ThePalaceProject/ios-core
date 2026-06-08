@@ -169,40 +169,6 @@ record() {
   RESULTS+=("{\"check\":\"$check\",\"status\":\"$status\",\"detail\":\"$(echo "$detail" | sed 's/"/\\"/g')\"}")
 }
 
-# run_m1_check — drive one M1 universal-rigor-floor gate and record its result.
-#
-# Replaces the five copy-pasted blocks (contract / blast-radius / adjacency /
-# superpartner / intent) with a single shape. Each gate runs a script against
-# the staged diff (shared $M1_DIFF), then records pass/fail based on $blocking.
-#
-# Args:
-#   $1 check     record() key (e.g. "blast_radius")
-#   $2 script    path under scripts/ (e.g. "check-blast-radius.py")
-#   $3 blocking  "block" → non-zero exit records fail; "warn" → always pass,
-#                surfacing the finding count in the detail string
-#   $4 pass_msg  detail string recorded on a clean (exit-0) run
-#   $5.. extra   extra args passed to the script before --quiet
-#
-# Assumes $M1_DIFF holds the `git diff $BASE...HEAD` output and the caller has
-# already gated on --mutation-only.
-run_m1_check() {
-  local check="$1" script="$2" blocking="$3" pass_msg="$4"
-  shift 4
-  local out exit_code
-  out=$(python3 "scripts/$script" --diff "$M1_DIFF" "$@" --quiet 2>&1)
-  exit_code=$?
-  if [ "$exit_code" -eq 0 ]; then
-    record "$check" "pass" "$pass_msg"
-  elif [ "$blocking" = "warn" ]; then
-    # warn-only: record pass but surface the finding count.
-    local count
-    count=$(echo "$out" | grep -cE '(: SP-[0-9]|^ADJ-STALE:|claims )' || true)
-    record "$check" "pass" "${count:-0} non-blocking finding(s) — warn-only"
-  else
-    record "$check" "fail" "$(echo "$out" | head -3 | tr '\n' ' ')"
-  fi
-}
-
 echo "=== Palace Pre-PR Verification ==="
 echo "Branch: $(git rev-parse --abbrev-ref HEAD)"
 echo "Changed files: $(echo "$CHANGED_SWIFT" | wc -l | tr -d ' ') production, $(echo "$CHANGED_TEST_SWIFT" | wc -l | tr -d ' ') test"
@@ -393,62 +359,90 @@ else
   record "test_quality" "pass" "Lint script not found (skipped)"
 fi
 
-# 3a-3e. M1 universal-rigor-floor gates.
-# Five diff-based gates that all run the same shape (build the staged diff once,
-# run a check against it, record pass/fail) plus one file-based gate. Driven by
-# run_m1_check() + a small table instead of five copy-pasted blocks. The two
-# gates with extra claim-source args (contract / intent) compute those inline,
-# then hand the script name + extra args to the helper.
-#
-#   contract_reconciliation — reconciles "removes/renames/migrates X" claims in
-#       the commit/PR/intent against the diff. BLOCKING.
-#   blast_radius            — new public symbols, #if DEBUG production reach,
-#       test-only counters, discarded results. BLOCKING.
-#   adjacency_staleness     — stale comment refs to removed/renamed decls. WARN.
-#   superpartner_spectrum   — new code (func/case/state) with no matching test,
-#       unless marked `// no-superpartner:`. WARN.
-#   intent_recorded         — requires `.forgeos/intent/<name>.md` for ≥10 prod
-#       LOC diffs under Palace/. BLOCKING.
-#   test_name_vs_body       — diffed test files whose method names embed a
-#       production-class noun the body never references (fake-wiring). WARN.
+# 3a. Contract reconciliation (M1 universal-rigor-floor gate)
+# Reconciles "removes X" / "deletes X" / "migrates Y to Z" / "renames X to Y" /
+# "adds field A to type B" claims in the commit body / PR body / intent file
+# against the staged-diff (HEAD vs base). Catches the contract-vs-diff drift
+# class surfaced in waves 1-4. See `scripts/check-contract-reconciliation.py`.
+echo "--- Contract reconciliation ---"
 if [ "$MUTATION_ONLY" = "true" ]; then
   record "contract_reconciliation" "pass" "Skipped (--mutation-only)"
-  record "blast_radius" "pass" "Skipped (--mutation-only)"
-  record "adjacency_staleness" "pass" "Skipped (--mutation-only)"
-  record "superpartner_spectrum" "pass" "Skipped (--mutation-only)"
-  record "intent_recorded" "pass" "Skipped (--mutation-only)"
-  record "test_name_vs_body" "pass" "Skipped (--mutation-only)"
-  record "foreign_host_401_scoping" "pass" "Skipped (--mutation-only)"
-  record "lcp_acquisition_recursive" "pass" "Skipped (--mutation-only)"
-  record "completion_nil_error_suppression" "pass" "Skipped (--mutation-only)"
-  record "nserror_problemdoc_preservation" "pass" "Skipped (--mutation-only)"
-  record "swiftui_placeholder_a11y" "pass" "Skipped (--mutation-only)"
-  record "notification_center_observer_storage" "pass" "Skipped (--mutation-only)"
-else
-  # Shared staged diff for every diff-based gate.
-  M1_DIFF=$(mktemp -t m1-diff.XXXX)
-  git diff "$BASE"...HEAD > "$M1_DIFF" 2>/dev/null || true
-
-  # Contract-reconciliation claim source: HEAD commit body + (optional) the
-  # intent file whose name matches the commit subject. Architect rev_f1c4ea3c
-  # caught the wiring gap where running without a claim source silently passed.
+elif [ -f scripts/check-contract-reconciliation.py ]; then
+  CR_DIFF=$(mktemp -t cr-diff.XXXX)
   CR_MSG=$(mktemp -t cr-msg.XXXX)
+  git diff "$BASE"...HEAD > "$CR_DIFF" 2>/dev/null || true
+  # Capture HEAD commit subject + body as the claim source. Architect rev_f1c4ea3c
+  # caught the wiring gap where this script ran without a claim source and silently
+  # passed regardless of what the commit body claimed. Pass --commit-msg so the
+  # gate is no longer decorative.
   git log -1 --format=%B HEAD > "$CR_MSG" 2>/dev/null || echo "" > "$CR_MSG"
-  CR_INTENT_FLAG=()
+  # Also pass --intent if a matching intent file exists. Match on the commit
+  # subject's first 4 dash-separated tokens (e.g. "[swarm_M1_83be56fc] Module C ..."
+  # → "swarm-m1" matches `.forgeos/intent/swarm-m1-*.md`).
+  CR_INTENT_FLAG=""
   CR_SUBJECT=$(head -1 "$CR_MSG" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9 ]//g' | awk '{print $1"-"$2}')
   if [ -n "$CR_SUBJECT" ] && [ -d .forgeos/intent ]; then
     CR_INTENT_MATCH=$(find .forgeos/intent -maxdepth 1 -name "*${CR_SUBJECT}*.md" -type f 2>/dev/null | head -1)
-    [ -n "$CR_INTENT_MATCH" ] && CR_INTENT_FLAG=(--intent "$CR_INTENT_MATCH")
+    [ -n "$CR_INTENT_MATCH" ] && CR_INTENT_FLAG="--intent $CR_INTENT_MATCH"
   fi
+  CR_OUT=$(python3 scripts/check-contract-reconciliation.py --diff "$CR_DIFF" --commit-msg "$CR_MSG" $CR_INTENT_FLAG --quiet 2>&1)
+  CR_EXIT=$?
+  rm -f "$CR_DIFF" "$CR_MSG"
+  if [ "$CR_EXIT" -eq 0 ]; then
+    record "contract_reconciliation" "pass" "All commit/PR/intent claims reconciled with diff"
+  else
+    record "contract_reconciliation" "fail" "Unreconciled claims: $(echo "$CR_OUT" | head -3 | tr '\n' ' ')"
+  fi
+else
+  record "contract_reconciliation" "pass" "check-contract-reconciliation.py not found (skipped)"
+fi
 
-  # Intent-recorded claim source: HEAD commit subject (to match the intent name).
-  IR_MSG=$(mktemp -t ir-msg.XXXX)
-  git log -1 --format="%s" > "$IR_MSG" 2>/dev/null || true
+# 3b. Blast-radius (M1 universal-rigor-floor gate)
+# Scans the diff for new public/open symbols, #if DEBUG production reach,
+# test-only public(private(set)) counters, container-init churn, and
+# discarded function results without `// TODO(ticket):` justification.
+# High-severity findings block. See `scripts/check-blast-radius.py`.
+echo "--- Blast-radius ---"
+if [ "$MUTATION_ONLY" = "true" ]; then
+  record "blast_radius" "pass" "Skipped (--mutation-only)"
+elif [ -f scripts/check-blast-radius.py ]; then
+  BR_DIFF=$(mktemp -t br-diff.XXXX)
+  git diff "$BASE"...HEAD > "$BR_DIFF" 2>/dev/null || true
+  BR_OUT=$(python3 scripts/check-blast-radius.py --diff "$BR_DIFF" --quiet 2>&1)
+  BR_EXIT=$?
+  rm -f "$BR_DIFF"
+  if [ "$BR_EXIT" -eq 0 ]; then
+    record "blast_radius" "pass" "No high-severity blast-radius findings"
+  else
+    record "blast_radius" "fail" "High-severity findings: $(echo "$BR_OUT" | head -3 | tr '\n' ' ')"
+  fi
+else
+  record "blast_radius" "pass" "check-blast-radius.py not found (skipped)"
+fi
 
-  echo "--- Contract reconciliation ---"
-  run_m1_check "contract_reconciliation" "check-contract-reconciliation.py" "block" \
-    "All commit/PR/intent claims reconciled with diff" \
-    --commit-msg "$CR_MSG" "${CR_INTENT_FLAG[@]}"
+# 3c. Adjacency staleness (M1 universal-rigor-floor gate, warn-only)
+# Greps comments in the surviving codebase for references to removed/renamed
+# declarations in the diff. Always passes; counts warnings.
+# See `scripts/check-adjacency-staleness.py`.
+echo "--- Adjacency staleness ---"
+if [ "$MUTATION_ONLY" = "true" ]; then
+  record "adjacency_staleness" "pass" "Skipped (--mutation-only)"
+elif [ -f scripts/check-adjacency-staleness.py ]; then
+  ADJ_DIFF=$(mktemp -t adj-diff.XXXX)
+  git diff "$BASE"...HEAD > "$ADJ_DIFF" 2>/dev/null || true
+  ADJ_OUT=$(python3 scripts/check-adjacency-staleness.py --diff "$ADJ_DIFF" --quiet 2>&1)
+  ADJ_EXIT=$?
+  rm -f "$ADJ_DIFF"
+  ADJ_WARN_COUNT=$(echo "$ADJ_OUT" | grep -c "ADJ-STALE" || true)
+  if [ "$ADJ_EXIT" -eq 0 ]; then
+    record "adjacency_staleness" "pass" "0 stale-comment references"
+  else
+    # warn-only: still record pass, but surface the count
+    record "adjacency_staleness" "pass" "${ADJ_WARN_COUNT:-0} stale-comment warning(s) — non-blocking"
+  fi
+else
+  record "adjacency_staleness" "pass" "check-adjacency-staleness.py not found (skipped)"
+fi
 
 # 3d. Intent recorded (M1 universal-rigor-floor gate)
 # Requires a `.forgeos/intent/<name>.md` for diffs ≥10 prod LOC under Palace/.
@@ -474,31 +468,114 @@ elif [ -f scripts/check-intent-recorded.py ]; then
   if [ "$IR_EXIT" -eq 0 ]; then
     record "intent_recorded" "pass" "Intent file present (or below threshold)"
   else
-    record "test_name_vs_body" "pass" "No changed test files"
+    record "intent_recorded" "fail" "Intent missing/invalid: $(echo "$IR_OUT" | head -3 | tr '\n' ' ')"
   fi
-
-  # Phase 3.5 detectors (swarm_162a3219) — class-detectable wall-failure
-  # detectors. Each runs against the shared $M1_DIFF and records pass/fail
-  # via the same run_m1_check helper. Block-mode on high-severity classes
-  # (foreign-host 401 + LCP recursive + completion-nil-error +
-  # NSError-problemdoc); warn-mode on lower-severity ones (SwiftUI a11y +
-  # NotificationCenter observer).
-  echo "--- Phase 3.5 class-detectable detectors ---"
-  run_m1_check "foreign_host_401_scoping" "check-foreign-host-401-scoping.py" "block" \
-    "No 401 dispatch site missing current-account host scoping"
-  run_m1_check "lcp_acquisition_recursive" "check-lcp-acquisition-recursive.py" "block" \
-    "No LCP acquisition predicate inspects only defaultAcquisition.type"
-  run_m1_check "completion_nil_error_suppression" "check-completion-nil-error-suppression.py" "block" \
-    "No completion(nil, title, message) sites suppress consumer alert path"
-  run_m1_check "nserror_problemdoc_preservation" "check-nserror-problemdoc-preservation.py" "block" \
-    "No NSError construction discards in-scope TPPProblemDocument context"
-  run_m1_check "swiftui_placeholder_a11y" "check-swiftui-placeholder-a11y.py" "warn" \
-    "No SwiftUI placeholder/label without .accessibilityLabel"
-  run_m1_check "notification_center_observer_storage" "check-notification-center-observer-storage.py" "warn" \
-    "No NotificationCenter observer registered without storage/removal"
-
-  rm -f "$M1_DIFF" "$CR_MSG" "$IR_MSG"
+else
+  record "intent_recorded" "pass" "check-intent-recorded.py not found (skipped)"
 fi
+
+# 3e. Superpartner spectrum (M1 universal-rigor-floor gate, warn-only)
+# Flags new functions / enum cases / state changes in the diff that have no
+# matching test in the diff, unless marked `// no-superpartner:`. Warn-only for
+# now (promotion path in docs/architecture/superpartner-spectrum.md).
+# See `scripts/check-superpartner-spectrum.py`.
+echo "--- Superpartner spectrum ---"
+if [ "$MUTATION_ONLY" = "true" ]; then
+  record "superpartner_spectrum" "pass" "Skipped (--mutation-only)"
+elif [ -f scripts/check-superpartner-spectrum.py ]; then
+  SP_DIFF=$(mktemp -t sp-diff.XXXX)
+  git diff "$BASE"...HEAD > "$SP_DIFF" 2>/dev/null || true
+  SP_OUT=$(python3 scripts/check-superpartner-spectrum.py --diff "$SP_DIFF" --quiet 2>&1)
+  SP_EXIT=$?
+  rm -f "$SP_DIFF"
+  SP_WARN_COUNT=$(echo "$SP_OUT" | grep -cE ": SP-[0-9]" || true)
+  if [ "$SP_EXIT" -eq 0 ]; then
+    record "superpartner_spectrum" "pass" "0 untested new functions/cases/state"
+  else
+    # warn-only: still record pass, but surface the count
+    record "superpartner_spectrum" "pass" "${SP_WARN_COUNT:-0} superpartner warning(s) — non-blocking"
+  fi
+else
+  record "superpartner_spectrum" "pass" "check-superpartner-spectrum.py not found (skipped)"
+fi
+
+# 3f. Test name-vs-body (M1 universal-rigor-floor gate, warn-only, file-based)
+# Flags diffed test files whose method names embed a production-class noun the
+# body never references (fake-wiring). File-based: operates on the changed test
+# files, not a diff. See `scripts/check-test-name-vs-body.py`.
+echo "--- Test name-vs-body ---"
+if [ "$MUTATION_ONLY" = "true" ]; then
+  record "test_name_vs_body" "pass" "Skipped (--mutation-only)"
+elif [ -f scripts/check-test-name-vs-body.py ] && [ -n "$CHANGED_TEST_SWIFT" ]; then
+  TNB_FILES=()
+  while IFS= read -r f; do [ -n "$f" ] && [ -f "$f" ] && TNB_FILES+=("$f"); done <<< "$CHANGED_TEST_SWIFT"
+  if [ "${#TNB_FILES[@]}" -eq 0 ]; then
+    record "test_name_vs_body" "pass" "No changed test files on disk"
+  else
+    TNB_OUT=$(python3 scripts/check-test-name-vs-body.py "${TNB_FILES[@]}" --quiet 2>&1)
+    TNB_EXIT=$?
+    TNB_COUNT=$(echo "$TNB_OUT" | grep -cE "embeds|fake-wiring" || true)
+    if [ "$TNB_EXIT" -eq 0 ]; then
+      record "test_name_vs_body" "pass" "No fake-wiring test names"
+    else
+      # warn-only: still record pass, but surface the count
+      record "test_name_vs_body" "pass" "${TNB_COUNT:-0} name-vs-body warning(s) — non-blocking"
+    fi
+  fi
+else
+  record "test_name_vs_body" "pass" "No changed test files (skipped)"
+fi
+
+# 3g-3l. Phase 3.5 class-detectable detectors (swarm_162a3219)
+# Each codifies a shipped-bug class as a runnable detector that scans the
+# staged diff. Block-mode on high-severity classes (foreign-host 401, LCP
+# recursive acquisition, completion-nil-error suppression, NSError problemDoc
+# preservation); warn-only on lower-severity classes (SwiftUI placeholder a11y,
+# NotificationCenter observer storage). Same inline shape as the M1 gates above.
+run_phase35_detector() {
+  # $1=record key  $2=script  $3=block|warn  $4=pass message  $5=diff|scan (invocation mode)
+  local key="$1" script="$2" mode="$3" pass_msg="$4" scan_mode="${5:-diff}"
+  if [ "$MUTATION_ONLY" = "true" ]; then
+    record "$key" "pass" "Skipped (--mutation-only)"
+  elif [ -f "scripts/$script" ]; then
+    local d out exit_code
+    if [ "$scan_mode" = "scan" ]; then
+      # Tree-scan detectors (e.g. check-lcp-acquisition-recursive.py) have no
+      # --diff flag — passing one is an argparse error → spurious block.
+      out=$(python3 "scripts/$script" --quiet 2>&1)
+      exit_code=$?
+    else
+      d=$(mktemp -t p35-diff.XXXX)
+      git diff "$BASE"...HEAD > "$d" 2>/dev/null || true
+      out=$(python3 "scripts/$script" --diff "$d" --quiet 2>&1)
+      exit_code=$?
+      rm -f "$d"
+    fi
+    if [ "$exit_code" -eq 0 ]; then
+      record "$key" "pass" "$pass_msg"
+    elif [ "$mode" = "warn" ]; then
+      record "$key" "pass" "$(echo "$out" | head -1) — non-blocking"
+    else
+      record "$key" "fail" "$(echo "$out" | head -3 | tr '\n' ' ')"
+    fi
+  else
+    record "$key" "pass" "scripts/$script not found (skipped)"
+  fi
+}
+
+echo "--- Phase 3.5 class-detectable detectors ---"
+run_phase35_detector "foreign_host_401_scoping" "check-foreign-host-401-scoping.py" "block" \
+  "No 401 dispatch site missing current-account host scoping" "diff"
+run_phase35_detector "lcp_acquisition_recursive" "check-lcp-acquisition-recursive.py" "block" \
+  "No LCP acquisition predicate inspects only defaultAcquisition.type" "scan"
+run_phase35_detector "completion_nil_error_suppression" "check-completion-nil-error-suppression.py" "block" \
+  "No completion(nil, title, message) sites suppress consumer alert path" "diff"
+run_phase35_detector "nserror_problemdoc_preservation" "check-nserror-problemdoc-preservation.py" "block" \
+  "No NSError construction discards in-scope TPPProblemDocument context" "diff"
+run_phase35_detector "swiftui_placeholder_a11y" "check-swiftui-placeholder-a11y.py" "warn" \
+  "No SwiftUI placeholder/label without .accessibilityLabel" "diff"
+run_phase35_detector "notification_center_observer_storage" "check-notification-center-observer-storage.py" "warn" \
+  "No NotificationCenter observer registered without storage/removal" "diff"
 
 # 4. Coverage floors
 echo "--- Coverage Floors ---"

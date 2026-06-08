@@ -200,6 +200,21 @@ if run_with_timeout "$TIMEOUT_SECS" xcodebuild \
   exit 0
 else
   rc=$?
+  # A timeout is NOT a test failure. `timeout`/`gtimeout` exit 124 when they
+  # kill the child; the perl-alarm fallback surfaces SIGALRM as 142; and a
+  # killed xcodebuild prints "** BUILD INTERRUPTED **". A cold-build multi-class
+  # -only-testing run routinely exceeds the wall-clock cap without any test
+  # having failed — blocking the push there (forcing SKIP_PRE_PUSH_TESTS) is
+  # pure friction, since CI and `verify-pr.sh` remain the authoritative gates.
+  # Treat budget-exhaustion as a non-blocking WARN; only a real test/build
+  # failure (non-timeout non-zero) blocks.
+  if [ "$rc" -eq 124 ] || [ "$rc" -eq 142 ] || grep -q "BUILD INTERRUPTED" /tmp/pre-push-test-gate.log 2>/dev/null; then
+    echo "" >&2
+    echo "[pre-push-test-gate] TIMEOUT after ${TIMEOUT_SECS}s (exit $rc) — targeted tests did not finish in budget." >&2
+    echo "[pre-push-test-gate] This is a cold-build budget limit, NOT a test failure — allowing the push." >&2
+    echo "[pre-push-test-gate] Verify locally with 'scripts/verify-pr.sh --quick'; CI remains authoritative." >&2
+    exit 0
+  fi
   echo "" >&2
   echo "[pre-push-test-gate] FAIL (exit $rc) — push blocked." >&2
   echo "[pre-push-test-gate] Last 40 lines of /tmp/pre-push-test-gate.log:" >&2

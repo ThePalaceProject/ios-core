@@ -35,20 +35,23 @@ if [ ! -s "$DIFF_FILE" ]; then
   exit 0
 fi
 
-# (id|script-basename|severity)  severity: block | warn
+# (id|script-basename|severity|mode)  severity: block | warn   mode: diff | scan
+# `diff` detectors accept `--diff <file>` (diff-scoped). `scan` detectors only
+# accept a whole-tree scan (`check-lcp-acquisition-recursive.py` has no --diff
+# flag — passing one is an argparse error that surfaces as a spurious block).
 DETECTORS=(
-  "FOREIGN_HOST_401_SCOPING|check-foreign-host-401-scoping.py|block"
-  "LCP_ACQUISITION_RECURSIVE|check-lcp-acquisition-recursive.py|block"
-  "COMPLETION_NIL_ERROR_SUPPRESSION|check-completion-nil-error-suppression.py|block"
-  "NSERROR_PROBLEMDOC_PRESERVATION|check-nserror-problemdoc-preservation.py|block"
-  "SWIFTUI_PLACEHOLDER_A11Y|check-swiftui-placeholder-a11y.py|warn"
-  "NOTIFICATION_CENTER_OBSERVER_STORAGE|check-notification-center-observer-storage.py|warn"
+  "FOREIGN_HOST_401_SCOPING|check-foreign-host-401-scoping.py|block|diff"
+  "LCP_ACQUISITION_RECURSIVE|check-lcp-acquisition-recursive.py|block|scan"
+  "COMPLETION_NIL_ERROR_SUPPRESSION|check-completion-nil-error-suppression.py|block|diff"
+  "NSERROR_PROBLEMDOC_PRESERVATION|check-nserror-problemdoc-preservation.py|block|diff"
+  "SWIFTUI_PLACEHOLDER_A11Y|check-swiftui-placeholder-a11y.py|warn|diff"
+  "NOTIFICATION_CENTER_OBSERVER_STORAGE|check-notification-center-observer-storage.py|warn|diff"
 )
 
 OVERALL_EXIT=0
 
 for entry in "${DETECTORS[@]}"; do
-  IFS="|" read -r ID SCRIPT SEVERITY <<< "$entry"
+  IFS="|" read -r ID SCRIPT SEVERITY MODE <<< "$entry"
   SCRIPT_PATH="$REPO_ROOT/scripts/$SCRIPT"
   [ ! -f "$SCRIPT_PATH" ] && continue
 
@@ -63,7 +66,11 @@ for entry in "${DETECTORS[@]}"; do
   # `OUT=$(... || true)` was the bug — `$?` then captured the always-0 exit
   # of `|| true`. The correct shape captures the python exit via
   # `&& EXIT=0 || EXIT=$?`. Wall-failure 2026-06-05-swarm162a3219-arch1.md.
-  OUT=$(python3 "$SCRIPT_PATH" --diff "$DIFF_FILE" --quiet 2>&1) && EXIT=0 || EXIT=$?
+  if [ "$MODE" = "scan" ]; then
+    OUT=$(python3 "$SCRIPT_PATH" --quiet 2>&1) && EXIT=0 || EXIT=$?
+  else
+    OUT=$(python3 "$SCRIPT_PATH" --diff "$DIFF_FILE" --quiet 2>&1) && EXIT=0 || EXIT=$?
+  fi
 
   if [ "$EXIT" -ne 0 ]; then
     if [ "$SEVERITY" = "block" ]; then
