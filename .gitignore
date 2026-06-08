@@ -132,3 +132,4 @@ scripts/__pycache__/
 
 # palace-mutate report artifact (regenerated on every run)
 palace-mutate-report.json
+scripts/tests/__pycache__/

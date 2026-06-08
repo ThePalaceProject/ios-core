@@ -193,12 +193,13 @@ import PalaceCatalog
         }
     }
 
-    /// Check if the book is LCP audiobook
+    /// Check if the book is LCP audiobook. Delegates to `hasLCPAcquisition(_:)`
+    /// so all three OPDS feed shapes (`/loans/` XML, `/groups/` JSON, and the
+    /// OPDS-catalog wrapping shape) resolve correctly — PP-4407 / PP-4454.
     /// - Parameter book: audiobook
     /// - Returns: `true` if the book is an LCP DRM protected audiobook, `false` otherwise
     @objc static func canOpenBook(_ book: TPPBook) -> Bool {
-        guard let defaultAcquisition = book.defaultAcquisition else { return false }
-        return book.defaultBookContentType == .audiobook && defaultAcquisition.type == expectedAcquisitionType
+        return hasLCPAcquisition(book)
     }
 
     /// Returns `true` iff `book` is an LCP-protected audiobook, regardless of

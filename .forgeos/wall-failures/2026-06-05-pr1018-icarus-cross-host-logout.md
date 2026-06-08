@@ -9,6 +9,8 @@ walls: [contract, TDD, reviewer, stale-doc]
 severity: critical
 wall_status: applied
 applied_in: "3aa106262"
+detector_script: scripts/check-foreign-host-401-scoping.py
+detector_status: built
 contributing_docs:
   - path: docs/architecture/areas/auth/verification-checklist.md
     last_refresh_at_failure: 2026-05-28
@@ -21,7 +23,7 @@ name: 2026-06-05-pr1018-icarus-cross-host-logout
 type: evolving
 status: active
 created: 2026-06-05
-last_refresh: 2026-06-05
+last_refresh: 2026-06-06
 freshness_window: 365d
 owners: [auth, network]
 description: Cross-host 401 from a foreign library's host mis-attributed to the current OIDC/SAML account — repeated sign-in modal driven by background A1QA audiobook playtimes upload while active account is Icarus.
@@ -128,7 +130,31 @@ PR #1018's intent was to unify auth-error dispatch through the new `AuthCoordina
 The class is closed when:
 - (a) the foreign-host guard exists at all auth-error decision sites (this PR's diff covers 3 sites; classifier-migration of the legacy 2 sites is deferred to a separate refactor but the foreign-host guard lands at all 3 now),
 - (b) the property-fuzz invariant is in place,
-- (c) the CLAUDE.md clause + checklist traps + architect-prompt amendment land in the same PR (so the next architect review CANNOT miss the question).
+- (c) the CLAUDE.md clause + checklist traps + architect-prompt amendment land in the same PR (so the next architect review CANNOT miss the question),
+- (d) the static detector `scripts/check-foreign-host-401-scoping.py` (Module B of `swarm_162a3219`) is wired into `verify-pr.sh` + the pre-commit hook cluster so any new 401-dispatch site landing without `authSurfaceHosts` / `currentAccountHostsProvider` (or an explicit `// no-host-scoping:` justification) is blocked at commit time. See `## Detector script` below.
+
+## Detector script
+
+`scripts/check-foreign-host-401-scoping.py` — built in swarm_162a3219 Module B
+(2026-06-05). Predicate (FH-1): inside a single Swift function under `Palace/`,
+the presence of any 401 sentinel (`statusCode == 401`, `nsError.code == 401`,
+`error.code == 401`, `(error as NSError).code == 401`) paired with a
+credential-stale or coordinator dispatch (`markCredentialsStale(`,
+`refreshCredentialsIfNeeded`) is FLAGGED unless the function body also
+references `authSurfaceHosts` / `currentAccountHostsProvider`, OR the
+dispatch line carries a `// no-host-scoping: <reason>` annotation within
+the 3 preceding lines.
+
+The Phase-1a-revised predicate (extending the original `statusCode == 401`-only
+match to cover the `nsError.code == 401` bridge form) was driven by the
+architect-reviewer pre-run guess: TPPNetworkExecutor.swift:582-585 was a
+predicted-1 survivor caught only by the broader predicate. The annotation
+escape hatch was used at that exact site because `capturedAccountId` is
+closure-bound at refresh-start time — the dispatch is already scoped to
+the originating account by closure capture, not by host.
+
+Tests: `scripts/tests/test_check_foreign_host_401_scoping.py` (6 cases — 2
+violation, 4 clean). Fixtures: `scripts/tests/fixtures/foreign_host_401/`.
 
 ## Stale-doc contribution
 

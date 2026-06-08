@@ -6,7 +6,7 @@ tools: Agent, Bash, Read, Write, Edit, Grep, Glob, mcp__forgeos__forge_propose_c
 type: evolving
 status: active
 created: 2026-05-28
-last_refresh: 2026-05-28
+last_refresh: 2026-06-05
 freshness_window: 365d
 owners: [general]
 ---
@@ -47,6 +47,8 @@ Critical paths per CLAUDE.md:
 | ForgeOS changeset | Yes — registered before code | Yes — registered before code |
 
 ## The loop
+
+The phases run in order: 0 (recon) → 1 (fix-contract) → 1a (architect-review) → 2 (changeset) → 3 (skeptic) → **3.5 (class scan + detector codify, when a bug-class is identified)** → 4 (forge-review) → 5 (promote). Phase 3.5 is conditional but, when it fires, non-skippable — see `docs/architecture/phase-3.5-class-scan.md` for the rationale.
 
 ### Phase 0 — Read the area's verification-checklist
 
@@ -153,6 +155,44 @@ You wrote the code. You verify it the same way you'd verify a subagent's work:
 
 If any check fails, fix it BEFORE invoking /forge-review. Don't ask the reviewers to catch what you should have.
 
+### Phase 3.5 — Class scan + detector codify (MANDATORY when a new bug-class is identified)
+
+**Fire when** any of:
+- (Phase 1 architect) recon surfaces a pattern that recurs at ≥2 call sites — even if only 1 is currently broken.
+- (Phase 2 implementer) writing the fix, notices the same shape elsewhere in the diff hunks they touched.
+- (Phase 3 skeptic) running `/clean-code` or the per-area verification-checklist greps, finds the same shape.
+- (Phase 4 qa-reviewer) blocks with a finding that classifies as a *class*, not a single instance.
+- (any phase) the human says "scan for this elsewhere."
+
+**The 5-step loop:**
+
+1. **Characterize** — write a 1-paragraph definition of the bug class. What is the call-pattern that, when present, indicates a defect? Be precise enough that someone else can grep for it.
+2. **Scan** — use the right tier (see below). Output: a list of survivor sites with `file:line`.
+3. **Triage** — for each survivor, classify: (a) trivial inline fix (apply now), (b) scope-deferral (queue with ticket and rationale), or (c) false positive (annotate with `// no-<wall-id>: <reason>`).
+4. **Wipe** — apply (a) fixes in this PR. The PR fixes the class, not just the originally-reported instance.
+5. **Codify detector** — add `scripts/check-<wall-id>.py` that catches future instances. **This is the load-bearing artifact**, not the one-time wipe. Wire it into `scripts/verify-pr.sh` (both `--quick` and full) and `.claude/settings.json` PreToolUse hooks. Add `scripts/test_check_<wall-id>.py` per the existing detector test convention.
+
+**3-tier mechanism — pick the right one:**
+
+- **Tier 1 — `grep` / `ripgrep`.** When the class is a single literal call-pattern with no semantic disambiguation needed. Cheap, ~1 second. Example: every site that calls `markCredentialsStale()` literally.
+- **Tier 2 — Explore subagent.** When the class needs *reading* (semantic disambiguation: which `Timer.publish(every:)` calls should invalidate during backgrounding vs which shouldn't). Cost: ~10 minutes / one subagent invocation. Output: `file:line` list with brief rationale per finding.
+- **Tier 3 — dedicated detector script at `scripts/check-<wall-id>.py`.** Runs in `scripts/verify-pr.sh` + pre-commit. **THIS IS THE PERMANENT WALL.** The one-time wipe catches *current* instances; the detector catches *future* ones. Without Tier 3 the class can recur next month.
+
+**Discipline guardrails (NON-NEGOTIABLE):**
+
+- **Scope-deferral protocol applies.** If the class scan returns >5 survivors and fixing all of them would push this PR past 600 LOC, STOP with the BLOCKED + scope-reduction proposal per CLAUDE.md. Do not silently ship "we fixed 3 of 8 sites and the PR title is `fix(<thing>)` while the issue remains in 5 sites." Tier 3 still lands in this PR — the detector catches the deferred sites at the next commit they touch.
+- **Triage budget.** Small class (≤3 survivors, ≤50 LOC fix): instant fix, no follow-up ticket. Big class (>3 survivors or >50 LOC fix): scope-defer, file a Jira follow-up *and* land the detector. The detector + the deferred-follow-up ticket together IS the wall — neither alone is sufficient.
+- **The detector script catches future instances; the wipe only catches current ones.** When the choice is "spend the budget on the wipe vs the detector," **prefer the detector**.
+
+**Output of Phase 3.5 (committed at PR time):**
+- `scripts/check-<wall-id>.py` + `scripts/test_check_<wall-id>.py`
+- Wiring in `scripts/verify-pr.sh` (both `--quick` and full) — use the existing `run_m1_check` helper shape
+- `.claude/settings.json` PreToolUse Bash hook entry (`scripts/hooks/pre-commit-<wall-id>.sh` if a wrapper is needed, otherwise inline)
+- Wall-failure entry `.forgeos/wall-failures/YYYY-MM-DD-<short-id>.md` with `detector_script:` populated per the README + TEMPLATE convention
+- Commit body reconciles "wiped N sites, detector covers future" via `check-contract-reconciliation.py`
+
+See `docs/architecture/phase-3.5-class-scan.md` for the architecture-level rationale, the 6 detectors that landed via this swarm, and the cluster-vs-instance decision log.
+
 ### Phase 4 — /forge-review (architect + qa_test + blast_radius SoD)
 
 ```
@@ -160,8 +200,8 @@ If any check fails, fix it BEFORE invoking /forge-review. Don't ask the reviewer
 ```
 
 Same SoD pattern as /swarm. Reviewer count is **3**: `architect`, `qa_test`, and `blast_radius` (universal floor). The blast_radius reviewer is mandatory regardless of gate template per swarm `swarm_M1_83be56fc` (2026-05-28) — closes the 11-finding gap waves 1-4 surfaced AFTER architect + qa_test review. If BLOCKED by any of the three:
-1. Create a wall-failure entry per `.forgeos/wall-failures/README.md`.
-2. Fix the finding.
+1. Create a wall-failure entry per `.forgeos/wall-failures/README.md`. Per Phase 3.5, the entry MUST land with a `detector_script:` (or a `no-detector:` justification) — the wall is the detector, not the one-time wipe.
+2. Fix the finding (apply Phase 3.5 if the block classifies as a *class*, not a single instance).
 3. Re-run /forge-review.
 
 ### Phase 5 — Promote + commit + PR

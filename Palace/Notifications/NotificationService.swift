@@ -134,11 +134,24 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
 
     /// Shared NSNotificationCenter observer wiring used by both the
     /// no-arg production init and the test-only init.
+    ///
+    /// `NotificationService.shared` is an app-lifetime singleton; the
+    /// observers below are intentionally never deregistered because the
+    /// service outlives every other component in the app graph. Re-init
+    /// is not a concern (the production seam is the `static let shared`
+    /// — Swift guarantees one-shot initialization), so the PP-4329
+    /// double-fire / re-init leak class doesn't apply here. The
+    /// `// no-observer-storage:` annotations below opt out of the D5-1
+    /// detector explicitly.
     private func installNotificationObservers() {
+        // no-observer-storage: NotificationService.shared is an app-lifetime
+        // singleton; this observer is meant to live until process exit.
         // Update library token when the user changes library account.
         NotificationCenter.default.addObserver(forName: NSNotification.Name.TPPCurrentAccountDidChange, object: nil, queue: .main) { [weak self] _ in
             self?.updateToken()
         }
+        // no-observer-storage: NotificationService.shared is an app-lifetime
+        // singleton; this observer is meant to live until process exit.
         // Update library token when the user signs in (but has already added the library)
         NotificationCenter.default.addObserver(forName: NSNotification.Name.TPPIsSigningIn, object: nil, queue: .main) { [weak self] notification in
             if let isSigningIn = notification.object as? Bool, !isSigningIn {

@@ -60,6 +60,12 @@
           },
           {
             "type": "command",
+            "command": "bash scripts/pre-commit-phase35-detectors.sh",
+            "timeout": 15,
+            "statusMessage": "Phase 3.5 class-detectable detectors (6 wall-failure detectors)..."
+          },
+          {
+            "type": "command",
             "command": "bash scripts/hooks/pre-commit-doc-lifecycle.sh",
             "timeout": 10,
             "statusMessage": "Validating governance doc frontmatter..."

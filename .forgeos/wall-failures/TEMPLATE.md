@@ -11,6 +11,14 @@ walls: []  # array form, preferred for new entries; multiple walls can contribut
 severity: low | medium | high | critical
 wall_status: open | proposed | applied
 applied_in: ""  # commit SHA or PR # where the permanent fix landed
+detector_script: ""  # MANDATORY per README "Detector requirement" — either
+                     # scripts/check-<wall-id>.py OR empty + no-detector below.
+detector_status: built | queued | no-detector
+                     # built  — script + tests landed in this entry's PR
+                     # queued — entry filed; detector pending in named follow-up PR
+                     # no-detector — justification populated below + in body
+no-detector: ""      # populate ONLY when detector_status == no-detector;
+                     # specific reason why a static script cannot encode the class.
 contributing_docs:  # optional; populate when a stale doc contributed to the failure.
                     # Each entry: {path, last_refresh_at_failure, decay_days}
                     # decay_days = (failure_date - last_refresh_at_failure)
@@ -22,7 +30,7 @@ name: wall-failures-template
 type: evolving
 status: active
 created: 2026-05-28
-last_refresh: 2026-05-28
+last_refresh: 2026-06-05
 freshness_window: 365d
 owners: [general]
 description: Title — one-line summary of what escaped
@@ -51,6 +59,22 @@ Concrete and grep-able. *Not* "be more careful next time." Examples:
 - Add pre-commit hook: *"Block commits that add `_ = newFn()` without an inline `// rationale: ...` comment."*
 
 The fix should make the finding **structurally impossible to land**, not "more likely to be noticed."
+
+## Detector script
+
+**Script:** `scripts/check-<wall-id>.py`
+**Tests:** `scripts/test_check_<wall-id>.py`
+**Wired into:** `scripts/verify-pr.sh` (both `--quick` and full); `.claude/settings.json` PreToolUse hook(s).
+
+**What it catches (one paragraph):** describe the call-pattern in grep-able / AST-able terms. What goes wrong if this lands? What is the canonical fix shape? Be precise enough that a reader unfamiliar with the original incident can predict what the detector will flag.
+
+**False-positive escape hatch:** `// no-<wall-id>: <reason>` on the same or preceding line — same convention as `// no-superpartner:` per `scripts/check-superpartner-spectrum.py`. Document the escape hatch here so future engineers don't reach for `--no-verify`.
+
+**Severity (high/medium/low) and rationale:** ...
+
+**Coverage measured at landing:** N% of detector logic lines covered by `scripts/test_check_<wall-id>.py` (≥80% is the convention).
+
+(If `detector_status: no-detector` instead, replace this entire section with a `## No detector — justification` section that's specific about why no static check can encode the class. Vague reasons like "too hard" are not acceptable; the reviewer pass on the entry will reject them.)
 
 ## Stale-doc contribution
 

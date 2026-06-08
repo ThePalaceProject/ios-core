@@ -526,6 +526,57 @@ else
   record "test_name_vs_body" "pass" "No changed test files (skipped)"
 fi
 
+# 3g-3l. Phase 3.5 class-detectable detectors (swarm_162a3219)
+# Each codifies a shipped-bug class as a runnable detector that scans the
+# staged diff. Block-mode on high-severity classes (foreign-host 401, LCP
+# recursive acquisition, completion-nil-error suppression, NSError problemDoc
+# preservation); warn-only on lower-severity classes (SwiftUI placeholder a11y,
+# NotificationCenter observer storage). Same inline shape as the M1 gates above.
+run_phase35_detector() {
+  # $1=record key  $2=script  $3=block|warn  $4=pass message  $5=diff|scan (invocation mode)
+  local key="$1" script="$2" mode="$3" pass_msg="$4" scan_mode="${5:-diff}"
+  if [ "$MUTATION_ONLY" = "true" ]; then
+    record "$key" "pass" "Skipped (--mutation-only)"
+  elif [ -f "scripts/$script" ]; then
+    local d out exit_code
+    if [ "$scan_mode" = "scan" ]; then
+      # Tree-scan detectors (e.g. check-lcp-acquisition-recursive.py) have no
+      # --diff flag — passing one is an argparse error → spurious block.
+      out=$(python3 "scripts/$script" --quiet 2>&1)
+      exit_code=$?
+    else
+      d=$(mktemp -t p35-diff.XXXX)
+      git diff "$BASE"...HEAD > "$d" 2>/dev/null || true
+      out=$(python3 "scripts/$script" --diff "$d" --quiet 2>&1)
+      exit_code=$?
+      rm -f "$d"
+    fi
+    if [ "$exit_code" -eq 0 ]; then
+      record "$key" "pass" "$pass_msg"
+    elif [ "$mode" = "warn" ]; then
+      record "$key" "pass" "$(echo "$out" | head -1) — non-blocking"
+    else
+      record "$key" "fail" "$(echo "$out" | head -3 | tr '\n' ' ')"
+    fi
+  else
+    record "$key" "pass" "scripts/$script not found (skipped)"
+  fi
+}
+
+echo "--- Phase 3.5 class-detectable detectors ---"
+run_phase35_detector "foreign_host_401_scoping" "check-foreign-host-401-scoping.py" "block" \
+  "No 401 dispatch site missing current-account host scoping" "diff"
+run_phase35_detector "lcp_acquisition_recursive" "check-lcp-acquisition-recursive.py" "block" \
+  "No LCP acquisition predicate inspects only defaultAcquisition.type" "scan"
+run_phase35_detector "completion_nil_error_suppression" "check-completion-nil-error-suppression.py" "block" \
+  "No completion(nil, title, message) sites suppress consumer alert path" "diff"
+run_phase35_detector "nserror_problemdoc_preservation" "check-nserror-problemdoc-preservation.py" "block" \
+  "No NSError construction discards in-scope TPPProblemDocument context" "diff"
+run_phase35_detector "swiftui_placeholder_a11y" "check-swiftui-placeholder-a11y.py" "warn" \
+  "No SwiftUI placeholder/label without .accessibilityLabel" "diff"
+run_phase35_detector "notification_center_observer_storage" "check-notification-center-observer-storage.py" "warn" \
+  "No NotificationCenter observer registered without storage/removal" "diff"
+
 # 4. Coverage floors
 echo "--- Coverage Floors ---"
 if [ "$MUTATION_ONLY" = "true" ]; then
