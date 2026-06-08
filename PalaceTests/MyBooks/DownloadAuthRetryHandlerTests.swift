@@ -155,6 +155,136 @@ final class DownloadAuthRetryHandlerTests: XCTestCase {
         }
     }
 
+    // MARK: - Foreign-host guard (F-006 / PP-4542): line 234 `statusCode == 401`
+    //         + line 240 `return false` mutants.
+    //
+    // The guard at DownloadAuthRetryHandler.swift:234-241 short-circuits a
+    // 401 whose originating host is OUTSIDE the current account's auth
+    // surface (PR #1018 cross-host regression — a biblioboard/Icarus 401
+    // is not our account's session expiry). Two surviving mutants:
+    //   :234 `statusCode == 401` → `!= 401`  — must distinguish 401 vs non-401
+    //   :240 `return false`      → `return true` — the short-circuit's value
+    //
+    // To exercise the guard the handler must be built WITH a
+    // `currentAccountHostsProvider`; the default setUp handler has none
+    // (guard disabled = legacy). These tests build a guarded handler.
+
+    /// Builds a handler whose foreign-host guard is active for `accountHosts`.
+    private func makeGuardedHandler(accountHosts: Set<String>) -> DownloadAuthRetryHandler {
+        let h = DownloadAuthRetryHandler(
+            stateManager: stateManager,
+            bookRegistry: registry,
+            reauthenticator: reauthenticator,
+            alertPresenter: alertPresenter,
+            userAccountProvider: { [unowned self] in self.userAccount },
+            currentAccountHostsProvider: { accountHosts }
+        )
+        h.delegate = spyDelegate
+        return h
+    }
+
+    /// 401 from a host OUTSIDE the current account's auth surface must
+    /// short-circuit (return false) BEFORE marking credentials stale or
+    /// dispatching any re-auth — even though the account is a browser-SAML
+    /// account that WOULD otherwise drive a SAML retry on a same-host 401.
+    ///
+    /// Kills :234 `statusCode == 401`→`!= 401`: under the `!=` mutant the
+    /// guard's status clause is false for this 401, so the guard does NOT
+    /// fire, the handler falls through to the normal SAML 401 path, marks
+    /// stale, flips state to `.SAMLStarted` and retries the download —
+    /// every assertion below flips.
+    /// Kills :240 `return false`→`return true`: under the `true` mutant the
+    /// handler claims the failure (handled==true), so the `XCTAssertFalse`
+    /// on `handled` flips.
+    func testHandle_401_foreignHost_browserSAML_shortCircuitsReturnsFalse_noReauth() async throws {
+        userAccount._authDefinition = makeAuth(typeRaw: "http://librarysimplified.org/authtype/SAML-2.0")
+        userAccount._credentials = .barcodeAndPin(barcode: "b", pin: "p")
+        XCTAssertEqual(userAccount.authState, .loggedIn, "pre-state: account is logged in")
+
+        registry.addBook(book, location: nil, state: .downloading,
+                         fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+
+        // Account auth surface is minotaur.dev.palaceproject.io; the failing
+        // 401 task originates from biblioboard.com — a FOREIGN host.
+        let guarded = makeGuardedHandler(accountHosts: ["minotaur.dev.palaceproject.io"])
+        let task = makeFakeTask(statusCode: 401,
+                                url: URL(string: "https://biblioboard.com/loan/x")!)
+
+        let handled = guarded.handleAuthFailureIfApplicable(book: book, task: task,
+                                                            problemDoc: nil, failureError: nil)
+        await waitForAsyncCleanup()
+
+        XCTAssertFalse(handled,
+                       "Foreign-host 401 must NOT be claimed — caller falls through (:240 return false).")
+        XCTAssertEqual(userAccount.authState, .loggedIn,
+                       "Foreign-host 401 must NOT mark credentials stale (guard fires before markCredentialsStale).")
+        XCTAssertEqual(registry.state(for: book.identifier), .downloading,
+                       "State must stay .downloading — no .SAMLStarted transition for a foreign-host 401.")
+        XCTAssertTrue(spyDelegate.startDownloadCalls.isEmpty,
+                      "No download retry for a foreign-host 401.")
+        XCTAssertFalse(reauthenticator.authenticateIfNeededCalled,
+                       "No re-auth dispatch for a foreign-host 401.")
+    }
+
+    /// Same account + same foreign provider set, but the 401 now comes FROM
+    /// a host that IS in the account's auth surface. The guard's
+    /// `statusCode == 401` is true but the host IS contained, so the guard
+    /// does NOT short-circuit and the normal SAML 401 path runs. This is the
+    /// positive control that proves the guard is host-scoped, not a blanket
+    /// 401 suppressor — and it re-confirms :234 must read `== 401` to even
+    /// reach the host check for a real same-host 401.
+    func testHandle_401_accountHost_browserSAML_guardDoesNotFire_drivesSAMLRetry() async throws {
+        userAccount._authDefinition = makeAuth(typeRaw: "http://librarysimplified.org/authtype/SAML-2.0")
+        userAccount._credentials = .barcodeAndPin(barcode: "b", pin: "p")
+
+        registry.addBook(book, location: nil, state: .downloading,
+                         fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+
+        let guarded = makeGuardedHandler(accountHosts: ["minotaur.dev.palaceproject.io"])
+        let task = makeFakeTask(statusCode: 401,
+                                url: URL(string: "https://minotaur.dev.palaceproject.io/loan/x")!)
+
+        let handled = guarded.handleAuthFailureIfApplicable(book: book, task: task,
+                                                            problemDoc: nil, failureError: nil)
+        await waitForAsyncCleanup()
+
+        XCTAssertTrue(handled, "Same-host 401 must be claimed and drive the SAML retry path.")
+        XCTAssertEqual(registry.state(for: book.identifier), .SAMLStarted,
+                       "Same-host SAML 401 flips state to .SAMLStarted (guard did NOT short-circuit).")
+        XCTAssertEqual(spyDelegate.startDownloadCalls.map { $0.identifier }, [book.identifier],
+                       "Same-host SAML 401 retries the download.")
+    }
+
+    /// A NON-401 (403) from a foreign host must NOT be short-circuited by the
+    /// foreign-host guard — the guard is explicitly 401-only. Under the
+    /// :234 `== 401`→`!= 401` mutant the guard WOULD fire for a 403 from a
+    /// foreign host (because `403 != 401` is true) and return false early.
+    /// Here the account is anonymous-free of any 401 path, so the correct
+    /// behavior for a 403 is the normal fall-through (also false) — to make
+    /// the mutant observable we use an account that, absent the guard, would
+    /// take a DIFFERENT action on the non-401 path: no-credentials +
+    /// loginRequired drives the sign-in modal for ANY status code (Branch 5).
+    /// The guard must NOT intercept that 403, so the modal must still fire.
+    func testHandle_403_foreignHost_noCredentials_guardDoesNotIntercept_signInStillFires() {
+        userAccount._authDefinition = makeAuth(typeRaw: "http://opds-spec.org/auth/basic")
+        userAccount._credentials = nil
+        XCTAssertFalse(userAccount.hasCredentials())
+
+        let guarded = makeGuardedHandler(accountHosts: ["minotaur.dev.palaceproject.io"])
+        let task = makeFakeTask(statusCode: 403,
+                                url: URL(string: "https://biblioboard.com/loan/x")!)
+
+        let handled = guarded.handleAuthFailureIfApplicable(book: book, task: task,
+                                                            problemDoc: nil, failureError: nil)
+
+        XCTAssertTrue(handled,
+                      "A 403 (non-401) must reach the no-creds sign-in branch — the foreign-host " +
+                      "guard is 401-only. The :234 `!= 401` mutant would short-circuit this 403 and " +
+                      "return false, suppressing the sign-in modal.")
+        XCTAssertTrue(reauthenticator.authenticateIfNeededCalled,
+                      "Sign-in modal must fire for the foreign-host 403 (guard must not intercept).")
+    }
+
     // MARK: - Branch 1: 401 + hasCredentials + browser SAML → SAMLStarted retry
 
     func testHandle_401_withCredentials_browserSAML_setsStateToSAMLStartedAndRetries() async throws {
