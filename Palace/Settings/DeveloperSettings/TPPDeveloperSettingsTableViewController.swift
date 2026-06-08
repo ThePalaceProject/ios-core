@@ -22,6 +22,34 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         case mockBackend
         case resetAccountTesting
         #endif
+
+        enum Audience { case support, engineering }
+        var audience: Audience {
+            switch self {
+            case .dataManagement: return .support   // Clear Cached Data + account resets — support/patron-facing
+            default: return .engineering
+            }
+        }
+    }
+
+    /// Engineering tools render in DEBUG, simulator, and TestFlight, but are
+    /// hidden from production App Store users (who can still reach this menu via
+    /// the hidden version-label unlock). Support-tier sections always render.
+    ///
+    /// Detection is by receipt name rather than a compile-time `#if DEBUG`:
+    /// production App Store builds carry a receipt named "receipt"; DEBUG, sim,
+    /// and TestFlight builds carry "sandboxReceipt" (or no receipt). This avoids
+    /// an `#if DEBUG` block on a production path (blast-radius BR-2) while giving
+    /// the same tier behavior.
+    private var showEngineeringTools: Bool {
+        Bundle.main.appStoreReceiptURL?.lastPathComponent != "receipt"
+    }
+
+    /// The sections actually shown, in order. Engineering sections drop out in
+    /// App Store builds. ALL data-source methods must index THIS array, never
+    /// `Section(rawValue:)` directly, so section indices stay contiguous.
+    private var visibleSections: [Section] {
+        Section.allCases.filter { $0.audience == .support || showEngineeringTools }
     }
 
     private let fcmTokenCellIdentifier = "fcmTokenCell"
@@ -95,11 +123,13 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     // MARK: - UITableViewDataSource
 
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        guard let sectionType = Section(rawValue: section) else { return 0 }
+        guard section >= 0, section < visibleSections.count else { return 0 }
+        let sectionType = visibleSections[section]
         switch sectionType {
         case .librarySettings: return 2
         case .triageBot: return 3  // enabled + ticket submission + AI fallback
         case .featureFlags: return 1
+        case .dataManagement: return 3  // Clear Cached Data + Reset This Library + Full Reset
         case .developerTools: return 2
         case .pushNotificationTesting: return 3
         case .badgeTesting:
@@ -123,13 +153,14 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     }
 
     func numberOfSections(in tableView: UITableView) -> Int {
-        return Section.allCases.count
+        return visibleSections.count
     }
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        guard let sectionType = Section(rawValue: indexPath.section) else {
+        guard indexPath.section >= 0, indexPath.section < visibleSections.count else {
             return UITableViewCell()
         }
+        let sectionType = visibleSections[indexPath.section]
         switch sectionType {
         case .librarySettings:
             switch indexPath.row {
@@ -144,7 +175,12 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
             }
         case .featureFlags: return cellForInAppPlaybackNav()
         case .libraryRegistryDebugging: return cellForCustomRegsitry()
-        case .dataManagement: return cellForClearCache()
+        case .dataManagement:
+            switch indexPath.row {
+            case 0: return cellForClearCache()
+            case 1: return cellForResetThisLibrary()
+            default: return cellForFullReset()
+            }
         case .developerTools:
             switch indexPath.row {
             case 0: return cellForSendErrorLogs()
@@ -190,7 +226,8 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     }
 
     func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
-        guard let sectionType = Section(rawValue: section) else { return nil }
+        guard section >= 0, section < visibleSections.count else { return nil }
+        let sectionType = visibleSections[section]
         switch sectionType {
         case .librarySettings:
             return "Library Settings"
@@ -201,7 +238,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         case .libraryRegistryDebugging:
             return "Library Registry Debugging"
         case .dataManagement:
-            return "Data Management"
+            return "Data & Reset"
         case .developerTools:
             return "Developer Tools"
         case .pushNotificationTesting:
@@ -354,6 +391,76 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         cell.selectionStyle = .none
         cell.textLabel?.text = "Clear Cached Data"
         return cell
+    }
+
+    private func cellForResetThisLibrary() -> UITableViewCell {
+        let cell = UITableViewCell(style: .subtitle, reuseIdentifier: "resetThisLibraryCell")
+        cell.textLabel?.text = "Reset This Library"
+        cell.textLabel?.textColor = .systemRed
+        cell.detailTextLabel?.text = "Signs out & deletes this library's downloads, bookmarks, saved login. Other libraries unaffected."
+        cell.detailTextLabel?.numberOfLines = 0
+        return cell
+    }
+
+    private func cellForFullReset() -> UITableViewCell {
+        let cell = UITableViewCell(style: .subtitle, reuseIdentifier: "fullResetCell")
+        cell.textLabel?.text = "Full Reset (All Libraries)"
+        cell.textLabel?.textColor = .systemRed
+        cell.detailTextLabel?.text = "For a stuck app. Signs out of ALL libraries & re-activates DRM device-wide. Use only if a single-library reset didn't fix it."
+        cell.detailTextLabel?.numberOfLines = 0
+        return cell
+    }
+
+    // MARK: - Account Reset (support tier)
+
+    private func currentAccountBusinessLogic() -> TPPSignInBusinessLogic? {
+        let container = AppContainer.production()
+        guard let accountId = container.accountsManager.currentAccountId,
+              let registry = container.bookRegistry as? TPPBookRegistrySyncing else { return nil }
+        return TPPSignInBusinessLogic(
+            libraryAccountID: accountId,
+            libraryAccountsProvider: container.accountsManager,
+            urlSettingsProvider: container.settings,
+            bookRegistry: registry,
+            bookDownloadsCenter: container.downloadCenter,
+            userAccountProvider: TPPUserAccount.self,
+            uiDelegate: nil,
+            drmAuthorizer: container.drmAuthorizerProvider()
+        )
+    }
+
+    private func confirmResetThisLibrary() {
+        presentResetConfirmation(
+            title: "Reset This Library?",
+            message: "Signs you out of the current library and deletes its downloads, bookmarks, and saved login on this device. Other libraries and your server loans/holds are not affected.",
+            confirmTitle: "Reset Library"
+        ) { logic, done in logic.performScopedReset(completion: done) }
+    }
+
+    private func confirmFullReset() {
+        presentResetConfirmation(
+            title: "Full Reset — All Libraries?",
+            message: "Signs you out of EVERY library on this device and re-activates DRM device-wide. Use only if resetting a single library did not fix the problem. Server loans/holds are not affected.",
+            confirmTitle: "Full Reset"
+        ) { logic, done in logic.performForceReset(completion: done) }
+    }
+
+    private func presentResetConfirmation(title: String, message: String, confirmTitle: String,
+                                          action: @escaping (TPPSignInBusinessLogic, @escaping () -> Void) -> Void) {
+        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: confirmTitle, style: .destructive) { [weak self] _ in
+            guard let self, let logic = self.currentAccountBusinessLogic() else { return }
+            action(logic) { [weak self] in
+                DispatchQueue.main.async {
+                    self?.tableView?.reloadData()
+                    let doneAlert = UIAlertController(title: "Reset complete", message: "You may need to sign in again.", preferredStyle: .alert)
+                    doneAlert.addAction(UIAlertAction(title: "OK", style: .default))
+                    self?.present(doneAlert, animated: true)
+                }
+            }
+        })
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        present(alert, animated: true)
     }
 
     private func cellForSendErrorLogs() -> UITableViewCell {
@@ -700,13 +807,23 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         self.tableView.deselectRow(at: indexPath, animated: true)
 
+        guard indexPath.section >= 0, indexPath.section < visibleSections.count else { return }
+        let sectionType = visibleSections[indexPath.section]
+
         // F-011 class-of-bug guard
-        switch Section(rawValue: indexPath.section) {
+        switch sectionType {
         case .dataManagement:
-            accountsManager.clearCache()
-            ImageCache.shared.clear()
-            let alert = TPPAlertUtils.alert(title: "Data Management", message: "Cache Cleared")
-            self.present(alert, animated: true, completion: nil)
+            switch indexPath.row {
+            case 0:
+                accountsManager.clearCache()
+                ImageCache.shared.clear()
+                let alert = TPPAlertUtils.alert(title: "Data Management", message: "Cache Cleared")
+                self.present(alert, animated: true, completion: nil)
+            case 1:
+                confirmResetThisLibrary()
+            default:
+                confirmFullReset()
+            }
 
         case .developerTools:
             switch indexPath.row {
@@ -753,7 +870,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
             }
         #endif
 
-        case .librarySettings, .triageBot, .featureFlags, .libraryRegistryDebugging, nil:
+        case .librarySettings, .triageBot, .featureFlags, .libraryRegistryDebugging:
             break
         }
     }
