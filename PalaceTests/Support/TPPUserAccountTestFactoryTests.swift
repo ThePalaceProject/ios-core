@@ -29,6 +29,40 @@ final class TPPUserAccountTestFactoryTests: XCTestCase {
         try super.tearDownWithError()
     }
 
+    // MARK: - Invariant 0: resetter registration is order-independent (flake hardening)
+
+    /// `TPPUserAccountIsolationLintTests.testResetterIsRegisteredAfterFactoryUse`
+    /// flaked by full-suite order: the resetter used to register fire-once, so
+    /// once a predecessor fired it and a later test cleared the registry
+    /// (`PalaceTestSetupObservationTests._removeAllForTests()`), a subsequent
+    /// mint never re-registered — leaking minted accounts AND failing the lint.
+    /// This pins the fix DETERMINISTICALLY (no 35-min full-suite repro needed):
+    /// it recreates the exact register → clear → register condition in one test.
+    func testMakeIsolated_reRegistersResetter_afterRegistryCleared() {
+        // Restore the built-in resetters even if an assertion below fails, so
+        // this test (which deliberately clears the registry) can't itself become
+        // the polluter it's guarding against.
+        defer { _ = PalaceTestSetup.bootstrap() }
+
+        let name = TPPUserAccountTestFactory.resetterName
+
+        // 1. First mint registers the resetter.
+        _ = TPPUserAccountTestFactory.makeIsolated(libraryUUID: "order-probe-1")
+        XCTAssertTrue(SingletonResetRegistry.shared.registeredNames().contains(name),
+                      "First makeIsolated() must register the minted-account resetter")
+
+        // 2. A later test clears the registry — the resetter is dropped.
+        SingletonResetRegistry.shared._removeAllForTests()
+        XCTAssertFalse(SingletonResetRegistry.shared.registeredNames().contains(name),
+                       "Precondition: clearing the registry drops the resetter")
+
+        // 3. A subsequent mint MUST re-register it. Under the old fire-once
+        //    registration this stayed false — the root cause of the flake.
+        _ = TPPUserAccountTestFactory.makeIsolated(libraryUUID: "order-probe-2")
+        XCTAssertTrue(SingletonResetRegistry.shared.registeredNames().contains(name),
+                      "makeIsolated() must re-register the resetter after a registry clear — fire-once registration leaks minted accounts and flakes by suite order")
+    }
+
     // MARK: - Invariant 1: each call mints a fresh UUID-namespaced account
 
     func testMakeIsolated_eachCallReturnsDistinctLibraryUUID() {

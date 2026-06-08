@@ -58,18 +58,26 @@ struct TPPUserAccountTestFactory {
 
     // MARK: - Resetter wiring
 
-    /// Process-wide flag — set once on first `makeIsolated()` call. The
-    /// `SingletonResetRegistry` API allows duplicate registrations (later
-    /// ones overwrite in-place), but doing it once keeps the registered-
-    /// names diagnostic clean.
-    private static let registerOnce: Void = {
-        SingletonResetRegistry.shared.register("TPPUserAccountTestFactory.minted") {
+    /// Name of the resetter this factory registers with `SingletonResetRegistry`.
+    static let resetterName = "TPPUserAccountTestFactory.minted"
+
+    /// Registers the minted-account resetter **idempotently on every**
+    /// `makeIsolated()` call — register-if-absent, NOT fire-once.
+    ///
+    /// Why not fire-once: `SingletonResetRegistry` can be cleared mid-suite
+    /// (`PalaceTestSetupObservationTests` calls `_removeAllForTests()`, restoring
+    /// only the built-ins). A fire-once registration is then permanently lost,
+    /// so later minted accounts leak (no `removeAll()` at `testCaseDidFinish`)
+    /// and `TPPUserAccountIsolationLintTests.testResetterIsRegisteredAfterFactoryUse`
+    /// flakes depending on full-suite order. Re-registering when absent makes
+    /// every mint self-healing and order-independent. The registry allows
+    /// duplicate registration (overwrites in-place); the `contains` guard keeps
+    /// the registered-names diagnostic clean (no redundant churn).
+    private static func registerResetterIfNeeded() {
+        guard !SingletonResetRegistry.shared.registeredNames().contains(resetterName) else { return }
+        SingletonResetRegistry.shared.register(resetterName) {
             Tracker.shared.resetAll()
         }
-    }()
-
-    private static func registerResetterIfNeeded() {
-        _ = registerOnce
     }
 
     /// Process-wide tracker of accounts minted by the factory. The list
