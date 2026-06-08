@@ -272,6 +272,47 @@ class TPPSignInBusinessLogicTests: XCTestCase {
             "Same code under a different domain is not a URLSession connectivity error.")
     }
 
+    // MARK: - HelpSpot 18046 — transient server errors are not "invalid credentials"
+
+    /// A transient server failure surfaced by TokenRequest after retries are
+    /// exhausted (5xx) must show the "try again" message, NOT "Invalid
+    /// Credentials" — the 18046 misreport.
+    func testUserFacingSignInError_TransientServer5xx_ReturnsTryAgain_Not_InvalidCredentials() {
+        let error = NSError(domain: "TokenRequest", code: 503)
+
+        let (title, message) = TPPSignInBusinessLogic.userFacingSignInError(for: error, problemDocument: nil)
+
+        XCTAssertEqual(title, Strings.Error.networkUnavailableErrorTitle)
+        XCTAssertEqual(message, Strings.Error.networkUnavailableErrorMessage)
+        XCTAssertNotEqual(title, Strings.Error.invalidCredentialsErrorTitle,
+                          "A transient 5xx from /token must NOT be reported as invalid credentials (HelpSpot 18046)")
+    }
+
+    /// A genuine 401 from /token IS a credential rejection — it must still show
+    /// "Invalid Credentials", proving the transient branch does not over-match.
+    func testUserFacingSignInError_TokenRequest401_StillReturnsInvalidCredentials() {
+        let error = NSError(domain: "TokenRequest", code: 401)
+
+        let (title, _) = TPPSignInBusinessLogic.userFacingSignInError(for: error, problemDocument: nil)
+
+        XCTAssertEqual(title, Strings.Error.invalidCredentialsErrorTitle,
+                       "A real 401 must remain an invalid-credentials message — the transient branch covers only 5xx/429/408")
+    }
+
+    func testIsTransientServerError_classification() {
+        for code in [408, 429, 500, 502, 503, 504] {
+            XCTAssertTrue(TPPSignInBusinessLogic.isTransientServerError(NSError(domain: "TokenRequest", code: code)),
+                          "\(code) from TokenRequest should be transient")
+        }
+        for code in [200, 400, 401, 403, 404] {
+            XCTAssertFalse(TPPSignInBusinessLogic.isTransientServerError(NSError(domain: "TokenRequest", code: code)),
+                           "\(code) from TokenRequest should NOT be transient")
+        }
+        // A transient code under a different domain is not a TokenRequest error.
+        XCTAssertFalse(TPPSignInBusinessLogic.isTransientServerError(NSError(domain: "TPPErrorDomain", code: 503)),
+                       "Domain must be TokenRequest to count as a transient token-exchange failure")
+    }
+
     // MARK: - BUG-002 — EULA agreement copy leaks post-auth
     //
     // The Account screen renders "By signing in, you agree to the End User License

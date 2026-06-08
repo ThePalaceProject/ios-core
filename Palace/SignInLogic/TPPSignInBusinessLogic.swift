@@ -556,8 +556,25 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
             return (Strings.Error.networkUnavailableErrorTitle,
                     Strings.Error.networkUnavailableErrorMessage)
         }
+        // A transient server hiccup surfaced by TokenRequest after retries were
+        // exhausted (5xx / 429 / 408) is NOT bad credentials — show the
+        // "try again" message rather than misreporting it as invalid creds
+        // (HelpSpot 18046). Reuses the existing network-unavailable copy.
+        if isTransientServerError(error) {
+            return (Strings.Error.networkUnavailableErrorTitle,
+                    Strings.Error.networkUnavailableErrorMessage)
+        }
         return (Strings.Error.invalidCredentialsErrorTitle,
                 Strings.Error.invalidCredentialsErrorMessage)
+    }
+
+    /// True when the error is a transient HTTP failure surfaced by
+    /// `TokenRequest` after its bounded retry was exhausted (5xx / 429 / 408).
+    /// A genuine 401/403 has a different code and is NOT matched here, so it
+    /// still falls through to the "Invalid Credentials" message.
+    static func isTransientServerError(_ error: NSError) -> Bool {
+        guard error.domain == TokenRequest.httpErrorDomain else { return false }
+        return error.code == 408 || error.code == 429 || (500...599).contains(error.code)
     }
 
     /// True when the error is from URLSession indicating the request never
