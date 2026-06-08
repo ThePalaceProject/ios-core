@@ -52,6 +52,52 @@ xcodebuild -project Palace.xcodeproj -scheme Palace \
 - Two targets: `Palace` (full DRM) and `Palace-noDRM` (open-source)
 - DRM builds run natively on Apple Silicon — Rosetta is no longer required
 
+## CI/CD reliability — the green-board contract
+
+A CI board that is usually-red-from-flakes provides **no signal** — it trains
+everyone to ignore CI and admin-merge, and a real failure then hides in the
+noise. (That is exactly how PR #1045 shipped a `verify-pr.sh` that didn't pass
+`bash -n` and a pre-commit hook that would have blocked every commit: the board
+was already red from pollution, so nobody trusted it.) The contract below keeps
+the board trustworthy.
+
+**1. Flakes don't redden the board; real failures do.** `scripts/xcode-test-optimized.sh`
+runs with `-retry-tests-on-failure -test-iterations 3`. A test that passes on
+any of 3 attempts counts as a pass; a real failure fails all 3 and stays red.
+Retry is a safety net, **not** a substitute for fixing pollution — see #2.
+
+**2. Fix test pollution at the root; do not just document flake #N.** The
+recurring red is shared mutable state bleeding across tests (`.shared`
+singletons, `AccountsManager()` background `loadCatalogs` outliving the test,
+layout-engine-off-main, keychain/UserDefaults bleed). When a flake appears: run
+the polluter-diagnosis (`scripts/find-test-polluter.sh`) to find the test that
+leaves state dirty, then fix the leak (tear down the singleton, await the
+background task, force main-thread layout). Adding a sixth "known flake" memo is
+not a fix.
+
+**3. The tooling is under CI too.** `verify-pr.sh`, the detectors, and the
+pre-commit hooks gate everything else, so they get their own gate:
+`.github/workflows/tooling-checks.yml` runs `bash -n` on every committed shell
+script, the detector pytests (`scripts/tests/`), and the hook fixture test on
+every PR (~1 min, ubuntu). A broken gate script is a CI failure, not a
+ship-green surprise.
+
+**4. Don't land a gate faster than you can verify it.** A new detector / hook /
+verify-pr gate does not merge until: (a) it has a pytest in `scripts/tests/`;
+(b) its **wiring** is end-to-end tested — the hook fixture test
+(`test_pre_commit_phase35_detectors.sh`) must exercise the new detector,
+including a **clean-diff pass** assertion (a detector invoked with an interface
+it rejects must not block); (c) it's been dry-run on the current tree for zero
+false positives. Wiring bugs (a scan-only detector called with `--diff`) are
+invisible to a fixture that only ever stages a violation — always assert the
+clean path passes too.
+
+**5. Retire the admin-merge reflex.** Once the board is trustworthy (1–4), red
+means **stop**. `--admin` over a red check is allowed ONLY when the failure is a
+specific, named, already-tracked flake that passes in isolation — and that flake
+must have a de-flake item per #2. Never `--admin` over a red board whose failure
+you have not individually identified; that is how real breakage lands.
+
 ## Project Structure
 
 ```

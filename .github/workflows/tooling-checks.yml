@@ -1,0 +1,76 @@
+name: Tooling Checks
+# Fast integrity gate for the harness/CI tooling itself — the scripts, hooks,
+# and detectors that gate everything else. CI historically only ran
+# `xcodebuild test`, so a broken verify-pr.sh (bash syntax error) or a
+# commit-blocking pre-commit hook could ship green (PR #1045). This job runs
+# on every PR in ~1 minute on an ubuntu runner (no Xcode) and closes that gap:
+#   1. bash -n on every committed shell script  (catches syntax breaks)
+#   2. pytest on the detector suite              (catches detector logic regressions)
+#   3. the pre-commit hook fixture test          (catches hook-wiring regressions)
+on: [ pull_request, workflow_dispatch ]
+concurrency:
+  group: tooling-checks-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tooling-integrity:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (no submodules — tooling is in-repo)
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install test deps
+        run: pip install --quiet pytest
+
+      # 1. Syntax-check every committed shell script. `scripts/hooks` is a
+      #    machine-local symlink into the harness (absent on CI), so it is
+      #    excluded via -type f (symlinks are skipped by find -type f).
+      - name: bash -n all shell scripts
+        run: |
+          set -euo pipefail
+          fail=0
+          while IFS= read -r f; do
+            if ! bash -n "$f"; then
+              echo "::error file=$f::bash syntax error"
+              fail=1
+            fi
+          done < <(find scripts -type f -name '*.sh' 2>/dev/null | sort)
+          if [ "$fail" -ne 0 ]; then
+            echo "One or more shell scripts have a syntax error."
+            exit 1
+          fi
+          echo "All committed shell scripts pass bash -n."
+
+      # 1b. verify-pr.sh is the pre-PR battery — assert it specifically parses,
+      #     since a break there silently aborts the whole local gate.
+      - name: bash -n verify-pr.sh (explicit)
+        run: bash -n scripts/verify-pr.sh
+
+      # 2. Detector logic suite. These are the Phase 3.5 class-detectable
+      #    detectors + the M1 checks that have pytest coverage.
+      - name: pytest detector suite
+        run: |
+          if [ -d scripts/tests ]; then
+            python3 -m pytest scripts/tests/ -q
+          else
+            echo "No scripts/tests/ — skipping."
+          fi
+
+      # 3. Hook-wiring fixture test. Proves the pre-commit detector hook
+      #    correctly blocks on a violation, identifies the detector, and honors
+      #    bypass envvars — and that every wired detector is invoked with an
+      #    interface it accepts (the bug that would have blocked every commit).
+      - name: pre-commit detector hook fixture test
+        run: |
+          if [ -f scripts/tests/test_pre_commit_phase35_detectors.sh ]; then
+            bash scripts/tests/test_pre_commit_phase35_detectors.sh
+          else
+            echo "No hook fixture test — skipping."
+          fi

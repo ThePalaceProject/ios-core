@@ -106,5 +106,36 @@ if echo "$PERDET_OUT" | grep -q "FOREIGN_HOST_401_SCOPING.*BLOCK"; then
   exit 1
 fi
 
-echo "PASS: 4 assertions — hook correctly captures non-zero exits + bypass envvars honored"
+# --- Assert 5: a CLEAN (non-violating) diff passes ALL detectors with exit 0 ---
+# Regression guard for the LCP-detector wiring bug (2026-06-08). The hook
+# passed `--diff` to check-lcp-acquisition-recursive.py, which only accepts
+# `--scan` (tree-scan). The argparse error (exit 2) was treated as a block —
+# so the hook would have blocked EVERY commit, even clean ones, regardless of
+# content. Asserts 1-4 only ever staged a violating diff, so they stayed green
+# while the hook was broken. A clean diff MUST pass: any detector invoked with
+# an interface it rejects errors out and reddens this assertion.
+git rm -q --cached Palace/Violation.swift
+rm -f Palace/Violation.swift
+cat > Palace/Clean.swift <<'EOF'
+import Foundation
+
+struct Clean {
+    func add(_ a: Int, _ b: Int) -> Int { a + b }
+}
+EOF
+git add Palace/Clean.swift
+set +e
+CLEAN_OUT=$(echo "$JSON_INPUT" | bash "$HOOK" 2>&1)
+CLEAN_EXIT=$?
+set -e
+if [ "$CLEAN_EXIT" -ne 0 ]; then
+  echo "FAIL: hook blocked a CLEAN diff (exit $CLEAN_EXIT) — a detector spuriously errored."
+  echo "  Regression guard: a wired detector invoked with an interface it rejects"
+  echo "  (e.g. --diff passed to a scan-only detector) errors → spurious block on every commit."
+  echo "$CLEAN_OUT" | sed 's/^/    /'
+  exit 1
+fi
+
+echo "PASS: 5 assertions — hook blocks violations, identifies detector, honors both"
+echo "      bypass envvars, and passes a clean diff (no detector spuriously blocks)."
 exit 0
