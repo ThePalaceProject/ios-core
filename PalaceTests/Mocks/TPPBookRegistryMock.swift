@@ -5,6 +5,10 @@ import UIKit
 
 class TPPBookRegistryMock: NSObject, TPPBookRegistryProvider {
 
+    /// Records the libraryID(s) passed to `reset` so tests can assert the
+    /// registry was reset for the expected (active) library only.
+    private(set) var resetCalledLibraryIDs: [String] = []
+
     // MARK: - Publishers
     private let registrySubject = CurrentValueSubject<[String: TPPBookRegistryRecord], Never>([:])
     private let bookStateSubject = CurrentValueSubject<(String, TPPBookState), Never>(("", .unregistered))
@@ -221,6 +225,7 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistryProvider {
 extension TPPBookRegistryMock: TPPBookRegistrySyncing {
     // MARK: - Syncing
     func reset(_ libraryAccountUUID: String) {
+        resetCalledLibraryIDs.append(libraryAccountUUID)
         isSyncing = false
         registry.removeAll()
     }
