@@ -203,4 +203,112 @@ extension TPPSignInBusinessLogic {
             Log.info(#file, "[RESET_ACCOUNT] step 2.5 — DRM deauthorize callback (success=\(success), error=\(error?.localizedDescription ?? "nil")). Local activation cleared regardless.")
         }
     }
+
+    // MARK: - Scoped (active-library-only) reset
+
+    /// Active-library-scoped reset. Unlike `performForceReset`, this clears ONLY
+    /// the current library's local state and leaves every OTHER library intact:
+    ///
+    ///   - credentials (`userAccount.removeAll` — `userAccount` is resolved
+    ///     `for: libraryAccountID`, so this is this library's keychain only)
+    ///   - downloaded books + bookmarks + registry (`reset(libraryAccountID)`)
+    ///   - FCM device token for this library
+    ///   - `selectedIDP` + SAML helper state
+    ///   - this library's web cookies, deleted host-precisely via
+    ///     `WKHTTPCookieStore` scoped to `Account.authSurfaceHosts`
+    ///
+    /// What it deliberately does NOT do (the difference from `performForceReset`):
+    ///   - NO Adobe DRM device deauthorize — that is device-wide and would make
+    ///     OTHER libraries' downloaded books unreadable. Scoped reset never
+    ///     touches it; the "Full Reset (All Libraries)" path
+    ///     (`performForceReset`) still does.
+    ///   - NO blanket `WKWebsiteDataStore.default()` wipe — that destroys every
+    ///     library's web session. We delete only this library's cookies.
+    ///
+    /// Residual edge (documented, not a bug): `localStorage`/`IndexedDB` records
+    /// are keyed by registrable domain, not full host, so two libraries sharing
+    /// a base domain (e.g. `*.palaceproject.io`) cannot have those stores
+    /// separated. Cookies — the auth-bearing surface — ARE host-isolated, which
+    /// is what determines whether the patron is signed out.
+    ///
+    /// - Parameter completion: invoked on the main queue exactly once.
+    /// Internal (not `public`): the only caller is the in-module Developer
+    /// Settings controller; no ObjC or cross-module consumer needs it.
+    func performScopedReset(completion: @escaping () -> Void) {
+        Log.info(#file, "[RESET_ACCOUNT scoped] start — libraryAccountID=\(libraryAccountID)")
+
+        let account = libraryAccountsProvider.account(libraryAccountID)
+
+        // 1. FCM token for THIS library (best-effort).
+        if let account {
+            NotificationService.shared.deleteToken(for: account)
+            account.hasUpdatedToken = false
+            Log.info(#file, "[RESET_ACCOUNT scoped] step 1 ok — FCM token DELETE dispatched; hasUpdatedToken cleared")
+        }
+
+        // 2. Books + registry for THIS library only.
+        bookDownloadsCenter.reset(libraryAccountID)
+        bookRegistry.reset(libraryAccountID)
+        Log.info(#file, "[RESET_ACCOUNT scoped] step 2 ok — downloads + registry reset for \(libraryAccountID)")
+
+        // 3. Credentials for THIS library only (userAccount is resolved for
+        //    libraryAccountID). NO DRM deauthorize — device-wide, out of scope.
+        userAccount.removeAll()
+        selectedIDP = nil
+        samlHelper.clearState()
+        Log.info(#file, "[RESET_ACCOUNT scoped] step 3 ok — userAccount.removeAll, selectedIDP=nil, samlHelper.clearState (DRM deauth intentionally skipped)")
+
+        // 4. One-shot ephemeral OIDC flag so the next sign-in for this library
+        //    doesn't silently reuse a Safari-shared cookie.
+        Self.forceResetUserDefaults.set(true, forKey: Self.nextOIDCSessionEphemeralKey)
+
+        // 5. This library's web cookies only — host-precise, scoped to
+        //    authSurfaceHosts. Empty host set → nothing to clear (basic-auth
+        //    library with no web surface); complete immediately.
+        let hosts = Self.webHostsToClear(for: account)
+        Self.removeScopedWebCookies(forHosts: hosts) {
+            Log.info(#file, "[RESET_ACCOUNT scoped] complete — \(hosts.count) host(s) cleared; other libraries untouched")
+            DispatchQueue.main.async { completion() }
+        }
+    }
+
+    /// Pure, testable computation of which hosts the scoped reset clears web
+    /// cookies for: the active library's auth-surface hosts. Empty when the
+    /// account is nil or has no web surface (cold launch / basic-auth library).
+    static func webHostsToClear(for account: Account?) -> Set<String> {
+        account?.authSurfaceHosts ?? []
+    }
+
+    /// Deletes cookies whose domain matches one of `hosts` (exact or
+    /// dot-suffixed parent match), host-precisely via `WKHTTPCookieStore`.
+    /// This is the seam that isolates sibling libraries sharing a base domain:
+    /// per-cookie deletion keys on the cookie's exact `.domain`, where the
+    /// record-level `WKWebsiteDataStore` API would over-clear the whole
+    /// registrable domain. System-API boundary — exercised via `webHostsToClear`.
+    // no-superpartner: thin WKHTTPCookieStore system-API wrapper; host-selection logic tested via hostMatches + webHostsToClear, empty-hosts no-op via performScopedReset.
+    static func removeScopedWebCookies(forHosts hosts: Set<String>, completion: @escaping () -> Void) {
+        guard !hosts.isEmpty else { completion(); return }
+        let cookieStore = WKWebsiteDataStore.default().httpCookieStore
+        cookieStore.getAllCookies { cookies in
+            let group = DispatchGroup()
+            for cookie in cookies where hostMatches(cookie.domain, hosts) {
+                group.enter()
+                cookieStore.delete(cookie) { group.leave() }
+            }
+            group.notify(queue: .main) { completion() }
+        }
+    }
+
+    /// True when a cookie domain belongs to one of the target hosts. Matches an
+    /// exact host, a leading-dot cookie domain (`.minotaur.example.org`), and a
+    /// parent-domain cookie that covers the host. Does NOT match a sibling host
+    /// under a shared parent (`gorgon.example.org` vs target `minotaur.example.org`).
+    static func hostMatches(_ cookieDomain: String, _ hosts: Set<String>) -> Bool {
+        let normalized = cookieDomain.hasPrefix(".")
+            ? String(cookieDomain.dropFirst()).lowercased()
+            : cookieDomain.lowercased()
+        return hosts.contains { host in
+            normalized == host || host.hasSuffix("." + normalized)
+        }
+    }
 }

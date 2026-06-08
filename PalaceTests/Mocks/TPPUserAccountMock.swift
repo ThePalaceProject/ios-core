@@ -15,6 +15,10 @@ class TPPUserAccountMock: TPPUserAccount {
     /// `TPPPerAccountIsolationTests`; here a single shared instance is fine.
     static let testLibraryUUID = "test-library-mock"
 
+    /// Counts `removeAll()` invocations so reset tests can assert this
+    /// library's credentials were cleared.
+    private(set) var removeAllCallCount = 0
+
     private static var shared = TPPUserAccountMock(libraryUUID: testLibraryUUID)
 
     /// Tests that call `TPPUserAccountMock.sharedAccount(libraryUUID:)` get
@@ -251,6 +255,7 @@ class TPPUserAccountMock: TPPUserAccount {
     // MARK: - Clean everything up
 
     override func removeAll() {
+        removeAllCallCount += 1
         _adobeToken = nil
         _patron = nil
         _adobeVendor = nil
