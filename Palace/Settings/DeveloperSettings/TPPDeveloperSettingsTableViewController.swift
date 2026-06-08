@@ -36,13 +36,34 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     /// hidden from production App Store users (who can still reach this menu via
     /// the hidden version-label unlock). Support-tier sections always render.
     ///
-    /// Detection is by receipt name rather than a compile-time `#if DEBUG`:
-    /// production App Store builds carry a receipt named "receipt"; DEBUG, sim,
-    /// and TestFlight builds carry "sandboxReceipt" (or no receipt). This avoids
-    /// an `#if DEBUG` block on a production path (blast-radius BR-2) while giving
-    /// the same tier behavior.
+    /// Detection is by receipt rather than a compile-time `#if DEBUG` (which
+    /// blast-radius BR-2 flags on a production path). Only a real App Store
+    /// install hides the tools, identified by BOTH: a receipt named "receipt"
+    /// AND that receipt file actually existing on disk. A DEBUG/simulator build
+    /// reports an `appStoreReceiptURL` whose lastPathComponent is "receipt" too,
+    /// but the file does NOT exist — so the name check alone is insufficient and
+    /// would wrongly hide the tools in dev/sim (caught via simdrive 2026-06-08).
+    /// TestFlight carries a "sandboxReceipt"; no receipt URL at all → dev.
     private var showEngineeringTools: Bool {
-        Bundle.main.appStoreReceiptURL?.lastPathComponent != "receipt"
+        Self.shouldShowEngineeringTools(
+            receiptURL: Bundle.main.appStoreReceiptURL,
+            fileExists: { FileManager.default.fileExists(atPath: $0) }
+        )
+    }
+
+    /// Pure, testable core of `showEngineeringTools`. Engineering tools hide
+    /// ONLY for a real App Store install: a receipt named "receipt" that also
+    /// exists on disk. A DEBUG/sim build reports a "receipt"-named URL whose
+    /// file does NOT exist (the name check alone wrongly hid the tools — caught
+    /// via simdrive 2026-06-08, now pinned by DeveloperSettingsTierTests).
+    /// TestFlight uses "sandboxReceipt"; no URL → dev.
+    static func shouldShowEngineeringTools(receiptURL: URL?,
+                                           fileExists: (String) -> Bool) -> Bool {
+        guard let receiptURL else { return true }
+        if receiptURL.lastPathComponent == "sandboxReceipt" { return true }
+        let isProductionAppStore = receiptURL.lastPathComponent == "receipt"
+            && fileExists(receiptURL.path)
+        return !isProductionAppStore
     }
 
     /// The sections actually shown, in order. Engineering sections drop out in
