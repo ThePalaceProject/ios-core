@@ -57,13 +57,29 @@ struct AudiobookFullPlayerCoverContainer: View {
     /// the player chrome.
     static let minimizeSwipeMaxHorizontalDrift: CGFloat = 60
 
+    /// Drives the Table-of-Contents / Bookmarks `fullScreenCover`. The
+    /// toolkit's own TOC button is a `.navigationBar` toolbar item +
+    /// `NavigationLink` that only works inside a `NavigationStack` — which
+    /// this persistent overlay deliberately does NOT provide (a nested
+    /// `NavigationStack` inside the `TabView`'s nav stacks triggers SwiftUI's
+    /// "NavigationRequestObserver tried to update multiple times per frame"
+    /// fault and crashes on back-nav). Instead we present the toolkit's
+    /// `AudiobookNavigationView` (Chapters + Bookmarks) in an isolated
+    /// `fullScreenCover`, which has its own clean navigation context.
+    @State private var showTableOfContents = false
+
     @ViewBuilder
     var body: some View {
         if let model = presenter.playbackModel {
-            ZStack(alignment: .topLeading) {
+            ZStack(alignment: .top) {
                 AudiobookPlayerView(model: model)
                     .gesture(swipeDownToMinimize)
-                doneButtonOverlay
+                topControlsOverlay
+            }
+            .fullScreenCover(isPresented: $showTableOfContents) {
+                NavigationStack {
+                    AudiobookNavigationView(model: model)
+                }
             }
             .onAppear {
                 postVoiceOverLayoutChangeIfNeeded()
@@ -80,13 +96,30 @@ struct AudiobookFullPlayerCoverContainer: View {
         }
     }
 
-    /// Top-leading chevron-down Done button overlay (Bug 1 fix —
-    /// in-app-nav-polish-2026-06-01). iOS HIG convention for
-    /// dismissing a sheet/cover is top-leading "Done" or top-trailing
-    /// "X"; we picked top-leading chevron-down because the matching
-    /// gesture is also vertical (swipe down), giving the user a
-    /// consistent mental model: "going down = dismiss."
-    private var doneButtonOverlay: some View {
+    /// Top chrome for the full player: the non-destructive chevron-down
+    /// Done button (leading, minimizes to the mini-player) and the
+    /// Table-of-Contents button (trailing, presents Chapters/Bookmarks).
+    /// Mirrors the legacy player's leading-back / trailing-TOC layout
+    /// without the toolkit's `.navigationBar` toolbar (which needs a
+    /// `NavigationStack` the overlay can't safely host).
+    private var topControlsOverlay: some View {
+        HStack {
+            doneButton
+            Spacer()
+            tableOfContentsButton
+        }
+        .padding(.horizontal, 12)
+        .padding(.top, 12)
+        .frame(maxWidth: .infinity, alignment: .top)
+    }
+
+    /// Leading chevron-down Done button (Bug 1 fix —
+    /// in-app-nav-polish-2026-06-01). iOS HIG convention for dismissing a
+    /// sheet/cover is top-leading "Done"; we use chevron-down because the
+    /// matching gesture is also vertical (swipe down), giving a consistent
+    /// "going down = dismiss" mental model. Positioning is handled by
+    /// `topControlsOverlay`.
+    private var doneButton: some View {
         Button(action: minimizeWithMotionPreference) {
             Image(systemName: "chevron.down")
                 .resizable()
@@ -98,9 +131,28 @@ struct AudiobookFullPlayerCoverContainer: View {
         .buttonStyle(.plain)
         .tint(.primary)
         .frame(width: 44, height: 44)
-        .padding(.leading, 12)
-        .padding(.top, 12)
         .accessibilityLabel(Strings.Generic.dismissPlayer)
+        .accessibilityAddTraits(.isButton)
+    }
+
+    /// Trailing Table-of-Contents button. Presents the toolkit's
+    /// `AudiobookNavigationView` (Chapters + Bookmarks) via the
+    /// `showTableOfContents` `fullScreenCover` — the overlay's
+    /// nested-`NavigationStack`-free replacement for the toolkit's own
+    /// `.navigationBar` TOC button.
+    private var tableOfContentsButton: some View {
+        Button { showTableOfContents = true } label: {
+            Image(systemName: "list.bullet")
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 20, height: 20)
+                .padding(12)
+                .background(.regularMaterial, in: Circle())
+        }
+        .buttonStyle(.plain)
+        .tint(.primary)
+        .frame(width: 44, height: 44)
+        .accessibilityLabel(Strings.Generic.tableOfContents)
         .accessibilityAddTraits(.isButton)
     }
 

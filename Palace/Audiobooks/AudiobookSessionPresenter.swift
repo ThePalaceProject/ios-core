@@ -289,6 +289,14 @@ class AudiobookSessionPresenter: ObservableObject {
                 } else {
                     self.isPlaying = false
                 }
+                // A failed open leaves the session in a terminal `.error`
+                // state. Tear down the view-facing session so neither the
+                // mini-player nor the full-player overlay lingers with no
+                // book actually loaded — otherwise the chrome sits in its
+                // last-published `.loading` look (the phantom-playback bug).
+                if case .error = state {
+                    self.clearActiveSession()
+                }
             }
             .store(in: &cancellables)
     }

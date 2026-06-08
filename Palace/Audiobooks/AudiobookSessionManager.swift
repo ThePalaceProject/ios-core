@@ -437,6 +437,11 @@ public final class AudiobookSessionManager: ObservableObject {
                         Log.error(#file, "Failed to load audiobook: \(loadError)")
                         let sessionError = Self.mapLoadError(loadError)
                         self.state = .error(bookId: book.identifier, message: sessionError.localizedDescription)
+                        // Publish the terminal `.error` so the session presenter
+                        // (mini-player + full-player overlay) tears down. Without
+                        // this the presenter never sees the failure and the chrome
+                        // lingers in its last-published `.loading` look.
+                        self.playbackStatePublisher.send(self.state)
                         self.errorPublisher.send(sessionError)
                         // Surface the retry-with-dialog UX (PP-3707) for user-visible
                         // load failures. Skip for cancellation so a superseded open
