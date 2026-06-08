@@ -152,6 +152,42 @@ final class AudiobookSessionPresenterTests: XCTestCase {
                        "Session return to .idle must drive `hasActiveSession == false` — a latched-true bug would leave the mini-player visible after stopPlayback")
     }
 
+    /// PRE: presenter observes an active, expanded session that adopted a book
+    /// and is sitting in `.loading` (the exact pre-state of a failed audiobook
+    /// open — mini-player visible, full player expanded).
+    /// EXPECTED: when the manager publishes `.error`, the presenter fully tears
+    /// down the view-facing session (`hasActiveSession` false, `isPlayerExpanded`
+    /// false, `playbackModel`/`currentBook` nil) so neither the mini-player nor
+    /// the full-player overlay lingers with no loaded book.
+    /// Mutates: removing the `.error` teardown leaves `isPlayerExpanded == true`
+    /// and `currentBook` set → the phantom-playback-view bug returns.
+    func testErrorState_tearsDownSession_soPlaybackViewDoesNotLingerAfterFailedOpen() {
+        let presenter = AudiobookSessionPresenter(sessionManager: spySession)
+        let book = TPPBookMocker.mockBook(title: "Stuck Open", authors: "Author")
+
+        presenter.adoptBook(book)
+        presenter.expand()
+        spySession.state = .loading(bookId: book.identifier)
+        spySession.playbackStatePublisher.send(.loading(bookId: book.identifier))
+        spinRunLoopForPublisherDelivery()
+        XCTAssertTrue(presenter.hasActiveSession, "PRECONDITION: session active during load")
+        XCTAssertTrue(presenter.isPlayerExpanded, "PRECONDITION: full player expanded")
+        XCTAssertNotNil(presenter.currentBook, "PRECONDITION: book adopted")
+
+        spySession.state = .error(bookId: book.identifier, message: "open failed")
+        spySession.playbackStatePublisher.send(.error(bookId: book.identifier, message: "open failed"))
+        spinRunLoopForPublisherDelivery()
+
+        XCTAssertFalse(presenter.hasActiveSession,
+                       "Errored session must report inactive — mini-player hidden")
+        XCTAssertFalse(presenter.isPlayerExpanded,
+                       "Errored session must collapse the full player")
+        XCTAssertNil(presenter.playbackModel,
+                     "Errored session must drop the playback model so the overlay tears down")
+        XCTAssertNil(presenter.currentBook,
+                     "Errored session must drop the current book so no chrome lingers after a failed open")
+    }
+
     // MARK: - First-open expand (§7.4 / F-011)
 
     /// PRE: presenter has `isPlayerExpanded == false`.
