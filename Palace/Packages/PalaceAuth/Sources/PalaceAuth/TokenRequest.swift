@@ -39,6 +39,13 @@ import PalaceCatalog
         self.password = password
     }
 
+    // PUBLIC_INTENT: shared error-domain constant so the producer (this type)
+    // and the main-target consumer (TPPSignInBusinessLogic.isTransientServerError)
+    // agree on the NSError domain at COMPILE time. Was a duplicated magic string
+    // ("TokenRequest") across two files — architect review rev_37c23a0e flagged
+    // that a rename in one place would silently regress the 18046 fix.
+    public static let httpErrorDomain = "TokenRequest"
+
     /// Public entry point — single Basic-Auth POST to the /token endpoint, now
     /// with bounded retry on TRANSIENT failures (HelpSpot 18046). A transient
     /// server hiccup (intermittent 5xx/429/408) or a retriable network error no
@@ -62,7 +69,7 @@ import PalaceCatalog
 
         guard !username.isEmpty else {
             Log.error(#file, "Aborting token request: empty username")
-            return .failure(NSError(domain: "TokenRequest", code: -1,
+            return .failure(NSError(domain: Self.httpErrorDomain, code: -1,
                                     userInfo: [NSLocalizedDescriptionKey: "Cannot request token with empty username"]))
         }
         // Note: empty password is valid for libraries that don't require a PIN.
@@ -92,7 +99,7 @@ import PalaceCatalog
         Log.debug(#file, "Sending POST with Basic Auth (base64 len=\(base64LoginString.count))")
 
         let attempts = max(1, maxAttempts)
-        var lastError: Error = NSError(domain: "TokenRequest", code: -1,
+        var lastError: Error = NSError(domain: Self.httpErrorDomain, code: -1,
                                        userInfo: [NSLocalizedDescriptionKey: "Token request did not complete"])
 
         for attempt in 1...attempts {
@@ -107,7 +114,7 @@ import PalaceCatalog
                         let httpError = NSError.makeTokenRequestHTTPError(
                             data: data,
                             statusCode: httpResponse.statusCode,
-                            domain: "TokenRequest",
+                            domain: Self.httpErrorDomain,
                             userInfo: [NSLocalizedDescriptionKey: "Server returned status \(httpResponse.statusCode)"])
                         // Retry only transient infrastructure failures. A 401/403
                         // is a genuine auth rejection — surface it immediately so

@@ -573,7 +573,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
     /// A genuine 401/403 has a different code and is NOT matched here, so it
     /// still falls through to the "Invalid Credentials" message.
     static func isTransientServerError(_ error: NSError) -> Bool {
-        guard error.domain == "TokenRequest" else { return false }
+        guard error.domain == TokenRequest.httpErrorDomain else { return false }
         return error.code == 408 || error.code == 429 || (500...599).contains(error.code)
     }
 
