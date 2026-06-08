@@ -74,6 +74,8 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
         -configuration Debug \
         -resultBundlePath TestResults.xcresult \
         -enableCodeCoverage YES \
+        -retry-tests-on-failure \
+        -test-iterations 3 \
         -parallel-testing-enabled NO \
         CODE_SIGNING_REQUIRED=NO \
         CODE_SIGNING_ALLOWED=NO \
@@ -124,6 +126,8 @@ else
                 -configuration Debug \
                 -resultBundlePath TestResults.xcresult \
                 -enableCodeCoverage YES \
+                -retry-tests-on-failure \
+                -test-iterations 3 \
                 -parallel-testing-enabled YES \
                 -maximum-parallel-testing-workers 4 \
                 CODE_SIGNING_REQUIRED=NO \
@@ -152,6 +156,8 @@ else
             -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
             -configuration Debug \
             -resultBundlePath TestResults.xcresult \
+            -retry-tests-on-failure \
+            -test-iterations 3 \
             -enableCodeCoverage YES \
             -parallel-testing-enabled YES \
             -maximum-parallel-testing-workers 4 \
