@@ -25,7 +25,11 @@ public final class ImageCache: ImageCacheType {
     private let defaultTTL: TimeInterval = 14 * 24 * 60 * 60
     private let maxDimension: CGFloat
     private let compressionQuality: CGFloat = 0.7
-    private let processingQueue: OperationQueue = {
+    // Internal (not private) so tests can deterministically exercise the
+    // cancellation path of `getAsync` (suspend → enqueue → cancelAllOperations
+    // → resume) without spamming a global memory-warning notification through
+    // the whole app. Not part of the public API.
+    let processingQueue: OperationQueue = {
         let queue = OperationQueue()
         queue.qualityOfService = .utility
         queue.name = "org.thepalaceproject.imageprocessing"
@@ -204,29 +208,59 @@ public final class ImageCache: ImageCacheType {
             return img
         }
         return await withCheckedContinuation { continuation in
-            processingQueue.addOperation { [weak self] in
-                guard let self else {
-                    continuation.resume(returning: nil)
+            // The continuation must resume exactly once. Every resume below
+            // lives inside the operation's execution block, but
+            // `handleMemoryWarning` calls `processingQueue.cancelAllOperations()`
+            // — and a cancelled `BlockOperation` never runs its block, which
+            // would orphan the continuation forever (Crashlytics ab80dbb0:
+            // "leaked its continuation" breadcrumb under memory pressure, where
+            // each orphaned continuation pins the suspended Task + captured
+            // graph and works *against* the memory relief the warning is trying
+            // to achieve). A lock-guarded one-shot resume plus a completion
+            // block guarantees exactly one resume whether the op runs or is
+            // cancelled before it starts.
+            let resumeLock = NSLock()
+            var hasResumed = false
+            func resumeOnce(_ image: UIImage?) {
+                resumeLock.lock()
+                defer { resumeLock.unlock() }
+                guard !hasResumed else { return }
+                hasResumed = true
+                continuation.resume(returning: image)
+            }
+
+            let operation = BlockOperation()
+            operation.addExecutionBlock { [weak self, weak operation] in
+                guard let self, operation?.isCancelled != true else {
+                    resumeOnce(nil)
                     return
                 }
                 // Double-check memory (another task may have promoted it)
                 if let img = self.memoryImages.object(forKey: key as NSString) {
-                    continuation.resume(returning: img)
+                    resumeOnce(img)
                     return
                 }
                 guard let data = self.dataCache.get(for: key) else {
-                    continuation.resume(returning: nil)
+                    resumeOnce(nil)
                     return
                 }
                 guard let img = UIImage(data: data) else {
                     self.remove(for: key)
-                    continuation.resume(returning: nil)
+                    resumeOnce(nil)
                     return
                 }
                 let cost = self.imageCost(img)
                 self.memoryImages.setObject(img, forKey: key as NSString, cost: cost)
-                continuation.resume(returning: img)
+                resumeOnce(img)
             }
+            // Runs for both finished and cancelled operations. If the op was
+            // cancelled before its execution block ran, `resumeOnce` was never
+            // called — resume here so the awaiter never hangs. The one-shot
+            // guard makes this a no-op on the normal completion path.
+            operation.completionBlock = {
+                resumeOnce(nil)
+            }
+            processingQueue.addOperation(operation)
         }
     }
 

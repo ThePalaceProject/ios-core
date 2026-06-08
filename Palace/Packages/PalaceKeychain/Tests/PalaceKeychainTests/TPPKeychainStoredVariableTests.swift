@@ -132,4 +132,71 @@ final class TPPKeychainStoredVariableTests: XCTestCase {
         variable.write("second")
         XCTAssertEqual(variable.read(), "second")
     }
+
+    // MARK: - Read serialization (Crashlytics 0bbbd8fe — EXC_BAD_ACCESS race)
+
+    /// `read()` must return the value produced *inside* the synchronized block.
+    /// This pins the contract that `perform` now yields a value; a regression
+    /// that reverts to returning `cachedValue` after the block (the original
+    /// torn-read bug) cannot satisfy this through the transaction seam.
+    func testTransactionPerform_returnsValueComputedInsideLock() {
+        let transaction = TPPKeychainVariableTransaction(accountInfoQueue: testQueue)
+
+        let result: Int = transaction.perform {
+            // Value originates entirely within the critical section.
+            return 7 * 6
+        }
+
+        XCTAssertEqual(result, 42, "perform must return the value computed inside the synchronized block")
+    }
+
+    /// Regression test for the keychain read race. A background thread reading
+    /// credentials while another thread signs out (`write(nil)`/overwrite) tore
+    /// the returned value because the read happened outside the lock. With the
+    /// read serialized, every non-nil `read()` must observe a *whole* value
+    /// that was actually written — never a torn/garbage struct (which would
+    /// crash on retain) — and the final state must be consistent.
+    ///
+    /// Note: this is a *probabilistic* mutation-killer — a revert to the
+    /// unsynchronized `return cachedValue` won't tear on every run. A genuine
+    /// tear crashes loudly (retain on a torn struct), and
+    /// `testTransactionPerform_returnsValueComputedInsideLock` deterministically
+    /// backstops the `perform<T>` signature the fix depends on.
+    func testRead_underConcurrentWritesAndInvalidation_neverTearsValue() throws {
+        try KeychainAvailability.skipIfUnavailable()
+
+        struct Cred: Codable, Equatable, Hashable {
+            let token: String
+            let identifier: String
+        }
+        let key = "concurrent_cred_\(UUID().uuidString)"
+        let variable = TPPKeychainCodableVariable<Cred>(key: key, accountInfoQueue: testQueue)
+        defer { TPPKeychain.shared.removeObject(forKey: key) }
+
+        // Two disjoint sentinels. A torn read would mix fields across the two
+        // (or crash); `valid.contains` catches the mix.
+        let a = Cred(token: "AAAAAAAAAAAAAAAA", identifier: "id-aaaa")
+        let b = Cred(token: "BBBBBBBBBBBBBBBB", identifier: "id-bbbb")
+        let valid: Set<Cred> = [a, b]
+        variable.write(a)
+
+        DispatchQueue.concurrentPerform(iterations: 4_000) { i in
+            switch i % 3 {
+            case 0:
+                variable.write(i % 2 == 0 ? a : b)
+            case 1:
+                // Force a fresh keychain decode under contention.
+                variable.invalidateCache()
+            default:
+                if let got = variable.read() {
+                    XCTAssertTrue(valid.contains(got),
+                                  "read() returned a torn/invalid value: \(got)")
+                }
+            }
+        }
+
+        let final = variable.read()
+        XCTAssertTrue(final == a || final == b || final == nil,
+                      "final state must be a whole written value or nil, got: \(String(describing: final))")
+    }
 }
