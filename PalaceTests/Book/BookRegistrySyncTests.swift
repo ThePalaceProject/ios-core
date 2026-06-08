@@ -10,6 +10,7 @@
 //
 
 import XCTest
+import PalaceCatalog
 @testable import Palace
 
 final class BookRegistrySyncTests: XCTestCase {
@@ -413,28 +414,151 @@ final class BookRegistrySyncTests: XCTestCase {
         XCTAssertFalse(exists)
     }
 
+    // MARK: - sync: account-fixture injection helper
+    //
+    // F-003 / PP-4542: the PP-4407 awaitReady() migration changed sync()'s
+    // contract for the "current account present but no loansUrl" case. The
+    // OLD synchronous guard `guard let loansUrl = currentAccount.loansUrl
+    // else { return }` was a clean no-op; the NEW code reaches setState(.loaded)
+    // + completion(nil,false) — either synchronously (no stored credentials) or
+    // after awaitReady() resolves to AccountDetails with a nil loansUrl
+    // (anonymous library). The two tests below previously dodged this with a
+    // `try XCTSkipIf(currentAccount?.loansUrl != nil)` band-aid, so they
+    // false-greened on a signed-in CI sim and only ran in a clean env. They
+    // now INJECT a fixture account (unique UUID → host sign-in state is
+    // irrelevant) and assert the real state sequence.
+
+    /// Seeds a fresh-UUID fixture Account as the injected manager's
+    /// `currentAccount`. The UUID is unique per call, so the production-stack
+    /// credentials lookup (`TPPUserAccount.sharedAccount(libraryUUID:)` →
+    /// `AppContainer.production().accountsManager.userAccount(for:)`) returns a
+    /// never-signed-in instance: `hasCredentials() == false`, deterministically,
+    /// regardless of what account the host simulator has signed in.
+    ///
+    /// - Returns: the fixture's UUID and a cleanup closure (removes the seeded
+    ///   account + restores the prior currentAccountId). Defer-call it.
+    private func seedFixtureCurrentAccount() -> (uuid: String, cleanup: () -> Void) {
+        let fixtureId = "brs-pp4542-\(UUID().uuidString)"
+        let pub = OPDS2Publication(
+            links: [OPDS2Link(href: "https://example.com/catalog",
+                              rel: "http://opds-spec.org/catalog")],
+            metadata: OPDS2Publication.Metadata(id: fixtureId, title: "PP-4542 Fixture"),
+            images: nil
+        )
+        let fixture = Account(publication: pub, imageCache: MockImageCache())
+        let cleanup = accountsManager._seedAccountForTesting(fixture)
+        return (fixtureId, cleanup)
+    }
+
+    /// Builds an `AccountDetails` whose auth document has NO "shelf" link, so
+    /// `details.loansUrl == nil` — the anonymous-library shape that drives
+    /// sync()'s post-awaitReady `.loaded` branch.
+    private func makeNoLoansUrlDetails(uuid: String) -> AccountDetails {
+        let json: [String: Any] = [
+            "id": "urn:uuid:\(uuid)",
+            "title": "Anonymous Library (no shelf link)",
+            "authentication": [[
+                "type": "http://librarysimplified.org/rel/auth/anonymous",
+                "inputs": ["login": ["keyboard": "Default"],
+                           "password": ["keyboard": "Default"]],
+                "labels": ["login": "Login", "password": "Password"]
+            ]],
+            "features": ["enabled": [], "disabled": []]
+        ]
+        let data = try! JSONSerialization.data(withJSONObject: json)
+        let doc = try! OPDS2AuthenticationDocument.fromData(data)
+        return AccountDetails(authenticationDocument: doc, uuid: uuid)
+    }
+
     // MARK: - sync: re-entrancy guard
 
-    func test_sync_whenAlreadySyncing_returnsWithoutChangingState() throws {
-        // If currentState is .syncing, sync() should short-circuit.
-        // Same simulator-sign-in caveat as test_sync_withNoCurrentAccount_isNoOp:
-        // when A1QA (or any account) is signed in on the host simulator,
-        // the test accountsManager.currentAccount?.loansUrl is
-        // set, and sync() proceeds past the .syncing guard to invoke setState.
-        // Skip in environments where a current account is present — the
-        // re-entrancy guard's setState-suppression is only observable in a
-        // clean environment.
-        try XCTSkipIf(accountsManager.currentAccount?.loansUrl != nil,
-                      "Skipping: simulator has an active currentAccount; this test requires a clean environment")
+    func test_sync_whenAlreadySyncing_returnsBeforeSettingSyncingState() throws {
+        // The `if currentState == .syncing { return }` guard sits AFTER the
+        // credentials gate, so it is only REACHABLE once hasCredentials() is
+        // true. We therefore give the fixture stored credentials (on the exact
+        // production-manager instance sync() will consult) and drive its
+        // awaitReady() state to a terminal .detailsLoaded with a nil loansUrl.
+        // Keychain-gated because credential writes need the entitlement (CI
+        // sims without it skip — this is an environment-capability guard, NOT
+        // a host-sign-in-state dodge).
+        try KeychainAvailability.skipIfUnavailable()
+
+        let (uuid, cleanup) = seedFixtureCurrentAccount()
+        defer { cleanup() }
+
+        // Credentials must live on the instance sync() reads:
+        // sharedAccount(libraryUUID:) → production manager's userAccount(for:).
+        let prodUserAccount = AppContainer.production().accountsManager.userAccount(for: uuid)
+        prodUserAccount.setAuthToken("pp4542-token", barcode: "bc", pin: "1234",
+                                     expirationDate: Date().addingTimeInterval(3600))
+        defer { prodUserAccount.removeAll() }
+        XCTAssertTrue(prodUserAccount.hasCredentials(),
+                      "Precondition: fixture has stored credentials so sync() reaches the .syncing guard")
+
+        // Drive awaitReady() to a terminal so the Task branch (if reached) does
+        // not hang the test. loansUrl is nil → if the guard were absent, sync()
+        // would setState(.syncing) here.
+        accountsManager.currentAccount?._setState(.detailsLoaded(makeNoLoansUrlDetails(uuid: uuid)))
 
         var received: [TPPBookRegistry.RegistryState] = []
+        var completed = false
         let setState: (TPPBookRegistry.RegistryState) -> Void = { received.append($0) }
 
-        syncManager.sync(currentState: .syncing, setState: setState, completion: nil)
+        // Already-.syncing: the re-entrancy guard must short-circuit BEFORE
+        // setState(.syncing). We allow the (defensive) async Task to settle, then
+        // assert no state was ever emitted.
+        let exp = expectation(description: "sync re-entrancy settled")
+        syncManager.sync(currentState: .syncing, setState: setState) { _, _ in completed = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { exp.fulfill() }
+        wait(for: [exp], timeout: 2.0)
 
         XCTAssertTrue(received.isEmpty,
-                      "sync() called while already .syncing must not invoke setState")
-        XCTAssertNil(syncManager.syncUrl)
+                      "sync() called while already .syncing must short-circuit before setState — got \(received)")
+        XCTAssertFalse(completed,
+                       "completion must not fire for the re-entrancy short-circuit")
+        XCTAssertNil(syncManager.syncUrl,
+                     "syncUrl must not be captured for a short-circuited re-entrant sync")
+    }
+
+    func test_sync_whenNotSyncing_withCredentialsAndNoLoansUrl_resolvesToLoaded() throws {
+        // Contrast to the re-entrancy test: SAME credentialed fixture with a
+        // nil loansUrl, but currentState is .loaded (not .syncing). Now the
+        // re-entrancy guard does NOT fire, so sync() proceeds into the Task,
+        // awaits readiness, sees no loansUrl, and resolves to setState(.loaded)
+        // + completion(nil,false). This proves the .syncing short-circuit above
+        // is what suppresses setState — not the mere presence of credentials.
+        try KeychainAvailability.skipIfUnavailable()
+
+        let (uuid, cleanup) = seedFixtureCurrentAccount()
+        defer { cleanup() }
+
+        let prodUserAccount = AppContainer.production().accountsManager.userAccount(for: uuid)
+        prodUserAccount.setAuthToken("pp4542-token", barcode: "bc", pin: "1234",
+                                     expirationDate: Date().addingTimeInterval(3600))
+        defer { prodUserAccount.removeAll() }
+
+        accountsManager.currentAccount?._setState(.detailsLoaded(makeNoLoansUrlDetails(uuid: uuid)))
+
+        var received: [TPPBookRegistry.RegistryState] = []
+        var completionArgs: (errorDoc: [AnyHashable: Any]?, newBooks: Bool)?
+        let setState: (TPPBookRegistry.RegistryState) -> Void = { received.append($0) }
+
+        let exp = expectation(description: "sync resolved")
+        syncManager.sync(currentState: .loaded, setState: setState) { errorDoc, newBooks in
+            completionArgs = (errorDoc, newBooks)
+            exp.fulfill()
+        }
+        wait(for: [exp], timeout: 3.0)
+
+        // sync() sets .syncing, then awaitReady resolves with no loansUrl → .loaded.
+        XCTAssertEqual(received.last, .loaded,
+                       "no-loansUrl account must end in .loaded after awaitReady, not stay .syncing — got \(received)")
+        XCTAssertNil(completionArgs?.errorDoc,
+                     "anonymous/no-loansUrl resolution is not an error — errorDocument must be nil")
+        XCTAssertEqual(completionArgs?.newBooks, false,
+                       "no loans were fetched, so newBooks must be false")
+        XCTAssertNil(syncManager.syncUrl,
+                     "syncUrl must be cleared (never set) when there is no loansUrl to sync")
     }
 
     // MARK: - sync: load-completion guard
@@ -482,21 +606,43 @@ final class BookRegistrySyncTests: XCTestCase {
         XCTAssertFalse(completed)
     }
 
-    func test_sync_withNoCurrentAccount_isNoOp() throws {
-        // This test is sensitive to simulator sign-in state: when A1QA is signed in
-        // on the host simulator, the test accountsManager.currentAccount?.loansUrl is
-        // set (not nil), so sync() proceeds instead of short-circuiting. Skip in
-        // environments where a current account is present — the no-op behavior is
-        // only observable in a clean environment.
-        try XCTSkipIf(accountsManager.currentAccount?.loansUrl != nil,
-                      "Skipping: simulator has an active currentAccount; this test requires a clean environment")
+    func test_sync_withCurrentAccountButNoCredentials_resolvesToLoadedSynchronously() {
+        // F-003 / PP-4542. NEW contract: with a current account whose
+        // production-stack user-account has NO stored credentials, sync() takes
+        // the credentials gate — setState(.loaded) + completion(nil,false) —
+        // and returns BEFORE touching awaitReady/the loans feed. This replaces
+        // the old `try XCTSkipIf(currentAccount?.loansUrl != nil)` dodge: the
+        // fixture's UUID is unique, so the production manager returns a
+        // never-signed-in TPPUserAccount and hasCredentials() is false
+        // regardless of host sign-in state.
+        //
+        // No keychain guard needed: we assert the ABSENCE of credentials, and a
+        // fresh-UUID instance has none whether or not the keychain is writable.
+        let (uuid, cleanup) = seedFixtureCurrentAccount()
+        defer { cleanup() }
+
+        let prodUserAccount = AppContainer.production().accountsManager.userAccount(for: uuid)
+        XCTAssertFalse(prodUserAccount.hasCredentials(),
+                       "Precondition: fresh-UUID fixture must have no stored credentials")
 
         var received: [TPPBookRegistry.RegistryState] = []
+        var completionArgs: (errorDoc: [AnyHashable: Any]?, newBooks: Bool)?
         let setState: (TPPBookRegistry.RegistryState) -> Void = { received.append($0) }
 
-        syncManager.sync(currentState: .loaded, setState: setState, completion: nil)
+        syncManager.sync(currentState: .loaded, setState: setState) { errorDoc, newBooks in
+            completionArgs = (errorDoc, newBooks)
+        }
 
-        XCTAssertTrue(received.isEmpty)
-        XCTAssertNil(syncManager.syncUrl)
+        // The credentials-gate path is synchronous — no awaiting needed.
+        XCTAssertEqual(received, [.loaded],
+                       "no-credentials sync must emit exactly one setState(.loaded) — got \(received)")
+        XCTAssertNotNil(completionArgs,
+                        "completion must fire synchronously for the no-credentials gate")
+        XCTAssertNil(completionArgs?.errorDoc,
+                     "deferring sync for missing credentials is not an error")
+        XCTAssertEqual(completionArgs?.newBooks, false,
+                       "no loans fetched → newBooks must be false")
+        XCTAssertNil(syncManager.syncUrl,
+                     "syncUrl must never be captured when the credentials gate defers the sync")
     }
 }
