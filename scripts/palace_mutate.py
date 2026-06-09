@@ -62,7 +62,70 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # pick a different UDID via env without code changes.
 SIM_ID = os.environ.get("HARNESS_SESSION_SIM_UDID", "DF4A2A27-9888-429D-A749-2E157A049A37")
 DEFAULT_CACHE_DIR = os.path.join(REPO_ROOT, ".forgeos", "mutation-cache")
+# Per-mutant incremental cache lives in a subdir so it never collides with the
+# whole-file cache files (which sit directly in DEFAULT_CACHE_DIR).
+DEFAULT_MUTANT_CACHE_DIR = os.path.join(DEFAULT_CACHE_DIR, "mutants")
 CACHE_VERSION = 1  # bump when cache schema changes
+
+# Coverage-gating support is OPTIONAL — palace_mutate must still run if Component
+# A's mutate_coverage.py is somehow absent (fresh checkout before that file lands,
+# a partial sync, etc.). Guard the import so a missing module disables gating
+# rather than crashing the whole tool. _COVERAGE_AVAILABLE gates every call site.
+# Ensure the scripts/ dir is importable regardless of how palace_mutate was
+# invoked (cwd-relative `scripts/palace_mutate.py`, `python -m scripts.…`, etc.).
+if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+try:
+    import mutate_coverage  # noqa: E402  (intentional optional import after sys.path setup)
+    _COVERAGE_AVAILABLE = True
+except ImportError:
+    mutate_coverage = None  # type: ignore[assignment]
+    _COVERAGE_AVAILABLE = False
+
+# --- Tier-1 per-build waste flags ------------------------------------------
+# These shave per-invocation overhead off every targeted xcodebuild test run.
+# They are SAFE for a mutation loop because the tree's package state is already
+# resolved and pinned, and mutation runs are inherently serial per file:
+#   -disableAutomaticPackageResolution        don't re-resolve SPM graph each run
+#   -onlyUsePackageVersionsFromResolvedFile    trust Package.resolved verbatim
+#   -skipPackagePluginValidation               skip plugin fingerprint prompts
+#   -parallel-testing-enabled NO               serial — we run ONE narrow class
+#   COMPILER_INDEX_STORE_ENABLE=NO  (build setting) no index store writes
+# NOTE: we deliberately do NOT add -quiet — any_tests_ran() greps the
+# 'Executed N tests' summary lines, which -quiet suppresses, so adding it would
+# make every mutant grade as a 0-tests-ran ERROR.
+DEFAULT_FAST_FLAGS: list[str] = [
+    "-disableAutomaticPackageResolution",
+    "-onlyUsePackageVersionsFromResolvedFile",
+    "-skipPackagePluginValidation",
+    "-parallel-testing-enabled", "NO",
+    "COMPILER_INDEX_STORE_ENABLE=NO",
+]
+
+# Critical-path source roots. A SURVIVED consequential mutant on any of these
+# files fails the gate (exit 1) regardless of kill rate — a surviving cmp/bool/
+# bound/retval/cond flip on auth/borrow/return/download/DRM/audiobook/migration
+# code is a real test-coverage hole on a path that handles user money/access.
+# Mirrors the "Critical paths" list in CLAUDE.md.
+CRITICAL_PATH_REGEX = re.compile(
+    r"(?:^|/)Palace/(?:"
+    r"Audiobooks/"
+    r"|SignInLogic/"
+    r"|MyBooks/Download"
+    r"|MyBooks/Borrow"
+    r"|MyBooks/BookReturn"
+    r"|Migrations/"
+    r"|Network/TPPNetworkResponder"
+    r"|Network/TPPNetworkExecutor"
+    r"|Packages/PalaceAuth/"
+    r")"
+)
+
+# Mutation operators whose survival on a critical path is CONSEQUENTIAL. An
+# `assign` flip (+= 1 -> -= 1) surviving is far less alarming than a cmp/bool/
+# bound/retval/cond flip surviving on an auth decision, so the critical-path
+# gate counts only these ops. (assign is intentionally excluded.)
+CONSEQUENTIAL_OPS = frozenset({"cmp", "bool", "bound", "retval", "cond"})
 
 
 # ---------------------------------------------------------------------------
@@ -78,6 +141,13 @@ class Mutation:
     mutated: str      # text we replace with
     line_text: str    # original full line for context
     mutated_line: str # mutated full line
+    # Stripped text of the immediately preceding / following source lines.
+    # These anchor the per-mutant cache key so it (a) survives edits ELSEWHERE
+    # in the file and (b) disambiguates two byte-identical lines in different
+    # locations. "" when at the file boundary. Defaulted so older callers /
+    # tests constructing Mutation without them still work.
+    context_before: str = ""
+    context_after: str = ""
 
 
 # (regex, replacement_pairs, op_name)
@@ -201,6 +271,10 @@ def discover_mutations(source: str) -> list[Mutation]:
                 if line_text[start_in_line:end_in_line] != orig:
                     continue  # alignment lost; skip
                 mutated_line = line_text[:start_in_line] + repl + line_text[end_in_line:]
+                # Capture stripped neighbouring lines for the per-mutant cache
+                # key (see Mutation.context_before/after). Boundaries -> "".
+                context_before = lines[ln_no - 2].strip() if ln_no - 2 >= 0 else ""
+                context_after = lines[ln_no].strip() if ln_no < len(lines) else ""
                 out.append(Mutation(
                     line=ln_no,
                     col=col,
@@ -209,6 +283,8 @@ def discover_mutations(source: str) -> list[Mutation]:
                     mutated=repl,
                     line_text=line_text,
                     mutated_line=mutated_line,
+                    context_before=context_before,
+                    context_after=context_after,
                 ))
     return out
 
@@ -248,7 +324,51 @@ def any_tests_ran(output: str) -> bool:
 _DEFAULT_TARGETED_TEST_TIMEOUT = int(os.environ.get("PALACE_MUTATE_TEST_TIMEOUT", "1200"))
 
 
-def run_targeted_tests(test_class_paths: list[str], timeout: int = _DEFAULT_TARGETED_TEST_TIMEOUT) -> tuple[bool, str]:
+def resolve_fast_flags() -> list[str]:
+    """The Tier-1 per-build waste flags to splice into the xcodebuild command.
+
+    Pure (reads env only) so a unit test can assert the defaults and the
+    override/suppress behaviour without invoking xcodebuild.
+
+      PALACE_MUTATE_NO_FAST_FLAGS=1   -> no extra flags at all
+      PALACE_MUTATE_XCB_EXTRA_FLAGS   -> space-split; REPLACES DEFAULT_FAST_FLAGS
+      (unset)                          -> DEFAULT_FAST_FLAGS
+    """
+    if os.environ.get("PALACE_MUTATE_NO_FAST_FLAGS") == "1":
+        return []
+    override = os.environ.get("PALACE_MUTATE_XCB_EXTRA_FLAGS")
+    if override is not None:
+        return override.split()
+    return list(DEFAULT_FAST_FLAGS)
+
+
+def build_xcodebuild_command(test_class_paths: list[str],
+                             fast_flags: list[str],
+                             derived_data_args: list[str],
+                             coverage_bundle_path: str | None = None) -> list[str]:
+    """Assemble the full xcodebuild test argv. Pure — no subprocess, no env
+    reads beyond what the caller passed in — so the flag-splicing logic is
+    unit-testable. When coverage_bundle_path is set, the BASELINE coverage run
+    appends `-enableCodeCoverage YES -resultBundlePath <path>`.
+    """
+    only_testing_args: list[str] = []
+    for path in test_class_paths:
+        only_testing_args.extend(["-only-testing:" + path])
+    coverage_args: list[str] = []
+    if coverage_bundle_path is not None:
+        coverage_args = ["-enableCodeCoverage", "YES",
+                         "-resultBundlePath", coverage_bundle_path]
+    return [
+        "xcodebuild",
+        "-project", "Palace.xcodeproj",
+        "-scheme", "Palace",
+        "-destination", f"platform=iOS Simulator,id={SIM_ID}",
+        "test",
+    ] + derived_data_args + fast_flags + coverage_args + only_testing_args
+
+
+def run_targeted_tests(test_class_paths: list[str], timeout: int = _DEFAULT_TARGETED_TEST_TIMEOUT,
+                       coverage_bundle_path: str | None = None) -> tuple[bool, str]:
     """
     Run xcodebuild test scoped to the given test classes.
     Returns (all_passed, last_lines_of_output).
@@ -263,9 +383,6 @@ def run_targeted_tests(test_class_paths: list[str], timeout: int = _DEFAULT_TARG
     Override with PALACE_MUTATE_TEST_TIMEOUT env var if a faster environment
     only needs the smaller budget.
     """
-    only_testing_args: list[str] = []
-    for path in test_class_paths:
-        only_testing_args.extend(["-only-testing:" + path])
     # Parallel swarm agents need to point xcodebuild at a per-worktree DerivedData
     # directory so they don't fight over the default `~/Library/Developer/Xcode/DerivedData/Palace-*`
     # build database. PALACE_MUTATE_DERIVED_DATA_PATH lets an outer harness pin a
@@ -274,13 +391,12 @@ def run_targeted_tests(test_class_paths: list[str], timeout: int = _DEFAULT_TARG
     dd_path = os.environ.get("PALACE_MUTATE_DERIVED_DATA_PATH")
     if dd_path:
         derived_data_args = ["-derivedDataPath", dd_path]
-    cmd = [
-        "xcodebuild",
-        "-project", "Palace.xcodeproj",
-        "-scheme", "Palace",
-        "-destination", f"platform=iOS Simulator,id={SIM_ID}",
-        "test",
-    ] + derived_data_args + only_testing_args
+    cmd = build_xcodebuild_command(
+        test_class_paths,
+        fast_flags=resolve_fast_flags(),
+        derived_data_args=derived_data_args,
+        coverage_bundle_path=coverage_bundle_path,
+    )
     try:
         result = subprocess.run(
             cmd,
@@ -377,6 +493,187 @@ def cache_store(cache_dir: str, file_relpath: str, key: str, report: dict) -> st
 
 
 # ---------------------------------------------------------------------------
+# Per-mutant incremental cache
+# ---------------------------------------------------------------------------
+#
+# The whole-file cache (above) is all-or-nothing: any edit to the file
+# invalidates the WHOLE report and every mutant re-runs. The per-mutant cache
+# is finer: it keys each mutant on its LOCAL context (the line + its immediate
+# neighbours + the operator flip + the test selection), so an edit elsewhere in
+# the file reuses every untouched mutant's result and only the genuinely new /
+# moved mutants re-run. The whole-file cache stays the fast path (checked
+# first); this layer is the incremental fallback when the whole-file key misses.
+
+def compute_mutant_key(tests: list[str], context_before: str, line_text: str,
+                       context_after: str, original: str, mutated: str) -> str:
+    """Stable 16-hex key for one mutant.
+
+    Hashed over (CACHE_VERSION, sorted(tests), context_before + '\\n' +
+    line_text + '\\n' + context_after, original, mutated). Properties:
+      - STABILITY: identical inputs -> identical key (so a re-run on an
+        unchanged file reuses the cached status).
+      - LOCALITY: edits ELSEWHERE in the file don't change a mutant's key
+        (context is only the immediate neighbours, not line numbers).
+      - DISAMBIGUATION: two byte-identical lines in different surrounding
+        context get DIFFERENT keys, so their results never collide.
+    Pure — unit-tested for stability and disambiguation.
+    """
+    h = hashlib.sha256()
+    h.update(f"v{CACHE_VERSION}\n".encode())
+    h.update(b"--tests--\n")
+    for t in sorted(tests):
+        h.update(t.encode())
+        h.update(b"\n")
+    h.update(b"--context--\n")
+    h.update((context_before + "\n" + line_text + "\n" + context_after).encode())
+    h.update(b"\n--ops--\n")
+    h.update(original.encode())
+    h.update(b"\n")
+    h.update(mutated.encode())
+    h.update(b"\n")
+    return h.hexdigest()[:16]
+
+
+def mutant_cache_path(mutant_cache_dir: str, file_relpath: str) -> str:
+    """Per-mutant cache file: <mutant-cache-dir>/<file-leaf>.json — one JSON
+    object per source file mapping mutant_key -> {status, elapsed_sec, stored_at}.
+    """
+    leaf = os.path.basename(file_relpath).replace(".swift", "")
+    return os.path.join(mutant_cache_dir, f"{leaf}.json")
+
+
+def mutant_cache_load(mutant_cache_dir: str, file_relpath: str) -> dict:
+    """Load the per-mutant cache map for a file. Returns {} (never None) on
+    absence or corruption so callers can unconditionally `.get(key)`."""
+    path = mutant_cache_path(mutant_cache_dir, file_relpath)
+    if not os.path.isfile(path):
+        return {}
+    try:
+        with open(path) as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def mutant_cache_store(mutant_cache_dir: str, file_relpath: str, cache_map: dict) -> str:
+    """Persist the per-mutant cache map atomically (tmp + rename)."""
+    os.makedirs(mutant_cache_dir, exist_ok=True)
+    path = mutant_cache_path(mutant_cache_dir, file_relpath)
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(cache_map, f, indent=2)
+    os.replace(tmp, path)
+    return path
+
+
+# ---------------------------------------------------------------------------
+# Critical-path classification
+# ---------------------------------------------------------------------------
+
+def is_critical_path(file_relpath: str) -> bool:
+    """True iff file_relpath is on a critical path (CRITICAL_PATH_REGEX)."""
+    return bool(CRITICAL_PATH_REGEX.search(file_relpath))
+
+
+def count_critical_path_survivors(results: list[dict]) -> int:
+    """Count SURVIVED mutants whose op is CONSEQUENTIAL (cmp/bool/bound/retval/
+    cond; assign excluded). Operates on the report `results` list so it can be
+    unit-tested against a hand-built fake report dict.
+    """
+    count = 0
+    for r in results:
+        if r.get("status") != "survived":
+            continue
+        op = (r.get("mutation") or {}).get("op")
+        if op in CONSEQUENTIAL_OPS:
+            count += 1
+    return count
+
+
+# ---------------------------------------------------------------------------
+# Report assembly
+# ---------------------------------------------------------------------------
+
+def build_report(*, file_relpath: str, tests: list[str], seed: int,
+                 results: list[dict], planned: int, partial: bool) -> dict:
+    """Assemble the report dict from the accumulated per-mutant results.
+
+    BACKWARD COMPATIBLE: every pre-existing key
+    (killed/survived/errored/kill_rate_pct/partial/completed_mutations/
+    planned_mutations + the file/tests/seed/results top-levels) keeps its exact
+    meaning. The coverage/suppress/critical-path work only ADDS keys:
+      summary.uncovered, summary.suppressed,
+      summary.is_critical_path, summary.critical_path_survivors,
+      top-level coverage_gap.
+
+    killed/survived counts derive ONLY from mutants we actually RAN — 'uncovered'
+    and 'suppressed' mutants are tracked in their own counters and never inflate
+    or deflate the kill rate. Pure (no I/O) so it is unit-testable.
+    """
+    killed = sum(1 for r in results if r.get("status") == "killed")
+    survived = sum(1 for r in results if r.get("status") == "survived")
+    errored = sum(1 for r in results if r.get("status") in ("skipped", "errored"))
+    uncovered = sum(1 for r in results if r.get("status") == "uncovered")
+    suppressed = sum(1 for r in results if r.get("status") == "suppressed")
+
+    total = killed + survived
+    rate = (killed / total * 100) if total else 0.0
+
+    critical = is_critical_path(file_relpath)
+    cp_survivors = count_critical_path_survivors(results) if critical else 0
+
+    coverage_gap = [
+        {"line": (r.get("mutation") or {}).get("line"),
+         "op": (r.get("mutation") or {}).get("op")}
+        for r in results if r.get("status") == "uncovered"
+    ]
+
+    return {
+        "file": file_relpath,
+        "tests": tests,
+        "seed": seed,
+        "summary": {
+            "killed": killed,
+            "survived": survived,
+            "errored": errored,
+            "kill_rate_pct": round(rate, 1),
+            "partial": partial,
+            "completed_mutations": total + errored,
+            "planned_mutations": planned,
+            # --- additive keys ---
+            "uncovered": uncovered,
+            "suppressed": suppressed,
+            "is_critical_path": critical,
+            "critical_path_survivors": cp_survivors,
+        },
+        "coverage_gap": coverage_gap,
+        "results": results,
+    }
+
+
+def compute_exit_code(summary: dict) -> int:
+    """Map a report summary to the process exit code.
+
+    Exit contract (PRESERVED + extended):
+      2  reserved for hard errors (handled by callers before this point)
+      1  low kill rate (<50% over RUN mutants) OR — NEW — a critical-path file
+         with >=1 consequential SURVIVED mutant, REGARDLESS of kill rate
+      0  otherwise
+    Pure so the critical-path-overrides-kill-rate rule is unit-testable.
+    """
+    killed = summary.get("killed", 0) or 0
+    survived = summary.get("survived", 0) or 0
+    total_run = killed + survived
+    kill_rate = summary.get("kill_rate_pct", 0.0) or 0.0
+    if summary.get("is_critical_path") and (summary.get("critical_path_survivors", 0) or 0) > 0:
+        return 1
+    if total_run > 0 and kill_rate < 50:
+        return 1
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -401,6 +698,15 @@ def main() -> int:
                         "not the whole file's historical coverage.")
     p.add_argument("--diff-base", default="origin/develop",
                    help="git ref to diff against when --diff-only is set (default: origin/develop)")
+    p.add_argument("--no-coverage-gate", action="store_true",
+                   help="disable coverage-gating: mutate every discovered line even if no "
+                        "test executes it (today's pre-coverage behavior). Default: gating ON "
+                        "— mutations on UNCOVERED lines are recorded 'uncovered' and never run.")
+    p.add_argument("--no-test-selection", action="store_true",
+                   help="disable per-line test selection: always run the full --tests class "
+                        "for every mutant instead of the narrowed selectors that cover its line.")
+    p.add_argument("--mutant-cache-dir", default=DEFAULT_MUTANT_CACHE_DIR,
+                   help=f"per-mutant incremental cache dir (default: {DEFAULT_MUTANT_CACHE_DIR})")
     args = p.parse_args()
 
     file_path = os.path.join(REPO_ROOT, args.file)
@@ -445,14 +751,14 @@ def main() -> int:
             summary = report.get("summary", {})
             print(f"palace-mutate: {args.file}  [CACHED]")
             print(f"  cache key: {key} (stored {cached.get('stored_at', '?')})")
+            # PRESERVE the verbatim summary line verify-pr.sh greps for, in the
+            # cached branch too.
             print(f"  killed: {summary.get('killed')}  survived: {summary.get('survived')}  "
                   f"errored: {summary.get('errored')}  kill rate: {summary.get('kill_rate_pct')}%")
             with open(args.report, "w") as f:
                 json.dump(report, f, indent=2)
             print(f"  report: {args.report}")
-            kill_rate = summary.get("kill_rate_pct", 0.0) or 0.0
-            total_run = (summary.get("killed", 0) or 0) + (summary.get("survived", 0) or 0)
-            return 1 if total_run > 0 and kill_rate < 50 else 0
+            return compute_exit_code(summary)
 
     # Stable randomized order so each run is reproducible but covers diverse mutations.
     rng = random.Random(args.seed)
@@ -472,42 +778,81 @@ def main() -> int:
             print(f"        + {m.mutated_line}")
         return 0
 
-    # Sanity-check baseline: tests pass before we mutate anything
+    # Suppress-list: load human-curated equivalent-mutant suppressions ONCE.
+    # Mutants matching is_suppressed are recorded 'suppressed', never run, and
+    # never counted as survived/killed. Absent / disabled coverage module -> [].
+    suppressions: list = []
+    if _COVERAGE_AVAILABLE:
+        try:
+            suppressions = mutate_coverage.load_suppressions(REPO_ROOT, args.file)
+        except Exception as e:  # defensive: a broken module must not crash the run
+            print(f"suppressions load failed (non-fatal): {e}", file=sys.stderr)
+
+    # Sanity-check baseline: tests pass before we mutate anything. The baseline
+    # additionally runs with COVERAGE ON (into a temp .xcresult bundle) so we can
+    # gate mutations to lines tests actually execute and (best-effort) narrow the
+    # test selection per line. The coverage bundle lives in a tmpdir we clean up.
+    import tempfile  # local import: only the baseline path needs it
+    coverage_enabled = _COVERAGE_AVAILABLE and not args.no_coverage_gate
+    cov_tmpdir = None
+    coverage_bundle = None
+    if coverage_enabled or (_COVERAGE_AVAILABLE and not args.no_test_selection):
+        cov_tmpdir = tempfile.mkdtemp(prefix="palace-mutate-cov-")
+        # xcodebuild REQUIRES the resultBundlePath to NOT already exist.
+        coverage_bundle = os.path.join(cov_tmpdir, "baseline.xcresult")
+
     print("baseline: running tests with no mutations...")
     t0 = time.time()
-    baseline_ok, baseline_out = run_targeted_tests(args.tests)
+    baseline_ok, baseline_out = run_targeted_tests(args.tests, coverage_bundle_path=coverage_bundle)
     t1 = time.time()
     print(f"baseline: {'PASS' if baseline_ok else 'FAIL'} in {t1-t0:.1f}s")
     if not baseline_ok:
         print("error: baseline test run failed. Cannot mutation-test against a broken suite.", file=sys.stderr)
         print("last lines:")
         print(baseline_out)
+        if cov_tmpdir:
+            shutil.rmtree(cov_tmpdir, ignore_errors=True)
         return 2
     print()
 
-    results: list[dict] = []
-    killed = 0
-    survived = 0
-    errored = 0
+    # Coverage gating: intersect discovered mutation lines with the lines tests
+    # actually executed. covered_lines() returns None on ANY failure -> gating
+    # DISABLED, behavior exactly as today (mutate all lines). This graceful
+    # degradation is the safety property that makes coverage-gating low-risk.
+    covered: set[int] | None = None
+    if coverage_enabled and coverage_bundle:
+        try:
+            covered = mutate_coverage.covered_lines(coverage_bundle, args.file, REPO_ROOT)
+        except Exception as e:
+            print(f"coverage extraction failed (non-fatal); gating disabled: {e}", file=sys.stderr)
+            covered = None
+        if covered is None:
+            print("coverage: unknown (None) — gating DISABLED, mutating every line")
+        else:
+            print(f"coverage: {len(covered)} executed line(s) recorded for gating")
 
-    def _build_report(partial: bool) -> dict:
-        total = killed + survived
-        rate = (killed / total * 100) if total else 0.0
-        return {
-            "file": args.file,
-            "tests": args.tests,
-            "seed": args.seed,
-            "summary": {
-                "killed": killed,
-                "survived": survived,
-                "errored": errored,
-                "kill_rate_pct": round(rate, 1),
-                "partial": partial,
-                "completed_mutations": total + errored,
-                "planned_mutations": len(mutations),
-            },
-            "results": results,
-        }
+    # Per-line test selection: best-effort map line -> [Class/method selectors].
+    # None / missing line -> fall back to the full --tests class for that mutant.
+    line_to_tests: dict | None = None
+    if _COVERAGE_AVAILABLE and not args.no_test_selection and coverage_bundle:
+        covered_mutation_lines = {m.line for m in mutations}
+        try:
+            line_to_tests = mutate_coverage.tests_for_lines(
+                coverage_bundle, args.file, covered_mutation_lines, REPO_ROOT)
+        except Exception as e:
+            print(f"test-selection attribution failed (non-fatal); using full class: {e}", file=sys.stderr)
+            line_to_tests = None
+
+    if cov_tmpdir:
+        shutil.rmtree(cov_tmpdir, ignore_errors=True)
+
+    # Per-mutant incremental cache (in ADDITION to the whole-file cache, which
+    # already missed if we got here). Reuse cached statuses for mutants whose
+    # local context is unchanged; only execute misses; persist atomically.
+    mutant_cache = {} if args.no_cache else mutant_cache_load(args.mutant_cache_dir, args.file)
+    mutant_cache_dirty = False
+
+    results: list[dict] = []
 
     def _write_report_atomic(report: dict) -> None:
         # Write to <path>.tmp then rename. POSIX rename is atomic on the same
@@ -521,34 +866,78 @@ def main() -> int:
             json.dump(report, f, indent=2)
         os.replace(tmp_path, args.report)
 
+    def _flush(partial: bool) -> dict:
+        report = build_report(file_relpath=args.file, tests=args.tests, seed=args.seed,
+                              results=results, planned=len(mutations), partial=partial)
+        _write_report_atomic(report)
+        return report
+
     for i, m in enumerate(mutations, 1):
         prefix = f"[{i}/{len(mutations)}]"
         if not args.quiet:
             print(f"{prefix} line {m.line} {m.op}: {m.original!r} -> {m.mutated!r}")
+
+        # SUPPRESSED: human-reviewed equivalent mutant. Record + skip; not run,
+        # not counted as survived/killed.
+        if _COVERAGE_AVAILABLE and suppressions and mutate_coverage.is_suppressed(
+                suppressions, m.line_text, m.original, m.mutated):
+            if not args.quiet:
+                print("  SUPPRESSED (equivalent mutant)")
+            results.append({"mutation": dataclasses.asdict(m), "status": "suppressed"})
+            _flush(partial=True)
+            continue
+
+        # UNCOVERED: no test executes this line. It is a guaranteed survivor;
+        # running it wastes an xcodebuild cycle and would deflate the kill rate.
+        # Record it as a free coverage-gap signal and never run it.
+        if covered is not None and m.line not in covered:
+            if not args.quiet:
+                print("  UNCOVERED (no test executes this line)")
+            results.append({"mutation": dataclasses.asdict(m), "status": "uncovered"})
+            _flush(partial=True)
+            continue
+
+        # PER-MUTANT CACHE: reuse a prior status for an unchanged-context mutant.
+        mkey = compute_mutant_key(args.tests, m.context_before, m.line_text,
+                                  m.context_after, m.original, m.mutated)
+        if not args.no_cache and mkey in mutant_cache:
+            cached_entry = mutant_cache[mkey]
+            cached_status = cached_entry.get("status")
+            if cached_status in ("killed", "survived"):
+                if not args.quiet:
+                    print(f"  {cached_status.upper()} (cached)")
+                results.append({
+                    "mutation": dataclasses.asdict(m),
+                    "status": cached_status,
+                    "elapsed_sec": cached_entry.get("elapsed_sec", 0.0),
+                    "from_cache": True,
+                })
+                _flush(partial=True)
+                continue
+
+        # TEST SELECTION: run only the selectors that cover this line, if known.
+        selected_tests = args.tests
+        if line_to_tests is not None:
+            sel = line_to_tests.get(m.line)
+            if sel:
+                selected_tests = sel
 
         try:
             apply_mutation(file_path, m)
         except RuntimeError as e:
             print(f"  SKIP — {e}")
             results.append({"mutation": dataclasses.asdict(m), "status": "skipped", "reason": str(e)})
-            errored += 1
-            _write_report_atomic(_build_report(partial=True))
+            _flush(partial=True)
             continue
 
         try:
             t0 = time.time()
-            passed, last = run_targeted_tests(args.tests)
+            passed, last = run_targeted_tests(selected_tests)
             elapsed = time.time() - t0
         finally:
             revert_file(file_path, original)
 
-        if passed:
-            status = "SURVIVED"
-            survived += 1
-        else:
-            status = "KILLED"
-            killed += 1
-
+        status = "SURVIVED" if passed else "KILLED"
         if not args.quiet:
             print(f"  {status}  ({elapsed:.1f}s)")
 
@@ -558,28 +947,45 @@ def main() -> int:
             "elapsed_sec": round(elapsed, 1),
         })
 
+        # Update the per-mutant cache and persist atomically each time, so a
+        # killed process leaves a consistent cache for the next run.
+        if not args.no_cache:
+            mutant_cache[mkey] = {
+                "status": status.lower(),
+                "elapsed_sec": round(elapsed, 1),
+                "stored_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            }
+            mutant_cache_dirty = True
+            try:
+                mutant_cache_store(args.mutant_cache_dir, args.file, mutant_cache)
+            except OSError as e:
+                print(f"per-mutant cache write failed (non-fatal): {e}", file=sys.stderr)
+
         # Flush AFTER every mutation. If the process is killed by a CI
         # timeout (the original symptom) or Ctrl-C, the report on disk
         # already reflects everything completed so far — including a
         # partial=True flag the consumer can use to distinguish "ran to
         # completion" from "ran but got cut off."
-        _write_report_atomic(_build_report(partial=True))
+        _flush(partial=True)
 
-    total_run = killed + survived
-    kill_rate = (killed / total_run * 100) if total_run else 0.0
+    # Final report flips partial=False since we made it through the loop.
+    report = _flush(partial=False)
+    summary = report["summary"]
 
     print()
     print("=" * 60)
     print(f"palace-mutate complete")
-    print(f"  killed:   {killed}")
-    print(f"  survived: {survived}")
-    print(f"  errored:  {errored}")
-    print(f"  kill rate: {kill_rate:.1f}%")
+    print(f"  killed:   {summary['killed']}")
+    print(f"  survived: {summary['survived']}")
+    print(f"  errored:  {summary['errored']}")
+    print(f"  uncovered: {summary['uncovered']}")
+    print(f"  suppressed: {summary['suppressed']}")
+    if summary["is_critical_path"]:
+        print(f"  critical-path survivors: {summary['critical_path_survivors']}")
+    # PRESERVE the verbatim summary line verify-pr.sh greps for.
+    print(f"  killed: {summary['killed']}  survived: {summary['survived']}  "
+          f"errored: {summary['errored']}  kill rate: {summary['kill_rate_pct']}%")
     print("=" * 60)
-
-    # Final report flips partial=False since we made it through the loop.
-    report = _build_report(partial=False)
-    _write_report_atomic(report)
     print(f"report: {args.report}")
 
     if not args.no_cache:
@@ -588,11 +994,15 @@ def main() -> int:
             print(f"cached: {os.path.relpath(stored, REPO_ROOT)}")
         except OSError as e:
             print(f"cache write failed (non-fatal): {e}", file=sys.stderr)
+        if mutant_cache_dirty:
+            try:
+                mutant_cache_store(args.mutant_cache_dir, args.file, mutant_cache)
+            except OSError as e:
+                print(f"per-mutant cache write failed (non-fatal): {e}", file=sys.stderr)
 
-    # Exit non-zero if survival rate is concerningly high
-    if total_run > 0 and kill_rate < 50:
-        return 1
-    return 0
+    if summary["is_critical_path"] and summary["critical_path_survivors"] > 0:
+        print("GATE FAIL: critical-path file has surviving consequential mutant(s).", file=sys.stderr)
+    return compute_exit_code(summary)
 
 
 if __name__ == "__main__":
