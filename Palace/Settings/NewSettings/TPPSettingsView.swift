@@ -269,15 +269,57 @@ struct TPPSettingsView: View {
         // dependency; the effective value still folds in DEBUG-default-on
         // and Firebase via `isTriageBotEnabled`.
         let _ = triageBotLocalOverride
-        if RemoteFeatureFlags.shared.isTriageBotEnabled {
-            Section(header: Text("Support")) {
+        // PP-4542 / F-012: the Support section must ALWAYS render. When the
+        // triage bot is off (production Firebase default), fall back to the
+        // legacy email report path so support stays reachable.
+        let decision = SupportSectionDecision.decide(
+            isTriageBotEnabled: RemoteFeatureFlags.shared.isTriageBotEnabled,
+            currentAccount: AppContainer.production().accountsManager.currentAccount
+        )
+        Section(header: Text("Support")) {
+            switch decision {
+            case .triageBot:
                 let chat = TriageBotSupportView()
                 let wrapper = chat.anyView()
                 row(title: "Get Help", index: 10, selection: self.$selectedView, destination: wrapper)
                     .accessibilityIdentifier("settings.row.getHelp")
                     .accessibilityLabel("Get Help — chat with our support bot")
+            case .legacyEmail(let address):
+                Button {
+                    presentLegacyReportIssue(to: address)
+                } label: {
+                    Text(DisplayStrings.reportIssue)
+                        .palaceFont(.body)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("settings.row.reportIssue")
+                .accessibilityLabel(DisplayStrings.reportIssue)
             }
         }
+    }
+
+    /// Opens the legacy problem-report email composer. `beginComposing`
+    /// already handles the no-mail-configured case with an alert, so the row
+    /// is always safe to offer. Mirrors `AccountDetailView.handleReportIssue`.
+    private func presentLegacyReportIssue(to address: String) {
+        guard let topVC = topViewController() else { return }
+        ProblemReportEmail.sharedInstance.beginComposing(
+            to: address,
+            presentingViewController: topVC,
+            book: nil as TPPBook?,
+            libraryUUID: AppContainer.production().accountsManager.currentAccount?.uuid
+        )
+    }
+
+    private func topViewController() -> UIViewController? {
+        guard let root = UIApplication.shared.mainKeyWindow?.rootViewController else {
+            return nil
+        }
+        var current = root
+        while let presented = current.presentedViewController {
+            current = presented
+        }
+        return current
     }
 
     @ViewBuilder private var infoSection: some View {
@@ -388,6 +430,52 @@ struct TPPSettingsView: View {
                 Text(title)
                     .palaceFont(.body)
             }
+        )
+    }
+}
+
+// MARK: - SupportSectionDecision
+
+/// Pure decision for what the Settings "Support" section should present.
+///
+/// PP-4542 / F-012: the section must NEVER be empty. When the triage bot is
+/// enabled it routes to the chat surface; otherwise it routes to the legacy
+/// email problem-report flow with a guaranteed-non-empty address (the current
+/// library's support email, or the general Palace fallback).
+enum SupportSectionDecision: Equatable {
+    case triageBot
+    case legacyEmail(address: String)
+
+    /// General fallback when no library-specific support email is available.
+    static let generalFallbackEmail = "support@thepalaceproject.org"
+
+    /// The email the view should hand to `beginComposing(to:)`, or `nil` for
+    /// the triage-bot path.
+    var emailAddress: String? {
+        switch self {
+        case .triageBot: return nil
+        case .legacyEmail(let address): return address
+        }
+    }
+
+    /// Core decision. Operates on the already-resolved support-email string so
+    /// the branch + fallback logic is fixture-free testable.
+    static func decide(isTriageBotEnabled: Bool, supportEmail: String?) -> SupportSectionDecision {
+        if isTriageBotEnabled {
+            return .triageBot
+        }
+        if let email = supportEmail, !email.isEmpty {
+            return .legacyEmail(address: email)
+        }
+        return .legacyEmail(address: generalFallbackEmail)
+    }
+
+    /// Convenience used by the view: resolves the current account's support
+    /// email before deciding.
+    static func decide(isTriageBotEnabled: Bool, currentAccount: Account?) -> SupportSectionDecision {
+        decide(
+            isTriageBotEnabled: isTriageBotEnabled,
+            supportEmail: currentAccount?.supportEmail?.rawValue
         )
     }
 }
