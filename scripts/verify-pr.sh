@@ -32,6 +32,13 @@
 #   scripts/verify-pr.sh --mutation-min-kill-rate N
 #                                              # Override the per-file kill-rate
 #                                              # floor (default: 50%).
+#   scripts/verify-pr.sh --mutation-whole-file # Mutate the WHOLE file instead of
+#                                              # only the lines this PR changed.
+#                                              # Default for the PR gate is
+#                                              # --diff-only (kill rate reflects
+#                                              # YOUR diff, not the file's whole
+#                                              # history). Pass this for release
+#                                              # runs that want full-file coverage.
 #   scripts/verify-pr.sh --simdrive            # Also replay .simdrive/journeys/*.yaml
 #                                              # via simdrive. MAINTAINER-INTERNAL:
 #                                              # simdrive is not yet publicly
@@ -48,6 +55,17 @@
 #   are advisory: low kill rates are surfaced as warnings but do not fail.
 #   --enforce-mutations promotes every changed file to strict.
 #   --no-enforce-mutations demotes critical paths to advisory.
+#
+#   DIFF-SCOPED BY DEFAULT: the PR gate runs palace_mutate.py with --diff-only,
+#   so the kill rate reflects the lines THIS PR changed, not the file's whole
+#   history. Pass --mutation-whole-file for release runs that want full-file
+#   coverage.
+#
+#   CRITICAL-PATH SURVIVOR OVERRIDE: independent of the kill-rate floor, any
+#   critical-path file whose JSON report shows summary.critical_path_survivors > 0
+#   (a SURVIVED mutant with a consequential op — cmp/bool/bound/retval/cond) is a
+#   STRICT FAIL. A 100%-on-paper kill rate cannot mask a surviving consequential
+#   mutant on a user-money path.
 #
 # Designed to be called by:
 #   - Claude Code agents before PR creation
@@ -76,6 +94,10 @@ MUTATION_ONLY=false
 # Per-file kill-rate floor. CLAUDE.md says 50%; tunable via flag for the rare
 # case where a sweep needs a higher bar (e.g. critical-path hardening sprint).
 MUTATION_MIN_KILL_RATE=50
+# Diff-scoped by default for the PR gate: palace_mutate.py only mutates the lines
+# this PR changed (kill rate reflects YOUR diff, not the whole file's history).
+# --mutation-whole-file flips this for release runs that want full-file coverage.
+MUTATION_WHOLE_FILE=false
 
 # Critical paths: every changed file matching one of these prefixes is held to
 # the strict kill-rate floor unless explicitly opted out via --no-enforce-mutations.
@@ -103,6 +125,7 @@ while [[ $# -gt 0 ]]; do
     --no-enforce-mutations) MUTATION_POLICY="advisory_all"; shift ;;
     --mutation-only) MUTATION_ONLY=true; QUICK=false; shift ;;
     --mutation-min-kill-rate) MUTATION_MIN_KILL_RATE="$2"; shift 2 ;;
+    --mutation-whole-file) MUTATION_WHOLE_FILE=true; shift ;;
     *) shift ;;
   esac
 done
@@ -622,8 +645,23 @@ elif [ -f scripts/palace_mutate.py ] && [ -n "$CHANGED_SWIFT" ]; then
   TOTAL_MUTATIONS=0
   STRICT_FAIL_FILES=()  # strict policy applies AND kill rate < min
   WARN_FILES=()         # kill rate < min but advisory only
+  # Critical-path files with >=1 surviving consequential mutant. These are a
+  # STRICT FAIL regardless of kill rate or MUTATION_POLICY — a 100%-on-paper
+  # kill rate cannot mask a surviving consequential mutant on a user-money path.
+  CRITICAL_SURVIVOR_FILES=()
   MUTATION_HARD_FAILED=false
   mkdir -p "$MUTATION_REPORTS_DIR"
+
+  # Diff-scoped by default for the PR gate; --mutation-whole-file opts into a
+  # full-file scan (release runs). palace_mutate.py caches diff-only and
+  # whole-file runs under independent keys, so switching modes is safe.
+  MUTATION_SCOPE_ARGS=()
+  if [ "$MUTATION_WHOLE_FILE" = "true" ]; then
+    echo "  Mutation scope: WHOLE FILE (--mutation-whole-file)"
+  else
+    MUTATION_SCOPE_ARGS+=("--diff-only")
+    echo "  Mutation scope: diff-only vs $BASE (default; pass --mutation-whole-file for full-file)"
+  fi
 
   while IFS= read -r swift_file; do
     [ -z "$swift_file" ] && continue
@@ -665,9 +703,12 @@ elif [ -f scripts/palace_mutate.py ] && [ -n "$CHANGED_SWIFT" ]; then
       MUTATE_TEST_ARGS+=("--tests" "$sel")
     done <<< "$TEST_SELECTORS"
 
+    # ${arr[@]+"${arr[@]}"} guards against `set -u` "unbound variable" when the
+    # scope array is empty (whole-file mode) on bash 3.2 (macOS default).
     MUT_OUTPUT=$(python3 scripts/palace_mutate.py \
       --file "$swift_file" \
       "${MUTATE_TEST_ARGS[@]}" \
+      ${MUTATION_SCOPE_ARGS[@]+"${MUTATION_SCOPE_ARGS[@]}"} \
       --report "$REPORT_PATH" \
       --max-mutations 10 2>&1)
     MUT_EXIT=$?
@@ -694,6 +735,49 @@ elif [ -f scripts/palace_mutate.py ] && [ -n "$CHANGED_SWIFT" ]; then
     TOTAL_KILLED=$((TOTAL_KILLED + KILLED))
     TOTAL_MUTATIONS=$((TOTAL_MUTATIONS + FILE_TOTAL))
 
+    # Critical-path survivor override. Read summary.critical_path_survivors from
+    # the per-file JSON report. >0 means a SURVIVED mutant with a consequential
+    # op (cmp/bool/bound/retval/cond) on a user-money path — a STRICT FAIL even
+    # if the kill rate clears the floor. We read from the report (not the printed
+    # line) because the survivor count is a report-only field. Default to 0 when
+    # the key is absent (older cached reports) so this never blocks spuriously.
+    CP_SURVIVORS=0
+    CP_SURVIVOR_LINES=""
+    if [ -f "$REPORT_PATH" ]; then
+      CP_PARSED=$(python3 - "$REPORT_PATH" <<'PYEOF' 2>/dev/null || true
+import json, sys
+try:
+    data = json.load(open(sys.argv[1]))
+except Exception:
+    print("0|")
+    sys.exit(0)
+summary = data.get("summary", {}) or {}
+n = int(summary.get("critical_path_survivors", 0) or 0)
+# Collect the line numbers of surviving consequential mutants for the message.
+# A survivor on a non-assign op is what critical_path_survivors counts; surface
+# every SURVIVED result's line so the reviewer can find them (the report itself
+# is the authority on which were consequential).
+lines = sorted({
+    str((r.get("mutation") or {}).get("line"))
+    for r in (data.get("results") or [])
+    if r.get("status") == "survived"
+    and (r.get("mutation") or {}).get("line") is not None
+})
+print(f"{n}|{','.join(lines)}")
+PYEOF
+)
+      CP_SURVIVORS=$(echo "$CP_PARSED" | cut -d'|' -f1)
+      CP_SURVIVOR_LINES=$(echo "$CP_PARSED" | cut -d'|' -f2)
+      [ -z "$CP_SURVIVORS" ] && CP_SURVIVORS=0
+    fi
+    if [ "${CP_SURVIVORS:-0}" -gt 0 ]; then
+      if [ -n "$CP_SURVIVOR_LINES" ]; then
+        CRITICAL_SURVIVOR_FILES+=("$swift_file (${CP_SURVIVORS} consequential survivor(s) at line(s) ${CP_SURVIVOR_LINES})")
+      else
+        CRITICAL_SURVIVOR_FILES+=("$swift_file (${CP_SURVIVORS} consequential survivor(s))")
+      fi
+    fi
+
     # Per-file policy evaluation against the (possibly overridden) floor.
     if [ "$FILE_TOTAL" -gt 0 ]; then
       FILE_RATE=$((KILLED * 100 / FILE_TOTAL))
@@ -709,15 +793,32 @@ elif [ -f scripts/palace_mutate.py ] && [ -n "$CHANGED_SWIFT" ]; then
 
   if [ "$MUTATION_HARD_FAILED" = "true" ]; then
     : # fail already recorded inside the loop; skip the post-aggregation record
+  elif [ ${#CRITICAL_SURVIVOR_FILES[@]} -gt 0 ]; then
+    # Critical-path survivor override: this takes priority over the kill-rate
+    # decision. A surviving consequential mutant on a user-money path blocks
+    # merge even if the kill rate clears the floor. We still surface any
+    # kill-rate strict failures alongside so the reviewer sees the full picture.
+    DETAIL="${#CRITICAL_SURVIVOR_FILES[@]} critical-path file(s) with surviving consequential mutant(s) — BLOCKS regardless of kill rate: ${CRITICAL_SURVIVOR_FILES[*]}"
+    if [ ${#STRICT_FAIL_FILES[@]} -gt 0 ]; then
+      DETAIL="$DETAIL || also below ${MUTATION_MIN_KILL_RATE}%: ${STRICT_FAIL_FILES[*]}"
+    fi
+    record "mutation" "fail" "$DETAIL"
   elif [ "$TOTAL_MUTATIONS" -eq 0 ]; then
     # Defensive: if zero mutations across ≥3 production files, that's
     # almost certainly a tool misconfiguration, not a genuine no-op diff.
     # Most real production files have at least one comparison/boolean op.
+    #
+    # EXCEPTION: in diff-only mode (the default PR gate), zero mutations across
+    # the diff is legitimate — a PR can change only comments, whitespace, log
+    # lines, or already-uncovered lines. Don't treat that as misconfiguration;
+    # whole-file mode keeps the strict "≥3 files but 0 mutants is suspicious" net.
     PROD_COUNT=$(echo "$CHANGED_SWIFT" | grep -cv '^$' || echo "0")
-    if [ "${PROD_COUNT:-0}" -ge 3 ]; then
+    if [ "${PROD_COUNT:-0}" -ge 3 ] && [ "$MUTATION_WHOLE_FILE" = "true" ]; then
       record "mutation" "fail" "Suspicious: $PROD_COUNT production files changed but 0 mutations generated total — palace_mutate.py likely misconfigured (check REPO_ROOT, file paths, and exit codes)"
-    else
+    elif [ "$MUTATION_WHOLE_FILE" = "true" ]; then
       record "mutation" "pass" "No mutations generated for changed files"
+    else
+      record "mutation" "pass" "No mutations generated for changed lines (diff-only scope)"
     fi
   elif [ ${#STRICT_FAIL_FILES[@]} -gt 0 ]; then
     KILL_RATE=$((TOTAL_KILLED * 100 / TOTAL_MUTATIONS))

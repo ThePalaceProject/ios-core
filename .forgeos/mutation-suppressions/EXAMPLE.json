@@ -1,0 +1,14 @@
+[
+  {
+    "line_text": "for i in 0 ..< buffer.count {",
+    "original": "<",
+    "mutated": "<=",
+    "reason": "EXAMPLE ONLY — not loaded for any real source (no EXAMPLE.swift exists). Demonstrates a loop-bound equivalence: i is bounded by count and never reaches it, so < vs <= on the range operator is observably identical here."
+  },
+  {
+    "line_text": "guard retryCount >= 0 else { return }",
+    "original": ">=",
+    "mutated": ">",
+    "reason": "EXAMPLE ONLY. retryCount is initialized to 0 and only incremented, so >= 0 and > -1 (== > here against an always-non-negative value... ) — illustrative entry showing the original/mutated token pair shape; do not copy verbatim."
+  }
+]
