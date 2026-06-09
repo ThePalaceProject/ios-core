@@ -76,6 +76,9 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
         -enableCodeCoverage YES \
         -retry-tests-on-failure \
         -test-iterations 3 \
+        -test-timeouts-enabled YES \
+        -default-test-execution-time-allowance 120 \
+        -maximum-test-execution-time-allowance 300 \
         -parallel-testing-enabled NO \
         CODE_SIGNING_REQUIRED=NO \
         CODE_SIGNING_ALLOWED=NO \
