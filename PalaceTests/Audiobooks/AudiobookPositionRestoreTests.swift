@@ -264,7 +264,7 @@ final class AudiobookPositionRestoreTests: XCTestCase {
     /// true` mutant would report the patron authenticated despite an auth-doc
     /// load failure, opening the book against a stale/absent auth surface.
     func testIsUserAuthenticated_authDocLoadFailed_returnsFalse() async {
-        let manager = makeIsolatedAccountsManager()
+        let manager = makeIsolatedManager()
         let account = makeAccount(uuid: "pp4542-failed-auth")
         account._setState(.detailsFailed(.authDocumentFetchFailed(underlyingDescription: "HTTP 503")))
         manager.currentAccount = account
@@ -284,7 +284,7 @@ final class AudiobookPositionRestoreTests: XCTestCase {
     /// pins that the not-authenticated outcome is reached on both early-out
     /// `return false` paths in the method.
     func testIsUserAuthenticated_noCurrentAccount_returnsFalse() async {
-        let manager = makeIsolatedAccountsManager()
+        let manager = makeIsolatedManager()
         manager.currentAccount = nil
 
         let container = makeTestAppContainer(accountsManager: manager, bookRegistry: registryMock)
@@ -298,9 +298,15 @@ final class AudiobookPositionRestoreTests: XCTestCase {
 
     // MARK: - Account / manager fixtures
 
-    private func makeIsolatedAccountsManager() -> AccountsManager {
-        AccountsManager.deferInitialLoadCatalogsForTesting = true
-        return AccountsManager()
+    /// Build an isolated AccountsManager via the whitelisted test factory
+    /// rather than a bare `AccountsManager()`. `makeTestAppContainer` pins
+    /// `deferInitialLoadCatalogsForTesting` before construction, so no
+    /// background `loadCatalogs` Task is spawned (nothing to outlive the
+    /// test). Keeps the SUT's `@MainActor` setUp wiring intact (this class
+    /// can't inherit the nonisolated `PalaceWiringTestCase` seam) while
+    /// satisfying the AccountsManager isolation lint.
+    private func makeIsolatedManager() -> AccountsManager {
+        makeTestAppContainer(bookRegistry: registryMock).accountsManager
     }
 
     private func makeAccount(uuid: String) -> Account {

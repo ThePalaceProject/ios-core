@@ -488,7 +488,7 @@ final class BookRegistrySyncTests: XCTestCase {
 
         // Credentials must live on the instance sync() reads:
         // sharedAccount(libraryUUID:) → production manager's userAccount(for:).
-        let prodUserAccount = AppContainer.production().accountsManager.userAccount(for: uuid)
+        let prodUserAccount = AppContainer.production().accountsManager.userAccount(for: uuid) // MIGRATED-DEFERRED: PP-4542 — sync() checks hasCredentials() via sharedAccount→production keychain-backed userAccount; the credential path has no DI seam (only currentAccount STATE is injected)
         prodUserAccount.setAuthToken("pp4542-token", barcode: "bc", pin: "1234",
                                      expirationDate: Date().addingTimeInterval(3600))
         defer { prodUserAccount.removeAll() }
@@ -532,7 +532,7 @@ final class BookRegistrySyncTests: XCTestCase {
         let (uuid, cleanup) = seedFixtureCurrentAccount()
         defer { cleanup() }
 
-        let prodUserAccount = AppContainer.production().accountsManager.userAccount(for: uuid)
+        let prodUserAccount = AppContainer.production().accountsManager.userAccount(for: uuid) // MIGRATED-DEFERRED: PP-4542 — sync() checks hasCredentials() via sharedAccount→production keychain-backed userAccount; the credential path has no DI seam (only currentAccount STATE is injected)
         prodUserAccount.setAuthToken("pp4542-token", barcode: "bc", pin: "1234",
                                      expirationDate: Date().addingTimeInterval(3600))
         defer { prodUserAccount.removeAll() }
@@ -621,7 +621,7 @@ final class BookRegistrySyncTests: XCTestCase {
         let (uuid, cleanup) = seedFixtureCurrentAccount()
         defer { cleanup() }
 
-        let prodUserAccount = AppContainer.production().accountsManager.userAccount(for: uuid)
+        let prodUserAccount = AppContainer.production().accountsManager.userAccount(for: uuid) // MIGRATED-DEFERRED: PP-4542 — sync() checks hasCredentials() via sharedAccount→production keychain-backed userAccount; the credential path has no DI seam (only currentAccount STATE is injected)
         XCTAssertFalse(prodUserAccount.hasCredentials(),
                        "Precondition: fresh-UUID fixture must have no stored credentials")
 
