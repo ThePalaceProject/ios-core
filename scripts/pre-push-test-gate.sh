@@ -165,6 +165,21 @@ else
   DEST_ARGS=(-destination 'platform=iOS Simulator,name=iPhone 16 Pro')
 fi
 
+# When the push originates from a LINKED git worktree, the shared default
+# DerivedData was resolved against a different checkout root, so xcodebuild's
+# SPM graph points at a stale source-package path and package resolution dies
+# with "the package manifest at '/Package.swift' doesn't exist" — a false gate
+# failure (the worktree itself builds fine with an isolated DerivedData). Scope
+# a per-checkout DerivedData + SourcePackages dir for worktree pushes only; the
+# main checkout keeps its warm default cache so the gate stays fast there.
+declare -a DERIVED_ARGS=()
+if [[ "$(git rev-parse --git-common-dir 2>/dev/null)" != "$(git rev-parse --git-dir 2>/dev/null)" ]]; then
+  _repo_slug="$(printf '%s' "$REPO_DIR" | shasum 2>/dev/null | cut -c1-12)"
+  _dd_dir="${TMPDIR:-/tmp}/prepush-dd-${_repo_slug:-wt}"
+  DERIVED_ARGS=(-derivedDataPath "$_dd_dir" -clonedSourcePackagesDirPath "$_dd_dir/SourcePackages")
+  echo "[pre-push-test-gate] linked worktree detected — isolating DerivedData at $_dd_dir" >&2
+fi
+
 declare -a ONLY_TESTING_ARGS=()
 for cls in "${CLASSES[@]}"; do
   ONLY_TESTING_ARGS+=("-only-testing:PalaceTests/$cls")
@@ -189,10 +204,21 @@ run_with_timeout() {
 }
 
 # Quiet xcodebuild — we only care about pass/fail at the gate.
-if run_with_timeout "$TIMEOUT_SECS" xcodebuild \
+# Clear the git hook environment before xcodebuild. git invokes pre-push
+# hooks with GIT_DIR/GIT_WORK_TREE/GIT_INDEX_FILE exported; xcodebuild's SPM
+# resolution shells out to git internally, and an inherited GIT_WORK_TREE
+# makes the local-package path resolve to "/" — failing with "the package
+# manifest at '/Package.swift' doesn't exist". This is THE reason a push from
+# a linked worktree (or even the main checkout, under some git versions) hits
+# that error while the same xcodebuild run from a plain shell succeeds.
+# Unsetting these lets xcodebuild resolve packages against the project root.
+if run_with_timeout "$TIMEOUT_SECS" \
+     env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u GIT_PREFIX -u GIT_EXEC_PATH \
+     xcodebuild \
      -project Palace.xcodeproj \
      -scheme Palace \
      "${DEST_ARGS[@]}" \
+     "${DERIVED_ARGS[@]}" \
      "${ONLY_TESTING_ARGS[@]}" \
      test \
      -quiet >/tmp/pre-push-test-gate.log 2>&1; then
