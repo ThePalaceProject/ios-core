@@ -42,11 +42,31 @@ xcodebuild -project Palace.xcodeproj -scheme Palace \
 xcodebuild -project Palace.xcodeproj -scheme Palace \
   -destination 'platform=iOS Simulator,name=iPhone 16 Pro' test
 
-# Run a single test class
+# Run a single test class — SPOT CHECK ONLY, never "validation" (see rule below)
 xcodebuild -project Palace.xcodeproj -scheme Palace \
   -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
   -only-testing:PalaceTests/MyTestClass test
 ```
+
+**Local validation MUST run the same full suite CI runs — never a `-only-testing`
+subset.** CI executes the whole `Palace` scheme across ALL test targets
+(`PalaceTests` + `TenPrintCoverTests`) with `-test-iterations 3
+-retry-tests-on-failure` via `scripts/xcode-test-optimized.sh` (~7k executions).
+Before claiming a change is verified / green:
+- Run `scripts/xcode-test-optimized.sh` (CI parity) **or** `scripts/verify-pr.sh
+  --quick` (full-scheme single pass). A `-only-testing:<Class>` run is a scoped
+  spot-check for fast iteration/mutation/debugging — it is NEVER "the suite" and
+  must never be reported as a full or green pass.
+- Confirm the run ended `** TEST SUCCEEDED **` with **no** `exceeded execution
+  time allowance` or `Restarting after … test timeout` lines. A timeout/restart
+  is a FAILURE even if the final assertion tally reads "0 failures."
+- Read the top-level `Test Suite 'All tests'/'Selected tests'` rollup for the
+  count; never sum per-suite `Executed N` lines (they double/triple-count).
+
+Incident (PP-4542, 2026-06-09): a `-only-testing:PalaceTests` run was reported as
+"full local suite 2359 / 0 failures, PRs verifiably correct." It was one bundle
+(CI runs 7121) AND had actually hung + `** TEST FAILED **`. A subset run, itself
+failed, cited as whole-suite green. Don't repeat it.
 
 - Xcode 26, iOS 16.0+ deployment target (CI release path: `macos-26` + `xcode-version: '26'`)
 - Two targets: `Palace` (full DRM) and `Palace-noDRM` (open-source)
