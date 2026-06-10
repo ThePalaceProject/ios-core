@@ -27,9 +27,12 @@ final class AppContainerResetTests: XCTestCase {
         // this, the test that runs immediately after one of OUR tests
         // observes whatever state THIS test left in `_cached`.
         AppContainer._resetForTesting()
-        // Belt-and-suspenders: ensure the opt-out flag is back to false
-        // so any other test class observing it sees production semantics.
-        AccountsManager.deferInitialLoadCatalogsForTesting = false
+        // Restore the test-safe default (`true`) so the next test class does
+        // not inherit an opt-out-OFF flag and spawn the background catalog
+        // crawl. THIS class opts into background load by setting the flag
+        // `false` in each test that needs it; between classes the safe value
+        // is `true`, matching `PalaceTestSetup.bootstrap()`.
+        AccountsManager.deferInitialLoadCatalogsForTesting = true
         super.tearDown()
     }
 
@@ -92,11 +95,16 @@ final class AppContainerResetTests: XCTestCase {
             "Reset must construct the new AccountsManager with the opt-out flag set so no background loadCatalogs task is spawned"
         )
 
-        // Assert: the flag is back to `false` after reset, so production
-        // semantics resume for any later in-process construction.
-        XCTAssertFalse(
+        // Assert: the flag is left at the test-safe `true` after reset. This
+        // is the pollution-fix invariant — `_resetForTesting()` runs after
+        // EVERY test, so leaving the flag `false` here meant the next test
+        // class inherited opt-out-OFF and spawned the background catalog
+        // crawl on its first incidental `AccountsManager` construction. A
+        // regression that resets the flag to `false` (the prior behaviour)
+        // fails this assertion.
+        XCTAssertTrue(
             AccountsManager.deferInitialLoadCatalogsForTesting,
-            "Reset must restore the opt-out flag to false after rebuilding the graph"
+            "Reset must leave the opt-out flag TRUE so the next test class does not inherit background-crawl semantics"
         )
     }
 
@@ -136,14 +144,13 @@ final class AppContainerResetTests: XCTestCase {
         // network completion.
 
         // (1)-(2) Force a fresh production graph with a real background task
-        // by explicitly clearing the flag BEFORE the rebuild. `_resetForTesting`
-        // restores it to false after rebuilding, but the rebuild itself
-        // uses flag=true, so we need to manually rebuild with flag=false
-        // to get a task-bearing instance.
+        // by explicitly clearing the flag BEFORE the rebuild. The rebuild
+        // inside `_resetForTesting` itself uses flag=true, so we need to
+        // manually rebuild with flag=false to get a task-bearing instance.
         AccountsManager.deferInitialLoadCatalogsForTesting = false
         // Reset first to get a clean slate.
         AppContainer._resetForTesting()
-        // The reset above set the flag back to false at the end, but
+        // The reset above leaves the flag at the test-safe `true`, and
         // `_buildCachedAppContainer` ran with flag=true. So this graph has
         // NO background task. To create a graph WITH a task, we'd need to
         // construct AccountsManager directly outside the reset path — which
