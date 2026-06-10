@@ -212,6 +212,39 @@ struct CatalogCacheMetadata: Codable {
     private var _explicitCancelCalled: Bool = false
     #endif
 
+    /// Registry of the unstructured background `Task`s spawned by
+    /// `loadCatalogs` → `fetchFromNetwork` / `refreshInBackground` (the
+    /// registry crawl, pagination, and catalog-preload). These are independent
+    /// tasks — NOT children of `backgroundFetchTask` — so `cancelBackgroundWork()`
+    /// did not previously cancel them. When a test constructed an
+    /// `AccountsManager` under `deferInitialLoadCatalogsForTesting = false`
+    /// (e.g. `AppContainerResetTests`), these tasks outlived the test and the
+    /// cooperative-cancel of `backgroundFetchTask`, leaking a live multi-page
+    /// network crawl into whatever test ran next — the root of the intermittent
+    /// cross-test CI crashes (a different victim each run).
+    ///
+    /// `_trackCrawlTask` no-ops outside an XCTest process (the runtime gate
+    /// below), so release / TestFlight / dev-sim builds never append — the
+    /// array stays empty and there is no storage cost or unbounded growth. The
+    /// only consumer that drains/cancels the list is `cancelBackgroundWork()`,
+    /// which is itself `#if DEBUG` and only invoked under `_resetForTesting()`
+    /// / wiring-suite tearDown. Using the XCTest env-var gate rather than
+    /// `#if DEBUG` on these production call sites keeps the crawl-spawn paths
+    /// free of conditional compilation (blast-radius BR-2).
+    private static let _isRunningUnderXCTest =
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+    private let _trackedCrawlTasksLock = NSLock()
+    private var _trackedCrawlTasks: [Task<Void, Never>] = []
+
+    /// Register a spawned background crawl task so `cancelBackgroundWork()` can
+    /// cancel it. No-op outside an XCTest process.
+    private func _trackCrawlTask(_ task: Task<Void, Never>) {
+        guard Self._isRunningUnderXCTest else { return }
+        _trackedCrawlTasksLock.lock()
+        _trackedCrawlTasks.append(task)
+        _trackedCrawlTasksLock.unlock()
+    }
+
     /// Initializer is `internal` rather than `private` so `AppContainer` can
     /// construct the single live instance directly. Outside of `AppContainer`
     /// (and tests that need an isolated instance), do not call this directly
@@ -677,7 +710,7 @@ struct CatalogCacheMetadata: Codable {
     /// 2. Paginate remaining pages in background → update cache when done
     /// Falls back to a direct GET if even the first page fails.
     private func fetchFromNetwork(targetUrl: URL, hash: String) {
-        Task(priority: .userInitiated) { [weak self] in
+        let crawlTask = Task(priority: .userInitiated) { [weak self] in
             guard let self = self else { return }
             Log.debug(#file, "Fetching catalogs via first-page fast path for hash \(hash)")
 
@@ -713,7 +746,7 @@ struct CatalogCacheMetadata: Codable {
                 }
 
                 Log.info(#file, "Registry has more pages (first page: \(firstPage.catalogs.count) of \(firstPage.metadata.numberOfItems ?? -1)) — paginating in background")
-                Task(priority: .utility) { [weak self] in
+                let paginationTask = Task(priority: .utility) { [weak self] in
                     guard let self = self else { return }
 
                     let remainingResult = await crawler.crawlRemainingPages(
@@ -733,6 +766,7 @@ struct CatalogCacheMetadata: Codable {
                     }
                     self.triggerCatalogPreload()
                 }
+                self._trackCrawlTask(paginationTask)
 
             case .noChanges:
                 self.callAndClearLoadingHandlers(for: hash, true)
@@ -742,6 +776,7 @@ struct CatalogCacheMetadata: Codable {
                 self.fallbackFetchFromNetwork(targetUrl: targetUrl, hash: hash)
             }
         }
+        _trackCrawlTask(crawlTask)
     }
 
     /// Fallback direct GET when crawler fails on first launch.
@@ -774,7 +809,7 @@ struct CatalogCacheMetadata: Codable {
     /// Refreshes catalog data in background using the incremental crawler.
     /// Falls back to a direct GET if the crawlable endpoint fails.
     private func refreshInBackground(targetUrl: URL, hash: String) {
-        Task(priority: .utility) { [weak self] in
+        let refreshTask = Task(priority: .utility) { [weak self] in
             guard let self = self else { return }
             Log.debug(#file, "Starting background refresh (crawl) for catalog hash \(hash)")
 
@@ -819,6 +854,7 @@ struct CatalogCacheMetadata: Codable {
                 self.fallbackDirectRefresh(targetUrl: targetUrl, hash: hash)
             }
         }
+        _trackCrawlTask(refreshTask)
     }
 
     /// Fallback to direct GET when crawlable endpoint fails.
@@ -840,7 +876,7 @@ struct CatalogCacheMetadata: Codable {
 
     /// Triggers catalog feed preloading for active accounts.
     private func triggerCatalogPreload() {
-        Task(priority: .utility) { [weak self] in
+        let preloadTask = Task(priority: .utility) { [weak self] in
             guard let self = self else { return }
             await self.catalogPreloader.preloadCatalogs(
                 currentAccount: self.currentAccount,
@@ -848,6 +884,7 @@ struct CatalogCacheMetadata: Codable {
                 accountProvider: { self.account($0) }
             )
         }
+        _trackCrawlTask(preloadTask)
     }
 
     // MARK: – Disk cache helpers
@@ -1275,6 +1312,15 @@ extension AccountsManager {
         _explicitCancelCalled = true
         backgroundFetchTask?.cancel()
         backgroundFetchTask = nil
+        // Cancel the unstructured crawl / pagination / preload tasks spawned by
+        // loadCatalogs. These are independent of backgroundFetchTask, so
+        // without this they leak a live registry crawl past the test boundary
+        // and pollute the next test (the intermittent cross-test CI crash).
+        _trackedCrawlTasksLock.lock()
+        let crawlTasks = _trackedCrawlTasks
+        _trackedCrawlTasks.removeAll()
+        _trackedCrawlTasksLock.unlock()
+        crawlTasks.forEach { $0.cancel() }
         networkExecutor.cancelNonEssentialTasks()
     }
 

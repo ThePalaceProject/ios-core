@@ -179,7 +179,10 @@ final class ActiveSessionsViewModelTests: XCTestCase {
 
         notificationCenter.post(name: .TPPBookRegistryStateDidChange, object: nil)
 
-        wait(for: [exp], timeout: 0.5)
+        // CI-safe timeout: the notification-driven re-query fires in ms on the
+        // happy path; a generous ceiling only matters under CI CPU starvation
+        // and never slows the green path. 0.5s was too tight and flaked.
+        wait(for: [exp], timeout: 5.0)
         _ = observer  // keep alive
 
         XCTAssertGreaterThan(spyService.recentlyReadingCallCount, baselineCalls,

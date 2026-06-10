@@ -211,9 +211,14 @@ class AccountsManagerCancellationTests: PalaceWiringTestCase {
         // `withCheckedContinuation` so it suspends until cancelled — the
         // production task's structure is the same family.
         let injectedTask = Task<Void, Never>(priority: .background) {
-            await withCheckedContinuation { (_: CheckedContinuation<Void, Never>) in
-                // Intentionally never resume — cancellation is the only way out.
-            }
+            // Suspend until cancelled, the cancellation-aware way. `Task.sleep`
+            // throws `CancellationError` the moment the task is cancelled, so
+            // `try?` lets the task complete cleanly. The prior version used
+            // `withCheckedContinuation { _ in }` and never resumed it, which
+            // leaked the continuation ("SWIFT TASK CONTINUATION MISUSE") — a
+            // suspended-forever task that lingered in the process and showed up
+            // as a runtime warning during later, unrelated tests.
+            try? await Task.sleep(nanoseconds: .max)
         }
         manager._injectBackgroundFetchTaskForTesting(injectedTask)
 

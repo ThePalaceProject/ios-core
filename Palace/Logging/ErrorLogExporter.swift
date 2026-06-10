@@ -260,8 +260,14 @@ actor ErrorLogExporter {
 
     // MARK: - Device Information
 
-    /// Collects device information matching ProblemReportEmail format
-    private func collectDeviceInfo() async -> String {
+    /// Collects device information matching ProblemReportEmail format.
+    ///
+    /// Exposed `internal` (was `private`) so `ErrorLogExporterTests` can verify
+    /// the Patron-ID field without invoking `collectAllLogs()`, whose
+    /// `DeviceLogCollector.collectLogs(lastDays:)` enumerates 7 days of
+    /// OSLogStore — slow-to-hanging in a log-saturated CI process (it exceeded
+    /// the per-test execution-time allowance and crashed the run).
+    func collectDeviceInfo() async -> String {
         let (nativeHeight, systemVersion, idiom, deviceID) = await MainActor.run {
             let height = UIScreen.main.nativeBounds.height
             let version = UIDevice.current.systemVersion
