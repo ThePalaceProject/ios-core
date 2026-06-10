@@ -467,10 +467,19 @@ struct AppContainer {
     ///      briefly before observing `Task.isCancelled`.
     ///   3. Atomically reassign `_cached` to a freshly-built AppContainer
     ///      whose AccountsManager observes the opt-out flag.
-    ///   4. Reset the AccountsManager opt-out flag to `false` so production
-    ///      semantics resume if the test bundle is reused in-process or if
-    ///      a later test constructs its own AccountsManager directly and
-    ///      wants the normal background-load behaviour.
+    ///   4. Leave the AccountsManager opt-out flag at the test-safe value
+    ///      `true`. This runs after EVERY test (via the singleton-reset
+    ///      observer), so the flag it leaves behind is what the NEXT test
+    ///      class inherits before its own setUp runs. Leaving it `false`
+    ///      (the prior behaviour) meant any later test that incidentally
+    ///      constructed an `AccountsManager` — directly or via
+    ///      `AppContainer.production()` — spawned the background registry
+    ///      crawl, whose stray Task outlived the test and polluted whatever
+    ///      ran next (layout-off-main crashes, token/network bleed, the
+    ///      `numAccounts` drift). Tests that genuinely need the background
+    ///      load opt IN by setting the flag `false` in their own setUp
+    ///      (`AppContainerResetTests`); the safe default between tests is
+    ///      `true`, matching `PalaceTestSetup.bootstrap()`.
     ///
     /// Residual race window (DOCUMENTED INTENTIONAL):
     /// Step 2's cancellation is cooperative. If the prior AccountsManager's
@@ -502,7 +511,11 @@ struct AppContainer {
         AccountsManager.deferInitialLoadCatalogsForTesting = true
         _cached.accountsManager.cancelBackgroundWork()
         _cached = Self._buildCachedAppContainer()
-        AccountsManager.deferInitialLoadCatalogsForTesting = false
+        // Leave the flag at the test-safe `true` (see step 4 above) — do NOT
+        // reset to `false`. The next test class inherits this value before its
+        // own setUp runs; `false` here is the root of the cross-test
+        // background-crawl pollution.
+        AccountsManager.deferInitialLoadCatalogsForTesting = true
     }
     #endif
 }
