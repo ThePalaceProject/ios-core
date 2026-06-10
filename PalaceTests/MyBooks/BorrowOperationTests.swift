@@ -416,6 +416,64 @@ final class BorrowOperationTests: XCTestCase {
                        "SQ-007 path clears the spinner")
     }
 
+    // MARK: - F-008 / PP-4542 — browser-vs-basic reauth branch (line 636)
+    //
+    // `needsBrowserReauth = (authDef?.isBrowserBased == true) && hasCredentials`
+    // at BorrowOperation.swift:636 decides whether an authenticated 401
+    // routes to the browser re-auth flow (SAML/OIDC/OAuth → sign-in modal,
+    // NO error alert) or falls through to `.showGenericError` (alert, no
+    // modal). The two tests below are a discriminating pair: SAME pre-state
+    // (creds present, .unregistered registry state, invalid-credentials
+    // problem doc) differing ONLY in the auth-def's browser-ness — and they
+    // assert OPPOSITE observable outcomes. Flipping `== true` to `!= true`
+    // at :636 swaps the two outcomes, breaking both tests.
+    //
+    // The basic-auth half is `testBorrow_StateUnregistered_isNotTreatedAsAlreadyHavingLoan`
+    // (basic + creds + .unregistered → alert, no modal). This is the SAML
+    // half.
+
+    /// SAML (browser-based) + credentials + invalid-credentials 401 on an
+    /// `.unregistered` book must route to the browser re-auth flow: the
+    /// sign-in modal is presented and NO borrow-error alert fires.
+    ///
+    /// Kills :636 `isBrowserBased == true`→`!= true`: under the mutant SAML
+    /// evaluates `isBrowserBased != true` == false → `needsBrowserReauth`
+    /// false → with creds present the `else if !hasCredentials` arm is also
+    /// false → `.showGenericError` → an ALERT fires and the modal does NOT
+    /// — both assertions below flip.
+    func testBorrow_SAMLBrowserAuth_withCredentials_routesToReauthModalNotAlert() async {
+        userAccount._credentials = .barcodeAndPin(barcode: "b", pin: "p")
+        userAccount.setAuthState(.loggedIn)
+        userAccount._authDefinition = SyntheticAuthDef.saml
+
+        // .unregistered registry state so SQ-007 (already-has-loan) does NOT
+        // fire and suppress the path — we want the live browser-reauth branch.
+        let problemDoc = Self.makeProblemDoc(type: TPPProblemDocument.TypeInvalidCredentials)
+        fetchBookResult = .failure(NSError(
+            domain: "test", code: 401,
+            userInfo: ["problemDocument": problemDoc as Any]
+        ))
+
+        do {
+            _ = try await operation.borrowAsync(book, attemptDownload: false)
+            XCTFail("SAML auth-error borrow must rethrow")
+        } catch {
+            // expected
+        }
+
+        for _ in 0..<5 {
+            try? await Task.sleep(nanoseconds: 30_000_000)
+            await Task.yield()
+        }
+
+        XCTAssertEqual(signInModalCompletions.count, 1,
+                       "SAML browser-based account + creds must route to the browser re-auth modal " +
+                       "(needsBrowserReauth branch at :636). A `!= true` mutant would skip this and alert instead.")
+        XCTAssertEqual(alertCalls.count, 0,
+                       "Browser re-auth path must NOT surface a borrow-error alert. A `!= true` mutant at " +
+                       ":636 would fall through to .showGenericError and fire the alert.")
+    }
+
     // MARK: - Helpers (items #7 / #8)
 
     /// Synthesizes a minimal problem document with the given type.
@@ -441,6 +499,26 @@ final class BorrowOperationTests: XCTestCase {
               "type": "http://opds-spec.org/auth/basic",
               "description": "Basic auth",
               "labels": {"login": "Barcode", "password": "PIN"}
+            }
+            """
+            let docAuth = try! JSONDecoder().decode(
+                OPDS2AuthenticationDocument.Authentication.self,
+                from: Data(json.utf8)
+            )
+            return AccountDetails.Authentication(auth: docAuth)
+        }
+
+        /// SAML (browser-based) auth def. `isBrowserBased == true`,
+        /// `isSaml == true`. Drives the `needsBrowserReauth` branch at
+        /// BorrowOperation.swift:636.
+        static var saml: AccountDetails.Authentication {
+            let json = """
+            {
+              "type": "http://librarysimplified.org/authtype/SAML-2.0",
+              "description": "SAML",
+              "links": [
+                {"rel": "authenticate", "href": "https://idp.example.com/saml"}
+              ]
             }
             """
             let docAuth = try! JSONDecoder().decode(

@@ -487,7 +487,111 @@ final class BookReturnServiceTests: XCTestCase {
         await blocker.unblock(throwing: NSError(domain: "test", code: -1))
     }
 
+    // MARK: - F-008 / PP-4542 — browser-vs-basic markCredentialsStale branch (line 476)
+    //
+    // Legacy (no-coordinator) return-auth-error path:
+    //   `needsBrowserReauth = (authDef?.isBrowserBased == true) && hasCredentials`
+    // at BookReturnService.swift:476. When TRUE the service marks credentials
+    // stale BEFORE dispatching reauth (so a stale SAML/OIDC bearer isn't
+    // silently reused on retry); when FALSE it does not. The observable
+    // difference is `markCredentialsStale()` → authState flips to
+    // `.credentialsStale`. The pair below stages IDENTICAL pre-state (creds
+    // present, logged in, invalid-credentials revoke error) differing ONLY in
+    // auth-def browser-ness, and asserts OPPOSITE authState outcomes. Flipping
+    // `== true` to `!= true` at :476 swaps them.
+    //
+    // The setUp service has NO coordinator, so this legacy branch is live.
+
+    /// SAML (browser-based) + credentials + invalid-credentials revoke error
+    /// must mark credentials stale before reauth (line 476 true branch).
+    ///
+    /// Kills :476 `isBrowserBased == true`→`!= true`: under the mutant the
+    /// SAML account evaluates `isBrowserBased != true` == false →
+    /// `needsBrowserReauth` false → markCredentialsStale is SKIPPED → authState
+    /// stays `.loggedIn`, failing the assertion below.
+    func testReturnBook_SAMLBrowserAuth_invalidCredentials_marksCredentialsStaleBeforeReauth() async throws {
+        let bookWithRevoke = makeBookWithRevokeURL()
+        registry.addBook(bookWithRevoke, location: nil, state: .downloadSuccessful,
+                         fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+
+        let problemDoc = try makeProblemDoc(type: TPPProblemDocument.TypeInvalidCredentials)
+        // First fetch: invalid-credentials (drives the :476 branch). Second
+        // fetch (retry after reauth): nil → "feed has no entries" terminal
+        // path, so the recursion ends instead of looping.
+        feedFetcher.errorThenSuccess = [
+            NSError(domain: "test", code: 401, userInfo: ["problemDocument": problemDoc]),
+            nil
+        ]
+
+        userAccount._authDefinition = makeAuth(typeRaw: "http://librarysimplified.org/authtype/SAML-2.0")
+        userAccount._credentials = .barcodeAndPin(barcode: "b", pin: "p")
+        userAccount.setAuthState(.loggedIn)
+        XCTAssertEqual(userAccount.authState, .loggedIn, "pre-state: logged in")
+        // Reauth completion keeps the (still-present) credentials so the retry
+        // recursion fires the second fetch — but does NOT markLoggedIn, so the
+        // `.credentialsStale` state set by the :476 branch survives for the
+        // assertion below.
+        reauthenticator.onAuthenticate = { _, _ in /* credentials retained */ }
+
+        let exp = expectation(description: "completion")
+        service.returnBook(withIdentifier: bookWithRevoke.identifier) { exp.fulfill() }
+        await fulfillment(of: [exp], timeout: 3.0)
+
+        XCTAssertEqual(userAccount.authState, .credentialsStale,
+                       "SAML browser-based return auth error must markCredentialsStale (:476 true branch). " +
+                       "The `!= true` mutant would skip this and leave authState .loggedIn.")
+        XCTAssertTrue(reauthenticator.authenticateIfNeededCalled,
+                      "Browser-based return auth error still dispatches reauth after marking stale.")
+    }
+
+    /// Basic (NON-browser) + credentials + invalid-credentials revoke error
+    /// must NOT mark credentials stale (line 476 false branch) — basic auth
+    /// re-prompts in-app, the existing bearer is not a browser session to
+    /// invalidate. Negative control for the pair.
+    ///
+    /// Kills :476 `isBrowserBased == true`→`!= true` from the other side:
+    /// under the mutant a basic account evaluates `isBrowserBased != true`
+    /// == true → `needsBrowserReauth` true → markCredentialsStale fires →
+    /// authState becomes `.credentialsStale`, failing the assertion below.
+    func testReturnBook_basicAuth_invalidCredentials_doesNotMarkCredentialsStale() async throws {
+        let bookWithRevoke = makeBookWithRevokeURL()
+        registry.addBook(bookWithRevoke, location: nil, state: .downloadSuccessful,
+                         fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+
+        let problemDoc = try makeProblemDoc(type: TPPProblemDocument.TypeInvalidCredentials)
+        // First fetch: invalid-credentials. Second fetch (retry): nil →
+        // terminal "no entries" path so the recursion ends.
+        feedFetcher.errorThenSuccess = [
+            NSError(domain: "test", code: 401, userInfo: ["problemDocument": problemDoc]),
+            nil
+        ]
+
+        userAccount._authDefinition = makeAuth(typeRaw: "http://opds-spec.org/auth/basic")
+        userAccount._credentials = .barcodeAndPin(barcode: "b", pin: "p")
+        userAccount.setAuthState(.loggedIn)
+        reauthenticator.onAuthenticate = { _, _ in /* credentials retained */ }
+
+        let exp = expectation(description: "completion")
+        service.returnBook(withIdentifier: bookWithRevoke.identifier) { exp.fulfill() }
+        await fulfillment(of: [exp], timeout: 3.0)
+
+        XCTAssertEqual(userAccount.authState, .loggedIn,
+                       "Basic (non-browser) return auth error must NOT markCredentialsStale (:476 false branch). " +
+                       "The `!= true` mutant would mark it stale and flip authState to .credentialsStale.")
+        XCTAssertTrue(reauthenticator.authenticateIfNeededCalled,
+                      "Basic return auth error still dispatches reauth (just without the stale-marking).")
+    }
+
     // MARK: - Helpers
+
+    private func makeAuth(typeRaw: String) -> AccountDetails.Authentication {
+        let json = #"{"type": "\#(typeRaw)"}"#
+        let docAuth = try! JSONDecoder().decode(
+            OPDS2AuthenticationDocument.Authentication.self,
+            from: Data(json.utf8)
+        )
+        return AccountDetails.Authentication(auth: docAuth)
+    }
 
     private func makeBookWithRevokeURL() -> TPPBook {
         // TPPBookMocker doesn't expose a revokeURL knob — drop down to the

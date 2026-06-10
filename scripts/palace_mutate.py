@@ -191,6 +191,20 @@ _LOG_LINE_PATTERN = re.compile(
     r"print|NSLog|os_log|Logger\.\w+|os\.Logger\(\)\.\w+)\b"
 )
 
+# Test-environment-detection guards (e.g.
+# `ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil`)
+# are inherently unkillable: the suite ALWAYS runs under XCTest, so flipping
+# the detection's comparison produces behavior the tests cannot distinguish
+# (or selects a test-only branch). Counting them deflates the kill rate of any
+# file that special-cases the test runner — TPPReauthenticator.swift:66 is the
+# canonical case (1 mutant, apparent 0% kill, zero real coverage signal). Same
+# rationale as _LOG_LINE_PATTERN: skip the host line, mutate everything else.
+_TEST_DETECTION_PATTERN = re.compile(
+    r"XCTestConfigurationFilePath|"
+    r"environment\[\s*[\"']XCTest|"
+    r"NSClassFromString\(\s*[\"']XCTest"
+)
+
 
 def changed_lines(file_relpath: str, base_ref: str) -> set[int] | None:
     """Return the set of line numbers in `file_relpath` (relative to REPO_ROOT)
@@ -264,6 +278,10 @@ def discover_mutations(source: str) -> list[Mutation]:
                 # string interpolations without changing observable
                 # behavior — they are inherently unkillable.
                 if _LOG_LINE_PATTERN.match(line_text):
+                    continue
+                # Skip test-environment-detection guard lines (see
+                # _TEST_DETECTION_PATTERN comment) — unkillable by design.
+                if _TEST_DETECTION_PATTERN.search(line_text):
                     continue
                 # Build the mutated line by replacing at the column
                 start_in_line = col - 1

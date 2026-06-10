@@ -1204,7 +1204,12 @@ public final class AudiobookSessionManager: ObservableObject {
     /// generic bookmarks for this book, the most-recent valid one is returned
     /// as a fallback (better than dropping the patron to chapter-1 start).
     /// Returns `nil` only when there's nothing usable at all.
-    private func getValidLocalPosition(book: TPPBook, audiobook: Audiobook) -> TrackPosition? {
+    // `internal` (not `private`) so `@testable import Palace` unit tests can
+    // drive the position-restore decision through this production seam with
+    // constructed registry/TOC fixtures — see AudiobookPositionRestoreTests.
+    // This is the same seam-exposure pattern already used by the static
+    // policy mirrors (networkValidationError, normalizedChaptersCount).
+    func getValidLocalPosition(book: TPPBook, audiobook: Audiobook) -> TrackPosition? {
         let primary = tryLoadPrimaryLocalPosition(book: book, audiobook: audiobook)
         switch primary {
         case .success(let position):
@@ -1274,22 +1279,41 @@ public final class AudiobookSessionManager: ObservableObject {
     /// the validator accepts it AND it parses against the current manifest.
     /// Recency is by `lastSavedTimeStamp` (ISO8601), falling back to array
     /// order when timestamps are missing.
-    private func fallbackToMostRecentValidBookmark(
+    func fallbackToMostRecentValidBookmark(
         book: TPPBook,
         audiobook: Audiobook
     ) -> TrackPosition? {
         let bookmarks = bookRegistry.genericBookmarksForIdentifier(book.identifier)
         guard !bookmarks.isEmpty else { return nil }
+        return selectMostRecentValidBookmark(
+            from: bookmarks,
+            in: audiobook.tableOfContents
+        )
+    }
 
+    /// Pure candidate-selection seam: from a set of saved generic bookmarks,
+    /// reconstruct each against the manifest, drop any that fail validation,
+    /// and return the most-recent valid one (descending `lastSavedTimeStamp`,
+    /// which is ISO8601 and therefore lexicographically sortable).
+    ///
+    /// `internal` (not `private`) and threaded `AudiobookTableOfContents`
+    /// instead of the full `Audiobook` so the validation filter and the
+    /// recency ordering are mutation-testable from a unit test with a real
+    /// TOC + seeded `TPPBookLocation` fixtures — no live `Audiobook` /
+    /// player graph required. Mirrors the `validationFailure(for:in:)` seam.
+    func selectMostRecentValidBookmark(
+        from bookmarks: [TPPBookLocation],
+        in tableOfContents: AudiobookTableOfContents
+    ) -> TrackPosition? {
         let candidates: [(TrackPosition, String)] = bookmarks.compactMap { location in
             guard let dict = location.locationStringDictionary(),
                   let bookmark = AudioBookmark.create(locatorData: dict),
                   let position = TrackPosition(
                     audioBookmark: bookmark,
-                    toc: audiobook.tableOfContents.toc,
-                    tracks: audiobook.tableOfContents.tracks
+                    toc: tableOfContents.toc,
+                    tracks: tableOfContents.tracks
                   ),
-                  validationFailure(for: position, in: audiobook.tableOfContents) == nil else {
+                  validationFailure(for: position, in: tableOfContents) == nil else {
                 return nil
             }
             return (position, bookmark.lastSavedTimeStamp ?? "")
@@ -1304,7 +1328,7 @@ public final class AudiobookSessionManager: ObservableObject {
     /// Re-uses `AudiobookPositionPolicy.validate`. The thin shim adapts the
     /// instance-level call site (which already has the toolkit's position
     /// object) to the pure-function policy (which doesn't need the toolkit).
-    private func validationFailure(
+    func validationFailure(
         for position: TrackPosition,
         in tableOfContents: AudiobookTableOfContents
     ) -> AudiobookPositionValidationFailure? {
@@ -1339,7 +1363,7 @@ public final class AudiobookSessionManager: ObservableObject {
     /// Kept as a thin wrapper for any in-file callers that just want a bool.
     /// New code should use `validationFailure(for:in:)` directly so the
     /// failure mode can be logged.
-    private func isValidPosition(_ position: TrackPosition, in tableOfContents: AudiobookTableOfContents) -> Bool {
+    func isValidPosition(_ position: TrackPosition, in tableOfContents: AudiobookTableOfContents) -> Bool {
         return validationFailure(for: position, in: tableOfContents) == nil
     }
 
@@ -1499,7 +1523,10 @@ public final class AudiobookSessionManager: ObservableObject {
     /// 20s session-manager timeout is the sole timeout on this path — per
     /// the ADR's single-timeout policy we do NOT wrap awaitReady() in
     /// withTimeout here.
-    private func isUserAuthenticated() async -> Bool {
+    // `internal` (not `private`) so `@testable` tests can pin the
+    // auth-doc-load-failure → not-authenticated mapping (the `catch`
+    // branch below) through this seam — see AudiobookPositionRestoreTests.
+    func isUserAuthenticated() async -> Bool {
         guard let account = accountsManager.currentAccount else {
             return false
         }
