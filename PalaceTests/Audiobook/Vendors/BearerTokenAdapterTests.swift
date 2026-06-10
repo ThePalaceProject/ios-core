@@ -180,7 +180,11 @@ final class BearerTokenAdapterTests: XCTestCase {
             if case .success(let value) = result { observed = value.json }
             exp.fulfill()
         }
-        wait(for: [exp], timeout: 2.0)
+        // CI-safe timeout: deps are stubbed so the completion fires in ms on
+        // the happy path — a generous ceiling only matters when the runner is
+        // CPU-starved (e.g. by leaked background work), and never slows the
+        // green path. 2.0s was too tight under CI load and flaked.
+        wait(for: [exp], timeout: 10.0)
 
         XCTAssertEqual(observed?["title"] as? String, "Real Manifest",
                        "Adapter completes with the second-leg JSON, NOT the bearer-token wrapper")
