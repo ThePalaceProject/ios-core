@@ -134,4 +134,38 @@ final class RemoteFeatureFlagsTests: XCTestCase {
         XCTAssertEqual(flagsBefore, flagsAfter,
                        "fetchIfNeeded() must not change flag values in a test environment without Firebase")
     }
+
+    // MARK: - FirebaseManager.withTimeout (bounds the remote-config fetch hang)
+
+    /// `withTimeout` must bound an operation that would otherwise hang
+    /// indefinitely — this is what stops `fetchIfNeeded()` from hanging the
+    /// caller (dead network in production / unconfigured Firebase in tests).
+    /// A regression that removed the timeout race would let this run for the
+    /// full inner 10s "hang" (or forever), so the elapsed-time assertion fails.
+    func testWithTimeout_boundsAHangingOperation() async {
+        let start = Date()
+        do {
+            _ = try await FirebaseManager.withTimeout(seconds: 0.2) { () async throws -> Bool in
+                // Simulate a fetch that never completes within the bound.
+                try await Task.sleep(nanoseconds: 10_000_000_000) // 10s
+                return true
+            }
+            XCTFail("withTimeout must throw when the operation exceeds the bound")
+        } catch is FirebaseManager.RemoteConfigFetchTimeout {
+            let elapsed = Date().timeIntervalSince(start)
+            XCTAssertLessThan(elapsed, 2.0,
+                              "withTimeout(0.2s) must bound a hanging operation well under the inner 10s, got \(elapsed)s")
+        } catch {
+            XCTFail("Expected RemoteConfigFetchTimeout, got \(type(of: error)): \(error)")
+        }
+    }
+
+    /// A fast operation must return its value, NOT be falsely timed out —
+    /// kills a mutant that always throws / always loses the race.
+    func testWithTimeout_returnsResultOfFastOperation() async throws {
+        let value = try await FirebaseManager.withTimeout(seconds: 5.0) { () async throws -> Int in
+            42
+        }
+        XCTAssertEqual(value, 42, "withTimeout must return the operation's result when it completes within the bound")
+    }
 }
