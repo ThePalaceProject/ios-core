@@ -100,12 +100,41 @@ public final class AccountStateStore {
     /// `.shared` (preferred: construct a fresh `AccountStateStore()`
     /// instead so production state is never touched).
     #if DEBUG
+    /// Test-only: terminally drain every state-machine stream so no parked
+    /// `awaitReady()` awaiter can survive a test boundary.
+    ///
+    /// The prior implementation sent only `.notLoaded`, which is NON-TERMINAL:
+    /// an `awaitReady()` loop parked on `.detailsLoading` receives `.notLoaded`,
+    /// hits `case .notLoaded: continue`, and stays suspended forever — leaking
+    /// the Task. Those leaked awaiters accumulate across the suite and starve
+    /// the Swift cooperative thread pool, which is why instant mock-based tests
+    /// (e.g. `CatalogPreloaderTests`) "hang" >60s and a different victim fails
+    /// each CI run.
+    ///
+    /// Two sends per subject, in order:
+    ///   1. `.detailsEvicted(.libraryDeselected)` — a TERMINAL value that
+    ///      `awaitReady()` already treats as terminal (it throws
+    ///      `AccountLoadError.evicted`). This reaches every parked `for await`
+    ///      through the normal value-yield path — the SAME path that delivers
+    ///      every other state — so it reliably UNPARKS leaked awaiters.
+    ///      (`.libraryDeselected` is documented for exactly this: "Awaiters
+    ///      observe this terminal so they can fail-fast instead of hanging.")
+    ///   2. `.notLoaded` — restores the per-test baseline so the next test
+    ///      reads a clean `.notLoaded` current value (the original reset
+    ///      behaviour).
+    ///
+    /// Crucially we do NOT clear/replace the subjects: a parked awaiter is
+    /// subscribed to the EXISTING per-UUID subject, so the terminal must be
+    /// sent THROUGH that same subject (clearing first would orphan it). The
+    /// sends are issued OUTSIDE the lock to avoid re-entrancy through a
+    /// subscriber's `onTermination`.
     internal func _resetAllForTesting() {
         lock.lock()
-        defer { lock.unlock() }
-        for (uuid, subject) in subjects {
+        let snapshot = subjects
+        lock.unlock()
+        for (uuid, subject) in snapshot {
+            subject.send(.detailsEvicted(.libraryDeselected(uuid: uuid)))
             subject.send(.notLoaded)
-            _ = uuid
         }
     }
     #endif

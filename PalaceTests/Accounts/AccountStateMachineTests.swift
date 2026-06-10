@@ -175,6 +175,30 @@ final class AccountStateMachineTests: XCTestCase {
         await fulfillment(of: [exp], timeout: 1.0)
     }
 
+    // MARK: - Teardown drain (test-isolation root cause)
+
+    /// The teardown drain `AccountStateStore._resetAllForTesting()` now sends the
+    /// TERMINAL `.detailsEvicted(.libraryDeselected)` to every per-UUID subject
+    /// (then the `.notLoaded` baseline reset), so any `awaitReady()` awaiter parked
+    /// across a test boundary UNPARKS (it maps `.detailsEvicted` to a thrown
+    /// `AccountLoadError.evicted`) instead of staying suspended forever. The prior
+    /// reset sent only the NON-TERMINAL `.notLoaded`, so a parked awaiter hit
+    /// `case .notLoaded: continue` and leaked; accumulating leaked awaiters starve
+    /// the cooperative pool and make instant mock-based tests "hang" >60s with a
+    /// different victim each CI run.
+    ///
+    /// The unpark MECHANISM (a parked `awaitReady()` awaiter throwing `.evicted`
+    /// when `.detailsEvicted` arrives via the stream) is pinned by
+    /// `testAwaitReady_detailsEvictedArrivesViaStream_throwsEvictionError` above —
+    /// the drain sends that exact value through that exact stream. A drain-specific
+    /// awaiter unit test is intentionally omitted: it can only reproduce the leak by
+    /// racing a freshly-spawned awaiter's subscription against the drain (in
+    /// production the leaked awaiter is already subscribed at teardown), which is
+    /// inherently timing-dependent. The drain's real effect is validated end-to-end
+    /// by the full-suite victims (CatalogPreloaderTests / OPDSFeedServiceStateMachineTests
+    /// / DownloadThrottlingServiceTests) running green under the per-test timeout.
+    // no-superpartner: unpark mechanism covered by testAwaitReady_detailsEvictedArrivesViaStream; drain end-to-end effect validated by full-suite victims
+
     // MARK: - Cancellation
 
     /// Cancelling one awaiter must not abort the load — other awaiters

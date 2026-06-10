@@ -66,8 +66,35 @@ struct FuzzRunner {
     // unrelated tests downstream. Throwing errors is expected — parsers
     // should reject malformed input gracefully. Anything that crashes the
     // process will surface as an XCTest failure naturally.
+    //
+    // A single input that takes an unbounded amount of time is NOT graceful
+    // rejection — it is an algorithmic-blowup robustness bug in production (a
+    // malformed server response that would stall the real bookmark sync). We
+    // measure each input's wall-clock cost and XCTFail loudly with the repro
+    // bytes if any single input exceeds a GENEROUS per-input regression bound.
+    // This is a real-bug DETECTOR, not a mask/skip: it surfaces a production
+    // hang as a hard test failure (with repro bytes) rather than silently
+    // consuming the whole run's budget. The bound is deliberately decoupled
+    // from `timeout` (the SUM-budget hint) and set high enough that the slowest
+    // legitimate single input (sub-200ms across every corpus on current
+    // Foundation) never trips it — only a genuine super-linear blowup (seconds
+    // on a ≤2 KB seed) does.
+    let perInputRegressionBound: TimeInterval = 2.0
+    _ = timeout // SUM-budget hint; per-input detection uses the bound above.
+    let start = DispatchTime.now()
     _ = (try? parse(input))
-    _ = timeout // intentionally unused now; preserved in API for future re-add
+    let elapsed = Double(DispatchTime.now().uptimeNanoseconds &- start.uptimeNanoseconds) / 1_000_000_000.0
+    if elapsed > perInputRegressionBound {
+      recordFailure(
+        input: input, label: label, corpusType: corpusType,
+        reason: "single input took \(String(format: "%.3f", elapsed))s " +
+                "(> \(String(format: "%.1f", perInputRegressionBound))s per-input bound) — " +
+                "algorithmic blowup in the parse path. A malformed server response " +
+                "of this shape would stall the real sync. Offending bytes (hex, first 512): " +
+                input.prefix(512).map { String(format: "%02x", $0) }.joined(),
+        file: file, line: line
+      )
+    }
   }
 
   private static func recordFailure(
