@@ -6,7 +6,7 @@ tools: Agent, Bash, Read, Write, Edit, mcp__forgeos__forge_propose_changeset, mc
 type: evolving
 status: active
 created: 2026-05-28
-last_refresh: 2026-06-05
+last_refresh: 2026-06-10
 freshness_window: 365d
 owners: [general]
 ---
@@ -14,6 +14,30 @@ owners: [general]
 # /swarm — multi-module orchestration loop
 
 You orchestrate a triage→dispatch→integrate→promote loop for multi-module Palace iOS changes. The architect agent triages and writes contracts; parallel implementer agents do the work; you (the main agent) integrate and gate.
+
+## DEFAULT EXECUTION — run via `swarm-core` (the deterministic engine)
+
+**As of 2026-06-10, `/swarm` runs on the `swarm-core` engine** (`~/harness/core/swarm-core/`), which encodes this entire loop as deterministic control flow — contract-first triage, parallel implementers, the fail-closed gate battery, the **classify-then-gate wall-failure protocol** (a wall fires only for a genuine process-escape; nitpicks get a recorded disposition), forge-review, and promote. See [`swarm-core-convergence-adr.md`](../../../docs/architecture/swarm-core-convergence-adr.md) for the rationale and `~/harness/core/swarm-core/STATUS.md`.
+
+**The "When to use" criteria below still decide WHETHER to swarm.** Once you've decided to swarm, EXECUTE it like this (do not hand-run the legacy prose):
+
+1. Confirm it's genuinely ≥2 modules / critical-path per **When to use** below. If not, do it directly.
+2. Mint a run id outside the engine: `RUN_ID="swarm_$(openssl rand -hex 4)"`.
+3. Load the Palace profile (pure data): read `~/harness/core/swarm-core/profiles/palace-ios.profile.json`.
+4. Launch the engine via the **Workflow tool** (it runs in the background, resumable):
+   `Workflow({ scriptPath: "~/harness/core/swarm-core/swarm-core.mjs", args: { task: "<the task>", profile: <the loaded profile JSON>, run_id: "<RUN_ID>", base_ref: "origin/develop" } })`
+   (Pass `args` as a real JSON object; the engine normalizes it. `run_id` is minted here because the engine body cannot use randomness.)
+5. The engine drives provision → triage → implement → gates → review → **C3 wall-failure gate** → promote, writing its manifest/plan/outcome under `.forgeos/swarms/<RUN_ID>/`. When it returns, read `plan.md`, surface it to the user, and confirm before any promote step the engine pauses on.
+
+**LIVE-SHAKEDOWN STATUS (read this).** swarm-core's engine logic is unit-proven (29 tests, C3 proven both directions) and boot-verified in the live runtime, but the **real profile's prompt mechanism has not yet run a full multi-module swarm end-to-end** — the first few real swarms ARE its shakedown. Watch them. If the engine misbehaves, the **parachute is one flag away**: set `SWARM_LEGACY=1` and follow the legacy prose below (it is unchanged and fully working). Report any engine defect as a normal bug + fix-forward; do not silently fall back without noting it.
+
+---
+
+> **Everything from "## When to use" onward is the LEGACY PROSE PATH.** It is the
+> proven fallback, used verbatim only when `SWARM_LEGACY=1`. Under the default
+> (swarm-core) path it remains the authoritative description of WHAT each phase
+> must do — the engine implements it — and the source of the gate definitions the
+> profile encodes. Do not delete it; the ADR retires it only after a soak.
 
 ## When to use
 
