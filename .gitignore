@@ -124,6 +124,11 @@ docs/spec/
 !.specterqa/DOGFOOD_NOTES.md
 scripts/sim-test/
 
+# Per-machine git/PreToolUse hook symlinks (created by the local dev setup;
+# must NOT be tracked — a tracked symlink here previously pointed at its own
+# path and broke every governance hook with ELOOP on checkout).
+/scripts/hooks
+
 # Backup pbxproj variants
 *.pbxproj.swift-only
 *.pbxproj.bak
