@@ -87,7 +87,16 @@ final class BookReturnService {
     /// (MBDC) and the Task bodies straddle the cooperative pool and the
     /// main actor. NSLock is the lowest-blast-radius primitive that
     /// keeps both safe.
-    private var inFlightTasks: Set<Task<Void, Never>> = []
+    /// Keyed by a per-launch `UUID` token rather than the `Task` handle
+    /// itself. The auto-removal closure captures the token **by value**
+    /// (a `Sendable` value type), so it never reads the launch-site `task`
+    /// variable from inside the Task body. The prior `var task: Task!` +
+    /// `inFlightTasks.remove(task)` pattern was an unsynchronized cross-thread
+    /// read of the IUO: the body runs on a different executor than the one
+    /// assigning `task`, so under load the write was not yet visible and the
+    /// implicit unwrap crashed ("nil while implicitly unwrapping") — an
+    /// intermittent fatal on the book-return reauth path.
+    private var inFlightTasks: [UUID: Task<Void, Never>] = [:]
     private let inFlightLock = NSLock()
 
     #if FEATURE_DRM_CONNECTOR
@@ -166,9 +175,9 @@ final class BookReturnService {
     /// already-started Tasks unwind without re-entering registry
     /// mutations after cancellation.
     func cancelAllInFlightTasks() {
-        let snapshot: Set<Task<Void, Never>>
+        let snapshot: [Task<Void, Never>]
         inFlightLock.lock()
-        snapshot = inFlightTasks
+        snapshot = Array(inFlightTasks.values)
         inFlightTasks.removeAll()
         inFlightLock.unlock()
         for task in snapshot {
@@ -192,7 +201,7 @@ final class BookReturnService {
     internal func inFlightTasksSnapshotForTesting() -> Set<Task<Void, Never>> {
         inFlightLock.lock()
         defer { inFlightLock.unlock() }
-        return inFlightTasks
+        return Set(inFlightTasks.values)
     }
 
     /// Wraps a fire-and-forget Task in the retention + auto-removal
@@ -204,16 +213,16 @@ final class BookReturnService {
     private func launchTrackedTask(
         _ body: @escaping @Sendable () async -> Void
     ) -> Task<Void, Never> {
-        var task: Task<Void, Never>!
-        task = Task { [weak self] in
+        let id = UUID()
+        let task = Task { [weak self] in
             await body()
             guard let self else { return }
             self.inFlightLock.lock()
-            self.inFlightTasks.remove(task)
+            self.inFlightTasks.removeValue(forKey: id)
             self.inFlightLock.unlock()
         }
         inFlightLock.lock()
-        inFlightTasks.insert(task)
+        inFlightTasks[id] = task
         inFlightLock.unlock()
         return task
     }
@@ -227,16 +236,16 @@ final class BookReturnService {
     private func launchTrackedMainActorTask(
         _ body: @escaping @MainActor () async -> Void
     ) -> Task<Void, Never> {
-        var task: Task<Void, Never>!
-        task = Task { @MainActor [weak self] in
+        let id = UUID()
+        let task = Task { @MainActor [weak self] in
             await body()
             guard let self else { return }
             self.inFlightLock.lock()
-            self.inFlightTasks.remove(task)
+            self.inFlightTasks.removeValue(forKey: id)
             self.inFlightLock.unlock()
         }
         inFlightLock.lock()
-        inFlightTasks.insert(task)
+        inFlightTasks[id] = task
         inFlightLock.unlock()
         return task
     }
