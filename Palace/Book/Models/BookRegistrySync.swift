@@ -515,20 +515,30 @@ class BookRegistrySync {
   func saveSync(for account: String) {
     guard let registryUrl = registryUrl(for: account) else { return }
 
-    let snapshot = store.registrySnapshot()
-    let registryObject = [TPPBookRegistryKey.records.rawValue: snapshot]
+    // Route through the SAME serialization domain as `save(for:)`. Previously
+    // this wrote directly on the calling thread, bypassing `diskWriteQueue`, so
+    // a sync save could run its `.atomic` rename-replace concurrently with an
+    // in-flight async write to the same URL — two atomic writes raced and a
+    // stale snapshot could clobber the final one. Running on `diskWriteQueue.sync`
+    // makes the "saveSync blocks until all prior enqueued writes flush" invariant
+    // true by FIFO construction. The snapshot is taken INSIDE the queue so it
+    // reflects state after the prior enqueued writes, not a caller-thread race.
+    diskWriteQueue.sync {
+      let snapshot = store.registrySnapshot()
+      let registryObject = [TPPBookRegistryKey.records.rawValue: snapshot]
 
-    do {
-      let directoryURL = registryUrl.deletingLastPathComponent()
-      if !FileManager.default.fileExists(atPath: directoryURL.path) {
-        try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+      do {
+        let directoryURL = registryUrl.deletingLastPathComponent()
+        if !FileManager.default.fileExists(atPath: directoryURL.path) {
+          try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+        }
+        directoryURL.excludeFromBackup()
+        let registryData = try JSONSerialization.data(withJSONObject: registryObject, options: .fragmentsAllowed)
+        try registryData.write(to: registryUrl, options: .atomic)
+        Log.debug(#file, "Synchronously saved registry to disk")
+      } catch {
+        Log.error(#file, "Error saving book registry synchronously: \(error.localizedDescription)")
       }
-      directoryURL.excludeFromBackup()
-      let registryData = try JSONSerialization.data(withJSONObject: registryObject, options: .fragmentsAllowed)
-      try registryData.write(to: registryUrl, options: .atomic)
-      Log.debug(#file, "Synchronously saved registry to disk")
-    } catch {
-      Log.error(#file, "Error saving book registry synchronously: \(error.localizedDescription)")
     }
   }
 
