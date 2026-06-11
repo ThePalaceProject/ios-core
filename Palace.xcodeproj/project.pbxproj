@@ -328,8 +328,10 @@
 		30B392104E9FCA6F9CBEEF01 /* ReadingSessionTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0592B4A4D666ED6705BF8093 /* ReadingSessionTracker.swift */; };
 		30BC12FD0338A5885EBA255C /* BookCellModelStreamingHTMLTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 820FFFB90AD6CB0A124F6420 /* BookCellModelStreamingHTMLTests.swift */; };
 		30E69EFD7A892A1D3D30DCC9 /* PerformanceReport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23D80DA377151AE41BEF67F7 /* PerformanceReport.swift */; };
+		30FA663F88FFCE7D65BB990C /* TriageBotKeyAdmin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17CF4EB59391A34A6315985E /* TriageBotKeyAdmin.swift */; };
 		31648629CEAC60ED194656BA /* TPPBasicAuthTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2E5C9EA3B9B15FEF2555CE3 /* TPPBasicAuthTests.swift */; };
 		316543077F31595C2C9C1AFF /* AudiobookSessionManagerPresenterMigrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3CBF74C265D4FA1483F1974 /* AudiobookSessionManagerPresenterMigrationTests.swift */; };
+		317AEF4CF6E747286B2CA086 /* TriageBotKeyAdmin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17CF4EB59391A34A6315985E /* TriageBotKeyAdmin.swift */; };
 		32093E834629466F8280138F /* TPPPDFLocationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9BFD0F3410046E6AD2F25B0 /* TPPPDFLocationTests.swift */; };
 		323FEA088C637AA3AAFC0F41 /* LCPAdapterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5248CEFDF1FEDEBE50897394 /* LCPAdapterTests.swift */; };
 		32910EA3300D7728B6FF2268 /* ScopedResetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65988BBA901E65AA0905EF43 /* ScopedResetTests.swift */; };
@@ -1729,6 +1731,7 @@
 		F4565465A1B2C3D4E5F6071A /* OverdriveDownloadHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3465465A1B2C3D4E5F60829 /* OverdriveDownloadHandler.swift */; };
 		F516D06B9979F4625E8BD312 /* PalacePDFView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 060B04F768844865F55ED1A1 /* PalacePDFView.swift */; };
 		F54239DDA912F713D8B6695D /* PalaceAudiobookToolkit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = E7F9BABE2A8E6811001697DE /* PalaceAudiobookToolkit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		F58124F59C1F78CADB673820 /* TriageBotKeyAdminTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E775BA9B323D098F690BE354 /* TriageBotKeyAdminTests.swift */; };
 		F58C276375D206FAC04A20DD /* NYPLADEPT+TPPDRMAuthorizing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84756EEE7935063418887357 /* NYPLADEPT+TPPDRMAuthorizing.swift */; };
 		F5A6B7C8D9E0F1A2B3C4D5E6 /* DownloadTaskLifecycleServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4A5B6C7D8E9F0A1B2C3D4E5 /* DownloadTaskLifecycleServiceTests.swift */; };
 		F5D05C1A948729F673031D7D /* SingletonResetRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46136706F66E701FB3E45258 /* SingletonResetRegistry.swift */; };
@@ -2090,6 +2093,7 @@
 		17BE24EC25FB09F000AE707F /* TPPCurrentLibraryAccountProviderMock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPCurrentLibraryAccountProviderMock.swift; sourceTree = "<group>"; };
 		17BE24EE25FB114900AE707F /* simplye_authentication_document.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = simplye_authentication_document.json; sourceTree = "<group>"; };
 		17CE5304243C020800315E63 /* TPPUserAccount.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPUserAccount.swift; sourceTree = "<group>"; };
+		17CF4EB59391A34A6315985E /* TriageBotKeyAdmin.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TriageBotKeyAdmin.swift; sourceTree = "<group>"; };
 		17D08378248E8EEB00092AA9 /* OverdriveProcessor.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = OverdriveProcessor.framework; path = Carthage/Build/iOS/OverdriveProcessor.framework; sourceTree = "<group>"; };
 		17E81F07261522B3001003C2 /* TPPRoundedButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPRoundedButton.swift; sourceTree = "<group>"; };
 		17E81F31261FF758001003C2 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.stringsdict; name = en; path = en.lproj/Localizable.stringsdict; sourceTree = "<group>"; };
@@ -3123,6 +3127,7 @@
 		E759B2052A1BF7AA0041B075 /* PalaceDebug.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = PalaceDebug.entitlements; sourceTree = "<group>"; };
 		E75F4A2829C3AB1F006DFBD8 /* TPPPublicationSpeechSynthesizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPublicationSpeechSynthesizer.swift; sourceTree = "<group>"; };
 		E76AD92A296DCB76008ECC61 /* NotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
+		E775BA9B323D098F690BE354 /* TriageBotKeyAdminTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TriageBotKeyAdminTests.swift; sourceTree = "<group>"; };
 		E785BA272B1519C200A12EFA /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		E7861C482846875D00B3A38A /* TPPPDFView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFView.swift; sourceTree = "<group>"; };
 		E7861C4A28468AB200B3A38A /* TPPPDFDocumentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPPDFDocumentView.swift; sourceTree = "<group>"; };
@@ -3469,6 +3474,7 @@
 				5EBFFFA78FB0357C5C37E4E0 /* TestAppContainerFactoryTests.swift */,
 				3E793B64D2FB472246D9A244 /* RuntimeQuiescenceAuditor.swift */,
 				DF90048A6DDD9A6025494F1A /* PalaceTestCase.swift */,
+				E775BA9B323D098F690BE354 /* TriageBotKeyAdminTests.swift */,
 			);
 			name = Support;
 			path = Support;
@@ -6162,6 +6168,7 @@
 			children = (
 				F9C1BD2745D8CAF0EC81AEE8 /* TriageBotFactory.swift */,
 				C540202A7A2D7469AEF27B82 /* TriageBotSupportView.swift */,
+				17CF4EB59391A34A6315985E /* TriageBotKeyAdmin.swift */,
 			);
 			name = Support;
 			path = Support;
@@ -7383,6 +7390,7 @@
 				C5A5323E33AA18B96398BA53 /* RuntimeQuiescenceGateTests.swift in Sources */,
 				63F7E41142B47B5051055271 /* RuntimeQuiescenceLintTests.swift in Sources */,
 				36D5376F01972FB0278F2CB9 /* AudioSessionActivatorTests.swift in Sources */,
+				F58124F59C1F78CADB673820 /* TriageBotKeyAdminTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -7926,6 +7934,7 @@
 				002A9388476ED8D595661599 /* LibrariesSectionViewModel.swift in Sources */,
 				AA225D8E76E146A5132FEA43 /* LCPKeychainMigration.swift in Sources */,
 				EE7A7C1C1C92278BB0822BE4 /* AudioSessionActivator.swift in Sources */,
+				317AEF4CF6E747286B2CA086 /* TriageBotKeyAdmin.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -8472,6 +8481,7 @@
 				C4CDA0FAB4E0815ED71715E0 /* LibrariesSectionViewModel.swift in Sources */,
 				5C89F2830C766E791E48CE21 /* LCPKeychainMigration.swift in Sources */,
 				A8131DE3255ED9F6651D1AF6 /* AudioSessionActivator.swift in Sources */,
+				30FA663F88FFCE7D65BB990C /* TriageBotKeyAdmin.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
