@@ -156,6 +156,24 @@ class PalaceSingletonResetObserver: NSObject, XCTestObservation {
     }
 
     func testCaseDidFinish(_ testCase: XCTestCase) {
+        // Diagnostic breadcrumb (NOT a gate): if a test left the suite
+        // non-quiescent, name it loudly in the run log BEFORE the reset below
+        // scrubs the evidence. This is intentionally NOT an enforcement point —
+        // `XCTestCase.record(_:)` from testCaseDidFinish is empirically inert
+        // (it does not fail an already-finished test; verified by the WS-0
+        // synthetic-polluter wiring proof), and a non-failing "gate" is the
+        // canonical inert-gate anti-pattern this codebase has been burned by.
+        // The REAL, deterministic enforcement lives in
+        // `PalaceTestCase.tearDownWithError` (runtime XCTFail, order-independent)
+        // plus `RuntimeQuiescenceLintTests` (structural — forces any test that
+        // sets the defer flag false onto a quiescence-gated base). This line
+        // only helps a human reading CI logs spot a polluter that somehow
+        // slipped both — it claims nothing it cannot deliver.
+        for violation in RuntimeQuiescenceAuditor.auditLiveState() {
+            NSLog("[WS0-QUIESCENCE-DIAG] %@ left the suite non-quiescent [%@] — see PalaceTestCase / RuntimeQuiescenceLintTests for the enforcing gates.",
+                  testCase.name, violation.invariant)
+        }
+
         SingletonResetRegistry.shared.invokeAll()
 
         guard let pre = preCount, let post = Self.sampleObserverCount() else {

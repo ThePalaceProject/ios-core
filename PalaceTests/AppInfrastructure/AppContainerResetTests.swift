@@ -17,7 +17,13 @@
 import XCTest
 @testable import Palace
 
-final class AppContainerResetTests: XCTestCase {
+// Subclasses `PalaceTestCase` (WS-0 / M0): this class sets
+// `AccountsManager.deferInitialLoadCatalogsForTesting = false` to exercise the
+// background-load path, so per `RuntimeQuiescenceLintTests` it MUST adopt the
+// quiescence base. Its `tearDown()` restores the flag to `true`; the inherited
+// `PalaceTestCase` assert runs AFTER that restore (assert-after-super), so it
+// confirms — rather than false-fails — the cleanup.
+final class AppContainerResetTests: PalaceTestCase {
 
     // MARK: - Setup / Teardown
 
