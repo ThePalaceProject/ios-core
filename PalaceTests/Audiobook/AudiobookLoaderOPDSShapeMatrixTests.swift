@@ -51,11 +51,11 @@ final class AudiobookLoaderOPDSShapeMatrixTests: XCTestCase {
     override func setUpWithError() throws {
         try super.setUpWithError()
         try KeychainAvailability.skipIfUnavailable()
-        AppContainer.production().accountsManager.currentUserAccount.removeAll()
+        AppContainer.production().accountsManager.currentUserAccount.removeAll() // MIGRATED-DEFERRED: swarm_47883816 — hermetic reset must target the production shared currentUserAccount that AudiobookLoader's token gate reads
     }
 
     override func tearDown() {
-        AppContainer.production().accountsManager.currentUserAccount.removeAll()
+        AppContainer.production().accountsManager.currentUserAccount.removeAll() // MIGRATED-DEFERRED: swarm_47883816 — hermetic reset must target the production shared currentUserAccount that AudiobookLoader's token gate reads
         super.tearDown()
     }
 
@@ -378,7 +378,7 @@ final class AudiobookLoaderOPDSShapeMatrixTests: XCTestCase {
     // red (authTokenHasExpired stays true + resolveCallCount 0) — that's the
     // red-first guarantee that the hermetic reset is load-bearing.
     func testHermeticGuard_clearingExpiredToken_unblocksAdapterRouting() {
-        let account = AppContainer.production().accountsManager.currentUserAccount
+        let account = AppContainer.production().accountsManager.currentUserAccount // MIGRATED-DEFERRED: swarm_47883816 — hermetic guard reads the production shared currentUserAccount that AudiobookLoader's token gate reads
         account.setAuthToken("stale-token", barcode: "b", pin: "p",
                              expirationDate: Date(timeIntervalSinceNow: -3600)) // expired 1h ago
         XCTAssertTrue(account.authTokenHasExpired,
