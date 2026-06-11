@@ -240,7 +240,7 @@ public final class PlaybackBootstrapper {
     /// `.playerNotReady` (Crashlytics d45f5aa9). The retry gives the session
     /// time to become active before play is issued. Async so the bounded
     /// backoff never blocks the MainActor `didConnect` path.
-    func activateAudioSessionWithRetry() async {
+    private func activateAudioSessionWithRetry() async {
         let session = AVAudioSession.sharedInstance()
         let activator = AudioSessionActivator(
             isOtherAudioPlaying: { session.isOtherAudioPlaying },

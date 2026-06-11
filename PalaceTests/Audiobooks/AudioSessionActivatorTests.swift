@@ -123,6 +123,13 @@ final class AudioSessionActivatorTests: XCTestCase {
         XCTAssertEqual(outcome, .failed(attempts: 4, lastErrorCode: 561015905))
         XCTAssertEqual(recorder.setActiveCalls, 4, "bounded at maxAttempts")
         XCTAssertEqual(recorder.sleepDurations.count, 3, "no backoff sleep after the final (failing) attempt")
+        // Self-contain the schedule: backoffs after attempts 1, 2, 3 are the
+        // exponential series 0.05 * 2^(n-1), none clamped (all < cap 0.5).
+        let expectedBackoffs: [TimeInterval] = [0.05, 0.10, 0.20]
+        for (index, expected) in expectedBackoffs.enumerated() {
+            XCTAssertEqual(recorder.sleepDurations[index], expected, accuracy: 0.0001,
+                           "backoff for retry \(index + 1) should be \(expected)s")
+        }
     }
 
     func testActivate_nonRetriableError_failsImmediately_noRetry_noSleep() async {

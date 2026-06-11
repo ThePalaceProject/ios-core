@@ -38,6 +38,20 @@ non-retried `setActive`.
 - `561015905` transient-vs-persistent is UNVERIFIED in-process — folds into the
   device/simdrive CarPlay-cold-launch validation pass (same as WS-4/WS-5).
 
+### Deferred to the device-validation / structural-barrier revision (SoD non-blocking findings)
+- **(architect W1)** Re-check `isOtherAudioPlaying()` inside the retry loop when the
+  error is `cannotInterruptOthers`, so the bounded budget isn't spent on a durable
+  "another app owns audio" denial. Pairs with the structural barrier.
+- **(architect W2)** Add an `isActivating` flag / `activationTask` to skip a duplicate
+  in-flight activation on a rapid (<350ms) double CarPlay `didConnect`. Low practical
+  risk today (MainActor-isolated; a duplicate `setActive` is a no-op), but cleaner
+  alongside the play-path session-active barrier.
+- **(qa W1 — tooling, flagged to devops)** `palace_mutate.py` has no return-value
+  mutator for an implicit `return contains(...)`, so `isRetriable` has no formal
+  mutation-kill entry; its behavior is pinned by two integration tests
+  (`testIsRetriable_transientActivationCodes_areRetriable` /
+  `_terminalCodes_areNotRetriable`) instead. Tooling limitation, not a coverage gap.
+
 ## DoD evidence
 - TDD red-first: `PalaceTests/Audiobooks/AudioSessionActivatorTests.swift` (8 tests).
 - Focused: AudioSessionActivatorTests **8/8 pass** (** TEST SUCCEEDED **, sim 35FA2B33).
