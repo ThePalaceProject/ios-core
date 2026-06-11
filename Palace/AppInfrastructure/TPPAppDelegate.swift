@@ -47,6 +47,17 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         let deviceModel = UIDevice.current.model
         Log.info(#file, "[BUILD MARKER] App=\(appVersion) (\(buildNumber)), iOS=\(iosVersion), device=\(deviceModel)")
 
+        #if FEATURE_DRM_CONNECTOR
+        // iPad-on-Mac only: install the process-exit interceptor at launch.
+        // A forced/watchdog exit() can skip applicationWillTerminate; the
+        // interceptor hard-exits via _exit(0) BEFORE Adobe RMSDK's static
+        // recursive_mutex destructor runs (LIFO atexit order). Registered here
+        // — after RMSDK's load-time C++ statics have already constructed and
+        // registered their destructors — so ours is guaranteed to run first.
+        // No-op on iOS devices. Ordering rationale lives in AdobeDRMService.
+        AdobeDRMService.registerStaticDestructorBypassIfNeeded()
+        #endif
+
         // CRITICAL: Initialize playback infrastructure FIRST for CarPlay cold starts
         // This ensures MPRemoteCommandCenter handlers are registered before any UI loads
         // Without this, CarPlay remote controls won't work when the app is launched
@@ -347,6 +358,16 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         audiobookLifecycleManager.willTerminate()
         NotificationCenter.default.removeObserver(self)
         AppContainer.production().reachability.stopMonitoring()
+
+        // iPad-on-Mac only: bypass C++ static destructors on normal (Cmd-Q)
+        // termination. exit()'s static-destructor pass faults in Adobe RMSDK's
+        // static recursive_mutex destructor (Crashlytics 9a91840677, all events
+        // iOS_ON_MAC). _exit(0) terminates immediately, skipping atexit handlers
+        // and static destructors. MUST be the last statement; never runs on real
+        // iOS devices.
+        if shouldSkipStaticDestructorsOnExit(isiOSAppOnMac: ProcessInfo.processInfo.isiOSAppOnMac) {
+            _exit(0)
+        }
     }
 
     internal func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String, completionHandler: @escaping () -> Void) {
@@ -448,6 +469,21 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         UINavigationBar.appearance().scrollEdgeAppearance = defaultAppearance
         UINavigationBar.appearance().compactScrollEdgeAppearance = defaultAppearance
     }
+}
+
+// MARK: - iPad-on-Mac static-destructor bypass
+
+/// Decides whether process exit should bypass C++ static destructors by
+/// calling `_exit(0)`. Returns `true` ONLY when running as an iOS app on Mac,
+/// where Adobe RMSDK's static `recursive_mutex` destructor faults during
+/// teardown (Crashlytics 9a91840677 — all events iOS_ON_MAC).
+///
+/// On real iOS devices this MUST return `false`: there `exit()`'s normal
+/// static-destructor pass is correct and `_exit` would skip legitimate
+/// teardown. Pure + injectable so the decision is unit-testable; the
+/// crash-at-exit itself can only be validated via simdrive on a Mac host.
+func shouldSkipStaticDestructorsOnExit(isiOSAppOnMac: Bool) -> Bool {
+    isiOSAppOnMac
 }
 
 // MARK: - First Run Flow

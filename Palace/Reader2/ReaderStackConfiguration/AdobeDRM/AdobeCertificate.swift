@@ -151,6 +151,54 @@ class AdobeDRMService: NSObject {
         Log.info(#file, "Adobe DRM prepared for termination")
     }
 
+    // MARK: - iPad-on-Mac static-destructor bypass
+
+    /// Tracks whether the process-exit interceptor has been installed, so
+    /// repeated calls to `registerStaticDestructorBypassIfNeeded()` install it
+    /// at most once.
+    private static var staticDestructorBypassRegistered = false
+
+    /// Serializes the idempotency check + atexit registration.
+    private static let staticDestructorBypassLock = NSLock()
+
+    /// Pure decision: should *this* call install the atexit interceptor now?
+    /// True only on iOS-app-on-Mac AND only if not already installed
+    /// (idempotent). Split out from the side-effecting registration so the
+    /// gating + one-shot "registration timing" is unit-testable without
+    /// invoking the real `atexit`/`_exit`.
+    static func shouldRegisterStaticDestructorBypass(isiOSAppOnMac: Bool,
+                                                     alreadyRegistered: Bool) -> Bool {
+        shouldSkipStaticDestructorsOnExit(isiOSAppOnMac: isiOSAppOnMac) && !alreadyRegistered
+    }
+
+    /// Installs a LIFO-first `atexit` interceptor that hard-exits via `_exit(0)`
+    /// on iOS-app-on-Mac, covering the forced/watchdog `exit()` path that skips
+    /// `applicationWillTerminate`.
+    ///
+    /// Ordering rationale: Adobe RMSDK's faulting static `recursive_mutex` is
+    /// constructed at dylib-load (C++ file-scope statics construct when the
+    /// framework image loads, before `main` and independent of whether we ever
+    /// call `NYPLADEPT.sharedInstance()` — which is why the `isDRMAvailable`
+    /// iOS-on-Mac gate alone does not stop the crash). Its `__cxa_atexit`
+    /// destructor is therefore already registered by the time this runs at app
+    /// launch. `atexit` and `__cxa_atexit` share one LIFO list, so installing
+    /// ours afterward guarantees `_exit(0)` fires BEFORE Adobe's destructor.
+    ///
+    /// Idempotent; no-op on iOS devices. End-to-end behavior (crash-at-exit) is
+    /// not unit-testable — requires simdrive validation on a Mac host.
+    static func registerStaticDestructorBypassIfNeeded() {
+        staticDestructorBypassLock.lock()
+        defer { staticDestructorBypassLock.unlock() }
+
+        guard shouldRegisterStaticDestructorBypass(
+            isiOSAppOnMac: ProcessInfo.processInfo.isiOSAppOnMac,
+            alreadyRegistered: staticDestructorBypassRegistered
+        ) else { return }
+
+        staticDestructorBypassRegistered = true
+        _ = atexit { _exit(0) }
+    }
+
     /// Safely get the NYPLADEPT shared instance.
     /// Returns nil if DRM is not available or initialization fails.
     var adeptInstance: NYPLADEPT? {
