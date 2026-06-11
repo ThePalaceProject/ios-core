@@ -130,4 +130,39 @@ enum RuntimeQuiescenceAuditor {
     static func auditLiveState() -> [Violation] {
         return deferFlagViolations(deferFlagLeftByTest: captureDeferFlag())
     }
+
+    // MARK: - Pool-responsiveness detector (WS-0 gate-extension, class 4)
+
+    /// HARD invariant (gate-extension): after a test, the cooperative pool must
+    /// still be able to schedule work — i.e. a high-priority probe Task must
+    /// complete within a budget. When it can't, a prior test leaked
+    /// blocking/un-drained Tasks that saturate the pool, and the NEXT async test
+    /// to `await` will hang (the accumulation pool-starvation class that reds CI
+    /// on unlucky shuffles; victims pass in isolation).
+    ///
+    /// - Parameter probeCompleted: whether the cooperative-pool probe Task
+    ///   completed within budget (measured live by the caller, off the pool —
+    ///   see `PalaceTestSetup`'s observer probe / `PalaceTestCase`).
+    /// - Returns: a one-element violation when the probe did NOT complete (pool
+    ///   saturated), else empty.
+    ///
+    /// Pure so the gate's self-test can prove it fires (`probeCompleted: false`)
+    /// without staging a real leak.
+    static func poolResponsivenessViolations(probeCompleted: Bool) -> [Violation] {
+        guard probeCompleted == false else { return [] }
+        return [
+            Violation(
+                invariant: "cooperative pool at rest (probe schedules within budget)",
+                detail:
+                    "The cooperative thread pool did not schedule a high-priority "
+                    + "probe Task within the budget — a prior test leaked "
+                    + "blocking/un-drained Tasks that saturate the pool, and the "
+                    + "next async test to await will hang (the accumulation "
+                    + "pool-starvation class). Find the leaker via the onset of the "
+                    + "[WS0-POOL-DIAG] latency climb; fix it by cancelling/awaiting "
+                    + "its background Tasks in tearDown (or adopt the quiescence "
+                    + "base so this is caught at its own boundary)."
+            )
+        ]
+    }
 }

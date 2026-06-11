@@ -174,6 +174,24 @@ class PalaceSingletonResetObserver: NSObject, XCTestObservation {
                   testCase.name, violation.invariant)
         }
 
+        // WS-0 pool-responsiveness DIAGNOSTIC (warn-only, NOT a gate yet).
+        // Measures, off the cooperative pool, how long it takes the pool to
+        // schedule a high-priority probe Task right after this test. A free
+        // pool answers in <5ms; a pool saturated by a prior test's leaked
+        // blocking/un-drained Tasks answers slowly or times out — the
+        // accumulation pool-starvation class (class 4) that reds CI on unlucky
+        // shuffles. Logging EVERY test's latency lets the analysis find the
+        // ONSET of the latency climb (closer to the actual leaker than the
+        // eventual hung victim). Captured BEFORE invokeAll() so it reflects the
+        // state THIS test left. The probe adds a single Task — it does not
+        // perturb the pool it measures. Promotion to a hard PalaceTestCase
+        // tearDown gate happens only after this confirms no false positives.
+        let poolProbe = Self.measureCooperativePoolProbe(budget: 2.0)
+        if !poolProbe.completed || poolProbe.latencyMs >= 20 {
+            NSLog("[WS0-POOL-DIAG] %@ pool-probe latencyMs=%d completed=%@",
+                  testCase.name, poolProbe.latencyMs, poolProbe.completed ? "true" : "false")
+        }
+
         SingletonResetRegistry.shared.invokeAll()
 
         guard let pre = preCount, let post = Self.sampleObserverCount() else {
@@ -194,6 +212,24 @@ class PalaceSingletonResetObserver: NSObject, XCTestObservation {
                 activity.add(attachment)
             }
         }
+    }
+
+    /// WS-0 pool-responsiveness probe. Measures, from the MAIN thread, how long
+    /// the cooperative thread pool takes to schedule a high-priority probe Task.
+    ///
+    /// `XCTWaiter().wait` blocks the MAIN thread (not a pool worker), so if the
+    /// pool has any free thread the probe Task runs and we get the latency; if
+    /// the pool is fully saturated by leaked blocking Tasks the probe never runs
+    /// and we time out at `budget`. One probe Task adds negligible pressure — it
+    /// does not perturb what it measures. Returns whether the probe completed
+    /// and its latency in milliseconds (== budget on timeout).
+    static func measureCooperativePoolProbe(budget: TimeInterval) -> (completed: Bool, latencyMs: Int) {
+        let start = DispatchTime.now()
+        let probe = XCTestExpectation(description: "WS0 cooperative-pool probe")
+        Task.detached(priority: .high) { probe.fulfill() }
+        let result = XCTWaiter().wait(for: [probe], timeout: budget)
+        let elapsedNs = DispatchTime.now().uptimeNanoseconds &- start.uptimeNanoseconds
+        return (result == .completed, Int(elapsedNs / 1_000_000))
     }
 
     /// Returns the current observer count from `NotificationCenter.default`
