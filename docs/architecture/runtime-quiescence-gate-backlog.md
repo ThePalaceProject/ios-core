@@ -88,5 +88,43 @@ Consider extending `find-test-polluter.sh` with an `--ordered-prefix <file>` + `
 
 ---
 
+## Deliverable C — direct retry-recovery proof (optional demonstration)
+
+The M0 operational-green decision rests on an **inferred** property: when a shuffle
+hits the pool-starvation ordering, CI's `-test-timeouts-enabled YES
+-default-test-execution-time-allowance 120` kills the hung test at 120s and
+`-retry-tests-on-failure` re-runs it **in a fresh/isolated context** that escapes
+the accumulated pool saturation → it passes on retry → CI goes green. The
+mechanism is sound (the retry runs the single test fresh, without the preceding
+leakers' accumulated Tasks) and is consistent with `#1063` sometimes-passing, but
+the M0 CI-parity run did NOT directly exercise it (that run's single shuffle
+*dodged* the ordering, so nothing hung and nothing was retried).
+
+If a future owner wants to convert "inferred" → "demonstrated":
+
+1. **Reproduce the hang at CI config.** Run the full suite at CI parity
+   (`-retry-tests-on-failure -test-iterations 3 -test-timeouts-enabled YES
+   -default-test-execution-time-allowance 120 -maximum-test-execution-time-allowance 300`)
+   repeatedly until a shuffle reproduces the pool-starvation hang (e.g.
+   `DownloadQueueOrchestratorTests.testSchedulePendingStartsAsync_atCap`). Because
+   it's order-dependent, several runs may be needed; the 120s timeout bounds each.
+2. **Observe the recovery in the SAME run.** When it hangs, the log should show
+   the test hit `exceeded execution time allowance` at ~120s, then a
+   `Restarting after … test timeout` / retry attempt. Confirm the retried attempt
+   **passes** and the overall run ends `** TEST SUCCEEDED **`. That is the direct
+   proof: hung-at-120s → killed → retried-fresh → green.
+3. **Record it** here + in the M0 evidence trail. If the retry does NOT recover
+   (the hang re-accumulates even in the retry's context), that escalates the
+   class from "retry-masked / post-3.2.0" to "CI-fatal" — in which case Deliverable
+   A (the pool-responsiveness gate extension) moves up to attribute it, and the
+   underlying leaker (Deliverable B) must be fixed.
+
+This is a *demonstration*, not a fix — it confirms the operational-green
+interpretation. It is explicitly NOT a 3.2.0 blocker (per the Chairman M0
+decision); it is land-ready here for whenever the trail wants the inferred
+property made explicit.
+
+---
+
 ## Sequencing
 Per Chairman: ship M0 (defer-flag gate + iters-3-green) first. Then this backlog, top-down: Deliverable A (pool-responsiveness probe — the durable structural win that turns silent hangs into attributed failures), then Deliverable B per victim as needed, alongside the keychain-hermetic (w-lane) and alert-hermetic (w-mutex) class fixes. All build ON the shipped `RuntimeQuiescenceAuditor` / `PalaceTestCase` substrate — one hierarchy, one auditor, N invariants.
