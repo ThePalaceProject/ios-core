@@ -34,6 +34,8 @@
 import XCTest
 import Combine
 import OverdriveProcessor
+import PalaceCatalog
+@preconcurrency import PalaceAudiobookToolkit
 @testable import Palace
 
 @MainActor
@@ -274,6 +276,166 @@ final class OverdriveFulfillmentTests: XCTestCase {
         case .token:
             XCTFail("Without a token, fulfillment must use `.basic(...)`, not invent a token")
         }
+    }
+
+    // MARK: - WS-3: OverDrive expired-signed-URL re-fulfill predicate (3.2.0 crash-triage)
+    //
+    // Red-first for the recovery boundary: AudiobookLoader.load gates nothing
+    // here — these pin the pure predicate that decides whether a `.playbackFailed`
+    // on an OverDrive book is a recoverable signed-URL expiry (HTTP 410) worth a
+    // fresh re-fulfill, vs a permanent/ambiguous failure that must NOT re-fulfill.
+
+    private func makeOverdriveBook() -> TPPBook {
+        TPPBook(
+            acquisitions: [TPPOPDSAcquisition(
+                relation: .generic,
+                type: "application/vnd.overdrive.circulation.api+json;profile=audiobook",
+                hrefURL: URL(string: "https://od.test/fulfill")!,
+                indirectAcquisitions: [],
+                availability: TPPOPDSAcquisitionAvailabilityUnlimited()
+            )],
+            authors: [], categoryStrings: [], distributor: OverdriveDistributorKey,
+            identifier: UUID().uuidString, imageURL: nil, imageThumbnailURL: nil,
+            published: Date(), publisher: "Test", subtitle: nil, summary: nil,
+            title: "OD Fixture", updated: Date(), annotationsURL: nil, analyticsURL: nil,
+            alternateURL: nil, relatedWorksURL: nil, previewLink: nil, seriesURL: nil,
+            revokeURL: nil, reportURL: nil, timeTrackingURL: nil, contributors: [:],
+            bookDuration: nil, imageCache: MockImageCache()
+        )
+    }
+
+    private func playbackError(httpStatus: Int?) -> NSError {
+        NSError(domain: "test.playback", code: 1,
+                userInfo: httpStatus.map { ["httpStatusCode": $0] } ?? [:])
+    }
+
+    func testOverdriveRefulfill_410OnOverdriveBook_returnsTrue() {
+        XCTAssertTrue(AudiobookSessionManager.shouldTriggerOverdriveRefulfillForPlaybackFailure(
+            error: playbackError(httpStatus: 410), book: makeOverdriveBook(), alreadyAttempted: false),
+            "HTTP 410 (Gone) on an OverDrive book is a clean signed-URL expiry → re-fulfill")
+    }
+
+    func testOverdriveRefulfill_403_returnsFalse_ambiguousEntitlement() {
+        XCTAssertFalse(AudiobookSessionManager.shouldTriggerOverdriveRefulfillForPlaybackFailure(
+            error: playbackError(httpStatus: 403), book: makeOverdriveBook(), alreadyAttempted: false),
+            "403 is ambiguous (expiry vs entitlement denial) — must NOT re-fulfill into a possibly-revoked loan")
+    }
+
+    func testOverdriveRefulfill_401_returnsFalse_authNotExpiry() {
+        XCTAssertFalse(AudiobookSessionManager.shouldTriggerOverdriveRefulfillForPlaybackFailure(
+            error: playbackError(httpStatus: 401), book: makeOverdriveBook(), alreadyAttempted: false),
+            "401 is auth-required (handled by toolkit bearer refresh / SAML) — not a signed-URL expiry")
+    }
+
+    func testOverdriveRefulfill_410ButAlreadyAttempted_returnsFalse_bounded() {
+        XCTAssertFalse(AudiobookSessionManager.shouldTriggerOverdriveRefulfillForPlaybackFailure(
+            error: playbackError(httpStatus: 410), book: makeOverdriveBook(), alreadyAttempted: true),
+            "Bounded: a second expiry in the same session must NOT re-fulfill again (no loop)")
+    }
+
+    func testOverdriveRefulfill_410ButNotOverdrive_returnsFalse() {
+        let nonOverdrive = TPPBookMocker.mockBook(title: "Not OverDrive") // distributor != "Overdrive"
+        XCTAssertFalse(AudiobookSessionManager.shouldTriggerOverdriveRefulfillForPlaybackFailure(
+            error: playbackError(httpStatus: 410), book: nonOverdrive, alreadyAttempted: false),
+            "Re-fulfill is OverDrive-only — other distributors must not enter this path")
+    }
+
+    func testOverdriveRefulfill_noHttpStatus_returnsFalse_conservative() {
+        XCTAssertFalse(AudiobookSessionManager.shouldTriggerOverdriveRefulfillForPlaybackFailure(
+            error: playbackError(httpStatus: nil), book: makeOverdriveBook(), alreadyAttempted: false),
+            "No extractable HTTP status (e.g. a bare AVFoundation error) → conservatively do NOT re-fulfill")
+    }
+
+    func testOverdriveRefulfill_410InUnderlyingError_returnsTrue() {
+        let underlying = NSError(domain: "url", code: 1, userInfo: ["httpStatusCode": 410])
+        let wrapped = NSError(domain: "av", code: -11800, userInfo: [NSUnderlyingErrorKey: underlying])
+        XCTAssertTrue(AudiobookSessionManager.shouldTriggerOverdriveRefulfillForPlaybackFailure(
+            error: wrapped, book: makeOverdriveBook(), alreadyAttempted: false),
+            "The status may be one level down the NSUnderlyingError chain (AVFoundation wraps it)")
+    }
+
+    func testHttpStatusCode_extractsFromUserInfo_underlyingChain_andNil() {
+        XCTAssertEqual(AudiobookSessionManager.httpStatusCode(from: playbackError(httpStatus: 410)), 410)
+        let underlying = NSError(domain: "url", code: 1, userInfo: ["httpStatusCode": 503])
+        let wrapped = NSError(domain: "av", code: -1, userInfo: [NSUnderlyingErrorKey: underlying])
+        XCTAssertEqual(AudiobookSessionManager.httpStatusCode(from: wrapped), 503)
+        XCTAssertNil(AudiobookSessionManager.httpStatusCode(from: playbackError(httpStatus: nil)))
+    }
+
+    // MARK: - WS-3: fresh re-fulfilled URL is CONSUMED into the built audiobook (loader-level)
+    //
+    // Assertions 2+3 of the recovery proof, at the loader boundary (no session
+    // auth gate). The recovery re-opens via AudiobookLoader(forceRefulfill:true);
+    // this proves the URL a fresh re-fulfill resolves ends up in the BUILT
+    // audiobook's first track — i.e. the player is handed the FRESH url, not a
+    // stale cached-manifest replay. The session wiring (handleManagerState ->
+    // openAudiobook(forceRefulfill:true) -> makeLoader) is auth-gated and is
+    // covered by architect SoD review + device validation.
+
+    /// Spy adapter — returns a caller-supplied manifest so the test controls the
+    /// track href the loader builds from.
+    private final class ManifestSpyAdapter: AudiobookVendorAdapter {
+        let manifestJSON: [String: Any]
+        init(manifestJSON: [String: Any]) { self.manifestJSON = manifestJSON }
+        func canHandle(_ book: TPPBook) -> Bool { true }
+        func resolveManifest(
+            for book: TPPBook,
+            completion: @escaping (Result<(json: [String: Any], decryptor: DRMDecryptor?), AudiobookLoadError>) -> Void
+        ) {
+            completion(.success((json: manifestJSON, decryptor: nil)))
+        }
+    }
+
+    private func openAccessManifest(firstTrackHref: String) -> [String: Any] {
+        [
+            "metadata": [
+                "@type": "http://schema.org/Audiobook",
+                "title": "WS-3 Fixture",
+                "identifier": "ws3-od",
+                "duration": 60
+            ],
+            "readingOrder": [
+                ["href": firstTrackHref, "type": "audio/mpeg", "duration": 60, "title": "Track 1"]
+            ]
+        ]
+    }
+
+    private func firstTrackURL(loadingManifestWithHref href: String) throws -> String? {
+        let spy = ManifestSpyAdapter(manifestJSON: openAccessManifest(firstTrackHref: href))
+        let loader = AudiobookLoader(adapters: [spy])
+        let done = expectation(description: "load completes")
+        var url: String?
+        loader.load(makeOverdriveBook()) { result in
+            if case .success(let loaded) = result {
+                url = loaded.audiobook.tableOfContents.allTracks.first?.urls?.first?.absoluteString
+            }
+            done.fulfill()
+        }
+        wait(for: [done], timeout: 5.0)
+        return url
+    }
+
+    func testRefulfill_freshManifestURL_isConsumedIntoBuiltAudiobook() throws {
+        try KeychainAvailability.skipIfUnavailable()
+        // The loader's refreshTokenIfNeeded reads the production shared account
+        // BEFORE the adapter chain; clear it so a leftover expired token doesn't
+        // fail the load before the spy resolves.
+        AppContainer.production().accountsManager.currentUserAccount.removeAll() // MIGRATED-DEFERRED: swarm_47883816 — hermetic reset must target the production shared currentUserAccount the loader's token gate reads
+
+        let freshURL = "https://od.test/FRESH/track-1.mp3"
+        let staleURL = "https://od.test/STALE/track-1.mp3"
+
+        let builtFromFresh = try firstTrackURL(loadingManifestWithHref: freshURL)
+        XCTAssertEqual(builtFromFresh, freshURL,
+                       "The re-fulfilled (fresh) manifest URL must be CONSUMED into the built audiobook's first track — proves recovery yields fresh signed URLs, not a cached-manifest replay (PP-4553 sibling / WS-3)")
+        XCTAssertNotEqual(builtFromFresh, staleURL, "Built track URL must be the FRESH one, not stale")
+
+        // Control: a stale-href manifest builds a stale track — proves the loader
+        // faithfully carries whichever URL the (re-)fulfill resolved, so the FRESH
+        // assertion above is meaningful (not a constant).
+        let builtFromStale = try firstTrackURL(loadingManifestWithHref: staleURL)
+        XCTAssertEqual(builtFromStale, staleURL, "Loader must carry the resolved manifest's URL into the built audiobook")
+        XCTAssertNotEqual(builtFromStale, freshURL, "Stale-manifest build must NOT yield the fresh URL")
     }
 }
 
