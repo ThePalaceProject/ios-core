@@ -509,7 +509,15 @@ struct AppContainer {
             return
         }
         AccountsManager.deferInitialLoadCatalogsForTesting = true
-        _cached.accountsManager.cancelBackgroundWork()
+        // Cancel AND synchronously DRAIN the prior cached AccountsManager's
+        // background loadCatalogs crawl before rebuilding. The cooperative
+        // `cancelBackgroundWork()` alone returned immediately, leaving a
+        // just-cancelled crawl mid-flight holding the `accountSetsLock` barrier
+        // — which the next test's @MainActor reauth `.sync` read deadlocked
+        // against (120s main-jam "auth-state-bleed"). Draining (with run-loop
+        // pumping) closes that residual race globally at every test boundary.
+        // WS-0 follow-up; see AccountsManager.cancelAndDrainBackgroundWork.
+        _cached.accountsManager.cancelAndDrainBackgroundWork()
         _cached = Self._buildCachedAppContainer()
         // Leave the flag at the test-safe `true` (see step 4 above) — do NOT
         // reset to `false`. The next test class inherits this value before its

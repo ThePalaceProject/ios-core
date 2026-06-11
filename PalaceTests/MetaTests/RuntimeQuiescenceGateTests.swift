@@ -134,14 +134,15 @@ final class RuntimeQuiescenceGateTests: PalaceTestCase {
     /// leaks nothing into the next test (it must not become the very polluter
     /// it simulates).
     func testCooperativePoolProbe_saturatedPool_doesNotComplete_redFirst() {
-        // Over-saturate: spawn FAR more blocking Tasks than the cooperative pool
-        // is wide. The cooperative pool is fixed-width (it does NOT spin up new
-        // threads for blocked ones — that's the whole pool-starvation hazard),
-        // so only `cores` run at once; the rest queue. We must therefore wait
-        // for only `cores` started-signals (not `n`) — waiting for `n` would
-        // deadlock, since the queued Tasks can't start until a thread frees.
+        // HEAVILY over-saturate: spawn 8× the core count in blocking Tasks, far
+        // more than any plausible cooperative-pool width. The pool is fixed-width
+        // and does NOT spin up new threads for blocked ones (the pool-starvation
+        // hazard), so we wait for only `cores` started-signals (waiting for `n`
+        // would deadlock — queued Tasks can't start until a thread frees). The
+        // surplus queued blockers immediately re-fill any thread that transiently
+        // frees, so saturation is SUSTAINED for the whole probe window.
         let cores = ProcessInfo.processInfo.activeProcessorCount
-        let n = cores * 4
+        let n = cores * 8
         let started = DispatchSemaphore(value: 0)
         let release = DispatchSemaphore(value: 0)
         let finished = DispatchSemaphore(value: 0)
@@ -152,19 +153,27 @@ final class RuntimeQuiescenceGateTests: PalaceTestCase {
                 finished.signal()
             }
         }
-        // Wait until at least `cores` Tasks are running+blocking = pool saturated.
-        for _ in 0..<cores { started.wait() }
+        for _ in 0..<cores { started.wait() }   // at least `cores` threads occupied
 
-        let probe = PalaceSingletonResetObserver.measureCooperativePoolProbe(budget: 1.0)
+        // Probe up to 5×; saturation is sustained (blockers held), so the probe
+        // must time out at least once. Needing just ONE timeout makes this
+        // robust to a transient thread-free blip during the saturation ramp —
+        // not flaky (the earlier single-probe version raced on that ramp).
+        var sawTimeout = false
+        var lastLatencyMs = 0
+        for _ in 0..<5 {
+            let probe = PalaceSingletonResetObserver.measureCooperativePoolProbe(budget: 1.0)
+            lastLatencyMs = probe.latencyMs
+            if !probe.completed { sawTimeout = true; break }
+        }
 
-        // Release every blocker (running AND queued) and drain them fully so
-        // this test leaks nothing — it must not become the polluter it
-        // simulates. `release` permits (n) ≥ total waiters (n), so no deadlock.
+        // Release every blocker (running AND queued) and drain them fully so this
+        // test leaks nothing — it must not become the polluter it simulates.
         for _ in 0..<n { release.signal() }
         for _ in 0..<n { finished.wait() }
 
-        XCTAssertFalse(probe.completed,
-                       "Pool saturated by \(n) blocking Tasks → the high-priority probe must NOT schedule within 1s (latency=\(probe.latencyMs)ms); the detector fires")
+        XCTAssertTrue(sawTimeout,
+                      "Under sustained pool saturation by \(n) blocking Tasks, the probe must time out at least once across 5 attempts (last latency=\(lastLatencyMs)ms); the detector fires")
     }
 
     /// End-to-end of the pure path: with the flag at its restored `true`
