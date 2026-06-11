@@ -458,7 +458,6 @@
 		5CDD263A7FFB392F96FA4F03 /* LegacySAMLAuthAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4F432B33DEBD1715E2687C7 /* LegacySAMLAuthAdapter.swift */; };
 		5CEBAAD3ED3AF6889F45F38C /* UserAccountPublisherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3332DED915E45913181C82D /* UserAccountPublisherTests.swift */; };
 		5CEE9677D8514088B0155974 /* UserRetryTrackerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 978A163EF2834D9087A9CDEB /* UserRetryTrackerTests.swift */; };
-		5D0130219AE7A8767A2B5C3B /* TriageBotCore in Frameworks */ = {isa = PBXBuildFile; productRef = B6BB8DA6C2692FC1F126876A /* TriageBotCore */; };
 		5D05015D55C6DE54BB6DB0DA /* TPPSignInBusinessLogicExtendedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DC9FC06EF6CCEED742C0D44 /* TPPSignInBusinessLogicExtendedTests.swift */; };
 		5D1B142A22CC179F0006C964 /* TPPAlertUtils.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D1B142922CC179F0006C964 /* TPPAlertUtils.swift */; };
 		5D3A28CC22D3DA850042B3BD /* UserProfileDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D3A28CB22D3DA850042B3BD /* UserProfileDocument.swift */; };
@@ -3301,7 +3300,6 @@
 				0725F3E330D15C718C170C94 /* PalaceCatalog in Frameworks */,
 				811E00F5F755273F726941CC /* PalaceAuth in Frameworks */,
 				89382FCA6DC82E0D3906130A /* PalaceReadingPosition in Frameworks */,
-				5D0130219AE7A8767A2B5C3B /* TriageBotCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -6317,7 +6315,6 @@
 				7081635582F472450D1A1B85 /* PalaceCatalog */,
 				3D8B27DA10A114B76EFB41A1 /* PalaceAuth */,
 				5F61B627DDE72CE091C181D5 /* PalaceReadingPosition */,
-				B6BB8DA6C2692FC1F126876A /* TriageBotCore */,
 			);
 			productName = SimplyETests;
 			productReference = 2D2B47721D08F807007F7764 /* PalaceTests.xctest */;
@@ -9433,11 +9430,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = EA43715A76E6B1D14299A3A1 /* XCLocalSwiftPackageReference "PalaceReadingPosition" */;
 			productName = PalaceReadingPosition;
-		};
-		B6BB8DA6C2692FC1F126876A /* TriageBotCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = DAAF04A6D259B174CFB2811E /* XCLocalSwiftPackageReference "PalaceTriageBot" */;
-			productName = TriageBotCore;
 		};
 		B7890FD5F70ADDBD798D7FC7 /* PalaceLogging */ = {
 			isa = XCSwiftPackageProductDependency;
