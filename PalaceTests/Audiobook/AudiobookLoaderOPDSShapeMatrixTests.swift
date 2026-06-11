@@ -36,6 +36,29 @@ import PalaceCatalog
 @MainActor
 final class AudiobookLoaderOPDSShapeMatrixTests: XCTestCase {
 
+    // MARK: - Hermetic auth-state guard
+    //
+    // AudiobookLoader.load() runs refreshTokenIfNeeded() BEFORE the adapter
+    // chain; that gate reads AppContainer.production().accountsManager
+    // .currentUserAccount. A leftover EXPIRED token in the sim keychain (e.g.
+    // inherited from a suite killed mid-run, between a writer test's
+    // setAuthToken(expired) and its removeAll()) makes authTokenHasExpired==true,
+    // so the gate fails and the adapter chain is skipped → every spy's
+    // resolveCallCount stays 0 and the routing assertions fail "0 != 1". Clearing
+    // the shared account's credentials in setUp makes the gate deterministically
+    // pass, so these tests assert routing regardless of inherited sim state.
+
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        try KeychainAvailability.skipIfUnavailable()
+        AppContainer.production().accountsManager.currentUserAccount.removeAll()
+    }
+
+    override func tearDown() {
+        AppContainer.production().accountsManager.currentUserAccount.removeAll()
+        super.tearDown()
+    }
+
     // MARK: - MIME constants (mirrored from production for fixture readability)
 
     private let lcpLicenseMIME = "application/vnd.readium.lcp.license.v1.0+json"
@@ -344,5 +367,34 @@ final class AudiobookLoaderOPDSShapeMatrixTests: XCTestCase {
                        "Plain open-access book has no bearer-token MIME — BearerToken must NOT claim")
         XCTAssertEqual(spies.openAccess.resolveCallCount, 1,
                        "Plain open-access book must route to OpenAccessAdapter (chain fallback)")
+    }
+
+    // MARK: - Red-first hermetic-guard proof
+    //
+    // Pins the mechanism the setUp guard relies on: an EXPIRED token in the
+    // shared account trips AudiobookLoader's pre-chain token gate (skipping the
+    // adapter chain → resolveCallCount 0), and clearing it via the production
+    // removeAll() restores routing. Stub the clear to a no-op and this test goes
+    // red (authTokenHasExpired stays true + resolveCallCount 0) — that's the
+    // red-first guarantee that the hermetic reset is load-bearing.
+    func testHermeticGuard_clearingExpiredToken_unblocksAdapterRouting() {
+        let account = AppContainer.production().accountsManager.currentUserAccount
+        account.setAuthToken("stale-token", barcode: "b", pin: "p",
+                             expirationDate: Date(timeIntervalSinceNow: -3600)) // expired 1h ago
+        XCTAssertTrue(account.authTokenHasExpired,
+                      "Precondition: an expired token is present (the inherited-dirty-start condition)")
+
+        // The guard under test — the production sign-out/clear API.
+        account.removeAll()
+
+        XCTAssertFalse(account.authTokenHasExpired,
+                       "removeAll() must clear the expired token so the token gate no longer trips")
+
+        let book = makeBook(acquisitions: [acquisition(type: openAccessAudiobookMIME)])
+        let spies = makeProductionChainSpies()
+        runLoad(book: book, chain: spies.chain)
+
+        XCTAssertEqual(spies.openAccess.resolveCallCount, 1,
+                       "With auth state cleared, the loader's token gate passes and the adapter chain routes (no longer skipped)")
     }
 }
