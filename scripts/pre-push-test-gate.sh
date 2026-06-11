@@ -217,9 +217,9 @@ if run_with_timeout "$TIMEOUT_SECS" \
      xcodebuild \
      -project Palace.xcodeproj \
      -scheme Palace \
-     "${DEST_ARGS[@]}" \
-     "${DERIVED_ARGS[@]}" \
-     "${ONLY_TESTING_ARGS[@]}" \
+     ${DEST_ARGS[@]+"${DEST_ARGS[@]}"} \
+     ${DERIVED_ARGS[@]+"${DERIVED_ARGS[@]}"} \
+     ${ONLY_TESTING_ARGS[@]+"${ONLY_TESTING_ARGS[@]}"} \
      test \
      -quiet >/tmp/pre-push-test-gate.log 2>&1; then
   echo "[pre-push-test-gate] PASS — ${#CLASSES[@]} class(es) green." >&2
