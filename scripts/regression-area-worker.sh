@@ -170,11 +170,14 @@ for journey in "${JOURNEYS[@]}"; do
   VERDICT="$(SIM_ID="$SIM_ID" APP="$APP_BUNDLE" JOURNEY="$journey" \
              THRESHOLD="$threshold" LOG_FILE="$log_file" CAND_PNG="$cand_png" \
              CRASH_JSON="$crash_json" SCRIPT_DIR="$SCRIPT_DIR" \
+             DEVICE_CELL="$DEVICE_CELL" \
              python3 - <<'PYEOF' 2>>"$log_file"
 import json, os, shutil, sys, time
 from pathlib import Path
 
-ev = {"steps": 0, "drifted": 0, "errored": 0, "perf_severity": "low",
+ev = {"steps": 0, "steps_planned": 0, "steps_executed": 0, "drifted": 0,
+      "errored": 0, "halt_reason": "", "replay_status": "error",
+      "replay_reason": "replay did not run", "perf_severity": "low",
       "crashes_during": 0, "crash_file": "", "screenshot": "", "error": ""}
 try:
     from simdrive import session as sds
@@ -198,16 +201,66 @@ try:
     time.sleep(1.5)
     baseline = sdp.snapshot(udid, app)
 
-    r = sdr.replay(name=os.environ["JOURNEY"], session=s,
+    sys.path.insert(0, os.environ["SCRIPT_DIR"])
+    from regression_findings import (crashes_since, classify_replay,
+                                     normalized_requires_device)
+
+    # Device-suffix normalization (campaign-critical): requires.sim.device is
+    # matched LITERALLY, so a base "iPhone 16 Pro" recording halts on every fleet
+    # "(pool-N)/(fleet-N)" sim. Rewrite the contract device to the CURRENT sim in
+    # a per-cell temp copy, then replay with the FULL contract still enforced
+    # (text_subset / version real mismatches still HALT). No bypass; guard intact.
+    journey_name = os.environ["JOURNEY"]
+    replay_name = journey_name
+    tmp_rec = None
+
+    def _current_device_name(u):
+        try:
+            import subprocess
+            out = subprocess.run(["xcrun", "simctl", "list", "devices", "-j"],
+                                 capture_output=True, text=True, timeout=20)
+            for _rt, devs in json.loads(out.stdout).get("devices", {}).items():
+                for d in devs:
+                    if d.get("udid", "").upper() == u.upper():
+                        return d.get("name")
+        except Exception:
+            return None
+        return None
+
+    try:
+        import yaml as _yaml
+        rec_dir = Path.home() / ".simdrive" / "recordings" / journey_name
+        data = _yaml.safe_load((rec_dir / "recording.yaml").read_text())
+        rec_dev = (((data or {}).get("requires") or {}).get("sim") or {}).get("device")
+        new_dev = normalized_requires_device(rec_dev or "", _current_device_name(udid) or "")
+        if new_dev:
+            cell = os.environ.get("DEVICE_CELL", "cell")
+            tmp_name = journey_name + "__rcnorm__" + cell
+            tmp_rec = Path.home() / ".simdrive" / "recordings" / tmp_name
+            if tmp_rec.exists():
+                shutil.rmtree(tmp_rec, ignore_errors=True)
+            shutil.copytree(rec_dir, tmp_rec)
+            d2 = _yaml.safe_load((tmp_rec / "recording.yaml").read_text())
+            d2["requires"]["sim"]["device"] = new_dev
+            (tmp_rec / "recording.yaml").write_text(_yaml.safe_dump(d2, sort_keys=False))
+            replay_name = tmp_name
+            with log_file.open("a") as lf:
+                lf.write("\n[info] normalized requires.sim.device " + str(rec_dev) +
+                         " -> " + str(new_dev) + " (clone-suffix); full contract still enforced\n")
+    except Exception as e:
+        with log_file.open("a") as lf:
+            lf.write("\n[warn] device-normalization skipped: " + str(e) + "\n")
+
+    r = sdr.replay(name=replay_name, session=s,
                    on_drift="warn", drift_threshold=float(os.environ["THRESHOLD"]))
+    if tmp_rec is not None:
+        shutil.rmtree(tmp_rec, ignore_errors=True)
 
     current = sdp.snapshot(udid, app)
     # Scope to crashes since this run started (since_ts) rather than a pre/post
     # count delta — that delta could go negative if the list_crashes window shifts.
     # crashes_since re-applies the run-scoping as a tested pure invariant so a
     # crash predating the run can never yield a finding.
-    sys.path.insert(0, os.environ["SCRIPT_DIR"])
-    from regression_findings import crashes_since
     post = crashes_since(
         sdd.list_crashes(since_ts=start_ts, bundle_id=app, max_results=20),
         start_ts,
@@ -241,10 +294,18 @@ try:
         "memory_rss_mb": current.get("memory_rss_mb", 0) - baseline.get("memory_rss_mb", 0),
         "threads": current.get("threads", 0) - baseline.get("threads", 0),
     }
-    steps = r.get("steps", [])
-    ev["steps"] = len(steps)
-    ev["drifted"] = sum(1 for st in steps if st.get("drifted"))
-    ev["errored"] = sum(1 for st in steps if st.get("error"))
+    # Anti-false-pass guard: classify the replay by executed-vs-planned steps +
+    # halt reason. A 0-executed / halted / incomplete replay is fail/error here,
+    # NEVER pass — a state-contract halt at step 0 means nothing was exercised.
+    rv = classify_replay(r)
+    ev["steps_planned"] = rv["steps_planned"]
+    ev["steps_executed"] = rv["steps_executed"]
+    ev["steps"] = rv["steps_executed"]
+    ev["drifted"] = rv["drifted"]
+    ev["errored"] = rv["errored"]
+    ev["halt_reason"] = rv["halt_reason"]
+    ev["replay_status"] = rv["status"]
+    ev["replay_reason"] = rv["reason"]
     ev["perf_severity"] = sdp.severity(delta)
     ev["crashes_during"] = len(post)
 
@@ -280,6 +341,10 @@ PYEOF
   err="$(echo "$VERDICT" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('error',''))" 2>/dev/null || echo "")"
   crash_file="$(echo "$VERDICT" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('crash_file',''))" 2>/dev/null || echo "")"
   screenshot="$(echo "$VERDICT" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('screenshot',''))" 2>/dev/null || echo "")"
+  replay_status="$(echo "$VERDICT" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('replay_status','error'))" 2>/dev/null || echo "error")"
+  replay_reason="$(echo "$VERDICT" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('replay_reason',''))" 2>/dev/null || echo "")"
+  steps_exec="$(echo "$VERDICT" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('steps_executed',0))" 2>/dev/null || echo "0")"
+  steps_planned="$(echo "$VERDICT" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('steps_planned',0))" 2>/dev/null || echo "0")"
 
   # Structural checks (robust to OPDS variability) — failure is a finding.
   struct_status="n/a"; struct_log=""
@@ -299,8 +364,12 @@ PYEOF
     status="fail"; classification="other"; reason="replay-error: $err"
   elif [[ "$crashes" != "0" && "$crashes" != "?" ]]; then
     status="fail"; classification="crash"; reason="$crashes crash(es) during journey"
-  elif [[ "$errored" != "0" && "$errored" != "?" ]]; then
-    status="fail"; classification="other"; reason="$errored step(s) errored"
+  elif [[ "$replay_status" != "pass" ]]; then
+    # Anti-false-pass guard (the #1 integrity rule): a halted / incomplete /
+    # 0-executed replay is NEVER a pass — nothing was exercised, so it cannot
+    # certify anything. Subsumes the old per-step `errored` check.
+    status="fail"; classification="other"
+    reason="replay ${replay_status} (${steps_exec}/${steps_planned} steps): ${replay_reason}"
   elif [[ "$perf_sev" == "high" ]]; then
     status="fail"; classification="perf"; reason="perf severity HIGH (likely leak)"
   elif [[ "$struct_status" == "fail" ]]; then
@@ -309,7 +378,7 @@ PYEOF
 
   if [[ "$status" == "pass" ]]; then
     pass_count=$((pass_count + 1))
-    echo "  [PASS] $journey"
+    echo "  [PASS] $journey (${steps_exec}/${steps_planned} steps)"
     continue
   fi
 

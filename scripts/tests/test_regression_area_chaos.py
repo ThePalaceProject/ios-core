@@ -283,6 +283,116 @@ def test_read_findings_tolerates_malformed_csv(tmp_path):
     assert rows[0]["area"] == "auth"
 
 
+# ── 2d. classify_replay — the anti-false-pass guard (the #1 integrity gate) ───
+
+
+def test_classify_replay_full_clean_is_pass():
+    r = {"ok": True, "steps_planned": 3,
+         "steps": [{"executed": True}, {"executed": True}, {"executed": True}]}
+    v = rf.classify_replay(r)
+    assert v["status"] == "pass"
+    assert v["steps_executed"] == 3 and v["steps_planned"] == 3
+
+
+def test_classify_replay_state_contract_halt_is_fail_not_pass():
+    # The EXACT shape that previously false-passed: replay halted at step 0 on a
+    # state-contract mismatch → steps:[] but steps_planned stays N.
+    r = {"ok": False, "halted_at": 0, "halt_reason": "state_contract_mismatch",
+         "steps_planned": 11, "steps": []}
+    v = rf.classify_replay(r)
+    assert v["status"] == "fail"          # NEVER pass
+    assert v["steps_executed"] == 0
+    assert "state_contract_mismatch" in v["reason"]
+    assert "0/11" in v["reason"]
+
+
+def test_classify_replay_incomplete_is_fail():
+    r = {"ok": True, "steps_planned": 11,
+         "steps": [{"executed": True}] * 5}   # only 5 of 11 ran
+    v = rf.classify_replay(r)
+    assert v["status"] == "fail"
+    assert "5/11" in v["reason"]
+
+
+def test_classify_replay_errored_step_is_fail():
+    r = {"ok": True, "steps_planned": 2,
+         "steps": [{"executed": True}, {"executed": True, "error": "tap missed"}]}
+    v = rf.classify_replay(r)
+    assert v["status"] == "fail"
+    assert v["errored"] == 1
+
+
+def test_classify_replay_zero_planned_is_error():
+    r = {"ok": True, "steps_planned": 0, "steps": []}
+    v = rf.classify_replay(r)
+    assert v["status"] == "error"
+    assert "misconfiguration" in v["reason"]
+
+
+def test_classify_replay_drift_only_is_still_pass():
+    # Drift is informational on OPDS screens — executed+complete+no-error = pass.
+    r = {"ok": True, "steps_planned": 2,
+         "steps": [{"executed": True, "drifted": True},
+                   {"executed": True, "drifted": True}]}
+    v = rf.classify_replay(r)
+    assert v["status"] == "pass"
+    assert v["drifted"] == 2
+
+
+def test_classify_replay_compat_no_executed_flag_counts_present_steps():
+    # Older result shapes omit the `executed` flag; present results count.
+    r = {"steps_planned": 2, "steps": [{"id": 1}, {"id": 2}]}
+    v = rf.classify_replay(r)
+    assert v["steps_executed"] == 2 and v["status"] == "pass"
+
+
+def test_classify_replay_missing_steps_planned_falls_back_to_len():
+    r = {"steps": [{"executed": True}, {"executed": True}]}
+    v = rf.classify_replay(r)
+    assert v["steps_planned"] == 2 and v["status"] == "pass"
+
+
+# ── 2e. device-suffix normalization (campaign-critical) ───────────────────────
+
+
+def test_strip_device_suffix():
+    assert rf.strip_device_suffix("iPhone 16 Pro (pool-3)") == "iPhone 16 Pro"
+    assert rf.strip_device_suffix("iPhone 16 Pro (fleet-5)") == "iPhone 16 Pro"
+    assert rf.strip_device_suffix("iPhone 16 Pro") == "iPhone 16 Pro"
+    assert rf.strip_device_suffix("") == ""
+
+
+def test_device_matches_modulo_suffix():
+    assert rf.device_matches_modulo_suffix("iPhone 16 Pro", "iPhone 16 Pro (pool-3)")
+    assert rf.device_matches_modulo_suffix("iPhone 16 Pro (pool-3)", "iPhone 16 Pro (fleet-5)")
+    assert not rf.device_matches_modulo_suffix("iPhone 16 Pro", "iPad Pro")
+    assert not rf.device_matches_modulo_suffix("", "iPhone 16 Pro")
+
+
+def test_normalized_requires_device_rewrites_to_current_on_suffix_only():
+    # base recording + suffixed fleet sim, same model → rewrite to current name
+    assert rf.normalized_requires_device(
+        "iPhone 16 Pro", "iPhone 16 Pro (pool-3)") == "iPhone 16 Pro (pool-3)"
+
+
+def test_normalized_requires_device_none_when_already_equal():
+    assert rf.normalized_requires_device(
+        "iPhone 16 Pro (pool-3)", "iPhone 16 Pro (pool-3)") is None
+    assert rf.normalized_requires_device("iPhone 16 Pro", "iPhone 16 Pro") is None
+
+
+def test_normalized_requires_device_none_on_real_model_divergence():
+    # SAFETY: a genuinely different model must NOT be normalized — a real
+    # device-divergence must still HALT/FAIL, not be masked.
+    assert rf.normalized_requires_device("iPhone 16 Pro", "iPad Pro (pool-3)") is None
+    assert rf.normalized_requires_device("iPhone 16 Pro", "iPhone 15 (pool-3)") is None
+
+
+def test_normalized_requires_device_none_on_empty():
+    assert rf.normalized_requires_device("", "iPhone 16 Pro") is None
+    assert rf.normalized_requires_device("iPhone 16 Pro", "") is None
+
+
 # ── 3. CLI surface used by the shell scripts ──────────────────────────────────
 
 
