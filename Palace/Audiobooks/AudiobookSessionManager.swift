@@ -384,14 +384,46 @@ public final class AudiobookSessionManager: ObservableObject {
     ///   - book: The book to play
     ///   - startPlaying: Whether to auto-start playback (default: true)
     /// - Returns: Result indicating success or failure
+    /// Protocol witness (`AudiobookSessionManaging`): a normal user-initiated
+    /// open. Delegates to the `forceRefulfill` body with re-fulfill off.
     @discardableResult
     public func openAudiobook(_ book: TPPBook, startPlaying: Bool = true) async -> Result<Void, AudiobookSessionError> {
-        Log.info(#file, "Opening audiobook: '\(book.title)' (id: \(book.identifier))")
+        await openAudiobook(book, startPlaying: startPlaying, forceRefulfill: false)
+    }
+
+    /// WS-3: per-session bound on the OverDrive expired-URL re-fulfill recovery.
+    /// A book id is inserted when its recovery re-open fires and removed when the
+    /// user initiates a fresh open — so a persistent failure re-fulfills at most
+    /// ONCE per playback session and never loops on the shared handler.
+    private var overdriveRefulfillAttemptedBookIds = Set<String>()
+
+    /// Loader factory — recovery seam (WS-3). The default closure is
+    /// byte-equivalent to the inline `AudiobookLoader(forceRefulfill:)` it
+    /// replaces, so production behavior is unchanged. `private(set)` so only
+    /// this type rewires it — no in-module production path can overwrite the
+    /// factory. The fresh-URL-consumed behavior it enables is proven at the
+    /// `AudiobookLoader(adapters:)` boundary, not by reassigning this seam.
+    private(set) var makeLoader: (Bool) -> AudiobookLoader = { AudiobookLoader(forceRefulfill: $0) }
+
+    /// - parameter forceRefulfill: WS-3 OverDrive recovery — when true the loader
+    ///   bypasses `LocalFileAdapter` so the book re-fulfills FRESH signed URLs
+    ///   instead of replaying the expired on-disk manifest. Internal (not part of
+    ///   the public `AudiobookSessionManaging` surface); the public 2-param
+    ///   witness above delegates here, and the in-class recovery branch calls it.
+    func openAudiobook(_ book: TPPBook, startPlaying: Bool, forceRefulfill: Bool) async -> Result<Void, AudiobookSessionError> {
+        Log.info(#file, "Opening audiobook: '\(book.title)' (id: \(book.identifier))\(forceRefulfill ? " [re-fulfill]" : "")")
         // Polish-phase (in-app-nav-polish-2026-06-01): record wall-clock
         // open time so the Continue Reading row's sort surfaces the real
         // last-touched book even when the audiobook position-save flow
         // hasn't yet written its first timeStamp. Idempotent overwrite.
         AppContainer.production().bookOpenTracker.recordOpened(book.identifier)
+
+        // A fresh user-initiated open resets the per-session re-fulfill bound so
+        // a later genuine expiry can recover again; the recovery re-open
+        // (forceRefulfill) must NOT reset it, or the bound never holds.
+        if !forceRefulfill {
+            overdriveRefulfillAttemptedBookIds.remove(book.identifier)
+        }
 
         if case .loading(let loadingId) = state, loadingId == book.identifier {
             Log.warn(#file, "Audiobook already loading: \(book.identifier)")
@@ -430,7 +462,7 @@ public final class AudiobookSessionManager: ObservableObject {
 
         loadGeneration &+= 1
         let generation = loadGeneration
-        let loader = AudiobookLoader()
+        let loader = makeLoader(forceRefulfill)
         currentLoader = loader
 
         return await withCheckedContinuation { [weak self] (continuation: CheckedContinuation<Result<Void, AudiobookSessionError>, Never>) in
@@ -1520,6 +1552,49 @@ public final class AudiobookSessionManager: ObservableObject {
     private static let openAccessPlayerErrorDomain = "org.nypl.labs.NYPLAudiobookToolkit.OpenAccessPlayer"
     private static let openAccessPlayerErrorAuthenticationRequiredCode = 5 // OpenAccessPlayerError.authenticationRequired
 
+#if FEATURE_OVERDRIVE
+    /// WS-3 (3.2.0 crash-triage `04373e48`/`d2c9e0ef`): an OverDrive audiobook
+    /// streams from time-limited SIGNED URLs embedded in its on-disk manifest.
+    /// When those URLs expire the toolkit surfaces a `.playbackFailed` carrying
+    /// an HTTP-`410` error and — because OverDrive is not SAML — the recovery in
+    /// `handleManagerState` falls through to a `.unknown` dead-end with no way to
+    /// play. Returns true when the failure is a RECOVERABLE signed-URL expiry a
+    /// fresh re-fulfill can fix: an OverDrive book, an HTTP-410 (Gone) signal, and
+    /// no prior re-fulfill this session.
+    ///
+    /// Conservative by design (per "when in doubt, don't re-fulfill — a false
+    /// dead-end is safer than retrying into a revoked loan"): 401/auth and
+    /// loan-revoked are handled elsewhere (toolkit bearer refresh / SAML re-auth)
+    /// and are NOT retried here; HTTP-403 is excluded because it is ambiguous
+    /// (signed-URL expiry vs entitlement denial) absent a confirmed OverDrive
+    /// expiry signature; an error with no extractable HTTP status is NOT retried.
+    /// Mirrors `shouldTriggerSAMLReauthForPlaybackFailure`.
+    static func shouldTriggerOverdriveRefulfillForPlaybackFailure(
+        error: Error?,
+        book: TPPBook?,
+        alreadyAttempted: Bool
+    ) -> Bool {
+        guard !alreadyAttempted, let book else { return false }
+        guard book.distributor?.lowercased() == OverdriveDistributorKey.lowercased() else { return false }
+        guard let status = httpStatusCode(from: error) else { return false }
+        return status == 410
+    }
+
+    /// Extracts an HTTP status code from a playback error. The toolkit's network
+    /// layer stamps `userInfo["httpStatusCode"]` on download/streaming failures
+    /// (`OpenAccessDownloadTask`); we also walk one level of the
+    /// `NSUnderlyingError` chain.
+    static func httpStatusCode(from error: Error?) -> Int? {
+        guard let nsError = error as NSError? else { return nil }
+        if let status = nsError.userInfo["httpStatusCode"] as? Int { return status }
+        if let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError,
+           let status = underlying.userInfo["httpStatusCode"] as? Int {
+            return status
+        }
+        return nil
+    }
+#endif
+
     private func validateRequirements(for book: TPPBook) async -> AudiobookSessionError? {
         if !(await isUserAuthenticated()) {
             return .notAuthenticated
@@ -1652,7 +1727,10 @@ public final class AudiobookSessionManager: ObservableObject {
         return accountsManager.currentUserAccount.hasCredentials()
     }
 
-    private func handleManagerState(_ managerState: AudiobookManagerState) {
+    /// Internal (was private) so the WS-3 integration test can drive the
+    /// `.playbackFailed` OverDrive re-fulfill recovery directly. Visibility
+    /// widening only — no new public API, no behavior change.
+    func handleManagerState(_ managerState: AudiobookManagerState) {
         guard let bookId = currentBook?.identifier else { return }
 
         switch managerState {
@@ -1723,6 +1801,29 @@ public final class AudiobookSessionManager: ObservableObject {
                 }
                 return
             }
+
+#if FEATURE_OVERDRIVE
+            // WS-3 (3.2.0 crash-triage): OverDrive streams from time-limited
+            // signed URLs and has no SAML session to re-auth — an expired URL
+            // (HTTP 410) would otherwise dead-end here as `.unknown`. Re-fulfill
+            // FRESH signed URLs (bypassing the stale on-disk manifest) and
+            // re-open. Bounded to one attempt per session so a persistent
+            // failure cannot loop on this shared handler.
+            if Self.shouldTriggerOverdriveRefulfillForPlaybackFailure(
+                error: error,
+                book: currentBook,
+                alreadyAttempted: overdriveRefulfillAttemptedBookIds.contains(bookId)
+            ), let book = currentBook {
+                Log.info(#file, "OverDrive audiobook playback failed on an expired signed URL — re-fulfilling fresh URLs and re-opening")
+                overdriveRefulfillAttemptedBookIds.insert(bookId)
+                Task { [weak self] in
+                    guard let self else { return }
+                    guard self.currentBook?.identifier == book.identifier else { return }
+                    _ = await self.openAudiobook(book, startPlaying: true, forceRefulfill: true)
+                }
+                return
+            }
+#endif
 
             errorPublisher.send(.unknown("Playback failed"))
 

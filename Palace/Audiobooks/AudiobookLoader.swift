@@ -63,6 +63,14 @@ final class AudiobookLoader {
         self.adapters = adapters ?? Self.makeProductionAdapters()
     }
 
+    /// WS-3: re-fulfill loader. Bypasses `LocalFileAdapter` so an already-
+    /// downloaded OverDrive book routes to `BearerTokenAdapter` for a FRESH
+    /// fulfillment (fresh signed URLs) instead of replaying the stale on-disk
+    /// manifest. Used only by the OverDrive expired-URL recovery path.
+    convenience init(forceRefulfill: Bool) {
+        self.init(adapters: forceRefulfill ? Self.makeProductionAdapters(excludeLocalFile: true) : nil)
+    }
+
     // MARK: - Public API
 
     /// Load an audiobook end-to-end. Calls completion on the main thread.
@@ -383,7 +391,12 @@ final class AudiobookLoader {
     // > OpenAccess. OpenAccess keeps in-band wrapper auto-detection as a
     // defensive fallback for CM fulfill responses missing the wrapper MIME.
 
-    private static func makeProductionAdapters() -> [AudiobookVendorAdapter] {
+    /// Builds the production adapter chain. `excludeLocalFile` drops the
+    /// `LocalFileAdapter` so an already-downloaded book is NOT served from its
+    /// (possibly stale) on-disk manifest — used by the WS-3 OverDrive re-fulfill
+    /// path so the book routes to `BearerTokenAdapter` for a FRESH fulfillment
+    /// (fresh signed URLs), not a cached-manifest replay.
+    private static func makeProductionAdapters(excludeLocalFile: Bool = false) -> [AudiobookVendorAdapter] {
         let downloadCenter = AppContainer.production().downloadCenter
         let networkExecutor = AppContainer.production().networkExecutor
         let manifestNetwork = ProductionAudiobookManifestFetcher(executor: networkExecutor)
@@ -397,11 +410,13 @@ final class AudiobookLoader {
         ))
         #endif
 
-        chain.append(LocalFileAdapter(
-            downloadCenter: downloadCenter,
-            fileReader: ProductionAudiobookFileReader(),
-            tokenRefresher: ProductionBearerTokenRefresher()
-        ))
+        if !excludeLocalFile {
+            chain.append(LocalFileAdapter(
+                downloadCenter: downloadCenter,
+                fileReader: ProductionAudiobookFileReader(),
+                tokenRefresher: ProductionBearerTokenRefresher()
+            ))
+        }
 
         // BearerTokenAdapter.canHandle is unconditional; the MIME gate
         // (BearerTokenMIMEGate) is Module D's chain placement gate.
