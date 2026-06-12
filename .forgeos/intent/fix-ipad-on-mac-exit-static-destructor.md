@@ -28,8 +28,9 @@ prevent RMSDK's load-time C++ static from being constructed/destructed.
 - Adds pure helper `shouldSkipStaticDestructorsOnExit(isiOSAppOnMac:) -> Bool`.
 - Adds pure helper `AdobeDRMService.shouldRegisterStaticDestructorBypass(isiOSAppOnMac:alreadyRegistered:)`.
 - Adds idempotent `AdobeDRMService.registerStaticDestructorBypassIfNeeded()` (atexit interceptor, gated on isiOSAppOnMac, NSLock-serialized).
+- Adds `AdobeDRMService.markAdobeDRMUsed()` / `didUseAdobeDRMThisSession` (NSLock-guarded session flag), marked at `AdobeDRMContainer` construction (`AdobeDRMContentProtection.open`).
 - `applicationWillTerminate` calls `_exit(0)` last, gated on isiOSAppOnMac.
-- `applicationDidFinishLaunching` calls the registration helper under `#if FEATURE_DRM_CONNECTOR`.
+- `applicationDidEnterBackground` calls the registration helper under `#if FEATURE_DRM_CONNECTOR`, gated on `didUseAdobeDRMThisSession`. Installing at background — after all DRM use of the session — is LIFO-after Adobe's dtor regardless of its (unmeasured) construction timing; a launch-time install was withdrawn as too-early.
 - 5 guard tests in `iPadOnMacRMSDKGuardTests`.
 
 ## Anti-claims

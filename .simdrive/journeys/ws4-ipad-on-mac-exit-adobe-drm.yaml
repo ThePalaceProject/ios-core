@@ -53,17 +53,30 @@ scenario:
 
     # --- Re-arm for Path B ---
     - id: 03-relaunch-reopen
-      description: "Relaunch the app and reopen the Adobe-DRM book to reconstruct statics"
+      description: "Relaunch the app and reopen the Adobe-DRM book + read a page to reconstruct statics AND set didUseAdobeDRMThisSession"
       action: "launch app -> repeat step 01"
       expects:
         contains_text_any: ["Read", "Reading", "Loading"]
 
+    # --- Background FIRST: the atexit interceptor installs at applicationDidEnterBackground ---
+    - id: 03b-background
+      description: >
+        Send the app to the background. The atexit{_exit(0)} interceptor is
+        installed HERE (applicationDidEnterBackground), gated on
+        didUseAdobeDRMThisSession (set in step 03). Path B is only protected once
+        this install has fired.
+      action: "background the app (press_key for the Mac minimize/Home equivalent, or switch away)"
+      post_assert:
+        logs:
+          must_contain_any: ["registerStaticDestructorBypass", "iPad-on-Mac", "_exit interceptor installed"]  # confirm the install fired
+
     # --- Path B: forced/watchdog exit (skips willTerminate -> atexit interceptor) ---
     - id: 04-pathB-forced-exit
       description: >
-        Forced/watchdog exit that SKIPS applicationWillTerminate, so termination
-        falls through C library exit() and our atexit{_exit(0)} interceptor must
-        fire LIFO-before Adobe's static recursive_mutex destructor.
+        Forced/watchdog exit (while backgrounded, after step 03b installed the
+        interceptor) that SKIPS applicationWillTerminate, so termination falls
+        through C library exit() and our atexit{_exit(0)} interceptor must fire
+        LIFO-before Adobe's static recursive_mutex destructor.
       action: >
         Trigger the FinalTerminationWatchdog forced-exit path (e.g. the app's
         own watchdog timeout, or an external exit()-routing kill — NOT SIGKILL,

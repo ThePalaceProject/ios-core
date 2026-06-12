@@ -11,22 +11,27 @@ Unit-green ≠ verified. This runbook is executable verbatim.
 The fix has two independent exit paths:
 
 - **Path A — normal Cmd-Q:** `applicationWillTerminate` → `_exit(0)` as the last
-  statement. **Correct independent of atexit ordering** — it never relies on the
-  LIFO list. Covered even if the load-time assumption below were wrong.
+  statement. **Correct independent of atexit ordering** — it never enters the
+  LIFO list.
 - **Path B — forced/watchdog exit** (skips `applicationWillTerminate`): our
-  `atexit { _exit(0) }`, installed at `didFinishLaunching`, must fire **before**
-  Adobe RMSDK's static `recursive_mutex` destructor.
+  `atexit { _exit(0) }` must fire **before** Adobe RMSDK's static
+  `recursive_mutex` destructor. The interceptor is installed at
+  **`applicationDidEnterBackground`**, gated on `didUseAdobeDRMThisSession`
+  (marked at `AdobeDRMContainer` construction).
 
-Path B is correct **only if** the load-bearing assumption holds:
+Path B's correctness does **NOT** depend on the (unmeasured) construction timing
+of Adobe's mutex. By background entry, every Adobe-DRM op of the session has run,
+so Adobe's `__cxa_atexit(dtor)` is already registered — whether the mutex is a
+dylib-load file-scope static (registered before `main`) OR a lazy function-local
+static (registered during some DRM op this session). Either way our background
+install is **LIFO-after** Adobe's dtor ⇒ `_exit(0)` pops first. The placement,
+not a timing measurement, is the correctness argument.
 
-> Adobe's faulting `recursive_mutex` is a **dylib-load** (`__mod_init_func`)
-> file-scope global — its `__cxa_atexit` destructor is registered at image load,
-> **before `main`/`didFinishLaunching`** — NOT a lazy Meyers function-local
-> static constructed on first `NYPLADEPT.sharedInstance()`.
-
-If load-time: our later `atexit` registration is LIFO-after Adobe's ⇒ runs first
-⇒ `_exit(0)` before the fault. **CHECK 1 proves this.** **CHECK 2** proves the
-end-to-end behavior on both paths.
+> **CHECK 1 is corroborating/explanatory only — NOT load-bearing.** It (a) checks
+> whether the mutex dtor is load-time or lazy and (b) gives CHECK 2 a concrete
+> `DYLD_PRINT_INITIALIZERS` prediction. The fix is correct either way, so CHECK 1
+> can be skipped without weakening the fix. **CHECK 2 is the required end-to-end
+> gate.**
 
 ---
 
@@ -92,10 +97,15 @@ confirmed empirically.
 
 ### Decision rule
 
-| Observation | Verdict | Action |
+The current fix installs the `atexit` interceptor at **`applicationDidEnterBackground`
+(gated on `didUseAdobeDRMThisSession`)**, which is LIFO-after Adobe's dtor in
+BOTH outcomes below — so CHECK 1 is **corroborating only**, it does not change
+the fix. It just sets the `DYLD_PRINT_INITIALIZERS` expectation for CHECK 2.
+
+| Observation | Verdict | Consequence for the fix |
 |---|---|---|
-| Mutex dtor registered by a `__mod_init_func` thunk (step 5) AND no `__cxa_guard` around it (step 6) AND/OR Adobe initializer prints under `DYLD_PRINT_INITIALIZERS` | **CONFIRMED load-time** | Path B LIFO ordering holds. Proceed to CHECK 2. |
-| Mutex construction is `__cxa_guard`-protected in the owning function, absent from `__mod_init_func` | **REFUTED (lazy)** | Path B not guaranteed by didFinishLaunching registration. Path A (Cmd-Q) still correct. Revisit: register the atexit at the earliest possible point, or accept Path-A-only and document Path B as residual risk. Escalate to w-mutex. |
+| Mutex dtor registered by a `__mod_init_func` thunk (step 5) AND no `__cxa_guard` around it (step 6) AND/OR Adobe initializer prints under `DYLD_PRINT_INITIALIZERS` | **load-time** | Adobe's dtor registered before `main` < our background install ⇒ LIFO ours-first. Fix holds. CHECK 2 should see the Adobe initializer print at load. |
+| Mutex construction is `__cxa_guard`-protected in the owning function, absent from `__mod_init_func` | **lazy** | Adobe's dtor registered during a DRM op this session < our background install (which is after all DRM use) ⇒ LIFO ours-first. Fix holds. CHECK 2 should see NO Adobe init at load. |
 
 ---
 
@@ -107,20 +117,30 @@ so the crash cannot be reproduced in a sim). Journey skeleton:
 `.simdrive/journeys/ws4-ipad-on-mac-exit-adobe-drm.yaml`.
 
 1. Launch; ensure a library with **Adobe-DRM** content is added + signed in.
-2. Borrow + **open an Adobe-DRM (ACSM/Adobe-EPUB) book** — exercises the full
-   RMSDK path (note: even cold launch constructs the load-time static, but
-   opening a book is the strongest exercise).
+2. Borrow + **open an Adobe-DRM (ACSM/Adobe-EPUB) book and read a page** — the
+   decrypt/read drives the RMSDK op that constructs the mutex AND sets
+   `didUseAdobeDRMThisSession` (marked at `AdobeDRMContainer` construction).
 3. **Path A (normal):** quit via **⌘Q**. Assert: no `recursive_mutex` /
    `EXC_*` / SIGABRT in Console; no new Crashlytics `9a91840677` event.
-4. Relaunch + reopen the book. **Path B (forced/watchdog):** trigger the
-   `FinalTerminationWatchdog` / force-quit so `applicationWillTerminate` is
-   **skipped**. Assert: atexit interceptor fires (`_exit(0)`); same no-crash
-   assertion as Path A.
-5. **Device regression** (real iPhone/iPad, `isiOSAppOnMac == false`): confirm
+4. **Path B (forced/watchdog) — REQUIRES backgrounding first:** reopen the book,
+   then **send the app to the background** (the interceptor installs at
+   `applicationDidEnterBackground` because `didUseAdobeDRMThisSession` is set —
+   verify a log line / breakpoint confirms the install fired). THEN trigger the
+   `FinalTerminationWatchdog` / a forced `exit()` (NOT `kill -9`, which bypasses
+   `atexit` and proves nothing) so `applicationWillTerminate` is **skipped**.
+   Assert: `_exit(0)` fires; no `recursive_mutex` fault; no new `9a91840677`.
+   Also run `DYLD_PRINT_INITIALIZERS=1` once to record whether Adobe inits at
+   load (corroborates CHECK 1; not load-bearing).
+5. **Residual to probe:** a forced `exit()` while **foreground/active** (no
+   backgrounding) after DRM use is NOT covered by the background install. The 294
+   events are all background-suspension, so this should not reproduce — confirm
+   it doesn't, or report it if it does (would motivate an additional install site).
+6. **Device regression** (real iPhone/iPad, `isiOSAppOnMac == false`): confirm
    normal termination is **unchanged** (no `_exit` short-circuit) and Adobe
    borrow / open / return still work.
 
-PASS = both paths quit clean on Mac AND device behavior unchanged.
+PASS = both paths quit clean on Mac (Path B after backgrounding) AND device
+behavior unchanged.
 
 ---
 
