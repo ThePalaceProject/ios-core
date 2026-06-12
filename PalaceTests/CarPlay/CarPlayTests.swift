@@ -273,6 +273,21 @@ class CarPlayIntegrationTests: XCTestCase {
 @MainActor
 class CarPlayOpenAppAlertTests: XCTestCase {
 
+    // Bracket the class with the AppContainer test-boundary reset so the
+    // statebleed round-trip below starts from a known-clean graph (the
+    // resolve→reset→re-resolve non-identity assertion only proves the reset
+    // rebuilt the statics if the arrange step isn't pre-polluted by a prior
+    // test) and this class doesn't leak rebuilt statics into the next.
+    override func setUp() {
+        super.setUp()
+        AppContainer._resetForTesting()
+    }
+
+    override func tearDown() {
+        AppContainer._resetForTesting()
+        super.tearDown()
+    }
+
     func testCarPlay_OpenAppStrings_AreConfigured() {
         // Assert that Open App strings are not empty
         // The alert uses message variants (message, messageShort, messageShortest)
