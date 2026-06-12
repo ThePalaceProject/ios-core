@@ -1,0 +1,103 @@
+# regression-areas.yaml — area-group manifest for the fleet regression campaign.
+#
+# This is the canonical SHARD-KEY source. A campaign worker = one
+# (area-group × device-cell). The campaign driver (RC-CAMPAIGN, harness-local)
+# reads this file to fan workers; `scripts/regression-area-worker.sh` reads it
+# to resolve which journeys + chaos seeds a shard owns.
+#
+# Each area-group maps to:
+#   matrix_ids  — the REGRESSION_TEST_MATRIX.md rows this group covers (for the
+#                 report's coverage matrix; not executed directly).
+#   journeys    — `.simdrive/journeys/<id>.yaml` ids the area-worker replays.
+#                 Every id here MUST have a journey file on disk (enforced by
+#                 scripts/tests/test_regression_area_chaos.py).
+#   chaos_seeds — `<flow>/<step>` seeds (from `.simdrive/fixtures/flows/`) passed
+#                 to run-chaos-pass.sh by the chaos-fan. The chaos subagent
+#                 navigates live toward that state, so PENDING_CAPTURE flows are
+#                 still valid seed hints. `cold-launch` is the universal fallback.
+#
+# Adding coverage: drop a new journey under .simdrive/journeys/, add its id to
+# the right group here, and both the area-worker and the report pick it up.
+
+version: 1
+
+device_cells:
+  # Informational — the cells the campaign matrix sweeps. The worker is
+  # cell-agnostic; --device-cell is carried into findings + artifact dirs only.
+  # Host provisioning for these cells is HC-DEVICE-CELLS, not this workstream.
+  - id: C-iphone-26      # iPhone 16 Pro / iOS 26  — baseline parity
+  - id: C-ipad-26        # iPad / iPadOS 26        — iPad layout parity (X1)
+  - id: C-ios18          # iPhone / iOS 18         — back-compat floor (iOS-16 substitute)
+  - id: C-ipad-on-mac    # Designed-for-iPad native — device-divergence crashes
+
+area_groups:
+
+  auth:
+    description: "Sign-in / sign-out / session across auth types (A1–A8)."
+    matrix_ids: [A1, A2, A3, A3-SAML, A3-OIDC, A3-OAuth, A4, A5, A6, A7, A8]
+    journeys:
+      - a1qa-basic-signin
+      - a1qa-sign-out
+      - danny-saml-signin-init
+      - icarus-oidc-signin
+      - library-picker-stateless
+    chaos_seeds:
+      - basic-auth-borrow/05-after-signin
+      - multi-account-switching/02-rapid-switch-1
+
+  circulation:
+    description: "Borrow / return / hold / download / DRM fulfillment (B1–B9)."
+    matrix_ids: [B1, B2, B3, B4, B5, B6, B6-Adobe, B6-OD, B7, B8, B9]
+    journeys:
+      - palace-bookshelf-anonymous
+      - book-return-from-mybooks
+      - read-return-from-mybooks-roundtrip
+    chaos_seeds:
+      - anonymous-borrow/05-after-borrow
+      - anonymous-borrow/06-my-books
+
+  reading:
+    description: "EPUB / PDF / streaming-HTML reader (E1–E2, PP-4161)."
+    matrix_ids: [E1, E1-LCP, E1-Adobe, E2, E2-Hang]
+    journeys:
+      - reader2-back-button
+      - reader2-bookmark-toggle
+      - reader2-page-forward
+      - reader2-settings-sheet
+      - reader2-toc-navigate
+      - PP-4161-streaming-html-reader
+    chaos_seeds:
+      - reader-open-and-exit/02-tap-read
+      - reader-open-and-exit/05-exit-reader
+
+  audiobook:
+    description: "Audiobook playback UI: skip / scrub / TOC / download indicator (E3–E8)."
+    matrix_ids: [E3-FA, E3-OD, E3-LCP, E3-OA, E4, E8]
+    journeys:
+      - audiobook-download-indicator-stateful
+      - audiobook-scrubber-drag
+      - audiobook-skip-forward
+      - audiobook-toc-seek
+    chaos_seeds:
+      - cold-launch
+
+  catalog:
+    description: "Catalog browse / search / feed-refresh / book-detail (C1–C4, X5)."
+    matrix_ids: [C1, C2, C3, X5]
+    journeys:
+      - catalog-browse-stateless
+      - search-flow-stateful
+      - feed-refresh-stateless
+      - book-detail-stateless
+    chaos_seeds:
+      - anonymous-borrow/03-catalog
+      - anonymous-borrow/04-book-detail
+
+  ui-nav:
+    description: "Tab-bar + settings tour — chrome/navigation completeness (U1, X6)."
+    matrix_ids: [U1, X6, X3]
+    journeys:
+      - tab-bar-tour
+      - settings-tour-stateless
+    chaos_seeds:
+      - cold-launch
