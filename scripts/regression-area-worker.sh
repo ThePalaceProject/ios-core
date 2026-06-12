@@ -26,7 +26,7 @@
 #                  points at and labels the output with this cell.
 #   --sim-id       Sim UDID. Default: $HARNESS_SESSION_SIM_UDID (set by fleet
 #                  _allocate_sim), else the first booted iPhone sim.
-#   --manifest     Area-group manifest. Default .simdrive/regression-areas.yaml.
+#   --manifest     Area-group manifest. Default .simdrive/regression-areas.json.
 #   --no-keychain-reset  Skip the per-run keychain reset (default: reset, for
 #                  hermeticity — a reused sim re-accumulates dirty auth state).
 #   --chaos        After the journey pass, also run the chaos fan for THIS area.
@@ -43,7 +43,7 @@ REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 cd "$REPO_ROOT"
 
 APP_BUNDLE="org.thepalaceproject.palace"
-MANIFEST=".simdrive/regression-areas.yaml"
+MANIFEST=".simdrive/regression-areas.json"
 JOURNEYS_DIR=".simdrive/journeys"
 FINDINGS="$SCRIPT_DIR/regression_findings.py"
 
@@ -169,7 +169,7 @@ for journey in "${JOURNEYS[@]}"; do
   # crash dump) and prints a one-line JSON verdict on the last line.
   VERDICT="$(SIM_ID="$SIM_ID" APP="$APP_BUNDLE" JOURNEY="$journey" \
              THRESHOLD="$threshold" LOG_FILE="$log_file" CAND_PNG="$cand_png" \
-             CRASH_JSON="$crash_json" \
+             CRASH_JSON="$crash_json" SCRIPT_DIR="$SCRIPT_DIR" \
              python3 - <<'PYEOF' 2>>"$log_file"
 import json, os, shutil, sys, time
 from pathlib import Path
@@ -204,7 +204,14 @@ try:
     current = sdp.snapshot(udid, app)
     # Scope to crashes since this run started (since_ts) rather than a pre/post
     # count delta — that delta could go negative if the list_crashes window shifts.
-    post = sdd.list_crashes(since_ts=start_ts, bundle_id=app, max_results=20)
+    # crashes_since re-applies the run-scoping as a tested pure invariant so a
+    # crash predating the run can never yield a finding.
+    sys.path.insert(0, os.environ["SCRIPT_DIR"])
+    from regression_findings import crashes_since
+    post = crashes_since(
+        sdd.list_crashes(since_ts=start_ts, bundle_id=app, max_results=20),
+        start_ts,
+    )
 
     # Candidate screenshot + recent logs (evidence) while the app is still alive.
     # observe writes its raw observe-<ts>.png/json to a throwaway temp dir; we

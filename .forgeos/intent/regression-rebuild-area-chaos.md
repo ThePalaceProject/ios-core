@@ -21,7 +21,7 @@ hermeticity).
 
 ## Claims
 
-1. **Adds `.simdrive/regression-areas.yaml`** — an area-group manifest mapping
+1. **Adds `.simdrive/regression-areas.json`** — an area-group manifest mapping
    each area-group (`auth`, `circulation`, `reading`, `audiobook`, `catalog`,
    `ui-nav`) to its `matrix_ids` (REGRESSION_TEST_MATRIX rows), its `journeys`
    (existing `.simdrive/journeys/*.yaml` ids), and its `chaos_seeds` (fixture
@@ -76,7 +76,7 @@ hermeticity).
 
 ## Files in scope
 
-- `.simdrive/regression-areas.yaml` (new)
+- `.simdrive/regression-areas.json` (new)
 - `scripts/regression_findings.py` (new)
 - `scripts/regression-area-worker.sh` (new)
 - `scripts/regression-chaos-fan.sh` (new)

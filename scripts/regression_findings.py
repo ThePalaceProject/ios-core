@@ -201,6 +201,26 @@ class Finding:
         return bool(self.evidence_paths) or self.screenshot_pair is not None
 
 
+def crashes_since(reports: list[dict], since_ts: float) -> list[dict]:
+    """Filter simdrive crash reports to those that occurred at/after `since_ts`.
+
+    simdrive's `diagnostics.list_crashes` returns dicts carrying a numeric
+    `mtime` (crash-report file mtime). The area-worker already passes
+    `since_ts=<run start>` to list_crashes, but applying this filter on top makes
+    the run-scoping a pure, testable invariant: a crash that predates the run
+    must NEVER yield a finding (the false-positive-crash class the architect
+    review caught when the old code used a pre/post count delta). Reports with no
+    usable `mtime` are kept (fail-open — better to surface than to silently drop
+    a real crash).
+    """
+    out = []
+    for r in reports:
+        mtime = r.get("mtime") if isinstance(r, dict) else None
+        if mtime is None or mtime >= since_ts:
+            out.append(r)
+    return out
+
+
 def translate_chaos_row(
     row: dict,
     *,
@@ -275,11 +295,13 @@ def append_finding(
 
 
 def load_manifest(manifest_path: str | os.PathLike) -> dict[str, Any]:
-    """Load the area-group manifest. Requires pyyaml (present in the toolchain)."""
-    import yaml  # local import so non-manifest callers don't need it
+    """Load the area-group manifest (stdlib json — NO pyyaml dependency, so the
+    shared CI tooling-integrity job loads it cleanly). Keys beginning with '_'
+    are documentation and ignored by the consumers."""
+    import json
 
     with Path(manifest_path).open() as f:
-        data = yaml.safe_load(f)
+        data = json.load(f)
     if not isinstance(data, dict) or "area_groups" not in data:
         raise ValueError(f"{manifest_path}: missing top-level 'area_groups'")
     return data

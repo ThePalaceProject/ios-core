@@ -23,7 +23,7 @@
 #   --area-group   Limit the fan to one group. Default: ALL groups in the manifest.
 #   --device-cell  Cell tag for findings + dir paths. Default C-iphone-26.
 #   --sim-id       Sim UDID. Default $HARNESS_SESSION_SIM_UDID, else first booted.
-#   --manifest     Default .simdrive/regression-areas.yaml.
+#   --manifest     Default .simdrive/regression-areas.json.
 #   --max-paths    Per-area path budget passed to run-chaos-pass.sh (default 12).
 #   --max-minutes  Per-area wall-clock budget (default 8).
 #   --dry-run      Passed through to run-chaos-pass.sh (prints the prompt; no sim
@@ -38,7 +38,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 cd "$REPO_ROOT"
 
-MANIFEST=".simdrive/regression-areas.yaml"
+MANIFEST=".simdrive/regression-areas.json"
 FINDINGS="$SCRIPT_DIR/regression_findings.py"
 CHAOS_PASS="$SCRIPT_DIR/run-chaos-pass.sh"
 

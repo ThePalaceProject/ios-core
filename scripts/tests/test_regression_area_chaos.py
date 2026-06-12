@@ -9,7 +9,7 @@ Covers:
   2. The discovery-layer anti-hallucination rule (append_finding rejects a
      finding with no evidence).
   3. The CLI surface the shell scripts call (append, init-csv, areas, journeys).
-  4. Manifest integrity: every journey referenced in .simdrive/regression-areas.yaml
+  4. Manifest integrity: every journey referenced in .simdrive/regression-areas.json
      exists on disk; every chaos seed is well-formed; classification enum sanity.
   5. Both shell scripts pass `bash -n` (the tooling-checks gate runs this too,
      but failing fast here keeps the workstream self-contained).
@@ -29,7 +29,7 @@ import pytest
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 _SCRIPTS = _REPO_ROOT / "scripts"
 _MODULE = _SCRIPTS / "regression_findings.py"
-_MANIFEST = _REPO_ROOT / ".simdrive" / "regression-areas.yaml"
+_MANIFEST = _REPO_ROOT / ".simdrive" / "regression-areas.json"
 _JOURNEYS_DIR = _REPO_ROOT / ".simdrive" / "journeys"
 _AREA_WORKER = _SCRIPTS / "regression-area-worker.sh"
 _CHAOS_FAN = _SCRIPTS / "regression-chaos-fan.sh"
@@ -241,6 +241,46 @@ def test_translate_chaos_row_no_evidence_is_discarded_on_append(tmp_path):
     assert f is not None and not f.has_evidence()
     with pytest.raises(ValueError):
         rf.append_finding(csv_path, f)
+
+
+# ── 2c. crashes_since — pins the DEFECT-1 since_ts fix ────────────────────────
+
+
+def test_crashes_since_only_returns_post_start_crashes():
+    # A crash BEFORE the run start must never count; one AFTER must.
+    start_ts = 1000.0
+    reports = [
+        {"timestamp": "old", "mtime": 900.0},   # predates the run → excluded
+        {"timestamp": "new", "mtime": 1100.0},  # during the run → included
+    ]
+    kept = rf.crashes_since(reports, start_ts)
+    assert len(kept) == 1
+    assert kept[0]["timestamp"] == "new"
+
+
+def test_crashes_since_boundary_is_inclusive():
+    # A crash exactly at start_ts counts (>= comparison).
+    assert len(rf.crashes_since([{"mtime": 1000.0}], 1000.0)) == 1
+
+
+def test_crashes_since_no_mtime_is_failopen_kept():
+    # A report with no usable mtime is kept (better to surface than drop a crash).
+    kept = rf.crashes_since([{"timestamp": "x"}], 1000.0)
+    assert len(kept) == 1
+
+
+def test_crashes_since_empty_is_empty():
+    assert rf.crashes_since([], 1000.0) == []
+
+
+def test_read_findings_tolerates_malformed_csv(tmp_path):
+    # A short/ragged row must not crash read_findings; missing cols come back as
+    # None/"" per csv.DictReader, never an exception.
+    p = tmp_path / "bad.csv"
+    p.write_text(",".join(rf.FINDINGS_COLUMNS) + "\n" + "only-id,auth\n")
+    rows = rf.read_findings(str(p))
+    assert rows[0]["id"] == "only-id"
+    assert rows[0]["area"] == "auth"
 
 
 # ── 3. CLI surface used by the shell scripts ──────────────────────────────────
