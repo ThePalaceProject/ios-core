@@ -269,6 +269,72 @@ def translate_chaos_row(
     )
 
 
+def classify_replay(replay_result: dict) -> dict:
+    """Classify a simdrive `recorder.replay()` return dict into a runner verdict.
+
+    Enforces the anti-false-pass rule (the #1 integrity gate): a replay that
+    executed **0 of its planned steps** (or fewer than planned), or that halted
+    before running (`ok=False` / `halt_reason` set), is a FAILURE — never a
+    pass. A halt at step 0 means the journey's recorded precondition (its
+    `requires:` state contract) did not match the live app, so NOTHING was
+    exercised; reporting that as PASS masks every regression behind it. This is
+    the same class as the stale-bundle "0 tests executed = misconfiguration, not
+    a pass" rule.
+
+    simdrive 1.0.0b7 replay() returns:
+      {ok, halted_at, halt_reason, steps_planned, steps: [step_result...], ...}
+    where each step_result may carry `executed`, `error`, `drifted`. On a
+    state-contract mismatch with halt_on_state_mismatch=True it returns
+    `steps: []` (empty) with `steps_planned` still set and `halt_reason`
+    populated — that is the exact shape that previously false-passed.
+
+    Returns: {status, steps_planned, steps_executed, errored, drifted,
+              halt_reason, reason} with status in {pass, fail, error}.
+    """
+    steps = replay_result.get("steps") or []
+    planned = replay_result.get("steps_planned")
+    if planned is None:
+        planned = len(steps)
+    step_dicts = [s for s in steps if isinstance(s, dict)]
+    executed = sum(1 for s in step_dicts if s.get("executed"))
+    # Compat: if no step result carries an `executed` flag at all, treat each
+    # present result as executed (older/result shapes that omit the flag).
+    if executed == 0 and step_dicts and not any("executed" in s for s in step_dicts):
+        executed = len(step_dicts)
+    errored = sum(1 for s in step_dicts if s.get("error"))
+    drifted = sum(1 for s in step_dicts if s.get("drifted"))
+    ok = replay_result.get("ok", True)
+    halt_reason = replay_result.get("halt_reason") or ""
+
+    verdict = {
+        "steps_planned": planned,
+        "steps_executed": executed,
+        "errored": errored,
+        "drifted": drifted,
+        "halt_reason": halt_reason,
+    }
+    if planned == 0:
+        verdict["status"] = "error"
+        verdict["reason"] = "recording has 0 planned steps — misconfiguration, not a pass"
+    elif ok is False or halt_reason:
+        halted_at = replay_result.get("halted_at", "?")
+        verdict["status"] = "fail"
+        verdict["reason"] = (
+            f"replay halted at step {halted_at}: {halt_reason or 'ok=false'} "
+            f"(executed {executed}/{planned})"
+        )
+    elif executed < planned:
+        verdict["status"] = "fail"
+        verdict["reason"] = f"incomplete replay: executed {executed}/{planned} steps"
+    elif errored > 0:
+        verdict["status"] = "fail"
+        verdict["reason"] = f"{errored}/{planned} step(s) errored"
+    else:
+        verdict["status"] = "pass"
+        verdict["reason"] = f"executed {executed}/{planned} steps clean"
+    return verdict
+
+
 def append_finding(
     csv_path: str | os.PathLike,
     finding: Finding,

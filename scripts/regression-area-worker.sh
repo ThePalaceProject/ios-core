@@ -174,7 +174,9 @@ for journey in "${JOURNEYS[@]}"; do
 import json, os, shutil, sys, time
 from pathlib import Path
 
-ev = {"steps": 0, "drifted": 0, "errored": 0, "perf_severity": "low",
+ev = {"steps": 0, "steps_planned": 0, "steps_executed": 0, "drifted": 0,
+      "errored": 0, "halt_reason": "", "replay_status": "error",
+      "replay_reason": "replay did not run", "perf_severity": "low",
       "crashes_during": 0, "crash_file": "", "screenshot": "", "error": ""}
 try:
     from simdrive import session as sds
@@ -207,7 +209,7 @@ try:
     # crashes_since re-applies the run-scoping as a tested pure invariant so a
     # crash predating the run can never yield a finding.
     sys.path.insert(0, os.environ["SCRIPT_DIR"])
-    from regression_findings import crashes_since
+    from regression_findings import crashes_since, classify_replay
     post = crashes_since(
         sdd.list_crashes(since_ts=start_ts, bundle_id=app, max_results=20),
         start_ts,
@@ -241,10 +243,18 @@ try:
         "memory_rss_mb": current.get("memory_rss_mb", 0) - baseline.get("memory_rss_mb", 0),
         "threads": current.get("threads", 0) - baseline.get("threads", 0),
     }
-    steps = r.get("steps", [])
-    ev["steps"] = len(steps)
-    ev["drifted"] = sum(1 for st in steps if st.get("drifted"))
-    ev["errored"] = sum(1 for st in steps if st.get("error"))
+    # Anti-false-pass guard: classify the replay by executed-vs-planned steps +
+    # halt reason. A 0-executed / halted / incomplete replay is fail/error here,
+    # NEVER pass — a state-contract halt at step 0 means nothing was exercised.
+    rv = classify_replay(r)
+    ev["steps_planned"] = rv["steps_planned"]
+    ev["steps_executed"] = rv["steps_executed"]
+    ev["steps"] = rv["steps_executed"]
+    ev["drifted"] = rv["drifted"]
+    ev["errored"] = rv["errored"]
+    ev["halt_reason"] = rv["halt_reason"]
+    ev["replay_status"] = rv["status"]
+    ev["replay_reason"] = rv["reason"]
     ev["perf_severity"] = sdp.severity(delta)
     ev["crashes_during"] = len(post)
 
@@ -280,6 +290,10 @@ PYEOF
   err="$(echo "$VERDICT" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('error',''))" 2>/dev/null || echo "")"
   crash_file="$(echo "$VERDICT" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('crash_file',''))" 2>/dev/null || echo "")"
   screenshot="$(echo "$VERDICT" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('screenshot',''))" 2>/dev/null || echo "")"
+  replay_status="$(echo "$VERDICT" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('replay_status','error'))" 2>/dev/null || echo "error")"
+  replay_reason="$(echo "$VERDICT" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('replay_reason',''))" 2>/dev/null || echo "")"
+  steps_exec="$(echo "$VERDICT" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('steps_executed',0))" 2>/dev/null || echo "0")"
+  steps_planned="$(echo "$VERDICT" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('steps_planned',0))" 2>/dev/null || echo "0")"
 
   # Structural checks (robust to OPDS variability) — failure is a finding.
   struct_status="n/a"; struct_log=""
@@ -299,8 +313,12 @@ PYEOF
     status="fail"; classification="other"; reason="replay-error: $err"
   elif [[ "$crashes" != "0" && "$crashes" != "?" ]]; then
     status="fail"; classification="crash"; reason="$crashes crash(es) during journey"
-  elif [[ "$errored" != "0" && "$errored" != "?" ]]; then
-    status="fail"; classification="other"; reason="$errored step(s) errored"
+  elif [[ "$replay_status" != "pass" ]]; then
+    # Anti-false-pass guard (the #1 integrity rule): a halted / incomplete /
+    # 0-executed replay is NEVER a pass — nothing was exercised, so it cannot
+    # certify anything. Subsumes the old per-step `errored` check.
+    status="fail"; classification="other"
+    reason="replay ${replay_status} (${steps_exec}/${steps_planned} steps): ${replay_reason}"
   elif [[ "$perf_sev" == "high" ]]; then
     status="fail"; classification="perf"; reason="perf severity HIGH (likely leak)"
   elif [[ "$struct_status" == "fail" ]]; then
@@ -309,7 +327,7 @@ PYEOF
 
   if [[ "$status" == "pass" ]]; then
     pass_count=$((pass_count + 1))
-    echo "  [PASS] $journey"
+    echo "  [PASS] $journey (${steps_exec}/${steps_planned} steps)"
     continue
   fi
 
