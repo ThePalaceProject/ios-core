@@ -15,7 +15,7 @@ scenario:
     most often abort, so the Cancel branch is the relevant negative
     case (covered as a known issue, not the happy path).
 
-  tags: [tier1, ios, mybooks, return, money-flow]
+  tags: [tier1, ios, mybooks, return, money-flow, audiobook]
   tier: stateful
   blocking: false   # smoke-only — MyBooks list rendering is non-
                     # deterministic (server-side ordering, cover art).
@@ -25,33 +25,33 @@ scenario:
   preconditions:
     - "A1QA Test Library is the active library"
     - "A1QA is signed in (patron 'al/qa' visible top-left)"
-    - "Anna Karenina audiobook (Leo Tolstoy) is in MyBooks, Return button visible inline on the row"
+    - "Dune audiobook (Frank Herbert) is in MyBooks, Return button visible inline on the row"
     - "MyBooks tab is in the foreground"
-    - "At least one other book is in MyBooks (state-contract: Animal Farm + Mathematics Test Book remain after the return to anchor the post-state OCR)"
+    - "At least one other book is in MyBooks (state-contract: Animal Farm (George Orwell) + Mathematics Test Book remain after the return to anchor the post-state OCR)"
 
   state_reset:
-    - "Before each replay, ensure Anna Karenina has been re-borrowed (it gets returned by this recording)."
-    - "If a 'Are you sure you want to return X?' dialog appears with a different book name than 'Anna Karenina', the wrong row was tapped — verify the stable_id selectors against a fresh observe."
+    - "Before each replay, ensure Dune has been re-borrowed (it gets returned by this recording)."
+    - "If a 'Are you sure you want to return X?' dialog appears with a different book name than 'Dune', the wrong row was tapped — verify the stable_id selectors against a fresh observe."
 
   recording:
     path: "~/.simdrive/recordings/book-return-from-mybooks/recording.yaml"
     steps: 2
-    captured_with: "simdrive 1.0.0a9"
-    captured_on: "2026-05-12"
+    captured_with: "simdrive 1.0.0b7"
+    captured_on: "2026-06-12"
 
   steps:
     - id: tap_inline_return
-      description: "Tap the Return button on the Anna Karenina row in MyBooks (inline button, not in book detail)"
-      tap_target: { stable_id: "ef6c59cde5d5" }
+      description: "Tap the Return button on the Dune row in MyBooks (inline button, not in book detail)"
+      tap_target: { stable_id: "e552a21f6759" }
     - id: confirm_return
-      description: "Tap Return on the confirmation dialog ('Are you sure you want to return Anna Karenina?')"
+      description: "Tap Return on the confirmation dialog ('Are you sure you want to return Dune?')"
       tap_target: { stable_id: "6051727ac6fd" }
 
   expected_invariants:
-    - "Inline Return tap renders a UIAlertController-style confirmation dialog with 'Return' header + body 'Are you sure you want to return \"Anna Karenina\"?'"
+    - "Inline Return tap renders a UIAlertController-style confirmation dialog with 'Return' header + body 'Are you sure you want to return \"Dune\"?'"
     - "Dialog has two buttons: Cancel + Return"
-    - "Confirm Return tap dismisses the dialog AND removes Anna Karenina from the MyBooks list (post-OCR shows no Anna Karenina or Leo Tolstoy text)"
-    - "Post-state shows the remaining MyBooks rows shifted up (Don't Read This! / Four Women now occupy the freed space)"
+    - "Confirm Return tap dismisses the dialog AND removes Dune from the MyBooks list (post-OCR shows no Dune or Frank Herbert text)"
+    - "Post-state shows the remaining MyBooks rows shifted up (Mathematics Test Book / Animal Farm / Fundamental Accessibility Tests remain)"
     - "No spinner, no error toast, no auth-prompt regression — OPDS revoke succeeds silently on test fixture"
 
   ssim_gating:
@@ -76,7 +76,7 @@ scenario:
 
   known_issues:
     - "The Cancel branch (tap Cancel instead of Return on the confirmation dialog) is NOT exercised by this recording — it's the negative path. A follow-up recording 'book-return-cancel' could cover it."
-    - "DRM-bound books (Adobe ACSM / LCP-licensed) may show a brief 'Returning...' spinner before the row disappears. The Anna Karenina test fixture is NON-DRM, so this recording does NOT exercise the DRM-unbind path. A separate recording against a DRM book (e.g. the Bibliotheca lane) would close that gap."
+    - "Re-anchored 2026-06-12 to the Dune AUDIOBOOK (Frank Herbert, A1QA Audible Titles lane) — chosen deliberately so this recording exercises the AUDIOBOOK return path (OPDS revoke + Findaway/Audible local cleanup), which is high-value coverage given the live Findaway download-engine regression. The audiobook return completed without a Findaway crash at capture time (app stayed foreground) — return is a revoke/cleanup, NOT the open/download-status path that triggers the concurrency crash. A separate recording against an Adobe-ACSM / LCP-DRM book would still close the DRM-unbind-on-return gap."
     - "Step 2's stable_id (6051727ac6fd) identifies the dialog's 'Return' button text. If the system locale shifts (e.g. zh, ja) the dialog button text changes and stable_id resolution may fail — preconditions assume en locale."
 
   related:
