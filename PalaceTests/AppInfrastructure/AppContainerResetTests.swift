@@ -68,6 +68,57 @@ final class AppContainerResetTests: PalaceTestCase {
         )
     }
 
+    /// M0-reconverge — CarPlay state-bleed (the last board-green blocker).
+    ///
+    /// The shared, process-wide `_audiobookSessionPresenter` static is the one
+    /// graph member `_resetForTesting()` historically did NOT reset (the
+    /// AccountsManager crawl-drain and `_cached` rebuild do not touch it). When
+    /// an upstream test leaves it in an active session,
+    /// `CarPlayAudiobookBridgePresenterMigrationTests.testCarPlayBridge_dismissBookOnPhone`
+    /// reads that stale `hasActiveSession` and its precondition inverts in-suite
+    /// (it passes alone). On #1071's CI it failed all iters-3 retries because the
+    /// polluted static persists across retries in the same process.
+    ///
+    /// This pins the structural fix: `_resetForTesting()` must clear the
+    /// audiobook session/presenter statics so the next test class boundary hands
+    /// back a fresh presenter — neutralizing ANY polluter, order-independent.
+    /// It drives the pollution through the REAL publisher path (so it tests the
+    /// fix mechanism, not a model). RED before the static reset (the same polluted
+    /// presenter is handed back, still active); GREEN after.
+    @MainActor
+    func testResetForTesting_clearsLeakedActiveSessionFromSharedAudiobookPresenter() {
+        // Arrange: pollute the shared static presenter into an active session
+        // exactly how an upstream test leaves it dirty — publish `.playing` on
+        // the shared session manager's publisher.
+        let session = AppContainer.production().audiobookSession
+        let pollutedPresenter = AppContainer.production().audiobookSessionPresenter
+        session.playbackStatePublisher.send(.playing(bookId: "polluter"))
+
+        // `hasActiveSession` is delivered async via the presenter's
+        // `.receive(on: DispatchQueue.main)` subscription; pump the run loop
+        // until it lands (CI-safe deterministic wait — never a fixed sleep).
+        let arrangeDeadline = Date().addingTimeInterval(2.0)
+        while !pollutedPresenter.hasActiveSession && Date() < arrangeDeadline {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.005))
+        }
+        XCTAssertTrue(pollutedPresenter.hasActiveSession,
+                      "ARRANGE: the shared audiobook presenter must be polluted to an active session before the reset")
+
+        // Act: the test-boundary reset that runs between every test class.
+        AppContainer._resetForTesting()
+
+        // Assert: the next resolution hands back a FRESH presenter with no
+        // active session — the leaked active state is gone. Without the static
+        // reset, `production().audiobookSessionPresenter` returns the SAME
+        // polluted instance (still active) and this fails — the CarPlay
+        // state-bleed.
+        let freshPresenter = AppContainer.production().audiobookSessionPresenter
+        XCTAssertFalse(freshPresenter.hasActiveSession,
+                       "_resetForTesting() must clear the shared audiobook presenter's active-session state so it does not bleed into the next test class (CarPlay dismissBookOnPhone precondition state-bleed)")
+        XCTAssertFalse(pollutedPresenter === freshPresenter,
+                       "_resetForTesting() must hand back a fresh presenter instance, not the polluted one")
+    }
+
     /// Reset must produce a cached graph whose AccountsManager was built
     /// with the `deferInitialLoadCatalogsForTesting` flag set to `true`.
     /// The observable consequence: immediately after reset, the new
