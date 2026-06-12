@@ -374,6 +374,88 @@ final class AudiobookFirstOpenHangTests: XCTestCase {
         }
     }
 
+    // MARK: - WS-5 / F-011: LCP first-open reliable start (confirmLCPFirstPlay)
+    //
+    // LCP can't use the await-then-play gate (isLoaded only flips AFTER play →
+    // deadlock), so it kept the original single fire-and-forget play that drops
+    // on first-open. confirmLCPFirstPlay inverts it: play, then re-issue until
+    // the engine confirms playing (bounded), suppressing the re-issue the
+    // instant the engine is already playing (no double-start glitch), and
+    // staying SILENT on exhaustion (toolkit's 30s .failed owns genuine failure).
+
+    /// Engine confirms playing on the first play → exactly ONE play, no re-issue.
+    func testConfirmLCPFirstPlay_engineReadyAfterFirstPlay_issuesExactlyOnePlay() async throws {
+        let spy = LCPFirstOpenSpy(becomesReadyAfterPlays: 1, marksGateWhenReady: true)
+        await sessionManager.confirmLCPFirstPlay(
+            bookId: "lcp-ready-first",
+            initialPosition: makeFakeTrackPosition(),
+            probe: spy, command: spy,
+            budget: 1.0, retryInterval: 0.05
+        )
+        XCTAssertEqual(spy.playAtCallCount, 1,
+                       "When the first play takes effect, the engine confirms ready and we must NOT re-issue — exactly one play")
+        XCTAssertEqual(spy.stopCallCount, 1, "probe.stop must run via defer")
+    }
+
+    /// Engine stays un-loaded until the 3rd play → the loop re-issues until the
+    /// engine confirms playing. Kills the "delete the retry loop" mutant
+    /// (single-play behaviour would record 1, not 3).
+    func testConfirmLCPFirstPlay_engineNotReadyInitially_reissuesPlayUntilLoaded() async throws {
+        let spy = LCPFirstOpenSpy(becomesReadyAfterPlays: 3, marksGateWhenReady: true)
+        await sessionManager.confirmLCPFirstPlay(
+            bookId: "lcp-reissue",
+            initialPosition: makeFakeTrackPosition(),
+            probe: spy, command: spy,
+            budget: 2.0, retryInterval: 0.05
+        )
+        XCTAssertEqual(spy.playAtCallCount, 3,
+                       "Dropped first/second play must be re-issued until the engine confirms playing — this IS the nav-back workaround, programmatically")
+    }
+
+    /// CAVEAT 2: the engine became playing between the gate wait and the
+    /// re-issue decision (gate not latched, but isCurrentlyReady() true). The
+    /// re-issue MUST be suppressed — never double-start a playing engine. Kills
+    /// the "drop the isCurrentlyReady() suppression check" mutant (without it,
+    /// the loop would re-issue → 2 plays).
+    func testConfirmLCPFirstPlay_engineBecameReadyDuringGateWait_suppressesReissue() async throws {
+        let spy = LCPFirstOpenSpy(becomesReadyAfterPlays: 1, marksGateWhenReady: false)
+        await sessionManager.confirmLCPFirstPlay(
+            bookId: "lcp-suppress",
+            initialPosition: makeFakeTrackPosition(),
+            probe: spy, command: spy,
+            budget: 1.0, retryInterval: 0.05
+        )
+        XCTAssertEqual(spy.playAtCallCount, 1,
+                       "Once the engine is playing, the immediate isCurrentlyReady() re-check must suppress the re-issue — no double-start / seek-to-zero glitch")
+    }
+
+    /// Engine never loads → the loop re-issues for the whole budget, then stays
+    /// SILENT (no Palace .error / no errorPublisher emit) and defers to the
+    /// toolkit's own 30s .failed. Kills a "surface .error on exhaustion" mutant.
+    func testConfirmLCPFirstPlay_engineNeverLoaded_exhaustsBudgetSilently_noError() async throws {
+        let spy = LCPFirstOpenSpy(becomesReadyAfterPlays: .max, marksGateWhenReady: true)
+        var receivedErrors: [AudiobookSessionError] = []
+        let cancellable = sessionManager.errorPublisher.sink { receivedErrors.append($0) }
+        defer { cancellable.cancel() }
+
+        // budget 0.3 / interval 0.1 → maxAttempts = ceil(3) = 3 re-issues.
+        await sessionManager.confirmLCPFirstPlay(
+            bookId: "lcp-never",
+            initialPosition: makeFakeTrackPosition(),
+            probe: spy, command: spy,
+            budget: 0.3, retryInterval: 0.1
+        )
+
+        XCTAssertEqual(spy.playAtCallCount, 3,
+                       "While not loaded, the loop must re-issue EXACTLY ceil(budget/retryInterval)=3 times — pins the bound; a mutated loop range / budget math changes this count")
+        XCTAssertTrue(receivedErrors.isEmpty,
+                      "On budget exhaustion the LCP path must stay SILENT — surfacing a Palace error would mask the toolkit-owned 30s .failed genuine-non-start path")
+        if case .error = sessionManager.state {
+            XCTFail("LCP exhaustion must NOT transition the session to .error — got \(sessionManager.state)")
+        }
+        XCTAssertEqual(spy.stopCallCount, 1, "probe.stop must run via defer even on exhaustion")
+    }
+
     // MARK: - Helpers
 
     /// Builds a TrackPosition without touching the toolkit's heavy
@@ -428,6 +510,11 @@ private final class ProbeSpy: PlaybackReadinessProbing {
     func stop() {
         stopCallCount += 1
     }
+
+    /// Synchronous readiness snapshot. Defaults to `false`; tests that need
+    /// the LCP retry loop's immediate re-check drive it via `snapshotReady`.
+    var snapshotReady: Bool = false
+    func isCurrentlyReady() -> Bool { snapshotReady }
 }
 
 // MARK: - Test stubs
@@ -450,4 +537,58 @@ private final class PlaybackEngineSpy: PlaybackEngineCommanding {
 /// `TrackPositionShape` the readiness-gating code path consumes.
 private struct FakeTrackPosition: TrackPositionShape {
     let timestamp: Double
+}
+
+// MARK: - LCPFirstOpenSpy
+
+/// Combined spy for the LCP first-open retry path — conforms to BOTH
+/// `PlaybackReadinessProbing` and `PlaybackEngineCommanding` so the probe's
+/// readiness can be coupled to the command's play count (the engine "becomes
+/// loaded" after the Nth play, modelling first-open init completing across one
+/// or more re-issues).
+///
+/// `marksGateWhenReady` controls whether becoming-loaded also drives the gate
+/// (the normal observed path) or leaves the gate pending so the synchronous
+/// `isCurrentlyReady()` re-check is what catches it — exercising caveat 2 (the
+/// re-issue-suppression race where play() took effect between the gate wait and
+/// the re-issue decision).
+@MainActor
+private final class LCPFirstOpenSpy: PlaybackReadinessProbing, PlaybackEngineCommanding {
+    private let becomesReadyAfterPlays: Int
+    private let marksGateWhenReady: Bool
+
+    private(set) var playAtCallCount = 0
+    private(set) var startCallCount = 0
+    private(set) var stopCallCount = 0
+    private weak var drivenGate: PlaybackReadinessGate?
+    private var ready = false
+
+    init(becomesReadyAfterPlays: Int, marksGateWhenReady: Bool) {
+        self.becomesReadyAfterPlays = becomesReadyAfterPlays
+        self.marksGateWhenReady = marksGateWhenReady
+    }
+
+    // PlaybackReadinessProbing
+    func start(driving gate: PlaybackReadinessGate) {
+        startCallCount += 1
+        drivenGate = gate
+        if ready && marksGateWhenReady {
+            Task { await gate.markReady() }
+        }
+    }
+
+    func stop() { stopCallCount += 1 }
+
+    func isCurrentlyReady() -> Bool { ready }
+
+    // PlaybackEngineCommanding
+    func play(at position: TrackPositionShape) async throws {
+        playAtCallCount += 1
+        if playAtCallCount >= becomesReadyAfterPlays && !ready {
+            ready = true
+            if marksGateWhenReady, let gate = drivenGate {
+                await gate.markReady()
+            }
+        }
+    }
 }

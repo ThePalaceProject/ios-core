@@ -241,8 +241,7 @@ class CatalogLaneMoreViewModel: ObservableObject {
       newLanes.append(CatalogLaneModel(
         title: group.title,
         books: books,
-        moreURL: group.moreURL,
-        isLoading: books.count < 3
+        moreURL: group.moreURL
       ))
     }
     lanes = newLanes

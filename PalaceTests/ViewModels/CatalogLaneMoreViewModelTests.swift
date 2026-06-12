@@ -428,6 +428,46 @@ final class CatalogLaneMoreViewModelTests: XCTestCase {
         XCTAssertEqual(active?.title, "Title")
     }
 
+    // MARK: - PP-4553: More-view grouped single-title lane must render its cover
+
+    // processOPDS2GroupedFeed (CatalogLaneMoreViewModel) carried the same
+    // `isLoading: books.count < 3` defect as the main catalog. A 1-publication
+    // group must yield a lane that is NOT loading — otherwise CatalogLaneRowView
+    // shows the skeleton scroller instead of the single cover.
+    func testProcessOPDS2GroupedFeed_singleTitleLane_isNotLoading_soCoverRenders() throws {
+        let viewModel = createViewModel(urlString: "https://example.com/featured")
+
+        let pub = OPDS2Publication(
+            links: [
+                OPDS2Link(
+                    href: "https://example.com/borrow/only-1",
+                    type: "application/epub+zip",
+                    rel: "http://opds-spec.org/acquisition/borrow"
+                )
+            ],
+            metadata: OPDS2Publication.Metadata(id: "only-1", title: "Only Book"),
+            images: nil
+        )
+        let feed = OPDS2Feed(
+            metadata: OPDS2FeedMetadata(title: "Featured"),
+            groups: [
+                OPDS2Group(
+                    metadata: OPDS2GroupMetadata(title: "Featured"),
+                    links: nil,
+                    publications: [pub],
+                    navigation: nil
+                )
+            ]
+        )
+
+        viewModel.processOPDS2GroupedFeed(feed, feedURL: URL(string: "https://example.com/featured")!)
+
+        let lane = try XCTUnwrap(viewModel.lanes.first, "A 1-publication group must produce a lane")
+        XCTAssertEqual(lane.books.count, 1, "The single title must survive lane assembly")
+        XCTAssertFalse(lane.isLoading,
+                       "A fully-built 1-title lane in the More view must not be flagged loading; otherwise the cover never renders (PP-4553)")
+    }
+
     // MARK: - Filter Selection Tests
 
     func testPendingSelectionsUpdate() {
