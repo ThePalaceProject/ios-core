@@ -47,16 +47,14 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         let deviceModel = UIDevice.current.model
         Log.info(#file, "[BUILD MARKER] App=\(appVersion) (\(buildNumber)), iOS=\(iosVersion), device=\(deviceModel)")
 
-        #if FEATURE_DRM_CONNECTOR
-        // iPad-on-Mac only: install the process-exit interceptor at launch.
-        // A forced/watchdog exit() can skip applicationWillTerminate; the
-        // interceptor hard-exits via _exit(0) BEFORE Adobe RMSDK's static
-        // recursive_mutex destructor runs (LIFO atexit order). Registered here
-        // — after RMSDK's load-time C++ statics have already constructed and
-        // registered their destructors — so ours is guaranteed to run first.
-        // No-op on iOS devices. Ordering rationale lives in AdobeDRMService.
-        AdobeDRMService.registerStaticDestructorBypassIfNeeded()
-        #endif
+        // NOTE: the iPad-on-Mac watchdog-exit interceptor is NOT installed here.
+        // A launch-time atexit install is too early: Adobe RMSDK's recursive_mutex
+        // destructor is registered (via __cxa_atexit) at first DRM use, which can
+        // be LATER than launch — so a launch-time handler would be LIFO-popped
+        // AFTER Adobe's faulting dtor. The interceptor is instead installed right
+        // after the first Adobe-DRM decode (AdobeDRMContentProtection), where it is
+        // LIFO-after Adobe's dtor regardless of whether the mutex is constructed at
+        // dylib-load or lazily. See AdobeDRMService.registerStaticDestructorBypassIfNeeded.
 
         // CRITICAL: Initialize playback infrastructure FIRST for CarPlay cold starts
         // This ensures MPRemoteCommandCenter handlers are registered before any UI loads
@@ -343,6 +341,20 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         // Pause Firebase operations when app goes to background
         // This helps prevent the "recursive_mutex lock failed" crash
         FirebaseManager.shared.applicationDidEnterBackground()
+
+        #if FEATURE_DRM_CONNECTOR
+        // iPad-on-Mac watchdog-exit guard (WS-4). Once Adobe DRM has been used
+        // this session (reader decrypt → its static recursive_mutex dtor is
+        // registered), install the _exit(0) atexit interceptor HERE: background
+        // entry is (a) guaranteed after every Adobe DRM decode of this session
+        // ⇒ LIFO-after Adobe's dtor regardless of when the mutex was constructed,
+        // and (b) adjacent to the background suspension where the watchdog forces
+        // exit() and the 294 recursive_mutex faults occur (Crashlytics
+        // 9a91840677, all iOS_ON_MAC). Idempotent; gated to iPad-on-Mac inside.
+        if AdobeDRMService.didUseAdobeDRMThisSession {
+            AdobeDRMService.registerStaticDestructorBypassIfNeeded()
+        }
+        #endif
     }
 
     func applicationWillTerminate(_ application: UIApplication) {

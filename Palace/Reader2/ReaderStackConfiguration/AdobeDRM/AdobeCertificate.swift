@@ -158,8 +158,35 @@ class AdobeDRMService: NSObject {
     /// at most once.
     private static var staticDestructorBypassRegistered = false
 
-    /// Serializes the idempotency check + atexit registration.
+    /// Serializes the idempotency check + atexit registration + the
+    /// `adobeDRMUsed` flag.
     private static let staticDestructorBypassLock = NSLock()
+
+    /// Set once Adobe DRM is being exercised at runtime this session. Marked at
+    /// `AdobeDRMContainer` construction in `AdobeDRMContentProtection.open` — the
+    /// sole `.adept` reader entry, which dominates every ungated RMSDK op
+    /// (decode / displayUntilDate license-read / init → `GPFile::lock`) that can
+    /// construct the faulting static `recursive_mutex`. Gates the watchdog-exit
+    /// interceptor install so we only bypass exit cleanup when there is actually
+    /// an Adobe dtor to outrun.
+    private static var adobeDRMUsed = false
+
+    /// Records that Adobe DRM is being exercised this session. Called when an
+    /// `AdobeDRMContainer` is constructed (the broad reader-DRM umbrella).
+    static func markAdobeDRMUsed() {
+        staticDestructorBypassLock.lock()
+        defer { staticDestructorBypassLock.unlock() }
+        adobeDRMUsed = true
+    }
+
+    /// Whether Adobe DRM has been exercised this session. The
+    /// `applicationDidEnterBackground` install site consults this so the
+    /// `_exit(0)` interceptor is only installed once an Adobe dtor exists.
+    static var didUseAdobeDRMThisSession: Bool {
+        staticDestructorBypassLock.lock()
+        defer { staticDestructorBypassLock.unlock() }
+        return adobeDRMUsed
+    }
 
     /// Pure decision: should *this* call install the atexit interceptor now?
     /// True only on iOS-app-on-Mac AND only if not already installed
@@ -175,17 +202,25 @@ class AdobeDRMService: NSObject {
     /// on iOS-app-on-Mac, covering the forced/watchdog `exit()` path that skips
     /// `applicationWillTerminate`.
     ///
-    /// Ordering rationale: Adobe RMSDK's faulting static `recursive_mutex` is
-    /// constructed at dylib-load (C++ file-scope statics construct when the
-    /// framework image loads, before `main` and independent of whether we ever
-    /// call `NYPLADEPT.sharedInstance()` — which is why the `isDRMAvailable`
-    /// iOS-on-Mac gate alone does not stop the crash). Its `__cxa_atexit`
-    /// destructor is therefore already registered by the time this runs at app
-    /// launch. `atexit` and `__cxa_atexit` share one LIFO list, so installing
-    /// ours afterward guarantees `_exit(0)` fires BEFORE Adobe's destructor.
+    /// CALL SITE MATTERS — call this from `applicationDidEnterBackground` once
+    /// `didUseAdobeDRMThisSession` is true. Ordering rationale, robust to the
+    /// (unmeasured) construction timing of Adobe's faulting static
+    /// `recursive_mutex`: `atexit` and `__cxa_atexit` share one LIFO list, so to
+    /// pop `_exit(0)` BEFORE Adobe's destructor we must register ours AFTER
+    /// Adobe's `__cxa_atexit(dtor)`. By the time the app enters the background,
+    /// every Adobe-DRM `decode()` of this session has already run, so the mutex
+    /// is constructed and its dtor registered whenever it was going to be —
+    /// dylib-load (before `main`) OR lazily on some DRM op. Installing at
+    /// background entry is therefore LIFO-after Adobe's dtor in BOTH cases. It is
+    /// also temporally adjacent to the background-suspension watchdog `exit()`
+    /// where the 294 crashes fire. (A launch-time or first-`decode()` install
+    /// risks latching too early — before the mutex's construction — which the
+    /// at-most-once guard would lock in.) The `isDRMAvailable` iOS-on-Mac gate
+    /// only covers `AdobeDRMService` fulfillment/activation — NOT the reader
+    /// decrypt path — which is why the crash fires on iOS-on-Mac despite it.
     ///
     /// Idempotent; no-op on iOS devices. End-to-end behavior (crash-at-exit) is
-    /// not unit-testable — requires simdrive validation on a Mac host.
+    /// not unit-testable — requires simdrive validation on a Mac host (CHECK 2).
     static func registerStaticDestructorBypassIfNeeded() {
         staticDestructorBypassLock.lock()
         defer { staticDestructorBypassLock.unlock() }

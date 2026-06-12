@@ -13,12 +13,17 @@ letting `exit()` run the C++ static-destructor pass. Implemented on both exit
 paths, each gated on `ProcessInfo.processInfo.isiOSAppOnMac`:
 
 1. **Normal (Cmd-Q):** `applicationWillTerminate` calls `_exit(0)` as its last
-   statement (after existing cleanup).
-2. **Forced/watchdog:** `applicationDidFinishLaunching` installs an idempotent
+   statement (after existing cleanup). Sound independent of everything below —
+   it never enters the `atexit`/static-destructor list.
+2. **Forced/watchdog:** `applicationDidEnterBackground` installs an idempotent
    `atexit { _exit(0) }` interceptor (via
-   `AdobeDRMService.registerStaticDestructorBypassIfNeeded()`) for the path
-   where a `FinalTerminationWatchdog`-style forced `exit()` skips
-   `applicationWillTerminate`.
+   `AdobeDRMService.registerStaticDestructorBypassIfNeeded()`) — but **only once
+   Adobe DRM has been used this session** (`didUseAdobeDRMThisSession`, set by the
+   reader decrypt path) — for the watchdog `exit()` that skips
+   `applicationWillTerminate`. Background entry is chosen because it is
+   guaranteed-after-all-DRM-this-session and adjacent to the background
+   suspension where the crashes fire (see Ordering). The earlier revision
+   installed at `applicationDidFinishLaunching`; that was withdrawn (see below).
 
 The decision is pinned by two pure, injectable helpers
 (`shouldSkipStaticDestructorsOnExit(isiOSAppOnMac:)`,
@@ -34,32 +39,74 @@ runs under the "Designed for iPad on Apple Silicon Mac" runtime. Two prior
 mitigations did not stop the crash:
 
 - **`isDRMAvailable` returns false on `isiOSAppOnMac`** — prevents our
-  `NYPLADEPT.sharedInstance()` call, but the faulting static is constructed at
-  **dylib load** (`__mod_init_func`), independent of any runtime gate.
+  `NYPLADEPT.sharedInstance()` (Adobe fulfillment/activation), but does NOT cover
+  the **reader decrypt path**: opening a downloaded Adobe-DRM EPUB runs
+  `AdobeDRMContentProtection` → `AdobeDRMContainer.decode(...)`, which drives the
+  RMSDK runtime that owns the mutex. That path is ungated, so the crash still
+  fires on iOS-on-Mac. (Code-read of `AdobeDRMContentProtection.swift` +
+  `AdobeCertificate.swift`; `isDRMAvailable` wraps only `AdobeDRMService`.)
 - **`AdobeDRMService.prepareForTermination`** — clears our cached reference but
   (by its own comment) never destroys the underlying C++ object.
 
-**Evidence the faulting static is dylib-load-constructed, not lazy:** the only
-`NYPLADEPT.sharedInstance()` call site in the app is
-`AdobeCertificate.swift` inside `AdobeDRMService.adeptInstance`, gated by
-`isDRMAvailable` (false on iOS-on-Mac). A function-local (Meyers) static
-registers its `__cxa_atexit` destructor only on first construction. If the
-mutex were function-local it would never construct on iOS-on-Mac (sharedInstance
-never runs) ⇒ no destructor ⇒ no exit-time fault — yet 294/294 events ARE
-iOS-on-Mac. Therefore the destructor was registered with zero app calls into
-RMSDK ⇒ it is a file/namespace-scope global constructed at image load. This also
-explains why both prior fixes failed: neither touches the C++ global's lifecycle.
+**Construction timing of Adobe's `recursive_mutex` is UNMEASURED.** Whether its
+`__cxa_atexit` destructor is registered at dylib-load (file-scope static) or
+lazily on first DRM use (function-local Meyers static) has NOT been measured on
+the real arm64 device binary in this environment. (An earlier "dylib-load"
+inference and a later "lazy Meyers" claim were both unverified; neither is cited
+as fact. A real CHECK 1 — `otool`/`nm`/`DYLD_PRINT_INITIALIZERS` on the device
+slice — can resolve it on the Mac, but the fix below does not depend on it.)
 
-## Ordering rationale (the lynchpin)
+## Ordering rationale — robust to the unmeasured timing (the lynchpin)
 
 `atexit` handlers and C++ static destructors (`__cxa_atexit`) share one LIFO
-list. Adobe's load-time static registers its destructor at dylib load, **before
-`main`**. Our `atexit { _exit(0) }`, installed in `applicationDidFinishLaunching`
-(after `main`), is therefore registered **later** ⇒ runs **first** at exit ⇒
-`_exit(0)` hard-terminates before Adobe's faulting destructor executes. `_exit`
-performs an immediate `_exit(2)` syscall: it runs **no** `atexit` handlers and
-**no** static destructors, so on the normal path the bare `willTerminate`
-`_exit(0)` is sufficient on its own.
+list, so to pop `_exit(0)` BEFORE Adobe's destructor we must register ours
+**after** Adobe's `__cxa_atexit(dtor)`. We install the interceptor at
+**`applicationDidEnterBackground`, gated on `didUseAdobeDRMThisSession`** (the
+reader decrypt path sets that flag). By the time the app backgrounds, every
+Adobe-DRM `decode()` of this session has run, so Adobe's dtor is already
+registered — whenever it was going to be. The install is therefore LIFO-after
+Adobe's dtor in **both** possible timings:
+
+- **Load-time:** Adobe's dtor registered at dylib-load (before `main`) — earlier
+  than our background-time install. ⇒ ours pops first.
+- **Lazy:** Adobe's dtor registered during whichever DRM op first constructs the
+  mutex (a `decode()` earlier this session) — earlier than our install at
+  background. ⇒ ours pops first.
+
+So `_exit(0)` runs before Adobe's faulting destructor regardless of the
+construction timing — the placement, not a timing measurement, is the
+correctness argument. `_exit` performs an immediate syscall: it runs **no**
+`atexit` handlers and **no** static destructors, so on the normal (Cmd-Q) path
+the bare `applicationWillTerminate` `_exit(0)` is sufficient on its own and never
+touches the atexit list (Path A is sound independent of all of the above).
+
+**Why background entry, not the decode site (the trap avoided):** installing
+*at* the first `decode()` would re-introduce the same ordering-assumption class
+that sank the launch-time install — it assumes the *first* decode is the op that
+constructs the mutex. If construction lands on a *later* DRM op, the at-most-once
+idempotency guard would **lock in** a too-early install. Background entry has no
+such assumption: it is unconditionally after all DRM use of the session, and it
+is temporally adjacent to the background suspension where **all 294 crashes
+fire** (the watchdog `exit()` happens during background suspension). The reader
+DRM path therefore only **marks** that DRM was used; it does not install.
+
+**Mark-site coverage (must dominate every mutex-constructing path):** the install
+only fires if `didUseAdobeDRMThisSession` is set, so the mark must precede every
+ungated op that can construct `dp::DPCriticalSection`. Those ops
+(`decode` / `displayUntilDate` license-read / `init` → `GPFile::lock`) all run
+inside an `AdobeDRMContainer` method, and **every** `AdobeDRMContainer` is
+constructed at exactly one site — `AdobeDRMContentProtection.open` (the sole
+`.adept` content-protection entry). The mark is placed at that construction, so
+it dominates and precedes all of them. The gated `AdobeDRMService` / `NYPLADEPT`
+fulfillment/activation path is not a concern: `isDRMAvailable` is false on
+iOS-on-Mac, so it never runs there.
+
+**Residual (flagged for CHECK 2):** background entry does NOT cover a
+foreground/active forced `exit()` (no backgrounding) after DRM use. The 294
+events are all background-suspension, so this is empirically not the observed
+crash — but CHECK 2 should confirm (and, if a foreground watchdog path is found,
+a non-idempotent decode-site install would be the addition, accepting the
+atexit-list growth).
 
 The handler relies on **install-site gating only** (no exit-time re-check):
 `isiOSAppOnMac` is process-invariant, the handler is installed only when it is
