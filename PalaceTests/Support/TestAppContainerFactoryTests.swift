@@ -25,8 +25,13 @@
 import XCTest
 @testable import Palace
 
+// Subclasses `PalaceTestCase` (WS-0 / M0): `testMakeTestAppContainer_doesNot…`
+// sets `AccountsManager.deferInitialLoadCatalogsForTesting = false` (restored
+// via `defer`), so per `RuntimeQuiescenceLintTests` it MUST adopt the
+// quiescence base. The `defer` restores the flag before tearDown, so the
+// inherited assert passes.
 @MainActor
-final class TestAppContainerFactoryTests: XCTestCase {
+final class TestAppContainerFactoryTests: PalaceTestCase {
 
   override func tearDown() {
     super.tearDown()
