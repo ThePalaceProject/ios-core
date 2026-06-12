@@ -28,6 +28,20 @@ final class CarPlayTemplateManager: NSObject {
         static let artworkSize = CGSize(width: 90, height: 90)
     }
 
+    // MARK: - Cold-launch gate
+
+    /// Whether CarPlay should show the "open Palace on your phone" alert instead
+    /// of attempting playback. True when the main phone scene has not connected
+    /// (cold start from CarPlay only): iOS limits background execution in that
+    /// state so playback won't work reliably.
+    ///
+    /// Extracted as a pure decision so this device-divergence gate is unit
+    /// testable without a `CPInterfaceController`. Consumed at the single call
+    /// site in `handleBookSelection`.
+    static func shouldShowOpenAppAlert(mainSceneConnected: Bool) -> Bool {
+        !mainSceneConnected
+    }
+
     // MARK: - Properties
 
     private weak var interfaceController: CPInterfaceController?
@@ -266,7 +280,7 @@ final class CarPlayTemplateManager: NSObject {
         let mainSceneConnected = SceneDelegate.hasMainSceneConnected
         Log.info(#file, "CarPlay: Main scene connected: \(mainSceneConnected)")
 
-        if !mainSceneConnected {
+        if Self.shouldShowOpenAppAlert(mainSceneConnected: mainSceneConnected) {
             Log.info(#file, "CarPlay: Main scene not connected - showing open app alert")
             showOpenAppAlert()
             return
