@@ -301,6 +301,14 @@ internal protocol PlaybackReadinessProbing {
 
     /// Cancel observation. No-op if already stopped or never started.
     func stop()
+
+    /// Synchronous snapshot of the player's current readiness (`isLoaded`).
+    /// Used by the LCP first-open retry loop to re-check IMMEDIATELY before
+    /// each re-issue so a `play()` that took effect between the gate wait and
+    /// the re-issue decision suppresses the redundant re-issue (no double-start
+    /// glitch). Distinct from `start(driving:)`, which only signals the gate on
+    /// the first `true` observation.
+    func isCurrentlyReady() -> Bool
 }
 
 /// Production probe — polls `Player.isLoaded` on a 25ms timer until the
@@ -357,6 +365,10 @@ internal final class PlayerReadinessProbe: PlaybackReadinessProbing {
     func stop() {
         pollTimer?.invalidate()
         pollTimer = nil
+    }
+
+    func isCurrentlyReady() -> Bool {
+        isLoadedSnapshot()
     }
 }
 
