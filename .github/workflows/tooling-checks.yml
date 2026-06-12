@@ -27,7 +27,11 @@ jobs:
           python-version: '3.12'
 
       - name: Install test deps
-        run: pip install --quiet pytest
+        # pytest for the detector suite; numpy+Pillow for the visual-diff tool's
+        # tests (scripts/visual-diff.py does SSIM/pixel math) so they RUN in the
+        # gate rather than importorskip-ing. test_visual_diff.py guards collection
+        # either way, so a dep gap skips that file cleanly instead of erroring.
+        run: pip install --quiet pytest numpy Pillow
 
       # 1. Syntax-check every committed shell script. `scripts/hooks` is a
       #    machine-local symlink into the harness (absent on CI), so it is
