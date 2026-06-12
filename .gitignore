@@ -138,3 +138,6 @@ scripts/__pycache__/
 # palace-mutate report artifact (regenerated on every run)
 palace-mutate-report.json
 scripts/tests/__pycache__/
+
+# Regression-rebuild campaign run artifacts (generated, never committed)
+.regression-runs/
