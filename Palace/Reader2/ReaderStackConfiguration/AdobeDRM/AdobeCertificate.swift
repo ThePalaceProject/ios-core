@@ -188,6 +188,15 @@ class AdobeDRMService: NSObject {
         return adobeDRMUsed
     }
 
+    /// Test-only: reset the session "DRM used" flag so the false→true contract
+    /// can be asserted hermetically (the flag is otherwise set-once per process).
+    /// Internal — not part of any production call path.
+    static func resetAdobeDRMUsedForTesting() {
+        staticDestructorBypassLock.lock()
+        defer { staticDestructorBypassLock.unlock() }
+        adobeDRMUsed = false
+    }
+
     /// Pure decision: should *this* call install the atexit interceptor now?
     /// True only on iOS-app-on-Mac AND only if not already installed
     /// (idempotent). Split out from the side-effecting registration so the

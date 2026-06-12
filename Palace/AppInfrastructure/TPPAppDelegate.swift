@@ -358,9 +358,13 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     func applicationWillTerminate(_ application: UIApplication) {
-        // Clean up Adobe DRM first to prevent "recursive_mutex lock failed" crashes
-        // on Mac Catalyst. The FinalTerminationWatchdog can force exit() which triggers
-        // C++ static destructors - clearing our references helps avoid mutex corruption.
+        // Non-Mac Adobe DRM cleanup: clear our cached NYPLADEPT delegate/ref so
+        // we don't touch RMSDK during teardown. NOTE: this is a NO-OP on
+        // iPad-on-Mac — `isDRMAvailable` is false there, so this branch is
+        // skipped. It does NOT protect the iPad-on-Mac recursive_mutex crash
+        // (it never destroyed the C++ object anyway). The actual iPad-on-Mac
+        // protection is the `_exit(0)` at the END of this method (Cmd-Q path)
+        // plus the background-installed atexit interceptor (watchdog path).
         #if FEATURE_DRM_CONNECTOR
         if AdobeCertificate.isDRMAvailable {
             AdobeDRMService.shared.prepareForTermination()

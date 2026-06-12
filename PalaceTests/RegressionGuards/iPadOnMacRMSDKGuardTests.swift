@@ -2,23 +2,27 @@ import XCTest
 @testable import Palace
 
 /// Regression guards for the iPad-on-Mac Adobe RMSDK static-destructor crash
-/// (294 events on Crashlytics post-3.0.0). Adobe's RMSDK uses a static
-/// `recursive_mutex` whose destructor fails the lock when the iPad app
-/// runs on Apple Silicon Macs (Mac Catalyst-style host).
+/// (Crashlytics 9a91840677 — 294 events, all iOS_ON_MAC). Adobe's RMSDK uses a
+/// static `recursive_mutex` (`dp::DPCriticalSection`) whose destructor faults
+/// during `exit()`'s C++ static-destructor pass when the iPad app runs on Apple
+/// Silicon Macs.
 ///
-/// The fix surface — PR #928 (`fix/adobe-drm-ipad-on-mac`) —
-/// short-circuits Adobe DRM initialization when
-/// `ProcessInfo.processInfo.isiOSAppOnMac == true`.
+/// The fix (WS-4): on `isiOSAppOnMac` only, terminate via `_exit(0)` to skip the
+/// static-destructor pass — `applicationWillTerminate` (Cmd-Q) calls `_exit(0)`
+/// last, and `applicationDidEnterBackground` installs an `atexit { _exit(0) }`
+/// interceptor (once Adobe DRM has been used this session) for the forced/
+/// watchdog path. The `isDRMAvailable` gate (PR #928) is a separate, earlier
+/// mitigation that covers only `AdobeDRMService`, not the reader decrypt path.
 ///
-/// **Status: PR #928 is open against develop and not yet merged.** This
-/// file holds **placeholder** tests that pass today but assert what the
-/// fix is *supposed* to guarantee. Once #928 lands, expand the assertions
-/// per the README's "Adding a new regression guard" steps.
+/// These are REAL tests of the gating + idempotency decision logic (the pure
+/// helpers `shouldSkipStaticDestructorsOnExit` /
+/// `shouldRegisterStaticDestructorBypass` and the `markAdobeDRMUsed` flag). The
+/// crash-at-exit itself is Mac-only and not in-process testable — that is
+/// validated by the simdrive Mac round-trip (CHECK 2), see
+/// `docs/architecture/ws4-mac-validation-runbook.md`.
 ///
 /// See PalaceTests/RegressionGuards/README.md for the full crash narrative.
 final class iPadOnMacRMSDKGuardTests: XCTestCase {
-
-    // MARK: - Placeholder: documents expected post-merge behavior
 
     func testProcessInfoExposes_isiOSAppOnMac_OnSupportedSDKs() {
         // MISSING-001-OK: compile-time guard — the assertion is "this file
@@ -92,5 +96,26 @@ final class iPadOnMacRMSDKGuardTests: XCTestCase {
             AdobeDRMService.shouldRegisterStaticDestructorBypass(isiOSAppOnMac: false, alreadyRegistered: true),
             "device path stays a no-op regardless of prior registration state"
         )
+    }
+
+    // MARK: - "DRM used this session" flag (gates the background install)
+
+    /// The background-entry install fires only when `didUseAdobeDRMThisSession`
+    /// is set (by the reader decrypt path). Pin the false→true contract: if the
+    /// flag failed to flip on DRM use, the interceptor would never install and
+    /// the crash would recur. Reset in setUp keeps it hermetic (set-once flag).
+    func testDidUseAdobeDRMThisSession_isFalseUntilMarked_thenTrue() {
+        AdobeDRMService.resetAdobeDRMUsedForTesting()
+        XCTAssertFalse(AdobeDRMService.didUseAdobeDRMThisSession,
+                       "flag must be false before any Adobe DRM use this session")
+
+        AdobeDRMService.markAdobeDRMUsed()
+        XCTAssertTrue(AdobeDRMService.didUseAdobeDRMThisSession,
+                      "markAdobeDRMUsed() must flip the flag — the gate the background install depends on")
+
+        // Idempotent: a second mark keeps it true (multiple DRM books/decodes).
+        AdobeDRMService.markAdobeDRMUsed()
+        XCTAssertTrue(AdobeDRMService.didUseAdobeDRMThisSession,
+                      "flag stays true across repeated DRM use")
     }
 }
