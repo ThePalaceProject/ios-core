@@ -201,6 +201,54 @@ class Finding:
         return bool(self.evidence_paths) or self.screenshot_pair is not None
 
 
+def translate_chaos_row(
+    row: dict,
+    *,
+    finding_id: str,
+    area: str,
+    device_cell: str,
+    run_evidence: list[str],
+    first_seen_commit: str = "",
+) -> Finding | None:
+    """Translate one legacy chaos findings.csv row into a campaign Finding.
+
+    The chaos-qa corpus uses a different (wider) CSV schema; this maps it onto
+    the campaign schema. Returns None for a blank-title row (the chaos CSV header
+    is always present even with zero findings, and partial rows can appear).
+
+    Mapping rules:
+      - legacy `Classification` is kept iff it is in the campaign enum, else
+        `other`; a row whose Title/Notes mention "crash" is forced to `crash`
+        (high-confidence at discovery).
+      - `Screenshot Baseline|Candidate` become the screenshot_pair if either is
+        set.
+      - `run_evidence` (the chaos run's findings.csv / logs / replays) is attached
+        to every row so the anti-hallucination rule is satisfiable; a row with no
+        run evidence AND no screenshot is still returned here, and the caller's
+        append_finding rejects it (discard).
+    """
+    title = (row.get("Title") or "").strip()
+    if not title:
+        return None
+    legacy = (row.get("Classification") or "").strip().lower()
+    classification = legacy if legacy in FINDING_CLASSIFICATIONS else "other"
+    if "crash" in title.lower() or "crash" in (row.get("Notes") or "").lower():
+        classification = "crash"
+    base = (row.get("Screenshot Baseline") or "").strip()
+    cand = (row.get("Screenshot Candidate") or "").strip()
+    sshot = (base, cand) if (base or cand) else None
+    return Finding(
+        id=finding_id,
+        area=area,
+        device_cell=device_cell,
+        classification=classification,
+        evidence_paths=list(run_evidence),
+        screenshot_pair=sshot,
+        severity=(row.get("Severity") or "").strip().lower(),
+        first_seen_commit=first_seen_commit,
+    )
+
+
 def append_finding(
     csv_path: str | os.PathLike,
     finding: Finding,

@@ -159,7 +159,7 @@ for area in "${AREAS[@]}"; do
 import csv, os, sys
 from pathlib import Path
 sys.path.insert(0, os.environ["SCRIPT_DIR"])
-from regression_findings import Finding, append_finding, FINDING_CLASSIFICATIONS
+from regression_findings import append_finding, translate_chaos_row
 
 area = os.environ["AREA"]
 cell = os.environ["DEVICE_CELL"]
@@ -182,33 +182,19 @@ if replays.is_dir():
     for y in sorted(replays.glob("*.yaml")):
         run_evidence.append(str(y))
 
+# Translation + anti-hallucination discard live in the tested module
+# (translate_chaos_row + the require_evidence check in append_finding). This is just
+# the iteration + id assignment + count.
 n = 0
 with chaos_csv.open(newline="") as f:
     for i, row in enumerate(csv.DictReader(f)):
-        title = (row.get("Title") or "").strip()
-        if not title:
-            continue
-        # Map legacy classification into the campaign enum; unknowns → other.
-        legacy = (row.get("Classification") or "").strip().lower()
-        classification = legacy if legacy in FINDING_CLASSIFICATIONS else "other"
-        # A chaos crash row is high-confidence at discovery.
-        if "crash" in title.lower() or "crash" in (row.get("Notes") or "").lower():
-            classification = "crash"
-        # Per-row screenshot evidence if the chaos row cited one.
-        sshot = None
-        cand = (row.get("Screenshot Candidate") or "").strip()
-        base = (row.get("Screenshot Baseline") or "").strip()
-        if cand or base:
-            sshot = (base, cand)
-        fid = f"chaos-{area}-{cell}-{i:03d}"
-        finding = Finding(
-            id=fid, area=area, device_cell=cell,
-            classification=classification,
-            evidence_paths=list(run_evidence),
-            screenshot_pair=sshot,
-            severity=(row.get("Severity") or "").strip().lower(),
+        finding = translate_chaos_row(
+            row, finding_id=f"chaos-{area}-{cell}-{i:03d}",
+            area=area, device_cell=cell, run_evidence=run_evidence,
             first_seen_commit=commit,
         )
+        if finding is None:
+            continue
         try:
             append_finding(campaign_csv, finding)
             n += 1

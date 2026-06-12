@@ -156,6 +156,93 @@ def test_bad_classification_rejected():
         f.to_row()
 
 
+# ── 2b. chaos-row translation (the ingest logic, now testable) ────────────────
+
+
+def _chaos_row(**over) -> dict:
+    base = {
+        "ID": "C-1", "Title": "rapid-tap double borrow", "Area": "circulation",
+        "Classification": "regression", "Severity": "major", "Verified": "false",
+        "Screenshot Baseline": "", "Screenshot Candidate": "", "Notes": "",
+    }
+    base.update(over)
+    return base
+
+
+def test_translate_chaos_row_basic_maps_to_campaign_schema():
+    f = rf.translate_chaos_row(
+        _chaos_row(), finding_id="chaos-circulation-C-iphone-26-000",
+        area="circulation", device_cell="C-iphone-26",
+        run_evidence=["chaos/findings.csv"], first_seen_commit="abc123",
+    )
+    assert f is not None
+    row = f.to_row()
+    # legacy 'regression' is NOT in the campaign enum → 'other'
+    assert row["classification"] == "other"
+    assert row["area"] == "circulation"
+    assert row["device_cell"] == "C-iphone-26"
+    assert row["severity"] == "major"
+    assert row["evidence_paths"] == "chaos/findings.csv"
+    assert row["first_seen_commit"] == "abc123"
+    assert row["verified"] == "false"
+
+
+def test_translate_chaos_row_crash_in_title_forces_crash_class():
+    f = rf.translate_chaos_row(
+        _chaos_row(Title="app CRASH on background", Classification=""),
+        finding_id="x", area="auth", device_cell="C-iphone-26",
+        run_evidence=["a.log"],
+    )
+    assert f.classification == "crash"
+
+
+def test_translate_chaos_row_crash_in_notes_forces_crash_class():
+    f = rf.translate_chaos_row(
+        _chaos_row(Title="weird state", Notes="led to a crash report"),
+        finding_id="x", area="auth", device_cell="C-iphone-26",
+        run_evidence=["a.log"],
+    )
+    assert f.classification == "crash"
+
+
+def test_translate_chaos_row_keeps_valid_enum_classification():
+    f = rf.translate_chaos_row(
+        _chaos_row(Classification="perf"),
+        finding_id="x", area="auth", device_cell="C-iphone-26",
+        run_evidence=["a.log"],
+    )
+    assert f.classification == "perf"
+
+
+def test_translate_chaos_row_blank_title_returns_none():
+    assert rf.translate_chaos_row(
+        _chaos_row(Title="  "), finding_id="x", area="auth",
+        device_cell="C-iphone-26", run_evidence=["a.log"],
+    ) is None
+
+
+def test_translate_chaos_row_screenshot_pair_when_cited():
+    f = rf.translate_chaos_row(
+        _chaos_row(**{"Screenshot Baseline": "b.png", "Screenshot Candidate": "c.png"}),
+        finding_id="x", area="auth", device_cell="C-iphone-26",
+        run_evidence=["a.log"],
+    )
+    assert f.screenshot_pair == ("b.png", "c.png")
+
+
+def test_translate_chaos_row_no_evidence_is_discarded_on_append(tmp_path):
+    # A row with no run evidence AND no screenshot → translate returns a Finding
+    # with empty evidence; append_finding rejects it (the ingest loop's discard).
+    csv_path = str(tmp_path / "shard.csv")
+    f = rf.translate_chaos_row(
+        _chaos_row(), finding_id="x", area="auth", device_cell="C-iphone-26",
+        run_evidence=[],
+    )
+    assert f is not None and not f.has_evidence()
+    with pytest.raises(ValueError):
+        rf.append_finding(csv_path, f)
+
+
 # ── 3. CLI surface used by the shell scripts ──────────────────────────────────
 
 

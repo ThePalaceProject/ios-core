@@ -197,14 +197,14 @@ try:
     s = sds.start(udid=udid, app_bundle_id=app)
     time.sleep(1.5)
     baseline = sdp.snapshot(udid, app)
-    pre = sdd.list_crashes(bundle_id=app, max_results=20)
-    pre_n = len(pre)
 
     r = sdr.replay(name=os.environ["JOURNEY"], session=s,
                    on_drift="warn", drift_threshold=float(os.environ["THRESHOLD"]))
 
     current = sdp.snapshot(udid, app)
-    post = sdd.list_crashes(bundle_id=app, max_results=20)
+    # Scope to crashes since this run started (since_ts) rather than a pre/post
+    # count delta — that delta could go negative if the list_crashes window shifts.
+    post = sdd.list_crashes(since_ts=start_ts, bundle_id=app, max_results=20)
 
     # Candidate screenshot + recent logs (evidence) while the app is still alive.
     # observe writes its raw observe-<ts>.png/json to a throwaway temp dir; we
@@ -239,11 +239,11 @@ try:
     ev["drifted"] = sum(1 for st in steps if st.get("drifted"))
     ev["errored"] = sum(1 for st in steps if st.get("error"))
     ev["perf_severity"] = sdp.severity(delta)
-    ev["crashes_during"] = len(post) - pre_n
+    ev["crashes_during"] = len(post)
 
     if ev["crashes_during"] > 0:
-        # Persist the new crash report(s) as evidence; copy raw files if present.
-        new = post[: ev["crashes_during"]] if len(post) >= ev["crashes_during"] else post
+        # Persist the crash report(s) as evidence; copy raw files if present.
+        new = post
         crash_json.write_text(json.dumps(new, indent=2, default=str))
         ev["crash_file"] = str(crash_json)
         for c in new:
