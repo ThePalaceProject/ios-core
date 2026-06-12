@@ -360,17 +360,17 @@ class CarPlayOpenAppAlertTests: XCTestCase {
     @MainActor
     func testStatebleed_resetForTesting_rebuildsFreshAudiobookStatics() {
         // Arrange — resolve (and thereby cache) the audiobook statics.
-        let session1 = AppContainer.production().audiobookSession as AnyObject
-        let presenter1 = AppContainer.production().audiobookSessionPresenter
-        let bootstrapper1 = AppContainer.production().playbackBootstrapper
+        let session1 = AppContainer.production().audiobookSession as AnyObject // MIGRATED-DEFERRED: swarm_47883816 — production() resolution IS the test contract (asserting _resetForTesting rebuilds the audiobook statics; no DI seam observes the static cache)
+        let presenter1 = AppContainer.production().audiobookSessionPresenter // MIGRATED-DEFERRED: swarm_47883816 — production() resolution IS the test contract (asserting _resetForTesting rebuilds the audiobook statics; no DI seam observes the static cache)
+        let bootstrapper1 = AppContainer.production().playbackBootstrapper // MIGRATED-DEFERRED: swarm_47883816 — production() resolution IS the test contract (asserting _resetForTesting rebuilds the audiobook statics; no DI seam observes the static cache)
 
         // Act — the test-boundary reset.
         AppContainer._resetForTesting()
 
         // Assert — re-resolving yields FRESH instances; the polluted ones are gone.
-        let session2 = AppContainer.production().audiobookSession as AnyObject
-        let presenter2 = AppContainer.production().audiobookSessionPresenter
-        let bootstrapper2 = AppContainer.production().playbackBootstrapper
+        let session2 = AppContainer.production().audiobookSession as AnyObject // MIGRATED-DEFERRED: swarm_47883816 — production() resolution IS the test contract (asserting _resetForTesting rebuilds the audiobook statics; no DI seam observes the static cache)
+        let presenter2 = AppContainer.production().audiobookSessionPresenter // MIGRATED-DEFERRED: swarm_47883816 — production() resolution IS the test contract (asserting _resetForTesting rebuilds the audiobook statics; no DI seam observes the static cache)
+        let bootstrapper2 = AppContainer.production().playbackBootstrapper // MIGRATED-DEFERRED: swarm_47883816 — production() resolution IS the test contract (asserting _resetForTesting rebuilds the audiobook statics; no DI seam observes the static cache)
 
         XCTAssertFalse(session1 === session2,
                        "reset must rebuild a fresh audiobook session")
