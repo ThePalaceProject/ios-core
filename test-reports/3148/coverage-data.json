@@ -1,18 +1,18 @@
 {
-  "total_coverage": 45.719794200396805,
-  "line_coverage": 45.719794200396805,
-  "covered_lines": 40788,
+  "total_coverage": 45.74669610931142,
+  "line_coverage": 45.74669610931142,
+  "covered_lines": 40812,
   "executable_lines": 89213,
-  "testable_coverage": 47.50828189423008,
-  "testable_covered_lines": 39868,
+  "testable_coverage": 47.53688124121166,
+  "testable_covered_lines": 39892,
   "testable_executable_lines": 83918,
   "excluded_file_count": 18,
   "excluded_executable_lines": 5295,
   "targets": [
     {
       "name": "Palace.app",
-      "coverage": 45.719794200396805,
-      "covered_lines": 40788,
+      "coverage": 45.74669610931142,
+      "covered_lines": 40812,
       "executable_lines": 89213,
       "coverage_formatted": "45.7%",
       "included_in_total": true
@@ -120,22 +120,22 @@
       "excluded_from_testable": false
     },
     {
-      "name": "TriageBotFactory.swift",
-      "path": "/Users/runner/work/ios-core/ios-core/Palace/Support/TriageBotFactory.swift",
-      "target": "Palace.app",
-      "coverage": 0,
-      "covered_lines": 0,
-      "executable_lines": 102,
-      "coverage_formatted": "0.0%",
-      "excluded_from_testable": false
-    },
-    {
       "name": "NormalBookCell.swift",
       "path": "/Users/runner/work/ios-core/ios-core/Palace/MyBooks/MyBooks/BookCell/NormalBookCell.swift",
       "target": "Palace.app",
       "coverage": 0,
       "covered_lines": 0,
       "executable_lines": 525,
+      "coverage_formatted": "0.0%",
+      "excluded_from_testable": false
+    },
+    {
+      "name": "TriageBotFactory.swift",
+      "path": "/Users/runner/work/ios-core/ios-core/Palace/Support/TriageBotFactory.swift",
+      "target": "Palace.app",
+      "coverage": 0,
+      "covered_lines": 0,
+      "executable_lines": 102,
       "coverage_formatted": "0.0%",
       "excluded_from_testable": false
     },
@@ -240,16 +240,6 @@
       "excluded_from_testable": false
     },
     {
-      "name": "CatalogLaneMoreView.swift",
-      "path": "/Users/runner/work/ios-core/ios-core/Palace/CatalogUI/Views/CatalogLaneMoreView.swift",
-      "target": "Palace.app",
-      "coverage": 0,
-      "covered_lines": 0,
-      "executable_lines": 680,
-      "coverage_formatted": "0.0%",
-      "excluded_from_testable": false
-    },
-    {
       "name": "MockBackendService.swift",
       "path": "/Users/runner/work/ios-core/ios-core/Palace/Settings/Debug/MockBackend/MockBackendService.swift",
       "target": "Palace.app",
@@ -266,6 +256,16 @@
       "coverage": 0,
       "covered_lines": 0,
       "executable_lines": 30,
+      "coverage_formatted": "0.0%",
+      "excluded_from_testable": false
+    },
+    {
+      "name": "CatalogLaneMoreView.swift",
+      "path": "/Users/runner/work/ios-core/ios-core/Palace/CatalogUI/Views/CatalogLaneMoreView.swift",
+      "target": "Palace.app",
+      "coverage": 0,
+      "covered_lines": 0,
+      "executable_lines": 680,
       "coverage_formatted": "0.0%",
       "excluded_from_testable": false
     },
@@ -400,16 +400,6 @@
       "excluded_from_testable": false
     },
     {
-      "name": "SignInWebSheetPresenter.swift",
-      "path": "/Users/runner/work/ios-core/ios-core/Palace/SignInLogic/SignInWebSheetPresenter.swift",
-      "target": "Palace.app",
-      "coverage": 0,
-      "covered_lines": 0,
-      "executable_lines": 91,
-      "coverage_formatted": "0.0%",
-      "excluded_from_testable": false
-    },
-    {
       "name": "TPPLoginCellTypes.swift",
       "path": "/Users/runner/work/ios-core/ios-core/Palace/Settings/SettingsCells/TPPLoginCellTypes.swift",
       "target": "Palace.app",
@@ -420,12 +410,12 @@
       "excluded_from_testable": false
     },
     {
-      "name": "BookAvailabilityFormatter.swift",
-      "path": "/Users/runner/work/ios-core/ios-core/Palace/Book/UI/BookDetail/BookAvailabilityFormatter.swift",
+      "name": "SignInWebSheetPresenter.swift",
+      "path": "/Users/runner/work/ios-core/ios-core/Palace/SignInLogic/SignInWebSheetPresenter.swift",
       "target": "Palace.app",
       "coverage": 0,
       "covered_lines": 0,
-      "executable_lines": 105,
+      "executable_lines": 91,
       "coverage_formatted": "0.0%",
       "excluded_from_testable": false
     },
@@ -436,6 +426,16 @@
       "coverage": 0,
       "covered_lines": 0,
       "executable_lines": 276,
+      "coverage_formatted": "0.0%",
+      "excluded_from_testable": false
+    },
+    {
+      "name": "BookAvailabilityFormatter.swift",
+      "path": "/Users/runner/work/ios-core/ios-core/Palace/Book/UI/BookDetail/BookAvailabilityFormatter.swift",
+      "target": "Palace.app",
+      "coverage": 0,
+      "covered_lines": 0,
+      "executable_lines": 105,
       "coverage_formatted": "0.0%",
       "excluded_from_testable": false
     },
@@ -640,16 +640,6 @@
       "excluded_from_testable": false
     },
     {
-      "name": "TPPTextToSpeech.swift",
-      "path": "/Users/runner/work/ios-core/ios-core/Palace/Reader2/TTS/TPPTextToSpeech.swift",
-      "target": "Palace.app",
-      "coverage": 0,
-      "covered_lines": 0,
-      "executable_lines": 121,
-      "coverage_formatted": "0.0%",
-      "excluded_from_testable": false
-    },
-    {
       "name": "BorderStyleModifier.swift",
       "path": "/Users/runner/work/ios-core/ios-core/Palace/MyBooks/MyBooks/BorderStyleModifier.swift",
       "target": "Palace.app",
@@ -660,12 +650,12 @@
       "excluded_from_testable": false
     },
     {
-      "name": "RegistrationCell.swift",
-      "path": "/Users/runner/work/ios-core/ios-core/Palace/Views/RegistrationCell.swift",
+      "name": "TPPTextToSpeech.swift",
+      "path": "/Users/runner/work/ios-core/ios-core/Palace/Reader2/TTS/TPPTextToSpeech.swift",
       "target": "Palace.app",
       "coverage": 0,
       "covered_lines": 0,
-      "executable_lines": 106,
+      "executable_lines": 121,
       "coverage_formatted": "0.0%",
       "excluded_from_testable": false
     },
@@ -676,6 +666,16 @@
       "coverage": 0,
       "covered_lines": 0,
       "executable_lines": 116,
+      "coverage_formatted": "0.0%",
+      "excluded_from_testable": false
+    },
+    {
+      "name": "RegistrationCell.swift",
+      "path": "/Users/runner/work/ios-core/ios-core/Palace/Views/RegistrationCell.swift",
+      "target": "Palace.app",
+      "coverage": 0,
+      "covered_lines": 0,
+      "executable_lines": 106,
       "coverage_formatted": "0.0%",
       "excluded_from_testable": false
     },
@@ -1090,16 +1090,6 @@
       "excluded_from_testable": true
     },
     {
-      "name": "TPPPDFTextExtractor.swift",
-      "path": "/Users/runner/work/ios-core/ios-core/Palace/PDF/Model/TPPPDFTextExtractor.swift",
-      "target": "Palace.app",
-      "coverage": 0,
-      "covered_lines": 0,
-      "executable_lines": 120,
-      "coverage_formatted": "0.0%",
-      "excluded_from_testable": false
-    },
-    {
       "name": "TPPLoadingViewController.swift",
       "path": "/Users/runner/work/ios-core/ios-core/Palace/Utilities/UI/TPPLoadingViewController.swift",
       "target": "Palace.app",
@@ -1108,6 +1098,16 @@
       "executable_lines": 39,
       "coverage_formatted": "0.0%",
       "excluded_from_testable": true
+    },
+    {
+      "name": "TPPPDFTextExtractor.swift",
+      "path": "/Users/runner/work/ios-core/ios-core/Palace/PDF/Model/TPPPDFTextExtractor.swift",
+      "target": "Palace.app",
+      "coverage": 0,
+      "covered_lines": 0,
+      "executable_lines": 120,
+      "coverage_formatted": "0.0%",
+      "excluded_from_testable": false
     },
     {
       "name": "TPPSettingsViewController.swift",
@@ -1300,22 +1300,22 @@
       "excluded_from_testable": true
     },
     {
-      "name": "PlatformTab.swift",
-      "path": "/Users/runner/work/ios-core/ios-core/Palace/Platform/PlatformTab.swift",
-      "target": "Palace.app",
-      "coverage": 0,
-      "covered_lines": 0,
-      "executable_lines": 27,
-      "coverage_formatted": "0.0%",
-      "excluded_from_testable": false
-    },
-    {
       "name": "CarPlaySceneDelegate.swift",
       "path": "/Users/runner/work/ios-core/ios-core/Palace/CarPlay/CarPlaySceneDelegate.swift",
       "target": "Palace.app",
       "coverage": 0,
       "covered_lines": 0,
       "executable_lines": 178,
+      "coverage_formatted": "0.0%",
+      "excluded_from_testable": false
+    },
+    {
+      "name": "PlatformTab.swift",
+      "path": "/Users/runner/work/ios-core/ios-core/Palace/Platform/PlatformTab.swift",
+      "target": "Palace.app",
+      "coverage": 0,
+      "covered_lines": 0,
+      "executable_lines": 27,
       "coverage_formatted": "0.0%",
       "excluded_from_testable": false
     },
@@ -1430,16 +1430,6 @@
       "excluded_from_testable": false
     },
     {
-      "name": "OfflineQueueStatusView.swift",
-      "path": "/Users/runner/work/ios-core/ios-core/Palace/Platform/OfflineQueueStatusView.swift",
-      "target": "Palace.app",
-      "coverage": 0,
-      "covered_lines": 0,
-      "executable_lines": 138,
-      "coverage_formatted": "0.0%",
-      "excluded_from_testable": false
-    },
-    {
       "name": "LoadingOverlayModifier.swift",
       "path": "/Users/runner/work/ios-core/ios-core/Palace/Utilities/SwiftUI/LoadingOverlayModifier.swift",
       "target": "Palace.app",
@@ -1466,6 +1456,16 @@
       "coverage": 0,
       "covered_lines": 0,
       "executable_lines": 17,
+      "coverage_formatted": "0.0%",
+      "excluded_from_testable": false
+    },
+    {
+      "name": "OfflineQueueStatusView.swift",
+      "path": "/Users/runner/work/ios-core/ios-core/Palace/Platform/OfflineQueueStatusView.swift",
+      "target": "Palace.app",
+      "coverage": 0,
+      "covered_lines": 0,
+      "executable_lines": 138,
       "coverage_formatted": "0.0%",
       "excluded_from_testable": false
     },
@@ -1893,10 +1893,10 @@
       "name": "ReaderService.swift",
       "path": "/Users/runner/work/ios-core/ios-core/Palace/AppInfrastructure/ReaderService.swift",
       "target": "Palace.app",
-      "coverage": 22.611036339165544,
-      "covered_lines": 168,
+      "coverage": 20.72678331090175,
+      "covered_lines": 154,
       "executable_lines": 743,
-      "coverage_formatted": "22.6%",
+      "coverage_formatted": "20.7%",
       "excluded_from_testable": false
     },
     {
@@ -2223,10 +2223,10 @@
       "name": "BookRegistrySync.swift",
       "path": "/Users/runner/work/ios-core/ios-core/Palace/Book/Models/BookRegistrySync.swift",
       "target": "Palace.app",
-      "coverage": 42.93695131683958,
-      "covered_lines": 538,
+      "coverage": 42.77733439744613,
+      "covered_lines": 536,
       "executable_lines": 1253,
-      "coverage_formatted": "42.9%",
+      "coverage_formatted": "42.8%",
       "excluded_from_testable": false
     },
     {
@@ -2840,16 +2840,6 @@
       "excluded_from_testable": false
     },
     {
-      "name": "SEMigrations.swift",
-      "path": "/Users/runner/work/ios-core/ios-core/Palace/Migrations/SEMigrations.swift",
-      "target": "Palace.app",
-      "coverage": 68.54838709677419,
-      "covered_lines": 85,
-      "executable_lines": 124,
-      "coverage_formatted": "68.5%",
-      "excluded_from_testable": false
-    },
-    {
       "name": "TPPAccessibilityAnnouncementCenter.swift",
       "path": "/Users/runner/work/ios-core/ios-core/Palace/Utilities/TPPAccessibilityAnnouncementCenter.swift",
       "target": "Palace.app",
@@ -2860,16 +2850,6 @@
       "excluded_from_testable": false
     },
     {
-      "name": "RemoteFeatureFlags.swift",
-      "path": "/Users/runner/work/ios-core/ios-core/Palace/FeatureFlags/RemoteFeatureFlags.swift",
-      "target": "Palace.app",
-      "coverage": 68.96551724137932,
-      "covered_lines": 100,
-      "executable_lines": 145,
-      "coverage_formatted": "69.0%",
-      "excluded_from_testable": false
-    },
-    {
       "name": "BookButtonState.swift",
       "path": "/Users/runner/work/ios-core/ios-core/Palace/MyBooks/MyBooks/BookCell/ButtonView/BookButtonState.swift",
       "target": "Palace.app",
@@ -2877,6 +2857,16 @@
       "covered_lines": 161,
       "executable_lines": 232,
       "coverage_formatted": "69.4%",
+      "excluded_from_testable": false
+    },
+    {
+      "name": "TPPBookCoverRegistry.swift",
+      "path": "/Users/runner/work/ios-core/ios-core/Palace/Book/Models/TPPBookCoverRegistry.swift",
+      "target": "Palace.app",
+      "coverage": 69.78922716627635,
+      "covered_lines": 298,
+      "executable_lines": 427,
+      "coverage_formatted": "69.8%",
       "excluded_from_testable": false
     },
     {
@@ -2910,26 +2900,6 @@
       "excluded_from_testable": false
     },
     {
-      "name": "TPPBookCoverRegistry.swift",
-      "path": "/Users/runner/work/ios-core/ios-core/Palace/Book/Models/TPPBookCoverRegistry.swift",
-      "target": "Palace.app",
-      "coverage": 70.02341920374707,
-      "covered_lines": 299,
-      "executable_lines": 427,
-      "coverage_formatted": "70.0%",
-      "excluded_from_testable": false
-    },
-    {
-      "name": "TPPAccountList.swift",
-      "path": "/Users/runner/work/ios-core/ios-core/Palace/Settings/AccountList/TPPAccountList.swift",
-      "target": "Palace.app",
-      "coverage": 71.14624505928853,
-      "covered_lines": 180,
-      "executable_lines": 253,
-      "coverage_formatted": "71.1%",
-      "excluded_from_testable": false
-    },
-    {
       "name": "Date+Extensions.swift",
       "path": "/Users/runner/work/ios-core/ios-core/Palace/Utilities/Extensions/Date+Extensions.swift",
       "target": "Palace.app",
@@ -2937,6 +2907,26 @@
       "covered_lines": 20,
       "executable_lines": 28,
       "coverage_formatted": "71.4%",
+      "excluded_from_testable": false
+    },
+    {
+      "name": "RemoteFeatureFlags.swift",
+      "path": "/Users/runner/work/ios-core/ios-core/Palace/FeatureFlags/RemoteFeatureFlags.swift",
+      "target": "Palace.app",
+      "coverage": 71.72413793103448,
+      "covered_lines": 104,
+      "executable_lines": 145,
+      "coverage_formatted": "71.7%",
+      "excluded_from_testable": false
+    },
+    {
+      "name": "TPPAccountList.swift",
+      "path": "/Users/runner/work/ios-core/ios-core/Palace/Settings/AccountList/TPPAccountList.swift",
+      "target": "Palace.app",
+      "coverage": 71.93675889328063,
+      "covered_lines": 182,
+      "executable_lines": 253,
+      "coverage_formatted": "71.9%",
       "excluded_from_testable": false
     },
     {
@@ -2957,6 +2947,16 @@
       "covered_lines": 112,
       "executable_lines": 155,
       "coverage_formatted": "72.3%",
+      "excluded_from_testable": false
+    },
+    {
+      "name": "SEMigrations.swift",
+      "path": "/Users/runner/work/ios-core/ios-core/Palace/Migrations/SEMigrations.swift",
+      "target": "Palace.app",
+      "coverage": 72.58064516129032,
+      "covered_lines": 90,
+      "executable_lines": 124,
+      "coverage_formatted": "72.6%",
       "excluded_from_testable": false
     },
     {
@@ -3010,16 +3010,6 @@
       "excluded_from_testable": false
     },
     {
-      "name": "MyBooksViewModel.swift",
-      "path": "/Users/runner/work/ios-core/ios-core/Palace/MyBooks/MyBooks/MyBooksViewModel.swift",
-      "target": "Palace.app",
-      "coverage": 75.84269662921348,
-      "covered_lines": 270,
-      "executable_lines": 356,
-      "coverage_formatted": "75.8%",
-      "excluded_from_testable": false
-    },
-    {
       "name": "TPPSecrets.swift",
       "path": "/Users/runner/work/ios-core/ios-core/Palace/TPPSecrets.swift",
       "target": "Palace.app",
@@ -3060,16 +3050,6 @@
       "excluded_from_testable": false
     },
     {
-      "name": "DeviceLogCollector.swift",
-      "path": "/Users/runner/work/ios-core/ios-core/Palace/Logging/DeviceLogCollector.swift",
-      "target": "Palace.app",
-      "coverage": 76.92307692307693,
-      "covered_lines": 70,
-      "executable_lines": 91,
-      "coverage_formatted": "76.9%",
-      "excluded_from_testable": false
-    },
-    {
       "name": "TPPBook+Presentation.swift",
       "path": "/Users/runner/work/ios-core/ios-core/Palace/Book/Models/TPPBook+Presentation.swift",
       "target": "Palace.app",
@@ -3077,6 +3057,16 @@
       "covered_lines": 591,
       "executable_lines": 760,
       "coverage_formatted": "77.8%",
+      "excluded_from_testable": false
+    },
+    {
+      "name": "DeviceLogCollector.swift",
+      "path": "/Users/runner/work/ios-core/ios-core/Palace/Logging/DeviceLogCollector.swift",
+      "target": "Palace.app",
+      "coverage": 78.02197802197803,
+      "covered_lines": 71,
+      "executable_lines": 91,
+      "coverage_formatted": "78.0%",
       "excluded_from_testable": false
     },
     {
@@ -3137,6 +3127,16 @@
       "covered_lines": 134,
       "executable_lines": 170,
       "coverage_formatted": "78.8%",
+      "excluded_from_testable": false
+    },
+    {
+      "name": "MyBooksViewModel.swift",
+      "path": "/Users/runner/work/ios-core/ios-core/Palace/MyBooks/MyBooks/MyBooksViewModel.swift",
+      "target": "Palace.app",
+      "coverage": 79.21348314606742,
+      "covered_lines": 282,
+      "executable_lines": 356,
+      "coverage_formatted": "79.2%",
       "excluded_from_testable": false
     },
     {
@@ -3220,6 +3220,16 @@
       "excluded_from_testable": false
     },
     {
+      "name": "TPPReaderSettings.swift",
+      "path": "/Users/runner/work/ios-core/ios-core/Palace/Reader2/ReaderSettings/TPPReaderSettings.swift",
+      "target": "Palace.app",
+      "coverage": 80.66666666666666,
+      "covered_lines": 121,
+      "executable_lines": 150,
+      "coverage_formatted": "80.7%",
+      "excluded_from_testable": false
+    },
+    {
       "name": "UserProfileDocument.swift",
       "path": "/Users/runner/work/ios-core/ios-core/Palace/Accounts/User/UserProfileDocument.swift",
       "target": "Palace.app",
@@ -3257,16 +3267,6 @@
       "covered_lines": 13,
       "executable_lines": 16,
       "coverage_formatted": "81.2%",
-      "excluded_from_testable": false
-    },
-    {
-      "name": "TPPReaderSettings.swift",
-      "path": "/Users/runner/work/ios-core/ios-core/Palace/Reader2/ReaderSettings/TPPReaderSettings.swift",
-      "target": "Palace.app",
-      "coverage": 81.33333333333333,
-      "covered_lines": 122,
-      "executable_lines": 150,
-      "coverage_formatted": "81.3%",
       "excluded_from_testable": false
     },
     {
@@ -3357,16 +3357,6 @@
       "covered_lines": 101,
       "executable_lines": 122,
       "coverage_formatted": "82.8%",
-      "excluded_from_testable": false
-    },
-    {
-      "name": "LibraryRegistryCrawler.swift",
-      "path": "/Users/runner/work/ios-core/ios-core/Palace/Accounts/Library/LibraryRegistryCrawler.swift",
-      "target": "Palace.app",
-      "coverage": 82.86852589641434,
-      "covered_lines": 416,
-      "executable_lines": 502,
-      "coverage_formatted": "82.9%",
       "excluded_from_testable": false
     },
     {
@@ -3463,10 +3453,10 @@
       "name": "GeneralCache.swift",
       "path": "/Users/runner/work/ios-core/ios-core/Palace/Utilities/ImageCache/GeneralCache.swift",
       "target": "Palace.app",
-      "coverage": 85.71428571428571,
-      "covered_lines": 354,
+      "coverage": 86.19854721549636,
+      "covered_lines": 356,
       "executable_lines": 413,
-      "coverage_formatted": "85.7%",
+      "coverage_formatted": "86.2%",
       "excluded_from_testable": false
     },
     {
@@ -3500,16 +3490,6 @@
       "excluded_from_testable": false
     },
     {
-      "name": "TPPNetworkQueue.swift",
-      "path": "/Users/runner/work/ios-core/ios-core/Palace/Network/TPPNetworkQueue.swift",
-      "target": "Palace.app",
-      "coverage": 86.70520231213872,
-      "covered_lines": 300,
-      "executable_lines": 346,
-      "coverage_formatted": "86.7%",
-      "excluded_from_testable": false
-    },
-    {
       "name": "BookCellModelCache.swift",
       "path": "/Users/runner/work/ios-core/ios-core/Palace/MyBooks/MyBooks/BookCell/BookCellModelCache.swift",
       "target": "Palace.app",
@@ -3517,6 +3497,16 @@
       "covered_lines": 222,
       "executable_lines": 256,
       "coverage_formatted": "86.7%",
+      "excluded_from_testable": false
+    },
+    {
+      "name": "TPPSignInBusinessLogic+BookmarkSyncing.swift",
+      "path": "/Users/runner/work/ios-core/ios-core/Palace/SignInLogic/TPPSignInBusinessLogic+BookmarkSyncing.swift",
+      "target": "Palace.app",
+      "coverage": 87.17948717948718,
+      "covered_lines": 34,
+      "executable_lines": 39,
+      "coverage_formatted": "87.2%",
       "excluded_from_testable": false
     },
     {
@@ -3546,6 +3536,16 @@
       "coverage": 87.85046728971963,
       "covered_lines": 94,
       "executable_lines": 107,
+      "coverage_formatted": "87.9%",
+      "excluded_from_testable": false
+    },
+    {
+      "name": "TPPNetworkQueue.swift",
+      "path": "/Users/runner/work/ios-core/ios-core/Palace/Network/TPPNetworkQueue.swift",
+      "target": "Palace.app",
+      "coverage": 87.86127167630057,
+      "covered_lines": 304,
+      "executable_lines": 346,
       "coverage_formatted": "87.9%",
       "excluded_from_testable": false
     },
@@ -3630,6 +3630,16 @@
       "excluded_from_testable": false
     },
     {
+      "name": "LibraryRegistryCrawler.swift",
+      "path": "/Users/runner/work/ios-core/ios-core/Palace/Accounts/Library/LibraryRegistryCrawler.swift",
+      "target": "Palace.app",
+      "coverage": 89.2430278884462,
+      "covered_lines": 448,
+      "executable_lines": 502,
+      "coverage_formatted": "89.2%",
+      "excluded_from_testable": false
+    },
+    {
       "name": "BackupExclusionMigration.swift",
       "path": "/Users/runner/work/ios-core/ios-core/Palace/Migrations/BackupExclusionMigration.swift",
       "target": "Palace.app",
@@ -3670,13 +3680,13 @@
       "excluded_from_testable": false
     },
     {
-      "name": "TPPSignInBusinessLogic+BookmarkSyncing.swift",
-      "path": "/Users/runner/work/ios-core/ios-core/Palace/SignInLogic/TPPSignInBusinessLogic+BookmarkSyncing.swift",
+      "name": "Account.swift",
+      "path": "/Users/runner/work/ios-core/ios-core/Palace/Accounts/Library/Account.swift",
       "target": "Palace.app",
-      "coverage": 89.74358974358975,
-      "covered_lines": 35,
-      "executable_lines": 39,
-      "coverage_formatted": "89.7%",
+      "coverage": 89.8921832884097,
+      "covered_lines": 667,
+      "executable_lines": 742,
+      "coverage_formatted": "89.9%",
       "excluded_from_testable": false
     },
     {
@@ -3710,13 +3720,13 @@
       "excluded_from_testable": false
     },
     {
-      "name": "Account.swift",
-      "path": "/Users/runner/work/ios-core/ios-core/Palace/Accounts/Library/Account.swift",
+      "name": "AccountsManager.swift",
+      "path": "/Users/runner/work/ios-core/ios-core/Palace/Accounts/Library/AccountsManager.swift",
       "target": "Palace.app",
-      "coverage": 90.70080862533693,
-      "covered_lines": 673,
-      "executable_lines": 742,
-      "coverage_formatted": "90.7%",
+      "coverage": 90.79435783221975,
+      "covered_lines": 1223,
+      "executable_lines": 1347,
+      "coverage_formatted": "90.8%",
       "excluded_from_testable": false
     },
     {
@@ -3767,16 +3777,6 @@
       "covered_lines": 613,
       "executable_lines": 673,
       "coverage_formatted": "91.1%",
-      "excluded_from_testable": false
-    },
-    {
-      "name": "AccountsManager.swift",
-      "path": "/Users/runner/work/ios-core/ios-core/Palace/Accounts/Library/AccountsManager.swift",
-      "target": "Palace.app",
-      "coverage": 91.61098737936155,
-      "covered_lines": 1234,
-      "executable_lines": 1347,
-      "coverage_formatted": "91.6%",
       "excluded_from_testable": false
     },
     {
@@ -3910,6 +3910,16 @@
       "excluded_from_testable": false
     },
     {
+      "name": "AudiobookDataManager.swift",
+      "path": "/Users/runner/work/ios-core/ios-core/Palace/Audiobooks/Tracker/AudiobookDataManager.swift",
+      "target": "Palace.app",
+      "coverage": 94.43535188216039,
+      "covered_lines": 577,
+      "executable_lines": 611,
+      "coverage_formatted": "94.4%",
+      "excluded_from_testable": false
+    },
+    {
       "name": "DownloadAuthRetryHandler.swift",
       "path": "/Users/runner/work/ios-core/ios-core/Palace/MyBooks/DownloadAuthRetryHandler.swift",
       "target": "Palace.app",
@@ -3950,16 +3960,6 @@
       "excluded_from_testable": false
     },
     {
-      "name": "AudiobookDataManager.swift",
-      "path": "/Users/runner/work/ios-core/ios-core/Palace/Audiobooks/Tracker/AudiobookDataManager.swift",
-      "target": "Palace.app",
-      "coverage": 94.92635024549918,
-      "covered_lines": 580,
-      "executable_lines": 611,
-      "coverage_formatted": "94.9%",
-      "excluded_from_testable": false
-    },
-    {
       "name": "TPPBookmarkFactory.swift",
       "path": "/Users/runner/work/ios-core/ios-core/Palace/Reader2/Bookmarks/TPPBookmarkFactory.swift",
       "target": "Palace.app",
@@ -3973,10 +3973,10 @@
       "name": "TPPNetworkExecutor.swift",
       "path": "/Users/runner/work/ios-core/ios-core/Palace/Network/TPPNetworkExecutor.swift",
       "target": "Palace.app",
-      "coverage": 94.98553519768564,
-      "covered_lines": 985,
+      "coverage": 95.08196721311475,
+      "covered_lines": 986,
       "executable_lines": 1037,
-      "coverage_formatted": "95.0%",
+      "coverage_formatted": "95.1%",
       "excluded_from_testable": false
     },
     {
@@ -4600,22 +4600,22 @@
       "excluded_from_testable": false
     },
     {
-      "name": "HoldsReducer.swift",
-      "path": "/Users/runner/work/ios-core/ios-core/Palace/Holds/HoldsReducer.swift",
-      "target": "Palace.app",
-      "coverage": 100,
-      "covered_lines": 80,
-      "executable_lines": 80,
-      "coverage_formatted": "100.0%",
-      "excluded_from_testable": false
-    },
-    {
       "name": "OfflineQueueStatus.swift",
       "path": "/Users/runner/work/ios-core/ios-core/Palace/Platform/OfflineQueueStatus.swift",
       "target": "Palace.app",
       "coverage": 100,
       "covered_lines": 24,
       "executable_lines": 24,
+      "coverage_formatted": "100.0%",
+      "excluded_from_testable": false
+    },
+    {
+      "name": "TPPBook+Accessibility.swift",
+      "path": "/Users/runner/work/ios-core/ios-core/Palace/Book/Models/TPPBook+Accessibility.swift",
+      "target": "Palace.app",
+      "coverage": 100,
+      "covered_lines": 23,
+      "executable_lines": 23,
       "coverage_formatted": "100.0%",
       "excluded_from_testable": false
     },
@@ -4650,12 +4650,12 @@
       "excluded_from_testable": false
     },
     {
-      "name": "TPPBook+Accessibility.swift",
-      "path": "/Users/runner/work/ios-core/ios-core/Palace/Book/Models/TPPBook+Accessibility.swift",
+      "name": "HoldsReducer.swift",
+      "path": "/Users/runner/work/ios-core/ios-core/Palace/Holds/HoldsReducer.swift",
       "target": "Palace.app",
       "coverage": 100,
-      "covered_lines": 23,
-      "executable_lines": 23,
+      "covered_lines": 80,
+      "executable_lines": 80,
       "coverage_formatted": "100.0%",
       "excluded_from_testable": false
     },
@@ -4960,22 +4960,22 @@
       "excluded_from_testable": false
     },
     {
-      "name": "TPPBookContentTypeConverter.swift",
-      "path": "/Users/runner/work/ios-core/ios-core/Palace/Book/Models/TPPBookContentTypeConverter.swift",
-      "target": "Palace.app",
-      "coverage": 100,
-      "covered_lines": 14,
-      "executable_lines": 14,
-      "coverage_formatted": "100.0%",
-      "excluded_from_testable": false
-    },
-    {
       "name": "AdobeDRMError.swift",
       "path": "/Users/runner/work/ios-core/ios-core/Palace/Reader2/ReaderStackConfiguration/AdobeDRM/AdobeDRMError.swift",
       "target": "Palace.app",
       "coverage": 100,
       "covered_lines": 5,
       "executable_lines": 5,
+      "coverage_formatted": "100.0%",
+      "excluded_from_testable": false
+    },
+    {
+      "name": "TPPBookContentTypeConverter.swift",
+      "path": "/Users/runner/work/ios-core/ios-core/Palace/Book/Models/TPPBookContentTypeConverter.swift",
+      "target": "Palace.app",
+      "coverage": 100,
+      "covered_lines": 14,
+      "executable_lines": 14,
       "coverage_formatted": "100.0%",
       "excluded_from_testable": false
     },
