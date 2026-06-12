@@ -8,6 +8,7 @@
 
 import XCTest
 import CarPlay
+import Combine
 import MediaPlayer
 @testable import Palace
 @testable import PalaceAudiobookToolkit
@@ -745,8 +746,21 @@ final class CarPlayAudiobookBridgePresenterMigrationTests: XCTestCase {
         // Drive the presenter into an active state via the session's
         // publisher seam — proves the bridge dismiss does NOT touch
         // session state.
+        // Deterministically wait for the presenter's async
+        // `.receive(on: DispatchQueue.main)` playbackStatePublisher sink to
+        // propagate, instead of a fixed 10ms RunLoop pump that flakes under CI
+        // main-queue congestion (the intrinsic race that red'd #1079/#1081).
+        // Subscribe to the `@Published` hasActiveSession BEFORE sending so the
+        // false→true transition cannot be missed.
+        let activePropagated = expectation(description: "presenter observes the active session")
+        var activeCancellable: AnyCancellable? = presenter.$hasActiveSession
+            .first(where: { $0 })
+            .sink { _ in activePropagated.fulfill() }
         session.playbackStatePublisher.send(.playing(bookId: "test-active"))
-        RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+        wait(for: [activePropagated], timeout: 5.0)
+        activeCancellable?.cancel()
+        activeCancellable = nil
+
         XCTAssertTrue(presenter.hasActiveSession,
                       "PRECONDITION: presenter must report active session before bridge dismiss")
 
