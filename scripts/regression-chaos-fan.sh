@@ -128,10 +128,11 @@ for area in "${AREAS[@]}"; do
   [[ $DRY_RUN -eq 1 ]] && dry_arg=(--dry-run)
 
   # run-chaos-pass.sh writes to $CHAOS_RUNS_ROOT/<timestamp>/.
+  # bash 3.2 throws on "${empty[@]}" under set -u — guard with the [@]+ idiom.
   CHAOS_RUNS_ROOT="$area_chaos_root" "$CHAOS_PASS" \
-    --udid "$SIM_ID" "${seed_args[@]}" \
+    --udid "$SIM_ID" "${seed_args[@]+"${seed_args[@]}"}" \
     --max-paths "$MAX_PATHS" --max-minutes "$MAX_MINUTES" \
-    "${dry_arg[@]}" 2>&1 | sed 's/^/    /' || true
+    "${dry_arg[@]+"${dry_arg[@]}"}" 2>&1 | sed 's/^/    /' || true
 
   if [[ $DRY_RUN -eq 1 ]]; then
     # Dry-run produced a prompt.txt under the timestamp dir — that's the wiring

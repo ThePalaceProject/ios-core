@@ -335,6 +335,24 @@ def test_shell_scripts_pass_bash_n(script):
 
 
 @pytest.mark.parametrize("script", [_AREA_WORKER, _CHAOS_FAN])
+def test_no_unguarded_empty_array_expansion(script):
+    # bash 3.2 (macOS default) throws "unbound variable" on "${arr[@]}" under
+    # `set -u` when arr is empty. These arrays are conditionally populated, so
+    # every expansion MUST use the "${arr[@]+...}" guard form. (A real chaos run
+    # surfaced this for dry_arg; bash -n does NOT catch it.)
+    import re
+    text = script.read_text()
+    for arr in ("dry_arg", "sshot_arg", "seed_args"):
+        # Unsafe: "${arr[@]}" NOT preceded by '+' (the guard form is
+        # "${arr[@]+"${arr[@]}"}", whose inner copy IS preceded by '+"').
+        unsafe = re.compile(r'(?<!\+)"\$\{' + re.escape(arr) + r'\[@\]\}"')
+        assert not unsafe.search(text), (
+            f"{script.name}: unguarded \"${{{arr}[@]}}\" crashes under set -u in "
+            f'bash 3.2; use "${{{arr}[@]+"${{{arr}[@]}}"}}"'
+        )
+
+
+@pytest.mark.parametrize("script", [_AREA_WORKER, _CHAOS_FAN])
 def test_shell_scripts_dry_run_help(script):
     # --help must exit 0 and not require a sim
     r = subprocess.run(["bash", str(script), "--help"], capture_output=True, text=True)

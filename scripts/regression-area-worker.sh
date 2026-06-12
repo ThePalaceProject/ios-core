@@ -324,7 +324,7 @@ PYEOF
   if python3 "$FINDINGS" append "$FINDINGS_CSV" \
        --id "$fid" --area "$AREA_GROUP" --device-cell "$DEVICE_CELL" \
        --classification "$classification" --evidence "$evidence" \
-       --first-seen-commit "$FIRST_SEEN_COMMIT" "${sshot_arg[@]}"; then
+       --first-seen-commit "$FIRST_SEEN_COMMIT" "${sshot_arg[@]+"${sshot_arg[@]}"}"; then
     finding_count=$((finding_count + 1))
   else
     echo "  warn: failed to append finding for $journey (no evidence?)" >&2
