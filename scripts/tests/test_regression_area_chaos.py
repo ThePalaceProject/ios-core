@@ -306,6 +306,18 @@ def test_classify_replay_state_contract_halt_is_fail_not_pass():
     assert "0/11" in v["reason"]
 
 
+def test_classify_replay_halt_reason_with_ok_true_is_fail():
+    # Isolate the `or halt_reason` clause: a halt_reason set with ok=True (e.g. a
+    # mid-run marks-count-drift halt) must still FAIL even though some steps ran.
+    r = {"ok": True, "halted_at": 3, "halt_reason": "marks_count_drift",
+         "steps_planned": 5,
+         "steps": [{"executed": True}, {"executed": True}, {"executed": True}]}
+    v = rf.classify_replay(r)
+    assert v["status"] == "fail"
+    assert "marks_count_drift" in v["reason"]
+    assert "3/5" in v["reason"]
+
+
 def test_classify_replay_incomplete_is_fail():
     r = {"ok": True, "steps_planned": 11,
          "steps": [{"executed": True}] * 5}   # only 5 of 11 ran
@@ -360,6 +372,26 @@ def test_strip_device_suffix():
     assert rf.strip_device_suffix("iPhone 16 Pro (fleet-5)") == "iPhone 16 Pro"
     assert rf.strip_device_suffix("iPhone 16 Pro") == "iPhone 16 Pro"
     assert rf.strip_device_suffix("") == ""
+
+
+def test_strip_device_suffix_preserves_model_paren_strips_only_clone_tag():
+    # Only the (pool-N)/(fleet-N) clone tag is removed; a MODEL paren is kept,
+    # so iPad recordings normalize correctly on fleet iPad sims (the C-ipad cell).
+    assert rf.strip_device_suffix("iPad Pro (12.9-inch) (pool-3)") == "iPad Pro (12.9-inch)"
+    assert rf.strip_device_suffix("iPad Pro (12.9-inch) (fleet-2)") == "iPad Pro (12.9-inch)"
+    assert rf.strip_device_suffix("iPad Pro (12.9-inch)") == "iPad Pro (12.9-inch)"
+    # an unrecognized suffix is left intact (FAIL-safe — never masks a mismatch)
+    assert rf.strip_device_suffix("iPhone 16 Pro (custom)") == "iPhone 16 Pro (custom)"
+
+
+def test_normalized_requires_device_ipad_model_paren_normalizes_on_fleet():
+    # base iPad recording vs fleet iPad sim → same model → rewrite to current
+    assert rf.normalized_requires_device(
+        "iPad Pro (12.9-inch)", "iPad Pro (12.9-inch) (pool-3)"
+    ) == "iPad Pro (12.9-inch)" + " (pool-3)"
+    # different iPad model paren → genuinely different device → None (FAIL)
+    assert rf.normalized_requires_device(
+        "iPad Pro (12.9-inch)", "iPad Pro (11-inch) (pool-3)") is None
 
 
 def test_device_matches_modulo_suffix():
