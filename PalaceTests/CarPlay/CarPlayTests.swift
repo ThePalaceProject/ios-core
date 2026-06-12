@@ -273,6 +273,21 @@ class CarPlayIntegrationTests: XCTestCase {
 @MainActor
 class CarPlayOpenAppAlertTests: XCTestCase {
 
+    // Bracket the class with the AppContainer test-boundary reset so the
+    // statebleed round-trip below starts from a known-clean graph (the
+    // resolve→reset→re-resolve non-identity assertion only proves the reset
+    // rebuilt the statics if the arrange step isn't pre-polluted by a prior
+    // test) and this class doesn't leak rebuilt statics into the next.
+    override func setUp() {
+        super.setUp()
+        AppContainer._resetForTesting()
+    }
+
+    override func tearDown() {
+        AppContainer._resetForTesting()
+        super.tearDown()
+    }
+
     func testCarPlay_OpenAppStrings_AreConfigured() {
         // Assert that Open App strings are not empty
         // The alert uses message variants (message, messageShort, messageShortest)
@@ -310,17 +325,59 @@ class CarPlayOpenAppAlertTests: XCTestCase {
         )
     }
 
-    func testSceneDelegate_HasMainSceneConnected_Flag() {
-        // Verify the flag exists and is accessible
-        // This flag is used to determine when to show the "Open App" alert
-        let flagValue = SceneDelegate.hasMainSceneConnected
+    // MARK: - Cold-launch gate (device-divergence)
 
-        // The flag should be a Bool and accessible without crashing
-        XCTAssertTrue(flagValue == true || flagValue == false,
-                      "hasMainSceneConnected flag should be a valid Bool")
-        // In test environment, no CarPlay scene is connected, so flag should be false
-        // (unless another test has already set it)
-        XCTAssertNotNil(flagValue, "hasMainSceneConnected should have a value")
+    /// When the main phone scene has NOT connected (CarPlay-only cold start),
+    /// the gate must show the "open Palace on your phone" alert — iOS limits
+    /// background execution so playback won't work reliably. Behavior test on
+    /// the extracted seam (replaces the prior tautology that only asserted the
+    /// flag was a Bool).
+    func testShouldShowOpenAppAlert_whenMainSceneNotConnected_isTrue() {
+        XCTAssertTrue(
+            CarPlayTemplateManager.shouldShowOpenAppAlert(mainSceneConnected: false),
+            "CarPlay-only cold start must gate playback behind the open-app alert"
+        )
+    }
+
+    /// When the main phone scene HAS connected, the gate must NOT short-circuit
+    /// to the alert — playback selection proceeds to the auth/download checks.
+    func testShouldShowOpenAppAlert_whenMainSceneConnected_isFalse() {
+        XCTAssertFalse(
+            CarPlayTemplateManager.shouldShowOpenAppAlert(mainSceneConnected: true),
+            "with the phone scene connected, selection must proceed past the gate"
+        )
+    }
+
+    // MARK: - Statebleed reset (CarPlay presenter pollution, #1072)
+
+    /// The audiobook session / presenter / bootstrapper are process-wide statics
+    /// that `_buildCachedAppContainer()` does NOT rebuild, so a prior test that
+    /// leaves the presenter mid-session can bleed `hasActiveSession` into a later
+    /// CarPlay test. `AppContainer._resetForTesting()` (the #1072 fix) nils them
+    /// so the next resolution rebuilds fresh. Drive the cycle through the
+    /// PRODUCTION seam (`production().audiobook*`), not direct static writes, and
+    /// assert the reset releases the prior instances (write → reset → re-enter).
+    @MainActor
+    func testStatebleed_resetForTesting_rebuildsFreshAudiobookStatics() {
+        // Arrange — resolve (and thereby cache) the audiobook statics.
+        let session1 = AppContainer.production().audiobookSession as AnyObject // MIGRATED-DEFERRED: swarm_47883816 — production() resolution IS the test contract (asserting _resetForTesting rebuilds the audiobook statics; no DI seam observes the static cache)
+        let presenter1 = AppContainer.production().audiobookSessionPresenter // MIGRATED-DEFERRED: swarm_47883816 — production() resolution IS the test contract (asserting _resetForTesting rebuilds the audiobook statics; no DI seam observes the static cache)
+        let bootstrapper1 = AppContainer.production().playbackBootstrapper // MIGRATED-DEFERRED: swarm_47883816 — production() resolution IS the test contract (asserting _resetForTesting rebuilds the audiobook statics; no DI seam observes the static cache)
+
+        // Act — the test-boundary reset.
+        AppContainer._resetForTesting()
+
+        // Assert — re-resolving yields FRESH instances; the polluted ones are gone.
+        let session2 = AppContainer.production().audiobookSession as AnyObject // MIGRATED-DEFERRED: swarm_47883816 — production() resolution IS the test contract (asserting _resetForTesting rebuilds the audiobook statics; no DI seam observes the static cache)
+        let presenter2 = AppContainer.production().audiobookSessionPresenter // MIGRATED-DEFERRED: swarm_47883816 — production() resolution IS the test contract (asserting _resetForTesting rebuilds the audiobook statics; no DI seam observes the static cache)
+        let bootstrapper2 = AppContainer.production().playbackBootstrapper // MIGRATED-DEFERRED: swarm_47883816 — production() resolution IS the test contract (asserting _resetForTesting rebuilds the audiobook statics; no DI seam observes the static cache)
+
+        XCTAssertFalse(session1 === session2,
+                       "reset must rebuild a fresh audiobook session")
+        XCTAssertFalse(presenter1 === presenter2,
+                       "reset must rebuild a fresh presenter (CarPlay statebleed fix)")
+        XCTAssertFalse(bootstrapper1 === bootstrapper2,
+                       "reset must rebuild a fresh playback bootstrapper")
     }
 }
 
