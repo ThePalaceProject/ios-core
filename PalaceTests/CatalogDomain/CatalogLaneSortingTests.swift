@@ -121,8 +121,45 @@ final class CatalogLaneSortingTests: XCTestCase {
                    "Active sort title should reflect the active reverse sort facet")
   }
   
+  // MARK: - PP-4553: OPDS 1 grouped single-title lane must render its cover
+
+  /// Mirror of the OPDS2 single-title guard for the OPDS 1 path
+  /// (CatalogViewModel.buildGroupedContent). A 1-entry grouped feed must
+  /// produce a lane that is NOT loading — otherwise CatalogLaneRowView renders
+  /// the gray skeleton scroller (`if isLoading || books.isEmpty`) and the
+  /// single cover never shows. This is the OPDS 1 analogue of
+  /// OPDS2CatalogWiringTests.testMapFeed_opds2SingleTitleLane_isNotLoading.
+  @MainActor
+  func testMapFeed_opds1GroupedSingleTitleLane_isNotLoading_soCoverRenders() throws {
+    let xml = """
+    <?xml version="1.0" encoding="UTF-8"?>
+    <feed xmlns="http://www.w3.org/2005/Atom"
+          xmlns:opds="http://opds-spec.org/2010/catalog">
+      <id>urn:uuid:pp4553-opds1</id>
+      <title>One Book Library</title>
+      <updated>2024-01-01T00:00:00Z</updated>
+      \(makeGroupedEntry(groupTitle: "Featured", bookTitle: "Only Book", bookId: "only-1"))
+    </feed>
+    """
+    let data = try XCTUnwrap(xml.data(using: .utf8))
+    let tppxml = try XCTUnwrap(TPPXML(data: data))
+    let opdsFeed = try XCTUnwrap(TPPOPDSFeed(xml: tppxml))
+    let catalogFeed = try XCTUnwrap(CatalogFeed(feed: opdsFeed))
+
+    XCTAssertEqual(opdsFeed.type, .acquisitionGrouped,
+                   "Fixture must route through the .acquisitionGrouped branch of mapFeed")
+
+    let mapped = CatalogViewModel.mapFeed(catalogFeed, bookRegistry: AppContainer.production().bookRegistry)
+
+    XCTAssertEqual(mapped.lanes.count, 1, "A single grouped entry must produce exactly one lane")
+    let lane = try XCTUnwrap(mapped.lanes.first)
+    XCTAssertEqual(lane.books.count, 1, "The single title must survive OPDS 1 lane assembly")
+    XCTAssertFalse(lane.isLoading,
+                   "A fully-built 1-title OPDS 1 lane must not be flagged loading; otherwise CatalogLaneRowView shows the skeleton and the cover never renders (PP-4553)")
+  }
+
   // MARK: - Test Feed Helpers
-  
+
   /// Creates a grouped OPDS feed XML that includes sort facets with reverse options.
   private func makeGroupedFeedWithSortFacets(activeSortTitle: String = "Title") -> String {
     let sortFacets = [
