@@ -1277,39 +1277,25 @@ public final class AudiobookSessionManager: ObservableObject {
 
     // MARK: - Chapter TOC normalization
 
-    /// Returns the chapter list that should drive `currentChapters`. When the
-    /// raw TOC is oversubdivided relative to the actual track count (>1.5x),
-    /// collapses adjacent same-track entries to keep the UI showing chapters
-    /// (one per track) instead of sections/paragraphs. See
-    /// `ChapterTOCNormalizer` for the threshold rationale.
-    ///
-    /// Static + pure so the decision is unit-testable without a real
-    /// `AudiobookTableOfContents` — wrapper `normalizedChaptersCount(
-    /// tocCount:trackCount:)` provides a primitive entry point that tests
-    /// can hit without constructing toolkit types.
+    /// Passthrough. TOC collapse now lives entirely in the toolkit's
+    /// `AudiobookTableOfContents` (one chapter per physical track for
+    /// oversubdivided / dense manifests), so the app consumes the already-collapsed
+    /// list directly. This eliminates the SECOND collapse implementation that
+    /// diverged from the toolkit and produced the Findaway "Dune" dual chapter-
+    /// numbering (the toolkit used the uncollapsed list for currentChapter /
+    /// NowPlaying / saved-position while the app displayed the collapsed one).
+    /// Retained as a named seam for the bind site (`currentChapters`) + tests.
     static func normalizedChapters(for toc: AudiobookTableOfContents) -> [Chapter] {
-        let chapters = toc.toc
-        let trackCount = toc.tracks.tracks.count
-        if !ChapterTOCNormalizer.isOversubdivided(tocCount: chapters.count, expectedChapterCount: trackCount) {
-            return chapters
-        }
-        // Collapse: keep the FIRST chapter object encountered per track key.
-        // This preserves the natural reading order while dropping subsections.
-        var seenKeys = Set<String>()
-        var collapsed: [Chapter] = []
-        collapsed.reserveCapacity(trackCount)
-        for chapter in chapters {
-            let key = chapter.position.track.key
-            if seenKeys.insert(key).inserted {
-                collapsed.append(chapter)
-            }
-        }
-        return collapsed
+        toc.toc
     }
 
-    /// Primitive-typed mirror of `normalizedChapters(for:)` for unit-test
-    /// use. Returns the expected output count given a TOC count + track
-    /// count, without needing the toolkit's Chapter type.
+    /// Test-only spec for the 1.5x oversubdivision THRESHOLD (one chapter per
+    /// physical track when `tocCount > trackCount * 1.5`). NOTE: this is no longer
+    /// the production collapse seam — `normalizedChapters(for:)` is now a passthrough
+    /// and the collapse is implemented in the toolkit's `AudiobookTableOfContents`
+    /// (`isOversubdivided` + keep-first). This primitive is retained only to keep the
+    /// threshold math pinned by unit tests without constructing toolkit types; it
+    /// does not drive any production code path.
     static func normalizedChaptersCount(tocCount: Int, trackCount: Int) -> Int {
         if !ChapterTOCNormalizer.isOversubdivided(tocCount: tocCount, expectedChapterCount: trackCount) {
             return tocCount
