@@ -384,14 +384,46 @@ public final class AudiobookSessionManager: ObservableObject {
     ///   - book: The book to play
     ///   - startPlaying: Whether to auto-start playback (default: true)
     /// - Returns: Result indicating success or failure
+    /// Protocol witness (`AudiobookSessionManaging`): a normal user-initiated
+    /// open. Delegates to the `forceRefulfill` body with re-fulfill off.
     @discardableResult
     public func openAudiobook(_ book: TPPBook, startPlaying: Bool = true) async -> Result<Void, AudiobookSessionError> {
-        Log.info(#file, "Opening audiobook: '\(book.title)' (id: \(book.identifier))")
+        await openAudiobook(book, startPlaying: startPlaying, forceRefulfill: false)
+    }
+
+    /// WS-3: per-session bound on the OverDrive expired-URL re-fulfill recovery.
+    /// A book id is inserted when its recovery re-open fires and removed when the
+    /// user initiates a fresh open — so a persistent failure re-fulfills at most
+    /// ONCE per playback session and never loops on the shared handler.
+    private var overdriveRefulfillAttemptedBookIds = Set<String>()
+
+    /// Loader factory — recovery seam (WS-3). The default closure is
+    /// byte-equivalent to the inline `AudiobookLoader(forceRefulfill:)` it
+    /// replaces, so production behavior is unchanged. `private(set)` so only
+    /// this type rewires it — no in-module production path can overwrite the
+    /// factory. The fresh-URL-consumed behavior it enables is proven at the
+    /// `AudiobookLoader(adapters:)` boundary, not by reassigning this seam.
+    private(set) var makeLoader: (Bool) -> AudiobookLoader = { AudiobookLoader(forceRefulfill: $0) }
+
+    /// - parameter forceRefulfill: WS-3 OverDrive recovery — when true the loader
+    ///   bypasses `LocalFileAdapter` so the book re-fulfills FRESH signed URLs
+    ///   instead of replaying the expired on-disk manifest. Internal (not part of
+    ///   the public `AudiobookSessionManaging` surface); the public 2-param
+    ///   witness above delegates here, and the in-class recovery branch calls it.
+    func openAudiobook(_ book: TPPBook, startPlaying: Bool, forceRefulfill: Bool) async -> Result<Void, AudiobookSessionError> {
+        Log.info(#file, "Opening audiobook: '\(book.title)' (id: \(book.identifier))\(forceRefulfill ? " [re-fulfill]" : "")")
         // Polish-phase (in-app-nav-polish-2026-06-01): record wall-clock
         // open time so the Continue Reading row's sort surfaces the real
         // last-touched book even when the audiobook position-save flow
         // hasn't yet written its first timeStamp. Idempotent overwrite.
         AppContainer.production().bookOpenTracker.recordOpened(book.identifier)
+
+        // A fresh user-initiated open resets the per-session re-fulfill bound so
+        // a later genuine expiry can recover again; the recovery re-open
+        // (forceRefulfill) must NOT reset it, or the bound never holds.
+        if !forceRefulfill {
+            overdriveRefulfillAttemptedBookIds.remove(book.identifier)
+        }
 
         if case .loading(let loadingId) = state, loadingId == book.identifier {
             Log.warn(#file, "Audiobook already loading: \(book.identifier)")
@@ -430,7 +462,7 @@ public final class AudiobookSessionManager: ObservableObject {
 
         loadGeneration &+= 1
         let generation = loadGeneration
-        let loader = AudiobookLoader()
+        let loader = makeLoader(forceRefulfill)
         currentLoader = loader
 
         return await withCheckedContinuation { [weak self] (continuation: CheckedContinuation<Result<Void, AudiobookSessionError>, Never>) in
@@ -1011,12 +1043,21 @@ public final class AudiobookSessionManager: ObservableObject {
             loaded.playbackModel.currentLocation = initialPosition
             loaded.playbackModel.beginSaveSuppression(for: 3.0)
             if isLCPAudiobook {
-                do {
-                    try await command.play(at: initialPosition)
-                    Log.info(#file, "🎵 Playback started at initial position (LCP path — gate bypassed)")
-                } catch {
-                    Log.error(#file, "Playback start error (LCP path): \(error)")
-                }
+                // LCP can't use the await-then-play gate (isLoaded only flips
+                // AFTER play → the gate would deadlock; see the bypass rationale
+                // above). That left LCP on the ORIGINAL single fire-and-forget
+                // play that drops silently when the engine is still initializing
+                // on first-open (F-011: UI mounted, no audio; nav-away-and-back
+                // works because it re-issues play after init). Reliable start =
+                // play-then-confirm-with-bounded-retry (WS-5).
+                await self.confirmLCPFirstPlay(
+                    bookId: bookId,
+                    initialPosition: initialPosition,
+                    probe: probe,
+                    command: command,
+                    budget: Self.lcpFirstPlayBudget,
+                    retryInterval: Self.lcpFirstPlayRetryInterval
+                )
             } else {
                 await self.awaitReadinessAndIssueFirstPlay(
                     bookId: bookId,
@@ -1138,6 +1179,99 @@ public final class AudiobookSessionManager: ObservableObject {
             self.playbackStatePublisher.send(self.state)
         } catch {
             Log.error(#file, "Playback start error after readiness: \(error)")
+        }
+    }
+
+    // MARK: - LCP first-open reliable start (WS-5 / F-011)
+
+    /// Dedicated LCP first-open budget. UNLIKE `readinessTimeout` (an
+    /// await-budget tuned for already-loaded non-LCP players), this is a
+    /// "nudge budget": `LCPStreamingPlayer.isLoaded` only flips AFTER a
+    /// successful `play()`, so we cannot await-then-play (it would deadlock —
+    /// see the bypass rationale at the call site). Instead we play, then
+    /// re-issue every `lcpFirstPlayRetryInterval` until the engine reports
+    /// playing or the budget exhausts — the programmatic equivalent of the
+    /// nav-away-and-back workaround. Stays well below the toolkit's own 30s
+    /// `.failed` timeout so a genuine non-start still surfaces through the
+    /// toolkit; we never synthesize a false Palace error.
+    ///
+    /// PROVISIONAL: 3.0s/0.5s is unvalidated — real LCP first-open engine init
+    /// (network + decrypt) must be MEASURED on device/simdrive with a live LCP
+    /// title and tuned. Folds into the same Mac/device validation pass as the
+    /// WS-4 Adobe `_exit` ceiling (see the WS-5 ADR validation section).
+    static let lcpFirstPlayBudget: TimeInterval = 3.0
+    static let lcpFirstPlayRetryInterval: TimeInterval = 0.5
+
+    /// LCP first-open reliable start: issue `play(at:)`, then re-issue every
+    /// `retryInterval` while the engine has NOT confirmed playing, bounded by
+    /// `budget`. The re-issue is SUPPRESSED the instant `probe.isCurrentlyReady()`
+    /// is true — `play()` can take effect between the gate wait and the
+    /// re-issue decision, and we must never double-start a playing engine
+    /// (no seek-to-zero / double-audio glitch). On budget exhaustion we stay
+    /// SILENT and defer to the toolkit's own 30s `.failed`; we do NOT surface a
+    /// Palace error (that would mask a genuine non-start). Extracted +
+    /// spy-seamed so the retry logic is unit- and mutation-testable without a
+    /// real Player.
+    @MainActor
+    internal func confirmLCPFirstPlay(
+        bookId: String,
+        initialPosition: TrackPositionShape,
+        probe: PlaybackReadinessProbing,
+        command: PlaybackEngineCommanding,
+        budget: TimeInterval,
+        retryInterval: TimeInterval
+    ) async {
+        let gate = PlaybackReadinessGate()
+        probe.start(driving: gate)
+        defer { probe.stop() }
+
+        // Deterministic bound from the nudge-budget: re-issue at most
+        // ceil(budget / retryInterval) times. Count-based (not wall-clock) so
+        // the retry behaviour is deterministic and unit-testable.
+        let maxAttempts = max(1, Int((budget / retryInterval).rounded(.up)))
+
+        var attempt = 0
+        while attempt < maxAttempts {
+            attempt += 1
+            await issueLCPPlay(command, at: initialPosition, attempt: attempt, bookId: bookId)
+            do {
+                let outcome = try await gate.awaitReady(timeout: retryInterval)
+                switch outcome {
+                case .ready:
+                    Log.info(#file, "🎵 LCP first-open engine confirmed playing after \(attempt) attempt(s)")
+                    return
+                case .failed(let reason):
+                    Log.error(#file, "LCP first-open playback failed: \(reason)")
+                    return
+                }
+            } catch PlaybackReadinessError.timeout {
+                // Caveat: re-check IMMEDIATELY — a play() that took effect
+                // between the gate wait and now must suppress the re-issue so
+                // we never double-start a playing engine.
+                if probe.isCurrentlyReady() {
+                    Log.info(#file, "🎵 LCP first-open engine became ready during gate wait — re-issue suppressed (\(attempt) attempt(s))")
+                    return
+                }
+                // else: the loop re-issues play on the next iteration.
+            } catch {
+                Log.error(#file, "LCP first-open readiness wait error: \(error)")
+                return
+            }
+        }
+        Log.warn(#file, "LCP first-open not confirmed within \(maxAttempts) attempt(s) (~\(budget)s) — deferring to toolkit's own 30s timeout (PP-4436 / F-011)")
+    }
+
+    @MainActor
+    private func issueLCPPlay(
+        _ command: PlaybackEngineCommanding,
+        at position: TrackPositionShape,
+        attempt: Int,
+        bookId: String
+    ) async {
+        do {
+            try await command.play(at: position)
+        } catch {
+            Log.error(#file, "LCP first-open play(at:) attempt \(attempt) error (\(bookId)): \(error)")
         }
     }
 
@@ -1418,6 +1552,49 @@ public final class AudiobookSessionManager: ObservableObject {
     private static let openAccessPlayerErrorDomain = "org.nypl.labs.NYPLAudiobookToolkit.OpenAccessPlayer"
     private static let openAccessPlayerErrorAuthenticationRequiredCode = 5 // OpenAccessPlayerError.authenticationRequired
 
+#if FEATURE_OVERDRIVE
+    /// WS-3 (3.2.0 crash-triage `04373e48`/`d2c9e0ef`): an OverDrive audiobook
+    /// streams from time-limited SIGNED URLs embedded in its on-disk manifest.
+    /// When those URLs expire the toolkit surfaces a `.playbackFailed` carrying
+    /// an HTTP-`410` error and — because OverDrive is not SAML — the recovery in
+    /// `handleManagerState` falls through to a `.unknown` dead-end with no way to
+    /// play. Returns true when the failure is a RECOVERABLE signed-URL expiry a
+    /// fresh re-fulfill can fix: an OverDrive book, an HTTP-410 (Gone) signal, and
+    /// no prior re-fulfill this session.
+    ///
+    /// Conservative by design (per "when in doubt, don't re-fulfill — a false
+    /// dead-end is safer than retrying into a revoked loan"): 401/auth and
+    /// loan-revoked are handled elsewhere (toolkit bearer refresh / SAML re-auth)
+    /// and are NOT retried here; HTTP-403 is excluded because it is ambiguous
+    /// (signed-URL expiry vs entitlement denial) absent a confirmed OverDrive
+    /// expiry signature; an error with no extractable HTTP status is NOT retried.
+    /// Mirrors `shouldTriggerSAMLReauthForPlaybackFailure`.
+    static func shouldTriggerOverdriveRefulfillForPlaybackFailure(
+        error: Error?,
+        book: TPPBook?,
+        alreadyAttempted: Bool
+    ) -> Bool {
+        guard !alreadyAttempted, let book else { return false }
+        guard book.distributor?.lowercased() == OverdriveDistributorKey.lowercased() else { return false }
+        guard let status = httpStatusCode(from: error) else { return false }
+        return status == 410
+    }
+
+    /// Extracts an HTTP status code from a playback error. The toolkit's network
+    /// layer stamps `userInfo["httpStatusCode"]` on download/streaming failures
+    /// (`OpenAccessDownloadTask`); we also walk one level of the
+    /// `NSUnderlyingError` chain.
+    static func httpStatusCode(from error: Error?) -> Int? {
+        guard let nsError = error as NSError? else { return nil }
+        if let status = nsError.userInfo["httpStatusCode"] as? Int { return status }
+        if let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError,
+           let status = underlying.userInfo["httpStatusCode"] as? Int {
+            return status
+        }
+        return nil
+    }
+#endif
+
     private func validateRequirements(for book: TPPBook) async -> AudiobookSessionError? {
         if !(await isUserAuthenticated()) {
             return .notAuthenticated
@@ -1550,7 +1727,10 @@ public final class AudiobookSessionManager: ObservableObject {
         return accountsManager.currentUserAccount.hasCredentials()
     }
 
-    private func handleManagerState(_ managerState: AudiobookManagerState) {
+    /// Internal (was private) so the WS-3 integration test can drive the
+    /// `.playbackFailed` OverDrive re-fulfill recovery directly. Visibility
+    /// widening only — no new public API, no behavior change.
+    func handleManagerState(_ managerState: AudiobookManagerState) {
         guard let bookId = currentBook?.identifier else { return }
 
         switch managerState {
@@ -1621,6 +1801,29 @@ public final class AudiobookSessionManager: ObservableObject {
                 }
                 return
             }
+
+#if FEATURE_OVERDRIVE
+            // WS-3 (3.2.0 crash-triage): OverDrive streams from time-limited
+            // signed URLs and has no SAML session to re-auth — an expired URL
+            // (HTTP 410) would otherwise dead-end here as `.unknown`. Re-fulfill
+            // FRESH signed URLs (bypassing the stale on-disk manifest) and
+            // re-open. Bounded to one attempt per session so a persistent
+            // failure cannot loop on this shared handler.
+            if Self.shouldTriggerOverdriveRefulfillForPlaybackFailure(
+                error: error,
+                book: currentBook,
+                alreadyAttempted: overdriveRefulfillAttemptedBookIds.contains(bookId)
+            ), let book = currentBook {
+                Log.info(#file, "OverDrive audiobook playback failed on an expired signed URL — re-fulfilling fresh URLs and re-opening")
+                overdriveRefulfillAttemptedBookIds.insert(bookId)
+                Task { [weak self] in
+                    guard let self else { return }
+                    guard self.currentBook?.identifier == book.identifier else { return }
+                    _ = await self.openAudiobook(book, startPlaying: true, forceRefulfill: true)
+                }
+                return
+            }
+#endif
 
             errorPublisher.send(.unknown("Playback failed"))
 
