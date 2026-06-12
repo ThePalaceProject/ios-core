@@ -38,6 +38,19 @@ final class AdobeDRMContentProtection: ContentProtection, Loggable {
 
                 let decryptedContainer = AdobeDRMContainer(url: sourceURL, encryptionData: encryptionData)
 
+                // iPad-on-Mac watchdog-exit guard (WS-4): mark that Adobe DRM is
+                // being exercised this session. Every ungated RMSDK op that can
+                // construct Adobe's faulting static recursive_mutex (decode,
+                // displayUntilDate license-read, init → GPFile::lock) runs inside
+                // an AdobeDRMContainer method, and EVERY AdobeDRMContainer is
+                // created here (the sole `.adept` content-protection entry; the
+                // gated AdobeDRMService/NYPLADEPT fulfillment path does not run on
+                // iPad-on-Mac). Marking at construction therefore dominates all
+                // mutex-constructing paths and precedes any of them. The actual
+                // atexit{_exit(0)} interceptor is installed later, at
+                // applicationDidEnterBackground, only when this flag is set.
+                AdobeDRMService.markAdobeDRMUsed()
+
                 let newContainerAsset = ContainerAsset(container: decryptedContainer, format: container.format)
                 let cpAsset = ContentProtectionAsset(asset: .container(newContainerAsset)) { manifest, _, services in
                     let copyManifest = manifest
