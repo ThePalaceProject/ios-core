@@ -86,6 +86,11 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     private let triageBotTicketSubmissionCellIdentifier = "triageBotTicketSubmissionCell"
     private let triageBotAIFallbackCellIdentifier = "triageBotAIFallbackCell"
     private let inAppPlaybackNavCellIdentifier = "inAppPlaybackNavCell"
+    private let triageBotAnthropicKeyCellIdentifier = "triageBotAnthropicKeyCell"
+
+    /// Manages the Keychain-backed Anthropic key for the Triage Bot AI
+    /// fallback (paste/clear/status). See `cellForTriageBotAnthropicKey`.
+    private let triageBotKeyAdmin = TriageBotKeyAdmin()
 
     private var pushNotificationsStatus = false
     private let settings: TPPSettings
@@ -148,7 +153,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         let sectionType = visibleSections[section]
         switch sectionType {
         case .librarySettings: return 2
-        case .triageBot: return 3  // enabled + ticket submission + AI fallback
+        case .triageBot: return 4  // enabled + ticket submission + AI fallback + Anthropic key
         case .featureFlags: return 1
         case .dataManagement: return 3  // Clear Cached Data + Reset This Library + Full Reset
         case .developerTools: return 2
@@ -192,7 +197,8 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
             switch indexPath.row {
             case 0: return cellForTriageBotEnabled()
             case 1: return cellForTriageBotTicketSubmission()
-            default: return cellForTriageBotAIFallback()
+            case 2: return cellForTriageBotAIFallback()
+            default: return cellForTriageBotAnthropicKey()
             }
         case .featureFlags: return cellForInAppPlaybackNav()
         case .libraryRegistryDebugging: return cellForCustomRegsitry()
@@ -372,6 +378,58 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
 
     @objc func triageBotAIFallbackSwitchDidChange(sender: UISwitch) {
         UserDefaults.standard.set(sender.isOn, forKey: RemoteFeatureFlags.triageBotAIFallbackLocalOverrideKey)
+    }
+
+    /// Tappable row to load the Anthropic API key into the device Keychain at
+    /// runtime (so the AI fallback can be exercised on TestFlight without the
+    /// token ever entering source or the binary). `.value1` style so the
+    /// "Stored"/"Not set" status shows on the trailing edge. Tapping presents
+    /// the paste/clear alert in `presentAnthropicKeyEntry()`.
+    private func cellForTriageBotAnthropicKey() -> UITableViewCell {
+        let cell = UITableViewCell(style: .value1, reuseIdentifier: triageBotAnthropicKeyCellIdentifier)
+        cell.selectionStyle = .default
+        cell.accessoryType = .disclosureIndicator
+        cell.textLabel?.text = "Anthropic API Key"
+        cell.textLabel?.adjustsFontSizeToFitWidth = true
+        cell.textLabel?.minimumScaleFactor = 0.5
+        cell.detailTextLabel?.text = triageBotKeyAdmin.hasStoredKey ? "Stored" : "Not set"
+        return cell
+    }
+
+    /// Presents a secure-text alert to paste an Anthropic key (and, when one is
+    /// already stored, to clear it). Empty/whitespace pastes are rejected by
+    /// `TriageBotKeyAdmin.save`, so a stray Save can't wipe a working key.
+    private func presentAnthropicKeyEntry() {
+        let hasKey = triageBotKeyAdmin.hasStoredKey
+        let alert = UIAlertController(
+            title: "Anthropic API Key",
+            message: "Paste a key to enable the Triage Bot AI fallback on this device. "
+                + "The key is stored only in this device's Keychain — never in the app "
+                + "binary or source. Production users can't reach this screen, so their "
+                + "AI fallback stays off.",
+            preferredStyle: .alert
+        )
+        alert.addTextField { textField in
+            textField.placeholder = "sk-ant-…"
+            textField.isSecureTextEntry = true
+            textField.autocapitalizationType = .none
+            textField.autocorrectionType = .no
+            textField.spellCheckingType = .no
+        }
+        alert.addAction(UIAlertAction(title: "Save", style: .default) { [weak self, weak alert] _ in
+            guard let self = self else { return }
+            let raw = alert?.textFields?.first?.text ?? ""
+            self.triageBotKeyAdmin.save(raw)
+            self.tableView.reloadData()
+        })
+        if hasKey {
+            alert.addAction(UIAlertAction(title: "Clear Key", style: .destructive) { [weak self] _ in
+                self?.triageBotKeyAdmin.clear()
+                self?.tableView.reloadData()
+            })
+        }
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        present(alert, animated: true)
     }
 
     private func cellForCustomRegsitry() -> UITableViewCell {
@@ -891,7 +949,14 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
             }
         #endif
 
-        case .librarySettings, .triageBot, .featureFlags, .libraryRegistryDebugging:
+        case .triageBot:
+            // Rows 0–2 are toggles (handled by their switches); row 3 is the
+            // Anthropic key entry.
+            if indexPath.row == 3 {
+                presentAnthropicKeyEntry()
+            }
+
+        case .librarySettings, .featureFlags, .libraryRegistryDebugging:
             break
         }
     }
