@@ -335,6 +335,49 @@ def classify_replay(replay_result: dict) -> dict:
     return verdict
 
 
+def strip_device_suffix(device: str) -> str:
+    """Strip a trailing clone-suffix parenthetical from a sim device name.
+
+    Fleet/pool sims are named `iPhone 16 Pro (pool-3)` / `(fleet-5)` — the
+    parenthetical is a CoreSimulator clone tag, not a different device model.
+    `iPhone 16 Pro (pool-3)` → `iPhone 16 Pro`.
+    """
+    import re
+    return re.sub(r"\s*\([^)]*\)\s*$", "", device or "").strip()
+
+
+def device_matches_modulo_suffix(expected: str, actual: str) -> bool:
+    """True if two sim device names are the same model ignoring the clone suffix."""
+    e, a = strip_device_suffix(expected), strip_device_suffix(actual)
+    return bool(e) and e == a
+
+
+def normalized_requires_device(recorded_device: str, current_device: str) -> str | None:
+    """Return the device name a recording's `requires.sim.device` should be
+    rewritten to so its literal contract check passes on the current sim — or
+    None if no rewrite is needed/safe.
+
+    CAMPAIGN-CRITICAL: `requires.sim.device` is matched LITERALLY, so a recording
+    captured on a base `iPhone 16 Pro` halts on every fleet `(pool-N)/(fleet-N)`
+    sim. The safe fix (vs bypassing the contract) is to rewrite the contract's
+    device to the CURRENT sim name when they are the same model modulo the clone
+    suffix, then replay with the FULL contract still enforced — so text_subset /
+    version / foreground real mismatches still HALT→FAIL. Returns:
+      - current_device  when recorded & current are the same model but differ
+                        (the rewrite that makes the literal check pass);
+      - None            when they already match, or are genuinely different
+                        models (e.g. iPhone vs iPad — do NOT rewrite; a real
+                        device-divergence must FAIL).
+    """
+    if not recorded_device or not current_device:
+        return None
+    if recorded_device == current_device:
+        return None
+    if device_matches_modulo_suffix(recorded_device, current_device):
+        return current_device
+    return None
+
+
 def append_finding(
     csv_path: str | os.PathLike,
     finding: Finding,

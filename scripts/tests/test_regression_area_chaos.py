@@ -352,6 +352,47 @@ def test_classify_replay_missing_steps_planned_falls_back_to_len():
     assert v["steps_planned"] == 2 and v["status"] == "pass"
 
 
+# ── 2e. device-suffix normalization (campaign-critical) ───────────────────────
+
+
+def test_strip_device_suffix():
+    assert rf.strip_device_suffix("iPhone 16 Pro (pool-3)") == "iPhone 16 Pro"
+    assert rf.strip_device_suffix("iPhone 16 Pro (fleet-5)") == "iPhone 16 Pro"
+    assert rf.strip_device_suffix("iPhone 16 Pro") == "iPhone 16 Pro"
+    assert rf.strip_device_suffix("") == ""
+
+
+def test_device_matches_modulo_suffix():
+    assert rf.device_matches_modulo_suffix("iPhone 16 Pro", "iPhone 16 Pro (pool-3)")
+    assert rf.device_matches_modulo_suffix("iPhone 16 Pro (pool-3)", "iPhone 16 Pro (fleet-5)")
+    assert not rf.device_matches_modulo_suffix("iPhone 16 Pro", "iPad Pro")
+    assert not rf.device_matches_modulo_suffix("", "iPhone 16 Pro")
+
+
+def test_normalized_requires_device_rewrites_to_current_on_suffix_only():
+    # base recording + suffixed fleet sim, same model → rewrite to current name
+    assert rf.normalized_requires_device(
+        "iPhone 16 Pro", "iPhone 16 Pro (pool-3)") == "iPhone 16 Pro (pool-3)"
+
+
+def test_normalized_requires_device_none_when_already_equal():
+    assert rf.normalized_requires_device(
+        "iPhone 16 Pro (pool-3)", "iPhone 16 Pro (pool-3)") is None
+    assert rf.normalized_requires_device("iPhone 16 Pro", "iPhone 16 Pro") is None
+
+
+def test_normalized_requires_device_none_on_real_model_divergence():
+    # SAFETY: a genuinely different model must NOT be normalized — a real
+    # device-divergence must still HALT/FAIL, not be masked.
+    assert rf.normalized_requires_device("iPhone 16 Pro", "iPad Pro (pool-3)") is None
+    assert rf.normalized_requires_device("iPhone 16 Pro", "iPhone 15 (pool-3)") is None
+
+
+def test_normalized_requires_device_none_on_empty():
+    assert rf.normalized_requires_device("", "iPhone 16 Pro") is None
+    assert rf.normalized_requires_device("iPhone 16 Pro", "") is None
+
+
 # ── 3. CLI surface used by the shell scripts ──────────────────────────────────
 
 
