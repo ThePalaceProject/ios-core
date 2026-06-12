@@ -509,8 +509,37 @@ struct AppContainer {
             return
         }
         AccountsManager.deferInitialLoadCatalogsForTesting = true
-        _cached.accountsManager.cancelBackgroundWork()
+        // Cancel AND synchronously DRAIN the prior cached AccountsManager's
+        // background loadCatalogs crawl before rebuilding. The cooperative
+        // `cancelBackgroundWork()` alone returned immediately, leaving a
+        // just-cancelled crawl mid-flight holding the `accountSetsLock` barrier
+        // — which the next test's @MainActor reauth `.sync` read deadlocked
+        // against (120s main-jam "auth-state-bleed"). Draining (with run-loop
+        // pumping) closes that residual race globally at every test boundary.
+        // WS-0 follow-up; see AccountsManager.cancelAndDrainBackgroundWork.
+        _cached.accountsManager.cancelAndDrainBackgroundWork()
         _cached = Self._buildCachedAppContainer()
+        // Reset the process-wide audiobook session/presenter statics — the only
+        // graph members `_buildCachedAppContainer()` does NOT rebuild. Left
+        // intact, `_audiobookSessionPresenter` carries active-session state (and
+        // its `.receive(on: main)` subscription) across test-class boundaries:
+        // an upstream test that leaves the presenter `.playing` then reds
+        // `CarPlayAudiobookBridgePresenterMigrationTests.testCarPlayBridge_dismissBookOnPhone`
+        // in-suite (its precondition reads the shared `hasActiveSession`). Nil-ing
+        // them here means the next `production()` resolution rebuilds a fresh
+        // presenter subscribed to a fresh session, releasing the polluted one —
+        // order-independent, neutralizing ANY polluter. Same never-reset-static
+        // pattern as the AccountsManager crawl-drain above. M0-reconverge.
+        //
+        // `MainActor.assumeIsolated` because these are `@MainActor`-isolated
+        // statics and `_resetForTesting()` is nonisolated — matching the same
+        // assertion `_buildCachedAppContainer()` (called just above) already
+        // makes. The test-boundary reset always runs on the main thread.
+        MainActor.assumeIsolated {
+            _audiobookSession = nil
+            _audiobookSessionPresenter = nil
+            _playbackBootstrapper = nil
+        }
         // Leave the flag at the test-safe `true` (see step 4 above) — do NOT
         // reset to `false`. The next test class inherits this value before its
         // own setUp runs; `false` here is the root of the cross-test

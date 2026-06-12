@@ -1324,6 +1324,69 @@ extension AccountsManager {
         networkExecutor.cancelNonEssentialTasks()
     }
 
+    /// Test-only: cancel the in-flight background `loadCatalogs` crawl AND
+    /// synchronously DRAIN it before returning, so no orphan crawl outlives the
+    /// test boundary holding the `accountSetsLock` barrier.
+    ///
+    /// Why this exists (WS-0 follow-up — closes the residual race documented on
+    /// `cancelBackgroundWork()` above): the cooperative `cancelBackgroundWork()`
+    /// returns immediately, so a just-cancelled crawl can still be mid-flight —
+    /// holding the `performWrite` `.barrier` on `accountSetsLock` — when the
+    /// NEXT test's `@MainActor` reauth path does a synchronous
+    /// `currentUserAccount` / `performRead` `.sync` read. That read blocks
+    /// behind the barrier; because the crawl hops to the main actor to complete,
+    /// and main is now blocked on the read, the two deadlock → the victim test's
+    /// 5s `waitForExpectations` timer never fires → 120s main-thread jam. This
+    /// is the "auth-state-bleed" board-red whose ROOT is a leaked
+    /// `deferInitialLoadCatalogsForTesting = false` crawl (flag-value-restored ≠
+    /// crawl-drained — the gap the flag-value defer gate could not see).
+    ///
+    /// The drain MUST pump the run loop while waiting: the crawl needs the main
+    /// actor to finish, so blocking main outright would re-create the deadlock.
+    /// Pumping lets the cancelled crawl's main-hops + barrier writes complete,
+    /// then it observes cancellation and exits — bounded by `timeout`.
+    ///
+    /// Production-safe — `#if DEBUG`, called only from
+    /// `AppContainer._resetForTesting()` (every test boundary) so the fix is
+    /// global across ALL flag-false crawl spawners, not a per-test patch.
+    func cancelAndDrainBackgroundWork(timeout: TimeInterval = 3.0) {
+        // Capture the in-flight tasks BEFORE cancelBackgroundWork() clears them.
+        _trackedCrawlTasksLock.lock()
+        let crawlTasks = _trackedCrawlTasks
+        _trackedCrawlTasksLock.unlock()
+        let fetchTask = backgroundFetchTask
+        let tasksToDrain = crawlTasks + [fetchTask].compactMap { $0 }
+
+        cancelBackgroundWork() // requests cancellation, nils handles, clears list
+
+        guard !tasksToDrain.isEmpty else { return }
+
+        // Await all (now-cancelled) tasks while pumping the run loop, so any
+        // barrier the crawl holds is released and its main-actor hops complete
+        // before we return. Bounded by `timeout` so a stuck task can't hang the
+        // boundary.
+        let started = Date()
+        let group = DispatchGroup()
+        for task in tasksToDrain {
+            group.enter()
+            Task { _ = await task.value; group.leave() }
+        }
+        let deadline = started.addingTimeInterval(timeout)
+        while group.wait(timeout: .now()) == .timedOut && Date() < deadline {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.02))
+        }
+        // Telemetry: a fast drain (cancelled crawl + pumped main unwinds in
+        // single-digit ms) is the expected case. Hitting the `timeout` ceiling
+        // means the cancel did NOT actually stop the crawl — surface it loudly
+        // (a stuck crawl is a real bug) but never hang the boundary.
+        let elapsedMs = Int(Date().timeIntervalSince(started) * 1000)
+        if group.wait(timeout: .now()) == .timedOut {
+            NSLog("[WS0-DRAIN] cancelAndDrainBackgroundWork TIMED OUT after %dms draining %d task(s) — crawl did not observe cancellation; investigate.", elapsedMs, tasksToDrain.count)
+        } else if elapsedMs >= 50 {
+            NSLog("[WS0-DRAIN] cancelAndDrainBackgroundWork drained %d task(s) in %dms.", tasksToDrain.count, elapsedMs)
+        }
+    }
+
     /// Test-only setter that swaps a caller-provided Task into
     /// `backgroundFetchTask`. Used by the race-guard test in
     /// `AccountsManagerCancellationTests` to install a Task it controls (via

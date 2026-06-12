@@ -1043,12 +1043,21 @@ public final class AudiobookSessionManager: ObservableObject {
             loaded.playbackModel.currentLocation = initialPosition
             loaded.playbackModel.beginSaveSuppression(for: 3.0)
             if isLCPAudiobook {
-                do {
-                    try await command.play(at: initialPosition)
-                    Log.info(#file, "🎵 Playback started at initial position (LCP path — gate bypassed)")
-                } catch {
-                    Log.error(#file, "Playback start error (LCP path): \(error)")
-                }
+                // LCP can't use the await-then-play gate (isLoaded only flips
+                // AFTER play → the gate would deadlock; see the bypass rationale
+                // above). That left LCP on the ORIGINAL single fire-and-forget
+                // play that drops silently when the engine is still initializing
+                // on first-open (F-011: UI mounted, no audio; nav-away-and-back
+                // works because it re-issues play after init). Reliable start =
+                // play-then-confirm-with-bounded-retry (WS-5).
+                await self.confirmLCPFirstPlay(
+                    bookId: bookId,
+                    initialPosition: initialPosition,
+                    probe: probe,
+                    command: command,
+                    budget: Self.lcpFirstPlayBudget,
+                    retryInterval: Self.lcpFirstPlayRetryInterval
+                )
             } else {
                 await self.awaitReadinessAndIssueFirstPlay(
                     bookId: bookId,
@@ -1170,6 +1179,99 @@ public final class AudiobookSessionManager: ObservableObject {
             self.playbackStatePublisher.send(self.state)
         } catch {
             Log.error(#file, "Playback start error after readiness: \(error)")
+        }
+    }
+
+    // MARK: - LCP first-open reliable start (WS-5 / F-011)
+
+    /// Dedicated LCP first-open budget. UNLIKE `readinessTimeout` (an
+    /// await-budget tuned for already-loaded non-LCP players), this is a
+    /// "nudge budget": `LCPStreamingPlayer.isLoaded` only flips AFTER a
+    /// successful `play()`, so we cannot await-then-play (it would deadlock —
+    /// see the bypass rationale at the call site). Instead we play, then
+    /// re-issue every `lcpFirstPlayRetryInterval` until the engine reports
+    /// playing or the budget exhausts — the programmatic equivalent of the
+    /// nav-away-and-back workaround. Stays well below the toolkit's own 30s
+    /// `.failed` timeout so a genuine non-start still surfaces through the
+    /// toolkit; we never synthesize a false Palace error.
+    ///
+    /// PROVISIONAL: 3.0s/0.5s is unvalidated — real LCP first-open engine init
+    /// (network + decrypt) must be MEASURED on device/simdrive with a live LCP
+    /// title and tuned. Folds into the same Mac/device validation pass as the
+    /// WS-4 Adobe `_exit` ceiling (see the WS-5 ADR validation section).
+    static let lcpFirstPlayBudget: TimeInterval = 3.0
+    static let lcpFirstPlayRetryInterval: TimeInterval = 0.5
+
+    /// LCP first-open reliable start: issue `play(at:)`, then re-issue every
+    /// `retryInterval` while the engine has NOT confirmed playing, bounded by
+    /// `budget`. The re-issue is SUPPRESSED the instant `probe.isCurrentlyReady()`
+    /// is true — `play()` can take effect between the gate wait and the
+    /// re-issue decision, and we must never double-start a playing engine
+    /// (no seek-to-zero / double-audio glitch). On budget exhaustion we stay
+    /// SILENT and defer to the toolkit's own 30s `.failed`; we do NOT surface a
+    /// Palace error (that would mask a genuine non-start). Extracted +
+    /// spy-seamed so the retry logic is unit- and mutation-testable without a
+    /// real Player.
+    @MainActor
+    internal func confirmLCPFirstPlay(
+        bookId: String,
+        initialPosition: TrackPositionShape,
+        probe: PlaybackReadinessProbing,
+        command: PlaybackEngineCommanding,
+        budget: TimeInterval,
+        retryInterval: TimeInterval
+    ) async {
+        let gate = PlaybackReadinessGate()
+        probe.start(driving: gate)
+        defer { probe.stop() }
+
+        // Deterministic bound from the nudge-budget: re-issue at most
+        // ceil(budget / retryInterval) times. Count-based (not wall-clock) so
+        // the retry behaviour is deterministic and unit-testable.
+        let maxAttempts = max(1, Int((budget / retryInterval).rounded(.up)))
+
+        var attempt = 0
+        while attempt < maxAttempts {
+            attempt += 1
+            await issueLCPPlay(command, at: initialPosition, attempt: attempt, bookId: bookId)
+            do {
+                let outcome = try await gate.awaitReady(timeout: retryInterval)
+                switch outcome {
+                case .ready:
+                    Log.info(#file, "🎵 LCP first-open engine confirmed playing after \(attempt) attempt(s)")
+                    return
+                case .failed(let reason):
+                    Log.error(#file, "LCP first-open playback failed: \(reason)")
+                    return
+                }
+            } catch PlaybackReadinessError.timeout {
+                // Caveat: re-check IMMEDIATELY — a play() that took effect
+                // between the gate wait and now must suppress the re-issue so
+                // we never double-start a playing engine.
+                if probe.isCurrentlyReady() {
+                    Log.info(#file, "🎵 LCP first-open engine became ready during gate wait — re-issue suppressed (\(attempt) attempt(s))")
+                    return
+                }
+                // else: the loop re-issues play on the next iteration.
+            } catch {
+                Log.error(#file, "LCP first-open readiness wait error: \(error)")
+                return
+            }
+        }
+        Log.warn(#file, "LCP first-open not confirmed within \(maxAttempts) attempt(s) (~\(budget)s) — deferring to toolkit's own 30s timeout (PP-4436 / F-011)")
+    }
+
+    @MainActor
+    private func issueLCPPlay(
+        _ command: PlaybackEngineCommanding,
+        at position: TrackPositionShape,
+        attempt: Int,
+        bookId: String
+    ) async {
+        do {
+            try await command.play(at: position)
+        } catch {
+            Log.error(#file, "LCP first-open play(at:) attempt \(attempt) error (\(bookId)): \(error)")
         }
     }
 

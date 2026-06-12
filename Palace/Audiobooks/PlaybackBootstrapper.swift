@@ -189,8 +189,14 @@ public final class PlaybackBootstrapper {
         // Full initialization if not done yet
         ensureInitialized()
 
-        // Re-activate audio session in case it was deactivated
-        activateAudioSession()
+        // Re-activate audio session in case it was deactivated. Runs as a
+        // detached MainActor task so the synchronous CarPlay `didConnect`
+        // path is NOT blocked by the bounded retry/backoff — the deferral in
+        // `.forgeos/intent/3.2.0-crash-triage.md` flagged a ~1s main-thread
+        // block if this retried synchronously. WS-2 / Crashlytics d45f5aa9.
+        Task { @MainActor [weak self] in
+            await self?.activateAudioSessionWithRetry()
+        }
 
         // Re-apply command configuration to ensure correctness after reconnect
         configureCommandSettings()
@@ -225,16 +231,33 @@ public final class PlaybackBootstrapper {
         }
     }
 
-    private func activateAudioSession() {
+    /// Activates the audio session with a bounded async retry/backoff.
+    ///
+    /// CarPlay cold launch can transiently refuse activation (observed
+    /// OSStatus 561015905, plus `-50` in the very-early window). Before WS-2
+    /// a single refusal left the session inactive, so the toolkit's
+    /// OpenAccessPlayer reported not-ready and the CarPlay play command hit
+    /// `.playerNotReady` (Crashlytics d45f5aa9). The retry gives the session
+    /// time to become active before play is issued. Async so the bounded
+    /// backoff never blocks the MainActor `didConnect` path.
+    private func activateAudioSessionWithRetry() async {
         let session = AVAudioSession.sharedInstance()
-
-        do {
-            if !session.isOtherAudioPlaying {
-                try session.setActive(true)
-                Log.debug(#file, "🔊 Audio session activated")
+        let activator = AudioSessionActivator(
+            isOtherAudioPlaying: { session.isOtherAudioPlaying },
+            setActive: { try session.setActive(true) },
+            sleep: { seconds in
+                let nanos = UInt64(max(0, seconds) * 1_000_000_000)
+                try? await Task.sleep(nanoseconds: nanos)
             }
-        } catch {
-            Log.error(#file, "🔊 Failed to activate audio session: \(error)")
+        )
+
+        switch await activator.activate() {
+        case .activated(let attempts):
+            Log.debug(#file, "🔊 Audio session activated (attempts: \(attempts))")
+        case .skippedOtherAudioPlaying:
+            Log.debug(#file, "🔊 Audio session activation skipped — other audio playing")
+        case .failed(let attempts, let code):
+            Log.error(#file, "🔊 Failed to activate audio session after \(attempts) attempts (last OSStatus \(code))")
         }
     }
 
