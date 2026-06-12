@@ -336,14 +336,24 @@ def classify_replay(replay_result: dict) -> dict:
 
 
 def strip_device_suffix(device: str) -> str:
-    """Strip a trailing clone-suffix parenthetical from a sim device name.
+    """Strip a trailing CoreSimulator clone tag ((pool-N)/(fleet-N)) from a sim
+    device name.
 
-    Fleet/pool sims are named `iPhone 16 Pro (pool-3)` / `(fleet-5)` — the
-    parenthetical is a CoreSimulator clone tag, not a different device model.
-    `iPhone 16 Pro (pool-3)` → `iPhone 16 Pro`.
+    ONLY the fleet/pool clone tag is removed — a MODEL parenthetical such as
+    `iPad Pro (12.9-inch)` is preserved, because it is part of the device
+    identity. Stripping only the LAST paren (the old behavior) conflated
+    `iPad Pro (12.9-inch)` with `iPad Pro` and broke iPad normalization: a base
+    `iPad Pro (12.9-inch)` recording would not match a fleet
+    `iPad Pro (12.9-inch) (pool-3)` sim, spuriously FAILing the iPad cell.
+    Matching only the clone tag fixes that AND stays FAIL-safe — an unrecognized
+    suffix is left intact, so it errs toward a real mismatch (never a false-pass).
+
+    `iPhone 16 Pro (pool-3)` → `iPhone 16 Pro`;
+    `iPad Pro (12.9-inch) (fleet-2)` → `iPad Pro (12.9-inch)`;
+    `iPad Pro (12.9-inch)` → `iPad Pro (12.9-inch)` (model paren kept).
     """
     import re
-    return re.sub(r"\s*\([^)]*\)\s*$", "", device or "").strip()
+    return re.sub(r"\s*\((?:pool|fleet)-[^)]*\)\s*$", "", device or "").strip()
 
 
 def device_matches_modulo_suffix(expected: str, actual: str) -> bool:
