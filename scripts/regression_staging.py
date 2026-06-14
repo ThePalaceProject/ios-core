@@ -244,13 +244,35 @@ def sign_in(d: Driver, slug: str = "a1qa", library: str = "A1QA Test Library") -
     d.wait_for("Sign out", timeout=20)
 
 
+def tap_dialog_button(d: Driver, button_text: str, anchor_text: str = "Cancel",
+                      max_dy: int = 90) -> None:
+    """Tap a confirm-dialog button by name, disambiguated from a same-named
+    element elsewhere on screen (e.g. the Account "Sign out" ROW vs the confirm
+    dialog "Sign out" BUTTON). Resolves the target as the matching mark on the
+    SAME row as the dialog's anchor (default "Cancel"). This is the duplicate-
+    text confirm-dialog fix — a plain find() grabs the topmost match (the row),
+    not the button."""
+    anchor = d.wait_for(anchor_text)
+    marks = d.observe()
+    bl = button_text.lower()
+    cands = [m for m in marks if m.text.strip().lower() == bl and abs(m.cy - anchor.cy) < max_dy]
+    if not cands:
+        cands = [m for m in marks if bl in m.text.lower() and abs(m.cy - anchor.cy) < max_dy]
+    if not cands:
+        raise StagingError(f"dialog button '{button_text}' not found near '{anchor_text}'")
+    btn = cands[0]
+    w, h = d._dims
+    d._act.tap(btn.cx, btn.cy, w, h, d.udid)
+    time.sleep(d.settle)
+
+
 def sign_out(d: Driver, library: str = "A1QA Test Library") -> None:
     d.tap_text("Settings")
     d.tap_text(library)
     if not d.has("Sign out"):
         return
-    d.tap_text("Sign out")     # row
-    d.tap_text("Sign out")     # confirm dialog (destructive button)
+    d.tap_text("Sign out")                    # row -> opens confirm dialog
+    tap_dialog_button(d, "Sign out", "Cancel")  # the dialog button, not the row
     d.wait_for("Sign in", timeout=15)
 
 
@@ -280,7 +302,8 @@ STAGING_RECIPES: dict[str, list[tuple]] = {
     "a1qa-basic-signin": [
         ("dismiss_first_launch",),
         ("add_library", "A1QA Test Library"),
-        ("goto", "account_signin"),          # signed OUT, on the sign-in form
+        ("sign_out",),                       # converge to SIGNED-OUT (idempotent)
+        ("goto", "account_signin"),          # land on the sign-in form
     ],
     "a1qa-sign-out": [
         ("dismiss_first_launch",),
