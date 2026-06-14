@@ -388,6 +388,26 @@ def normalized_requires_device(recorded_device: str, current_device: str) -> str
     return None
 
 
+def normalized_requires_version_match(current_match: str | None) -> str | None:
+    """Cross-build version normalize (#21 / RC-AREA): a recording's
+    `requires.app.version_match` (default `minor`) pins it to its CAPTURE build,
+    so a 476/479-captured recording HALTs against a 480 candidate — which defeats
+    the whole point of regression (replay OLD recordings against the NEW build).
+    For the campaign we relax the cross-build version pin to `any` (simdrive skips
+    the app.version check entirely when version_match == "any"), so recordings
+    replay against ANY candidate build. The rest of the contract — device
+    (modulo clone-suffix), foreground, and the load-bearing text_subset/screen
+    — is STILL enforced, so a real regression still HALTs→FAILs.
+
+    Returns "any" when the recording's version_match needs relaxing, or None when
+    it is already "any" (no rewrite needed). Same shape as
+    normalized_requires_device so the worker wires them identically.
+    """
+    if (current_match or "minor") == "any":
+        return None
+    return "any"
+
+
 def append_finding(
     csv_path: str | os.PathLike,
     finding: Finding,

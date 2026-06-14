@@ -203,13 +203,38 @@ try:
 
     sys.path.insert(0, os.environ["SCRIPT_DIR"])
     from regression_findings import (crashes_since, classify_replay,
-                                     normalized_requires_device)
+                                     normalized_requires_device,
+                                     normalized_requires_version_match)
 
-    # Device-suffix normalization (campaign-critical): requires.sim.device is
-    # matched LITERALLY, so a base "iPhone 16 Pro" recording halts on every fleet
-    # "(pool-N)/(fleet-N)" sim. Rewrite the contract device to the CURRENT sim in
-    # a per-cell temp copy, then replay with the FULL contract still enforced
-    # (text_subset / version real mismatches still HALT). No bypass; guard intact.
+    # Per-journey STAGING (#21 — the campaign-runnability fix): drive the sim to
+    # the recording requires.initial_state (add-library -> sign-in -> navigate)
+    # before replay, so step-0 does not halt on a wrong start screen. Only
+    # journeys with a "ready" recipe are staged; phase2/blocked/unknown are left
+    # for the replay to gate on (classify_replay FAILs an unmet precondition — a
+    # skipped stage can never become a false-pass).
+    try:
+        from regression_staging import Driver, stage_for_journey, staging_status
+        _jn = os.environ["JOURNEY"]
+        _status = staging_status(_jn)
+        ev["stage_status"] = _status
+        if _status == "ready":
+            stage_for_journey(Driver(udid, app), _jn)
+            ev["staged"] = True
+    except Exception as _se:
+        ev["stage_error"] = str(_se)
+        with log_file.open("a") as lf:
+            lf.write("\n[warn] staging failed for " + os.environ.get("JOURNEY", "?") +
+                     ": " + str(_se) + " (replay will gate on precondition)\n")
+
+    # Requires-normalization (campaign-critical), in ONE per-cell temp copy:
+    #  - DEVICE: requires.sim.device is matched LITERALLY, so a base "iPhone 16
+    #    Pro" recording halts on every fleet "(pool-N)/(fleet-N)" sim. Rewrite the
+    #    contract device to the CURRENT sim (same model modulo clone-suffix only).
+    #  - VERSION (#21): version_match "minor" pins a recording to its CAPTURE
+    #    build, halting cross-build replay (476/479 recording vs 480 candidate) =
+    #    defeats regression. Relax to "any" so recordings replay against ANY
+    #    candidate build. The load-bearing text_subset/screen + foreground +
+    #    same-model device contract is STILL enforced; a real regression HALTs.
     journey_name = os.environ["JOURNEY"]
     replay_name = journey_name
     tmp_rec = None
@@ -231,9 +256,12 @@ try:
         import yaml as _yaml
         rec_dir = Path.home() / ".simdrive" / "recordings" / journey_name
         data = _yaml.safe_load((rec_dir / "recording.yaml").read_text())
-        rec_dev = (((data or {}).get("requires") or {}).get("sim") or {}).get("device")
+        _req = ((data or {}).get("requires") or {})
+        rec_dev = ((_req.get("sim") or {}).get("device"))
+        rec_vm = ((_req.get("app") or {}).get("version_match"))
         new_dev = normalized_requires_device(rec_dev or "", _current_device_name(udid) or "")
-        if new_dev:
+        new_vm = normalized_requires_version_match(rec_vm)
+        if new_dev or new_vm:
             cell = os.environ.get("DEVICE_CELL", "cell")
             tmp_name = journey_name + "__rcnorm__" + cell
             tmp_rec = Path.home() / ".simdrive" / "recordings" / tmp_name
@@ -241,15 +269,21 @@ try:
                 shutil.rmtree(tmp_rec, ignore_errors=True)
             shutil.copytree(rec_dir, tmp_rec)
             d2 = _yaml.safe_load((tmp_rec / "recording.yaml").read_text())
-            d2["requires"]["sim"]["device"] = new_dev
+            note = []
+            if new_dev:
+                d2["requires"]["sim"]["device"] = new_dev
+                note.append("device " + str(rec_dev) + " -> " + str(new_dev) + " (clone-suffix)")
+            if new_vm:
+                d2["requires"].setdefault("app", {})["version_match"] = new_vm
+                note.append("version_match " + str(rec_vm or "minor") + " -> any (cross-build)")
             (tmp_rec / "recording.yaml").write_text(_yaml.safe_dump(d2, sort_keys=False))
             replay_name = tmp_name
             with log_file.open("a") as lf:
-                lf.write("\n[info] normalized requires.sim.device " + str(rec_dev) +
-                         " -> " + str(new_dev) + " (clone-suffix); full contract still enforced\n")
+                lf.write("\n[info] normalized requires (" + "; ".join(note) +
+                         "); full text_subset/screen contract still enforced\n")
     except Exception as e:
         with log_file.open("a") as lf:
-            lf.write("\n[warn] device-normalization skipped: " + str(e) + "\n")
+            lf.write("\n[warn] requires-normalization skipped: " + str(e) + "\n")
 
     r = sdr.replay(name=replay_name, session=s,
                    on_drift="warn", drift_threshold=float(os.environ["THRESHOLD"]))
