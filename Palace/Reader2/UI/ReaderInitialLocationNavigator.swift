@@ -30,6 +30,7 @@
 //
 
 import Foundation
+import PalaceLogging
 import ReadiumNavigator
 import ReadiumShared
 
@@ -59,6 +60,18 @@ final class ReaderInitialLocationNavigator {
     /// can fire multiple times across a VC's lifecycle; we must navigate
     /// to the saved location exactly once on the initial entry.
     private var didNavigate: Bool = false
+
+    /// Set true if the post-first-paint restore `go(to:)` returned false — Readium
+    /// could not resolve the saved/synced locator. Because the EPUB navigator's
+    /// CONSTRUCTOR restore is disabled (`TPPEPUBViewController.navigatorConstructorInitialLocation`
+    /// is always nil), the navigator is already at the publication's natural start,
+    /// so a failed restore is a graceful degradation to page 1 — NOT a WebContent
+    /// teardown / bounce. Observable for diagnostics + tests.
+    private(set) var restoreDidDegradeToStart = false
+
+    /// Test hook: fired (on the main actor) with `go(to:)`'s Bool result once the
+    /// single restore attempt completes. Nil in production.
+    var onRestoreAttempt: ((Bool) -> Void)?
 
     init(initialLocation: Locator?) {
         self.initialLocation = initialLocation
@@ -91,8 +104,19 @@ final class ReaderInitialLocationNavigator {
         }
 
         didNavigate = true
-        Task { @MainActor in
-            await navigator.go(to: location, options: NavigatorGoOptions(animated: false))
+        Task { @MainActor [weak self] in
+            // Single restore authority: the navigator first-paints at its natural
+            // start (constructor restore disabled), then this fires once the
+            // WKWebView is ready (location-mapping table populated). Check the
+            // result: a false return means Readium couldn't resolve the locator —
+            // the reader stays at the natural start (graceful page-1 degradation),
+            // which we record/log rather than silently discard.
+            let restored = await navigator.go(to: location, options: NavigatorGoOptions(animated: false))
+            if !restored {
+                self?.restoreDidDegradeToStart = true
+                Log.warn(#file, "Reader initial-location restore returned false; remaining at start (page 1).")
+            }
+            self?.onRestoreAttempt?(restored)
         }
     }
 }

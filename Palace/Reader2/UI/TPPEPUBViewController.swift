@@ -25,6 +25,26 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
     private lazy var keyboardNavigationHandler = KeyboardNavigationHandler(navigable: self)
     private var lastChapterHREF: String?
 
+    /// The location the EPUB navigator's CONSTRUCTOR should restore to.
+    ///
+    /// EXACTLY ONE restore must reach the navigator. The post-first-paint gate
+    /// (`ReaderInitialLocationNavigator`, fed via `super.init(initialLocation:)`)
+    /// is the single restore authority — it `go(to:)`s the saved location once
+    /// the WKWebView has reported first paint (`signalReady()` from
+    /// `viewDidAppear`). If the navigator's `EPUBNavigatorViewController`
+    /// constructor ALSO restores (non-nil `initialLocation:`), the saved location
+    /// is applied during first paint and then AGAIN by the gate mid-layout →
+    /// Readium "Failed to determine navigation direction for scroll" → WebContent
+    /// teardown → the reader bounces back to My Books. (3.2.0 reading-resume
+    /// regression: PR #981 added the gate but left the constructor restore in
+    /// place.) So the constructor restore is always nil — the gate owns restore.
+    static func navigatorConstructorInitialLocation(forSavedLocation savedLocation: Locator?) -> Locator? {
+        // Always nil — the post-first-paint gate is the SINGLE restore authority.
+        // (`savedLocation` is intentionally ignored; the navigator opens at its
+        // natural start and the gate restores once the WKWebView is ready.)
+        nil
+    }
+
     init(publication: Publication,
          book: TPPBook,
          initialLocation: Locator?,
@@ -70,7 +90,7 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
         // server. The `httpServer:` init is deprecated; use the no-server init.
         let navigator = try EPUBNavigatorViewController(
             publication: publication,
-            initialLocation: initialLocation,
+            initialLocation: Self.navigatorConstructorInitialLocation(forSavedLocation: initialLocation),
             config: config
         )
 
