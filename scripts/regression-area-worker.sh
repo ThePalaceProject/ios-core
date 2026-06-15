@@ -393,6 +393,27 @@ try:
         shutil.rmtree(tmp_rec, ignore_errors=True)
 
     current = sdp.snapshot(udid, app)
+    # LEAK vs TRANSIENT teardown: the immediate post-replay snapshot can catch a ONE-TIME
+    # teardown spike, not a leak. Measured: a1qa sign-out (Adobe-DRM deauthorize) spawns
+    # worker threads 10 -> ~25 -> 10 over ~10s (memory actually DROPS as the catalog
+    # frees) -> the +15-thread transient trips threads>10=HIGH. A LEAK is SUSTAINED. So
+    # if the immediate delta trips HIGH, re-snapshot after a settle and use the SETTLED
+    # values: a transient recedes (no false finding), a real leak persists (stays HIGH).
+    # Both deltas are logged so the decision is auditable, never silently muted.
+    _imm = {"memory_rss_mb": current.get("memory_rss_mb", 0) - baseline.get("memory_rss_mb", 0),
+            "threads": current.get("threads", 0) - baseline.get("threads", 0)}
+    if sdp.severity(_imm) == "high":
+        import time as _time
+        _time.sleep(8)
+        settled = sdp.snapshot(udid, app)
+        _set = {"memory_rss_mb": settled.get("memory_rss_mb", 0) - baseline.get("memory_rss_mb", 0),
+                "threads": settled.get("threads", 0) - baseline.get("threads", 0)}
+        with log_file.open("a") as lf:
+            lf.write("\n[info] perf immediate delta HIGH (threads " + str(_imm["threads"]) +
+                     ", mem " + str(round(_imm["memory_rss_mb"], 1)) + "MB) -> re-measured after 8s settle"
+                     ": threads " + str(_set["threads"]) + ", mem " + str(round(_set["memory_rss_mb"], 1)) +
+                     "MB (transient teardown recedes = not a leak; sustained = stays HIGH)\n")
+        current = settled
     # Scope to crashes since this run started (since_ts) rather than a pre/post
     # count delta — that delta could go negative if the list_crashes window shifts.
     # crashes_since re-applies the run-scoping as a tested pure invariant so a
