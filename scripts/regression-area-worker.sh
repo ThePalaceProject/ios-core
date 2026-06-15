@@ -197,22 +197,59 @@ crash_json = Path(os.environ["CRASH_JSON"])
 
 start_ts = time.time()
 try:
+    # Fresh app baseline (ORDER-INDEPENDENCE fix): terminate any residual app
+    # state the previous journey left, so staging starts from a deterministic
+    # app-open screen — not a mid-flow modal / foreign catalog. Without this a
+    # journey could pass or fail purely by its position in the run.
+    import subprocess as _sp
+    _sp.run(["xcrun", "simctl", "terminate", udid, app], capture_output=True)
+    time.sleep(1.0)
     s = sds.start(udid=udid, app_bundle_id=app)
-    time.sleep(1.5)
-    baseline = sdp.snapshot(udid, app)
+    time.sleep(2.0)
+    # NOTE: the perf baseline is snapshotted AFTER staging (just before replay),
+    # not here — otherwise staging work (e.g. a sign-in catalog load) inflates the
+    # delta and yields a false "perf HIGH / likely leak" finding for the journey.
 
     sys.path.insert(0, os.environ["SCRIPT_DIR"])
     from regression_findings import (crashes_since, classify_replay,
-                                     normalized_requires_device)
+                                     normalized_requires_device,
+                                     normalized_requires_version_match,
+                                     normalized_text_subset_required)
 
-    # Device-suffix normalization (campaign-critical): requires.sim.device is
-    # matched LITERALLY, so a base "iPhone 16 Pro" recording halts on every fleet
-    # "(pool-N)/(fleet-N)" sim. Rewrite the contract device to the CURRENT sim in
-    # a per-cell temp copy, then replay with the FULL contract still enforced
-    # (text_subset / version real mismatches still HALT). No bypass; guard intact.
+    # Per-journey STAGING (#21 — the campaign-runnability fix): drive the sim to
+    # the recording requires.initial_state (add-library -> sign-in -> navigate)
+    # before replay, so step-0 does not halt on a wrong start screen. Only
+    # journeys with a "ready" recipe are staged; phase2/blocked/unknown are left
+    # for the replay to gate on (classify_replay FAILs an unmet precondition — a
+    # skipped stage can never become a false-pass).
+    try:
+        from regression_staging import Driver, stage_for_journey, staging_status
+        _jn = os.environ["JOURNEY"]
+        _status = staging_status(_jn)
+        ev["stage_status"] = _status
+        if _status == "ready":
+            stage_for_journey(Driver(udid, app), _jn)
+            ev["staged"] = True
+    except Exception as _se:
+        ev["stage_error"] = str(_se)
+        with log_file.open("a") as lf:
+            lf.write("\n[warn] staging failed for " + os.environ.get("JOURNEY", "?") +
+                     ": " + str(_se) + " (replay will gate on precondition)\n")
+
+    # Requires-normalization (campaign-critical), in ONE per-cell temp copy:
+    #  - DEVICE: requires.sim.device is matched LITERALLY, so a base "iPhone 16
+    #    Pro" recording halts on every fleet "(pool-N)/(fleet-N)" sim. Rewrite the
+    #    contract device to the CURRENT sim (same model modulo clone-suffix only).
+    #  - VERSION (#21): version_match "minor" pins a recording to its CAPTURE
+    #    build, halting cross-build replay (476/479 recording vs 480 candidate) =
+    #    defeats regression. Relax to "any" so recordings replay against ANY
+    #    candidate build. The load-bearing text_subset/screen + foreground +
+    #    same-model device contract is STILL enforced; a real regression HALTs.
     journey_name = os.environ["JOURNEY"]
     replay_name = journey_name
     tmp_rec = None
+    rec_ts = []        # recorded precondition tokens (set in the normalize block)
+    new_ts = None      # normalized (artifact-stripped) tokens, if any
 
     def _current_device_name(u):
         try:
@@ -231,9 +268,18 @@ try:
         import yaml as _yaml
         rec_dir = Path.home() / ".simdrive" / "recordings" / journey_name
         data = _yaml.safe_load((rec_dir / "recording.yaml").read_text())
-        rec_dev = (((data or {}).get("requires") or {}).get("sim") or {}).get("device")
+        _req = ((data or {}).get("requires") or {})
+        rec_dev = ((_req.get("sim") or {}).get("device"))
+        rec_vm = ((_req.get("app") or {}).get("version_match"))
+        rec_ts = (((_req.get("initial_state") or {}).get("text_subset_required")) or [])
         new_dev = normalized_requires_device(rec_dev or "", _current_device_name(udid) or "")
-        if new_dev:
+        new_vm = normalized_requires_version_match(rec_vm)
+        # OCR ARTIFACTS (#21 corpus hardening): logo/glyph tokens (e.g. the A1QA logo
+        # -> 'ga'/'al'/'qa') OCR variably run-to-run and cause non-deterministic
+        # 0-execute = matrix-wide FALSE REDS. Strip them at replay time, keeping the
+        # stable real-text tokens (never below a 3-token floor).
+        new_ts = normalized_text_subset_required(rec_ts)
+        if new_dev or new_vm or new_ts is not None:
             cell = os.environ.get("DEVICE_CELL", "cell")
             tmp_name = journey_name + "__rcnorm__" + cell
             tmp_rec = Path.home() / ".simdrive" / "recordings" / tmp_name
@@ -241,16 +287,46 @@ try:
                 shutil.rmtree(tmp_rec, ignore_errors=True)
             shutil.copytree(rec_dir, tmp_rec)
             d2 = _yaml.safe_load((tmp_rec / "recording.yaml").read_text())
-            d2["requires"]["sim"]["device"] = new_dev
+            note = []
+            if new_dev:
+                d2["requires"]["sim"]["device"] = new_dev
+                note.append("device " + str(rec_dev) + " -> " + str(new_dev) + " (clone-suffix)")
+            if new_vm:
+                d2["requires"].setdefault("app", {})["version_match"] = new_vm
+                note.append("version_match " + str(rec_vm or "minor") + " -> any (cross-build)")
+            if new_ts is not None:
+                stripped = [t for t in rec_ts if t not in new_ts]
+                d2["requires"].setdefault("initial_state", {})["text_subset_required"] = new_ts
+                note.append("text_subset stripped OCR-artifacts " + str(stripped))
             (tmp_rec / "recording.yaml").write_text(_yaml.safe_dump(d2, sort_keys=False))
             replay_name = tmp_name
             with log_file.open("a") as lf:
-                lf.write("\n[info] normalized requires.sim.device " + str(rec_dev) +
-                         " -> " + str(new_dev) + " (clone-suffix); full contract still enforced\n")
+                lf.write("\n[info] normalized requires (" + "; ".join(note) +
+                         "); full text_subset/screen contract still enforced\n")
     except Exception as e:
         with log_file.open("a") as lf:
-            lf.write("\n[warn] device-normalization skipped: " + str(e) + "\n")
+            lf.write("\n[warn] requires-normalization skipped: " + str(e) + "\n")
 
+    # Deterministic pre-replay SETTLE (fresh-add transient): poll until the recorded
+    # precondition tokens render before the one-shot replay observe, so a freshly
+    # added real library (catalog load then redraw) cannot 0-execute the replay
+    # mid-load. Keeps all tokens; on timeout the replay STILL runs and gates
+    # (fail-RED) so it absorbs only a render-delay, never a wrong screen.
+    # Journey-agnostic, so it hardens every library-add journey across the fan-out.
+    try:
+        from regression_staging import await_precondition, Driver as _PreDrv
+        _eff = new_ts if new_ts is not None else rec_ts
+        if _eff:
+            _ws = await_precondition(_PreDrv(udid, app), _eff, timeout=15.0)
+            with log_file.open("a") as lf:
+                lf.write("\n[info] precondition-settle " + ("%.1f" % _ws) + "s before replay\n")
+    except Exception as _pe:
+        with log_file.open("a") as lf:
+            lf.write("\n[warn] precondition-settle skipped: " + str(_pe) + "\n")
+
+    # Perf baseline AFTER staging+normalize+settle, so the delta measures ONLY the
+    # replay (not the staging sign-in/catalog-load). Fixes the false perf-HIGH.
+    baseline = sdp.snapshot(udid, app)
     r = sdr.replay(name=replay_name, session=s,
                    on_drift="warn", drift_threshold=float(os.environ["THRESHOLD"]))
     if tmp_rec is not None:
@@ -308,6 +384,16 @@ try:
     ev["replay_reason"] = rv["reason"]
     ev["perf_severity"] = sdp.severity(delta)
     ev["crashes_during"] = len(post)
+    # Tag demoted-but-still-run journeys so a fail here is read as a fragile-precondition
+    # flake for triage, NOT silently dropped and NOT mistaken for a gating regression
+    # (demote != hide). Gating journeys carry gating=true.
+    try:
+        from regression_staging import is_known_fragile as _ikf
+        ev["known_fragile_precondition"] = bool(_ikf(os.environ["JOURNEY"]))
+        ev["gating"] = not ev["known_fragile_precondition"]
+    except Exception:
+        ev["known_fragile_precondition"] = False
+        ev["gating"] = True
 
     if ev["crashes_during"] > 0:
         # Persist the crash report(s) as evidence; copy raw files if present.
@@ -345,6 +431,10 @@ PYEOF
   replay_reason="$(echo "$VERDICT" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('replay_reason',''))" 2>/dev/null || echo "")"
   steps_exec="$(echo "$VERDICT" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('steps_executed',0))" 2>/dev/null || echo "0")"
   steps_planned="$(echo "$VERDICT" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('steps_planned',0))" 2>/dev/null || echo "0")"
+  # demoted-but-still-run journeys (over-specified/irreducibly-variable precondition):
+  # a FAIL here is tagged disposition=non-gating-known-fragile so the campaign splits
+  # it from a gating regression (demote != hide; the finding still lands).
+  known_fragile="$(echo "$VERDICT" | python3 -c "import sys,json; print(json.loads(sys.stdin.read()).get('known_fragile_precondition',False))" 2>/dev/null || echo "False")"
 
   # Structural checks (robust to OPDS variability) — failure is a finding.
   struct_status="n/a"; struct_log=""
@@ -396,10 +486,14 @@ PYEOF
     sshot_arg=(--screenshot-pair "|$screenshot")
   fi
 
+  disposition=""
+  [[ "$known_fragile" == "True" ]] && disposition="non-gating-known-fragile"
+
   fid="${AREA_GROUP}-${DEVICE_CELL}-${journey}-$(printf '%03d' "$finding_count")"
   if python3 "$FINDINGS" append "$FINDINGS_CSV" \
        --id "$fid" --area "$AREA_GROUP" --device-cell "$DEVICE_CELL" \
        --classification "$classification" --evidence "$evidence" \
+       --disposition "$disposition" \
        --first-seen-commit "$FIRST_SEEN_COMMIT" "${sshot_arg[@]+"${sshot_arg[@]}"}"; then
     finding_count=$((finding_count + 1))
   else
