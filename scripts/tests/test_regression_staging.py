@@ -72,6 +72,26 @@ def test_version_normalize_is_independent_of_device_normalize():
     assert rf.normalized_requires_device("iPad Pro", "iPhone 16 Pro") is None  # cross-model still halts
 
 
+def test_device_strip_is_fail_safe_only_pool_fleet_unrecognized_kept():
+    # FAIL-SAFE (anti-false-MATCH): strip ONLY the recognized pool/fleet clone tags;
+    # an UNRECOGNIZED suffix is LEFT INTACT so it can never mask a real device mismatch
+    # (a hand-named smoke sim must use fleet-N / _allocate_sim, not an arbitrary label).
+    assert rf.strip_device_suffix("iPhone 16 Pro (pool-3)") == "iPhone 16 Pro"
+    assert rf.strip_device_suffix("iPhone 16 Pro (fleet-2)") == "iPhone 16 Pro"
+    assert rf.strip_device_suffix("iPhone 16 Pro (custom)") == "iPhone 16 Pro (custom)"   # unrecognized — KEPT
+    assert rf.strip_device_suffix("iPad Pro (12.9-inch)") == "iPad Pro (12.9-inch)"        # model — kept
+    assert rf.strip_device_suffix("iPad Pro (12.9-inch) (fleet-2)") == "iPad Pro (12.9-inch)"
+
+
+def test_ios_version_normalize_relaxes_cross_minor_keeps_predicate():
+    # the rc-smoke residual: a 26.0-captured recording must replay on a 26.2 sim
+    assert rf.normalized_requires_ios_version("26.0", "26.2") == "26.2"
+    assert rf.normalized_requires_ios_version("26.2", "26.2") is None       # already matches
+    assert rf.normalized_requires_ios_version(">=26.0", "26.2") is None      # predicate — recorder evaluates
+    assert rf.normalized_requires_ios_version(None, "26.2") is None
+    assert rf.normalized_requires_ios_version("26.0", None) is None
+
+
 # ── 1b. OCR-artifact text_subset normalize (corpus hardening) ─────────────────
 
 def test_text_subset_strips_a1qa_logo_ocr_artifacts():

@@ -248,6 +248,7 @@ try:
     from regression_findings import (crashes_since, classify_replay,
                                      normalized_requires_device,
                                      normalized_requires_version_match,
+                                     normalized_requires_ios_version,
                                      normalized_text_subset_required)
 
     # Per-journey STAGING (#21 — the campaign-runnability fix): drive the sim to
@@ -298,22 +299,44 @@ try:
             return None
         return None
 
+    def _current_ios_version(u):
+        # the runtime key encodes the version, e.g. ...SimRuntime.iOS-26-2 -> "26.2"
+        try:
+            import re as _re
+            import subprocess
+            out = subprocess.run(["xcrun", "simctl", "list", "devices", "-j"],
+                                 capture_output=True, text=True, timeout=20)
+            for _rt, devs in json.loads(out.stdout).get("devices", {}).items():
+                for d in devs:
+                    if d.get("udid", "").upper() == u.upper():
+                        mm = _re.search(r"iOS-(\d+)-(\d+)", _rt)
+                        return (mm.group(1) + "." + mm.group(2)) if mm else None
+        except Exception:
+            return None
+        return None
+
     try:
         import yaml as _yaml
         rec_dir = Path.home() / ".simdrive" / "recordings" / journey_name
         data = _yaml.safe_load((rec_dir / "recording.yaml").read_text())
         _req = ((data or {}).get("requires") or {})
         rec_dev = ((_req.get("sim") or {}).get("device"))
+        rec_ios = ((_req.get("sim") or {}).get("ios_version"))
         rec_vm = ((_req.get("app") or {}).get("version_match"))
         rec_ts = (((_req.get("initial_state") or {}).get("text_subset_required")) or [])
         new_dev = normalized_requires_device(rec_dev or "", _current_device_name(udid) or "")
         new_vm = normalized_requires_version_match(rec_vm)
+        # iOS VERSION: requires.sim.ios_version is HARD-checked, so a 26.0-captured
+        # recording halts on a 26.2 candidate sim. Rewrite to the current sim version
+        # (predicate ios_versions left intact). The device/text_subset/screen contract
+        # is STILL enforced; a real regression HALTs.
+        new_ios = normalized_requires_ios_version(rec_ios, _current_ios_version(udid))
         # OCR ARTIFACTS (#21 corpus hardening): logo/glyph tokens (e.g. the A1QA logo
         # -> 'ga'/'al'/'qa') OCR variably run-to-run and cause non-deterministic
         # 0-execute = matrix-wide FALSE REDS. Strip them at replay time, keeping the
         # stable real-text tokens (never below a 3-token floor).
         new_ts = normalized_text_subset_required(rec_ts)
-        if new_dev or new_vm or new_ts is not None:
+        if new_dev or new_vm or new_ios or new_ts is not None:
             cell = os.environ.get("DEVICE_CELL", "cell")
             tmp_name = journey_name + "__rcnorm__" + cell
             tmp_rec = Path.home() / ".simdrive" / "recordings" / tmp_name
@@ -325,6 +348,9 @@ try:
             if new_dev:
                 d2["requires"]["sim"]["device"] = new_dev
                 note.append("device " + str(rec_dev) + " -> " + str(new_dev) + " (clone-suffix)")
+            if new_ios:
+                d2["requires"].setdefault("sim", {})["ios_version"] = new_ios
+                note.append("ios_version " + str(rec_ios) + " -> " + str(new_ios) + " (cross-os)")
             if new_vm:
                 d2["requires"].setdefault("app", {})["version_match"] = new_vm
                 note.append("version_match " + str(rec_vm or "minor") + " -> any (cross-build)")

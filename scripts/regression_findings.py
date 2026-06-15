@@ -346,7 +346,9 @@ def strip_device_suffix(device: str) -> str:
     `iPad Pro (12.9-inch)` recording would not match a fleet
     `iPad Pro (12.9-inch) (pool-3)` sim, spuriously FAILing the iPad cell.
     Matching only the clone tag fixes that AND stays FAIL-safe — an unrecognized
-    suffix is left intact, so it errs toward a real mismatch (never a false-pass).
+    suffix is left intact, so it errs toward a real mismatch (never a false-MATCH
+    that masks a device divergence). A hand-named smoke sim must therefore use a
+    RECOGNIZED clone tag (fleet-N / _allocate_sim), not an arbitrary label.
 
     `iPhone 16 Pro (pool-3)` → `iPhone 16 Pro`;
     `iPad Pro (12.9-inch) (fleet-2)` → `iPad Pro (12.9-inch)`;
@@ -406,6 +408,28 @@ def normalized_requires_version_match(current_match: str | None) -> str | None:
     if (current_match or "minor") == "any":
         return None
     return "any"
+
+
+def normalized_requires_ios_version(recorded_ios: str | None,
+                                    current_ios: str | None) -> str | None:
+    """Cross-OS-version normalize (the rc-smoke residual): the recorder HARD-checks
+    `requires.sim.ios_version`, so a 26.0-captured recording HALTs (state_contract_
+    mismatch) on a 26.2 candidate sim — defeating the point of replaying OLD recordings
+    against a NEW build/sim. Rewrite the recording's ios_version to the CURRENT sim's
+    so the literal check passes; the load-bearing contract (text_subset/screen/
+    foreground + device modulo clone-suffix) is STILL enforced, so a real regression
+    still HALTs. A PREDICATE ios_version (e.g. '>=26.0') is left intact — the recorder
+    evaluates it. Returns the current ios_version when a rewrite is needed, else None
+    (already matches, predicate, or no current). Same Optional shape as the device /
+    version-match normalizers so the worker wires it identically."""
+    if not current_ios or not recorded_ios:
+        return None
+    rec = str(recorded_ios)
+    if any(c in rec for c in "<>="):     # predicate — leave for the recorder to evaluate
+        return None
+    if rec == str(current_ios):
+        return None
+    return str(current_ios)
 
 
 # Curated denylist of the A1QA library LOGO glyph fragments — the stacked "a1/qa"
