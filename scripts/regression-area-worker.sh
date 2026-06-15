@@ -54,6 +54,11 @@ SIM_ID="${HARNESS_SESSION_SIM_UDID:-}"
 KEYCHAIN_RESET=1
 RUN_CHAOS=0
 DRY_RUN=0
+EXCLUDE_DRM=""        # skip journeys whose journey_drm.drm_type == this (Phase-A/B filter)
+ONLY_DRM=""           # run ONLY journeys whose journey_drm.drm_type == this
+DEAUTH_TEARDOWN=0     # accepted now (so the driver flag never errors); the sign-out-to-recycle
+                      # behavior lands with the first adobe_irreducible (Phase-B) journey — none
+                      # exist today, so it would be inert regardless. Live-validated then.
 
 die() { echo "error: $*" >&2; exit 2; }
 
@@ -65,6 +70,9 @@ while [[ $# -gt 0 ]]; do
     --sim-id) SIM_ID="$2"; shift 2 ;;
     --manifest) MANIFEST="$2"; shift 2 ;;
     --no-keychain-reset) KEYCHAIN_RESET=0; shift ;;
+    --exclude-drm) EXCLUDE_DRM="$2"; shift 2 ;;
+    --drm-type) ONLY_DRM="$2"; shift 2 ;;
+    --deauth-on-teardown) DEAUTH_TEARDOWN=1; shift ;;
     --chaos) RUN_CHAOS=1; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
     -h|--help) sed -n '2,/^set -uo/p' "$0" | sed 's/^# \{0,1\}//; /^set -uo/d'; exit 0 ;;
@@ -143,6 +151,32 @@ skip_count=0
 finding_count=0
 
 for journey in "${JOURNEYS[@]}"; do
+  # Stageability gate (MUST be first): a journey that is NOT "ready" (phase2 =
+  # borrow-gated/borrow_and_download-unimplemented, or blocked = creds/OTP) cannot be
+  # staged to its precondition. Skip it CLEANLY here, BEFORE the replay — otherwise the
+  # replay is still attempted, gates on the unmet precondition, and (not being
+  # known-fragile) lands as a GATING false-RED. Clean-skip = no finding = honestly
+  # "not covered (phase2/blocked)", deterministic. (The skipped stage already can't
+  # false-PASS; this also closes the false-RED.)
+  jstatus="$(python3 -c "import sys; sys.path.insert(0,'$SCRIPT_DIR'); from regression_staging import staging_status; print(staging_status('$journey'))" 2>/dev/null || echo unknown)"
+  if [[ "$jstatus" != "ready" ]]; then
+    echo "[SKIP] $journey — not stageable (staging_status=$jstatus: phase2 borrow-gated / blocked)"
+    skip_count=$((skip_count + 1))
+    continue
+  fi
+
+  # Phase-A/B DRM filter (the seam w-mutex's --exclude-drm/--drm-type flags drive):
+  # skip a journey whose journey_drm.drm_type is excluded / not the requested type.
+  # No-op when both flags are empty (the current all-Phase-A matrix).
+  if [[ -n "$EXCLUDE_DRM" || -n "$ONLY_DRM" ]]; then
+    if ! python3 "$FINDINGS" drm-filter "$MANIFEST" "$journey" \
+         --exclude-drm "$EXCLUDE_DRM" --only-drm "$ONLY_DRM" 2>/dev/null; then
+      echo "[SKIP] $journey — drm-filter (exclude='$EXCLUDE_DRM' only='$ONLY_DRM')"
+      skip_count=$((skip_count + 1))
+      continue
+    fi
+  fi
+
   journey_yaml="$JOURNEYS_DIR/$journey.yaml"
   if [[ ! -f "$journey_yaml" ]]; then
     echo "[SKIP] $journey — no journey YAML at $journey_yaml" >&2

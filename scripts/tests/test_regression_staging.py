@@ -400,6 +400,38 @@ def test_known_fragile_journeys_are_demoted_but_recognized():
         assert st.staging_status(j) in ("ready", "phase2"), f"{j} must still run"
 
 
+# ── 7. journey_drm Phase-A/B routing (gate-3 fan-out filter seam) ─────────────
+
+def test_drm_for_journey_defaults_to_phase_a_when_untagged():
+    # an untagged journey must default to Phase-A (adobe_irreducible False) — never
+    # accidentally Phase-B
+    m = {"area_groups": {}, "journey_drm": {}}
+    d = rf.drm_for_journey(m, "anything")
+    assert d["adobe_irreducible"] is False and d["drm_type"] == "none"
+
+
+def test_journey_passes_drm_filter_exclude_and_only():
+    m = {"area_groups": {}, "journey_drm": {
+        "adobe-j": {"drm_type": "adobe", "adobe_irreducible": True},
+        "lcp-j": {"drm_type": "lcp", "adobe_irreducible": False}}}
+    assert not rf.journey_passes_drm_filter(m, "adobe-j", exclude_drm="adobe")
+    assert rf.journey_passes_drm_filter(m, "lcp-j", exclude_drm="adobe")
+    assert rf.journey_passes_drm_filter(m, "adobe-j", only_drm="adobe")
+    assert not rf.journey_passes_drm_filter(m, "lcp-j", only_drm="adobe")
+    assert rf.journey_passes_drm_filter(m, "lcp-j")  # no filters → runs
+
+
+def test_current_matrix_is_entirely_phase_a():
+    # gate-3 guard: EVERY tagged journey in the shipped manifest is Phase-A
+    # (adobe_irreducible False). If a future edit flips one to Phase-B it must be
+    # deliberate — this test forces that intent to be explicit.
+    m = rf.load_manifest(_MANIFEST)
+    jd = m.get("journey_drm", {})
+    assert jd, "manifest must carry journey_drm tags"
+    phase_b = [j for j, v in jd.items() if v.get("adobe_irreducible")]
+    assert phase_b == [], f"unexpected Phase-B journeys (need explicit budget): {phase_b}"
+
+
 def test_area_worker_bash_n():
     r = subprocess.run(["bash", "-n", str(_AREA_WORKER)], capture_output=True, text=True)
     assert r.returncode == 0, f"bash -n failed:\n{r.stderr}"
