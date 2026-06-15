@@ -408,6 +408,67 @@ def normalized_requires_version_match(current_match: str | None) -> str | None:
     return "any"
 
 
+# Curated denylist of the A1QA library LOGO glyph fragments — the stacked "a1/qa"
+# logo image OCRs run-to-run as these (observed, not guessed by shape); 'dai' is a
+# cover-art glyph fragment in the A1QA accessibility test book. CONTEXT-SCOPED: these
+# tokens COLLIDE with real values — 'ga'/'al'/'qa' are US state abbreviations (GA, AL)
+# a non-A1QA library's precondition could legitimately discriminate on — so they are
+# stripped ONLY when the precondition is provably an A1QA screen (carries an 'A1QA'
+# marker token), where they ARE the logo OCR. Outside A1QA context they're retained.
+# New artifacts are ADDED here only after confirmed run-to-run variance, never auto-
+# detected by a length/word heuristic (a loose heuristic could strip a MEANINGFUL
+# short token → under-specify → silent FALSE-PASS, far worse than a recoverable
+# false-red). Denylist-membership + A1QA-context is the provable, conservative signal.
+_A1QA_LOGO_GLYPHS = {"ga", "al", "qa", "a1", "a", "dai"}
+
+
+def _is_ocr_artifact(token: str, a1qa_context: bool = False) -> bool:
+    """True only for PROVABLE OCR garbage: a purely-punctuation token (non-text, no
+    collision, always), or an A1QA-logo glyph from the curated denylist BUT only when
+    `a1qa_context` is True (the precondition carries an 'A1QA' marker, so the glyph is
+    demonstrably the logo, not a state code / acronym on some other screen). Never a
+    'short non-word' heuristic — when unsure, don't strip (failure mode stays at
+    recoverable false-red, never silent false-pass). Real labels ('Account', 'Sign
+    in', 'PUBLIC LIBRARY', 'All') and out-of-context 'GA'/'AL' are retained."""
+    s = token.strip()
+    if not s:
+        return True
+    if all(not c.isalnum() for c in s):
+        return True                                   # punctuation-only, no real text
+    if a1qa_context and s.lower() in _A1QA_LOGO_GLYPHS:
+        return True
+    return False
+
+
+def normalized_text_subset_required(required: list[str], floor: int = 3) -> list[str] | None:
+    """OCR-artifact strip (#21 / RC-AREA corpus hardening). A recording's
+    `requires.initial_state.text_subset_required` can include logo/glyph OCR fragments
+    (e.g. the A1QA logo → 'ga'/'al'/'qa') matched case-sensitively against a fresh
+    live observe. The glyph OCRs differently run-to-run, so such a token causes a
+    non-deterministic 0-execute — a FALSE RED that across a 24-worker fan-out peppers
+    the matrix with phantom failures. Strip the artifact tokens at replay time (same
+    temp-copy mechanism as device/version normalize → recording on disk untouched, fix
+    auditable in-repo), keeping the stable real-text tokens that verify the same
+    precondition every run.
+
+    SAFETY: never strips below `floor` stable tokens — under-specifying a precondition
+    would let it match the WRONG screen, worse than a flaky token. If stripping would
+    leave < floor, returns None (no rewrite). The A1QA-logo glyphs (ga/al/qa/...) are
+    stripped ONLY in A1QA context (precondition carries an 'A1QA' marker), so a non-
+    A1QA recording's legitimate 'GA'/'AL' state-code token is never touched. Returns
+    the cleaned list when artifacts were stripped, else None — same Optional shape as
+    the other normalizers so the worker wires it identically."""
+    if not required:
+        return None
+    a1qa_context = any("a1qa" in t.lower() for t in required)
+    stable = [t for t in required if not _is_ocr_artifact(t, a1qa_context)]
+    if len(stable) == len(required):
+        return None                                   # nothing to strip
+    if len(stable) < floor:
+        return None                                   # would under-specify — keep as-is
+    return stable
+
+
 def append_finding(
     csv_path: str | os.PathLike,
     finding: Finding,

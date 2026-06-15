@@ -29,6 +29,7 @@ against a booted sim.
 from __future__ import annotations
 
 import os
+import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -150,6 +151,27 @@ class Driver:
         self._act.tap(m.cx, m.cy, w, h, self.udid)
         time.sleep(self.settle)
 
+    def tap_until(self, tap_label: str, expect_label: str,
+                  retries: int = 4, timeout: float = 8.0) -> None:
+        """Tap `tap_label` and CONFIRM the resulting screen contains
+        `expect_label`; retry the tap if not. Fixes the order-dependence root
+        cause: a nav tap (e.g. the Settings tab) racing a heavy screen load (the
+        Palace Bookshelf DPLA catalog) lands on nothing, so the next check sees
+        the wrong screen and the journey fails purely by timing/position."""
+        for _ in range(retries):
+            try:
+                self.tap_text(tap_label, timeout=timeout)
+            except StagingError:
+                time.sleep(1.0)
+                continue
+            if self.find(expect_label):
+                return
+            time.sleep(1.0)  # settle a still-loading screen, then retry the tap
+        if not self.find(expect_label):
+            raise StagingError(
+                f"tap '{tap_label}' did not reach '{expect_label}' after {retries} tries"
+            )
+
     def tap_xy(self, px: int, py: int) -> None:
         if self._last is None:
             self.observe()
@@ -182,13 +204,36 @@ def _creds(slug: str) -> tuple[str, str]:
     return user, pw
 
 
+_FIRST_LAUNCH_LABELS = ("Allow", "Continue", "OK", "Don't Allow", "Not Now")
+_FIRST_LAUNCH_LC = {l.lower() for l in _FIRST_LAUNCH_LABELS}
+
+
+def _find_exact(d: Driver, label: str, marks: Optional[list[_Mark]] = None) -> Optional[_Mark]:
+    """Find a mark whose text EXACTLY equals `label` (case-insensitive). Use for short
+    alert-button labels where substring matching is dangerous: find('OK') substring-
+    matches 'eBooks'/'Bookshelf' and find('Allow') is fine but 'OK'/'Continue' are
+    not — tapping a catalog promo instead of an alert button drove the app into the
+    marketing webview."""
+    marks = marks if marks is not None else d.observe()
+    ll = label.strip().lower()
+    return next((m for m in marks if m.text.strip().lower() == ll), None)
+
+
 def dismiss_first_launch(d: Driver) -> None:
-    """Clear the clean-install notification-permission / first-launch dialog so
-    step-0 text_subset matches the recording (item 3)."""
-    for label in ("Allow", "Continue", "OK", "Don't Allow", "Not Now"):
-        if d.find(label):
-            d.tap_text(label)
+    """Clear clean-install first-launch dialogs (notification-permission, etc.) so
+    step-0 text_subset matches the recording. Loops because a fresh install can stack
+    more than one alert. EXACT-match the button labels — a substring find('OK') hits
+    'eBooks'/'Book' in the catalog feed and taps a promo (opening the marketing
+    webview) instead of an alert."""
+    for _ in range(3):
+        marks = d.observe()
+        hit = next((_find_exact(d, l, marks) for l in _FIRST_LAUNCH_LABELS
+                    if _find_exact(d, l, marks)), None)
+        if hit is None:
             return
+        w, h = d._dims
+        d._act.tap(hit.cx, hit.cy, w, h, d.udid)
+        time.sleep(0.5)
 
 
 def add_library(d: Driver, display_name: str) -> None:
@@ -197,41 +242,106 @@ def add_library(d: Driver, display_name: str) -> None:
     forced "Add Library" picker (no tab bar yet) and the Settings → + ADD LIBRARY
     path. Hidden/test libraries assumed enabled by sim setup (Settings → Testing →
     Enable Hidden Libraries)."""
-    if d.has("Add Library"):
-        # forced first-run picker or the add-library sheet is already open
-        d.tap_text(display_name)
-        time.sleep(1.5)
+    # Forced first-run picker ONLY (chrome-keyed: exact 'Add Library' title, no real
+    # Settings 'LIBRARIES' header) — guards against the Settings '+ADD LIBRARY' button
+    # substring-matching 'Add Library' and misfiring a library-row tap.
+    if _on_forced_picker(d):
+        _picker_search_add(d, display_name)
         return
-    # tab bar exists: skip if already under Settings → LIBRARIES, else add it
-    d.tap_text("Settings")
+    # tab bar exists: robustly reach Settings (tap_until: the Settings tab tap can
+    # race a still-loading catalog), then skip if already added, else add it.
+    d.tap_until("Settings", "LIBRARIES")
     if d.has(display_name):
         return
     d.tap_text("ADD LIBRARY")
     d.tap_text(display_name)
     time.sleep(1.5)
+    # Adding a REAL library (e.g. Addison Public Library) switches to its catalog and
+    # loads async, leaving a transient screen. Settle back onto a stable Settings
+    # libraries list with the new library present before returning, so a recipe's
+    # downstream replay-precondition observe doesn't catch the transition (the
+    # palace-bookshelf-anonymous slot-3 order-dependence).
+    try:
+        wait_until_ready(d, lib=display_name, timeout=20.0)
+    except StagingError:
+        pass
+
+
+def open_account(d: Driver, library: str = "A1QA Test Library") -> None:
+    """Open a library's Account screen (the sign-in form when signed out, the
+    Sign-out screen when signed in).
+
+    Tapping a library ROW in Settings→Libraries behaves two ways: if the library is
+    the ACTIVE one, the row opens its Account directly; if it is NOT active, the row
+    pops a 'Would you like to switch to X?' confirm dialog and (on Yes) lands on that
+    library's CATALOG — not its Account. So when we hit the switch dialog we confirm
+    it, then re-open Settings and tap the row again (now active → opens Account).
+    Idempotent: an already-active library opens Account on the first tap; an
+    already-signed-in account short-circuits on 'Sign out'."""
+    d.tap_until("Settings", "LIBRARIES")
+    d.tap_text(library)
+    if d.find("Library Card") or d.find("Sign out"):
+        return  # row opened Account directly (library was active)
+    if d.find("Would you like to switch"):
+        d.tap_text("Yes")            # confirm switch → lands on the library's catalog
+        time.sleep(1.0)
+        d.tap_until("Settings", "LIBRARIES")
+        d.tap_text(library)          # now active → opens Account
+        if d.find("Sign out"):
+            return
+    d.wait_for("Library Card", timeout=15)  # the auth-doc sign-in form (signed out)
 
 
 def navigate_to(d: Driver, screen: str) -> None:
     """Drive to a named screen. screen ∈ catalog | my_books | holds | settings |
     account_signin | account_signedin (the last two open the A1QA Account)."""
-    tab = {"catalog": "Catalog", "my_books": "My Books", "holds": "Holds",
-           "settings": "Settings"}.get(screen)
+    if screen == "settings":
+        d.tap_until("Settings", "LIBRARIES")
+        return
+    tab = {"catalog": "Catalog", "my_books": "My Books", "holds": "Holds"}.get(screen)
     if tab:
         d.tap_text(tab)
         return
     if screen in ("account_signin", "account_signedin"):
-        d.tap_text("Settings")
-        d.tap_text("A1QA Test Library")
+        open_account(d, "A1QA Test Library")
         return
     raise StagingError(f"unknown screen '{screen}'")
+
+
+def relaunch_app(udid: str, app_bundle_id: str, settle: float = 3.0) -> None:
+    """Fresh terminate+launch so each journey stages from a DETERMINISTIC
+    app-open baseline — the order-independence fix. Without this, staging runs on
+    whatever residual screen the previous journey left (mid-flow modal, a foreign
+    catalog, etc.), so a journey could pass or fail purely by its position in the
+    run (the a1qa-basic-signin PASS-slot1 / FAIL-slot2 bug). simctl terminate is a
+    no-op if the app is not running."""
+    subprocess.run(["xcrun", "simctl", "terminate", udid, app_bundle_id],
+                   capture_output=True)
+    time.sleep(1.0)
+    subprocess.run(["xcrun", "simctl", "launch", udid, app_bundle_id],
+                   capture_output=True)
+    time.sleep(settle)
+
+
+def switch_library(d: Driver, name: str) -> None:
+    """Make `name` the ACTIVE library (so a 'goto catalog' lands on ITS catalog,
+    not whatever library happens to be active). Uses the top-left library
+    switcher on the Catalog. Needed for any journey whose precondition is a
+    SPECIFIC library's catalog (e.g. library-picker-stateless = Palace Bookshelf
+    DPLA feed). Idempotent: if already active, the picker re-selects it harmlessly."""
+    d.tap_text("Catalog")
+    # the library switcher is the top-left icon on the Catalog nav bar.
+    d.tap_xy(110, 235)
+    time.sleep(0.8)
+    d.tap_text(name)
+    time.sleep(1.5)
 
 
 def sign_in(d: Driver, slug: str = "a1qa", library: str = "A1QA Test Library") -> None:
     """Reach the Account sign-in form and authenticate. Leaves the patron
     SIGNED IN on the Account screen (which is sign-out's precondition)."""
     user, pw = _creds(slug)
-    d.tap_text("Settings")
-    d.tap_text(library)
+    open_account(d, library)
     if d.has("Sign out"):
         return  # already signed in
     card = d.wait_for("Library Card")
@@ -267,8 +377,7 @@ def tap_dialog_button(d: Driver, button_text: str, anchor_text: str = "Cancel",
 
 
 def sign_out(d: Driver, library: str = "A1QA Test Library") -> None:
-    d.tap_text("Settings")
-    d.tap_text(library)
+    open_account(d, library)
     if not d.has("Sign out"):
         return
     d.tap_text("Sign out")                    # row -> opens confirm dialog
@@ -285,6 +394,7 @@ def borrow_and_download(d: Driver, title: str, lane: Optional[str] = None) -> No
 PRIMITIVES = {
     "dismiss_first_launch": lambda d, *a: dismiss_first_launch(d),
     "add_library": lambda d, name: add_library(d, name),
+    "switch_library": lambda d, name: switch_library(d, name),
     "sign_in": lambda d, *a: sign_in(d, *(a or ("a1qa",))),
     "sign_out": lambda d, *a: sign_out(d),
     "borrow_download": lambda d, title: borrow_and_download(d, title),
@@ -313,13 +423,16 @@ STAGING_RECIPES: dict[str, list[tuple]] = {
     "library-picker-stateless": [
         ("dismiss_first_launch",),
         ("add_library", "Palace Bookshelf"),
+        ("switch_library", "Palace Bookshelf"),   # make it ACTIVE so catalog = its DPLA feed
         ("goto", "catalog"),
     ],
     # --- circulation (anonymous half; borrow halves are Phase 2) ---
     "palace-bookshelf-anonymous": [
         ("dismiss_first_launch",),
-        ("add_library", "Palace Bookshelf"),
-        ("goto", "settings"),
+        ("add_library", "A1QA Test Library"),       # initial_state Settings shows all three libs:
+        ("add_library", "Palace Bookshelf"),        #   Palace Bookshelf + A1QA + Addison Public Library
+        ("add_library", "Addison Public Library"),  # the recording's 'PUBLIC LIBRARY' token is the
+        ("goto", "settings"),                       #   Addison logo (confirmed from 001_pre.png)
     ],
     # --- ui-nav (stateless) ---
     "tab-bar-tour": [("dismiss_first_launch",), ("add_library", "Palace Bookshelf"), ("goto", "catalog")],
@@ -342,6 +455,24 @@ PHASE2_JOURNEYS = {
 
 # Chairman-blocked (creds/OTP) — recipes pending.
 BLOCKED_JOURNEYS = {"danny-saml-signin-init", "icarus-oidc-signin"}
+
+# Journeys DEMOTED from the determinism-gate must-pass set because their recording
+# precondition is structurally over-specified / irreducibly variable (multi-library-
+# logo + full scrolled pages, or exact catalog content/order). They STILL RUN and
+# STILL emit a finding — demote != hide — but tagged so triage can distinguish a
+# fragile-precondition flake from a genuine regression, and so a real failure here is
+# not dismissed as "just the flake". Each is queued for content-independent re-record.
+#   library-picker-stateless     — exact Palace Bookshelf DPLA catalog titles + order.
+#   palace-bookshelf-anonymous   — 3 library logos + full scrolled Settings page; the
+#       precondition-poll-settle helped 1/3 but timed out >15s 2/3 (irreducible). Likely
+#       the only anonymous-DPLA-access coverage → NEAR-TERM re-record.
+KNOWN_FRAGILE_PRECONDITIONS = {"library-picker-stateless", "palace-bookshelf-anonymous"}
+
+
+def is_known_fragile(journey: str) -> bool:
+    """True if `journey` is demoted from the must-pass gate for an over-specified /
+    irreducibly-variable precondition. Callers TAG (never suppress) its finding."""
+    return journey in KNOWN_FRAGILE_PRECONDITIONS
 
 
 def recipe_for(journey: str) -> Optional[list[tuple]]:
@@ -374,3 +505,226 @@ def stage_for_journey(d: Driver, journey: str) -> None:
                 f"unknown staging primitive '{prim}' in recipe for '{journey}'"
             )
         fn(d, *args)
+
+
+# ===========================================================================
+# SETTLE GATE + PROVISION  (canonical readiness primitive — the #21 cold-start fix
+# AND the per-cell entrypoint the campaign driver calls)
+# ===========================================================================
+def wait_until_ready(d: Driver, lib: str = "A1QA Test Library",
+                     timeout: float = 60.0, poll: float = 2.0) -> float:
+    """Canonical settle gate. Poll until the Settings→Libraries screen is rendered
+    AND the test library is present-or-addable; return the elapsed seconds.
+
+    This closes the cold-start window that produced the v4/v5/v6 uniform-fail
+    ('timeout waiting for ADD LIBRARY'): right after terminate+launch the app is
+    still restoring its last screen / refetching the QA registry, so staging that
+    navigates against a blind fixed sleep lands on a half-rendered screen. Polling
+    until the screen is real makes staging independent of launch timing and OCR
+    mid-load splits. Idempotent — safe after every cold launch and inside
+    enable_hidden_libraries. Raises StagingError on timeout.
+
+    Ready ⇔ a 'LIBRARIES' header is on screen and either the library is already
+    added (`lib` visible) or the add affordance is present. The button OCRs as
+    '+ADD LIBRARY' (the '+' glyph merges in), so we substring-match 'add library'."""
+    start = time.time()
+    deadline = start + timeout
+    last = "no-observe"
+    while time.time() < deadline:
+        marks = d.observe()
+        low = [m.text.strip().lower() for m in marks]
+        # a first-launch alert can pop mid-settle (notification prompt) and block
+        # everything behind it — clear it before assessing readiness.
+        if any(l.lower() in low for l in _FIRST_LAUNCH_LABELS):
+            dismiss_first_launch(d)
+            marks = d.observe()
+            low = [m.text.strip().lower() for m in marks]
+        on_libs = any(t == "libraries" for t in low)
+        if not on_libs:
+            # tab bar up but on another tab → reach Settings; else let the launch
+            # transition finish and re-observe next poll.
+            st = d.find("Settings", marks)
+            if st:
+                w, h = d._dims
+                d._act.tap(st.cx, st.cy, w, h, d.udid)
+                time.sleep(d.settle)
+                marks = d.observe()
+                low = [m.text.strip().lower() for m in marks]
+                on_libs = any(t == "libraries" for t in low)
+        has_lib = any(lib.lower() in t for t in low)
+        has_add = any("add library" in t for t in low)
+        last = f"libraries={on_libs} {lib!r}={has_lib} add_library={has_add}"
+        if on_libs and (has_lib or has_add):
+            return time.time() - start
+        time.sleep(poll)
+    raise StagingError(f"settle-gate timeout after {timeout:.0f}s ({last})")
+
+
+def await_precondition(d: Driver, tokens: list[str], timeout: float = 15.0,
+                       poll: float = 1.0) -> float:
+    """Deterministic pre-replay SETTLE for the fresh-add transient. Poll until ALL
+    `tokens` are present on screen (case-sensitive substring — exactly the recorder's
+    precondition check), or `timeout`. Adding a REAL library loads its catalog and
+    redraws, so a replay whose precondition observes immediately after staging can
+    catch the screen MID-LOAD and 0-execute (the palace-bookshelf-anonymous slot-3
+    flake — 1/3 in stability, tokens provably present once settled). Polling until the
+    recording's OWN tokens render removes that false-red WITHOUT under-specifying (all
+    tokens kept) and WITHOUT masking regressions: a genuinely wrong screen never
+    surfaces the tokens → timeout → the caller still runs the replay → it reports the
+    real precondition verdict (RED). Returns elapsed seconds; never raises."""
+    if not tokens:
+        return 0.0
+    start = time.time()
+    deadline = start + timeout
+    while time.time() < deadline:
+        texts = [m.text for m in d.observe()]
+        if all(any(tok in t for t in texts) for tok in tokens):
+            return time.time() - start
+        time.sleep(poll)
+    return time.time() - start
+
+
+def enable_hidden_libraries(udid: str, app: str) -> None:
+    """Ensure hidden/test libraries are reachable by writing NYPLUseBetaLibrariesKey
+    via simctl (must precede launch — the app reads it at startup). Empirically this
+    defaults-write alone surfaces the test library in the picker (verified: A1QA
+    appears with the key set, no in-app toggle needed). The in-app Settings→Testing
+    toggle was investigated but is fragile (below-fold, and toggling an already-on
+    switch on a still-loading Settings screen corrupted provision); the defaults-write
+    is the reliable mechanism and is done at provision start before relaunch."""
+    for key in ("NYPLUseBetaLibrariesKey", "showDeveloperSettings"):
+        subprocess.run(["xcrun", "simctl", "spawn", udid, "defaults", "write", app,
+                        key, "-bool", "true"], capture_output=True)
+
+
+def switch_to_active(d: Driver, library: str = "A1QA Test Library") -> None:
+    """Make `library` the ACTIVE library so its Account/catalog is reachable
+    directly. On a fresh cell the just-added test library is NOT active, so tapping
+    its row in Settings→Libraries pops 'Would you like to switch to X?' — confirm it.
+    Idempotent: if already active, the row opens Account instead of the dialog and we
+    leave it (the trailing settle returns to a known screen). Folded into provision
+    so every cell inherits an active A1QA without per-journey patching (recipes that
+    need a DIFFERENT active library, e.g. library-picker → Palace Bookshelf, override
+    via switch_library)."""
+    d.tap_until("Settings", "LIBRARIES")
+    d.tap_text(library)
+    if d.find("Would you like to switch"):
+        d.tap_text("Yes")            # confirm → library becomes active
+        time.sleep(1.0)
+
+
+def _on_real_settings(d: Driver, marks: Optional[list[_Mark]] = None) -> bool:
+    """True ONLY on the actual Settings→Libraries screen — keyed on the EXACT
+    'LIBRARIES' section header (all-caps), never a substring of 'libraries'. Two
+    false-positives this guards against: (1) the fresh-install marketing catalog
+    contains 'libraries' in prose; (2) the forced picker's 'Add Library' TITLE
+    uppercases to contain 'ADD LIBRARY' — so an 'ADD LIBRARY' substring check would
+    mistake the onboarding picker for Settings (which made onboarding a no-op and
+    timed out provision). The 'LIBRARIES' header exists only on real Settings; the
+    forced picker has 'Add Library' but no 'LIBRARIES' header."""
+    marks = marks if marks is not None else d.observe()
+    return any(m.text.strip().upper() == "LIBRARIES" for m in marks)
+
+
+def _on_forced_picker(d: Driver, marks: Optional[list[_Mark]] = None) -> bool:
+    """True on the fresh-install forced 'Add Library' picker: the exact 'Add Library'
+    title is present AND we are not on the real Settings screen."""
+    marks = marks if marks is not None else d.observe()
+    title = any(m.text.strip() == "Add Library" for m in marks)
+    return title and not _on_real_settings(d, marks)
+
+
+def _picker_search_add(d: Driver, lib: str, timeout: float = 45.0) -> None:
+    """In the forced first-run picker, search for `lib` and tap it to add + exit. The
+    registry list is long and freshly fetched, so the library may be below the fold or
+    not yet present — search by a distinctive prefix and poll until it surfaces
+    (registry-wait). Raises StagingError if it never appears."""
+    w, h = d._dims
+    marks = d.observe()
+    # focus the picker's search field: the 'Q' magnifier (exact), else below the title.
+    q = _find_exact(d, "Q", marks)
+    title = next((m for m in marks if m.text.strip() == "Add Library"), None)
+    if q is not None:
+        d.tap_xy(q.cx, q.cy)
+    elif title is not None:
+        d.tap_xy(title.cx, title.cy + 90)
+    else:
+        d.tap_xy(int(w * 0.5), int(h * 0.105))
+    time.sleep(0.4)
+    d.type(lib.split(" ")[0])                # distinctive prefix: 'A1QA' / 'Addison'
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        m = d.find(lib)
+        if m:
+            d._act.tap(m.cx, m.cy, w, h, d.udid)
+            time.sleep(2.0)                  # add + exit-picker transition
+            return
+        time.sleep(1.0)
+    raise StagingError(f"forced-picker: '{lib}' never surfaced (registry not loaded?) in {timeout:.0f}s")
+
+
+def onboard_fresh_install(d: Driver, lib: str = "A1QA Test Library",
+                          timeout: float = 45.0) -> None:
+    """Cross a FRESH install's onboarding into a usable app state. The driver's
+    per-cell build-install leaves the app on: notification-permission alert →
+    (the Palace Bookshelf catalog with marketing promo lanes) → the forced 'Add
+    Library' picker. Clear the (persistent, possibly stacked) alerts, then if the
+    forced picker is up, search-add the test library to exit onboarding. No-op once
+    onboarded (already on Settings/catalog with a library). All state detection is
+    chrome-keyed (exact tokens), never substring, so the marketing 'libraries' prose
+    can't false-positive."""
+    dismiss_first_launch(d)   # exact-match alert dismissal (no substring promo taps)
+    if _on_forced_picker(d):
+        _picker_search_add(d, lib, timeout=timeout)
+
+
+def provision(udid: str, app: str = "org.thepalaceproject.palace",
+              lib: str = "A1QA Test Library", timeout: float = 60.0) -> float:
+    """Per-cell provisioning entrypoint (idempotent), called by the campaign driver
+    AFTER build-install and BEFORE spawning the area-worker:
+        python3 scripts/regression_staging.py provision --sim <udid>
+    Self-contained readiness chain: enable hidden/test libraries (defaults-write) →
+    relaunch so the key takes effect → cross fresh-install onboarding (dismiss alert +
+    add the test library via the forced picker) → settle → switch the test library
+    ACTIVE → settle. Returns the final settle seconds. This is the ONE provision
+    primitive w-mutex calls, so every cell — including the FRESH clones the driver's
+    build-install produces — inherits hidden-libs + an added+active test library + a
+    rendered libraries screen."""
+    enable_hidden_libraries(udid, app)               # defaults-write (pre-launch)
+    subprocess.run(["xcrun", "simctl", "terminate", udid, app], capture_output=True)
+    time.sleep(1.0)
+    subprocess.run(["xcrun", "simctl", "launch", udid, app], capture_output=True)
+    time.sleep(3.0)
+    d = Driver(udid, app)
+    onboard_fresh_install(d, lib=lib, timeout=timeout)   # dismiss alert + add A1QA
+    wait_until_ready(d, lib=lib, timeout=timeout)        # settle on Settings/LIBRARIES
+    switch_to_active(d, lib)                             # make A1QA active
+    return wait_until_ready(d, lib=lib, timeout=timeout) # final settle
+
+
+def _main(argv: list[str]) -> int:
+    import argparse
+    p = argparse.ArgumentParser(prog="regression_staging.py")
+    sub = p.add_subparsers(dest="cmd", required=True)
+    for name, helptext in (("provision", "enable hidden libraries + settle (idempotent)"),
+                           ("settle", "wait until the libraries screen is ready (no toggle)")):
+        sp = sub.add_parser(name, help=helptext)
+        sp.add_argument("--sim", required=True, help="simulator UDID")
+        sp.add_argument("--app", default="org.thepalaceproject.palace")
+        sp.add_argument("--lib", default="A1QA Test Library")
+        sp.add_argument("--timeout", type=float, default=60.0)
+    a = p.parse_args(argv)
+    try:
+        if a.cmd == "provision":
+            secs = provision(a.sim, a.app, a.lib, a.timeout)
+        else:
+            secs = wait_until_ready(Driver(a.sim, a.app), lib=a.lib, timeout=a.timeout)
+        print(f"[{a.cmd}] ready in {secs:.1f}s")
+        return 0
+    except StagingError as e:
+        print(f"[{a.cmd}] NOT READY: {e}", file=__import__("sys").stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(_main(__import__("sys").argv[1:]))
