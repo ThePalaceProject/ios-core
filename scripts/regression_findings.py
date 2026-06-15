@@ -524,6 +524,33 @@ def journeys_for_area(manifest: dict[str, Any], area_group: str) -> list[str]:
     return list(_area(manifest, area_group).get("journeys", []) or [])
 
 
+def drm_for_journey(manifest: dict[str, Any], journey: str) -> dict[str, Any]:
+    """The journey's DRM/Adobe routing tags from the manifest's `journey_drm` map.
+    Absent journey → the Phase-A default ({drm_type:none, adobe_irreducible:false,
+    substitutable:false}) so an untagged journey is never accidentally Phase-B."""
+    jd = (manifest.get("journey_drm") or {}).get(journey) or {}
+    return {
+        "drm_type": jd.get("drm_type", "none"),
+        "adobe_irreducible": bool(jd.get("adobe_irreducible", False)),
+        "substitutable": bool(jd.get("substitutable", False)),
+    }
+
+
+def journey_passes_drm_filter(manifest: dict[str, Any], journey: str,
+                              exclude_drm: str = "", only_drm: str = "") -> bool:
+    """Fan-out Phase-A/B filter (the seam w-mutex's driver flags drive). A journey is
+    SKIPPED iff its drm_type equals `exclude_drm`, or `only_drm` is set and its
+    drm_type differs. Empty filters → always run. Routing to the budget-bounded
+    Phase-B lane is by `adobe_irreducible` (read separately by the --adobe-budget
+    allowlist); this predicate is the --exclude-drm/--drm-type inclusion gate."""
+    dt = drm_for_journey(manifest, journey)["drm_type"]
+    if exclude_drm and dt == exclude_drm:
+        return False
+    if only_drm and dt != only_drm:
+        return False
+    return True
+
+
 def chaos_seeds_for_area(manifest: dict[str, Any], area_group: str) -> list[str]:
     return list(_area(manifest, area_group).get("chaos_seeds", []) or [])
 
@@ -565,7 +592,19 @@ def _cli(argv: list[str]) -> int:
     p_areas = sub.add_parser("areas", help="list area-group names")
     p_areas.add_argument("manifest")
 
+    p_drm = sub.add_parser("drm-filter",
+                           help="exit 0 if journey passes the --exclude-drm/--drm-type filter, 1 if filtered")
+    p_drm.add_argument("manifest")
+    p_drm.add_argument("journey")
+    p_drm.add_argument("--exclude-drm", default="")
+    p_drm.add_argument("--only-drm", default="")
+
     args = p.parse_args(argv)
+
+    if args.cmd == "drm-filter":
+        manifest = load_manifest(args.manifest)
+        return 0 if journey_passes_drm_filter(
+            manifest, args.journey, args.exclude_drm, args.only_drm) else 1
 
     if args.cmd == "init-csv":
         ensure_findings_header(args.csv_path)
