@@ -10,7 +10,8 @@ that start screen, so the campaign runs end-to-end automated.
 
   • Driver  — observe→resolve(by text)→act(tap/type/swipe) loop.
   • Primitives — dismiss_first_launch, add_library, sign_in/out,
-    borrow_and_download (Phase 2), navigate_to.
+    download_fixture/clear_sync_position (reader2 standing-fixture),
+    borrow_and_download/return_book (returnable open-access loans), navigate_to.
   • STAGING_RECIPES + stage_for_journey() — declarative per-journey setup, using
     the staging-ORDER insight for mutually-exclusive auth states (a sign-in
     leaves the app SIGNED-IN, which is sign-out's precondition).
@@ -640,10 +641,79 @@ def sign_out(d: Driver, library: str = "A1QA Test Library") -> None:
     d.wait_for("Sign in", timeout=15)
 
 
-def borrow_and_download(d: Driver, title: str, lane: Optional[str] = None) -> None:
-    # Phase 2 — declared so recipes referencing it raise a clear "not yet" rather
-    # than KeyError, and the dispatcher can report status="phase2".
-    raise StagingError("borrow_and_download: Phase 2 (not yet implemented)")
+def _open_book_detail(d: Driver, title: str) -> None:
+    """Reach a book's detail screen (where Borrow/Get/Read/Return live) via SEARCH —
+    deterministic where scrolling the catalog is not (the DPLA/OPDS feed order and
+    cover-OCR vary per launch, so a specific book is not reliably tappable in the raw
+    feed). Open Catalog → search → type a distinctive title query → tap the matching
+    result. No-op if already on a detail screen."""
+    if d.find("Borrow") or d.find("Read") or d.find("Listen") or d.find("Return"):
+        return
+    marks = d.observe()
+    cats = sorted([m for m in marks if m.text.strip() == "Catalog"], key=lambda m: -m.cy)
+    w, h = d._dims
+    if cats:  # the bottom-most "Catalog" is the tab
+        d._act.tap(cats[0].cx, cats[0].cy, w, h, d.udid)
+        time.sleep(1.2)
+    # open the catalog search (top-right magnifier), then filter by a distinctive query
+    q = _find_exact(d, "Q") or d.find("Search")
+    if q is not None:
+        d.tap_xy(q.cx, q.cy)
+    else:
+        d.tap_xy(int(w * 0.92), int(h * 0.08))   # top-right magnifier fallback
+    time.sleep(0.8)
+    query = title.split(":")[0].strip()           # drop subtitle for a cleaner match
+    d.type(query)
+    time.sleep(1.5)
+    d.tap_text(title)                              # tap the filtered result → detail
+    time.sleep(1.5)
+
+
+def borrow_and_download(d: Driver, title: str, lane: Optional[str] = None,
+                        timeout: float = 90.0) -> None:
+    """Borrow + download a book to the DOWNLOADED state (the precondition for the
+    reader/audiobook/return journeys). Flow (mapped live): Catalog → tap book →
+    Borrow/Get → poll until Read/Listen appears (download complete). Idempotent: a
+    book already showing Read/Listen is left as-is. Raises StagingError on timeout
+    (download never completed) so a Phase-2 recipe gates honestly rather than
+    proceeding against a not-yet-downloaded book.
+
+    Use a RETURNABLE open-access book (DPLA / Palace Bookshelf) for round-trip
+    return journeys — NEVER the A1QA standing fixtures, which are read-only and must
+    never be returned."""
+    _open_book_detail(d, title)
+    if d.find("Read") or d.find("Listen"):
+        return                                   # already borrowed+downloaded
+    if d.find("Borrow"):
+        d.tap_text("Borrow")
+    elif d.find("Get"):
+        d.tap_text("Get")
+    else:
+        raise StagingError(f"borrow_and_download: no Borrow/Get on '{title}' detail")
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if d.find("Read") or d.find("Listen"):
+            return                               # download complete
+        time.sleep(2.0)
+    raise StagingError(f"borrow_and_download: '{title}' did not reach Read/Listen in {timeout:.0f}s")
+
+
+def return_book(d: Driver, title: Optional[str] = None) -> None:
+    """Return a borrowed loan — the idempotent RESET so a reused sim re-borrows
+    cleanly. Flow (mapped live): book detail → Return → 'Return Loan' confirm → poll
+    until Borrow reappears (returned). No-op if the book isn't currently borrowed.
+
+    ONLY for returnable open-access loans — never an A1QA standing fixture."""
+    if title is not None:
+        _open_book_detail(d, title)
+    if not d.find("Return"):
+        return                                   # not borrowed
+    d.tap_text("Return")
+    if d.find("Return Loan"):                     # confirm dialog
+        d.tap_text("Return Loan")
+    elif d.find("Yes"):
+        d.tap_text("Yes")
+    d.wait_for("Borrow", timeout=30)              # returned → Borrow button back
 
 
 PRIMITIVES = {
@@ -656,6 +726,7 @@ PRIMITIVES = {
     "clear_sync_position": lambda d, *a: clear_sync_position(d),
     "sign_out": lambda d, *a: sign_out(d),
     "borrow_download": lambda d, title: borrow_and_download(d, title),
+    "return_book": lambda d, *a: return_book(d, *(a or (None,))),
     "goto": lambda d, screen: navigate_to(d, screen),
 }
 
