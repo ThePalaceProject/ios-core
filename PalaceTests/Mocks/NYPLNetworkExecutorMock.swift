@@ -18,6 +18,12 @@ class TPPRequestExecutorMock: TPPRequestExecuting {
     /// When set, ALL requests will fail with this HTTP status code.
     var forceFailureStatusCode: Int?
 
+    /// Every URL passed to `executeRequest`, in call order. Lets tests assert
+    /// that a sign-in actually FIRED the credential request (e.g. the
+    /// basic/token readiness-race regression where `logIn()` used to silently
+    /// no-op before `/patrons/me` was ever requested).
+    private(set) var executedRequestURLs: [URL] = []
+
     /// Incremented in `reset()` so that stale GCD blocks from a previous
     /// test skip their completion callback.
     private var generation: Int = 0
@@ -31,11 +37,16 @@ class TPPRequestExecutorMock: TPPRequestExecuting {
     /// Call in tearDown to invalidate any pending async completions.
     func reset() {
         generation += 1
+        executedRequestURLs.removeAll()
     }
 
     func executeRequest(_ req: URLRequest,
                         enableTokenRefresh: Bool,
                         completion: @escaping (NYPLResult<Data>) -> Void) -> URLSessionDataTask? {
+
+        if let reqURL = req.url {
+            executedRequestURLs.append(reqURL)
+        }
 
         let capturedGeneration = generation
         DispatchQueue.main.async { [weak self] in
