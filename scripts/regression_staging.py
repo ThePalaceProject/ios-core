@@ -836,8 +836,15 @@ STAGING_RECIPES: dict[str, list[tuple]] = {
 # borrow_and_download lands. Do NOT fake these:
 #   read-return / book-return roundtrips  — borrow→read→RETURN the book (mutates
 #       the fixture; can't run against the read-only standing fixture).
-#   audiobook-download-indicator-stateful — asserts the in-flight DOWNLOAD UI, so
-#       the book must NOT be pre-downloaded (standing fixture is already downloaded).
+#   audiobook-download-indicator-stateful — BACKLOGGED (Chairman 2026-06-16, done
+#       3/4 audiobook). Asserts the in-flight 'Downloading…' UI, but empirically the
+#       Animal Farm LCP fixture (the only LCP audiobook in A1QA) downloads in ~1.5s
+#       on the sim — the indicator isn't catchable at normal speed, and the in-flight
+#       % is a TRANSIENT/varying state that flakes screenshot-drift replay. The sim
+#       has no clean per-sim network throttle (only invasive host-level NLC, which
+#       would couple replay to a throttled host). The audiobook PLAYER mechanics
+#       (skip/toc/scrubber — the real #1083 regression surface) ARE covered. Revisit
+#       only if a deterministic in-flight-download harness is built.
 #   PP-4161-streaming-html-reader         — anonymous search→Borrow→Read; requires
 #       a .unregistered registry (uninstall/reinstall), NOT a sign-in.
 #   search-flow-stateful                  — no recording exists yet.
