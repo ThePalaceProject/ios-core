@@ -341,6 +341,76 @@ def open_account(d: Driver, library: str = "A1QA Test Library") -> None:
     d.wait_for("Library Card", timeout=15)  # the auth-doc sign-in form (signed out)
 
 
+def download_book(d: Driver, title: str, ready_label: str = "Read",
+                  timeout: float = 180.0) -> None:
+    """Download an ALREADY-BORROWED book on the A1QA standing fixture so its row
+    flips from 'Download' to the open affordance (`ready_label`: 'Read' for EPUB,
+    'Listen' for audiobook). The fixture is borrowed server-side (Return is
+    present) but a FRESH per-shard sim has not fetched the asset locally — so the
+    My Books row shows 'Download', while the reader2/audiobook recordings'
+    precondition needs 'Read'/'Listen'. This is a DOWNLOAD of an already-borrowed
+    book (it taps the row's Download button, never a Borrow), so it does NOT
+    mutate the fixture's loan state — it only materializes the local copy the
+    recording was captured against.
+
+    Idempotent: if the row already shows `ready_label` (asset cached from a prior
+    journey on a reused sim), returns immediately. Resolves the Download button on
+    the SAME row as the title (nearest-by-y) so a multi-book My Books list taps the
+    right one. Polls until the asset finishes downloading."""
+    navigate_to(d, "my_books")
+    dismiss_save_password(d, timeout=4.0)         # post-sign-in keychain alert may linger
+    # Already downloaded?
+    row = d.find(title)
+    if row is not None and d.find(ready_label):
+        # confirm the ready affordance is on this title's row (not another book's)
+        marks = d.observe()
+        rb = next((m for m in marks if m.text.strip().lower() == ready_label.lower()
+                   and abs(m.cy - row.cy) < 160), None)
+        if rb is not None:
+            return
+    # Find the Download button on the title's row and tap it.
+    deadline = time.time() + timeout
+    tapped = False
+    while time.time() < deadline:
+        marks = d.observe()
+        row = next((m for m in marks if title.lower() in m.text.lower()), None)
+        if row is None:
+            # title not visible yet (list still loading) — settle and retry
+            time.sleep(2.0)
+            continue
+        # ready already? (download completed)
+        rb = next((m for m in marks if m.text.strip().lower() == ready_label.lower()
+                   and abs(m.cy - row.cy) < 160), None)
+        if rb is not None:
+            return
+        if not tapped:
+            dl = next((m for m in marks if m.text.strip().lower() == "download"
+                       and abs(m.cy - row.cy) < 160), None)
+            if dl is not None:
+                w, h = d._dims
+                d._act.tap(dl.cx, dl.cy, w, h, d.udid)
+                tapped = True
+                time.sleep(2.0)
+        time.sleep(2.0)
+    raise StagingError(
+        f"download_book: '{title}' did not reach '{ready_label}' within {timeout:.0f}s")
+
+
+# The EPUB the reader2 recordings open: 'Advanced Accessibility Tests: Mathematics'
+# (the 'Mathematics Test Book' DAISY EPUB). Its My Books row OCRs the distinctive
+# 'Mathematics' token; download it so the row flips Download -> Read (the reader2
+# precondition token).
+_READER2_FIXTURE_TITLE = "Mathematics"
+
+
+def download_fixture(d: Driver, title: str = _READER2_FIXTURE_TITLE,
+                     ready_label: str = "Read") -> None:
+    """Recipe primitive: download the reader2 standing-fixture EPUB (Mathematics
+    Test Book) so its My Books row shows 'Read' for the recording's step-0
+    precondition. Thin wrapper over download_book with the fixture defaults."""
+    download_book(d, title, ready_label)
+
+
 def navigate_to(d: Driver, screen: str) -> None:
     """Drive to a named screen. screen ∈ catalog | my_books | holds | settings |
     account_signin | account_signedin (the last two open the A1QA Account)."""
@@ -492,54 +562,6 @@ def borrow_and_download(d: Driver, title: str, lane: Optional[str] = None) -> No
     # Phase 2 — declared so recipes referencing it raise a clear "not yet" rather
     # than KeyError, and the dispatcher can report status="phase2".
     raise StagingError("borrow_and_download: Phase 2 (not yet implemented)")
-
-
-def download_fixture(d: Driver, timeout: float = 90.0, poll: float = 2.0) -> None:
-    """Ensure the standing-fixture EPUB is DOWNLOADED before replay (reader2 fix).
-
-    On a fresh keychain-reset campaign sim the A1QA fixture book is BORROWED (it
-    shows in My Books) but NOT downloaded locally, so its row presents a 'Download'
-    button — while the reader2 recordings' step-0 expects 'Read' (the downloaded
-    state) and step-1 taps Read to open the reader. The contract can't match and the
-    reader can't open an undownloaded book, so all 5 reader2 journeys halted with
-    state_contract_mismatch. (Audiobook journeys PASS because Animal Farm is
-    pre-downloaded on the audiobook shard's sim.)
-
-    Downloading is a LOCAL cache fetch — it does NOT touch the server-side loan (no
-    re-borrow, no return), so it's safe + idempotent against the read-only standing
-    fixture. Tap 'Download' if present, then poll up to ~90s until the row shows
-    'Read'. If 'Read' is already present (book cached), this is a no-op. Raises only
-    if the download never completes (a genuine fixture/network problem worth
-    surfacing, not masking)."""
-    # Make sure we're on My Books where the fixture row lives.
-    if not (d.has("Read") or d.has("Download")):
-        try:
-            navigate_to(d, "my_books")
-            time.sleep(1.0)
-        except StagingError:
-            pass
-    # Already downloaded — nothing to do.
-    if d.has("Read"):
-        return
-    dl = d.find("Download")
-    if dl is None:
-        # Neither Read nor Download visible — let the replay's precondition gate
-        # report the real state rather than fabricate a tap here.
-        raise StagingError(
-            "download_fixture: fixture row shows neither 'Read' nor 'Download' on My Books"
-        )
-    d.tap_xy(dl.cx, dl.cy)
-    time.sleep(1.5)
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        if d.has("Read"):
-            time.sleep(0.8)            # let the row settle on the Read state
-            return
-        time.sleep(poll)
-    raise StagingError(
-        f"download_fixture: fixture did not reach 'Read' within {timeout:.0f}s "
-        "(download stuck — fixture or network problem)"
-    )
 
 
 PRIMITIVES = {
