@@ -421,6 +421,78 @@ def download_fixture(d: Driver, title: str = _READER2_FIXTURE_TITLE,
     download_book(d, title, ready_label)
 
 
+def clear_sync_position(d: Driver, title: str = _READER2_FIXTURE_TITLE) -> bool:
+    """Pre-clear the reader's 'Sync Reading Position' (Stay / Move) dialog so the
+    reader2 REPLAY opens the book clean.
+
+    The A1QA fixture carries a SERVER-SIDE reading position, so the FIRST time the
+    book opens after a fresh sign-in the reader pops 'Sync Reading Position — Do you
+    want to move to the page on which you left off?' (Stay / Move). The reader2
+    recordings tap 'Read' (step-1) then immediately swipe/tap (step-2); the dialog
+    renders OVER the reader, so the recorded step fires into the modal and the reader
+    'opens then stalls' — the failure the Chairman watched (and the real cause behind
+    the earlier 'demote reader2' / 'device-suffix' red herrings). simdrive's replay
+    has no interstitial hook, so we dismiss it HERE in staging: open the fixture once,
+    tap 'Stay' (deterministic — keep the local position, no surprise re-pagination),
+    which reconciles the position so the replay's open no longer prompts (verified
+    live: the dialog does not reappear on a second open, even across an app relaunch).
+    Then return to My Books for the recording's step-0 start screen.
+
+    Idempotent + safe: on a reused sim where a prior journey already reconciled the
+    position, the book just opens with no dialog and we back out. Returns True iff a
+    sync dialog was actually dismissed."""
+    CARD_PAD = 200
+    navigate_to(d, "my_books")
+    dismiss_save_password(d, timeout=2.0)
+
+    # Open the fixture from its My Books row — card-scoped 'Read' anchor (same logic
+    # as download_book) so a multi-book list opens the RIGHT book's reader.
+    marks = d.observe()
+    rows = [m for m in marks if title.lower() in m.text.lower()]
+    if not rows:
+        return False                      # fixture row absent — nothing to pre-clear
+    ys = [m.cy for m in rows]
+    lo, hi = min(ys) - CARD_PAD, max(ys) + CARD_PAD
+    read_btn = next((m for m in marks
+                     if m.text.strip().lower() == "read" and lo <= m.cy <= hi), None)
+    if read_btn is None:
+        return False                      # not in a downloaded ('Read') state
+    w, h = d._dims
+    d._act.tap(read_btn.cx, read_btn.cy, w, h, d.udid)
+    time.sleep(3.0)
+
+    # Dismiss the sync dialog if/when it renders (it can land a beat after the open).
+    dismissed = False
+    deadline = time.time() + 12.0
+    while time.time() < deadline:
+        m2 = d.observe()
+        stay = _find_exact(d, "Stay", m2)
+        is_sync = (any("sync reading position" in x.text.lower() for x in m2)
+                   or _find_exact(d, "Move", m2) is not None)
+        if stay and is_sync:
+            d._act.tap(stay.cx, stay.cy, w, h, d.udid)
+            time.sleep(1.5)
+            dismissed = True
+            break
+        # reader content rendered with no dialog (already reconciled) -> done
+        if any("page" in x.text.lower() and " of " in x.text.lower() for x in m2):
+            break
+        time.sleep(0.6)
+
+    # Exit the reader back to My Books for the recording's step-0 contract. Reader
+    # chrome auto-hides; tap CENTER to reveal it (center zone toggles chrome; edges
+    # page), then the top-left back affordance. Fall back to a clean relaunch if the
+    # back nav doesn't land on My Books.
+    d._act.tap(w // 2, h // 2, w, h, d.udid)                  # toggle reader chrome
+    time.sleep(1.0)
+    d._act.tap(int(w * 0.06), int(h * 0.09), w, h, d.udid)    # back chevron (top-left)
+    time.sleep(2.0)
+    if not d.find("My Books"):
+        relaunch_app(d.udid, d.app)
+    navigate_to(d, "my_books")
+    return dismissed
+
+
 def navigate_to(d: Driver, screen: str) -> None:
     """Drive to a named screen. screen ∈ catalog | my_books | holds | settings |
     account_signin | account_signedin (the last two open the A1QA Account)."""
@@ -581,6 +653,7 @@ PRIMITIVES = {
     "sign_in": lambda d, *a: sign_in(d, *(a or ("a1qa",))),
     "dismiss_save_password": lambda d, *a: dismiss_save_password(d),
     "download_fixture": lambda d, *a: download_fixture(d),
+    "clear_sync_position": lambda d, *a: clear_sync_position(d),
     "sign_out": lambda d, *a: sign_out(d),
     "borrow_download": lambda d, title: borrow_and_download(d, title),
     "goto": lambda d, screen: navigate_to(d, screen),
@@ -646,27 +719,27 @@ STAGING_RECIPES: dict[str, list[tuple]] = {
     "reader2-back-button": [
         ("dismiss_first_launch",), ("add_library", "A1QA Test Library"),
         ("sign_in", "a1qa"), ("goto", "my_books"), ("dismiss_save_password",),
-        ("download_fixture",), ("dismiss_save_password",),
+        ("download_fixture",), ("dismiss_save_password",), ("clear_sync_position",),
     ],
     "reader2-bookmark-toggle": [
         ("dismiss_first_launch",), ("add_library", "A1QA Test Library"),
         ("sign_in", "a1qa"), ("goto", "my_books"), ("dismiss_save_password",),
-        ("download_fixture",), ("dismiss_save_password",),
+        ("download_fixture",), ("dismiss_save_password",), ("clear_sync_position",),
     ],
     "reader2-page-forward": [
         ("dismiss_first_launch",), ("add_library", "A1QA Test Library"),
         ("sign_in", "a1qa"), ("goto", "my_books"), ("dismiss_save_password",),
-        ("download_fixture",), ("dismiss_save_password",),
+        ("download_fixture",), ("dismiss_save_password",), ("clear_sync_position",),
     ],
     "reader2-settings-sheet": [
         ("dismiss_first_launch",), ("add_library", "A1QA Test Library"),
         ("sign_in", "a1qa"), ("goto", "my_books"), ("dismiss_save_password",),
-        ("download_fixture",), ("dismiss_save_password",),
+        ("download_fixture",), ("dismiss_save_password",), ("clear_sync_position",),
     ],
     "reader2-toc-navigate": [
         ("dismiss_first_launch",), ("add_library", "A1QA Test Library"),
         ("sign_in", "a1qa"), ("goto", "my_books"), ("dismiss_save_password",),
-        ("download_fixture",), ("dismiss_save_password",),
+        ("download_fixture",), ("dismiss_save_password",), ("clear_sync_position",),
     ],
 
     # --- audiobook (STANDING-FIXTURE) ---
@@ -731,6 +804,17 @@ BLOCKED_JOURNEYS = {"danny-saml-signin-init", "icarus-oidc-signin"}
 #       toc-navigate 6/6 — full step replay, no Adobe gate). So they are GATING, not
 #       fragile, and are NOT listed below.
 KNOWN_FRAGILE_PRECONDITIONS = {"library-picker-stateless", "palace-bookshelf-anonymous"}
+
+# NOTE on a1qa-basic-signin perf-HIGH: deliberately NOT demoted (it is the core
+# sign-in critical path and MUST stay gating — see test_known_fragile_journeys...).
+# Its perf-HIGH is driven by the MEMORY axis: the worker snapshots the perf baseline
+# after staging, which ends SIGNED-OUT on the sign-in form (minimal working set),
+# then the replay SIGNS IN and loads the catalog/My Books → +~77MB of legitimate
+# post-sign-in working set (threads confirm transient: +18→3→1, the worker's trend
+# gate already demotes the thread axis). The principled fix is a baseline-timing one
+# (warm the baseline to a signed-in state for sign-in journeys), addressed in the
+# worker's perf-baseline block — NOT a blanket memory-threshold raise (which would
+# mask real memory leaks) and NOT a demotion of the critical journey.
 
 
 def is_known_fragile(journey: str) -> bool:
