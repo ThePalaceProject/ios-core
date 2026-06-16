@@ -10,7 +10,8 @@ that start screen, so the campaign runs end-to-end automated.
 
   • Driver  — observe→resolve(by text)→act(tap/type/swipe) loop.
   • Primitives — dismiss_first_launch, add_library, sign_in/out,
-    borrow_and_download (Phase 2), navigate_to.
+    download_fixture/clear_sync_position (reader2 standing-fixture),
+    borrow_and_download/return_book (returnable open-access loans), navigate_to.
   • STAGING_RECIPES + stage_for_journey() — declarative per-journey setup, using
     the staging-ORDER insight for mutually-exclusive auth states (a sign-in
     leaves the app SIGNED-IN, which is sign-out's precondition).
@@ -236,6 +237,55 @@ def dismiss_first_launch(d: Driver) -> None:
         time.sleep(0.5)
 
 
+_SAVE_PW_LABELS = ("Not Now", "Save", "Save Password")
+# Title tokens that confirm the alert is the Save-Password keychain prompt. OCR
+# renders the SpringBoard alert title inconsistently run-to-run ("Save Password?",
+# "Save Password", sometimes just the body "...would you like to save this
+# password..."), so we match ANY of these as substrings rather than requiring the
+# exact "Save Password" mark — that single-string requirement is why the prior
+# dismiss missed it intermittently and the modal survived into step-0.
+_SAVE_PW_TITLE_TOKENS = ("save password", "save this password", "passwords")
+
+
+def dismiss_save_password(d: Driver, timeout: float = 20.0, poll: float = 0.6) -> bool:
+    """Dismiss the iOS 'Save Password?' keychain alert that pops AFTER a successful
+    sign-in. It is a SpringBoard alert that renders OVER the app, covering the My
+    Books book rows — so the reader2 replays' step-0 observe saw the modal, not the
+    book list (state_contract_mismatch). The alert appears ASYNCHRONOUSLY and can
+    land a beat after staging navigates away from the Account screen, so a single
+    dismissal at sign-in time misses it; poll for it and tap 'Not Now' (don't save —
+    keeps the fixture keychain clean) when it surfaces. Returns True if dismissed.
+    No-op (returns False) if it never appears, so it's safe on every signed-in
+    recipe.
+
+    RELIABILITY (reader2 fix): the alert can pop LATE and OCR the title variably,
+    so (1) we poll the full `timeout` even after a first observe is clean — a clean
+    observe just means it hasn't appeared YET, not that it won't; (2) we accept ANY
+    Save-Password title token (not the single exact 'Save Password' mark); (3) when
+    'Not Now' is present alongside a Save-Password title we tap it and KEEP polling
+    a couple more cycles in case a second confirmation alert stacks. A bare 'Not
+    Now' with no Save-Password title is NOT tapped (could be the first-launch
+    notifications prompt, handled by dismiss_first_launch) — we only act on the
+    confirmed keychain alert."""
+    deadline = time.time() + timeout
+    dismissed = False
+    while time.time() < deadline:
+        marks = d.observe()
+        live = [m.text.lower() for m in marks]
+        is_save_pw = any(tok in lt for lt in live for tok in _SAVE_PW_TITLE_TOKENS)
+        nn = _find_exact(d, "Not Now", marks)
+        if is_save_pw and nn:
+            w, h = d._dims
+            d._act.tap(nn.cx, nn.cy, w, h, d.udid)
+            time.sleep(1.0)
+            dismissed = True
+            continue                      # re-observe; a stacked alert may remain
+        if dismissed and not is_save_pw:
+            return True                   # cleared and stayed clear
+        time.sleep(poll)
+    return dismissed
+
+
 def add_library(d: Driver, display_name: str) -> None:
     """Idempotently add a library by display name (sims are reused across
     journeys, so this must no-op if already added). Handles both the clean-install
@@ -292,6 +342,158 @@ def open_account(d: Driver, library: str = "A1QA Test Library") -> None:
     d.wait_for("Library Card", timeout=15)  # the auth-doc sign-in form (signed out)
 
 
+def download_book(d: Driver, title: str, ready_label: str = "Read",
+                  timeout: float = 180.0) -> None:
+    """Download an ALREADY-BORROWED book on the A1QA standing fixture so its row
+    flips from 'Download' to the open affordance (`ready_label`: 'Read' for EPUB,
+    'Listen' for audiobook). The fixture is borrowed server-side (Return is
+    present) but a FRESH per-shard sim has not fetched the asset locally — so the
+    My Books row shows 'Download', while the reader2/audiobook recordings'
+    precondition needs 'Read'/'Listen'. This is a DOWNLOAD of an already-borrowed
+    book (it taps the row's Download button, never a Borrow), so it does NOT
+    mutate the fixture's loan state — it only materializes the local copy the
+    recording was captured against.
+
+    Idempotent: if the row already shows `ready_label` (asset cached from a prior
+    journey on a reused sim), returns immediately. Resolves the Download button on
+    the SAME row as the title (nearest-by-y) so a multi-book My Books list taps the
+    right one. Polls until the asset finishes downloading."""
+    navigate_to(d, "my_books")
+    dismiss_save_password(d, timeout=4.0)         # post-sign-in keychain alert may linger
+
+    # The book card OCRs the title as MULTIPLE marks (the wrapped title line, e.g.
+    # 'Tests: Mathematics', AND the cover caption 'Mathematics Test Book') at
+    # different y-positions, and the action button ('Read'/'Download') sits between
+    # them — so anchoring to the FIRST title mark and a tight 160px band missed the
+    # button (the false 'did not reach Read' STAGE-ERR). Anchor to the WHOLE card:
+    # take the y-span of every title-token mark, widen it by a card pad, and look
+    # for the action button anywhere in that span. A My Books card is < ~360px tall.
+    CARD_PAD = 200
+
+    def _title_rows(marks):
+        return [m for m in marks if title.lower() in m.text.lower()]
+
+    def _btn_in_card(marks, label):
+        rows = _title_rows(marks)
+        if not rows:
+            return None
+        ys = [m.cy for m in rows]
+        lo, hi = min(ys) - CARD_PAD, max(ys) + CARD_PAD
+        return next((m for m in marks
+                     if m.text.strip().lower() == label.lower() and lo <= m.cy <= hi), None)
+
+    # Already downloaded? (asset cached from a prior journey / pre-seeded fixture)
+    if _btn_in_card(d.observe(), ready_label) is not None:
+        return
+
+    deadline = time.time() + timeout
+    tapped = False
+    while time.time() < deadline:
+        marks = d.observe()
+        if not _title_rows(marks):
+            time.sleep(2.0)                        # list still loading — settle, retry
+            continue
+        if _btn_in_card(marks, ready_label) is not None:
+            return                                 # download completed
+        if not tapped:
+            dl = _btn_in_card(marks, "Download")
+            if dl is not None:
+                w, h = d._dims
+                d._act.tap(dl.cx, dl.cy, w, h, d.udid)
+                tapped = True
+                time.sleep(2.0)
+        time.sleep(2.0)
+    raise StagingError(
+        f"download_book: '{title}' did not reach '{ready_label}' within {timeout:.0f}s")
+
+
+# The EPUB the reader2 recordings open: 'Advanced Accessibility Tests: Mathematics'
+# (the 'Mathematics Test Book' DAISY EPUB). Its My Books row OCRs the distinctive
+# 'Mathematics' token; download it so the row flips Download -> Read (the reader2
+# precondition token).
+_READER2_FIXTURE_TITLE = "Mathematics"
+
+
+def download_fixture(d: Driver, title: str = _READER2_FIXTURE_TITLE,
+                     ready_label: str = "Read") -> None:
+    """Recipe primitive: download the reader2 standing-fixture EPUB (Mathematics
+    Test Book) so its My Books row shows 'Read' for the recording's step-0
+    precondition. Thin wrapper over download_book with the fixture defaults."""
+    download_book(d, title, ready_label)
+
+
+def clear_sync_position(d: Driver, title: str = _READER2_FIXTURE_TITLE) -> bool:
+    """Pre-clear the reader's 'Sync Reading Position' (Stay / Move) dialog so the
+    reader2 REPLAY opens the book clean.
+
+    The A1QA fixture carries a SERVER-SIDE reading position, so the FIRST time the
+    book opens after a fresh sign-in the reader pops 'Sync Reading Position — Do you
+    want to move to the page on which you left off?' (Stay / Move). The reader2
+    recordings tap 'Read' (step-1) then immediately swipe/tap (step-2); the dialog
+    renders OVER the reader, so the recorded step fires into the modal and the reader
+    'opens then stalls' — the failure the Chairman watched (and the real cause behind
+    the earlier 'demote reader2' / 'device-suffix' red herrings). simdrive's replay
+    has no interstitial hook, so we dismiss it HERE in staging: open the fixture once,
+    tap 'Stay' (deterministic — keep the local position, no surprise re-pagination),
+    which reconciles the position so the replay's open no longer prompts (verified
+    live: the dialog does not reappear on a second open, even across an app relaunch).
+    Then return to My Books for the recording's step-0 start screen.
+
+    Idempotent + safe: on a reused sim where a prior journey already reconciled the
+    position, the book just opens with no dialog and we back out. Returns True iff a
+    sync dialog was actually dismissed."""
+    CARD_PAD = 200
+    navigate_to(d, "my_books")
+    dismiss_save_password(d, timeout=2.0)
+
+    # Open the fixture from its My Books row — card-scoped 'Read' anchor (same logic
+    # as download_book) so a multi-book list opens the RIGHT book's reader.
+    marks = d.observe()
+    rows = [m for m in marks if title.lower() in m.text.lower()]
+    if not rows:
+        return False                      # fixture row absent — nothing to pre-clear
+    ys = [m.cy for m in rows]
+    lo, hi = min(ys) - CARD_PAD, max(ys) + CARD_PAD
+    read_btn = next((m for m in marks
+                     if m.text.strip().lower() == "read" and lo <= m.cy <= hi), None)
+    if read_btn is None:
+        return False                      # not in a downloaded ('Read') state
+    w, h = d._dims
+    d._act.tap(read_btn.cx, read_btn.cy, w, h, d.udid)
+    time.sleep(3.0)
+
+    # Dismiss the sync dialog if/when it renders (it can land a beat after the open).
+    dismissed = False
+    deadline = time.time() + 12.0
+    while time.time() < deadline:
+        m2 = d.observe()
+        stay = _find_exact(d, "Stay", m2)
+        is_sync = (any("sync reading position" in x.text.lower() for x in m2)
+                   or _find_exact(d, "Move", m2) is not None)
+        if stay and is_sync:
+            d._act.tap(stay.cx, stay.cy, w, h, d.udid)
+            time.sleep(1.5)
+            dismissed = True
+            break
+        # reader content rendered with no dialog (already reconciled) -> done
+        if any("page" in x.text.lower() and " of " in x.text.lower() for x in m2):
+            break
+        time.sleep(0.6)
+
+    # Exit the reader back to My Books for the recording's step-0 contract. Reader
+    # chrome auto-hides; tap CENTER to reveal it (center zone toggles chrome; edges
+    # page), then the top-left back affordance. Fall back to a clean relaunch if the
+    # back nav doesn't land on My Books.
+    d._act.tap(w // 2, h // 2, w, h, d.udid)                  # toggle reader chrome
+    time.sleep(1.0)
+    d._act.tap(int(w * 0.06), int(h * 0.09), w, h, d.udid)    # back chevron (top-left)
+    time.sleep(2.0)
+    if not d.find("My Books"):
+        relaunch_app(d.udid, d.app)
+    navigate_to(d, "my_books")
+    return dismissed
+
+
 def navigate_to(d: Driver, screen: str) -> None:
     """Drive to a named screen. screen ∈ catalog | my_books | holds | settings |
     account_signin | account_signedin (the last two open the A1QA Account)."""
@@ -337,20 +539,74 @@ def switch_library(d: Driver, name: str) -> None:
     time.sleep(1.5)
 
 
+def _clear_field(d: Driver, taps: int = 40) -> None:
+    """Clear the focused text field deterministically. A reused or half-staged
+    field can carry residual text (the password-typed-into-the-username collision
+    observed when the Password tap raced the keyboard layout shift), so every
+    credential type starts from empty. Spam BOTH backspace (deletes left of caret)
+    and delete (deletes right) so the field empties regardless of caret position;
+    no 'end'/'home' key exists in simdrive's key map."""
+    for _ in range(taps):
+        try:
+            d._act.press_key("backspace", d.udid)
+            d._act.press_key("delete", d.udid)
+        except Exception:
+            break
+    time.sleep(0.3)
+
+
 def sign_in(d: Driver, slug: str = "a1qa", library: str = "A1QA Test Library") -> None:
     """Reach the Account sign-in form and authenticate. Leaves the patron
-    SIGNED IN on the Account screen (which is sign-out's precondition)."""
+    SIGNED IN on the Account screen (which is sign-out's precondition).
+
+    Hardened against the Password-field focus race: after the username is typed
+    the form re-lays-out (keyboard up + barcode validation), so the previously
+    resolved 'Password' mark coords go stale and a tap can land back on the
+    username field — typing the password INTO the username field, leaving 'Sign
+    in' disabled (observed: '<user><pw>' concatenated in the card field, password
+    empty, button greyed, then a step-0 precondition halt downstream). Fix: clear
+    each field before typing, RE-RESOLVE the Password mark AFTER the username is
+    committed, and verify 'Sign in' enables before submitting — retry the whole
+    credential entry once if it didn't take."""
     user, pw = _creds(slug)
     open_account(d, library)
     if d.has("Sign out"):
         return  # already signed in
-    card = d.wait_for("Library Card")
-    d.tap_xy(card.cx, card.cy)
-    d.type(user)
-    pwm = d.wait_for("Password")
-    d.tap_xy(pwm.cx, pwm.cy)
-    d.type(pw)
-    d.tap_text("Sign in")
+
+    for attempt in range(2):
+        card = d.wait_for("Library Card")
+        d.tap_xy(card.cx, card.cy)
+        _clear_field(d)                       # drop any residual / prior-attempt text
+        d.type(user)
+        time.sleep(0.6)                       # let barcode validation + relayout settle
+        # RE-RESOLVE Password AFTER the username committed — its coords shift once the
+        # field is filled and the keyboard is up; using the stale pre-type mark is the
+        # focus-race root cause.
+        pwm = d.wait_for("Password")
+        d.tap_xy(pwm.cx, pwm.cy)
+        _clear_field(d)                       # ensure we're in an empty Password field
+        d.type(pw)
+        time.sleep(0.4)
+        # The 'Sign in' control is disabled until BOTH fields are populated; its
+        # presence as a tappable mark is our deterministic "credentials took" gate.
+        if d.find("Sign in"):
+            d.tap_text("Sign in")
+            # iOS pops a "Save Password?" keychain alert AFTER a successful sign-in.
+            # It covers the Account/My Books screen, so 'Sign out' never surfaces.
+            # Poll-and-dismiss it (it can land a beat after submit). Recipes ALSO
+            # call dismiss_save_password after navigation, since the alert can pop
+            # late, once staging has already moved to My Books.
+            time.sleep(1.5)
+            dismiss_save_password(d)
+            try:
+                d.wait_for("Sign out", timeout=20)
+                return
+            except StagingError:
+                pass  # fall through to retry
+        # entry didn't take (focus race / transient) — retry once from a clean form.
+        time.sleep(1.0)
+    # Final attempt's outcome gate — raise a clear error if still not signed in.
+    dismiss_save_password(d)
     d.wait_for("Sign out", timeout=20)
 
 
@@ -385,10 +641,191 @@ def sign_out(d: Driver, library: str = "A1QA Test Library") -> None:
     d.wait_for("Sign in", timeout=15)
 
 
-def borrow_and_download(d: Driver, title: str, lane: Optional[str] = None) -> None:
-    # Phase 2 — declared so recipes referencing it raise a clear "not yet" rather
-    # than KeyError, and the dispatcher can report status="phase2".
-    raise StagingError("borrow_and_download: Phase 2 (not yet implemented)")
+def _open_book_detail(d: Driver, title: str) -> None:
+    """Reach a book's detail screen (where Borrow/Get/Read/Return live) via SEARCH —
+    deterministic where scrolling the catalog is not (the DPLA/OPDS feed order and
+    cover-OCR vary per launch, so a specific book is not reliably tappable in the raw
+    feed). Open Catalog → search → type a distinctive title query → tap the matching
+    result. No-op if already on a detail screen."""
+    if d.find("Borrow") or d.find("Read") or d.find("Listen") or d.find("Return"):
+        return
+    marks = d.observe()
+    cats = sorted([m for m in marks if m.text.strip() == "Catalog"], key=lambda m: -m.cy)
+    w, h = d._dims
+    if cats:  # the bottom-most "Catalog" is the tab
+        d._act.tap(cats[0].cx, cats[0].cy, w, h, d.udid)
+        time.sleep(1.2)
+    # open the catalog search (top-right magnifier), then filter by a distinctive query
+    q = _find_exact(d, "Q") or d.find("Search")
+    if q is not None:
+        d.tap_xy(q.cx, q.cy)
+    else:
+        d.tap_xy(int(w * 0.92), int(h * 0.08))   # top-right magnifier fallback
+    time.sleep(0.8)
+    query = title.split(":")[0].strip()           # drop subtitle for a cleaner match
+    d.type(query)
+    time.sleep(1.5)
+    d.tap_text(title)                              # tap the filtered result → detail
+    time.sleep(1.5)
+
+
+def borrow_and_download(d: Driver, title: str, lane: Optional[str] = None,
+                        timeout: float = 90.0) -> None:
+    """Borrow + download a book to the DOWNLOADED state (the precondition for the
+    reader/audiobook/return journeys). Flow (mapped live): Catalog → tap book →
+    Borrow/Get → poll until Read/Listen appears (download complete). Idempotent: a
+    book already showing Read/Listen is left as-is. Raises StagingError on timeout
+    (download never completed) so a Phase-2 recipe gates honestly rather than
+    proceeding against a not-yet-downloaded book.
+
+    Use a RETURNABLE open-access book (DPLA / Palace Bookshelf) for round-trip
+    return journeys — NEVER the A1QA standing fixtures, which are read-only and must
+    never be returned."""
+    _open_book_detail(d, title)
+    if d.find("Read") or d.find("Listen"):
+        return                                   # already borrowed+downloaded
+    if d.find("Borrow"):
+        d.tap_text("Borrow")
+    elif d.find("Get"):
+        d.tap_text("Get")
+    else:
+        raise StagingError(f"borrow_and_download: no Borrow/Get on '{title}' detail")
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if d.find("Read") or d.find("Listen"):
+            return                               # download complete
+        time.sleep(2.0)
+    raise StagingError(f"borrow_and_download: '{title}' did not reach Read/Listen in {timeout:.0f}s")
+
+
+def return_book(d: Driver, title: Optional[str] = None) -> None:
+    """Return a borrowed loan — the idempotent RESET so a reused sim re-borrows
+    cleanly. Flow (mapped LIVE on build 479): My Books row or book detail → Return →
+    confirm dialog 'Are you sure you want to return "X"?' Cancel | Return → tap the
+    dialog's Return. No-op if the book isn't currently borrowed.
+
+    ONLY for returnable open-access loans — never an A1QA standing fixture."""
+    if title is not None:
+        _open_book_detail(d, title)
+    if not d.find("Return"):
+        return                                   # not borrowed
+    d.tap_text("Return")                          # the row/detail Return → confirm dialog
+    # The confirm button is literally 'Return' (NOT 'Return Loan'/'Yes', as an earlier
+    # guess assumed); disambiguate it from the row's Return via the dialog's Cancel anchor.
+    tap_dialog_button(d, "Return", "Cancel")
+    try:
+        d.wait_for("Borrow", timeout=30)          # detail path: Borrow reappears
+    except StagingError:
+        pass                                      # My-Books path: the row just leaves the list
+
+
+def borrow_first(d: Driver, timeout: float = 90.0, max_try: int = 6) -> None:
+    """Borrow the first AVAILABLE book from the active library's catalog and leave it
+    in My Books as a genuine loan — book-AGNOSTIC and robust to DPLA catalog rotation
+    (specific titles come and go). For the circulation round-trip journeys, which
+    verify the GENERAL book-management functionality (a borrowed book can be removed
+    from My Books), not a specific title or loan-type.
+
+    BORROW vs HOLD (load-bearing distinction): an UNAVAILABLE book's detail offers
+    'Reserve' / 'Place Hold' — tapping that places a HOLD, which lands in the HOLDS
+    tab (never My Books) and never reaches a readable state. We must stage a real
+    BORROW, so we SKIP any 'Reserve'/'Place Hold' book and only act on 'Borrow', then
+    confirm the result reached Read/Listen (the borrowed-and-downloaded state; a hold
+    would instead show 'Reserved'/'On Hold' and never become readable). Walks the
+    first lanes' covers; lands on My Books with one borrowed book. Raises StagingError
+    if no AVAILABLE (borrowable, not hold-only) book is found (honest gate)."""
+    w, h = None, None
+    spots = [(0.16, 0.30), (0.40, 0.30), (0.64, 0.30), (0.88, 0.30),
+             (0.16, 0.55), (0.40, 0.55)]
+    for fx, fy in spots[:max_try]:
+        navigate_to(d, "catalog")                 # reset to the feed top for stable coords
+        time.sleep(1.2)
+        if w is None:
+            w, h = d._dims
+        d._act.tap(int(w * fx), int(h * fy), w, h, d.udid)   # open a cover's detail
+        time.sleep(2.0)
+        # HOLD-vs-BORROW: never place a hold — only borrow an AVAILABLE title.
+        if (d.find("Reserve") or d.find("Place Hold")) and not d.find("Borrow"):
+            continue                              # unavailable → would be a HOLD; skip
+        if not d.find("Borrow"):                  # gap / already-owned / non-book → next
+            continue
+        d.tap_text("Borrow")
+        deadline = time.time() + timeout
+        while time.time() < deadline and not (d.find("Read") or d.find("Listen")):
+            if d.find("Reserved") or d.find("On Hold") or d.find("Remove Hold"):
+                break                             # landed as a HOLD, not a loan → try next
+            time.sleep(2.0)
+        if d.find("Back"):                        # leave the detail → tab bar visible
+            d.tap_text("Back")
+        navigate_to(d, "my_books")
+        time.sleep(2.0)
+        if d.find("Read") or d.find("Listen"):    # confirm BORROWED (in My Books), not a hold
+            return
+        # not a readable loan (hold/elsewhere) — clean up if removable, then try next
+        if d.find("Remove"):
+            d.tap_text("Remove")
+            time.sleep(1.5)
+    raise StagingError(f"borrow_first: no AVAILABLE (borrowable, non-hold) book in {max_try} covers")
+
+
+_SEARCH_CHROME_WORDS = {
+    "catalog", "settings", "holds", "books", "palace", "bookshelf", "borrow",
+    "reserve", "more", "search", "cancel", "title", "read", "listen", "return",
+    "remove", "library", "account", "preview", "sample", "description",
+}
+
+
+def _pick_title_word(marks: list[_Mark]) -> Optional[str]:
+    """Pick a distinctive, searchable word from a book title CURRENTLY present in the
+    catalog feed — the self-validating search target (no pinned title; DPLA content
+    rotates). Prefers the longest alphabetic word (>=6 chars, fewer false matches)
+    that is not nav/chrome, so the search query is unambiguous."""
+    import re
+    cands = []
+    for m in marks:
+        for word in re.findall(r"[A-Za-z]{6,}", m.text):
+            if word.lower() not in _SEARCH_CHROME_WORDS:
+                cands.append(word)
+    cands.sort(key=len, reverse=True)
+    return cands[0] if cands else None
+
+
+def search_present_title(d: Driver) -> None:
+    """Verify catalog SEARCH end-to-end with a self-validating, rotation-proof method:
+    read a word from a title CURRENTLY in the catalog feed, search for it, and assert
+    that title comes back in the results. No pinned title (DPLA content rotates) — the
+    journey supplies its own known-present target each run. Raises StagingError if the
+    known-present title does NOT return (the search-regression signal) — never a
+    false-pass. Leaves the app on the search results for the recording to assert."""
+    navigate_to(d, "catalog")
+    time.sleep(1.5)
+    word = _pick_title_word(d.observe())
+    if not word:
+        raise StagingError("search_present_title: no searchable title word in the catalog feed")
+    w, h = d._dims
+    d._act.tap(int(w * 0.90), int(h * 0.092), w, h, d.udid)   # top-right search magnifier
+    time.sleep(1.0)
+    d.tap_text("Search Catalog")                              # focus the field
+    time.sleep(0.5)
+    d._act.type_text(word, d.udid)
+    time.sleep(0.5)
+    d._act.press_key("return", d.udid)
+    time.sleep(2.5)
+    results = [m.text for m in d.observe()]
+    if not any(word.lower() in t.lower() for t in results):
+        # Search FAILED to return a KNOWN-PRESENT title. Staging exceptions don't
+        # auto-fail the journey (the runner only logs them), so leave the app OFF the
+        # search screen — the recording's 'Cancel' (search-active) contract token is
+        # then absent and the journey FAILs honestly instead of false-passing.
+        if d.find("Cancel"):
+            d.tap_text("Cancel")
+        navigate_to(d, "catalog")
+        raise StagingError(
+            f"search_present_title: '{word}' (a title present in the catalog) did not "
+            f"return in search results — catalog search may be broken")
+    # Success: the app is left on the search results (search field active → 'Cancel'
+    # present) for the recording's contract. The result action buttons ('Borrow'/'Get')
+    # are book-type-dependent, so the contract keys on 'Cancel', NOT on a result button.
 
 
 PRIMITIVES = {
@@ -396,8 +833,14 @@ PRIMITIVES = {
     "add_library": lambda d, name: add_library(d, name),
     "switch_library": lambda d, name: switch_library(d, name),
     "sign_in": lambda d, *a: sign_in(d, *(a or ("a1qa",))),
+    "dismiss_save_password": lambda d, *a: dismiss_save_password(d),
+    "download_fixture": lambda d, *a: download_fixture(d),
+    "clear_sync_position": lambda d, *a: clear_sync_position(d),
     "sign_out": lambda d, *a: sign_out(d),
     "borrow_download": lambda d, title: borrow_and_download(d, title),
+    "borrow_first": lambda d, *a: borrow_first(d),
+    "search_present_title": lambda d, *a: search_present_title(d),
+    "return_book": lambda d, *a: return_book(d, *(a or (None,))),
     "goto": lambda d, screen: navigate_to(d, screen),
 }
 
@@ -436,21 +879,120 @@ STAGING_RECIPES: dict[str, list[tuple]] = {
     ],
     # --- ui-nav (stateless) ---
     "tab-bar-tour": [("dismiss_first_launch",), ("add_library", "Palace Bookshelf"), ("goto", "catalog")],
-    "settings-tour-stateless": [("dismiss_first_launch",), ("add_library", "Palace Bookshelf"), ("goto", "settings")],
+    # settings-tour was RECORDED from the Catalog (step-0 taps the Settings TAB from
+    # the Palace Bookshelf catalog), so stage to CATALOG — not Settings. Routing to
+    # 'settings' put the app on Settings while the recording's step-0 expects Catalog
+    # chrome, halting 0/4. The recording's over-specified catalog content tokens
+    # (DPLA Publications / More...) are relaxed to stable tab-bar chrome (see recording).
+    "settings-tour-stateless": [("dismiss_first_launch",), ("add_library", "Palace Bookshelf"), ("goto", "catalog")],
     # --- catalog (stateless) ---
     "catalog-browse-stateless": [("dismiss_first_launch",), ("add_library", "Palace Bookshelf"), ("goto", "catalog")],
     "feed-refresh-stateless": [("dismiss_first_launch",), ("add_library", "Palace Bookshelf"), ("goto", "catalog")],
     "book-detail-stateless": [("dismiss_first_launch",), ("add_library", "Palace Bookshelf"), ("goto", "catalog")],
+
+    # --- circulation (borrow ROUND-TRIP, returnable open-access) ---
+    # General book-management coverage: stage ONE genuinely BORROWED book (never a
+    # hold — see borrow_first) from a returnable Palace Bookshelf (DPLA) title, then
+    # the recording removes it and asserts the OUTCOME (it leaves My Books). Book- and
+    # loan-type-AGNOSTIC: no specific title, no Return-vs-Remove pinning — borrow_first
+    # is robust to DPLA catalog rotation. NEVER the A1QA read-only standing fixtures.
+    "book-return-from-mybooks": [
+        ("dismiss_first_launch",), ("add_library", "Palace Bookshelf"),
+        ("switch_library", "Palace Bookshelf"), ("borrow_first",), ("goto", "my_books"),
+    ],
+    "read-return-from-mybooks-roundtrip": [
+        ("dismiss_first_launch",), ("add_library", "Palace Bookshelf"),
+        ("switch_library", "Palace Bookshelf"), ("borrow_first",), ("goto", "my_books"),
+    ],
+
+    # --- catalog SEARCH (self-validating, rotation-proof) ---
+    # Reads a title CURRENTLY present in the catalog and searches for it, asserting it
+    # comes back — verifies general search functionality without pinning a volatile
+    # title. Staging does the search + the round-trip assertion; the recording asserts
+    # the search-results state.
+    "search-flow-stateful": [
+        ("dismiss_first_launch",), ("add_library", "Palace Bookshelf"),
+        ("switch_library", "Palace Bookshelf"), ("search_present_title",),
+    ],
+
+    # --- reading (Reader2, STANDING-FIXTURE) ---
+    # The Mathematics/Extended-Description Test Book EPUBs are PRE-BORROWED on the
+    # A1QA standing fixture (read-only — never returned by the campaign), so these
+    # journeys need SIGN-IN ONLY, not a borrow. Staging converges to the signed-in
+    # My Books list (the recording's start screen: each book row shows Read/Return);
+    # the recording's step-0 then taps Read on the Mathematics row. (Was mis-routed
+    # through borrow_and_download via PHASE2_JOURNEYS → clean-skipped every run.)
+    # Recipe order matters: sign_in already dismisses the Save-Password alert, but we
+    # dismiss again AFTER navigating to My Books (it can pop late, once we're already
+    # on the list), THEN download_fixture taps the fixture's 'Download' and waits for
+    # 'Read' so step-0's downloaded contract matches and step-1 can open the reader.
+    "reader2-back-button": [
+        ("dismiss_first_launch",), ("add_library", "A1QA Test Library"),
+        ("sign_in", "a1qa"), ("goto", "my_books"), ("dismiss_save_password",),
+        ("download_fixture",), ("dismiss_save_password",), ("clear_sync_position",),
+    ],
+    "reader2-bookmark-toggle": [
+        ("dismiss_first_launch",), ("add_library", "A1QA Test Library"),
+        ("sign_in", "a1qa"), ("goto", "my_books"), ("dismiss_save_password",),
+        ("download_fixture",), ("dismiss_save_password",), ("clear_sync_position",),
+    ],
+    "reader2-page-forward": [
+        ("dismiss_first_launch",), ("add_library", "A1QA Test Library"),
+        ("sign_in", "a1qa"), ("goto", "my_books"), ("dismiss_save_password",),
+        ("download_fixture",), ("dismiss_save_password",), ("clear_sync_position",),
+    ],
+    "reader2-settings-sheet": [
+        ("dismiss_first_launch",), ("add_library", "A1QA Test Library"),
+        ("sign_in", "a1qa"), ("goto", "my_books"), ("dismiss_save_password",),
+        ("download_fixture",), ("dismiss_save_password",), ("clear_sync_position",),
+    ],
+    "reader2-toc-navigate": [
+        ("dismiss_first_launch",), ("add_library", "A1QA Test Library"),
+        ("sign_in", "a1qa"), ("goto", "my_books"), ("dismiss_save_password",),
+        ("download_fixture",), ("dismiss_save_password",), ("clear_sync_position",),
+    ],
+
+    # --- audiobook (STANDING-FIXTURE) ---
+    # Animal Farm audiobook is PRE-BORROWED + downloaded on the A1QA standing
+    # fixture → sign-in only. Start screen is the signed-in My Books list (Animal
+    # Farm row shows Listen/Return); the recording's step-0 taps Listen.
+    "audiobook-skip-forward": [
+        ("dismiss_first_launch",), ("add_library", "A1QA Test Library"),
+        ("sign_in", "a1qa"), ("goto", "my_books"), ("dismiss_save_password",),
+    ],
+    "audiobook-toc-seek": [
+        ("dismiss_first_launch",), ("add_library", "A1QA Test Library"),
+        ("sign_in", "a1qa"), ("goto", "my_books"), ("dismiss_save_password",),
+    ],
+    "audiobook-scrubber-drag": [
+        ("dismiss_first_launch",), ("add_library", "A1QA Test Library"),
+        ("sign_in", "a1qa"), ("goto", "my_books"), ("dismiss_save_password",),
+    ],
 }
 
-# Journeys whose recipe needs Phase 2 (borrow_and_download) — reported as
-# "phase2" instead of "no recipe".
+# Journeys whose recipe GENUINELY needs Phase 2 (borrow_and_download / a clean
+# registry) — reported as "phase2" and clean-skipped until the foundation's
+# borrow_and_download lands. Do NOT fake these:
+#   read-return / book-return roundtrips  — borrow→read→RETURN the book (mutates
+#       the fixture; can't run against the read-only standing fixture).
+#   audiobook-download-indicator-stateful — BACKLOGGED (Chairman 2026-06-16, done
+#       3/4 audiobook). Asserts the in-flight 'Downloading…' UI, but empirically the
+#       Animal Farm LCP fixture (the only LCP audiobook in A1QA) downloads in ~1.5s
+#       on the sim — the indicator isn't catchable at normal speed, and the in-flight
+#       % is a TRANSIENT/varying state that flakes screenshot-drift replay. The sim
+#       has no clean per-sim network throttle (only invasive host-level NLC, which
+#       would couple replay to a throttled host). The audiobook PLAYER mechanics
+#       (skip/toc/scrubber — the real #1083 regression surface) ARE covered. Revisit
+#       only if a deterministic in-flight-download harness is built.
+#   PP-4161-streaming-html-reader         — anonymous search→Borrow→Read; requires
+#       a .unregistered registry (uninstall/reinstall), NOT a sign-in.
+#   search-flow-stateful                  — no recording exists yet.
+# The reader2 (5) + audiobook skip/toc/scrubber (3) journeys moved OUT of here into
+# STAGING_RECIPES: they use the A1QA STANDING fixture (pre-borrowed, read-only) and
+# need SIGN-IN ONLY — see the "reading"/"audiobook" recipes above.
 PHASE2_JOURNEYS = {
-    "read-return-from-mybooks-roundtrip", "book-return-from-mybooks",
-    "reader2-back-button", "reader2-bookmark-toggle", "reader2-page-forward",
-    "reader2-settings-sheet", "reader2-toc-navigate", "PP-4161-streaming-html-reader",
-    "audiobook-download-indicator-stateful", "audiobook-scrubber-drag",
-    "audiobook-skip-forward", "audiobook-toc-seek", "search-flow-stateful",
+    "PP-4161-streaming-html-reader",
+    "audiobook-download-indicator-stateful",
 }
 
 # Chairman-blocked (creds/OTP) — recipes pending.
@@ -466,7 +1008,28 @@ BLOCKED_JOURNEYS = {"danny-saml-signin-init", "icarus-oidc-signin"}
 #   palace-bookshelf-anonymous   — 3 library logos + full scrolled Settings page; the
 #       precondition-poll-settle helped 1/3 but timed out >15s 2/3 (irreducible). Likely
 #       the only anonymous-DPLA-access coverage → NEAR-TERM re-record.
+#   NOTE: the reader2 journeys were briefly demoted here on the theory that the
+#       Mathematics EPUB download was Adobe-gated and never completed in the staging
+#       window. That conclusion was an ARTIFACT of the old download_book detection
+#       (a single-title-mark + 160px anchor that MISSED the 'Read' button on a card
+#       whose title OCRs as two marks) — it raised a false 'did not reach Read' while
+#       the book WAS downloaded. With the card-span detection fix, all 5 reader2
+#       journeys STAGE + REPLAY deterministically to completion (validated end-to-end:
+#       back-button 3/3, bookmark-toggle 4/4, page-forward 5/5, settings-sheet 5/5,
+#       toc-navigate 6/6 — full step replay, no Adobe gate). So they are GATING, not
+#       fragile, and are NOT listed below.
 KNOWN_FRAGILE_PRECONDITIONS = {"library-picker-stateless", "palace-bookshelf-anonymous"}
+
+# NOTE on a1qa-basic-signin perf-HIGH: deliberately NOT demoted (it is the core
+# sign-in critical path and MUST stay gating — see test_known_fragile_journeys...).
+# Its perf-HIGH is driven by the MEMORY axis: the worker snapshots the perf baseline
+# after staging, which ends SIGNED-OUT on the sign-in form (minimal working set),
+# then the replay SIGNS IN and loads the catalog/My Books → +~77MB of legitimate
+# post-sign-in working set (threads confirm transient: +18→3→1, the worker's trend
+# gate already demotes the thread axis). The principled fix is a baseline-timing one
+# (warm the baseline to a signed-in state for sign-in journeys), addressed in the
+# worker's perf-baseline block — NOT a blanket memory-threshold raise (which would
+# mask real memory leaks) and NOT a demotion of the critical journey.
 
 
 def is_known_fragile(journey: str) -> bool:

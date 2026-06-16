@@ -25,9 +25,8 @@ scenario:
     - { id: tap_catalog,   description: "Return to Catalog",           tap_target: { stable_id: "a229e82e3f00" } }
 
   expected_invariants:
-    - "Settings sections render: LIBRARIES, DOWNLOADS, ABOUT AND LEGAL, TESTING"
-    - "Palace version row visible below TESTING section"
-    - "No row toggle states change (Wi-Fi toggle, anything else)"
+    - "Settings root sections render at top: LIBRARIES, DOWNLOADS, SUPPORT, ABOUT AND LEGAL"
+    - "No row toggle states change (Download Only on Wi-Fi, anything else)"
     - "Catalog tab restored on return"
 
   ssim_gating:
@@ -40,10 +39,16 @@ scenario:
       required_chrome: ["a229e82e3f00", "3218623d0801", "0f06bf1e2d8b", "7fbaa4deb053"]
       min_marks: 25
       rationale: "Round-trip lands on Catalog; tab chrome must be intact."
-    - after_step: 1   # right after tapping Settings
-      required_text:   ["Settings", "LIBRARIES", "DOWNLOADS", "ABOUT", "Palace version"]
+    - after_step: 1   # right after tapping Settings (top of Settings, pre-scroll)
+      # STABLE root-Settings chrome only. 'Palace version' is NOT on root Settings
+      # (it lives under About App, a sub-screen we never open) and is below-fold
+      # regardless; there is no 'TESTING' section at the top either — asserting
+      # them halted the structural gate even though Settings rendered healthy
+      # (confirmed from the recording's 001_post.png). The real always-present
+      # top-of-Settings sections are LIBRARIES / DOWNLOADS / SUPPORT / ABOUT AND LEGAL.
+      required_text:   ["Settings", "LIBRARIES", "DOWNLOADS", "SUPPORT", "ABOUT"]
       min_marks: 15
-      rationale: "Settings page sections must render."
+      rationale: "Settings root sections must render at the top of the page."
 
   rationale: |
     Settings itself is fully static (verified: SSIM=1.000 across 65-minute gap).
