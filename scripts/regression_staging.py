@@ -359,33 +359,43 @@ def download_book(d: Driver, title: str, ready_label: str = "Read",
     right one. Polls until the asset finishes downloading."""
     navigate_to(d, "my_books")
     dismiss_save_password(d, timeout=4.0)         # post-sign-in keychain alert may linger
-    # Already downloaded?
-    row = d.find(title)
-    if row is not None and d.find(ready_label):
-        # confirm the ready affordance is on this title's row (not another book's)
-        marks = d.observe()
-        rb = next((m for m in marks if m.text.strip().lower() == ready_label.lower()
-                   and abs(m.cy - row.cy) < 160), None)
-        if rb is not None:
-            return
-    # Find the Download button on the title's row and tap it.
+
+    # The book card OCRs the title as MULTIPLE marks (the wrapped title line, e.g.
+    # 'Tests: Mathematics', AND the cover caption 'Mathematics Test Book') at
+    # different y-positions, and the action button ('Read'/'Download') sits between
+    # them — so anchoring to the FIRST title mark and a tight 160px band missed the
+    # button (the false 'did not reach Read' STAGE-ERR). Anchor to the WHOLE card:
+    # take the y-span of every title-token mark, widen it by a card pad, and look
+    # for the action button anywhere in that span. A My Books card is < ~360px tall.
+    CARD_PAD = 200
+
+    def _title_rows(marks):
+        return [m for m in marks if title.lower() in m.text.lower()]
+
+    def _btn_in_card(marks, label):
+        rows = _title_rows(marks)
+        if not rows:
+            return None
+        ys = [m.cy for m in rows]
+        lo, hi = min(ys) - CARD_PAD, max(ys) + CARD_PAD
+        return next((m for m in marks
+                     if m.text.strip().lower() == label.lower() and lo <= m.cy <= hi), None)
+
+    # Already downloaded? (asset cached from a prior journey / pre-seeded fixture)
+    if _btn_in_card(d.observe(), ready_label) is not None:
+        return
+
     deadline = time.time() + timeout
     tapped = False
     while time.time() < deadline:
         marks = d.observe()
-        row = next((m for m in marks if title.lower() in m.text.lower()), None)
-        if row is None:
-            # title not visible yet (list still loading) — settle and retry
-            time.sleep(2.0)
+        if not _title_rows(marks):
+            time.sleep(2.0)                        # list still loading — settle, retry
             continue
-        # ready already? (download completed)
-        rb = next((m for m in marks if m.text.strip().lower() == ready_label.lower()
-                   and abs(m.cy - row.cy) < 160), None)
-        if rb is not None:
-            return
+        if _btn_in_card(marks, ready_label) is not None:
+            return                                 # download completed
         if not tapped:
-            dl = next((m for m in marks if m.text.strip().lower() == "download"
-                       and abs(m.cy - row.cy) < 160), None)
+            dl = _btn_in_card(marks, "Download")
             if dl is not None:
                 w, h = d._dims
                 d._act.tap(dl.cx, dl.cy, w, h, d.udid)
