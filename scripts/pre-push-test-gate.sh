@@ -74,13 +74,67 @@ RANGE=""
 if git rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1; then
   RANGE='@{u}..HEAD'
 else
-  # No upstream tracking yet — diff against origin/main if present, else
-  # the immediate parent commit. Either way we get *something* sensible.
-  if git rev-parse --verify origin/main >/dev/null 2>&1; then
-    RANGE='origin/main..HEAD'
+  # No upstream tracking yet (first push of a branch). Diff against the
+  # merge-base with the integration branch the branch was actually cut from.
+  # Campaign/tooling branches are cut from `develop`, not `main`; diffing a
+  # fresh develop-cut branch against origin/main surfaces develop's ENTIRE
+  # delta-from-main (hundreds of Palace/*.swift it never touched) — a false
+  # "changed Swift" set that drags an unrelated scripts-only push into a full
+  # xcodebuild test run. Prefer origin/develop, then origin/main, using the
+  # merge-base so only commits unique to this branch count.
+  if git rev-parse --verify origin/develop >/dev/null 2>&1; then
+    _BASE="$(git merge-base origin/develop HEAD 2>/dev/null || echo origin/develop)"
+    RANGE="${_BASE}..HEAD"
+  elif git rev-parse --verify origin/main >/dev/null 2>&1; then
+    _BASE="$(git merge-base origin/main HEAD 2>/dev/null || echo origin/main)"
+    RANGE="${_BASE}..HEAD"
   else
     RANGE='HEAD~1..HEAD'
   fi
+fi
+
+# ---------------------------------------------------------------------------
+# 1a. Zero-.swift exemption — scripts/.simdrive/docs-only tooling pushes.
+# ---------------------------------------------------------------------------
+# A push whose diff contains ZERO files ending in `.swift` cannot affect the
+# iOS build/test outcome; running xcodebuild for it is pure drag and a
+# structural false-positive (it fails on missing Carthage frameworks
+# — R2LCPClient.xcframework etc. — in lightweight tooling worktrees that were
+# never `carthage bootstrap`-ed). For these diffs we SKIP the iOS test build
+# and instead run the repo's scripts/tests/ python suite (the relevant gate for
+# scripts/.simdrive changes) when present.
+#
+# HARD CONSTRAINT: any diff with >=1 `.swift` file falls through to the full
+# iOS-test path below, unchanged. The `.swift` detection is robust — ANY path
+# ending in `.swift` (anywhere in the tree) counts as not-exempt.
+ALL_CHANGED="$(git diff --name-only "$RANGE" 2>/dev/null || true)"
+SWIFT_CHANGED="$(printf '%s\n' "$ALL_CHANGED" | grep -E '\.swift$' || true)"
+
+if [[ -z "$SWIFT_CHANGED" ]]; then
+  echo "[pre-push-test-gate] Zero .swift files in $RANGE — tooling-only push (scripts/.simdrive/docs)." >&2
+  echo "[pre-push-test-gate] Skipping iOS xcodebuild test gate (cannot be affected by a non-Swift diff)." >&2
+
+  # Run the scripts/tests/ python suite instead, if present. Failure here DOES
+  # block the push — it's the correct gate for tooling changes.
+  if [[ -d "$REPO_DIR/scripts/tests" ]] && command -v python3 >/dev/null 2>&1 \
+     && python3 -c 'import pytest' >/dev/null 2>&1; then
+    echo "[pre-push-test-gate] Running scripts/tests/ suite (python -m pytest)…" >&2
+    if (cd "$REPO_DIR" && python3 -m pytest scripts/tests -q) >/tmp/pre-push-scripts-tests.log 2>&1; then
+      echo "[pre-push-test-gate] scripts/tests PASS — tooling suite green." >&2
+      exit 0
+    else
+      rc=$?
+      echo "" >&2
+      echo "[pre-push-test-gate] scripts/tests FAIL (exit $rc) — push blocked." >&2
+      echo "[pre-push-test-gate] Last 40 lines of /tmp/pre-push-scripts-tests.log:" >&2
+      tail -n 40 /tmp/pre-push-scripts-tests.log >&2 || true
+      echo "[pre-push-test-gate] To bypass: SKIP_PRE_PUSH_TESTS=1 git push ..." >&2
+      exit 1
+    fi
+  fi
+
+  echo "[pre-push-test-gate] No runnable scripts/tests/ suite (pytest absent or dir missing) — allowing push." >&2
+  exit 0
 fi
 
 CHANGED_FILES="$(git diff --name-only "$RANGE" -- 'Palace/*.swift' 2>/dev/null | sort -u)"
