@@ -574,7 +574,12 @@ def sign_in(d: Driver, slug: str = "a1qa", library: str = "A1QA Test Library") -
         return  # already signed in
 
     for attempt in range(2):
-        card = d.wait_for("Library Card")
+        # Generous waits: under a full-matrix fan-out (many shards on one machine) the
+        # Account sign-in form can take >12s to render/relayout, which surfaced as a
+        # false "timeout waiting for 'Password'" staging error (harness-contention
+        # flake #15, not a product bug). 30s absorbs the contention without masking a
+        # genuinely-broken form (a real break never renders the field at all).
+        card = d.wait_for("Library Card", timeout=30)
         d.tap_xy(card.cx, card.cy)
         _clear_field(d)                       # drop any residual / prior-attempt text
         d.type(user)
@@ -582,7 +587,7 @@ def sign_in(d: Driver, slug: str = "a1qa", library: str = "A1QA Test Library") -
         # RE-RESOLVE Password AFTER the username committed — its coords shift once the
         # field is filled and the keyboard is up; using the stale pre-type mark is the
         # focus-race root cause.
-        pwm = d.wait_for("Password")
+        pwm = d.wait_for("Password", timeout=30)
         d.tap_xy(pwm.cx, pwm.cy)
         _clear_field(d)                       # ensure we're in an empty Password field
         d.type(pw)
