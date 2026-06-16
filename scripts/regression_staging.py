@@ -237,9 +237,16 @@ def dismiss_first_launch(d: Driver) -> None:
 
 
 _SAVE_PW_LABELS = ("Not Now", "Save", "Save Password")
+# Title tokens that confirm the alert is the Save-Password keychain prompt. OCR
+# renders the SpringBoard alert title inconsistently run-to-run ("Save Password?",
+# "Save Password", sometimes just the body "...would you like to save this
+# password..."), so we match ANY of these as substrings rather than requiring the
+# exact "Save Password" mark — that single-string requirement is why the prior
+# dismiss missed it intermittently and the modal survived into step-0.
+_SAVE_PW_TITLE_TOKENS = ("save password", "save this password", "passwords")
 
 
-def dismiss_save_password(d: Driver, timeout: float = 10.0, poll: float = 1.0) -> bool:
+def dismiss_save_password(d: Driver, timeout: float = 20.0, poll: float = 0.6) -> bool:
     """Dismiss the iOS 'Save Password?' keychain alert that pops AFTER a successful
     sign-in. It is a SpringBoard alert that renders OVER the app, covering the My
     Books book rows — so the reader2 replays' step-0 observe saw the modal, not the
@@ -248,21 +255,34 @@ def dismiss_save_password(d: Driver, timeout: float = 10.0, poll: float = 1.0) -
     dismissal at sign-in time misses it; poll for it and tap 'Not Now' (don't save —
     keeps the fixture keychain clean) when it surfaces. Returns True if dismissed.
     No-op (returns False) if it never appears, so it's safe on every signed-in
-    recipe."""
+    recipe.
+
+    RELIABILITY (reader2 fix): the alert can pop LATE and OCR the title variably,
+    so (1) we poll the full `timeout` even after a first observe is clean — a clean
+    observe just means it hasn't appeared YET, not that it won't; (2) we accept ANY
+    Save-Password title token (not the single exact 'Save Password' mark); (3) when
+    'Not Now' is present alongside a Save-Password title we tap it and KEEP polling
+    a couple more cycles in case a second confirmation alert stacks. A bare 'Not
+    Now' with no Save-Password title is NOT tapped (could be the first-launch
+    notifications prompt, handled by dismiss_first_launch) — we only act on the
+    confirmed keychain alert."""
     deadline = time.time() + timeout
+    dismissed = False
     while time.time() < deadline:
         marks = d.observe()
-        hit = _find_exact(d, "Not Now", marks) or _find_exact(d, "Save Password", marks)
-        if hit and _find_exact(d, "Save Password", marks):
-            # confirmed it's the Save-Password alert; tap 'Not Now' (decline save).
-            nn = _find_exact(d, "Not Now", marks)
-            if nn:
-                w, h = d._dims
-                d._act.tap(nn.cx, nn.cy, w, h, d.udid)
-                time.sleep(0.8)
-                return True
+        live = [m.text.lower() for m in marks]
+        is_save_pw = any(tok in lt for lt in live for tok in _SAVE_PW_TITLE_TOKENS)
+        nn = _find_exact(d, "Not Now", marks)
+        if is_save_pw and nn:
+            w, h = d._dims
+            d._act.tap(nn.cx, nn.cy, w, h, d.udid)
+            time.sleep(1.0)
+            dismissed = True
+            continue                      # re-observe; a stacked alert may remain
+        if dismissed and not is_save_pw:
+            return True                   # cleared and stayed clear
         time.sleep(poll)
-    return False
+    return dismissed
 
 
 def add_library(d: Driver, display_name: str) -> None:
@@ -474,12 +494,61 @@ def borrow_and_download(d: Driver, title: str, lane: Optional[str] = None) -> No
     raise StagingError("borrow_and_download: Phase 2 (not yet implemented)")
 
 
+def download_fixture(d: Driver, timeout: float = 90.0, poll: float = 2.0) -> None:
+    """Ensure the standing-fixture EPUB is DOWNLOADED before replay (reader2 fix).
+
+    On a fresh keychain-reset campaign sim the A1QA fixture book is BORROWED (it
+    shows in My Books) but NOT downloaded locally, so its row presents a 'Download'
+    button — while the reader2 recordings' step-0 expects 'Read' (the downloaded
+    state) and step-1 taps Read to open the reader. The contract can't match and the
+    reader can't open an undownloaded book, so all 5 reader2 journeys halted with
+    state_contract_mismatch. (Audiobook journeys PASS because Animal Farm is
+    pre-downloaded on the audiobook shard's sim.)
+
+    Downloading is a LOCAL cache fetch — it does NOT touch the server-side loan (no
+    re-borrow, no return), so it's safe + idempotent against the read-only standing
+    fixture. Tap 'Download' if present, then poll up to ~90s until the row shows
+    'Read'. If 'Read' is already present (book cached), this is a no-op. Raises only
+    if the download never completes (a genuine fixture/network problem worth
+    surfacing, not masking)."""
+    # Make sure we're on My Books where the fixture row lives.
+    if not (d.has("Read") or d.has("Download")):
+        try:
+            navigate_to(d, "my_books")
+            time.sleep(1.0)
+        except StagingError:
+            pass
+    # Already downloaded — nothing to do.
+    if d.has("Read"):
+        return
+    dl = d.find("Download")
+    if dl is None:
+        # Neither Read nor Download visible — let the replay's precondition gate
+        # report the real state rather than fabricate a tap here.
+        raise StagingError(
+            "download_fixture: fixture row shows neither 'Read' nor 'Download' on My Books"
+        )
+    d.tap_xy(dl.cx, dl.cy)
+    time.sleep(1.5)
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if d.has("Read"):
+            time.sleep(0.8)            # let the row settle on the Read state
+            return
+        time.sleep(poll)
+    raise StagingError(
+        f"download_fixture: fixture did not reach 'Read' within {timeout:.0f}s "
+        "(download stuck — fixture or network problem)"
+    )
+
+
 PRIMITIVES = {
     "dismiss_first_launch": lambda d, *a: dismiss_first_launch(d),
     "add_library": lambda d, name: add_library(d, name),
     "switch_library": lambda d, name: switch_library(d, name),
     "sign_in": lambda d, *a: sign_in(d, *(a or ("a1qa",))),
     "dismiss_save_password": lambda d, *a: dismiss_save_password(d),
+    "download_fixture": lambda d, *a: download_fixture(d),
     "sign_out": lambda d, *a: sign_out(d),
     "borrow_download": lambda d, title: borrow_and_download(d, title),
     "goto": lambda d, screen: navigate_to(d, screen),
@@ -538,25 +607,34 @@ STAGING_RECIPES: dict[str, list[tuple]] = {
     # My Books list (the recording's start screen: each book row shows Read/Return);
     # the recording's step-0 then taps Read on the Mathematics row. (Was mis-routed
     # through borrow_and_download via PHASE2_JOURNEYS → clean-skipped every run.)
+    # Recipe order matters: sign_in already dismisses the Save-Password alert, but we
+    # dismiss again AFTER navigating to My Books (it can pop late, once we're already
+    # on the list), THEN download_fixture taps the fixture's 'Download' and waits for
+    # 'Read' so step-0's downloaded contract matches and step-1 can open the reader.
     "reader2-back-button": [
         ("dismiss_first_launch",), ("add_library", "A1QA Test Library"),
         ("sign_in", "a1qa"), ("goto", "my_books"), ("dismiss_save_password",),
+        ("download_fixture",), ("dismiss_save_password",),
     ],
     "reader2-bookmark-toggle": [
         ("dismiss_first_launch",), ("add_library", "A1QA Test Library"),
         ("sign_in", "a1qa"), ("goto", "my_books"), ("dismiss_save_password",),
+        ("download_fixture",), ("dismiss_save_password",),
     ],
     "reader2-page-forward": [
         ("dismiss_first_launch",), ("add_library", "A1QA Test Library"),
         ("sign_in", "a1qa"), ("goto", "my_books"), ("dismiss_save_password",),
+        ("download_fixture",), ("dismiss_save_password",),
     ],
     "reader2-settings-sheet": [
         ("dismiss_first_launch",), ("add_library", "A1QA Test Library"),
         ("sign_in", "a1qa"), ("goto", "my_books"), ("dismiss_save_password",),
+        ("download_fixture",), ("dismiss_save_password",),
     ],
     "reader2-toc-navigate": [
         ("dismiss_first_launch",), ("add_library", "A1QA Test Library"),
         ("sign_in", "a1qa"), ("goto", "my_books"), ("dismiss_save_password",),
+        ("download_fixture",), ("dismiss_save_password",),
     ],
 
     # --- audiobook (STANDING-FIXTURE) ---
