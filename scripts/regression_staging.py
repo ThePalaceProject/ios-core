@@ -720,6 +720,16 @@ BLOCKED_JOURNEYS = {"danny-saml-signin-init", "icarus-oidc-signin"}
 #   palace-bookshelf-anonymous   — 3 library logos + full scrolled Settings page; the
 #       precondition-poll-settle helped 1/3 but timed out >15s 2/3 (irreducible). Likely
 #       the only anonymous-DPLA-access coverage → NEAR-TERM re-record.
+#   NOTE: the reader2 journeys were briefly demoted here on the theory that the
+#       Mathematics EPUB download was Adobe-gated and never completed in the staging
+#       window. That conclusion was an ARTIFACT of the old download_book detection
+#       (a single-title-mark + 160px anchor that MISSED the 'Read' button on a card
+#       whose title OCRs as two marks) — it raised a false 'did not reach Read' while
+#       the book WAS downloaded. With the card-span detection fix, all 5 reader2
+#       journeys STAGE + REPLAY deterministically to completion (validated end-to-end:
+#       back-button 3/3, bookmark-toggle 4/4, page-forward 5/5, settings-sheet 5/5,
+#       toc-navigate 6/6 — full step replay, no Adobe gate). So they are GATING, not
+#       fragile, and are NOT listed below.
 KNOWN_FRAGILE_PRECONDITIONS = {"library-picker-stateless", "palace-bookshelf-anonymous"}
 
 
