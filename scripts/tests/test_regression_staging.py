@@ -214,7 +214,7 @@ def test_status_values_are_valid():
 def test_stage_for_journey_raises_on_phase2_and_unknown():
     # dispatcher must not silently no-op; it raises with the status.
     with pytest.raises(st.StagingError):
-        st.stage_for_journey(None, "read-return-from-mybooks-roundtrip")  # phase2
+        st.stage_for_journey(None, "search-flow-stateful")  # phase2 (no recipe)
     with pytest.raises(st.StagingError):
         st.stage_for_journey(None, "no-such-journey")  # unknown
 

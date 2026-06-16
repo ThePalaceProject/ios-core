@@ -719,6 +719,55 @@ def return_book(d: Driver, title: Optional[str] = None) -> None:
         pass                                      # My-Books path: the row just leaves the list
 
 
+def borrow_first(d: Driver, timeout: float = 90.0, max_try: int = 6) -> None:
+    """Borrow the first AVAILABLE book from the active library's catalog and leave it
+    in My Books as a genuine loan — book-AGNOSTIC and robust to DPLA catalog rotation
+    (specific titles come and go). For the circulation round-trip journeys, which
+    verify the GENERAL book-management functionality (a borrowed book can be removed
+    from My Books), not a specific title or loan-type.
+
+    BORROW vs HOLD (load-bearing distinction): an UNAVAILABLE book's detail offers
+    'Reserve' / 'Place Hold' — tapping that places a HOLD, which lands in the HOLDS
+    tab (never My Books) and never reaches a readable state. We must stage a real
+    BORROW, so we SKIP any 'Reserve'/'Place Hold' book and only act on 'Borrow', then
+    confirm the result reached Read/Listen (the borrowed-and-downloaded state; a hold
+    would instead show 'Reserved'/'On Hold' and never become readable). Walks the
+    first lanes' covers; lands on My Books with one borrowed book. Raises StagingError
+    if no AVAILABLE (borrowable, not hold-only) book is found (honest gate)."""
+    w, h = None, None
+    spots = [(0.16, 0.30), (0.40, 0.30), (0.64, 0.30), (0.88, 0.30),
+             (0.16, 0.55), (0.40, 0.55)]
+    for fx, fy in spots[:max_try]:
+        navigate_to(d, "catalog")                 # reset to the feed top for stable coords
+        time.sleep(1.2)
+        if w is None:
+            w, h = d._dims
+        d._act.tap(int(w * fx), int(h * fy), w, h, d.udid)   # open a cover's detail
+        time.sleep(2.0)
+        # HOLD-vs-BORROW: never place a hold — only borrow an AVAILABLE title.
+        if (d.find("Reserve") or d.find("Place Hold")) and not d.find("Borrow"):
+            continue                              # unavailable → would be a HOLD; skip
+        if not d.find("Borrow"):                  # gap / already-owned / non-book → next
+            continue
+        d.tap_text("Borrow")
+        deadline = time.time() + timeout
+        while time.time() < deadline and not (d.find("Read") or d.find("Listen")):
+            if d.find("Reserved") or d.find("On Hold") or d.find("Remove Hold"):
+                break                             # landed as a HOLD, not a loan → try next
+            time.sleep(2.0)
+        if d.find("Back"):                        # leave the detail → tab bar visible
+            d.tap_text("Back")
+        navigate_to(d, "my_books")
+        time.sleep(2.0)
+        if d.find("Read") or d.find("Listen"):    # confirm BORROWED (in My Books), not a hold
+            return
+        # not a readable loan (hold/elsewhere) — clean up if removable, then try next
+        if d.find("Remove"):
+            d.tap_text("Remove")
+            time.sleep(1.5)
+    raise StagingError(f"borrow_first: no AVAILABLE (borrowable, non-hold) book in {max_try} covers")
+
+
 PRIMITIVES = {
     "dismiss_first_launch": lambda d, *a: dismiss_first_launch(d),
     "add_library": lambda d, name: add_library(d, name),
@@ -729,6 +778,7 @@ PRIMITIVES = {
     "clear_sync_position": lambda d, *a: clear_sync_position(d),
     "sign_out": lambda d, *a: sign_out(d),
     "borrow_download": lambda d, title: borrow_and_download(d, title),
+    "borrow_first": lambda d, *a: borrow_first(d),
     "return_book": lambda d, *a: return_book(d, *(a or (None,))),
     "goto": lambda d, screen: navigate_to(d, screen),
 }
@@ -778,6 +828,21 @@ STAGING_RECIPES: dict[str, list[tuple]] = {
     "catalog-browse-stateless": [("dismiss_first_launch",), ("add_library", "Palace Bookshelf"), ("goto", "catalog")],
     "feed-refresh-stateless": [("dismiss_first_launch",), ("add_library", "Palace Bookshelf"), ("goto", "catalog")],
     "book-detail-stateless": [("dismiss_first_launch",), ("add_library", "Palace Bookshelf"), ("goto", "catalog")],
+
+    # --- circulation (borrow ROUND-TRIP, returnable open-access) ---
+    # General book-management coverage: stage ONE genuinely BORROWED book (never a
+    # hold — see borrow_first) from a returnable Palace Bookshelf (DPLA) title, then
+    # the recording removes it and asserts the OUTCOME (it leaves My Books). Book- and
+    # loan-type-AGNOSTIC: no specific title, no Return-vs-Remove pinning — borrow_first
+    # is robust to DPLA catalog rotation. NEVER the A1QA read-only standing fixtures.
+    "book-return-from-mybooks": [
+        ("dismiss_first_launch",), ("add_library", "Palace Bookshelf"),
+        ("switch_library", "Palace Bookshelf"), ("borrow_first",), ("goto", "my_books"),
+    ],
+    "read-return-from-mybooks-roundtrip": [
+        ("dismiss_first_launch",), ("add_library", "Palace Bookshelf"),
+        ("switch_library", "Palace Bookshelf"), ("borrow_first",), ("goto", "my_books"),
+    ],
 
     # --- reading (Reader2, STANDING-FIXTURE) ---
     # The Mathematics/Extended-Description Test Book EPUBs are PRE-BORROWED on the
@@ -855,7 +920,6 @@ STAGING_RECIPES: dict[str, list[tuple]] = {
 # STAGING_RECIPES: they use the A1QA STANDING fixture (pre-borrowed, read-only) and
 # need SIGN-IN ONLY — see the "reading"/"audiobook" recipes above.
 PHASE2_JOURNEYS = {
-    "read-return-from-mybooks-roundtrip", "book-return-from-mybooks",
     "PP-4161-streaming-html-reader",
     "audiobook-download-indicator-stateful",
     "search-flow-stateful",
