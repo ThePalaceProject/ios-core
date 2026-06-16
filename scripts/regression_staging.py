@@ -236,6 +236,35 @@ def dismiss_first_launch(d: Driver) -> None:
         time.sleep(0.5)
 
 
+_SAVE_PW_LABELS = ("Not Now", "Save", "Save Password")
+
+
+def dismiss_save_password(d: Driver, timeout: float = 10.0, poll: float = 1.0) -> bool:
+    """Dismiss the iOS 'Save Password?' keychain alert that pops AFTER a successful
+    sign-in. It is a SpringBoard alert that renders OVER the app, covering the My
+    Books book rows — so the reader2 replays' step-0 observe saw the modal, not the
+    book list (state_contract_mismatch). The alert appears ASYNCHRONOUSLY and can
+    land a beat after staging navigates away from the Account screen, so a single
+    dismissal at sign-in time misses it; poll for it and tap 'Not Now' (don't save —
+    keeps the fixture keychain clean) when it surfaces. Returns True if dismissed.
+    No-op (returns False) if it never appears, so it's safe on every signed-in
+    recipe."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        marks = d.observe()
+        hit = _find_exact(d, "Not Now", marks) or _find_exact(d, "Save Password", marks)
+        if hit and _find_exact(d, "Save Password", marks):
+            # confirmed it's the Save-Password alert; tap 'Not Now' (decline save).
+            nn = _find_exact(d, "Not Now", marks)
+            if nn:
+                w, h = d._dims
+                d._act.tap(nn.cx, nn.cy, w, h, d.udid)
+                time.sleep(0.8)
+                return True
+        time.sleep(poll)
+    return False
+
+
 def add_library(d: Driver, display_name: str) -> None:
     """Idempotently add a library by display name (sims are reused across
     journeys, so this must no-op if already added). Handles both the clean-install
@@ -337,20 +366,74 @@ def switch_library(d: Driver, name: str) -> None:
     time.sleep(1.5)
 
 
+def _clear_field(d: Driver, taps: int = 40) -> None:
+    """Clear the focused text field deterministically. A reused or half-staged
+    field can carry residual text (the password-typed-into-the-username collision
+    observed when the Password tap raced the keyboard layout shift), so every
+    credential type starts from empty. Spam BOTH backspace (deletes left of caret)
+    and delete (deletes right) so the field empties regardless of caret position;
+    no 'end'/'home' key exists in simdrive's key map."""
+    for _ in range(taps):
+        try:
+            d._act.press_key("backspace", d.udid)
+            d._act.press_key("delete", d.udid)
+        except Exception:
+            break
+    time.sleep(0.3)
+
+
 def sign_in(d: Driver, slug: str = "a1qa", library: str = "A1QA Test Library") -> None:
     """Reach the Account sign-in form and authenticate. Leaves the patron
-    SIGNED IN on the Account screen (which is sign-out's precondition)."""
+    SIGNED IN on the Account screen (which is sign-out's precondition).
+
+    Hardened against the Password-field focus race: after the username is typed
+    the form re-lays-out (keyboard up + barcode validation), so the previously
+    resolved 'Password' mark coords go stale and a tap can land back on the
+    username field — typing the password INTO the username field, leaving 'Sign
+    in' disabled (observed: '<user><pw>' concatenated in the card field, password
+    empty, button greyed, then a step-0 precondition halt downstream). Fix: clear
+    each field before typing, RE-RESOLVE the Password mark AFTER the username is
+    committed, and verify 'Sign in' enables before submitting — retry the whole
+    credential entry once if it didn't take."""
     user, pw = _creds(slug)
     open_account(d, library)
     if d.has("Sign out"):
         return  # already signed in
-    card = d.wait_for("Library Card")
-    d.tap_xy(card.cx, card.cy)
-    d.type(user)
-    pwm = d.wait_for("Password")
-    d.tap_xy(pwm.cx, pwm.cy)
-    d.type(pw)
-    d.tap_text("Sign in")
+
+    for attempt in range(2):
+        card = d.wait_for("Library Card")
+        d.tap_xy(card.cx, card.cy)
+        _clear_field(d)                       # drop any residual / prior-attempt text
+        d.type(user)
+        time.sleep(0.6)                       # let barcode validation + relayout settle
+        # RE-RESOLVE Password AFTER the username committed — its coords shift once the
+        # field is filled and the keyboard is up; using the stale pre-type mark is the
+        # focus-race root cause.
+        pwm = d.wait_for("Password")
+        d.tap_xy(pwm.cx, pwm.cy)
+        _clear_field(d)                       # ensure we're in an empty Password field
+        d.type(pw)
+        time.sleep(0.4)
+        # The 'Sign in' control is disabled until BOTH fields are populated; its
+        # presence as a tappable mark is our deterministic "credentials took" gate.
+        if d.find("Sign in"):
+            d.tap_text("Sign in")
+            # iOS pops a "Save Password?" keychain alert AFTER a successful sign-in.
+            # It covers the Account/My Books screen, so 'Sign out' never surfaces.
+            # Poll-and-dismiss it (it can land a beat after submit). Recipes ALSO
+            # call dismiss_save_password after navigation, since the alert can pop
+            # late, once staging has already moved to My Books.
+            time.sleep(1.5)
+            dismiss_save_password(d)
+            try:
+                d.wait_for("Sign out", timeout=20)
+                return
+            except StagingError:
+                pass  # fall through to retry
+        # entry didn't take (focus race / transient) — retry once from a clean form.
+        time.sleep(1.0)
+    # Final attempt's outcome gate — raise a clear error if still not signed in.
+    dismiss_save_password(d)
     d.wait_for("Sign out", timeout=20)
 
 
@@ -396,6 +479,7 @@ PRIMITIVES = {
     "add_library": lambda d, name: add_library(d, name),
     "switch_library": lambda d, name: switch_library(d, name),
     "sign_in": lambda d, *a: sign_in(d, *(a or ("a1qa",))),
+    "dismiss_save_password": lambda d, *a: dismiss_save_password(d),
     "sign_out": lambda d, *a: sign_out(d),
     "borrow_download": lambda d, title: borrow_and_download(d, title),
     "goto": lambda d, screen: navigate_to(d, screen),
@@ -436,21 +520,81 @@ STAGING_RECIPES: dict[str, list[tuple]] = {
     ],
     # --- ui-nav (stateless) ---
     "tab-bar-tour": [("dismiss_first_launch",), ("add_library", "Palace Bookshelf"), ("goto", "catalog")],
-    "settings-tour-stateless": [("dismiss_first_launch",), ("add_library", "Palace Bookshelf"), ("goto", "settings")],
+    # settings-tour was RECORDED from the Catalog (step-0 taps the Settings TAB from
+    # the Palace Bookshelf catalog), so stage to CATALOG — not Settings. Routing to
+    # 'settings' put the app on Settings while the recording's step-0 expects Catalog
+    # chrome, halting 0/4. The recording's over-specified catalog content tokens
+    # (DPLA Publications / More...) are relaxed to stable tab-bar chrome (see recording).
+    "settings-tour-stateless": [("dismiss_first_launch",), ("add_library", "Palace Bookshelf"), ("goto", "catalog")],
     # --- catalog (stateless) ---
     "catalog-browse-stateless": [("dismiss_first_launch",), ("add_library", "Palace Bookshelf"), ("goto", "catalog")],
     "feed-refresh-stateless": [("dismiss_first_launch",), ("add_library", "Palace Bookshelf"), ("goto", "catalog")],
     "book-detail-stateless": [("dismiss_first_launch",), ("add_library", "Palace Bookshelf"), ("goto", "catalog")],
+
+    # --- reading (Reader2, STANDING-FIXTURE) ---
+    # The Mathematics/Extended-Description Test Book EPUBs are PRE-BORROWED on the
+    # A1QA standing fixture (read-only — never returned by the campaign), so these
+    # journeys need SIGN-IN ONLY, not a borrow. Staging converges to the signed-in
+    # My Books list (the recording's start screen: each book row shows Read/Return);
+    # the recording's step-0 then taps Read on the Mathematics row. (Was mis-routed
+    # through borrow_and_download via PHASE2_JOURNEYS → clean-skipped every run.)
+    "reader2-back-button": [
+        ("dismiss_first_launch",), ("add_library", "A1QA Test Library"),
+        ("sign_in", "a1qa"), ("goto", "my_books"), ("dismiss_save_password",),
+    ],
+    "reader2-bookmark-toggle": [
+        ("dismiss_first_launch",), ("add_library", "A1QA Test Library"),
+        ("sign_in", "a1qa"), ("goto", "my_books"), ("dismiss_save_password",),
+    ],
+    "reader2-page-forward": [
+        ("dismiss_first_launch",), ("add_library", "A1QA Test Library"),
+        ("sign_in", "a1qa"), ("goto", "my_books"), ("dismiss_save_password",),
+    ],
+    "reader2-settings-sheet": [
+        ("dismiss_first_launch",), ("add_library", "A1QA Test Library"),
+        ("sign_in", "a1qa"), ("goto", "my_books"), ("dismiss_save_password",),
+    ],
+    "reader2-toc-navigate": [
+        ("dismiss_first_launch",), ("add_library", "A1QA Test Library"),
+        ("sign_in", "a1qa"), ("goto", "my_books"), ("dismiss_save_password",),
+    ],
+
+    # --- audiobook (STANDING-FIXTURE) ---
+    # Animal Farm audiobook is PRE-BORROWED + downloaded on the A1QA standing
+    # fixture → sign-in only. Start screen is the signed-in My Books list (Animal
+    # Farm row shows Listen/Return); the recording's step-0 taps Listen.
+    "audiobook-skip-forward": [
+        ("dismiss_first_launch",), ("add_library", "A1QA Test Library"),
+        ("sign_in", "a1qa"), ("goto", "my_books"), ("dismiss_save_password",),
+    ],
+    "audiobook-toc-seek": [
+        ("dismiss_first_launch",), ("add_library", "A1QA Test Library"),
+        ("sign_in", "a1qa"), ("goto", "my_books"), ("dismiss_save_password",),
+    ],
+    "audiobook-scrubber-drag": [
+        ("dismiss_first_launch",), ("add_library", "A1QA Test Library"),
+        ("sign_in", "a1qa"), ("goto", "my_books"), ("dismiss_save_password",),
+    ],
 }
 
-# Journeys whose recipe needs Phase 2 (borrow_and_download) — reported as
-# "phase2" instead of "no recipe".
+# Journeys whose recipe GENUINELY needs Phase 2 (borrow_and_download / a clean
+# registry) — reported as "phase2" and clean-skipped until the foundation's
+# borrow_and_download lands. Do NOT fake these:
+#   read-return / book-return roundtrips  — borrow→read→RETURN the book (mutates
+#       the fixture; can't run against the read-only standing fixture).
+#   audiobook-download-indicator-stateful — asserts the in-flight DOWNLOAD UI, so
+#       the book must NOT be pre-downloaded (standing fixture is already downloaded).
+#   PP-4161-streaming-html-reader         — anonymous search→Borrow→Read; requires
+#       a .unregistered registry (uninstall/reinstall), NOT a sign-in.
+#   search-flow-stateful                  — no recording exists yet.
+# The reader2 (5) + audiobook skip/toc/scrubber (3) journeys moved OUT of here into
+# STAGING_RECIPES: they use the A1QA STANDING fixture (pre-borrowed, read-only) and
+# need SIGN-IN ONLY — see the "reading"/"audiobook" recipes above.
 PHASE2_JOURNEYS = {
     "read-return-from-mybooks-roundtrip", "book-return-from-mybooks",
-    "reader2-back-button", "reader2-bookmark-toggle", "reader2-page-forward",
-    "reader2-settings-sheet", "reader2-toc-navigate", "PP-4161-streaming-html-reader",
-    "audiobook-download-indicator-stateful", "audiobook-scrubber-drag",
-    "audiobook-skip-forward", "audiobook-toc-seek", "search-flow-stateful",
+    "PP-4161-streaming-html-reader",
+    "audiobook-download-indicator-stateful",
+    "search-flow-stateful",
 }
 
 # Chairman-blocked (creds/OTP) — recipes pending.
