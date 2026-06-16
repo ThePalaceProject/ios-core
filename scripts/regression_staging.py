@@ -700,20 +700,23 @@ def borrow_and_download(d: Driver, title: str, lane: Optional[str] = None,
 
 def return_book(d: Driver, title: Optional[str] = None) -> None:
     """Return a borrowed loan — the idempotent RESET so a reused sim re-borrows
-    cleanly. Flow (mapped live): book detail → Return → 'Return Loan' confirm → poll
-    until Borrow reappears (returned). No-op if the book isn't currently borrowed.
+    cleanly. Flow (mapped LIVE on build 479): My Books row or book detail → Return →
+    confirm dialog 'Are you sure you want to return "X"?' Cancel | Return → tap the
+    dialog's Return. No-op if the book isn't currently borrowed.
 
     ONLY for returnable open-access loans — never an A1QA standing fixture."""
     if title is not None:
         _open_book_detail(d, title)
     if not d.find("Return"):
         return                                   # not borrowed
-    d.tap_text("Return")
-    if d.find("Return Loan"):                     # confirm dialog
-        d.tap_text("Return Loan")
-    elif d.find("Yes"):
-        d.tap_text("Yes")
-    d.wait_for("Borrow", timeout=30)              # returned → Borrow button back
+    d.tap_text("Return")                          # the row/detail Return → confirm dialog
+    # The confirm button is literally 'Return' (NOT 'Return Loan'/'Yes', as an earlier
+    # guess assumed); disambiguate it from the row's Return via the dialog's Cancel anchor.
+    tap_dialog_button(d, "Return", "Cancel")
+    try:
+        d.wait_for("Borrow", timeout=30)          # detail path: Borrow reappears
+    except StagingError:
+        pass                                      # My-Books path: the row just leaves the list
 
 
 PRIMITIVES = {
