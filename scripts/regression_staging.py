@@ -768,6 +768,66 @@ def borrow_first(d: Driver, timeout: float = 90.0, max_try: int = 6) -> None:
     raise StagingError(f"borrow_first: no AVAILABLE (borrowable, non-hold) book in {max_try} covers")
 
 
+_SEARCH_CHROME_WORDS = {
+    "catalog", "settings", "holds", "books", "palace", "bookshelf", "borrow",
+    "reserve", "more", "search", "cancel", "title", "read", "listen", "return",
+    "remove", "library", "account", "preview", "sample", "description",
+}
+
+
+def _pick_title_word(marks: list[_Mark]) -> Optional[str]:
+    """Pick a distinctive, searchable word from a book title CURRENTLY present in the
+    catalog feed — the self-validating search target (no pinned title; DPLA content
+    rotates). Prefers the longest alphabetic word (>=6 chars, fewer false matches)
+    that is not nav/chrome, so the search query is unambiguous."""
+    import re
+    cands = []
+    for m in marks:
+        for word in re.findall(r"[A-Za-z]{6,}", m.text):
+            if word.lower() not in _SEARCH_CHROME_WORDS:
+                cands.append(word)
+    cands.sort(key=len, reverse=True)
+    return cands[0] if cands else None
+
+
+def search_present_title(d: Driver) -> None:
+    """Verify catalog SEARCH end-to-end with a self-validating, rotation-proof method:
+    read a word from a title CURRENTLY in the catalog feed, search for it, and assert
+    that title comes back in the results. No pinned title (DPLA content rotates) — the
+    journey supplies its own known-present target each run. Raises StagingError if the
+    known-present title does NOT return (the search-regression signal) — never a
+    false-pass. Leaves the app on the search results for the recording to assert."""
+    navigate_to(d, "catalog")
+    time.sleep(1.5)
+    word = _pick_title_word(d.observe())
+    if not word:
+        raise StagingError("search_present_title: no searchable title word in the catalog feed")
+    w, h = d._dims
+    d._act.tap(int(w * 0.90), int(h * 0.092), w, h, d.udid)   # top-right search magnifier
+    time.sleep(1.0)
+    d.tap_text("Search Catalog")                              # focus the field
+    time.sleep(0.5)
+    d._act.type_text(word, d.udid)
+    time.sleep(0.5)
+    d._act.press_key("return", d.udid)
+    time.sleep(2.5)
+    results = [m.text for m in d.observe()]
+    if not any(word.lower() in t.lower() for t in results):
+        # Search FAILED to return a KNOWN-PRESENT title. Staging exceptions don't
+        # auto-fail the journey (the runner only logs them), so leave the app OFF the
+        # search screen — the recording's 'Cancel' (search-active) contract token is
+        # then absent and the journey FAILs honestly instead of false-passing.
+        if d.find("Cancel"):
+            d.tap_text("Cancel")
+        navigate_to(d, "catalog")
+        raise StagingError(
+            f"search_present_title: '{word}' (a title present in the catalog) did not "
+            f"return in search results — catalog search may be broken")
+    # Success: the app is left on the search results (search field active → 'Cancel'
+    # present) for the recording's contract. The result action buttons ('Borrow'/'Get')
+    # are book-type-dependent, so the contract keys on 'Cancel', NOT on a result button.
+
+
 PRIMITIVES = {
     "dismiss_first_launch": lambda d, *a: dismiss_first_launch(d),
     "add_library": lambda d, name: add_library(d, name),
@@ -779,6 +839,7 @@ PRIMITIVES = {
     "sign_out": lambda d, *a: sign_out(d),
     "borrow_download": lambda d, title: borrow_and_download(d, title),
     "borrow_first": lambda d, *a: borrow_first(d),
+    "search_present_title": lambda d, *a: search_present_title(d),
     "return_book": lambda d, *a: return_book(d, *(a or (None,))),
     "goto": lambda d, screen: navigate_to(d, screen),
 }
@@ -842,6 +903,16 @@ STAGING_RECIPES: dict[str, list[tuple]] = {
     "read-return-from-mybooks-roundtrip": [
         ("dismiss_first_launch",), ("add_library", "Palace Bookshelf"),
         ("switch_library", "Palace Bookshelf"), ("borrow_first",), ("goto", "my_books"),
+    ],
+
+    # --- catalog SEARCH (self-validating, rotation-proof) ---
+    # Reads a title CURRENTLY present in the catalog and searches for it, asserting it
+    # comes back — verifies general search functionality without pinning a volatile
+    # title. Staging does the search + the round-trip assertion; the recording asserts
+    # the search-results state.
+    "search-flow-stateful": [
+        ("dismiss_first_launch",), ("add_library", "Palace Bookshelf"),
+        ("switch_library", "Palace Bookshelf"), ("search_present_title",),
     ],
 
     # --- reading (Reader2, STANDING-FIXTURE) ---
@@ -922,7 +993,6 @@ STAGING_RECIPES: dict[str, list[tuple]] = {
 PHASE2_JOURNEYS = {
     "PP-4161-streaming-html-reader",
     "audiobook-download-indicator-stateful",
-    "search-flow-stateful",
 }
 
 # Chairman-blocked (creds/OTP) — recipes pending.
