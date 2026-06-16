@@ -389,6 +389,19 @@ try:
     baseline = sdp.snapshot(udid, app)
     r = sdr.replay(name=replay_name, session=s,
                    on_drift="warn", drift_threshold=float(os.environ["THRESHOLD"]))
+    # Persist the state-contract mismatch DETAIL (reasons/expected/actual) so a
+    # step-0 halt is triageable from the log instead of needing a live re-stage:
+    # halt_reason alone (state_contract_mismatch) does NOT say WHICH token/field
+    # failed, which turns every precondition red into a manual reproduction.
+    try:
+        _rd = r if isinstance(r, dict) else getattr(r, "__dict__", {})
+        if _rd.get("halt_reason") == "state_contract_mismatch":
+            with log_file.open("a") as lf:
+                lf.write("\n[state-contract-detail] reasons=" + json.dumps(_rd.get("reasons"), default=str) +
+                         " expected=" + json.dumps(_rd.get("expected"), default=str) +
+                         " actual=" + json.dumps(_rd.get("actual"), default=str) + "\n")
+    except Exception:
+        pass
     if tmp_rec is not None:
         shutil.rmtree(tmp_rec, ignore_errors=True)
 
