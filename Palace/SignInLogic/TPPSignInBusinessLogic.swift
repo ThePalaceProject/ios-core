@@ -342,6 +342,13 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
     let locationManager = CLLocationManager()
 
     private var _selectedAuthentication: AccountDetails.Authentication?
+
+    /// Re-entrancy guard for `awaitReadyThenRetryLogIn(with:)`. Ensures a
+    /// `logIn()` that arrives before the auth document has loaded waits for
+    /// readiness exactly once. Without this, a `.detailsFailed` terminal
+    /// (where `selectedAuthentication` stays nil) could loop the retry.
+    private var isAwaitingReadinessForLogIn = false
+
     @objc var selectedAuthentication: AccountDetails.Authentication? {
         get {
             guard _selectedAuthentication == nil else { return _selectedAuthentication }
@@ -603,10 +610,24 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
 
     /// Initiates process of signing in with the server.
     @objc func logIn(with tokenURL: URL? = nil) {
-        // Nothing to do without a selected auth method. Posting TPPIsSigningIn
-        // here would leave downstream observers stuck in a "signing in" state
-        // while we silently bail.
-        guard let wrapped = selectedAuthentication else { return }
+        // Nothing to do without a selected auth method. But on a fast
+        // (programmatic or quick-tap) sign-in the user can submit before the
+        // account's `authentication_document` has finished loading — at which
+        // point `selectedAuthentication` resolves to `nil` purely because
+        // `loadState` has not yet reached `.detailsLoaded` (the getter reads
+        // `loadedAccountDetails?.auths`). The 3.2.0 auth rewrite turned that
+        // window into a SILENT no-op: no network request, no error, no UI
+        // change (PP basic/token sign-in regression — build 476 → 479). A
+        // human types slowly enough that details land first; automation does
+        // not. Rather than drop the tap, AWAIT readiness on the user-initiated
+        // entry point (the readiness gate that `Account.LoadState` was built
+        // for) and re-dispatch once details are loaded. `awaitReady()` returns
+        // immediately on the fast path when details are already loaded, so
+        // manual sign-in behavior is unchanged.
+        guard let wrapped = selectedAuthentication else {
+            awaitReadyThenRetryLogIn(with: tokenURL)
+            return
+        }
 
         NotificationCenter.default.post(name: .TPPIsSigningIn, object: true)
 
@@ -638,6 +659,57 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
             getBearerToken(username: username, password: password, tokenURL: tokenURL)
         case .basic, .coppa, .anonymous, .none:
             validateCredentials()
+        }
+    }
+
+    /// Awaits the library account's readiness gate, then re-invokes
+    /// `logIn(with:)` once details are loaded so a sign-in tap that raced the
+    /// `authentication_document` fetch is honored instead of silently dropped.
+    ///
+    /// This is the user-initiated entry point the `Account.LoadState` /
+    /// `awaitReady()` machine was designed to gate (per
+    /// `docs/architecture/account-state-machine.md`); the sync read sites keep
+    /// their nil-tolerance, but the *action* of signing in waits for readiness.
+    ///
+    /// - Fast path: when details are already `.detailsLoaded`, `awaitReady()`
+    ///   returns immediately and we re-enter `logIn` on the same run loop turn,
+    ///   so manual sign-in (where details have long since loaded) is unchanged.
+    /// - Failure path: if readiness resolves to `.detailsFailed` /
+    ///   `.detailsEvicted` (or `selectedAuthentication` is still nil after a
+    ///   successful load — e.g. a genuinely auth-less library), we clear the
+    ///   "signing in" state so the UI is not left spinning. The re-entrancy
+    ///   guard makes this await-then-retry happen at most once per tap.
+    private func awaitReadyThenRetryLogIn(with tokenURL: URL?) {
+        guard !isAwaitingReadinessForLogIn else { return }
+        guard let account = libraryAccount else { return }
+        isAwaitingReadinessForLogIn = true
+
+        Task { [weak self] in
+            defer { self?.isAwaitingReadinessForLogIn = false }
+            do {
+                _ = try await account.awaitReady()
+            } catch {
+                Log.warn(#file, "Sign-in awaited readiness but the auth document did not load: \(error)")
+                await MainActor.run {
+                    NotificationCenter.default.post(name: .TPPIsSigningIn, object: false)
+                }
+                return
+            }
+
+            await MainActor.run {
+                guard let self else { return }
+                // Details are loaded now; `selectedAuthentication` resolves via
+                // `loadedAccountDetails?.auths`. Re-enter the normal path. If it
+                // is STILL nil (auth-less library / single-auth edge), clear the
+                // signing-in state rather than recurse — the guard already
+                // prevents a second await, so a nil here falls through to the
+                // (now harmless) silent return on the recursive call.
+                if self.selectedAuthentication != nil {
+                    self.logIn(with: tokenURL)
+                } else {
+                    NotificationCenter.default.post(name: .TPPIsSigningIn, object: false)
+                }
+            }
         }
     }
 

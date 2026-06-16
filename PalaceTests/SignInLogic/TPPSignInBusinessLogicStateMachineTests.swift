@@ -95,6 +95,29 @@ final class TPPSignInBusinessLogicStateMachineTests: XCTestCase {
         libraryAccount._setState(state)
     }
 
+    /// AccountDetails with EXACTLY ONE (basic) authentication, mirroring the
+    /// A1QA single-auth library shape. With a single auth, the
+    /// `selectedAuthentication` getter resolves to `auths.first` once details
+    /// are loaded (and to `nil` while loading) WITHOUT any explicit
+    /// `selectedAuthentication = ...` set — which is precisely the A1QA
+    /// readiness-race condition the 479 silent-no-op manifested under. Built
+    /// by filtering the NYPL fixture's auth array down to the basic entry so
+    /// the existing `userProfileUrl` (already canned in the network mock's
+    /// responseBodies) is preserved and the credential request can fire.
+    private func singleBasicAuthDetails() throws -> AccountDetails {
+        let url = Bundle(for: TPPLibraryAccountMock.self)
+            .url(forResource: "nypl_authentication_document", withExtension: "json")!
+        var json = try JSONSerialization.jsonObject(with: try Data(contentsOf: url)) as! [String: Any]
+        let auths = json["authentication"] as! [[String: Any]]
+        let basicOnly = auths.filter { ($0["type"] as? String)?.lowercased().contains("basic") == true }
+        json["authentication"] = basicOnly
+        let data = try JSONSerialization.data(withJSONObject: json)
+        let doc = try OPDS2AuthenticationDocument.fromData(data)
+        let details = AccountDetails(authenticationDocument: doc, uuid: libraryAccount.uuid)
+        XCTAssertEqual(details.auths.count, 1, "test fixture must be single-auth to model the A1QA getter-resolves-post-load race")
+        return details
+    }
+
     // MARK: - testSignIn_blocksUntilLoaded_thenProceeds
     //
     // Contract: while details are still loading (`.detailsLoading`), the
@@ -249,6 +272,59 @@ final class TPPSignInBusinessLogicStateMachineTests: XCTestCase {
         setLoadState(.detailsLoading)
         XCTAssertFalse(businessLogic.shouldShowEULALink(),
                        ".detailsLoading must hide the EULA link — no URL available yet, predicate is state-driven")
+    }
+
+    // MARK: - testLogIn_racingAuthDocLoad_firesRequestOnceReady
+    //
+    // REGRESSION (build 476 → 479 / 3.2.0 basic+token sign-in): a fast
+    // (programmatic / quick-tap) "Sign in" can arrive BEFORE the
+    // `authentication_document` finishes loading. In that window
+    // `selectedAuthentication` resolves to nil purely because `loadState` has
+    // not yet reached `.detailsLoaded`, and the 3.2.0 `logIn()` rewrite then
+    // SILENTLY returned — no `/patrons/me` request, no error, no UI change.
+    //
+    // Contract after the fix: `logIn()` invoked during `.detailsLoading` must
+    // NOT drop the tap. It awaits readiness and, once details land, FIRES the
+    // credential request. We assert the request count transitions 0 → 1 across
+    // the `.detailsLoading` → `.detailsLoaded` boundary.
+    func testLogIn_racingAuthDocLoad_firesRequestOnceReady() throws {
+        let mockExecutor = businessLogic.networker as! TPPRequestExecutorMock
+        let basicDetails = try singleBasicAuthDetails()
+
+        // Race window: a Sign-in tap arrives while details are still loading.
+        // `selectedAuthentication` is nil here (not explicitly set, details not
+        // loaded), which is exactly the silent-no-op condition on 479.
+        setLoadState(.detailsLoading)
+        XCTAssertNil(businessLogic.selectedAuthentication,
+                     "pre-condition: during .detailsLoading the auth is unresolved — the 479 silent-no-op trigger")
+
+        businessLogic.logIn()
+
+        // Pre-fix (479): logIn() returned immediately, no request ever fired.
+        XCTAssertEqual(mockExecutor.executedRequestURLs.count, 0,
+                       "no credential request can fire while details are still loading — there is no userProfileUrl yet")
+
+        // Details land. The awaited retry must now fire the credential request.
+        // Single-auth details: the getter resolves to basic post-load, so the
+        // retried logIn() reaches validateCredentials() -> executeRequest().
+        setLoadState(.detailsLoaded(basicDetails))
+
+        let fired = expectation(description: "credential request fires once the account is ready")
+        // Poll the mock: the fix awaits readiness on a Task, then re-enters
+        // logIn() on the main actor, which calls validateCredentials() ->
+        // executeRequest(). Give the await + main-actor hop a moment to land.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            if !mockExecutor.executedRequestURLs.isEmpty { fired.fulfill() }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            if !mockExecutor.executedRequestURLs.isEmpty { fired.fulfill() }
+        }
+        wait(for: [fired], timeout: 3.0)
+
+        XCTAssertGreaterThanOrEqual(mockExecutor.executedRequestURLs.count, 1,
+                                    "after readiness, the raced Sign-in must fire the credential request — NOT silently drop (the 479 regression)")
+        XCTAssertTrue(mockExecutor.executedRequestURLs.contains { $0.absoluteString.contains("/patrons/me") },
+                      "the fired request must be the /patrons/me credential validation")
     }
 
     func testSelectedAuthentication_loading_returnsNil() {
