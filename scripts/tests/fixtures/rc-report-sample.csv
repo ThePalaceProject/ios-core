@@ -1,0 +1,6 @@
+id,area,device_cell,severity,classification,verified,evidence_paths,screenshot_pair,first_seen_commit,dedup_cluster,disposition
+catalog-C-iphone-26-lane-render-000,catalog,C-iphone-26,major,visual-parity,true,logs/lane.log,baselines/lane.png|candidates/lane.png,950b8a01d,cluster-lane,file-jira
+audiobook-C-iphone-26-crash-000,audiobook,C-iphone-26,blocker,crash,true,logs/crash.ips,,950b8a01d,cluster-crash,file-jira
+auth-C-iphone-26-picker-fragile-000,auth,C-iphone-26,minor,other,false,logs/picker.log,,950b8a01d,,non-gating-known-fragile
+reader-C-iphone-26-resume-000,reading,C-iphone-26,major,other,false,logs/resume.log,,950b8a01d,,needs-verify
+token-C-iphone-26-flake-000,auth,C-iphone-26,minor,keychain-auth-state,false,logs/keychain.log;green@3,,950b8a01d,,ticket-as-flake
