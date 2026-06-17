@@ -169,8 +169,73 @@ final class AudiobookLoader {
                 Log.info(#file, "✅ Token refresh successful - proceeding to open audiobook")
                 completion(.success(()))
             case .failure(let error, _):
+                // PP-4542: the open requested a token but another refresh
+                // (almost always the proactive launch refresh of a near-expiry
+                // token) already held the single-flight slot, so
+                // refreshTokenAndResume(task: nil) returned "Token refresh in
+                // progress" *immediately* instead of queueing+retrying the way
+                // the URLSession-task path does. That hard failure was the
+                // dominant field cause of "Audiobook failed to open — please try
+                // again" (Crashlytics issue 27f5746…: ~45k events / 8.2k users,
+                // since 2.0.4). It is purely a timing race — tap an audiobook in
+                // the first second after launch and it dead-ends. Don't fail:
+                // AWAIT the in-flight refresh and proceed the instant it
+                // populates a valid token.
+                if Self.isRefreshInProgressError(error) {
+                    Log.info(#file, "⏳ A token refresh is already in progress — awaiting it before opening audiobook")
+                    Self.awaitTokenReady { becameValid in
+                        if becameValid {
+                            Log.info(#file, "✅ In-flight token refresh completed — proceeding to open audiobook")
+                            completion(.success(()))
+                        } else {
+                            Log.error(#file, "❌ Timed out awaiting in-flight token refresh")
+                            completion(.failure(.tokenRefreshFailed(underlying: error)))
+                        }
+                    }
+                    return
+                }
                 Log.error(#file, "❌ Token refresh failed: \(error.localizedDescription)")
                 completion(.failure(.tokenRefreshFailed(underlying: error)))
+            }
+        }
+    }
+
+    /// True when `error` is the "Token refresh in progress" signal from
+    /// `TPPNetworkExecutor.refreshTokenAndResume(task:)` — i.e. another refresh
+    /// already owns the single-flight slot. Matched on the message (not the
+    /// code) because `invalidCredentials` is overloaded for several token
+    /// failures; only this one is safe to wait on.
+    nonisolated static func isRefreshInProgressError(_ error: Error) -> Bool {
+        (error as NSError).localizedDescription.localizedCaseInsensitiveContains("token refresh in progress")
+    }
+
+    /// Polls the *current* account's token state until a concurrently-running
+    /// refresh populates a valid (unexpired) token, or `timeout` elapses.
+    /// Re-reads `currentUserAccount` each tick so a mid-flight account-object
+    /// swap can't strand us on a stale instance. Bounded so a failed/stuck
+    /// in-flight refresh can't hang the open forever — on timeout the caller
+    /// surfaces the original error (same as the pre-fix behaviour, just after
+    /// giving the in-flight refresh a chance).
+    nonisolated static func awaitTokenReady(
+        timeout: TimeInterval = 10.0,
+        pollInterval: TimeInterval = 0.15,
+        completion: @escaping (Bool) -> Void
+    ) {
+        // Structured-concurrency poll (Task.sleep, not recursive GCD) to keep
+        // the audiobook open path off GCD per adr_a265ec76, mirroring the
+        // sibling poll in AudiobookSessionManager.awaitAudiobookContentLocal.
+        Task {
+            let deadline = Date().addingTimeInterval(timeout)
+            while true {
+                if !AppContainer.production().accountsManager.currentUserAccount.authTokenHasExpired {
+                    completion(true)
+                    return
+                }
+                if Date() >= deadline {
+                    completion(false)
+                    return
+                }
+                try? await Task.sleep(nanoseconds: UInt64(max(0, pollInterval) * 1_000_000_000))
             }
         }
     }

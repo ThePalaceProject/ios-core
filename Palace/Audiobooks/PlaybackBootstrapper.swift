@@ -204,6 +204,29 @@ public final class PlaybackBootstrapper {
         Log.debug(#file, "🚀 PlaybackBootstrapper ready for CarPlay")
     }
 
+    /// Ensure the audio session is configured AND active before a normal (phone)
+    /// audiobook open issues `play()`.
+    ///
+    /// At cold launch `configureAudioSession()` can fail with OSStatus -50 ("no
+    /// scenes yet"), and `setActive(true)` previously ran ONLY on CarPlay connect
+    /// (`ensureInitializedForCarPlay`) or foreground re-entry — never on a plain
+    /// first open. So the first `play()` of a freshly-opened audiobook was issued
+    /// against an INACTIVE session and failed with AVError -11849 ("Operation
+    /// Stopped"), recovering only on a retry/auto-reopen — the "slow to start"
+    /// symptom (pre-existing; also reproduces on 3.1.0, so not a 3.2.0
+    /// regression). By open time the scenes ARE connected, so re-running the
+    /// category setup now succeeds, and we activate with the same bounded retry
+    /// used for CarPlay. Idempotent and safe to call on every open; the activator
+    /// skips activation when other audio is already playing. Fire-and-forget so
+    /// the synchronous open path is never blocked by the backoff.
+    // PUBLIC_INTENT: lifecycle entry point on the public PlaybackBootstrapper, matching the sibling `public` ensureInitialized()/ensureInitializedForCarPlay() bootstrap surface.
+    public func ensureAudioSessionActiveForPlayback() {
+        configureAudioSession()
+        Task { @MainActor [weak self] in
+            await self?.activateAudioSessionWithRetry()
+        }
+    }
+
     // MARK: - Audio Session
 
     private func configureAudioSession() {

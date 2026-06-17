@@ -165,6 +165,25 @@ final class NavigationCoordinator: ObservableObject {
         Log.debug(#file, "📍 NavigationCoordinator.pop() - After pop count: \(path.count)")
     }
 
+    /// Pops ONLY when the audiobook player is actually the top route.
+    ///
+    /// PP-4542: opening a new audiobook while a previous session is still bound
+    /// tears that session down via `stopPlayback(dismissPhoneUI: true)` →
+    /// `dismissPlayerOnPhone` → pop. But if the previous player's screen was
+    /// already gone (the user navigated back, then opened a different title),
+    /// an unconditional `pop()` removes the WRONG thing — the *new* book's
+    /// detail — dumping the user onto the catalog. With the download-gate that
+    /// gap lasts the entire download. Guarding on `isTopRouteAudio` makes the
+    /// teardown a no-op when there's no player on top to dismiss, so the new
+    /// book's detail stays put until the real player is pushed.
+    func popIfTopRouteAudio() {
+        guard isTopRouteAudio else {
+            Log.debug(#file, "📍 popIfTopRouteAudio — top route is not the audio player; skipping pop")
+            return
+        }
+        pop()
+    }
+
     func popToRoot() {
         guard !path.isEmpty else { return }
         isTopRouteAudio = false

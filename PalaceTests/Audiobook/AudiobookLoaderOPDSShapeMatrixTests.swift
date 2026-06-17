@@ -397,4 +397,36 @@ final class AudiobookLoaderOPDSShapeMatrixTests: XCTestCase {
         XCTAssertEqual(spies.openAccess.resolveCallCount, 1,
                        "With auth state cleared, the loader's token gate passes and the adapter chain routes (no longer skipped)")
     }
+
+    // MARK: - PP-4542: token-refresh-in-progress classifier
+
+    /// The audiobook open's pre-fetch token refresh returns a "Token refresh in
+    /// progress" error when another refresh (typically the proactive launch
+    /// refresh) already holds the single-flight slot. `AudiobookLoader` must
+    /// recognize THAT specific error — and only it — so it awaits the in-flight
+    /// refresh instead of hard-failing the open with "Audiobook failed to open —
+    /// please try again" (the dominant field cause, ~8k users / Crashlytics
+    /// 27f5746…). Matched on the message, not the (overloaded) code.
+    func testRefreshInProgressClassifier_matchesOnlyTheInProgressError() {
+        let inProgress = NSError(
+            domain: "org.thepalaceproject.palace", code: 301,
+            userInfo: [NSLocalizedDescriptionKey: "Token refresh in progress"]
+        )
+        XCTAssertTrue(AudiobookLoader.isRefreshInProgressError(inProgress),
+                      "the in-progress race must be recognized so the open awaits it")
+
+        // Same family, different message (missing credentials) must NOT match —
+        // only the in-progress race is safe to wait on; everything else fails.
+        let missingCreds = NSError(
+            domain: "org.thepalaceproject.palace", code: 401,
+            userInfo: [NSLocalizedDescriptionKey: "Cannot request token with empty credentials"]
+        )
+        XCTAssertFalse(AudiobookLoader.isRefreshInProgressError(missingCreds))
+
+        let unrelated = NSError(
+            domain: "NSURLErrorDomain", code: -1009,
+            userInfo: [NSLocalizedDescriptionKey: "The Internet connection appears to be offline."]
+        )
+        XCTAssertFalse(AudiobookLoader.isRefreshInProgressError(unrelated))
+    }
 }

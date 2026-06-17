@@ -397,6 +397,25 @@ public final class AudiobookSessionManager: ObservableObject {
     /// ONCE per playback session and never loops on the shared handler.
     private var overdriveRefulfillAttemptedBookIds = Set<String>()
 
+    /// PP-4542: per-session bound on the cold-load auto-reopen recovery. A book
+    /// id is inserted when its automatic re-open fires and removed when the user
+    /// initiates a fresh open — so a cold-load failure auto-reopens at most ONCE
+    /// per playback session and a genuinely persistent failure surfaces the
+    /// "Audiobook Unavailable" alert instead of looping. Visibility is internal
+    /// (not private) so the cold-load recovery test can assert the bound.
+    var coldLoadReopenAttemptedBookIds = Set<String>()
+
+    /// PP-4542 (A): book ids currently parked in the "awaiting content download"
+    /// recovery (a fresh-borrow streaming failure whose `.lcpa` hasn't landed
+    /// yet). The streaming player emits a *storm* of `.playbackFailed` events for
+    /// a single failed open; without this guard, the first failure enters the
+    /// await branch but the next one — now seeing `alreadyAttempted == true` —
+    /// falls straight through to the "Unavailable" alert, defeating the wait.
+    /// While a book id is in this set, further `.playbackFailed` events for it
+    /// are swallowed until the await resolves (content lands → reopen, or times
+    /// out → alert). Internal so the recovery test can assert the guard.
+    var awaitingContentDownloadBookIds = Set<String>()
+
     /// Loader factory — recovery seam (WS-3). The default closure is
     /// byte-equivalent to the inline `AudiobookLoader(forceRefulfill:)` it
     /// replaces, so production behavior is unchanged. `private(set)` so only
@@ -410,8 +429,8 @@ public final class AudiobookSessionManager: ObservableObject {
     ///   instead of replaying the expired on-disk manifest. Internal (not part of
     ///   the public `AudiobookSessionManaging` surface); the public 2-param
     ///   witness above delegates here, and the in-class recovery branch calls it.
-    func openAudiobook(_ book: TPPBook, startPlaying: Bool, forceRefulfill: Bool) async -> Result<Void, AudiobookSessionError> {
-        Log.info(#file, "Opening audiobook: '\(book.title)' (id: \(book.identifier))\(forceRefulfill ? " [re-fulfill]" : "")")
+    func openAudiobook(_ book: TPPBook, startPlaying: Bool, forceRefulfill: Bool, isColdLoadRecovery: Bool = false) async -> Result<Void, AudiobookSessionError> {
+        Log.info(#file, "Opening audiobook: '\(book.title)' (id: \(book.identifier))\(forceRefulfill ? " [re-fulfill]" : "")\(isColdLoadRecovery ? " [cold-load recovery]" : "")")
         // Polish-phase (in-app-nav-polish-2026-06-01): record wall-clock
         // open time so the Continue Reading row's sort surfaces the real
         // last-touched book even when the audiobook position-save flow
@@ -423,6 +442,13 @@ public final class AudiobookSessionManager: ObservableObject {
         // (forceRefulfill) must NOT reset it, or the bound never holds.
         if !forceRefulfill {
             overdriveRefulfillAttemptedBookIds.remove(book.identifier)
+            // The cold-load recovery re-open must NOT reset its own bound, or the
+            // one-shot guard never holds and a persistently-failing book loops
+            // (re-open → fail → re-open …). Mirrors the OverDrive forceRefulfill
+            // guard. PP-4542.
+            if !isColdLoadRecovery {
+                coldLoadReopenAttemptedBookIds.remove(book.identifier)
+            }
         }
 
         if case .loading(let loadingId) = state, loadingId == book.identifier {
@@ -459,6 +485,49 @@ public final class AudiobookSessionManager: ObservableObject {
         currentBook = book
         hasEverStartedPlayback = false
         playbackStatePublisher.send(state)
+
+#if LCP
+        // PP-4542 (gate): a freshly-borrowed LCP audiobook is marked
+        // download-successful the instant its tiny .lcpl license lands, but the
+        // real .lcpa content is still downloading in the background. Opening now
+        // would route through the streaming path — and LCP streaming-from-
+        // license is BROKEN under Readium 3.9.0: the remote read returns 0 bytes
+        // with nil length, so AVPlayer dead-ends in CoreMedia -12873 → -11849
+        // "Operation Stopped" (the 3.2.0-only "Audiobook Unavailable"; confirmed
+        // via instrumented repro). The content download is already in flight, so
+        // instead of attempting the broken stream we HOLD the loading state and
+        // open from the local package the moment it lands — the reliable path.
+        // Skipped for cold-load recovery re-opens (content is already local by
+        // then). Generation/identity re-checked after the wait so a newer open
+        // supersedes us cleanly.
+        if !isColdLoadRecovery,
+           LCPAudiobooks.canOpenBook(book),
+           !Self.audiobookContentIsLocal(book.identifier) {
+            Log.info(#file, "LCP audiobook content still downloading — awaiting local package before opening (PP-4542 gate)")
+            let landed = await Self.awaitAudiobookContentLocal(book.identifier)
+            // A newer open (user tapped a different book) would have replaced
+            // currentBook + the .loading state; bail if so.
+            guard currentBook?.identifier == book.identifier,
+                  case .loading(let lid) = state, lid == book.identifier else {
+                Log.info(#file, "PP-4542 gate: a newer open superseded \(book.identifier) while awaiting content — bailing")
+                return .failure(.alreadyLoading)
+            }
+            if !landed {
+                Log.info(#file, "PP-4542 gate: content did not finish downloading within the wait window — surfacing unavailable")
+                await dismissAndPresentColdLoadUnavailable()
+                return .failure(.unknown("Audiobook content is still downloading"))
+            }
+            Log.info(#file, "PP-4542 gate: content landed — opening '\(book.title)' from local package")
+        }
+#endif
+
+        // PP-4542 follow-up: activate the audio session NOW, while the book
+        // loads, so it's live by the time the toolkit issues the first play().
+        // Cold launch defers session activation (it ran only on CarPlay connect /
+        // foreground re-entry), so a plain first open issued play() against an
+        // inactive session → AVError -11849 ("Operation Stopped") → slow start via
+        // auto-reopen. Pre-existing (also on 3.1.0); this removes the slow start.
+        AppContainer.production().playbackBootstrapper.ensureAudioSessionActiveForPlayback()
 
         loadGeneration &+= 1
         let generation = loadGeneration
@@ -815,7 +884,11 @@ public final class AudiobookSessionManager: ObservableObject {
             audiobookSessionPresenterProvider().clearActiveSession()
         } else if let coordinator = navigationCoordinatorHubProvider().coordinator {
             coordinator.removeAudioModel(forBookId: bookId)
-            coordinator.pop()
+            // PP-4542: only pop if the audio player is actually on top. A stale
+            // unconditional pop here removed the NEW book's detail when tearing
+            // down a previous session whose player had already been navigated
+            // away — dumping the user on the catalog for the whole download-gate.
+            coordinator.popIfTopRouteAudio()
         }
     }
 
@@ -989,20 +1062,50 @@ public final class AudiobookSessionManager: ObservableObject {
     }
 
     private func startPlaybackAndSyncPosition(for book: TPPBook, loaded: LoadedAudiobook) {
-        let shouldRestore = shouldRestoreBookmarkPosition(for: book)
-        let localPosition = shouldRestore ? getValidLocalPosition(book: book, audiobook: loaded.audiobook) : nil
-
-        let initialPosition: TrackPosition
-        if let local = localPosition {
-            Log.debug(#file, "Starting playback with local position: track=\(local.track.key), timestamp=\(local.timestamp)")
-            initialPosition = local
-        } else if let firstTrack = loaded.audiobook.tableOfContents.allTracks.first {
-            Log.debug(#file, "Starting '\(book.title)' from beginning - no saved position")
-            initialPosition = TrackPosition(track: firstTrack, timestamp: 0.0, tracks: loaded.audiobook.tableOfContents.tracks)
-        } else {
+        guard let firstTrack = loaded.audiobook.tableOfContents.allTracks.first else {
             Log.error(#file, "No tracks available in audiobook")
             return
         }
+        let shouldRestore = shouldRestoreBookmarkPosition(for: book)
+        let localPosition = shouldRestore ? getValidLocalPosition(book: book, audiobook: loaded.audiobook) : nil
+        let beginning = TrackPosition(
+            track: firstTrack,
+            timestamp: 0.0,
+            tracks: loaded.audiobook.tableOfContents.tracks
+        )
+        let bookId = book.identifier
+
+        // PP-4542 launch-smoothing: resolve the position to OPEN at — preferring a
+        // newer REMOTE bookmark over the local one — BEFORE issuing the first
+        // play, so playback opens directly at the right spot. Previously play
+        // started at the local/0 position immediately and the async server-bookmark
+        // sync then seeked to the remote position a beat later, which the user saw
+        // as the playhead "jumping around" before settling. The remote lookup is
+        // bounded (`remotePositionResolveTimeout`) so a slow/again backend can't
+        // stall open — on timeout we open at the local/beginning position
+        // (bookmarks normally return in ~0.5s, so the timeout is a rare safety
+        // valve, not the common path).
+        Task { @MainActor in
+            guard self.currentBook?.identifier == bookId else { return }
+            let initialPosition = await self.resolveInitialPosition(
+                for: book,
+                audiobook: loaded.audiobook,
+                localPosition: localPosition,
+                fallback: localPosition ?? beginning
+            )
+            guard self.currentBook?.identifier == bookId else { return }
+            self.issueFirstPlay(for: book, loaded: loaded, initialPosition: initialPosition)
+        }
+    }
+
+    /// Issues the first `play(at:)` for a freshly-loaded audiobook at the
+    /// already-resolved `initialPosition` (see the resolve step in
+    /// `startPlaybackAndSyncPosition`). Extracted so the position resolve can run
+    /// — and be awaited — BEFORE play, without disturbing the F-011 readiness-gate
+    /// / LCP-bypass wiring below.
+    @MainActor
+    private func issueFirstPlay(for book: TPPBook, loaded: LoadedAudiobook, initialPosition: TrackPosition) {
+        Log.debug(#file, "Opening '\(book.title)' at: track=\(initialPosition.track.key), timestamp=\(initialPosition.timestamp)")
 
         // F-011 fix (PR #990 toolkit overhaul regression): await the
         // toolkit's player-coordinator-ready signal BEFORE issuing the
@@ -1069,70 +1172,86 @@ public final class AudiobookSessionManager: ObservableObject {
             }
         }
 
-        let audiobookRef = loaded.audiobook
-        let playbackModelRef = loaded.playbackModel
-        // `syncLocation(for:)` lives on the concrete TPPBookRegistry as an
-        // extension; the provider protocol doesn't expose it. Cast at the
-        // call site so the rest of this file talks to the protocol.
-        // syncLocation(for:) lives on the concrete TPPBookRegistry as an
-        // extension; the provider protocol doesn't expose it. If the injected
-        // bookRegistry isn't the concrete app-scoped instance, skip the
-        // remote-bookmark lookup rather than fall through to a singleton —
-        // tests pass mocks here on purpose.
-        guard let concreteRegistry = bookRegistry as? TPPBookRegistry else {
-            // No-op: progress-syncing requires the production registry. In a
-            // mock-injected test, the local position alone is the best signal.
-            return
-        }
-        concreteRegistry.syncLocation(for: book) { [weak self, weak playbackModel = playbackModelRef, localPosition] (remoteBookmark: AudioBookmark?) in
-            guard let remoteBookmark = remoteBookmark,
-                  let remote = TrackPosition(
-                    audioBookmark: remoteBookmark,
-                    toc: audiobookRef.tableOfContents.toc,
-                    tracks: audiobookRef.tableOfContents.tracks
-                  ) else {
-                Log.debug(#file, "No remote position found - continuing with local position")
-                return
-            }
-            let formatter = ISO8601DateFormatter()
-            let localSaveDate = localPosition.flatMap { formatter.date(from: $0.lastSavedTimeStamp) }
-            let remoteSaveDate = formatter.date(from: remote.lastSavedTimeStamp)
-            guard let remoteDate = remoteSaveDate else { return }
-            let shouldUseRemote: Bool
-            if let localDate = localSaveDate {
-                shouldUseRemote = remoteDate.timeIntervalSince(localDate) > 5.0
-            } else {
-                shouldUseRemote = true
-            }
-            guard shouldUseRemote else {
-                Log.debug(#file, "Local position is current - keeping local position")
-                return
-            }
-            Log.info(#file, "📡 Remote position is newer - seeking to remote: track=\(remote.track.key), timestamp=\(remote.timestamp)")
-            Task { @MainActor in
-                // Route through session manager so we seek the CURRENT manager,
-                // not a stale one if the user switched books mid-sync.
-                guard let self = self,
-                      let currentMgr = self.manager,
-                      self.currentBook?.identifier == bookId else {
-                    return
-                }
-                playbackModel?.currentLocation = remote
-                // Toolkit T1 migration: player.play(at:) is now `async throws`.
-                Task { @MainActor in
-                    do {
-                        try await currentMgr.audiobook.player.play(at: remote)
-                    } catch {
-                        Log.error(#file, "Failed to seek to remote position: \(error)")
-                    }
-                }
-            }
-        }
-
         Task { @MainActor [weak playbackModel = loaded.playbackModel] in
             try? await Task.sleep(nanoseconds: 3_500_000_000)
             playbackModel?.persistLocation()
         }
+    }
+
+    // MARK: - Position resolve before play (PP-4542)
+
+    /// PP-4542: maximum time to wait for the server-synced position before
+    /// opening at the local/beginning position, so a slow backend can't stall
+    /// audiobook open. Audiobook bookmarks normally return in ~0.5s; this is the
+    /// rare-slow-case safety valve.
+    static let remotePositionResolveTimeout: TimeInterval = 2.5
+
+    /// Resolves the position to OPEN at: awaits the remote bookmark (bounded) and
+    /// prefers it over the local position only when meaningfully newer (the same
+    /// >5s rule the prior post-play seek used), otherwise returns `fallback`
+    /// (local-or-beginning). Running this BEFORE the first play is what removes
+    /// the "jump" — the player opens directly at the resolved spot.
+    @MainActor
+    private func resolveInitialPosition(
+        for book: TPPBook,
+        audiobook: Audiobook,
+        localPosition: TrackPosition?,
+        fallback: TrackPosition
+    ) async -> TrackPosition {
+        guard let remote = await awaitRemotePosition(
+            for: book,
+            audiobook: audiobook,
+            timeout: Self.remotePositionResolveTimeout
+        ) else {
+            Log.debug(#file, "No remote position resolved before play — opening at local position")
+            return fallback
+        }
+        guard Self.preferRemotePosition(local: localPosition, remote: remote) else {
+            Log.debug(#file, "Local position is current — opening at local position")
+            return fallback
+        }
+        Log.info(#file, "📡 Opening at remote position (newer than local): track=\(remote.track.key), timestamp=\(remote.timestamp)")
+        return remote
+    }
+
+    /// Bounded await of the server-synced position. Resolves to the remote
+    /// `TrackPosition` if the bookmark sync returns one within `timeout`, else
+    /// `nil` (slow/again backend or no remote bookmark). Single-resume guarded so
+    /// the timeout and the sync callback race safely. No-ops to `nil` for a
+    /// mock-injected registry (tests), so the local position alone drives open.
+    @MainActor
+    private func awaitRemotePosition(
+        for book: TPPBook,
+        audiobook: Audiobook,
+        timeout: TimeInterval
+    ) async -> TrackPosition? {
+        guard let concreteRegistry = bookRegistry as? TPPBookRegistry else { return nil }
+        let toc = audiobook.tableOfContents
+        return await withCheckedContinuation { (cont: CheckedContinuation<TrackPosition?, Never>) in
+            let once = PositionResolveOnce()
+            concreteRegistry.syncLocation(for: book) { (remoteBookmark: AudioBookmark?) in
+                let position = remoteBookmark.flatMap {
+                    TrackPosition(audioBookmark: $0, toc: toc.toc, tracks: toc.tracks)
+                }
+                once.fire { cont.resume(returning: position) }
+            }
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: UInt64(max(0, timeout) * 1_000_000_000))
+                once.fire { cont.resume(returning: nil) }
+            }
+        }
+    }
+
+    /// True iff `remote` should be preferred over `local` — i.e. the remote save
+    /// is >5s newer (no local ⇒ prefer remote). Pure/static so it's unit-pinnable.
+    static func preferRemotePosition(local: TrackPosition?, remote: TrackPosition) -> Bool {
+        let formatter = ISO8601DateFormatter()
+        guard let remoteDate = formatter.date(from: remote.lastSavedTimeStamp) else { return false }
+        guard let local = local,
+              let localDate = formatter.date(from: local.lastSavedTimeStamp) else {
+            return true
+        }
+        return remoteDate.timeIntervalSince(localDate) > 5.0
     }
 
     // MARK: - Readiness gate wiring (F-011)
@@ -1566,6 +1685,26 @@ public final class AudiobookSessionManager: ObservableObject {
         return status == 410
     }
 
+    /// PP-4542: decides whether a `.playbackFailed` should trigger ONE silent
+    /// auto-reopen before surfacing the "Audiobook Unavailable" alert. Pure so
+    /// the per-session bound is unit-pinned without driving the auth-gated open
+    /// flow. Distributor-agnostic on purpose: the regression (Readium 3.9.0
+    /// rangeOutOfBounds on a not-yet-materialized LCP package) is a cold-load
+    /// race that any first-open can hit, and a reopen demonstrably recovers it.
+    /// - `hasEverStartedPlayback == false`: only a COLD-load failure (playback
+    ///   never started this session) is a candidate; a mid-playback failure is a
+    ///   different surface and must NOT silently reopen.
+    /// - `hasCurrentBook`: there must be a book to reopen.
+    /// - `alreadyAttempted == false`: bounded to one reopen per book per session
+    ///   so a genuinely persistent failure reaches the alert instead of looping.
+    static func shouldAutoReopenOnColdLoadFailure(
+        hasEverStartedPlayback: Bool,
+        hasCurrentBook: Bool,
+        alreadyAttempted: Bool
+    ) -> Bool {
+        !hasEverStartedPlayback && hasCurrentBook && !alreadyAttempted
+    }
+
     /// Extracts an HTTP status code from a playback error. The toolkit's network
     /// layer stamps `userInfo["httpStatusCode"]` on download/streaming failures
     /// (`OpenAccessDownloadTask`); we also walk one level of the
@@ -1580,6 +1719,52 @@ public final class AudiobookSessionManager: ObservableObject {
         return nil
     }
 #endif
+
+    /// True once the LCP audiobook's full content package is on disk. The `.lcpa`
+    /// is moved into place atomically on download completion
+    /// (BackgroundDownloadHandler.replaceBook), so file existence == content
+    /// complete — the same signal `LCPAdapter.prepareLCPSource` uses to prefer
+    /// the reliable local path over streaming.
+    static func audiobookContentIsLocal(_ bookId: String) -> Bool {
+        guard let url = AppContainer.production().downloadCenter.fileUrl(for: bookId) else { return false }
+        return FileManager.default.fileExists(atPath: url.path)
+    }
+
+    /// Awaits a freshly-borrowed audiobook's content download landing on disk by
+    /// polling existence of the local package. The download is already in flight
+    /// (it auto-starts on borrow), so this is a *wait*, not a trigger. Bounded so
+    /// a stalled/failed download can't hold the loading state forever; on timeout
+    /// the caller surfaces the unavailable alert (i.e. no worse than today, just
+    /// after giving the in-flight download a chance to finish).
+    static func awaitAudiobookContentLocal(
+        _ bookId: String,
+        timeout: TimeInterval = 180,
+        pollInterval: TimeInterval = 0.5
+    ) async -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if audiobookContentIsLocal(bookId) { return true }
+            try? await Task.sleep(nanoseconds: UInt64(pollInterval * 1_000_000_000))
+        }
+        return audiobookContentIsLocal(bookId)
+    }
+
+    /// Dismisses the player UI and shows the honest "couldn't play right now"
+    /// alert used by the cold-load failure paths. Factored so the immediate
+    /// failure path and the PP-4542 await-local-content timeout path present an
+    /// identical experience.
+    private func dismissAndPresentColdLoadUnavailable() async {
+        // Cold-load failure path: the player never started, so there is no
+        // meaningful "live position" to persist.
+        await self.stopPlayback(dismissPhoneUI: true, persistFinalPosition: false)
+        await MainActor.run {
+            let alert = TPPAlertUtils.alert(
+                title: NSLocalizedString("Audiobook Unavailable", comment: "Title when a cold-load playback failure dismisses the player"),
+                message: NSLocalizedString("This audiobook couldn't be played right now. The content may be temporarily unavailable — please try again later or contact your library.", comment: "Message when a cold-load playback failure dismisses the player")
+            )
+            TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
+        }
+    }
 
     private func validateRequirements(for book: TPPBook) async -> AudiobookSessionError? {
         if !(await isUserAuthenticated()) {
@@ -1738,6 +1923,18 @@ public final class AudiobookSessionManager: ObservableObject {
             playbackStatePublisher.send(state)
 
         case .playbackFailed(let position, let error):
+            // PP-4542 (A): if we're already parked awaiting this book's content
+            // download (a fresh-borrow streaming failure), swallow the streaming
+            // player's follow-on failure storm. Without this, a second
+            // `.playbackFailed` slips past the auto-reopen guard (alreadyAttempted
+            // is now true) and dead-ends to the "Unavailable" alert while the
+            // await is still in flight — which is exactly what defeated the wait
+            // in the field repro.
+            if awaitingContentDownloadBookIds.contains(bookId) {
+                Log.info(#file, "Ignoring follow-on playback failure for \(bookId) — already awaiting content download (PP-4542)")
+                return
+            }
+
             Log.error(#file, "Playback failed at position: \(String(describing: position))")
             isPlaying = false
             state = .error(bookId: bookId, message: "Playback failed")
@@ -1811,31 +2008,93 @@ public final class AudiobookSessionManager: ObservableObject {
             }
 #endif
 
-            errorPublisher.send(.unknown("Playback failed"))
+            // PP-4542: cold-load auto-recovery. A first cold open of an LCP
+            // audiobook can fail transiently because the encrypted package
+            // isn't fully materialized yet — the toolkit's resource loader
+            // reads a byte-range past the not-yet-complete ZIP and surfaces
+            // ReadiumZIPFoundation rangeOutOfBounds (a Readium 3.9.0 / PP-4340
+            // regression). Re-opening succeeds once the data has landed, which
+            // is exactly what users discover by re-tapping. Do ONE re-open
+            // automatically before surfacing any error. Bounded to one attempt
+            // per book per session (mirrors the OverDrive refulfill guard) so a
+            // genuinely persistent failure can't loop and still reaches the
+            // alert below. The toolkit-side retry (LCPResourceLoaderDelegate) is
+            // the primary fix; this is the belt-and-suspenders guard for
+            // cold-load failures it doesn't absorb.
+            if Self.shouldAutoReopenOnColdLoadFailure(
+                   hasEverStartedPlayback: hasEverStartedPlayback,
+                   hasCurrentBook: currentBook != nil,
+                   alreadyAttempted: coldLoadReopenAttemptedBookIds.contains(bookId)
+               ), let book = currentBook {
+                coldLoadReopenAttemptedBookIds.insert(bookId)
 
-            // Cold-load failure: playback never started for this session, so
-            // the player UI is just a stuck slider showing 0:00 over a dead
-            // AVPlayerItem. Dismiss the player and surface an honest "not
-            // playable right now" alert — NOT a retry offer, since these
-            // failures are typically persistent (distributor auth issues,
-            // yanked content, etc.) and a retry button would just invite
-            // rage-tapping for no outcome. If the problem was truly
-            // transient the user can re-tap the book themselves; that's
-            // natural UX, not a fake recovery affordance.
-            if !hasEverStartedPlayback, currentBook != nil {
-                Log.info(#file, "Cold-load failure detected — dismissing player UI and showing unavailable alert")
+                // PP-4542 (A): the freshly-borrowed LCP audiobook case. A book is
+                // marked download-successful the instant the tiny .lcpl license
+                // lands, but the full .lcpa content keeps downloading in the
+                // background and only lands atomically on completion. Until then,
+                // the open *streams* — and streaming a fresh borrow is unreliable
+                // (the 3.2.0-only "Audiobook Unavailable"; root cause tracked as
+                // B). Re-opening the SAME not-ready stream a few ms later just
+                // fails again, even though simply waiting for the in-flight
+                // download would play perfectly from the local path (exactly what
+                // users discover by re-tapping later). So when the content isn't
+                // on disk yet, hold a loading state and re-open from the reliable
+                // local path the moment the download lands — instead of dead-
+                // ending to the alert.
+                // Cannot stack with the upfront `#if LCP` gate in openAudiobook:
+                // that gate fires BEFORE any playback attempt and `return`s on
+                // timeout (no loader.load → no streaming → no .playbackFailed),
+                // and on success the content is local so the guard below is
+                // false. This reactive wait therefore only covers non-LCP books
+                // downloading mid-open — a single 180s window, never 180+180.
+                if !Self.audiobookContentIsLocal(book.identifier) {
+                    Log.info(#file, "Cold-load failure while content still downloading — awaiting local content before re-opening (PP-4542)")
+                    // Park this book so the streaming player's follow-on failure
+                    // storm is swallowed (see the guard at the top of this case)
+                    // instead of racing past us to the "Unavailable" alert.
+                    awaitingContentDownloadBookIds.insert(book.identifier)
+                    state = .loading(bookId: book.identifier)
+                    playbackStatePublisher.send(state)
+                    Task { [weak self] in
+                        guard let self else { return }
+                        let becameLocal = await Self.awaitAudiobookContentLocal(book.identifier)
+                        // The wait is over — stop swallowing failures for this book
+                        // so the re-open's own success/failure drives the UI.
+                        self.awaitingContentDownloadBookIds.remove(book.identifier)
+                        guard self.currentBook?.identifier == book.identifier else { return }
+                        if becameLocal {
+                            Log.info(#file, "Content download landed — re-opening audiobook from local path")
+                            _ = await self.openAudiobook(book, startPlaying: true, forceRefulfill: false, isColdLoadRecovery: true)
+                        } else {
+                            Log.info(#file, "Content download did not land within wait window — surfacing unavailable alert")
+                            await self.dismissAndPresentColdLoadUnavailable()
+                        }
+                    }
+                    return
+                }
+
+                Log.info(#file, "Cold-load failure detected — attempting one automatic re-open before surfacing alert")
                 Task { [weak self] in
                     guard let self else { return }
-                    // Cold-load failure path: the player never started, so
-                    // there is no meaningful "live position" to persist.
-                    await self.stopPlayback(dismissPhoneUI: true, persistFinalPosition: false)
-                    await MainActor.run {
-                        let alert = TPPAlertUtils.alert(
-                            title: NSLocalizedString("Audiobook Unavailable", comment: "Title when a cold-load playback failure dismisses the player"),
-                            message: NSLocalizedString("This audiobook couldn't be played right now. The content may be temporarily unavailable — please try again later or contact your library.", comment: "Message when a cold-load playback failure dismisses the player")
-                        )
-                        TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
-                    }
+                    guard self.currentBook?.identifier == book.identifier else { return }
+                    _ = await self.openAudiobook(book, startPlaying: true, forceRefulfill: false, isColdLoadRecovery: true)
+                }
+                return
+            }
+
+            errorPublisher.send(.unknown("Playback failed"))
+
+            // Cold-load failure that persisted past the one silent auto-reopen
+            // above (or a failure after playback had already started): dismiss
+            // the player and surface an honest "not playable right now" alert.
+            // NOT a retry offer — we already retried once silently; a button
+            // would just invite rage-tapping for no outcome. The user can re-tap
+            // the book themselves; that's natural UX, not a fake affordance.
+            if !hasEverStartedPlayback, currentBook != nil {
+                Log.info(#file, "Cold-load failure persisted after auto re-open — dismissing player UI and showing unavailable alert")
+                Task { [weak self] in
+                    guard let self else { return }
+                    await self.dismissAndPresentColdLoadUnavailable()
                 }
             }
 
@@ -1905,5 +2164,24 @@ public final class AudiobookSessionManager: ObservableObject {
             isPlaying: isPlaying,
             playbackRate: audiobook.player.playbackRate
         )
+    }
+}
+
+/// One-shot resume guard (PP-4542): ensures a `CheckedContinuation` is resumed
+/// exactly once when a bounded await races a timeout against a completion
+/// callback. NSLock-guarded so the (possibly background-thread) sync callback and
+/// the MainActor timeout can race safely without a double-resume trap.
+private final class PositionResolveOnce {
+    private let lock = NSLock()
+    private var fired = false
+    func fire(_ block: () -> Void) {
+        lock.lock()
+        if fired {
+            lock.unlock()
+            return
+        }
+        fired = true
+        lock.unlock()
+        block()
     }
 }
