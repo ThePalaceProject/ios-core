@@ -64,8 +64,8 @@ speed the re-record even though it is not a drop-in.
 - [ ] `reader2-toc-navigate`
 
 ### `audiobook` (5)
-- [ ] `audiobook-cold-load-first-open`  ← NEW 2026-06-17 (PP-4542/PP-4613): first-cold-open of a fresh-borrow LCP audiobook must not dead-end on "Audiobook Unavailable". Spec authored; needs a capture staged DURING the .lcpa download.
-- [ ] `audiobook-download-indicator-stateful`
+- [ ] `audiobook-cold-load-first-open`  ← NEW 2026-06-17 (PP-4542/PP-4613): first-cold-open of a fresh-borrow LCP audiobook must not dead-end on "Audiobook Unavailable". Spec authored; staging now DETERMINISTIC (forge_streaming_state recipe = "ready", no longer PHASE2) — capture is unblocked and is the only remaining step.
+- [ ] `audiobook-download-indicator-stateful`  (stays PHASE2 — needs a live active-download %, not solved by the content-delete forge)
 - [ ] `audiobook-scrubber-drag`
 - [ ] `audiobook-skip-forward`
 - [ ] `audiobook-toc-seek`

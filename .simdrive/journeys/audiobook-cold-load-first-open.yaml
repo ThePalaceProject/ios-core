@@ -29,16 +29,30 @@ scenario:
     - "If the audiobook's content is already fully cached, the cold-open trivially succeeds from local and the journey false-passes (it isn't exercising the streaming-while-downloading path)."
     - "Reset: in My Books, tap the audiobook -> Return -> re-borrow from the catalog -> run this journey IMMEDIATELY, before the content download completes."
 
+  staging:
+    recipe: audiobook-cold-load-first-open   # scripts/regression_staging.py (status: ready)
+    note: |
+      DETERMINISTIC staging via the `forge_streaming_state` primitive — no longer
+      needs to race the live ~1.5s download window (the reason this was PHASE2).
+      The recipe signs into A1QA, lands on My Books, then deletes the downloaded
+      LCP audiobook's .lcpa CONTENT file while keeping its .lcpl license + the
+      registry's .downloadSuccessful marker. Opening then routes through the LCP
+      streaming path — the exact PP-4613 surface — reproducibly. (registry-state
+      and content-file presence are decoupled: a book is marked downloadSuccessful
+      when the tiny .lcpl lands, independent of the .lcpa content.)
+
   recording:
     path: "~/.simdrive/recordings/audiobook-cold-load-first-open/recording.yaml"
     captured_with: "PENDING_CAPTURE"
     captured_on: "PENDING_CAPTURE"
     note: |
-      Spec authored 2026-06-17 alongside the PP-4542/#1094 fix. Capture on the
-      target sim with record_start/record_stop once a fresh-borrow LCP audiobook
-      is staged mid-download. The structural_checks below are the load-bearing
-      assertions and are independent of stable_id drift; the NEGATIVE check
-      (no "Audiobook Unavailable" alert) is the one that fails on the regression.
+      Spec authored 2026-06-17 alongside the PP-4542/#1094 fix; staging made
+      deterministic via forge_streaming_state (see `staging` above). Capture the
+      HID trace on the target sim: run the staging recipe, then record_start →
+      tap My Books → tap Listen → settle → record_stop. The structural_checks
+      below are the load-bearing assertions and are independent of stable_id
+      drift; the NEGATIVE check (no "Audiobook Unavailable" alert) is the one
+      that fails on the regression.
 
   steps:
     - { id: tap_my_books, description: "Tap 'My Books' tab",                                       tap_target: { text: "My Books" } }
@@ -98,6 +112,7 @@ scenario:
     isRefreshInProgressError); this journey is the end-to-end backstop.
 
   known_issues:
-    - "Stateful + time-sensitive: requires a fresh-borrow LCP audiobook captured DURING its content download. If the download completes before the 8s settle, the open succeeds from local and the journey passes without exercising the streaming path — re-borrow to reset."
-    - "Does not assert WHICH LCP title is open (A1QA ODL feed contents change) — book-agnostic by design; any qualifying still-downloading LCP audiobook satisfies it."
-    - "If the simulator is fully offline, the .lcpa never downloads AND the license fetch may itself fail differently; verify the sim has network so the open genuinely routes through the streaming-while-downloading path the regression lives on."
+    - "No longer time-sensitive: the forge_streaming_state staging primitive deletes the .lcpa deterministically, so the not-yet-local window no longer depends on catching a live ~1.5s download. (Previously PHASE2 for exactly that reason.)"
+    - "Does not assert WHICH LCP title is open (A1QA ODL feed contents change) — book-agnostic by design; the forge content-strips every downloaded LCP audiobook, so whichever one My Books shows is exercised."
+    - "forge_streaming_state strips the LOCAL .lcpa cache (not the loan) — a re-download or A1QA fixture re-provision restores it; it does NOT return/mutate the read-only standing fixture."
+    - "Sibling journey audiobook-download-indicator-stateful stays PHASE2 — it needs a genuinely ACTIVE download to show 'Downloading… %', which the content-delete forge cannot produce (a different mechanism: a per-sim download throttle / progress-injection seam)."
