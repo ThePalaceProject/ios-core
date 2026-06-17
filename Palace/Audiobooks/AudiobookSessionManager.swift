@@ -397,6 +397,14 @@ public final class AudiobookSessionManager: ObservableObject {
     /// ONCE per playback session and never loops on the shared handler.
     private var overdriveRefulfillAttemptedBookIds = Set<String>()
 
+    /// PP-4542: per-session bound on the cold-load auto-reopen recovery. A book
+    /// id is inserted when its automatic re-open fires and removed when the user
+    /// initiates a fresh open — so a cold-load failure auto-reopens at most ONCE
+    /// per playback session and a genuinely persistent failure surfaces the
+    /// "Audiobook Unavailable" alert instead of looping. Visibility is internal
+    /// (not private) so the cold-load recovery test can assert the bound.
+    var coldLoadReopenAttemptedBookIds = Set<String>()
+
     /// Loader factory — recovery seam (WS-3). The default closure is
     /// byte-equivalent to the inline `AudiobookLoader(forceRefulfill:)` it
     /// replaces, so production behavior is unchanged. `private(set)` so only
@@ -423,6 +431,7 @@ public final class AudiobookSessionManager: ObservableObject {
         // (forceRefulfill) must NOT reset it, or the bound never holds.
         if !forceRefulfill {
             overdriveRefulfillAttemptedBookIds.remove(book.identifier)
+            coldLoadReopenAttemptedBookIds.remove(book.identifier)
         }
 
         if case .loading(let loadingId) = state, loadingId == book.identifier {
@@ -1566,6 +1575,26 @@ public final class AudiobookSessionManager: ObservableObject {
         return status == 410
     }
 
+    /// PP-4542: decides whether a `.playbackFailed` should trigger ONE silent
+    /// auto-reopen before surfacing the "Audiobook Unavailable" alert. Pure so
+    /// the per-session bound is unit-pinned without driving the auth-gated open
+    /// flow. Distributor-agnostic on purpose: the regression (Readium 3.9.0
+    /// rangeOutOfBounds on a not-yet-materialized LCP package) is a cold-load
+    /// race that any first-open can hit, and a reopen demonstrably recovers it.
+    /// - `hasEverStartedPlayback == false`: only a COLD-load failure (playback
+    ///   never started this session) is a candidate; a mid-playback failure is a
+    ///   different surface and must NOT silently reopen.
+    /// - `hasCurrentBook`: there must be a book to reopen.
+    /// - `alreadyAttempted == false`: bounded to one reopen per book per session
+    ///   so a genuinely persistent failure reaches the alert instead of looping.
+    static func shouldAutoReopenOnColdLoadFailure(
+        hasEverStartedPlayback: Bool,
+        hasCurrentBook: Bool,
+        alreadyAttempted: Bool
+    ) -> Bool {
+        !hasEverStartedPlayback && hasCurrentBook && !alreadyAttempted
+    }
+
     /// Extracts an HTTP status code from a playback error. The toolkit's network
     /// layer stamps `userInfo["httpStatusCode"]` on download/streaming failures
     /// (`OpenAccessDownloadTask`); we also walk one level of the
@@ -1811,19 +1840,44 @@ public final class AudiobookSessionManager: ObservableObject {
             }
 #endif
 
+            // PP-4542: cold-load auto-recovery. A first cold open of an LCP
+            // audiobook can fail transiently because the encrypted package
+            // isn't fully materialized yet — the toolkit's resource loader
+            // reads a byte-range past the not-yet-complete ZIP and surfaces
+            // ReadiumZIPFoundation rangeOutOfBounds (a Readium 3.9.0 / PP-4340
+            // regression). Re-opening succeeds once the data has landed, which
+            // is exactly what users discover by re-tapping. Do ONE re-open
+            // automatically before surfacing any error. Bounded to one attempt
+            // per book per session (mirrors the OverDrive refulfill guard) so a
+            // genuinely persistent failure can't loop and still reaches the
+            // alert below. The toolkit-side retry (LCPResourceLoaderDelegate) is
+            // the primary fix; this is the belt-and-suspenders guard for
+            // cold-load failures it doesn't absorb.
+            if Self.shouldAutoReopenOnColdLoadFailure(
+                   hasEverStartedPlayback: hasEverStartedPlayback,
+                   hasCurrentBook: currentBook != nil,
+                   alreadyAttempted: coldLoadReopenAttemptedBookIds.contains(bookId)
+               ), let book = currentBook {
+                coldLoadReopenAttemptedBookIds.insert(bookId)
+                Log.info(#file, "Cold-load failure detected — attempting one automatic re-open before surfacing alert")
+                Task { [weak self] in
+                    guard let self else { return }
+                    guard self.currentBook?.identifier == book.identifier else { return }
+                    _ = await self.openAudiobook(book, startPlaying: true)
+                }
+                return
+            }
+
             errorPublisher.send(.unknown("Playback failed"))
 
-            // Cold-load failure: playback never started for this session, so
-            // the player UI is just a stuck slider showing 0:00 over a dead
-            // AVPlayerItem. Dismiss the player and surface an honest "not
-            // playable right now" alert — NOT a retry offer, since these
-            // failures are typically persistent (distributor auth issues,
-            // yanked content, etc.) and a retry button would just invite
-            // rage-tapping for no outcome. If the problem was truly
-            // transient the user can re-tap the book themselves; that's
-            // natural UX, not a fake recovery affordance.
+            // Cold-load failure that persisted past the one silent auto-reopen
+            // above (or a failure after playback had already started): dismiss
+            // the player and surface an honest "not playable right now" alert.
+            // NOT a retry offer — we already retried once silently; a button
+            // would just invite rage-tapping for no outcome. The user can re-tap
+            // the book themselves; that's natural UX, not a fake affordance.
             if !hasEverStartedPlayback, currentBook != nil {
-                Log.info(#file, "Cold-load failure detected — dismissing player UI and showing unavailable alert")
+                Log.info(#file, "Cold-load failure persisted after auto re-open — dismissing player UI and showing unavailable alert")
                 Task { [weak self] in
                     guard let self else { return }
                     // Cold-load failure path: the player never started, so
