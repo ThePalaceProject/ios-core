@@ -2041,6 +2041,12 @@ public final class AudiobookSessionManager: ObservableObject {
                 // on disk yet, hold a loading state and re-open from the reliable
                 // local path the moment the download lands — instead of dead-
                 // ending to the alert.
+                // Cannot stack with the upfront `#if LCP` gate in openAudiobook:
+                // that gate fires BEFORE any playback attempt and `return`s on
+                // timeout (no loader.load → no streaming → no .playbackFailed),
+                // and on success the content is local so the guard below is
+                // false. This reactive wait therefore only covers non-LCP books
+                // downloading mid-open — a single 180s window, never 180+180.
                 if !Self.audiobookContentIsLocal(book.identifier) {
                     Log.info(#file, "Cold-load failure while content still downloading — awaiting local content before re-opening (PP-4542)")
                     // Park this book so the streaming player's follow-on failure

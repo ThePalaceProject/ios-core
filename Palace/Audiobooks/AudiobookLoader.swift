@@ -221,19 +221,23 @@ final class AudiobookLoader {
         pollInterval: TimeInterval = 0.15,
         completion: @escaping (Bool) -> Void
     ) {
-        let deadline = Date().addingTimeInterval(timeout)
-        func poll() {
-            if !AppContainer.production().accountsManager.currentUserAccount.authTokenHasExpired {
-                completion(true)
-                return
+        // Structured-concurrency poll (Task.sleep, not recursive GCD) to keep
+        // the audiobook open path off GCD per adr_a265ec76, mirroring the
+        // sibling poll in AudiobookSessionManager.awaitAudiobookContentLocal.
+        Task {
+            let deadline = Date().addingTimeInterval(timeout)
+            while true {
+                if !AppContainer.production().accountsManager.currentUserAccount.authTokenHasExpired {
+                    completion(true)
+                    return
+                }
+                if Date() >= deadline {
+                    completion(false)
+                    return
+                }
+                try? await Task.sleep(nanoseconds: UInt64(max(0, pollInterval) * 1_000_000_000))
             }
-            if Date() >= deadline {
-                completion(false)
-                return
-            }
-            DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + pollInterval, execute: poll)
         }
-        poll()
     }
 
     private func logAccountDiagnostics(userAccount: TPPUserAccount, book: TPPBook) {

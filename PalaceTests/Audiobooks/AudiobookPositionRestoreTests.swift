@@ -319,4 +319,72 @@ final class AudiobookPositionRestoreTests: XCTestCase {
         let pub = OPDS2Publication(links: [], metadata: metadata, images: nil)
         return Account(publication: pub, imageCache: MockImageCache())
     }
+
+    // MARK: - preferRemotePosition (the >5s remote-vs-local rule)
+    //
+    // PP-4542: the open path was reworked so remote-position resolution gates
+    // the FIRST play (was a post-play seek). The decision of whether to honor
+    // the remote save over the local one funnels through the pure static
+    // `AudiobookSessionManager.preferRemotePosition(local:remote:)` — "prefer
+    // remote iff it was saved >5s newer; no/unparseable local ⇒ prefer remote;
+    // unparseable remote ⇒ keep local." This static changed open-time behavior
+    // on a critical-path FR but shipped unpinned (flagged in review). The table
+    // below kills every branch + the 5.0 boundary literal.
+    //
+    // Production parses with a default `ISO8601DateFormatter` (whole-second
+    // precision — no `.withFractionalSeconds`), so all fixtures use whole
+    // seconds; sub-second deltas wouldn't round-trip the parser.
+
+    private func makePosition(savedAt: String, trackIndex: Int = 0) -> TrackPosition {
+        var position = TrackPosition(track: tracks.tracks[trackIndex], timestamp: 0, tracks: tracks)
+        position.lastSavedTimeStamp = savedAt
+        return position
+    }
+
+    func testPreferRemote_unparseableRemoteTimestamp_keepsLocal() {
+        // Remote save we can't date → can't prove it's newer → keep local.
+        let local = makePosition(savedAt: "2026-01-01T00:00:00Z")
+        let remote = makePosition(savedAt: "garbage-not-a-date")
+        XCTAssertFalse(AudiobookSessionManager.preferRemotePosition(local: local, remote: remote))
+    }
+
+    func testPreferRemote_noLocalPosition_prefersRemote() {
+        // Nothing local to lose → take the remote save.
+        let remote = makePosition(savedAt: "2026-01-01T00:00:00Z")
+        XCTAssertTrue(AudiobookSessionManager.preferRemotePosition(local: nil, remote: remote))
+    }
+
+    func testPreferRemote_unparseableLocalTimestamp_prefersRemote() {
+        // Local exists but its timestamp is corrupt → trust the dateable remote.
+        let local = makePosition(savedAt: "not-iso8601")
+        let remote = makePosition(savedAt: "2026-01-01T00:00:00Z")
+        XCTAssertTrue(AudiobookSessionManager.preferRemotePosition(local: local, remote: remote))
+    }
+
+    func testPreferRemote_remoteNewerByMoreThan5s_prefersRemote() {
+        let local = makePosition(savedAt: "2026-01-01T00:00:00Z")
+        let remote = makePosition(savedAt: "2026-01-01T00:00:06Z") // +6s
+        XCTAssertTrue(AudiobookSessionManager.preferRemotePosition(local: local, remote: remote))
+    }
+
+    func testPreferRemote_remoteNewerByExactly5s_keepsLocal() {
+        // Boundary: rule is strict `> 5.0`, so exactly 5s does NOT prefer remote.
+        // Kills a `>` → `>=` mutation of the threshold comparison.
+        let local = makePosition(savedAt: "2026-01-01T00:00:00Z")
+        let remote = makePosition(savedAt: "2026-01-01T00:00:05Z") // +5s exactly
+        XCTAssertFalse(AudiobookSessionManager.preferRemotePosition(local: local, remote: remote))
+    }
+
+    func testPreferRemote_remoteNewerByLessThan5s_keepsLocal() {
+        let local = makePosition(savedAt: "2026-01-01T00:00:00Z")
+        let remote = makePosition(savedAt: "2026-01-01T00:00:03Z") // +3s
+        XCTAssertFalse(AudiobookSessionManager.preferRemotePosition(local: local, remote: remote))
+    }
+
+    func testPreferRemote_remoteOlderThanLocal_keepsLocal() {
+        // Negative delta → never prefer remote (kills an `abs()`/sign mutation).
+        let local = makePosition(savedAt: "2026-01-01T00:00:10Z")
+        let remote = makePosition(savedAt: "2026-01-01T00:00:00Z") // -10s
+        XCTAssertFalse(AudiobookSessionManager.preferRemotePosition(local: local, remote: remote))
+    }
 }
