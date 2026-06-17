@@ -6,12 +6,12 @@
 > Snapshot @ develop `e6307c8b2`, 2026-06-12. Step-parity verdicts added 2026-06-12.
 
 ## Headline
-- **24** journeys referenced by the area manifest.
+- **25** journeys referenced by the area manifest (was 24; +`audiobook-cold-load-first-open`, added 2026-06-17 with the PP-4542/#1094 fix to close the first-cold-open gap that let PP-4613 ship un-caught).
 - **1** has a local recording (replayable today): `PP-4161-streaming-html-reader`.
-- **23** are missing (require a fresh capture).
+- **24** are missing (require a fresh capture).
 - **0 alias re-points possible** — all 3 alias-candidates were step-parity-checked and REJECTED (see below).
 
-**Effective coverage: 1/24 (4%).** Recording is the single biggest lever on regression coverage.
+**Effective coverage: 1/25 (4%).** Recording is the single biggest lever on regression coverage.
 
 ## Per area-group
 | Area group | Total | Present | Missing |
@@ -19,10 +19,10 @@
 | `auth` | 5 | 0 | 5 |
 | `circulation` | 3 | 0 | 3 |
 | `reading` | 6 | 1 | 5 |
-| `audiobook` | 4 | 0 | 4 |
+| `audiobook` | 5 | 0 | 5 |
 | `catalog` | 4 | 0 | 4 |
 | `ui-nav` | 2 | 0 | 2 |
-| **TOTAL** | **24** | **1** | **23** |
+| **TOTAL** | **25** | **1** | **24** |
 
 ## Step-parity verdicts (alias-candidates — all REJECTED)
 The fuzzy name-match surfaced 3 manifest journeys whose flow a legacy
@@ -63,7 +63,8 @@ speed the re-record even though it is not a drop-in.
 - [ ] `reader2-settings-sheet`
 - [ ] `reader2-toc-navigate`
 
-### `audiobook` (4)
+### `audiobook` (5)
+- [ ] `audiobook-cold-load-first-open`  ← NEW 2026-06-17 (PP-4542/PP-4613): first-cold-open of a fresh-borrow LCP audiobook must not dead-end on "Audiobook Unavailable". Spec authored; needs a capture staged DURING the .lcpa download.
 - [ ] `audiobook-download-indicator-stateful`
 - [ ] `audiobook-scrubber-drag`
 - [ ] `audiobook-skip-forward`

@@ -995,9 +995,18 @@ STAGING_RECIPES: dict[str, list[tuple]] = {
 # The reader2 (5) + audiobook skip/toc/scrubber (3) journeys moved OUT of here into
 # STAGING_RECIPES: they use the A1QA STANDING fixture (pre-borrowed, read-only) and
 # need SIGN-IN ONLY — see the "reading"/"audiobook" recipes above.
+#   audiobook-cold-load-first-open — PHASE2, same blocker as the download-
+#       indicator: it must open a fresh-borrow LCP audiobook DURING its .lcpa
+#       download (the streaming-while-downloading path the PP-4613 regression
+#       lives on), but the only A1QA LCP audiobook downloads in ~1.5s on the sim
+#       with no clean per-sim throttle — so the not-yet-local window isn't
+#       deterministically stageable yet. Spec is the load-bearing artifact (the
+#       must_not_contain "Audiobook Unavailable" assertion); promote to a recipe
+#       once the in-flight-download harness exists.
 PHASE2_JOURNEYS = {
     "PP-4161-streaming-html-reader",
     "audiobook-download-indicator-stateful",
+    "audiobook-cold-load-first-open",
 }
 
 # Chairman-blocked (creds/OTP) — recipes pending.

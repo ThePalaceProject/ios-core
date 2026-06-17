@@ -111,6 +111,7 @@
         "E8"
       ],
       "journeys": [
+        "audiobook-cold-load-first-open",
         "audiobook-download-indicator-stateful",
         "audiobook-scrubber-drag",
         "audiobook-skip-forward",
@@ -168,6 +169,11 @@
     },
     "a1qa-sign-out": {
       "drm_type": "none",
+      "adobe_irreducible": false,
+      "substitutable": false
+    },
+    "audiobook-cold-load-first-open": {
+      "drm_type": "lcp",
       "adobe_irreducible": false,
       "substitutable": false
     },
