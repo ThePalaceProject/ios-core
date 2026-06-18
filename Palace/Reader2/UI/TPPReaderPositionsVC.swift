@@ -17,6 +17,10 @@ protocol TPPReaderPositionsDelegate: AnyObject {
     func positionsVC(_ positionsVC: TPPReaderPositionsVC, didSelectBookmark bookmark: TPPReadiumBookmark)
     func positionsVC(_ positionsVC: TPPReaderPositionsVC, didDeleteBookmark bookmark: TPPReadiumBookmark)
     func positionsVC(_ positionsVC: TPPReaderPositionsVC, didRequestSyncBookmarksWithCompletion completion: @escaping (_ success: Bool, _ bookmarks: [TPPReadiumBookmark]) -> Void)
+    /// The patron picked a print page to navigate to (from the Pages tab or the
+    /// "Go to Page" prompt). `location` is a `Locator`; `pageLabel` is the page's
+    /// display label, used for the VoiceOver arrival announcement.
+    func positionsVC(_ positionsVC: TPPReaderPositionsVC, didSelectPageLocation location: Any, pageLabel: String)
 }
 
 // MARK: -
@@ -41,11 +45,16 @@ class TPPReaderPositionsVC: UIViewController, UITableViewDataSource, UITableView
 
     var tocBusinessLogic: TPPReaderTOCBusinessLogic?
     var bookmarksBusinessLogic: TPPReaderBookmarksBusinessLogic?
+    /// Print page-list (DAISY nav-110). Optional: titles with no `page-list`
+    /// leave this nil/empty and the Pages tab is never shown.
+    var pageListBusinessLogic: TPPReaderPageListBusinessLogic?
     var retryTracker: UserRetryTracker = .shared
 
     private enum Tab: Int, CaseIterable {
         case toc = 0
         case bookmarks
+        /// Shown only when the publication exposes a print page-list.
+        case pages
 
         var title: String {
             switch self {
@@ -53,13 +62,34 @@ class TPPReaderPositionsVC: UIViewController, UITableViewDataSource, UITableView
                 return DisplayStrings.contents
             case .bookmarks:
                 return DisplayStrings.bookmarks
+            case .pages:
+                return DisplayStrings.pages
             }
         }
+    }
+
+    /// True when the publication exposes a print page-list and the Pages tab
+    /// should be inserted.
+    private var hasPagesTab: Bool {
+        pageListBusinessLogic?.hasPageList ?? false
     }
 
     private var currentTab: Tab {
         return Tab(rawValue: segmentedControl.selectedSegmentIndex) ?? .toc
     }
+
+    /// "Go to Page" prompt entry point, shown as the Pages-tab table header so
+    /// it works in both pushed and popover presentations (no nav-bar dependency).
+    private lazy var goToPageButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.setTitle(DisplayStrings.goToPage, for: .normal)
+        button.titleLabel?.font = .preferredFont(forTextStyle: .body)
+        button.titleLabel?.adjustsFontForContentSizeCategory = true
+        button.accessibilityLabel = DisplayStrings.goToPage
+        button.addTarget(self, action: #selector(promptGoToPage), for: .touchUpInside)
+        button.frame = CGRect(x: 0, y: 0, width: tableView.bounds.width, height: 44)
+        return button
+    }()
 
     /// Uses default storyboard.
     static func newInstance() -> TPPReaderPositionsVC {
@@ -74,6 +104,7 @@ class TPPReaderPositionsVC: UIViewController, UITableViewDataSource, UITableView
         tableView.reloadData()
 
         configRefreshControl()
+        updateTableHeader()
 
         switch currentTab {
         case .toc:
@@ -82,7 +113,14 @@ class TPPReaderPositionsVC: UIViewController, UITableViewDataSource, UITableView
             }
         case .bookmarks:
             tableView.isHidden = (bookmarksBusinessLogic?.bookmarks.count == 0)
+        case .pages:
+            tableView.isHidden = false
         }
+    }
+
+    /// Shows the "Go to Page" prompt as the table header only on the Pages tab.
+    private func updateTableHeader() {
+        tableView.tableHeaderView = (currentTab == .pages) ? goToPageButton : nil
     }
 
     // MARK: - UIViewController overrides
@@ -106,8 +144,18 @@ class TPPReaderPositionsVC: UIViewController, UITableViewDataSource, UITableView
         tableView.backgroundColor = view.backgroundColor
         noBookmarksLabel.textColor = readerColors.foregroundColor
 
-        Tab.allCases.forEach {
-            segmentedControl.setTitle($0.title, forSegmentAt: $0.rawValue)
+        // The storyboard ships Contents + Bookmarks. Insert the Pages segment
+        // only when the title has a print page-list (nav-110 AC: titles without
+        // one show no Pages tab at all).
+        if hasPagesTab, segmentedControl.numberOfSegments <= Tab.pages.rawValue {
+            segmentedControl.insertSegment(withTitle: Tab.pages.title,
+                                           at: Tab.pages.rawValue,
+                                           animated: false)
+        }
+        for index in 0..<segmentedControl.numberOfSegments {
+            if let tab = Tab(rawValue: index) {
+                segmentedControl.setTitle(tab.title, forSegmentAt: index)
+            }
         }
 
         if #available(iOS 13, *) {
@@ -123,6 +171,7 @@ class TPPReaderPositionsVC: UIViewController, UITableViewDataSource, UITableView
         }
 
         configRefreshControl()
+        updateTableHeader()
 
         navigationController?.navigationBar.barStyle = .default
         navigationController?.navigationBar.isTranslucent = true
@@ -143,6 +192,8 @@ class TPPReaderPositionsVC: UIViewController, UITableViewDataSource, UITableView
             return tocBusinessLogic?.tocElements.count ?? 0
         case .bookmarks:
             return bookmarksBusinessLogic?.bookmarks.count ?? 0
+        case .pages:
+            return pageListBusinessLogic?.pageCount ?? 0
         }
     }
 
@@ -174,6 +225,17 @@ class TPPReaderPositionsVC: UIViewController, UITableViewDataSource, UITableView
                             rfc3339DateString: bookmark.time)
             }
             return cell
+
+        case .pages:
+            // Reuse the TOC cell to render each print-page label as a flat list.
+            let cell = tableView.dequeueReusableCell(withIdentifier: reuseIdentifierTOC,
+                                                     for: indexPath)
+            if let cell = cell as? TPPReaderTOCCell,
+               let label = pageListBusinessLogic?.label(at: indexPath.row) {
+                cell.config(withTitle: label, nestingLevel: 0, isForCurrentChapter: false)
+                cell.accessibilityLabel = String(format: DisplayStrings.pageRowAccessibility, label)
+            }
+            return cell
         }
     }
 
@@ -186,6 +248,8 @@ class TPPReaderPositionsVC: UIViewController, UITableViewDataSource, UITableView
             return TPPConfiguration.defaultTOCRowHeight()
         case .bookmarks:
             return TPPConfiguration.defaultBookmarkRowHeight()
+        case .pages:
+            return TPPConfiguration.defaultTOCRowHeight()
         }
     }
 
@@ -221,6 +285,9 @@ class TPPReaderPositionsVC: UIViewController, UITableViewDataSource, UITableView
             } else {
                 return nil
             }
+
+        case .pages:
+            return pageListBusinessLogic?.label(at: indexPath.row) != nil ? indexPath : nil
         }
     }
 
@@ -247,6 +314,18 @@ class TPPReaderPositionsVC: UIViewController, UITableViewDataSource, UITableView
             if let bookmark = bizLogic.bookmark(at: indexPath.row) {
                 delegate?.positionsVC(self, didSelectBookmark: bookmark)
             }
+
+        case .pages:
+            guard let bizLogic = pageListBusinessLogic,
+                  let label = bizLogic.label(at: indexPath.row) else { return }
+
+            Task {
+                if let locator = await bizLogic.locator(at: indexPath.row) {
+                    DispatchQueue.main.async {
+                        self.delegate?.positionsVC(self, didSelectPageLocation: locator, pageLabel: label)
+                    }
+                }
+            }
         }
     }
 
@@ -257,6 +336,8 @@ class TPPReaderPositionsVC: UIViewController, UITableViewDataSource, UITableView
             return .none
         case .bookmarks:
             return .delete
+        case .pages:
+            return .none
         }
     }
 
@@ -266,6 +347,8 @@ class TPPReaderPositionsVC: UIViewController, UITableViewDataSource, UITableView
             return false
         case .bookmarks:
             return true
+        case .pages:
+            return false
         }
     }
 
@@ -274,6 +357,8 @@ class TPPReaderPositionsVC: UIViewController, UITableViewDataSource, UITableView
                    forRowAt indexPath: IndexPath) {
         switch currentTab {
         case .toc:
+            break
+        case .pages:
             break
         case .bookmarks:
             guard editingStyle == .delete else {
@@ -328,7 +413,7 @@ class TPPReaderPositionsVC: UIViewController, UITableViewDataSource, UITableView
 
     private func configRefreshControl() {
         switch currentTab {
-        case .toc:
+        case .toc, .pages:
             if let refreshControl = bookmarksRefreshControl, tableView.subviews.contains(refreshControl) {
                 refreshControl.removeFromSuperview()
             }
@@ -342,5 +427,52 @@ class TPPReaderPositionsVC: UIViewController, UITableViewDataSource, UITableView
                 tableView.addSubview(refreshCtrl)
             }
         }
+    }
+
+    // MARK: - Go to Page (nav-110)
+
+    /// Prompts the patron for a print page label and navigates to it.
+    @objc private func promptGoToPage() {
+        let alert = UIAlertController(title: DisplayStrings.goToPage,
+                                      message: DisplayStrings.goToPageMessage,
+                                      preferredStyle: .alert)
+        alert.addTextField { textField in
+            textField.keyboardType = .numbersAndPunctuation
+            textField.accessibilityLabel = DisplayStrings.goToPage
+        }
+        alert.addAction(UIAlertAction(title: Strings.Generic.cancel, style: .cancel))
+        alert.addAction(UIAlertAction(title: DisplayStrings.goToPage, style: .default) { [weak self, weak alert] _ in
+            guard let self = self,
+                  let request = alert?.textFields?.first?.text else { return }
+            self.goToPage(labeled: request)
+        })
+        present(alert, animated: true)
+    }
+
+    /// Resolves an entered page label through the page-list and navigates, or
+    /// reports not-found without erroring (nav-110 AC).
+    private func goToPage(labeled request: String) {
+        guard let bizLogic = pageListBusinessLogic,
+              let index = bizLogic.indexForPage(labeled: request),
+              let label = bizLogic.label(at: index) else {
+            presentPageNotFound()
+            return
+        }
+
+        Task {
+            if let locator = await bizLogic.locator(at: index) {
+                DispatchQueue.main.async {
+                    self.delegate?.positionsVC(self, didSelectPageLocation: locator, pageLabel: label)
+                }
+            } else {
+                DispatchQueue.main.async { self.presentPageNotFound() }
+            }
+        }
+    }
+
+    private func presentPageNotFound() {
+        let alert = TPPAlertUtils.alert(title: DisplayStrings.pageNotFoundTitle,
+                                        message: DisplayStrings.pageNotFoundMessage)
+        present(alert, animated: true)
     }
 }
