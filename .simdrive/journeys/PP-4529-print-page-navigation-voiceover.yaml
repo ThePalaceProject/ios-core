@@ -1,0 +1,171 @@
+scenario:
+  id: PP-4529-print-page-navigation-voiceover
+  name: "PP-4529 print-page navigation — Pages tab / Go to Page / arrival announcement (VoiceOver)"
+  description: >
+    Accessibility journey for the PP-4529 print-page navigation feature
+    (DAISY nav-110). Covers the three user-facing surfaces added on
+    fleet/palace-feature (commits: TPPReaderPageListBusinessLogic mapping
+    layer + Pages-tab/Go-to-Page UI wiring + inclusive numeric fallback):
+
+      1. PAGES TAB — when the open publication exposes an EPUB `page-list`,
+         the reader positions sheet (the Contents/Bookmarks segmented
+         control) gains a third "Pages" segment. Selecting it lists the
+         book's print pages as a flat table, each row VoiceOver-labelled
+         "Page N". Titles WITHOUT a page-list show no Pages tab at all
+         (TPPReaderPageListBusinessLogic.hasPageList == false).
+
+      2. GO TO PAGE — the Pages tab shows a "Go to Page" table-header
+         button. It presents an alert with a numeric text field; entering
+         a known page navigates to it, an unknown page shows a
+         "Page Not Found" alert (no error, no crash). Numeric entries with
+         no exact label fall back to the nearest *preceding* numeric page
+         (inclusive bound — the mutation-hardened branch in
+         indexForPage(labeled:)).
+
+      3. ARRIVAL ANNOUNCEMENT — after navigating (via a page row tap OR
+         the Go to Page prompt), the sheet dismisses, the navigator seeks
+         to the print page, and UIAccessibility.post(.announcement, "Page N")
+         fires so a non-sighted patron hears which print page they landed on.
+
+    WHY THIS NEEDS simdrive + DEVICE VoiceOver, not XCTest:
+      - The positions sheet segmented control, the Pages table, and the
+        Go-to-Page alert are UIKit presented over a Readium 3.x WKWebView —
+        the reader content is invisible to the XCTest accessibility tree
+        (same reason reader2-toc-navigate.yaml exists).
+      - The arrival announcement is a UIAccessibility.post(.announcement)
+        AUDIO event. It is NOT a view, NOT OCR-visible, and NOT observable
+        by the simdrive vision loop. It can only be confirmed by ear (or via
+        Accessibility Inspector's announcement log) with VoiceOver running
+        on a real device. See voiceover_protocol + device_only_claims below.
+
+  tags: [tier1, ios, reader2, epub, accessibility, voiceover, print-page, PP-4529, nav-110]
+  tier: stateful
+  blocking: false   # smoke + a11y journey. The load-bearing automated
+                    # assertions are the OCR-visible UI invariants; the
+                    # spoken VoiceOver announcement is a DEVICE-ONLY manual
+                    # verification (see device_only_claims) and is reported
+                    # UNVERIFIED until a hardware VoiceOver pass confirms it.
+
+  status: staged    # authored, NOT yet recorded. Coordinates are captured
+                    # during the device recording pass (observe-driven steps
+                    # below resolve by text/accessibility label, not pixels).
+
+  preconditions:
+    - "A1QA Test Library is the active library and A1QA is signed in (or any library whose catalog has a page-list EPUB)."
+    - "A book WITH an EPUB `page-list` is downloaded in MyBooks and the Read button is visible. Candidate fixture: the Mathematics Test Book (DAISY EPUB) used by reader2-toc-navigate.yaml — DAISY titles typically carry a page-list. CONFIRM the candidate actually exposes `publication.pageList` (open the reader, verify the Pages segment appears) BEFORE relying on it; if it does not, substitute a known page-list title and record which fixture was used."
+    - "VoiceOver is OFF for the OCR-driven simdrive portion (steps 1-12); VoiceOver is turned ON only for the device_only_claims pass."
+    - "MyBooks tab is in the foreground."
+
+  state_reset:
+    - "Before each run, ensure the page-list book opens without a sync-position dialog (open it once and dismiss any sync prompt with Stay). A sync dialog at reader-open shifts every subsequent coordinate."
+
+  steps:
+    # --- reach the Pages tab (simdrive / OCR-observable) ---
+    - id: tap_read
+      description: "Tap Read on the page-list book row — Reader2 opens."
+      action: "observe annotate=true; tap text='Read' (or the book's stable_id row)"
+    - id: toggle_chrome
+      description: "Tap content center to reveal the top reader toolbar (chrome)."
+      action: "tap x=center y=lower-third of the content area"
+    - id: open_positions_sheet
+      description: "Tap the TOC / positions icon (3-line list SF Symbol) in the top toolbar to open the positions sheet."
+      action: "observe annotate=true; tap the list/TOC toolbar icon"
+    - id: assert_pages_segment_present
+      description: "The segmented control shows Contents | Bookmarks | Pages. Assert the 'Pages' segment exists (proves hasPageList true for this fixture)."
+      action: "observe annotate=true; assert OCR contains 'Contents' AND 'Bookmarks' AND 'Pages'"
+    - id: tap_pages_segment
+      description: "Tap the 'Pages' segment."
+      action: "tap text='Pages'"
+    - id: assert_page_list_renders
+      description: "The Pages table lists print-page labels and shows the 'Go to Page' header button."
+      action: "observe annotate=true; assert OCR contains 'Go to Page' AND at least one numeric page label"
+
+    # --- navigate via a page-row tap (arrival announcement path A) ---
+    - id: tap_page_row
+      description: "Tap a print-page row (e.g. the page labelled in the middle of the list). Sheet dismisses; navigator seeks to that print page."
+      action: "observe annotate=true; tap a page-label row; note the chosen label for the announcement check"
+    - id: assert_navigated
+      description: "Reader shows the chosen print page (bottom page indicator / content reflects the seek)."
+      action: "observe annotate=true; assert OCR page indicator changed to the chosen page's chapter/position"
+
+    # --- Go to Page prompt (found path) ---
+    - id: reopen_positions_pages
+      description: "Reveal chrome, reopen the positions sheet, tap 'Pages'."
+      action: "tap content center; observe annotate=true; tap TOC icon; tap text='Pages'"
+    - id: tap_go_to_page
+      description: "Tap the 'Go to Page' header button — a numeric-entry alert appears."
+      action: "observe annotate=true; tap text='Go to Page'; observe annotate=true; assert OCR contains 'Enter a page number'"
+    - id: enter_known_page
+      description: "Type a KNOWN page number and confirm — navigates to that print page (or nearest preceding numeric page)."
+      action: "type_text '<known-page>'; tap the 'Go to Page' confirm action"
+    - id: assert_go_to_page_navigated
+      description: "Reader navigates to the entered print page; the positions sheet is dismissed."
+      action: "observe annotate=true; assert the reader is foreground and the page indicator reflects the entered page"
+
+    # --- Go to Page prompt (not-found path) ---
+    - id: enter_unknown_page
+      description: "Reopen Pages, Go to Page, enter a page NOT in the book (e.g. 99999) — 'Page Not Found' alert, no crash."
+      action: "reopen sheet; tap text='Pages'; tap text='Go to Page'; type_text '99999'; tap confirm; observe annotate=true; assert OCR contains 'Page Not Found'"
+
+  expected_invariants:
+    - "A title WITH a page-list shows a third 'Pages' segment in the positions sheet; a title WITHOUT one shows only Contents | Bookmarks (verify the negative case separately with a non-page-list title)."
+    - "The Pages tab renders one row per labelled print page plus a 'Go to Page' header button."
+    - "Tapping a page row dismisses the sheet and seeks the reader to that print page."
+    - "'Go to Page' with a known page navigates; with an unknown page shows 'Page Not Found' and does not crash or error."
+    - "A numeric entry with no exact label lands on the nearest PRECEDING numeric page (inclusive lower bound — do not off-by-one to the next page)."
+
+  voiceover_protocol:
+    purpose: >
+      The accessibility value of PP-4529 is the spoken output. These checks
+      require VoiceOver ON on a REAL DEVICE (Simulator does not voice
+      .announcement reliably and simdrive's OCR cannot hear audio). Run this
+      pass after the OCR pass above, with VoiceOver enabled
+      (Settings > Accessibility > VoiceOver, or triple-click side button).
+    steps:
+      - "Focus the 'Pages' segment — VoiceOver speaks 'Pages' (the segment title)."
+      - "Focus a page row — VoiceOver speaks 'Page N' (the row accessibilityLabel = Strings...pageRowAccessibility, NOT the raw cell text)."
+      - "Focus the 'Go to Page' header button — VoiceOver speaks 'Go to Page'."
+      - "Activate a page row OR complete the Go to Page prompt — after the seek, VoiceOver ANNOUNCES 'Page N' for the page just landed on (UIAccessibility.post(.announcement) = Strings.TPPBaseReaderViewController.navigatedToPage)."
+      - "In the Go to Page alert, focus the text field — VoiceOver speaks 'Go to Page' (the field accessibilityLabel)."
+
+  device_only_claims:
+    # Per session DoD: claims not verifiable in-process are tagged UNVERIFIED
+    # with the required real-world check, and escalated — never reported green.
+    - claim: "VoiceOver announces 'Page N' after navigating to a print page."
+      status: UNVERIFIED
+      required_check: "Real iOS device, VoiceOver ON; navigate via a Pages row tap and via the Go to Page prompt; confirm the spoken/Accessibility-Inspector-logged announcement is 'Page <label>' matching the destination."
+    - claim: "VoiceOver reads each Pages row as 'Page N' (accessibilityLabel), not the raw table text."
+      status: UNVERIFIED
+      required_check: "Real device, VoiceOver ON; swipe through the Pages list; each row voices 'Page <label>'."
+    - claim: "The Go to Page alert text field voices 'Go to Page'."
+      status: UNVERIFIED
+      required_check: "Real device, VoiceOver ON; open Go to Page; focus the field; confirm spoken label."
+
+  ssim_gating:
+    threshold: 0.85
+    on_drift: warn   # Reader2 WKWebView + UIKit sheet rendering drift across
+                     # runs; OCR-presence assertions on the segment titles,
+                     # 'Go to Page', and 'Page Not Found' are the load-bearing
+                     # invariants, not pixel-exact SSIM.
+
+  rationale: |
+    PP-4529 already passed SoD review (architect + qa approved; review +
+    testing gates promoted). The unit + mutation coverage proves the mapping
+    layer (TPPReaderPageListBusinessLogic) and the inclusive numeric fallback.
+    What unit tests CANNOT prove, and what this journey stages:
+
+      - that the Pages segment is actually inserted into the live positions
+        sheet only for page-list titles (UIKit segmented-control wiring),
+      - that a row tap / Go-to-Page prompt drives the navigator to the right
+        print page through the real delegate seam (TPPReaderPositionsDelegate
+        .didSelectPageLocation), and
+      - that the accessibility output — row labels, field label, and the
+        post-seek arrival announcement — is correct for a VoiceOver user.
+
+    The first two are OCR-observable via simdrive. The third is device-only
+    audio and is reported UNVERIFIED here pending a hardware VoiceOver pass.
+
+  related:
+    - "reader2-toc-navigate.yaml — sibling positions-sheet (Contents segment) navigation; same sheet-open mechanics."
+    - "reader2-bookmark-toggle.yaml — sibling positions-sheet (Bookmarks segment)."
+    - ".forgeos/intent/pp4529-print-page-navigation.md — PP-4529 intent / claims."
