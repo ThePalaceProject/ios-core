@@ -135,10 +135,13 @@ final class AudiobookBookmarkBusinessLogicConcurrencyTests: XCTestCase {
             }
         }
 
-        // Let any queued fetches settle before tearing down.
-        let settle = expectation(description: "queue settles")
-        DispatchQueue.global().asyncAfter(deadline: .now() + 0.5) { settle.fulfill() }
-        wait(for: [settle], timeout: 5.0)
+        // Let queued main-queue completions land before tearing down.
+        // Deterministic drain (a no-op enqueued behind the prior completions),
+        // not a fixed sleep — the storm already completed synchronously, and
+        // the SUT's async Tasks capture `[weak self]`, so any straggler is a
+        // safe no-op. The crash this guards against (CoW over-release) would
+        // already have fired during the storm above.
+        drainMainQueue()
         XCTAssertNotNil(sut, "SUT survived concurrent delete/fetch without an over-release crash")
     }
 
@@ -151,22 +154,38 @@ final class AudiobookBookmarkBusinessLogicConcurrencyTests: XCTestCase {
         let expectations = (0..<n).map { expectation(description: "sync completion \($0)") }
         let countLock = NSLock()
         var fireCount = [Int: Int]()
+        var fulfilledOnce = Set<Int>()
 
         // When a sync is already in flight, additional callers enqueue their
         // completion in `completionHandlersQueue`, which `finalizeSync` drains.
-        // Without serialization the append raced the drain → a completion could
-        // be lost (timeout) or double-invoked (over-fulfill). Assert each fires
-        // exactly once.
+        // Without serialization the append raced the drain → a CoW-corruption
+        // crash. The fix routes both through the serial `queue`.
+        //
+        // Count fires under the lock and fulfill each expectation AT MOST ONCE:
+        // decoupling the fire-count from the XCTestExpectation API means a stray
+        // double-delivery surfaces as `fireCount > 1` (a clean assertion failure)
+        // instead of an `NSInternalInconsistencyException` from a double
+        // `fulfill()` — which previously crashed the whole test runner under
+        // load and forced a suite restart. The timeout is generous because the
+        // 25 completions fan out through `DispatchQueue.main.async`, which can
+        // back up behind a saturated main queue on a heavily loaded host; a slow
+        // drain must not be misread as a lost completion.
         DispatchQueue.concurrentPerform(iterations: n) { i in
             sut.syncBookmarks(localBookmarks: []) { _ in
-                countLock.lock(); fireCount[i, default: 0] += 1; countLock.unlock()
-                expectations[i].fulfill()
+                countLock.lock()
+                fireCount[i, default: 0] += 1
+                let firstFire = fulfilledOnce.insert(i).inserted
+                countLock.unlock()
+                if firstFire { expectations[i].fulfill() }
             }
         }
 
-        wait(for: expectations, timeout: 15.0)
+        wait(for: expectations, timeout: 60.0) // FLAKE-003-OK: 25-way concurrent sync fan-out via DispatchQueue.main.async; generous ceiling tolerates main-queue saturation under full-suite load (fires in <1s uncontended). Crash-safe via idempotent fulfill.
+        countLock.lock()
+        let counts = fireCount
+        countLock.unlock()
         for i in 0..<n {
-            XCTAssertEqual(fireCount[i], 1, "sync completion \(i) must fire exactly once")
+            XCTAssertEqual(counts[i], 1, "sync completion \(i) must fire exactly once")
         }
     }
 
