@@ -833,6 +833,71 @@ def search_present_title(d: Driver) -> None:
     # are book-type-dependent, so the contract keys on 'Cancel', NOT on a result button.
 
 
+# ===========================================================================
+# DETERMINISTIC IN-FLIGHT-DOWNLOAD FORGE  (PP-4542/PP-4613 — unblocks cold-load)
+# ===========================================================================
+# The cold-load regression (PP-4613) only fires when a fresh-borrow LCP audiobook
+# is opened while its .lcpa CONTENT is not yet local — the app then routes through
+# the LCP STREAMING path, which Readium 3.9.0 broke (0-byte read → "Audiobook
+# Unavailable"). Catching the live ~1.5s download window is non-deterministic, so
+# instead we FORGE the state from the filesystem: a book is marked
+# `.downloadSuccessful` the instant its tiny .lcpl license lands
+# (LCPFulfillmentHandler), DECOUPLED from the .lcpa content landing. So deleting the
+# .lcpa while keeping the .lcpl sibling leaves the registry saying "downloaded" but
+# `AudiobookSessionManager.audiobookContentIsLocal` returning false — the exact
+# streaming-path precondition, reproducibly, with no network timing.
+PALACE_BUNDLE_ID = "org.thepalaceproject.palace"
+
+
+def audiobook_content_files_under(root: Path) -> list[Path]:
+    """All downloaded LCP audiobook CONTENT files (.lcpa) under an app-data
+    container root. Pure (filesystem-only) so the path logic is unit-testable with
+    a tmp tree. Content lives at `<root>/Library/Application Support/<bundle>/
+    <account-uuid>/content/<sha256(bookId)>.lcpa`; we rglob so per-account subdirs
+    are covered without resolving the account UUID."""
+    support = root / "Library" / "Application Support"
+    if not support.exists():
+        return []
+    return sorted(support.rglob("*.lcpa"))
+
+
+def _app_data_container(udid: str) -> Path:
+    out = subprocess.run(
+        ["xcrun", "simctl", "get_app_container", udid, PALACE_BUNDLE_ID, "data"],
+        capture_output=True, text=True,
+    )
+    path = out.stdout.strip()
+    if out.returncode != 0 or not path:
+        raise StagingError(
+            f"forge_streaming_state: could not resolve Palace data container on sim "
+            f"{udid} (installed?): {out.stderr.strip() or 'no output'}")
+    return Path(path)
+
+
+def forge_streaming_state(d: Driver) -> None:
+    """Deterministically forge the "license landed but .lcpa content NOT local"
+    state for every downloaded LCP audiobook: delete each .lcpa CONTENT file while
+    leaving its .lcpl license sibling (and the registry's `.downloadSuccessful`
+    marker) intact. Opening such a book then routes through the LCP STREAMING path
+    — the exact PP-4613 cold-load regression surface — with ZERO dependence on
+    catching the live ~1.5s download window (the reason this journey was PHASE2).
+
+    The .lcpl sibling is preserved so LCPAdapter's tier-2 fallback opens via
+    streaming (not a license re-download). Raises StagingError if no .lcpa is
+    present — nothing downloaded to forge, so the recipe gates honestly rather than
+    recording against a fully-local book that wouldn't exercise the regression."""
+    container = _app_data_container(d.udid)
+    lcpas = audiobook_content_files_under(container)
+    if not lcpas:
+        raise StagingError(
+            "forge_streaming_state: no downloaded .lcpa audiobook content found to "
+            "forge — sign in to a library with a downloaded LCP audiobook first")
+    for f in lcpas:
+        f.unlink()
+    print(f"[staging] forge_streaming_state: deleted {len(lcpas)} .lcpa content "
+          f"file(s) (kept .lcpl) → next open streams (PP-4613 path)")
+
+
 PRIMITIVES = {
     "dismiss_first_launch": lambda d, *a: dismiss_first_launch(d),
     "add_library": lambda d, name: add_library(d, name),
@@ -847,6 +912,7 @@ PRIMITIVES = {
     "search_present_title": lambda d, *a: search_present_title(d),
     "return_book": lambda d, *a: return_book(d, *(a or (None,))),
     "goto": lambda d, screen: navigate_to(d, screen),
+    "forge_streaming_state": lambda d, *a: forge_streaming_state(d),
 }
 
 
@@ -973,6 +1039,20 @@ STAGING_RECIPES: dict[str, list[tuple]] = {
         ("dismiss_first_launch",), ("add_library", "A1QA Test Library"),
         ("sign_in", "a1qa"), ("goto", "my_books"), ("dismiss_save_password",),
     ],
+
+    # --- audiobook COLD-LOAD (PP-4613, deterministic forge) ---
+    # Open a "downloaded" LCP audiobook whose .lcpa content is NOT local → forces
+    # the LCP streaming path (the Readium-3.9.0 "Audiobook Unavailable" regression).
+    # forge_streaming_state deletes the standing fixture's .lcpa (keeping the .lcpl
+    # license + registry .downloadSuccessful), so opening streams — deterministically,
+    # without racing the ~1.5s live download. The .lcpa is a local cache artifact, not
+    # the loan, so this does NOT mutate/return the read-only A1QA standing fixture; a
+    # re-download (or fixture re-provision) restores it.
+    "audiobook-cold-load-first-open": [
+        ("dismiss_first_launch",), ("add_library", "A1QA Test Library"),
+        ("sign_in", "a1qa"), ("goto", "my_books"), ("dismiss_save_password",),
+        ("forge_streaming_state",),
+    ],
 }
 
 # Journeys whose recipe GENUINELY needs Phase 2 (borrow_and_download / a clean
@@ -980,21 +1060,27 @@ STAGING_RECIPES: dict[str, list[tuple]] = {
 # borrow_and_download lands. Do NOT fake these:
 #   read-return / book-return roundtrips  — borrow→read→RETURN the book (mutates
 #       the fixture; can't run against the read-only standing fixture).
-#   audiobook-download-indicator-stateful — BACKLOGGED (Chairman 2026-06-16, done
-#       3/4 audiobook). Asserts the in-flight 'Downloading…' UI, but empirically the
-#       Animal Farm LCP fixture (the only LCP audiobook in A1QA) downloads in ~1.5s
-#       on the sim — the indicator isn't catchable at normal speed, and the in-flight
-#       % is a TRANSIENT/varying state that flakes screenshot-drift replay. The sim
-#       has no clean per-sim network throttle (only invasive host-level NLC, which
-#       would couple replay to a throttled host). The audiobook PLAYER mechanics
-#       (skip/toc/scrubber — the real #1083 regression surface) ARE covered. Revisit
-#       only if a deterministic in-flight-download harness is built.
+#   audiobook-download-indicator-stateful — STILL PHASE2. Asserts the in-flight
+#       'Downloading… %' UI, which requires a genuinely ACTIVE download in progress.
+#       The forge_streaming_state harness (below) does NOT help here: deleting the
+#       .lcpa produces a content-ABSENT state with no active transfer, so no progress
+#       % renders — it forges the cold-load (streaming) path, not a live-download
+#       indicator. Empirically the Animal Farm LCP fixture downloads in ~1.5s on the
+#       sim and the in-flight % is a TRANSIENT/varying state that flakes
+#       screenshot-drift replay; there is no clean per-sim network throttle (only
+#       invasive host-level NLC). Revisit only with a per-sim download throttle /
+#       progress-injection seam — a different mechanism than the cold-load forge.
 #   PP-4161-streaming-html-reader         — anonymous search→Borrow→Read; requires
 #       a .unregistered registry (uninstall/reinstall), NOT a sign-in.
 #   search-flow-stateful                  — no recording exists yet.
 # The reader2 (5) + audiobook skip/toc/scrubber (3) journeys moved OUT of here into
 # STAGING_RECIPES: they use the A1QA STANDING fixture (pre-borrowed, read-only) and
 # need SIGN-IN ONLY — see the "reading"/"audiobook" recipes above.
+# audiobook-cold-load-first-open was PHASE2 for the same ~1.5s-window reason, but
+# is now PROMOTED to a STAGING_RECIPES entry (above) via the forge_streaming_state
+# primitive — which forges the not-yet-local state from the filesystem instead of
+# racing the live download. That IS the "in-flight-download harness" the old note
+# called for (for the cold-load path specifically).
 PHASE2_JOURNEYS = {
     "PP-4161-streaming-html-reader",
     "audiobook-download-indicator-stateful",
