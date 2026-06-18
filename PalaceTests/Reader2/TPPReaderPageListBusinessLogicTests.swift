@@ -164,6 +164,20 @@ final class TPPReaderPageListBusinessLogicTests: XCTestCase {
         XCTAssertEqual(sut.indexForPage(labeled: "7"), 1)
     }
 
+    func testIndexForPage_numericValueEqualsRequestButLabelDiffers_resolvesViaInclusiveFallback() {
+        // "07" is numerically 7 but is not an exact string match for "7", so it
+        // resolves through the numeric fallback. The nearest preceding numeric
+        // <= 7 is "07" itself (value 7). Pins the fallback bound as inclusive
+        // (`<=`): the mutant `<` would skip the numerically-equal page and drift
+        // down to "5".
+        let sut = TPPReaderPageListBusinessLogic(publication: makePublication(pages: [
+            ("5", "/c.xhtml#p5"),
+            ("07", "/c.xhtml#p07")
+        ]))
+        XCTAssertEqual(sut.indexForPage(labeled: "7"), 1,
+                       "page 7 resolves to the numerically-equal '07' boundary via the inclusive <= fallback")
+    }
+
     func testIndexForPage_aboveHighestNumericPage_returnsLastNumericPage() {
         // Request 50 beyond range [1,5] → nearest preceding = 5 (index 4).
         let sut = TPPReaderPageListBusinessLogic(publication: makeNumericPublication())
