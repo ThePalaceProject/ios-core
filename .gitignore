@@ -141,3 +141,12 @@ scripts/tests/__pycache__/
 
 # Regression-rebuild campaign run artifacts (generated, never committed)
 .regression-runs/
+
+# ForgeOS methodology — keep OUT of this public repo. The harness ENGINE and
+# canon live in the private harness; only Palace's OWN forge ledger (intent/,
+# contracts/, changesets/, audits/, wall-failures/, handoffs/, baselines) is
+# tracked here. These three subtrees encode the methodology/process + raw agent
+# transcripts and must not be re-committed.
+.forgeos/schemas/
+.forgeos/reviewer-refs/
+.forgeos/swarms/
