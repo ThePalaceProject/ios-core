@@ -16,12 +16,23 @@ import PalaceReadingPosition
     private var registry: TPPBookRegistryProvider
     private var annotationsManager: AnnotationsManager
     private let positionWriter: PositionWriter
-    private var isSyncing: Bool = false
     private let queue = DispatchQueue(label: "com.palace.audiobookBookmarkBusinessLogic")
-    private var debounceTimer: Timer?
+    /// Identifies execution already on `queue` so `onStateQueue` runs inline
+    /// instead of a nested `queue.sync` (which would deadlock).
+    private let queueKey = DispatchSpecificKey<Void>()
     private let debounceInterval: TimeInterval = 1.0
-    private var completionHandlersQueue: [([AudioBookmark]) -> Void] = []
     private var debounceWorkItem: DispatchWorkItem?  // Access only on `queue`
+
+    // MARK: - Serialized sync state
+    // `isSyncing`, `completionHandlersQueue`, and `deletedBookmarkIds` are read
+    // and written from the UI thread, URLSession completion threads, AND the
+    // work `queue`. Concurrent mutation of the Swift Set/Array corrupted its
+    // copy-on-write buffer refcount → an over-release that surfaced in the
+    // captured network-completion closure chain (Crashlytics abfef568). All
+    // access now goes through `onStateQueue` so the serial `queue` is the single
+    // serialization domain for this state.
+    private var isSyncing: Bool = false
+    private var completionHandlersQueue: [([AudioBookmark]) -> Void] = []
     private var deletedBookmarkIds = Set<String>()
 
     @objc convenience init(book: TPPBook) {
@@ -49,6 +60,22 @@ import PalaceReadingPosition
         self.positionWriter = positionWriter ?? RemotePositionWriter(
             network: AudiobookPositionAdapter(annotations: annotationsManager)
         )
+        super.init()
+        queue.setSpecific(key: queueKey, value: ())
+    }
+
+    /// Serializes access to the mutable sync state (`isSyncing`,
+    /// `completionHandlersQueue`, `deletedBookmarkIds`) through the work `queue`.
+    /// Reentrancy-safe: runs inline when already on `queue`, otherwise blocks on
+    /// `queue.sync`. Critical sections must stay O(1)/O(n) — never await network
+    /// inside `work`.
+    @discardableResult
+    private func onStateQueue<T>(_ work: () -> T) -> T {
+        if DispatchQueue.getSpecific(key: queueKey) != nil {
+            return work()
+        } else {
+            return queue.sync(execute: work)
+        }
     }
 
     // MARK: - Bookmark Management
@@ -227,16 +254,17 @@ import PalaceReadingPosition
         Log.info(#file, "🗑️ Bookmark Details: version=\(bookmark.version), timestamp=\(bookmark.lastSavedTimeStamp ?? "nil"), annotationId=\(bookmark.annotationId.isEmpty ? "UNSYNCED" : bookmark.annotationId), chapter=\(bookmark.chapter ?? "nil"), readingOrderItem=\(bookmark.readingOrderItem ?? "nil")")
 
         // Track this bookmark as deleted (prevents it from coming back from server)
-        if !bookmark.annotationId.isEmpty {
-            deletedBookmarkIds.insert(bookmark.annotationId)
-            Log.info(#file, "🗑️ Tracking deleted annotationId: \(bookmark.annotationId)")
-        }
-
-        // Also track by content hash for bookmarks that might have different annotation IDs
         let contentHash = bookmark.uniqueIdentifier
-        if !contentHash.isEmpty {
-            deletedBookmarkIds.insert("content:\(contentHash)")
-            Log.info(#file, "🗑️ Tracking deleted by content hash: \(contentHash)")
+        onStateQueue {
+            if !bookmark.annotationId.isEmpty {
+                deletedBookmarkIds.insert(bookmark.annotationId)
+                Log.info(#file, "🗑️ Tracking deleted annotationId: \(bookmark.annotationId)")
+            }
+            // Also track by content hash for bookmarks that might have different annotation IDs
+            if !contentHash.isEmpty {
+                deletedBookmarkIds.insert("content:\(contentHash)")
+                Log.info(#file, "🗑️ Tracking deleted by content hash: \(contentHash)")
+            }
         }
 
         var localDeletionSucceeded = false
@@ -273,9 +301,11 @@ import PalaceReadingPosition
         // Temporarily remove from deleted tracking to allow fetching
         let tempAnnotationId = bookmark.annotationId
         let tempContentHash = bookmark.uniqueIdentifier
-        deletedBookmarkIds.remove(tempAnnotationId)
-        if !tempContentHash.isEmpty {
-            deletedBookmarkIds.remove("content:\(tempContentHash)")
+        onStateQueue {
+            deletedBookmarkIds.remove(tempAnnotationId)
+            if !tempContentHash.isEmpty {
+                deletedBookmarkIds.remove("content:\(tempContentHash)")
+            }
         }
 
         fetchServerBookmarks { [weak self] serverBookmarks in
@@ -291,7 +321,7 @@ import PalaceReadingPosition
                 Log.info(#file, "🔍 Server annotationId: \(matchingServerBookmark.annotationId)")
 
                 // Update tracking with correct server annotation ID
-                self.deletedBookmarkIds.insert(matchingServerBookmark.annotationId)
+                self.onStateQueue { self.deletedBookmarkIds.insert(matchingServerBookmark.annotationId) }
 
                 // Delete using the correct server annotation ID
                 self.annotationsManager.deleteBookmark(annotationId: matchingServerBookmark.annotationId) { success in
@@ -305,9 +335,11 @@ import PalaceReadingPosition
             } else {
                 Log.warn(#file, "🔍 ⚠️ No matching bookmark found on server - may have already been deleted")
                 // Re-add to tracking
-                self.deletedBookmarkIds.insert(tempAnnotationId)
-                if !tempContentHash.isEmpty {
-                    self.deletedBookmarkIds.insert("content:\(tempContentHash)")
+                self.onStateQueue {
+                    self.deletedBookmarkIds.insert(tempAnnotationId)
+                    if !tempContentHash.isEmpty {
+                        self.deletedBookmarkIds.insert("content:\(tempContentHash)")
+                    }
                 }
                 DispatchQueue.main.async { completion?(localDeletionSucceeded) }
             }
@@ -317,14 +349,21 @@ import PalaceReadingPosition
     // MARK: - Sync Logic
 
     func syncBookmarks(localBookmarks: [AudioBookmark], completion: (([AudioBookmark]) -> Void)? = nil) {
-        guard !isSyncing else {
-            if let completion {
-                completionHandlersQueue.append(completion)
+        // Atomically test-and-set `isSyncing`. If a sync is already in flight we
+        // enqueue this completion under the same lock that `finalizeSync` drains
+        // — without serialization the append raced the drain (CoW corruption).
+        let shouldStartSync = onStateQueue { () -> Bool in
+            if isSyncing {
+                if let completion {
+                    completionHandlersQueue.append(completion)
+                }
+                return false
             }
-            return
+            isSyncing = true
+            return true
         }
+        guard shouldStartSync else { return }
 
-        isSyncing = true
         Task { [weak self] in
             guard let self else { return }
             await uploadUnsyncedBookmarks(localBookmarks)
@@ -348,11 +387,14 @@ import PalaceReadingPosition
             return localBookmark
         }
 
-        // Filter out bookmarks that user has deleted (belt and suspenders approach)
+        // Filter out bookmarks that user has deleted (belt and suspenders approach).
+        // Snapshot the deleted-id set under the lock so the filter reads a stable
+        // copy instead of racing concurrent inserts/removes on the live Set.
+        let deletedIds = onStateQueue { deletedBookmarkIds }
         let filteredBookmarks = allBookmarks.filter { bookmark in
-            let isDeletedById = deletedBookmarkIds.contains(bookmark.annotationId)
+            let isDeletedById = deletedIds.contains(bookmark.annotationId)
             let contentHash = bookmark.uniqueIdentifier
-            let isDeletedByContent = !contentHash.isEmpty && deletedBookmarkIds.contains("content:\(contentHash)")
+            let isDeletedByContent = !contentHash.isEmpty && deletedIds.contains("content:\(contentHash)")
 
             if isDeletedById || isDeletedByContent {
                 Log.info(#file, "🗑️ Filtering out deleted bookmark from local fetch: \(bookmark.annotationId)")
@@ -436,11 +478,13 @@ import PalaceReadingPosition
             return
         }
 
-        // Filter out bookmarks that user has deleted (even if server still returns them)
+        // Filter out bookmarks that user has deleted (even if server still returns them).
+        // Snapshot under the lock — see `fetchLocalBookmarks`.
+        let deletedIds = onStateQueue { deletedBookmarkIds }
         let filteredRemoteBookmarks = remoteBookmarks.filter { remoteBookmark in
-            let isDeletedById = deletedBookmarkIds.contains(remoteBookmark.annotationId)
+            let isDeletedById = deletedIds.contains(remoteBookmark.annotationId)
             let contentHash = remoteBookmark.uniqueIdentifier
-            let isDeletedByContent = !contentHash.isEmpty && deletedBookmarkIds.contains("content:\(contentHash)")
+            let isDeletedByContent = !contentHash.isEmpty && deletedIds.contains("content:\(contentHash)")
 
             if isDeletedById || isDeletedByContent {
                 Log.info(#file, "🗑️ BLOCKING deleted bookmark from re-appearing: annotationId=\(remoteBookmark.annotationId), timestamp=\(remoteBookmark.lastSavedTimeStamp ?? "nil")")
@@ -494,11 +538,19 @@ import PalaceReadingPosition
     }
 
     private func finalizeSync(with bookmarks: [AudioBookmark], completion: (([AudioBookmark]) -> Void)?) {
-        isSyncing = false
+        // Reset `isSyncing` and drain the queued handlers atomically, then fire
+        // them off-lock on main. Draining inside the lock prevents a handler
+        // enqueued by a concurrent `syncBookmarks` from being lost or
+        // double-invoked while the array is being iterated/cleared.
+        let queuedHandlers: [([AudioBookmark]) -> Void] = onStateQueue {
+            isSyncing = false
+            let drained = completionHandlersQueue
+            completionHandlersQueue.removeAll()
+            return drained
+        }
         DispatchQueue.main.async {
             completion?(bookmarks)
-            self.completionHandlersQueue.forEach { $0(bookmarks) }
-            self.completionHandlersQueue.removeAll()
+            queuedHandlers.forEach { $0(bookmarks) }
         }
     }
 
