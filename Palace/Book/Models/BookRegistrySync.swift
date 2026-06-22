@@ -23,6 +23,10 @@ class BookRegistrySync {
   /// Serial queue for disk writes — prevents out-of-order save races where a stale
   /// snapshot could overwrite a newer one if two saves dispatch concurrently.
   private let diskWriteQueue = DispatchQueue(label: "com.palace.registryDiskWrite")
+  /// Identifies execution already inside `diskWriteQueue` so a reentrant
+  /// `saveSync` runs its write inline instead of a nested `diskWriteQueue.sync`
+  /// (which would deadlock). See `saveSync(for:)`.
+  private let diskWriteQueueKey = DispatchSpecificKey<Void>()
 
   var syncUrl: URL?
   var loadingAccount: String?
@@ -43,6 +47,7 @@ class BookRegistrySync {
     self.accountsManager = accountsManager
     self.downloadCenterProvider = downloadCenterProvider
     self.opdsFeedServiceProvider = opdsFeedServiceProvider
+    diskWriteQueue.setSpecific(key: diskWriteQueueKey, value: ())
   }
 
   func registryUrl(for account: String) -> URL? {
@@ -515,18 +520,23 @@ class BookRegistrySync {
   func saveSync(for account: String) {
     guard let registryUrl = registryUrl(for: account) else { return }
 
-    // Route through the SAME serialization domain as `save(for:)`. Previously
-    // this wrote directly on the calling thread, bypassing `diskWriteQueue`, so
-    // a sync save could run its `.atomic` rename-replace concurrently with an
-    // in-flight async write to the same URL — two atomic writes raced and a
-    // stale snapshot could clobber the final one. Running on `diskWriteQueue.sync`
-    // makes the "saveSync blocks until all prior enqueued writes flush" invariant
-    // true by FIFO construction. The snapshot is taken INSIDE the queue so it
-    // reflects state after the prior enqueued writes, not a caller-thread race.
-    diskWriteQueue.sync {
-      let snapshot = store.registrySnapshot()
-      let registryObject = [TPPBookRegistryKey.records.rawValue: snapshot]
+    // Snapshot in the CALLER's context — NOT inside `diskWriteQueue`. `saveSync`
+    // is reached from `BookmarkManager.setLocationSync`'s `onComplete`, which
+    // runs inside a `BookRegistryStore.syncQueue` barrier. Taking the snapshot
+    // inside `diskWriteQueue.sync` re-entered `syncQueue` (`registrySnapshot` →
+    // `performSync` → `syncQueue.sync`) from a thread already holding that
+    // barrier → deadlock (8afb1c66 — the hang #1061 traded for the disk-write
+    // race). The in-memory snapshot is independent of disk-flush ordering, so
+    // reading it here is behavior-equivalent for persistence.
+    let snapshot = store.registrySnapshot()
+    let registryObject = [TPPBookRegistryKey.records.rawValue: snapshot]
 
+    // Serialize the disk write through `diskWriteQueue` so a sync save can't run
+    // its `.atomic` rename-replace concurrently with an in-flight async write to
+    // the same URL (the race #1061 fixed — preserved). Reentrancy-safe: if we are
+    // ALREADY executing on `diskWriteQueue`, run inline — a nested
+    // `diskWriteQueue.sync` would deadlock against itself.
+    let write = {
       do {
         let directoryURL = registryUrl.deletingLastPathComponent()
         if !FileManager.default.fileExists(atPath: directoryURL.path) {
@@ -539,6 +549,12 @@ class BookRegistrySync {
       } catch {
         Log.error(#file, "Error saving book registry synchronously: \(error.localizedDescription)")
       }
+    }
+
+    if DispatchQueue.getSpecific(key: diskWriteQueueKey) != nil {
+      write()
+    } else {
+      diskWriteQueue.sync(execute: write)
     }
   }
 
