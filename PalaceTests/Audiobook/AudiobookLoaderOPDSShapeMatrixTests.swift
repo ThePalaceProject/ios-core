@@ -346,6 +346,36 @@ final class AudiobookLoaderOPDSShapeMatrixTests: XCTestCase {
                        "BearerToken MIME-gate wins before OpenAccess fallback")
     }
 
+    /// Row 5b — PP-4631 (bearer / Unlimited-Listens sub-case). The bearer-token
+    /// MIME is NESTED in `indirectAcquisitions[*].type`, not at the top level
+    /// (the OPDS-2 OverDrive/Unlimited-Listens loan shape). The production
+    /// BearerTokenMIMEGate checks ONLY the top-level `type`, so it does NOT
+    /// claim the book — it falls through to OpenAccess, whose restored
+    /// body-based bearer recovery (OpenAccessAdapter) then follows the wrapper.
+    /// This pins the exact routing fact the PP-4631 fix relies on; if the gate
+    /// is ever broadened to match nested bearer MIME, revisit this test AND the
+    /// OpenAccess fallback together.
+    func testMatrix_nestedBearerTokenMIME_fallsThroughToOpenAccess() {
+        let book = makeBook(acquisitions: [
+            acquisition(
+                type: openAccessAudiobookMIME,
+                indirect: [indirect(bearerTokenMIME)]
+            )
+        ])
+        let spies = makeProductionChainSpies()
+
+        runLoad(book: book, chain: spies.chain)
+
+#if LCP
+        XCTAssertEqual(spies.lcp?.resolveCallCount, 0,
+                       "Nested-bearer book has no LCP MIME — must NOT route to LCP")
+#endif
+        XCTAssertEqual(spies.bearerToken.resolveCallCount, 0,
+                       "Top-level-only MIME gate must NOT claim a NESTED-bearer book (the PP-4631 miss)")
+        XCTAssertEqual(spies.openAccess.resolveCallCount, 1,
+                       "Nested-bearer book falls through to OpenAccess, which recovers it via body-based detection (PP-4631)")
+    }
+
     /// Row 6 — plain open-access audiobook, no DRM, no bearer-token.
     /// Routes to OpenAccessAdapter (the chain's fallback). This pins
     /// the "do nothing fancy" base case — a regression that accidentally

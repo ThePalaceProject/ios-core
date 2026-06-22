@@ -371,4 +371,53 @@ final class OpenAccessAdapterTests: XCTestCase {
         XCTAssertEqual(observed?.json["title"] as? String, "Plain",
                        "Plain open-access manifest must be returned directly")
     }
+
+    // MARK: - PP-4631 Overdrive manifest decode (gated regression guard)
+    //
+    // The toolkit's own PalaceAudiobookToolkitTests are NOT run by any CI
+    // workflow, so the root-invariant regression that broke every Overdrive
+    // audiobook open (PP-4631, toolkit commit 3d1046b8) shipped unguarded.
+    // These tests run in PalaceTests (which IS gated) and decode through the
+    // SAME path the loader uses (`Manifest.customDecoder()`), so a future
+    // re-tightening of the invariant fails here in CI.
+
+    /// The real Overdrive descriptor shape (CM fulfillment): `formatType`
+    /// "audiobook-overdrive" + `links.contentlinks`, with NO metadata /
+    /// readingOrder / spine. It MUST decode (not throw) and classify as
+    /// `.overdrive` — decoding this shape is exactly what PP-4631 broke.
+    func testOverdriveDescriptorManifest_decodesAndTypesAsOverdrive() throws {
+        let json = #"""
+        {
+          "reserveId": "66e77ed7-3568-477a-83b7-8028424c840a",
+          "formatType": "audiobook-overdrive",
+          "id": "urn:librarysimplified.org/terms/id/Overdrive ID/66e77ed7",
+          "links": { "contentlinks": [
+            { "type": "text/html", "href": "https://ofsdirect.api.overdrive.com/contentfile?body=abc" }
+          ] }
+        }
+        """#
+        let manifest = try Manifest.customDecoder().decode(Manifest.self, from: Data(json.utf8))
+        XCTAssertEqual(manifest.audiobookType, .overdrive,
+                       "Overdrive descriptor must classify as .overdrive")
+        XCTAssertNil(manifest.metadata,
+                     "Overdrive descriptor legitimately has no root metadata — must still decode")
+    }
+
+    /// F-005 guard preserved: a non-Overdrive manifest with no metadata and no
+    /// readingOrder/spine must STILL be rejected.
+    func testEmptyManifest_stillThrows() {
+        XCTAssertThrowsError(
+            try Manifest.customDecoder().decode(Manifest.self, from: Data("{}".utf8)),
+            "Empty manifest (no metadata/tracks, not overdrive) must still throw"
+        )
+    }
+
+    /// The Overdrive exemption is contentLinks-gated: an "overdrive" formatType
+    /// with NO content links is genuinely broken and must still throw.
+    func testOverdriveFormatWithoutContentLinks_stillThrows() {
+        XCTAssertThrowsError(
+            try Manifest.customDecoder().decode(Manifest.self, from: Data(#"{"formatType":"audiobook-overdrive"}"#.utf8)),
+            "Overdrive formatType without contentlinks must still be rejected (F-005 guard)"
+        )
+    }
 }

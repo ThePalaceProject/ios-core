@@ -1116,12 +1116,17 @@ final class BookDetailViewModelTests: XCTestCase {
     // OPEN COMPLETION (after the reader/player is presented), mirroring the
     // .reserve/.return cases. It deliberately does NOT dismiss on tap: on iPad
     // dismissing the form-sheet while the player is presenting raced the two
-    // modal transitions and froze the screen. The completion path runs through
-    // TPPSignInBusinessLogic.ensureAuthenticationDocumentIsLoaded (async + auth
-    // doc load + possible sign-in modal) and BookService.open, none of which
-    // have a deterministic VM-level test seam — so this behavior is covered by
-    // on-device verification (iPhone + iPad) rather than a flaky unit test,
-    // consistent with the existing (untested) .reserve/.return dismissals.
+    // modal transitions and froze the screen.
+    //
+    // Coverage: the .readStreaming case presents synchronously, so its dismiss
+    // IS pinned deterministically — see
+    // testBookDetailViewModel_handleAction_readStreaming_callsDidSelectReadStreaming
+    // (asserts showHalfSheet flips false). The .read/.listen completion runs
+    // through TPPSignInBusinessLogic.ensureAuthenticationDocumentIsLoaded
+    // (async + auth doc load + possible sign-in modal) and BookService.open,
+    // which have no deterministic VM-level seam, so those two remain covered by
+    // on-device verification (iPhone + iPad), consistent with the existing
+    // (untested) .reserve/.return dismissals.
 
     func testDidSelectCancel_ResetsDownloadProgress() {
         let (vm, _, _) = makeVM()
@@ -1573,6 +1578,7 @@ final class BookDetailViewModelTests: XCTestCase {
         XCTAssertEqual(coordinator.path.count, 0,
                        "precondition: navigation stack must be empty")
 
+        vm.showHalfSheet = true  // PP-4633: simulate the half-sheet being open on tap
         vm.handleAction(for: .readStreaming)
         drainMainQueue()
 
@@ -1586,6 +1592,11 @@ final class BookDetailViewModelTests: XCTestCase {
         // ignored by the isProcessing guard.
         XCTAssertFalse(vm.isProcessing(for: .readStreaming),
                        "processingButtons must clear .readStreaming after the route push")
+        // PP-4633: the half-sheet must be dismissed in the readStreaming open
+        // completion (deterministic seam — readStreaming presents synchronously,
+        // unlike the async .read/.listen auth/open path which stays device-verified).
+        XCTAssertFalse(vm.showHalfSheet,
+                       "readStreaming must dismiss the half-sheet in its completion (PP-4633)")
     }
 
     /// Contract test #7 (production-seam wiring): drive a streamingHTML book
