@@ -530,6 +530,13 @@ struct Strings {
         static let whereAmI = NSLocalizedString("Where am I?", value: "Where am I?", comment: "VoiceOver custom action that announces the patron's current reading position without moving focus")
         static let percentRead = NSLocalizedString("%d%% read", value: "%d%% read", comment: "VoiceOver position component stating how far through the book the patron is, e.g. `45% read`")
         static let positionUnavailable = NSLocalizedString("Current position unavailable", value: "Current position unavailable", comment: "VoiceOver announcement when the current reading position cannot be determined")
+        // Footnotes (DAISY reading-420, PP-4531). VoiceOver speaks these labels on
+        // the inline EPUB elements so a non-visual reader knows a link is a note
+        // reference, hears the note, and can return to the reference.
+        static let footnoteReferenceNumbered = NSLocalizedString("Footnote %@", value: "Footnote %@", comment: "VoiceOver label for an inline footnote reference link with a marker, e.g. `Footnote 3`. VoiceOver appends `link` itself.")
+        static let footnoteReferenceGeneric = NSLocalizedString("Footnote reference", value: "Footnote reference", comment: "VoiceOver label for a footnote reference link with no readable marker")
+        static let footnoteContent = NSLocalizedString("Footnote", value: "Footnote", comment: "VoiceOver label prefix announced when focus reaches footnote content")
+        static let footnoteBacklink = NSLocalizedString("Back to reference", value: "Back to reference", comment: "VoiceOver label for the footnote return link (doc-backlink) that returns the reader to the reference")
     }
 
     struct TPPBarCode {

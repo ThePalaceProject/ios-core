@@ -263,6 +263,23 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
         }
     }
 
+    /// Annotate inline EPUB footnote elements (`doc-noteref` / `doc-footnote` /
+    /// `doc-backlink`) in the rendered WKWebView with VoiceOver `aria-label`s so a
+    /// non-visual reader knows a link is a note reference, hears the note, and can
+    /// return to the reference (DAISY reading-420, PP-4531). Additive and
+    /// idempotent; runs after the chapter has had a moment to render and bails if
+    /// the chapter changed again in the meantime.
+    private func annotateFootnotesForVoiceOver() {
+        let href = lastChapterHREF
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 600_000_000)
+            guard self.lastChapterHREF == href else { return }
+            await self.epubNavigator.evaluateJavaScript(
+                TPPReaderFootnoteAccessibility.annotationJavaScript()
+            )
+        }
+    }
+
     override func voiceOverStatusDidChange() {
         super.voiceOverStatusDidChange()
         configureAccessibilityActions()
@@ -296,6 +313,11 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
         // so VoiceOver's "Read All" continues into the new chapter.
         let status = locator.title.flatMap { $0.isEmpty ? nil : $0 } ?? "Page changed"
         UIAccessibility.post(notification: .pageScrolled, argument: status)
+
+        // Label inline footnotes (doc-noteref/doc-footnote/doc-backlink) for
+        // VoiceOver on every chapter render — manual turns AND Read-All — so a
+        // non-visual reader hits semantic note references throughout (PP-4531).
+        annotateFootnotesForVoiceOver()
 
         // For manual page turns only (toolbar buttons, keyboard, edge taps),
         // use JavaScript to focus the first content element so VoiceOver
