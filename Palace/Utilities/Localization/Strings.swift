@@ -526,6 +526,7 @@ struct Strings {
         static let nextChapter = NSLocalizedString("Next Chapter", comment: "Accessibility label to go forward in the publication")
         static let read = NSLocalizedString("Read", comment: "Accessibility label to read current chapter")
         static let pageOf = NSLocalizedString("Page %d of ", value: "Page %d of ", comment: "States the page count out of total pages, i.e. `Page 1 of 20`")
+        static let navigatedToPage = NSLocalizedString("Page %@", value: "Page %@", comment: "VoiceOver announcement after navigating to a print page, e.g. `Page 12`")
     }
 
     struct TPPBarCode {
@@ -611,6 +612,12 @@ struct Strings {
     struct TPPReaderPositionsVC {
         static let contents = NSLocalizedString("Contents", comment: "")
         static let bookmarks = NSLocalizedString("Bookmarks", comment: "")
+        static let pages = NSLocalizedString("Pages", comment: "Title of the reader navigation tab listing the book's print pages")
+        static let goToPage = NSLocalizedString("Go to Page", comment: "Button and title for the prompt that jumps to a specific print page")
+        static let goToPageMessage = NSLocalizedString("Enter a page number", comment: "Message in the prompt asking which print page to navigate to")
+        static let pageNotFoundTitle = NSLocalizedString("Page Not Found", comment: "Alert title shown when an entered print page is not in the book")
+        static let pageNotFoundMessage = NSLocalizedString("No matching page was found in this book.", comment: "Alert message shown when an entered print page is not in the book")
+        static let pageRowAccessibility = NSLocalizedString("Page %@", value: "Page %@", comment: "VoiceOver label for a print page entry in the page list, e.g. `Page 12`")
     }
 
     struct TPPReaderTOCBusinessLogic {

@@ -440,6 +440,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
         positionsVC.tocBusinessLogic = TPPReaderTOCBusinessLogic(r2Publication: publication,
                                                                  currentLocation: currentLocation)
         positionsVC.bookmarksBusinessLogic = bookmarksBusinessLogic
+        positionsVC.pageListBusinessLogic = TPPReaderPageListBusinessLogic(publication: publication)
         positionsVC.delegate = self
 
         if shouldPresentAsPopover() {
@@ -746,6 +747,26 @@ extension TPPBaseReaderViewController: TPPReaderPositionsDelegate {
     func positionsVC(_ positionsVC: TPPReaderPositionsVC,
                      didRequestSyncBookmarksWithCompletion completion: @escaping (_ success: Bool, _ bookmarks: [TPPReadiumBookmark]) -> Void) {
         bookmarksBusinessLogic.syncBookmarks(completion: completion)
+    }
+
+    func positionsVC(_ positionsVC: TPPReaderPositionsVC,
+                     didSelectPageLocation location: Any, pageLabel: String) {
+        if shouldPresentAsPopover() {
+            positionsVC.dismiss(animated: true)
+        } else {
+            navigationController?.popViewController(animated: true)
+        }
+
+        Task {
+            guard let locator = location as? Locator else { return }
+            await navigator.go(to: locator)
+            // VoiceOver arrival announcement so a non-sighted patron hears which
+            // print page they landed on (nav-110).
+            let announcement = String(format: Strings.TPPBaseReaderViewController.navigatedToPage, pageLabel)
+            await MainActor.run {
+                UIAccessibility.post(notification: .announcement, argument: announcement)
+            }
+        }
     }
 }
 
