@@ -214,4 +214,101 @@ final class TPPReaderPageListBusinessLogicTests: XCTestCase {
         XCTAssertEqual(sut.indexForPage(labeled: "3"), 3, "nearest preceding numeric for 3 is page 2")
         XCTAssertEqual(sut.indexForPage(labeled: "ii"), 1, "exact roman match still resolves")
     }
+
+    // MARK: - nearestPrecedingIndex (PP-4527 "Where am I?" current-page selection)
+    //
+    // Pure progression-based selection: given each page entry's book
+    // progression and the patron's current progression, pick the nearest
+    // PRECEDING print page (largest progression <= current). This is the
+    // mutation-tested core behind currentPageLabel(for:).
+
+    func testNearestPreceding_picksLargestAtOrBelowCurrent() {
+        let progressions: [Double?] = [0.0, 0.25, 0.5, 0.75]
+        XCTAssertEqual(
+            TPPReaderPageListBusinessLogic.nearestPrecedingIndex(progressions: progressions, current: 0.6),
+            2, "current 0.6 lands on the page at 0.5, not 0.75"
+        )
+    }
+
+    func testNearestPreceding_exactMatchIsInclusive() {
+        // current == a boundary's progression must select THAT boundary (<=),
+        // not the prior one. The mutant `<` would drift down to index 1.
+        let progressions: [Double?] = [0.0, 0.25, 0.5, 0.75]
+        XCTAssertEqual(
+            TPPReaderPageListBusinessLogic.nearestPrecedingIndex(progressions: progressions, current: 0.5),
+            2
+        )
+    }
+
+    func testNearestPreceding_currentBeforeFirstBoundary_returnsNil() {
+        // No page boundary at or before the current position → no page to report.
+        let progressions: [Double?] = [0.5, 0.75]
+        XCTAssertNil(
+            TPPReaderPageListBusinessLogic.nearestPrecedingIndex(progressions: progressions, current: 0.2)
+        )
+    }
+
+    func testNearestPreceding_skipsUnresolvedProgressions() {
+        // Page entries whose locator could not be resolved (nil progression) are
+        // skipped, never selected.
+        let progressions: [Double?] = [nil, 0.2, nil, 0.4]
+        XCTAssertEqual(
+            TPPReaderPageListBusinessLogic.nearestPrecedingIndex(progressions: progressions, current: 0.5),
+            3
+        )
+    }
+
+    func testNearestPreceding_tiesSelectFirstBoundary() {
+        // Two boundaries at the same progression: keep the FIRST (strict `>`).
+        // The mutant `>=` would drift to the last duplicate (index 1).
+        let progressions: [Double?] = [0.3, 0.3]
+        XCTAssertEqual(
+            TPPReaderPageListBusinessLogic.nearestPrecedingIndex(progressions: progressions, current: 0.5),
+            0
+        )
+    }
+
+    func testNearestPreceding_allUnresolved_returnsNil() {
+        let progressions: [Double?] = [nil, nil]
+        XCTAssertNil(
+            TPPReaderPageListBusinessLogic.nearestPrecedingIndex(progressions: progressions, current: 0.5)
+        )
+    }
+
+    func testNearestPreceding_emptyProgressions_returnsNil() {
+        XCTAssertNil(
+            TPPReaderPageListBusinessLogic.nearestPrecedingIndex(progressions: [], current: 0.5)
+        )
+    }
+
+    // MARK: - currentPageLabel(for:) guards
+
+    func testCurrentPageLabel_locatorWithoutProgression_returnsNil() async {
+        // No totalProgression on the locator → cannot place the reader on a print
+        // page; returns nil rather than guessing (AC: absence does not error).
+        let sut = TPPReaderPageListBusinessLogic(publication: makeNumericPublication())
+        let locator = Locator(
+            href: AnyURL(string: "/chapter1.xhtml")!,
+            mediaType: .xhtml,
+            locations: Locator.Locations(progression: 0.5, totalProgression: nil)
+        )
+        let label = await sut.currentPageLabel(for: locator)
+        XCTAssertNil(label)
+    }
+
+    func testCurrentPageLabel_noPageList_returnsNil() async {
+        // Title with no page-list: no page can be reported (AC), no error.
+        let manifest = Manifest(
+            metadata: Metadata(title: "No Pages"),
+            readingOrder: [Link(href: "/c1.xhtml", mediaType: .xhtml)]
+        )
+        let sut = TPPReaderPageListBusinessLogic(publication: Publication(manifest: manifest))
+        let locator = Locator(
+            href: AnyURL(string: "/c1.xhtml")!,
+            mediaType: .xhtml,
+            locations: Locator.Locations(progression: 0.5, totalProgression: 0.5)
+        )
+        let label = await sut.currentPageLabel(for: locator)
+        XCTAssertNil(label)
+    }
 }

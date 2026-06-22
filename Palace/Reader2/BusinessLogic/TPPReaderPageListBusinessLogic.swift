@@ -103,4 +103,55 @@ class TPPReaderPageListBusinessLogic {
         }
         return bestIndex
     }
+
+    // MARK: - Current position (DAISY nav-310, PP-4527)
+
+    /// The print page label for the patron's current reading position, or nil.
+    ///
+    /// Resolves each print-page boundary to its book progression and picks the
+    /// nearest **preceding** boundary (the page whose progression is the largest
+    /// value ≤ the locator's `totalProgression`), then returns its display label
+    /// via `label(at:)`. Returns nil when the locator has no `totalProgression`,
+    /// the publication has no page-list, or no boundary precedes the position —
+    /// the absence of a page number is not an error (nav-310 AC).
+    func currentPageLabel(for locator: Locator) async -> String? {
+        guard let current = locator.locations.totalProgression else {
+            return nil
+        }
+
+        // Index-free iteration: the per-entry resolution loop has no observable
+        // arithmetic to mutate (the orderable logic lives in nearestPrecedingIndex,
+        // which IS unit-tested); `for-in` keeps it that way.
+        var progressions: [Double?] = []
+        for index in pageEntries.indices {
+            let pageLocator = await self.locator(at: index)
+            progressions.append(pageLocator?.locations.totalProgression)
+        }
+
+        guard let index = Self.nearestPrecedingIndex(progressions: progressions, current: current) else {
+            return nil
+        }
+        return label(at: index)
+    }
+
+    /// Index of the nearest **preceding** page boundary for `current`.
+    ///
+    /// Among the entries whose progression is non-nil and ≤ `current`, returns
+    /// the index of the one with the largest progression. Ties resolve to the
+    /// first (lowest-index) boundary — `>` keeps the first, matching the
+    /// document-order start of a page. Returns nil when no entry qualifies
+    /// (every progression is nil or strictly greater than `current`).
+    static func nearestPrecedingIndex(progressions: [Double?], current: Double) -> Int? {
+        var bestIndex: Int?
+        var bestValue = -Double.greatestFiniteMagnitude
+        var i = 0
+        while i < progressions.count {
+            if let value = progressions[i], value <= current, value > bestValue {
+                bestValue = value
+                bestIndex = i
+            }
+            i += 1
+        }
+        return bestIndex
+    }
 }

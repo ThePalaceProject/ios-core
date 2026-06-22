@@ -142,6 +142,10 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
         return epub
     }
 
+    /// Print page-list mapping for the "Where am I?" position report (PP-4527).
+    /// Reuses the same layer as the nav-110 page navigation UI.
+    private lazy var pageListBusinessLogic = TPPReaderPageListBusinessLogic(publication: publication)
+
     override func willMove(toParent parent: UIViewController?) {
         super.willMove(toParent: parent)
         navigationController?.navigationBar.barStyle = .default
@@ -170,11 +174,19 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
     /// These appear in the Tab-Z menu when Full Keyboard Access is enabled,
     /// providing an alternative to arrow keys which FKA consumes.
     private func configureAccessibilityActions() {
+        // "Where am I?" position report (DAISY nav-310, PP-4527): a VoiceOver
+        // affordance that re-orients a non-visual reader without moving focus or
+        // reading position. Exposed to both VoiceOver and FKA users; never a
+        // visible control.
+        let whereAmIAction = makeWhereAmIAction()
+
         if UIAccessibility.isVoiceOverRunning {
-            // Let VoiceOver access the underlying WKWebView content directly.
+            // Let VoiceOver access the underlying WKWebView content directly; the
+            // only custom action kept is the position report, which reads — never
+            // moves — the reading position.
             navigator.view.isAccessibilityElement = false
             navigator.view.accessibilityLabel = nil
-            navigator.view.accessibilityCustomActions = nil
+            navigator.view.accessibilityCustomActions = [whereAmIAction]
             return
         }
 
@@ -215,7 +227,40 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
             }
         )
 
-        navigator.view.accessibilityCustomActions = [nextPageAction, previousPageAction, toggleToolbarAction]
+        navigator.view.accessibilityCustomActions = [nextPageAction, previousPageAction, toggleToolbarAction, whereAmIAction]
+    }
+
+    /// The "Where am I?" custom action. Activating it reports the current
+    /// position via a VoiceOver announcement and returns immediately — it never
+    /// calls `navigator.go(...)`, so focus and reading position are unchanged.
+    private func makeWhereAmIAction() -> UIAccessibilityCustomAction {
+        UIAccessibilityCustomAction(
+            name: Strings.TPPBaseReaderViewController.whereAmI,
+            actionHandler: { [weak self] _ in
+                self?.announceCurrentPosition()
+                return true
+            }
+        )
+    }
+
+    /// Build the position report from the current location and speak it via a
+    /// VoiceOver announcement. Reports section + print page + percentage when
+    /// available; a title with no page-list still reports section + percentage
+    /// (nav-310 AC: the absence of a page number does not error).
+    private func announceCurrentPosition() {
+        let locator = navigator.currentLocation
+        Task { @MainActor in
+            var pageLabel: String?
+            if let locator {
+                pageLabel = await self.pageListBusinessLogic.currentPageLabel(for: locator)
+            }
+            let report = TPPReaderPositionReport.announcement(
+                section: locator?.title,
+                pageLabel: pageLabel,
+                totalProgression: locator?.locations.totalProgression
+            )
+            UIAccessibility.post(notification: .announcement, argument: report)
+        }
     }
 
     override func voiceOverStatusDidChange() {

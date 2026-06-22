@@ -527,6 +527,9 @@ struct Strings {
         static let read = NSLocalizedString("Read", comment: "Accessibility label to read current chapter")
         static let pageOf = NSLocalizedString("Page %d of ", value: "Page %d of ", comment: "States the page count out of total pages, i.e. `Page 1 of 20`")
         static let navigatedToPage = NSLocalizedString("Page %@", value: "Page %@", comment: "VoiceOver announcement after navigating to a print page, e.g. `Page 12`")
+        static let whereAmI = NSLocalizedString("Where am I?", value: "Where am I?", comment: "VoiceOver custom action that announces the patron's current reading position without moving focus")
+        static let percentRead = NSLocalizedString("%d%% read", value: "%d%% read", comment: "VoiceOver position component stating how far through the book the patron is, e.g. `45% read`")
+        static let positionUnavailable = NSLocalizedString("Current position unavailable", value: "Current position unavailable", comment: "VoiceOver announcement when the current reading position cannot be determined")
     }
 
     struct TPPBarCode {
