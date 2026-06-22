@@ -72,9 +72,13 @@ jobs:
           PR_TITLE: ${{ steps.pr.outputs.title }}
           PR_BRANCH: ${{ steps.pr.outputs.branch }}
         run: |
-          PR_BODY=$(cat /tmp/pr_body.txt 2>/dev/null || true)
-          ALL_TEXT="$PR_TITLE $PR_BODY $PR_BRANCH"
-          
+          # Extract the implemented ticket(s) from PR TITLE + BRANCH only — NOT the
+          # body. The body mentions unrelated tickets (stacked/held/shares-layer);
+          # grepping it moved every mentioned key to Code Review on PR open. Title +
+          # branch are authoritative. (Body is still parsed separately below for the
+          # fix-comment content.) See the 2026-06-22 auto-transition incident.
+          ALL_TEXT="$PR_TITLE $PR_BRANCH"
+
           TICKETS=$(echo "$ALL_TEXT" | grep -oE 'PP-[0-9]+' | sort -u | tr '\n' ' ' || true)
           
           if [ -z "$TICKETS" ]; then
