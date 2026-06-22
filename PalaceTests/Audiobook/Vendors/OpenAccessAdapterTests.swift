@@ -209,4 +209,215 @@ final class OpenAccessAdapterTests: XCTestCase {
             return
         }
     }
+
+    // MARK: - PP-4631 bearer-token wrapper recovery
+
+    /// Stub second-leg fetcher. Records the token + book it was handed and
+    /// returns a pre-canned manifest (or nil to simulate a failed second leg).
+    private final class StubBearerFetcher: BearerTokenManifestFetching {
+        var stubbedManifest: [String: Any]?
+        private(set) var callCount = 0
+        private(set) var receivedToken: MyBooksSimplifiedBearerToken?
+        private(set) var receivedBook: TPPBook?
+
+        func fetchManifest(
+            with token: MyBooksSimplifiedBearerToken,
+            for book: TPPBook,
+            completion: @escaping ([String: Any]?) -> Void
+        ) {
+            callCount += 1
+            receivedToken = token
+            receivedBook = book
+            DispatchQueue.main.async { [stubbedManifest] in completion(stubbedManifest) }
+        }
+    }
+
+    private func bearerWrapperData(
+        location: String = "https://cm.example.org/real-manifest.json",
+        accessToken: String = "tok-abc",
+        expiresIn: Int = 3600
+    ) -> Data {
+        try! JSONSerialization.data(
+            withJSONObject: ["access_token": accessToken, "location": location, "expires_in": expiresIn],
+            options: []
+        )
+    }
+
+    /// PP-4631 core regression: a fulfill response that is a bearer-token
+    /// wrapper (the OverDrive / Unlimited Listens shape whose MIME is nested
+    /// in the indirectAcquisition chain, so the top-level-MIME
+    /// `BearerTokenMIMEGate` does not claim it) must be followed to the real
+    /// manifest at the token's `location` — NOT returned verbatim as if the
+    /// wrapper were the manifest (which fails decode → "error opening this
+    /// book"). Kills the mutant that drops the bearer-detection branch.
+    func testResolveManifest_bearerWrapperWithFetcher_followsSecondLegToRealManifest() {
+        let network = StubNetwork()
+        let book = makeBook()
+        network.stubbedData = bearerWrapperData()
+        network.stubbedResponse = makeResponse(
+            url: book.defaultAcquisition!.hrefURL,
+            status: 200,
+            contentType: "application/json"
+        )
+        let bearerFetcher = StubBearerFetcher()
+        bearerFetcher.stubbedManifest = ["@type": "Audiobook", "title": "Real Manifest", "readingOrder": []]
+        let adapter = OpenAccessAdapter(network: network, bearerTokenManifestFetcher: bearerFetcher)
+
+        let exp = expectation(description: "bearer second leg")
+        var observed: (json: [String: Any], decryptor: DRMDecryptor?)?
+        adapter.resolveManifest(for: book) { result in
+            if case .success(let value) = result { observed = value }
+            exp.fulfill()
+        }
+        wait(for: [exp], timeout: 2.0)
+
+        XCTAssertEqual(bearerFetcher.callCount, 1,
+                       "A bearer-token wrapper body must trigger exactly one second-leg fetch")
+        XCTAssertEqual(observed?.json["title"] as? String, "Real Manifest",
+                       "Caller must receive the real manifest, not the bearer wrapper")
+        XCTAssertNil(observed?.json["access_token"],
+                     "The bearer wrapper must NOT be returned as the manifest")
+        XCTAssertEqual(bearerFetcher.receivedToken?.accessToken, "tok-abc",
+                       "Second-leg fetch must carry the parsed access token")
+        XCTAssertEqual(bearerFetcher.receivedToken?.fulfillURL, book.defaultAcquisition!.hrefURL,
+                       "Second-leg token must record the fulfill URL for later re-auth")
+    }
+
+    /// A failed second leg (nil manifest) must surface as `.manifestFetchFailed`,
+    /// not a spurious success. Pins the bearer failure-mapping branch.
+    func testResolveManifest_bearerSecondLegReturnsNil_failsWithManifestFetchFailed() {
+        let network = StubNetwork()
+        let book = makeBook()
+        network.stubbedData = bearerWrapperData()
+        network.stubbedResponse = makeResponse(
+            url: book.defaultAcquisition!.hrefURL,
+            status: 200,
+            contentType: "application/json"
+        )
+        let bearerFetcher = StubBearerFetcher()
+        bearerFetcher.stubbedManifest = nil
+        let adapter = OpenAccessAdapter(network: network, bearerTokenManifestFetcher: bearerFetcher)
+
+        let exp = expectation(description: "bearer second leg nil")
+        var observed: AudiobookLoadError?
+        adapter.resolveManifest(for: book) { result in
+            if case .failure(let err) = result { observed = err }
+            exp.fulfill()
+        }
+        wait(for: [exp], timeout: 2.0)
+
+        guard case .manifestFetchFailed = observed else {
+            XCTFail("Nil second-leg manifest must map to .manifestFetchFailed, got \(String(describing: observed))")
+            return
+        }
+    }
+
+    /// Back-compat: with no fetcher injected (the open-access-only
+    /// construction used across the suite), bearer detection is skipped and
+    /// the body is returned verbatim — the exact pre-fix fallback behavior,
+    /// so existing open-access tests/usages are unaffected.
+    func testResolveManifest_bearerWrapperButNoFetcher_returnsBodyVerbatim() {
+        let network = StubNetwork()
+        let book = makeBook()
+        network.stubbedData = bearerWrapperData()
+        network.stubbedResponse = makeResponse(
+            url: book.defaultAcquisition!.hrefURL,
+            status: 200,
+            contentType: "application/json"
+        )
+        let adapter = OpenAccessAdapter(network: network)  // no bearer fetcher
+
+        let exp = expectation(description: "no fetcher verbatim")
+        var observed: (json: [String: Any], decryptor: DRMDecryptor?)?
+        adapter.resolveManifest(for: book) { result in
+            if case .success(let value) = result { observed = value }
+            exp.fulfill()
+        }
+        wait(for: [exp], timeout: 2.0)
+
+        XCTAssertEqual(observed?.json["access_token"] as? String, "tok-abc",
+                       "Without a fetcher, the body is returned verbatim (back-compat)")
+    }
+
+    /// A plain (non-wrapper) manifest with a fetcher present must still be
+    /// returned directly — the bearer branch must not swallow normal
+    /// open-access manifests. Kills the mutant that always takes the bearer
+    /// path regardless of body shape.
+    func testResolveManifest_plainManifestWithFetcher_returnsDirectlyWithoutSecondLeg() {
+        let network = StubNetwork()
+        let book = makeBook()
+        network.stubbedData = try! JSONSerialization.data(
+            withJSONObject: ["@type": "Audiobook", "title": "Plain", "readingOrder": []],
+            options: []
+        )
+        network.stubbedResponse = makeResponse(
+            url: book.defaultAcquisition!.hrefURL,
+            status: 200,
+            contentType: "application/json"
+        )
+        let bearerFetcher = StubBearerFetcher()
+        let adapter = OpenAccessAdapter(network: network, bearerTokenManifestFetcher: bearerFetcher)
+
+        let exp = expectation(description: "plain manifest")
+        var observed: (json: [String: Any], decryptor: DRMDecryptor?)?
+        adapter.resolveManifest(for: book) { result in
+            if case .success(let value) = result { observed = value }
+            exp.fulfill()
+        }
+        wait(for: [exp], timeout: 2.0)
+
+        XCTAssertEqual(bearerFetcher.callCount, 0,
+                       "A plain manifest must NOT trigger the bearer second-leg")
+        XCTAssertEqual(observed?.json["title"] as? String, "Plain",
+                       "Plain open-access manifest must be returned directly")
+    }
+
+    // MARK: - PP-4631 Overdrive manifest decode (gated regression guard)
+    //
+    // The toolkit's own PalaceAudiobookToolkitTests are NOT run by any CI
+    // workflow, so the root-invariant regression that broke every Overdrive
+    // audiobook open (PP-4631, toolkit commit 3d1046b8) shipped unguarded.
+    // These tests run in PalaceTests (which IS gated) and decode through the
+    // SAME path the loader uses (`Manifest.customDecoder()`), so a future
+    // re-tightening of the invariant fails here in CI.
+
+    /// The real Overdrive descriptor shape (CM fulfillment): `formatType`
+    /// "audiobook-overdrive" + `links.contentlinks`, with NO metadata /
+    /// readingOrder / spine. It MUST decode (not throw) and classify as
+    /// `.overdrive` — decoding this shape is exactly what PP-4631 broke.
+    func testOverdriveDescriptorManifest_decodesAndTypesAsOverdrive() throws {
+        let json = #"""
+        {
+          "reserveId": "66e77ed7-3568-477a-83b7-8028424c840a",
+          "formatType": "audiobook-overdrive",
+          "id": "urn:librarysimplified.org/terms/id/Overdrive ID/66e77ed7",
+          "links": { "contentlinks": [
+            { "type": "text/html", "href": "https://ofsdirect.api.overdrive.com/contentfile?body=abc" }
+          ] }
+        }
+        """#
+        let manifest = try Manifest.customDecoder().decode(Manifest.self, from: Data(json.utf8))
+        XCTAssertEqual(manifest.audiobookType, .overdrive,
+                       "Overdrive descriptor must classify as .overdrive")
+        XCTAssertNil(manifest.metadata,
+                     "Overdrive descriptor legitimately has no root metadata — must still decode")
+    }
+
+    /// F-005 guard preserved: a non-Overdrive manifest with no metadata and no
+    /// readingOrder/spine must STILL be rejected.
+    func testEmptyManifest_stillThrows() {
+        XCTAssertThrowsError(
+            try Manifest.customDecoder().decode(Manifest.self, from: Data("{}".utf8)),
+            "Empty manifest (no metadata/tracks, not overdrive) must still throw"
+        )
+    }
+
+    /// The Overdrive exemption is contentLinks-gated: an "overdrive" formatType
+    /// with NO content links is genuinely broken and must still throw.
+    func testOverdriveFormatWithoutContentLinks_stillThrows() {
+        XCTAssertThrowsError(
+            try Manifest.customDecoder().decode(Manifest.self, from: Data(#"{"formatType":"audiobook-overdrive"}"#.utf8)),
+            "Overdrive formatType without contentlinks must still be rejected (F-005 guard)"
+        )
+    }
 }
