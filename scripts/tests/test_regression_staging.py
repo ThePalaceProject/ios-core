@@ -455,3 +455,42 @@ def test_current_matrix_is_entirely_phase_a():
 def test_area_worker_bash_n():
     r = subprocess.run(["bash", "-n", str(_AREA_WORKER)], capture_output=True, text=True)
     assert r.returncode == 0, f"bash -n failed:\n{r.stderr}"
+
+
+# ── forge_streaming_state (PP-4613 deterministic cold-load forge) ─────────────
+
+def test_audiobook_content_files_finds_only_lcpa(tmp_path):
+    # Mirror the real container layout: <root>/Library/Application Support/<bundle>/
+    # <account-uuid>/content/<sha>.{lcpa,lcpl}. The forge targets .lcpa CONTENT only
+    # and must leave .lcpl licenses (+ unrelated .epub) untouched.
+    content = tmp_path / "Library" / "Application Support" / "org.thepalaceproject.palace" / "urn:uuid:acct" / "content"
+    content.mkdir(parents=True)
+    (content / "aaa.lcpa").write_text("audiobook content")
+    (content / "aaa.lcpl").write_text("license")
+    (content / "bbb.lcpa").write_text("audiobook content 2")
+    (content / "book.epub").write_text("epub")
+    found = st.audiobook_content_files_under(tmp_path)
+    assert [p.name for p in found] == ["aaa.lcpa", "bbb.lcpa"], \
+        "forge must select only .lcpa content files (not .lcpl licenses or .epub)"
+
+
+def test_audiobook_content_files_empty_when_no_support_dir(tmp_path):
+    # No Application Support yet (fresh container) → nothing to forge, no crash.
+    assert st.audiobook_content_files_under(tmp_path) == []
+
+
+def test_cold_load_journey_is_ready_and_forges():
+    # Promoted out of PHASE2: it now has a staging recipe whose last step is the forge.
+    assert st.staging_status("audiobook-cold-load-first-open") == "ready"
+    assert "audiobook-cold-load-first-open" not in st.PHASE2_JOURNEYS
+    recipe = st.STAGING_RECIPES["audiobook-cold-load-first-open"]
+    assert ("forge_streaming_state",) in recipe, "cold-load recipe must forge the streaming state"
+    # The forge runs AFTER sign-in (the audiobook must be present/downloaded first).
+    prims = [step[0] for step in recipe]
+    assert prims.index("sign_in") < prims.index("forge_streaming_state")
+
+
+def test_download_indicator_stays_phase2():
+    # The forge does NOT unblock the indicator (needs a live active download, not a
+    # deleted file) — guard that it wasn't accidentally promoted.
+    assert st.staging_status("audiobook-download-indicator-stateful") == "phase2"
