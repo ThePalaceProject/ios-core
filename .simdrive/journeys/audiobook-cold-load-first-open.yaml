@@ -1,0 +1,118 @@
+scenario:
+  id: audiobook-cold-load-first-open
+  name: "Audiobook first cold-open — fresh-borrow LCP plays, never 'Audiobook Unavailable'"
+  description: >
+    Open a freshly-borrowed LCP audiobook whose .lcpa content is STILL
+    downloading (the book is marked download-successful the instant the tiny
+    .lcpl license lands, while the multi-hundred-MB content keeps downloading
+    in the background), tap Listen, and assert the first cold open does NOT
+    dead-end on the "Audiobook Unavailable" / "failed to open — please try
+    again" alert. This is the PP-4613 regression class: under the Readium
+    3.9.0 bump (#1042) the streaming-from-license path returns 0 bytes / nil
+    length, so AVPlayer dies in CoreMedia -12873 -> AVError -11849 and the
+    cold-load reopen blind-retries the same not-ready stream into an alert.
+    The download-gate fix (PP-4542, #1094) instead holds a loading state and
+    opens from the local package once content lands. The whole regression
+    SHIPPED in 3.2.0 un-caught because no journey exercised first-cold-open —
+    this closes that gap.
+  tags: [tier1, ios, audiobook, lcp, pp-4542, pp-4613, cold-load, readium-3.9.0]
+  tier: stateful
+  blocking: false   # smoke-only — depends on network/download timing + A1QA library state
+
+  preconditions:
+    - "Palace app launched, signed into A1QA Test Library"
+    - "An LCP audiobook from the 'Unlimited Listens ODL Feed' has been borrowed but the .lcpa content has NOT yet finished downloading"
+    - "Recommended: borrow a long audiobook (e.g., Anna Karenina, 40+ hr) so the download window outlasts the journey and the open genuinely routes through the not-yet-local path"
+    - "If the only borrowed audiobook has already fully downloaded, the open succeeds trivially from local and does NOT exercise the regression path — return + re-borrow to reset"
+
+  state_reset:
+    - "If the audiobook's content is already fully cached, the cold-open trivially succeeds from local and the journey false-passes (it isn't exercising the streaming-while-downloading path)."
+    - "Reset: in My Books, tap the audiobook -> Return -> re-borrow from the catalog -> run this journey IMMEDIATELY, before the content download completes."
+
+  staging:
+    recipe: audiobook-cold-load-first-open   # scripts/regression_staging.py (status: ready)
+    note: |
+      DETERMINISTIC staging via the `forge_streaming_state` primitive — no longer
+      needs to race the live ~1.5s download window (the reason this was PHASE2).
+      The recipe signs into A1QA, lands on My Books, then deletes the downloaded
+      LCP audiobook's .lcpa CONTENT file while keeping its .lcpl license + the
+      registry's .downloadSuccessful marker. Opening then routes through the LCP
+      streaming path — the exact PP-4613 surface — reproducibly. (registry-state
+      and content-file presence are decoupled: a book is marked downloadSuccessful
+      when the tiny .lcpl lands, independent of the .lcpa content.)
+
+  recording:
+    path: "~/.simdrive/recordings/audiobook-cold-load-first-open/recording.yaml"
+    captured_with: "PENDING_CAPTURE"
+    captured_on: "PENDING_CAPTURE"
+    note: |
+      Spec authored 2026-06-17 alongside the PP-4542/#1094 fix; staging made
+      deterministic via forge_streaming_state (see `staging` above). Capture the
+      HID trace on the target sim: run the staging recipe, then record_start →
+      tap My Books → tap Listen → settle → record_stop. The structural_checks
+      below are the load-bearing assertions and are independent of stable_id
+      drift; the NEGATIVE check (no "Audiobook Unavailable" alert) is the one
+      that fails on the regression.
+
+  steps:
+    - { id: tap_my_books, description: "Tap 'My Books' tab",                                       tap_target: { text: "My Books" } }
+    - { id: tap_listen,   description: "Tap 'Listen' on the freshly-borrowed (still-downloading) LCP audiobook", tap_target: { text: "Listen" } }
+    - { id: settle,       description: "Allow the first cold open to resolve — the regression alert fires within seconds; the gated fix holds a loading state instead", wait: { ms: 8000 } }
+
+  expected_invariants:
+    - "First cold open does NOT present an 'Audiobook Unavailable' / 'failed to open' / 'try again' alert"
+    - "The app either holds a loading/preparing/downloading state (gate awaiting local content) or has begun playback — i.e. a forward-progress state, not an error terminus"
+    - "The user is NOT silently dumped back to the catalog with the player gone (frozen-flow regression — the stale teardown pop)"
+
+  ssim_gating:
+    threshold: 0.85
+    on_drift: warn   # cover + loading/progress UI varies per run; the load-bearing assertion is structural OCR, not pixel SSIM
+
+  structural_checks:
+    - after_step: 3
+      # LOAD-BEARING NEGATIVE: the regression symptom is this exact alert family.
+      must_not_contain: ["Audiobook Unavailable", "Unavailable", "failed to open", "Please try again", "unable to play"]
+      # Positive: confirm we actually opened into a forward-progress surface and
+      # didn't, e.g., bounce straight back to an empty catalog (frozen-flow).
+      required_text_any: ["Downloading", "Loading", "Preparing", "Chapter", "%"]
+      min_marks: 6
+      rationale: |
+        PP-4613 invariant: opening a fresh-borrow LCP audiobook whose content is
+        still downloading MUST NOT terminate in the "Audiobook Unavailable"
+        alert. Pre-fix, the LCP streaming player (Readium 3.9.0) serves 0 bytes
+        with nil length -> CoreMedia -12873 -> AVError -11849, and the cold-load
+        reopen retries the same not-ready stream within milliseconds, surfacing
+        the alert within a few seconds — well inside the 8s settle. Post-fix
+        (the #1094 download-gate), the open parks the book in a loading state
+        (awaitingContentDownloadBookIds), swallows the streaming .playbackFailed
+        storm, and reopens from the local package once .lcpa lands — so at the
+        8s mark the screen shows a loading/downloading/playback surface, NEVER
+        the alert.
+
+        Two regression classes this catches, both observable as the same OCR:
+        1. Streaming-while-downloading failure (PP-4613 / Readium 3.9.0): the
+           alert text appears -> must_not_contain FAILS.
+        2. Frozen-flow teardown (the stale unconditional pop in
+           dismissPlayerOnPhone): the player/detail is yanked and the user lands
+           on the catalog with no forward-progress text -> required_text_any
+           FAILS (none of Downloading/Loading/Preparing/Chapter/% present).
+
+  rationale: |
+    The 3.2.0 audiobook cold-load regression shipped un-caught because the
+    regression suite's 4 audiobook journeys (scrubber-drag, skip-forward,
+    toc-seek, download-indicator) all assume an ALREADY-OPEN, already-local
+    player — none exercises FIRST cold-open of a fresh borrow, which is the only
+    path that streams-while-downloading. The bug was invisible to unit tests
+    (it only manifests when Readium's remote read resolves against the live
+    CDN-backed publication) and to code review (a library-version bump, not an
+    app-logic change). A user-visible OCR assertion on the first-open outcome is
+    the right granularity: it fails loudly the moment a future change reroutes a
+    fresh borrow back through the broken stream, or re-introduces the teardown
+    pop. Pairs with the download-gate's unit coverage (preferRemotePosition /
+    isRefreshInProgressError); this journey is the end-to-end backstop.
+
+  known_issues:
+    - "No longer time-sensitive: the forge_streaming_state staging primitive deletes the .lcpa deterministically, so the not-yet-local window no longer depends on catching a live ~1.5s download. (Previously PHASE2 for exactly that reason.)"
+    - "Does not assert WHICH LCP title is open (A1QA ODL feed contents change) — book-agnostic by design; the forge content-strips every downloaded LCP audiobook, so whichever one My Books shows is exercised."
+    - "forge_streaming_state strips the LOCAL .lcpa cache (not the loan) — a re-download or A1QA fixture re-provision restores it; it does NOT return/mutate the read-only standing fixture."
+    - "Sibling journey audiobook-download-indicator-stateful stays PHASE2 — it needs a genuinely ACTIVE download to show 'Downloading… %', which the content-delete forge cannot produce (a different mechanism: a per-sim download throttle / progress-injection seam)."
