@@ -1110,6 +1110,38 @@ final class BookDetailViewModelTests: XCTestCase {
         XCTAssertTrue(vm.processingButtons.contains(.cancel))
     }
 
+    // MARK: - PP-4633 half-sheet dismissal on open
+
+    /// PP-4633: tapping Read must dismiss the half-sheet synchronously on tap
+    /// so it does not linger over the reader. On iPhone the .medium detent is
+    /// covered by the full-screen presentation, but on iPad the sheet renders
+    /// as a floating form-sheet outside the reader's presentation chain and
+    /// stays on screen. The dismiss is set on tap (not in the async open
+    /// completion) so a slow open cannot leave the modal up. Kills the mutant
+    /// that drops `showHalfSheet = false` from the .read/.listen case.
+    func testHandleAction_Read_DismissesHalfSheet() {
+        let (vm, _, _) = makeVM(state: .downloadSuccessful)
+        vm.showHalfSheet = true
+        vm.handleAction(for: .read)
+        XCTAssertFalse(vm.showHalfSheet,
+                       "Read must dismiss the half-sheet on tap (PP-4633)")
+    }
+
+    /// PP-4633: the literal reported case — tapping Listen on an audiobook
+    /// must dismiss the half-sheet (the player opened behind a lingering modal
+    /// on iPad). .read and .listen share a handleAction case, so this also
+    /// pins the audiobook entry point.
+    func testHandleAction_Listen_DismissesHalfSheet() {
+        let book = createAudiobook()
+        let registry = TPPBookRegistryMock()
+        registry.addBook(book, location: nil, state: .downloadSuccessful, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+        let vm = BookDetailViewModel(book: book, registry: registry, downloadCenter: appContainer.downloadCenter, accountsManager: appContainer.accountsManager, settings: TPPSettings(), opdsFeedService: appContainer.opdsFeedService, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService)
+        vm.showHalfSheet = true
+        vm.handleAction(for: .listen)
+        XCTAssertFalse(vm.showHalfSheet,
+                       "Listen must dismiss the half-sheet on tap (PP-4633)")
+    }
+
     func testDidSelectCancel_ResetsDownloadProgress() {
         let (vm, _, _) = makeVM()
         vm.downloadProgress = 0.42

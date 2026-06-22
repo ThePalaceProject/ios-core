@@ -491,7 +491,14 @@ final class AudiobookLoader {
         )
         chain.append(BearerTokenMIMEGate(wrapped: bearerTokenAdapter))
 
-        chain.append(OpenAccessAdapter(network: manifestNetwork))
+        // OpenAccessAdapter is the fallback for books the MIME gate does not
+        // claim; it is given the bearer-token second-leg fetcher so it can
+        // recover OverDrive / Unlimited Listens loans whose bearer-token MIME
+        // is nested in the indirectAcquisition chain (PP-4631).
+        chain.append(OpenAccessAdapter(
+            network: manifestNetwork,
+            bearerTokenManifestFetcher: ProductionBearerTokenManifestFetcher()
+        ))
 
         return chain
     }

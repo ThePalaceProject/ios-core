@@ -645,6 +645,14 @@ final class BookDetailViewModel: ObservableObject {
         // Don't remove processing here - will be removed when state changes to .downloading or .downloadFailed
 
         case .read, .listen:
+            // PP-4633: dismiss the half-sheet immediately on tap so it does
+            // not linger over the reader/player. This is invisible on iPhone
+            // (the .medium detent is covered by the full-screen presentation)
+            // but on iPad the sheet renders as a floating form-sheet outside
+            // the player's presentation chain and stays on screen. Mirrors the
+            // .reserve / .return cases; set on tap rather than in the open
+            // completion so a slow open does not leave the modal up.
+            showHalfSheet = false
             didSelectRead(for: book) {
                 self.removeProcessingButton(button)
             }
@@ -654,6 +662,8 @@ final class BookDetailViewModel: ObservableObject {
             // / openBook; the asset is online-only and presented directly via
             // the NavigationCoordinator streamingHTML route. processingButtons
             // is cleared after the route push completes.
+            // PP-4633: same half-sheet dismissal as .read/.listen.
+            showHalfSheet = false
             didSelectReadStreaming(for: book) {
                 self.removeProcessingButton(button)
             }

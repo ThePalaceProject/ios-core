@@ -6,8 +6,13 @@
 //  Module B of swarm_5c8ddbd5 (Audiobook Vendor Adapter Extraction).
 //
 //  Carve-out of `AudiobookLoader.fetchOpenAccessManifest` (pre-swarm lines
-//  346-396) MINUS the bearer-token-detection branch. The recursive bearer-
-//  token flow lives in `BearerTokenAdapter`.
+//  346-396). The recursive bearer-token flow primarily lives in
+//  `BearerTokenAdapter` (routed by the top-level-MIME `BearerTokenMIMEGate`),
+//  but this fallback adapter also re-detects a bearer-token wrapper at runtime
+//  from the fetched body — restoring the pre-swarm body-based detection — so
+//  loans whose bearer-token MIME is nested in the indirectAcquisition chain
+//  (OverDrive / Unlimited Listens, PP-4631) are still followed to the real
+//  manifest when the MIME gate does not claim them.
 //
 //  Failure mapping (refined from the original code's all-nil completion):
 //    - network error    → .manifestFetchFailed
@@ -50,8 +55,20 @@ final class OpenAccessAdapter: AudiobookVendorAdapter {
 
     private let network: AudiobookManifestNetworkFetching
 
-    init(network: AudiobookManifestNetworkFetching) {
+    /// Optional second-leg fetcher used to recover the pre-swarm runtime
+    /// bearer-token flow when a fulfill response turns out to be a
+    /// bearer-token wrapper that the top-level-MIME `BearerTokenMIMEGate`
+    /// did not catch (PP-4631). Injected in production; `nil` in the
+    /// open-access-only adapter tests, which preserves their behavior
+    /// (detection is skipped when no fetcher is wired).
+    private let bearerTokenManifestFetcher: BearerTokenManifestFetching?
+
+    init(
+        network: AudiobookManifestNetworkFetching,
+        bearerTokenManifestFetcher: BearerTokenManifestFetching? = nil
+    ) {
         self.network = network
+        self.bearerTokenManifestFetcher = bearerTokenManifestFetcher
     }
 
     /// Open-access is the fallback adapter — it accepts any TPPBook the
@@ -74,7 +91,7 @@ final class OpenAccessAdapter: AudiobookVendorAdapter {
 
         Log.debug(#file, "  📡 Fetching manifest from URL: \(url.absoluteString)")
 
-        network.fetchData(from: url) { data, response, error in
+        network.fetchData(from: url) { [bearerTokenManifestFetcher] data, response, error in
             Task { @MainActor in
                 if let error = error {
                     Log.error(#file, "  ❌ Network error fetching manifest: \(error.localizedDescription)")
@@ -97,6 +114,35 @@ final class OpenAccessAdapter: AudiobookVendorAdapter {
                 guard let json = (try? JSONSerialization.jsonObject(with: data, options: [])) as? [String: Any] else {
                     Log.error(#file, "  ❌ Failed to parse manifest data as JSON dictionary")
                     completion(.failure(.manifestParseFailed))
+                    return
+                }
+
+                // PP-4631: OverDrive / Unlimited Listens fulfill through a
+                // bearer-token wrapper whose MIME is nested in the
+                // indirectAcquisition chain, not the top-level
+                // `defaultAcquisition.type`. The top-level-only
+                // `BearerTokenMIMEGate` therefore misses them and they fall
+                // through to this fallback adapter. Restore the pre-swarm
+                // runtime (body-based) bearer-token detection so the wrapper
+                // is followed to the real manifest instead of being mis-parsed
+                // as one (which fails decode → "error opening this book").
+                if let bearerTokenManifestFetcher,
+                   let bearerToken = MyBooksSimplifiedBearerToken.simplifiedBearerToken(with: json) {
+                    Log.info(#file, "  🔑 Open-access fetch returned a bearer-token wrapper - following second leg to the real manifest")
+                    bearerToken.fulfillURL = url
+                    book.bearerToken = bearerToken.accessToken
+                    book.bearerTokenFulfillURL = url
+                    bearerTokenManifestFetcher.fetchManifest(with: bearerToken, for: book) { manifestJSON in
+                        Task { @MainActor in
+                            guard let manifestJSON = manifestJSON else {
+                                Log.error(#file, "  ❌ Bearer-token second-leg manifest fetch returned nil")
+                                completion(.failure(.manifestFetchFailed))
+                                return
+                            }
+                            Log.debug(#file, "  ✅ Successfully fetched manifest via bearer token (open-access fallback)")
+                            completion(.success((json: manifestJSON, decryptor: nil)))
+                        }
+                    }
                     return
                 }
 
