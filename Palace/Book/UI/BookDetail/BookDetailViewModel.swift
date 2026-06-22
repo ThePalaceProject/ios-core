@@ -645,16 +645,20 @@ final class BookDetailViewModel: ObservableObject {
         // Don't remove processing here - will be removed when state changes to .downloading or .downloadFailed
 
         case .read, .listen:
-            // PP-4633: dismiss the half-sheet immediately on tap so it does
-            // not linger over the reader/player. This is invisible on iPhone
-            // (the .medium detent is covered by the full-screen presentation)
-            // but on iPad the sheet renders as a floating form-sheet outside
-            // the player's presentation chain and stays on screen. Mirrors the
-            // .reserve / .return cases; set on tap rather than in the open
-            // completion so a slow open does not leave the modal up.
-            showHalfSheet = false
+            // PP-4633: dismiss the half-sheet so it does not linger over the
+            // reader/player. On iPhone the .medium detent is covered by the
+            // full-screen presentation; on iPad it renders as a floating
+            // form-sheet that otherwise stays on screen.
+            //
+            // The dismiss MUST happen in the open completion (after the
+            // reader/player is presented), NOT on tap: on iPad, dismissing the
+            // form-sheet while the player is being presented races the two
+            // modal transitions, so the player fails to present and the screen
+            // freezes. Presenting first, then dismissing the sheet underneath,
+            // avoids the race. Mirrors the .reserve / .return cases.
             didSelectRead(for: book) {
                 self.removeProcessingButton(button)
+                self.showHalfSheet = false
             }
 
         case .readStreaming:
@@ -662,10 +666,11 @@ final class BookDetailViewModel: ObservableObject {
             // / openBook; the asset is online-only and presented directly via
             // the NavigationCoordinator streamingHTML route. processingButtons
             // is cleared after the route push completes.
-            // PP-4633: same half-sheet dismissal as .read/.listen.
-            showHalfSheet = false
+            // PP-4633: dismiss the half-sheet in the completion (after the
+            // reader is presented), same ordering as .read/.listen.
             didSelectReadStreaming(for: book) {
                 self.removeProcessingButton(button)
+                self.showHalfSheet = false
             }
 
         case .cancel:

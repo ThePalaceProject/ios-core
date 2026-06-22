@@ -49,9 +49,11 @@ Two regressions surfaced in 3.2.0 RC build 481 (RC testing under PP-4572):
   `ProductionBearerTokenManifestFetcher`. With no fetcher (open-access-only
   tests), detection is skipped → existing behavior preserved.
 - PP-4633: the `.read, .listen` and `.readStreaming` cases set
-  `showHalfSheet = false` immediately on tap (before the async open), mirroring
-  `.reserve` / `.return`. Dismiss-on-tap (not in the open completion) so a slow
-  open cannot leave the modal up.
+  `showHalfSheet = false` in the OPEN COMPLETION (after the reader/player is
+  presented), mirroring `.reserve` / `.return`. (Corrected from an initial
+  on-tap dismiss, which on iPad raced the form-sheet dismissal against the
+  player presentation and froze the screen — present first, then dismiss the
+  sheet underneath.)
 
 ## Verification
 
