@@ -537,6 +537,9 @@ struct Strings {
         static let footnoteReferenceGeneric = NSLocalizedString("Footnote reference", value: "Footnote reference", comment: "VoiceOver label for a footnote reference link with no readable marker")
         static let footnoteContent = NSLocalizedString("Footnote", value: "Footnote", comment: "VoiceOver label prefix announced when focus reaches footnote content")
         static let footnoteBacklink = NSLocalizedString("Back to reference", value: "Back to reference", comment: "VoiceOver label for the footnote return link (doc-backlink) that returns the reader to the reference")
+        // Block-by-block navigation (DAISY reading-810, PP-4533). The title of the
+        // VoiceOver custom rotor that steps through logical content blocks.
+        static let blockRotorTitle = NSLocalizedString("Blocks", value: "Blocks", comment: "VoiceOver rotor title for block-by-block reader navigation")
     }
 
     struct TPPBarCode {
