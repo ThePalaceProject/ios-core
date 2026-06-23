@@ -188,6 +188,18 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
             navigator.view.isAccessibilityElement = false
             navigator.view.accessibilityLabel = nil
             navigator.view.accessibilityCustomActions = [whereAmIAction]
+
+            // Block-by-block navigation rotor (DAISY reading-810, PP-4533): lets a
+            // VoiceOver user step through logical content blocks. Gated on the
+            // app's customRotorActionsEnabled preference (default on); appends to
+            // any existing rotors rather than clobbering.
+            if Self.customRotorActionsEnabled {
+                var rotors = navigator.view.accessibilityCustomRotors ?? []
+                rotors.append(makeBlockRotor())
+                navigator.view.accessibilityCustomRotors = rotors
+            } else {
+                navigator.view.accessibilityCustomRotors = nil
+            }
             return
         }
 
@@ -290,6 +302,87 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
         }
     }
 
+    /// Mark the logical block elements (paragraphs, headings, list items, quotes …)
+    /// in the rendered WKWebView as atomic VoiceOver stops so a non-visual reader
+    /// can step through content one block at a time via the "Blocks" rotor (DAISY
+    /// reading-810, PP-4533). Additive and idempotent; runs after the chapter has
+    /// had a moment to render and bails if the chapter changed again in the
+    /// meantime. Mirrors `annotateFootnotesForVoiceOver()` from PP-4531.
+    private func annotateBlocksForVoiceOver() {
+        let href = lastChapterHREF
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 600_000_000)
+            guard self.lastChapterHREF == href else { return }
+            let result = await self.epubNavigator.evaluateJavaScript(
+                TPPReaderBlockNavigation.annotationJavaScript()
+            )
+            // PP-4533 observability: the injected block marks live in the Readium
+            // WKWebView's web-AX, which host-AX / simdrive CANNOT inspect on the
+            // simulator. Emit the marked-block count + VoiceOver state so the
+            // injection is verifiable end-to-end via log capture (CI / host-AX),
+            // since neither the DOM marks nor VoiceOver focus surface to the host
+            // AX bridge.
+            let value = try? result.get()
+            let n = (value as? Int) ?? (value as? NSNumber)?.intValue ?? -1
+            Log.info(#file, "PP-4533 block-nav marked \(n) blocks for VoiceOver, VoiceOver=\(UIAccessibility.isVoiceOverRunning)")
+        }
+    }
+
+    /// Whether the app's custom-rotor actions are enabled. Read synchronously from
+    /// the persisted `AccessibilityPreferences` (same store `AccessibilityService`
+    /// loads) so the gate is available inside the synchronous accessibility
+    /// configuration path; defaults to the `.default` value (on) when unset.
+    private static var customRotorActionsEnabled: Bool {
+        guard
+          let data = UserDefaults.standard.data(forKey: AccessibilityPreferences.storageKey),
+          let prefs = try? JSONDecoder().decode(AccessibilityPreferences.self, from: data)
+        else {
+          return AccessibilityPreferences.default.customRotorActionsEnabled
+        }
+        return prefs.customRotorActionsEnabled
+    }
+
+    /// A VoiceOver custom rotor that walks the marked logical blocks (see
+    /// `annotateBlocksForVoiceOver()`) forward / back. Each `itemSearchBlock`
+    /// invocation focuses the next / previous `[data-pp-block]` in the DOM and, on
+    /// a move, posts `.layoutChanged` so VoiceOver re-reads from the new focus.
+    /// Returns nil at the chapter's block boundary (DAISY reading-810, PP-4533).
+    private func makeBlockRotor() -> UIAccessibilityCustomRotor {
+        UIAccessibilityCustomRotor(
+            name: Strings.TPPBaseReaderViewController.blockRotorTitle
+        ) { [weak self] predicate in
+            guard let self = self else { return nil }
+            let forward = predicate.searchDirection == .next
+            let result = self.evaluateBlockMove(forward: forward)
+            guard result else { return nil }
+            UIAccessibility.post(notification: .layoutChanged, argument: self.navigator.view)
+            return UIAccessibilityCustomRotorItemResult(
+                targetElement: self.navigator.view,
+                targetRange: nil
+            )
+        }
+    }
+
+    /// Synchronously evaluate the focus-walk JS and report whether focus moved.
+    /// The rotor's `itemSearchBlock` is synchronous, so this blocks briefly on the
+    /// WKWebView evaluation; the JS itself is a cheap DOM walk.
+    private func evaluateBlockMove(forward: Bool) -> Bool {
+        let js = TPPReaderBlockNavigation.nextBlockJavaScript(forward: forward)
+        let semaphore = DispatchSemaphore(value: 0)
+        var moved = false
+        Task { @MainActor in
+            let result = await self.epubNavigator.evaluateJavaScript(js)
+            let value = try? result.get()
+            // Non-null tag name string means it focused a block.
+            if let tag = value as? String, !tag.isEmpty {
+                moved = true
+            }
+            semaphore.signal()
+        }
+        // Bounded wait so a stalled web view never hangs the AX thread.
+        _ = semaphore.wait(timeout: .now() + 1.0)
+        return moved
+    }
     override func voiceOverStatusDidChange() {
         super.voiceOverStatusDidChange()
         configureAccessibilityActions()
@@ -328,6 +421,10 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
         // VoiceOver on every chapter render — manual turns AND Read-All — so a
         // non-visual reader hits semantic note references throughout (PP-4531).
         annotateFootnotesForVoiceOver()
+        // Mark logical content blocks for VoiceOver on every chapter render —
+        // manual turns AND Read-All — so the "Blocks" rotor can step through the
+        // whole chapter (DAISY reading-810, PP-4533).
+        annotateBlocksForVoiceOver()
 
         // For manual page turns only (toolbar buttons, keyboard, edge taps),
         // use JavaScript to focus the first content element so VoiceOver
