@@ -182,24 +182,25 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
         let whereAmIAction = makeWhereAmIAction()
 
         if UIAccessibility.isVoiceOverRunning {
-            // Let VoiceOver access the underlying WKWebView content directly; the
-            // only custom action kept is the position report, which reads — never
-            // moves — the reading position.
+            // Let VoiceOver access the underlying WKWebView content directly. A
+            // custom ACTION on this container is NOT reachable while VoiceOver
+            // focuses web content (the PP-4527 bug), but custom ROTORS on the
+            // container ARE reachable — so the reader affordances are exposed as
+            // rotors, not actions. The keyboard (FKA) branch below still uses
+            // whereAmIAction (Tab-Z reaches container custom actions).
             navigator.view.isAccessibilityElement = false
             navigator.view.accessibilityLabel = nil
-            navigator.view.accessibilityCustomActions = [whereAmIAction]
+            navigator.view.accessibilityCustomActions = nil
 
-            // Block-by-block navigation rotor (DAISY reading-810, PP-4533): lets a
-            // VoiceOver user step through logical content blocks. Gated on the
-            // app's customRotorActionsEnabled preference (default on); appends to
-            // any existing rotors rather than clobbering.
+            // "Where am I?" position report (PP-4527, DAISY nav-310) as a custom
+            // rotor — always available to VoiceOver readers. Block-by-block
+            // navigation (PP-4533, reading-810) as a second rotor, gated on the
+            // customRotorActionsEnabled preference (default on).
+            var rotors: [UIAccessibilityCustomRotor] = [makeWhereAmIRotor()]
             if Self.customRotorActionsEnabled {
-                var rotors = navigator.view.accessibilityCustomRotors ?? []
                 rotors.append(makeBlockRotor())
-                navigator.view.accessibilityCustomRotors = rotors
-            } else {
-                navigator.view.accessibilityCustomRotors = nil
             }
+            navigator.view.accessibilityCustomRotors = rotors
             return
         }
 
@@ -254,6 +255,22 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
                 return true
             }
         )
+    }
+
+    /// A VoiceOver custom rotor that announces the current reading position
+    /// without moving focus (PP-4527, DAISY nav-310). Selecting the "Where am I?"
+    /// rotor and swiping reports the position via `announceCurrentPosition()`. A
+    /// rotor is used (not a custom action) because a custom action on the
+    /// WKWebView-hosting container is unreachable while VoiceOver focuses web
+    /// content, whereas container rotors ARE reachable.
+    private func makeWhereAmIRotor() -> UIAccessibilityCustomRotor {
+        UIAccessibilityCustomRotor(
+            name: Strings.TPPBaseReaderViewController.whereAmI
+        ) { [weak self] _ in
+            self?.announceCurrentPosition()
+            // One-shot trigger: the announcement is the payload; focus unchanged.
+            return nil
+        }
     }
 
     /// Build the position report from the current location and speak it via a
@@ -370,17 +387,24 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
         let js = TPPReaderBlockNavigation.nextBlockJavaScript(forward: forward)
         let semaphore = DispatchSemaphore(value: 0)
         var moved = false
+        var movedTag = ""
         Task { @MainActor in
             let result = await self.epubNavigator.evaluateJavaScript(js)
             let value = try? result.get()
             // Non-null tag name string means it focused a block.
             if let tag = value as? String, !tag.isEmpty {
                 moved = true
+                movedTag = tag
             }
             semaphore.signal()
         }
         // Bounded wait so a stalled web view never hangs the AX thread.
         _ = semaphore.wait(timeout: .now() + 1.0)
+        // PP-4533 observability: the focus-walk happens inside the WKWebView,
+        // which host-AX/simdrive can't inspect — so log each step's outcome so
+        // the step execution is verifiable via log capture (the marking-log
+        // pattern). Fires per rotor step.
+        Log.info(#file, "PP-4533 block-nav step forward=\(forward) moved=\(moved) tag=\(movedTag)")
         return moved
     }
     override func voiceOverStatusDidChange() {
