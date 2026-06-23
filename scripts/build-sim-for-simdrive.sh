@@ -110,7 +110,7 @@ echo "  ✓ BUILD SUCCEEDED → $APP"
 # app (CODE_SIGNING_ALLOWED=NO) launches but -34018s / -1s. Verify there is a
 # code signature before handing it to simdrive.
 say "Pre-flight gate: verifying the app is code-signed"
-if codesign -dv "$APP" 2>&1 | grep -q "Signature=adhoc\|Authority="; then
+if codesign -dvv "$APP" 2>&1 | grep -qiE "signature=adhoc|authority=|\(adhoc\)"; then
   echo "  ✓ signed (keychain + download will work on the sim)"
 else
   die "App is NOT signed — keychain will -34018 and downloads will -1. Rebuild with CODE_SIGNING_ALLOWED=YES."
