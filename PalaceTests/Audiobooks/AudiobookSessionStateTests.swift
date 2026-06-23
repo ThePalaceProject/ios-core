@@ -240,6 +240,37 @@ final class AudiobookSessionStateTransitionTests: XCTestCase {
         XCTAssertTrue(receivedStates.contains(.idle), "Should publish idle state after stop")
         cancellable.cancel()
     }
+
+    // MARK: - PP-4632: stop playback when the playing book is returned
+
+    /// The currently-playing book becoming `.unregistered` (returned / removed /
+    /// expired) MUST trigger teardown — the exact PP-4632 condition (a returned
+    /// audiobook kept playing because the session never observed the registry).
+    func testShouldStopPlayback_currentBookUnregistered_returnsTrue() {
+        XCTAssertTrue(AudiobookSessionManager.shouldStopPlaybackOnRegistryChange(
+            state: .unregistered, changedIdentifier: "book-1", currentBookIdentifier: "book-1"))
+    }
+
+    /// Returning a DIFFERENT book must NOT stop the active player.
+    func testShouldStopPlayback_differentBookUnregistered_returnsFalse() {
+        XCTAssertFalse(AudiobookSessionManager.shouldStopPlaybackOnRegistryChange(
+            state: .unregistered, changedIdentifier: "other-book", currentBookIdentifier: "book-1"))
+    }
+
+    /// A non-removal state change for the current book (e.g. `.downloadSuccessful`)
+    /// must NOT stop playback — only `.unregistered` (return/expire) does.
+    func testShouldStopPlayback_currentBookNonUnregistered_returnsFalse() {
+        XCTAssertFalse(AudiobookSessionManager.shouldStopPlaybackOnRegistryChange(
+            state: .downloadSuccessful, changedIdentifier: "book-1", currentBookIdentifier: "book-1"))
+    }
+
+    /// Nothing playing → never stop. (During account switch, currentBook is
+    /// already niled by cleanupActiveContentBeforeAccountSwitch, so the mass
+    /// `.unregistered` emissions must no-op here.)
+    func testShouldStopPlayback_noCurrentBook_returnsFalse() {
+        XCTAssertFalse(AudiobookSessionManager.shouldStopPlaybackOnRegistryChange(
+            state: .unregistered, changedIdentifier: "book-1", currentBookIdentifier: nil))
+    }
 }
 
 // MARK: - AudiobookSessionError Tests
