@@ -278,6 +278,7 @@ public final class AudiobookSessionManager: ObservableObject {
         // This manager now owns the full audiobook lifecycle (load → bind → play)
         // directly via AudiobookLoader; no pub/sub handoff is needed.
         subscribeToPhoneSideErrorAlerts()
+        subscribeToBookReturn()
     }
 
     /// AppContainer-friendly initializer. Used by future call sites that
@@ -335,6 +336,49 @@ public final class AudiobookSessionManager: ObservableObject {
                 Self.presentPhoneSideAlert(for: error)
             }
             .store(in: &lifecycleCancellables)
+    }
+
+    /// PP-4632: tear the player down when the CURRENTLY-PLAYING book is returned
+    /// (or otherwise removed → `.unregistered`). The return flow
+    /// (`BookReturnService`) deletes local content + purges caches but cannot
+    /// reach this in-memory session; without this, a returned audiobook keeps
+    /// playing from the already-loaded tracks (open file handles survive the
+    /// file deletion) until a new book is opened. Account-switch teardown is
+    /// handled separately (`cleanupActiveContentBeforeAccountSwitch` nils
+    /// `currentBook` first), so its mass `.unregistered` emissions no-op here.
+    private func subscribeToBookReturn() {
+        bookRegistry.bookStatePublisher
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] identifier, state in
+                self?.handleRegistryStateChange(identifier: identifier, state: state)
+            }
+            .store(in: &lifecycleCancellables)
+    }
+
+    private func handleRegistryStateChange(identifier: String, state: TPPBookState) {
+        guard Self.shouldStopPlaybackOnRegistryChange(
+            state: state,
+            changedIdentifier: identifier,
+            currentBookIdentifier: currentBook?.identifier
+        ) else { return }
+        Log.info(#file, "📕 Active book \(identifier) was returned/removed from the registry — stopping playback")
+        // persistFinalPosition: false — the book is gone; do not write a stale
+        // live position back into a (possibly re-borrowed) registry record.
+        Task { await stopPlayback(dismissPhoneUI: true, persistFinalPosition: false) }
+    }
+
+    /// Pure decision for `subscribeToBookReturn`: stop only when the book that
+    /// changed is the one currently playing AND it has become `.unregistered`
+    /// (returned / removed / expired). `nonisolated static` so it is unit-
+    /// testable without a live session (mirrors `networkValidationError`).
+    nonisolated static func shouldStopPlaybackOnRegistryChange(
+        state: TPPBookState,
+        changedIdentifier: String,
+        currentBookIdentifier: String?
+    ) -> Bool {
+        state == .unregistered
+            && currentBookIdentifier != nil
+            && currentBookIdentifier == changedIdentifier
     }
 
     static func presentPhoneSideAlert(for error: AudiobookSessionError) {
