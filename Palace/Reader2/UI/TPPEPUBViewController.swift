@@ -3,6 +3,7 @@ import SwiftUI
 import ReadiumShared
 import ReadiumNavigator
 import GameController
+import PalaceLogging
 
 class TPPEPUBViewController: TPPBaseReaderViewController {
     /// Tap handling is performed by Readium's input observer system:
@@ -274,9 +275,18 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 600_000_000)
             guard self.lastChapterHREF == href else { return }
-            await self.epubNavigator.evaluateJavaScript(
+            let result = await self.epubNavigator.evaluateJavaScript(
                 TPPReaderFootnoteAccessibility.annotationJavaScript()
             )
+            // PP-4531 observability: the injected aria-labels live in the Readium
+            // WKWebView's web-AX, which host-AX / simdrive CANNOT inspect on the
+            // simulator (verified 2026-06-23). Emit a log of the labelled-element
+            // count + the VoiceOver state so the injection is verifiable
+            // end-to-end via log capture (CI / host-AX), since neither the DOM
+            // labels nor VoiceOver focus-speech surface to the host AX bridge.
+            let value = try? result.get()
+            let labelled = (value as? Int) ?? (value as? NSNumber)?.intValue ?? -1
+            Log.info(#file, "PP-4531 injected aria-labels on \(labelled) noteref/footnote/backlink elements, VoiceOver=\(UIAccessibility.isVoiceOverRunning)")
         }
     }
 
