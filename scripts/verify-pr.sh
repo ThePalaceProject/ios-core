@@ -405,7 +405,14 @@ elif [ -f scripts/check-contract-reconciliation.py ]; then
   CR_INTENT_FLAG=""
   CR_SUBJECT=$(head -1 "$CR_MSG" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9 ]//g' | awk '{print $1"-"$2}')
   if [ -n "$CR_SUBJECT" ] && [ -d .forgeos/intent ]; then
-    CR_INTENT_MATCH=$(find .forgeos/intent -maxdepth 1 -name "*${CR_SUBJECT}*.md" -type f 2>/dev/null | head -1)
+    # Prefer an intent file present in THIS branch's diff over an old sibling
+    # that merely shares the ticket tokens — an already-merged same-ticket
+    # intent's claims must not gate this diff. Fall back to first match.
+    CR_INTENT_MATCH=""
+    for _c in $(find .forgeos/intent -maxdepth 1 -name "*${CR_SUBJECT}*.md" -type f 2>/dev/null); do
+      if grep -qF "${_c#./}" "$CR_DIFF" 2>/dev/null; then CR_INTENT_MATCH="$_c"; break; fi
+    done
+    [ -z "$CR_INTENT_MATCH" ] && CR_INTENT_MATCH=$(find .forgeos/intent -maxdepth 1 -name "*${CR_SUBJECT}*.md" -type f 2>/dev/null | head -1)
     [ -n "$CR_INTENT_MATCH" ] && CR_INTENT_FLAG="--intent $CR_INTENT_MATCH"
   fi
   CR_OUT=$(python3 scripts/check-contract-reconciliation.py --diff "$CR_DIFF" --commit-msg "$CR_MSG" $CR_INTENT_FLAG --quiet 2>&1)

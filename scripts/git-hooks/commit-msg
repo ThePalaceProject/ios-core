@@ -59,7 +59,18 @@ if [[ -n "$(git diff --cached --name-only --diff-filter=AM 2>/dev/null || true)"
   M1_INTENT_FLAG=()
   M1_SUBJECT=$(grep -v '^#' "$MSG_FILE" | head -1 | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9 ]//g' | awk '{print $1"-"$2}')
   if [[ -n "$M1_SUBJECT" ]] && [[ -d "$REPO_ROOT_M1/.forgeos/intent" ]]; then
-    M1_INTENT_MATCH=$(find "$REPO_ROOT_M1/.forgeos/intent" -maxdepth 1 -name "*${M1_SUBJECT}*.md" -type f 2>/dev/null | head -1)
+    # When several intent files share the subject's ticket tokens (sibling
+    # same-ticket intents from earlier merged work), prefer the one STAGED in
+    # THIS commit — an old sibling's claims must not gate an unrelated diff
+    # (false-positive observed when PP-4527 had two intents). Fall back to the
+    # first match when none is staged.
+    M1_STAGED_INTENT=$(git diff --cached --name-only --diff-filter=AM 2>/dev/null | grep '\.forgeos/intent/.*\.md$' || true)
+    M1_INTENT_MATCH=""
+    for _cand in $(find "$REPO_ROOT_M1/.forgeos/intent" -maxdepth 1 -name "*${M1_SUBJECT}*.md" -type f 2>/dev/null); do
+      _rel="${_cand#"$REPO_ROOT_M1"/}"
+      if printf '%s\n' "$M1_STAGED_INTENT" | grep -qxF "$_rel"; then M1_INTENT_MATCH="$_cand"; break; fi
+    done
+    [[ -z "$M1_INTENT_MATCH" ]] && M1_INTENT_MATCH=$(find "$REPO_ROOT_M1/.forgeos/intent" -maxdepth 1 -name "*${M1_SUBJECT}*.md" -type f 2>/dev/null | head -1)
     [[ -n "$M1_INTENT_MATCH" ]] && M1_INTENT_FLAG=(--intent "$M1_INTENT_MATCH")
   fi
 
