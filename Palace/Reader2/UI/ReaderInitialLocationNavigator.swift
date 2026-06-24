@@ -69,12 +69,29 @@ final class ReaderInitialLocationNavigator {
     /// teardown / bounce. Observable for diagnostics + tests.
     private(set) var restoreDidDegradeToStart = false
 
-    /// Test hook: fired (on the main actor) with `go(to:)`'s Bool result once the
-    /// single restore attempt completes. Nil in production.
+    /// Test hook: fired (on the main actor) with the FINAL `go(to:)` Bool result
+    /// once the restore (incl. retries) completes. Nil in production.
     var onRestoreAttempt: ((Bool) -> Void)?
 
-    init(initialLocation: Locator?) {
+    /// PP-4652: how many times to (re)try `go(to:)` before degrading to page 1,
+    /// and the delay between tries. A DRM/Adobe EPUB decrypts + loads its
+    /// WebContent more slowly than an open-access EPUB, so at `viewDidAppear`
+    /// (when the gate fires) Readium's location-mapping table may not be
+    /// populated yet — the first `go(to:)` then no-ops to `false` and #1084's
+    /// single-shot gate gave up at the cover. Retrying until the table is ready
+    /// restores the real position; the constructor restore stays disabled so a
+    /// retried `go(to:)` cannot double-restore / tear down WebContent.
+    private let maxRestoreAttempts: Int
+    private let restoreRetryDelayNanos: UInt64
+
+    init(
+        initialLocation: Locator?,
+        maxRestoreAttempts: Int = 12,
+        restoreRetryDelayNanos: UInt64 = 250_000_000
+    ) {
         self.initialLocation = initialLocation
+        self.maxRestoreAttempts = max(1, maxRestoreAttempts)
+        self.restoreRetryDelayNanos = restoreRetryDelayNanos
     }
 
     /// Called from the VC's init / viewDidLoad once the navigator is
@@ -105,18 +122,30 @@ final class ReaderInitialLocationNavigator {
 
         didNavigate = true
         Task { @MainActor [weak self] in
+            guard let self else { return }
             // Single restore authority: the navigator first-paints at its natural
-            // start (constructor restore disabled), then this fires once the
-            // WKWebView is ready (location-mapping table populated). Check the
-            // result: a false return means Readium couldn't resolve the locator —
-            // the reader stays at the natural start (graceful page-1 degradation),
-            // which we record/log rather than silently discard.
-            let restored = await navigator.go(to: location, options: NavigatorGoOptions(animated: false))
-            if !restored {
-                self?.restoreDidDegradeToStart = true
-                Log.warn(#file, "Reader initial-location restore returned false; remaining at start (page 1).")
+            // start (constructor restore disabled), then this restores once the
+            // WKWebView's location-mapping table is populated. For a DRM EPUB that
+            // can lag past `viewDidAppear`, so `go(to:)` may no-op to false on the
+            // first try (PP-4652: book reopened to the cover). Retry until it
+            // resolves — each false attempt is a no-op (nothing navigated, nothing
+            // torn down), so retrying restores the real position without
+            // re-introducing the #1084 double-restore. Only a persistently
+            // unresolvable locator (all attempts false) degrades to page 1, which
+            // we record/log rather than silently discard.
+            var restored = false
+            for attempt in 0..<self.maxRestoreAttempts {
+                restored = await navigator.go(to: location, options: NavigatorGoOptions(animated: false))
+                if restored { break }
+                if attempt < self.maxRestoreAttempts - 1, self.restoreRetryDelayNanos > 0 {
+                    try? await Task.sleep(nanoseconds: self.restoreRetryDelayNanos)
+                }
             }
-            self?.onRestoreAttempt?(restored)
+            if !restored {
+                self.restoreDidDegradeToStart = true
+                Log.warn(#file, "Reader initial-location restore returned false after \(self.maxRestoreAttempts) attempt(s); remaining at start (page 1).")
+            }
+            self.onRestoreAttempt?(restored)
         }
     }
 }
