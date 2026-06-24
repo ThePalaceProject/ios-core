@@ -90,6 +90,14 @@ if [[ -n "$(git diff --cached --name-only --diff-filter=AM 2>/dev/null || true)"
   fi
 
   m1_enforce "$M1_FAIL"
+
+  # Discipline nudges — ADVISORY only, never blocks (the script always exits 0;
+  # the `|| true` is belt-and-suspenders). Surfaces retro-tracked habits at
+  # commit time: a fix commit missing a root-cause line, or a fix/feat changing
+  # source with no test. Runs after the M1 gates pass.
+  if [[ -f "$REPO_ROOT_M1/scripts/check-discipline-nudge.py" ]]; then
+    python3 "$REPO_ROOT_M1/scripts/check-discipline-nudge.py" --commit-msg "$MSG_FILE" --diff "$M1_DIFF" 2>&1 || true
+  fi
 fi
 
 HARNESS_HOOK="$HOME/harness/core/hooks/commit-msg-stanza.sh"
