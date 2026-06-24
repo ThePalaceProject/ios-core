@@ -2,6 +2,7 @@ import Foundation
 import Combine
 import PalaceLogging
 import PalaceCatalog
+import PalaceNetwork
 
 @MainActor
 final class CatalogViewModel: ObservableObject {
@@ -19,6 +20,8 @@ final class CatalogViewModel: ObservableObject {
   private let topLevelURLProvider: () -> URL?
   private let bookRegistry: TPPBookRegistryProvider
   private let imageCache: ImageCacheType
+  private let reachability: Reachability
+  private var cancellables = Set<AnyCancellable>()
 
   // MARK: - Public accessors for search
   var searchRepository: CatalogRepositoryProtocol { repository }
@@ -43,12 +46,42 @@ final class CatalogViewModel: ObservableObject {
     repository: CatalogRepositoryProtocol,
     topLevelURLProvider: @escaping () -> URL?,
     bookRegistry: TPPBookRegistryProvider,
-    imageCache: ImageCacheType
+    imageCache: ImageCacheType,
+    reachability: Reachability = AppContainer.production().reachability
   ) {
     self.repository = repository
     self.topLevelURLProvider = topLevelURLProvider
     self.bookRegistry = bookRegistry
     self.imageCache = imageCache
+    self.reachability = reachability
+    observeConnectivity()
+  }
+
+  // MARK: - Connectivity
+
+  /// Auto-reload the catalog when connectivity returns while we are showing the
+  /// offline state. This is what makes the offline state self-healing — the
+  /// patron does not need a Reload button (AC: loads automatically on reconnect).
+  private func observeConnectivity() {
+    reachability.connectivityPublisher
+      .filter { $0 }
+      .sink { [weak self] _ in
+        Task { @MainActor in self?.handleConnectivityRestored() }
+      }
+      .store(in: &cancellables)
+  }
+
+  private func handleConnectivityRestored() {
+    guard case .offline = state else { return }
+    Log.info(#file, "Connectivity restored — reloading catalog")
+    Task { await forceRefresh() }
+  }
+
+  /// Map a load failure to either the offline state (no connectivity) or the
+  /// generic error state (genuine online failure). Keeps the offline-vs-error
+  /// decision in one place so both the nil-feed and thrown-error paths agree.
+  private func loadFailureState(message: String) -> CatalogState {
+    reachability.isConnectedToNetwork() ? .error(message) : .offline
   }
 
   // MARK: - Public API
@@ -74,7 +107,7 @@ final class CatalogViewModel: ObservableObject {
 
         guard let feed = try await self.repository.loadTopLevelCatalog(at: url) else {
           guard !Task.isCancelled else { return }
-          self.state = .error("Failed to load catalog")
+          self.state = self.loadFailureState(message: "Failed to load catalog")
           return
         }
 
@@ -171,7 +204,7 @@ final class CatalogViewModel: ObservableObject {
       } catch {
         guard !Task.isCancelled else { return }
         Log.error(#file, "Failed to load catalog: \(error.localizedDescription)")
-        self.state = .error(error.localizedDescription)
+        self.state = self.loadFailureState(message: error.localizedDescription)
       }
     }
   }

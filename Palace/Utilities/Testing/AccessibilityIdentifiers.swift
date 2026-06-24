@@ -59,6 +59,8 @@ public enum AccessibilityID {
         public static let loadingIndicator = "catalog.loadingIndicator"
         public static let errorView = "catalog.errorView"
         public static let retryButton = "catalog.retryButton"
+        public static let offlineStateView = "catalog.offlineStateView"
+        public static let goToMyBooksButton = "catalog.goToMyBooksButton"
 
         // Lanes/Sections
         public static func lane(_ index: Int) -> String { "catalog.lane.\(index)" }
