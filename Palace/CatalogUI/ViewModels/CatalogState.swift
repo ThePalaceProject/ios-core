@@ -24,6 +24,12 @@ enum CatalogState {
 
   /// Unrecoverable error during initial load (no content to fall back to).
   case error(String)
+
+  /// The initial load failed because the device has no connectivity. Distinct
+  /// from `.error` so the view can direct the patron to their downloaded books
+  /// instead of offering a Reload that cannot succeed offline. Reload happens
+  /// automatically when connectivity returns (see `CatalogViewModel`).
+  case offline
 }
 
 // MARK: - Computed Helpers

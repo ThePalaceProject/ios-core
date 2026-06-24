@@ -156,6 +156,9 @@ private extension CatalogView {
         case .error(let message):
             errorView(message: message)
 
+        case .offline:
+            offlineView
+
         case .loaded(let catalogContent), .applyingFacet(let catalogContent):
             CatalogContentView(
                 content: catalogContent,
@@ -220,6 +223,44 @@ private extension CatalogView {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding()
+    }
+
+    /// Offline state (PP-4578): shown when the catalog load fails because the
+    /// device has no connectivity. Unlike `errorView`, it offers no Reload
+    /// (which cannot succeed offline) and instead points the patron to their
+    /// downloaded books. The catalog reloads automatically when connectivity
+    /// returns (handled in `CatalogViewModel`).
+    private var offlineView: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "wifi.slash")
+                .font(.largeTitle)
+                .foregroundColor(.secondary)
+                .accessibilityHidden(true)
+
+            Text(Strings.Catalog.offlineTitle)
+                .font(.headline)
+
+            Text(Strings.Catalog.offlineMessage)
+                .font(.body)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal)
+
+            Button(action: {
+                appContainer.tabRouterHub.navigate(to: .myBooks)
+            }, label: {
+                Text(Strings.Catalog.offlineGoToMyBooks)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 12)
+                    .background(Color.blue)
+                    .foregroundColor(.white)
+                    .cornerRadius(8)
+            })
+            .accessibilityIdentifier(AccessibilityID.Catalog.goToMyBooksButton)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding()
+        .accessibilityIdentifier(AccessibilityID.Catalog.offlineStateView)
     }
 
     func presentBookDetail(_ book: TPPBook) {

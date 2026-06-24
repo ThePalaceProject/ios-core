@@ -1,7 +1,11 @@
 import XCTest
 import Combine
 import PalaceCatalog
+import PalaceNetwork
 @testable import Palace
+
+// Offline/reconnect branching (PP-4578) is driven by the shared
+// `MockReachability` test double (PalaceTests/Mocks/MockReachability.swift).
 
 // MARK: - CatalogState Tests
 
@@ -153,12 +157,16 @@ final class CatalogViewModelStateMachineTests: XCTestCase {
         super.tearDown()
     }
 
-    private func createViewModel() -> CatalogViewModel {
+    /// Inject a deterministic reachability so the offline-vs-error decision does
+    /// not depend on the test host's live network (PP-4578). Defaults to
+    /// connected so pre-existing error-path tests keep asserting `.error`.
+    private func createViewModel(reachability: Reachability = MockReachability(initiallyConnected: true)) -> CatalogViewModel {
         CatalogViewModel(
             repository: mockRepository,
             topLevelURLProvider: { [testURL] in testURL },
             bookRegistry: AppContainer.production().bookRegistry,
-            imageCache: ImageCache.shared
+            imageCache: ImageCache.shared,
+            reachability: reachability
         )
     }
 
@@ -259,6 +267,72 @@ final class CatalogViewModelStateMachineTests: XCTestCase {
         await fulfillment(of: [exp], timeout: 5.0)
         XCTAssertGreaterThanOrEqual(mockRepository.loadTopLevelCatalogCallCount, 1,
                                     "forceRefresh must invoke the repository at least once")
+    }
+
+    // MARK: - Offline State (PP-4578)
+
+    func testLoad_WhenOffline_TransitionsToOffline() async {
+        mockRepository.loadTopLevelCatalogError = NSError(domain: "test", code: -1009)
+        let vm = createViewModel(reachability: MockReachability(initiallyConnected: false))
+        let exp = XCTestExpectation(description: "offline")
+        vm.$state.sink { if case .offline = $0 { exp.fulfill() } }.store(in: &cancellables)
+        await vm.load()
+        await fulfillment(of: [exp], timeout: 5.0)
+        guard case .offline = vm.state else {
+            return XCTFail("Expected .offline state when load fails with no connectivity, got \(vm.state)")
+        }
+    }
+
+    func testLoad_NilResultWhenOffline_TransitionsToOffline() async {
+        mockRepository.loadTopLevelCatalogResult = nil
+        let vm = createViewModel(reachability: MockReachability(initiallyConnected: false))
+        let exp = XCTestExpectation(description: "offline")
+        vm.$state.sink { if case .offline = $0 { exp.fulfill() } }.store(in: &cancellables)
+        await vm.load()
+        await fulfillment(of: [exp], timeout: 5.0)
+        guard case .offline = vm.state else {
+            return XCTFail("Expected .offline state on nil result with no connectivity, got \(vm.state)")
+        }
+    }
+
+    func testLoad_OnlineFailure_StaysError_NotOffline() async {
+        // AC: genuine online load failures keep the existing error + Reload behavior.
+        mockRepository.loadTopLevelCatalogError = NSError(domain: "test", code: 500)
+        let vm = createViewModel(reachability: MockReachability(initiallyConnected: true))
+        let exp = XCTestExpectation(description: "error")
+        vm.$state.sink { if case .error = $0 { exp.fulfill() } }.store(in: &cancellables)
+        await vm.load()
+        await fulfillment(of: [exp], timeout: 5.0)
+        guard case .error = vm.state else {
+            return XCTFail("Expected .error (not .offline) when failing while connected, got \(vm.state)")
+        }
+    }
+
+    func testReconnect_WhileOffline_AutoReloadsCatalog() async {
+        // AC: when connectivity is restored, the catalog reloads automatically.
+        mockRepository.loadTopLevelCatalogError = NSError(domain: "test", code: -1009)
+        let reachability = MockReachability(initiallyConnected: false)
+        let vm = createViewModel(reachability: reachability)
+
+        let offlineExp = XCTestExpectation(description: "offline")
+        vm.$state.sink { if case .offline = $0 { offlineExp.fulfill() } }.store(in: &cancellables)
+        await vm.load()
+        await fulfillment(of: [offlineExp], timeout: 5.0)
+        let callsWhileOffline = mockRepository.loadTopLevelCatalogCallCount
+
+        // Reconnecting must trigger a fresh load attempt without any Reload tap.
+        let reloadExp = XCTestExpectation(description: "reload")
+        vm.$state.dropFirst().sink { if case .loading = $0 { reloadExp.fulfill() } }.store(in: &cancellables)
+        reachability.simulate(connected: true)
+        await fulfillment(of: [reloadExp], timeout: 5.0)
+
+        // Give the spawned load task a moment to re-hit the repository.
+        let deadline = Date().addingTimeInterval(5.0)
+        while mockRepository.loadTopLevelCatalogCallCount <= callsWhileOffline, Date() < deadline {
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
+        XCTAssertGreaterThan(mockRepository.loadTopLevelCatalogCallCount, callsWhileOffline,
+                             "Reconnect must auto-reload the catalog (repository re-invoked)")
     }
 }
 
