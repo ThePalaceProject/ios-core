@@ -531,3 +531,50 @@ extension URLSessionNetworkClient {
         return NetworkClientTests.NetworkResponse(response: httpResponse, data: data)
     }
 }
+
+// MARK: - Cancellation Propagation Tests
+
+/// A URLProtocol that accepts the request and then never responds, modelling a
+/// wedged connection.
+private final class HangingURLProtocol: URLProtocol {
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() { /* intentionally never completes */ }
+    override func stopLoading() { /* no-op */ }
+}
+
+/// Regression guard for the root cause of the catalog "stuck until wifi-switch
+/// or restart" bug: `URLSessionNetworkClient.send` used to discard the
+/// URLSession task and ignore cancellation, so a cancelled/timed-out fetch
+/// kept its connection-pool slot until the session's resource timeout. With
+/// many libraries sharing one Circulation Manager host, a few stuck requests
+/// could starve every library's feed fetches. Cancelling the awaiting Task
+/// must now free the request promptly.
+final class URLSessionNetworkClientCancellationTests: XCTestCase {
+
+    func testSend_cancellingTask_freesRequestPromptly() async {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [HangingURLProtocol.self]
+        let executor = TPPNetworkExecutor(cachingStrategy: .ephemeral, sessionConfiguration: config)
+        let client = URLSessionNetworkClient(executor: executor)
+        let req = NetworkRequest(method: .GET, url: URL(string: "https://example.com/hang")!)
+
+        let sendTask = Task<Void, Error> { _ = try await client.send(req) }
+
+        // Let the hanging request actually start before we cancel.
+        try? await Task.sleep(nanoseconds: 300_000_000)
+
+        let cancelledAt = DispatchTime.now()
+        sendTask.cancel()
+
+        do {
+            _ = try await sendTask.value
+            XCTFail("Cancelled send must throw rather than return a response")
+        } catch {
+            let elapsedMs = (DispatchTime.now().uptimeNanoseconds - cancelledAt.uptimeNanoseconds) / 1_000_000
+            XCTAssertLessThan(elapsedMs, 3_000,
+                              "Cancellation must free the request promptly via task cancellation, " +
+                              "not wait for the URLSession timeout (took \(elapsedMs)ms)")
+        }
+    }
+}

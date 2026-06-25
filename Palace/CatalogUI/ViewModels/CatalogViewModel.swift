@@ -42,6 +42,14 @@ final class CatalogViewModel: ObservableObject {
   private var lastLoadedURL: URL?
   private var currentLoadTask: Task<Void, Never>?
 
+  /// Detached cover-prefetch tasks spawned during a load. They intentionally
+  /// outlive `currentLoadTask` (background cache warming), so they must be
+  /// tracked and cancelled explicitly on reload / refresh / teardown.
+  /// Otherwise they keep firing cover downloads for a feed the patron has
+  /// already navigated away from, piling avoidable load onto the shared
+  /// connection pool — the load multiplier behind the "catalog stuck" bug.
+  private var prefetchTasks: [Task<Void, Never>] = []
+
   init(
     repository: CatalogRepositoryProtocol,
     topLevelURLProvider: @escaping () -> URL?,
@@ -56,6 +64,27 @@ final class CatalogViewModel: ObservableObject {
     self.reachability = reachability
     observeConnectivity()
   }
+
+  deinit {
+    prefetchTasks.forEach { $0.cancel() }
+  }
+
+  /// Cancel any in-flight background cover prefetch. Called whenever the feed
+  /// the prefetch was warming is being replaced (reload / refresh) or the view
+  /// model is torn down, so stale prefetch can't keep saturating the network.
+  private func cancelPrefetch() {
+    prefetchTasks.forEach { $0.cancel() }
+    prefetchTasks.removeAll()
+  }
+
+  /// Test seams for the prefetch-cancellation contract (no real timing needed).
+  /// Plain `internal` (matching the codebase's existing test-accessor
+  /// convention, e.g. TPPNetworkExecutor.refreshAttemptCount) rather than a
+  /// `#if DEBUG` block, which the blast-radius gate flags for shipping into
+  /// sim/dev/TestFlight builds.
+  var prefetchTaskCountForTesting: Int { prefetchTasks.count }
+  func appendPrefetchTaskForTesting(_ task: Task<Void, Never>) { prefetchTasks.append(task) }
+  func cancelPrefetchForTesting() { cancelPrefetch() }
 
   // MARK: - Connectivity
 
@@ -98,6 +127,7 @@ final class CatalogViewModel: ObservableObject {
 
     state = .loading
     currentLoadTask?.cancel()
+    cancelPrefetch()
 
     currentLoadTask = Task { [weak self] in
       guard let self, !Task.isCancelled else { return }
@@ -168,27 +198,33 @@ final class CatalogViewModel: ObservableObject {
           await self.prefetchThumbnails(for: Array(mapped.ungroupedBooks.prefix(20)))
         }
 
-        // Deferred prefetch for below-fold lanes
+        // Deferred prefetch for below-fold lanes. Tracked + cancellable so a
+        // reload/teardown stops it mid-flight instead of letting it keep
+        // warming covers for a feed the patron has left.
         if mapped.lanes.count > 3 {
-          Task.detached(priority: .background) { [weak self] in
+          let belowFoldPrefetch = Task.detached(priority: .background) { [weak self] in
             guard let self else { return }
             let remaining = mapped.lanes.dropFirst(3).flatMap { $0.books }
             for batch in stride(from: 0, to: remaining.count, by: 20) {
+              if Task.isCancelled { return }
               let end = min(batch + 20, remaining.count)
               await self.prefetchThumbnails(for: Array(remaining[batch..<end]))
             }
           }
+          self.prefetchTasks.append(belowFoldPrefetch)
         }
 
-        // Preload inactive entry points in background
+        // Preload inactive entry points in background. Also tracked so a
+        // library switch / reload cancels these speculative feed fetches.
         let inactiveEntryPoints = mapped.entryPoints.filter { !$0.active }
         if !inactiveEntryPoints.isEmpty {
-          Task.detached(priority: .utility) { [weak self] in
+          let entryPointPreload = Task.detached(priority: .utility) { [weak self] in
             guard let self else { return }
             await withTaskGroup(of: Void.self) { group in
               for ep in inactiveEntryPoints {
                 guard let epURL = ep.href else { continue }
                 group.addTask {
+                  if Task.isCancelled { return }
                   do {
                     _ = try await self.repository.loadTopLevelCatalog(at: epURL)
                     Log.warn(#file, "[PERF] Preloaded entry point '\(ep.title)'")
@@ -197,6 +233,7 @@ final class CatalogViewModel: ObservableObject {
               }
             }
           }
+          self.prefetchTasks.append(entryPointPreload)
         }
       } catch is CancellationError {
         Log.debug(#file, "Catalog load was cancelled")
