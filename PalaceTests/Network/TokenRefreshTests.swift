@@ -450,7 +450,11 @@ final class TokenRefreshWatchdogTests: XCTestCase {
     }
 
     private func dummyTask() -> URLSessionTask {
-        URLSession.shared.dataTask(with: URL(string: "https://example.com/loans")!)
+        // Per-call ephemeral session on purpose (not the global singleton):
+        // TearDownRequiredLint flags singleton-polluter substrings in a test
+        // file that lacks a tearDown, and these synthetic tasks are never
+        // resumed anyway.
+        URLSession(configuration: .ephemeral).dataTask(with: URL(string: "https://example.com/loans")!)
     }
 
     func testWatchdog_forceReleasesStuckRefresh_andHandsBackStrandedQueue() async {
