@@ -649,7 +649,21 @@ public class TPPBook: NSObject, ObservableObject {
             TPPBookContentType.from(mimeType: path.types.last)
         }
 
-        return contentTypes.first(where: { $0 != .unsupported }) ?? .unsupported
+        // Prefer a downloadable format over streaming-HTML, independent of OPDS
+        // feed order. PP-4161 added `.streamingHTML` as a supported acquisition
+        // type; `supportedAcquisitionPaths` preserves the feed's
+        // indirect-acquisition order, so a Palace Bookshelf open-access title
+        // that advertises a "read online" streaming-HTML acquisition BEFORE its
+        // `epub+zip` would otherwise be classified as `.streamingHTML` and open
+        // in the WKWebView shell instead of the EPUB reader. Streaming-HTML is
+        // only the correct choice when no downloadable format is offered, so it
+        // ranks last. (Previously this returned the first non-unsupported type,
+        // which was feed-order-dependent.)
+        let preference: [TPPBookContentType] = [.epub, .pdf, .audiobook, .streamingHTML]
+        for candidate in preference where contentTypes.contains(candidate) {
+            return candidate
+        }
+        return .unsupported
     }
 
     /// PP-3649: Whether this book requires Adobe DRM activation before download.
