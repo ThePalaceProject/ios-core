@@ -202,22 +202,62 @@ final class TPPBaseReaderViewControllerInitialLocationTests: XCTestCase {
     /// (`restoreDidDegradeToStart`) so the position-loss is observable, while the
     /// navigator simply remains at its natural start (the constructor restore is
     /// disabled, so there is nothing to tear down).
-    func testGate_goReturnsFalse_recordsPage1Degradation_noSecondRestore() async {
+    func testGate_goPersistentlyFalse_retriesThenRecordsPage1Degradation() async {
+        // A genuinely unresolvable locator: every go(to:) returns false. The gate
+        // retries up to maxRestoreAttempts (the constructor restore is disabled, so
+        // each false attempt is a harmless no-op — no teardown), then records the
+        // page-1 degradation so the position-loss is observable. (delay=0 for speed.)
         let serverLocator = makeLocator(href: "/unresolvable.xhtml", progression: 0.95)
         stubNavigator.goResult = false
-        sut = ReaderInitialLocationNavigator(initialLocation: serverLocator)
+        sut = ReaderInitialLocationNavigator(
+            initialLocation: serverLocator,
+            maxRestoreAttempts: 4,
+            restoreRetryDelayNanos: 0
+        )
         sut.attach(navigator: stubNavigator)
 
         let restoreDone = expectation(description: "restore attempt completed")
         sut.onRestoreAttempt = { _ in restoreDone.fulfill() }
 
         sut.signalReady()
-        await fulfillment(of: [restoreDone], timeout: 1.0)
+        await fulfillment(of: [restoreDone], timeout: 2.0)
 
-        XCTAssertEqual(stubNavigator.goCallCount, 1,
-                       "exactly one restore attempt — a failed restore must not fire a second conflicting go(to:)")
+        XCTAssertEqual(stubNavigator.goCallCount, 4,
+                       "a persistently-false restore must exhaust the bounded retries before degrading")
         XCTAssertTrue(sut.restoreDidDegradeToStart,
-                      "the gate must record the page-1 degradation when go(to:) returns false")
+                      "the gate must record the page-1 degradation when go(to:) never resolves")
+    }
+
+    /// PP-4652 regression: a DRM/Adobe EPUB's WebContent location-mapping table is
+    /// not ready at `viewDidAppear`, so the first go(to:) no-ops to false; once the
+    /// table populates, go(to:) succeeds. The gate MUST retry to the success rather
+    /// than degrade to the cover (the 3.2.0 "last read position lost on reopen" bug),
+    /// and must NOT flag a degradation.
+    func testGate_goFalseThenTrue_retriesToSuccess_noDegradation() async {
+        let savedLocator = makeLocator(href: "/chapter7.xhtml", progression: 0.42)
+        // Not ready twice, then ready.
+        stubNavigator.goResultSequence = [false, false, true]
+        sut = ReaderInitialLocationNavigator(
+            initialLocation: savedLocator,
+            maxRestoreAttempts: 12,
+            restoreRetryDelayNanos: 0
+        )
+        sut.attach(navigator: stubNavigator)
+
+        let restoreDone = expectation(description: "restore attempt completed")
+        var finalResult: Bool?
+        sut.onRestoreAttempt = { result in finalResult = result; restoreDone.fulfill() }
+
+        sut.signalReady()
+        await fulfillment(of: [restoreDone], timeout: 2.0)
+
+        XCTAssertEqual(finalResult, true, "the gate must retry until go(to:) resolves")
+        XCTAssertEqual(stubNavigator.goCallCount, 3,
+                       "go(to:) should be retried until it returns true (2 misses + 1 success)")
+        XCTAssertFalse(sut.restoreDidDegradeToStart,
+                       "a restore that eventually succeeds must NOT flag a page-1 degradation")
+        XCTAssertEqual(stubNavigator.lastGoLocator?.href.string, savedLocator.href.string,
+                       "the gate restores to the saved locator")
     }
 
     /// Successful restore must NOT flag degradation.
@@ -263,11 +303,18 @@ final class StubInitialLocationNavigator: NavigatorGoTo {
     var onGo: ((Locator) -> Void)?
     /// Simulate Readium returning false (could not resolve the locator).
     var goResult = true
+    /// Per-call results, consumed in order; when exhausted, falls back to
+    /// `goResult`. Models the DRM-EPUB case where the location-mapping table is
+    /// not ready for the first call(s) (false) then becomes ready (true).
+    var goResultSequence: [Bool] = []
 
     func go(to locator: Locator, options: NavigatorGoOptions) async -> Bool {
         goCallCount += 1
         lastGoLocator = locator
         onGo?(locator)
+        if !goResultSequence.isEmpty {
+            return goResultSequence.removeFirst()
+        }
         return goResult
     }
 }
