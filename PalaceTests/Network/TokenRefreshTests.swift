@@ -434,3 +434,90 @@ extension TokenRefreshTests {
                              "Error codes should be positive integers")
     }
 }
+
+// MARK: - Token Refresh Watchdog Tests
+
+/// Regression guard for the persistent "main catalog hangs across library
+/// switches until restart" symptom. If a token refresh ever wedges with
+/// `isRefreshing == true`, every later token-authed request coalesces behind
+/// it and hangs forever. The watchdog must force-release a stuck slot while
+/// never disturbing a refresh that completed normally or a newer one in
+/// flight. These lock that contract deterministically (no real timing).
+final class TokenRefreshWatchdogTests: XCTestCase {
+
+    private func makeExecutor() -> TPPNetworkExecutor {
+        TPPNetworkExecutor(credentialsProvider: nil, cachingStrategy: .ephemeral, delegateQueue: nil)
+    }
+
+    private func dummyTask() -> URLSessionTask {
+        // Per-call ephemeral session on purpose (not the global singleton):
+        // TearDownRequiredLint flags singleton-polluter substrings in a test
+        // file that lacks a tearDown, and these synthetic tasks are never
+        // resumed anyway.
+        URLSession(configuration: .ephemeral).dataTask(with: URL(string: "https://example.com/loans")!)
+    }
+
+    func testWatchdog_forceReleasesStuckRefresh_andHandsBackStrandedQueue() async {
+        let ex = makeExecutor()
+        let claimed = await ex.claimTokenRefreshSlotForTesting()
+        XCTAssertTrue(claimed, "First caller must claim the single-flight slot")
+        let gen = await ex.currentTokenRefreshGenerationForTesting()
+        await ex.appendTokenRetryForTesting(dummyTask())
+
+        let refreshingBefore = await ex.isTokenRefreshingForTesting
+        XCTAssertTrue(refreshingBefore)
+
+        let stranded = await ex.forceReleaseStuckTokenRefreshForTesting(generation: gen)
+        XCTAssertEqual(stranded?.count, 1, "A wedged refresh must return its stranded retry queue")
+
+        let refreshingAfter = await ex.isTokenRefreshingForTesting
+        XCTAssertFalse(refreshingAfter, "Watchdog must clear isRefreshing so future refreshes can proceed")
+    }
+
+    func testWatchdog_doesNotDisturb_aRefreshThatCompletedNormally() async {
+        let ex = makeExecutor()
+        let claimed = await ex.claimTokenRefreshSlotForTesting()
+        XCTAssertTrue(claimed)
+        let gen = await ex.currentTokenRefreshGenerationForTesting()
+        // Normal completion path:
+        await ex.setTokenRefreshingForTesting(false)
+        let stranded = await ex.forceReleaseStuckTokenRefreshForTesting(generation: gen)
+        XCTAssertNil(stranded, "A completed refresh must not be treated as stuck")
+    }
+
+    func testWatchdog_staleGeneration_doesNotReleaseNewerRefresh() async {
+        let ex = makeExecutor()
+        let claimedOld = await ex.claimTokenRefreshSlotForTesting()
+        XCTAssertTrue(claimedOld)
+        let oldGen = await ex.currentTokenRefreshGenerationForTesting()
+        await ex.setTokenRefreshingForTesting(false)             // old refresh completes
+
+        let claimedNew = await ex.claimTokenRefreshSlotForTesting() // a NEW refresh claims
+        XCTAssertTrue(claimedNew)
+        let newGen = await ex.currentTokenRefreshGenerationForTesting()
+        XCTAssertNotEqual(oldGen, newGen, "Each claim must advance the generation")
+
+        let stranded = await ex.forceReleaseStuckTokenRefreshForTesting(generation: oldGen)
+        XCTAssertNil(stranded, "A stale watchdog must not release a newer refresh's slot")
+        let stillRefreshing = await ex.isTokenRefreshingForTesting
+        XCTAssertTrue(stillRefreshing, "Newer refresh must remain in flight after a stale watchdog fires")
+    }
+
+    func testWatchdog_isIdempotent() async {
+        let ex = makeExecutor()
+        let claimed = await ex.claimTokenRefreshSlotForTesting()
+        XCTAssertTrue(claimed)
+        let gen = await ex.currentTokenRefreshGenerationForTesting()
+        _ = await ex.forceReleaseStuckTokenRefreshForTesting(generation: gen)
+        let second = await ex.forceReleaseStuckTokenRefreshForTesting(generation: gen)
+        XCTAssertNil(second, "Releasing an already-released slot must be a no-op")
+    }
+
+    func testClaim_isSingleFlight() async {
+        let ex = makeExecutor()
+        let first = await ex.claimTokenRefreshSlotForTesting()
+        let second = await ex.claimTokenRefreshSlotForTesting()
+        XCTAssertTrue(first)
+        XCTAssertFalse(second, "Only one refresh may hold the slot at a time")
+    }
+}

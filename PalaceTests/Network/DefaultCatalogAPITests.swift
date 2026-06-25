@@ -10,7 +10,7 @@
 
 import XCTest
 import PalaceNetwork
-import PalaceCatalog
+@testable import PalaceCatalog
 @testable import Palace
 
 final class DefaultCatalogAPITests: XCTestCase {
@@ -663,5 +663,98 @@ extension DefaultCatalogAPITests {
             // Error should propagate up
             XCTAssertEqual(networkClientMock.sendCallCount, 1)
         }
+    }
+}
+
+// MARK: - InflightFeedFetches Timeout / Dedup Tests
+
+/// Regression guard for the catalog "stuck state" bug. A wedged feed fetch
+/// must NOT pin the inflight dedup entry forever (which would hang every later
+/// fetch of that URL until app restart). See `InflightFeedFetches`.
+final class InflightFeedFetchesTimeoutTests: XCTestCase {
+
+    private actor Counter {
+        private(set) var value = 0
+        func increment() { value += 1 }
+    }
+    private actor Flag {
+        private(set) var value = false
+        func set() { value = true }
+    }
+
+    /// A wedged fetch must time out rather than hang indefinitely.
+    func testRun_wedgedWork_timesOutWithURLTimedOut() async {
+        let inflight = InflightFeedFetches()
+        let url = URL(string: "https://example.com/groups/all-fiction")!
+        do {
+            _ = try await inflight.run(url: url, timeout: 0.2) {
+                // Simulate a connection that never resolves.
+                try await Task.sleep(nanoseconds: 5_000_000_000)
+                return nil
+            }
+            XCTFail("Expected the wedged fetch to time out, but it returned")
+        } catch {
+            // The only way out before the 5s work completes is the timeout path,
+            // so a thrown error here proves the timeout fired.
+            XCTAssertEqual((error as NSError).code, NSURLErrorTimedOut,
+                           "Wedged feed fetch must surface NSURLErrorTimedOut, got \(error)")
+        }
+    }
+
+    /// After a timeout the dedup entry must be cleared so the next call fetches
+    /// fresh — the core fix for "even the main catalog hangs until restart".
+    func testRun_afterTimeout_freesEntry_allowingFreshFetch() async throws {
+        let inflight = InflightFeedFetches()
+        let url = URL(string: "https://example.com/groups/all-fiction")!
+
+        do {
+            _ = try await inflight.run(url: url, timeout: 0.2) {
+                try await Task.sleep(nanoseconds: 5_000_000_000)
+                return nil
+            }
+            XCTFail("Expected timeout")
+        } catch { /* expected */ }
+
+        let invoked = Flag()
+        _ = try await inflight.run(url: url, timeout: 5.0) {
+            await invoked.set()
+            return nil
+        }
+        let didInvoke = await invoked.value
+        XCTAssertTrue(didInvoke,
+                      "After a timeout the inflight entry must be freed so the next fetch runs fresh work")
+    }
+
+    /// Fast work must not be disturbed by the timeout machinery.
+    func testRun_fastWork_returnsWithoutTimeout() async throws {
+        let inflight = InflightFeedFetches()
+        let url = URL(string: "https://example.com/groups/x")!
+        let invoked = Flag()
+        _ = try await inflight.run(url: url, timeout: 5.0) {
+            await invoked.set()
+            return nil
+        }
+        let didInvoke = await invoked.value
+        XCTAssertTrue(didInvoke)
+    }
+
+    /// Concurrent callers for the same URL still share a single fetch.
+    func testRun_concurrentSameURL_sharesSingleInvocation() async throws {
+        let inflight = InflightFeedFetches()
+        let url = URL(string: "https://example.com/groups/shared")!
+        let counter = Counter()
+        async let first: CatalogFeed? = inflight.run(url: url, timeout: 5.0) {
+            await counter.increment()
+            try await Task.sleep(nanoseconds: 200_000_000)
+            return nil
+        }
+        async let second: CatalogFeed? = inflight.run(url: url, timeout: 5.0) {
+            await counter.increment()
+            try await Task.sleep(nanoseconds: 200_000_000)
+            return nil
+        }
+        _ = try await (first, second)
+        let count = await counter.value
+        XCTAssertEqual(count, 1, "Concurrent fetches of the same URL must coalesce into one request")
     }
 }

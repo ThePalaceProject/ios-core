@@ -25,9 +25,16 @@ private actor TokenRefreshCoordinator {
     /// Read-only; test-observable via `TPPNetworkExecutor.refreshAttemptCount`.
     private(set) var refreshAttemptCount: Int = 0
 
+    /// Monotonic id of the current single-flight refresh, bumped each time the
+    /// slot is claimed. Lets a watchdog scheduled for one refresh tell whether
+    /// the slot it is policing is still the same one — vs. already completed
+    /// and re-claimed by a newer refresh, which it must not disturb.
+    private(set) var refreshGeneration: Int = 0
+
     func setRefreshing(_ value: Bool) {
         if value && !isRefreshing {
             refreshAttemptCount += 1
+            refreshGeneration += 1
         }
         isRefreshing = value
     }
@@ -41,7 +48,24 @@ private actor TokenRefreshCoordinator {
         guard !isRefreshing else { return false }
         isRefreshing = true
         refreshAttemptCount += 1
+        refreshGeneration += 1
         return true
+    }
+
+    func currentGeneration() -> Int { refreshGeneration }
+
+    /// Watchdog escape hatch. If the slot is STILL held by the same refresh
+    /// generation — i.e. the refresh never completed and never called
+    /// `setRefreshing(false)` — force-release it and return the stranded retry
+    /// queue so the caller can fail those requests. Returns `nil` when the
+    /// refresh already completed normally or a newer one is in progress, in
+    /// which case the watchdog must not interfere.
+    func forceReleaseIfStuck(generation: Int) -> [URLSessionTask]? {
+        guard isRefreshing, refreshGeneration == generation else { return nil }
+        isRefreshing = false
+        let stranded = retryQueue
+        retryQueue.removeAll()
+        return stranded
     }
 
     func resetRefreshAttemptCount() {
@@ -62,6 +86,13 @@ private actor TokenRefreshCoordinator {
 @objc class TPPNetworkExecutor: NSObject {
     let transport: NetworkTransport
     private let tokenCoordinator = TokenRefreshCoordinator()
+
+    /// Ceiling on a single token refresh before the watchdog force-releases a
+    /// wedged slot. Set comfortably above the shared session's resource
+    /// timeout (60s) so it only ever fires on a genuine wedge, never on a
+    /// slow-but-progressing refresh. Overridable so tests can drive it fast.
+    static let defaultTokenRefreshWatchdogSeconds: TimeInterval = 75
+    var tokenRefreshWatchdogSeconds: TimeInterval = TPPNetworkExecutor.defaultTokenRefreshWatchdogSeconds
 
     // `internal` (default) rather than `private` so adversarial tests can
     // wire a completion onto a synthetic task before invoking
@@ -167,6 +198,54 @@ private actor TokenRefreshCoordinator {
     /// in-flight refresh state.
     func resetRefreshAttemptCount() async {
         await tokenCoordinator.resetRefreshAttemptCount()
+    }
+
+    /// Self-healing guard against a wedged token refresh.
+    ///
+    /// If a refresh ever fails to call `setRefreshing(false)` (e.g. its
+    /// completion never fires, or `self` deallocates before the completion
+    /// runs), `isRefreshing` would stay `true` forever — and because every
+    /// later token-authed request coalesces behind the in-flight refresh, they
+    /// would all queue and hang until the app is force-quit. That matches the
+    /// "main catalog hangs across library switches until restart" report.
+    ///
+    /// This fires `tokenRefreshWatchdogSeconds` after the slot is claimed and,
+    /// if the SAME refresh generation still holds it, force-releases the slot
+    /// and fails the stranded queue so the system recovers on its own.
+    private func scheduleTokenRefreshWatchdog(generation: Int) {
+        let timeout = tokenRefreshWatchdogSeconds
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+            guard let self else { return }
+            guard let stranded = await self.tokenCoordinator.forceReleaseIfStuck(generation: generation) else {
+                return // refresh completed normally, or a newer one took over
+            }
+            Log.error(#file, "Token refresh watchdog fired after \(timeout)s — force-releasing wedged refresh (generation \(generation)); failing \(stranded.count) stranded request(s)")
+            stranded.forEach { $0.cancel() }
+        }
+    }
+
+    /// Test windows into the token-refresh coordinator so the watchdog
+    /// contract can be locked deterministically, without real timing. Plain
+    /// `internal` (matching the existing `refreshAttemptCount` accessor
+    /// convention) rather than a `#if DEBUG` block the blast-radius gate flags.
+    var isTokenRefreshingForTesting: Bool {
+        get async { await tokenCoordinator.isRefreshing }
+    }
+    func claimTokenRefreshSlotForTesting() async -> Bool {
+        await tokenCoordinator.tryClaimRefreshSlot()
+    }
+    func currentTokenRefreshGenerationForTesting() async -> Int {
+        await tokenCoordinator.currentGeneration()
+    }
+    func appendTokenRetryForTesting(_ task: URLSessionTask) async {
+        await tokenCoordinator.appendToRetryQueue(task)
+    }
+    func setTokenRefreshingForTesting(_ value: Bool) async {
+        await tokenCoordinator.setRefreshing(value)
+    }
+    func forceReleaseStuckTokenRefreshForTesting(generation: Int) async -> [URLSessionTask]? {
+        await tokenCoordinator.forceReleaseIfStuck(generation: generation)
     }
 
     func GET(_ reqURL: URL,
@@ -512,6 +591,12 @@ extension TPPNetworkExecutor {
                 }
                 return
             }
+
+            // Arm the self-healing watchdog for THIS refresh. Safe even if we
+            // bail out below (e.g. missing credentials) — that path sets
+            // isRefreshing=false, so the watchdog finds nothing stuck.
+            let refreshGeneration = await self.tokenCoordinator.currentGeneration()
+            self.scheduleTokenRefreshWatchdog(generation: refreshGeneration)
 
             // Use per-account instance to prevent TOCTOU races: without this,
             // another thread could switch libraryUUID between sharedAccount()

@@ -334,6 +334,57 @@ final class CatalogViewModelStateMachineTests: XCTestCase {
         XCTAssertGreaterThan(mockRepository.loadTopLevelCatalogCallCount, callsWhileOffline,
                              "Reconnect must auto-reload the catalog (repository re-invoked)")
     }
+
+    // MARK: - Prefetch Cancellation (catalog "stuck state" load multiplier)
+
+    /// `cancelPrefetch()` must both cancel the tracked tasks AND clear the list,
+    /// so stale cover prefetch can't keep saturating the network after the
+    /// patron leaves a feed.
+    func testCancelPrefetch_cancelsAndClearsTrackedTasks() async {
+        let vm = createViewModel()
+        let flag = PrefetchCancelFlag()
+        let started = XCTestExpectation(description: "prefetch started")
+        let synthetic = Task<Void, Never> {
+            started.fulfill()
+            while !Task.isCancelled { try? await Task.sleep(nanoseconds: 10_000_000) }
+            await flag.markCancelled()
+        }
+        vm.appendPrefetchTaskForTesting(synthetic)
+        XCTAssertEqual(vm.prefetchTaskCountForTesting, 1)
+        await fulfillment(of: [started], timeout: 2.0)
+
+        vm.cancelPrefetchForTesting()
+        XCTAssertEqual(vm.prefetchTaskCountForTesting, 0, "cancelPrefetch must clear tracked tasks")
+
+        _ = await synthetic.value
+        let wasCancelled = await flag.value
+        XCTAssertTrue(wasCancelled, "Tracked prefetch tasks must actually be cancelled")
+    }
+
+    /// A reload must cancel any prefetch left over from the previous feed.
+    /// `loadTopLevelCatalogResult = nil` makes the new load fail fast so it
+    /// appends no new prefetch, keeping the assertion deterministic.
+    func testReload_cancelsPriorPrefetchTasks() async {
+        mockRepository.loadTopLevelCatalogResult = nil
+        let vm = createViewModel()
+        let synthetic = Task<Void, Never> {
+            while !Task.isCancelled { try? await Task.sleep(nanoseconds: 10_000_000) }
+        }
+        vm.appendPrefetchTaskForTesting(synthetic)
+        XCTAssertEqual(vm.prefetchTaskCountForTesting, 1)
+
+        await vm.forceRefresh()
+
+        XCTAssertEqual(vm.prefetchTaskCountForTesting, 0, "Reload must cancel + clear prior prefetch tasks")
+        _ = await synthetic.value
+        XCTAssertTrue(synthetic.isCancelled, "Prior prefetch must be cancelled on reload")
+    }
+}
+
+/// Test-only observer for prefetch-cancellation assertions.
+private actor PrefetchCancelFlag {
+    private(set) var value = false
+    func markCancelled() { value = true }
 }
 
 // MARK: - Model Tests
