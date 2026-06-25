@@ -94,6 +94,31 @@ def main() -> int:
             f"  stdout: {out3!r}\n  stderr: {err3!r}"
         )
 
+    # KNOWN-BAD-3 (bug-investigation gate): a `type: bugfix` intent missing the
+    # `## Verification` section → INTENT-INVALID naming Verification.
+    bugfix_missing_dir = _FIXTURES / "intent-bugfix-missing-dir"
+    rc4, out4, _ = _run(bugfix_missing_dir)
+    if rc4 == 0:
+        failures.append(
+            f"KNOWN-BAD-3 (bugfix missing Verification): expected non-zero "
+            f"exit, got 0.\n  stdout: {out4!r}"
+        )
+    if "INTENT-INVALID" not in out4 or "Verification" not in out4:
+        failures.append(
+            f"KNOWN-BAD-3 (bugfix missing Verification): expected "
+            f"`INTENT-INVALID` naming `Verification`.\n  stdout: {out4!r}"
+        )
+
+    # KNOWN-GOOD-2 (bug-investigation gate): a complete `type: bugfix` intent
+    # with Reproduction + Root cause + Verification → exit 0.
+    bugfix_good_dir = _FIXTURES / "intent-bugfix-good-dir"
+    rc5, out5, err5 = _run(bugfix_good_dir)
+    if rc5 != 0:
+        failures.append(
+            f"KNOWN-GOOD-2 (complete bugfix intent): expected exit 0, got "
+            f"{rc5}.\n  stdout: {out5!r}\n  stderr: {err5!r}"
+        )
+
     if failures:
         print("FAIL: test_check_intent_recorded.py:")
         for f in failures:
