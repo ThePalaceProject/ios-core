@@ -121,6 +121,14 @@ class PalaceTestSetup: NSObject {
         registry.register("URLSession._resetStubbedSession") {
             URLSession._resetStubbedSession()
         }
+
+        // Restore ImageCache.shared's processing queue after every test.
+        // ImageCacheContinuationTests suspends the shared queue; without this
+        // fallback a mid-suspend abort would leave it suspended and hang every
+        // later getAsync — a whole-suite test-isolation hazard.
+        registry.register("ImageCache._resetForTesting") {
+            ImageCache.shared._resetForTesting()
+        }
     }
 }
 
