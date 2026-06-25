@@ -512,6 +512,48 @@ final class TPPBookTests: XCTestCase {
         XCTAssertFalse(book.isAudiobook, "Streaming-HTML is not an audiobook")
     }
 
+    /// Regression (Palace Bookshelf "EPUB opens as webview"): when a
+    /// publication offers BOTH a streaming-HTML and an `epub+zip` acquisition,
+    /// the downloadable EPUB must win — regardless of OPDS feed order.
+    /// `supportedAcquisitionPaths` preserves feed order, so a feed listing the
+    /// streaming-HTML acquisition FIRST previously misrouted EPUBs into the
+    /// WKWebView streaming reader (PP-4161 added streaming-HTML support without
+    /// a format preference).
+    func testTPPBook_mixedStreamingAndEpub_streamingFirst_prefersEpub() {
+        let streamingLeaf = TPPOPDSIndirectAcquisition(type: ContentTypeStreamingHTML, indirectAcquisitions: [])
+        let epubLeaf = TPPOPDSIndirectAcquisition(type: ContentTypeEpubZip, indirectAcquisitions: [])
+        let acquisition = TPPOPDSAcquisition(
+            relation: .borrow,
+            type: ContentTypeOPDSPublication,
+            hrefURL: URL(string: "https://example.com/borrow/mixed-streaming-first")!,
+            indirectAcquisitions: [streamingLeaf, epubLeaf], // streaming FIRST — the regression order
+            availability: TPPOPDSAcquisitionAvailabilityUnlimited()
+        )
+        let book = makeBook(acquisitions: [acquisition])
+
+        XCTAssertEqual(book.defaultBookContentType, .epub,
+                       "A book offering both streaming-HTML and epub+zip must open in the EPUB reader even when the feed lists streaming-HTML first")
+        XCTAssertFalse(book.isStreamingHTML,
+                       "A book with a downloadable EPUB must not be treated as streaming-only")
+    }
+
+    /// Order-independence guard: epub listed first must also resolve to .epub
+    /// (proves the fix is preference-based, not merely re-ordered).
+    func testTPPBook_mixedStreamingAndEpub_epubFirst_prefersEpub() {
+        let epubLeaf = TPPOPDSIndirectAcquisition(type: ContentTypeEpubZip, indirectAcquisitions: [])
+        let streamingLeaf = TPPOPDSIndirectAcquisition(type: ContentTypeStreamingHTML, indirectAcquisitions: [])
+        let acquisition = TPPOPDSAcquisition(
+            relation: .borrow,
+            type: ContentTypeOPDSPublication,
+            hrefURL: URL(string: "https://example.com/borrow/mixed-epub-first")!,
+            indirectAcquisitions: [epubLeaf, streamingLeaf],
+            availability: TPPOPDSAcquisitionAvailabilityUnlimited()
+        )
+        let book = makeBook(acquisitions: [acquisition])
+        XCTAssertEqual(book.defaultBookContentType, .epub)
+        XCTAssertFalse(book.isStreamingHTML)
+    }
+
     /// PP-4161: a plain EPUB book must NOT report isStreamingHTML.
     /// Catches a mutant that flipped the predicate to always-true.
     func testTPPBook_isStreamingHTML_epubOnly_returnsFalse() {
