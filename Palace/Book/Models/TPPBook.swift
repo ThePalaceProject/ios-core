@@ -512,13 +512,45 @@ public class TPPBook: NSObject, ObservableObject {
     }
 
     @objc var defaultAcquisition: TPPOPDSAcquisition? {
-        acquisitions.first(where: {
-            !TPPOPDSAcquisitionPath.supportedAcquisitionPaths(
-                forAllowedTypes: TPPOPDSAcquisitionPath.supportedTypes(),
-                allowedRelations: TPPOPDSAcquisitionRelationSetDefaultAcquisition,
-                acquisitions: [$0]
-            ).isEmpty
-        })
+        let supported = acquisitions.filter { Self.isSupportedDefaultAcquisition($0) }
+        // Prefer a downloadable format over streaming-HTML when the same work is
+        // offered as separate open-access links. Palace Bookshelf OPDS1 entries
+        // list streaming-media, PDF and EPUB as distinct `open-access` links,
+        // often with streaming-media FIRST. PP-4161 made streaming-media a
+        // *supported* type, so the previous `acquisitions.first(where:supported)`
+        // returned the streaming link → `defaultBookContentType` became
+        // `.streamingHTML` → the book opened in the WKWebView reader and never
+        // downloaded the EPUB/PDF (the reported regression). Streaming-media is
+        // chosen only when no downloadable format is offered.
+        let preference: [TPPBookContentType] = [.epub, .pdf, .audiobook, .streamingHTML]
+        for candidate in preference {
+            if let match = supported.first(where: { Self.defaultAcquisitionContentType($0) == candidate }) {
+                return match
+            }
+        }
+        return supported.first
+    }
+
+    private static func isSupportedDefaultAcquisition(_ acquisition: TPPOPDSAcquisition) -> Bool {
+        !TPPOPDSAcquisitionPath.supportedAcquisitionPaths(
+            forAllowedTypes: TPPOPDSAcquisitionPath.supportedTypes(),
+            allowedRelations: TPPOPDSAcquisitionRelationSetDefaultAcquisition,
+            acquisitions: [acquisition]
+        ).isEmpty
+    }
+
+    /// Content type of a single acquisition, resolved with the default-acquisition
+    /// relation set and the same downloadable-over-streaming preference used by
+    /// `defaultBookContentType`. Used to rank candidate acquisitions.
+    private static func defaultAcquisitionContentType(_ acquisition: TPPOPDSAcquisition) -> TPPBookContentType {
+        let paths = TPPOPDSAcquisitionPath.supportedAcquisitionPaths(
+            forAllowedTypes: TPPOPDSAcquisitionPath.supportedTypes(),
+            allowedRelations: TPPOPDSAcquisitionRelationSetDefaultAcquisition,
+            acquisitions: [acquisition]
+        )
+        let types = paths.compactMap { TPPBookContentType.from(mimeType: $0.types.last) }
+        let preference: [TPPBookContentType] = [.epub, .pdf, .audiobook, .streamingHTML]
+        return preference.first(where: { types.contains($0) }) ?? .unsupported
     }
 
     @objc var sampleAcquisition: TPPOPDSAcquisition? {

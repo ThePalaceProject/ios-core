@@ -554,6 +554,64 @@ final class TPPBookTests: XCTestCase {
         XCTAssertFalse(book.isStreamingHTML)
     }
 
+    /// Regression for the ACTUAL Palace Bookshelf shape (verified against the
+    /// live OPDS1 feed for "Multi-National Pulp Industries…"): the same
+    /// open-access work is offered as SEPARATE direct links — streaming-media,
+    /// PDF and EPUB — with the streaming-media link FIRST. Unlike the OPDS2
+    /// single-acquisition-with-indirects case above, `defaultBookContentType`
+    /// only inspects `defaultAcquisition`, so the fix has to live in
+    /// `defaultAcquisition` (prefer a downloadable acquisition over streaming).
+    /// Without it, `defaultAcquisition` = the first supported = streaming →
+    /// `.streamingHTML` → WKWebView reader.
+    func testTPPBook_openAccessSeparateLinks_streamingFirst_defaultsToEpub() {
+        let streamingAcq = TPPOPDSAcquisition(
+            relation: .openAccess, type: ContentTypeStreamingHTML,
+            hrefURL: URL(string: "https://example.com/oa/stream")!,
+            indirectAcquisitions: [], availability: TPPOPDSAcquisitionAvailabilityUnlimited())
+        let pdfAcq = TPPOPDSAcquisition(
+            relation: .openAccess, type: ContentTypeOpenAccessPDF,
+            hrefURL: URL(string: "https://example.com/oa/pdf")!,
+            indirectAcquisitions: [], availability: TPPOPDSAcquisitionAvailabilityUnlimited())
+        let epubAcq = TPPOPDSAcquisition(
+            relation: .openAccess, type: ContentTypeEpubZip,
+            hrefURL: URL(string: "https://example.com/oa/epub")!,
+            indirectAcquisitions: [], availability: TPPOPDSAcquisitionAvailabilityUnlimited())
+        // Streaming FIRST — the real feed order.
+        let book = makeBook(acquisitions: [streamingAcq, pdfAcq, epubAcq])
+
+        XCTAssertEqual(book.defaultAcquisition?.type, ContentTypeEpubZip,
+                       "defaultAcquisition must prefer the downloadable EPUB link over the streaming-media link that appears first")
+        XCTAssertEqual(book.defaultBookContentType, .epub,
+                       "Multi-format open-access book must open in the EPUB reader, not the streaming WKWebView")
+        XCTAssertFalse(book.isStreamingHTML)
+    }
+
+    /// And when EPUB is absent, a downloadable PDF must still beat streaming.
+    func testTPPBook_openAccessSeparateLinks_streamingFirst_fallsBackToPDF() {
+        let streamingAcq = TPPOPDSAcquisition(
+            relation: .openAccess, type: ContentTypeStreamingHTML,
+            hrefURL: URL(string: "https://example.com/oa/stream2")!,
+            indirectAcquisitions: [], availability: TPPOPDSAcquisitionAvailabilityUnlimited())
+        let pdfAcq = TPPOPDSAcquisition(
+            relation: .openAccess, type: ContentTypeOpenAccessPDF,
+            hrefURL: URL(string: "https://example.com/oa/pdf2")!,
+            indirectAcquisitions: [], availability: TPPOPDSAcquisitionAvailabilityUnlimited())
+        let book = makeBook(acquisitions: [streamingAcq, pdfAcq])
+        XCTAssertEqual(book.defaultAcquisition?.type, ContentTypeOpenAccessPDF)
+        XCTAssertEqual(book.defaultBookContentType, .pdf)
+    }
+
+    /// Streaming-only must still resolve to streaming (no downloadable format).
+    func testTPPBook_openAccessSeparateLinks_streamingOnly_staysStreaming() {
+        let streamingAcq = TPPOPDSAcquisition(
+            relation: .openAccess, type: ContentTypeStreamingHTML,
+            hrefURL: URL(string: "https://example.com/oa/stream-only")!,
+            indirectAcquisitions: [], availability: TPPOPDSAcquisitionAvailabilityUnlimited())
+        let book = makeBook(acquisitions: [streamingAcq])
+        XCTAssertEqual(book.defaultBookContentType, .streamingHTML)
+        XCTAssertTrue(book.isStreamingHTML)
+    }
+
     /// PP-4161: a plain EPUB book must NOT report isStreamingHTML.
     /// Catches a mutant that flipped the predicate to always-true.
     func testTPPBook_isStreamingHTML_epubOnly_returnsFalse() {
