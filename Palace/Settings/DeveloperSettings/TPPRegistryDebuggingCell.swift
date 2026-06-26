@@ -46,7 +46,7 @@ class TPPRegistryDebuggingCell: UITableViewCell {
         let stackView = UIStackView()
         stackView.axis = .vertical
 
-        inputField.placeholder = "Input custom server"
+        inputField.placeholder = "host, or full https:// URL"
         inputField.text = settings.customLibraryRegistryServer
         inputField.autocapitalizationType = .none
         inputField.autocorrectionType = .no
@@ -121,6 +121,20 @@ class TPPRegistryDebuggingCell: UITableViewCell {
 
         containerStack.autoSetDimension(.height, toSize: 100, relation: .greaterThanOrEqual)
         containerStack.autoPinEdgesToSuperviewMargins()
+
+        updateAffixVisibility(for: inputField.text)
+    }
+
+    /// A full URL is fetched verbatim, so the `https://` / `/libraries/qa`
+    /// hint affixes only make sense for a bare-host entry. Hide them once the
+    /// input looks like a full URL to avoid misrepresenting what will be loaded.
+    private func updateAffixVisibility(for text: String?) {
+        let isFullURL = (text ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .hasPrefix("http")
+        prefixLabel.isHidden = isFullURL
+        postfixLabel.isHidden = isFullURL
     }
 
     @objc private func clear() {
@@ -171,5 +185,6 @@ class TPPRegistryDebuggingCell: UITableViewCell {
 extension TPPRegistryDebuggingCell: UITextFieldDelegate {
     func textFieldDidChangeSelection(_ textField: UITextField) {
         textField.text = textField.text?.trimmingCharacters(in: .whitespacesAndNewlines)
+        updateAffixVisibility(for: textField.text)
     }
 }
