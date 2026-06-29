@@ -47,6 +47,9 @@ from _checklib import read_diff
 
 _REQUIRED_FRONTMATTER_KEYS = ("name", "created", "author")
 _REQUIRED_BODY_SECTIONS = ("## Claims", "## Anti-claims", "## Files in scope")
+# Extra sections required when an intent declares `type: bugfix` — the enforced
+# spine of the bug-investigation process (reproduce → root-cause → verify).
+_REQUIRED_BUGFIX_SECTIONS = ("## Reproduction", "## Root cause", "## Verification")
 
 # Files / paths to count as "prod" LOC.
 _PROD_PATH_PREFIXES = ("Palace/",)
@@ -281,7 +284,18 @@ def _parse_intent(path: Path) -> _IntentValidation:
             return _IntentValidation(path=path, ok=False,
                                      reason=f"missing frontmatter key `{key}`")
     body_text = "\n".join(lines[body_start:])
-    for section in _REQUIRED_BODY_SECTIONS:
+    required_sections = list(_REQUIRED_BODY_SECTIONS)
+    # Bug-fix intents must additionally carry the investigation evidence:
+    # a reproduction against the REAL failing artifact, the verified root
+    # cause, and an in-action verification of the fix. This is the enforced
+    # half of the bug-investigation process (docs/bug-investigation-process.md).
+    # It exists because a fix once shipped on an unverified root-cause
+    # hypothesis whose unit tests only encoded the assumption — wall-failure
+    # 2026-06-25-epub-webview-premature-collapse. Opt-in via `type: bugfix`;
+    # the process doc + reviewers are responsible for setting it on bug fixes.
+    if frontmatter.get("type", "").strip().lower() == "bugfix":
+        required_sections += _REQUIRED_BUGFIX_SECTIONS
+    for section in required_sections:
         if section not in body_text:
             return _IntentValidation(path=path, ok=False,
                                      reason=f"missing body section `{section}`")
