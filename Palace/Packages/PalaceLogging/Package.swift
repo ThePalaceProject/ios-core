@@ -1,11 +1,11 @@
-// swift-tools-version: 5.9
+// swift-tools-version: 6.0
 import PackageDescription
 
 let package = Package(
     name: "PalaceLogging",
     platforms: [
         .iOS(.v16),
-        .macOS(.v11)
+        .macOS(.v13)
     ],
     products: [
         .library(
@@ -15,11 +15,13 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "PalaceLogging"
+            name: "PalaceLogging",
+            swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .testTarget(
             name: "PalaceLoggingTests",
-            dependencies: ["PalaceLogging"]
+            dependencies: ["PalaceLogging"],
+            swiftSettings: [.swiftLanguageMode(.v6)]
         )
     ]
 )

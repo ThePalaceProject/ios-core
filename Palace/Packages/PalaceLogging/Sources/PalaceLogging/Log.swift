@@ -7,16 +7,25 @@ public final class Log {
     public static let subsystem = "org.thepalaceproject.palace"
 
     /// Host-app-provided forwarder for non-debug log lines (e.g. Firebase Crashlytics).
-    /// Set once during app startup; reads/writes are intentionally unsynchronised.
-    public static var crashlyticsBridge: CrashlyticsLogBridge?
+    /// Set once during app startup; access is serialized by an unfair lock so it
+    /// is data-race-safe under Swift 6 strict concurrency.
+    private static let _crashlyticsBridge = OSAllocatedUnfairLock<(any CrashlyticsLogBridge)?>(initialState: nil)
+    public static var crashlyticsBridge: (any CrashlyticsLogBridge)? {
+        get { _crashlyticsBridge.withLock { $0 } }
+        set { _crashlyticsBridge.withLock { $0 = newValue } }
+    }
 
     private static let palaceLog = OSLog(subsystem: subsystem, category: "Palace")
 
-    public static var dateFormatter: DateFormatter = {
+    /// Formats a timestamp for the non-debug forwarding path. Returns a fresh
+    /// formatter per call rather than holding a shared mutable `DateFormatter`
+    /// (a non-`Sendable` reference type) as global state. The path is rare
+    /// (non-debug, error/fault only), so the allocation cost is negligible.
+    private static func formattedTimestamp(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
-        return formatter
-    }()
+        return formatter.string(from: date)
+    }
 
     private static func levelToString(_ level: OSLogType) -> String {
         switch level {
@@ -38,7 +47,7 @@ public final class Log {
 
         #if !targetEnvironment(simulator) && !DEBUG
         if level != .debug, let bridge = crashlyticsBridge {
-            let timestamp = dateFormatter.string(from: Date())
+            let timestamp = formattedTimestamp(Date())
             let formattedMsg = "[\(levelToString(level))] \(timestamp) \(tag): \(message)"
             bridge.log(formattedMsg)
         }
@@ -94,9 +103,12 @@ public final class Log {
 
     // MARK: - Performance Optimizations
 
-    private static var lastPalaceLogMessages: [String: Date] = [:]
     private static let palaceLogThrottleInterval: TimeInterval = 0.3
-    private static let throttleQueue = DispatchQueue(label: "org.thepalaceproject.palace.logging.throttle", attributes: .concurrent)
+    /// Recent-message timestamps for log throttling, guarded by an unfair lock.
+    /// Replaces the prior concurrent-queue + barrier (whose safety the Swift 6
+    /// compiler could not prove): a single locked read-modify-write is simpler
+    /// AND closes the read-then-async-write window the queue version had.
+    private static let throttleState = OSAllocatedUnfairLock<[String: Date]>(initialState: [:])
 
     private static func shouldThrottlePalaceLogging(level: OSLogType, tag: String, message: String) -> Bool {
         guard level != .error && level != .fault else { return false }
@@ -104,22 +116,18 @@ public final class Log {
         let now = Date()
         let messageKey = "\(tag):\(message.prefix(30))"
 
-        return throttleQueue.sync {
-            if let lastTime = lastPalaceLogMessages[messageKey] {
-                if now.timeIntervalSince(lastTime) < palaceLogThrottleInterval {
-                    return true // Throttle this message
-                }
+        return throttleState.withLock { messages in
+            if let lastTime = messages[messageKey],
+               now.timeIntervalSince(lastTime) < palaceLogThrottleInterval {
+                return true // Throttle this message
             }
 
-            // Use barrier to ensure exclusive write access
-            throttleQueue.async(flags: .barrier) {
-                lastPalaceLogMessages[messageKey] = now
+            messages[messageKey] = now
 
-                // Clean up old entries periodically to prevent memory growth
-                if lastPalaceLogMessages.count > 50 {
-                    let cutoffTime = now.addingTimeInterval(-palaceLogThrottleInterval * 20)
-                    lastPalaceLogMessages = lastPalaceLogMessages.filter { $0.value > cutoffTime }
-                }
+            // Clean up old entries periodically to prevent memory growth.
+            if messages.count > 50 {
+                let cutoffTime = now.addingTimeInterval(-palaceLogThrottleInterval * 20)
+                messages = messages.filter { $0.value > cutoffTime }
             }
 
             return false
