@@ -100,6 +100,32 @@ final class AccountsManagerAccountIndexTests: PalaceWiringTestCase {
         XCTAssertTrue(AccountsManager.buildAccountIndex([:]).isEmpty)
     }
 
+    /// Tie-break contract for a UUID present in MORE THAN ONE bucket (e.g. an
+    /// account in both the prod and beta registries). The index maps the UUID to
+    /// exactly one entry; WHICH bucket's Account instance wins is unspecified
+    /// (dict-value iteration order) — the same nondeterminism the prior
+    /// `accountSets.values.first { contains }` scan had. What IS pinned: the
+    /// lookup resolves to a non-nil account carrying that exact UUID, never nil
+    /// and never a phantom. This documents the one behavior the O(1) migration
+    /// preserved-but-restated (qa follow-up on #1).
+    func testBuildAccountIndex_duplicateUUIDAcrossBuckets_resolvesToThatUUID() {
+        let dup = "urn:uuid:dup-across-buckets"
+        let prodCopy = stubAccount(dup)
+        let betaCopy = stubAccount(dup)
+        let index = AccountsManager.buildAccountIndex(["prod": [prodCopy], "beta": [betaCopy]])
+
+        XCTAssertEqual(index.count, 1, "a UUID in two buckets collapses to one index entry")
+        XCTAssertEqual(index[dup]?.uuid, dup,
+                       "the entry must carry the duplicated UUID (which instance is unspecified)")
+
+        // Same contract through the live lookup.
+        let manager = makeFreshAccountsManager()
+        manager._testSetAccountSet([prodCopy], forKey: "prod")
+        manager._testSetAccountSet([betaCopy], forKey: "beta")
+        XCTAssertEqual(manager.account(dup)?.uuid, dup,
+                       "account(_:) resolves a cross-bucket duplicate UUID to that UUID, never nil")
+    }
+
     // MARK: - Complexity contract (THE recurrence guard for the hang fix)
 
     /// `account(_:)` MUST be ~constant-time, independent of the account count —
