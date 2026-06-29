@@ -299,6 +299,23 @@ public final class ImageCache: ImageCacheType {
         dataCache.clear()
     }
 
+    /// Test-only: restore the shared `processingQueue` to its running state.
+    ///
+    /// `ImageCacheContinuationTests` is the only test that suspends this
+    /// singleton's queue (suspend → enqueue → cancelAllOperations → resume) to
+    /// exercise the getAsync cancellation path. If that test ever aborts while
+    /// the queue is suspended, the global queue stays suspended and every later
+    /// `ImageCache.shared.getAsync` hangs to timeout — surfacing as a different
+    /// flaky victim each run (the test-isolation-family signature). Registering
+    /// this with `SingletonResetRegistry` makes the queue restore after EVERY
+    /// test via the finished-test observer, independent of that one test's
+    /// tearDown. `internal` (not `#if DEBUG`) matches the
+    /// `AppContainer._resetForTesting` convention and the blast-radius gate.
+    internal func _resetForTesting() {
+        processingQueue.cancelAllOperations()
+        processingQueue.isSuspended = false
+    }
+
     /// Evict decoded in-memory images without touching the compressed disk
     /// cache. The disk cache retains JPEG data, so the next fetchCoverImage
     /// call promotes from disk (~5ms) instead of hitting the network.

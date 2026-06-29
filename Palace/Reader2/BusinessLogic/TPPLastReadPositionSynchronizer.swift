@@ -166,7 +166,26 @@ class TPPLastReadPositionSynchronizer {
                 alert.addAction(stayAction)
                 alert.addAction(moveAction)
 
-                topVC.present(alert, animated: true)
+                // Present *after* any in-flight transition settles. This prompt
+                // fires during launch/book-open, exactly when a push/modal
+                // transition can still be animating; presenting into it is the
+                // fe741015 CA-commit race. Wait on the transition coordinator
+                // (re-walking to the settled topmost) instead of presenting raw.
+                // The continuation is resumed only by the alert's actions, so the
+                // alert must always be presented — never dropped.
+                if let coordinator = topVC.transitionCoordinator {
+                    coordinator.animate(alongsideTransition: nil) { _ in
+                        DispatchQueue.main.async {
+                            var settledTop = rootVC
+                            while let presented = settledTop.presentedViewController {
+                                settledTop = presented
+                            }
+                            settledTop.present(alert, animated: true)
+                        }
+                    }
+                } else {
+                    topVC.present(alert, animated: true)
+                }
             }
         }
     }

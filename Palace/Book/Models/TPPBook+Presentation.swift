@@ -309,40 +309,53 @@ extension TPPBook {
                     return
                 }
 
-                var bitmap = [UInt8](repeating: 0, count: 4)
-
                 let renderBounds = CGRect(x: 0, y: 0, width: 1, height: 1)
-                guard renderBounds.width > 0, renderBounds.height > 0 else {
-                    Log.warn(#file, "Invalid render bounds")
+
+                // CIContext.render(_:toBitmap:) aborts INTERNALLY (C++ abort →
+                // SIGABRT, Crashlytics 0f06402c) on degenerate/corrupt cover
+                // images that survive the guards above, and — being non-throwing
+                // — the do/catch that used to wrap it was dead code (a native
+                // abort cannot be caught by Swift, so there was no recovery path
+                // and the process was killed). Render the 1x1 areaAverage output
+                // via createCGImage, which returns nil on failure instead of
+                // aborting, then read the single averaged pixel back through a
+                // CGContext. Any failure now falls back to .gray.
+                guard let averagedCGImage = Self.sharedCIContext.createCGImage(
+                    outputImage,
+                    from: renderBounds,
+                    format: .RGBA8,
+                    colorSpace: colorSpace
+                ) else {
+                    Log.debug(#file, "areaAverage createCGImage returned nil for book: \(self.identifier)")
                     DispatchQueue.main.async { self.dominantUIColor = .gray }
                     return
                 }
 
-                do {
-                    Self.sharedCIContext.render(
-                        outputImage,
-                        toBitmap: &bitmap,
-                        rowBytes: 4,
-                        bounds: renderBounds,
-                        format: .RGBA8,
-                        colorSpace: colorSpace
-                    )
+                var bitmap = [UInt8](repeating: 0, count: 4)
+                guard let readbackContext = CGContext(
+                    data: &bitmap,
+                    width: 1,
+                    height: 1,
+                    bitsPerComponent: 8,
+                    bytesPerRow: 4,
+                    space: colorSpace,
+                    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+                ) else {
+                    Log.debug(#file, "Failed to create 1x1 readback context for book: \(self.identifier)")
+                    DispatchQueue.main.async { self.dominantUIColor = .gray }
+                    return
+                }
+                readbackContext.draw(averagedCGImage, in: renderBounds)
 
-                    let color = UIColor(
-                        red: CGFloat(bitmap[0]) / 255.0,
-                        green: CGFloat(bitmap[1]) / 255.0,
-                        blue: CGFloat(bitmap[2]) / 255.0,
-                        alpha: CGFloat(bitmap[3]) / 255.0
-                    )
+                let color = UIColor(
+                    red: CGFloat(bitmap[0]) / 255.0,
+                    green: CGFloat(bitmap[1]) / 255.0,
+                    blue: CGFloat(bitmap[2]) / 255.0,
+                    alpha: CGFloat(bitmap[3]) / 255.0
+                )
 
-                    DispatchQueue.main.async {
-                        self.dominantUIColor = color
-                    }
-                } catch {
-                    Log.warn(#file, "Failed to extract dominant color for \(self.identifier): \(error.localizedDescription)")
-                    DispatchQueue.main.async {
-                        self.dominantUIColor = .gray
-                    }
+                DispatchQueue.main.async {
+                    self.dominantUIColor = color
                 }
             }
         }
