@@ -710,6 +710,14 @@ struct CatalogCacheMetadata: Codable {
     /// 2. Paginate remaining pages in background → update cache when done
     /// Falls back to a direct GET if even the first page fails.
     private func fetchFromNetwork(targetUrl: URL, hash: String) {
+        // A developer-configured explicit registry URL is fetched verbatim via a
+        // direct GET — no crawlable rewrite — so the exact endpoint (e.g. a bare
+        // /libraries feed) is exercised. Gated behind a custom registry being set;
+        // production registry loading still uses the crawler below.
+        if TPPConfiguration.customRegistryIsExplicitURL() {
+            fallbackFetchFromNetwork(targetUrl: targetUrl, hash: hash)
+            return
+        }
         let crawlTask = Task(priority: .userInitiated) { [weak self] in
             guard let self = self else { return }
             Log.debug(#file, "Fetching catalogs via first-page fast path for hash \(hash)")
@@ -809,6 +817,12 @@ struct CatalogCacheMetadata: Codable {
     /// Refreshes catalog data in background using the incremental crawler.
     /// Falls back to a direct GET if the crawlable endpoint fails.
     private func refreshInBackground(targetUrl: URL, hash: String) {
+        // Explicit dev registry URLs bypass the incremental crawler and refresh
+        // via a verbatim direct GET, mirroring fetchFromNetwork.
+        if TPPConfiguration.customRegistryIsExplicitURL() {
+            fallbackFetchFromNetwork(targetUrl: targetUrl, hash: hash)
+            return
+        }
         let refreshTask = Task(priority: .utility) { [weak self] in
             guard let self = self else { return }
             Log.debug(#file, "Starting background refresh (crawl) for catalog hash \(hash)")
