@@ -76,6 +76,19 @@ is the one strong back-edge. For #3: `URLProtocol.registerClass`
 builds its own `URLSession(configuration:)` whose `protocolClasses` omits
 NoNetworkURLProtocol.
 
+## Deferred / related (palace-pm decisions, 2026-06-29)
+
+- **Pool-responsiveness gate warn->hard (charter Deliverable A): DEFERRED, keep
+  WARN-ONLY** (decision (ii)). It guards class-4 (pool-starvation), which the
+  real artifact RULED OUT for this hang (17 WS0-POOL-DIAG all completed=true);
+  it already earned its keep AS the diagnostic that ruled pool-starvation out.
+  Promote to hard ONLY after a real false-positive audit, if class-4 ever bites.
+  The observer-leak gate below is the correct guard for the class we fixed.
+- **qa optional follow-ups (fold in if cheap):** (1) pin the dup-UUID
+  cross-bucket tie-break (`buildAccountIndex` last-wins — the one behavior change
+  vs the old nondeterministic scan); (2) keep `AccountsManager.swift` in the
+  pre-release `palace_mutate` run so the 50% floor stays honest.
+
 ## Verification
 
 TBD on implementation: red-first leak-repro fails -> passes when the cycle is
