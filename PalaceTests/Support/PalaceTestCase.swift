@@ -36,6 +36,16 @@ import XCTest
 /// Base XCTestCase that asserts runtime quiescence on tearDown. See header.
 class PalaceTestCase: XCTestCase {
 
+    /// Pre-test `NotificationCenter.default` observer count, captured in setUp.
+    /// `nil` when the best-effort sample is unavailable (then the observer-leak
+    /// check is skipped). Subclasses overriding `setUpWithError` MUST call super.
+    private var preObserverCount: Int?
+
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        preObserverCount = PalaceSingletonResetObserver.sampleObserverCount()
+    }
+
     override func tearDownWithError() throws {
         // Call super FIRST. `XCTestCase.tearDownWithError()` invokes the
         // subclass's `tearDown()` (where flag-flippers like
@@ -45,6 +55,28 @@ class PalaceTestCase: XCTestCase {
         // check ran before the restore. Verified by the WS-0 ordering proof.
         try super.tearDownWithError()
         assertRuntimeQuiescent()
+        warnOnObserverLeak()
+    }
+
+    /// WARN-ONLY observer-leak check (leaked-observer class). Emits a
+    /// `[WS0-OBSERVER-DIAG]` breadcrumb if this test left net-new
+    /// `NotificationCenter.default` observers — e.g. a leaked view-model whose
+    /// Combine subscriptions stay alive (the AccountDetailViewModel cycle class,
+    /// now fixed at root; this guards recurrence). NOT yet an `XCTFail`: the
+    /// app-wide count is a best-effort `debugDescription` parse and concurrent
+    /// background observers can add noise, so promotion to a hard gate is gated
+    /// on a zero-false-positive audit across a full green run — the same
+    /// warn→hard discipline as the pool-responsiveness gate. Pure detector
+    /// (`RuntimeQuiescenceAuditor.observerLeakViolations`) is self-tested both
+    /// directions so the flip-to-hard is a one-line change once the audit clears.
+    private func warnOnObserverLeak() {
+        guard let pre = preObserverCount,
+              let post = PalaceSingletonResetObserver.sampleObserverCount() else { return }
+        preObserverCount = nil
+        for violation in RuntimeQuiescenceAuditor.observerLeakViolations(netObserverAdds: post - pre) {
+            NSLog("[WS0-OBSERVER-DIAG] %@ left net observer adds (%d→%d) [%@] — see PalaceTestCase.warnOnObserverLeak (warn-only pending FP audit).",
+                  self.name, pre, post, violation.invariant)
+        }
     }
 
     /// Fail the current test if it left the suite non-quiescent (currently: the
