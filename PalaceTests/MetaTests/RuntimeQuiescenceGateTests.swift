@@ -118,6 +118,61 @@ final class RuntimeQuiescenceGateTests: PalaceTestCase {
             "A responsive pool MUST NOT flag a violation")
     }
 
+    // MARK: - Observer-leak detector (leaked-observer class) self-tests
+
+    /// Pure detector: net-new observers (>0) MUST flag exactly one violation;
+    /// zero or negative MUST flag none. Proves the detector fires without
+    /// staging a real leak — so promoting `warnOnObserverLeak` to a hard XCTFail
+    /// (after the FP audit) is a one-line change with proven semantics.
+    func testObserverLeakViolations_bothDirections() {
+        XCTAssertEqual(
+            RuntimeQuiescenceAuditor.observerLeakViolations(netObserverAdds: 1).count, 1,
+            "A test that left net-new NotificationCenter observers MUST flag one violation")
+        XCTAssertEqual(
+            RuntimeQuiescenceAuditor.observerLeakViolations(netObserverAdds: 3).count, 1,
+            "Any positive net-add count flags exactly one violation")
+        XCTAssertTrue(
+            RuntimeQuiescenceAuditor.observerLeakViolations(netObserverAdds: 0).isEmpty,
+            "A balanced test (no net adds) MUST NOT trip the gate")
+        XCTAssertTrue(
+            RuntimeQuiescenceAuditor.observerLeakViolations(netObserverAdds: -2).isEmpty,
+            "A test that NET-REMOVED observers MUST NOT trip the gate")
+    }
+
+    /// The violation message must name the remediation paths (injected center /
+    /// remove in tearDown / break the retain cycle) so the failure is actionable.
+    func testObserverLeakViolations_message_isActionable() {
+        let detail = RuntimeQuiescenceAuditor.observerLeakViolations(netObserverAdds: 1).first?.detail ?? ""
+        XCTAssertTrue(detail.contains("tearDown") || detail.contains("retain cycle"),
+                      "Remediation must point at tearDown removal or the retain-cycle break")
+    }
+
+    /// NON-INERTNESS proof for the live observer-count sampling: a real
+    /// `NotificationCenter.default` observer add must move the sampled count by
+    /// +1. Without this, a `sampleObserverCount()` that always returned a
+    /// constant (or nil) would make the observer-leak gate silently inert — the
+    /// canonical inert-gate trap. If the runtime-private parse is unavailable on
+    /// this host the sample is `nil` and the gate correctly SKIPS (no false
+    /// fail), which this test records via XCTSkip rather than a fake pass.
+    func testSampleObserverCount_reflectsLiveObserverAdd_orSkips() throws {
+        guard let before = PalaceSingletonResetObserver.sampleObserverCount() else {
+            throw XCTSkip("NotificationCenter observer count unavailable on this host — "
+                          + "the warn/gate correctly skips (nil sample ⇒ no violation).")
+        }
+        let token = NotificationCenter.default.addObserver(
+            forName: Notification.Name("WS0-observer-selftest"),
+            object: nil, queue: nil
+        ) { _ in }
+        defer { NotificationCenter.default.removeObserver(token) }
+
+        let after = PalaceSingletonResetObserver.sampleObserverCount()
+        XCTAssertEqual(
+            after.map { $0 - before }, 1,
+            "sampleObserverCount() must reflect a live observer add (+1) — else the "
+            + "observer-leak gate is inert. Got before=\(before), after=\(String(describing: after))."
+        )
+    }
+
     /// Live probe, clean pool: the high-priority probe Task schedules within
     /// budget. Confirms the probe is not a constant-false (which would make the
     /// gate-extension a permanent false-positive).

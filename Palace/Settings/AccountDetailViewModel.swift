@@ -227,10 +227,14 @@ class AccountDetailViewModel: NSObject, ObservableObject {
         isLoadingAuth = true
 
         if businessLogic.libraryAccount?.details != nil {
-            Task { @MainActor in
-                setupViews()
-                accountDidChange()
-                isLoadingAuth = false
+            // [weak self]: this init Task must not keep the view-model alive past
+            // its own scope (defense-in-depth alongside the responder
+            // weak-credentialsProvider cycle break).
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.setupViews()
+                self.accountDidChange()
+                self.isLoadingAuth = false
             }
         } else {
             businessLogic.ensureAuthenticationDocumentIsLoaded { [weak self] success in

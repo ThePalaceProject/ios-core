@@ -36,6 +36,16 @@ import XCTest
 /// Base XCTestCase that asserts runtime quiescence on tearDown. See header.
 class PalaceTestCase: XCTestCase {
 
+    /// Pre-test `NotificationCenter.default` observer count, captured in setUp.
+    /// `nil` when the best-effort sample is unavailable (then the observer-leak
+    /// check is skipped). Subclasses overriding `setUpWithError` MUST call super.
+    private var preObserverCount: Int?
+
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        preObserverCount = PalaceSingletonResetObserver.sampleObserverCount()
+    }
+
     override func tearDownWithError() throws {
         // Call super FIRST. `XCTestCase.tearDownWithError()` invokes the
         // subclass's `tearDown()` (where flag-flippers like
@@ -45,6 +55,36 @@ class PalaceTestCase: XCTestCase {
         // check ran before the restore. Verified by the WS-0 ordering proof.
         try super.tearDownWithError()
         assertRuntimeQuiescent()
+        warnOnObserverLeak()
+    }
+
+    /// WARN-ONLY observer-leak check (leaked-observer class). Emits a
+    /// `[WS0-OBSERVER-DIAG]` breadcrumb if this test left net-new
+    /// `NotificationCenter.default` observers — e.g. a leaked view-model whose
+    /// Combine subscriptions stay alive (the AccountDetailViewModel cycle class,
+    /// now fixed at root; this guards recurrence).
+    ///
+    /// PLATFORM LIMITATION (measured 2026-06-29, iOS 26 simruntime): the only
+    /// way to count `NotificationCenter.default` observers is parsing its
+    /// `debugDescription`, and on iOS 26 that string no longer exposes an
+    /// `observers: <N>` line — `sampleObserverCount()` returns `nil`, so this
+    /// check (and the pre-existing `PalaceSingletonResetObserver` net-adds
+    /// runActivity, same source) is INERT on the platform we actually run. It is
+    /// kept warn-only + nil-skipping (graceful, self-tested to skip — NOT a fake
+    /// pass) so it lights up automatically if a future runtime restores the API;
+    /// it is deliberately NOT promoted to a hard `XCTFail`, because an inert
+    /// hard-gate is the exact theater the green-board contract forbids. The
+    /// EFFECTIVE structural guard for this leak class is the platform-independent
+    /// dealloc assertion in `AccountDetailViewModelLeakTests` (red→green proven),
+    /// which does not depend on the observer count at all.
+    private func warnOnObserverLeak() {
+        guard let pre = preObserverCount,
+              let post = PalaceSingletonResetObserver.sampleObserverCount() else { return }
+        preObserverCount = nil
+        for violation in RuntimeQuiescenceAuditor.observerLeakViolations(netObserverAdds: post - pre) {
+            NSLog("[WS0-OBSERVER-DIAG] %@ left net observer adds (%d→%d) [%@] — see PalaceTestCase.warnOnObserverLeak (warn-only pending FP audit).",
+                  self.name, pre, post, violation.invariant)
+        }
     }
 
     /// Fail the current test if it left the suite non-quiescent (currently: the

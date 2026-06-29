@@ -242,9 +242,10 @@ class PalaceSingletonResetObserver: NSObject, XCTestObservation {
 
     /// Returns the current observer count from `NotificationCenter.default`
     /// when reachable. Best-effort — returns nil if the runtime-private
-    /// API is unavailable. Audit-only — used solely for delta warnings,
-    /// never as a hard assertion.
-    private static func sampleObserverCount() -> Int? {
+    /// API is unavailable. Audit-only — used for delta warnings here and by
+    /// `PalaceTestCase`'s per-test observer-leak gate (warn-only until the
+    /// false-positive audit clears promotion to a hard XCTFail).
+    static func sampleObserverCount() -> Int? {
         // The implementation uses a `debugDescription` parse — the
         // `debugDescription` of NSNotificationCenter contains a line of
         // the form `<NSNotificationCenter: 0x...> observers: <N>` on

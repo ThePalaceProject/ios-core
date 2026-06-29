@@ -34,7 +34,17 @@ class TPPNetworkResponder: NSObject {
     private var tokenRefreshAttempts: Int = 0
     private var taskInfo: [TaskID: TPPNetworkTaskInfo]
     private let useFallbackCaching: Bool
-    private let credentialsProvider: NYPLBasicAuthCredentialsProvider?
+    /// WEAK on purpose: the responder reads the provider ONCE per auth challenge
+    /// (synchronously, with a `?? currentUserAccount` fallback — see
+    /// `urlSession(_:didReceive:...)`), and never retains it beyond a method-local
+    /// `TPPBasicAuth`. A strong reference here closed a retain cycle for any
+    /// provider that also (transitively) owns the executor — the
+    /// `AccountDetailViewModel` case: VM → businessLogic → networkExecutor →
+    /// responder → credentialsProvider(=VM). The only non-nil provider in the app
+    /// is that VM, and it is the ROOT owner of its executor chain, so it is alive
+    /// whenever a challenge fires; every other site passes nil and already relies
+    /// on the fallback. Holding it weakly breaks the leak with no behavior change.
+    private weak var credentialsProvider: NYPLBasicAuthCredentialsProvider?
 
     /// Tracks URLs that have been retried after a 401 to prevent infinite retry loops.
     /// Key is the URL absoluteString, value is the number of retry attempts.
