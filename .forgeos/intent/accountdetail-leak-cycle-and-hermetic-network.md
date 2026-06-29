@@ -30,11 +30,17 @@ hang-fix.
   NOT new `#if DEBUG` prod surface) so `AccountsManager.fallbackDirectRefresh ->
   networkExecutor.GET` cannot reach `registry.palaceproject.io` in tests.
 - **structural guards:** (a) hermetic `AccountDetailViewModelLeakTests` dealloc
-  assertion (red-first: fails if the cycle returns); (b) promote the warn-only
-  NotificationCenter observer-leak detector (`PalaceSingletonResetObserver`
-  net-adds) to a HARD gate via `PalaceTestCase.tearDownWithError`, after a
-  zero-false-positive audit on a full green run; (c) a hermeticity test proving
-  no test `TPPNetworkExecutor` escapes to a non-stub host.
+  assertion (red-first: fails if the cycle returns) — **the EFFECTIVE guard**,
+  platform-independent; (b) observer-leak gate via `PalaceTestCase` +
+  `RuntimeQuiescenceAuditor.observerLeakViolations` — implemented WARN-ONLY +
+  self-tested both directions. **NOT promoted to hard:** on the iOS 26 simruntime
+  `NotificationCenter.default.debugDescription` no longer exposes the observer
+  count, so `sampleObserverCount()` returns `nil` and the count-based gate is
+  INERT on the platform we run (the pre-existing `PalaceSingletonResetObserver`
+  runActivity shares this limitation). A hard XCTFail would be inert theater;
+  kept warn-only + nil-skipping so it self-activates if a future runtime restores
+  the API. (c) #3 hermeticity test proving no test `TPPNetworkExecutor` escapes —
+  deferred (non-board-redding; staged).
 
 ## Anti-claims
 

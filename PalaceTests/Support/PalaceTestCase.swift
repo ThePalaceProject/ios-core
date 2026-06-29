@@ -62,13 +62,21 @@ class PalaceTestCase: XCTestCase {
     /// `[WS0-OBSERVER-DIAG]` breadcrumb if this test left net-new
     /// `NotificationCenter.default` observers — e.g. a leaked view-model whose
     /// Combine subscriptions stay alive (the AccountDetailViewModel cycle class,
-    /// now fixed at root; this guards recurrence). NOT yet an `XCTFail`: the
-    /// app-wide count is a best-effort `debugDescription` parse and concurrent
-    /// background observers can add noise, so promotion to a hard gate is gated
-    /// on a zero-false-positive audit across a full green run — the same
-    /// warn→hard discipline as the pool-responsiveness gate. Pure detector
-    /// (`RuntimeQuiescenceAuditor.observerLeakViolations`) is self-tested both
-    /// directions so the flip-to-hard is a one-line change once the audit clears.
+    /// now fixed at root; this guards recurrence).
+    ///
+    /// PLATFORM LIMITATION (measured 2026-06-29, iOS 26 simruntime): the only
+    /// way to count `NotificationCenter.default` observers is parsing its
+    /// `debugDescription`, and on iOS 26 that string no longer exposes an
+    /// `observers: <N>` line — `sampleObserverCount()` returns `nil`, so this
+    /// check (and the pre-existing `PalaceSingletonResetObserver` net-adds
+    /// runActivity, same source) is INERT on the platform we actually run. It is
+    /// kept warn-only + nil-skipping (graceful, self-tested to skip — NOT a fake
+    /// pass) so it lights up automatically if a future runtime restores the API;
+    /// it is deliberately NOT promoted to a hard `XCTFail`, because an inert
+    /// hard-gate is the exact theater the green-board contract forbids. The
+    /// EFFECTIVE structural guard for this leak class is the platform-independent
+    /// dealloc assertion in `AccountDetailViewModelLeakTests` (red→green proven),
+    /// which does not depend on the observer count at all.
     private func warnOnObserverLeak() {
         guard let pre = preObserverCount,
               let post = PalaceSingletonResetObserver.sampleObserverCount() else { return }

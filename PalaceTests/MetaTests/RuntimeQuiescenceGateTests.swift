@@ -147,6 +147,32 @@ final class RuntimeQuiescenceGateTests: PalaceTestCase {
                       "Remediation must point at tearDown removal or the retain-cycle break")
     }
 
+    /// NON-INERTNESS proof for the live observer-count sampling: a real
+    /// `NotificationCenter.default` observer add must move the sampled count by
+    /// +1. Without this, a `sampleObserverCount()` that always returned a
+    /// constant (or nil) would make the observer-leak gate silently inert — the
+    /// canonical inert-gate trap. If the runtime-private parse is unavailable on
+    /// this host the sample is `nil` and the gate correctly SKIPS (no false
+    /// fail), which this test records via XCTSkip rather than a fake pass.
+    func testSampleObserverCount_reflectsLiveObserverAdd_orSkips() throws {
+        guard let before = PalaceSingletonResetObserver.sampleObserverCount() else {
+            throw XCTSkip("NotificationCenter observer count unavailable on this host — "
+                          + "the warn/gate correctly skips (nil sample ⇒ no violation).")
+        }
+        let token = NotificationCenter.default.addObserver(
+            forName: Notification.Name("WS0-observer-selftest"),
+            object: nil, queue: nil
+        ) { _ in }
+        defer { NotificationCenter.default.removeObserver(token) }
+
+        let after = PalaceSingletonResetObserver.sampleObserverCount()
+        XCTAssertEqual(
+            after.map { $0 - before }, 1,
+            "sampleObserverCount() must reflect a live observer add (+1) — else the "
+            + "observer-leak gate is inert. Got before=\(before), after=\(String(describing: after))."
+        )
+    }
+
     /// Live probe, clean pool: the high-priority probe Task schedules within
     /// budget. Confirms the probe is not a constant-false (which would make the
     /// gate-extension a permanent false-positive).
