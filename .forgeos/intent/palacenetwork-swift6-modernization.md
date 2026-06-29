@@ -30,10 +30,14 @@ PM PRs + SoD.
   `AccountsManager.fallbackDirectRefresh` can't reach `registry.palaceproject.io`
   in tests. MECHANISM UNDER DISCUSSION with PM (see Anti-claims) — not yet coded.
 
+- **Language mode:** bump `swift-tools-version` to 6.0 so the PalaceNetwork
+  source target builds in Swift 6 language mode by default (playbook: source →
+  .v6). No in-package test target exists, so no `.v5` test override is needed.
+  Verified: `swift build` (v6 mode) completes with 0 errors / 0 warnings — the
+  `@unchecked Sendable` fix covers everything full-v6 surfaces.
+
 ## Anti-claims
 
-- does NOT bump `swift-tools-version` (the #1129 model kept 5.9; the work is
-  source-level concurrency-cleanliness, not a manifest language-mode flip).
 - does NOT use `nonisolated(unsafe)` anywhere (playbook rule).
 - does NOT change any public symbol of PalaceNetwork (whole-repo grep clean) —
   `@unchecked Sendable` conformance is additive (no consumer/test-double ripple).

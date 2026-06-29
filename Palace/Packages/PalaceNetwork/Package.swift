@@ -1,5 +1,9 @@
-// swift-tools-version: 5.9
+// swift-tools-version: 6.0
 import PackageDescription
+// Swift 6 modernization (fan-out from #1129). tools-version 6.0 puts the
+// `PalaceNetwork` source target in Swift 6 language mode by default. There is no
+// in-package test target (tests live in the app's PalaceTests target), so no
+// `.v5` test override is needed here (cf. the playbook's source→.v6 / test→.v5).
 
 let package = Package(
     name: "PalaceNetwork",
