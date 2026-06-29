@@ -21,7 +21,7 @@ public final class Log {
     /// formatter per call rather than holding a shared mutable `DateFormatter`
     /// (a non-`Sendable` reference type) as global state. The path is rare
     /// (non-debug, error/fault only), so the allocation cost is negligible.
-    private static func formattedTimestamp(_ date: Date) -> String {
+    static func formattedTimestamp(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
         return formatter.string(from: date)

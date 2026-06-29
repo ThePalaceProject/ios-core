@@ -181,16 +181,8 @@ final class LogTests: XCTestCase {
         }
     }
 
-    // MARK: - Date Formatter Tests
-
-    func testDateFormatter_isConfigured() {
-        let formatter = Log.dateFormatter
-        let formatted = formatter.string(from: Date())
-
-        XCTAssertFalse(formatted.isEmpty, "Date formatter should produce non-empty output")
-        XCTAssertEqual(formatted.count, 19, "Date format 'yyyy-MM-dd HH:mm:ss' should be 19 characters")
-        // The formatted string must contain separators indicative of the expected format
-        XCTAssertTrue(formatted.contains("-"), "Date string must contain '-' separators (yyyy-MM-dd)")
-        XCTAssertTrue(formatted.contains(":"), "Date string must contain ':' separators (HH:mm:ss)")
-    }
+    // Date-format coverage moved to PalaceLogging's own test target
+    // (`PalaceLoggingTests.LogFormatTests`) when `Log.dateFormatter` was made
+    // private during the Swift 6 concurrency conversion — it was non-Sendable
+    // global state, replaced by the internal `Log.formattedTimestamp(_:)` helper.
 }
