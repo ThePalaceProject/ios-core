@@ -246,18 +246,27 @@ import PalaceCatalog
                     completion?()
                     return
                 }
-                // Guard: VC may have a live transition coordinator (e.g. a push/pop
-                // animation still in flight) even when isBeingPresented is false.
-                // Presenting into an active transition causes UIKit to throw
-                // NSInternalInconsistencyException during the CA commit phase.
-                guard vc.transitionCoordinator == nil else {
-                    if retryCount < maxAlertRetries {
-                        Log.debug(#file, "Presenter has active transition coordinator, retrying (\(retryCount + 1)/\(maxAlertRetries))...")
-                        retryPresentation(alertController: alertController, viewController: viewController,
-                                          animated: animated, completion: completion, retryCount: retryCount)
-                    } else {
-                        Log.warn(#file, "Cannot present alert after \(maxAlertRetries) retries: presenter still has active transition")
-                        completion?()
+                // If a transition is in flight (push/pop or modal animation still
+                // at the CALayer level, even when isBeingPresented is false),
+                // present *after* it settles rather than sampling-once-and-dropping.
+                // Presenting during an active transition is the fe741015 CA-commit
+                // race: UIKit defers the alert's own transition into the next
+                // _UIAfterCACommitBlock, by which point the presentation-controller
+                // relationship is inconsistent and
+                // +[UIAlertController _alertControllerContainedInViewController:]
+                // throws NSInternalInconsistencyException — a *deferred* throw the
+                // synchronous ObjC catcher in safePresent cannot trap. Waiting via
+                // the transition coordinator (as TPPPresentationUtils.safelyPresent
+                // does) presents only once the in-flight CA commit is complete.
+                if let coordinator = vc.transitionCoordinator {
+                    coordinator.animate(alongsideTransition: nil) { _ in
+                        DispatchQueue.main.async {
+                            presentFromViewControllerOrNil(alertController: alertController,
+                                                           viewController: viewController,
+                                                           animated: animated,
+                                                           completion: completion,
+                                                           retryCount: retryCount)
+                        }
                     }
                     return
                 }
@@ -323,21 +332,22 @@ import PalaceCatalog
                 return
             }
 
-            // Guard: a live transition coordinator means a navigation push/pop or modal
-            // animation is still in-flight at the CALayer level, even if isBeingPresented
-            // is already false. Presenting into this window triggers UIKit's
-            // NSInternalInconsistencyException during _UIAfterCACommitBlock execution.
-            guard top.transitionCoordinator == nil else {
-                if retryCount < maxAlertRetries {
-                    Log.debug(#file, "Top controller has active transition coordinator, retrying (\(retryCount + 1)/\(maxAlertRetries))...")
-                    retryPresentation(alertController: alertController, viewController: viewController,
-                                      animated: animated, completion: completion, retryCount: retryCount)
-                } else {
-                    Log.warn(#file, "Cannot present alert after \(maxAlertRetries) retries: transition coordinator still active")
-                    if let msg = alertController.message {
-                        Log.warn(#file, "Dropped alert with message: \(msg)")
+            // A live transition coordinator means a navigation push/pop or modal
+            // animation is still in-flight at the CALayer level, even when
+            // isBeingPresented is already false. Present *after* it completes
+            // rather than sampling-and-dropping — see the fe741015 CA-commit note
+            // on the explicit-presenter path above. This is the dominant launch-
+            // window trigger: an alert surfaced while the catalog / tab-bar /
+            // sign-in-modal transition is still animating.
+            if let coordinator = top.transitionCoordinator {
+                coordinator.animate(alongsideTransition: nil) { _ in
+                    DispatchQueue.main.async {
+                        presentFromViewControllerOrNil(alertController: alertController,
+                                                       viewController: viewController,
+                                                       animated: animated,
+                                                       completion: completion,
+                                                       retryCount: retryCount)
                     }
-                    completion?()
                 }
                 return
             }
