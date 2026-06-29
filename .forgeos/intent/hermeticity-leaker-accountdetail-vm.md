@@ -99,6 +99,23 @@ Mechanism (multi-factor):
 
 ## Verification
 
-<!-- TBD: reproduce hang reliably (baseline), apply fix, show full suite green
-twice at iters-1 with the hang eliminated; spindump no longer shows the
-AccountDetailViewModel observer hot-loop. -->
+- **Positive control:** full-suite iters-1 reproduced the hang on 2 of 3 baseline
+  shuffles (victims EPUBSearch, CatalogSearch) — two matching spindumps (pids
+  93263, 5771) both showing the AccountDetailViewModel observer → O(~1142)
+  `account()` hot-loop.
+- **#1 + A (landed: a91aaa8db):** full-suite iters-1 **completed with NO timeout
+  twice** (validate1 445s, validate2) — the hang is eliminated; the O(1) index
+  makes a churn-fired observer cost ~nothing. `AccountsManagerAccountIndexTests`
+  5/5 (incl. the reseed desync guard).
+- **GeneralCache race (landed: e09f2098f):** fix A unmasked a pre-existing
+  self-contained async-write race in `GeneralCacheTests`; fixed by polling the
+  written file. Passes in isolation + full suite.
+- **#2 leak — DEFERRED (scope reduction, reported to palace-pm):** the hermetic
+  `AccountDetailViewModelLeakTests` proved the VM does not deallocate — a 4-hop
+  retain cycle through `TPPNetworkResponder.credentialsProvider` (strong `let`),
+  a CRITICAL-PATH fix needing architect + SoD. The hang does NOT depend on it
+  (#1 neutralizes the leaked observer's cost); it is a real production leak to
+  fix at root in a follow-up. Leak-repro test + cycle-break + observer-leak gate
+  land together in the SoD-gated #2.
+- **#3 (TPPNetworkExecutor real-network escape) + observer-leak gate promotion +
+  pool-gate promotion:** scoped follow-ups (design approved; not yet implemented).

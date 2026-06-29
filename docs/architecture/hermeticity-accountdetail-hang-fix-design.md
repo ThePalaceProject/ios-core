@@ -66,10 +66,36 @@ setupViews(); accountDidChange() }` captures `self` STRONGLY (no `[weak self]`),
 and `ensureAuthenticationDocumentIsLoaded`'s chain keeps it alive on a slow
 real-network auth-doc load. Tests create the VM as a local `let`, never torn down.
 
-**Fix (production, Settings — design+review).**
-- `loadInitialData()`: `Task { @MainActor [weak self] in self?... }` (both arms).
-- Audit the other 8 `Task { @MainActor in ... }` sites in the VM for the same
-  strong-self capture (:230,:237,:472,:489,:507,:532 + signInTimeoutTask).
+**UPDATE (2026-06-29) — the leak is a 4-hop RETAIN CYCLE, not just a strong-self Task.**
+A hermetic leak-repro test (`AccountDetailViewModelLeakTests`, seeds an account,
+no keychain gate) proved the VM does NOT deallocate even after the `loadInitialData`
+weak-self fix. Spindump-independent root: the VM constructs
+`TPPNetworkExecutor(credentialsProvider: self, …)` (AccountDetailViewModel.swift:157)
+and hands it to `businessLogic`. The cycle:
+
+  VM → `businessLogic` (strong, :50)
+     → `networker` = the executor (TPPSignInBusinessLogic.swift:83, strong)
+     → `responder` (TPPNetworkExecutor → TPPNetworkResponder, strong)
+     → `credentialsProvider` (TPPNetworkResponder.swift:37, `private let` — STRONG)
+     → **VM**
+
+So every `AccountDetailViewModel` leaks in production (Settings → Account screen),
+taking its account-change observers + a whole network stack with it. `uiDelegate`
+is already `weak` (TPPSignInBusinessLogic.swift:120) and `userInputProvider` is
+weak — `credentialsProvider` is the one strong back-edge.
+
+**Root fix (CRITICAL-PATH — TPPNetworkResponder is the auth-error decision point;
+architect + SoD REQUIRED):** make `TPPNetworkResponder.credentialsProvider` a
+`weak var`. `NYPLBasicAuthCredentialsProvider` must be class-bound to allow weak;
+the existing fallback at TPPNetworkResponder.swift:641 (`credentialsProvider ??
+AppContainer.production().accountsManager.currentUserAccount`) already handles a
+nil provider, so a deallocated transient provider degrades to the singleton —
+which is the correct behavior. Verify no production caller relies on the responder
+RETAINING a transient provider. Plus the `loadInitialData` weak-self cleanup.
+
+**Structural guard:** the hermetic `AccountDetailViewModelLeakTests` dealloc
+assertion (red-first: fails today, passes once the cycle is broken) + promoting
+the NotificationCenter observer-leak detector below.
 
 **Structural guard (the class-closer).** Promote the EXISTING warn-only
 NotificationCenter observer-leak detector. Today `PalaceSingletonResetObserver.
