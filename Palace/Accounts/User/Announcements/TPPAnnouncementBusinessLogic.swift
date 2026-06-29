@@ -96,7 +96,14 @@ class TPPAnnouncementBusinessLogic {
             let nextAlert = alerts[pair.present]
             let action = UIAlertAction.init(title: DisplayStrings.ok,
                                             style: .default) { [weak self] _ in
-                TPPPresentationUtils.safelyPresent(nextAlert, animated: true, completion: nil)
+                // Defer the next chained alert until the current alert's dismiss
+                // transition has settled. Presenting synchronously from the dismiss
+                // handler races that dismiss (fe741015 CA-commit race); a main-queue
+                // hop lets the dismiss complete so safelyPresent's coordinator-wait
+                // sees a stable view-controller hierarchy.
+                DispatchQueue.main.async {
+                    TPPPresentationUtils.safelyPresent(nextAlert, animated: true, completion: nil)
+                }
                 self?.addPresentedAnnouncement(id: announcements[pair.attach].id)
             }
             alerts[pair.attach].addAction(action)

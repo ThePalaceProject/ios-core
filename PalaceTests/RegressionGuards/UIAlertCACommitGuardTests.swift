@@ -7,6 +7,58 @@ import XCTest
 /// PalaceTests/RegressionGuards/README.md for the full crash narrative.
 final class UIAlertCACommitGuardTests: XCTestCase {
 
+    /// Window tracked for hermetic teardown so a presentation test cannot leak a
+    /// key window into a later test's shared topViewController resolution
+    /// (sibling lesson: fix-alert-presentation-test-hermeticity).
+    private var trackedWindow: UIWindow?
+
+    override func tearDown() {
+        if let window = trackedWindow {
+            // Drain pending main-queue work (coordinator-completion / retry hops)
+            // so nothing presents after teardown, then release the window.
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+            window.rootViewController?.dismiss(animated: false, completion: nil)
+            window.isHidden = true
+            window.rootViewController = nil
+            window.resignKey()
+            trackedWindow = nil
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        }
+        super.tearDown()
+    }
+
+    // MARK: - presentFromViewControllerOrNil — coordinator-wait present path (fe741015)
+
+    @MainActor
+    func testPresent_OnInWindowVC_NoTransition_StillPresentsAlert() {
+        // After the fe741015 fix the `transitionCoordinator` branch is a
+        // coordinator-*wait* (present from the coordinator's completion) rather
+        // than the old sample-once-then-retry-or-drop. On the no-transition happy
+        // path the alert must STILL present — this guards the refactored path
+        // against a regression that silently drops every alert. The actual
+        // present-during-active-transition deferral is verified in-action via
+        // simdrive (a deferred CA-commit throw cannot be reliably reproduced in a
+        // unit test). See docs/bug-investigation-process.md.
+        let window = UIWindow(frame: UIScreen.main.bounds)
+        let root = UIViewController()
+        window.rootViewController = root
+        window.makeKeyAndVisible()
+        trackedWindow = window
+
+        let presented = expectation(description: "alert present() completion ran")
+        let alert = TPPAlertUtils.alert(title: "T", message: "M")
+        TPPAlertUtils.presentFromViewControllerOrNil(
+            alertController: alert,
+            viewController: root,
+            animated: false,
+            completion: { presented.fulfill() }
+        )
+
+        wait(for: [presented], timeout: 2.0)
+        XCTAssertTrue(root.presentedViewController === alert,
+            "no-transition happy path must actually present the alert, not drop it")
+    }
+
     // MARK: - presentFromViewControllerOrNil — nil controller short-circuit
 
     func testPresentFromViewControllerOrNil_WithNilController_DoesNothing() {
