@@ -24,8 +24,12 @@ import XCTest
 import PalaceCatalog
 @testable import Palace
 
+// Subclasses PalaceTestCase (not bare XCTestCase): it touches shared singletons
+// (`AppContainer.production()`, `ImageCache.shared`) so the TearDownRequiredLint
+// requires a tearDown — inheriting the `*TestCase` base satisfies it AND adds the
+// runtime-quiescence floor, which is apt for a hermeticity test.
 @MainActor
-final class AccountDetailViewModelLeakTests: XCTestCase {
+final class AccountDetailViewModelLeakTests: PalaceTestCase {
 
     private func stubAccount(_ uuid: String) -> Account {
         let metadata = OPDS2Publication.Metadata(id: uuid, title: "Leak Stub \(uuid.prefix(6))")
@@ -34,7 +38,12 @@ final class AccountDetailViewModelLeakTests: XCTestCase {
     }
 
     func testViewModel_deallocatesAfterRelease_noLeakedObservers() async {
-        let manager = AppContainer.production().accountsManager
+        // Hermetic test AppContainer (not .production()) — the retain cycle is
+        // internal to the VM's OWN executor (it constructs
+        // `TPPNetworkExecutor(credentialsProvider: self)`), so a test container
+        // reproduces it identically while keeping the test isolation-lint clean.
+        let appContainer = makeTestAppContainer()
+        let manager = appContainer.accountsManager
         let uuid = "urn:uuid:leak-test-\(UUID().uuidString)"
         // Seed a current account WITHOUT keychain/network so the VM can be
         // constructed hermetically; teardown restores prior state.
@@ -43,7 +52,7 @@ final class AccountDetailViewModelLeakTests: XCTestCase {
 
         weak var weakVM: AccountDetailViewModel?
         do {
-            let viewModel = AccountDetailViewModel(libraryAccountID: uuid, appContainer: .production())
+            let viewModel = AccountDetailViewModel(libraryAccountID: uuid, appContainer: appContainer)
             weakVM = viewModel
             XCTAssertNotNil(weakVM, "Precondition: VM exists while strongly held")
             await Task.yield()   // let the @MainActor init Task run
