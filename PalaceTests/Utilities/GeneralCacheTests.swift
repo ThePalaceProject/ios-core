@@ -232,11 +232,16 @@ final class GeneralCacheTests: XCTestCase {
         let firstURL = diskCache.fileURL(for: firstKey)
         let cacheDir = firstURL.deletingLastPathComponent()
 
-        // Wait for the async barrier write to materialize the cache directory
-        // on disk. Poll the actual signal (directory existence) instead of
-        // sleeping for a fixed wall-clock delay.
+        // Wait for the async barrier write to FULLY materialize — poll the
+        // written FILE, not just the directory. The directory is created before
+        // the file is written, so waiting on directory-existence alone returns
+        // while the file write is still queued; that pending write then races
+        // the `removeItem` below and recreates the directory, flaking the
+        // "directory is gone" precondition. This surfaced once `MallocStackLogging`
+        // (which slowed allocations enough to mask the race) was removed from the
+        // test scheme. Polling the file makes the test timing-independent.
         awaitCondition(timeout: 5.0) {
-            FileManager.default.fileExists(atPath: cacheDir.path)
+            FileManager.default.fileExists(atPath: firstURL.path)
         }
         XCTAssertTrue(FileManager.default.fileExists(atPath: cacheDir.path),
                       "Precondition: cache directory exists after first write")
