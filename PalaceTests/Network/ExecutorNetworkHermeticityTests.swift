@@ -17,14 +17,21 @@
 import XCTest
 @testable import Palace
 
-final class ExecutorNetworkHermeticityTests: XCTestCase {
+// Subclasses PalaceTestCase (not bare XCTestCase): it reads
+// `AppContainer.production()` (the SHARED executor is exactly what this test must
+// verify), which trips the TearDownRequiredLint — inheriting the `*TestCase` base
+// satisfies it + adds the quiescence floor. The `.production()` read carries a
+// per-line `// MIGRATED-DEFERRED` marker (AppContainerIsolationLint) because the
+// production shared executor IS the contract here — a makeTestAppContainer()
+// executor would not prove the PRODUCTION path is hermetic.
+final class ExecutorNetworkHermeticityTests: PalaceTestCase {
 
     /// A GET to a non-stub host through the shared executor must be BLOCKED
     /// (fast failure), never a real network request. If the #3 seam regresses,
     /// this either succeeds (real response) or times out at the executor's real
     /// request timeout instead of failing immediately with the stub's error.
     func testSharedExecutor_GETToNonStubHost_isBlocked_notRealNetwork() {
-        let executor = AppContainer.production().networkExecutor
+        let executor = AppContainer.production().networkExecutor // MIGRATED-DEFERRED: swarm_47883816 — #3 guard MUST read the production shared executor (a test-container executor wouldn't prove the production path is hermetic)
         let exp = expectation(description: "executor GET completes")
         var capturedError: Error?
         var didSucceed = false
