@@ -99,4 +99,52 @@ final class AccountsManagerAccountIndexTests: PalaceWiringTestCase {
     func testBuildAccountIndex_emptyInput_isEmpty() {
         XCTAssertTrue(AccountsManager.buildAccountIndex([:]).isEmpty)
     }
+
+    // MARK: - Complexity contract (THE recurrence guard for the hang fix)
+
+    /// `account(_:)` MUST be ~constant-time, independent of the account count —
+    /// that O(1) property is the actual hang fix (a churn-fired observer doing
+    /// account() lookups over the ~1142-account snapshot saturated the main
+    /// thread). A revert to the old `accountSets.values.first { contains(where:) }`
+    /// O(n) scan must FAIL this test.
+    ///
+    /// Comparative, not absolute-timing (machine-independent, CI-safe): the same
+    /// K lookups are timed against a SMALL bucket and a LARGE bucket. Per-call
+    /// `performRead` dispatch overhead is identical for both, so for an O(1) index
+    /// the two times are within a small constant factor; an O(n) scan makes the
+    /// large-bucket time scale with N (≈ large/small ≈ 40×). The 8× ceiling sits
+    /// well above O(1) noise and far below the O(n) blow-up.
+    func testAccount_lookupIsConstantTime_notLinearInAccountCount() {
+        let manager = makeFreshAccountsManager()
+        let small = 50
+        let large = 2000
+        let lookups = 20_000
+
+        func timeLookups(bucketSize: Int) -> TimeInterval {
+            let accounts = (0..<bucketSize).map { stubAccount("scale-\(bucketSize)-\($0)") }
+            manager._testSetAccountSet(accounts, forKey: "scale-\(bucketSize)")
+            // Look up the LAST uuid — worst case for a linear scan (it would scan
+            // the whole bucket every call), best case is identical for the index.
+            let target = "scale-\(bucketSize)-\(bucketSize - 1)"
+            // Warm up, then measure.
+            for _ in 0..<1000 { _ = manager.account(target) }
+            let start = Date()
+            for _ in 0..<lookups { _ = manager.account(target) }
+            return Date().timeIntervalSince(start)
+        }
+
+        let tSmall = timeLookups(bucketSize: small)
+        let tLarge = timeLookups(bucketSize: large)
+
+        XCTAssertEqual(manager.account("scale-\(large)-\(large - 1)")?.uuid,
+                       "scale-\(large)-\(large - 1)",
+                       "sanity: the large-bucket target resolves")
+        XCTAssertLessThan(
+            tLarge, tSmall * 8 + 0.05,
+            "account(_:) must not scale with account count — \(large) accounts took "
+            + "\(tLarge)s vs \(small) accounts \(tSmall)s for \(lookups) lookups. A "
+            + "linear scan would be ~\(large / small)× slower; the O(1) index must "
+            + "stay within a small constant factor. This is the hang-fix recurrence guard."
+        )
+    }
 }
