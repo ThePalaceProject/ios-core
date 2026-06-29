@@ -143,6 +143,15 @@ struct CatalogCacheMetadata: Codable {
     private lazy var networkExecutor: TPPNetworkExecutor = AppContainer.production().networkExecutor
     private var accountSet: String
     private var accountSets = [String: [Account]]()
+    /// O(1) `uuid → Account` index derived from `accountSets`, kept in lockstep
+    /// with it under `accountSetsLock`. Lets `account(_:)` resolve a UUID without
+    /// a linear scan over every bucket — the registry snapshot holds ~1142
+    /// accounts, and `account(_:)` is on the main-thread display path for every
+    /// account-change-driven view refresh, so the old `accountSets.values.first {
+    /// $0.contains(where:) }` scan saturated the main thread (the test-suite hang
+    /// class, and a live-app cost on every library switch). MUST only be mutated
+    /// via `mutateAccountSets` so it can never desync from `accountSets`.
+    private var accountByUUID = [String: Account]()
     private let accountSetsLock = DispatchQueue(label: "com.tpp.accountSetsLock", attributes: .concurrent)
 
     private let catalogPreloader = CatalogPreloader()
@@ -320,7 +329,7 @@ struct CatalogCacheMetadata: Codable {
             let accounts = feed.catalogs.map {
                 Account(publication: $0, imageCache: ImageCache.shared)
             }
-            performWrite { self.accountSets[hash] = accounts }
+            mutateAccountSets { $0[hash] = accounts }
             // Account state-machine wiring (3.2.0): Phase 1 — drive every
             // preloaded account into `.basicInfoLoaded`. Display-only
             // consumers (Settings/Libraries) can render the row immediately;
@@ -349,6 +358,33 @@ struct CatalogCacheMetadata: Codable {
         accountSetsLock.async(flags: .barrier) {
             block()
         }
+    }
+
+    /// The ONLY sanctioned way to mutate `accountSets`. Applies `mutate` to the
+    /// dictionary inside the `accountSetsLock` barrier, then rebuilds the
+    /// `accountByUUID` index in the same critical section so the two can never
+    /// desync. Every write site (preload hydrate, network load, the test seams)
+    /// goes through here — adding a new write that bypasses it would silently
+    /// break `account(_:)` lookups, which the index-coherence test guards against.
+    private func mutateAccountSets(_ mutate: @escaping (inout [String: [Account]]) -> Void) {
+        accountSetsLock.async(flags: .barrier) {
+            mutate(&self.accountSets)
+            self.accountByUUID = AccountsManager.buildAccountIndex(self.accountSets)
+        }
+    }
+
+    /// Pure: flatten `accountSets` into a `uuid → Account` index. When a UUID
+    /// appears in more than one bucket (e.g. an account present in both the
+    /// prod and beta registries), the last-enumerated wins — equivalent to the
+    /// nondeterministic "first across `values`" the prior linear scan returned.
+    static func buildAccountIndex(_ sets: [String: [Account]]) -> [String: Account] {
+        var index = [String: Account]()
+        for accounts in sets.values {
+            for account in accounts {
+                index[account.uuid] = account
+            }
+        }
+        return index
     }
 
     // MARK: - Account Retrieval
@@ -454,9 +490,7 @@ struct CatalogCacheMetadata: Codable {
 
     func account(_ uuid: String) -> Account? {
         return performRead {
-            accountSets.values
-                .first { $0.contains(where: { $0.uuid == uuid }) }?
-                .first(where: { $0.uuid == uuid })
+            accountByUUID[uuid]
         }
     }
 
@@ -487,17 +521,17 @@ struct CatalogCacheMetadata: Codable {
     @discardableResult
     func _seedAccountForTesting(_ account: Account) -> () -> Void {
         let seedKey = self.accountSet
-        performWrite {
-            var seeded = self.accountSets[seedKey] ?? []
+        mutateAccountSets {
+            var seeded = $0[seedKey] ?? []
             seeded.removeAll { $0.uuid == account.uuid }
             seeded.append(account)
-            self.accountSets[seedKey] = seeded
+            $0[seedKey] = seeded
         }
         let previousId = defaults.string(forKey: currentAccountIdentifierKey)
         defaults.set(account.uuid, forKey: currentAccountIdentifierKey)
         return {
-            self.performWrite {
-                self.accountSets[seedKey]?.removeAll { $0.uuid == account.uuid }
+            self.mutateAccountSets {
+                $0[seedKey]?.removeAll { $0.uuid == account.uuid }
             }
             if let prev = previousId {
                 self.defaults.set(prev, forKey: currentAccountIdentifierKey)
@@ -1163,9 +1197,7 @@ struct CatalogCacheMetadata: Codable {
                 }
             }
 
-            self.performWrite {
-                self.accountSets[hash] = newAccounts
-            }
+            self.mutateAccountSets { $0[hash] = newAccounts }
 
             // Account state-machine wiring (3.2.0): Phase 1 — drive every
             // freshly-constructed account into its post-load terminal state.
@@ -1295,7 +1327,7 @@ extension AccountsManager {
     /// `account(_ uuid:)` — multi-bucket scenarios are not otherwise
     /// reachable from outside the class.
     func _testSetAccountSet(_ accounts: [Account], forKey key: String) {
-        performWrite { self.accountSets[key] = accounts }
+        mutateAccountSets { $0[key] = accounts }
     }
 
     /// Test-only: cancel the in-flight background `loadCatalogs` Task (if any)
