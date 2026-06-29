@@ -26,9 +26,18 @@ PM PRs + SoD.
   `Reachability` to `@unchecked Sendable` (NOT `nonisolated(unsafe)`), justified:
   `_isConnected` is stateLock-guarded, `connectivitySubject.send` is main-only,
   NWPathMonitor is internally thread-safe. After: 0 PalaceNetwork warnings.
-- **#3 (folding in):** close the TPPNetworkExecutor test real-network escape so
+- **#3 (folded in):** close the TPPNetworkExecutor test real-network escape so
   `AccountsManager.fallbackDirectRefresh` can't reach `registry.palaceproject.io`
-  in tests. MECHANISM UNDER DISCUSSION with PM (see Anti-claims) — not yet coded.
+  in tests. DONE via a non-`#if DEBUG` AppContainer seam (PM's option B / hard
+  no-DEBUG constraint): `AppContainer.testExecutorProtocolClasses` (empty in
+  production → zero change) + `makeNetworkExecutor()` builds the shared executor
+  through the EXISTING `init(sessionConfiguration:)` with those classes prepended;
+  `PalaceTestSetup` installs `[NoNetworkURLProtocol]` and calls a non-DEBUG
+  `AppContainer._rebuildCachedForTestProtocols()` (the launch-built graph predates
+  the test bundle, and the per-test `_resetForTesting` rebuild is `#if DEBUG`,
+  which is COMPILED OUT in the non-DEBUG config `harness test` uses — measured).
+  Block-test `ExecutorNetworkHermeticityTests` proves a shared-executor GET to a
+  non-stub host is blocked (fast-fail, no real request) — green.
 
 - **Language mode:** bump `swift-tools-version` to 6.0 so the PalaceNetwork
   source target builds in Swift 6 language mode by default (playbook: source →

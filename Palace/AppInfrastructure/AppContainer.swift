@@ -350,8 +350,54 @@ struct AppContainer {
     /// invariants (TPPBookRegistry takes AccountsManager explicitly; no
     /// default arg ever fires; collaborator construction is hand-threaded
     /// through `executor`, `reachability`, `accountsManager`, etc.).
+    /// Test seam (NOT `#if DEBUG` — BR-2/blast-radius forbids `#if DEBUG` on
+    /// production paths; this is a plain internal hook that is EMPTY in
+    /// production, so it changes nothing there). Tests set this (via
+    /// `PalaceTestSetup`) so the SHARED network executor's `URLSession` includes
+    /// `NoNetworkURLProtocol`: `URLProtocol.registerClass` only covers
+    /// `URLSession.shared`, NOT a `URLSession(configuration:)`, which consults
+    /// only its `config.protocolClasses` — so the shared executor that
+    /// `AccountsManager.fallbackDirectRefresh` uses would otherwise escape to the
+    /// real `registry.palaceproject.io` in unit tests. The executor is rebuilt
+    /// with this on every `_resetForTesting()` (which re-runs the builder below),
+    /// so the protocol applies to every test's graph. Follows AppContainer's
+    /// existing `static var` pattern (e.g. `_cached`).
+    internal static var testExecutorProtocolClasses: [AnyClass] = []
+
+    /// Builds the shared network executor. In production `testExecutorProtocolClasses`
+    /// is empty, so this is the verbatim default `TPPNetworkExecutor(cachingStrategy:
+    /// .fallback)` — zero production change. When a test installs extra protocol
+    /// classes, the executor is built through the EXISTING
+    /// `init(... sessionConfiguration:)` seam with those classes prepended onto a
+    /// normal `.fallback` config (no new TPPNetworkExecutor/PalaceNetwork surface).
+    private static func makeNetworkExecutor() -> TPPNetworkExecutor {
+        let extra = testExecutorProtocolClasses
+        guard !extra.isEmpty else {
+            return TPPNetworkExecutor(cachingStrategy: .fallback)
+        }
+        let config = TPPCaching.makeURLSessionConfiguration(
+            caching: .fallback,
+            requestTimeout: TPPNetworkExecutor.defaultRequestTimeout)
+        config.protocolClasses = extra + (config.protocolClasses ?? [])
+        return TPPNetworkExecutor(cachingStrategy: .fallback, sessionConfiguration: config)
+    }
+
+    /// Non-DEBUG test seam (BR-2 forbids `#if DEBUG` on prod paths; this is a
+    /// plain internal method that production never calls). Rebuilds the cached
+    /// graph so its network executor picks up `testExecutorProtocolClasses`.
+    /// Needed because the host app already built the cached graph (and its
+    /// executor) during launch — BEFORE the test bundle could install the test
+    /// protocol classes — and the per-test `_resetForTesting` rebuild is
+    /// `#if DEBUG` (compiled out in the non-DEBUG config `harness test` uses), so
+    /// without this the executor would never honor `NoNetworkURLProtocol` locally
+    /// (and the FIRST test of any run would escape even under DEBUG/CI).
+    /// `PalaceTestSetup` calls this once, after installing the protocol classes.
+    internal static func _rebuildCachedForTestProtocols() {
+        _cached = _buildCachedAppContainer()
+    }
+
     private static func _buildCachedAppContainer() -> AppContainer {
-        let executor = TPPNetworkExecutor(cachingStrategy: .fallback)
+        let executor = makeNetworkExecutor()
         let reachability = Reachability()
         // AccountsManager and TPPBookRegistry are constructed inline here.
         // TPPBookRegistry.init takes AccountsManager as an explicit dependency,
