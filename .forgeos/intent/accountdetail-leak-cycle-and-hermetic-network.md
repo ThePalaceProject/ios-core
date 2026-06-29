@@ -95,9 +95,39 @@ NoNetworkURLProtocol.
   vs the old nondeterministic scan); (2) keep `AccountsManager.swift` in the
   pre-release `palace_mutate` run so the 50% floor stays honest.
 
+## #3 mechanism findings (for the focused follow-up — STAGED, not yet done)
+
+Investigated 2026-06-29 (after #1+#2 landed; #1127 + #1128 merged to develop):
+- The escape: `TPPNetworkExecutor` → `NetworkTransport` builds its session from
+  `TPPCaching.makeURLSessionConfiguration` (PalaceNetwork/TPPCaching.swift),
+  which returns `.ephemeral` or a `URLSessionConfiguration.default`-based config.
+  Neither explicitly adds `URLProtocol.registerClass`'d protocols to
+  `config.protocolClasses`, and `URLSession(configuration:)` consults ONLY
+  `config.protocolClasses` (NOT the global `registerClass` list that
+  `URLSession.shared` uses) — so `NoNetworkURLProtocol` (registered via
+  `.enable()`) does NOT cover the executor's session. That's why CI showed
+  `/libraries/crawlable` (crawler = URLSession.shared) BLOCKED but `/libraries`
+  (executor = fallbackDirectRefresh) hitting real network.
+- Candidate hook: `NetworkTransport.recreateSession()` (DEBUG) re-snapshots the
+  config; `TPPNetworkExecutor.recreateSession()` (DEBUG) delegates to it. A test
+  bootstrap could, AFTER `NoNetworkURLProtocol.enable()`, call recreateSession on
+  the shared `AppContainer.production().networkExecutor`. UNCERTAIN: whether a
+  freshly-built `.default` config snapshots later-`registerClass`'d protocols is
+  platform-dependent; and forcing `AppContainer.production()` early in bootstrap
+  risks the defer-flag/loadCatalogs interaction. NEEDS a verify run (grep
+  `registry.palaceproject.io` real requests before/after).
+- Preferred robust fix may instead be: make `makeURLSessionConfiguration` (DEBUG
+  only, or via the existing `init(sessionConfiguration:)` seam) prepend the
+  globally-registered test protocols, so every executor session honors them — a
+  PalaceNetwork change needing its own SoD. Block-test: drive `TPPNetworkExecutor
+  .GET` to a non-stub host and assert it is BLOCKED (no real request).
+
 ## Verification
 
-TBD on implementation: red-first leak-repro fails -> passes when the cycle is
-broken; observer-leak gate self-tested both directions + zero-false-positive
-audit; executor block-test proves no test escapes to the real registry; full
-suite green; architect + qa SoD on the critical-path TPPNetworkResponder change.
+- #2 retain-cycle: red→green leak-repro proven; full suite green (fpaudit), 0
+  auth/SAML/OIDC failures, 0 hangs; both architect + qa SoD APPROVED; MERGED via
+  #1128 (squash 93d36dd1).
+- Observer-leak gate: self-tested both directions; non-inertness self-test proved
+  the count-source is nil on iOS 26 → kept warn-only (not inert-hard theater).
+- #3: STAGED — mechanism captured above; needs a verify run + (likely) a
+  PalaceNetwork DEBUG change + SoD, as its own focused PR. Non-board-redding.
