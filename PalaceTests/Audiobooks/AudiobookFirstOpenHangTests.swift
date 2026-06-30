@@ -290,13 +290,18 @@ final class AudiobookFirstOpenHangTests: XCTestCase {
     //
     // MUTATION SURFACE THESE KILL:
     //   - `applyOutcome` resuming only `pending.first` instead of iterating
-    //     all waiters → the other (N-1) awaiters never get the signal, hit
-    //     their own awaitReady timeout, and resume with `.failed("timeout")`,
-    //     so the all-equal assertion fails.
-    //   - `applyOutcome` not latching `outcome` (dropping `outcome = next`) →
-    //     a late-arriving awaiter would block past the signal and time out.
+    //     all waiters → the other (N-1) awaiters never get the signal and hit
+    //     their own awaitReady timeout; `awaitReady` then THROWS
+    //     `PlaybackReadinessError.timeout`, which the task group rethrows out of
+    //     the test body, so the test fails (via the thrown error, before the
+    //     all-equal assertion is even reached).
     //   - `markFailed(reason:)` collapsing the reason (e.g. hardcoding a
     //     different string) → the `.failed(reason:)` equality assertion fails.
+    // NOT killed here (covered separately): dropping the `outcome = next` latch
+    // — both tests below park ALL awaiters BEFORE the terminal signal, so the
+    // resume-all loop fires regardless of the latch. The latch (late-arriving
+    // awaiter sees the already-set outcome) is killed by the pre-set-ready test
+    // (`gate.markReady()` before `awaitReady`) elsewhere in this file.
 
     /// N awaiters parked before `markReady` all resume with `.ready`.
     func testAwaitReady_manyConcurrentAwaiters_parkedBeforeReady_allResumeReady() async throws {
