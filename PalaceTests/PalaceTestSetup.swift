@@ -43,6 +43,15 @@ class PalaceTestSetup: NSObject {
 
         NoNetworkURLProtocol.enable()
 
+        // #3 hermeticity: `NoNetworkURLProtocol.enable()` (above) registers the
+        // stub for `URLSession.shared`, but the SHARED `TPPNetworkExecutor` builds
+        // its own `URLSession(configuration:)`, which consults only
+        // `config.protocolClasses` — so `AccountsManager.fallbackDirectRefresh`
+        // (and any executor GET) would escape to the real
+        // `registry.palaceproject.io` in tests. Install the stub onto the
+        // executor's config via AppContainer's non-DEBUG test seam.
+        AppContainer.testExecutorProtocolClasses = [NoNetworkURLProtocol.self]
+
         // swarm_4b64e4e0 Wave 1d fix — pin the
         // `deferInitialLoadCatalogsForTesting` flag to `true` BEFORE any test
         // can lazy-trigger `AppContainer.production()`. Without this, the
@@ -72,6 +81,24 @@ class PalaceTestSetup: NSObject {
         observer = obs
 
         registerBuiltInResetters()
+
+        // #3 (cont.): the host Palace app has ALREADY built the cached
+        // `AppContainer` (and its network executor) during app launch — which
+        // happened BEFORE this test-bundle principal class loaded and set
+        // `testExecutorProtocolClasses` above. So that launch-built executor does
+        // NOT have NoNetworkURLProtocol installed; without a rebuild, the FIRST
+        // test in any run (which has no prior `_resetForTesting` to rebuild the
+        // graph) would use it and escape to the real network. Rebuild the cached
+        // graph now, with the seam set, so EVERY test (including the first) gets
+        // an executor routed through the stub. Subsequent per-test
+        // `_resetForTesting` calls keep it. Runs on the main thread (principal
+        // class load). NON-#if-DEBUG on purpose: the test build uses a config
+        // WITHOUT `DEBUG` defined (PalaceTests' `SWIFT_ACTIVE_COMPILATION_CONDITIONS`
+        // is `LCP FEATURE_OVERDRIVE`), so a `#if DEBUG` guard here would compile
+        // out and skip the rebuild — measured: the executor then keeps the
+        // launch-built session with no stub. `_rebuildCachedForTestProtocols()`
+        // is a plain internal seam (no #if DEBUG), reachable via @testable import.
+        AppContainer._rebuildCachedForTestProtocols()
 
         return obs
     }
