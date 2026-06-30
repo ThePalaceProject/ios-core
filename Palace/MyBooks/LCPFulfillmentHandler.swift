@@ -38,7 +38,14 @@ protocol LCPFulfillmentHandlerDelegate: AnyObject {
 /// through the shared DownloadProgressReporter and reports failures
 /// through the shared DownloadAlertPresenter so the UI sees a single,
 /// coherent download error stream regardless of which DRM produced it.
-final class LCPFulfillmentHandler {
+// @unchecked Sendable invariant: every stored dependency is a `let`
+// (immutable after init). The only mutable member is `weak var delegate`,
+// which is wired exactly once by MyBooksDownloadCenter during its own
+// construction on the main thread and thereafter only read from inside the
+// fulfillment/progress callbacks' `MainActor.run` hops. No stored value is
+// mutated after init, so the handler is safe to share across the LCP
+// fulfillment-task / progress-callback concurrency boundaries.
+final class LCPFulfillmentHandler: @unchecked Sendable {
 
     weak var delegate: LCPFulfillmentHandlerDelegate?
 
