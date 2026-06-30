@@ -41,7 +41,28 @@ protocol DownloadAuthRetryHandlerDelegate: AnyObject {
 /// re-authentication, an auto-borrow, or be passed back to the caller
 /// as a regular alert. Holds no state of its own — every decision is a
 /// fresh read of the current TPPUserAccount.
-final class DownloadAuthRetryHandler {
+///
+/// `@unchecked Sendable` (Swift 6 Wave 1, app-target `targeted` slice): the
+/// handler is captured `[weak self]` by the `@Sendable` retry/clean-up Task
+/// closures below, so it must be `Sendable`. The conformance is honest —
+/// every stored property is immutable-after-init or main-actor-confined:
+///   • `delegate` — `weak var`, wired exactly once on the main actor right
+///     after construction (`MyBooksDownloadCenter` sets it post-`super.init()`)
+///     and read only on the main actor (via `self.delegate` inside
+///     `@MainActor` methods / `MainActor.run` bodies). The non-Sendable
+///     `delegate`/`bookRegistry` are never captured directly by a `@Sendable`
+///     closure — every Task body reaches them through `self`.
+///   • `stateManager` — `let`; its mutable storage is the actor-isolated
+///     `SafeDictionary`/`DownloadCoordinator` it owns.
+///   • `bookRegistry` / `reauthenticator` / `alertPresenter` / `authCoordinator`
+///     / `userAccountProvider` / `currentAccountHostsProvider` — `let`
+///     (immutable after init); `authCoordinator` is an `actor`, the host
+///     provider is `@Sendable`. The non-Sendable ones are touched only on
+///     the main actor.
+///   • `inFlightTasks` — `@MainActor` isolated; every insert/remove runs on
+///     the main actor (see the UUID-keyed retention dance below).
+/// `final`, so the assertion can't be defeated by a subclass.
+final class DownloadAuthRetryHandler: @unchecked Sendable {
 
     weak var delegate: DownloadAuthRetryHandlerDelegate?
 
@@ -89,7 +110,15 @@ final class DownloadAuthRetryHandler {
     /// `@MainActor`-isolated — every site that inserts into or removes
     /// from this set runs on the main actor, matching the
     /// `@MainActor`-isolated entry points of the handler.
-    @MainActor private var inFlightTasks: Set<Task<Void, Never>> = []
+    ///
+    /// Keyed by a per-launch `UUID` token rather than the `Task` handle
+    /// itself: the auto-removal closure captures the token **by value** (a
+    /// `Sendable` value type) instead of the launch-site `var task: Task!`,
+    /// which the Swift-6 `targeted` concurrency check rejects as "`task`
+    /// mutated after capture by sendable closure" (the IUO is assigned after
+    /// the `@Sendable` Task body captures it). Mirrors the proven pattern in
+    /// the sibling `BookReturnService`.
+    @MainActor private var inFlightTasks: [UUID: Task<Void, Never>] = [:]
 
     init(
         stateManager: DownloadStateManager,
@@ -136,7 +165,7 @@ final class DownloadAuthRetryHandler {
     /// after cancellation.
     @MainActor
     func cancelAllInFlightTasks() {
-        for task in inFlightTasks {
+        for task in inFlightTasks.values {
             task.cancel()
         }
         inFlightTasks.removeAll()
@@ -159,14 +188,14 @@ final class DownloadAuthRetryHandler {
     private func launchTrackedTask(
         _ body: @escaping @Sendable () async -> Void
     ) -> Task<Void, Never> {
-        var task: Task<Void, Never>!
-        task = Task { [weak self] in
+        let id = UUID()
+        let task = Task { [weak self] in
             await body()
             await MainActor.run { [weak self] in
-                self?.inFlightTasks.remove(task)
+                self?.inFlightTasks.removeValue(forKey: id)
             }
         }
-        inFlightTasks.insert(task)
+        inFlightTasks[id] = task
         return task
     }
 
@@ -187,14 +216,14 @@ final class DownloadAuthRetryHandler {
     private func scheduleRetainedRetry(
         _ body: @escaping @MainActor (DownloadAuthRetryHandler) -> Void
     ) {
-        var task: Task<Void, Never>!
-        task = Task { @MainActor [weak self] in
+        let id = UUID()
+        let task = Task { @MainActor [weak self] in
             guard let self else { return }
             if Task.isCancelled { return }
             body(self)
-            self.inFlightTasks.remove(task)
+            self.inFlightTasks.removeValue(forKey: id)
         }
-        inFlightTasks.insert(task)
+        inFlightTasks[id] = task
     }
 
     // MARK: - Entry point
