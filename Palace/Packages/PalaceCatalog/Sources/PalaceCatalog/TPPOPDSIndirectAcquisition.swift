@@ -1,10 +1,12 @@
 import Foundation
 import PalaceLogging
 
-@objc public class TPPOPDSIndirectAcquisition: NSObject {
+// Sendable: `final` + immutable `let` stored properties. `indirectAcquisitions`
+// is an array of this same (now Sendable) value-immutable type.
+@objc public final class TPPOPDSIndirectAcquisition: NSObject, Sendable {
 
-  @objc public private(set) var type: String
-  @objc public private(set) var indirectAcquisitions: [TPPOPDSIndirectAcquisition]
+  @objc public let type: String
+  @objc public let indirectAcquisitions: [TPPOPDSIndirectAcquisition]
 
   private static let typeKey = "type"
   private static let indirectAcquisitionsKey = "indirectAcquisitions"
