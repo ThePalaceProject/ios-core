@@ -8,8 +8,8 @@
 
 import Foundation
 
-public struct OPDS2CatalogsFeed: Codable {
-    public struct Metadata: Codable {
+public struct OPDS2CatalogsFeed: Codable, Sendable {
+    public struct Metadata: Codable, Sendable {
         public let adobe_vendor_id: String?
         public let title: String
         /// Total number of items across all pages (from crawlable endpoint)

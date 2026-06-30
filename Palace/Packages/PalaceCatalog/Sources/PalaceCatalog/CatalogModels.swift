@@ -1,6 +1,6 @@
 import Foundation
 
-public struct CatalogFeed {
+public struct CatalogFeed: Sendable {
     public let title: String
     public let entries: [CatalogEntry]
     public let opdsFeed: TPPOPDSFeed
@@ -72,7 +72,7 @@ public struct CatalogFeed {
     }
 }
 
-public struct CatalogEntry: Identifiable {
+public struct CatalogEntry: Identifiable, Sendable {
     public let id: String
     public let title: String
     public let authors: [String]
@@ -92,7 +92,7 @@ public struct CatalogEntry: Identifiable {
 
 /// A format entry point shown in the search screen filter row.
 /// Extracted from the groups feed's entry-point facets (e.g. All, eBooks, Audiobooks).
-public struct SearchFormatEntry: Identifiable, Hashable {
+public struct SearchFormatEntry: Identifiable, Hashable, Sendable {
     public let id: String
     public let title: String
 

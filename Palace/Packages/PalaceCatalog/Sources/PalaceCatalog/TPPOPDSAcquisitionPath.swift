@@ -31,11 +31,12 @@ public let ContentTypeStreamingHTML = "text/html;profile=http://librarysimplifie
 
 // MARK: - TPPOPDSAcquisitionPath
 
-@objc public class TPPOPDSAcquisitionPath: NSObject {
+// Sendable: `final` + immutable `let` Sendable value-type stored properties.
+@objc public final class TPPOPDSAcquisitionPath: NSObject, Sendable {
 
-  @objc public private(set) var relation: TPPOPDSAcquisitionRelation
-  @objc public private(set) var types: [String]
-  @objc public private(set) var url: URL
+  @objc public let relation: TPPOPDSAcquisitionRelation
+  @objc public let types: [String]
+  @objc public let url: URL
 
   @objc public init(relation: TPPOPDSAcquisitionRelation, types: [String], url: URL) {
     self.relation = relation

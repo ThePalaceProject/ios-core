@@ -4,7 +4,10 @@ public typealias TPPOPDSAcquisitionAvailabilityCopies = UInt
 
 public let TPPOPDSAcquisitionAvailabilityCopiesUnknown: TPPOPDSAcquisitionAvailabilityCopies = UInt.max
 
-@objc public protocol TPPOPDSAcquisitionAvailability: NSObjectProtocol {
+// Refines Sendable so `any TPPOPDSAcquisitionAvailability` existentials are
+// Sendable. All concrete conformers below are `final` NSObject subclasses with
+// immutable `let` stored properties, so each satisfies the checked conformance.
+@objc public protocol TPPOPDSAcquisitionAvailability: NSObjectProtocol, Sendable {
   var since: Date? { get }
   var until: Date? { get }
 
@@ -177,7 +180,7 @@ public func NYPLOPDSAcquisitionAvailabilityDictionaryRepresentation(_ availabili
 
 // MARK: - Concrete availability classes
 
-@objc public class TPPOPDSAcquisitionAvailabilityUnavailable: NSObject, TPPOPDSAcquisitionAvailability {
+@objc public final class TPPOPDSAcquisitionAvailabilityUnavailable: NSObject, TPPOPDSAcquisitionAvailability {
   @objc public let copiesHeld: TPPOPDSAcquisitionAvailabilityCopies
   @objc public let copiesTotal: TPPOPDSAcquisitionAvailabilityCopies
   @objc public let since: Date? = nil
@@ -200,7 +203,7 @@ public func NYPLOPDSAcquisitionAvailabilityDictionaryRepresentation(_ availabili
   }
 }
 
-@objc public class TPPOPDSAcquisitionAvailabilityLimited: NSObject, TPPOPDSAcquisitionAvailability {
+@objc public final class TPPOPDSAcquisitionAvailabilityLimited: NSObject, TPPOPDSAcquisitionAvailability {
   @objc public let copiesAvailable: TPPOPDSAcquisitionAvailabilityCopies
   @objc public let copiesTotal: TPPOPDSAcquisitionAvailabilityCopies
   @objc public let since: Date?
@@ -225,7 +228,7 @@ public func NYPLOPDSAcquisitionAvailabilityDictionaryRepresentation(_ availabili
   }
 }
 
-@objc public class TPPOPDSAcquisitionAvailabilityUnlimited: NSObject, TPPOPDSAcquisitionAvailability {
+@objc public final class TPPOPDSAcquisitionAvailabilityUnlimited: NSObject, TPPOPDSAcquisitionAvailability {
   @objc public let since: Date? = nil
   @objc public let until: Date? = nil
 
@@ -240,7 +243,7 @@ public func NYPLOPDSAcquisitionAvailabilityDictionaryRepresentation(_ availabili
   }
 }
 
-@objc public class TPPOPDSAcquisitionAvailabilityReserved: NSObject, TPPOPDSAcquisitionAvailability {
+@objc public final class TPPOPDSAcquisitionAvailabilityReserved: NSObject, TPPOPDSAcquisitionAvailability {
   @objc public let holdPosition: UInt
   @objc public let copiesTotal: TPPOPDSAcquisitionAvailabilityCopies
   @objc public let since: Date?
@@ -265,7 +268,7 @@ public func NYPLOPDSAcquisitionAvailabilityDictionaryRepresentation(_ availabili
   }
 }
 
-@objc public class TPPOPDSAcquisitionAvailabilityReady: NSObject, TPPOPDSAcquisitionAvailability {
+@objc public final class TPPOPDSAcquisitionAvailabilityReady: NSObject, TPPOPDSAcquisitionAvailability {
   @objc public let since: Date?
   @objc public let until: Date?
 

@@ -1,7 +1,7 @@
 import Foundation
 import PalaceLogging
 
-@objc public enum TPPOPDSAcquisitionRelation: Int {
+@objc public enum TPPOPDSAcquisitionRelation: Int, Sendable {
   case generic
   case openAccess
   case borrow
@@ -11,7 +11,7 @@ import PalaceLogging
   case subscribe
 }
 
-public struct TPPOPDSAcquisitionRelationSet: OptionSet {
+public struct TPPOPDSAcquisitionRelationSet: OptionSet, Sendable {
   public let rawValue: UInt
 
   public init(rawValue: UInt) {
@@ -91,13 +91,16 @@ public func NYPLOPDSAcquisitionRelationString(_ relation: TPPOPDSAcquisitionRela
 
 // MARK: - TPPOPDSAcquisition
 
-@objc public class TPPOPDSAcquisition: NSObject {
+// Sendable: `final` + immutable `let` stored properties. `availability` is an
+// existential of the (now Sendable) `TPPOPDSAcquisitionAvailability` protocol,
+// and `indirectAcquisitions` holds the Sendable `TPPOPDSIndirectAcquisition`.
+@objc public final class TPPOPDSAcquisition: NSObject, Sendable {
 
-  @objc public private(set) var relation: TPPOPDSAcquisitionRelation
-  @objc public private(set) var type: String
-  @objc public private(set) var hrefURL: URL
-  @objc public private(set) var indirectAcquisitions: [TPPOPDSIndirectAcquisition]
-  @objc public private(set) var availability: TPPOPDSAcquisitionAvailability
+  @objc public let relation: TPPOPDSAcquisitionRelation
+  @objc public let type: String
+  @objc public let hrefURL: URL
+  @objc public let indirectAcquisitions: [TPPOPDSIndirectAcquisition]
+  @objc public let availability: TPPOPDSAcquisitionAvailability
 
   private static let availabilityKey = "availability"
   private static let hrefURLKey = "href"

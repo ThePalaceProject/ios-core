@@ -1,9 +1,10 @@
 import Foundation
 
-@objc public class TPPOPDSEntryGroupAttributes: NSObject {
+// Sendable: `final` + immutable `let` Sendable value-type stored properties.
+@objc public final class TPPOPDSEntryGroupAttributes: NSObject, Sendable {
 
-  @objc public private(set) var href: URL?
-  @objc public private(set) var title: String
+  @objc public let href: URL?
+  @objc public let title: String
 
   @objc public init(href: URL?, title: String) {
     self.title = title

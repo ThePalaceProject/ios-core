@@ -9,7 +9,7 @@ import Foundation
 /// The protocol intentionally exposes only the flags PalaceCatalog reads.
 /// Adding an unrelated flag here is a smell — extend the protocol only when
 /// the package actually needs the flag.
-public protocol FeatureFlagProvider: AnyObject {
+public protocol FeatureFlagProvider: AnyObject, Sendable {
     /// True when the OPDS 2 catalog format is enabled. Controls the
     /// `Accept` header sent by `DefaultCatalogAPI.fetchFeed(at:)` —
     /// when enabled, OPDS 2 (`application/opds+json`) is preferred over

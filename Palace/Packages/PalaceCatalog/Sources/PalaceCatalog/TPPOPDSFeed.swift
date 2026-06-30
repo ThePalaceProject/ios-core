@@ -8,7 +8,14 @@ import PalaceLogging
   case navigation
 }
 
-@objc public class TPPOPDSFeed: NSObject {
+// @unchecked Sendable invariant: every stored property is `private(set)` and is
+// assigned only during `init?(xml:)`; no method mutates an instance afterward.
+// `type` is computed eagerly during init (see `computeType(from:)`) instead of
+// via a post-init lazy cache, so there is no mutable-after-init state to race on.
+// `@unchecked` (vs checked) is required because `licensor` is an `NSDictionary?`,
+// which the compiler cannot prove Sendable; it is an immutable dictionary built
+// locally in init and never re-exposed for mutation.
+@objc public final class TPPOPDSFeed: NSObject, @unchecked Sendable {
 
   @objc public private(set) var entries: [TPPOPDSEntry] = []
   @objc public private(set) var identifier: String?
@@ -18,33 +25,22 @@ import PalaceLogging
   @objc public private(set) var licensor: NSDictionary?
   @objc public private(set) var authorizationIdentifier: String?
 
-  private var _type: TPPOPDSFeedType = .invalid
-  private var typeIsCached = false
+  /// Feed type, derived from `entries`. Computed once during init and never
+  /// mutated afterward (the previous lazy `_type`/`typeIsCached` cache mutated
+  /// on first access, which was not safe for concurrent reads).
+  @objc public private(set) var type: TPPOPDSFeedType = .invalid
 
-  @objc public var type: TPPOPDSFeedType {
-    if typeIsCached { return _type }
-    typeIsCached = true
+  private static func computeType(from entries: [TPPOPDSEntry]) -> TPPOPDSFeedType {
+    guard !entries.isEmpty else { return .acquisitionUngrouped }
 
-    guard !self.entries.isEmpty else {
-      _type = .acquisitionUngrouped
-      return _type
-    }
-
-    let provisionalType = Self.typeImplied(by: entries[0])
-    if provisionalType == .invalid {
-      _type = .invalid
-      return _type
-    }
+    let provisionalType = typeImplied(by: entries[0])
+    if provisionalType == .invalid { return .invalid }
 
     for i in 1..<entries.count {
-      if Self.typeImplied(by: entries[i]) != provisionalType {
-        _type = .invalid
-        return _type
-      }
+      if typeImplied(by: entries[i]) != provisionalType { return .invalid }
     }
 
-    _type = provisionalType
-    return _type
+    return provisionalType
   }
 
   @objc public init?(xml feedXML: TPPXML?) {
@@ -59,6 +55,7 @@ import PalaceLogging
         return nil
       }
       entries = [entry]
+      type = Self.computeType(from: entries)
       return
     }
 
@@ -103,6 +100,7 @@ import PalaceLogging
       parsedEntries.append(entry)
     }
     entries = parsedEntries
+    type = Self.computeType(from: entries)
 
     if let patronXML = feedXML.firstChild(withName: "patron"),
        let attrs = patronXML.attributes as? [String: String],

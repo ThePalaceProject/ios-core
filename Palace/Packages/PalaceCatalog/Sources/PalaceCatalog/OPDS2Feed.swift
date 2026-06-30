@@ -286,22 +286,28 @@ public extension OPDS2Feed {
     static public func makeDecoder() -> JSONDecoder {
         let decoder = JSONDecoder()
 
-        // OPDS 2.0 uses ISO 8601 dates
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-
+        // OPDS 2.0 uses ISO 8601 dates. Construct the formatters INSIDE the
+        // `.custom` closure: it is `@Sendable` (capturing a shared mutable
+        // ISO8601DateFormatter would be a data race), and the previous shared
+        // formatter mutated `formatOptions` to drop `.withFractionalSeconds`
+        // and never restored it — so once any non-fractional date was parsed,
+        // every later fractional date silently failed. Per-call formatters are
+        // both race-free and free of that latent ordering bug.
         decoder.dateDecodingStrategy = .custom { decoder in
             let container = try decoder.singleValueContainer()
             let dateString = try container.decode(String.self)
 
             // Try with fractional seconds first
-            if let date = formatter.date(from: dateString) {
+            let fractional = ISO8601DateFormatter()
+            fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            if let date = fractional.date(from: dateString) {
                 return date
             }
 
             // Try without fractional seconds
-            formatter.formatOptions = [.withInternetDateTime]
-            if let date = formatter.date(from: dateString) {
+            let plain = ISO8601DateFormatter()
+            plain.formatOptions = [.withInternetDateTime]
+            if let date = plain.date(from: dateString) {
                 return date
             }
 
