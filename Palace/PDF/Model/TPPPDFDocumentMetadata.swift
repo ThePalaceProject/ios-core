@@ -14,7 +14,15 @@ import PalaceReadingPosition
 /// PDF Document metadata
 ///
 /// This object handles interaction between Objective-C code, TPPBookRegistry for storing PDF book current page and bookmarks, and SwiftUI code.
-@objc class TPPPDFDocumentMetadata: NSObject, ObservableObject {
+///
+/// - Note: `@unchecked Sendable` is safe here: this is a SwiftUI `ObservableObject`
+///   whose mutable `@Published` state is only ever mutated on the main thread
+///   (the Combine `RunLoop.main` sink and explicit `DispatchQueue.main` hops).
+///   The injected dependencies (`book`, `bookRegistry`, `positionWriter`,
+///   `deviceID`) are immutable `let`s. Background `Task`s touch `self` only after
+///   hopping to main, so capturing `self` in those main-thread `@Sendable`
+///   closures crosses no Sendable boundary.
+@objc class TPPPDFDocumentMetadata: NSObject, ObservableObject, @unchecked Sendable {
     private let rendererString = "TPPPDFReader"
     let book: TPPBook
     private let bookRegistry: TPPBookRegistryProvider
@@ -121,8 +129,12 @@ import PalaceReadingPosition
         Task {
             let bookmark = await TPPAnnotations.syncReadingPosition(ofBook: book, toURL: url)
             if let pdfBookmark = bookmark as? TPPPDFPageBookmark {
+                // Hoist the `Int` page out of the non-Sendable `TPPPDFPageBookmark`
+                // before the main-thread hop so the `@Sendable` closure captures
+                // only `Sendable` values (`page` + the now-`Sendable` `self`).
+                let page = pdfBookmark.page
                 DispatchQueue.main.async { [weak self] in
-                    self?.remotePage = pdfBookmark.page
+                    self?.remotePage = page
                 }
             }
         }

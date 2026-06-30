@@ -16,7 +16,13 @@ import PalaceReadingPosition
 /// the conflict-resolution rule (same-device-no-precedence, equal-location
 /// no-op) stays in this class because it's EPUB-specific and not part of
 /// the writer's contract.
-class TPPLastReadPositionSynchronizer {
+///
+/// - Note: `@unchecked Sendable` is safe here: the class holds only immutable
+///   (`let`) references and adds no mutable state of its own. `bookRegistry` and
+///   `positionWriter` are thread-safe service objects. This lets `self` be
+///   captured by the main-thread alert/continuation `@Sendable` closures in
+///   `presentNavigationAlert` without crossing a Sendable boundary.
+final class TPPLastReadPositionSynchronizer: @unchecked Sendable {
     typealias DisplayStrings = Strings.TPPLastReadPositionSynchronizer
 
     private let bookRegistry: TPPBookRegistryProvider

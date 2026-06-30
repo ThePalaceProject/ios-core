@@ -13,7 +13,15 @@ import PalaceLogging
 
 /// Encapsulates all of the SimplyE business logic related to bookmarking
 /// for a given book.
-class TPPReaderBookmarksBusinessLogic: NSObject {
+///
+/// - Note: `@unchecked Sendable` is safe here: the mutable state (`bookmarks`,
+///   `hasAttemptedReauthDuringSync`) is confined to the main thread — this class
+///   is owned and driven by the main-thread reader view controllers
+///   (`TPPBaseReaderViewController`). Injected dependencies are immutable `let`s,
+///   and background `Task`s mutate the registry only via `MainActor.run`. This
+///   lets `self` be captured by the `@Sendable` `MainActor.run` closures in
+///   `postBookmark` without crossing a Sendable boundary.
+class TPPReaderBookmarksBusinessLogic: NSObject, @unchecked Sendable {
 
     var bookmarks: [TPPReadiumBookmark] = []
     let book: TPPBook
