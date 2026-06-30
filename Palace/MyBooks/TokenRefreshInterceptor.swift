@@ -32,7 +32,25 @@ protocol TokenRefreshInterceptorDelegate: AnyObject {
 
 /// Handles 401 detection, token refresh, SAML re-authentication,
 /// and request retry after credential refresh.
-final class TokenRefreshInterceptor {
+///
+/// `@unchecked Sendable` (Swift 6 Wave 1, app-target `targeted` slice): the
+/// interceptor is captured `[weak self]` by the `@Sendable` retry/clean-up
+/// Task closures below, so it must be `Sendable`. The conformance is honest,
+/// not a blanket silence — every stored property is immutable-after-init or
+/// main-actor-confined:
+///   • `delegate` — `weak var`, wired exactly once on the main actor right
+///     after construction (`MyBooksDownloadCenter` sets it post-`super.init()`)
+///     and only ever read on the main actor (inside `@MainActor` methods or
+///     `MainActor.run` bodies). The non-Sendable `delegate`/`bookRegistry`
+///     values are NEVER captured directly by a `@Sendable` closure — they are
+///     re-resolved through `self.delegate` on the main actor at use time.
+///   • `reauthenticator` — `let` (immutable after init).
+///   • `userRetryTracker` / `authCoordinator` / `currentAccountHostsProvider`
+///     — `let`; `authCoordinator` is an `actor`, the host provider is `@Sendable`.
+///   • `hasAttemptedAuthentication` / `isRequestingCredentials` — `@MainActor`
+///     isolated (the only mutable scalar state; serialized by the main actor).
+/// `final`, so the assertion can't be defeated by a subclass.
+final class TokenRefreshInterceptor: @unchecked Sendable {
 
     // MARK: - Properties
 
@@ -41,7 +59,7 @@ final class TokenRefreshInterceptor {
     @MainActor private var hasAttemptedAuthentication = false
     @MainActor private var isRequestingCredentials = false
 
-    var reauthenticator: Reauthenticator
+    let reauthenticator: Reauthenticator
     private let userRetryTracker: UserRetryTracker
 
     /// swarm_66819d80 Module C: auth-refresh coordinator. When non-nil,
@@ -159,7 +177,7 @@ final class TokenRefreshInterceptor {
                             task: task,
                             coordinator: coordinator,
                             reason: isSaml ? .samlSessionExpired : .invalidCredentials,
-                            stateOnSuccess: isSaml ? .SAMLStarted : .downloadNeeded
+                            isSaml: isSaml
                         )
                         return true
                     }
@@ -209,7 +227,7 @@ final class TokenRefreshInterceptor {
                         task: task,
                         coordinator: coordinator,
                         reason: isSaml ? .samlSessionExpired : .invalidCredentials,
-                        stateOnSuccess: isSaml ? .SAMLStarted : .downloadNeeded
+                        isSaml: isSaml
                     )
                     return true
                 }
@@ -263,11 +281,11 @@ final class TokenRefreshInterceptor {
             self.hasAttemptedAuthentication = true
             self.isRequestingCredentials = true
 
-            self.reauthenticator.authenticateIfNeeded(delegate.userAccount, usingExistingCredentials: false) { [weak self, weak delegate] in
-                guard let self = self, let delegate = delegate else { return }
-
+            self.reauthenticator.authenticateIfNeeded(delegate.userAccount, usingExistingCredentials: false) { [weak self] in
                 Task { @MainActor [weak self] in
-                    self?.isRequestingCredentials = false
+                    guard let self else { return }
+                    self.isRequestingCredentials = false
+                    guard let delegate = self.delegate else { return }
 
                     if delegate.userAccount.hasCredentials() == true {
                         delegate.startDownload(for: book, withRequest: nil)
@@ -308,12 +326,11 @@ final class TokenRefreshInterceptor {
         // injected sheet presenter. Single-flight `isRequestingCredentials`
         // dedupe at line 265 still owns the concurrent-401 guard.
         AppContainer.production().signInModalSheetPresenter
-            .presentSignInModalForCurrentAccount { [weak self, weak delegate] in
-            guard let self = self, let delegate = delegate else { return }
-
-            Task { @MainActor [weak self, weak delegate] in
-                guard let self = self, let delegate = delegate else { return }
+            .presentSignInModalForCurrentAccount { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
                 self.isRequestingCredentials = false
+                guard let delegate = self.delegate else { return }
 
                 if delegate.userAccount.hasCredentials() == true {
                     delegate.startDownload(for: book, withRequest: nil)
@@ -342,6 +359,10 @@ final class TokenRefreshInterceptor {
 
             Task { @MainActor [weak self] in
                 guard let self = self, let delegate = self.delegate else { return }
+                // Re-resolve the non-Sendable registry/account through the
+                // main-actor-confined `delegate` rather than capturing them
+                // across the `@Sendable` Task boundary.
+                let bookRegistry = delegate.bookRegistry
 
                 await delegate.stateManager.bookIdentifierToDownloadInfo.remove(book.identifier)
                 await delegate.stateManager.downloadCoordinator.registerCompletion(identifier: book.identifier)
@@ -360,12 +381,13 @@ final class TokenRefreshInterceptor {
 
                 self.isRequestingCredentials = true
 
-                self.reauthenticator.authenticateIfNeeded(userAccount, usingExistingCredentials: false) { [weak self, weak delegate] in
-                    Task { @MainActor in
-                        self?.isRequestingCredentials = false
-                        if delegate?.userAccount.hasCredentials() == true {
+                self.reauthenticator.authenticateIfNeeded(delegate.userAccount, usingExistingCredentials: false) { [weak self] in
+                    Task { @MainActor [weak self] in
+                        guard let self else { return }
+                        self.isRequestingCredentials = false
+                        if let delegate = self.delegate, delegate.userAccount.hasCredentials() == true {
                             Log.info(#file, "Sign-in completed, retrying download")
-                            delegate?.startDownload(for: book, withRequest: nil)
+                            delegate.startDownload(for: book, withRequest: nil)
                         }
                     }
                 }
@@ -383,8 +405,15 @@ final class TokenRefreshInterceptor {
             if let coordinator = self.authCoordinator {
                 let isSaml = authDef?.isSaml == true
                 Log.info(#file, "handleProblem: browser-based reauth dispatched through AuthCoordinator (isSaml=\(isSaml))")
-                Task { [weak self, weak delegate] in
-                    guard let delegate = delegate else { return }
+                // `@MainActor` Task so the non-Sendable `delegate`/`bookRegistry`
+                // are re-resolved on the main actor (via `self.delegate`) rather
+                // than captured across the `@Sendable` Task boundary. The
+                // `await` hops to the state-manager actors and the coordinator
+                // actor suspend the main actor without blocking it — same
+                // observable ordering as the prior explicit `MainActor.run`.
+                Task { @MainActor [weak self] in
+                    guard let self, let delegate = self.delegate else { return }
+                    let bookRegistry = delegate.bookRegistry
                     await delegate.stateManager.bookIdentifierToDownloadInfo.remove(book.identifier)
                     await delegate.stateManager.downloadCoordinator.registerCompletion(identifier: book.identifier)
 
@@ -392,20 +421,17 @@ final class TokenRefreshInterceptor {
                         reason: isSaml ? .samlSessionExpired : .invalidCredentials
                     )
 
-                    await MainActor.run {
-                        if isSaml {
-                            bookRegistry.setState(.SAMLStarted, for: book.identifier)
-                        } else {
-                            bookRegistry.setState(.downloadNeeded, for: book.identifier)
-                        }
-                        switch outcome {
-                        case .success:
-                            Log.info(#file, "handleProblem coordinator success — retrying download for \(book.identifier)")
-                            delegate.startDownload(for: book, withRequest: nil)
-                        case .failure(let cancellation):
-                            Log.info(#file, "handleProblem coordinator declined refresh for \(book.identifier) — \(cancellation)")
-                        }
-                        _ = self // retain to make warnings about unused capture happy
+                    if isSaml {
+                        bookRegistry.setState(.SAMLStarted, for: book.identifier)
+                    } else {
+                        bookRegistry.setState(.downloadNeeded, for: book.identifier)
+                    }
+                    switch outcome {
+                    case .success:
+                        Log.info(#file, "handleProblem coordinator success — retrying download for \(book.identifier)")
+                        delegate.startDownload(for: book, withRequest: nil)
+                    case .failure(let cancellation):
+                        Log.info(#file, "handleProblem coordinator declined refresh for \(book.identifier) — \(cancellation)")
                     }
                 }
                 return
@@ -413,16 +439,15 @@ final class TokenRefreshInterceptor {
             if authDef?.isSaml == true {
                 Log.info(#file, "SAML cookies expired - triggering SAML re-auth flow (legacy path)")
 
-                Task { [weak delegate] in
-                    guard let delegate = delegate else { return }
+                Task { @MainActor [weak self] in
+                    guard let self, let delegate = self.delegate else { return }
+                    let bookRegistry = delegate.bookRegistry
                     await delegate.stateManager.bookIdentifierToDownloadInfo.remove(book.identifier)
                     await delegate.stateManager.downloadCoordinator.registerCompletion(identifier: book.identifier)
 
-                    await MainActor.run {
-                        bookRegistry.setState(.SAMLStarted, for: book.identifier)
-                        Log.info(#file, "Cleared download state, retrying with SAML re-auth")
-                        delegate.startDownload(for: book, withRequest: nil)
-                    }
+                    bookRegistry.setState(.SAMLStarted, for: book.identifier)
+                    Log.info(#file, "Cleared download state, retrying with SAML re-auth")
+                    delegate.startDownload(for: book, withRequest: nil)
                 }
             } else {
                 Log.info(#file, "Browser-based auth expired - triggering re-auth via sign-in modal (legacy path)")
@@ -435,12 +460,13 @@ final class TokenRefreshInterceptor {
                     guard !self.isRequestingCredentials else { return }
                     self.isRequestingCredentials = true
 
-                    self.reauthenticator.authenticateIfNeeded(userAccount, usingExistingCredentials: false) { [weak self, weak delegate] in
+                    self.reauthenticator.authenticateIfNeeded(delegate.userAccount, usingExistingCredentials: false) { [weak self] in
                         Task { @MainActor [weak self] in
-                            self?.isRequestingCredentials = false
-                            if delegate?.userAccount.authState == .loggedIn {
+                            guard let self else { return }
+                            self.isRequestingCredentials = false
+                            if let delegate = self.delegate, delegate.userAccount.authState == .loggedIn {
                                 Log.info(#file, "Browser re-auth completed, retrying download")
-                                delegate?.startDownload(for: book, withRequest: nil)
+                                delegate.startDownload(for: book, withRequest: nil)
                             }
                         }
                     }
@@ -463,12 +489,13 @@ final class TokenRefreshInterceptor {
 
                 self.isRequestingCredentials = true
 
-                self.reauthenticator.authenticateIfNeeded(userAccount, usingExistingCredentials: false) { [weak self, weak delegate] in
+                self.reauthenticator.authenticateIfNeeded(delegate.userAccount, usingExistingCredentials: false) { [weak self] in
                     Task { @MainActor [weak self] in
-                        self?.isRequestingCredentials = false
+                        guard let self else { return }
+                        self.isRequestingCredentials = false
 
-                        if delegate?.userAccount.hasCredentials() == true {
-                            delegate?.startDownload(for: book, withRequest: nil)
+                        if let delegate = self.delegate, delegate.userAccount.hasCredentials() == true {
+                            delegate.startDownload(for: book, withRequest: nil)
                         } else {
                             NSLog("Authentication completed but no credentials present, user may have cancelled")
                         }
@@ -492,47 +519,49 @@ final class TokenRefreshInterceptor {
         task: URLSessionTask,
         coordinator: AuthCoordinator,
         reason: ReauthReason,
-        stateOnSuccess: TPPBookState
+        isSaml: Bool
     ) {
-        guard let delegate = delegate else { return }
-        let stateManager = delegate.stateManager
-
-        Task { [weak self, weak delegate] in
+        let taskIdentifier = task.taskIdentifier
+        // `@MainActor` Task so the non-Sendable `delegate` (and the
+        // `TPPBookState` chosen below) are resolved on the main actor via
+        // `self.delegate` rather than captured across the `@Sendable`
+        // boundary. The `await` hops to the state-manager / coordinator
+        // actors suspend the main actor without blocking it — identical
+        // observable ordering to the prior explicit `MainActor.run`.
+        Task { @MainActor [weak self] in
+            guard let self, let delegate = self.delegate else { return }
+            let stateManager = delegate.stateManager
             await stateManager.bookIdentifierToDownloadInfo.remove(book.identifier)
-            await stateManager.taskIdentifierToBook.remove(task.taskIdentifier)
+            await stateManager.taskIdentifierToBook.remove(taskIdentifier)
             await stateManager.downloadCoordinator.registerCompletion(identifier: book.identifier)
 
             let outcome = await coordinator.refreshCredentialsIfNeeded(reason: reason)
 
-            await MainActor.run {
-                guard let delegate = delegate else { return }
-                delegate.bookRegistry.setState(stateOnSuccess, for: book.identifier)
-                switch outcome {
-                case .success:
-                    Log.info(#file, "Coordinator refresh succeeded — retrying download for \(book.identifier)")
-                    delegate.startDownload(for: book, withRequest: nil)
-                case .failure(let cancellation):
-                    Log.info(#file, "Coordinator declined refresh for \(book.identifier) — \(cancellation)")
-                }
-                _ = self // retain to silence unused-capture-of-self
+            guard let delegate = self.delegate else { return }
+            let stateOnSuccess: TPPBookState = isSaml ? .SAMLStarted : .downloadNeeded
+            delegate.bookRegistry.setState(stateOnSuccess, for: book.identifier)
+            switch outcome {
+            case .success:
+                Log.info(#file, "Coordinator refresh succeeded — retrying download for \(book.identifier)")
+                delegate.startDownload(for: book, withRequest: nil)
+            case .failure(let cancellation):
+                Log.info(#file, "Coordinator declined refresh for \(book.identifier) — \(cancellation)")
             }
         }
     }
 
     private func triggerSAMLReauth(for book: TPPBook, task: URLSessionTask) {
-        guard let delegate = delegate else { return }
-        let stateManager = delegate.stateManager
-
-        Task {
+        let taskIdentifier = task.taskIdentifier
+        Task { @MainActor [weak self] in
+            guard let self, let delegate = self.delegate else { return }
+            let stateManager = delegate.stateManager
             await stateManager.bookIdentifierToDownloadInfo.remove(book.identifier)
-            await stateManager.taskIdentifierToBook.remove(task.taskIdentifier)
+            await stateManager.taskIdentifierToBook.remove(taskIdentifier)
             await stateManager.downloadCoordinator.registerCompletion(identifier: book.identifier)
 
-            await MainActor.run {
-                delegate.bookRegistry.setState(.SAMLStarted, for: book.identifier)
-                Log.info(#file, "Cleared failed download, now retrying with SAML re-auth")
-                delegate.startDownload(for: book, withRequest: nil)
-            }
+            delegate.bookRegistry.setState(.SAMLStarted, for: book.identifier)
+            Log.info(#file, "Cleared failed download, now retrying with SAML re-auth")
+            delegate.startDownload(for: book, withRequest: nil)
         }
     }
 
@@ -542,9 +571,9 @@ final class TokenRefreshInterceptor {
         reauthenticator.authenticateIfNeeded(
             delegate.userAccount,
             usingExistingCredentials: false,
-            authenticationCompletion: { [weak delegate] in
-                Task { @MainActor [weak delegate] in
-                    guard let delegate = delegate else { return }
+            authenticationCompletion: { [weak self] in
+                Task { @MainActor [weak self] in
+                    guard let self, let delegate = self.delegate else { return }
                     guard delegate.userAccount.hasCredentials() else {
                         Log.info(#file, "Authentication cancelled, not retrying download for \(book.identifier)")
                         return
@@ -560,37 +589,34 @@ final class TokenRefreshInterceptor {
     /// Unlike SAML which uses a special `.SAMLStarted` book state, browser re-auth
     /// cleans up tracking, resets book state, and presents the sign-in modal.
     private func triggerBrowserReauth(for book: TPPBook, task: URLSessionTask) {
-        guard let delegate = delegate else { return }
-        let stateManager = delegate.stateManager
-
-        Task {
+        let taskIdentifier = task.taskIdentifier
+        Task { @MainActor [weak self] in
+            guard let self, let delegate = self.delegate else { return }
+            let stateManager = delegate.stateManager
             await stateManager.bookIdentifierToDownloadInfo.remove(book.identifier)
-            await stateManager.taskIdentifierToBook.remove(task.taskIdentifier)
+            await stateManager.taskIdentifierToBook.remove(taskIdentifier)
             await stateManager.downloadCoordinator.registerCompletion(identifier: book.identifier)
 
-            await MainActor.run { [weak self, weak delegate] in
-                guard let self = self, let delegate = delegate else { return }
-                delegate.bookRegistry.setState(.downloadNeeded, for: book.identifier)
-                Log.info(#file, "Cleared failed download state, presenting sign-in modal for \(book.identifier)")
+            delegate.bookRegistry.setState(.downloadNeeded, for: book.identifier)
+            Log.info(#file, "Cleared failed download state, presenting sign-in modal for \(book.identifier)")
 
-                self.reauthenticator.authenticateIfNeeded(
-                    delegate.userAccount,
-                    usingExistingCredentials: false,
-                    authenticationCompletion: { [weak delegate] in
-                        Task { @MainActor [weak delegate] in
-                            guard let delegate = delegate else { return }
-                            // Check authState, not just hasCredentials — stale creds still
-                            // return true for hasCredentials() but won't work for downloads
-                            guard delegate.userAccount.authState == .loggedIn else {
-                                Log.info(#file, "Re-auth cancelled or incomplete, not retrying download for \(book.identifier)")
-                                return
-                            }
-                            Log.info(#file, "Re-auth completed, retrying download for \(book.identifier)")
-                            delegate.startDownload(for: book, withRequest: nil)
+            self.reauthenticator.authenticateIfNeeded(
+                delegate.userAccount,
+                usingExistingCredentials: false,
+                authenticationCompletion: { [weak self] in
+                    Task { @MainActor [weak self] in
+                        guard let self, let delegate = self.delegate else { return }
+                        // Check authState, not just hasCredentials — stale creds still
+                        // return true for hasCredentials() but won't work for downloads
+                        guard delegate.userAccount.authState == .loggedIn else {
+                            Log.info(#file, "Re-auth cancelled or incomplete, not retrying download for \(book.identifier)")
+                            return
                         }
+                        Log.info(#file, "Re-auth completed, retrying download for \(book.identifier)")
+                        delegate.startDownload(for: book, withRequest: nil)
                     }
-                )
-            }
+                }
+            )
         }
     }
 
@@ -603,7 +629,6 @@ final class TokenRefreshInterceptor {
     @MainActor
     private func triggerOIDCReauth(for book: TPPBook, task: URLSessionTask) {
         guard let delegate = delegate else { return }
-        let stateManager = delegate.stateManager
         let userAccount = delegate.userAccount
 
         guard let authDef = userAccount.authDefinition,
@@ -641,9 +666,10 @@ final class TokenRefreshInterceptor {
         let session = ASWebAuthenticationSession(
             url: finalURL,
             callbackURLScheme: callbackScheme
-        ) { [weak self, weak delegate] callbackURL, error in
-            Task { @MainActor [weak self, weak delegate] in
-                guard let self = self, let delegate = delegate else { return }
+        ) { [weak self] callbackURL, error in
+            Task { @MainActor [weak self] in
+                guard let self = self, let delegate = self.delegate else { return }
+                let stateManager = delegate.stateManager
 
                 if let error = error as? ASWebAuthenticationSessionError,
                    error.code == .canceledLogin {
