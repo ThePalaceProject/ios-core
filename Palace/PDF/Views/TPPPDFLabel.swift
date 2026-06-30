@@ -24,13 +24,14 @@ struct TPPPDFLabel: View {
         Text(text)
             .palaceFont(.subheadline, weight: .semibold)
             .multilineTextAlignment(.center)
-            .padding(.horizontal)
-            .padding(.vertical, 6)
             .foregroundColor(.white)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .foregroundColor(.black)
-                    .opacity(0.6)
-            )
+            .padding(.horizontal, 14)
+            .padding(.vertical, 7)
+            // A translucent dark capsule (not a SwiftUI material): the label floats
+            // over arbitrary PDF page content, and materials render unreliably over
+            // a UIViewRepresentable (PDFView) backdrop. Dark + white text stays
+            // legible over both light pages and dark scans.
+            .background(Color.black.opacity(0.55), in: Capsule())
+            .shadow(color: .black.opacity(0.15), radius: 4, y: 1)
     }
 }

@@ -54,21 +54,18 @@ struct TPPPDFView: View {
                 } else {
                     TPPPDFLabel("\(metadata.currentPage + 1)/\(document.pageCount)")
                 }
-                VStack(spacing: 0) {
-                    Divider()
-                    if isVoiceOverRunning {
+                if isVoiceOverRunning {
+                    VStack(spacing: 0) {
+                        Divider()
                         TPPPDFAccessibilityToolbar(
                             currentPage: $metadata.currentPage,
                             pageCount: document.pageCount
                         )
-                    } else {
-                        TPPPDFThumbnailView(pdfView: pdfView)
-                            .frame(maxHeight: 40)
-                            .background(
-                                Color(UIColor.systemBackground)
-                                    .edgesIgnoringSafeArea(.bottom)
-                            )
                     }
+                } else {
+                    // PP-1916: lazy thumbnail strip — only renders visible pages,
+                    // replacing PDFKit's eager all-pages PDFThumbnailView.
+                    PDFThumbnailStrip(document: document, currentPage: $metadata.currentPage)
                 }
             }
             .opacity(showingDocumentInfo || isVoiceOverRunning ? 1 : 0)
