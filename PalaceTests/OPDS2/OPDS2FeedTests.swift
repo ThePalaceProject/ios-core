@@ -299,6 +299,51 @@ final class OPDS2FeedTests: XCTestCase {
         )
     }
 
+    /// Regression for the shared-ISO8601-formatter bug fixed in the Swift 6
+    /// modernization (#1138). ONE decoder decodes two publications: the first
+    /// carries a NON-fractional `updated`, the second a fractional `updated`.
+    /// Array order guarantees the non-fractional date is decoded first. The old
+    /// `makeDecoder` shared a single formatter and dropped `.withFractionalSeconds`
+    /// after the first non-fractional date, never restoring it — so the second
+    /// (fractional) date failed and the whole `from(data:)` THREW. With per-call
+    /// formatters both parse. The single-date tests above cannot exercise this
+    /// cross-field contamination.
+    func testMixedFractionalAndNonFractionalDates_acrossPublications_bothParse() throws {
+        let json = """
+    {
+      "metadata": { "title": "Mixed Dates" },
+      "links": [{"href": "https://example.com/self", "rel": "self"}],
+      "publications": [
+        {
+          "metadata": {"id": "b1", "title": "Non-fractional first", "updated": "2026-01-15T10:30:45Z"},
+          "links": [{"href": "/b1/manifest", "rel": "http://opds-spec.org/acquisition/open-access", "type": "application/epub+zip"}]
+        },
+        {
+          "metadata": {"id": "b2", "title": "Fractional second", "updated": "2026-02-20T08:15:30.500Z"},
+          "links": [{"href": "/b2/manifest", "rel": "http://opds-spec.org/acquisition/open-access", "type": "application/epub+zip"}]
+        }
+      ]
+    }
+    """
+        let data = json.data(using: .utf8)!
+        // Old shared-formatter bug: `from(data:)` throws — pub[1]'s fractional
+        // `updated` fails to parse after pub[0]'s non-fractional `updated`
+        // poisons the shared formatter.
+        let feed = try OPDS2Feed.from(data: data)
+
+        let pubs = try XCTUnwrap(feed.publications)
+        XCTAssertEqual(pubs.count, 2)
+        let firstUpdated = try XCTUnwrap(pubs[0].metadata.updated,
+            "non-fractional `updated` must parse")
+        let secondUpdated = try XCTUnwrap(pubs[1].metadata.updated,
+            "fractional `updated` must parse even after a non-fractional date in the same decode")
+
+        let c1 = Calendar.current.dateComponents([.year, .month, .day], from: firstUpdated)
+        XCTAssertEqual(c1.year, 2026); XCTAssertEqual(c1.month, 1); XCTAssertEqual(c1.day, 15)
+        let c2 = Calendar.current.dateComponents([.year, .month, .day], from: secondUpdated)
+        XCTAssertEqual(c2.year, 2026); XCTAssertEqual(c2.month, 2); XCTAssertEqual(c2.day, 20)
+    }
+
     // MARK: - Format Detection
 
     func testDetectOPDS2FromContentType() {
