@@ -277,6 +277,91 @@ final class AudiobookFirstOpenHangTests: XCTestCase {
                        "Total play(at:) calls across BOTH attempts must == 1 — the second open, not double-firing — pinning the F-011 fix shape")
     }
 
+    // MARK: - Multi-awaiter fan-out (pins PlaybackReadinessOutcome: Sendable)
+    //
+    // The doc on `PlaybackReadinessGate` promises: "Multiple consumers
+    // awaiting the gate concurrently all resume with the same outcome." These
+    // two tests drive N concurrent awaiters that are PARKED in the gate's
+    // pending-waiter queue when the terminal signal arrives, then assert every
+    // one of them resumes with the same `PlaybackReadinessOutcome`. The
+    // outcome value is carried out of the gate's actor into N separate child
+    // tasks of a `withThrowingTaskGroup` — the exact path that requires
+    // `PlaybackReadinessOutcome` to be `Sendable`.
+    //
+    // MUTATION SURFACE THESE KILL:
+    //   - `applyOutcome` resuming only `pending.first` instead of iterating
+    //     all waiters → the other (N-1) awaiters never get the signal and hit
+    //     their own awaitReady timeout; `awaitReady` then THROWS
+    //     `PlaybackReadinessError.timeout`, which the task group rethrows out of
+    //     the test body, so the test fails (via the thrown error, before the
+    //     all-equal assertion is even reached).
+    //   - `markFailed(reason:)` collapsing the reason (e.g. hardcoding a
+    //     different string) → the `.failed(reason:)` equality assertion fails.
+    // NOT killed here (covered separately): dropping the `outcome = next` latch
+    // — both tests below park ALL awaiters BEFORE the terminal signal, so the
+    // resume-all loop fires regardless of the latch. The latch (late-arriving
+    // awaiter sees the already-set outcome) is killed by the pre-set-ready test
+    // (`gate.markReady()` before `awaitReady`) elsewhere in this file.
+
+    /// N awaiters parked before `markReady` all resume with `.ready`.
+    func testAwaitReady_manyConcurrentAwaiters_parkedBeforeReady_allResumeReady() async throws {
+        let gate = PlaybackReadinessGate()
+        let awaiterCount = 6
+
+        // Signal ready AFTER the awaiters have had time to park in the gate's
+        // pending queue — this exercises the "resume every pending waiter"
+        // path rather than the fast `if let existing = outcome` shortcut.
+        Task {
+            try? await Task.sleep(nanoseconds: 60_000_000) // 60ms
+            await gate.markReady()
+        }
+
+        let outcomes = try await withThrowingTaskGroup(of: PlaybackReadinessOutcome.self) { group in
+            for _ in 0..<awaiterCount {
+                group.addTask { try await gate.awaitReady(timeout: 2.0) }
+            }
+            var collected: [PlaybackReadinessOutcome] = []
+            for try await outcome in group {
+                collected.append(outcome)
+            }
+            return collected
+        }
+
+        XCTAssertEqual(outcomes.count, awaiterCount,
+                       "every concurrent awaiter must resume exactly once")
+        XCTAssertTrue(outcomes.allSatisfy { $0 == .ready },
+                      "all awaiters parked before the terminal signal must resume with .ready — a gate that resumed only the first waiter would leave the rest to time out with .failed(\"timeout\")")
+    }
+
+    /// N awaiters parked before `markFailed` all resume with the SAME
+    /// `.failed(reason:)`, preserving the reason payload across the boundary.
+    func testAwaitReady_manyConcurrentAwaiters_parkedBeforeFailed_allResumeSameFailureReason() async throws {
+        let gate = PlaybackReadinessGate()
+        let awaiterCount = 6
+        let reason = "engine-init-aborted"
+
+        Task {
+            try? await Task.sleep(nanoseconds: 60_000_000) // 60ms
+            await gate.markFailed(reason: reason)
+        }
+
+        let outcomes = try await withThrowingTaskGroup(of: PlaybackReadinessOutcome.self) { group in
+            for _ in 0..<awaiterCount {
+                group.addTask { try await gate.awaitReady(timeout: 2.0) }
+            }
+            var collected: [PlaybackReadinessOutcome] = []
+            for try await outcome in group {
+                collected.append(outcome)
+            }
+            return collected
+        }
+
+        XCTAssertEqual(outcomes.count, awaiterCount,
+                       "every concurrent awaiter must resume exactly once")
+        XCTAssertTrue(outcomes.allSatisfy { $0 == .failed(reason: reason) },
+                      "all awaiters must resume with the SAME .failed(reason:) — the reason payload must survive the actor→task-group boundary intact")
+    }
+
     // MARK: - Test 4: production-wiring proof — drives the extracted seam end-to-end
     //
     // The first three tests above drive `PlaybackReadinessGate.awaitReadinessAndPlay`

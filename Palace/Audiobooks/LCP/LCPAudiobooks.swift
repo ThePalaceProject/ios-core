@@ -16,7 +16,23 @@ import PalaceCatalog
 @preconcurrency import ReadiumLCP
 @preconcurrency import PalaceAudiobookToolkit
 
-@objc class LCPAudiobooks: NSObject {
+/// - Sendable invariant: instances are safe to share across concurrency
+///   domains (they are captured by the `@Sendable` closures
+///   `publicationCacheQueue.async`/`DispatchQueue.global().async` schedules,
+///   and by the decrypt/load `Task`s) because:
+///   1. Every stored dependency (`audiobookUrl`, `licenseUrl`,
+///      `assetRetriever`, `publicationOpener`, `httpClient`,
+///      `publicationCacheQueue`) is a `let` — immutable after `init`.
+///   2. Every piece of mutable state (`cachedPublication`,
+///      `currentPrefetchTask`, `isReleased`) is read and written ONLY through
+///      the serial `publicationCacheQueue` (`.sync`/`.async`). No mutable
+///      property is touched off that queue, so there is no unsynchronized
+///      shared mutation.
+///   `final` keeps the invariant intact — a subclass cannot add
+///   unsynchronized stored state. Hence `@unchecked Sendable` rather than a
+///   compiler-checked conformance (the Readium dependency types are not
+///   Sendable-audited).
+@objc final class LCPAudiobooks: NSObject, @unchecked Sendable {
 
     private static let expectedAcquisitionType = "application/vnd.readium.lcp.license.v1.0+json"
 
@@ -350,16 +366,24 @@ extension LCPAudiobooks {
 
     private func decryptWithPublication(_ publication: Publication, url: URL, to resultUrl: URL, completion: @escaping (Error?) -> Void) {
         if let resource = publication.getResource(at: url.path) {
+            // The completion originates from the toolkit's `@objc public
+            // protocol DRMDecryptor` (off-limits submodule), so its parameter
+            // type cannot be annotated `@Sendable`. We must still hand it to a
+            // `DispatchQueue.main.async` closure (a strictly-`@Sendable`
+            // boundary) to deliver the result on main. Wrap it once, before
+            // entering the `Task`, so the `@Sendable` closures capture the
+            // Sendable box rather than the bare non-Sendable closure.
+            let completionBox = SendableDecryptCompletion(completion)
             Task {
                 do {
                     let data = try await resource.read().get()
                     try data.write(to: resultUrl, options: .atomic)
                     DispatchQueue.main.async {
-                        completion(nil)
+                        completionBox.fire(nil)
                     }
                 } catch {
                     DispatchQueue.main.async {
-                        completion(error)
+                        completionBox.fire(error)
                     }
                 }
             }
@@ -396,6 +420,31 @@ private extension Publication {
         }
 
         return resource
+    }
+}
+
+/// `Sendable` wrapper for a `DRMDecryptor.decrypt` completion closure.
+///
+/// The toolkit's `@objc public protocol DRMDecryptor` (in the off-limits
+/// `PalaceAudiobookToolkit` submodule) types the completion as a plain
+/// `(Error?) -> Void`, so it cannot be annotated `@Sendable` at the
+/// conformance site without diverging from the `@objc` requirement. This box
+/// lets the completion cross into the decrypt `Task`'s `DispatchQueue.main.async`
+/// hop (a strictly-`@Sendable` boundary) without a concurrency warning.
+///
+/// - Sendable invariant: `fire(_:)` forwards to the wrapped closure exactly
+///   once, always from a single `DispatchQueue.main.async` continuation in
+///   `decryptWithPublication` (success XOR failure) — never concurrently from
+///   two threads. The wrapped closure is otherwise opaque, hence `@unchecked`.
+private struct SendableDecryptCompletion: @unchecked Sendable {
+    private let completion: (Error?) -> Void
+
+    init(_ completion: @escaping (Error?) -> Void) {
+        self.completion = completion
+    }
+
+    func fire(_ error: Error?) {
+        completion(error)
     }
 }
 

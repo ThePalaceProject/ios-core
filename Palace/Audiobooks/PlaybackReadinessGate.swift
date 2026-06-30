@@ -65,7 +65,13 @@ public enum PlaybackReadinessError: Error, Equatable {
 /// Terminal state of the readiness gate. The gate transitions from
 /// implicit `pending` to one of these once-only. Multiple consumers
 /// awaiting the gate concurrently all resume with the same outcome.
-public enum PlaybackReadinessOutcome: Equatable {
+///
+/// `Sendable` because the outcome crosses concurrency boundaries: it is the
+/// child-task element type of the `withThrowingTaskGroup` in `awaitReady`,
+/// the return type of the actor-isolated `awaitReady`/`suspend`, and the
+/// value resumed into each awaiter's `CheckedContinuation`. Conformance is
+/// synthesized — the only associated value is a `String`, already `Sendable`.
+public enum PlaybackReadinessOutcome: Equatable, Sendable {
     case ready
     case failed(reason: String)
 }
