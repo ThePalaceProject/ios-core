@@ -958,10 +958,16 @@ import OverdriveProcessor
             // represent an in-progress URLSession task warrant the failure
             // transition; everything else (e.g. .downloadSuccessful, .used)
             // must be left alone.
-            let registry = self.bookRegistry
-            let booksToFail: [TPPBook] = await MainActor.run {
-                activePairs.compactMap { (_, book) -> TPPBook? in
-                    let state = registry.state(for: book.identifier)
+            // Read each book's registry state on the main actor. We capture
+            // `self` (already-clean across this file's MainActor hops — see the
+            // failDownloadWithAlert loop below) rather than the `bookRegistry`
+            // existential: `TPPBookRegistryProvider` is a shared, non-Sendable
+            // protocol that must NOT be made Sendable, and capturing it directly
+            // trips the strict-concurrency Sendable-capture check.
+            let booksToFail: [TPPBook] = await MainActor.run { [weak self] in
+                guard let self else { return [] }
+                return activePairs.compactMap { (_, book) -> TPPBook? in
+                    let state = self.bookRegistry.state(for: book.identifier)
                     return (state == .downloading || state == .SAMLStarted) ? book : nil
                 }
             }

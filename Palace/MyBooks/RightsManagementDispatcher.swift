@@ -58,7 +58,16 @@ struct RightsManagementDispatchResult {
 
 // MARK: - RightsManagementDispatcher
 
-final class RightsManagementDispatcher {
+// @unchecked Sendable invariant: every stored dependency is a `let`
+// (immutable after init). The only mutable member is `weak var delegate`,
+// which is wired exactly once by MyBooksDownloadCenter during its own
+// construction (`self.rightsDispatcher.delegate = self`) on the main thread and
+// never reassigned. It is read from both `MainActor.run` hops and the
+// nonisolated `dispatch(...)` body, but `weak var` loads / ARC-zeroing are
+// runtime-serialized via the side-table lock, so reading it off-main is
+// memory-safe. No stored value is mutated after init, so the class is safe to
+// share across the Adobe fulfillment Task's concurrency boundary.
+final class RightsManagementDispatcher: @unchecked Sendable {
 
     weak var delegate: RightsManagementDispatcherDelegate?
 
@@ -136,10 +145,15 @@ final class RightsManagementDispatcher {
                     guard let self else { return }
                     do {
                         try await self.adobeDRMService.ensureDeviceActivated()
+                        // Read the Sendable credential values off the (shared,
+                        // non-Sendable) TPPUserAccount up front so the MainActor
+                        // hop captures only `String?`s, not the account object.
                         let ua = self.userAccountProvider()
-                        Log.info(#file, "Adobe DRM activated — fulfilling ACSM for '\(book.title)' with userID: \(ua.userID ?? "nil")")
+                        let userID = ua.userID
+                        let deviceID = ua.deviceID
+                        Log.info(#file, "Adobe DRM activated — fulfilling ACSM for '\(book.title)' with userID: \(userID ?? "nil")")
                         await MainActor.run {
-                            self.adobeDRMService.fulfill(withACSMData: acsmData, tag: book.identifier, userID: ua.userID, deviceID: ua.deviceID)
+                            self.adobeDRMService.fulfill(withACSMData: acsmData, tag: book.identifier, userID: userID, deviceID: deviceID)
                         }
                     } catch {
                         Log.error(#file, "Adobe DRM activation failed for '\(book.title)': \(error.localizedDescription)")
