@@ -1,0 +1,30 @@
+{
+  "success": true,
+  "xcresult_path": "TestResults.xcresult",
+  "api_used": "none",
+  "build": {
+    "status": "failed",
+    "errors": [
+      "Testing cancelled because the build failed.",
+      "Conformance of 'EmailTicketGateway' to protocol 'MFMailComposeViewControllerDelegate' crosses into main actor-isolated code and can cause data races"
+    ],
+    "warnings": [
+      "Skipping duplicate build file in Compile Sources build phase: /Users/runner/work/ios-core/ios-core/PalaceTests/CatalogDomain/CatalogProblemDocumentTests.swift",
+      "Skipping duplicate build file in Compile Sources build phase: /Users/runner/work/ios-core/ios-core/PalaceTests/CatalogDomain/CatalogLaneAssemblyTests.swift",
+      "'sprintf' is deprecated: This function is provided for compatibility reasons only.  Due to security concerns inherent in the design of sprintf(3), it is highly recommended that you use snprintf(3) instead.",
+      "-ld_classic is deprecated and will be removed in a future release"
+    ]
+  },
+  "summary": {
+    "tests": 0,
+    "passed": 0,
+    "failed": 0,
+    "skipped": 0,
+    "duration": 0,
+    "duration_formatted": "<1ms",
+    "pass_rate": "N/A"
+  },
+  "tests": [],
+  "classes": {},
+  "failed_tests": []
+}
