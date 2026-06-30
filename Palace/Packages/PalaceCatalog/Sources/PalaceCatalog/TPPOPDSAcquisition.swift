@@ -1,7 +1,7 @@
 import Foundation
 import PalaceLogging
 
-@objc public enum TPPOPDSAcquisitionRelation: Int {
+@objc public enum TPPOPDSAcquisitionRelation: Int, Sendable {
   case generic
   case openAccess
   case borrow

@@ -1,7 +1,8 @@
 import Foundation
 import PalaceLogging
 
-public final class OPDSParser {
+// Stateless parser (no stored instance state) — safely Sendable.
+public final class OPDSParser: Sendable {
     enum ParserError: Error, LocalizedError, Equatable {
         case invalidXML
         case invalidFeed
