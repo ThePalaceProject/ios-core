@@ -22,6 +22,31 @@ import Foundation
 /// (registered on the URLSessionConfiguration directly — not URLSession.shared).
 final class NoNetworkURLProtocol: URLProtocol {
 
+    // MARK: - Interception accounting (positive proof)
+    //
+    // A hermeticity test asserting only "the request failed" is confounded: a
+    // missing network, or a non-2xx response from a request that ESCAPED to the
+    // real host, both also produce a failure. This counter gives positive proof
+    // that a specific request was actually intercepted HERE (on the session this
+    // protocol is installed on) — snapshot `interceptionCount(matching:)` before
+    // and after an operation; an increment means the stub blocked it, not the
+    // network. Lock-guarded: protocol instances load concurrently.
+    private static let interceptionLock = NSLock()
+    private static var interceptedURLs: [String] = []
+
+    /// Count of requests intercepted so far whose absolute URL contains
+    /// `substring`. Diff before/after an operation to prove THAT operation's
+    /// request was blocked here rather than escaping to the real network.
+    static func interceptionCount(matching substring: String) -> Int {
+        interceptionLock.lock(); defer { interceptionLock.unlock() }
+        return interceptedURLs.filter { $0.contains(substring) }.count
+    }
+
+    private static func recordInterception(_ url: String) {
+        interceptionLock.lock(); defer { interceptionLock.unlock() }
+        interceptedURLs.append(url)
+    }
+
     // MARK: - Registration
 
     static func enable() {
@@ -46,6 +71,7 @@ final class NoNetworkURLProtocol: URLProtocol {
 
     override func startLoading() {
         let url = request.url?.absoluteString ?? "(nil)"
+        Self.recordInterception(url)
 
         // Log for debugging — but do NOT call XCTFail here because the host app
         // (Firebase, Crashlytics, crawl prefetch, etc.) makes network requests

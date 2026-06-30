@@ -95,7 +95,19 @@ NoNetworkURLProtocol.
   vs the old nondeterministic scan); (2) keep `AccountsManager.swift` in the
   pre-release `palace_mutate` run so the 50% floor stays honest.
 
-## #3 mechanism findings (for the focused follow-up — STAGED, not yet done)
+## #3 mechanism findings (DONE — shipped in #1133, 2026-06-30)
+
+RESOLVED: #3 landed in PR #1133 (PalaceNetwork Swift 6 + hermeticity). The
+mechanism chosen was the "preferred robust fix" sketched below — but via a
+non-`#if DEBUG` AppContainer seam (BR-2 forbids DEBUG on prod paths), not the
+DEBUG `recreateSession` candidate: `AppContainer.testExecutorProtocolClasses`
+(empty in production) + `makeNetworkExecutor()` building the shared executor
+through the existing `init(sessionConfiguration:)`, with
+`_rebuildCachedForTestProtocols()` rebuilding the cached/`production()` graph
+after `PalaceTestSetup` installs `[NoNetworkURLProtocol]`. Block-test
+`ExecutorNetworkHermeticityTests` asserts positive interception. See the
+reconciled `palacenetwork-swift6-modernization.md` for the residual-escape
+enumeration (87 → 6). The historical investigation is preserved below.
 
 Investigated 2026-06-29 (after #1+#2 landed; #1127 + #1128 merged to develop):
 - The escape: `TPPNetworkExecutor` → `NetworkTransport` builds its session from
@@ -129,5 +141,8 @@ Investigated 2026-06-29 (after #1+#2 landed; #1127 + #1128 merged to develop):
   #1128 (squash 93d36dd1).
 - Observer-leak gate: self-tested both directions; non-inertness self-test proved
   the count-source is nil on iOS 26 → kept warn-only (not inert-hard theater).
-- #3: STAGED — mechanism captured above; needs a verify run + (likely) a
-  PalaceNetwork DEBUG change + SoD, as its own focused PR. Non-board-redding.
+- #3: DONE — shipped in #1133 via the non-DEBUG AppContainer seam (see header
+  above). Suite real-network escape 87 → 6; block-test asserts positive
+  interception; SoD architect + qa + blast-radius APPROVE-WITH-NITS (2026-06-30).
+  Residual 6 escape sites enumerated as a follow-up in
+  `palacenetwork-swift6-modernization.md`.
