@@ -30,7 +30,13 @@ extension TPPSignInBusinessLogic: CLLocationManagerDelegate {
         }
         Task {
             let details = try? await account.awaitReady()
-            await MainActor.run {
+            // Hop to main via the file's existing `TPPMainThreadRun.asyncIfNeeded`
+            // (a plain, non-`@Sendable` closure) rather than `await MainActor.run
+            // { … self … }`, which captures non-Sendable `self`/`details`/
+            // `completion` in a `@Sendable` body and trips the `targeted`
+            // concurrency diagnostic. This is the last statement in the Task, so
+            // there is no ordering dependency on the hop completing.
+            TPPMainThreadRun.asyncIfNeeded {
                 self.continueRegularCardCreation(with: details, completion: completion)
             }
         }

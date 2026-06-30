@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import os
 import PalaceLogging
 
 protocol Reauthenticator: NSObject {
@@ -26,14 +27,31 @@ protocol Reauthenticator: NSObject {
 /// This class takes care of initializing the VC's UI, its business logic,
 /// opening up the VC when needed, and performing the log-in request under
 /// the hood when no user input is needed.
-@objc class TPPReauthenticator: NSObject, Reauthenticator {
+/// `Reauthenticating` (PalaceAuth) refines `Sendable`, so the conformer must be
+/// Sendable-honest. The class is `final` with no un-serialized mutable instance
+/// state: the only instance storage is `authenticateCallCountLock` (an
+/// `OSAllocatedUnfairLock`, itself `Sendable`, which serializes the call
+/// counter); the `_testContainerOverride` seam is a `@MainActor`-isolated
+/// `static` (not instance state). `@unchecked` is required only because the
+/// `NSObject` superclass is not `Sendable` — not because any state is racy.
+//
+// Sendable invariant: the sole mutable instance value (`authenticateCallCount`)
+// is read and written exclusively through `authenticateCallCountLock.withLock`.
+@objc final class TPPReauthenticator: NSObject, Reauthenticator, @unchecked Sendable {
+
+    /// Serializes `authenticateCallCount` so the counter is safe to read from a
+    /// test thread while `authenticateIfNeeded` increments it from the 401-handling
+    /// thread.
+    private let authenticateCallCountLock = OSAllocatedUnfairLock(initialState: 0)
 
     /// Test-observable counter of how many times `authenticateIfNeeded`
     /// has been invoked on this instance. Used by security tests to
     /// verify single-flight behavior at upstream call sites
     /// (e.g. `TokenRefreshInterceptor.isRequestingCredentials` dedupe).
     /// Not used for any production logic.
-    internal private(set) var authenticateCallCount: Int = 0
+    internal var authenticateCallCount: Int {
+        authenticateCallCountLock.withLock { $0 }
+    }
 
     /// Test-only override for the `AppContainer` from which the
     /// `signInModalSheetPresenter` is resolved. Production reads through
@@ -77,7 +95,7 @@ protocol Reauthenticator: NSObject {
     @objc func authenticateIfNeeded(_ user: TPPUserAccount,
                                     usingExistingCredentials: Bool,
                                     authenticationCompletion: (() -> Void)?) {
-        authenticateCallCount += 1
+        authenticateCallCountLock.withLock { $0 += 1 }
         Task { @MainActor in
             Log.info(#file, "TPPReauthenticator: Re-authentication requested, using existing credentials: \(usingExistingCredentials)")
 
