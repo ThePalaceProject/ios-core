@@ -3,6 +3,7 @@ import Foundation
 import UIKit
 import Network
 import OSLog
+import os
 import AVFoundation
 import TriageBotCore
 
@@ -123,11 +124,22 @@ public final class DefaultIosContextProvider: ContextProvider {
     private func currentNetworkState() async -> String? {
         let monitor = NWPathMonitor()
         let queue = DispatchQueue(label: "TriageBotIOS.NWPathMonitor")
+        // `resumed` is read+mutated by two closures the compiler can't prove are
+        // serialized (the path handler + the timeout block). They do in fact both
+        // run on `queue`, but Swift 6 requires the guard be provably race-free, so
+        // hoist the flag into a lock (playbook: OSAllocatedUnfairLock, never
+        // nonisolated(unsafe)). `claimResume()` returns true exactly once.
+        let resumed = OSAllocatedUnfairLock(initialState: false)
+        let claimResume: @Sendable () -> Bool = {
+            resumed.withLock { alreadyResumed in
+                if alreadyResumed { return false }
+                alreadyResumed = true
+                return true
+            }
+        }
         let value = await withCheckedContinuation { (continuation: CheckedContinuation<String?, Never>) in
-            var resumed = false
             monitor.pathUpdateHandler = { path in
-                guard !resumed else { return }
-                resumed = true
+                guard claimResume() else { return }
                 let state: String
                 if path.status == .satisfied {
                     if path.usesInterfaceType(.wifi) { state = "wifi" }
@@ -143,8 +155,7 @@ public final class DefaultIosContextProvider: ContextProvider {
             monitor.start(queue: queue)
             // 250ms hard cap — we don't block snapshot for a flaky path probe
             queue.asyncAfter(deadline: .now() + .milliseconds(250)) {
-                guard !resumed else { return }
-                resumed = true
+                guard claimResume() else { return }
                 monitor.cancel()
                 continuation.resume(returning: nil)
             }
