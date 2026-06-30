@@ -35,15 +35,32 @@ jobs:
   replay:
     runs-on: [self-hosted, macos, palace-ios]
     timeout-minutes: 30
-    if: |
-      vars.ENABLE_CHAOS_QA_RUNNER == 'true' &&
-      hashFiles('.simdrive/replays/chaos/**.yaml') != ''
+    # NOTE: `hashFiles()` is NOT permitted in a job-level `if:` — it is only
+    # available inside steps. The previous job-level `hashFiles(...)` guard made
+    # the ENTIRE workflow a startup failure on every push/PR ("workflow file
+    # issue", zero jobs) on every branch. The corpus-presence check now lives in
+    # the "Check chaos corpus" step below; this job-level guard only gates on the
+    # self-hosted runner being provisioned. When the var is unset the job SKIPS
+    # cleanly (run = success) instead of erroring at startup.
+    if: vars.ENABLE_CHAOS_QA_RUNNER == 'true'
     steps:
       - name: Checkout PR
         uses: actions/checkout@v4
 
+      - name: Check chaos corpus exists
+        id: corpus
+        run: |
+          # `-e`-safe: the no-match non-zero is consumed by the `if` condition.
+          if compgen -G ".simdrive/replays/chaos/*.yaml" > /dev/null 2>&1; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "No curated chaos replays in .simdrive/replays/chaos/ — nothing to verify; skipping."
+          fi
+
       - name: Pick / boot sim
         id: sim
+        if: steps.corpus.outputs.present == 'true'
         run: |
           UDID=$(xcrun simctl list devices iPhone | awk '/Booted/ {print $NF; exit}' | tr -d '()')
           if [[ -z "$UDID" ]]; then
@@ -53,6 +70,7 @@ jobs:
           echo "udid=$UDID" >> "$GITHUB_OUTPUT"
 
       - name: Build candidate
+        if: steps.corpus.outputs.present == 'true'
         run: |
           xcodebuild -project Palace.xcodeproj -scheme Palace \
             -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}" \
@@ -62,6 +80,7 @@ jobs:
 
       - name: Replay each chaos-discovered scenario
         id: replays
+        if: steps.corpus.outputs.present == 'true'
         run: |
           UDID="${{ steps.sim.outputs.udid }}"
           FAIL=0
@@ -87,7 +106,7 @@ jobs:
           [[ "$FAIL" == "0" ]]
 
       - name: Comment summary on PR
-        if: failure()
+        if: failure() && steps.corpus.outputs.present == 'true'
         uses: actions/github-script@v7
         with:
           script: |
