@@ -77,7 +77,22 @@ private enum BorrowAuthErrorDecision {
 
 // MARK: - BorrowOperation
 
-final class BorrowOperation {
+/// - Sendable invariant: every stored dependency is a `let` bound at init
+///   (`bookRegistry`, `downloadAnnouncementService`, `errorActivityTracker`,
+///   `debugSettings`, `userRetryTracker`, `userAccountProvider`,
+///   `adobeDRMService`, the four closure-injected seams, `authCoordinator`) —
+///   the same already-shared services this flow drives today under Swift-5
+///   mode from `Task` / `MainActor.run` closures. The only mutable instance
+///   member is `weak var delegate`, assigned exactly once during owner
+///   (`MyBooksDownloadCenter`) construction and never reassigned; weak-reference
+///   reads and ARC zeroing are atomic in the Swift runtime, so no explicit lock
+///   is required. Circuit-breaker state (`borrowReauthAttempted`) is `static`
+///   and serialized by `borrowReauthLock` (NSLock). `@unchecked` (rather than a
+///   synthesized conformance) because `delegate`'s protocol existential and the
+///   shared service types are not themselves `Sendable`; this conformance
+///   asserts the serialization contract above and does not change runtime
+///   behavior — it only formalizes how the flow already executes.
+final class BorrowOperation: @unchecked Sendable {
 
     weak var delegate: BorrowOperationDelegate?
 

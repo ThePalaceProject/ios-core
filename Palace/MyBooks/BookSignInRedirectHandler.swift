@@ -40,7 +40,19 @@ protocol BookSignInRedirectHandlerDelegate: AnyObject {
 
 /// Drives the cookie-web-view auth redirect flow (SAML + non-SAML
 /// fallback). Bridges back to MBDC for the retry+cancel hooks.
-final class BookSignInRedirectHandler {
+///
+/// - Sendable invariant: every stored dependency is a `let` bound at init
+///   (`bookRegistry`, `stateManager`, `reauthenticator`, `userAccountProvider`,
+///   `credentialRequestState` — the last is itself `@unchecked Sendable`).
+///   The only mutable instance member is `weak var delegate`, assigned exactly
+///   once during owner (`MyBooksDownloadCenter`) construction and never
+///   reassigned; weak-reference reads and ARC zeroing are atomic in the Swift
+///   runtime, so no explicit lock is required. `@unchecked` (rather than a
+///   synthesized conformance) because `delegate`'s protocol existential and the
+///   shared service types are not themselves `Sendable`; this conformance only
+///   formalizes how the SAML redirect flow already executes today under Swift-5
+///   mode (it hops between `Task` and `MainActor.run` closures unchanged).
+final class BookSignInRedirectHandler: @unchecked Sendable {
 
     weak var delegate: BookSignInRedirectHandlerDelegate?
 

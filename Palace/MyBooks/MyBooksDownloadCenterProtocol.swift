@@ -42,7 +42,7 @@ protocol MyBooksDownloadCenterProviding: AnyObject {
     func deleteLocalContent(for identifier: String, account: String?)
 
     /// Returns the book with the given identifier to the library.
-    func returnBook(withIdentifier identifier: String, completion: (() -> Void)?)
+    func returnBook(withIdentifier identifier: String, completion: (@Sendable () -> Void)?)
 
     // MARK: - Download Info
 
