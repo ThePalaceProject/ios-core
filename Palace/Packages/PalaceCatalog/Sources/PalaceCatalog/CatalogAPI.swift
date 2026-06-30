@@ -11,7 +11,7 @@ public protocol CatalogAPI {
     func fetchSearchEntryPoints(from url: URL) async throws -> [SearchFormatEntry]
 }
 
-public final class DefaultCatalogAPI: CatalogAPI {
+public final class DefaultCatalogAPI: CatalogAPI, Sendable {
     public let client: NetworkClient
     public let parser: OPDSParser
     private let featureFlags: FeatureFlagProvider
@@ -94,28 +94,20 @@ public final class DefaultCatalogAPI: CatalogAPI {
     }
 
     public func search(query: String, searchDescriptorURL: URL) async throws -> CatalogFeed? {
-        return try await withCheckedThrowingContinuation { continuation in
-            TPPOpenSearchDescription.withURL(searchDescriptorURL, networkClient: client) { description in
-                guard let description = description else {
-                    continuation.resume(throwing: NSError(domain: NSURLErrorDomain, code: NSURLErrorBadURL, userInfo: [NSLocalizedDescriptionKey: "Could not load OpenSearch description"]))
-                    return
-                }
-
-                guard let searchResultURL = description.opdsURL(forSearchingString: query) else {
-                    continuation.resume(throwing: NSError(domain: NSURLErrorDomain, code: NSURLErrorBadURL, userInfo: [NSLocalizedDescriptionKey: "Could not create search URL"]))
-                    return
-                }
-
-                Task {
-                    do {
-                        let searchResults = try await self.fetchFeed(at: searchResultURL)
-                        continuation.resume(returning: searchResults)
-                    } catch {
-                        continuation.resume(throwing: error)
-                    }
-                }
-            }
+        // Straight async/await: `TPPOpenSearchDescription.withURL` is now an
+        // `async` function (was a completion-handler API), so the prior
+        // `withCheckedThrowingContinuation` bridge — which captured `self` and
+        // the continuation in a `@Sendable` closure and is an error under the
+        // Swift 6 language mode — is gone.
+        guard let description = await TPPOpenSearchDescription.withURL(searchDescriptorURL, networkClient: client) else {
+            throw NSError(domain: NSURLErrorDomain, code: NSURLErrorBadURL, userInfo: [NSLocalizedDescriptionKey: "Could not load OpenSearch description"])
         }
+
+        guard let searchResultURL = description.opdsURL(forSearchingString: query) else {
+            throw NSError(domain: NSURLErrorDomain, code: NSURLErrorBadURL, userInfo: [NSLocalizedDescriptionKey: "Could not create search URL"])
+        }
+
+        return try await fetchFeed(at: searchResultURL)
     }
 
     public func fetchSearchEntryPoints(from url: URL) async throws -> [SearchFormatEntry] {
