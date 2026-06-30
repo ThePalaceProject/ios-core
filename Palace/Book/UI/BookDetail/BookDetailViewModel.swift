@@ -626,9 +626,13 @@ final class BookDetailViewModel: ObservableObject {
             bookState = .returning
             // Actually perform the return
             didSelectReturn(for: book) {
-                self.removeProcessingButton(button)
-                self.showHalfSheet = false
-                self.isManagingHold = false
+                // completion is `@Sendable` (Swift 6 targeted, #1149) → nonisolated;
+                // hop to the main actor to mutate this @MainActor VM's state.
+                Task { @MainActor in
+                    self.removeProcessingButton(button)
+                    self.showHalfSheet = false
+                    self.isManagingHold = false
+                }
             }
 
         case .download, .get, .retry:
