@@ -31,8 +31,14 @@ final class SignInWebViewCoordinator: NSObject, WKNavigationDelegate {
         decidePolicyFor navigationAction: WKNavigationAction,
         decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
     ) {
-        let request = navigationAction.request
+        // `WKNavigationAction.request` is main actor-isolated; read it inside the
+        // @MainActor hop (capturing `navigationAction`, like `webView` already
+        // is) rather than in this nonisolated delegate body, which would trip the
+        // `targeted` "main actor-isolated property referenced from nonisolated
+        // context" diagnostic. `URLRequest` is a value type, so the deferred read
+        // observes the same request.
         Task { @MainActor in
+            let request = navigationAction.request
             let decision = self.viewModel.decideAction(for: request)
             switch decision {
             case .allow:
@@ -55,8 +61,13 @@ final class SignInWebViewCoordinator: NSObject, WKNavigationDelegate {
         decidePolicyFor navigationResponse: WKNavigationResponse,
         decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void
     ) {
-        let mime = navigationResponse.response.mimeType
+        // `WKNavigationResponse.response` is main actor-isolated; read its
+        // `mimeType` inside the @MainActor hop (capturing `navigationResponse`)
+        // rather than in this nonisolated delegate body, which would trip the
+        // `targeted` "main actor-isolated property referenced from nonisolated
+        // context" diagnostic.
         Task { @MainActor in
+            let mime = navigationResponse.response.mimeType
             let decision = self.viewModel.decideResponse(mimeType: mime)
             switch decision {
             case .allow:

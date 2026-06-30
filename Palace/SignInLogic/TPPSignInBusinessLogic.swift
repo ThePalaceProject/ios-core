@@ -684,19 +684,29 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
         guard let account = libraryAccount else { return }
         isAwaitingReadinessForLogIn = true
 
+        // The post-`awaitReady()` work touches main-actor-only state
+        // (`selectedAuthentication`, `logIn`, the `.TPPIsSigningIn` post) on a
+        // class that is NOT `@MainActor`. Hopping back via `await MainActor.run {
+        // … self … }` captures non-Sendable `self` in that `@Sendable` body and
+        // trips the `targeted` "capture of 'self' in @Sendable closure"
+        // diagnostic. Use the file's existing `TPPMainThreadRun.asyncIfNeeded`
+        // main-thread hop (a plain, non-`@Sendable` closure) instead. The
+        // re-entrancy guard (`isAwaitingReadinessForLogIn`) is cleared at the END
+        // of the main-thread work on both paths — preserving the "at most once
+        // per tap" window the `defer` previously provided.
         Task { [weak self] in
-            defer { self?.isAwaitingReadinessForLogIn = false }
             do {
                 _ = try await account.awaitReady()
             } catch {
                 Log.warn(#file, "Sign-in awaited readiness but the auth document did not load: \(error)")
-                await MainActor.run {
+                TPPMainThreadRun.asyncIfNeeded { [weak self] in
                     NotificationCenter.default.post(name: .TPPIsSigningIn, object: false)
+                    self?.isAwaitingReadinessForLogIn = false
                 }
                 return
             }
 
-            await MainActor.run {
+            TPPMainThreadRun.asyncIfNeeded { [weak self] in
                 guard let self else { return }
                 // Details are loaded now; `selectedAuthentication` resolves via
                 // `loadedAccountDetails?.auths`. Re-enter the normal path. If it
@@ -709,6 +719,7 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
                 } else {
                     NotificationCenter.default.post(name: .TPPIsSigningIn, object: false)
                 }
+                self.isAwaitingReadinessForLogIn = false
             }
         }
     }
