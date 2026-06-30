@@ -123,6 +123,12 @@
             "command": "bash scripts/hooks/post-pr-retro.sh",
             "timeout": 5,
             "statusMessage": "Checking for post-PR retro..."
+          },
+          {
+            "type": "command",
+            "command": "input=$(cat); echo \"$input\" | jq -r '.tool_input.command // empty' 2>/dev/null | grep -q 'gh pr create' || exit 0; url=$(echo \"$input\" | grep -oE 'https://github\\.com/[^\"[:space:]]+/pull/[0-9]+' | head -1); [ -n \"$url\" ] && gh pr edit \"$url\" --add-assignee mauricecarrier7 >/dev/null 2>&1; exit 0",
+            "timeout": 20,
+            "statusMessage": "Auto-assigning new PR to Maurice Carrier..."
           }
         ]
       }
