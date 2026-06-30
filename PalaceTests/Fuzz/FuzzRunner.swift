@@ -67,34 +67,64 @@ struct FuzzRunner {
     // should reject malformed input gracefully. Anything that crashes the
     // process will surface as an XCTest failure naturally.
     //
-    // A single input that takes an unbounded amount of time is NOT graceful
+    // A single input that takes an unbounded amount of CPU is NOT graceful
     // rejection — it is an algorithmic-blowup robustness bug in production (a
     // malformed server response that would stall the real bookmark sync). We
-    // measure each input's wall-clock cost and XCTFail loudly with the repro
-    // bytes if any single input exceeds a GENEROUS per-input regression bound.
-    // This is a real-bug DETECTOR, not a mask/skip: it surfaces a production
-    // hang as a hard test failure (with repro bytes) rather than silently
-    // consuming the whole run's budget. The bound is deliberately decoupled
-    // from `timeout` (the SUM-budget hint) and set high enough that the slowest
-    // legitimate single input (sub-200ms across every corpus on current
+    // bound each input's COST and XCTFail loudly with the repro bytes if it is
+    // exceeded. This is a real-bug DETECTOR, not a mask/skip.
+    //
+    // We measure THREAD CPU time, not wall-clock. Wall-clock (DispatchTime)
+    // counts intervals the test thread is descheduled, so on a contended CI
+    // runner (the whole scheme runs under -test-iterations 3 on shared
+    // macos-26) a microsecond parse can wall-clock at seconds and trip the
+    // bound — a false positive with nothing to do with the input. Thread CPU
+    // time counts only cycles actually spent in `parse`, which is exactly what
+    // an algorithmic-blowup detector should bound. The bound is decoupled from
+    // `timeout` (the SUM-budget hint) and set high enough that the slowest
+    // legitimate single input (sub-200ms of CPU across every corpus on current
     // Foundation) never trips it — only a genuine super-linear blowup (seconds
-    // on a ≤2 KB seed) does.
+    // of CPU on a ≤2 KB seed) does.
     let perInputRegressionBound: TimeInterval = 2.0
     _ = timeout // SUM-budget hint; per-input detection uses the bound above.
-    let start = DispatchTime.now()
-    _ = (try? parse(input))
-    let elapsed = Double(DispatchTime.now().uptimeNanoseconds &- start.uptimeNanoseconds) / 1_000_000_000.0
-    if elapsed > perInputRegressionBound {
-      recordFailure(
-        input: input, label: label, corpusType: corpusType,
-        reason: "single input took \(String(format: "%.3f", elapsed))s " +
-                "(> \(String(format: "%.1f", perInputRegressionBound))s per-input bound) — " +
-                "algorithmic blowup in the parse path. A malformed server response " +
-                "of this shape would stall the real sync. Offending bytes (hex, first 512): " +
-                input.prefix(512).map { String(format: "%02x", $0) }.joined(),
-        file: file, line: line
-      )
+
+    let firstCPU = measureParseCPU(input, parse)
+    guard firstCPU > perInputRegressionBound else { return }
+
+    // Over the bound on a single sample is suspicious but not yet proof (a
+    // first-touch page fault or rare stall can perturb even CPU time). Confirm
+    // in isolation: re-run the SAME input and fail only if the MEDIAN CPU cost
+    // still exceeds the bound. A real super-linear blowup reproduces every
+    // time; a one-off measurement spike does not.
+    var samples = [firstCPU]
+    for _ in 0..<4 { samples.append(measureParseCPU(input, parse)) }
+    let medianCPU = samples.sorted()[samples.count / 2]
+    guard medianCPU > perInputRegressionBound else { return }
+
+    recordFailure(
+      input: input, label: label, corpusType: corpusType,
+      reason: "single input took \(String(format: "%.3f", medianCPU))s of CPU " +
+              "(median of \(samples.count) isolated runs; > " +
+              "\(String(format: "%.1f", perInputRegressionBound))s per-input bound) — " +
+              "algorithmic blowup in the parse path. A malformed server response " +
+              "of this shape would stall the real sync. Offending bytes (hex, first 512): " +
+              input.prefix(512).map { String(format: "%02x", $0) }.joined(),
+      file: file, line: line
+    )
+  }
+
+  /// Thread CPU seconds spent in a single `parse(input)` call. Uses
+  /// `CLOCK_THREAD_CPUTIME_ID` so the measurement excludes any time the thread
+  /// is descheduled — see the rationale in `runOne`. Parser throws are expected
+  /// (graceful rejection) and ignored; we only care about cost here.
+  private static func measureParseCPU<T>(_ input: Data, _ parse: (Data) throws -> T) -> Double {
+    func cpuSeconds() -> Double {
+      var ts = timespec()
+      clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ts)
+      return Double(ts.tv_sec) + Double(ts.tv_nsec) / 1_000_000_000.0
     }
+    let start = cpuSeconds()
+    _ = (try? parse(input))
+    return cpuSeconds() - start
   }
 
   private static func recordFailure(
