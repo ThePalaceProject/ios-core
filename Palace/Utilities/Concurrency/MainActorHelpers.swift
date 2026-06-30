@@ -53,10 +53,10 @@ func runInBackground(priority: TaskPriority = .utility, _ work: @escaping @Senda
 /// Runs work on a background task and returns the result on main actor
 /// Replaces: DispatchQueue.global().async { let result = ...; DispatchQueue.main.async { use(result) } }
 @inlinable
-func runInBackgroundThenMain<T>(
+func runInBackgroundThenMain<T: Sendable>(
     priority: TaskPriority = .utility,
     backgroundWork: @escaping @Sendable () async -> T,
-    mainWork: @escaping @MainActor (T) -> Void
+    mainWork: @escaping @Sendable @MainActor (T) -> Void
 ) {
     Task.detached(priority: priority) {
         let result = await backgroundWork()
@@ -71,7 +71,7 @@ func runInBackgroundThenMain<T>(
 /// Runs multiple tasks in parallel and collects results
 /// Replaces: DispatchQueue.concurrentPerform or multiple async calls
 @inlinable
-func runParallel<T>(
+func runParallel<T: Sendable>(
     _ work: [@Sendable () async throws -> T]
 ) async throws -> [T] {
     try await withThrowingTaskGroup(of: (Int, T).self) { group in

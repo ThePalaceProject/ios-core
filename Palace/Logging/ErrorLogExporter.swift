@@ -472,7 +472,7 @@ struct ErrorLogData {
 
 /// Mail composer delegate
 @MainActor
-private class MailComposerDelegate: NSObject, MFMailComposeViewControllerDelegate {
+private class MailComposerDelegate: NSObject, @preconcurrency MFMailComposeViewControllerDelegate {
     static let shared = MailComposerDelegate()
 
     func mailComposeController(

@@ -1,7 +1,33 @@
 import UIKit
 import PalaceLogging
 
-public protocol ImageCacheType {
+/// Thread-safe one-shot resumer for `ImageCache.getAsync`'s checked
+/// continuation. The continuation must resume exactly once whether the
+/// processing operation runs to completion or is cancelled before its block
+/// executes (see `getAsync` for the full rationale / Crashlytics breadcrumb).
+///
+/// `@unchecked Sendable` invariant: the only mutable stored state is
+/// `hasResumed`, and every access to it is guarded by `lock`. `continuation`
+/// is immutable after init and `CheckedContinuation` is itself `Sendable`.
+private final class OneShotImageResumer: @unchecked Sendable {
+    private let lock = NSLock()
+    private var hasResumed = false
+    private let continuation: CheckedContinuation<UIImage?, Never>
+
+    init(_ continuation: CheckedContinuation<UIImage?, Never>) {
+        self.continuation = continuation
+    }
+
+    func resume(_ image: UIImage?) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !hasResumed else { return }
+        hasResumed = true
+        continuation.resume(returning: image)
+    }
+}
+
+public protocol ImageCacheType: Sendable {
     func set(_ image: UIImage, for key: String, expiresIn: TimeInterval?)
     func get(for key: String) -> UIImage?
     func getAsync(for key: String) async -> UIImage?
@@ -17,7 +43,14 @@ public extension ImageCacheType {
     }
 }
 
-public final class ImageCache: ImageCacheType {
+/// `@unchecked Sendable` invariant: every stored property is either an
+/// immutable `let` (`defaultTTL`, `maxDimension`, `compressionQuality`) or a
+/// reference to a type that is itself internally thread-safe — `NSCache`
+/// (`memoryImages`) and `OperationQueue` (`processingQueue`) are documented
+/// thread-safe by Apple, and `dataCache` (`GeneralCache`) serializes its own
+/// access. There is no unguarded mutable stored state on `ImageCache` itself,
+/// so concurrent access across the `processingQueue` operations is safe.
+public final class ImageCache: ImageCacheType, @unchecked Sendable {
     public static let shared = ImageCache()
 
     private let dataCache = GeneralCache<String, Data>(cacheName: "ImageCache", mode: .memoryAndDisk)
@@ -219,46 +252,43 @@ public final class ImageCache: ImageCacheType {
             // to achieve). A lock-guarded one-shot resume plus a completion
             // block guarantees exactly one resume whether the op runs or is
             // cancelled before it starts.
-            let resumeLock = NSLock()
-            var hasResumed = false
-            func resumeOnce(_ image: UIImage?) {
-                resumeLock.lock()
-                defer { resumeLock.unlock() }
-                guard !hasResumed else { return }
-                hasResumed = true
-                continuation.resume(returning: image)
-            }
+            // The one-shot resume state (lock + flag + continuation) is wrapped
+            // in `OneShotImageResumer` so the `@Sendable` BlockOperation blocks
+            // capture a single `Sendable` reference rather than a mutable
+            // captured `var` and a local function (both illegal to capture in a
+            // `@Sendable` closure under strict concurrency).
+            let resumer = OneShotImageResumer(continuation)
 
             let operation = BlockOperation()
             operation.addExecutionBlock { [weak self, weak operation] in
                 guard let self, operation?.isCancelled != true else {
-                    resumeOnce(nil)
+                    resumer.resume(nil)
                     return
                 }
                 // Double-check memory (another task may have promoted it)
                 if let img = self.memoryImages.object(forKey: key as NSString) {
-                    resumeOnce(img)
+                    resumer.resume(img)
                     return
                 }
                 guard let data = self.dataCache.get(for: key) else {
-                    resumeOnce(nil)
+                    resumer.resume(nil)
                     return
                 }
                 guard let img = UIImage(data: data) else {
                     self.remove(for: key)
-                    resumeOnce(nil)
+                    resumer.resume(nil)
                     return
                 }
                 let cost = self.imageCost(img)
                 self.memoryImages.setObject(img, forKey: key as NSString, cost: cost)
-                resumeOnce(img)
+                resumer.resume(img)
             }
             // Runs for both finished and cancelled operations. If the op was
-            // cancelled before its execution block ran, `resumeOnce` was never
+            // cancelled before its execution block ran, `resume` was never
             // called — resume here so the awaiter never hangs. The one-shot
             // guard makes this a no-op on the normal completion path.
             operation.completionBlock = {
-                resumeOnce(nil)
+                resumer.resume(nil)
             }
             processingQueue.addOperation(operation)
         }
