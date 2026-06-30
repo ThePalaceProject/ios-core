@@ -83,7 +83,24 @@ private actor TokenRefreshCoordinator {
     }
 }
 
-@objc class TPPNetworkExecutor: NSObject {
+/// `@unchecked Sendable`: lets the executor satisfy the now-`Sendable`
+/// `NetworkClient` boundary (`URLSessionNetworkClient` holds one) and be captured
+/// across concurrency domains as it already is in production. The conformance is
+/// honest, not a blanket silence — every stored property is immutable-after-init
+/// or independently synchronized:
+///   • `transport` / `responder` — `let`; both wrap the shared, thread-safe
+///     `URLSession` and are shared-by-design (the app routes through one executor).
+///   • `tokenCoordinator` — a `private actor` (its `isRefreshing`/`retryQueue`
+///     state is actor-isolated).
+///   • `_accountsManager` — `var`, but assigned ONLY in the DI initializers
+///     (never mutated after construction; nil otherwise → lazy production read).
+///   • `tokenRefreshWatchdogSeconds` — `var` with ZERO mutation sites repo-wide;
+///     effectively constant after init.
+/// NOT `final`: three PalaceTests mocks subclass this for stubbing
+/// (SpyAudiobookNetworkExecutor, MockNetworkExecutorForSync, RecordingExecutorMock).
+/// They add only test-only or lock-guarded state, so they don't defeat the
+/// assertion; `final` would break the test-target build.
+@objc class TPPNetworkExecutor: NSObject, @unchecked Sendable {
     let transport: NetworkTransport
     private let tokenCoordinator = TokenRefreshCoordinator()
 

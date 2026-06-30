@@ -27,7 +27,16 @@ import PalaceAuth
 /// Resolves the current user account through `AccountsManager` on every
 /// access so library swaps mid-coordinator-flight are observed (matches
 /// MBDC's existing computed-property semantics for `userAccount`).
-final class CoordinatorUserAccountAdapter: TPPUserAccountReading, TPPUserAccountWriting {
+/// `@unchecked Sendable`: the `TPPUserAccountReading/Writing` protocols are now
+/// `Sendable` (PalaceAuth Swift 6), and this adapter is already captured into
+/// `AuthCoordinator`'s `@Sendable` refresh Task in production. The conformance is
+/// honest: the adapter holds ZERO mutable state — only the immutable
+/// `let accountsManager` — and every method resolves `currentUserAccount`
+/// lazily through that manager, which is already accessed concurrently across
+/// the app. (NB: the architect's N1 — synchronizing `TPPUserAccount`'s
+/// `signInGeneration`/`notifyAccountChange`/`sessionIdentifier` — does not apply
+/// here: `TPPUserAccount` is NOT the conformer; this stateless adapter is.)
+final class CoordinatorUserAccountAdapter: TPPUserAccountReading, TPPUserAccountWriting, @unchecked Sendable {
 
     private let accountsManager: AccountsManager
 

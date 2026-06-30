@@ -16,7 +16,13 @@ import PalaceLogging
 /// NOTE: This class delegates all Firebase RemoteConfig access to FirebaseManager
 /// to prevent race conditions that cause the "recursive_mutex lock failed" crash.
 /// Do NOT access RemoteConfig directly from this class.
-final class RemoteFeatureFlags {
+/// `@unchecked Sendable`: `FeatureFlagProvider` (the protocol this conforms to in
+/// `RemoteFeatureFlags+PalaceCatalog.swift`) is now `Sendable` (PalaceCatalog
+/// Swift 6). This shared singleton is already accessed app-wide concurrently; the
+/// conformance is honest — its only mutable stored property, `lastFetchTime`, is
+/// accessed exclusively under `lock` (an `NSLock`); every other stored property
+/// is `let`. `final` keeps the assertion subclass-proof.
+final class RemoteFeatureFlags: @unchecked Sendable {
     static let shared = RemoteFeatureFlags()
 
     private var lastFetchTime: Date?
