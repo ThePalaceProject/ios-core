@@ -1,0 +1,35 @@
+{
+  "success": true,
+  "xcresult_path": "TestResults.xcresult",
+  "api_used": "none",
+  "build": {
+    "status": "failed",
+    "errors": [
+      "Testing cancelled because the build failed.",
+      "Reference to captured var 'resumed' in concurrently-executing code",
+      "Mutation of captured var 'resumed' in concurrently-executing code"
+    ],
+    "warnings": [
+      "Skipping duplicate build file in Compile Sources build phase: /Users/runner/work/ios-core/ios-core/PalaceTests/CatalogDomain/CatalogProblemDocumentTests.swift",
+      "Skipping duplicate build file in Compile Sources build phase: /Users/runner/work/ios-core/ios-core/PalaceTests/CatalogDomain/CatalogLaneAssemblyTests.swift",
+      "'ReadiumShared' is missing a dependency on 'ReadiumInternal' because dependency scan of Swift module 'ReadiumShared' discovered a dependency on 'ReadiumInternal'",
+      "'ReadiumShared' is missing a dependency on 'SwiftSoup' because dependency scan of Swift module 'ReadiumShared' discovered a dependency on 'SwiftSoup'",
+      "'ReadiumShared' is missing a dependency on 'ReadiumZIPFoundation' because dependency scan of Swift module 'ReadiumShared' discovered a dependency on 'ReadiumZIPFoundation'",
+      "'ReadiumShared' is missing a dependency on 'ReadiumFuzi' because dependency scan of Swift module 'ReadiumShared' discovered a dependency on 'ReadiumFuzi'",
+      "'sprintf' is deprecated: This function is provided for compatibility reasons only.  Due to security concerns inherent in the design of sprintf(3), it is highly recommended that you use snprintf(3) instead.",
+      "-ld_classic is deprecated and will be removed in a future release"
+    ]
+  },
+  "summary": {
+    "tests": 0,
+    "passed": 0,
+    "failed": 0,
+    "skipped": 0,
+    "duration": 0,
+    "duration_formatted": "<1ms",
+    "pass_rate": "N/A"
+  },
+  "tests": [],
+  "classes": {},
+  "failed_tests": []
+}
