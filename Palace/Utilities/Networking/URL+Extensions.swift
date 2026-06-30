@@ -16,4 +16,17 @@ extension URL {
         components.scheme = scheme
         return components.url ?? self
     }
+
+    /// Returns the URL with the given query item set to `value`: any existing
+    /// items with the same `name` are removed and a single `name=value` item is
+    /// appended. All other query items are preserved in order.
+    func settingQueryItem(name: String, value: String) -> URL {
+        guard var components = URLComponents(url: self, resolvingAgainstBaseURL: false) else {
+            return self
+        }
+        var items = (components.queryItems ?? []).filter { $0.name != name }
+        items.append(URLQueryItem(name: name, value: value))
+        components.queryItems = items
+        return components.url ?? self
+    }
 }

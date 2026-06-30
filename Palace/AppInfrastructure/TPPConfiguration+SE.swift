@@ -27,7 +27,16 @@ extension TPPConfiguration {
         // parse directly. A bare host preserves the historical
         // https://<host>/libraries/qa form.
         if isExplicitURL(raw) {
-            return URL(string: raw)
+            guard let url = URL(string: raw) else { return nil }
+            // PP-4698: "Enable Hidden Libraries" (useBetaLibraries) requests the
+            // hidden/testing libraries, expressed as availability=all. On the
+            // explicit-URL branch the crawler is bypassed, so it is applied here
+            // (the bare-host branch below stays on the crawler, which appends
+            // availability=all itself for its /qa path — see
+            // LibraryRegistryCrawler.crawlableURL; injecting it here too would
+            // double-append). With the toggle off the URL is fetched exactly as
+            // typed, including any availability the developer set themselves.
+            return settings.useBetaLibraries ? url.settingQueryItem(name: "availability", value: "all") : url
         }
         return URL(string: "https://\(raw)/libraries/qa")
     }
@@ -36,10 +45,16 @@ extension TPPConfiguration {
     /// developer wants fetched verbatim — no /libraries/qa suffix, no crawlable
     /// rewrite. Lets dev settings target an exact endpoint such as the
     /// non-crawlable /libraries feed.
+    ///
+    /// Only true when the explicit string actually parses to a URL, so it never
+    /// diverges from `customUrl()` (which returns nil for an unparseable
+    /// explicit string) — otherwise the loader would take the explicit-URL fetch
+    /// branch for a URL that does not exist.
     static func customRegistryIsExplicitURL(settings: TPPSettings = TPPSettings()) -> Bool {
         guard let raw = settings.customLibraryRegistryServer?
-                .trimmingCharacters(in: .whitespacesAndNewlines) else { return false }
-        return isExplicitURL(raw)
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+              isExplicitURL(raw) else { return false }
+        return URL(string: raw) != nil
     }
 
     private static func isExplicitURL(_ value: String) -> Bool {
