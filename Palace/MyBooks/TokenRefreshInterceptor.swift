@@ -40,10 +40,16 @@ protocol TokenRefreshInterceptorDelegate: AnyObject {
 /// main-actor-confined:
 ///   • `delegate` — `weak var`, wired exactly once on the main actor right
 ///     after construction (`MyBooksDownloadCenter` sets it post-`super.init()`)
-///     and only ever read on the main actor (inside `@MainActor` methods or
-///     `MainActor.run` bodies). The non-Sendable `delegate`/`bookRegistry`
-///     values are NEVER captured directly by a `@Sendable` closure — they are
-///     re-resolved through `self.delegate` on the main actor at use time.
+///     and read on the main actor at every live retry/clean-up site (inside
+///     `@MainActor` methods or `MainActor.run` bodies). The legacy nonisolated
+///     entry points (`handleProblem`, `handleBorrowInvalidCredentials`) read it
+///     synchronously off-main, but they have no production callers (the live
+///     path is `DownloadAuthRetryHandler.handleAuthFailureIfApplicable`) and are
+///     exercised only by `@MainActor` test classes; `weak var` loads/ARC-zeroing
+///     are runtime-serialized regardless. The crucial invariant: the non-Sendable
+///     `delegate`/`bookRegistry` values are NEVER captured directly by a
+///     `@Sendable` closure — they are re-resolved through `self.delegate` on the
+///     main actor at use time.
 ///   • `reauthenticator` — `let` (immutable after init).
 ///   • `userRetryTracker` / `authCoordinator` / `currentAccountHostsProvider`
 ///     — `let`; `authCoordinator` is an `actor`, the host provider is `@Sendable`.
