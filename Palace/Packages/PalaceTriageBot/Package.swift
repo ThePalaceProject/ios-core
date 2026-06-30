@@ -1,4 +1,4 @@
-// swift-tools-version: 5.9
+// swift-tools-version: 6.0
 import PackageDescription
 
 let package = Package(
@@ -31,25 +31,32 @@ let package = Package(
         )
     ],
     targets: [
+        // Source targets → Swift 6 mode (race-checked). Test targets → v5 to
+        // avoid test-infra churn (XCTestCase isn't Sendable). See #1130.
         .target(
             name: "TriageBotCore",
-            resources: [.process("Resources")]
+            resources: [.process("Resources")],
+            swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .target(
             name: "TriageBotIOS",
-            dependencies: ["TriageBotCore"]
+            dependencies: ["TriageBotCore"],
+            swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .target(
             name: "TriageBotUI",
-            dependencies: ["TriageBotCore", "TriageBotIOS"]
+            dependencies: ["TriageBotCore", "TriageBotIOS"],
+            swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .testTarget(
             name: "TriageBotCoreTests",
-            dependencies: ["TriageBotCore"]
+            dependencies: ["TriageBotCore"],
+            swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .testTarget(
             name: "TriageBotUITests",
-            dependencies: ["TriageBotUI"]
+            dependencies: ["TriageBotUI"],
+            swiftSettings: [.swiftLanguageMode(.v5)]
         )
     ]
 )
