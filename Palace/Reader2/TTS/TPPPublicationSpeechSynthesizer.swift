@@ -167,7 +167,12 @@ public class TPPPublicationSpeechSynthesizer: NSObject, Loggable {
     public func resume() {
         Task {
             if case let .paused(utterance) = state {
-                if UIAccessibility.isVoiceOverRunning {
+                // `UIAccessibility.isVoiceOverRunning` is main-actor-isolated;
+                // read it via an explicit main-actor hop (only the `Bool` — a
+                // `Sendable` value — crosses back), rather than touching it
+                // directly from this nonisolated task.
+                let isVoiceOverRunning = await MainActor.run { UIAccessibility.isVoiceOverRunning }
+                if isVoiceOverRunning {
                     if let previousUtterance = await nextUtterance(.backward) {
                         play(previousUtterance)
                     } else {

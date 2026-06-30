@@ -46,7 +46,16 @@ protocol ReaderModuleAPI {
 ///
 /// It contains sub-modules implementing `ReaderFormatModule` to handle each
 /// publication format (e.g. EPUB, PDF, etc).
-final class ReaderModule: ReaderModuleAPI {
+///
+/// - Note: `@unchecked Sendable` is safe here. Stored state is effectively
+///   immutable after `init`: `bookRegistry`, `progressSynchronizer`, and
+///   `userAccount` are `let`; `delegate` and `formatModules` are assigned in
+///   `init` and only read on the main thread during presentation. The single
+///   `Task.detached` reads only the thread-safe `bookRegistry` (a `let`) off-main
+///   and touches `delegate` exclusively inside `MainActor.run`. This lets `self`
+///   be captured by the detached task's `@Sendable` `MainActor.run` closure
+///   without crossing a Sendable boundary.
+final class ReaderModule: ReaderModuleAPI, @unchecked Sendable {
 
     weak var delegate: ModuleDelegate?
     private let bookRegistry: TPPBookRegistryProvider

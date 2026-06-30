@@ -2,7 +2,7 @@ import UIKit
 import ReadiumShared
 import PalaceLogging
 
-public struct AnnotationResponse {
+public struct AnnotationResponse: Sendable {
     var serverId: String?
     var timeStamp: String?
 }

@@ -1,7 +1,7 @@
 import UIKit
 import SwiftUI
 import ReadiumShared
-import ReadiumNavigator
+@preconcurrency import ReadiumNavigator
 import GameController
 import PalaceLogging
 

@@ -1,6 +1,18 @@
 import UIKit
 import PalaceLogging
 
+/// Transports the non-`Sendable` completion handler across the `@Sendable`
+/// `Task` boundary in the Obj-C/completion-style bridge methods. The wrapped
+/// closure is ONLY ever invoked inside `await MainActor.run { ... }` — never
+/// off the main actor and never concurrently — so `@unchecked Sendable` is
+/// sound: the box merely satisfies the capture check without changing the
+/// `ImageLoading` protocol's public signature (which would ripple `@Sendable`
+/// to every completion-handler call site).
+private final class ImageCompletionBox: @unchecked Sendable {
+    let call: (UIImage?) -> Void
+    init(_ call: @escaping (UIImage?) -> Void) { self.call = call }
+}
+
 /// Concrete `ImageLoading` implementation. Composes the existing
 /// `TPPBookCoverRegistry` actor (which still owns the source-bytes cache,
 /// circuit breaker, decode pipeline, and TenPrint placeholder generation) with
@@ -85,6 +97,7 @@ public class ImageLoader: ImageLoading {
         let authors = book.authors
         let cache = self.cache
         let registry = self.registry
+        let completionBox = ImageCompletionBox(completion)
 
         Task { [weak book] in
             var image: UIImage?
@@ -105,7 +118,7 @@ public class ImageLoader: ImageLoading {
                     cache.set(finalImage, for: coverKey)
                     capturedBook?.imageCache.set(finalImage, for: coverKey)
                 }
-                completion(finalImage)
+                completionBox.call(finalImage)
             }
         }
     }
@@ -118,6 +131,7 @@ public class ImageLoader: ImageLoading {
         let authors = book.authors
         let cache = self.cache
         let registry = self.registry
+        let completionBox = ImageCompletionBox(completion)
 
         Task { [weak book] in
             var image: UIImage?
@@ -135,7 +149,7 @@ public class ImageLoader: ImageLoading {
                     cache.set(finalImage, for: thumbnailKey)
                     capturedBook?.imageCache.set(finalImage, for: thumbnailKey)
                 }
-                completion(finalImage)
+                completionBox.call(finalImage)
             }
         }
     }

@@ -22,7 +22,15 @@ protocol TPPAgeCheckValidationDelegate: AnyObject {
     var userPresentedAgeCheck: Bool { get set }
 }
 
-@objcMembers final class TPPAgeCheck: NSObject, TPPAgeCheckValidationDelegate, TPPAgeCheckVerifying {
+@objcMembers final class TPPAgeCheck: NSObject, TPPAgeCheckValidationDelegate, TPPAgeCheckVerifying, @unchecked Sendable {
+    // @unchecked Sendable invariant: all mutable presentation state
+    // (`handlerList`, `isPresenting`) is read and written exclusively inside
+    // `serialQueue.async` blocks, which provide mutual exclusion. The remaining
+    // stored properties (`serialQueue`, `ageCheckChoiceStorage`, `minYear`,
+    // `currentYear`, `birthYearList`) are immutable `let`s. `ageCheckCompleted`
+    // is a delegate-protocol flag touched on the main thread during presentation.
+    // This resolves the 'capture of self in @Sendable closure' diagnostic on the
+    // serialQueue closures. No logic change.
 
     // Members
     private let serialQueue = DispatchQueue(label: "\(Bundle.main.bundleIdentifier ?? "org.thepalaceproject.palace").ageCheck")
