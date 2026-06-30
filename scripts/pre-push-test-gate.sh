@@ -295,6 +295,27 @@ else
     echo "[pre-push-test-gate] Verify locally with 'scripts/verify-pr.sh --quick'; CI remains authoritative." >&2
     exit 0
   fi
+
+  # A build that fails ONLY because Carthage / audiobook binary frameworks are
+  # absent (a worktree that was never `carthage bootstrap`-ed / submodule-init'd,
+  # e.g. a throwaway feature worktree) is an ENVIRONMENT limitation, not a code
+  # failure — the same false-positive class the zero-.swift exemption above
+  # already documents (R2LCPClient.xcframework etc.). The app can't even LINK, so
+  # no test ran; CI (which has the frameworks) is the authoritative gate. Detect
+  # the framework-missing signature AND confirm there is no real Swift/clang
+  # compile error, then treat it as a non-blocking WARN (like the timeout case
+  # above) instead of forcing SKIP_PRE_PUSH_TESTS.
+  _FW_MISSING_RE="no XCFramework found at|Copy Files build phase contains a reference to a missing file"
+  _REAL_ERRORS="$(grep -E ' error:' /tmp/pre-push-test-gate.log 2>/dev/null \
+                  | grep -vE "$_FW_MISSING_RE" || true)"
+  if grep -qE "$_FW_MISSING_RE" /tmp/pre-push-test-gate.log 2>/dev/null && [[ -z "$_REAL_ERRORS" ]]; then
+    echo "" >&2
+    echo "[pre-push-test-gate] BUILD could not LINK: Carthage/audiobook binary frameworks absent." >&2
+    echo "[pre-push-test-gate]   (worktree not 'carthage bootstrap'-ed / submodule-initialised) — NOT a code failure." >&2
+    echo "[pre-push-test-gate]   No test ran; CI has the frameworks and is authoritative — allowing the push." >&2
+    exit 0
+  fi
+
   echo "" >&2
   echo "[pre-push-test-gate] FAIL (exit $rc) — push blocked." >&2
   echo "[pre-push-test-gate] Last 40 lines of /tmp/pre-push-test-gate.log:" >&2
