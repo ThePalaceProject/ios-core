@@ -818,7 +818,11 @@ final class BookDetailViewModel: ObservableObject {
         self.downloadProgress = 0
     }
 
-    func didSelectReturn(for book: TPPBook, completion: (() -> Void)?) {
+    // `completion` is `@Sendable` so the closure handed to
+    // `downloadCenter.returnBook` (which threads it through BookReturnService's
+    // async return state machine) carries no non-Sendable capture. The sole
+    // caller passes an `@MainActor`-isolated closure, so this is additive.
+    func didSelectReturn(for book: TPPBook, completion: (@Sendable () -> Void)?) {
         processingButtons.insert(.returning)
         downloadCenter.returnBook(withIdentifier: book.identifier) { [weak self] in
             guard let self else { return }

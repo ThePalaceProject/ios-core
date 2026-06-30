@@ -1230,7 +1230,12 @@ extension MyBooksDownloadCenter {
     // lcpLicenseURL + deleteLocalAudiobookContent moved to LocalBookContentService
     // (private there).
 
-    @objc func returnBook(withIdentifier identifier: String, completion: (() -> Void)? = nil) {
+    // `completion` is `@Sendable` so it can thread through BookReturnService's
+    // async return state machine (`launchTrackedTask` / `MainActor.run` hops)
+    // without a non-Sendable-capture warning. Additive: existing Swift call
+    // sites pass `@MainActor`-isolated `[weak self]` closures (BookDetailViewModel,
+    // BookCellModel), which are already `Sendable`-compatible.
+    @objc func returnBook(withIdentifier identifier: String, completion: (@Sendable () -> Void)? = nil) {
         returnService.returnBook(withIdentifier: identifier, completion: completion)
     }
 

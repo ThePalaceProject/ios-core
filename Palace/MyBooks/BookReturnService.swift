@@ -35,7 +35,24 @@ protocol BookReturnServiceDelegate: AnyObject {
 // MARK: - BookReturnService
 
 /// Coordinates the return-loan flow with the circulation manager.
-final class BookReturnService {
+///
+/// - Sendable invariant: every stored dependency is a `let` bound at init
+///   (`bookRegistry`, `localContentService`, `opdsFeedService`,
+///   `downloadAnnouncementService`, `bookmarkDeletionLog`, `reauthenticator`,
+///   `userRetryTracker`, `userAccountProvider`, `adobeDRMService`,
+///   `authCoordinator`) — the same already-shared services this flow drives
+///   today under Swift-5 mode from `launchTrackedTask` / `MainActor.run`
+///   closures. The mutable instance state is exactly two members, both already
+///   serialized: `inFlightTasks` is guarded by `inFlightLock` (NSLock, see the
+///   property doc), and `weak var delegate` is assigned exactly once during
+///   owner (`MyBooksDownloadCenter`) construction and never reassigned —
+///   weak-reference reads and ARC zeroing are atomic in the Swift runtime, so
+///   it needs no explicit lock. `@unchecked` (rather than a synthesized
+///   conformance) because `delegate`'s protocol existential and the shared
+///   service types are not themselves `Sendable`; this conformance asserts the
+///   serialization contract above and does not change the ordered return
+///   cleanup contract (setProcessing → setState → removeBook → announce).
+final class BookReturnService: @unchecked Sendable {
 
     weak var delegate: BookReturnServiceDelegate?
 
@@ -252,7 +269,7 @@ final class BookReturnService {
 
     // MARK: - returnBook
 
-    func returnBook(withIdentifier identifier: String, completion: (() -> Void)? = nil) {
+    func returnBook(withIdentifier identifier: String, completion: (@Sendable () -> Void)? = nil) {
         guard let book = bookRegistry.book(forIdentifier: identifier) else {
             completion?()
             return
@@ -350,7 +367,7 @@ final class BookReturnService {
     /// Books without a revokeURL skip the OPDS round trip entirely —
     /// just clear local content + bookmarks + remove the book from the
     /// registry, then sync.
-    private func handleReturnWithoutRevokeURL(book: TPPBook, identifier: String, downloaded: Bool, completion: (() -> Void)?) {
+    private func handleReturnWithoutRevokeURL(book: TPPBook, identifier: String, downloaded: Bool, completion: (@Sendable () -> Void)?) {
         if downloaded {
             localContentService.deleteLocalContent(for: identifier)
             delegate?.purgeAllAudiobookCaches(force: true)
@@ -377,7 +394,7 @@ final class BookReturnService {
     /// Failure path branches: parsing-error-as-success, no-active-loan +
     /// loan-term-limit cleanup, invalid-credentials re-auth retry, or
     /// generic alert with retry / remove-from-device / cancel.
-    private func handleRevokeError(_ error: Error, book: TPPBook, identifier: String, downloaded: Bool, completion: (() -> Void)?) {
+    private func handleRevokeError(_ error: Error, book: TPPBook, identifier: String, downloaded: Bool, completion: (@Sendable () -> Void)?) {
         // The OverDrive revoke endpoint returns XML that isn't a
         // valid OPDS feed (e.g., a simple success response). The
         // OPDS parser rejects it → PalaceError.parsing(.opdsFeedInvalid).
@@ -529,7 +546,7 @@ final class BookReturnService {
         book: TPPBook,
         identifier: String,
         downloaded: Bool,
-        completion: (() -> Void)?
+        completion: (@Sendable () -> Void)?
     ) {
         let serverDetail = problemDoc?.detail
             ?? (error as NSError).userInfo["problemDocumentDetail"] as? String
@@ -586,7 +603,7 @@ final class BookReturnService {
     /// Performs a registry sync after a return. On failure, posts
     /// `TPPSyncFailed` so the Reservations tab can show the sync error
     /// banner; completion is always called so the return UI is dismissed.
-    private func performPostReturnSyncThen(completion: @escaping () -> Void) {
+    private func performPostReturnSyncThen(completion: @escaping @Sendable () -> Void) {
         launchTrackedTask { [weak self] in
             do {
                 // Use the injected `bookRegistry` rather than reaching into
