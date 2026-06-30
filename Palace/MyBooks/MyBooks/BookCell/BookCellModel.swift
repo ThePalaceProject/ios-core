@@ -675,9 +675,14 @@ extension BookCellModel {
         self.isLoading = true
         let identifier = self.book.identifier
         downloadCenter.returnBook(withIdentifier: identifier) { [weak self] in
-            self?.isLoading = false
-            self?.isManagingHold = false
-            self?.showHalfSheet = false
+            // returnBook's completion is `@Sendable` (Swift 6 targeted, #1149), so it
+            // runs in a nonisolated context; hop to the main actor to mutate this
+            // @MainActor model's published UI state.
+            Task { @MainActor in
+                self?.isLoading = false
+                self?.isManagingHold = false
+                self?.showHalfSheet = false
+            }
         }
     }
 
