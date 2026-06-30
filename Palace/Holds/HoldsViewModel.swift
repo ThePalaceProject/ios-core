@@ -7,7 +7,10 @@ import PalaceCatalog
 final class HoldsBookViewModel: ObservableObject, Identifiable {
     let book: TPPBook
 
-    var id: String { book.identifier }
+    // `nonisolated`: satisfies `Identifiable.id` without the @MainActor class's
+    // isolation crossing into the protocol requirement. `book` is a `let` of an
+    // @unchecked-Sendable type, so reading it off-actor is safe. No logic change.
+    nonisolated var id: String { book.identifier }
 
     var isReserved: Bool {
         var reservedFlag = false

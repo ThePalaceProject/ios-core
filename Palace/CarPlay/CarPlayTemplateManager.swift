@@ -89,6 +89,10 @@ final class CarPlayTemplateManager: NSObject {
         // Remove ourselves as observer from the Now Playing template to prevent crashes
         // during CarPlay disconnect/reconnect cycles
         if hasConfiguredNowPlaying, let nowPlayingTemplate = nowPlayingTemplate {
+            // strict-concurrency flags this call: `CPNowPlayingTemplate.remove(_:)`
+            // is main-actor-isolated but deinit is nonisolated. LEFT AS-IS for now —
+            // `MainActor.assumeIsolated` would risk a fatalError (deinit isn't
+            // guaranteed to run on main). Deferred to the CarPlay critical-path slice.
             nowPlayingTemplate.remove(self)
             Log.debug(#file, "CarPlay: Removed Now Playing observer during deinit")
         }
@@ -765,7 +769,11 @@ extension CarPlayTemplateManager: CPInterfaceControllerDelegate {
 
 // MARK: - CPNowPlayingTemplateObserver
 
-extension CarPlayTemplateManager: CPNowPlayingTemplateObserver {
+// `@preconcurrency`: CarPlay's CPNowPlayingTemplateObserver requirements are
+// non-isolated, but this type is @MainActor; CarPlay delivers these observer
+// callbacks on the main thread by contract, so the conformance is sound and
+// behavior-preserving. No logic change.
+extension CarPlayTemplateManager: @preconcurrency CPNowPlayingTemplateObserver {
     func nowPlayingTemplateUpNextButtonTapped(_ nowPlayingTemplate: CPNowPlayingTemplate) {
         Log.info(#file, "CarPlay: Up next (chapters) button tapped")
         showChapterList()

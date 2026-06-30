@@ -1,7 +1,7 @@
 import Foundation
 import Combine
 import PalaceLogging
-import PalaceCatalog
+@preconcurrency import PalaceCatalog
 import PalaceNetwork
 
 @MainActor
@@ -432,7 +432,7 @@ struct CatalogLaneModel: Identifiable {
 // MARK: - Feed Mapping
 
 extension CatalogViewModel {
-  struct MappedCatalog {
+  struct MappedCatalog: Sendable {
     let title: String
     let entries: [CatalogEntry]
     let lanes: [CatalogLaneModel]

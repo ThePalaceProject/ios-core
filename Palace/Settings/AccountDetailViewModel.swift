@@ -668,7 +668,12 @@ enum CellType: Hashable {
 
 // MARK: - NYPLUserAccountInputProvider
 
-extension AccountDetailViewModel: NYPLUserAccountInputProvider {
+extension AccountDetailViewModel: @preconcurrency NYPLUserAccountInputProvider {
+    // `@preconcurrency`: this type is @MainActor, but the protocol's requirements
+    // are non-isolated, so the @MainActor witnesses 'cross into main actor-isolated
+    // code' under Swift 6. The conformance's callers (sign-in business logic / UIKit
+    // input providers) deliver on the main thread by contract, so relaxing the
+    // isolation check here is behavior-preserving. No logic change.
     var usernameTextField: UITextField? {
         get { nil }
         set { }
@@ -682,7 +687,12 @@ extension AccountDetailViewModel: NYPLUserAccountInputProvider {
 
 // MARK: - TPPSignInOutBusinessLogicUIDelegate
 
-extension AccountDetailViewModel: TPPSignInOutBusinessLogicUIDelegate {
+extension AccountDetailViewModel: @preconcurrency TPPSignInOutBusinessLogicUIDelegate {
+    // `@preconcurrency`: this type is @MainActor, but the protocol's requirements
+    // are non-isolated, so the @MainActor witnesses 'cross into main actor-isolated
+    // code' under Swift 6. The conformance's callers (sign-in business logic / UIKit
+    // input providers) deliver on the main thread by contract, so relaxing the
+    // isolation check here is behavior-preserving. No logic change.
     var context: String {
         "Settings Tab"
     }
@@ -809,7 +819,12 @@ extension AccountDetailViewModel: TPPSignInOutBusinessLogicUIDelegate {
 
 // MARK: - NYPLBasicAuthCredentialsProvider
 
-extension AccountDetailViewModel: NYPLBasicAuthCredentialsProvider {
+extension AccountDetailViewModel: @preconcurrency NYPLBasicAuthCredentialsProvider {
+    // `@preconcurrency`: this type is @MainActor, but the protocol's requirements
+    // are non-isolated, so the @MainActor witnesses 'cross into main actor-isolated
+    // code' under Swift 6. The conformance's callers (sign-in business logic / UIKit
+    // input providers) deliver on the main thread by contract, so relaxing the
+    // isolation check here is behavior-preserving. No logic change.
     var username: String? {
         usernameText.isEmpty ? nil : usernameText
     }
