@@ -9,7 +9,10 @@ let package = Package(
     name: "PalaceNetwork",
     platforms: [
         .iOS(.v16),
-        .macOS(.v11)
+        // macOS host floor 13 to match the PalaceLogging dependency
+        // (OSAllocatedUnfairLock, macOS 13+). Host-build only; shipping app is
+        // iOS 16. Latent floor gap from #1133 — only bites standalone builds.
+        .macOS(.v13)
     ],
     products: [.library(name: "PalaceNetwork", targets: ["PalaceNetwork"])],
     dependencies: [
