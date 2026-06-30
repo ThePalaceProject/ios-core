@@ -1,87 +1,187 @@
-# App-target Swift 6 modernization — scoped plan
+# App-target Swift 6 modernization — plan, tracker & handoff
 
 <!-- audit-verified -->
-Status: **planned** (per-package modernization complete; this is the final, largest module).
-Author: claude · Drafted 2026-06-30.
+**This is the authoritative handoff doc.** Any agent/session picking up the Swift 6
+effort should read this top to bottom first. It carries the finish-line checklist,
+the proven execution playbook, the measured warning inventory, and the gotchas that
+already bit us. PR/commit states below were verified via `gh pr view` /
+`git log origin/develop` on 2026-06-30.
 
-PR-state at drafting (verified via `gh pr view` / `git log origin/develop`):
-PalaceCatalog **merged** (commit `e3496d867`); PalaceAuth PR still **OPEN** (CI
-running) — so the Auth-side Sendable ripple below is **pending that merge**, not
-yet present on develop.
+---
 
-## Context
+## 1. Status snapshot
 
-The 7 first-party SPM packages are now Swift 6 (`Logging → Keychain →
-ReadingPosition → TriageBot → Network → Catalog → Auth`; Auth pending its merge).
-The remaining surface is the **`Palace` app target itself** — currently
-`SWIFT_VERSION = 5.0` with **no `SWIFT_STRICT_CONCURRENCY` setting at all** (not
-even `targeted`). This is the "center of mass" + main-target work the #1129 sizing
-always called out as the final heavy lift. It is a multi-wave initiative, not a
-single PR.
+**DONE — merged to `develop`:**
+- All 7 first-party SPM packages → Swift 6: PalaceLogging (#1129), PalaceKeychain
+  (#1130), PalaceReadingPosition (#1131), PalaceTriageBot (#1132), PalaceNetwork
+  (#1133), PalaceCatalog (#1138), PalaceAuth (#1141).
+- Support fixes: #1134 (triagebot iOS build unblock), #1137 (chaos-replay workflow
+  un-break), #1143 (pre-push hook: skip on missing-framework build failure).
+- App-target prep: #1142 (Sendable ripple cleanup — TPPNetworkExecutor /
+  CoordinatorUserAccountAdapter / RemoteFeatureFlags → @unchecked Sendable),
+  **#1144 (Wave-1 kickoff: `SWIFT_STRICT_CONCURRENCY = targeted` on Palace +
+  Palace-noDRM)**.
 
-## Why incremental (not a big-bang flip)
+**IN FLIGHT:**
+- **#1145** (draft) — the non-critical app-target sweep (4 subsystem agents +
+  MockImageCache ripple). Branch `feat/swift6-apptarget-sweep`. Gated on CI:
+  must build green AND drop the 154-warning baseline.
 
-Flipping `SWIFT_VERSION` to 6.0 directly turns every concurrency warning into a
-hard error at once — for the whole app that is unreviewable and unbisectable.
-The supported path is to ratchet the diagnostic level, fixing each wave to zero
-before tightening:
+**NEXT:** Phase A.2/A.3 below.
 
-1. **Wave 0 — measure.** Set `SWIFT_STRICT_CONCURRENCY = targeted` in a branch,
-   build the app for the iOS sim (needs frameworks — run in the main checkout or
-   CI, NOT a fresh worktree), and capture the warning count + categories. This is
-   the first concrete action and the input to sizing the rest.
-2. **Wave 1 — `targeted` → 0.** Fix the `targeted`-level warnings (Sendable on
-   types crossing explicit concurrency boundaries, `@Sendable` closures). Land in
-   reviewable slices by subsystem (Network, MyBooks/Download, Audiobooks,
-   SignInLogic, Reader2, …). Keep `SWIFT_VERSION = 5.0`.
-3. **Wave 2 — `complete` → 0.** Bump to `SWIFT_STRICT_CONCURRENCY = complete`,
-   re-measure, fix the (larger) wave the same way.
-4. **Wave 3 — language mode.** Only once `complete` is clean, set
-   `SWIFT_VERSION = 6.0`. Should be near-zero new errors if waves 1–2 were honest.
+---
 
-Each wave: fix by **isolation, never `nonisolated(unsafe)`** (the #1129 playbook);
-full-app CI `build-and-test` is the gate; critical-path slices (auth, borrow,
-return, download, DRM, audiobooks, migrations) get architect + qa SoD.
+## 2. Finish-line checklist (what "fully done" means)
 
-## Immediate first slice — the two Sendable ripple follow-ups
+### Phase A — app-target `targeted` → 0 warnings  (baseline: 154)
+- [ ] A.1 Land **#1145** (non-critical sweep): Utilities, OPDS2/Book, UI/ViewModels,
+      Reader2/PDF. *(in flight)*
+- [ ] A.2 **Cross-file cascade slices** (deps the sweep agents flagged, not forced
+      blind): `TPPBookRegistry` `@Sendable` closures; `TPPReadiumBookmark` &
+      `PDFKitThumbnailProvider` → Sendable; `TPPAgeCheck` `@objc` protocols
+      (`AccountDetails`, `TPPUserAccountProvider`).
+- [ ] A.3 **🔴 CRITICAL-PATH slices — the dominant remaining work (~108 of 154)**.
+      Each is its own PR with **architect + qa SoD + air-tight tests + mutation
+      testing** (CLAUDE.md rigor bar — these are money/access paths):
+      - `Palace/MyBooks/` — BorrowOperation, BookReturnService, MyBooksDownloadCenter,
+        DownloadAuthRetryHandler, TokenRefreshInterceptor, RightsManagementDispatcher,
+        LCPFulfillmentHandler
+      - `Palace/SignInLogic/` — TPPReauthenticator, TPPSignInBusinessLogic, SignIn*
+      - `Palace/Audiobooks/` — PlaybackReadinessGate, LCPAudiobooks
+      - DRM — Reader2 AdobeDRM*, TPPLCPClient, LCPPDFDiskExtract
+- [ ] A.4 Verify `targeted` build → **0** concurrency warnings (CI build log).
 
-These are the warnings the Catalog and Auth package work introduce into the
-Swift-5 app (warnings, not errors). They are the natural Wave-1 starting point
-and are **critical-path**, so they get `/rigorous-fix`:
+### Phase B — `complete` → 0 warnings
+- [ ] B.1 `ruby scripts/set_strict_concurrency.rb complete` (flips the level).
+- [ ] B.2 Re-measure (CI build log) — `complete` surfaces MORE than `targeted`.
+- [ ] B.3 Fix the new wave (same subsystem-sliced + SoD approach).
+- [ ] B.4 Verify `complete` build → 0.
 
-1. **`TPPNetworkExecutor` (auth-error decision point)** — live now (Catalog
-   merged): `URLSessionNetworkClient: NetworkClient` is now `Sendable`, so the
-   executor it holds should be Sendable. But `TPPNetworkExecutor` has **mutable**
-   state: `private var _accountsManager` (lazy check-then-set) and
-   `var tokenRefreshWatchdogSeconds`. Do NOT slap on a bare `@unchecked Sendable`.
-   Required: confirm/serialize the `_accountsManager` lazy init (it already guards
-   against circular-init deadlock — verify the read/write is safe under
-   concurrency, lock if not); decide whether the watchdog var must be settable
-   post-init (likely test-only — make it injectable-at-init or lock it); THEN
-   `@unchecked Sendable` with a documented invariant. Architect + qa SoD.
-2. **`TPPUserAccount` (credential storage)** — pending the Auth merge: once
-   `TPPUserAccountReading/Writing` land as `Sendable`, the conformer must be
-   Sendable-honest. Architect N1: route `signInGeneration`, `notifyAccountChange`,
-   `sessionIdentifier` (mutated on sign-in/account-change,
-   `TPPUserAccount.swift:134/184/217/413`) through the existing `accountInfoQueue`
-   (the rest of the mutable state already is), THEN `@unchecked Sendable` — do
-   **not** blanket-`@unchecked` over the un-synchronized vars. Also a pre-existing
-   benign TOCTOU in `markCredentialsStale` (architect N2) — fold the fix in if
-   cheap.
+### Phase C — language-mode flip (finish line)
+- [ ] C.1 `SWIFT_VERSION = 5.0 → 6.0` on Palace + Palace-noDRM (pbxproj).
+- [ ] C.2 Fix residual errors (near-0 if A+B honest — warnings become errors).
+- [ ] C.3 Verify: full Swift 6 build 0 errors, green CI + full suite + mutation on
+      critical paths.
 
-Both verified by full-app CI; both critical-path → SoD. Do them together as one
-`/rigorous-fix` PR once the Auth merge lands (so both Sendable changes are on
-develop).
+### Phase D — submodules (SCOPE DECISION REQUIRED)
+- [ ] `ios-audiobooktoolkit` + `ios-audiobook-overdrive` have their own Swift (the
+      `AudiobookManager.saveBookmark` witness issue lives there). Only if "fully
+      Swift 6" includes them — each is its own repo-level modernization.
 
-## Other tracked follow-ups (fold into the relevant wave)
+### Phase E — loose ends (small, tracked)
+- [ ] CarPlay `deinit` main-actor `remove(self)` (the `assumeIsolated` we reverted
+      in the sweep — needs a safe fix in the CarPlay slice).
+- [ ] `TokenRequest.execute(completion:)` test (qa nit, needs global URLProtocol stub).
+- [ ] stale `cacheQueue` comments in `CatalogRepositoryTests`.
+- [ ] 6 residual hermeticity escape sites (from #1133's `87→6`) — see
+      `.forgeos/intent/palacenetwork-swift6-modernization.md`.
+- [ ] #3 chaos-replay **activation** (admin-gated; NOT Swift-6): set repo var
+      `ENABLE_CHAOS_QA_RUNNER=true`, provision self-hosted `[macos, palace-ios]`
+      runner, populate `.simdrive/replays/chaos/` (simdrive).
 
-- `execute(completion:)` test for `TokenRequest` (qa nit, needs global URLProtocol
-  stubbing) — Wave 1, SignInLogic slice.
-- Refresh stale `cacheQueue` comments in `CatalogRepositoryTests` (qa optional).
+---
 
-## Out of scope here
+## 3. Execution playbook (HOW — proven this session)
 
-- Chaos-replay **activation** (admin: `ENABLE_CHAOS_QA_RUNNER` var + self-hosted
-  runner + populate `.simdrive/replays/chaos/`) — tracked separately.
-- ~68 pre-existing non-concurrency style warnings in PalaceCatalog (redundant
-  `public`, always-true casts).
+**The shape:** for each non-critical subsystem, swarm in parallel; for critical
+paths, careful SoD'd single slices. Do NOT blind-swarm money/access code.
+
+**Per-slice recipe:**
+1. **Measure** — the authoritative warning inventory is the **CI build log** of a
+   PR that has `SWIFT_STRICT_CONCURRENCY=targeted` set (e.g. #1144/#1145). Pull it:
+   `gh run view <unit-tests-run-id> --log | grep -E ':[0-9]+:[0-9]+: warning:' | grep -iE 'Sendable|concurrency|actor-isolated|main actor|sending|nonisolated|crosses into'`.
+   DO NOT measure with a *global* `SWIFT_STRICT_CONCURRENCY=targeted` xcodebuild
+   override — it overrides the packages' v6 mode and re-flags already-Sendable
+   package types (TPPOPDSFeed etc.), OVER-counting. Per-target setting only.
+2. **Fix by ISOLATION, never `nonisolated(unsafe)`** (the #1129 playbook):
+   - value type not Sendable → add `: Sendable` (additive).
+   - generic `T` crossing Task/continuation → `<T: Sendable>`.
+   - class captured/crossed → `final class … : @unchecked Sendable` with a
+     **documented invariant** (lock-guarded or immutable-after-init). NO bare @unchecked.
+   - `@MainActor`-isolated member from nonisolated → `await MainActor.run { }` hop
+     or add `@MainActor`. Avoid `MainActor.assumeIsolated` in `deinit` (fatalErrors
+     if off-main).
+   - delegate conformance "crosses into main actor-isolated code" → `@preconcurrency`
+     on the conformance (the EmailTicketGateway #1134 pattern).
+   - module types not Sendable-audited → `@preconcurrency import <Module>`.
+3. **Making a PROTOCOL Sendable ripples to ALL conformers** (incl. test mocks) —
+   each must become Sendable or the build breaks. (ImageCacheType: Sendable forced
+   ImageCache + MockImageCache → @unchecked Sendable.) Grep conformers before landing.
+4. **Verify = CI** (see §4: no local app build). Build must stay green (warnings ≠
+   errors while SWIFT_VERSION=5.0) AND the count must drop.
+
+**Swarm-then-reconcile (for non-critical subsystems):** launch parallel agents
+(Agent tool, one per subsystem, isolation:"worktree"), each given its file list +
+the warning inventory + the playbook + "you CANNOT build locally; fix per analysis;
+report cross-file deps; flag anything critical-path instead of editing." Then the
+ORCHESTRATOR integrates with judgment (see gotchas).
+
+---
+
+## 4. Build environment — READ THIS (biggest time-sink)
+
+**You CANNOT fully build the `Palace` app target locally in a fresh worktree.** It
+needs **private Adobe DRM headers** (`dp_all.h` from `adobe-content-filter`) that
+are not in any submodule. `Palace-noDRM` also failed. **CI is the only complete
+build/measurement environment.** Don't sink hours into a local app build.
+
+- A fresh worktree also lacks Carthage binaries (`R2LCPClient`/`AudioEngine`
+  xcframeworks) + needs ALL submodules initialized (`git submodule update --init`)
+  + the `OverdriveProcessor.framework` from the `ios-audiobook-overdrive` subproject.
+  Even with all that, the private DRM headers block the `Palace` scheme.
+- **The pre-push hook now self-skips** when the build can't link due to missing
+  frameworks (#1143) — so a **plain `git push`** from a fresh worktree works (no
+  `SKIP_PRE_PUSH_TESTS` bypass, no manual push). A genuine `error:` still blocks.
+- `scripts/set_strict_concurrency.rb <targeted|complete|"">` flips the level on the
+  app targets (reversible; empty arg removes it).
+
+---
+
+## 5. Integration gotchas (these already bit us — don't repeat)
+
+- **Agent `isolation:"worktree"` bases are STALE.** Every sweep agent's worktree
+  checked out an old commit (3.1.0-era `2ea504885` / session-start `d2252f9e7`),
+  NOT current develop, because the shared main checkout is branch-volatile. Agents
+  `git reset --hard`'d to the warnings' base to work. So their commits are against
+  an OLD base.
+- **Cherry-pick is clean ONLY for files unchanged base→develop.** Check first:
+  `git diff <agent-base>..origin/develop -- <file>`. (Most app files were unchanged
+  and cherry-picked clean.)
+- **NEVER resolve a cherry-pick conflict with `git checkout --theirs` on a stale
+  base** — it takes the agent's WHOLESALE old file and silently REVERTS develop
+  content. This happened to `CatalogViewModel` (would have reverted develop's
+  `prefetchTasks` fix). Instead: restore develop's file (`git show origin/develop:<f>`)
+  and re-apply ONLY the agent's intended hunks. Line-count sanity-check after.
+- **Review agent output before integrating.** One agent added `MainActor.assumeIsolated`
+  in a `deinit` (crash risk if deinit runs off-main) — reverted at integration.
+  Auth-adjacent changes (AccountDetailViewModel @preconcurrency) were kept but
+  flagged for the PR reviewers.
+- **The shared main checkout is volatile** (fleet switches its branch mid-session).
+  Re-check `git branch --show-current` before any commit; land fixes from dedicated
+  worktrees, not the main checkout.
+
+---
+
+## 6. Measured inventory (Wave 1 `targeted`, CI authoritative: 154)
+
+Per-subsystem (raw counts; critical-path 🔴):
+- 🔴 MyBooks 110 (Borrow/Return/Download/DRM) · Reader2 52 · OPDS2 44 (mostly stale
+  TPPOPDSFeed artifacts → resolve via package) · Utilities 40 · Book 36 · 🔴
+  SignInLogic 28 · 🔴 Audiobooks 22 · Settings 16 · CatalogUI 14 · Accounts 14 ·
+  PDF 10 · CarPlay 8 · Network 6 · AppInfrastructure 6 · Logging/Holds/Support ≤4.
+
+Dominant categories: `#SendableClosureCaptures` (~250 raw), Sendable non-conformance
+(58), `@MainActor` conformance-crossing (28), `@MainActor` static-from-nonisolated (~24).
+
+**Out of scope (not Swift-6 concurrency):** ~68 pre-existing style warnings in
+PalaceCatalog (redundant `public`, always-true casts).
+
+---
+
+## 7. Key artifacts
+- Plan/tracker/handoff: **this file**.
+- Setter: `scripts/set_strict_concurrency.rb`.
+- Intents: `.forgeos/intent/palace{network,catalog,auth}-swift6-modernization.md`,
+  `.forgeos/intent/accountdetail-leak-cycle-and-hermetic-network.md` (hermeticity).
+- The #1129 PR body is the canonical isolation playbook + original sizing.
+- Sweep branch (in flight): `feat/swift6-apptarget-sweep` (#1145).
