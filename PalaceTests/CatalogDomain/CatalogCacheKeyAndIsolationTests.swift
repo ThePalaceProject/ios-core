@@ -298,10 +298,21 @@ final class CatalogCacheKeyAndIsolationTests: XCTestCase {
 
         // Simulate memory pressure. The repository subscribes to this
         // notification and drops its in-memory feed map.
-        NotificationCenter.default.post(
-            name: UIApplication.didReceiveMemoryWarningNotification,
-            object: nil
-        )
+        //
+        // Post on the main thread: UIKit ALWAYS delivers this notification on
+        // main in production, and posting `object: nil` is a process-wide
+        // broadcast that also wakes every UIKit-auto-subscribed UIViewController
+        // (including any leaked by a sibling test). Off the main thread those
+        // handlers mutate the layout engine off-main → NSInternalInconsistency-
+        // Exception. The main-hop restores production semantics and makes this
+        // test robust to suite-wide observer leaks. (Repository eviction still
+        // runs on cacheQueue; the awaitCondition poll below is unchanged.)
+        await MainActor.run {
+            NotificationCenter.default.post(
+                name: UIApplication.didReceiveMemoryWarningNotification,
+                object: nil
+            )
+        }
 
         // The eviction is dispatched onto cacheQueue, so poll for it.
         // 30s timeout — same global-overload + CI-load lineage as the
@@ -353,11 +364,16 @@ final class CatalogCacheKeyAndIsolationTests: XCTestCase {
         _ = try await sut.fetchSearchEntryPoints(from: url)
         let baselineEntryPointFetches = api.fetchSearchEntryPointsCalls.count
 
-        // Memory warning fires.
-        NotificationCenter.default.post(
-            name: UIApplication.didReceiveMemoryWarningNotification,
-            object: nil
-        )
+        // Memory warning fires. Post on main: see the sibling test above —
+        // UIKit delivers this on main in production, and an off-main `object: nil`
+        // broadcast wakes leaked UIViewController observers that then touch the
+        // layout engine off-main (NSInternalInconsistencyException).
+        await MainActor.run {
+            NotificationCenter.default.post(
+                name: UIApplication.didReceiveMemoryWarningNotification,
+                object: nil
+            )
+        }
 
         // Both caches must be cleared. Sanity-poll on the feed cache
         // because the eviction is dispatched on cacheQueue.

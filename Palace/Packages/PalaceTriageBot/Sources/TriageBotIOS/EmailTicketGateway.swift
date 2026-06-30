@@ -21,7 +21,14 @@ import TriageBotCore
 /// programmatically. That's Apple's contract for MFMailComposeViewController
 /// and the right consent model for support reports.
 @MainActor
-public final class EmailTicketGateway: NSObject, TicketGateway, MFMailComposeViewControllerDelegate {
+public final class EmailTicketGateway: NSObject, TicketGateway, @preconcurrency MFMailComposeViewControllerDelegate {
+    // `@preconcurrency` on the MFMailComposeViewControllerDelegate conformance:
+    // this type is @MainActor, but MessageUI is not Sendable-audited, so its
+    // delegate requirement is non-isolated and a @MainActor method "crosses
+    // into main actor-isolated code" under Swift 6 (build error). MessageUI
+    // delivers `mailComposeController(_:didFinishWith:error:)` on the main
+    // thread by contract, so relaxing the isolation check for this one
+    // conformance is sound and behavior-preserving.
 
     private let supportEmail: String
     private let fallback: TicketGateway?
