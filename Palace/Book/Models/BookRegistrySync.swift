@@ -4,7 +4,31 @@ import PalaceCatalog
 
 /// Handles server synchronization for the book registry.
 /// Manages syncing loans from the OPDS feed and loading/saving from disk.
-class BookRegistrySync {
+///
+/// Swift 6 concurrency (Wave 1, `SWIFT_STRICT_CONCURRENCY=targeted`):
+/// `@unchecked Sendable`.
+///
+/// INVARIANT — this type carries no concurrently-mutated shared state:
+///   • Every stored dependency (`store`, `accountsManager`,
+///     `downloadCenterProvider`, `opdsFeedServiceProvider`, the folder/file
+///     name constants, `diskWriteQueue`, `diskWriteQueueKey`) is an immutable
+///     `let`. `store` (`BookRegistryStore`) serialises all registry access
+///     through its own `syncQueue` barrier; all disk writes are serialised
+///     through `diskWriteQueue`.
+///   • The two mutable vars (`syncUrl`, `loadingAccount`) are main-thread
+///     confined in production: every write happens inside a
+///     `DispatchQueue.main.async` / `await MainActor.run` block (see `load`
+///     and `sync`), and the reads that gate behaviour (e.g. `syncUrl != loansUrl`,
+///     the duplicate-load guard) run on that same main queue. No write races
+///     another write across threads.
+///
+/// Marking the type Sendable lets it be captured by the structured-concurrency
+/// (`Task { … }` / `await MainActor.run { … }`) closures in `sync(...)` without
+/// any runtime change — it documents the main-thread confinement the code
+/// already relies on, rather than altering it. See module-3 playbook (#1129):
+/// prefer isolation / `@unchecked Sendable` with a documented invariant over
+/// `nonisolated(unsafe)`.
+final class BookRegistrySync: @unchecked Sendable {
 
   private let store: BookRegistryStore
   private let accountsManager: AccountsManager
