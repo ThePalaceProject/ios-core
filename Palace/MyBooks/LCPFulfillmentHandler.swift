@@ -41,9 +41,11 @@ protocol LCPFulfillmentHandlerDelegate: AnyObject {
 // @unchecked Sendable invariant: every stored dependency is a `let`
 // (immutable after init). The only mutable member is `weak var delegate`,
 // which is wired exactly once by MyBooksDownloadCenter during its own
-// construction on the main thread and thereafter only read from inside the
-// fulfillment/progress callbacks' `MainActor.run` hops. No stored value is
-// mutated after init, so the handler is safe to share across the LCP
+// construction on the main thread and never reassigned. It is read from the
+// fulfillment/progress callbacks' `MainActor.run` hops and from nonisolated
+// callback bodies, but `weak var` loads / ARC-zeroing are runtime-serialized
+// via the side-table lock, so reading it off-main is memory-safe. No stored
+// value is mutated after init, so the handler is safe to share across the LCP
 // fulfillment-task / progress-callback concurrency boundaries.
 final class LCPFulfillmentHandler: @unchecked Sendable {
 

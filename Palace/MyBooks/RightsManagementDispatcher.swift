@@ -61,10 +61,12 @@ struct RightsManagementDispatchResult {
 // @unchecked Sendable invariant: every stored dependency is a `let`
 // (immutable after init). The only mutable member is `weak var delegate`,
 // which is wired exactly once by MyBooksDownloadCenter during its own
-// construction (`self.rightsDispatcher.delegate = self`) on the main thread
-// and thereafter only read from inside `MainActor.run` hops. No stored value
-// is mutated after init, so the class is safe to share across the Adobe
-// fulfillment Task's concurrency boundary.
+// construction (`self.rightsDispatcher.delegate = self`) on the main thread and
+// never reassigned. It is read from both `MainActor.run` hops and the
+// nonisolated `dispatch(...)` body, but `weak var` loads / ARC-zeroing are
+// runtime-serialized via the side-table lock, so reading it off-main is
+// memory-safe. No stored value is mutated after init, so the class is safe to
+// share across the Adobe fulfillment Task's concurrency boundary.
 final class RightsManagementDispatcher: @unchecked Sendable {
 
     weak var delegate: RightsManagementDispatcherDelegate?
