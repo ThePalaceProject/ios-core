@@ -4,10 +4,29 @@ import UIKit
 import PalaceNetwork
 import PalaceCatalog
 
-// MARK: - Accessibility focus target (PP-3834: move VoiceOver to results after search)
+// MARK: - Accessibility focus target
+// PP-4641: after a search completes, VoiceOver focus must remain on the search
+// field (WCAG 3.2.2 On Input) rather than drift into the results list. (This
+// reverses PP-3834, which had deliberately moved focus into the results.)
 private enum SearchAccessibilityFocus: Hashable {
     case searchField
-    case resultsArea
+}
+
+// MARK: - Post-search accessibility gate (PP-4641)
+/// Pure decision for whether, when a search finishes, we should perform the
+/// post-search VoiceOver work: re-assert focus on the search field and announce
+/// the result count. Extracted so the gating logic is unit-testable without a
+/// live VoiceOver session. The view owns the actual focus/announcement effects.
+enum SearchAccessibilityFocusPolicy {
+    static func shouldHandlePostSearchAccessibility(
+        isLoading: Bool,
+        query: String,
+        isVoiceOverRunning: Bool
+    ) -> Bool {
+        !isLoading
+            && !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && isVoiceOverRunning
+    }
 }
 
 // MARK: - SearchView
@@ -119,7 +138,7 @@ private extension CatalogSearchView {
                     proxy.scrollTo("search-results-top", anchor: .top)
                 }
                 .onChange(of: viewModel.isLoading) { isLoading in
-                    announceSearchResults(isLoading: isLoading)
+                    handlePostSearchAccessibility(isLoading: isLoading)
                 }
         }
     }
@@ -149,7 +168,6 @@ private extension CatalogSearchView {
         .accessibilityLabel(NSLocalizedString("Search results list", comment: "VoiceOver label for search results area"))
         .accessibilityValue(Strings.SearchAnnouncements.searchResultsListValue(bookCount: viewModel.filteredBooks.count))
         .accessibilityHint(Strings.SearchAnnouncements.searchResultsListHint)
-        .accessibilityFocused($accessibilityFocus, equals: .resultsArea)
     }
 
     /// "No results" empty state shown when a completed search returns zero books.
@@ -176,13 +194,27 @@ private extension CatalogSearchView {
         .accessibilityIdentifier(AccessibilityID.Search.noResultsView)
     }
 
-    func announceSearchResults(isLoading: Bool) {
-        if !isLoading, !viewModel.searchQuery.isEmpty, UIAccessibility.isVoiceOverRunning {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                let value = Strings.SearchAnnouncements.searchResultsListValue(bookCount: viewModel.filteredBooks.count)
-                let listLabel = NSLocalizedString("Search results list", comment: "VoiceOver label for search results area")
-                UIAccessibility.post(notification: .announcement, argument: "\(listLabel), \(value)")
-            }
+    /// PP-4641: when a search finishes under VoiceOver, keep focus on the search
+    /// field (so activating Search isn't an unexpected change of context) and
+    /// announce the result count. The short delay lets the results list render
+    /// first, so our focus assertion wins the race against SwiftUI's automatic
+    /// relocation into the freshly-changed list.
+    func handlePostSearchAccessibility(isLoading: Bool) {
+        guard SearchAccessibilityFocusPolicy.shouldHandlePostSearchAccessibility(
+            isLoading: isLoading,
+            query: viewModel.searchQuery,
+            isVoiceOverRunning: UIAccessibility.isVoiceOverRunning
+        ) else { return }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            // Re-assert focus on the search field. In the common case focus never
+            // left the field, so this is a no-op (no redundant re-announcement);
+            // if SwiftUI drifted focus into the results, this brings it back.
+            accessibilityFocus = .searchField
+            // Preserve the result-count announcement (no regression vs. prior behavior).
+            let value = Strings.SearchAnnouncements.searchResultsListValue(bookCount: viewModel.filteredBooks.count)
+            let listLabel = NSLocalizedString("Search results list", comment: "VoiceOver label for search results area")
+            UIAccessibility.post(notification: .announcement, argument: "\(listLabel), \(value)")
         }
     }
 
@@ -220,6 +252,7 @@ private extension CatalogSearchView {
             )
             .accessibilityIdentifier(AccessibilityID.Search.searchField)
             .focused($isSearchFieldFocused)
+            .accessibilityFocused($accessibilityFocus, equals: .searchField)
             .submitLabel(.search)
             .padding(8)
             .padding(.trailing, 40)

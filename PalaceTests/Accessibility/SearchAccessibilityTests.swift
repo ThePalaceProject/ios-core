@@ -82,4 +82,54 @@ final class SearchAccessibilityTests: XCTestCase {
         let label = Strings.Generic.searchBooks
         XCTAssertFalse(label.isEmpty, "Search books label should not be empty")
     }
+
+    // MARK: - PP-4641: Post-search VoiceOver focus-retention gate
+
+    /// Happy path: VoiceOver on, a real query finished loading → we keep
+    /// focus on the search field (and announce results).
+    func testPostSearchGate_voiceOverOn_finishedRealQuery_isTrue() {
+        XCTAssertTrue(
+            SearchAccessibilityFocusPolicy.shouldHandlePostSearchAccessibility(
+                isLoading: false, query: "swift", isVoiceOverRunning: true
+            )
+        )
+    }
+
+    /// Still loading → no focus retention yet (the list isn't there to land on,
+    /// and we must not fire mid-request). Guards the `!isLoading` term.
+    func testPostSearchGate_whileLoading_isFalse() {
+        XCTAssertFalse(
+            SearchAccessibilityFocusPolicy.shouldHandlePostSearchAccessibility(
+                isLoading: true, query: "swift", isVoiceOverRunning: true
+            )
+        )
+    }
+
+    /// VoiceOver off → focus placement is not our concern; gate is false so
+    /// sighted behavior is untouched. Guards the `isVoiceOverRunning` term.
+    func testPostSearchGate_voiceOverOff_isFalse() {
+        XCTAssertFalse(
+            SearchAccessibilityFocusPolicy.shouldHandlePostSearchAccessibility(
+                isLoading: false, query: "swift", isVoiceOverRunning: false
+            )
+        )
+    }
+
+    /// Empty query (no active search) → false. Guards the empty-query term.
+    func testPostSearchGate_emptyQuery_isFalse() {
+        XCTAssertFalse(
+            SearchAccessibilityFocusPolicy.shouldHandlePostSearchAccessibility(
+                isLoading: false, query: "", isVoiceOverRunning: true
+            )
+        )
+    }
+
+    /// Whitespace-only query is treated as empty → false. Guards the trim.
+    func testPostSearchGate_whitespaceQuery_isFalse() {
+        XCTAssertFalse(
+            SearchAccessibilityFocusPolicy.shouldHandlePostSearchAccessibility(
+                isLoading: false, query: "   \n ", isVoiceOverRunning: true
+            )
+        )
+    }
 }
