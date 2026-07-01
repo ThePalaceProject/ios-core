@@ -21,7 +21,7 @@ private func clearAudiobookTimeTrackerStore() {
 // MARK: - Mock Network Executor for Testing
 
 /// Thread-safe mock network executor for AudiobookDataManager tests
-class MockNetworkExecutorForSync: TPPNetworkExecutor {
+class MockNetworkExecutorForSync: TPPNetworkExecutor, @unchecked Sendable {
 
     private let lock = NSLock()
     private var _responses: [URL: MockResponse] = [:]

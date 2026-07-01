@@ -12,7 +12,7 @@ import Combine
 import Foundation
 import PalaceNetwork
 
-final class MockReachability: Reachability {
+final class MockReachability: Reachability, @unchecked Sendable {
     private let subject: CurrentValueSubject<Bool, Never>
     private var stubbedConnected: Bool
 

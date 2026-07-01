@@ -399,7 +399,7 @@ final class DefaultRecentlyReadingServiceTests: XCTestCase {
 /// `recordOpened(_:)` is a no-op because these tests only exercise the
 /// read path — open times come pre-seeded via the initializer.
 @MainActor
-private final class StubBookOpenTracker: BookOpenTracking {
+private final class StubBookOpenTracker: @preconcurrency BookOpenTracking {
     private var openTimes: [String: Date]
     init(openTimes: [String: Date]) { self.openTimes = openTimes }
     func recordOpened(_ bookId: String, at date: Date) { openTimes[bookId] = date }

@@ -39,6 +39,7 @@ final class AppContainerTests: XCTestCase {
     /// A test suite must be able to drop a mock registry into AppContainer
     /// and see that mock on the other side. If this breaks, no ViewModel that
     /// depends on AppContainer can be unit-tested.
+    @MainActor
     func testInit_withMockBookRegistry_exposesTheMockNotTheProductionRegistry() {
         let mock = TPPBookRegistryMock()
         let container = AppContainer(
@@ -77,6 +78,7 @@ final class AppContainerTests: XCTestCase {
     /// be able to hold separate service graphs. If this regresses to a class
     /// with shared state, every test suite that builds its own container
     /// gets unexpected cross-contamination.
+    @MainActor
     func testInit_twoContainersWithDifferentRegistries_remainIndependent() {
         let mockA = TPPBookRegistryMock()
         let containerA = AppContainer(

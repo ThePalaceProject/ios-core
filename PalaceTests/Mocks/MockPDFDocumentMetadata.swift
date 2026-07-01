@@ -9,7 +9,7 @@ import Foundation
 @testable import Palace
 
 /// Mock PDF document metadata for testing PDF views without real book dependencies.
-class MockPDFDocumentMetadata: TPPPDFDocumentMetadata {
+class MockPDFDocumentMetadata: TPPPDFDocumentMetadata, @unchecked Sendable {
 
     private var mockIsBookmarked: Bool = false
     private var mockBookmarks: Set<Int> = []

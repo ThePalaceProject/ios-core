@@ -17,7 +17,7 @@
 import Combine
 import XCTest
 @preconcurrency import PalaceAudiobookToolkit
-@testable import Palace
+@preconcurrency @testable import Palace
 
 @MainActor
 final class LocalFileAdapterTests: XCTestCase {
@@ -90,10 +90,20 @@ final class LocalFileAdapterTests: XCTestCase {
         ) {
             callCount += 1
             receivedURLs.append(fulfillURL)
-            let toReturn = stubbedToken
+            // Box the non-Sendable token so it can cross the @Sendable
+            // dispatch closure. Test double: the box is created and consumed
+            // on the same serial test flow, so unchecked Sendable is safe.
+            let box = TokenBox(stubbedToken)
             DispatchQueue.main.async {
-                completion(toReturn)
+                completion(box.value)
             }
+        }
+
+        /// Test-only carrier that lets a non-Sendable bearer token cross a
+        /// `@Sendable` dispatch closure. Confined to the test's serial usage.
+        private final class TokenBox: @unchecked Sendable {
+            let value: MyBooksSimplifiedBearerToken?
+            init(_ value: MyBooksSimplifiedBearerToken?) { self.value = value }
         }
     }
 

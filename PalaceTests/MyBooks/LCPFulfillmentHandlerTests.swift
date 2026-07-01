@@ -359,7 +359,7 @@ private final class SpyLCPLibraryService: LCPLibraryService {
     }
 }
 
-private final class FakeDownloadTask: URLSessionDownloadTask {
+private final class FakeDownloadTask: URLSessionDownloadTask, @unchecked Sendable {
     private let _state: URLSessionTask.State
     private let _taskIdentifier: Int
 

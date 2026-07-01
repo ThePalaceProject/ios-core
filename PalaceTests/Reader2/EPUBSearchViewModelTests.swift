@@ -95,20 +95,40 @@ final class MockSearchService: SearchService {
 
 // MARK: - Mock EPUB Search Delegate
 
-/// Mock delegate to verify navigation calls
-@MainActor
-final class MockEPUBSearchDelegate: EPUBSearchDelegate {
-    private(set) var didSelectCallCount = 0
-    private(set) var lastSelectedLocation: Locator?
+/// Mock delegate to verify navigation calls.
+///
+/// `EPUBSearchDelegate` (production) is a nonisolated `AnyObject` protocol, so
+/// a `@MainActor` conformance would "cross into main actor-isolated code"
+/// (Swift 6): its synchronous `didSelect(location:)` requirement can't be
+/// witnessed by a main-actor-isolated method. Instead the mock is
+/// `@unchecked Sendable` with its counters guarded by a lock, so the
+/// nonisolated witness satisfies the requirement without a data race.
+/// Isolation-only; observable recording behavior is unchanged.
+final class MockEPUBSearchDelegate: EPUBSearchDelegate, @unchecked Sendable {
+    private let lock = NSLock()
+    private var _didSelectCallCount = 0
+    private var _lastSelectedLocation: Locator?
+
+    var didSelectCallCount: Int {
+        lock.lock(); defer { lock.unlock() }
+        return _didSelectCallCount
+    }
+
+    var lastSelectedLocation: Locator? {
+        lock.lock(); defer { lock.unlock() }
+        return _lastSelectedLocation
+    }
 
     func didSelect(location: Locator) {
-        didSelectCallCount += 1
-        lastSelectedLocation = location
+        lock.lock(); defer { lock.unlock() }
+        _didSelectCallCount += 1
+        _lastSelectedLocation = location
     }
 
     func reset() {
-        didSelectCallCount = 0
-        lastSelectedLocation = nil
+        lock.lock(); defer { lock.unlock() }
+        _didSelectCallCount = 0
+        _lastSelectedLocation = nil
     }
 }
 

@@ -228,7 +228,7 @@ final class DownloadThrottlingServiceTests: XCTestCase {
 /// instances minted via URLSession can only enter `.running` by
 /// actually running, and tests need deterministic state without a live
 /// network.
-private final class FakeDownloadTask: URLSessionDownloadTask {
+private final class FakeDownloadTask: URLSessionDownloadTask, @unchecked Sendable {
     private let _state: URLSessionTask.State
     private let _taskIdentifier: Int
     private(set) var suspendCallCount = 0

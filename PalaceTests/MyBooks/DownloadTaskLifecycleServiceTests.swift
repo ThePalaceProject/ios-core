@@ -205,7 +205,7 @@ private final class SpyAnnouncer: DownloadLifecycleAnnouncing {
     func resetProgress(identifier: String) {}
 }
 
-private final class StubDownloadTask: URLSessionDownloadTask {
+private final class StubDownloadTask: URLSessionDownloadTask, @unchecked Sendable {
     private let _taskIdentifier: Int
     private(set) var resumeCount = 0
 

@@ -874,7 +874,7 @@ final class DownloadStartDispatcherTests: XCTestCase {
 // MARK: - SpyDispatcherDelegate
 
 @MainActor
-private final class SpyDispatcherDelegate: DownloadStartDispatcherDelegate {
+private final class SpyDispatcherDelegate: @preconcurrency DownloadStartDispatcherDelegate {
     let bookRegistry: TPPBookRegistryProvider
     init(registry: TPPBookRegistryProvider) { self.bookRegistry = registry }
 

@@ -135,6 +135,12 @@ func makeTestAppContainer(
     authCoordinator: authCoordinator
   )
 
+  // `UserAccountPublisher.shared` is `@MainActor`-isolated; resolve it via the
+  // same `assumeIsolated` hop the production builder uses at
+  // `AppContainer.swift:478` (XCTest dispatches on main, so the assumption is
+  // sound at runtime regardless of this factory's nonisolated call site).
+  let userAccountPublisher = MainActor.assumeIsolated { UserAccountPublisher.shared }
+
   return AppContainer(
     bookRegistry: resolvedBookRegistry,
     networkExecutor: executor,
@@ -147,7 +153,7 @@ func makeTestAppContainer(
     debugSettings: DebugSettings(),
     imageCache: imageCache,
     imageLoader: imageLoader,
-    userAccountPublisher: .shared,
+    userAccountPublisher: userAccountPublisher,
     opdsFeedService: OPDSFeedService(),
     readerService: ReaderService(),
     navigationCoordinatorHub: NavigationCoordinatorHub(),
