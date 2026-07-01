@@ -235,6 +235,20 @@ struct AppContainer {
     }
     @MainActor private static var _bookOpenTracker: BookOpenTracking?
 
+    /// Side-loading (PP-2678) — process-wide registry of side-loaded books.
+    /// Source of truth for the sync-exemption set (consumed by
+    /// `BookRegistrySync.sync()` via a lazy provider) and the side-loaded
+    /// catalog lane (Module D). File-backed shared cache, lazy + cached the
+    /// same way `bookOpenTracker` is; `_resetForTesting()` nils it so its
+    /// on-disk manifest state does not bleed across test classes.
+    var sideloadedBookRegistry: SideloadedBookRegistry {
+        if let cached = AppContainer._sideloadedBookRegistry { return cached }
+        let registry = SideloadedBookRegistry()
+        AppContainer._sideloadedBookRegistry = registry
+        return registry
+    }
+    private static var _sideloadedBookRegistry: SideloadedBookRegistry?
+
     /// Process-wide audiobook session presenter — the root-level
     /// SwiftUI-observable bridge between the manager's published state and
     /// the mini-player + full-screen-cover surfaces Module D wires into
@@ -586,6 +600,13 @@ struct AppContainer {
             _audiobookSessionPresenter = nil
             _playbackBootstrapper = nil
         }
+        // Side-loading (PP-2678): the side-loaded registry is a file-backed
+        // shared static cache, so it WOULD bleed manifest state across test
+        // classes if left intact. Nil it here so the next `production()`
+        // resolution rebuilds a fresh instance reading the current manifest.
+        // Not `@MainActor`-isolated (its `identifiers` is read off-main), so
+        // reset outside the `assumeIsolated` block.
+        _sideloadedBookRegistry = nil
         // Leave the flag at the test-safe `true` (see step 4 above) — do NOT
         // reset to `false`. The next test class inherits this value before its
         // own setUp runs; `false` here is the root of the cross-test

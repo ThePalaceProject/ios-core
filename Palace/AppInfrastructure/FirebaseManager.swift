@@ -63,6 +63,7 @@ final class FirebaseManager {
         case triageBotTicketSubmissionEnabled = "triage_bot_ticket_submission_enabled"
         case triageBotAIFallbackEnabled = "triage_bot_ai_fallback_enabled"
         case inAppPlaybackNavEnabled = "in_app_playback_nav_enabled"
+        case sideLoadingEnabled = "side_loading_enabled"
     }
 
     // MARK: - Initialization
@@ -109,7 +110,8 @@ final class FirebaseManager {
             RemoteConfigKey.triageBotEnabled.rawValue: NSNumber(value: false),
             RemoteConfigKey.triageBotTicketSubmissionEnabled.rawValue: NSNumber(value: false),
             RemoteConfigKey.triageBotAIFallbackEnabled.rawValue: NSNumber(value: false),
-            RemoteConfigKey.inAppPlaybackNavEnabled.rawValue: NSNumber(value: false)
+            RemoteConfigKey.inAppPlaybackNavEnabled.rawValue: NSNumber(value: false),
+            RemoteConfigKey.sideLoadingEnabled.rawValue: NSNumber(value: false)
         ])
     }
 

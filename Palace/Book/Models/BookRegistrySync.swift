@@ -42,6 +42,16 @@ final class BookRegistrySync: @unchecked Sendable {
   /// `AppContainer.production().downloadCenter` has settled.
   private let downloadCenterProvider: () -> MyBooksDownloadCenter
   private let opdsFeedServiceProvider: () -> OPDSFeedService
+  /// Identifiers of side-loaded books, resolved lazily on each `sync()`.
+  /// Side-loaded books are registered `.downloadSuccessful` but never appear
+  /// in the loans feed, so without this exemption `sync()`'s reconciliation
+  /// would un-register them AND delete their on-disk file every sync (the
+  /// load-bearing hazard in `docs/architecture/sideloading-plan.md`).
+  /// Immutable `let` (preserves the `@unchecked Sendable` invariant above);
+  /// resolved lazily via `AppContainer.production()` mirroring
+  /// `downloadCenterProvider` so construction inside `TPPBookRegistry.init`
+  /// does not re-enter the still-resolving `AppContainer._cached`.
+  private let sideloadedIDsProvider: () -> Set<String>
   private let registryFolderName = "registry"
   private let registryFileName = "registry.json"
   /// Serial queue for disk writes — prevents out-of-order save races where a stale
@@ -65,12 +75,14 @@ final class BookRegistrySync: @unchecked Sendable {
     store: BookRegistryStore,
     accountsManager: AccountsManager,
     downloadCenterProvider: @escaping () -> MyBooksDownloadCenter,
-    opdsFeedServiceProvider: @escaping () -> OPDSFeedService
+    opdsFeedServiceProvider: @escaping () -> OPDSFeedService,
+    sideloadedIDsProvider: @escaping () -> Set<String> = { AppContainer.production().sideloadedBookRegistry.identifiers }
   ) {
     self.store = store
     self.accountsManager = accountsManager
     self.downloadCenterProvider = downloadCenterProvider
     self.opdsFeedServiceProvider = opdsFeedServiceProvider
+    self.sideloadedIDsProvider = sideloadedIDsProvider
     diskWriteQueue.setSpecific(key: diskWriteQueueKey, value: ())
   }
 
@@ -404,6 +416,10 @@ final class BookRegistrySync: @unchecked Sendable {
         var booksToDeleteLocally: [TPPBook] = []
         self.store.mutateRegistrySync { registry in
           var recordsToDelete = Set<String>(registry.keys)
+          // Side-loaded books never appear in the loans feed. Exempt them so
+          // reconciliation neither un-registers them (:480-481) nor deletes
+          // their on-disk content (:496-497). See sideloading-plan.md R1.
+          recordsToDelete.subtract(sideloadedIDsProvider())
           for entry in feed.entries {
             guard let opdsEntry = entry as? TPPOPDSEntry,
                   let book = TPPBook(entry: opdsEntry)
