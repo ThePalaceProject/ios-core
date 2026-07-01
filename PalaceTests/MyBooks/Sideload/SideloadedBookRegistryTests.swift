@@ -75,11 +75,11 @@ final class SideloadedBookRegistryTests: XCTestCase {
 
   // MARK: - Manifest round-trip
 
-  func test_add_persistsAcrossReload_preservingIdentifiersTitlesAndFilenames() {
+  func test_add_persistsAcrossReload_preservingIdentifiersTitlesAndFilenames() throws {
     let registry = makeRegistry()
-    registry.add(book: makeBook(identifier: "sl-1", title: "First"),
+    try registry.add(book: makeBook(identifier: "sl-1", title: "First"),
                  fileURL: fileURL(named: "first.epub"))
-    registry.add(book: makeBook(identifier: "sl-2", title: "Second"),
+    try registry.add(book: makeBook(identifier: "sl-2", title: "Second"),
                  fileURL: fileURL(named: "second.pdf"))
 
     // Fresh instance reads the same on-disk manifest.
@@ -96,11 +96,11 @@ final class SideloadedBookRegistryTests: XCTestCase {
 
   // MARK: - add / remove
 
-  func test_remove_dropsBookFromIdentifiersAndPersists() {
+  func test_remove_dropsBookFromIdentifiersAndPersists() throws {
     let registry = makeRegistry()
-    registry.add(book: makeBook(identifier: "sl-1", title: "First"),
+    try registry.add(book: makeBook(identifier: "sl-1", title: "First"),
                  fileURL: fileURL(named: "first.epub"))
-    registry.add(book: makeBook(identifier: "sl-2", title: "Second"),
+    try registry.add(book: makeBook(identifier: "sl-2", title: "Second"),
                  fileURL: fileURL(named: "second.epub"))
 
     registry.remove(identifier: "sl-1")
@@ -112,9 +112,9 @@ final class SideloadedBookRegistryTests: XCTestCase {
                    "remove must persist — reload must not resurrect the book")
   }
 
-  func test_remove_unknownIdentifier_isNoOp() {
+  func test_remove_unknownIdentifier_isNoOp() throws {
     let registry = makeRegistry()
-    registry.add(book: makeBook(identifier: "sl-1", title: "First"),
+    try registry.add(book: makeBook(identifier: "sl-1", title: "First"),
                  fileURL: fileURL(named: "first.epub"))
 
     registry.remove(identifier: "does-not-exist")
@@ -124,9 +124,9 @@ final class SideloadedBookRegistryTests: XCTestCase {
 
   // MARK: - rename
 
-  func test_rename_changesPersistedTitle_survivesReload() {
+  func test_rename_changesPersistedTitle_survivesReload() throws {
     let registry = makeRegistry()
-    registry.add(book: makeBook(identifier: "sl-1", title: "Old Title"),
+    try registry.add(book: makeBook(identifier: "sl-1", title: "Old Title"),
                  fileURL: fileURL(named: "first.epub"))
 
     registry.rename(identifier: "sl-1", to: "New Title")
@@ -137,9 +137,27 @@ final class SideloadedBookRegistryTests: XCTestCase {
                    "rename must persist the new title across reload")
   }
 
-  func test_rename_unknownIdentifier_isNoOp() {
+  func test_rename_doesNotMutateSharedBookInstance_replacesWithCopy() throws {
+    // The same `TPPBook` reference is handed to the main registry at import, so
+    // rename must NOT mutate it in place (that would race main-registry /
+    // Catalog readers) — it must replace the stored entry with a copy.
     let registry = makeRegistry()
-    registry.add(book: makeBook(identifier: "sl-1", title: "Old Title"),
+    let original = makeBook(identifier: "sl-1", title: "Original")
+    try registry.add(book: original, fileURL: fileURL(named: "first.epub"))
+
+    registry.rename(identifier: "sl-1", to: "Renamed")
+
+    XCTAssertEqual(original.title, "Original",
+                   "rename must not mutate the shared TPPBook instance — it must replace with a copy")
+    XCTAssertEqual(registry.allBooks.first?.title, "Renamed",
+                   "the registry read API must reflect the new title")
+    XCTAssertFalse(registry.allBooks.first === original,
+                   "the stored book must be a distinct instance from the shared original")
+  }
+
+  func test_rename_unknownIdentifier_isNoOp() throws {
+    let registry = makeRegistry()
+    try registry.add(book: makeBook(identifier: "sl-1", title: "Old Title"),
                  fileURL: fileURL(named: "first.epub"))
 
     registry.rename(identifier: "ghost", to: "Should Not Apply")
@@ -149,9 +167,9 @@ final class SideloadedBookRegistryTests: XCTestCase {
 
   // MARK: - update
 
-  func test_update_replacesBookButPreservesOriginalFilename() {
+  func test_update_replacesBookButPreservesOriginalFilename() throws {
     let registry = makeRegistry()
-    registry.add(book: makeBook(identifier: "sl-1", title: "Before"),
+    try registry.add(book: makeBook(identifier: "sl-1", title: "Before"),
                  fileURL: fileURL(named: "import-source.epub"))
 
     registry.update(book: makeBook(identifier: "sl-1", title: "After"))
@@ -171,13 +189,33 @@ final class SideloadedBookRegistryTests: XCTestCase {
                   "update must never insert an unknown book")
   }
 
+  // MARK: - Persist-failure atomicity
+
+  func test_add_whenManifestWriteFails_throws_andRollsBackInMemory() throws {
+    // Nest the manifest directory under a regular FILE so `createDirectory`
+    // inside `persistLocked` fails → the write throws. `add` must surface the
+    // error AND leave the registry exactly as it was (all-or-nothing).
+    let blocker = tempDirectory.appendingPathComponent("blocker")
+    try Data("x".utf8).write(to: blocker)
+    let unwritableDir = blocker.appendingPathComponent("nested")
+    let registry = SideloadedBookRegistry(fileManager: .default, manifestDirectory: unwritableDir)
+
+    XCTAssertThrowsError(try registry.add(book: makeBook(identifier: "sl-1", title: "Doomed"),
+                                          fileURL: fileURL(named: "x.epub")),
+                         "a manifest write failure must propagate out of add")
+    XCTAssertTrue(registry.identifiers.isEmpty,
+                  "a failed add must roll back — no partial in-memory entry")
+    XCTAssertTrue(registry.allBooks.isEmpty,
+                  "a failed add must not leave a dangling order entry")
+  }
+
   // MARK: - Edge cases
 
-  func test_addDuplicateIdentifier_doesNotDoubleInsert_andUpdatesInPlace() {
+  func test_addDuplicateIdentifier_doesNotDoubleInsert_andUpdatesInPlace() throws {
     let registry = makeRegistry()
-    registry.add(book: makeBook(identifier: "sl-1", title: "First Import"),
+    try registry.add(book: makeBook(identifier: "sl-1", title: "First Import"),
                  fileURL: fileURL(named: "a.epub"))
-    registry.add(book: makeBook(identifier: "sl-1", title: "Re-Import"),
+    try registry.add(book: makeBook(identifier: "sl-1", title: "Re-Import"),
                  fileURL: fileURL(named: "b.epub"))
 
     XCTAssertEqual(registry.allBooks.count, 1,
@@ -205,7 +243,7 @@ final class SideloadedBookRegistryTests: XCTestCase {
     XCTAssertTrue(registry.identifiers.isEmpty,
                   "A corrupt manifest must load as an empty registry, not crash")
     // And the registry must still be usable afterward.
-    registry.add(book: makeBook(identifier: "sl-1", title: "Recovered"),
+    try registry.add(book: makeBook(identifier: "sl-1", title: "Recovered"),
                  fileURL: fileURL(named: "r.epub"))
     XCTAssertEqual(registry.identifiers, ["sl-1"])
   }

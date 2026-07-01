@@ -196,6 +196,78 @@ final class SideloadedBookManagerTests: PalaceWiringTestCase {
     XCTAssertTrue(registry.registry.isEmpty)
   }
 
+  func testImport_unreadableSourceFile_throwsUnreadableFile_andMutatesNeitherRegistry() throws {
+    let registry = TPPBookRegistryMock()
+    let sideloaded = SideloadedBookRegistry(manifestDirectory: manifestDir)
+    let manager = makeManager(registry: registry, sideloaded: sideloaded)
+    // Supported extension so classification passes, but no file on disk — the
+    // content-hash read in `contentIdentifier` fails → `.unreadableFile`.
+    let missing = importSourceDir.appendingPathComponent("\(UUID().uuidString).epub")
+    XCTAssertFalse(FileManager.default.fileExists(atPath: missing.path), "precondition: file absent")
+
+    XCTAssertThrowsError(try manager.import(fileURL: missing)) { error in
+      guard case SideloadImportError.unreadableFile = error else {
+        return XCTFail("expected unreadableFile, got \(error)")
+      }
+    }
+    XCTAssertTrue(sideloaded.identifiers.isEmpty, "no write to the truth store")
+    XCTAssertTrue(registry.registry.isEmpty, "no write to the main registry")
+  }
+
+  func testImport_destinationUnavailable_throwsDestinationUnavailable_andMutatesNeitherRegistry() throws {
+    let registry = TPPBookRegistryMock()
+    let sideloaded = SideloadedBookRegistry(manifestDirectory: manifestDir)
+    let accountsManager = makeFreshAccountsManager(defaults: customDefaults)
+    // A directoryProvider that returns nil makes `fileUrl(for:account:)` nil,
+    // so the import cannot resolve a copy destination → `.destinationUnavailable`.
+    let bfm = BookFileManager(
+      bookRegistry: registry,
+      accountsManager: accountsManager,
+      fileManager: .default,
+      directoryProvider: { _ in nil },
+      sideloadedIdentifiersProvider: { [] }
+    )
+    let manager = SideloadedBookManager(
+      bookRegistry: registry,
+      sideloadedRegistry: sideloaded,
+      bookFileManager: bfm,
+      imageCache: MockImageCache()
+    )
+    let source = try writeFixture(ext: "pdf")
+
+    XCTAssertThrowsError(try manager.import(fileURL: source)) { error in
+      guard case SideloadImportError.destinationUnavailable = error else {
+        return XCTFail("expected destinationUnavailable, got \(error)")
+      }
+    }
+    XCTAssertTrue(sideloaded.identifiers.isEmpty, "no write to the truth store")
+    XCTAssertTrue(registry.registry.isEmpty, "no write to the main registry")
+  }
+
+  func testImport_manifestPersistFails_throwsPersistenceFailed_andDoesNotRegisterInMainRegistry() throws {
+    let registry = TPPBookRegistryMock()
+    // Make the manifest unwritable: nest its directory under a regular FILE, so
+    // the `createDirectory` inside `persistLocked` fails → the manifest write
+    // throws → `add` rolls back and rethrows → `import` must abort BEFORE the
+    // main-registry write (else the book would be evicted on the next sync).
+    let blocker = tempRoot.appendingPathComponent("blocker-\(UUID().uuidString)")
+    try Data("x".utf8).write(to: blocker)
+    let unwritableManifestDir = blocker.appendingPathComponent("nested")
+    let sideloaded = SideloadedBookRegistry(manifestDirectory: unwritableManifestDir)
+    let manager = makeManager(registry: registry, sideloaded: sideloaded)
+    let source = try writeFixture(ext: "epub")
+
+    XCTAssertThrowsError(try manager.import(fileURL: source)) { error in
+      guard case SideloadImportError.persistenceFailed = error else {
+        return XCTFail("expected persistenceFailed, got \(error)")
+      }
+    }
+    XCTAssertTrue(sideloaded.identifiers.isEmpty,
+                  "a manifest-persist failure must roll the truth store back (atomic add)")
+    XCTAssertTrue(registry.registry.isEmpty,
+                  "the book must NOT reach the main registry when the manifest didn't persist")
+  }
+
   // MARK: - Remove
 
   func testRemove_deletesFile_andClearsBothRegistries() throws {
@@ -236,7 +308,7 @@ final class SideloadedBookManagerTests: PalaceWiringTestCase {
       mimeType: "application/epub+zip",
       imageCache: MockImageCache()
     )
-    sideloaded.add(book: book, fileURL: URL(fileURLWithPath: "/tmp/z.epub"))
+    try sideloaded.add(book: book, fileURL: URL(fileURLWithPath: "/tmp/z.epub"))
 
     let fileURL = try XCTUnwrap(bfm.fileUrl(for: book, account: SideloadedBookRegistry.sideloadContentAccountID))
     try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -263,7 +335,7 @@ final class SideloadedBookManagerTests: PalaceWiringTestCase {
       mimeType: "application/epub+zip",
       imageCache: MockImageCache()
     )
-    sideloaded.add(book: book, fileURL: URL(fileURLWithPath: "/tmp/x.epub"))
+    try sideloaded.add(book: book, fileURL: URL(fileURLWithPath: "/tmp/x.epub"))
 
     let registry = TPPBookRegistryMock()
     let manager = makeManager(registry: registry, sideloaded: sideloaded)
@@ -283,7 +355,7 @@ final class SideloadedBookManagerTests: PalaceWiringTestCase {
       mimeType: "application/epub+zip",
       imageCache: MockImageCache()
     )
-    sideloaded.add(book: book, fileURL: URL(fileURLWithPath: "/tmp/y.epub"))
+    try sideloaded.add(book: book, fileURL: URL(fileURLWithPath: "/tmp/y.epub"))
 
     let registry = CountingBookRegistryMock()
     let manager = makeManager(registry: registry, sideloaded: sideloaded)

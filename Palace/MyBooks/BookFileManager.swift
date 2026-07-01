@@ -79,7 +79,17 @@ class BookFileManager {
         // choke point every `fileUrl(for: identifier)` overload funnels
         // through, so the reader path is fixed without touching
         // MyBooksDownloadCenter.
-        let resolvedAccount = sideloadedIdentifiersProvider().contains(identifier)
+        //
+        // Perf: this method resolves EVERY book-file URL app-wide, so gate the
+        // provider call (NSLock + Set copy) behind the cheap "sideload-" prefix
+        // check. Side-loaded ids are minted with that prefix
+        // (`SideloadedBookManager.contentIdentifier`), so a normal id skips the
+        // lock entirely. The provider membership check is retained for
+        // prefixed ids as defense in depth (an id could carry the prefix
+        // without being registered). Coupling: this prefix MUST match the one
+        // `SideloadedBookManager.contentIdentifier` mints.
+        let resolvedAccount = (identifier.hasPrefix("sideload-")
+            && sideloadedIdentifiersProvider().contains(identifier))
             ? SideloadedBookRegistry.sideloadContentAccountID
             : account
         return fileUrl(for: book, account: resolvedAccount)

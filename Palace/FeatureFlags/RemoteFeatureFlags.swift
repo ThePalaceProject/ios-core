@@ -62,9 +62,11 @@ final class RemoteFeatureFlags: @unchecked Sendable {
         /// PP-2678 / PP-2679): the Settings "Side Loading" import screen and
         /// the catalog side-loaded lane. Test-only capability for exercising
         /// the real reader + DRM stack against local files with no OPDS feed.
-        /// Default OFF in production; DEBUG-on via `isSideLoadingEnabled` so
-        /// engineers building from Xcode get it automatically (mirrors the
-        /// triage-bot precedence per locked decision #2).
+        /// Default OFF; enabled via `isSideLoadingEnabled` whose precedence is
+        /// UserDefaults local override (dev-menu toggle) > Firebase remote
+        /// (default false). No DEBUG auto-enable — QA/TestFlight builds are
+        /// non-DEBUG, so the feature is turned on explicitly by the dev-menu
+        /// toggle rather than by build configuration.
         case sideLoadingEnabled = "side_loading_enabled"
 
         var defaultValue: Bool {
@@ -361,9 +363,9 @@ final class RemoteFeatureFlags: @unchecked Sendable {
     /// feature for exercising the real reader + DRM stack against local files
     /// with no OPDS feed (swarm_495a88d9 — PP-2677 / PP-2678 / PP-2679).
     ///
-    /// Defaults OFF in production, but ON in DEBUG builds so an engineer
-    /// building from Xcode gets the feature automatically. TestFlight and App
-    /// Store builds respect the Firebase Remote Config flag (default off).
+    /// Defaults OFF in production. There is NO DEBUG auto-enable; the feature
+    /// is turned on explicitly via the dev-menu local override, otherwise it
+    /// falls through to the Firebase Remote Config flag (default off).
     ///
     /// Side loading is a test-only capability enabled via the Testing settings
     /// menu (per PP-2581), so it is OFF by default and turned on explicitly by a

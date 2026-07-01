@@ -70,8 +70,11 @@ final class BookFileManagerSideloadResolutionTests: PalaceWiringTestCase {
   /// with the two seeded books, and a fixed side-loaded id set.
   private func makeFileManager(sideloadedIDs: Set<String>) -> BookFileManager {
     let registry = TPPBookRegistryMock()
-    registry.addBook(makeBook(identifier: "sl-1"), state: .downloadSuccessful)
+    registry.addBook(makeBook(identifier: "sideload-1"), state: .downloadSuccessful)
     registry.addBook(makeBook(identifier: "normal-1"), state: .downloadSuccessful)
+    // Carries the "sideload-" prefix but is NOT in the provider set — for the
+    // defense-in-depth case: prefix alone must not pin to the fixed account.
+    registry.addBook(makeBook(identifier: "sideload-ghost"), state: .downloadSuccessful)
 
     let accountsManager = makeFreshAccountsManager(defaults: customDefaults)
     let dir = tempDirectory!
@@ -90,11 +93,11 @@ final class BookFileManagerSideloadResolutionTests: PalaceWiringTestCase {
   // MARK: - Tests
 
   func test_sideloadedId_resolvesToFixedAccount_evenWhenExplicitAccountDiffers() {
-    let bfm = makeFileManager(sideloadedIDs: ["sl-1"])
+    let bfm = makeFileManager(sideloadedIDs: ["sideload-1"])
 
     // Caller passes the NON-primary account; the side-load substitution must
     // override it with the fixed account.
-    let url = bfm.fileUrl(for: "sl-1", account: nonPrimaryAccount)
+    let url = bfm.fileUrl(for: "sideload-1", account: nonPrimaryAccount)
 
     let path = try? XCTUnwrap(url).path
     XCTAssertNotNil(path)
@@ -109,9 +112,9 @@ final class BookFileManagerSideloadResolutionTests: PalaceWiringTestCase {
     // then resolve via the no-account overload (which reads currentAccountId),
     // and assert the FIXED account directory — proving a library switch cannot
     // orphan the side-loaded file.
-    let bfm = makeFileManager(sideloadedIDs: ["sl-1"])
+    let bfm = makeFileManager(sideloadedIDs: ["sideload-1"])
 
-    let url = bfm.fileUrl(for: "sl-1")
+    let url = bfm.fileUrl(for: "sideload-1")
 
     let path = try? XCTUnwrap(url).path
     XCTAssertTrue(path?.contains("acct-\(SideloadedBookRegistry.sideloadContentAccountID)") ?? false,
@@ -122,7 +125,7 @@ final class BookFileManagerSideloadResolutionTests: PalaceWiringTestCase {
   func test_nonSideloadedId_resolvesAgainstCurrentAccount_unchanged() {
     // Contrast: a normal book is NOT side-loaded, so it must resolve against
     // the current/caller account exactly as before (no behavior change).
-    let bfm = makeFileManager(sideloadedIDs: ["sl-1"])
+    let bfm = makeFileManager(sideloadedIDs: ["sideload-1"])
 
     let explicitURL = bfm.fileUrl(for: "normal-1", account: nonPrimaryAccount)
     let explicitPath = try? XCTUnwrap(explicitURL).path
@@ -136,5 +139,22 @@ final class BookFileManagerSideloadResolutionTests: PalaceWiringTestCase {
     let currentPath = try? XCTUnwrap(currentURL).path
     XCTAssertTrue(currentPath?.contains("acct-\(nonPrimaryAccount)") ?? false,
                   "A non-side-loaded id must resolve under currentAccountId")
+  }
+
+  func test_sideloadPrefixedId_notInProvider_resolvesAgainstAccount_defenseInDepth() {
+    // An id can carry the "sideload-" prefix yet not be registered in the
+    // provider set. The prefix is only a cheap gate for the lock+set lookup;
+    // membership in the provider is still authoritative. Such an id must NOT be
+    // pinned to the fixed side-load account — it resolves against the caller's
+    // account like any normal id.
+    let bfm = makeFileManager(sideloadedIDs: ["sideload-1"])
+
+    let url = bfm.fileUrl(for: "sideload-ghost", account: nonPrimaryAccount)
+
+    let path = try? XCTUnwrap(url).path
+    XCTAssertTrue(path?.contains("acct-\(nonPrimaryAccount)") ?? false,
+                  "A prefixed id absent from the provider must resolve under the passed account, got: \(path ?? "nil")")
+    XCTAssertFalse(path?.contains("acct-\(SideloadedBookRegistry.sideloadContentAccountID)") ?? true,
+                   "Prefix alone must not pin to the fixed side-load account — provider membership is authoritative")
   }
 }

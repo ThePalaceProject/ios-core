@@ -107,9 +107,9 @@ private final class RecordingSideloadedRegistry: SideloadedBookRegistering {
   init(inner: SideloadedBookRegistry, log: CallLog) { self.inner = inner; self.log = log }
   var allBooks: [TPPBook] { inner.allBooks }
   var identifiers: Set<String> { inner.identifiers }
-  func add(book: TPPBook, fileURL: URL) {
+  func add(book: TPPBook, fileURL: URL) throws {
     log.record("sideloadRegistry.add", args: ["contentType": "\(book.defaultBookContentType)"])
-    inner.add(book: book, fileURL: fileURL)
+    try inner.add(book: book, fileURL: fileURL)
   }
   func remove(identifier: String) {
     log.record("sideloadRegistry.remove")

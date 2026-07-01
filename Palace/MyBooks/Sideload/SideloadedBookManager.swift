@@ -48,7 +48,7 @@ import PalaceLogging
 protocol SideloadedBookRegistering: AnyObject {
   var allBooks: [TPPBook] { get }
   var identifiers: Set<String> { get }
-  func add(book: TPPBook, fileURL: URL)
+  func add(book: TPPBook, fileURL: URL) throws
   func remove(identifier: String)
 }
 
@@ -84,6 +84,10 @@ enum SideloadImportError: Error, Equatable, CustomStringConvertible {
   case unreadableFile(URL)
   /// `BookFileManager` could not resolve a destination path.
   case destinationUnavailable
+  /// The side-load manifest could not be persisted; the import was aborted
+  /// before registering into the main registry to avoid a book that the
+  /// sync-exemption set won't cover (which would be silently evicted).
+  case persistenceFailed
 
   var description: String {
     switch self {
@@ -93,6 +97,8 @@ enum SideloadImportError: Error, Equatable, CustomStringConvertible {
       return "Could not read side-load file at \(url.lastPathComponent)."
     case .destinationUnavailable:
       return "Could not resolve a destination for the side-loaded file."
+    case .persistenceFailed:
+      return "Could not save the side-loaded book; the import was cancelled."
     }
   }
 }
@@ -236,7 +242,19 @@ final class SideloadedBookManager: @unchecked Sendable {
     // Truth store first (this IS the sync-exemption — Module A reads
     // `identifiers` live at sync time), then the main registry so the reader
     // and My Books see it as a completed download.
-    sideloadedRegistry.add(book: book, fileURL: fileURL)
+    //
+    // If the manifest does NOT persist, ABORT before touching the main
+    // registry: a book in the main registry but absent from the side-load
+    // manifest is not in the sync-exemption set, so the next `sync()` would
+    // evict it and delete its file (silent data loss). Roll back the copied
+    // file so a failed import leaves no orphan on disk.
+    do {
+      try sideloadedRegistry.add(book: book, fileURL: fileURL)
+    } catch {
+      try? fileManaging.removeFile(at: destination)
+      Log.error(#file, "Side-load import: manifest persist failed, aborting before main-registry write: \(error.localizedDescription)")
+      throw SideloadImportError.persistenceFailed
+    }
     bookRegistry.addBook(
       book,
       location: nil,

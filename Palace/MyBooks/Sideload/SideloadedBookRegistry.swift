@@ -131,43 +131,79 @@ final class SideloadedBookRegistry: @unchecked Sendable {
   /// Record (or overwrite) a side-loaded book plus the file it was imported
   /// from. A repeat `add` for the same identifier updates in place — it does
   /// not create a duplicate lane entry.
-  func add(book: TPPBook, fileURL: URL) {
+  /// Record (or overwrite) a side-loaded book plus its imported file, then
+  /// persist. THROWS if the manifest write fails, rolling the in-memory
+  /// mutation back first so the failure is atomic — the caller (import) can
+  /// then abort before registering into the main registry. A repeat `add` for
+  /// the same identifier updates in place; it does not create a duplicate.
+  func add(book: TPPBook, fileURL: URL) throws {
     lock.lock()
     defer { lock.unlock() }
-    if entriesByIdentifier[book.identifier] == nil {
+    let previousEntry = entriesByIdentifier[book.identifier]
+    let wasPresent = previousEntry != nil
+    if !wasPresent {
       order.append(book.identifier)
     }
     entriesByIdentifier[book.identifier] = Entry(
       book: book,
       originalFilename: fileURL.lastPathComponent
     )
-    persistLocked()
+    do {
+      try persistLocked()
+    } catch {
+      // Roll the mutation back so a persist failure leaves the registry
+      // exactly as it was — the add is all-or-nothing.
+      if wasPresent {
+        entriesByIdentifier[book.identifier] = previousEntry
+      } else {
+        entriesByIdentifier[book.identifier] = nil
+        order.removeAll { $0 == book.identifier }
+      }
+      throw error
+    }
   }
 
-  /// Forget a side-loaded book. No-op if the identifier is unknown.
+  /// Forget a side-loaded book. No-op if the identifier is unknown. Persist is
+  /// best-effort: a failed remove-persist leaves a stale manifest entry (the
+  /// book reappears next launch pointing at a deleted file), which is a
+  /// self-healing nuisance, not the silent data loss `add` guards against — so
+  /// this path logs (inside `persistLocked`) and swallows rather than throws.
   func remove(identifier: String) {
     lock.lock()
     defer { lock.unlock() }
     guard entriesByIdentifier[identifier] != nil else { return }
     entriesByIdentifier[identifier] = nil
     order.removeAll { $0 == identifier }
-    persistLocked()
+    try? persistLocked()
   }
 
-  /// Rename a side-loaded book's display title in place. No-op if unknown.
+  /// Rename a side-loaded book's display title. No-op if unknown. Replaces the
+  /// stored `TPPBook` with a copy carrying the new title rather than mutating
+  /// the shared instance in place: that same `TPPBook` reference was handed to
+  /// the main `TPPBookRegistry` at import, so an in-place `title` write could
+  /// race main-registry / Catalog readers (only this registry's lock guards
+  /// the write). Persist is best-effort (see `remove`).
   func rename(identifier: String, to newTitle: String) {
     lock.lock()
     defer { lock.unlock() }
     guard let entry = entriesByIdentifier[identifier] else { return }
-    // `TPPBook.title` is a mutable `var`; the book is a reference type, so
-    // mutating the stored instance's title is the rename.
-    entry.book.title = newTitle
-    persistLocked()
+    // `bookWithMetadata(from:)` returns a fresh, distinct `TPPBook` (a full
+    // copy of `entry.book`). Mutating THAT copy's title is safe — it is not the
+    // instance the main registry holds — whereas mutating `entry.book.title`
+    // directly would race the shared reference.
+    let renamed = entry.book.bookWithMetadata(from: entry.book)
+    renamed.title = newTitle
+    entriesByIdentifier[identifier] = Entry(
+      book: renamed,
+      originalFilename: entry.originalFilename
+    )
+    try? persistLocked()
   }
 
   /// Replace the persisted book for an identifier (e.g. after re-minting
   /// metadata) while preserving the original imported filename. No-op if the
-  /// identifier is unknown — `update` never inserts.
+  /// identifier is unknown — `update` never inserts. Persist is best-effort
+  /// (see `remove`).
   func update(book: TPPBook) {
     lock.lock()
     defer { lock.unlock() }
@@ -176,12 +212,20 @@ final class SideloadedBookRegistry: @unchecked Sendable {
       book: book,
       originalFilename: existing.originalFilename
     )
-    persistLocked()
+    try? persistLocked()
   }
 
   // MARK: - Persistence (lock held by caller)
 
-  private func persistLocked() {
+  /// Writes the manifest to disk. Throws on any write failure so callers on
+  /// the atomicity-critical import path (`add`) can abort loudly instead of
+  /// silently proceeding to register a book the manifest doesn't record — a
+  /// book present in the main registry but absent from the side-load manifest
+  /// is not in the sync-exemption set and would be evicted (silent data loss).
+  /// The nil-`manifestURL` degraded mode (no Application Support path) is NOT a
+  /// write failure: it is the documented in-memory-only fallback, so it returns
+  /// without throwing.
+  private func persistLocked() throws {
     guard let manifestURL else {
       Log.warn(#file, "SideloadedBookRegistry: no manifest URL — side-loaded state will not persist")
       return
@@ -204,6 +248,7 @@ final class SideloadedBookRegistry: @unchecked Sendable {
       try data.write(to: manifestURL, options: .atomic)
     } catch {
       Log.error(#file, "SideloadedBookRegistry: failed to persist manifest: \(error.localizedDescription)")
+      throw error
     }
   }
 
