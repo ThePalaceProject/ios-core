@@ -201,6 +201,19 @@ struct CatalogCacheMetadata: Codable {
         return ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
     }()
 
+    /// Test-only opt-out from the synchronous `preloadAccountsFromDiskCacheSync()`
+    /// in `init()`. Defaults to `false`, so production AND every test that relies
+    /// on preloaded accounts are unaffected — only tests that opt in are changed.
+    ///
+    /// A test that constructs an `AccountsManager` purely to satisfy a dependency
+    /// and never reads `accountSets` (e.g. `TPPBookRegistryMigrationTests`, which
+    /// drives `BookRegistrySync.load(account:)` with a random test UUID) sets this
+    /// to `true` in `setUp` to skip the on-disk cached-account load, which can
+    /// consume >5s on memory-pressured CI when the cache holds ~1138 accounts —
+    /// the root of the FLAKE-003 `loadAndWait()` 30s timeout. Scope the flip to
+    /// `setUp`/`tearDown`. NOT compiled into release builds.
+    internal static var deferDiskCachePreloadForTesting: Bool = false
+
     /// Test-only handle to the post-init background `loadCatalogs` task so
     /// `cancelBackgroundWork()` can issue cooperative cancellation. Only ever
     /// non-nil under DEBUG builds AND when `deferInitialLoadCatalogsForTesting`
@@ -285,7 +298,15 @@ struct CatalogCacheMetadata: Codable {
         // sign-in modal — calls account(uuid) against an empty dict and renders
         // an empty list. The async refresh below still runs to pick up any
         // server-side registry changes.
+        #if DEBUG
+        // Test-only skip (see `deferDiskCachePreloadForTesting`): a test that
+        // never reads `accountSets` can opt out of the >5s cached-account load.
+        if !Self.deferDiskCachePreloadForTesting {
+            preloadAccountsFromDiskCacheSync()
+        }
+        #else
         preloadAccountsFromDiskCacheSync()
+        #endif
 
         #if DEBUG
         if Self.deferInitialLoadCatalogsForTesting {

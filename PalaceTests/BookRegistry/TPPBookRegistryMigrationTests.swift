@@ -36,6 +36,14 @@ class TPPBookRegistryMigrationTests: PalaceWiringTestCase {
         try super.setUpWithError()
         account = "test-migration-\(UUID().uuidString)"
         store = BookRegistryStore()
+        // FLAKE-003 fix: these migration tests drive `BookRegistrySync.load` with
+        // a random test-UUID account and never read the AccountsManager's account
+        // sets, so skip the on-disk cached-account preload — the >5s (1138-account)
+        // load that was the root of the `loadAndWait()` 30s timeout. Reset in
+        // tearDown to keep the flip scoped.
+        #if DEBUG
+        AccountsManager.deferDiskCachePreloadForTesting = true
+        #endif
         accountsManager = makeFreshAccountsManager()
         sync = BookRegistrySync(
             store: store,
@@ -53,6 +61,9 @@ class TPPBookRegistryMigrationTests: PalaceWiringTestCase {
         store = nil
         sync = nil
         accountsManager = nil
+        #if DEBUG
+        AccountsManager.deferDiskCachePreloadForTesting = false
+        #endif
         try super.tearDownWithError()
     }
 
@@ -84,7 +95,11 @@ class TPPBookRegistryMigrationTests: PalaceWiringTestCase {
         sync.load(account: account, setState: { newState in
             if newState == .loaded { exp.fulfill() }
         }, completion: nil)
-        wait(for: [exp], timeout: 30.0) // FLAKE-003-OK: covers AccountsManager 1138-account preload on memory-pressured CI; Phase 2 refactor will isolate the preload from this test.
+        // FLAKE-003 root cause fixed: the AccountsManager on-disk cached-account
+        // preload (>5s on memory-pressured CI) is now skipped in setUp via
+        // `deferDiskCachePreloadForTesting`, so this load is fast. The 30s stays
+        // as generous margin, no longer covering the preload.
+        wait(for: [exp], timeout: 30.0)
         RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
     }
 
