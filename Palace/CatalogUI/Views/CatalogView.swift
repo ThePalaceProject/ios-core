@@ -153,11 +153,11 @@ private extension CatalogView {
             skeletonList
                 .accessibilityIdentifier(AccessibilityID.Catalog.loadingIndicator)
 
-        case .error(let message):
-            errorView(message: message)
+        case .error(let message, let sideloadedLanes):
+            errorView(message: message, sideloadedLanes: sideloadedLanes)
 
-        case .offline:
-            offlineView
+        case .offline(let sideloadedLanes):
+            offlineView(sideloadedLanes: sideloadedLanes)
 
         case .loaded(let catalogContent), .applyingFacet(let catalogContent):
             CatalogContentView(
@@ -194,7 +194,14 @@ private extension CatalogView {
         }
     }
 
-    private func errorView(message: String) -> some View {
+    private func errorView(message: String, sideloadedLanes: [CatalogLaneModel]) -> some View {
+        failureView(sideloadedLanes: sideloadedLanes) { errorBanner(message: message) }
+    }
+
+    /// The feed-error banner (headline + message + Reload). Extracted from
+    /// `errorView` so it can render either full-screen-centered (no side-loaded
+    /// books) or as a header above the Side Loaded lane (F-1).
+    private func errorBanner(message: String) -> some View {
         VStack(spacing: 16) {
             Text(Strings.Generic.error)
                 .font(.headline)
@@ -221,8 +228,6 @@ private extension CatalogView {
                 .cornerRadius(8)
             })
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding()
     }
 
     /// Offline state (PP-4578): shown when the catalog load fails because the
@@ -230,7 +235,14 @@ private extension CatalogView {
     /// (which cannot succeed offline) and instead points the patron to their
     /// downloaded books. The catalog reloads automatically when connectivity
     /// returns (handled in `CatalogViewModel`).
-    private var offlineView: some View {
+    private func offlineView(sideloadedLanes: [CatalogLaneModel]) -> some View {
+        failureView(sideloadedLanes: sideloadedLanes) { offlineBanner }
+    }
+
+    /// The offline banner (wifi.slash + message + Go-to-My-Books). Extracted so
+    /// it can render either full-screen-centered or above the Side Loaded lane
+    /// (F-1), mirroring `errorBanner`.
+    private var offlineBanner: some View {
         VStack(spacing: 16) {
             Image(systemName: "wifi.slash")
                 .font(.largeTitle)
@@ -258,9 +270,47 @@ private extension CatalogView {
             })
             .accessibilityIdentifier(AccessibilityID.Catalog.goToMyBooksButton)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding()
         .accessibilityIdentifier(AccessibilityID.Catalog.offlineStateView)
+    }
+
+    /// F-1 composition seam. When there are no side-loaded lanes the banner
+    /// fills the screen exactly as it did before F-1 (byte-identical layout).
+    /// When the Side Loaded lane is present, the banner becomes a header above
+    /// the lane inside a scroll view — the feed failure stays visible AND the
+    /// imported books remain reachable.
+    @ViewBuilder
+    private func failureView<Banner: View>(
+        sideloadedLanes: [CatalogLaneModel],
+        @ViewBuilder banner: () -> Banner
+    ) -> some View {
+        if sideloadedLanes.isEmpty {
+            banner()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding()
+        } else {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    banner()
+                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal)
+                        .padding(.top, 8)
+
+                    ForEach(sideloadedLanes) { lane in
+                        CatalogLaneRowView(
+                            title: lane.title,
+                            books: lane.books,
+                            moreURL: lane.moreURL,
+                            onSelect: presentBookDetail,
+                            onMoreTapped: { title, url in
+                                coordinator.push(.catalogLaneMore(title: title, url: url))
+                            },
+                            showHeader: true
+                        )
+                    }
+                }
+                .padding(.vertical, 17)
+            }
+        }
     }
 
     func presentBookDetail(_ book: TPPBook) {

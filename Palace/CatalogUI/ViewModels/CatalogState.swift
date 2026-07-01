@@ -22,14 +22,21 @@ enum CatalogState {
   /// remain visible above the skeleton.
   case switchingEntryPoint(CatalogSelectors)
 
-  /// Unrecoverable error during initial load (no content to fall back to).
-  case error(String)
+  /// Unrecoverable error during initial load (no catalog content to fall back
+  /// to). Carries the "Side Loaded" lane rows (F-1) so the view can surface
+  /// imported books ALONGSIDE the feed-error message rather than hiding them
+  /// behind the failure. `sideloadedLanes` is empty whenever side-loading is
+  /// off or the registry is empty — the view then renders the plain error,
+  /// byte-identical to the pre-F-1 behavior.
+  case error(String, sideloadedLanes: [CatalogLaneModel])
 
   /// The initial load failed because the device has no connectivity. Distinct
   /// from `.error` so the view can direct the patron to their downloaded books
   /// instead of offering a Reload that cannot succeed offline. Reload happens
-  /// automatically when connectivity returns (see `CatalogViewModel`).
-  case offline
+  /// automatically when connectivity returns (see `CatalogViewModel`). Carries
+  /// the "Side Loaded" lane rows (F-1) for the same reason `.error` does; empty
+  /// when side-loading contributes no books (behavior unchanged).
+  case offline(sideloadedLanes: [CatalogLaneModel])
 }
 
 // MARK: - Computed Helpers
@@ -51,6 +58,17 @@ extension CatalogState {
   /// Extract title for navigation bar, if available.
   var title: String? {
     content?.title
+  }
+
+  /// The "Side Loaded" lane rows carried by an `.error` / `.offline` state
+  /// (F-1). Empty for every other state, and empty on `.error` / `.offline`
+  /// whenever side-loading contributes no books — so a flag-off catalog failure
+  /// exposes no lanes, exactly as before.
+  var sideloadedLanes: [CatalogLaneModel] {
+    switch self {
+    case .error(_, let lanes), .offline(let lanes): return lanes
+    default: return []
+    }
   }
 
   /// All books across all lanes/ungrouped, for search.

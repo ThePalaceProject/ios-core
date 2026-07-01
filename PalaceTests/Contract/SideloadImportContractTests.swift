@@ -115,6 +115,9 @@ private final class RecordingSideloadedRegistry: SideloadedBookRegistering {
     log.record("sideloadRegistry.remove")
     inner.remove(identifier: identifier)
   }
+  func originalFilename(for identifier: String) -> String? {
+    inner.originalFilename(for: identifier)
+  }
 }
 
 private final class RecordingBookRegistry: TPPBookRegistryMock {

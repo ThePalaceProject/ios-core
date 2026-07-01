@@ -70,6 +70,13 @@ final class SideLoadingViewModel: ObservableObject {
     refresh()
   }
 
+  /// The caption shown under a book's title in the manage-list (UI-2): the
+  /// original imported filename, falling back to the book title when the
+  /// filename is unknown. Never the opaque `sideload-<sha256>` identifier.
+  func caption(for book: TPPBook) -> String {
+    manager.originalFilename(for: book.identifier) ?? book.title
+  }
+
   /// The content types the picker accepts. Audiobooks import as a manifest
   /// JSON (`.json`); EPUB and PDF have first-class UTTypes.
   var allowedContentTypes: [UTType] {
@@ -92,7 +99,10 @@ struct SideLoadingView: View {
 
   var body: some View {
     List {
-      Section(footer: Text("Import a local EPUB, PDF, or audiobook manifest to open it in the reader without a catalog feed. For testing only.")) {
+      Section(
+        header: Text("Import"),
+        footer: Text("Import a local EPUB, PDF, or audiobook manifest to open it in the reader without a catalog feed. For testing only.")
+      ) {
         Button {
           viewModel.isImporterPresented = true
         } label: {
@@ -103,15 +113,16 @@ struct SideLoadingView: View {
 
       if viewModel.books.isEmpty {
         Section {
-          Text("No side-loaded books yet.")
-            .foregroundColor(.secondary)
+          emptyState
+            .frame(maxWidth: .infinity)
+            .listRowBackground(Color.clear)
         }
       } else {
         Section(header: Text("Imported")) {
           ForEach(viewModel.books, id: \.identifier) { book in
             VStack(alignment: .leading, spacing: 2) {
               Text(book.title)
-              Text(book.identifier)
+              Text(viewModel.caption(for: book))
                 .font(.caption)
                 .foregroundColor(.secondary)
                 .lineLimit(1)
@@ -128,6 +139,7 @@ struct SideLoadingView: View {
         }
       }
     }
+    .listStyle(GroupedListStyle())
     .navigationTitle("Side Loading")
     .fileImporter(
       isPresented: $viewModel.isImporterPresented,
@@ -148,5 +160,34 @@ struct SideLoadingView: View {
       Text(viewModel.errorMessage ?? "")
     }
     .onAppear { viewModel.refresh() }
+  }
+
+  /// UI-1: a real empty state instead of a `Text` that reads as a disabled row.
+  /// `ContentUnavailableView` is iOS 17+, so iOS 16 gets an equivalent centered
+  /// VStack (deployment target is iOS 16.0 — do not raise it).
+  @ViewBuilder
+  private var emptyState: some View {
+    let title = "No Imported Books"
+    let description = "Tap \"Import File…\" above to add an EPUB, PDF, or audiobook."
+    if #available(iOS 17.0, *) {
+      ContentUnavailableView(
+        title,
+        systemImage: "arrow.down.doc",
+        description: Text(description)
+      )
+    } else {
+      VStack(spacing: 12) {
+        Image(systemName: "arrow.down.doc")
+          .font(.largeTitle)
+          .foregroundColor(.secondary)
+        Text(title)
+          .font(.headline)
+        Text(description)
+          .font(.subheadline)
+          .foregroundColor(.secondary)
+          .multilineTextAlignment(.center)
+      }
+      .padding(.vertical, 24)
+    }
   }
 }

@@ -50,6 +50,10 @@ protocol SideloadedBookRegistering: AnyObject {
   var identifiers: Set<String> { get }
   func add(book: TPPBook, fileURL: URL) throws
   func remove(identifier: String)
+  /// The original imported filename for a side-loaded book, if known. Surfaced
+  /// in the Settings manage-list caption (UI-2) so a row shows the file the
+  /// tester imported instead of the opaque content-hash identifier.
+  func originalFilename(for identifier: String) -> String?
 }
 
 extension SideloadedBookRegistry: SideloadedBookRegistering {}
@@ -197,6 +201,12 @@ final class SideloadedBookManager: @unchecked Sendable {
   /// and (indirectly) the side-loaded catalog lane.
   var allBooks: [TPPBook] {
     sideloadedRegistry.allBooks
+  }
+
+  /// The original imported filename for a side-loaded book (UI-2). Returns nil
+  /// for an unknown identifier; callers fall back to the book title.
+  func originalFilename(for identifier: String) -> String? {
+    sideloadedRegistry.originalFilename(for: identifier)
   }
 
   // MARK: Import

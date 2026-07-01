@@ -20,9 +20,10 @@ final class CatalogStateTests: XCTestCase {
     }
 
     func testState_Error_HasNoContent() {
-        let state = CatalogState.error("Network failed")
+        let state = CatalogState.error("Network failed", sideloadedLanes: [])
         XCTAssertNil(state.content)
         XCTAssertTrue(state.allBooks.isEmpty)
+        XCTAssertTrue(state.sideloadedLanes.isEmpty)
     }
 
     func testState_Loaded_ExposesContent() {

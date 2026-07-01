@@ -176,20 +176,38 @@ final class SideloadedLaneViewModelTests: XCTestCase {
     return CatalogFeed(opds2Feed: feed)
   }
 
-  private func makeViewModel(provider: @escaping () -> [TPPBook]) -> CatalogViewModel {
+  private func makeViewModel(
+    provider: @escaping () -> [TPPBook],
+    connected: Bool = true
+  ) -> CatalogViewModel {
     CatalogViewModel(
       repository: repository,
       topLevelURLProvider: { [feedURL] in feedURL },
       bookRegistry: TPPBookRegistryMock(),
       imageCache: ImageCache.shared,
       sideloadedLaneBooksProvider: provider,
-      reachability: MockReachability(initiallyConnected: true)
+      reachability: MockReachability(initiallyConnected: connected)
     )
   }
 
   private func awaitLoaded(_ vm: CatalogViewModel) async {
     let exp = XCTestExpectation(description: "loaded")
     vm.$state.sink { if case .loaded = $0 { exp.fulfill() } }.store(in: &cancellables)
+    await vm.load()
+    await fulfillment(of: [exp], timeout: 5.0)
+  }
+
+  /// Drive `load()` to a terminal failure state (`.error` or `.offline`,
+  /// depending on the injected reachability) and wait for it to land. The load
+  /// task is spawned but not awaited by `load()`, so we sink on `$state`.
+  private func awaitFailure(_ vm: CatalogViewModel) async {
+    let exp = XCTestExpectation(description: "failure")
+    vm.$state.sink {
+      switch $0 {
+      case .error, .offline: exp.fulfill()
+      default: break
+      }
+    }.store(in: &cancellables)
     await vm.load()
     await fulfillment(of: [exp], timeout: 5.0)
   }
@@ -263,5 +281,75 @@ final class SideloadedLaneViewModelTests: XCTestCase {
     XCTAssertEqual(lanes.first?.title, "Side Loaded",
                    "Side Loaded lane must survive the applyFacet cache-HIT fast path")
     XCTAssertEqual(lanes.first?.books.map(\.identifier), [sideBook.identifier])
+  }
+
+  // MARK: - F-1: feed-failure path still surfaces the Side Loaded lane
+
+  /// Feed error while CONNECTED with a non-empty provider: the VM must land in
+  /// `.error` (feed failure surfaced) AND carry the Side Loaded lane so the
+  /// imported books stay reachable. Driven through the real `load()` failure
+  /// path (`loadFailureState`), not by hand-constructing state.
+  func testLoadFailure_connected_nonEmptyProvider_exposesErrorAndSideloadedLane() async {
+    let sideBook = TPPBookMocker.snapshotEPUB()
+    repository.loadTopLevelCatalogError = NSError(domain: "test", code: 500)
+    let vm = makeViewModel(provider: { [sideBook] }, connected: true)
+
+    await awaitFailure(vm)
+
+    guard case .error = vm.state else {
+      return XCTFail("Connected feed failure must surface as .error, got \(vm.state)")
+    }
+    let lanes = vm.state.sideloadedLanes
+    XCTAssertEqual(lanes.first?.title, "Side Loaded",
+                   "The Side Loaded lane must ride alongside the feed error")
+    XCTAssertEqual(lanes.first?.books.map(\.identifier), [sideBook.identifier])
+  }
+
+  /// Feed error while CONNECTED with an EMPTY provider: behavior unchanged — the
+  /// state is `.error` and carries NO lanes (byte-identical to pre-F-1).
+  func testLoadFailure_connected_emptyProvider_exposesErrorOnly_noLane() async {
+    repository.loadTopLevelCatalogError = NSError(domain: "test", code: 500)
+    let vm = makeViewModel(provider: { [] }, connected: true)
+
+    await awaitFailure(vm)
+
+    guard case .error = vm.state else {
+      return XCTFail("Connected feed failure must surface as .error, got \(vm.state)")
+    }
+    XCTAssertTrue(vm.state.sideloadedLanes.isEmpty,
+                  "Empty provider must not inject a lane on the error path (unchanged behavior)")
+  }
+
+  /// Feed failure while OFFLINE with a non-empty provider: state is `.offline`
+  /// (connectivity error surfaced) AND carries the Side Loaded lane.
+  func testLoadFailure_offline_nonEmptyProvider_exposesOfflineAndSideloadedLane() async {
+    let sideBook = TPPBookMocker.snapshotPDF()
+    repository.loadTopLevelCatalogError = NSError(domain: "test", code: -1009)
+    let vm = makeViewModel(provider: { [sideBook] }, connected: false)
+
+    await awaitFailure(vm)
+
+    guard case .offline = vm.state else {
+      return XCTFail("Failure with no connectivity must surface as .offline, got \(vm.state)")
+    }
+    let lanes = vm.state.sideloadedLanes
+    XCTAssertEqual(lanes.first?.title, "Side Loaded",
+                   "The Side Loaded lane must ride alongside the offline banner")
+    XCTAssertEqual(lanes.first?.books.map(\.identifier), [sideBook.identifier])
+  }
+
+  /// Feed failure while OFFLINE with an EMPTY provider: `.offline` with no
+  /// lanes — unchanged behavior.
+  func testLoadFailure_offline_emptyProvider_exposesOfflineOnly_noLane() async {
+    repository.loadTopLevelCatalogError = NSError(domain: "test", code: -1009)
+    let vm = makeViewModel(provider: { [] }, connected: false)
+
+    await awaitFailure(vm)
+
+    guard case .offline = vm.state else {
+      return XCTFail("Failure with no connectivity must surface as .offline, got \(vm.state)")
+    }
+    XCTAssertTrue(vm.state.sideloadedLanes.isEmpty,
+                  "Empty provider must not inject a lane on the offline path (unchanged behavior)")
   }
 }

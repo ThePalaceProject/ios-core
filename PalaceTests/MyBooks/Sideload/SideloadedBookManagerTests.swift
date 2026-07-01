@@ -268,6 +268,58 @@ final class SideloadedBookManagerTests: PalaceWiringTestCase {
                   "the book must NOT reach the main registry when the manifest didn't persist")
   }
 
+  // MARK: - Original filename surfacing (UI-2)
+
+  func testOriginalFilename_afterImport_returnsImportedFilename() throws {
+    let registry = TPPBookRegistryMock()
+    let sideloaded = SideloadedBookRegistry(manifestDirectory: manifestDir)
+    let manager = makeManager(registry: registry, sideloaded: sideloaded)
+    // A fixed, recognizable source filename (not the sha256 identifier).
+    let source = importSourceDir.appendingPathComponent("My Great Novel.epub")
+    try Data(UUID().uuidString.utf8).write(to: source)
+
+    let book = try manager.import(fileURL: source)
+
+    XCTAssertEqual(manager.originalFilename(for: book.identifier), "My Great Novel.epub",
+                   "manager must surface the imported filename, not the content-hash id")
+    XCTAssertNotEqual(manager.originalFilename(for: book.identifier), book.identifier)
+  }
+
+  func testOriginalFilename_unknownIdentifier_returnsNil() throws {
+    let registry = TPPBookRegistryMock()
+    let sideloaded = SideloadedBookRegistry(manifestDirectory: manifestDir)
+    let manager = makeManager(registry: registry, sideloaded: sideloaded)
+
+    XCTAssertNil(manager.originalFilename(for: "sideload-nonexistent"),
+                 "an unknown identifier must have no filename")
+  }
+
+  @MainActor
+  func testCaption_importedBook_isFilename_unknownBook_fallsBackToTitle() throws {
+    let registry = TPPBookRegistryMock()
+    let sideloaded = SideloadedBookRegistry(manifestDirectory: manifestDir)
+    let manager = makeManager(registry: registry, sideloaded: sideloaded)
+    let source = importSourceDir.appendingPathComponent("Report.pdf")
+    try Data(UUID().uuidString.utf8).write(to: source)
+    let imported = try manager.import(fileURL: source)
+
+    let viewModel = SideLoadingViewModel(manager: manager)
+
+    XCTAssertEqual(viewModel.caption(for: imported), "Report.pdf",
+                   "caption for an imported book must show its filename")
+
+    // A book the manager has never seen → caption falls back to the title,
+    // never the raw identifier.
+    let unknown = SideloadedBookManager.mintOpenAccessBook(
+      identifier: "sideload-unknown-1",
+      title: "Untracked Title",
+      mimeType: "application/epub+zip",
+      imageCache: MockImageCache()
+    )
+    XCTAssertEqual(viewModel.caption(for: unknown), "Untracked Title",
+                   "caption must fall back to the book title when no filename is known")
+  }
+
   // MARK: - Remove
 
   func testRemove_deletesFile_andClearsBothRegistries() throws {

@@ -86,11 +86,19 @@ final class CatalogViewModel: ObservableObject {
   /// ≥1 book; when it returns `[]` the result is identical to the un-injected
   /// baseline shape.
   private func withSideloadedLane(_ mapped: MappedCatalog) -> CatalogContent {
+    mapped.toCatalogContent(prepending: sideloadedLanes())
+  }
+
+  /// The "Side Loaded" lane rows for the current provider snapshot — empty when
+  /// side-loading is off or the registry has no books. Shared by the success
+  /// path (`withSideloadedLane`) and the failure path (`loadFailureState`, F-1)
+  /// so both surface exactly the same lane, and neither shows one when the
+  /// provider is empty.
+  private func sideloadedLanes() -> [CatalogLaneModel] {
     let books = sideloadedLaneBooksProvider()
-    let lanes = books.isEmpty
+    return books.isEmpty
       ? []
       : [CatalogLaneModel(title: Self.sideloadedLaneTitle, books: books, moreURL: nil)]
-    return mapped.toCatalogContent(prepending: lanes)
   }
 
   deinit {
@@ -138,7 +146,15 @@ final class CatalogViewModel: ObservableObject {
   /// generic error state (genuine online failure). Keeps the offline-vs-error
   /// decision in one place so both the nil-feed and thrown-error paths agree.
   private func loadFailureState(message: String) -> CatalogState {
-    reachability.isConnectedToNetwork() ? .error(message) : .offline
+    // F-1: attach the Side Loaded lane so imported books stay reachable even
+    // when the catalog feed fails. The feed error is still surfaced (the view
+    // renders the error/offline banner above the lane). When side-loading
+    // contributes no lane the states carry `[]`, so the plain error/offline
+    // presentation is byte-identical to the pre-F-1 behavior.
+    let lanes = sideloadedLanes()
+    return reachability.isConnectedToNetwork()
+      ? .error(message, sideloadedLanes: lanes)
+      : .offline(sideloadedLanes: lanes)
   }
 
   // MARK: - Public API
