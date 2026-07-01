@@ -6,7 +6,7 @@ task: >-
   swift6/apptarget-registry-sweep-a5 (rebased onto develop@8e0017066, includes
   #1155). No local DRM build — CI "Unit Tests" is the warning gate.
 created_at: 2026-07-01
-status: triaged
+status: complete
 branch: swift6/apptarget-registry-sweep-a5
 triage_head: 7a794b248
 cascade_decisions:

@@ -76,8 +76,17 @@ protocol TPPAgeCheckValidationDelegate: AnyObject {
         // is already loaded, work goes onto `serialQueue` immediately so
         // `didCompleteAgeCheck`'s serial-queue async sees the queued
         // handlers, not an empty `handlerList`.
+        // Carry the two non-Sendable captures (`userAccountProvider` — an
+        // `@objc protocol` — and the completion closure) in a single
+        // documented `@unchecked Sendable` box so the `@Sendable`
+        // `serialQueue.async` / `Task` closures below capture the Sendable
+        // carrier instead of the raw values. `accountDetails` is Sendable
+        // (Account.LoadState is a Sendable enum) and is passed directly.
+        let callbacks = AgeCheckCallbacks(userAccountProvider: userAccountProvider,
+                                          completion: completion)
+
         guard let currentAccount = currentLibraryAccountProvider.currentAccount else {
-            serialQueue.async { completion?(false) }
+            serialQueue.async { callbacks.completion?(false) }
             return
         }
 
@@ -86,8 +95,8 @@ protocol TPPAgeCheckValidationDelegate: AnyObject {
             serialQueue.async { [weak self] in
                 self?.continueAgeRequirementCheck(
                     accountDetails: accountDetails,
-                    userAccountProvider: userAccountProvider,
-                    completion: completion
+                    userAccountProvider: callbacks.userAccountProvider,
+                    completion: callbacks.completion
                 )
             }
         case .detailsFailed, .detailsEvicted:
@@ -98,21 +107,21 @@ protocol TPPAgeCheckValidationDelegate: AnyObject {
             // (`AccountsManager.driveCurrentAccountAuthDocIfNeeded`), but
             // for the consumer side a missing details payload is a
             // missing details payload regardless of why.
-            serialQueue.async { completion?(false) }
+            serialQueue.async { callbacks.completion?(false) }
         case .notLoaded, .basicInfoLoaded, .detailsLoading:
             Task { [weak self] in
                 let accountDetails: AccountDetails
                 do {
                     accountDetails = try await currentAccount.awaitReady()
                 } catch {
-                    self?.serialQueue.async { completion?(false) }
+                    self?.serialQueue.async { callbacks.completion?(false) }
                     return
                 }
                 self?.serialQueue.async {
                     self?.continueAgeRequirementCheck(
                         accountDetails: accountDetails,
-                        userAccountProvider: userAccountProvider,
-                        completion: completion
+                        userAccountProvider: callbacks.userAccountProvider,
+                        completion: callbacks.completion
                     )
                 }
             }
@@ -212,4 +221,20 @@ protocol TPPAgeCheckValidationDelegate: AnyObject {
         serialQueue.sync { }
     }
     #endif
+}
+
+/// Carrier that transports the non-`Sendable` age-check callbacks across the
+/// `@Sendable` `serialQueue.async` / `Task` boundaries in
+/// `verifyCurrentAccountAgeRequirement`:
+///   - `userAccountProvider` is a `TPPUserAccountProvider`, an `@objc protocol`
+///     (NOT made Sendable — carried in the box instead), and
+///   - `completion` is a non-Sendable closure.
+///
+/// `@unchecked Sendable` invariant: the box is only ever unwrapped on
+/// `serialQueue` or the main actor — `userAccountProvider.needsAuth` is read and
+/// `completion` is invoked exclusively inside the serial-queue / main-actor
+/// blocks, never concurrently. Mirrors `SyncCallbacks` in `BookRegistrySync`.
+private struct AgeCheckCallbacks: @unchecked Sendable {
+    let userAccountProvider: TPPUserAccountProvider
+    let completion: ((Bool) -> Void)?
 }

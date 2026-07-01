@@ -101,15 +101,20 @@ enum TriageBotFactory {
     // MARK: - Palace-specific field snapshot
 
     private static func currentPalaceFields() async -> DefaultIosContextProvider.PalaceFields {
-        let manager = await MainActor.run { AppContainer.production().accountsManager }
-        let account = manager.currentAccount
-
-        return DefaultIosContextProvider.PalaceFields(
-            libraryName: account?.name,
-            libraryUUID: account?.uuid,
-            distributor: nil,        // Phase 2: derive from catalog metadata
-            authType: nil            // Phase 2: derive from currentAuthentication
-        )
+        // Read `currentAccount` (main-actor state on the non-Sendable
+        // AccountsManager) INSIDE the MainActor hop and return only the
+        // already-`Sendable` PalaceFields snapshot. This keeps the
+        // non-Sendable AccountsManager from crossing the actor boundary —
+        // same values, same source, no behavior change.
+        return await MainActor.run { () -> DefaultIosContextProvider.PalaceFields in
+            let account = AppContainer.production().accountsManager.currentAccount
+            return DefaultIosContextProvider.PalaceFields(
+                libraryName: account?.name,
+                libraryUUID: account?.uuid,
+                distributor: nil,        // Phase 2: derive from catalog metadata
+                authType: nil            // Phase 2: derive from currentAuthentication
+            )
+        }
     }
 
 }

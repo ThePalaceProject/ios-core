@@ -10,6 +10,18 @@ import CarPlay
 import UIKit
 import PalaceLogging
 
+/// Transports the non-`Sendable` completion handler across the `@Sendable`
+/// `Task` boundary in `artwork(for:completion:)`. The wrapped closure is ONLY
+/// ever invoked inside `await MainActor.run { ... }` — never off the main actor
+/// and never concurrently — so `@unchecked Sendable` is sound: the box merely
+/// satisfies the capture check without rippling `@Sendable` onto the public
+/// completion-handler signature. Mirrors `ImageCompletionBox` in
+/// `Palace/Utilities/ImageCache/ImageLoaderImpl.swift`.
+private final class CarPlayImageCompletionBox: @unchecked Sendable {
+    let call: (UIImage?) -> Void
+    init(_ call: @escaping (UIImage?) -> Void) { self.call = call }
+}
+
 /// Provides artwork images for CarPlay audiobook display
 /// Handles async loading, caching, and placeholder generation
 final class CarPlayImageProvider {
@@ -55,7 +67,10 @@ final class CarPlayImageProvider {
             return
         }
 
-        // Load asynchronously
+        // Load asynchronously. Box the non-Sendable completion so it can cross
+        // the @Sendable Task boundary; it is only ever invoked inside
+        // MainActor.run, never off-main and never concurrently.
+        let completionBox = CarPlayImageCompletionBox(completion)
         Task {
             let image = await loadArtwork(for: book)
             let finalImage = image ?? generatePlaceholder(for: book)
@@ -64,7 +79,7 @@ final class CarPlayImageProvider {
             imageLoader.set(processed, for: cacheKey)
 
             await MainActor.run {
-                completion(processed)
+                completionBox.call(processed)
             }
         }
     }

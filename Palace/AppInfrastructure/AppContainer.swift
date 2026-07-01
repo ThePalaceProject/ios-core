@@ -466,6 +466,16 @@ struct AppContainer {
             reachability: reachability,
             authCoordinator: authCoordinator
         )
+        // `UserAccountPublisher.shared` is `@MainActor`-isolated; this builder
+        // runs on the main thread (it is only ever reached from the first
+        // `production()` caller, which is UIKit app-launch lifecycle —
+        // `TPPAppDelegate.application(_:didFinishLaunchingWithOptions:)` /
+        // `SceneDelegate` — and from main-thread XCTest setup). The same
+        // main-thread precondition is already asserted a few lines above where
+        // `authCoordinator` is built inside `MainActor.assumeIsolated`, so this
+        // read introduces no new precondition. Hoisted behind `assumeIsolated`
+        // to satisfy the `targeted` checker without a signature change.
+        let userAccountPublisher = MainActor.assumeIsolated { UserAccountPublisher.shared }
         return AppContainer(
             bookRegistry: bookRegistry,
             networkExecutor: executor,
@@ -478,7 +488,7 @@ struct AppContainer {
             debugSettings: DebugSettings(),
             imageCache: imageCache,
             imageLoader: imageLoader,
-            userAccountPublisher: .shared,
+            userAccountPublisher: userAccountPublisher,
             opdsFeedService: OPDSFeedService(),
             readerService: ReaderService(),
             navigationCoordinatorHub: NavigationCoordinatorHub(),

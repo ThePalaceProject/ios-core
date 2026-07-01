@@ -126,10 +126,10 @@ private struct PDFThumbnailStripCell: View {
 
         func fetch() {
             guard image == nil else { return }
-            let provider = self.provider
+            let providerBox = ThumbnailProviderBox(self.provider)
             let page = self.page
             DispatchQueue.pdfThumbnailRenderingQueue.async {
-                let rendered = provider.thumbnail(for: page)
+                let rendered = providerBox.provider.thumbnail(for: page)
                 guard let rendered else { return }
                 DispatchQueue.main.async { [weak self] in
                     self?.image = rendered
@@ -137,4 +137,16 @@ private struct PDFThumbnailStripCell: View {
             }
         }
     }
+}
+
+/// Sendable carrier that transports the non-Sendable `PDFKitThumbnailProvider`
+/// across the `@Sendable` background-render closure in `Fetcher.fetch()`.
+/// `PDFKitThumbnailProvider.thumbnail(for:)` is invoked ONLY on
+/// `pdfThumbnailRenderingQueue`, and the rendered image is published back via
+/// the main-queue hop — the provider is never touched concurrently — so
+/// `@unchecked Sendable` is sound. Mirrors `ImageCompletionBox` in
+/// `ImageLoaderImpl`.
+private final class ThumbnailProviderBox: @unchecked Sendable {
+    let provider: PDFKitThumbnailProvider
+    init(_ provider: PDFKitThumbnailProvider) { self.provider = provider }
 }

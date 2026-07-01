@@ -34,7 +34,18 @@ protocol AccountLogoDelegate: AnyObject {
 
 // MARK: AccountDetails
 // Extra data that gets loaded from an OPDS2AuthenticationDocument,
-@objcMembers final class AccountDetails: NSObject {
+//
+// `@unchecked Sendable`: instances are effectively immutable value-holders once
+// vended into `Account.LoadState.detailsLoaded` (which is a `Sendable` enum, so
+// the payload MUST be Sendable for `awaitReady()` / `stateStream` to cross actor
+// boundaries). All meaningfully-observable state is immutable `let` (`defaults`,
+// `uuid`, `auths`, `mainColor`, `userProfileUrl`, `signUpUrl`, `loansUrl`, the
+// `supports*` flags; `Authentication` is itself all-`let`). The `fileprivate
+// var url*` fields are write-once during account parse via `setURL(_:forLicense:)`
+// and read-only thereafter. The `eulaIsAccepted` / `syncPermissionGranted` /
+// `userAboveAgeLimit` computed setters delegate to the internally-thread-safe
+// `UserDefaults`, not to instance storage. Mirrors `TPPUserAccount` (#1155).
+@objcMembers final class AccountDetails: NSObject, @unchecked Sendable {
     enum AuthType: String, Codable {
         case basic = "http://opds-spec.org/auth/basic"
         case coppa = "http://librarysimplified.org/terms/authentication/gate/coppa" // used for Simplified collection
