@@ -15,7 +15,7 @@
 import XCTest
 @testable import Palace
 
-final class BookFileManagerSideloadResolutionTests: XCTestCase {
+final class BookFileManagerSideloadResolutionTests: PalaceWiringTestCase {
 
   private var tempDirectory: URL!
   private var defaultsSuiteName: String!
@@ -73,7 +73,7 @@ final class BookFileManagerSideloadResolutionTests: XCTestCase {
     registry.addBook(makeBook(identifier: "sl-1"), state: .downloadSuccessful)
     registry.addBook(makeBook(identifier: "normal-1"), state: .downloadSuccessful)
 
-    let accountsManager = AccountsManager(defaults: customDefaults)
+    let accountsManager = makeFreshAccountsManager(defaults: customDefaults)
     let dir = tempDirectory!
 
     return BookFileManager(

@@ -13,7 +13,7 @@
 import XCTest
 @testable import Palace
 
-final class SideloadedBookManagerTests: XCTestCase {
+final class SideloadedBookManagerTests: PalaceWiringTestCase {
 
   private var tempRoot: URL!
   private var contentRoot: URL!
@@ -63,7 +63,7 @@ final class SideloadedBookManagerTests: XCTestCase {
   }
 
   private func makeBookFileManager(registry: TPPBookRegistryProvider) -> BookFileManager {
-    let accountsManager = AccountsManager(defaults: customDefaults)
+    let accountsManager = makeFreshAccountsManager(defaults: customDefaults)
     let root = contentRoot!
     return BookFileManager(
       bookRegistry: registry,

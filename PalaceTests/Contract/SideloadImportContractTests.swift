@@ -16,7 +16,7 @@
 import XCTest
 @testable import Palace
 
-final class SideloadImportContractTests: XCTestCase {
+final class SideloadImportContractTests: PalaceWiringTestCase {
 
   private var tempRoot: URL!
   private var contentRoot: URL!
@@ -52,7 +52,7 @@ final class SideloadImportContractTests: XCTestCase {
     let isolatedDefaults = UserDefaults(suiteName: "SideloadContract-\(UUID().uuidString)") ?? .standard
     let bookFileManager = BookFileManager(
       bookRegistry: recordingRegistry,
-      accountsManager: AccountsManager(defaults: isolatedDefaults),
+      accountsManager: makeFreshAccountsManager(defaults: isolatedDefaults),
       fileManager: .default,
       directoryProvider: { [contentRoot] account in contentRoot!.appendingPathComponent("acct-\(account ?? "nil")") },
       sideloadedIdentifiersProvider: { [] }

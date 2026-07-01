@@ -180,7 +180,7 @@ final class SideloadedLaneViewModelTests: XCTestCase {
     CatalogViewModel(
       repository: repository,
       topLevelURLProvider: { [feedURL] in feedURL },
-      bookRegistry: AppContainer.production().bookRegistry,
+      bookRegistry: TPPBookRegistryMock(),
       imageCache: ImageCache.shared,
       sideloadedLaneBooksProvider: provider,
       reachability: MockReachability(initiallyConnected: true)
