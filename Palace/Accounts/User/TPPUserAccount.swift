@@ -48,10 +48,30 @@ private enum StorageKey: String {
     var needsAuth: Bool { get }
 }
 
-@objcMembers class TPPUserAccount: NSObject, TPPUserAccountProvider {
+@objcMembers class TPPUserAccount: NSObject, TPPUserAccountProvider, @unchecked Sendable {
+    // `@unchecked Sendable` invariant — every mutable field is synchronized:
+    //   • Keychain-backed state (`_authorizationIdentifier`, `_credentials`, …) is
+    //     serialized through `accountInfoQueue` inside each `TPPKeychainVariable`.
+    //   • The three plain control vars (`_notifyAccountChange`, `_signInGeneration`,
+    //     `_sessionIdentifier`) are guarded by `controlLock`. They deliberately do
+    //     NOT use `accountInfoQueue`: their setters run from inside `atomicUpdate`'s
+    //     `accountInfoQueue.sync(flags:.barrier)` block (the sign-in pipeline —
+    //     `setAuthToken`/`credentials=` rotate `sessionIdentifier`,
+    //     `setAuthDefinitionWithoutUpdate` writes `notifyAccountChange`), so routing
+    //     them through that serial queue would re-enter it and deadlock. `controlLock`
+    //     is a non-recursive leaf lock with no ordering cycle against `accountInfoQueue`.
+    //   • `let` fields (`libraryUUID`, `boundLibraryUUID`, `accountInfoQueue`,
+    //     `controlLock`) are immutable; `lazy var` keychain variables are effectively
+    //     immutable after first access and internally queue-synchronized.
     private let accountInfoQueue: DispatchQueue
+    private let controlLock = NSLock()
     private lazy var keychainTransaction = TPPKeychainVariableTransaction(accountInfoQueue: accountInfoQueue)
-    private var notifyAccountChange: Bool = true
+
+    private var _notifyAccountChange: Bool = true
+    private var notifyAccountChange: Bool {
+        get { controlLock.lock(); defer { controlLock.unlock() }; return _notifyAccountChange }
+        set { controlLock.lock(); _notifyAccountChange = newValue; controlLock.unlock() }
+    }
 
     /// Always equal to `libraryUUID`. Kept as a separate property for
     /// backwards-compat with older call sites that read it to assert the
@@ -61,7 +81,24 @@ private enum StorageKey: String {
     /// Incremented by `cancelPendingSignOut()` each time the user
     /// signs in, so that a stale DRM deauthorization callback can detect
     /// that re-authentication occurred and skip credential cleanup.
-    var signInGeneration: Int = 0
+    /// Backed by `_signInGeneration` under `controlLock`. Kept settable (not
+    /// `private(set)`) because `TPPUserAccountMock.removeAll()` writes `= 0`;
+    /// the atomic `+= 1` at the sign-out site uses `incrementSignInGeneration()`.
+    private var _signInGeneration: Int = 0
+    var signInGeneration: Int {
+        get { controlLock.lock(); defer { controlLock.unlock() }; return _signInGeneration }
+        set { controlLock.lock(); _signInGeneration = newValue; controlLock.unlock() }
+    }
+
+    /// Atomically increments the sign-in generation as a single locked
+    /// read-modify-write, so a concurrent reader on the sign-out path never
+    /// observes a torn `+= 1`. Use this instead of `signInGeneration += 1`
+    /// (which would be a non-atomic get-then-set across two lock acquisitions).
+    func incrementSignInGeneration() {
+        controlLock.lock()
+        _signInGeneration += 1
+        controlLock.unlock()
+    }
 
     /// An opaque, per-sign-in identifier that rotates each time a successful
     /// sign-in completes (i.e. new credentials are written). This is purely
@@ -69,7 +106,12 @@ private enum StorageKey: String {
     /// protection — it is NOT used for any authentication, authorization, or
     /// network purpose and must never be persisted or transmitted.
     /// Exposed as `String` so it is Obj-C friendly via `@objcMembers`.
-    public private(set) var sessionIdentifier: String = UUID().uuidString
+    /// Backed by `_sessionIdentifier` under `controlLock`.
+    private var _sessionIdentifier: String = UUID().uuidString
+    public private(set) var sessionIdentifier: String {
+        get { controlLock.lock(); defer { controlLock.unlock() }; return _sessionIdentifier }
+        set { controlLock.lock(); _sessionIdentifier = newValue; controlLock.unlock() }
+    }
 
     // MARK: - Initializers
 

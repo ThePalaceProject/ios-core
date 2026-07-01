@@ -23,7 +23,14 @@ import Combine
 @MainActor
 final class LCPPDFOpenProgress: ObservableObject {
 
-    static let shared = LCPPDFOpenProgress()
+    // `nonisolated` so background callers on the LCP-decrypt path
+    // (TPPLCPClient.decrypt, LCPPDFDiskExtract.extract — both off the main
+    // actor, ~7k calls/s during a PDF cross-ref walk) can reference the
+    // singleton without a main-actor hop. Safe because a `@MainActor` class is
+    // implicitly `Sendable` (the reference is immutable); the instance's state
+    // stays main-actor-isolated and its recorder entry points are already
+    // `nonisolated` with internal `Task { @MainActor }` hops.
+    nonisolated static let shared = LCPPDFOpenProgress()
 
     /// Atomic flag readable from any actor — used by non-MainActor
     /// callers (cover prefetcher, etc.) that need to know whether an
@@ -79,7 +86,7 @@ final class LCPPDFOpenProgress: ObservableObject {
     /// out-and-re-enter starts a different open.
     @Published private(set) var bookIdentifier: String?
 
-    private init() {}
+    nonisolated private init() {}
 
     func begin(bookIdentifier: String) {
         self.bookIdentifier = bookIdentifier
