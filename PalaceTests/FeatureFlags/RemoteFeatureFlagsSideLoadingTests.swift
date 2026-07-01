@@ -13,8 +13,8 @@ import XCTest
 ///
 /// These tests pin the RESOLUTION PRECEDENCE, not the default value:
 ///   1. UserDefaults local override (either direction) wins.
-///   2. No override → DEBUG builds resolve `true`.
-///   3. No override, release build → Firebase Remote Config (default `false`).
+///   2. No override → Firebase Remote Config (default `false`) — side loading is
+///      a test-only feature, OFF by default, enabled via the dev-menu toggle.
 ///
 /// Every test constructs a fresh `RemoteFeatureFlags(defaults:)` with a
 /// per-suite `UserDefaults` so override-key state never leaks — `.shared` is
@@ -79,32 +79,26 @@ final class RemoteFeatureFlagsSideLoadingTests: XCTestCase {
         XCTAssertTrue(sut.isSideLoadingEnabled, "override flipped back to true → true")
     }
 
-    // MARK: - No override → DEBUG-on precedence
+    // MARK: - No override → defers to Remote Config
 
-    /// With NO override present, `isSideLoadingEnabled` must follow the exact
-    /// same DEBUG-on precedence as the canonical `isTriageBotEnabled`
-    /// (override > `#if DEBUG` true > Firebase — locked decision #2).
+    /// With NO local override present, `isSideLoadingEnabled` must defer to
+    /// Firebase Remote Config (`isFeatureEnabled(.sideLoadingEnabled)`) rather
+    /// than a build-time `#if DEBUG` default. Side loading is a test-only feature
+    /// that is OFF by default and enabled via the dev-menu toggle, so the
+    /// no-override path is exactly the Remote Config value.
     ///
-    /// This is asserted via parity with `isTriageBotEnabled` rather than a
-    /// test-side `#if DEBUG`, because the PalaceTests target does NOT define
-    /// `DEBUG` even when the Palace module (where both accessors are compiled)
-    /// does — a test-side `#if DEBUG` would always take the release branch and
-    /// diverge from the production value. Both accessors here are evaluated in
-    /// the production module under the same compilation flags, so with no
-    /// override on either key they must resolve identically regardless of build
-    /// configuration. If the `#if DEBUG return true` arm is dropped from
-    /// `isSideLoadingEnabled`, a DEBUG-config production build makes
-    /// `isTriageBotEnabled` true while `isSideLoadingEnabled` falls to the
-    /// Firebase default (false) — and this assertion fails.
-    func testIsSideLoadingEnabled_noOverride_followsSameDebugOnPrecedenceAsTriageBot() {
+    /// This pins that the accessor's fallback is the Remote Config seam (so
+    /// remote gating actually works) and that no override silently forces it on.
+    /// The override-drop / precedence-inversion mutants are killed by the
+    /// override-direction tests above (override=true must return true even though
+    /// the Remote Config default is false).
+    func testIsSideLoadingEnabled_noOverride_defersToRemoteConfig() {
         let sut = RemoteFeatureFlags(defaults: defaults)
         XCTAssertNil(defaults.object(forKey: RemoteFeatureFlags.sideLoadingLocalOverrideKey),
                      "Precondition: fresh suite must have no side-loading override")
-        XCTAssertNil(defaults.object(forKey: RemoteFeatureFlags.triageBotLocalOverrideKey),
-                     "Precondition: fresh suite must have no triage-bot override")
 
-        XCTAssertEqual(sut.isSideLoadingEnabled, sut.isTriageBotEnabled,
-                       "With no local override, isSideLoadingEnabled must follow the same DEBUG-on precedence as isTriageBotEnabled")
+        XCTAssertEqual(sut.isSideLoadingEnabled, sut.isFeatureEnabled(.sideLoadingEnabled),
+                       "With no local override, isSideLoadingEnabled must defer to Remote Config (isFeatureEnabled)")
     }
 
     // MARK: - Flag / RemoteConfig wiring

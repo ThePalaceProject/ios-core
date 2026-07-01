@@ -1,3 +1,9 @@
+---
+name: PP-2677 side-loading manager settings catalog lane registry sync-exemption feature flag
+created: 2026-07-01
+author: swarm_495a88d9
+---
+
 # Intent — Side Loading (PP-2677 / PP-2678 / PP-2679)
 
 Swarm: swarm_495a88d9 · Branch: feature/PP-2677-sideloading · Date: 2026-07-01

@@ -365,19 +365,21 @@ final class RemoteFeatureFlags: @unchecked Sendable {
     /// building from Xcode gets the feature automatically. TestFlight and App
     /// Store builds respect the Firebase Remote Config flag (default off).
     ///
-    /// Override precedence (mirrors `isTriageBotEnabled`):
-    ///   1. UserDefaults local override (QA / staged demos)
-    ///   2. DEBUG build → true
-    ///   3. Firebase Remote Config
+    /// Side loading is a test-only capability enabled via the Testing settings
+    /// menu (per PP-2581), so it is OFF by default and turned on explicitly by a
+    /// tester/QA rather than auto-enabled by build configuration. A build-time
+    /// `#if DEBUG` gate would only enable it in local Xcode debug builds anyway
+    /// (TestFlight/Release are non-DEBUG), so it would not reach the QA builds
+    /// that actually need it — the dev-menu local override does.
+    ///
+    /// Override precedence:
+    ///   1. UserDefaults local override (dev-menu toggle / QA / staged demos)
+    ///   2. Firebase Remote Config (default `false`)
     var isSideLoadingEnabled: Bool {
         if let override = defaults.object(forKey: Self.sideLoadingLocalOverrideKey) as? Bool {
             return override
         }
-        #if DEBUG
-        return true
-        #else
         return isFeatureEnabled(.sideLoadingEnabled)
-        #endif
     }
 
     // MARK: - Device Info for Targeting
