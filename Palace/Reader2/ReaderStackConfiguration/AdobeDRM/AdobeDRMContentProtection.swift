@@ -9,7 +9,13 @@
 #if FEATURE_DRM_CONNECTOR
 
 import Foundation
-import ReadiumShared
+// `@preconcurrency`: ReadiumShared's `Resource` protocol requirements
+// (`stream(consume:)`, `properties() -> ReadResult<ResourceProperties>`) are not
+// Sendable-audited, so the `DRMDataResource` actor witnessing them crosses
+// non-Sendable types owned by that module. Downgrading module-origin Sendable
+// diagnostics here is the idiomatic fix until Readium ships a concurrency-audited
+// API; DRMDataResource stays an `actor` — no behavior change.
+@preconcurrency import ReadiumShared
 import ReadiumZIPFoundation
 
 final class AdobeDRMContentProtection: ContentProtection, Loggable {
