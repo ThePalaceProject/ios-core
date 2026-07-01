@@ -1,0 +1,27 @@
+[
+  {
+    "args" : {
+      "contentType" : "TPPBookContentType(rawValue: 0)",
+      "mimeType" : "application\/epub+zip"
+    },
+    "method" : "classify"
+  },
+  {
+    "args" : {
+      "ext" : "epub"
+    },
+    "method" : "copyFile"
+  },
+  {
+    "args" : {
+      "contentType" : "TPPBookContentType(rawValue: 0)"
+    },
+    "method" : "sideloadRegistry.add"
+  },
+  {
+    "args" : {
+      "state" : "download-successful"
+    },
+    "method" : "bookRegistry.addBook"
+  }
+]

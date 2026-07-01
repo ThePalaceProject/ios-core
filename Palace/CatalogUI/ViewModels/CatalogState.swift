@@ -127,14 +127,33 @@ extension CatalogSelectors {
 // MARK: - MappedCatalog Bridge
 
 extension CatalogViewModel.MappedCatalog {
-  func toCatalogContent() -> CatalogContent {
+  /// Convert the mapped feed to displayable `CatalogContent`, optionally
+  /// prepending extra lanes (e.g. the "Side Loaded" lane — Module D / PP-2679).
+  ///
+  /// When `extraLanes` is non-empty the result is FORCED to `.grouped` so the
+  /// injected lanes appear even when the base feed is ungrouped or empty — the
+  /// DRM side-loading test use-case has no OPDS feed at all, so the lane must
+  /// survive the `.empty`/`.ungrouped` shapes. To avoid dropping books, an
+  /// ungrouped base feed is wrapped into a single trailing lane (its header is
+  /// the feed title) rather than discarded.
+  func toCatalogContent(prepending extraLanes: [CatalogLaneModel] = []) -> CatalogContent {
     let feed: CatalogFeedContent
-    if !lanes.isEmpty {
-      feed = .grouped(lanes)
-    } else if !ungroupedBooks.isEmpty {
-      feed = .ungrouped(ungroupedBooks)
+    if extraLanes.isEmpty {
+      if !lanes.isEmpty {
+        feed = .grouped(lanes)
+      } else if !ungroupedBooks.isEmpty {
+        feed = .ungrouped(ungroupedBooks)
+      } else {
+        feed = .empty
+      }
     } else {
-      feed = .empty
+      if !lanes.isEmpty {
+        feed = .grouped(extraLanes + lanes)
+      } else if !ungroupedBooks.isEmpty {
+        feed = .grouped(extraLanes + [CatalogLaneModel(title: title, books: ungroupedBooks, moreURL: nil)])
+      } else {
+        feed = .grouped(extraLanes)
+      }
     }
 
     return CatalogContent(

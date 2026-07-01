@@ -21,6 +21,12 @@ final class CatalogViewModel: ObservableObject {
   private let bookRegistry: TPPBookRegistryProvider
   private let imageCache: ImageCacheType
   private let reachability: Reachability
+  /// Supplies the books for the "Side Loaded" catalog lane (Module D / PP-2679).
+  /// Returns `[]` when side-loading is off — the feature-flag gate lives at the
+  /// construction site (`AppTabHostView`), keeping the flag out of the VM. When
+  /// this returns ≥1 book, `withSideloadedLane(_:)` prepends a lane on every
+  /// catalog conversion path.
+  private let sideloadedLaneBooksProvider: () -> [TPPBook]
   private var cancellables = Set<AnyCancellable>()
 
   // MARK: - Public accessors for search
@@ -55,14 +61,36 @@ final class CatalogViewModel: ObservableObject {
     topLevelURLProvider: @escaping () -> URL?,
     bookRegistry: TPPBookRegistryProvider,
     imageCache: ImageCacheType,
+    sideloadedLaneBooksProvider: @escaping () -> [TPPBook] = { [] },
     reachability: Reachability = AppContainer.production().reachability
   ) {
     self.repository = repository
     self.topLevelURLProvider = topLevelURLProvider
     self.bookRegistry = bookRegistry
     self.imageCache = imageCache
+    self.sideloadedLaneBooksProvider = sideloadedLaneBooksProvider
     self.reachability = reachability
     observeConnectivity()
+  }
+
+  /// Literal (not localized) side-loaded lane title. Side-loading is a
+  /// DEBUG/test-only feature gated behind `isSideLoadingEnabled` (default OFF in
+  /// production), so per the Module D contract a literal is acceptable here.
+  private static let sideloadedLaneTitle = "Side Loaded"
+
+  /// SINGLE CHOKE POINT for injecting the "Side Loaded" lane into every catalog
+  /// conversion (PP-2679). EVERY former catalog-content call site routes
+  /// through here so the lane can never silently vanish on one path — in
+  /// particular the `applyFacet` cache-HIT fast path, which a per-site patch
+  /// would miss. The lane is present iff `sideloadedLaneBooksProvider()` returns
+  /// ≥1 book; when it returns `[]` the result is identical to the un-injected
+  /// baseline shape.
+  private func withSideloadedLane(_ mapped: MappedCatalog) -> CatalogContent {
+    let books = sideloadedLaneBooksProvider()
+    let lanes = books.isEmpty
+      ? []
+      : [CatalogLaneModel(title: Self.sideloadedLaneTitle, books: books, moreURL: nil)]
+    return mapped.toCatalogContent(prepending: lanes)
   }
 
   deinit {
@@ -163,7 +191,7 @@ final class CatalogViewModel: ObservableObject {
 
         guard !Task.isCancelled else { return }
 
-        let content = mapped.toCatalogContent()
+        let content = self.withSideloadedLane(mapped)
         self.state = .loaded(content)
         self.lastLoadedURL = url
         // Store under both the top-level URL and the active entry point href,
@@ -280,7 +308,7 @@ final class CatalogViewModel: ObservableObject {
     // Try synchronous cache check — instant swap, no opacity fade
     if let cachedFeed = repository.cachedFeed(for: href) {
       let mapped = Self.mapFeed(cachedFeed, bookRegistry: bookRegistry)
-      let newContent = mapped.toCatalogContent()
+      let newContent = withSideloadedLane(mapped)
       state = .loaded(CatalogContent(
         title: newContent.title,
         feed: newContent.feed,
@@ -305,7 +333,7 @@ final class CatalogViewModel: ObservableObject {
     do {
       if let feed = try await repository.loadTopLevelCatalog(at: href) {
         let mapped = Self.mapFeed(feed, bookRegistry: bookRegistry)
-        state = .loaded(mapped.toCatalogContent())
+        state = .loaded(withSideloadedLane(mapped))
         scrollGeneration &+= 1
       } else {
         state = .loaded(currentContent)
@@ -359,7 +387,7 @@ final class CatalogViewModel: ObservableObject {
 
     // Try repository cache — feed data exists but views need creation
     if let cachedFeed = repository.cachedFeed(for: href) {
-      let base = Self.mapFeed(cachedFeed, bookRegistry: bookRegistry).toCatalogContent()
+      let base = withSideloadedLane(Self.mapFeed(cachedFeed, bookRegistry: bookRegistry))
       let newContent = CatalogContent(
         title: base.title, feed: base.feed,
         selectors: CatalogSelectors(entryPoints: optimisticSelectors.entryPoints, facetGroups: base.selectors.facetGroups)
@@ -378,7 +406,7 @@ final class CatalogViewModel: ObservableObject {
 
     do {
       if let feed = try await repository.loadTopLevelCatalog(at: href) {
-        let base = Self.mapFeed(feed, bookRegistry: bookRegistry).toCatalogContent()
+        let base = withSideloadedLane(Self.mapFeed(feed, bookRegistry: bookRegistry))
         let newContent = CatalogContent(
           title: base.title, feed: base.feed,
           selectors: CatalogSelectors(entryPoints: optimisticSelectors.entryPoints, facetGroups: base.selectors.facetGroups)

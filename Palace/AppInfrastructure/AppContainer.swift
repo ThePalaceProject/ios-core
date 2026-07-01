@@ -249,6 +249,27 @@ struct AppContainer {
     }
     private static var _sideloadedBookRegistry: SideloadedBookRegistry?
 
+    /// Side-loading (PP-2677) — orchestrates the import/remove/rehydrate flow on
+    /// top of `sideloadedBookRegistry`. Consumes the side-loaded registry (truth
+    /// store + sync-exemption), the main `bookRegistry` (so the reader sees the
+    /// book as `.downloadSuccessful`), and a `BookFileManager` for the fixed-
+    /// account file path. Lazy + cached the same way `sideloadedBookRegistry` is;
+    /// `_resetForTesting()` nils it so a stale manager doesn't outlive the
+    /// registry it was wired to. Additive property only — the big `init`,
+    /// `_buildCachedAppContainer()` return, and `with*Presenter` copies are NOT
+    /// touched (Module A owns this property region; Module C appends here).
+    var sideloadedBookManager: SideloadedBookManager {
+        if let cached = AppContainer._sideloadedBookManager { return cached }
+        let manager = SideloadedBookManager(
+            bookRegistry: self.bookRegistry,
+            sideloadedRegistry: self.sideloadedBookRegistry,
+            bookFileManager: BookFileManager()
+        )
+        AppContainer._sideloadedBookManager = manager
+        return manager
+    }
+    private static var _sideloadedBookManager: SideloadedBookManager?
+
     /// Process-wide audiobook session presenter — the root-level
     /// SwiftUI-observable bridge between the manager's published state and
     /// the mini-player + full-screen-cover surfaces Module D wires into
@@ -607,6 +628,10 @@ struct AppContainer {
         // Not `@MainActor`-isolated (its `identifiers` is read off-main), so
         // reset outside the `assumeIsolated` block.
         _sideloadedBookRegistry = nil
+        // Side-loading (PP-2677): the manager caches a reference to the
+        // side-loaded registry above, so nil it in lockstep — a stale manager
+        // would keep pointing at the reset registry across test classes.
+        _sideloadedBookManager = nil
         // Leave the flag at the test-safe `true` (see step 4 above) — do NOT
         // reset to `false`. The next test class inherits this value before its
         // own setUp runs; `false` here is the root of the cross-test
