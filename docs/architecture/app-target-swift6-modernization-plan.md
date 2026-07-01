@@ -5,7 +5,9 @@
 effort should read this top to bottom first. It carries the finish-line checklist,
 the proven execution playbook, the measured warning inventory, and the gotchas that
 already bit us. PR/commit states below were verified via `gh pr view` /
-`git log origin/develop` on 2026-06-30.
+`git log origin/develop` on 2026-07-01. <!-- audit-verified -->
+Merge states re-confirmed 2026-07-01: #1145 (A.1 sweep) and #1148–#1152 (A.3
+slices A–E) + #1154 (hotfix) all MERGED to develop.
 
 ---
 
@@ -22,34 +24,74 @@ already bit us. PR/commit states below were verified via `gh pr view` /
   **#1144 (Wave-1 kickoff: `SWIFT_STRICT_CONCURRENCY = targeted` on Palace +
   Palace-noDRM)**.
 
-**IN FLIGHT:**
-- **#1145** (draft) — the non-critical app-target sweep (4 subsystem agents +
-  MockImageCache ripple). Branch `feat/swift6-apptarget-sweep`. Gated on CI:
-  must build green AND drop the 154-warning baseline.
+- **Phase A.1 — non-critical sweep: #1145 MERGED** (154 → 112). The A.2 cascade
+  items (`TPPAgeCheck` `@objc` protocols, `BookRegistrySync`, `TPPPDFDocumentMetadata`)
+  were folded INTO this sweep, so A.2 has no separate PR.
+- **Phase A.3 — 🔴 CRITICAL-PATH slices A–E: ALL MERGED** —
+  #1148 (A: auth-error network cluster), #1149 (B: borrow/return),
+  #1150 (C: download/DRM), #1151 (D: SignInLogic), #1152 (E: Audiobooks).
+  Plus #1154 (hotfix: MainActor hop in `BookCellModel.didSelectReturn`).
 
-**NEXT:** Phase A.2/A.3 below.
+**A.4 MEASURED — 2026-07-01 (Unit Tests run `28520895484`, develop tip `210f5713a`,
+`targeted` per-target). NOT zero: 117 concurrency warnings.** <!-- audit-verified -->
+Breakdown by target:
+- **Palace app target: 42** — the real remaining Phase-A work (Phase A NOT done).
+- **PalaceTests: 37** — test-target mocks (`@unchecked Sendable` restatements,
+  `crosses into main actor` mock conformances). Scope decision required (below).
+- **PalaceAudiobookToolkit: 5** — submodule → Phase D, out of app-target scope.
+
+**Root cause of the 42:** the A.3 "download/DRM" slice (#1150) addressed only the
+`Palace/MyBooks/` download-center files. The A.3 checklist ALSO named the Reader2/PDF
+DRM-decryption files (`TPPLCPClient`, `AdobeDRMContentProtection`, `AdobeCertificate`,
+`LCPPDFDiskExtract`) — verified **0 commits** touched them in `fb01695da..210f5713a`.
+Plus partial fixes left residue in already-touched files (`BookRegistrySync` ×9,
+`TPPAgeCheck` ×4) and never-touched app files (`FirebaseManager`, `TPPOPDSFeed+Networking`,
+`TPPBookRegistry`, `CarPlay*`, `AppContainer`, `DLNavigator`, …).
+
+**NEXT:** Phase A.5 (finish the 42 app-target warnings, below), then re-run A.4 to
+confirm 0, then Phase B (`complete` → 0).
 
 ---
 
 ## 2. Finish-line checklist (what "fully done" means)
 
 ### Phase A — app-target `targeted` → 0 warnings  (baseline: 154)
-- [ ] A.1 Land **#1145** (non-critical sweep): Utilities, OPDS2/Book, UI/ViewModels,
-      Reader2/PDF. *(in flight)*
-- [ ] A.2 **Cross-file cascade slices** (deps the sweep agents flagged, not forced
-      blind): `TPPBookRegistry` `@Sendable` closures; `TPPReadiumBookmark` &
-      `PDFKitThumbnailProvider` → Sendable; `TPPAgeCheck` `@objc` protocols
-      (`AccountDetails`, `TPPUserAccountProvider`).
-- [ ] A.3 **🔴 CRITICAL-PATH slices — the dominant remaining work (~108 of 154)**.
-      Each is its own PR with **architect + qa SoD + air-tight tests + mutation
-      testing** (CLAUDE.md rigor bar — these are money/access paths):
-      - `Palace/MyBooks/` — BorrowOperation, BookReturnService, MyBooksDownloadCenter,
+- [x] A.1 **#1145 MERGED** (non-critical sweep): Utilities, OPDS2/Book, UI/ViewModels,
+      Reader2/PDF. 154 → 112.
+- [x] A.2 **Cross-file cascade slices — folded into #1145**, no separate PR:
+      `TPPBookRegistry`/`BookRegistrySync` `@Sendable` closures; `TPPReadiumBookmark` &
+      `PDFKitThumbnailProvider`/`TPPPDFDocumentMetadata` → Sendable; `TPPAgeCheck`
+      `@objc` protocols (`AccountDetails`, `TPPUserAccountProvider`).
+- [~] A.3 **🔴 CRITICAL-PATH slices — MERGED but scope INCOMPLETE**. Landed:
+      - `Palace/MyBooks/` borrow/return **#1149 (B)**, download/DRM **#1150 (C)**
+        (BorrowOperation, BookReturnService, MyBooksDownloadCenter,
         DownloadAuthRetryHandler, TokenRefreshInterceptor, RightsManagementDispatcher,
-        LCPFulfillmentHandler
-      - `Palace/SignInLogic/` — TPPReauthenticator, TPPSignInBusinessLogic, SignIn*
-      - `Palace/Audiobooks/` — PlaybackReadinessGate, LCPAudiobooks
-      - DRM — Reader2 AdobeDRM*, TPPLCPClient, LCPPDFDiskExtract
-- [ ] A.4 Verify `targeted` build → **0** concurrency warnings (CI build log).
+        LCPFulfillmentHandler)
+      - auth-error network cluster **#1148 (A)** (TPPNetworkExecutor decision point)
+      - `Palace/SignInLogic/` **#1151 (D)** (TPPReauthenticator, TPPSignInBusinessLogic)
+      - `Palace/Audiobooks/` **#1152 (E)** (PlaybackReadinessGate, LCPAudiobooks)
+      - hotfix **#1154** (MainActor hop in BookCellModel.didSelectReturn)
+      - ❌ **DROPPED — the DRM-decryption files this bullet named were never touched**:
+        `TPPLCPClient`, `AdobeDRMContentProtection`, `AdobeCertificate`,
+        `LCPPDFDiskExtract` (0 commits). Moved to A.5.
+- [x] A.4 **Measured 2026-07-01 → 117 (NOT 0).** 42 Palace app-target + 37 PalaceTests
+      + 5 submodule. Phase A NOT done — see A.5. (Unit Tests run `28520895484`.)
+- [ ] A.5 **Finish the 42 app-target `targeted` warnings** (the real Phase-A remainder):
+      - 🔴 **DRM (critical-path, /rigorous-fix + SoD): 11** — `TPPLCPClient` ×4,
+        `AdobeDRMContentProtection` ×3, `AdobeCertificate` ×2, `LCPPDFDiskExtract` ×2.
+      - **Registry/age cascade residue: 13** — `BookRegistrySync` ×9, `TPPAgeCheck` ×4
+        (partially fixed in #1145; finish the `@Sendable` capture closures).
+      - **Remaining ~18** — `TPPOPDSFeed+Networking` ×2, `TPPReaderBookmarksBusinessLogic`
+        ×2, `AudiobookBookmarkBusinessLogic` ×2, `CarPlay*` ×2, `TPPLCPClient`-adjacent,
+        `FirebaseManager`, `DLNavigator`, `AppContainer`, `TPPBookRegistry`,
+        `TPPBookCoverRegistry`, `CatalogViewModel`, `TPPEPUBViewController`,
+        `TriageBotFactory`, `Account+State`, `PDFThumbnailStrip`. Non-critical → sweep.
+      - Then **re-run A.4** (dispatch Unit Tests on develop) and confirm **0**.
+- [ ] A.6 **Scope decision — PalaceTests target (37 warnings).** Does Phase A require
+      the TEST target to be `targeted`-clean, or only the app targets? #1144 set the
+      flag on Palace + Palace-noDRM; confirm whether PalaceTests inherits it and decide
+      before Phase B (mostly `@unchecked Sendable` restatements + mock main-actor
+      conformances — mechanical but ~37 sites).
 
 ### Phase B — `complete` → 0 warnings
 - [ ] B.1 `ruby scripts/set_strict_concurrency.rb complete` (flips the level).

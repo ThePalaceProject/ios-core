@@ -48,7 +48,7 @@ extension TPPSignInBusinessLogic {
     /// Called by finalizeSignIn() to invalidate any in-flight sign-out
     /// for this library's user account.
     func cancelPendingSignOut() {
-        userAccount.signInGeneration += 1
+        userAccount.incrementSignInGeneration()
     }
 
     // MARK: - Test seams (§10.4)
