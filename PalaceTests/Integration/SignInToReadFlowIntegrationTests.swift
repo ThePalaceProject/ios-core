@@ -28,6 +28,36 @@ import Combine
 import PalaceCatalog
 @testable import Palace
 
+/// Thread-safe sink for reader-open book identifiers.
+///
+/// The reader-open observer is registered via
+/// `NotificationCenter.addObserver(forName:object:queue:using:)`, whose block
+/// is `@Sendable`. Capturing the (non-Sendable, XCTestCase-rooted) `self` in
+/// that block — or mutating a `@MainActor` stored property from it — is a
+/// Swift 6 concurrency violation. Capturing this `@unchecked Sendable`
+/// recorder instead keeps the append synchronous (no actor hop, so ordering
+/// and timing are unchanged) while satisfying the checker. Isolation-only; the
+/// observable recording behavior is identical.
+private final class ReaderOpenRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var ids: [String] = []
+
+    func append(_ id: String) {
+        lock.lock(); defer { lock.unlock() }
+        ids.append(id)
+    }
+
+    func contains(_ id: String) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        return ids.contains(id)
+    }
+
+    func reset() {
+        lock.lock(); defer { lock.unlock() }
+        ids.removeAll()
+    }
+}
+
 @MainActor
 class SignInToReadFlowIntegrationTests: PalaceWiringTestCase {
 
@@ -62,7 +92,7 @@ class SignInToReadFlowIntegrationTests: PalaceWiringTestCase {
     /// Reader-open events fired by the flow under test (collected via
     /// notification observation rather than a stubbed reader controller —
     /// keeps the test from touching UIKit).
-    private var readerOpenedBookIds: [String] = []
+    private let readerOpenedBookIds = ReaderOpenRecorder()
     private var readerOpenedObserver: NSObjectProtocol?
 
     override func setUp() {
@@ -102,17 +132,17 @@ class SignInToReadFlowIntegrationTests: PalaceWiringTestCase {
             drmAuthorizer: drmAuthorizer
         )
 
-        readerOpenedBookIds = []
+        readerOpenedBookIds.reset()
         readerOpenedObserver = NotificationCenter.default.addObserver(
             forName: .TPPBookProcessingDidChange,
             object: nil,
             queue: .main
-        ) { [weak self] notification in
+        ) { [recorder = readerOpenedBookIds] notification in
             guard let info = notification.userInfo,
                   let id = info[TPPNotificationKeys.bookProcessingBookIDKey] as? String,
                   let processing = info[TPPNotificationKeys.bookProcessingValueKey] as? Bool,
                   processing == false else { return }
-            self?.readerOpenedBookIds.append(id)
+            recorder.append(id)
         }
     }
 

@@ -701,7 +701,7 @@ private final class ThrottleScheduleSpy: DownloadThrottlingServiceDelegate {
 
 /// Minimal URLSessionDownloadTask stub for state-machine tests that don't
 /// exercise the cancel-completion path.
-private final class StubDownloadTask: URLSessionDownloadTask {
+private final class StubDownloadTask: URLSessionDownloadTask, @unchecked Sendable {
     private let _taskIdentifier: Int
     private(set) var cancelByProducingResumeDataCount = 0
 
@@ -723,7 +723,7 @@ private final class StubDownloadTask: URLSessionDownloadTask {
 /// URLSessionDownloadTask stub whose cancel(byProducingResumeData:) calls
 /// the completion synchronously with nil data, so the cancel cleanup path
 /// runs in-line (no waiting on iOS to drive the completion).
-private final class SyncCompletingDownloadTask: URLSessionDownloadTask {
+private final class SyncCompletingDownloadTask: URLSessionDownloadTask, @unchecked Sendable {
     private let _taskIdentifier: Int
     private(set) var cancelByProducingResumeDataCount = 0
 

@@ -18,7 +18,7 @@ import Combine
 
 /// A mock URLSessionDownloadTask used for dependency injection when testing MyBooksDownloadInfo.
 /// This mock is NOT tested directly - it's only used to create real MyBooksDownloadInfo instances.
-class MockURLSessionDownloadTask: URLSessionDownloadTask {
+class MockURLSessionDownloadTask: URLSessionDownloadTask, @unchecked Sendable {
     private var _taskIdentifier: Int
     private var _state: URLSessionTask.State = .suspended
     private var _originalRequest: URLRequest?

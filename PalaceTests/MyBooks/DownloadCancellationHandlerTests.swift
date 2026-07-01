@@ -180,7 +180,7 @@ private final class SpyDelegate: DownloadCancellationHandlerDelegate {
     func schedulePendingStartsIfPossible() { scheduleCount += 1 }
 }
 
-private final class StubDownloadTask: URLSessionDownloadTask {
+private final class StubDownloadTask: URLSessionDownloadTask, @unchecked Sendable {
     private let _taskIdentifier: Int
     private(set) var cancelByProducingResumeDataCount = 0
 

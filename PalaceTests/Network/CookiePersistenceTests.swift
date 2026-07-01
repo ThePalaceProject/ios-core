@@ -47,7 +47,7 @@ import PalaceCatalog
 /// into. This subclass re-routes the snapshot to read from the mock's
 /// own storage so cold-start cookie sync is observable through the
 /// real production code path.
-private final class TPPUserAccountCookieMock: TPPUserAccountMock {
+private final class TPPUserAccountCookieMock: TPPUserAccountMock, @unchecked Sendable {
     override func credentialSnapshot() -> TPPUserAccount.CredentialSnapshot {
         // Build a snapshot that uses the mock's own state. `cookies` is
         // the critical field — request(for:) installs these into

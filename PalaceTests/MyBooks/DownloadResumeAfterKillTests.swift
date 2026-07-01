@@ -259,7 +259,7 @@ final class DownloadResumeAfterKillTests: XCTestCase {
 
 // MARK: - Stubs
 
-private final class LateCancelStubTask: URLSessionDownloadTask {
+private final class LateCancelStubTask: URLSessionDownloadTask, @unchecked Sendable {
     private let _taskIdentifier: Int
     private(set) var cancelByProducingResumeDataCount = 0
     init(taskIdentifier: Int) {

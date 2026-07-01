@@ -90,7 +90,7 @@ final class DownloadAuthRetryHandlerAuthCoordinatorTests: XCTestCase {
     }
 
     /// Fake task that lets tests inject an HTTPURLResponse + originalRequest.
-    private final class FakeURLSessionDownloadTask: URLSessionDownloadTask {
+    private final class FakeURLSessionDownloadTask: URLSessionDownloadTask, @unchecked Sendable {
         private let _response: URLResponse?
         private let _originalRequest: URLRequest?
         private let _taskIdentifier: Int

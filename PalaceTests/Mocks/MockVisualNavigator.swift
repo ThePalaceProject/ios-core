@@ -15,8 +15,14 @@ import ReadiumNavigator
 import ReadiumShared
 
 /// Mock implementation of VisualNavigator for testing keyboard navigation
+// `Navigator` / `VisualNavigator` (Readium) are nonisolated protocols, so a
+// `@MainActor` conformer "crosses into main actor-isolated code." The mock is
+// intentionally `@MainActor` (a visual navigator is main-thread UI);
+// `@preconcurrency` on the conformance defers the isolation check for both the
+// direct `VisualNavigator` and inherited `Navigator` requirements without
+// changing threading behavior.
 @MainActor
-final class MockVisualNavigator: NSObject, VisualNavigator {
+final class MockVisualNavigator: NSObject, @preconcurrency VisualNavigator {
 
     // MARK: - Call Tracking
 

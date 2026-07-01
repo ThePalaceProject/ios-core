@@ -1121,7 +1121,7 @@ extension TPPAnnotationsTests {
 /// Minimal TPPNetworkExecutor subclass used with `TPPAnnotations.executorOverride`
 /// to drive hermetic POST/GET/DELETE tests. Records call counts + last request
 /// and invokes completion handlers synchronously with canned (data, response, error).
-private final class RecordingExecutorMock: TPPNetworkExecutor {
+private final class RecordingExecutorMock: TPPNetworkExecutor, @unchecked Sendable {
 
     // Recorded state
     var postCallCount = 0

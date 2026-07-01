@@ -9,7 +9,7 @@
 import Foundation
 @testable import Palace
 
-class TPPUserAccountMock: TPPUserAccount {
+class TPPUserAccountMock: TPPUserAccount, @unchecked Sendable {
     /// Test-only fixed library UUID. Per-library isolation semantics are
     /// exercised separately via `TPPMultiLibraryAccountMock` /
     /// `TPPPerAccountIsolationTests`; here a single shared instance is fine.

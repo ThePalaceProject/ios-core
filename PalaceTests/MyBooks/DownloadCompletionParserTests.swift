@@ -274,7 +274,7 @@ private final class StubRouter: DownloadCompletionRouting {
     }
 }
 
-private final class StubDownloadTask: URLSessionDownloadTask {
+private final class StubDownloadTask: URLSessionDownloadTask, @unchecked Sendable {
     private let _response: URLResponse?
     private let _taskIdentifier: Int
 

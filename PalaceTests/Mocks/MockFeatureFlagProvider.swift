@@ -10,7 +10,11 @@
 import Foundation
 import PalaceCatalog
 
-final class MockFeatureFlagProvider: FeatureFlagProvider {
+/// Test double whose single mutable flag is set once during arrange and read
+/// on the test's serial flow; `@unchecked Sendable` documents that confinement
+/// (the inherited `FeatureFlagProvider: Sendable` requirement forbids a plain
+/// mutable `var` otherwise).
+final class MockFeatureFlagProvider: FeatureFlagProvider, @unchecked Sendable {
     var isOPDS2Enabled: Bool
 
     init(isOPDS2Enabled: Bool = false) {

@@ -277,7 +277,7 @@ private final class SpyDelegate: DownloadStartCoordinatorDelegate {
     }
 }
 
-private final class StubDownloadTask: URLSessionDownloadTask {
+private final class StubDownloadTask: URLSessionDownloadTask, @unchecked Sendable {
     private let _taskIdentifier: Int
     init(taskIdentifier: Int) {
         self._taskIdentifier = taskIdentifier

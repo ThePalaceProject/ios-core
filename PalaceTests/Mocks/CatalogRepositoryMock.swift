@@ -13,8 +13,13 @@ import PalaceCatalog
 @testable import Palace
 
 /// Mock implementation of CatalogRepositoryProtocol for isolated ViewModel testing
+// `CatalogRepositoryProtocol` is a nonisolated `Sendable` protocol, so a
+// `@MainActor` witness would "cross into main actor-isolated code." The mock
+// is deliberately kept `@MainActor` (its consumers are @MainActor view models);
+// `@preconcurrency` on the conformance defers the Sendable isolation check
+// without changing the mock's threading behavior.
 @MainActor
-final class CatalogRepositoryTestMock: CatalogRepositoryProtocol {
+final class CatalogRepositoryTestMock: @preconcurrency CatalogRepositoryProtocol {
 
     // MARK: - Configuration
 

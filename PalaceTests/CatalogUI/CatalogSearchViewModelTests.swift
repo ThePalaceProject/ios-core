@@ -118,11 +118,17 @@ final class CatalogRepositoryMock: CatalogRepositoryProtocol {
         return try await loadTopLevelCatalog(at: url)
     }
 
-    func invalidateCache(for url: URL) {
+    // `CatalogRepositoryProtocol` is a nonisolated `Sendable` protocol. Its
+    // `async` requirements are satisfied by this `@MainActor` mock's async
+    // methods (the caller hops), but the two *synchronous* requirements below
+    // must be `nonisolated` witnesses or the conformance "crosses into main
+    // actor-isolated code" (Swift 6). Both are stateless, so `nonisolated` is
+    // sound and behavior is unchanged.
+    nonisolated func invalidateCache(for url: URL) {
         // No-op for mock
     }
 
-    func cachedFeed(for url: URL) -> CatalogFeed? { nil }
+    nonisolated func cachedFeed(for url: URL) -> CatalogFeed? { nil }
 
     // MARK: - Test Helpers
 

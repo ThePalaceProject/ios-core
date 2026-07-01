@@ -21,7 +21,7 @@ import Foundation
 /// IDs in the request body — that's enough for the lifecycle tests to
 /// drive the queue through successful sync and verify post-switch
 /// uploads do NOT recur.
-final class SpyAudiobookNetworkExecutor: TPPNetworkExecutor {
+final class SpyAudiobookNetworkExecutor: TPPNetworkExecutor, @unchecked Sendable {
 
     struct RecordedCall {
         let url: URL
