@@ -315,6 +315,14 @@ Your job:
 3. Use scripts/pbxproj_add_swift.rb to add any new Swift files to
    Palace.xcodeproj. Do not hand-edit pbxproj.
 4. Tests are mandatory (TDD). Use mocks from PalaceTests/Mocks/.
+   CROSS-FILE ISOLATION LINTS (wall-failure 2026-07-01
+   isolation-lint-integration-only): NEVER construct `AccountsManager()`
+   bare or read `AppContainer.production()` in test bodies — use
+   `PalaceWiringTestCase.makeFreshAccountsManager()` and the shared mocks
+   (`TPPBookRegistryMock`, etc.) from the start. `AppContainerIsolationLintTests`
+   / `AccountsManagerIsolationLintTests` scan the WHOLE test tree, so these
+   violations are invisible in your isolated worktree and only fail at
+   integration — you cannot self-verify them, so avoid them by construction.
 5. When done, write .forgeos/swarms/<swarm_id>/transcripts/<module>.md
    with: files added/modified/deleted, tests added, key decisions, any
    gaps or things the integrator must handle.
@@ -535,6 +543,34 @@ if [ -n "$DIFF_TESTS" ]; then
     echo "          or rename the test to not embed it (only the name promises the wiring)."
     exit 1
   }
+fi
+
+# Check 5c: whole-tree isolation lints on the MERGED state (wall-failure
+# 2026-07-01 isolation-lint-integration-only). These meta-lints scan the ENTIRE
+# PalaceTests tree for bare `AccountsManager()` and `AppContainer.production()`
+# in test bodies, so a violation in any implementer's new test file is invisible
+# to that implementer's per-module DoD (their isolated worktree can't see the
+# whole tree) and only surfaces once everything is assembled. Run them explicitly
+# at integration; do NOT rely on the implementers' green DoD to imply they pass.
+SIM_ID="${SIM_ID:-141BD227-6E9A-4409-8D99-2D4FE818238D}"
+if git diff --cached --name-only | grep -qE "PalaceTests/.*\.swift$"; then
+  DD=/tmp/dd-orch-isolationlint-$RANDOM
+  if ! xcodebuild -project Palace.xcodeproj -scheme Palace \
+        -destination "platform=iOS Simulator,id=$SIM_ID" \
+        -derivedDataPath "$DD" \
+        -only-testing:PalaceTests/AppContainerIsolationLintTests \
+        -only-testing:PalaceTests/AccountsManagerIsolationLintTests \
+        test 2>&1 | tee /tmp/orch-isolationlint.log | \
+        grep -qE "with 0 failures"; then
+    echo "BLOCK: whole-tree isolation lints failed on the merged state."
+    echo "  A new test file uses bare AccountsManager() or AppContainer.production()."
+    echo "  Fix: PalaceWiringTestCase.makeFreshAccountsManager() + shared mocks"
+    echo "       (TPPBookRegistryMock, etc.); genuine SUT-production coupling gets a"
+    echo "       justified // MIGRATED-DEFERRED: marker per AppContainerIsolationLintTests."
+    echo "  Wall-failure: .forgeos/wall-failures/2026-07-01-swarm495a88d9-isolation-lint-integration-only.md"
+    echo "  Log: /tmp/orch-isolationlint.log"
+    exit 1
+  fi
 fi
 
 # Check 6: Universal rigor scripts (M1 floor — swarm_M1_83be56fc, 2026-05-28)

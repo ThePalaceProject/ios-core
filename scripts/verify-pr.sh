@@ -81,10 +81,16 @@ cd "$REPO_ROOT"
 QUICK=false
 REPORT_FILE=""
 SIMDRIVE=false
-# Default for --diff-baseline; without this the `elif [ "$DIFF_BASELINE" ...`
-# branch dies with "unbound variable" under `set -u` whenever the unit-test
-# pass condition is false.
-DIFF_BASELINE=false
+# Flake-vs-real classification is ON by default (wall-failure 2026-07-01
+# false-green-empty-diff retro): a single --quick pass surfaces different flaky
+# tests on each run, so a bare failure can't be trusted as a real regression.
+# With this on, any failing test class is re-run in isolation and only counts as
+# a real failure if it ALSO fails in isolation; pre-existing isolation flakes are
+# reported as such instead of blocking. Opt out with --no-diff-baseline (e.g. a
+# fast pre-commit spot-check where the isolation re-run cost isn't wanted).
+# Only adds wall-clock when there ARE failures (the isolation re-run is skipped
+# when the suite is green).
+DIFF_BASELINE=true
 # Mutation policy tri-state:
 #   default        — critical paths strict, others advisory
 #   enforce_all    — every changed file strict (--enforce-mutations)
@@ -119,7 +125,8 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --quick) QUICK=true; shift ;;
     --report) REPORT_FILE="$2"; shift 2 ;;
-    --diff-baseline) DIFF_BASELINE=true; shift ;;
+    --diff-baseline) DIFF_BASELINE=true; shift ;;   # now the default; kept for back-compat
+    --no-diff-baseline) DIFF_BASELINE=false; shift ;;
     --simdrive) SIMDRIVE=true; shift ;;
     --enforce-mutations) MUTATION_POLICY="enforce_all"; shift ;;
     --no-enforce-mutations) MUTATION_POLICY="advisory_all"; shift ;;

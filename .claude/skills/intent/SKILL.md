@@ -78,6 +78,12 @@ author: <agent-id>     # e.g. claude-opus-4-7, or a human handle
 
 The `name:` field is matched against the commit-message subject line by `check-intent-recorded.py`. Pick a slug you can use verbatim in the commit subject.
 
+**How the match actually works (so you don't get a false INTENT-MISSING block):**
+- It matches against the **HEAD commit subject only** (`git log -1 --format=%s`). On a multi-commit branch, the intent's `name:` must match the *latest* commit's subject — not just the first. If you keep committing under one intent, make each subject share tokens with the `name:`.
+- **`[bracketed]` prefixes are stripped** before matching (e.g. `[swarm_abc123]`, `[wave 4]`), so don't rely on the prefix to carry the match — put the matching words in the subject body.
+- Match succeeds via EITHER (a) a shared **ticket key** (`PP-1234`) plus ≥2 consecutive shared content tokens, OR (b) ≥4 consecutive shared tokens. The ticket-key path is the most robust: put the ticket (e.g. `PP-2677`) in BOTH the `name:` and every commit subject and you'll match even as the rest of the wording drifts.
+- Prefer using this skill to WRITE the file (it emits the frontmatter) rather than hand-authoring — a hand-written intent that omits the frontmatter block fails the gate even though the file exists.
+
 ### 3. Required body sections
 
 The reconciler keys on three section headings — these are non-negotiable:

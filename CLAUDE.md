@@ -8,7 +8,7 @@ Library reading app supporting EPUB, PDF, and audiobooks with multiple DRM syste
 
 **Maintainers** additionally run through ForgeOS governance gates (changeset → evidence → review → promote). That tooling is in `scripts/forgeos-*.sh` and is exercised via the local-only `.claude/settings.json` PreToolUse hooks. Outside contributors can ignore those scripts; they no-op gracefully without an API key.
 
-**Pre-PR self-check (anyone):** `scripts/verify-pr.sh --quick` runs the full battery — build, tests, lint, coverage, accessibility — against the iPhone 16 Pro simulator. JSON report optional: `--report /tmp/v.json`.
+**Pre-PR self-check (anyone):** `scripts/verify-pr.sh --quick` runs the full battery — build, tests, lint, coverage, accessibility — against an auto-allocated iPhone simulator (pass `HARNESS_SESSION_SIM_UDID`, or let `harness test` allocate one). JSON report optional: `--report /tmp/v.json`.
 
 **Architecture decisions:** see [`docs/architecture/`](./docs/architecture/) for the rationale behind major refactors (the post-modernization triad work, the parallel-agent rebase pattern, post-PR retros).
 
@@ -36,15 +36,15 @@ This is what happened to 3.1.0: PR #953 (3.0.2 hotfix) and PR #972 (3.0.3 hotfix
 # Replace SIM_ID with your iPhone simulator UDID:
 #   xcrun simctl list devices iPhone | grep Booted
 xcodebuild -project Palace.xcodeproj -scheme Palace \
-  -destination 'platform=iOS Simulator,name=iPhone 16 Pro' build
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build
 
 # Run all tests
 xcodebuild -project Palace.xcodeproj -scheme Palace \
-  -destination 'platform=iOS Simulator,name=iPhone 16 Pro' test
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test
 
 # Run a single test class — SPOT CHECK ONLY, never "validation" (see rule below)
 xcodebuild -project Palace.xcodeproj -scheme Palace \
-  -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
   -only-testing:PalaceTests/MyTestClass test
 ```
 

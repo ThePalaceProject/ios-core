@@ -57,13 +57,31 @@ def at_or_above(level: str, floor: str) -> bool:
 
 # --- Diff input ------------------------------------------------------------
 
-def read_diff(path: str | None) -> str:
+def read_diff(path: str | None, *, allow_empty: bool = False) -> str:
     """Read a unified diff from `path`, or stdin when `path` is None or "-".
 
     Exits with code 2 (the check-script convention) if a named file is missing.
+
+    False-green guard (wall-failure 2026-07-01 false-green-empty-diff): reading
+    the diff from stdin and getting NOTHING is almost always a misinvocation
+    (nobody piped a diff), not a legitimate empty diff — a real "no changes"
+    caller passes `--diff <file>`. Returning "" there makes every detector
+    exit 0 ("green") without having scanned anything, which masks real findings.
+    So an empty/whitespace-only *stdin* read exits 2 unless the caller opts in
+    with `allow_empty=True`. The named-file path is unaffected (verify-pr always
+    passes a real `--diff <file>`), so this cannot break the docs-only flow.
     """
     if path is None or path == "-":
-        return sys.stdin.read()
+        data = sys.stdin.read()
+        if not data.strip() and not allow_empty:
+            print(
+                "ERROR: no diff on stdin — pipe a diff or pass --diff <file>. "
+                "Refusing to report green on empty input (pass --allow-empty to "
+                "intentionally scan an empty diff).",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        return data
     p = Path(path)
     if not p.is_file():
         print(f"ERROR: diff file not found: {path}", file=sys.stderr)
