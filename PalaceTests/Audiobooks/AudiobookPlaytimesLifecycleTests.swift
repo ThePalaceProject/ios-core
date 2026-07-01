@@ -248,6 +248,12 @@ final class AudiobookPlaytimesLifecycleTests: XCTestCase {
 
         activeAccountIdBox.value = libraryB
         sut.syncValues()
+        // Deterministically wait for the sync block to finish on `syncQueue` —
+        // `drainMainQueue()` only drains main, NOT the queue where `syncValues`
+        // actually runs, so the two rapid syncs below could race on the serial
+        // queue (the flake). Per the `AudiobookDataManager.syncQueue` contract,
+        // tests may `syncQueue.sync {}` as a barrier.
+        sut.syncQueue.sync {}
         drainMainQueue()
         // First-pass sync (all cross-account) — must not hang, must not POST.
         XCTAssertTrue(spyExecutor.calls.isEmpty,
@@ -260,6 +266,10 @@ final class AudiobookPlaytimesLifecycleTests: XCTestCase {
         // background-task counter or syncQueue.
         activeAccountIdBox.value = libraryA
         sut.syncValues()
+        // Barrier: the sync block runs on `syncQueue` and invokes POST
+        // synchronously (the spy records `calls` at invocation), so draining
+        // the queue makes `calls.count == 1` deterministic instead of polling.
+        sut.syncQueue.sync {}
         awaitCondition { self.spyExecutor.calls.count == 1 }
         XCTAssertEqual(spyExecutor.calls.count, 1,
                        "Subsequent same-account sync runs normally — proves prior all-skip path ended cleanly")
@@ -317,7 +327,20 @@ final class AudiobookPlaytimesLifecycleTests: XCTestCase {
 /// Heap-allocated box so the closure injected as `currentAccountIdProvider`
 /// captures the same identity the test mutates. A struct + `inout` capture
 /// won't survive the closure boundary.
-private final class AccountIdBox {
-    var value: String?
-    init(value: String?) { self.value = value }
+///
+/// Thread-safe: `value` is written on the test's main thread but read inside
+/// `AudiobookDataManager.syncValues`'s background `syncQueue` block (and by the
+/// constructor's reachability-triggered sync). An `NSLock` closes that
+/// cross-thread data race — without it the read could observe a stale value
+/// under CI load, occasionally routing the switch-back sync down the
+/// cross-account skip path and hanging `awaitCondition`
+/// (`testPlaytimes_allCrossAccount_backgroundTaskStillEnds` flake).
+private final class AccountIdBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _value: String?
+    var value: String? {
+        get { lock.lock(); defer { lock.unlock() }; return _value }
+        set { lock.lock(); defer { lock.unlock() }; _value = newValue }
+    }
+    init(value: String?) { self._value = value }
 }
