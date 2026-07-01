@@ -58,6 +58,16 @@ final class RemoteFeatureFlags: @unchecked Sendable {
         /// `AudiobookSessionPresenter`. Default OFF — the feature is
         /// opt-in via the developer settings toggle until broad rollout.
         case inAppPlaybackNavEnabled = "in_app_playback_nav_enabled"
+        /// Gates every side-loading surface (swarm_495a88d9 — PP-2677 /
+        /// PP-2678 / PP-2679): the Settings "Side Loading" import screen and
+        /// the catalog side-loaded lane. Test-only capability for exercising
+        /// the real reader + DRM stack against local files with no OPDS feed.
+        /// Default OFF; enabled via `isSideLoadingEnabled` whose precedence is
+        /// UserDefaults local override (dev-menu toggle) > Firebase remote
+        /// (default false). No DEBUG auto-enable — QA/TestFlight builds are
+        /// non-DEBUG, so the feature is turned on explicitly by the dev-menu
+        /// toggle rather than by build configuration.
+        case sideLoadingEnabled = "side_loading_enabled"
 
         var defaultValue: Bool {
             switch self {
@@ -93,6 +103,8 @@ final class RemoteFeatureFlags: @unchecked Sendable {
                 return .triageBotAIFallbackEnabled
             case .inAppPlaybackNavEnabled:
                 return .inAppPlaybackNavEnabled
+            case .sideLoadingEnabled:
+                return .sideLoadingEnabled
             default:
                 return nil
             }
@@ -337,6 +349,39 @@ final class RemoteFeatureFlags: @unchecked Sendable {
             return override
         }
         return isFeatureEnabled(.inAppPlaybackNavEnabled)
+    }
+
+    /// UserDefaults override that lets QA / a developer force side loading on
+    /// or off without a Firebase round-trip. Settable from
+    /// `TPPDeveloperSettingsTableViewController`. Falls through to the
+    /// DEBUG default / Remote Config flag when nil. Mirrors the
+    /// `triageBotLocalOverrideKey` naming pattern.
+    static let sideLoadingLocalOverrideKey = "RemoteFeatureFlags.sideLoadingLocalOverride"
+
+    /// Whether the side-loading capability is enabled: the Settings "Side
+    /// Loading" import screen and the catalog side-loaded lane. A test-only
+    /// feature for exercising the real reader + DRM stack against local files
+    /// with no OPDS feed (swarm_495a88d9 — PP-2677 / PP-2678 / PP-2679).
+    ///
+    /// Defaults OFF in production. There is NO DEBUG auto-enable; the feature
+    /// is turned on explicitly via the dev-menu local override, otherwise it
+    /// falls through to the Firebase Remote Config flag (default off).
+    ///
+    /// Side loading is a test-only capability enabled via the Testing settings
+    /// menu (per PP-2581), so it is OFF by default and turned on explicitly by a
+    /// tester/QA rather than auto-enabled by build configuration. A build-time
+    /// `#if DEBUG` gate would only enable it in local Xcode debug builds anyway
+    /// (TestFlight/Release are non-DEBUG), so it would not reach the QA builds
+    /// that actually need it — the dev-menu local override does.
+    ///
+    /// Override precedence:
+    ///   1. UserDefaults local override (dev-menu toggle / QA / staged demos)
+    ///   2. Firebase Remote Config (default `false`)
+    var isSideLoadingEnabled: Bool {
+        if let override = defaults.object(forKey: Self.sideLoadingLocalOverrideKey) as? Bool {
+            return override
+        }
+        return isFeatureEnabled(.sideLoadingEnabled)
     }
 
     // MARK: - Device Info for Targeting

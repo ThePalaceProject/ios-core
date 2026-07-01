@@ -22,14 +22,21 @@ enum CatalogState {
   /// remain visible above the skeleton.
   case switchingEntryPoint(CatalogSelectors)
 
-  /// Unrecoverable error during initial load (no content to fall back to).
-  case error(String)
+  /// Unrecoverable error during initial load (no catalog content to fall back
+  /// to). Carries the "Side Loaded" lane rows (F-1) so the view can surface
+  /// imported books ALONGSIDE the feed-error message rather than hiding them
+  /// behind the failure. `sideloadedLanes` is empty whenever side-loading is
+  /// off or the registry is empty — the view then renders the plain error,
+  /// byte-identical to the pre-F-1 behavior.
+  case error(String, sideloadedLanes: [CatalogLaneModel])
 
   /// The initial load failed because the device has no connectivity. Distinct
   /// from `.error` so the view can direct the patron to their downloaded books
   /// instead of offering a Reload that cannot succeed offline. Reload happens
-  /// automatically when connectivity returns (see `CatalogViewModel`).
-  case offline
+  /// automatically when connectivity returns (see `CatalogViewModel`). Carries
+  /// the "Side Loaded" lane rows (F-1) for the same reason `.error` does; empty
+  /// when side-loading contributes no books (behavior unchanged).
+  case offline(sideloadedLanes: [CatalogLaneModel])
 }
 
 // MARK: - Computed Helpers
@@ -51,6 +58,17 @@ extension CatalogState {
   /// Extract title for navigation bar, if available.
   var title: String? {
     content?.title
+  }
+
+  /// The "Side Loaded" lane rows carried by an `.error` / `.offline` state
+  /// (F-1). Empty for every other state, and empty on `.error` / `.offline`
+  /// whenever side-loading contributes no books — so a flag-off catalog failure
+  /// exposes no lanes, exactly as before.
+  var sideloadedLanes: [CatalogLaneModel] {
+    switch self {
+    case .error(_, let lanes), .offline(let lanes): return lanes
+    default: return []
+    }
   }
 
   /// All books across all lanes/ungrouped, for search.
@@ -127,14 +145,33 @@ extension CatalogSelectors {
 // MARK: - MappedCatalog Bridge
 
 extension CatalogViewModel.MappedCatalog {
-  func toCatalogContent() -> CatalogContent {
+  /// Convert the mapped feed to displayable `CatalogContent`, optionally
+  /// prepending extra lanes (e.g. the "Side Loaded" lane — Module D / PP-2679).
+  ///
+  /// When `extraLanes` is non-empty the result is FORCED to `.grouped` so the
+  /// injected lanes appear even when the base feed is ungrouped or empty — the
+  /// DRM side-loading test use-case has no OPDS feed at all, so the lane must
+  /// survive the `.empty`/`.ungrouped` shapes. To avoid dropping books, an
+  /// ungrouped base feed is wrapped into a single trailing lane (its header is
+  /// the feed title) rather than discarded.
+  func toCatalogContent(prepending extraLanes: [CatalogLaneModel] = []) -> CatalogContent {
     let feed: CatalogFeedContent
-    if !lanes.isEmpty {
-      feed = .grouped(lanes)
-    } else if !ungroupedBooks.isEmpty {
-      feed = .ungrouped(ungroupedBooks)
+    if extraLanes.isEmpty {
+      if !lanes.isEmpty {
+        feed = .grouped(lanes)
+      } else if !ungroupedBooks.isEmpty {
+        feed = .ungrouped(ungroupedBooks)
+      } else {
+        feed = .empty
+      }
     } else {
-      feed = .empty
+      if !lanes.isEmpty {
+        feed = .grouped(extraLanes + lanes)
+      } else if !ungroupedBooks.isEmpty {
+        feed = .grouped(extraLanes + [CatalogLaneModel(title: title, books: ungroupedBooks, moreURL: nil)])
+      } else {
+        feed = .grouped(extraLanes)
+      }
     }
 
     return CatalogContent(

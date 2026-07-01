@@ -226,7 +226,10 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
             store: store,
             accountsManager: accountsManager,
             downloadCenterProvider: { AppContainer.production().downloadCenter },
-            opdsFeedServiceProvider: { AppContainer.production().opdsFeedService }
+            opdsFeedServiceProvider: { AppContainer.production().opdsFeedService },
+            // Side-loaded books are exempt from loans-feed reconciliation.
+            // Provider resolved lazily (same AppContainer-cycle avoidance).
+            sideloadedIDsProvider: { AppContainer.production().sideloadedBookRegistry.identifiers }
         )
         self.store = store
         self.syncEngine = sync
@@ -256,7 +259,10 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
             store: store,
             accountsManager: accountsManager,
             downloadCenterProvider: { AppContainer.production().downloadCenter },
-            opdsFeedServiceProvider: { AppContainer.production().opdsFeedService }
+            opdsFeedServiceProvider: { AppContainer.production().opdsFeedService },
+            // Side-loaded books are exempt from loans-feed reconciliation.
+            // Provider resolved lazily (same AppContainer-cycle avoidance).
+            sideloadedIDsProvider: { AppContainer.production().sideloadedBookRegistry.identifiers }
         )
         self.store = store
         self.syncEngine = sync

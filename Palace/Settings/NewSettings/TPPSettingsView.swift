@@ -21,6 +21,13 @@ struct TPPSettingsView: View {
     /// DEBUG-default-on and Firebase fallback). The @AppStorage read in
     /// `supportSection` registers the SwiftUI observation.
     @AppStorage("RemoteFeatureFlags.triageBotLocalOverride") private var triageBotLocalOverride: Bool = false
+    /// Subscribes to the side-loading local override so the "Side Loading"
+    /// section appears/disappears the moment the dev-menu toggle flips.
+    /// Effective gating still runs through
+    /// `RemoteFeatureFlags.shared.isSideLoadingEnabled` (read in
+    /// `sideLoadingSection`), whose precedence is local override > Firebase
+    /// remote (default off); this @AppStorage read registers the observation.
+    @AppStorage(RemoteFeatureFlags.sideLoadingLocalOverrideKey) private var sideLoadingLocalOverride: Bool = false
     @State private var selectedView: Int? = 0
     @State private var orientation: UIDeviceOrientation = UIDevice.current.orientation
     @State private var switchPromptAccount: Account? = nil
@@ -104,6 +111,7 @@ struct TPPSettingsView: View {
             librariesSection
             downloadsSection
             supportSection
+            sideLoadingSection
             infoSection
             developerSettingsSection
         }
@@ -320,6 +328,26 @@ struct TPPSettingsView: View {
             current = presented
         }
         return current
+    }
+
+    /// PP-2677 side-loading: a test-only entry to the Side Loading screen,
+    /// rendered ONLY when the feature flag is on. Row visibility depends on the
+    /// cheap flag read; the import/manage machinery lives inside
+    /// `SideLoadingView` and is resolved lazily at navigation time.
+    @ViewBuilder private var sideLoadingSection: some View {
+        // Register the @AppStorage observation so the section shows/hides the
+        // instant the dev-menu override flips; effective value still runs
+        // through isSideLoadingEnabled (local override > Firebase remote) below.
+        let _ = sideLoadingLocalOverride
+        if RemoteFeatureFlags.shared.isSideLoadingEnabled {
+            Section(header: Text("Side Loading")) {
+                let destination = SideLoadingView(
+                    manager: AppContainer.production().sideloadedBookManager
+                ).anyView()
+                row(title: "Side Loading", index: 11, selection: self.$selectedView, destination: destination)
+                    .accessibilityIdentifier("settings.row.sideLoading")
+            }
+        }
     }
 
     @ViewBuilder private var infoSection: some View {

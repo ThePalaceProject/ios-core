@@ -75,7 +75,17 @@ struct AppTabHostView: View {
             repository: repository,
             topLevelURLProvider: { appContainer.settings.accountMainFeedURL },
             bookRegistry: appContainer.bookRegistry,
-            imageCache: appContainer.imageCache
+            imageCache: appContainer.imageCache,
+            // Module D (swarm_495a88d9 / PP-2679): the "Side Loaded" catalog lane.
+            // The flag gate lives HERE (not in the VM) — the provider returns []
+            // when side-loading is off, so the VM never sees the flag and the lane
+            // simply doesn't appear. Read lazily so registry/flag changes take
+            // effect on the next catalog conversion.
+            sideloadedLaneBooksProvider: {
+                RemoteFeatureFlags.shared.isSideLoadingEnabled
+                    ? appContainer.sideloadedBookRegistry.allBooks
+                    : []
+            }
         ))
         _myBooksViewModel = StateObject(wrappedValue: MyBooksViewModel(appContainer: appContainer))
         // Module B (swarm_0b7616e7) composition root for the Continue

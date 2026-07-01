@@ -197,7 +197,21 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         // store's own queue — but it primes the `loadingAccount` guard and
         // queues the state transition to .loaded. Any sync() that races it is
         // caught by the .unloaded/.loading guard in BookRegistrySync.sync.
-        AppContainer.production().bookRegistry.load()
+        // PP-2677 side-loading: re-register persisted side-loaded books into the
+        // MAIN registry so they open in the reader and appear on the shelf. This
+        // MUST run in the `load(completion:)` callback — `load()` is async and a
+        // rehydrate that ran before the disk snapshot landed would be clobbered
+        // when the store transitions to `.loaded`. `load(completion:)` lives on
+        // the concrete `TPPBookRegistry`, not the `TPPBookRegistryProvider`
+        // surface, hence the cast; production always resolves to the concrete
+        // type. The fallback keeps the original behaviour if that ever changes.
+        if let loadableRegistry = AppContainer.production().bookRegistry as? TPPBookRegistry {
+            loadableRegistry.load {
+                AppContainer.production().sideloadedBookManager.rehydrateAtLaunch()
+            }
+        } else {
+            AppContainer.production().bookRegistry.load()
+        }
 
         NotificationService.shared.setupPushNotifications()
     }
