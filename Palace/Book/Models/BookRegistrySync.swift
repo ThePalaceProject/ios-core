@@ -337,6 +337,12 @@ final class BookRegistrySync: @unchecked Sendable {
 
     setState(.syncing)
 
+    // Box the injected callbacks so the `@Sendable` `Task` / `MainActor.run`
+    // closures below capture a Sendable value rather than the raw non-Sendable
+    // closures (which would otherwise trip the `targeted` capture diagnostic).
+    // The callbacks are still only invoked inside `MainActor.run`, on main.
+    let callbacks = SyncCallbacks(setState: setState, completion: completion)
+
     Task { [weak self] in
       guard let self else { return }
 
@@ -356,9 +362,9 @@ final class BookRegistrySync: @unchecked Sendable {
       } catch {
         Log.warn(#file, "BookRegistrySync abort: awaitReady failed for \(accountUUID): \(error)")
         await MainActor.run {
-          setState(.loaded)
+          callbacks.setState(.loaded)
           self.syncUrl = nil
-          completion?(nil, false)
+          callbacks.completion?(nil, false)
         }
         return
       }
@@ -366,9 +372,9 @@ final class BookRegistrySync: @unchecked Sendable {
       guard let loansUrl = details.loansUrl else {
         Log.debug(#file, "BookRegistrySync abort: account \(accountUUID) has no loansUrl after awaitReady — anonymous library")
         await MainActor.run {
-          setState(.loaded)
+          callbacks.setState(.loaded)
           self.syncUrl = nil
-          completion?(nil, false)
+          callbacks.completion?(nil, false)
         }
         return
       }
@@ -381,12 +387,12 @@ final class BookRegistrySync: @unchecked Sendable {
       do {
         feed = try await opdsFeedService.fetchFeed(from: loansUrl, resetCache: true)
       } catch {
-        let errorDocument = (error as NSError).userInfo as? [AnyHashable: Any]
+        let errorDocument = SendableErrorDocument(value: (error as NSError).userInfo as? [AnyHashable: Any])
         Log.warn(#file, "Loans sync failed: \(error.localizedDescription)")
         await MainActor.run {
-          setState(.loaded)
+          callbacks.setState(.loaded)
           self.syncUrl = nil
-          completion?(errorDocument, false)
+          callbacks.completion?(errorDocument.value, false)
         }
         return
       }
@@ -501,9 +507,9 @@ final class BookRegistrySync: @unchecked Sendable {
           self.save(for: accountUUID)
         }
 
-        setState(.synced)
+        callbacks.setState(.synced)
         self.syncUrl = nil
-        completion?(nil, changesMade)
+        callbacks.completion?(nil, changesMade)
       }
     }
   }
@@ -656,4 +662,30 @@ final class BookRegistrySync: @unchecked Sendable {
 
     return fileExists
   }
+}
+
+// MARK: - Sendable carriers for `sync`'s @Sendable-closure captures
+
+/// Sendable carrier for `sync`'s injected callbacks. `setState` and `completion`
+/// are non-Sendable function values, but `sync` only ever *invokes* them on the
+/// main thread — inside the `MainActor.run` blocks in `sync(...)`. Wrapping them
+/// lets the `Task { … }` / `MainActor.run { … }` closures capture this box
+/// (Sendable) instead of the raw closures, clearing the `targeted`
+/// "capture of 'setState'/'completion' in @Sendable closure" diagnostics WITHOUT
+/// rippling `@Sendable` onto the callers — the caller closures in
+/// `TPPBookRegistry` capture the non-Sendable `TPPBookRegistry`, so an
+/// `@Sendable` parameter would just relocate the warning upstream. Mirrors
+/// `ImageCompletionBox` in `ImageLoaderImpl`.
+private struct SyncCallbacks: @unchecked Sendable {
+  let setState: (TPPBookRegistry.RegistryState) -> Void
+  let completion: ((_ errorDocument: [AnyHashable: Any]?, _ newBooks: Bool) -> Void)?
+}
+
+/// Sendable carrier for the OPDS sync error document (`[AnyHashable: Any]` from
+/// `NSError.userInfo`, whose `Any` values are not Sendable). It is created once
+/// from a caught error and only ever read thereafter (forwarded to `completion`),
+/// so moving it across the `MainActor.run` boundary is race-free. `@unchecked`
+/// documents that write-once-then-read confinement.
+private struct SendableErrorDocument: @unchecked Sendable {
+  let value: [AnyHashable: Any]?
 }

@@ -103,12 +103,29 @@ class DLNavigator {
     ///   - name: Notification name
     ///   - block: Code to run
     private func callOnce(on name: Notification.Name, block: @escaping (_ notification: Notification) -> Void) {
-        var token: NSObjectProtocol?
-        token = NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { notification in
-            if let token = token {
-                NotificationCenter.default.removeObserver(token, name: name, object: nil)
-            }
+        // Mirror `ObserverTokenBox` (TPPBookRegistry.swift): a self-removing
+        // `@Sendable` observer block can't reference a `var token` assigned after
+        // the block is formed — the `targeted` checker rejects it as "'token'
+        // mutated after capture by sendable closure". The box's `token` is
+        // written exactly once (right after `addObserver` returns) and only read
+        // thereafter, so `@unchecked Sendable` documents write-once-then-read
+        // confinement, not a race waiver.
+        let box = ObserverTokenBox()
+        box.token = NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { notification in
+            box.removeObserver(name: name)
             block(notification)
+        }
+    }
+}
+
+/// Sendable holder for a `NotificationCenter` observer token (see `callOnce`).
+/// Written exactly once after `addObserver` returns, read-only thereafter —
+/// write-once-then-read confinement, no race.
+private final class ObserverTokenBox: @unchecked Sendable {
+    var token: NSObjectProtocol?
+    func removeObserver(name: Notification.Name) {
+        if let token {
+            NotificationCenter.default.removeObserver(token, name: name, object: nil)
         }
     }
 }

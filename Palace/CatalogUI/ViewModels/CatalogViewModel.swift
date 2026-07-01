@@ -218,15 +218,27 @@ final class CatalogViewModel: ObservableObject {
         // library switch / reload cancels these speculative feed fetches.
         let inactiveEntryPoints = mapped.entryPoints.filter { !$0.active }
         if !inactiveEntryPoints.isEmpty {
-          let entryPointPreload = Task.detached(priority: .utility) { [weak self] in
-            guard let self else { return }
+          // Hoist the main-actor-isolated `repository` read onto the main actor
+          // here. `CatalogRepositoryProtocol` is now `Sendable`, so the detached
+          // preload captures the value rather than reading `self.repository` off
+          // the main actor (the `targeted` isolation diagnostic). The task is
+          // tracked in `prefetchTasks` and cancelled on reload/teardown (`deinit`
+          // cancels all prefetch tasks), and each fetch is guarded by
+          // `Task.isCancelled`, so dropping `[weak self]` is behavior-equivalent-
+          // or-better: the old strong-`self` capture kept the VM alive for the
+          // task's lifetime (so `deinit`'s cancel couldn't interrupt an in-flight
+          // preload); capturing only `repository` lets the VM deinit mid-preload,
+          // so `deinit`'s cancel now genuinely short-circuits at the next
+          // isCancelled check. Benign either way (speculative, cached preload).
+          let repository = self.repository
+          let entryPointPreload = Task.detached(priority: .utility) {
             await withTaskGroup(of: Void.self) { group in
               for ep in inactiveEntryPoints {
                 guard let epURL = ep.href else { continue }
                 group.addTask {
                   if Task.isCancelled { return }
                   do {
-                    _ = try await self.repository.loadTopLevelCatalog(at: epURL)
+                    _ = try await repository.loadTopLevelCatalog(at: epURL)
                     Log.warn(#file, "[PERF] Preloaded entry point '\(ep.title)'")
                   } catch { }
                 }

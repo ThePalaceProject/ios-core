@@ -1,0 +1,60 @@
+swarm_id: swarm_afec67f0
+task: >-
+  Swift 6 `targeted` strict-concurrency Phase A.5 Chunk 2 (non-critical sweep).
+  Drive ~22 remaining app-target `targeted` warnings to zero across ~8 modules,
+  fix-by-ISOLATION only, no behavior changes. Branch
+  swift6/apptarget-registry-sweep-a5 (rebased onto develop@8e0017066, includes
+  #1155). No local DRM build — CI "Unit Tests" is the warning gate.
+created_at: 2026-07-01
+status: complete
+branch: swift6/apptarget-registry-sweep-a5
+triage_head: 7a794b248
+cascade_decisions:
+  AccountDetails: "documented @unchecked Sendable (FORCED — LoadState already Sendable)"
+  AccountsManager: "do NOT make Sendable — isolate at TriageBotFactory site"
+  TPPReadiumBookmark: "do NOT make Sendable — carrier box at BusinessLogic capture sites"
+  CatalogRepositoryProtocol: "add : Sendable (sole conformer already @unchecked Sendable)"
+constraints:
+  - "Fix by ISOLATION only. NEVER nonisolated(unsafe). NO bare @unchecked Sendable."
+  - "Documented @unchecked Sendable carrier with a stated invariant IS allowed."
+  - "No behavior changes — isolation/capture mechanism only."
+  - "Do NOT touch Book/Models/{BookRegistrySync,TPPBookRegistry,TPPBookCoverRegistry}.swift (Chunk 1)."
+  - "Implementers do NOT run verify-pr/palace_mutate/xcresult (no DRM build)."
+  - "Do NOT call mcp__forgeos__* tools (ForgeOS OFF)."
+modules:
+  - name: AppInfrastructure
+    contract_path: .forgeos/swarms/swarm_afec67f0/contracts/AppInfrastructure.md
+    files_scope:
+      - Palace/AppInfrastructure/AppContainer.swift
+      - Palace/AppInfrastructure/DLNavigator.swift
+      - Palace/AppInfrastructure/FirebaseManager.swift
+  - name: Accounts
+    contract_path: .forgeos/swarms/swarm_afec67f0/contracts/Accounts.md
+    files_scope:
+      - Palace/Accounts/Library/Account.swift
+      - Palace/Accounts/Library/Account+State.swift
+      - Palace/Accounts/AgeCheck/TPPAgeCheck.swift
+      - Palace/Support/TriageBotFactory.swift
+  - name: CarPlay
+    contract_path: .forgeos/swarms/swarm_afec67f0/contracts/CarPlay.md
+    files_scope:
+      - Palace/CarPlay/CarPlayImageProvider.swift
+      - Palace/CarPlay/CarPlayTemplateManager.swift
+  - name: OPDS-PDF-Catalog
+    contract_path: .forgeos/swarms/swarm_afec67f0/contracts/OPDS-PDF-Catalog.md
+    files_scope:
+      - Palace/OPDS/TPPOPDSFeed+Networking.swift
+      - Palace/PDF/Views/PDFThumbnailStrip.swift
+      - Palace/CatalogUI/ViewModels/CatalogViewModel.swift
+      - Palace/Packages/PalaceCatalog/Sources/PalaceCatalog/CatalogRepository.swift
+  - name: Reader2
+    contract_path: .forgeos/swarms/swarm_afec67f0/contracts/Reader2.md
+    files_scope:
+      - Palace/Reader2/BusinessLogic/TPPReaderBookmarksBusinessLogic.swift
+      - Palace/Reader2/Bookmarks/AudiobookBookmarkBusinessLogic.swift
+      - Palace/Reader2/UI/TPPEPUBViewController.swift
+off_limits:
+  - Palace/Book/Models/BookRegistrySync.swift
+  - Palace/Book/Models/TPPBookRegistry.swift
+  - Palace/Book/Models/TPPBookCoverRegistry.swift
+  - Palace/Reader2/Bookmarks/TPPReadiumBookmark.swift

@@ -49,6 +49,19 @@ protocol TPPBookRegistryProvider {
 
 // TPPBookRegistryData and TPPBookRegistryKey defined in TPPBookRegistryRecord.swift
 
+/// Sendable holder for a `NotificationCenter` observer token so a self-removing
+/// `@Sendable` observer block can reference it without capturing (and mutating)
+/// a `var` — the pattern the `targeted` checker rejects as "'token' mutated
+/// after capture by sendable closure". The token is written exactly once (right
+/// after `addObserver` returns) and only read thereafter, so `@unchecked` is an
+/// honest documentation of write-once-then-read confinement, not a race waiver.
+private final class ObserverTokenBox: @unchecked Sendable {
+    var token: NSObjectProtocol?
+    func removeObserver() {
+        if let token { NotificationCenter.default.removeObserver(token) }
+    }
+}
+
 private class BoolWithDelay {
     private var switchBackDelay: Double
     private var resetTask: DispatchWorkItem?
@@ -309,18 +322,24 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
     /// the first time state reaches `.loaded`/`.synced`. The observer
     /// removes itself on first match so it's a one-shot.
     private func waitForLoadThenRunSync(completion: ((_ errorDocument: [AnyHashable: Any]?, _ newBooks: Bool) -> Void)?) {
-        var token: NSObjectProtocol?
-        token = NotificationCenter.default.addObserver(
+        // The observer block is `@Sendable`; a captured mutable `var token`
+        // assigned after the closure is formed trips the `targeted`
+        // "'token' mutated after capture by sendable closure" diagnostic.
+        // Hold the token in a Sendable box instead — the closure captures the
+        // box reference (never reassigned), and the token is written exactly
+        // once, right after `addObserver` returns.
+        let tokenBox = ObserverTokenBox()
+        tokenBox.token = NotificationCenter.default.addObserver(
             forName: .TPPBookRegistryStateDidChange,
             object: nil,
             queue: .main
         ) { [weak self] _ in
             guard let self else {
-                if let token { NotificationCenter.default.removeObserver(token) }
+                tokenBox.removeObserver()
                 return
             }
             if self.state == .loaded || self.state == .synced {
-                if let token { NotificationCenter.default.removeObserver(token) }
+                tokenBox.removeObserver()
                 self.runSync(completion: completion)
             }
         }

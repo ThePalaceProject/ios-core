@@ -5,7 +5,7 @@ import PalaceLogging
 import UIKit
 #endif
 
-public protocol CatalogRepositoryProtocol {
+public protocol CatalogRepositoryProtocol: Sendable {
     func loadTopLevelCatalog(at url: URL) async throws -> CatalogFeed?
     func search(query: String, baseURL: URL) async throws -> CatalogFeed?
     func search(query: String, searchDescriptorURL: URL) async throws -> CatalogFeed?

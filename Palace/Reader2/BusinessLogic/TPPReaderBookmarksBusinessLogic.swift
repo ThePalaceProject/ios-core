@@ -125,6 +125,13 @@ class TPPReaderBookmarksBusinessLogic: NSObject, @unchecked Sendable {
             return
         }
 
+        // Swift 6 `targeted`: box the non-Sendable `TPPReadiumBookmark` so the
+        // `@Sendable` `Task` / `MainActor.run` closures below capture a Sendable
+        // carrier instead of the raw bookmark. `TPPReadiumBookmark` is genuinely
+        // non-Sendable (10 mutable `var`s) and must NOT be made Sendable — see
+        // `ReadiumBookmarkBox` and Decision 3. Mirrors `ImageCompletionBox`.
+        let bookmarkBox = ReadiumBookmarkBox(bookmark)
+
         // PHASE 1 (swarm_81b5099e Bucket A): bookmark posting is best-effort,
         // silent-failure — on `AccountLoadError` we log and fall back to
         // local-only persistence (no user-visible surface). Hoisted into a
@@ -141,22 +148,22 @@ class TPPReaderBookmarksBusinessLogic: NSObject, @unchecked Sendable {
             } catch {
                 Log.warn(#file, "postBookmark: awaitReady failed for \(currentAccount.uuid): \(error) — local-only persistence")
                 await MainActor.run {
-                    self.bookRegistry.add(bookmark, forIdentifier: self.book.identifier)
+                    self.bookRegistry.add(bookmarkBox.bookmark, forIdentifier: self.book.identifier)
                 }
                 return
             }
 
             guard details.syncPermissionGranted else {
                 await MainActor.run {
-                    self.bookRegistry.add(bookmark, forIdentifier: self.book.identifier)
+                    self.bookRegistry.add(bookmarkBox.bookmark, forIdentifier: self.book.identifier)
                 }
                 return
             }
 
-            TPPAnnotations.postBookmark(bookmark, forBookID: self.book.identifier) { response in
+            TPPAnnotations.postBookmark(bookmarkBox.bookmark, forBookID: self.book.identifier) { response in
                 Log.debug(#function, response?.serverId != nil ? "Bookmark upload succeed" : "Bookmark failed to upload")
-                bookmark.annotationId = response?.serverId
-                self.bookRegistry.add(bookmark, forIdentifier: self.book.identifier)
+                bookmarkBox.bookmark.annotationId = response?.serverId
+                self.bookRegistry.add(bookmarkBox.bookmark, forIdentifier: self.book.identifier)
             }
         }
     }
@@ -400,4 +407,27 @@ class TPPReaderBookmarksBusinessLogic: NSObject, @unchecked Sendable {
         self.bookmarks = self.bookRegistry.readiumBookmarks(forIdentifier: self.book.identifier)
         completion(false, self.bookmarks)
     }
+}
+
+// MARK: - Sendable carrier for `postBookmark`'s @Sendable-closure capture
+
+/// Sendable carrier for the `TPPReadiumBookmark` captured by the `@Sendable`
+/// `Task` closure in `postBookmark`. `TPPReadiumBookmark` has 10 mutable `var`
+/// properties and is genuinely non-Sendable, so we box it rather than mark the
+/// type Sendable — a type-level `@unchecked Sendable` would waive a real race
+/// and ripple `Sendable` onto every bookmark call site (Decision 3).
+///
+/// INVARIANT — the boxed bookmark is never accessed concurrently: within a
+/// single `postBookmark` `Task`, exactly one of the three terminal paths runs —
+/// the `awaitReady`-failure `MainActor.run` add, the sync-not-granted
+/// `MainActor.run` add, or the `TPPAnnotations.postBookmark` completion (which
+/// mutates `annotationId` then adds to the registry). The `postBookmark`
+/// completion fires at most once. The three paths are mutually exclusive early
+/// returns, so no two touch the boxed bookmark at the same time. Threading is
+/// preserved exactly as before boxing — the annotation completion still runs on
+/// the network-completion thread, not forced onto the main actor. Mirrors
+/// `ImageCompletionBox` in `ImageLoaderImpl`.
+private final class ReadiumBookmarkBox: @unchecked Sendable {
+    let bookmark: TPPReadiumBookmark
+    init(_ bookmark: TPPReadiumBookmark) { self.bookmark = bookmark }
 }

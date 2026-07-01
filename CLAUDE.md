@@ -6,7 +6,7 @@ Library reading app supporting EPUB, PDF, and audiobooks with multiple DRM syste
 
 **Outside contributors:** standard GitHub flow — fork the repo, branch from `develop` (never `main`), open a PR back to `develop` when ready. Tests are mandatory for production changes (see [TDD & Test Quality](#tdd--test-quality--mandatory) below).
 
-**Maintainers** additionally run through ForgeOS governance gates (changeset → evidence → review → promote). That tooling is in `scripts/forgeos-*.sh` and is exercised via the local-only `.claude/settings.json` PreToolUse hooks. Outside contributors can ignore those scripts; they no-op gracefully without an API key.
+**Maintainers** can additionally run through ForgeOS governance gates (changeset → evidence → review → promote). That tooling is in `scripts/forgeos-*.sh` and is exercised via the local-only `.claude/settings.json` PreToolUse hooks — but it is **opt-in**: the commit/push hooks `exit 0` early unless `FORGEOS_ENABLED=1` (and a shell `FORGEOS_API_KEY`) are set, so by default nothing is required and nothing is sent to the ForgeOS API. Outside contributors can ignore those scripts; they no-op gracefully without an API key. Note the `mcp__forgeos__*` MCP tools are a *separate* path that stays authenticated even when the hooks are off — calling them sends changeset/evidence/review metadata to `forgeos-api.synctek.io`, so only invoke them when you actually intend that.
 
 **Pre-PR self-check (anyone):** `scripts/verify-pr.sh --quick` runs the full battery — build, tests, lint, coverage, accessibility — against the iPhone 16 Pro simulator. JSON report optional: `--report /tmp/v.json`.
 

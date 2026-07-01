@@ -20,7 +20,12 @@ import PalaceLogging
 /// - Device IDs are immutable `let` properties computed once at init
 /// - RemoteConfig is thread-safe internally (no external locking needed)
 /// - lastFetchTime is advisory only; RemoteConfig handles its own rate limiting
-final class FirebaseManager {
+/// `@unchecked Sendable` invariant (mirrors `TPPAgeCheck`): all stored
+/// properties are `let`; the only mutable state (`isFetching`) is guarded by
+/// `OSAllocatedUnfairLock`; `remoteConfig` is Firebase's internally-thread-safe
+/// `RemoteConfig`. This lets the `self`-capturing `@Sendable` operation closure
+/// passed to `withTimeout(...)` compile without a signature change.
+final class FirebaseManager: @unchecked Sendable {
     static let shared = FirebaseManager()
 
     // MARK: - Configuration

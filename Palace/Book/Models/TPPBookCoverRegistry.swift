@@ -70,10 +70,11 @@ actor HostFailureTracker {
 
 // MARK: - Swift Concurrency Actor
 actor TPPBookCoverRegistry {
-    /// nonisolated(unsafe) because ImageCacheType is not Sendable but the underlying
-    /// NSCache-backed implementation handles its own synchronization, so reading the
-    /// reference from any context is safe.
-    nonisolated(unsafe) let imageCache: ImageCacheType
+    /// `nonisolated let` (no `(unsafe)`) because `ImageCacheType` is now `Sendable`
+    /// — an immutable reference to a Sendable type can be read from any isolation
+    /// context without the unchecked escape hatch. See #1129 module-3 playbook:
+    /// prefer honest isolation over `nonisolated(unsafe)` once the type is Sendable.
+    nonisolated let imageCache: ImageCacheType
 
     static let shared = TPPBookCoverRegistry(imageCache: ImageCache.shared)
 
@@ -83,9 +84,10 @@ actor TPPBookCoverRegistry {
     /// size variant was a separate network round-trip. With it, the first fetch
     /// saves the bytes and later variants re-decode from RAM.
     ///
-    /// NSCache is thread-safe; marking `nonisolated(unsafe)` matches the pattern
-    /// used for `imageCache` and lets any actor-isolated method read/write it
-    /// without extra hops.
+    /// `NSCache` is thread-safe but not `Sendable`, so this genuinely needs the
+    /// `nonisolated(unsafe)` escape hatch — it lets any actor-isolated method
+    /// read/write it without extra hops, and the NSCache internal locking makes
+    /// that sound.
     nonisolated(unsafe) private let sourceDataCache: NSCache<NSString, NSData> = {
         let cache = NSCache<NSString, NSData>()
         cache.totalCostLimit = 40 * 1024 * 1024 // 40MB of source bytes

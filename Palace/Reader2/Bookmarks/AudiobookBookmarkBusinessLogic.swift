@@ -178,6 +178,12 @@ import PalaceReadingPosition
     }
 
     public func saveBookmark(at position: TrackPosition, completion: ((_ position: TrackPosition?) -> Void)? = nil) {
+        // Swift 6 `targeted`: box the non-Sendable `completion` closure so the
+        // `@Sendable` `Task` closure inside the debounce captures a Sendable
+        // carrier rather than the raw closure. INVARIANT: the boxed completion
+        // is only ever invoked on the main queue (the two `DispatchQueue.main
+        // .async` blocks below). Mirrors `ImageCompletionBox` in `ImageLoaderImpl`.
+        let completionBox = TrackPositionCompletionBox(completion)
         debounce {
             Task { [weak self] in
                 guard let self else { return }
@@ -190,12 +196,12 @@ import PalaceReadingPosition
                     if let updatedLocation = updatedPosition.toAudioBookmark().toTPPBookLocation() {
                         self.registry.addOrReplaceGenericBookmark(updatedLocation, forIdentifier: self.book.identifier)
                     }
-                    DispatchQueue.main.async { completion?(updatedPosition) }
+                    DispatchQueue.main.async { completionBox.call?(updatedPosition) }
                 }
 
                 guard let data = location.toData(), let locationString = String(data: data, encoding: .utf8) else {
                     Log.error(#file, "Failed to encode location data for bookmark.")
-                    DispatchQueue.main.async { completion?(nil) }
+                    DispatchQueue.main.async { completionBox.call?(nil) }
                     return
                 }
 
@@ -626,3 +632,20 @@ private extension Array {
 }
 
 extension AudiobookBookmarkBusinessLogic: AudiobookBookmarkDelegate {}
+
+// MARK: - Sendable carrier for `saveBookmark`'s @Sendable-closure capture
+
+/// Sendable carrier for the non-Sendable `completion` closure captured by the
+/// `@Sendable` `Task` closure in `saveBookmark`. Wrapping the closure lets the
+/// Task capture this box (Sendable) instead of the raw closure, clearing the
+/// `targeted` capture diagnostic WITHOUT rippling `@Sendable` onto the public
+/// `saveBookmark(at:completion:)` signature (which would ripple to every caller).
+///
+/// INVARIANT — the boxed closure is only ever invoked on the main queue: both
+/// call sites are inside `DispatchQueue.main.async` blocks (the `defer` success
+/// path and the encode-failure early return). It is never invoked concurrently.
+/// Mirrors `ImageCompletionBox` in `ImageLoaderImpl`.
+private final class TrackPositionCompletionBox: @unchecked Sendable {
+    let call: ((TrackPosition?) -> Void)?
+    init(_ call: ((TrackPosition?) -> Void)?) { self.call = call }
+}

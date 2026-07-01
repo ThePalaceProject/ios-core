@@ -161,7 +161,8 @@ extension TPPOPDSFeed {
           ] as NSDictionary
         }()
 
-        TPPAsyncDispatch { handler(nil, errorDict) }
+        let errorBox = SendableOPDSErrorDictionary(value: errorDict)
+        TPPAsyncDispatch { handler(nil, errorBox.value) }
         return
       }
 
@@ -192,7 +193,8 @@ extension TPPOPDSFeed {
           ]
         )
         let errorDict = try? JSONSerialization.jsonObject(with: data, options: []) as? NSDictionary
-        TPPAsyncDispatch { handler(nil, errorDict) }
+        let errorBox = SendableOPDSErrorDictionary(value: errorDict)
+        TPPAsyncDispatch { handler(nil, errorBox.value) }
         return
       }
 
@@ -219,4 +221,17 @@ extension TPPOPDSFeed {
 
     request = task?.originalRequest
   }
+}
+
+// MARK: - Sendable carrier for the `@Sendable` TPPAsyncDispatch capture
+
+/// Sendable carrier for the OPDS feed error dictionary (`NSDictionary?`, whose
+/// element values are not Sendable). It is built once — either synthesized from
+/// the HTTP status or parsed from the response body — and only ever read
+/// thereafter (forwarded to `handler`), so moving it across the
+/// `TPPAsyncDispatch` boundary is race-free. `@unchecked` documents that
+/// write-once-then-read confinement. Mirrors `SendableErrorDocument` in
+/// `BookRegistrySync`.
+private struct SendableOPDSErrorDictionary: @unchecked Sendable {
+  let value: NSDictionary?
 }

@@ -921,9 +921,15 @@ extension TPPEPUBViewController: DecorableNavigator {
 }
 
 public extension DecorableNavigator {
+    // Swift 6 `targeted`: the previous body wrapped the work in
+    // `await MainActor.run { self.apply(...) }`, which captured `self`
+    // (`Self: DecorableNavigator`, a non-Sendable Readium protocol) in the
+    // `@Sendable` `MainActor.run` closure. Annotating the method `@MainActor`
+    // and calling `apply` directly is behavior-preserving — the body already
+    // only did main-actor work, the method is still `async` and awaitable from
+    // any context — while removing the non-Sendable capture.
+    @MainActor
     func applyDecorationsAsync(_ decorations: [Decoration], in group: String) async {
-        await MainActor.run {
-            self.apply(decorations: decorations, in: group)
-        }
+        apply(decorations: decorations, in: group)
     }
 }
