@@ -141,18 +141,24 @@ protocol AnnotationsManager {
             return nil
         }
 
-        let bookmarks = await withCheckedContinuation { continuation in
+        // Swift 6 `complete`: `Bookmark` is a Palace-owned non-Sendable protocol
+        // (`protocol Bookmark: NSObject {}`), so a `[Bookmark]?` cannot cross the
+        // `CheckedContinuation.resume(returning:)` Sendable boundary. Box the
+        // single first bookmark we actually need. INVARIANT: the boxed value is
+        // produced once inside the `getServerBookmarks` completion and read once
+        // after the continuation resumes — no concurrent access.
+        let firstBox: BookmarkBox = await withCheckedContinuation { continuation in
             var didResume = false
 
             getServerBookmarks(forBook: book, atURL: url, motivation: .readingProgress) { bookmarks in
                 guard !didResume else { return }
                 didResume = true
 
-                continuation.resume(returning: bookmarks)
+                continuation.resume(returning: BookmarkBox(bookmarks?.first))
             }
         }
 
-        return bookmarks?.first
+        return firstBox.bookmark
     }
 
     static func postListeningPosition(forBook bookID: String, selectorValue: String, completion: ((_ response: AnnotationResponse?) -> Void)? = nil) {
@@ -573,23 +579,33 @@ protocol AnnotationsManager {
 
         Log.debug(#file, "Begin task of uploading local bookmarks, count: \(bookmarks.count).")
         let uploadGroup = DispatchGroup()
-        var bookmarksFailedToUpdate = [TPPReadiumBookmark]()
-        var bookmarksUpdated = [TPPReadiumBookmark]()
+        // Swift 6 `complete`: `TPPReadiumBookmark` is a Palace-owned non-Sendable
+        // class, so the mutable `[TPPReadiumBookmark]` accumulators and the
+        // per-upload `localBookmark` cannot be captured by the `@Sendable`
+        // `DispatchQueue.main.async` / `uploadGroup.notify` closures as raw
+        // values. Box the accumulators and the completion in a carrier whose
+        // INVARIANT is that every mutation and every read happens on the main
+        // queue: each upload's `append` runs inside `DispatchQueue.main.async`,
+        // and the terminal read runs inside `notify(queue: DispatchQueue.main)`.
+        // DispatchGroup serializes the two so no read races an in-flight append.
+        let accumulator = BookmarkUploadAccumulatorBox(completion: completion)
 
         for localBookmark in bookmarks {
             guard localBookmark.annotationId == nil else { continue }
 
+            let bookmarkBox = ReadiumBookmarkBox(localBookmark)
             uploadGroup.enter()
             postBookmark(localBookmark, forBookID: bookID) { response in
                 DispatchQueue.main.async {
                     defer { uploadGroup.leave() }
 
+                    let localBookmark = bookmarkBox.bookmark
                     if let serverId = response?.serverId {
                         localBookmark.annotationId = serverId
-                        bookmarksUpdated.append(localBookmark)
+                        accumulator.updated.append(localBookmark)
                     } else {
                         Log.error(#file, "Local Bookmark not uploaded: \(localBookmark)")
-                        bookmarksFailedToUpdate.append(localBookmark)
+                        accumulator.failed.append(localBookmark)
                     }
                 }
             }
@@ -597,7 +613,7 @@ protocol AnnotationsManager {
 
         uploadGroup.notify(queue: DispatchQueue.main) {
             Log.debug(#file, "Finished task of uploading local bookmarks.")
-            completion(bookmarksUpdated, bookmarksFailedToUpdate)
+            accumulator.completion(accumulator.updated, accumulator.failed)
         }
     }
     // MARK: -
@@ -664,5 +680,45 @@ protocol AnnotationsManager {
         let parameterData = try? JSONSerialization.data(withJSONObject: parameters, options: [.prettyPrinted])
         let headers = executor.request(for: url).allHTTPHeaderFields
         AppContainer.production().networkQueue.addRequest(libraryID, bookID, url, .POST, parameterData, headers)
+    }
+}
+
+// MARK: - Sendable carriers for the annotation-sync @Sendable-closure captures
+
+/// Sendable carrier for a single non-Sendable `Bookmark?` crossing the
+/// `CheckedContinuation.resume(returning:)` Sendable boundary in
+/// `syncReadingPosition`. `Bookmark` is a Palace-owned protocol
+/// (`protocol Bookmark: NSObject {}`) and cannot be made `Sendable`.
+/// INVARIANT — produced once in the `getServerBookmarks` completion, read once
+/// after the continuation resumes.
+private final class BookmarkBox: @unchecked Sendable {
+    let bookmark: Bookmark?
+    init(_ bookmark: Bookmark?) { self.bookmark = bookmark }
+}
+
+/// Sendable carrier for a single non-Sendable `TPPReadiumBookmark` handed to the
+/// `@Sendable` `DispatchQueue.main.async` upload-completion in
+/// `uploadLocalBookmarks`. `TPPReadiumBookmark` is a Palace-owned mutable class
+/// (must not be made `Sendable`). INVARIANT — the boxed bookmark's
+/// `annotationId` is mutated only on the main queue inside that completion.
+/// Mirrors `ReadiumBookmarkBox` in `TPPReaderBookmarksBusinessLogic`.
+private final class ReadiumBookmarkBox: @unchecked Sendable {
+    let bookmark: TPPReadiumBookmark
+    init(_ bookmark: TPPReadiumBookmark) { self.bookmark = bookmark }
+}
+
+/// Sendable carrier for the mutable `[TPPReadiumBookmark]` accumulators and the
+/// non-Sendable completion in `uploadLocalBookmarks`. INVARIANT — `updated` and
+/// `failed` are appended to only inside per-upload `DispatchQueue.main.async`
+/// blocks and read only inside the `uploadGroup.notify(queue:
+/// DispatchQueue.main)` terminal; all access is main-queue-confined and the
+/// DispatchGroup serializes the terminal read after every append, so
+/// `@unchecked Sendable` waives no real race.
+private final class BookmarkUploadAccumulatorBox: @unchecked Sendable {
+    var updated: [TPPReadiumBookmark] = []
+    var failed: [TPPReadiumBookmark] = []
+    let completion: ([TPPReadiumBookmark], [TPPReadiumBookmark]) -> Void
+    init(completion: @escaping ([TPPReadiumBookmark], [TPPReadiumBookmark]) -> Void) {
+        self.completion = completion
     }
 }

@@ -32,7 +32,10 @@ import PalaceReadingPosition
     // access now goes through `onStateQueue` so the serial `queue` is the single
     // serialization domain for this state.
     private var isSyncing: Bool = false
-    private var completionHandlersQueue: [([AudioBookmark]) -> Void] = []
+    // Boxed so the drained handlers can be captured by the `@Sendable`
+    // `DispatchQueue.main.async` closure in `finalizeSync` without crossing a
+    // non-Sendable boundary (each element wraps a `([AudioBookmark]) -> Void`).
+    private var completionHandlersQueue: [AudioBookmarkListCompletionBox] = []
     private var deletedBookmarkIds = Set<String>()
 
     @objc convenience init(book: TPPBook) {
@@ -111,13 +114,24 @@ import PalaceReadingPosition
             device: AnnotationDevice.currentID()
         )
 
+        // Swift 6 `complete`: box the non-Sendable `String?` completion closure
+        // and the non-Sendable `AudioBookmark` (a Palace-owned mutable class) so
+        // the `@Sendable` `Task` below captures Sendable carriers. INVARIANT: the
+        // boxed `audioBookmark` is created here and handed off exclusively to
+        // this single `Task` — the synchronous prefix above finishes touching it
+        // before the Task is enqueued, and no other task aliases it — so the
+        // `annotationId` mutation inside the Task is race-free.
+        let completionBox = StringCompletionBox(completion)
+        let audioBookmarkBox = AudioBookmarkBox(audioBookmark)
+
         Task { [weak self] in
             guard let self else { return }
+            let audioBookmark = audioBookmarkBox.bookmark
             do {
                 guard let serverID = try await self.positionWriter.save(snapshot) else {
                     // Throttled or queued — local position is already saved,
                     // and the writer will flush later. Nothing else to do here.
-                    completion?(nil)
+                    completionBox.call?(nil)
                     return
                 }
 
@@ -137,7 +151,7 @@ import PalaceReadingPosition
                         Log.warn(#file, "⚠️ Race condition detected: Local position is newer. Keeping local.")
                         Log.warn(#file, "  Sent: track=\(sentTrackKey), time=\(sentPlaybackTime), timestamp=\(sentTimestamp)")
                         Log.warn(#file, "  Current local: track=\(currentBookmark.chapter ?? "?"), timestamp=\(currentLocalTimestamp)")
-                        completion?(serverID)
+                        completionBox.call?(serverID)
                         return
                     }
 
@@ -157,7 +171,7 @@ import PalaceReadingPosition
                             Log.warn(#file, "⚠️ Prevented 'beginning' position from overwriting progress!")
                             Log.warn(#file, "  Attempting to save: track 0, time \(sentPlaybackTime)")
                             Log.warn(#file, "  Current position: track \(currentTrackIndex)")
-                            completion?(serverID)
+                            completionBox.call?(serverID)
                             return
                         }
                     }
@@ -169,10 +183,10 @@ import PalaceReadingPosition
 
                 self.registry.setLocation(audioBookmark.toTPPBookLocation(), forIdentifier: self.book.identifier)
                 Log.debug(#file, "☁️ Synced position to server: track=\(sentTrackKey), annotationId=\(audioBookmark.annotationId)")
-                completion?(serverID)
+                completionBox.call?(serverID)
             } catch {
                 Log.warn(#file, "⚠️ Server sync failed, but local position was already saved: \(error)")
-                completion?(nil)
+                completionBox.call?(nil)
             }
         }
     }
@@ -214,6 +228,16 @@ import PalaceReadingPosition
     }
 
     public func fetchBookmarks(for tracks: Tracks, toc: [Chapter], completion: @escaping ([TrackPosition]) -> Void) {
+        // Swift 6 `complete`: box the non-Sendable `completion` closure so the
+        // `@Sendable` work-`queue` closure (and the nested `syncBookmarks`
+        // handler + `DispatchQueue.main.async`) capture a Sendable carrier
+        // rather than the raw closure. `AudioBookmark` is a Palace-owned
+        // mutable class (not covered by `@preconcurrency import
+        // PalaceAudiobookToolkit`), so the `[AudioBookmark]` snapshots that
+        // flow through the sync handler are boxed the same way. INVARIANT: the
+        // boxed completion is only ever invoked on the main queue (the
+        // `DispatchQueue.main.async` below). Mirrors `ReadiumBookmarkBox`.
+        let completionBox = TrackPositionListCompletionBox(completion)
         queue.async { [weak self] in
             guard let self else { return }
 
@@ -244,7 +268,7 @@ import PalaceReadingPosition
                 }
 
                 DispatchQueue.main.async {
-                    completion(trackPositions)
+                    completionBox.call(trackPositions)
                 }
             }
         }
@@ -256,6 +280,15 @@ import PalaceReadingPosition
     }
 
     public func deleteBookmark(at bookmark: AudioBookmark, completion: ((Bool) -> Void)? = nil) {
+        // Swift 6 `complete`: box the non-Sendable `Bool` completion closure so
+        // the `@Sendable` `DispatchQueue.main.async` blocks (here and threaded
+        // into `deleteBookmarkByContentMatch`) capture a Sendable carrier.
+        // INVARIANT: the boxed completion is only ever invoked on the main queue.
+        let completionBox = BoolCompletionBox(completion)
+        deleteBookmark(at: bookmark, completion: completionBox)
+    }
+
+    private func deleteBookmark(at bookmark: AudioBookmark, completion: BoolCompletionBox) {
         Log.info(#file, "🗑️ DELETE BOOKMARK REQUEST for book: \(self.book.identifier)")
         Log.info(#file, "🗑️ Bookmark Details: version=\(bookmark.version), timestamp=\(bookmark.lastSavedTimeStamp ?? "nil"), annotationId=\(bookmark.annotationId.isEmpty ? "UNSYNCED" : bookmark.annotationId), chapter=\(bookmark.chapter ?? "nil"), readingOrderItem=\(bookmark.readingOrderItem ?? "nil")")
 
@@ -284,7 +317,7 @@ import PalaceReadingPosition
 
         guard !bookmark.isUnsynced else {
             Log.info(#file, "🗑️ Bookmark was unsynced (local only), deletion complete")
-            DispatchQueue.main.async { completion?(localDeletionSucceeded) }
+            DispatchQueue.main.async { completion.call?(localDeletionSucceeded) }
             return
         }
 
@@ -293,7 +326,7 @@ import PalaceReadingPosition
         annotationsManager.deleteBookmark(annotationId: bookmark.annotationId) { [weak self] serverSuccess in
             if serverSuccess {
                 Log.info(#file, "🗑️ ✅ Server deletion successful for annotationId: \(bookmark.annotationId)")
-                DispatchQueue.main.async { completion?(localDeletionSucceeded) }
+                DispatchQueue.main.async { completion.call?(localDeletionSucceeded) }
             } else {
                 Log.warn(#file, "🗑️ ⚠️ Direct server deletion failed - attempting content-based match")
                 self?.deleteBookmarkByContentMatch(bookmark, localDeletionSucceeded: localDeletionSucceeded, completion: completion)
@@ -301,7 +334,7 @@ import PalaceReadingPosition
         }
     }
 
-    private func deleteBookmarkByContentMatch(_ bookmark: AudioBookmark, localDeletionSucceeded: Bool, completion: ((Bool) -> Void)?) {
+    private func deleteBookmarkByContentMatch(_ bookmark: AudioBookmark, localDeletionSucceeded: Bool, completion: BoolCompletionBox) {
         Log.info(#file, "🔍 CONTENT-BASED DELETE: Fetching server bookmarks to find match")
 
         // Temporarily remove from deleted tracking to allow fetching
@@ -316,7 +349,7 @@ import PalaceReadingPosition
 
         fetchServerBookmarks { [weak self] serverBookmarks in
             guard let self = self else {
-                DispatchQueue.main.async { completion?(localDeletionSucceeded) }
+                DispatchQueue.main.async { completion.call?(localDeletionSucceeded) }
                 return
             }
 
@@ -336,7 +369,7 @@ import PalaceReadingPosition
                     } else {
                         Log.error(#file, "🔍 ❌ Content-matched deletion also failed - blocking bookmark from reappearing anyway")
                     }
-                    DispatchQueue.main.async { completion?(localDeletionSucceeded) }
+                    DispatchQueue.main.async { completion.call?(localDeletionSucceeded) }
                 }
             } else {
                 Log.warn(#file, "🔍 ⚠️ No matching bookmark found on server - may have already been deleted")
@@ -347,7 +380,7 @@ import PalaceReadingPosition
                         self.deletedBookmarkIds.insert("content:\(tempContentHash)")
                     }
                 }
-                DispatchQueue.main.async { completion?(localDeletionSucceeded) }
+                DispatchQueue.main.async { completion.call?(localDeletionSucceeded) }
             }
         }
     }
@@ -355,13 +388,24 @@ import PalaceReadingPosition
     // MARK: - Sync Logic
 
     func syncBookmarks(localBookmarks: [AudioBookmark], completion: (([AudioBookmark]) -> Void)? = nil) {
+        // Swift 6 `complete`: box the non-Sendable `[AudioBookmark]` input and
+        // the non-Sendable `completion` closure so the `@Sendable` `Task` below
+        // captures Sendable carriers instead of the raw values. `AudioBookmark`
+        // is a Palace-owned mutable class and must NOT be made `: Sendable` (9
+        // mutable `var`s) — see `AudioBookmarkListBox` / `ReadiumBookmarkBox`
+        // precedent. The serial work `queue` remains the single serialization
+        // domain (see the `isSyncing`/`completionHandlersQueue` note above), so
+        // boxing is safe: the boxed values are only ever touched on `queue` or
+        // the main queue, never concurrently.
+        let localBox = AudioBookmarkListBox(localBookmarks)
+        let completionBox = AudioBookmarkListCompletionBox(completion)
         // Atomically test-and-set `isSyncing`. If a sync is already in flight we
         // enqueue this completion under the same lock that `finalizeSync` drains
         // — without serialization the append raced the drain (CoW corruption).
         let shouldStartSync = onStateQueue { () -> Bool in
             if isSyncing {
-                if let completion {
-                    completionHandlersQueue.append(completion)
+                if completionBox.call != nil {
+                    completionHandlersQueue.append(completionBox)
                 }
                 return false
             }
@@ -372,13 +416,13 @@ import PalaceReadingPosition
 
         Task { [weak self] in
             guard let self else { return }
-            await uploadUnsyncedBookmarks(localBookmarks)
+            await uploadUnsyncedBookmarks(localBox.bookmarks)
 
             fetchServerBookmarks { [weak self] remoteBookmarks in
                 guard let strongSelf = self else { return }
 
                 strongSelf.updateLocalBookmarks(with: remoteBookmarks) { updatedBookmarks in
-                    strongSelf.finalizeSync(with: updatedBookmarks, completion: completion)
+                    strongSelf.finalizeSync(with: updatedBookmarks, completion: completionBox)
                 }
             }
         }
@@ -543,20 +587,24 @@ import PalaceReadingPosition
         }
     }
 
-    private func finalizeSync(with bookmarks: [AudioBookmark], completion: (([AudioBookmark]) -> Void)?) {
+    private func finalizeSync(with bookmarks: [AudioBookmark], completion: AudioBookmarkListCompletionBox?) {
+        // Swift 6 `complete`: box the `[AudioBookmark]` result so it — and the
+        // already-boxed queued handlers — cross the `@Sendable`
+        // `DispatchQueue.main.async` boundary as Sendable carriers.
+        let bookmarksBox = AudioBookmarkListBox(bookmarks)
         // Reset `isSyncing` and drain the queued handlers atomically, then fire
         // them off-lock on main. Draining inside the lock prevents a handler
         // enqueued by a concurrent `syncBookmarks` from being lost or
         // double-invoked while the array is being iterated/cleared.
-        let queuedHandlers: [([AudioBookmark]) -> Void] = onStateQueue {
+        let queuedHandlers: [AudioBookmarkListCompletionBox] = onStateQueue {
             isSyncing = false
             let drained = completionHandlersQueue
             completionHandlersQueue.removeAll()
             return drained
         }
         DispatchQueue.main.async {
-            completion?(bookmarks)
-            queuedHandlers.forEach { $0(bookmarks) }
+            completion?.call?(bookmarksBox.bookmarks)
+            queuedHandlers.forEach { $0.call?(bookmarksBox.bookmarks) }
         }
     }
 
@@ -648,4 +696,69 @@ extension AudiobookBookmarkBusinessLogic: AudiobookBookmarkDelegate {}
 private final class TrackPositionCompletionBox: @unchecked Sendable {
     let call: ((TrackPosition?) -> Void)?
     init(_ call: ((TrackPosition?) -> Void)?) { self.call = call }
+}
+
+// MARK: - Sendable carriers for the bookmark-sync @Sendable-closure captures
+
+/// Sendable carrier for a non-Sendable `[TrackPosition]` completion closure
+/// captured by the `@Sendable` work-`queue` / `DispatchQueue.main.async` chain
+/// in `fetchBookmarks`. INVARIANT — invoked only on the main queue.
+/// Mirrors `TrackPositionCompletionBox` / `ReadiumBookmarkBox`.
+private final class TrackPositionListCompletionBox: @unchecked Sendable {
+    let call: ([TrackPosition]) -> Void
+    init(_ call: @escaping ([TrackPosition]) -> Void) { self.call = call }
+}
+
+/// Sendable carrier for a non-Sendable `[AudioBookmark]` completion closure
+/// captured by the `@Sendable` `Task` in `syncBookmarks` and the
+/// `DispatchQueue.main.async` drain in `finalizeSync`. `AudioBookmark` is a
+/// Palace-owned mutable class (9 mutable `var`s) that must NOT be made
+/// `: Sendable` — boxing the closure is the correct ceiling, mirroring
+/// `ReadiumBookmarkBox` (Decision 3). INVARIANT — the boxed closure is only
+/// ever invoked on the main queue (the `finalizeSync` drain). The serial work
+/// `queue` remains the single serialization domain for the sync state, so no
+/// two invocations race.
+private final class AudioBookmarkListCompletionBox: @unchecked Sendable {
+    let call: (([AudioBookmark]) -> Void)?
+    init(_ call: (([AudioBookmark]) -> Void)?) { self.call = call }
+}
+
+/// Sendable carrier for a non-Sendable `[AudioBookmark]` value crossing a
+/// `@Sendable` `Task` / `DispatchQueue.main.async` boundary (the sync input in
+/// `syncBookmarks`, the result in `finalizeSync`). The wrapped array and its
+/// `AudioBookmark` elements are only ever produced, merged, and consumed on the
+/// serial work `queue` or the main queue — never mutated concurrently across
+/// the box — so `@unchecked Sendable` waives no real race.
+private final class AudioBookmarkListBox: @unchecked Sendable {
+    let bookmarks: [AudioBookmark]
+    init(_ bookmarks: [AudioBookmark]) { self.bookmarks = bookmarks }
+}
+
+/// Sendable carrier for a single non-Sendable `AudioBookmark` handed off to the
+/// `@Sendable` `Task` in `saveListeningPosition`. INVARIANT — the wrapped
+/// bookmark is created immediately before the Task and owned exclusively by it;
+/// the synchronous prefix finishes touching it before the Task is enqueued and
+/// no other task aliases it, so the in-Task `annotationId` mutation is race-free.
+private final class AudioBookmarkBox: @unchecked Sendable {
+    let bookmark: AudioBookmark
+    init(_ bookmark: AudioBookmark) { self.bookmark = bookmark }
+}
+
+/// Sendable carrier for a non-Sendable `String?` completion closure captured by
+/// the `@Sendable` `Task` in `saveListeningPosition`. INVARIANT — invoked only
+/// inside that single Task (server-sync terminal paths). Mirrors
+/// `TrackPositionCompletionBox`.
+private final class StringCompletionBox: @unchecked Sendable {
+    let call: ((String?) -> Void)?
+    init(_ call: ((String?) -> Void)?) { self.call = call }
+}
+
+/// Sendable carrier for a non-Sendable `Bool` completion closure captured by the
+/// `@Sendable` `DispatchQueue.main.async` blocks in `deleteBookmark` /
+/// `deleteBookmarkByContentMatch`. INVARIANT — invoked only on the main queue,
+/// exactly once per delete request (the terminal paths are mutually exclusive).
+/// Mirrors `TrackPositionCompletionBox`.
+private final class BoolCompletionBox: @unchecked Sendable {
+    let call: ((Bool) -> Void)?
+    init(_ call: ((Bool) -> Void)?) { self.call = call }
 }

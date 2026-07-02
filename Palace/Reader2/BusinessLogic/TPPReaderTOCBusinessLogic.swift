@@ -7,7 +7,11 @@
 //
 
 import Foundation
-import ReadiumShared
+// Swift 6 `complete`: `Publication`, `Link`, and `Locator` are non-Sendable
+// Readium types captured by the `@Sendable` `Task` in `init` (and returned from
+// the `async` locator helpers). `@preconcurrency` is the honest ceiling until
+// Readium annotates these Sendable — matches the sibling Reader2 files.
+@preconcurrency import ReadiumShared
 
 typealias TPPReaderTOCLink = (level: Int, link: Link)
 

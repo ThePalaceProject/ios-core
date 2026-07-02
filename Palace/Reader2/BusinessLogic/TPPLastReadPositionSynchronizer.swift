@@ -58,10 +58,18 @@ final class TPPLastReadPositionSynchronizer: @unchecked Sendable {
               book: TPPBook,
               drmDeviceID: String?,
               completion: @escaping () -> Void) {
+        // Swift 6 `complete`: box the non-Sendable `() -> Void` completion so the
+        // `@Sendable` `Task` captures a Sendable carrier. We box rather than mark
+        // the param `@Sendable` because the `ReaderModule` caller closure
+        // captures non-Sendable main-actor values (`formatModule`,
+        // `navigationController`); `@Sendable` would ripple onto that call site.
+        // INVARIANT — the boxed closure runs only on the main thread (via
+        // `TPPMainThreadRun.asyncIfNeeded`).
+        let completionBox = VoidCompletionBox(completion)
         Task {
             await sync(for: publication, book: book, drmDeviceID: drmDeviceID)
             TPPMainThreadRun.asyncIfNeeded {
-                completion()
+                completionBox.call()
             }
         }
     }
@@ -123,9 +131,12 @@ final class TPPLastReadPositionSynchronizer: @unchecked Sendable {
                                         publication: Publication,
                                         book: TPPBook,
                                         completion: @escaping () -> Void) {
+        // Swift 6 `complete`: box the non-Sendable `() -> Void` completion for the
+        // `@Sendable` `Task` capture, matching `sync(for:book:drmDeviceID:completion:)`.
+        let completionBox = VoidCompletionBox(completion)
         Task {
             await presentNavigationAlert(for: serverLocator, publication: publication, book: book)
-            completion()
+            completionBox.call()
         }
     }
 
@@ -195,4 +206,15 @@ final class TPPLastReadPositionSynchronizer: @unchecked Sendable {
             }
         }
     }
+}
+
+/// Sendable carrier for a non-Sendable `() -> Void` completion closure captured
+/// by the `@Sendable` `Task`s in `TPPLastReadPositionSynchronizer`. Boxing
+/// avoids rippling `@Sendable` onto the `sync(...completion:)` signature, whose
+/// `ReaderModule` caller closure captures non-Sendable main-actor values.
+/// INVARIANT — the boxed closure runs only on the main thread (via
+/// `TPPMainThreadRun.asyncIfNeeded` / the alert-action continuation).
+private final class VoidCompletionBox: @unchecked Sendable {
+    let call: () -> Void
+    init(_ call: @escaping () -> Void) { self.call = call }
 }

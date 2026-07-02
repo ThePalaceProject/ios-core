@@ -115,6 +115,19 @@ final class ReaderModule: ReaderModuleAPI, @unchecked Sendable {
                               formatModule: ReaderFormatModule,
                               in navigationController: UINavigationController,
                               forSample: Bool = false) {
+        // Swift 6 `complete`: the `Task.detached` closure is `@Sendable`, but
+        // `formatModule` (a non-Sendable `ReaderFormatModule` existential) and
+        // `navigationController` (a main-actor `UINavigationController`) are only
+        // ever *used* on the main actor — `makeReaderViewController` is
+        // `@MainActor`, and the nav controller is touched exclusively inside the
+        // `MainActor.run` blocks. Box them so the detached task captures a
+        // Sendable carrier rather than the raw main-actor values. INVARIANT: the
+        // boxed values are dereferenced only on the main actor. Mirrors the
+        // module's own `@unchecked Sendable` conformance rationale above.
+        let presentationBox = ReaderPresentationBox(
+            formatModule: formatModule,
+            navigationController: navigationController
+        )
         Task.detached { [weak self] in
             guard let self else { return }
 
@@ -122,7 +135,7 @@ final class ReaderModule: ReaderModuleAPI, @unchecked Sendable {
                 let lastSavedLocation = self.bookRegistry.location(forIdentifier: book.identifier)
                 let initialLocator = await lastSavedLocation?.convertToLocator(publication: publication)
 
-                let readerVC = try await formatModule.makeReaderViewController(
+                let readerVC = try await presentationBox.formatModule.makeReaderViewController(
                     for: publication,
                     book: book,
                     initialLocation: initialLocator,
@@ -130,6 +143,7 @@ final class ReaderModule: ReaderModuleAPI, @unchecked Sendable {
                 )
 
                 await MainActor.run {
+                    let navigationController = presentationBox.navigationController
                     let backItem = UIBarButtonItem()
                     backItem.title = Strings.Generic.back
                     readerVC.navigationItem.backBarButtonItem = backItem
@@ -141,9 +155,23 @@ final class ReaderModule: ReaderModuleAPI, @unchecked Sendable {
 
             } catch {
                 await MainActor.run {
-                    self.delegate?.presentError(error, from: navigationController)
+                    self.delegate?.presentError(error, from: presentationBox.navigationController)
                 }
             }
         }
+    }
+}
+
+/// Sendable carrier for the main-actor-confined `formatModule` +
+/// `navigationController` captured by the `@Sendable` `Task.detached` in
+/// `ReaderModule.finalizePresentation`. INVARIANT — both stored values are only
+/// dereferenced on the main actor: `makeReaderViewController` is `@MainActor`,
+/// and `navigationController` is touched only inside `MainActor.run`.
+private final class ReaderPresentationBox: @unchecked Sendable {
+    let formatModule: ReaderFormatModule
+    let navigationController: UINavigationController
+    init(formatModule: ReaderFormatModule, navigationController: UINavigationController) {
+        self.formatModule = formatModule
+        self.navigationController = navigationController
     }
 }
