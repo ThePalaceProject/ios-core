@@ -87,6 +87,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     private let triageBotAIFallbackCellIdentifier = "triageBotAIFallbackCell"
     private let inAppPlaybackNavCellIdentifier = "inAppPlaybackNavCell"
     private let appRatingForceEligibleCellIdentifier = "appRatingForceEligibleCell"
+    private let appRatingTriggerCellIdentifier = "appRatingTriggerCell"
     private let appRatingResetCellIdentifier = "appRatingResetCell"
     private let triageBotAnthropicKeyCellIdentifier = "triageBotAnthropicKeyCell"
 
@@ -147,6 +148,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: triageBotAIFallbackCellIdentifier)
         self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: inAppPlaybackNavCellIdentifier)
         self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: appRatingForceEligibleCellIdentifier)
+        self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: appRatingTriggerCellIdentifier)
         self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: appRatingResetCellIdentifier)
     }
 
@@ -158,7 +160,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         switch sectionType {
         case .librarySettings: return 2
         case .triageBot: return 4  // enabled + ticket submission + AI fallback + Anthropic key
-        case .featureFlags: return 3  // in-app playback nav + force-rating-eligible + reset-rating-state
+        case .featureFlags: return 4  // in-app playback nav + force-eligible + trigger-now + reset-rating-state
         case .dataManagement: return 3  // Clear Cached Data + Reset This Library + Full Reset
         case .developerTools: return 2
         case .pushNotificationTesting: return 3
@@ -208,6 +210,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
             switch indexPath.row {
             case 0: return cellForInAppPlaybackNav()
             case 1: return cellForAppRatingForceEligible()
+            case 2: return cellForAppRatingTrigger()
             default: return cellForAppRatingReset()
             }
         case .libraryRegistryDebugging: return cellForCustomRegsitry()
@@ -492,6 +495,19 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
 
     @objc func appRatingForceEligibleSwitchDidChange(sender: UISwitch) {
         UserDefaults.standard.set(sender.isOn, forKey: RemoteFeatureFlags.appRatingForceEligibleLocalOverrideKey)
+    }
+
+    /// Tap-to-run action that fires the app-rating book-completed trigger
+    /// immediately (bypassing the ~2s delay and a real book completion), so the
+    /// sentiment gate can be driven deterministically by QA/simdrive. Shows only
+    /// when eligible — pair with "Force Rating Prompt Eligible".
+    private func cellForAppRatingTrigger() -> UITableViewCell {
+        guard let cell = tableView.dequeueReusableCell(withIdentifier: appRatingTriggerCellIdentifier) else {
+            fatalError("Failed to dequeue cell with identifier \(appRatingTriggerCellIdentifier)")
+        }
+        cell.textLabel?.text = "Trigger Rating Prompt Now"
+        cell.textLabel?.textColor = .systemBlue
+        return cell
     }
 
     /// Tap-to-run action that clears all app-rating engagement state so the flow
@@ -1002,9 +1018,12 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
             }
 
         case .featureFlags:
-            // Row 0/1 are toggles (handled by their switches); row 2 resets
-            // the app-rating engagement state.
+            // Row 0/1 are toggles (handled by their switches). Row 2 fires the
+            // rating trigger immediately; row 3 resets the engagement state.
             if indexPath.row == 2 {
+                tableView.deselectRow(at: indexPath, animated: true)
+                AppContainer.production().ratingPromptPresenter.handleTrigger(.bookCompleted)
+            } else if indexPath.row == 3 {
                 AppContainer.production().appRatingService.resetEngagementState()
                 tableView.deselectRow(at: indexPath, animated: true)
                 let confirm = TPPAlertUtils.alert(title: "Rating State Reset",
