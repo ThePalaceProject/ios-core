@@ -85,11 +85,11 @@ final class BookAvailabilityFormatter {
                     AppContainer.production().navigationCoordinatorHub.coordinator?.pop()
                     AppContainer.production().downloadCenter.returnBook(withIdentifier: book.identifier)
                 }
-                TPPAppStoreReviewPrompt.presentIfAvailable()
+                Task { @MainActor in AppContainer.production().ratingPromptPresenter.noteBookCompleted() }
             }
             TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
         } else {
-            TPPAppStoreReviewPrompt.presentIfAvailable()
+            Task { @MainActor in AppContainer.production().ratingPromptPresenter.noteBookCompleted() }
         }
     }
 }

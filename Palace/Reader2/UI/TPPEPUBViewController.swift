@@ -26,6 +26,11 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
     private lazy var keyboardNavigationHandler = KeyboardNavigationHandler(navigable: self)
     private var lastChapterHREF: String?
 
+    /// App-rating (PP-4088): guards the end-of-book completion trigger so it
+    /// fires at most once per reader session, even as locator changes keep
+    /// arriving while the patron lingers on the final page.
+    private var didFireRatingCompletion = false
+
     /// The location the EPUB navigator's CONSTRUCTOR should restore to.
     ///
     /// EXACTLY ONE restore must reach the navigator. The post-first-paint gate
@@ -432,6 +437,15 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
         let wasManual = manualNavigationPending
         manualNavigationPending = false
         lastChapterHREF = newHREF
+
+        // App-rating primary trigger (PP-4088): reaching the end of the book is
+        // a positive moment. Fire once; the gate appears only if eligible.
+        if !didFireRatingCompletion,
+           let progression = locator.locations.totalProgression,
+           progression >= 0.99 {
+          didFireRatingCompletion = true
+          AppContainer.production().ratingPromptPresenter.noteBookCompleted()
+        }
 
         guard UIAccessibility.isVoiceOverRunning, isChapterChange else { return }
 

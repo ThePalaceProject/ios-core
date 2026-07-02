@@ -86,6 +86,8 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     private let triageBotTicketSubmissionCellIdentifier = "triageBotTicketSubmissionCell"
     private let triageBotAIFallbackCellIdentifier = "triageBotAIFallbackCell"
     private let inAppPlaybackNavCellIdentifier = "inAppPlaybackNavCell"
+    private let appRatingForceEligibleCellIdentifier = "appRatingForceEligibleCell"
+    private let appRatingResetCellIdentifier = "appRatingResetCell"
     private let triageBotAnthropicKeyCellIdentifier = "triageBotAnthropicKeyCell"
 
     /// Manages the Keychain-backed Anthropic key for the Triage Bot AI
@@ -144,6 +146,8 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: triageBotTicketSubmissionCellIdentifier)
         self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: triageBotAIFallbackCellIdentifier)
         self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: inAppPlaybackNavCellIdentifier)
+        self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: appRatingForceEligibleCellIdentifier)
+        self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: appRatingResetCellIdentifier)
     }
 
     // MARK: - UITableViewDataSource
@@ -154,7 +158,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         switch sectionType {
         case .librarySettings: return 2
         case .triageBot: return 4  // enabled + ticket submission + AI fallback + Anthropic key
-        case .featureFlags: return 1
+        case .featureFlags: return 3  // in-app playback nav + force-rating-eligible + reset-rating-state
         case .dataManagement: return 3  // Clear Cached Data + Reset This Library + Full Reset
         case .developerTools: return 2
         case .pushNotificationTesting: return 3
@@ -200,7 +204,12 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
             case 2: return cellForTriageBotAIFallback()
             default: return cellForTriageBotAnthropicKey()
             }
-        case .featureFlags: return cellForInAppPlaybackNav()
+        case .featureFlags:
+            switch indexPath.row {
+            case 0: return cellForInAppPlaybackNav()
+            case 1: return cellForAppRatingForceEligible()
+            default: return cellForAppRatingReset()
+            }
         case .libraryRegistryDebugging: return cellForCustomRegsitry()
         case .dataManagement:
             switch indexPath.row {
@@ -461,6 +470,39 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
 
     @objc func inAppPlaybackNavSwitchDidChange(sender: UISwitch) {
         UserDefaults.standard.set(sender.isOn, forKey: RemoteFeatureFlags.inAppPlaybackNavLocalOverrideKey)
+    }
+
+    /// QA/simdrive override that forces the app-rating prompt eligible so the
+    /// sentiment gate can be triggered on demand (bypasses thresholds/cooldown).
+    /// Writes `RemoteFeatureFlags.appRatingForceEligibleLocalOverrideKey`.
+    private func cellForAppRatingForceEligible() -> UITableViewCell {
+        guard let cell = tableView.dequeueReusableCell(withIdentifier: appRatingForceEligibleCellIdentifier) else {
+            fatalError("Failed to dequeue cell with identifier \(appRatingForceEligibleCellIdentifier)")
+        }
+        cell.selectionStyle = .none
+        cell.textLabel?.text = "Force Rating Prompt Eligible"
+        cell.textLabel?.adjustsFontSizeToFitWidth = true
+        cell.textLabel?.minimumScaleFactor = 0.5
+        cell.accessoryView = createSwitch(
+            isOn: RemoteFeatureFlags.shared.isAppRatingForceEligible,
+            action: #selector(appRatingForceEligibleSwitchDidChange)
+        )
+        return cell
+    }
+
+    @objc func appRatingForceEligibleSwitchDidChange(sender: UISwitch) {
+        UserDefaults.standard.set(sender.isOn, forKey: RemoteFeatureFlags.appRatingForceEligibleLocalOverrideKey)
+    }
+
+    /// Tap-to-run action that clears all app-rating engagement state so the flow
+    /// can be re-exercised from a fresh-install baseline (QA/simdrive).
+    private func cellForAppRatingReset() -> UITableViewCell {
+        guard let cell = tableView.dequeueReusableCell(withIdentifier: appRatingResetCellIdentifier) else {
+            fatalError("Failed to dequeue cell with identifier \(appRatingResetCellIdentifier)")
+        }
+        cell.textLabel?.text = "Reset Rating State"
+        cell.textLabel?.textColor = .systemRed
+        return cell
     }
 
     private func cellForClearCache() -> UITableViewCell {
@@ -959,7 +1001,18 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
                 presentAnthropicKeyEntry()
             }
 
-        case .librarySettings, .featureFlags, .libraryRegistryDebugging:
+        case .featureFlags:
+            // Row 0/1 are toggles (handled by their switches); row 2 resets
+            // the app-rating engagement state.
+            if indexPath.row == 2 {
+                AppContainer.production().appRatingService.resetEngagementState()
+                tableView.deselectRow(at: indexPath, animated: true)
+                let confirm = TPPAlertUtils.alert(title: "Rating State Reset",
+                                                  message: "All app-rating engagement signals have been cleared.")
+                TPPAlertUtils.presentFromViewControllerOrNil(alertController: confirm, viewController: self, animated: true, completion: nil)
+            }
+
+        case .librarySettings, .libraryRegistryDebugging:
             break
         }
     }
