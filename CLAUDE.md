@@ -425,6 +425,33 @@ Never commit: `APIKeys.swift`, `GoogleService-Info.plist`, `TPPSecrets.swift`, `
 
 **MCP server:** `simdrive` (Python pkg). Surface: `session_start`, `session_end`, `session_status`, `observe`, `tap`, `swipe`, `type_text`, `press_key`, `record_start`, `record_stop`, `replay`, `logs`.
 
+### Local chaos pass for risk-bearing UI changes — standing practice
+
+**Any PR that adds or changes a user-facing SwiftUI/UIKit surface (dialog, sheet,
+overlay, new screen, routing between them) gets a local `chaos-qa` agent pass —
+driven live on the sim — BEFORE the PR opens.** Run it against the built candidate
+with the feature reachable (debug toggles are fine), and **read the rendered
+screenshots**, not just OCR marks. This is advisory, human-triaged, zero-infra —
+it caught both the dark-mode white-on-white button and the dismiss tap-bleed-through
+on the app-rating gate (Epic PP-4086) that unit tests and OCR assertions missed.
+
+Why *local* + *advisory*, not a blocking CI gate: live chaos is **non-deterministic
+by design** (it hunts for new bugs via vision + timing-sensitive input). As a
+blocking gate it would flake — and a usually-red-from-flakes board violates the
+green-board contract above (it trains everyone to ignore CI). So the split is
+deliberate:
+
+- **`chaos-replay-on-pr.yml`** — deterministic curated replays; the *blocking* gate
+  (dormant until a self-hosted `[macos, palace-ios]` runner + `ENABLE_CHAOS_QA_RUNNER=true`).
+- **`chaos-qa-on-demand.yml`** / **local `chaos-qa` agent** — live exploration;
+  *advisory*, never fails the check. This standing practice is the local form.
+
+Findings are triaged by a human: fix pre-merge if real (like the two above), or
+record as a curated replay in `.simdrive/replays/chaos/` once the gate runner exists.
+OCR text presence is contrast-blind — every gate/dialog screen also gets a
+`visual_checks` vision review in BOTH light and dark appearance (see
+`.forgeos/wall-failures/2026-07-02-pr1168-darkmode-contrast.md`).
+
 ### Tool rules — MANDATORY
 
 **Always `observe` with `annotate=true` before a `tap text=...` or `tap mark=...`.** Text/mark resolution caches against the **last** observe. An `annotate=false` observe returns no marks and the next text/mark tap will fail. If you've already seen the screen and know the coords, `tap x= y=` skips the cache concern entirely.
