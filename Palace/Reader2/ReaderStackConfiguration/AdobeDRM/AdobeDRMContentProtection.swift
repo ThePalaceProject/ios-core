@@ -244,7 +244,17 @@ public actor DRMDataResource: Resource {
         return fullData
     }
 
-    public func stream(range: Range<UInt64>?, consume: @escaping (Data) -> Void) async -> ReadResult<Void> {
+    // `nonisolated`: the `Streamable.stream(range:consume:)` requirement declares
+    // `consume` as a plain `@escaping (Data) -> Void` (NOT `@Sendable`), so the
+    // witness cannot strengthen it to `@Sendable` — function parameters are
+    // contravariant and Readium passes a non-Sendable closure. Marking the witness
+    // `nonisolated` removes the actor-isolation boundary the closure would otherwise
+    // be *sent* across (the Swift 6 error), keeping the closure in the caller's
+    // domain. Decryption is unchanged: the actual decrypt + cache still happens on
+    // the actor inside the isolated `read(range:)` helper we `await` below; only the
+    // `consume` callback now runs in this nonisolated async context, which is where
+    // the Streamable contract expects callers to accumulate chunks anyway.
+    public nonisolated func stream(range: Range<UInt64>?, consume: @escaping (Data) -> Void) async -> ReadResult<Void> {
         do {
             let chunk = try await read(range: range)
             consume(chunk)

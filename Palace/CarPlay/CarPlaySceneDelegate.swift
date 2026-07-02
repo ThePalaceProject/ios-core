@@ -42,6 +42,12 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
 
         AppContainer.production().playbackBootstrapper.ensureInitializedForCarPlay()
 
+        // Defensive: if a prior manager is somehow still held (a second
+        // didConnect without an intervening didDisconnect), tear it down first
+        // so its Now Playing observer registration is removed on the main actor
+        // before we drop the reference — otherwise it would dangle on the shared
+        // CPNowPlayingTemplate.
+        templateManager?.tearDown()
         self.templateManager = CarPlayTemplateManager(interfaceController: interfaceController)
 
         // Set up the root template
@@ -60,6 +66,11 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
         Log.info(#file, "🚗 CarPlay disconnected")
 
         cancellables.removeAll()
+        // Remove the Now Playing observer on the main actor BEFORE releasing the
+        // manager. This replaces the former deinit-time removal (unrepresentable
+        // under Swift 6 strict concurrency) and makes removal deterministic
+        // regardless of when the manager actually deallocs.
+        templateManager?.tearDown()
         templateManager = nil
         self.interfaceController = nil
 
