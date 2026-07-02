@@ -705,8 +705,14 @@ private struct SyncCallbacks: @unchecked Sendable {
 /// Sendable carrier for the OPDS sync error document (`[AnyHashable: Any]` from
 /// `NSError.userInfo`, whose `Any` values are not Sendable). It is created once
 /// from a caught error and only ever read thereafter (forwarded to `completion`),
-/// so moving it across the `MainActor.run` boundary is race-free. `@unchecked`
+/// so moving it across an isolation boundary (`MainActor.run`, an actor-hop
+/// return, or a `withCheckedContinuation` resume) is race-free. `@unchecked`
 /// documents that write-once-then-read confinement.
-private struct SendableErrorDocument: @unchecked Sendable {
+///
+/// Module-internal (not `private`) so the sibling async extension in
+/// `TPPBookRegistryAsync.swift` can box the same error-document shape when it
+/// crosses the `@MainActor processLoansSync` / continuation boundaries, rather
+/// than each site minting its own near-identical carrier.
+struct SendableErrorDocument: @unchecked Sendable {
   let value: [AnyHashable: Any]?
 }
