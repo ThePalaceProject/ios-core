@@ -74,7 +74,15 @@ struct SentimentGateView: View {
     .accessibilityAddTraits(.isModal)
   }
 
-  // MARK: - Button styles (Dynamic Type + Dark Mode via semantic colors)
+  // MARK: - Button styles
+  //
+  // Colors are chosen to guarantee contrast in BOTH light and dark mode. We do
+  // NOT use `Color.accentColor` here: in this app it resolves to ~white in dark
+  // mode, which made the filled primary button render white-on-white (invisible
+  // label). The primary uses the fixed brand navy (`palaceBlueBase`, identical
+  // in both appearances) with white text; the secondary/tertiary use the
+  // semantic label colors (`.primary`/`.secondary`) which always contrast with
+  // the card's `secondarySystemBackground`.
 
   private func primaryButton(_ title: String, action: @escaping () -> Void) -> some View {
     Button(action: action) {
@@ -82,7 +90,7 @@ struct SentimentGateView: View {
         .fontWeight(.semibold)
         .frame(maxWidth: .infinity)
         .padding(.vertical, 12)
-        .background(Color.accentColor)
+        .background(Color.palaceBlueBase)
         .foregroundColor(.white)
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
@@ -95,9 +103,9 @@ struct SentimentGateView: View {
         .padding(.vertical, 12)
         .overlay(
           RoundedRectangle(cornerRadius: 10, style: .continuous)
-            .stroke(Color.accentColor, lineWidth: 1)
+            .stroke(Color.primary, lineWidth: 1)
         )
-        .foregroundColor(.accentColor)
+        .foregroundColor(.primary)
     }
   }
 
