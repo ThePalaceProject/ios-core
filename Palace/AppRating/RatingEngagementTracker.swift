@@ -91,4 +91,16 @@ final class RatingEngagementTracker {
   func recordOptOut() {
     settings.appRatingOptedOut = true
   }
+
+  /// Clears every engagement signal back to a fresh-install state. Used by the
+  /// QA/simdrive "Reset rating state" action so the flow can be re-exercised.
+  func reset() {
+    settings.appRatingSessionCount = 0
+    settings.appRatingBooksCompleted = 0
+    settings.appRatingLastPromptDate = nil
+    settings.appRatingPromptDisplayCount = 0
+    settings.appRatingDismissalCount = 0
+    settings.appRatingOptedOut = false
+    settings.appRatingCrashFreeLastSession = true
+  }
 }

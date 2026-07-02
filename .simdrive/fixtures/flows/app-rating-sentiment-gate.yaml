@@ -1,0 +1,107 @@
+name: app-rating-sentiment-gate
+description: |
+  Drive the app-rating sentiment gate (Epic PP-4086) via the Developer Settings
+  test hook, and verify both routing branches. Exercises:
+  - PP-4089 (sentiment gate appears with correct copy + 3 buttons)
+  - PP-4090 (positive → native App Store rating prompt renders — system prompt,
+    no custom star UI)
+  - PP-4091 (negative → feedback path to support address, NEVER the App Store)
+  - The force-eligible + trigger + reset debug hooks in Developer Settings.
+
+  PREREQUISITE (set before launch, mirrors QA setup):
+    defaults write org.thepalaceproject.palace showDeveloperSettings -bool true
+    defaults write org.thepalaceproject.palace \
+      RemoteFeatureFlags.appRatingForceEligibleOverride -bool true
+
+  Validated live 2026-07-02 (iOS 26 sim, DEBUG). NOTE: the native
+  SKStoreReviewController prompt DID render in the simulator here — contrary to
+  the original PP-4092 assumption. simdrive can therefore assert the system
+  prompt *appears*; only the actual App Store submission stays production-only.
+
+steps:
+  - id: 01-settings
+    action: "tap text='Settings' (tab bar)"
+    expects:
+      contains_text: ["Settings", "TESTING", "Testing"]
+      tab_bar: ["Catalog", "My Books", "Holds", "Settings"]
+
+  - id: 02-developer-settings
+    action: "tap text='Testing'"
+    expects:
+      title: "Testing"
+      contains_text: ["FEATURE FLAGS", "Force Rating Prompt Eligible", "Trigger Rating Prompt Now", "Reset Rating State"]
+
+  - id: 03-trigger-gate
+    action: "tap text='Trigger Rating Prompt Now'"
+    expects:
+      contains_text: ["Are you enjoying The", "Palace Project?", "Yes, I love it!", "Not really", "Ask me later"]
+    # MANDATORY visual check — OCR text presence is NOT enough. A prior bug
+    # rendered the "Yes, I love it!" primary button white-on-white in dark mode:
+    # OCR still read the label (invisible to a human) so text assertions passed.
+    # Every gate step must include a vision review of the rendered screenshot.
+    visual_checks:
+      - "The 'Yes, I love it!' primary button label is legible against its fill (NOT white-on-white / same-color-on-same-color)."
+      - "All three buttons ('Yes, I love it!', 'Not really', 'Ask me later') have visible, readable labels."
+      - "Run in BOTH light and dark appearance (simctl ui <udid> appearance {light,dark}); the check must pass in both."
+
+  # --- Negative branch: never reaches the App Store ---
+  - id: 04-not-really
+    action: "tap text='Not really'"
+    expects:
+      contains_text: ["We're sorry to hear that", "share feedback", "Share feedback", "No thanks"]
+      no_text: ["Yes, I love it!"]
+
+  - id: 05-share-feedback
+    action: "tap text='Share feedback'"
+    expects:
+      # On a sim with no Mail account, ProblemReportEmail's canSendMail() fallback
+      # surfaces the support address. On a device WITH Mail, this is the composer.
+      contains_text: ["support@thepalaceproject.org"]
+      no_text: ["App Store", "Tap a star"]   # negative path must NEVER offer a rating
+
+  - id: 06-dismiss-feedback-fallback
+    action: "tap text='OK'"
+    expects:
+      title: "Testing"
+
+  # --- Positive branch: native App Store prompt ---
+  - id: 07-retrigger
+    action: "tap text='Trigger Rating Prompt Now'"
+    expects:
+      contains_text: ["Are you enjoying The", "Yes, I love it!"]
+
+  - id: 08-yes-native-prompt
+    action: "tap text='Yes, I love it!'"
+    expects:
+      # System StoreKit prompt (renders in sim under DEBUG). Stars + "Not Now".
+      contains_text: ["Enjoying Palace", "Tap a star to rate it on the App Store", "Not Now"]
+
+  - id: 09-dismiss-native
+    action: "tap text='Not Now'"
+    expects:
+      title: "Testing"
+      no_text: ["Tap a star", "Are you enjoying"]
+
+mutation_targets:
+  - file: Palace/AppRating/RatingPromptPresenter.swift
+    lines: [80, 90, 97, 105, 114, 121]
+    rationale: |
+      The routing guards. If handleTrigger's eligibility guard is flipped, the
+      gate would appear (step 03) even when ineligible. If respondNegative's
+      routing is flipped, step 04 would reach the App Store instead of feedback —
+      the invariant this flow exists to protect. If respondPositive is flipped,
+      step 08's native prompt never appears.
+  - file: Palace/AppRating/AppRatingService.swift
+    lines: []
+    rationale: |
+      isEligible's force-eligible short-circuit. If broken, step 03 never shows
+      the gate (force override is the only thing making a fresh install eligible).
+  - file: Palace/Book/UI/BookDetail/BookAvailabilityFormatter.swift
+    lines: [88, 92]
+  - file: Palace/Book/UI/BookDetail/BookDetailViewModel.swift
+    lines: [1227, 1231]
+    rationale: |
+      The 4 supersession sites (both branches). A partial migration here (the
+      arch1 wall-failure) would route a dissatisfied patron on a non-returnable
+      book straight to the raw App Store prompt with no sentiment gate — the exact
+      regression steps 03–05 guard.

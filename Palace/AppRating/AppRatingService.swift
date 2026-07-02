@@ -30,6 +30,7 @@ final class AppRatingService {
   private let tracker: RatingEngagementTracker
   private let configProvider: () -> RatingConfig
   private let promptEnabledProvider: () -> Bool
+  private let forceEligibleProvider: () -> Bool
   private let crashFreeProbe: () -> Bool
   private let now: () -> Date
 
@@ -37,6 +38,9 @@ final class AppRatingService {
   ///   - tracker: persists/reads engagement signals.
   ///   - configProvider: supplies the (remote-tunable) thresholds on demand.
   ///   - promptEnabledProvider: remote master kill-switch for the whole feature.
+  ///   - forceEligibleProvider: QA/simdrive override that forces eligibility so
+  ///     the gate can be triggered on demand (bypasses thresholds, cooldown, and
+  ///     the master switch). Defaults to off.
   ///   - crashFreeProbe: best-effort "was the previous session crash-free?"
   ///     signal, evaluated once per session.
   ///   - now: injected clock for deterministic cooldown math.
@@ -44,12 +48,14 @@ final class AppRatingService {
     tracker: RatingEngagementTracker,
     configProvider: @escaping () -> RatingConfig = { .fallback },
     promptEnabledProvider: @escaping () -> Bool = { true },
+    forceEligibleProvider: @escaping () -> Bool = { false },
     crashFreeProbe: @escaping () -> Bool = { true },
     now: @escaping () -> Date = Date.init
   ) {
     self.tracker = tracker
     self.configProvider = configProvider
     self.promptEnabledProvider = promptEnabledProvider
+    self.forceEligibleProvider = forceEligibleProvider
     self.crashFreeProbe = crashFreeProbe
     self.now = now
   }
@@ -82,12 +88,19 @@ final class AppRatingService {
     tracker.recordOptOut()
   }
 
+  /// Clears all engagement signals (QA/simdrive "Reset rating state" action).
+  func resetEngagementState() {
+    tracker.reset()
+  }
+
   // MARK: - Eligibility
 
   /// Whether the prompt may be shown for the given trigger right now.
-  /// Returns `false` when the remote master switch is off, regardless of
-  /// engagement state.
+  /// The force-eligible override (QA/simdrive) short-circuits to `true`.
+  /// Otherwise returns `false` when the remote master switch is off, regardless
+  /// of engagement state.
   func isEligible(for trigger: AppRatingTrigger) -> Bool {
+    if forceEligibleProvider() { return true }
     guard promptEnabledProvider() else { return false }
     return RatingEligibilityPolicy.evaluate(
       state: tracker.currentState(),

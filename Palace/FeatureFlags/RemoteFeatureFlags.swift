@@ -400,6 +400,18 @@ final class RemoteFeatureFlags: @unchecked Sendable {
         isFeatureEnabled(.appRatingPromptEnabled)
     }
 
+    /// UserDefaults override that lets QA / simdrive force the rating prompt to
+    /// be eligible without meeting the real thresholds or waiting out the
+    /// cooldown. Settable from `TPPDeveloperSettingsTableViewController`. Mirrors
+    /// the `triageBotLocalOverrideKey` pattern.
+    static let appRatingForceEligibleLocalOverrideKey = "RemoteFeatureFlags.appRatingForceEligibleOverride"
+
+    /// Whether the rating prompt is force-eligible for QA/simdrive. Defaults to
+    /// false; no remote flag — this is a local debug override only.
+    var isAppRatingForceEligible: Bool {
+      defaults.object(forKey: Self.appRatingForceEligibleLocalOverrideKey) as? Bool ?? false
+    }
+
     /// The remote-tunable eligibility thresholds. Any threshold missing or
     /// non-positive in Remote Config falls back to `RatingConfig.fallback`.
     var appRatingConfig: RatingConfig {
