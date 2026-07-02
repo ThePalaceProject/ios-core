@@ -645,4 +645,221 @@ final class BookRegistrySyncTests: XCTestCase {
         XCTAssertNil(syncManager.syncUrl,
                      "syncUrl must never be captured when the credentials gate defers the sync")
     }
+
+    // MARK: - sync: feed-fetch branches (P5 — OPDSFeedFetching seam)
+    //
+    // Before P5, `opdsFeedServiceProvider` returned the concrete `OPDSFeedService`
+    // actor, so the three branches below the credentials gate were untestable
+    // (no way to force a fetch failure or return a fixture feed). Widening the
+    // provider to `() -> OPDSFeedFetching` lets these tests inject a fake fetcher
+    // and drive:
+    //   1. the feed-fetch FAILURE branch (setState(.loaded) + error document)
+    //   2. the `.synced` success path (setState(.synced), syncUrl cleared)
+    //   3. the awaitReady() catch/carrier branch (aborts BEFORE any fetch)
+    // All three sit AFTER the keychain-backed credentials gate, so they seed real
+    // stored credentials on the production user-account instance sync() consults
+    // — hence the keychain-availability guard (environment-capability, not a
+    // host-sign-in dodge).
+
+    /// AccountDetails whose auth document HAS an `http://opds-spec.org/shelf`
+    /// link, so `details.loansUrl != nil` — the shape that lets sync() proceed
+    /// past the loansUrl guard into the feed fetch.
+    private func makeLoansUrlDetails(
+        uuid: String,
+        loansHref: String = "https://loans.example.com/shelf"
+    ) -> AccountDetails {
+        let json: [String: Any] = [
+            "id": "urn:uuid:\(uuid)",
+            "title": "Library With Shelf Link",
+            "links": [["rel": "http://opds-spec.org/shelf", "href": loansHref]],
+            "authentication": [[
+                "type": "http://opds-spec.org/auth/basic",
+                "inputs": ["login": ["keyboard": "Default"],
+                           "password": ["keyboard": "Default"]],
+                "labels": ["login": "Login", "password": "Password"]
+            ]],
+            "features": ["enabled": [], "disabled": []]
+        ]
+        let data = try! JSONSerialization.data(withJSONObject: json)
+        let doc = try! OPDS2AuthenticationDocument.fromData(data)
+        return AccountDetails(authenticationDocument: doc, uuid: uuid)
+    }
+
+    /// A minimal, well-formed OPDS acquisition feed with zero entries — the
+    /// "all loans reconciled, nothing to add/remove" shape used to drive the
+    /// `.synced` success path without a heavy fixture.
+    private func makeEmptyLoansFeed() -> TPPOPDSFeed {
+        let xmlString = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <feed xmlns="http://www.w3.org/2005/Atom">
+          <id>urn:uuid:p5-empty-loans</id>
+          <title>Loans</title>
+          <updated>2026-01-01T00:00:00Z</updated>
+        </feed>
+        """
+        let xml = TPPXML.xml(withData: Data(xmlString.utf8))!
+        return TPPOPDSFeed(xml: xml)!
+    }
+
+    /// Builds a BookRegistrySync sharing this test's `store` + `accountsManager`
+    /// (so the seeded fixture account is visible to sync()) but with the OPDS
+    /// feed provider swapped for `feedFetcher`.
+    private func makeSyncManager(feedFetcher: OPDSFeedFetching) -> BookRegistrySync {
+        BookRegistrySync(
+            store: store,
+            accountsManager: accountsManager,
+            downloadCenterProvider: { AppContainer.production().downloadCenter },
+            opdsFeedServiceProvider: { feedFetcher }
+        )
+    }
+
+    /// Shared arrange for the two post-awaitReady tests: seed a credentialed
+    /// fixture whose details expose a loansUrl. Returns the uuid plus a cleanup
+    /// closure the caller must defer.
+    private func seedCredentialedLoansAccount() throws -> (uuid: String, cleanup: () -> Void) {
+        try KeychainAvailability.skipIfUnavailable()
+        let (uuid, seedCleanup) = seedFixtureCurrentAccount()
+
+        let prodUserAccount = AppContainer.production().accountsManager.userAccount(for: uuid) // MIGRATED-DEFERRED: PP-4542 — sync() checks hasCredentials() via sharedAccount→production keychain-backed userAccount; the credential path has no DI seam (only currentAccount STATE is injected)
+        prodUserAccount.setAuthToken("p5-token", barcode: "bc", pin: "1234",
+                                     expirationDate: Date().addingTimeInterval(3600))
+        XCTAssertTrue(prodUserAccount.hasCredentials(),
+                      "Precondition: fixture must have credentials so sync() reaches the feed fetch")
+
+        accountsManager.currentAccount?._setState(.detailsLoaded(makeLoansUrlDetails(uuid: uuid)))
+
+        return (uuid, {
+            prodUserAccount.removeAll()
+            seedCleanup()
+        })
+    }
+
+    func test_sync_whenFeedFetchFails_revertsToLoadedAndForwardsErrorDocument() throws {
+        let (_, cleanup) = try seedCredentialedLoansAccount()
+        defer { cleanup() }
+
+        let fetcher = StubOPDSFeedFetcher()
+        fetcher.stubbedError = NSError(domain: "P5.feedFetch", code: 503,
+                                       userInfo: ["p5.marker": "boom"])
+        let sut = makeSyncManager(feedFetcher: fetcher)
+
+        var received: [TPPBookRegistry.RegistryState] = []
+        var completionArgs: (errorDoc: [AnyHashable: Any]?, newBooks: Bool)?
+        let exp = expectation(description: "feed fetch failure resolved")
+        sut.sync(currentState: .loaded, setState: { received.append($0) }) { errorDoc, newBooks in
+            completionArgs = (errorDoc, newBooks)
+            exp.fulfill()
+        }
+        wait(for: [exp], timeout: 3.0)
+
+        XCTAssertEqual(fetcher.resetCacheCalls, [true],
+                       "loans sync must request a cache-reset fetch (resetCache: true) through the widened seam — got \(fetcher.resetCacheCalls)")
+        XCTAssertEqual(received.last, .loaded,
+                       "a feed-fetch failure must revert state to .loaded, not leave it stuck .syncing — got \(received)")
+        XCTAssertEqual(completionArgs?.errorDoc?["p5.marker"] as? String, "boom",
+                       "the thrown NSError.userInfo must be forwarded to completion as the error document")
+        XCTAssertEqual(completionArgs?.newBooks, false,
+                       "a failed fetch fetched no loans → newBooks must be false")
+        XCTAssertNil(sut.syncUrl,
+                     "syncUrl must be cleared after a failed feed fetch")
+    }
+
+    func test_sync_whenFeedFetchSucceeds_resolvesToSyncedAndClearsSyncUrl() throws {
+        let (_, cleanup) = try seedCredentialedLoansAccount()
+        defer { cleanup() }
+
+        let fetcher = StubOPDSFeedFetcher()
+        fetcher.stubbedFeed = makeEmptyLoansFeed()
+        let sut = makeSyncManager(feedFetcher: fetcher)
+
+        var received: [TPPBookRegistry.RegistryState] = []
+        var completionArgs: (errorDoc: [AnyHashable: Any]?, newBooks: Bool)?
+        let exp = expectation(description: "feed fetch succeeded")
+        sut.sync(currentState: .loaded, setState: { received.append($0) }) { errorDoc, newBooks in
+            completionArgs = (errorDoc, newBooks)
+            exp.fulfill()
+        }
+        wait(for: [exp], timeout: 3.0)
+
+        XCTAssertEqual(fetcher.resetCacheCalls, [true],
+                       "successful loans sync must also request a cache-reset fetch")
+        XCTAssertEqual(received.last, .synced,
+                       "a successful feed fetch must land the registry in .synced — got \(received)")
+        XCTAssertNil(completionArgs?.errorDoc,
+                     "a successful sync is not an error — errorDocument must be nil")
+        XCTAssertEqual(completionArgs?.newBooks, false,
+                       "an empty loans feed against an empty registry made no changes → newBooks false")
+        XCTAssertNil(sut.syncUrl,
+                     "syncUrl must be cleared once the synced reconciliation completes")
+    }
+
+    func test_sync_whenAwaitReadyFails_revertsToLoadedWithoutFetching() throws {
+        try KeychainAvailability.skipIfUnavailable()
+        let (uuid, seedCleanup) = seedFixtureCurrentAccount()
+        defer { seedCleanup() }
+
+        let prodUserAccount = AppContainer.production().accountsManager.userAccount(for: uuid) // MIGRATED-DEFERRED: PP-4542 — sync() checks hasCredentials() via sharedAccount→production keychain-backed userAccount; the credential path has no DI seam (only currentAccount STATE is injected)
+        prodUserAccount.setAuthToken("p5-token", barcode: "bc", pin: "1234",
+                                     expirationDate: Date().addingTimeInterval(3600))
+        defer { prodUserAccount.removeAll() }
+
+        // Terminal FAILED load state → awaitReady() throws on its fast path,
+        // BEFORE sync() ever reaches the feed fetch.
+        accountsManager.currentAccount?._setState(
+            .detailsFailed(.authDocumentFetchFailed(underlyingDescription: "p5 injected")))
+
+        let fetcher = StubOPDSFeedFetcher()
+        let sut = makeSyncManager(feedFetcher: fetcher)
+
+        var received: [TPPBookRegistry.RegistryState] = []
+        var completionArgs: (errorDoc: [AnyHashable: Any]?, newBooks: Bool)?
+        let exp = expectation(description: "awaitReady failure resolved")
+        sut.sync(currentState: .loaded, setState: { received.append($0) }) { errorDoc, newBooks in
+            completionArgs = (errorDoc, newBooks)
+            exp.fulfill()
+        }
+        wait(for: [exp], timeout: 3.0)
+
+        XCTAssertTrue(fetcher.resetCacheCalls.isEmpty,
+                      "awaitReady() failure must abort BEFORE the feed fetch — the fetcher must never be called")
+        XCTAssertEqual(received.last, .loaded,
+                       "an awaitReady failure reverts to .loaded so BookRegistrySync's own retry policy re-drives — got \(received)")
+        XCTAssertNil(completionArgs?.errorDoc,
+                     "the awaitReady catch resolves with a nil error document (distinct from the loans-fetch error path)")
+        XCTAssertEqual(completionArgs?.newBooks, false)
+        XCTAssertNil(sut.syncUrl,
+                     "syncUrl must be cleared (never left set) when awaitReady aborts the sync")
+    }
+}
+
+// MARK: - P5 test fake
+
+/// Lock-backed fake `OPDSFeedFetching` for the feed-fetch-branch tests.
+/// `@unchecked Sendable` invariant: the only concurrently-touched mutable state
+/// (`_resetCacheCalls`) is guarded by `lock`; `stubbedError` / `stubbedFeed` are
+/// set once on the test thread before the SUT runs and only read on the fetch
+/// path thereafter.
+private final class StubOPDSFeedFetcher: OPDSFeedFetching, @unchecked Sendable {
+    private let lock = NSLock()
+    private var _resetCacheCalls: [Bool] = []
+    var stubbedError: Error?
+    var stubbedFeed: TPPOPDSFeed?
+
+    /// The `resetCache` argument observed on each `fetchFeed` call, in order.
+    var resetCacheCalls: [Bool] {
+        lock.lock(); defer { lock.unlock() }
+        return _resetCacheCalls
+    }
+
+    func fetchFeed(from url: URL) async throws -> TPPOPDSFeed {
+        try await fetchFeed(from: url, resetCache: false)
+    }
+
+    func fetchFeed(from url: URL, resetCache: Bool) async throws -> TPPOPDSFeed {
+        lock.lock(); _resetCacheCalls.append(resetCache); lock.unlock()
+        if let stubbedError { throw stubbedError }
+        if let stubbedFeed { return stubbedFeed }
+        throw NSError(domain: "StubOPDSFeedFetcher", code: -1,
+                      userInfo: [NSLocalizedDescriptionKey: "no stub configured"])
+    }
 }

@@ -41,7 +41,12 @@ final class BookRegistrySync: @unchecked Sendable {
   /// inside async dispatched blocks, by which point
   /// `AppContainer.production().downloadCenter` has settled.
   private let downloadCenterProvider: () -> MyBooksDownloadCenter
-  private let opdsFeedServiceProvider: () -> OPDSFeedService
+  /// Widened to the narrow `OPDSFeedFetching` protocol (was the concrete
+  /// `OPDSFeedService` actor) so tests can inject a failing / fixture fetcher
+  /// and exercise sync()'s feed-fetch-failure and `.synced` branches without
+  /// standing up the full actor + URL stack. Production wires the real
+  /// `OPDSFeedService`, which conforms.
+  private let opdsFeedServiceProvider: () -> OPDSFeedFetching
   /// Identifiers of side-loaded books, resolved lazily on each `sync()`.
   /// Side-loaded books are registered `.downloadSuccessful` but never appear
   /// in the loans feed, so without this exemption `sync()`'s reconciliation
@@ -69,13 +74,13 @@ final class BookRegistrySync: @unchecked Sendable {
   /// fakes; production wires `AppContainer.production().downloadCenter`
   /// (and the `.shared` OPDS feed service) at construction time.
   private var downloadCenter: MyBooksDownloadCenter { downloadCenterProvider() }
-  private var opdsFeedService: OPDSFeedService { opdsFeedServiceProvider() }
+  private var opdsFeedService: OPDSFeedFetching { opdsFeedServiceProvider() }
 
   init(
     store: BookRegistryStore,
     accountsManager: AccountsManager,
     downloadCenterProvider: @escaping () -> MyBooksDownloadCenter,
-    opdsFeedServiceProvider: @escaping () -> OPDSFeedService,
+    opdsFeedServiceProvider: @escaping () -> OPDSFeedFetching,
     sideloadedIDsProvider: @escaping () -> Set<String> = { AppContainer.production().sideloadedBookRegistry.identifiers }
   ) {
     self.store = store

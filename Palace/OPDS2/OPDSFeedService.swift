@@ -15,6 +15,21 @@ import PalaceCatalog
 /// that satisfies this protocol via the conformance below.
 protocol OPDSFeedFetching: Sendable {
     func fetchFeed(from url: URL) async throws -> TPPOPDSFeed
+    /// Cache-control-aware form. `BookRegistrySync`'s loans sync passes
+    /// `resetCache: true` so a stale cached loans feed can't mask a return /
+    /// borrow that happened on another device. Defaulted in the extension
+    /// below so existing fixture fetchers that only distinguish by URL keep
+    /// conforming unchanged.
+    func fetchFeed(from url: URL, resetCache: Bool) async throws -> TPPOPDSFeed
+}
+
+extension OPDSFeedFetching {
+    /// Conformers that don't model cache semantics (test fakes, the
+    /// return-flow revoke fetcher) fall back to the plain URL fetch — the
+    /// `resetCache` distinction only matters for the live actor witness below.
+    func fetchFeed(from url: URL, resetCache: Bool) async throws -> TPPOPDSFeed {
+        try await fetchFeed(from: url)
+    }
 }
 
 /// Modern async/await service for OPDS feed operations
@@ -32,6 +47,15 @@ actor OPDSFeedService: OPDSFeedFetching {
     /// Delegates to the canonical 3-arg method with production defaults.
     func fetchFeed(from url: URL) async throws -> TPPOPDSFeed {
         try await fetchFeed(from: url, resetCache: false, useToken: true)
+    }
+
+    /// `OPDSFeedFetching` cache-aware conformance — overrides the protocol
+    /// extension default so the live service actually honours `resetCache`
+    /// (the loans-sync caller depends on a fresh, non-cached fetch). `useToken`
+    /// stays `true`, matching the single-arg form. Delegates to the canonical
+    /// 3-arg method.
+    func fetchFeed(from url: URL, resetCache: Bool) async throws -> TPPOPDSFeed {
+        try await fetchFeed(from: url, resetCache: resetCache, useToken: true)
     }
 
     /// Fetches an OPDS feed from the given URL
