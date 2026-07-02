@@ -11,7 +11,7 @@ let UnsupportedKey = "unsupported"
 let ReturningKey = "returning"
 let SAMLStartedKey = "saml-started"
 
-@objc public enum TPPBookState: Int, CaseIterable {
+@objc public enum TPPBookState: Int, CaseIterable, Sendable {
     case unregistered = 0
     case downloadNeeded = 1
     case downloading
@@ -133,7 +133,7 @@ public extension TPPBookState {
     ]
 
     /// Hashable transition pair for use in `allowedTransitions`.
-    struct TransitionPair: Hashable {
+    struct TransitionPair: Hashable, Sendable {
         public let from: TPPBookState
         public let to: TPPBookState
         public init(from: TPPBookState, to: TPPBookState) {

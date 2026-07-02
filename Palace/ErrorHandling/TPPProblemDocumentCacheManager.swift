@@ -8,7 +8,11 @@ extension Notification.Name {
     public static let TPPProblemDocumentWasCached = Notification.Name.TPPProblemDocumentWasCached
 }
 
-@objcMembers class TPPProblemDocumentCacheManager: NSObject {
+// Thread-safety: all mutable state (`cache`) is guarded by `lock` (NSLock),
+// so instances are safe to share across concurrency domains. `@unchecked
+// Sendable` documents that the lock — not the compiler — enforces the
+// data-race-freedom invariant that makes `static let shared` concurrency-safe.
+@objcMembers final class TPPProblemDocumentCacheManager: NSObject, @unchecked Sendable {
     struct DocWithTimestamp {
         let doc: TPPProblemDocument
         let timestamp: Date

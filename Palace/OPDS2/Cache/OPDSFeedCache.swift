@@ -193,7 +193,7 @@ actor OPDS2FeedCache: OPDSFeedCaching {
     /// - Returns: The feed (possibly stale) and whether a background refresh was triggered
     public func getWithRevalidation(
         for url: URL,
-        fetcher: @escaping () async throws -> (OPDS2Feed, etag: String?, lastModified: String?)
+        fetcher: @escaping @Sendable () async throws -> (OPDS2Feed, etag: String?, lastModified: String?)
     ) async throws -> (feed: OPDS2Feed, isStale: Bool, didTriggerRefresh: Bool) {
 
         if let entry = await get(for: url) {

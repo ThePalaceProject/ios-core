@@ -27,6 +27,7 @@ final class ReaderService {
     private var openGenerationByBookId: [String: Int] = [:]
     private var openInFlightBookIds: Set<String> = []
 
+    @MainActor
     private func topPresenter() -> UIViewController? {
         guard let root = UIApplication.shared.mainKeyWindow?.rootViewController else {
             Log.warn(#file, "No root view controller available — cannot present reader")

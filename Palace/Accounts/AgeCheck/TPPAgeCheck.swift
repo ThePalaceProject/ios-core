@@ -1,6 +1,6 @@
 import Foundation
 
-protocol TPPAgeCheckValidationDelegate: AnyObject {
+protocol TPPAgeCheckValidationDelegate: AnyObject, Sendable {
     var minYear: Int { get }
     var currentYear: Int { get }
     var birthYearList: [Int] { get }
@@ -109,10 +109,15 @@ protocol TPPAgeCheckValidationDelegate: AnyObject {
             // missing details payload regardless of why.
             serialQueue.async { callbacks.completion?(false) }
         case .notLoaded, .basicInfoLoaded, .detailsLoading:
+            // Carry the non-Sendable `Account` across the `awaitReady()`
+            // await boundary in a documented box (same posture as
+            // `AgeCheckCallbacks`): the account is only read inside the
+            // Task via `awaitReady()`, never mutated concurrently here.
+            let accountBox = AgeCheckAccountBox(account: currentAccount)
             Task { [weak self] in
                 let accountDetails: AccountDetails
                 do {
-                    accountDetails = try await currentAccount.awaitReady()
+                    accountDetails = try await accountBox.account.awaitReady()
                 } catch {
                     self?.serialQueue.async { callbacks.completion?(false) }
                     return
@@ -237,4 +242,13 @@ protocol TPPAgeCheckValidationDelegate: AnyObject {
 private struct AgeCheckCallbacks: @unchecked Sendable {
     let userAccountProvider: TPPUserAccountProvider
     let completion: ((Bool) -> Void)?
+}
+
+/// Carries the non-Sendable `Account` across the `awaitReady()` await
+/// boundary in `verifyCurrentAccountAgeRequirement`'s loading path.
+/// `@unchecked Sendable` invariant: the account is only read (via the
+/// async `awaitReady()` readiness gate) inside the Task; no mutable
+/// account state is touched concurrently from this call site.
+private struct AgeCheckAccountBox: @unchecked Sendable {
+    let account: Account
 }

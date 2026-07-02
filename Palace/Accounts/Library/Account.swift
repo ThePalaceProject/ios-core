@@ -698,7 +698,12 @@ protocol AccountLogoDelegate: AnyObject {
 
             if let announcements = self.authenticationDocument?.announcements {
                 DispatchQueue.main.async {
-                    TPPAnnouncementBusinessLogic.shared.presentAnnouncements(announcements)
+                    // Already on the main queue; `presentAnnouncements` is
+                    // `@MainActor`, so assert the isolation to satisfy the
+                    // nonisolated `DispatchQueue.main.async` closure.
+                    MainActor.assumeIsolated {
+                        TPPAnnouncementBusinessLogic.shared.presentAnnouncements(announcements)
+                    }
                 }
             }
         }
@@ -774,26 +779,44 @@ protocol AccountLogoDelegate: AnyObject {
             return
         }
         AppContainer.production().networkExecutor.GET(url, useTokenIfAvailable: false) { result in
+            // The GET completion is a plain (non-Sendable) escaping closure, so
+            // `result`, `self`, and `completion` are captured safely here. They
+            // are carried across the main-queue hop in a documented box — each
+            // is only touched on that single main-queue block, never
+            // concurrently — to satisfy the `@Sendable` `DispatchQueue.main.async`.
+            let payload = LogoFetchPayload(account: self, result: result, completion: completion)
             DispatchQueue.main.async {
-                switch result {
+                switch payload.result {
                 case .success(let serverData, _):
                     guard let image = UIImage(data: serverData) else {
-                        completion(nil)
+                        payload.completion(nil)
                         return
                     }
-                    self.imageCache.set(image, for: self.uuid)
-                    completion(image)
+                    payload.account.imageCache.set(image, for: payload.account.uuid)
+                    payload.completion(image)
                 case .failure(let error, _):
                     TPPErrorLogger.logError(
                         withCode: .authDocLoadFail,
                         summary: "Logo image failed to load",
                         metadata: ["loadError": error.localizedDescription, "url": url.absoluteString]
                     )
-                    completion(nil)
+                    payload.completion(nil)
                 }
             }
         }
     }
+}
+
+/// Documented carrier for `Account.fetchImage`'s network completion, which
+/// hops to the main queue to touch `imageCache` and invoke `completion`.
+/// `result` (`NYPLResult<Data>`), the `completion` closure, and the
+/// `Account` are all non-Sendable; they are only ever read on that single
+/// main-queue hop, never concurrently, so they are safe to carry in an
+/// `@unchecked Sendable` box.
+private struct LogoFetchPayload: @unchecked Sendable {
+    let account: Account
+    let result: NYPLResult<Data>
+    let completion: (UIImage?) -> Void
 }
 
 extension AccountDetails {

@@ -599,21 +599,25 @@ private struct LibraryRowView: View {
 
 /// AccountLogoDelegate forwarder used by `LibraryRowView` because SwiftUI
 /// `View` structs can't directly conform to ObjC delegate protocols.
-private final class LogoLoadProxy: NSObject, AccountLogoDelegate {
+@MainActor
+private final class LogoLoadProxy: NSObject, @preconcurrency AccountLogoDelegate {
     private let onUpdate: (UIImage) -> Void
     init(onUpdate: @escaping (UIImage) -> Void) {
         self.onUpdate = onUpdate
     }
+    // `Account` invokes this on the main thread (its logo fetch delivers via
+    // `DispatchQueue.main.async`), so the forwarding runs on the main actor
+    // without an extra hop.
     func logoDidUpdate(in account: Account, to newLogo: UIImage) {
-        DispatchQueue.main.async { [onUpdate] in
-            onUpdate(newLogo)
-        }
+        onUpdate(newLogo)
     }
 }
 
 /// Account.logoDelegate is held weakly. Park proxies here so a row's
 /// in-flight logo load isn't dropped when the proxy goes out of scope.
-private final class LogoProxyHolder {
+/// Lock-backed holder — `@unchecked Sendable` because all access to `proxies`
+/// is serialized through `lock`.
+private final class LogoProxyHolder: @unchecked Sendable {
     static let shared = LogoProxyHolder()
     private var proxies: [String: LogoLoadProxy] = [:]
     private let lock = NSLock()

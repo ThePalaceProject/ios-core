@@ -104,6 +104,30 @@ struct CatalogCacheMetadata: Codable {
     func account(_ uuid: String) -> Account?
 }
 
+/// Lock-backed holder for `AccountsManager`'s test-only `Bool` flags so they
+/// can be concurrency-safe global state without `nonisolated(unsafe)`.
+/// `@unchecked Sendable` invariant: the only mutable state is `storage`, read
+/// and written exclusively under `lock` (an immutable `NSLock`); the wrapped
+/// value is a `Sendable` `Bool`.
+private final class AccountsManagerBoolFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: Bool
+    init(_ value: Bool) { storage = value }
+    var value: Bool {
+        get { lock.lock(); defer { lock.unlock() }; return storage }
+        set { lock.lock(); defer { lock.unlock() }; storage = newValue }
+    }
+}
+
+/// Documented carrier for a non-Sendable `() -> Void` handed to a
+/// `DispatchQueue` barrier block in `AccountsManager.performWrite`.
+/// `@unchecked Sendable` invariant: the wrapped closure is invoked exactly
+/// once, on the serial barrier of the concurrent `accountSetsLock`, never
+/// concurrently.
+private struct VoidWorkBox: @unchecked Sendable {
+    let work: () -> Void
+}
+
 /// Manages library accounts asynchronously with authentication & image loading
 @objcMembers final class AccountsManager: NSObject, TPPLibraryAccountsProvider, TPPUserAccountResolving {
 
@@ -197,9 +221,18 @@ struct CatalogCacheMetadata: Codable {
     /// in their own setUp. Production runs (no `XCTestConfigurationFilePath`
     /// in the env) keep the original `false` default so the background load
     /// fires as designed.
-    internal static var deferInitialLoadCatalogsForTesting: Bool = {
-        return ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
-    }()
+    private static let _deferInitialLoadCatalogsForTesting = AccountsManagerBoolFlag(
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+    )
+    /// Lock-backed so this test-only flag is concurrency-safe global state
+    /// without `nonisolated(unsafe)`. Storage lives in the `Sendable`
+    /// `AccountsManagerBoolFlag` holder; this computed accessor keeps every
+    /// existing read/write call site unchanged. Read value and timing are
+    /// identical to the prior `static var` — only access is serialized.
+    internal static var deferInitialLoadCatalogsForTesting: Bool {
+        get { _deferInitialLoadCatalogsForTesting.value }
+        set { _deferInitialLoadCatalogsForTesting.value = newValue }
+    }
 
     /// Test-only opt-out from the synchronous `preloadAccountsFromDiskCacheSync()`
     /// in `init()`. Defaults to `false`, so production AND every test that relies
@@ -212,7 +245,13 @@ struct CatalogCacheMetadata: Codable {
     /// consume >5s on memory-pressured CI when the cache holds ~1138 accounts —
     /// the root of the FLAKE-003 `loadAndWait()` 30s timeout. Scope the flip to
     /// `setUp`/`tearDown`. NOT compiled into release builds.
-    internal static var deferDiskCachePreloadForTesting: Bool = false
+    private static let _deferDiskCachePreloadForTesting = AccountsManagerBoolFlag(false)
+    /// Lock-backed test-only flag (see `deferInitialLoadCatalogsForTesting`
+    /// above for the holder rationale). Value/timing unchanged.
+    internal static var deferDiskCachePreloadForTesting: Bool {
+        get { _deferDiskCachePreloadForTesting.value }
+        set { _deferDiskCachePreloadForTesting.value = newValue }
+    }
 
     /// Test-only handle to the post-init background `loadCatalogs` task so
     /// `cancelBackgroundWork()` can issue cooperative cancellation. Only ever
@@ -376,8 +415,14 @@ struct CatalogCacheMetadata: Codable {
     }
 
     private func performWrite(_ block: @escaping () -> Void) {
+        // Carry the non-Sendable `block` into the barrier block via a
+        // documented box. `@unchecked Sendable` invariant: `block` is
+        // invoked exactly once, on the serial `.barrier` of the concurrent
+        // `accountSetsLock`, never concurrently — the same execution
+        // contract this method already guaranteed. Timing is unchanged.
+        let box = VoidWorkBox(work: block)
         accountSetsLock.async(flags: .barrier) {
-            block()
+            box.work()
         }
     }
 
@@ -1275,7 +1320,13 @@ struct CatalogCacheMetadata: Codable {
                 } else if self.settings.accountMainFeedURL == nil {
                     Log.warn(#file, "accountMainFeedURL is nil and no cached value — catalog will not load until auth doc completes")
                 }
-                UIApplication.shared.delegate?.window??.tintColor = TPPConfiguration.mainColor()
+                // This `group.notify(queue: .main)` block runs on the main
+                // queue but is a nonisolated closure; hop the main-actor
+                // `UIApplication` access through `assumeIsolated` (safe — we
+                // are provably on `.main`). Behavior unchanged.
+                MainActor.assumeIsolated {
+                    UIApplication.shared.delegate?.window??.tintColor = TPPConfiguration.mainColor()
+                }
                 NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
                 completion(true)
             }

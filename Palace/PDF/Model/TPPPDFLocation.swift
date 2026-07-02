@@ -9,7 +9,7 @@
 import SwiftUI
 
 /// TOC and search location
-struct TPPPDFLocation: Codable {
+struct TPPPDFLocation: Codable, Sendable {
     let title: String?
     let subtitle: String?
     let pageLabel: String?

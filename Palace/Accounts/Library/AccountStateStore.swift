@@ -26,11 +26,18 @@
 //
 
 import Foundation
-import Combine
+@preconcurrency import Combine
 
 /// External storage for Account load-state state machines, keyed by
 /// account UUID. See docs/architecture/account-state-machine.md.
-public final class AccountStateStore {
+///
+/// `@unchecked Sendable` invariant: the only mutable state is `subjects`,
+/// which is read and written exclusively under `lock` (an `NSLock`) via
+/// the private `subject(for:)` accessor. `lock` is an immutable `let`.
+/// The `CurrentValueSubject` values are safe to `send`/`sink` across
+/// threads. No property is mutated outside the lock, so the singleton is
+/// safe to share process-wide.
+public final class AccountStateStore: @unchecked Sendable {
 
     /// Process-wide singleton. The state machine is single-instance per
     /// account UUID; storing it process-wide matches how AccountsManager

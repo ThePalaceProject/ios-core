@@ -13,27 +13,75 @@ import Foundation
 import PalaceLogging
 import PalaceNetwork
 
+/// Lock-backed holder for `MockBackendURLProtocol`'s cross-thread configuration.
+///
+/// `URLProtocol` hooks (`canInit`, `startLoading`, the swizzled getter) run on
+/// the URL loading system's threads, so this state genuinely lives off the main
+/// actor. `@unchecked Sendable` is safe because every stored property is only
+/// read or written while holding `lock` — never touched concurrently unguarded.
+private final class MockBackendConfigStore: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _activeScenario: MockScenario?
+    private var _scopedHost: String?
+    private var _fixtureBundle: Bundle = .main
+    private var _fixtureDirectoryPath: String?
+    private var _requestCount = 0
+
+    var activeScenario: MockScenario? {
+        get { lock.lock(); defer { lock.unlock() }; return _activeScenario }
+        set { lock.lock(); defer { lock.unlock() }; _activeScenario = newValue }
+    }
+    var scopedHost: String? {
+        get { lock.lock(); defer { lock.unlock() }; return _scopedHost }
+        set { lock.lock(); defer { lock.unlock() }; _scopedHost = newValue }
+    }
+    var fixtureBundle: Bundle {
+        get { lock.lock(); defer { lock.unlock() }; return _fixtureBundle }
+        set { lock.lock(); defer { lock.unlock() }; _fixtureBundle = newValue }
+    }
+    var fixtureDirectoryPath: String? {
+        get { lock.lock(); defer { lock.unlock() }; return _fixtureDirectoryPath }
+        set { lock.lock(); defer { lock.unlock() }; _fixtureDirectoryPath = newValue }
+    }
+    func nextRequestCount() -> Int {
+        lock.lock(); defer { lock.unlock() }
+        _requestCount += 1
+        return _requestCount
+    }
+}
+
 final class MockBackendURLProtocol: URLProtocol {
 
     // MARK: - Static Configuration
 
+    private static let config = MockBackendConfigStore()
+
     /// The active scenario. When nil, this protocol does not intercept.
-    static var activeScenario: MockScenario?
+    static var activeScenario: MockScenario? {
+        get { config.activeScenario }
+        set { config.activeScenario = newValue }
+    }
 
     /// Host to scope interception to. When set, only requests to this host
     /// are considered for mocking — requests to other hosts pass through.
     /// Set automatically from the current library's catalog URL on activation.
-    static var scopedHost: String?
+    static var scopedHost: String? {
+        get { config.scopedHost }
+        set { config.scopedHost = newValue }
+    }
 
     /// Bundle containing fixture files. Override for test bundles.
-    static var fixtureBundle: Bundle = .main
+    static var fixtureBundle: Bundle {
+        get { config.fixtureBundle }
+        set { config.fixtureBundle = newValue }
+    }
 
     /// Direct file system path to fixtures directory. When set, bypasses bundle lookup.
     /// Set this in tests where fixtures aren't bundled.
-    static var fixtureDirectoryPath: String?
-
-    /// Request counter for diagnostics.
-    private static var requestCount = 0
+    static var fixtureDirectoryPath: String? {
+        get { config.fixtureDirectoryPath }
+        set { config.fixtureDirectoryPath = newValue }
+    }
 
     // MARK: - URLProtocol Overrides
 
@@ -65,8 +113,7 @@ final class MockBackendURLProtocol: URLProtocol {
     }
 
     override func startLoading() {
-        Self.requestCount += 1
-        let requestNum = Self.requestCount
+        let requestNum = Self.config.nextRequestCount()
 
         guard let scenario = Self.activeScenario,
               let url = request.url else {

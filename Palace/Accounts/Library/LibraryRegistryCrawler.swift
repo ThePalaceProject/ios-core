@@ -31,6 +31,15 @@ struct URLSessionCrawlerFetcher: CrawlerNetworkFetching {
     }
 }
 
+/// Documented carrier for the non-Sendable `CrawlerNetworkFetching`
+/// existential so it can be captured into `withThrowingTaskGroup` child
+/// tasks. `@unchecked Sendable` invariant: the production fetcher
+/// (`URLSessionCrawlerFetcher`) is a stateless struct over `URLSession.shared`;
+/// concurrent `fetchData` calls are safe.
+private struct CrawlerFetcherBox: @unchecked Sendable {
+    let fetcher: CrawlerNetworkFetching
+}
+
 // Note: HTTPURLResponse.cacheControlMaxAge is defined in Palace/Network/TPPCaching.swift
 
 // MARK: - Delegate
@@ -419,12 +428,19 @@ final class LibraryRegistryCrawler {
         let maxConcurrent = 4
         var allResults = [(offset: Int, catalogs: [OPDS2Publication])]()
 
+        // Carry the non-Sendable `CrawlerNetworkFetching` existential into the
+        // task-group child tasks via a documented box (the protocol is not
+        // marked `Sendable` because its test mocks are stateful classes). The
+        // production conformer (`URLSessionCrawlerFetcher`) is a stateless
+        // struct over `URLSession.shared`, safe to use concurrently.
+        let fetcherBox = CrawlerFetcherBox(fetcher: fetcher)
         for chunk in offsets.chunked(into: maxConcurrent) {
             let chunkResults = try await withThrowingTaskGroup(
                 of: (Int, [OPDS2Publication]).self
             ) { group in
                 for pageOffset in chunk {
-                    group.addTask { [fetcher] in
+                    group.addTask { [fetcherBox] in
+                        let fetcher = fetcherBox.fetcher
                         var pageComponents = components
                         pageComponents.queryItems = (pageComponents.queryItems ?? []).map { item in
                             if item.name == "offset" {

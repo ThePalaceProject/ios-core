@@ -1,6 +1,7 @@
 import MessageUI
 import UIKit
 
+@MainActor
 @objcMembers class ProblemReportEmail: NSObject {
     typealias DisplayStrings = Strings.ProblemReportEmail
 
@@ -105,7 +106,7 @@ import UIKit
     }
 }
 
-extension ProblemReportEmail: MFMailComposeViewControllerDelegate {
+extension ProblemReportEmail: @preconcurrency MFMailComposeViewControllerDelegate {
     func mailComposeController(
         _ controller: MFMailComposeViewController,
         didFinishWith result: MFMailComposeResult,

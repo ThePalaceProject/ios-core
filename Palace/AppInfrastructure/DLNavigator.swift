@@ -9,7 +9,11 @@
 import Foundation
 import FirebaseDynamicLinks
 
-class DLNavigator {
+/// No stored state — all members are methods over the passed-in `DynamicLink`,
+/// so the type is trivially `Sendable`; `final` pins that (no subclass can add
+/// mutable state). Lets `static let shared` be concurrency-safe without an
+/// isolation annotation.
+final class DLNavigator: Sendable {
 
     typealias Destination = (screen: String, params: [String: String])
 

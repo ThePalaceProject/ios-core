@@ -226,13 +226,13 @@ extension TPPAccountList: UITableViewDelegate, UITableViewDataSource {
 }
 
 // MARK: - DataSourceDelegate
-extension TPPAccountList: DataSourceDelegate {
+extension TPPAccountList: @preconcurrency DataSourceDelegate {
     func refresh() {
         tableView.reloadData()
     }
 }
 
-extension TPPAccountList: AccountLogoDelegate {
+extension TPPAccountList: @preconcurrency AccountLogoDelegate {
     func logoDidUpdate(in account: Account, to newLogo: UIImage) {
         accountsLoadingLogos.remove(account.uuid)
         if let indexPath = datasource.indexPath(for: account),

@@ -15,8 +15,16 @@ import PalaceLogging
 ///
 /// This solves the "ghost bookmark" problem where bookmarks from previous loans
 /// or other devices cannot be deleted because the device ID doesn't match.
+///
+/// `@unchecked Sendable` invariant: all mutable state (`deletionLog`) is
+/// accessed exclusively through `queue` — a concurrent dispatch queue whose
+/// writes use `.barrier` and whose reads use `sync` — so there is no
+/// unsynchronized shared mutable access. The other stored properties
+/// (`userDefaultsKey`, `queue`, `defaults`) are immutable `let`s. This makes
+/// the queue-guarded singleton safe to reference from the `@Sendable` closures
+/// dispatched onto `queue`.
 @objcMembers
-final class TPPBookmarkDeletionLog: NSObject {
+final class TPPBookmarkDeletionLog: NSObject, @unchecked Sendable {
 
     static let shared = TPPBookmarkDeletionLog()
 

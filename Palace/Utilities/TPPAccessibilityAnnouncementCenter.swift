@@ -29,7 +29,11 @@ extension Notification.Name {
 /// and delivered sequentially after the transition settles, so they don't get
 /// cut off by VoiceOver reading new screen elements. Outside transition windows,
 /// announcements are delivered immediately (preserving existing behavior).
-final class TPPAccessibilityAnnouncementCenter {
+// `@unchecked Sendable`: all mutable stored state (progress buckets, recent
+// announcements, transition/queue state, pending work item, observers) is
+// guarded by `lock` (NSLock); the injected handlers are immutable `let`s.
+// Safe to capture `self` in the main-queue dispatch and observer closures.
+final class TPPAccessibilityAnnouncementCenter: @unchecked Sendable {
     typealias PostHandler = (UIAccessibility.Notification, String) -> Void
     typealias VoiceOverRunningProvider = () -> Bool
     typealias TimeProvider = () -> Date

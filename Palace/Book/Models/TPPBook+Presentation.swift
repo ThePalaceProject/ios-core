@@ -91,7 +91,7 @@ extension TPPBook {
                 }
             }
         } else {
-            let startFetch = { [weak self] in
+            let startFetch = { @Sendable [weak self] in
                 guard let self else { return }
 
                 self.imageLoader.coverImage(for: self) { [weak self] image in
@@ -129,7 +129,7 @@ extension TPPBook {
             return
         }
 
-        let startFetch = { [weak self] in
+        let startFetch = { @Sendable [weak self] in
             guard let self, !self.isThumbnailLoading else { return }
             self.isThumbnailLoading = true
 

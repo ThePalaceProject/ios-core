@@ -7,7 +7,7 @@
 //
 
 import SwiftUI
-import PDFKit
+@preconcurrency import PDFKit
 
 /// This view shows PDFKit views when PDF is not encrypted
 /// PDFKit reading controls (PDFView and PDFThumbnails) are generally faster because of direct data reading,

@@ -10,6 +10,7 @@ import SafariServices
 /// load file URLs at all.
 enum PreviewControllerFactory {
 
+    @MainActor
     static func makePreviewController(for url: URL, title: String) -> UIViewController {
         if url.scheme == "http" || url.scheme == "https" {
             return SFSafariViewController(url: url)

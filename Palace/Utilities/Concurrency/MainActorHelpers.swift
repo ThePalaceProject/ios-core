@@ -23,7 +23,7 @@ func runOnMain(_ work: @escaping @MainActor () -> Void) {
 /// Runs work on the main actor asynchronously from a non-isolated context
 /// Replaces: DispatchQueue.main.async { }
 @inlinable
-func runOnMainAsync(_ work: @escaping @MainActor () -> Void) {
+func runOnMainAsync(_ work: @escaping @MainActor @Sendable () -> Void) {
     Task { @MainActor in
         work()
     }
@@ -32,7 +32,7 @@ func runOnMainAsync(_ work: @escaping @MainActor () -> Void) {
 /// Runs work on the main actor with a delay
 /// Replaces: DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { }
 @inlinable
-func runOnMainAfter(seconds: TimeInterval, _ work: @escaping @MainActor () -> Void) {
+func runOnMainAfter(seconds: TimeInterval, _ work: @escaping @MainActor @Sendable () -> Void) {
     Task { @MainActor in
         try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
         work()
@@ -242,7 +242,7 @@ actor BarrierExecutor<Value> {
 /// - Parameter work: Function that takes a completion handler
 /// - Returns: The result from the completion handler
 @inlinable
-func withAsyncCallback<T>(
+func withAsyncCallback<T: Sendable>(
     _ work: (@escaping (T) -> Void) -> Void
 ) async -> T {
     await withCheckedContinuation { continuation in
@@ -257,7 +257,7 @@ func withAsyncCallback<T>(
 /// - Returns: The unwrapped result
 /// - Throws: The error from the Result.failure
 @inlinable
-func withAsyncThrowingCallback<T>(
+func withAsyncThrowingCallback<T: Sendable>(
     _ work: (@escaping (Result<T, Error>) -> Void) -> Void
 ) async throws -> T {
     try await withCheckedThrowingContinuation { continuation in

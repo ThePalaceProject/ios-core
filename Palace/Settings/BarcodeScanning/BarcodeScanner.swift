@@ -15,7 +15,7 @@ fileprivate extension CGRect {
     }
 }
 
-class BarcodeScanner: UIViewController, AVCaptureMetadataOutputObjectsDelegate {
+class BarcodeScanner: UIViewController, @preconcurrency AVCaptureMetadataOutputObjectsDelegate {
     private var captureSession: AVCaptureSession!
     private var previewLayer: AVCaptureVideoPreviewLayer!
     private var scannerView: UIView!

@@ -152,7 +152,7 @@ struct AudiobookSampleToolbar: View {
 
 @objc class AudiobookSampleToolbarWrapper: NSObject {
 
-    @objc static func create(book: TPPBook) -> UIViewController {
+    @MainActor @objc static func create(book: TPPBook) -> UIViewController {
         let toolbar = AudiobookSampleToolbar(book: book)
         let hostingController = UIHostingController(rootView: toolbar)
         return hostingController

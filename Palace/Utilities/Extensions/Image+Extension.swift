@@ -1,6 +1,7 @@
 import SwiftUI
 
 extension Image {
+    @MainActor
     func toUIImage() -> UIImage? {
         let controller = UIHostingController(rootView: self.resizable())
         let view = controller.view

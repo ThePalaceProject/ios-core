@@ -77,8 +77,14 @@ struct TPPPDFDocumentView: UIViewRepresentable {
         }
 
         func pdfViewPerformGo(toPage sender: PDFView) {
-            if let page = sender.currentPage, let pageIndex = sender.document?.index(for: page) {
-                currentPage = pageIndex
+            // PDFKit invokes `PDFViewDelegate` callbacks on the main thread, but
+            // the protocol requirement is nonisolated, so `sender`'s main-actor
+            // `currentPage`/`document` (and the `@Binding currentPage` write) must
+            // be reached through an explicit main-actor assumption.
+            MainActor.assumeIsolated {
+                if let page = sender.currentPage, let pageIndex = sender.document?.index(for: page) {
+                    currentPage = pageIndex
+                }
             }
         }
     }

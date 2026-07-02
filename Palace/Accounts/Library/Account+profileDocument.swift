@@ -36,12 +36,19 @@ extension Account {
 
         var request = URLRequest(url: profileUrl)
         AppContainer.production().networkExecutor.executeRequest(request.applyCustomUserAgent(), enableTokenRefresh: false) { result in
+            // The executeRequest completion is a plain (non-Sendable) escaping
+            // closure, so `completion` and the parsed `UserProfileDocument`
+            // are captured safely here. They are carried across the main-queue
+            // hop in a documented box — touched only on that single main-queue
+            // block, never concurrently — to satisfy the `@Sendable`
+            // `DispatchQueue.main.async`.
             switch result {
             case .success(let data, _):
                 do {
                     let profileDocument = try UserProfileDocument.fromData(data)
+                    let box = ProfileDocumentCompletionBox(completion: completion, document: profileDocument)
                     DispatchQueue.main.async {
-                        completion(profileDocument)
+                        box.completion(box.document)
                     }
                     return
                 } catch {
@@ -50,10 +57,21 @@ extension Account {
             case .failure(let error, _):
                 TPPErrorLogger.logError(error, summary: "Error retrieveing user profile document")
             }
+            let box = ProfileDocumentCompletionBox(completion: completion, document: nil)
             DispatchQueue.main.async {
-                completion(nil)
+                box.completion(box.document)
             }
         }
     }
 
+}
+
+/// Documented carrier for `getProfileDocument`'s network completion, which
+/// hops to the main queue to invoke `completion` with the parsed document.
+/// The `completion` closure and `UserProfileDocument` are non-Sendable;
+/// they are only ever read on that single main-queue hop, never
+/// concurrently, so they are safe to carry in an `@unchecked Sendable` box.
+private struct ProfileDocumentCompletionBox: @unchecked Sendable {
+    let completion: (UserProfileDocument?) -> Void
+    let document: UserProfileDocument?
 }

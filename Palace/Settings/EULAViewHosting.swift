@@ -12,6 +12,7 @@ import SwiftUI
 class EULAViewHosting: NSObject {
 
     /// Creates a UIHostingController with EULAView for the given account
+    @MainActor
     static func makeEULAView(account: Account) -> UIViewController {
         let view = EULAView(account: account)
         let controller = UIHostingController(rootView: view)
@@ -19,6 +20,7 @@ class EULAViewHosting: NSObject {
     }
 
     /// Creates a UIHostingController with EULAView using NYPL URL
+    @MainActor
     static func makeEULAViewWithNYPLURL() -> UIViewController {
         let view = EULAView(nyplURL: true)
         let controller = UIHostingController(rootView: view)

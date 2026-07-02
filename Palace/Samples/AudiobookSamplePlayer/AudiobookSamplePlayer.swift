@@ -6,7 +6,7 @@
 //  Copyright © 2022 The Palace Project. All rights reserved.
 //
 
-import AVFoundation
+@preconcurrency import AVFoundation
 import Combine
 import PalaceLogging
 
@@ -41,7 +41,7 @@ class AudiobookSamplePlayer: NSObject, ObservableObject {
 
     private func configureAudioSession() {
         // AVAudioSession configuration MUST be done on the main thread to avoid -50 errors
-        let configure: () -> Void = {
+        let configure: @Sendable () -> Void = {
             do {
                 let session = AVAudioSession.sharedInstance()
                 // Only set category if it's different to avoid unnecessary operations
