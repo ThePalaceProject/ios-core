@@ -547,7 +547,97 @@ protocol AccountLogoDelegate: AnyObject {
 // MARK: Account
 /// Object representing one library account in the app. Patrons may
 /// choose to sign up for multiple Accounts.
-@objcMembers final class Account: NSObject {
+///
+/// `@unchecked Sendable` rationale (Swift 6 Phase B): `Account` is an
+/// auth-adjacent value-holder that is, by design, referenced across actor
+/// boundaries — SwiftUI/UIKit on `@MainActor`, the background `loadCatalogs`
+/// crawl, and the `awaitReady()` readiness-gate consumers (audiobook open,
+/// token refresh, bookmark sync, CarPlay, OPDS loans). Marking it Sendable
+/// clears the "sending 'currentAccount' risks causing data races" /
+/// "capture of non-Sendable Account in a @Sendable closure" crossings at
+/// DLNavigator, OPDSFeedService, and UnifiedOPDSService WITHOUT editing those
+/// consumers. Mirrors how `AccountsManager` (this module's sibling singleton)
+/// and `AccountStateStore` were made `@unchecked Sendable`, and how the
+/// nested `AccountDetails` above already is.
+///
+/// The crux — the genuinely cross-actor readiness state that `awaitReady()`
+/// gates on — does NOT live in `Account` instance storage. It is externalized
+/// into `AccountStateStore.shared` (keyed by `uuid`, guarded by an `NSLock`,
+/// itself `@unchecked Sendable`); `loadState` / `stateStream` / `_setState`
+/// all delegate there. So this conformance does not smuggle unsynchronized
+/// shared state across the readiness boundary — that boundary is already
+/// lock-protected in the store.
+///
+/// Per-stored-property audit (every stored property justified; no lock added
+/// — mutation semantics are preserved, additively isolating only):
+///   - `uuid: String` (let)                    — immutable, Sendable value.
+///   - `name: String` (let)                    — immutable, Sendable value.
+///   - `subtitle: String?` (let)               — immutable, Sendable value.
+///   - `catalogUrl: String?` (let)             — immutable, Sendable value.
+///   - `authenticationDocumentUrl: String?` (let) — immutable, Sendable value.
+///   - `imageCache: ImageCacheType` (let)      — immutable ref; the cache is
+///        the caller-supplied shared cache and is itself the synchronization
+///        owner for image storage (`get`/`set`/`remove` by uuid), unchanged.
+///   - `logo: UIImage` (var)                   — set-once-default then updated
+///        from the logo fetch's main-queue hop (`fetchImage` → `.main.async`)
+///        and from cell/view code (`TPPAccountList`, `FacetViewModel`), all on
+///        the main thread. UI-associated state; no cross-thread writer. UIImage
+///        is immutable/Sendable in practice here.
+///   - `supportEmail: EmailAddress?` (var)     — written only in `init` and
+///        `EmailTicketGateway` (main); read for the support-row predicate.
+///        Effectively write-once during account construction/config.
+///   - `supportURL: URL?` (var)                — same as `supportEmail`: set in
+///        `init`; `URL` is a Sendable value type.
+///   - `details: AccountDetails?` (var)        — populated synchronously by the
+///        `authenticationDocument.didSet`; `AccountDetails` is `@unchecked
+///        Sendable`. Written on the load flow, read via `awaitReady()`
+///        (lock-gated in the store) or the documented legacy-tolerant `details?`
+///        readers. `AccountDetails?` is Sendable given the payload conformance.
+///   - `homePageUrl: String?` (var)            — set in `init` only (no external
+///        writer found in the audit grep); `String?` is a Sendable value.
+///   - `hasSupportOption: Bool` (lazy var)     — memoized pure function of
+///        `supportEmail`/`supportURL`; read on main. Lazy init is not
+///        concurrency-safe in general, but this is UI-thread accessed.
+///   - `logoDelegate: AccountLogoDelegate?` (weak var) — set from view/cell
+///        code and invoked from the logo fetch's main-queue hop; all main.
+///   - `hasUpdatedToken: Bool` (var)           — a plain flag toggled from
+///        sign-in / sign-out / force-reset / notification / account-switch
+///        paths (`Sendable` `Bool`). Reads and writes are on the app's
+///        auth-flow threads; no lock is added because doing so would change
+///        the existing (un-torn `Bool`) semantics and no torn-read hazard
+///        exists for a word-sized value.
+///   - `authenticationDocument: OPDS2AuthenticationDocument?` (var w/ didSet) —
+///        assigned during the load flow (`loadAuthenticationDocument`,
+///        AccountsManager carry-over); the `didSet` synchronously builds
+///        `details`. Written on the load path; `OPDS2AuthenticationDocument`
+///        is a Codable value graph.
+///   - `logoUrl: URL?` (var)                   — set in `init` only; `URL?` is
+///        a Sendable value type.
+///   - `isLoadingLogo: Bool` (private var)     — re-entrancy guard for
+///        `loadLogo()`; both the guard-check and the completion reset run on
+///        the main thread (`loadLogo` is called from view code; the reset is
+///        inside the `fetchImage` main-queue hop). Not shared cross-actor.
+///
+/// Honesty note: the `var`s above are not lock-guarded — they are confined to
+/// the main-associated UI/load flows that already mutate them today. No writer
+/// was found that mutates a given property concurrently from a background
+/// actor; the one truly cross-actor concern (readiness) is externalized and
+/// locked in `AccountStateStore`. If a future change adds a background writer
+/// to any of these `var`s, the correct fix is to confine that writer or add a
+/// lock — NOT to widen this rationale.
+/// Lock-backed `Bool` holder — the honest synchronization for `Account`'s one
+/// concurrently-written flag (`hasUpdatedToken`). Mirrors `AccountsManagerBoolFlag`.
+private final class AccountBoolFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: Bool
+    init(_ value: Bool) { storage = value }
+    var value: Bool {
+        get { lock.lock(); defer { lock.unlock() }; return storage }
+        set { lock.lock(); defer { lock.unlock() }; storage = newValue }
+    }
+}
+
+@objcMembers final class Account: NSObject, @unchecked Sendable {
     var logo: UIImage
     let uuid: String
     let name: String
@@ -559,7 +649,18 @@ protocol AccountLogoDelegate: AnyObject {
     var homePageUrl: String?
     lazy var hasSupportOption = { supportEmail != nil || supportURL != nil }()
     weak var logoDelegate: AccountLogoDelegate?
-    var hasUpdatedToken: Bool = false
+    // `hasUpdatedToken` is written from genuinely concurrent, unserialized flows:
+    // `NotificationService.markTokenRegistered()` (= true) runs on the network
+    // delegate queue (off-main), while `AccountsManager.currentAccount`'s setter
+    // (= false) runs from the non-@MainActor account-switch path — driven by
+    // independent events with no common queue. A plain `var Bool` is a data race
+    // (UB regardless of width). Back it with a lock so `Account: @unchecked
+    // Sendable` is honest for this property. Public get/set contract is unchanged.
+    private let _hasUpdatedToken = AccountBoolFlag(false)
+    var hasUpdatedToken: Bool {
+        get { _hasUpdatedToken.value }
+        set { _hasUpdatedToken.value = newValue }
+    }
 
     let authenticationDocumentUrl: String?
     var authenticationDocument: OPDS2AuthenticationDocument? {
