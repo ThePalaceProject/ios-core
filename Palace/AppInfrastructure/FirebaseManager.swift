@@ -69,6 +69,12 @@ final class FirebaseManager: @unchecked Sendable {
         case triageBotAIFallbackEnabled = "triage_bot_ai_fallback_enabled"
         case inAppPlaybackNavEnabled = "in_app_playback_nav_enabled"
         case sideLoadingEnabled = "side_loading_enabled"
+        // App-rating prompt (Epic PP-4086). Master switch + tunable thresholds.
+        case appRatingPromptEnabled = "app_rating_prompt_enabled"
+        case appRatingMinSessions = "app_rating_min_sessions"
+        case appRatingMinBooksCompleted = "app_rating_min_books_completed"
+        case appRatingCooldownDays = "app_rating_cooldown_days"
+        case appRatingLifetimePromptCap = "app_rating_lifetime_prompt_cap"
     }
 
     // MARK: - Initialization
@@ -116,7 +122,12 @@ final class FirebaseManager: @unchecked Sendable {
             RemoteConfigKey.triageBotTicketSubmissionEnabled.rawValue: NSNumber(value: false),
             RemoteConfigKey.triageBotAIFallbackEnabled.rawValue: NSNumber(value: false),
             RemoteConfigKey.inAppPlaybackNavEnabled.rawValue: NSNumber(value: false),
-            RemoteConfigKey.sideLoadingEnabled.rawValue: NSNumber(value: false)
+            RemoteConfigKey.sideLoadingEnabled.rawValue: NSNumber(value: false),
+            RemoteConfigKey.appRatingPromptEnabled.rawValue: NSNumber(value: true),
+            RemoteConfigKey.appRatingMinSessions.rawValue: NSNumber(value: RatingConfig.fallback.minSessions),
+            RemoteConfigKey.appRatingMinBooksCompleted.rawValue: NSNumber(value: RatingConfig.fallback.minBooksCompleted),
+            RemoteConfigKey.appRatingCooldownDays.rawValue: NSNumber(value: RatingConfig.fallback.cooldownDays),
+            RemoteConfigKey.appRatingLifetimePromptCap.rawValue: NSNumber(value: RatingConfig.fallback.lifetimePromptCap)
         ])
     }
 
@@ -223,9 +234,27 @@ final class FirebaseManager: @unchecked Sendable {
         return remoteConfig.configValue(forKey: key.rawValue).boolValue
     }
 
+    /// Gets a numeric value from remote config (returns 0 when unset and no
+    /// default is registered). Used for the app-rating tunable thresholds.
+    func getDoubleValue(forKey key: RemoteConfigKey) -> Double {
+        remoteConfig.configValue(forKey: key.rawValue).numberValue.doubleValue
+    }
+
     /// Checks if a config value came from the remote server.
     func isRemoteValue(forKey key: RemoteConfigKey) -> Bool {
         remoteConfig.configValue(forKey: key.rawValue).source == .remote
+    }
+
+    /// Best-effort "was the previous app session crash-free?" signal for the
+    /// app-rating eligibility policy (PP-4088). Returns `true` when crash
+    /// reporting is unavailable (non-production or `FEATURE_CRASH_REPORTING`
+    /// off), so an absent signal never blocks an otherwise-eligible patron.
+    func wasLastSessionCrashFree() -> Bool {
+        #if FEATURE_CRASH_REPORTING
+        return !Crashlytics.crashlytics().didCrashDuringPreviousExecution()
+        #else
+        return true
+        #endif
     }
 
     // MARK: - Enhanced Logging

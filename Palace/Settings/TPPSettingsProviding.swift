@@ -69,6 +69,31 @@ import Foundation
     /// When true, content downloads are restricted to Wi-Fi connections only.
     /// Cellular/mobile data downloads are blocked with a user-facing message.
     var downloadOnlyOnWiFi: Bool { get set }
+
+    // MARK: - App Rating (PP-4087)
+    // Local/on-device engagement signals feeding the rating-prompt eligibility
+    // policy. No PII; persisted so they survive app updates.
+
+    /// Number of times the app has been opened/became active.
+    var appRatingSessionCount: Int { get set }
+
+    /// Number of books the patron has finished (read or listened to).
+    var appRatingBooksCompleted: Int { get set }
+
+    /// When the sentiment gate was last shown, or nil if never.
+    var appRatingLastPromptDate: Date? { get set }
+
+    /// Lifetime number of times the sentiment gate has been displayed.
+    var appRatingPromptDisplayCount: Int { get set }
+
+    /// Number of times the patron dismissed/declined the sentiment gate.
+    var appRatingDismissalCount: Int { get set }
+
+    /// Whether the patron selected "Don't ask again".
+    var appRatingOptedOut: Bool { get set }
+
+    /// Whether the most recent previous session ended without a crash.
+    var appRatingCrashFreeLastSession: Bool { get set }
 }
 
 // MARK: - TPPSettings Conformance

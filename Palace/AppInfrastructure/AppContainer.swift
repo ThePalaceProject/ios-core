@@ -331,11 +331,29 @@ struct AppContainer {
         return bootstrapper
     }
 
+    /// App-rating service (Epic PP-4086). Owns engagement tracking + eligibility
+    /// evaluation; persists through `self.settings` and reads thresholds from
+    /// Remote Config. Lazy + cached like the audiobook services above.
+    @MainActor
+    var appRatingService: AppRatingService {
+        if let cached = AppContainer._appRatingService { return cached }
+        let service = AppRatingService(
+            tracker: RatingEngagementTracker(settings: self.settings),
+            configProvider: { RemoteFeatureFlags.shared.appRatingConfig },
+            promptEnabledProvider: { RemoteFeatureFlags.shared.isAppRatingPromptEnabled },
+            crashFreeProbe: { FirebaseManager.shared.wasLastSessionCrashFree() },
+            now: Date.init
+        )
+        AppContainer._appRatingService = service
+        return service
+    }
+
     @MainActor private static var _bookCellModelCache: BookCellModelCache?
     @MainActor private static var _samplePreviewManager: SamplePreviewManager?
     @MainActor private static var _audiobookSession: AudiobookSessionManager?
     @MainActor private static var _audiobookSessionPresenter: AudiobookSessionPresenter?
     @MainActor private static var _playbackBootstrapper: PlaybackBootstrapper?
+    @MainActor private static var _appRatingService: AppRatingService?
 
     init(
         bookRegistry: TPPBookRegistryProvider,
@@ -652,6 +670,7 @@ struct AppContainer {
             _audiobookSession = nil
             _audiobookSessionPresenter = nil
             _playbackBootstrapper = nil
+            _appRatingService = nil
         }
         // Side-loading (PP-2678): the side-loaded registry is a file-backed
         // shared static cache, so it WOULD bleed manifest state across test

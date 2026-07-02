@@ -72,6 +72,16 @@ import Combine
     static let showDeveloperSettingsKey = "showDeveloperSettings"
     static let downloadOnlyOnWiFiKey = "TPPSettingsDownloadOnlyOnWiFi"
 
+    // App-rating engagement signals (PP-4087). Local/on-device only; no PII.
+    // Kept on `UserDefaults` so they survive app updates.
+    static private let appRatingSessionCountKey = "TPPAppRatingSessionCount"
+    static private let appRatingBooksCompletedKey = "TPPAppRatingBooksCompleted"
+    static private let appRatingLastPromptDateKey = "TPPAppRatingLastPromptDate"
+    static private let appRatingPromptDisplayCountKey = "TPPAppRatingPromptDisplayCount"
+    static private let appRatingDismissalCountKey = "TPPAppRatingDismissalCount"
+    static private let appRatingOptedOutKey = "TPPAppRatingOptedOut"
+    static private let appRatingCrashFreeLastSessionKey = "TPPAppRatingCrashFreeLastSession"
+
     // Set to nil (the default) if no custom feed should be used.
     var customMainFeedURL: URL? {
         get {
@@ -165,6 +175,55 @@ import Combine
         set {
             defaults.set(newValue, forKey: TPPSettings.downloadOnlyOnWiFiKey)
         }
+    }
+
+    // MARK: - App Rating (PP-4087)
+
+    var appRatingSessionCount: Int {
+        get { defaults.integer(forKey: TPPSettings.appRatingSessionCountKey) }
+        set { defaults.set(newValue, forKey: TPPSettings.appRatingSessionCountKey) }
+    }
+
+    var appRatingBooksCompleted: Int {
+        get { defaults.integer(forKey: TPPSettings.appRatingBooksCompletedKey) }
+        set { defaults.set(newValue, forKey: TPPSettings.appRatingBooksCompletedKey) }
+    }
+
+    var appRatingLastPromptDate: Date? {
+        get { defaults.object(forKey: TPPSettings.appRatingLastPromptDateKey) as? Date }
+        set {
+            if let newValue {
+                defaults.set(newValue, forKey: TPPSettings.appRatingLastPromptDateKey)
+            } else {
+                defaults.removeObject(forKey: TPPSettings.appRatingLastPromptDateKey)
+            }
+        }
+    }
+
+    var appRatingPromptDisplayCount: Int {
+        get { defaults.integer(forKey: TPPSettings.appRatingPromptDisplayCountKey) }
+        set { defaults.set(newValue, forKey: TPPSettings.appRatingPromptDisplayCountKey) }
+    }
+
+    var appRatingDismissalCount: Int {
+        get { defaults.integer(forKey: TPPSettings.appRatingDismissalCountKey) }
+        set { defaults.set(newValue, forKey: TPPSettings.appRatingDismissalCountKey) }
+    }
+
+    var appRatingOptedOut: Bool {
+        get { defaults.bool(forKey: TPPSettings.appRatingOptedOutKey) }
+        set { defaults.set(newValue, forKey: TPPSettings.appRatingOptedOutKey) }
+    }
+
+    /// Defaults to `true` (assume crash-free) when no session has recorded a
+    /// value yet, so a never-crashed patron is not blocked by an absent key.
+    var appRatingCrashFreeLastSession: Bool {
+        get {
+            defaults.object(forKey: TPPSettings.appRatingCrashFreeLastSessionKey) == nil
+                ? true
+                : defaults.bool(forKey: TPPSettings.appRatingCrashFreeLastSessionKey)
+        }
+        set { defaults.set(newValue, forKey: TPPSettings.appRatingCrashFreeLastSessionKey) }
     }
 
 }

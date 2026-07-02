@@ -53,6 +53,17 @@ final class TPPSettingsMock: NSObject, TPPSettingsProviding {
     /// Whether downloads are restricted to Wi-Fi only.
     var downloadOnlyOnWiFi: Bool = false
 
+    // MARK: - App Rating (PP-4087)
+
+    var appRatingSessionCount: Int = 0
+    var appRatingBooksCompleted: Int = 0
+    var appRatingLastPromptDate: Date?
+    var appRatingPromptDisplayCount: Int = 0
+    var appRatingDismissalCount: Int = 0
+    var appRatingOptedOut: Bool = false
+    /// Defaults to `true` (assume crash-free), matching `TPPSettings`.
+    var appRatingCrashFreeLastSession: Bool = true
+
     // MARK: - Initialization
 
     override init() {
@@ -114,5 +125,12 @@ final class TPPSettingsMock: NSObject, TPPSettingsProviding {
         appVersion = nil
         customLibraryRegistryServer = nil
         downloadOnlyOnWiFi = false
+        appRatingSessionCount = 0
+        appRatingBooksCompleted = 0
+        appRatingLastPromptDate = nil
+        appRatingPromptDisplayCount = 0
+        appRatingDismissalCount = 0
+        appRatingOptedOut = false
+        appRatingCrashFreeLastSession = true
     }
 }

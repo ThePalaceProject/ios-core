@@ -305,6 +305,9 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         // Resume Firebase operations when app becomes active
         FirebaseManager.shared.applicationDidBecomeActive()
 
+        // Record an app-open for the rating-prompt engagement signals (PP-4087).
+        AppContainer.production().appRatingService.recordSession()
+
         // Update feature flag cache after Remote Config is refreshed
         Task {
             // Small delay to let Remote Config fetch complete
