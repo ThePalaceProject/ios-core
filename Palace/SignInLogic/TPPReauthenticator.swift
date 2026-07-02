@@ -111,6 +111,18 @@ protocol Reauthenticator: NSObject {
                 ? (TPPReauthenticator._testContainerOverride ?? AppContainer.production())
                 : AppContainer.production()
             let presenter = container.signInModalSheetPresenter
+            // FLAGGED (shared-surface dependency): the remaining `complete`-mode
+            // warning "sending 'authenticationCompletion'" fires because this
+            // `Task { @MainActor in }` closure is `@Sendable` and carries the
+            // non-Sendable `authenticationCompletion` param (from the `@objc`
+            // nonisolated method above) into the main actor. Closing it cleanly
+            // requires marking `Reauthenticator.authenticateIfNeeded`'s
+            // `authenticationCompletion` param `@Sendable`, which ripples into
+            // every caller in Palace/MyBooks, Palace/Audiobooks, and
+            // Palace/Reader2 (all pass `[weak self]`-capturing closures) — a
+            // cross-module change outside this module's scope. Left correct at
+            // runtime (completion is invoked once, on main) pending that
+            // coordinated protocol change.
             presenter.presentSignInModalForCurrentAccount {
                 Log.info(#file, "TPPReauthenticator: Re-authentication completed")
                 authenticationCompletion?()

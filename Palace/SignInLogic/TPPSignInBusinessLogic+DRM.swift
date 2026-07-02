@@ -184,22 +184,27 @@ extension TPPSignInBusinessLogic {
     }
 
     @objc func dismissAfterUnexpectedDRMDelay(_ arg: Any) {
+        // `UIAlertController`/`UIAlertAction` + `TPPAlertUtils` are
+        // `@MainActor`-isolated; `asyncIfNeeded` already guarantees main-thread
+        // execution, so assert the isolation for the `complete`-mode checker.
         TPPMainThreadRun.asyncIfNeeded {
-            let title = Strings.Error.signInErrorTitle
-            let message = Strings.Error.signInErrorDescription
+            MainActor.assumeIsolated {
+                let title = Strings.Error.signInErrorTitle
+                let message = Strings.Error.signInErrorDescription
 
-            let alert = UIAlertController(title: title, message: message,
-                                          preferredStyle: .alert)
-            alert.addAction(UIAlertAction(title: Strings.Generic.ok,
-                                          style: .default) { [weak self] _ in
-                self?.uiDelegate?.dismiss(animated: true,
-                                          completion: nil)
-            })
+                let alert = UIAlertController(title: title, message: message,
+                                              preferredStyle: .alert)
+                alert.addAction(UIAlertAction(title: Strings.Generic.ok,
+                                              style: .default) { [weak self] _ in
+                    self?.uiDelegate?.dismiss(animated: true,
+                                              completion: nil)
+                })
 
-            TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert,
-                                                         viewController: nil,
-                                                         animated: true,
-                                                         completion: nil)
+                TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert,
+                                                             viewController: nil,
+                                                             animated: true,
+                                                             completion: nil)
+            }
         }
     }
 
@@ -209,10 +214,16 @@ extension TPPSignInBusinessLogic {
                                            withDevice: userAccount.deviceID) {
 
             if userAccount.hasBarcodeAndPIN() && !isValidatingCredentials {
-                if let usernameTextField = uiDelegate?.usernameTextField,
-                   let PINTextField = uiDelegate?.PINTextField {
-                    usernameTextField.text = userAccount.barcode
-                    PINTextField.text = userAccount.PIN
+                // `UITextField.text` is `@MainActor`-isolated; this `@objc`
+                // DRM entry point runs on the main actor. Assert the isolation
+                // for the `complete`-mode checker without changing the sync
+                // signature.
+                MainActor.assumeIsolated {
+                    if let usernameTextField = uiDelegate?.usernameTextField,
+                       let PINTextField = uiDelegate?.PINTextField {
+                        usernameTextField.text = userAccount.barcode
+                        PINTextField.text = userAccount.PIN
+                    }
                 }
 
                 logIn()

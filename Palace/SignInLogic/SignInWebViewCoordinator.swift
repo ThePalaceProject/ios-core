@@ -10,7 +10,14 @@
 //
 
 import Foundation
-import WebKit
+// `@preconcurrency` so the iOS-17+ WebKit SDK's `sending decisionHandler`
+// parameters on `WKNavigationDelegate.decidePolicyFor` don't trip the
+// `complete`-mode "sending value risks data races" diagnostic when the handler
+// is carried into the `@MainActor` hop below. The handler is always invoked on
+// the main actor (WebKit guarantees delegate callbacks on main; the hop
+// re-enters main before calling it), so the pre-concurrency import is a
+// suppression of a false positive, not a correctness change.
+@preconcurrency import WebKit
 import PalaceLogging
 
 @MainActor

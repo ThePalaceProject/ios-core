@@ -55,8 +55,13 @@ extension TPPSignInBusinessLogic {
                          name: .TPPAppDelegateDidReceiveCleverRedirectURL,
                          object: nil)
 
+        // `UIApplication.shared` and `open(_:)` are `@MainActor`-isolated; the
+        // `asyncIfNeeded` hop already guarantees main-thread execution, so
+        // assert the isolation for the `complete`-mode checker.
         TPPMainThreadRun.asyncIfNeeded {
-            UIApplication.shared.open(finalURL)
+            MainActor.assumeIsolated {
+                UIApplication.shared.open(finalURL)
+            }
         }
     }
 
