@@ -1,6 +1,6 @@
 import UIKit
 import SwiftUI
-import ReadiumShared
+@preconcurrency import ReadiumShared
 @preconcurrency import ReadiumNavigator
 import GameController
 import PalaceLogging
@@ -771,7 +771,7 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
     }
 }
 
-extension TPPEPUBViewController: EPUBSearchDelegate {
+extension TPPEPUBViewController: @preconcurrency EPUBSearchDelegate {
     func didSelect(location: ReadiumShared.Locator) {
 
         presentedViewController?.dismiss(animated: true) { [weak self] in
@@ -794,7 +794,7 @@ extension TPPEPUBViewController: EPUBSearchDelegate {
 }
 
 // MARK: - TPPReaderSettingsDelegate
-extension TPPEPUBViewController: TPPReaderSettingsDelegate {
+extension TPPEPUBViewController: @preconcurrency TPPReaderSettingsDelegate {
     func getUserPreferences() -> EPUBPreferences {
         return preferences
     }
@@ -879,7 +879,7 @@ extension TPPEPUBViewController: UIPopoverPresentationControllerDelegate {
     }
 }
 
-extension TPPEPUBViewController: DecorableNavigator {
+extension TPPEPUBViewController: @preconcurrency DecorableNavigator {
     func apply(decorations: [Decoration], in group: String) {
         guard let navigator = navigator as? DecorableNavigator else { return }
         navigator.apply(decorations: decorations, in: group)

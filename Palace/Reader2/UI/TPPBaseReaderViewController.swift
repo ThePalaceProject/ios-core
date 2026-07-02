@@ -11,8 +11,8 @@
 import SafariServices
 import UIKit
 import WebKit
-import ReadiumNavigator
-import ReadiumShared
+@preconcurrency import ReadiumNavigator
+@preconcurrency import ReadiumShared
 import Combine
 import PalaceLogging
 
@@ -31,6 +31,16 @@ private final class GoToNavigatorAdapter: NavigatorGoTo {
 }
 
 /// This class is meant to be subclassed by each publication format view controller. It contains the shared behavior, eg. navigation bar toggling.
+///
+/// Swift 6 `complete`: this is a UIKit view controller, so it is already
+/// `@MainActor`-isolated via `UIViewController`. The residual `complete`-mode
+/// warnings here are (1) non-Sendable Readium type crossings — `Publication`,
+/// `Locator`, `Decoration` — handled by the `@preconcurrency import`s above, and
+/// (2) conformance of this main-actor type to the Palace-owned, nonisolated
+/// `TPPReaderPositionsDelegate`, handled by `@preconcurrency` on that
+/// conformance below. The Readium delegate protocols (`NavigatorDelegate`,
+/// `VisualNavigatorDelegate`) are already `@MainActor`, so those conformances
+/// need no annotation.
 class TPPBaseReaderViewController: UIViewController, Loggable {
     typealias DisplayStrings = Strings.TPPBaseReaderViewController
 
@@ -707,7 +717,7 @@ extension TPPBaseReaderViewController: VisualNavigatorDelegate {
 // ------------------------------------------------------------------------------
 // MARK: - TPPReaderPositionsDelegate
 
-extension TPPBaseReaderViewController: TPPReaderPositionsDelegate {
+extension TPPBaseReaderViewController: @preconcurrency TPPReaderPositionsDelegate {
     func positionsVC(_ positionsVC: TPPReaderPositionsVC, didSelectTOCLocation loc: Any) {
         if shouldPresentAsPopover() {
             positionsVC.dismiss(animated: true)

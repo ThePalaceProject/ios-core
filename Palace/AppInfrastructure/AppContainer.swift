@@ -1,5 +1,6 @@
 import SwiftUI
 import Combine
+import os
 import PalaceAuth
 import PalaceNetwork
 
@@ -242,12 +243,25 @@ struct AppContainer {
     /// same way `bookOpenTracker` is; `_resetForTesting()` nils it so its
     /// on-disk manifest state does not bleed across test classes.
     var sideloadedBookRegistry: SideloadedBookRegistry {
-        if let cached = AppContainer._sideloadedBookRegistry { return cached }
+        if let cached = AppContainer._sideloadedBookRegistry.withLock({ $0 }) { return cached }
+        // Built outside the lock (matches the prior non-atomic check-then-set
+        // race semantics — `SideloadedBookRegistry()` does no `production()`
+        // re-entry, so no deadlock even if two first-callers each build one).
+        // The lock re-checks on store so a concurrent winner is honored and
+        // the loser's instance is discarded; production callers observe a
+        // single stable registry either way.
         let registry = SideloadedBookRegistry()
-        AppContainer._sideloadedBookRegistry = registry
-        return registry
+        return AppContainer._sideloadedBookRegistry.withLock { slot in
+            if let existing = slot { return existing }
+            slot = registry
+            return registry
+        }
     }
-    private static var _sideloadedBookRegistry: SideloadedBookRegistry?
+    /// Swift 6: `OSAllocatedUnfairLock`-guarded so the off-main first access
+    /// (its `identifiers` is read off-main) is concurrency-safe without a
+    /// `@MainActor` annotation that would forbid the off-main read. The
+    /// stored value (`SideloadedBookRegistry`) is itself `@unchecked Sendable`.
+    private static let _sideloadedBookRegistry = OSAllocatedUnfairLock<SideloadedBookRegistry?>(initialState: nil)
 
     /// Side-loading (PP-2677) — orchestrates the import/remove/rehydrate flow on
     /// top of `sideloadedBookRegistry`. Consumes the side-loaded registry (truth
@@ -259,16 +273,24 @@ struct AppContainer {
     /// `_buildCachedAppContainer()` return, and `with*Presenter` copies are NOT
     /// touched (Module A owns this property region; Module C appends here).
     var sideloadedBookManager: SideloadedBookManager {
-        if let cached = AppContainer._sideloadedBookManager { return cached }
+        if let cached = AppContainer._sideloadedBookManager.withLock({ $0 }) { return cached }
+        // Built outside the lock (see `sideloadedBookRegistry`). Reads
+        // `self.sideloadedBookRegistry`, which acquires a DIFFERENT lock —
+        // consistent manager→registry ordering, no reverse path, no deadlock.
         let manager = SideloadedBookManager(
             bookRegistry: self.bookRegistry,
             sideloadedRegistry: self.sideloadedBookRegistry,
             bookFileManager: BookFileManager()
         )
-        AppContainer._sideloadedBookManager = manager
-        return manager
+        return AppContainer._sideloadedBookManager.withLock { slot in
+            if let existing = slot { return existing }
+            slot = manager
+            return manager
+        }
     }
-    private static var _sideloadedBookManager: SideloadedBookManager?
+    /// Swift 6: `OSAllocatedUnfairLock`-guarded (see `_sideloadedBookRegistry`).
+    /// Stored value is `@unchecked Sendable`.
+    private static let _sideloadedBookManager = OSAllocatedUnfairLock<SideloadedBookManager?>(initialState: nil)
 
     /// Process-wide audiobook session presenter — the root-level
     /// SwiftUI-observable bridge between the manager's published state and
@@ -636,12 +658,13 @@ struct AppContainer {
         // classes if left intact. Nil it here so the next `production()`
         // resolution rebuilds a fresh instance reading the current manifest.
         // Not `@MainActor`-isolated (its `identifiers` is read off-main), so
-        // reset outside the `assumeIsolated` block.
-        _sideloadedBookRegistry = nil
+        // reset outside the `assumeIsolated` block. Now lock-guarded storage
+        // (Swift 6) — clear the slot through the lock.
+        _sideloadedBookRegistry.withLock { $0 = nil }
         // Side-loading (PP-2677): the manager caches a reference to the
         // side-loaded registry above, so nil it in lockstep — a stale manager
         // would keep pointing at the reset registry across test classes.
-        _sideloadedBookManager = nil
+        _sideloadedBookManager.withLock { $0 = nil }
         // Leave the flag at the test-safe `true` (see step 4 above) — do NOT
         // reset to `false`. The next test class inherits this value before its
         // own setUp runs; `false` here is the root of the cross-test

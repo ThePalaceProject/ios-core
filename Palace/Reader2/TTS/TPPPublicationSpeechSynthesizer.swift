@@ -9,8 +9,13 @@
 import Foundation
 import Combine
 import AVFoundation
-import ReadiumShared
-import ReadiumNavigator
+// Swift 6 `complete`: Readium's `Publication`, `Locator`, `ContentIterator`,
+// `ContentElement`, and `ContentTokenizer` are not `Sendable`; this synthesizer
+// iterates publication content across `await` boundaries and stores utterances
+// (which wrap `Locator`) in its `@MainActor` state. `@preconcurrency` is the
+// honest ceiling until Readium annotates these types.
+@preconcurrency import ReadiumShared
+@preconcurrency import ReadiumNavigator
 
 /// Iterator direction
 private enum Direction {
@@ -27,6 +32,11 @@ public struct Utterance {
     public let language: Language?
 }
 
+/// `@MainActor` — the synthesizer emits state changes from its main-actor
+/// `state.didSet`, and the sole conformer (`TPPTextToSpeech`) drives SwiftUI /
+/// the navigator on the main actor. Isolating the protocol keeps both sides
+/// on-actor without `@preconcurrency` shims.
+@MainActor
 public protocol TPPPublicationSpeechSynthesizerDelegate: AnyObject {
     /// Called when the synthesizer's state is updated.
     func publicationSpeechSynthesizer(_ synthesizer: TPPPublicationSpeechSynthesizer, stateDidChange state: TPPPublicationSpeechSynthesizer.State)
@@ -34,6 +44,17 @@ public protocol TPPPublicationSpeechSynthesizerDelegate: AnyObject {
 
 /// `PublicationSpeechSynthesizer` orchestrates the rendition of a `Publication` by iterating through its content,
 /// splitting it into individual utterances using a `ContentTokenizer`
+///
+/// Swift 6 `complete`: this type is main-actor-natural — it reads
+/// `UIAccessibility.isVoiceOverRunning`, posts VoiceOver announcements, drives
+/// `AVSpeechSynthesizer`, and mutates `state` (whose `didSet` calls the
+/// `@MainActor` delegate). Annotating the class `@MainActor` matches that
+/// reality: the `Task { … }` bodies below inherit main-actor isolation, so
+/// `state` mutation across their `await` boundaries stays on-actor. The one
+/// nonisolated crossing — `AVSpeechSynthesizerDelegate`, which AVFoundation
+/// delivers on the main queue at runtime — carries `@preconcurrency` on its
+/// conformance.
+@MainActor
 public class TPPPublicationSpeechSynthesizer: NSObject, Loggable {
 
     public typealias TokenizerFactory = (_ defaultLanguage: Language?) -> ContentTokenizer
@@ -167,11 +188,10 @@ public class TPPPublicationSpeechSynthesizer: NSObject, Loggable {
     public func resume() {
         Task {
             if case let .paused(utterance) = state {
-                // `UIAccessibility.isVoiceOverRunning` is main-actor-isolated;
-                // read it via an explicit main-actor hop (only the `Bool` — a
-                // `Sendable` value — crosses back), rather than touching it
-                // directly from this nonisolated task.
-                let isVoiceOverRunning = await MainActor.run { UIAccessibility.isVoiceOverRunning }
+                // The class is `@MainActor`; this `Task` inherits main-actor
+                // isolation, so `UIAccessibility.isVoiceOverRunning` (main-actor
+                // isolated) can be read directly without a hop.
+                let isVoiceOverRunning = UIAccessibility.isVoiceOverRunning
                 if isVoiceOverRunning {
                     if let previousUtterance = await nextUtterance(.backward) {
                         play(previousUtterance)
@@ -341,7 +361,7 @@ public class TPPPublicationSpeechSynthesizer: NSObject, Loggable {
     }
 }
 
-extension TPPPublicationSpeechSynthesizer: AVSpeechSynthesizerDelegate {
+extension TPPPublicationSpeechSynthesizer: @preconcurrency AVSpeechSynthesizerDelegate {
     public func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
         self.didFinishUtterance()
     }

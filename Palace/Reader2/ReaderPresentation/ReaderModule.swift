@@ -12,7 +12,13 @@
 
 import Foundation
 import UIKit
-import ReadiumShared
+// Swift 6 `complete`: `Publication` (and `Locator`, produced by
+// `convertToLocator`) are non-Sendable Readium types that this module hands to
+// `formatModule.makeReaderViewController(...)` from inside a `Task.detached` and
+// across `MainActor.run`. `@preconcurrency` is the honest ceiling until Readium
+// annotates these types Sendable; the module's own concurrency contract is
+// documented on the `@unchecked Sendable` conformance below.
+@preconcurrency import ReadiumShared
 
 /// Base module delegate, that sub-modules' delegate can extend.
 /// Provides basic shared functionalities.

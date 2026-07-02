@@ -37,17 +37,31 @@ final class LCPPDFOpenProgress: ObservableObject {
     /// LCP PDF open is currently in flight without paying for a hop
     /// onto the main actor on every check. Mirrors the `phase != .idle`
     /// signal but is safe to read concurrently.
-    nonisolated private static let openInProgressLock = NSLock()
-    nonisolated(unsafe) private static var _openInProgress = false
+    ///
+    /// Backed by a lock-guarded `@unchecked Sendable` holder rather than a
+    /// `nonisolated(unsafe) static var`: all access to the mutable `Bool` is
+    /// serialized through the holder's `NSLock`, so the concurrency safety is
+    /// enforced structurally instead of asserted away.
+    private final class OpenInProgressFlag: @unchecked Sendable {
+        private let lock = NSLock()
+        private var value = false
+        var isSet: Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            return value
+        }
+        func set(_ newValue: Bool) {
+            lock.lock()
+            value = newValue
+            lock.unlock()
+        }
+    }
+    nonisolated private static let openInProgressFlag = OpenInProgressFlag()
     nonisolated static var isOpenInProgress: Bool {
-        openInProgressLock.lock()
-        defer { openInProgressLock.unlock() }
-        return _openInProgress
+        openInProgressFlag.isSet
     }
     nonisolated private static func setOpenInProgress(_ value: Bool) {
-        openInProgressLock.lock()
-        _openInProgress = value
-        openInProgressLock.unlock()
+        openInProgressFlag.set(value)
     }
 
     enum Phase: String {

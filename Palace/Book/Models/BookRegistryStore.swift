@@ -3,7 +3,31 @@ import Combine
 
 /// Thread-safe in-memory storage for book registry records.
 /// Uses a concurrent DispatchQueue with barrier writes for thread safety.
-class BookRegistryStore {
+///
+/// `@unchecked Sendable` invariant (verified, not waived):
+///   ALL access to the two pieces of mutable state — the `registry`
+///   dictionary and the `processingIdentifiers` set — is funnelled through
+///   `syncQueue`, a *concurrent* queue used as a reader/writer lock:
+///     • Every READ (`allBooks`, `heldBooks`, `myBooks`, `record(for:)`,
+///       `book(for:)`, `state(for:)`, `fulfillmentId(for:)`,
+///       `processing(for:)`, `readRegistry`, `registrySnapshot`) goes through
+///       `performSync`, which runs the block on `syncQueue` (a plain
+///       concurrent read).
+///     • Every WRITE (`addBook`, `removeBook`, `updateBook`,
+///       `updateAndRemoveBook`, `updatedBookMetadata`, `setState`,
+///       `setFulfillmentId`, `setProcessing`, `removeAll`, `mutateRegistry*`)
+///       goes through `performBarrier` / `performBarrierSync` (an
+///       `async(flags: .barrier)` / `sync(flags: .barrier)` write), which
+///       excludes all concurrent readers and other writers for its duration.
+///   The `syncQueueKey` `DispatchSpecific` guard makes the sync helpers
+///   re-entrant (a barrier block that calls back into `performSync` runs
+///   inline instead of deadlocking) without ever escaping the serialized
+///   write window. No property is read or written outside these helpers.
+///   The Combine subjects (`registrySubject`, `bookStateSubject`) are `let`
+///   and thread-safe by construction. Therefore instances are safe to share
+///   across concurrency domains: the class carries its own synchronization,
+///   which is exactly the condition `@unchecked Sendable` documents.
+final class BookRegistryStore: @unchecked Sendable {
 
   private let syncQueueKey = DispatchSpecificKey<Void>()
   private let syncQueue = DispatchQueue(
