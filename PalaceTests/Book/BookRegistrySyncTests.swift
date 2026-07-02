@@ -705,10 +705,14 @@ final class BookRegistrySyncTests: XCTestCase {
     /// (so the seeded fixture account is visible to sync()) but with the OPDS
     /// feed provider swapped for `feedFetcher`.
     private func makeSyncManager(feedFetcher: OPDSFeedFetching) -> BookRegistrySync {
-        BookRegistrySync(
+        // Use the test AppContainer's downloadCenter (the AppContainer.production()
+        // lint whitelists makeTestAppContainer over a raw production() reference —
+        // the download path is inert wiring here; only the feed provider is exercised).
+        let appContainer = makeTestAppContainer()
+        return BookRegistrySync(
             store: store,
             accountsManager: accountsManager,
-            downloadCenterProvider: { AppContainer.production().downloadCenter },
+            downloadCenterProvider: { appContainer.downloadCenter },
             opdsFeedServiceProvider: { feedFetcher }
         )
     }
