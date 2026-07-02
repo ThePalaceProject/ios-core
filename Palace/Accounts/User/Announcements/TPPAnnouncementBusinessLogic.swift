@@ -3,7 +3,22 @@ import PalaceCatalog
 
 private let announcementsFilename: String = "TPPPresentedAnnouncementsList"
 
-/// This class is not thread safe
+/// UIKit-driving announcement presentation logic. Main-actor-isolated:
+/// the presentation methods (`presentAnnouncements`, `alert`) build and
+/// present `UIAlertController`s, and the mutable `presentedAnnouncements`
+/// `Set` is read/written only from those flows plus the file-persistence
+/// helpers. This is why the class was already documented "not thread safe"
+/// and "should be called on main thread," and why its sole production caller
+/// (`Account.loadAuthenticationDocument`) already invokes `presentAnnouncements`
+/// inside `MainActor.assumeIsolated`.
+///
+/// Isolating the class to `@MainActor` makes `static let shared`
+/// concurrency-safe (Swift 6 Phase B: clears "static property 'shared' is not
+/// concurrency-safe because non-Sendable type … may have shared mutable
+/// state") without changing any announcement logic — this is additive
+/// isolation only. The pure, stateless `chainAttachmentIndices` helper is
+/// kept `nonisolated` (see the extension below) so it remains freely callable.
+@MainActor
 class TPPAnnouncementBusinessLogic {
     typealias DisplayStrings = Strings.Announcments
 
@@ -131,7 +146,7 @@ extension TPPAnnouncementBusinessLogic {
     /// Pure helper extracted from `alert(announcements:)` so the i > 0 / i - 1
     /// conditional logic that was previously embedded in the loop body can
     /// be exercised by unit tests.
-    static func chainAttachmentIndices(forAnnouncementCount count: Int) -> [(attach: Int, present: Int)] {
+    nonisolated static func chainAttachmentIndices(forAnnouncementCount count: Int) -> [(attach: Int, present: Int)] {
         guard count > 1 else { return [] }
         return (1..<count).map { i in (attach: i - 1, present: i) }
     }
