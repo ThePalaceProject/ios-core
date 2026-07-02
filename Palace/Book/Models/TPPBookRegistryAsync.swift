@@ -69,8 +69,12 @@ extension TPPBookRegistry {
                 useToken: true
             )
 
-            // Process the feed on the main actor
-            return await processLoansSync(feed: feed)
+            // Process the feed on the main actor. `processLoansSync` returns a
+            // `SendableErrorDocument` carrier so the `[AnyHashable: Any]?` value
+            // can cross the `@MainActor` → nonisolated actor-hop safely; unbox
+            // here on the nonisolated side to preserve the public tuple shape.
+            let result = await processLoansSync(feed: feed)
+            return (result.errorDocument.value, result.hasNewBooks)
 
         } catch let error as PalaceError {
             Log.error(#file, "Registry sync failed: \(error.localizedDescription)")
@@ -78,9 +82,15 @@ extension TPPBookRegistry {
         }
     }
 
-    /// Processes a loans feed for sync
+    /// Processes a loans feed for sync.
+    ///
+    /// Returns the error document inside a `SendableErrorDocument` carrier so the
+    /// non-Sendable `[AnyHashable: Any]?` can cross the `@MainActor` → nonisolated
+    /// boundary back to `syncAsync` under Swift 6 `complete`. (The value is always
+    /// `nil` on this path — reconciliation surfaces failures by throwing, not via
+    /// an error document — but boxing keeps the crossing sound and future-proof.)
     @MainActor
-    private func processLoansSync(feed: TPPOPDSFeed) async -> (errorDocument: [AnyHashable: Any]?, hasNewBooks: Bool) {
+    private func processLoansSync(feed: TPPOPDSFeed) async -> (errorDocument: SendableErrorDocument, hasNewBooks: Bool) {
         var changesMade = false
 
         // Process entries - use public API
@@ -122,17 +132,23 @@ extension TPPBookRegistry {
             changesMade = true
         }
 
-        return (nil, changesMade)
+        return (SendableErrorDocument(value: nil), changesMade)
     }
 
     // MARK: - Async Convenience
 
     /// Async wrapper for sync(). Bridges the completion-handler API to async/await.
+    ///
+    /// The completion's `[AnyHashable: Any]?` error document is boxed in a
+    /// `SendableErrorDocument` before it crosses the `@Sendable`
+    /// `withCheckedContinuation` resume boundary (Swift 6 `complete`), then
+    /// unboxed on the awaiting side to preserve the public tuple shape.
     func syncWithCompletion() async -> (errorDocument: [AnyHashable: Any]?, newBooks: Bool) {
-        await withCheckedContinuation { continuation in
+        let boxed: (errorDocument: SendableErrorDocument, newBooks: Bool) = await withCheckedContinuation { continuation in
             sync { errorDoc, newBooks in
-                continuation.resume(returning: (errorDoc, newBooks))
+                continuation.resume(returning: (SendableErrorDocument(value: errorDoc), newBooks))
             }
         }
+        return (boxed.errorDocument.value, boxed.newBooks)
     }
 }

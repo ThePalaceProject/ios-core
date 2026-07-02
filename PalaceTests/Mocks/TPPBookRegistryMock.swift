@@ -3,7 +3,14 @@ import Combine
 import UIKit
 @testable import Palace
 
-class TPPBookRegistryMock: NSObject, TPPBookRegistryProvider {
+/// `@unchecked Sendable`: `TPPBookRegistryProvider` is `Sendable` (so production
+/// consumers can capture the registry across concurrency domains). This mock
+/// carries plain unsynchronised mutable `var` state (`registry`, `myBooks`,
+/// `state`, `isSyncing`, `mockImages`, …) and is driven single-threaded from
+/// XCTest bodies — it makes no thread-safety claim beyond "used on one thread per
+/// test." The `@unchecked` is that test-only confinement, NOT a production race
+/// waiver; do not share a single mock instance across concurrent test tasks.
+class TPPBookRegistryMock: NSObject, TPPBookRegistryProvider, @unchecked Sendable {
 
     /// Records the libraryID(s) passed to `reset` so tests can assert the
     /// registry was reset for the expected (active) library only.

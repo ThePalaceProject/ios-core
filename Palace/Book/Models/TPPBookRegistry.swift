@@ -3,7 +3,16 @@ import Combine
 import UIKit
 import PalaceLogging
 
-protocol TPPBookRegistryProvider {
+/// `Sendable` (Swift 6 `complete`): the registry is passed to, and captured by,
+/// closures/`Task`s across ~60 consumer files (MyBooks, CatalogUI, Reader2,
+/// Audiobooks, CarPlay, …). Making the abstraction Sendable is what lets those
+/// consumers hold and hop it without each capture site tripping a
+/// "non-Sendable `TPPBookRegistryProvider`" diagnostic. Both conformers satisfy
+/// it: the production `TPPBookRegistry` is `@unchecked Sendable` (its mutable
+/// `_state` is lock-guarded, `syncState` self-synchronised, everything else an
+/// immutable `let`); `TPPBookRegistryMock` is `@unchecked Sendable` for
+/// single-threaded test use (documented at its declaration).
+protocol TPPBookRegistryProvider: Sendable {
     var registryPublisher: AnyPublisher<[String: TPPBookRegistryRecord], Never> { get }
     var bookStatePublisher: AnyPublisher<(String, TPPBookState), Never> { get }
     var syncStatePublisher: AnyPublisher<Bool, Never> { get }
@@ -62,27 +71,63 @@ private final class ObserverTokenBox: @unchecked Sendable {
     }
 }
 
-private class BoolWithDelay {
-    private var switchBackDelay: Double
+/// A `Bool` that auto-resets to `false` after `delay` seconds, firing `onChange`
+/// on every edge. Used by `TPPBookRegistry` to post `TPPSyncBegan`/`TPPSyncEnded`.
+///
+/// `@unchecked Sendable` invariant: `_value` and `resetTask` are the only mutable
+/// state and BOTH are guarded by `lock`. The setter's edge callback (`onChange`)
+/// and its reset scheduling run OUTSIDE the lock (only reading a snapshotted flag
+/// captured inside it) so a re-entrant `value = false` from the reset work item —
+/// which runs on a fresh main-queue stack after the lock has been released — takes
+/// the lock cleanly rather than deadlocking. `onChange` is invoked with the SAME
+/// old!=new edge semantics as the former `willSet`, preserving notification
+/// ordering; the reset scheduling matches the former `didSet` exactly.
+/// Being self-synchronised means `TPPBookRegistry` does NOT need its own
+/// `stateLock` to guard `syncState` — this type owns its concurrency.
+private final class BoolWithDelay: @unchecked Sendable {
+    private let lock = NSRecursiveLock()
+    private let switchBackDelay: Double
     private var resetTask: DispatchWorkItem?
-    private var onChange: ((_ value: Bool) -> Void)?
+    private let onChange: ((_ value: Bool) -> Void)?
+    private var _value: Bool = false
+
     init(delay: Double = 5, onChange: ((_ value: Bool) -> Void)? = nil) {
         self.switchBackDelay = delay
         self.onChange = onChange
     }
-    var value: Bool = false {
-        willSet {
-            if value != newValue {
-                onChange?(newValue)
-            }
+
+    var value: Bool {
+        get {
+            lock.lock(); defer { lock.unlock() }
+            return _value
         }
-        didSet {
-            resetTask?.cancel()
-            if value {
-                let task = DispatchWorkItem { [weak self] in
+        set {
+            lock.lock()
+            let didChange = _value != newValue
+            _value = newValue
+            let task: DispatchWorkItem?
+            let previousTask = resetTask
+            if newValue {
+                let work = DispatchWorkItem { [weak self] in
                     self?.value = false
                 }
-                resetTask = task
+                resetTask = work
+                task = work
+            } else {
+                resetTask = nil
+                task = nil
+            }
+            lock.unlock()
+
+            // Fire the edge callback + (re)schedule the reset OUTSIDE the lock,
+            // preserving the former willSet(edge)/didSet(schedule) ordering and
+            // side effects without holding the lock across `onChange` or the
+            // async dispatch.
+            if didChange {
+                onChange?(newValue)
+            }
+            previousTask?.cancel()
+            if let task {
                 DispatchQueue.main.asyncAfter(deadline: .now() + switchBackDelay, execute: task)
             }
         }
@@ -108,11 +153,25 @@ private class BoolWithDelay {
 /// still persists to A's registry file — otherwise cross-account
 /// contamination produces the "books downloaded, but opens to 401 re-auth
 /// loop" symptom captured in PP-4129.
+///
+/// `@unchecked Sendable` (Swift 6 `complete`): the facade's only mutable stored
+/// state is `_state` (guarded by `stateLock`) and `syncState` (a self-synchronised
+/// `BoolWithDelay`). Every other stored property is an immutable `let`: the three
+/// collaborators (`store` — itself `@unchecked Sendable` via its `syncQueue`;
+/// `syncEngine` — `@unchecked Sendable`; `bookmarks` — a `BookmarkManager`
+/// whose every stored property is an immutable `let` that routes all mutation
+/// through `store`'s barriers, thread-safe though not itself annotated
+/// `Sendable`), the external deps
+/// (`accountsManager`, `imageLoader`), and `syncStateSubject`. The one remaining
+/// `var accountDidChangeCancellable` is written once during `init`'s
+/// `setupAccountDidChangeObserver()` (on the constructing thread, before the
+/// instance escapes) and only read/torn-down thereafter, so it carries no
+/// cross-thread write race. This is a documented invariant, not a bare waiver.
 @objcMembers
-class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
+class TPPBookRegistry: NSObject, TPPBookRegistrySyncing, @unchecked Sendable {
     static let syncFailureErrorDocumentKey = "TPPBookRegistrySyncFailureErrorDocument"
 
-    @objc enum RegistryState: Int {
+    @objc enum RegistryState: Int, Sendable {
         case unloaded, loading, loaded, syncing, synced
     }
 
@@ -166,16 +225,49 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
 
     // MARK: - State + publishers
 
-    private(set) var state: RegistryState = .unloaded {
-        didSet {
-            syncState.value = (state == .syncing)
+    /// Guards every read and write of `_state`.
+    ///
+    /// `@unchecked Sendable` invariant (the crux of this type's thread-safety):
+    ///   `_state` is written from BookRegistrySync's background `Task`/main-thread
+    ///   `setState:` callbacks (`self?.state = newState`), from `reset(_:)`, and
+    ///   from the account-change observer; it is read cross-thread by the `sync()`
+    ///   guard (`state == .unloaded`), by `registryState`, and by the
+    ///   `TPPBookRegistryProvider.state` accessor. Serialising all `_state` access
+    ///   through this lock, together with `syncState` being self-synchronised
+    ///   (`BoolWithDelay` owns its own lock), is what lets the facade be
+    ///   `@unchecked Sendable`.
+    ///
+    ///   The lock is held ONLY for the trivial get/set of `_state`; no store call,
+    ///   disk I/O, notification post, or `syncState` access happens inside it. The
+    ///   `syncState.value` derivation and the `NotificationCenter.post` both run
+    ///   AFTER the lock is released, preserving the former `didSet` ordering
+    ///   (`_state` write → derive syncState → async-post) while keeping the
+    ///   critical section incapable of deadlocking against
+    ///   `BookRegistryStore.syncQueue` or `BoolWithDelay.lock`.
+    private let stateLock = NSLock()
+
+    private var _state: RegistryState = .unloaded
+
+    /// Transition ordering is IDENTICAL to the pre-lock `didSet`: write `_state`,
+    /// derive `syncState.value`, then async-post the notification — all preserved,
+    /// only the `_state` storage is now serialised.
+    private(set) var state: RegistryState {
+        get { stateLock.lock(); defer { stateLock.unlock() }; return _state }
+        set {
+            stateLock.lock()
+            _state = newValue
+            stateLock.unlock()
+            // Same side effects the former `didSet` performed, in the same order,
+            // now outside the lock. `syncState` is self-synchronised so it needs
+            // no help from `stateLock`; the notification post was already async.
+            syncState.value = (newValue == .syncing)
             DispatchQueue.main.async {
                 NotificationCenter.default.post(name: .TPPBookRegistryStateDidChange, object: nil, userInfo: nil)
             }
         }
     }
 
-    private var syncState = BoolWithDelay { value in
+    private let syncState = BoolWithDelay { value in
         if value {
             NotificationCenter.default.post(name: .TPPSyncBegan, object: nil, userInfo: nil)
         } else {
@@ -184,7 +276,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing {
     }
 
     private(set) var isSyncing: Bool {
-        get { return syncState.value }
+        get { syncState.value }
         set { }
     }
 

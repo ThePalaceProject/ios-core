@@ -37,8 +37,24 @@ enum TPPBookRegistryKey: String {
 }
 
 /// An element of `TPPBookRegistry`
+///
+/// `@unchecked Sendable` invariant (Swift 6 `complete`):
+///   Record instances are created, mutated, and destroyed EXCLUSIVELY inside
+///   `BookRegistryStore`'s `syncQueue` barriers — the store is the sole owner of
+///   their lifecycle (every `registry[id] = TPPBookRegistryRecord(...)`,
+///   `registry[id]?.state = …`, and `record.book = …` write happens under a
+///   `.barrier` write, mirroring the store's own `@unchecked Sendable` contract).
+///   The `[String: TPPBookRegistryRecord]` snapshots the store publishes to
+///   Combine subscribers (`registrySubject`) are treated as read-only views by
+///   every consumer; none mutates a record it received from a snapshot.
+///   Extending the store's dictionary confinement to the element type is what
+///   this annotation documents — it is the SAME confinement, not a new waiver.
+///   The stored props are themselves mutable non-Sendable NSObjects (`TPPBook`,
+///   `TPPBookLocation`, `[TPPReadiumBookmark]`), so a value-type conversion is
+///   not feasible without changing identity/in-place-mutation semantics; the
+///   confinement invariant is the honest description of the actual safety model.
 @objcMembers
-class TPPBookRegistryRecord: NSObject {
+final class TPPBookRegistryRecord: NSObject, @unchecked Sendable {
     var book: TPPBook
     var location: TPPBookLocation?
     var state: TPPBookState
