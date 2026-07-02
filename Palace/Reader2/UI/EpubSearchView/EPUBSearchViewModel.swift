@@ -7,8 +7,14 @@
 //
 
 import Foundation
-import ReadiumShared
-import ReadiumNavigator
+// Swift 6 `complete`: Readium's `Publication`, `SearchIterator`, and
+// `LocatorCollection` are not `Sendable`; this `@MainActor` view model awaits
+// `publication.search(...)` / `iterator.next()` and stores the resulting
+// iterator across suspension points. `@preconcurrency` is the honest ceiling
+// until Readium annotates these types — it suppresses the non-Sendable-crossing
+// diagnostics without weakening our own isolation (the VM stays `@MainActor`).
+@preconcurrency import ReadiumShared
+@preconcurrency import ReadiumNavigator
 
 protocol EPUBSearchDelegate: AnyObject {
     func didSelect(location: Locator)

@@ -44,8 +44,11 @@ enum HoldsAction {
     case dismissSyncError
 }
 
-struct HoldsEnvironment {
-    let filterBooks: (String, [TPPBook]) async -> [TPPBook]
+struct HoldsEnvironment: Sendable {
+    // @Sendable: `Store` now constrains `Environment: Sendable`, so the effect
+    // closure it stores must be Sendable too. The construction site captures
+    // only value types + a @MainActor VM read, so this conforms cleanly.
+    let filterBooks: @Sendable (String, [TPPBook]) async -> [TPPBook]
 }
 
 /// Namespace holder for the Holds reducer. Using an enum with a single

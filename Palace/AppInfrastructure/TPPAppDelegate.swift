@@ -1,4 +1,5 @@
 import Foundation
+import os
 import FirebaseCore
 import FirebaseAnalytics
 import FirebaseCrashlytics
@@ -614,11 +615,31 @@ private enum CleanupSeverity {
 
 /// Centralized observer for memory pressure, thermal state, and disk space cleanup.
 /// Performs cache purges, download throttling, and space reclamation when needed.
-final class MemoryPressureMonitor {
+///
+/// `@unchecked Sendable` invariant (mirrors `FirebaseManager`): every stored
+/// property is either an immutable `let` of a `Sendable` type
+/// (`monitorQueue` is a `DispatchQueue`) or the single piece of mutable
+/// state (`proactiveMonitoringTask`) which is guarded by
+/// `OSAllocatedUnfairLock`. All work runs off the main actor on
+/// `monitorQueue` or in a detached `Task`; the type is intentionally NOT
+/// `@MainActor` because its job is background pressure monitoring and disk
+/// reclamation. Cross-actor hops to the main actor are made explicitly
+/// where UIKit-adjacent collaborators require it (see `proactiveCacheCleanup`
+/// and `handleMemoryWarning`). This lets the `static let shared` singleton
+/// and the `self`-capturing queue/task closures satisfy the `complete`
+/// concurrency checker without a `@MainActor` annotation that would be
+/// semantically wrong for a background monitor.
+final class MemoryPressureMonitor: @unchecked Sendable {
     static let shared = MemoryPressureMonitor()
 
     private let monitorQueue = DispatchQueue(label: "org.thepalaceproject.memory-pressure", qos: .utility)
-    private var proactiveMonitoringTask: Task<Void, Never>?
+
+    /// The proactive-monitoring loop task. Guarded by
+    /// `OSAllocatedUnfairLock` because it is written from `start()` (via
+    /// `startProactiveMonitoring()`) and read+cancelled from `stop()`,
+    /// which may be invoked from different threads over the monitor's
+    /// lifetime.
+    private let proactiveMonitoringTask = OSAllocatedUnfairLock<Task<Void, Never>?>(initialState: nil)
 
     private init() {}
 
@@ -658,14 +679,15 @@ final class MemoryPressureMonitor {
 
     /// Proactively monitors memory usage and cleans up before hitting critical levels
     private func startProactiveMonitoring() {
-        proactiveMonitoringTask = Task {
+        let task = Task { [weak self] in
             while !Task.isCancelled {
                 // Check every 30 seconds
                 try? await Task.sleep(nanoseconds: 30_000_000_000)
 
-                await checkMemoryPressure()
+                await self?.checkMemoryPressure()
             }
         }
+        proactiveMonitoringTask.withLock { $0 = task }
     }
 
     /// Checks current memory usage and takes action if needed
@@ -714,8 +736,10 @@ final class MemoryPressureMonitor {
     }
 
     func stop() {
-        proactiveMonitoringTask?.cancel()
-        proactiveMonitoringTask = nil
+        proactiveMonitoringTask.withLock { task in
+            task?.cancel()
+            task = nil
+        }
     }
 
     @objc private func handleMemoryWarning() {

@@ -9,7 +9,15 @@
 @preconcurrency import UserNotifications
 import Combine
 import FirebaseCore
-import FirebaseMessaging
+// `@preconcurrency`: Firebase Messaging's completion handlers (`token { }`) and
+// the `MessagingDelegate` protocol carry `@Sendable`/isolation expectations that
+// `NotificationService` (a non-Sendable `@objcMembers` singleton whose callbacks
+// run on Firebase's own queues) cannot satisfy without a class-level `@MainActor`
+// decision — which is intentionally deferred here (the class is called from the
+// off-main book-registry sync path and from deferred critical-path modules).
+// `@preconcurrency` silences the pre-Swift-6-annotated-API warnings without
+// changing behavior.
+@preconcurrency import FirebaseMessaging
 import PalaceLogging
 
 // MARK: - Notification Constants

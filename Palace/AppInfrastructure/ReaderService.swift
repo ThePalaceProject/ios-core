@@ -6,8 +6,25 @@ import PalaceLogging
 import ReadiumLCP
 #endif
 
+/// `@MainActor`-isolated: every instance method already hopped to the main
+/// actor (all `open*` / `release*` / present* entry points were annotated
+/// `@MainActor`), and all mutable stored state (`redownloadObservers`,
+/// `openGenerationByBookId`, `openInFlightBookIds`, …) is touched only from
+/// those methods. Hoisting the annotation to the type makes that isolation
+/// explicit, makes `self` a `Sendable` main-actor reference so the
+/// `Task.detached` decrypt/extract closures no longer trigger `sending self`
+/// under `complete` checking, and lets `AppContainer` hold `readerService`
+/// as a `Sendable` member. The two `static` helpers that run off the main
+/// actor (`residentMemoryMB`, `ms`) are marked `nonisolated` so the
+/// background decrypt loop can still read them.
+@MainActor
 final class ReaderService {
-    init() {}
+    /// `nonisolated` so the composition root
+    /// (`AppContainer._buildCachedAppContainer()`, which runs off the main
+    /// actor on the first `production()` caller's thread) can construct the
+    /// service without a `MainActor.assumeIsolated` hop. The initializer
+    /// stores nothing and touches no main-actor state.
+    nonisolated init() {}
 
     private lazy var r3Owner: TPPR3Owner = TPPR3Owner()
 
@@ -350,7 +367,7 @@ final class ReaderService {
     /// Console log after a test run produces a per-stage breakdown
     /// without needing Instruments / WDA. Cheap rounded integer so
     /// the log line stays compact.
-    private static func ms(since start: Date) -> Int {
+    nonisolated private static func ms(since start: Date) -> Int {
         Int(Date().timeIntervalSince(start) * 1000)
     }
 
@@ -394,7 +411,7 @@ final class ReaderService {
         )
     }
 
-    static func residentMemoryMB() -> Int {
+    nonisolated static func residentMemoryMB() -> Int {
         var info = mach_task_basic_info()
         var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size / MemoryLayout<natural_t>.size)
         let result = withUnsafeMutablePointer(to: &info) {

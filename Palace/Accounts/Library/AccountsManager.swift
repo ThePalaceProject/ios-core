@@ -128,8 +128,99 @@ private struct VoidWorkBox: @unchecked Sendable {
     let work: () -> Void
 }
 
+/// Documented carrier for the non-Sendable `(inout [String: [Account]]) -> Void`
+/// mutation closure handed to the `accountSetsLock` barrier in
+/// `AccountsManager.mutateAccountSets`. Same `@unchecked Sendable` invariant as
+/// `VoidWorkBox`: the wrapped closure is invoked exactly once, on the serial
+/// `.barrier` of the concurrent `accountSetsLock`, never concurrently. Timing
+/// and the mutate-then-rebuild-index contract are unchanged.
+private struct AccountSetsMutationBox: @unchecked Sendable {
+    let mutate: (inout [String: [Account]]) -> Void
+}
+
+/// Documented carrier for a non-Sendable `(Bool) -> Void` load-completion
+/// handler stored into the `loadingHandlersQueue` barrier in
+/// `AccountsManager.addLoadingHandler`. `@unchecked Sendable` invariant: the
+/// wrapped closure is only ever appended to / read from
+/// `loadingCompletionHandlers[hash]` under the serial `.barrier` of the
+/// concurrent `loadingHandlersQueue`, and invoked later on whatever queue the
+/// caller of `callAndClearLoadingHandlers` runs on — never concurrently with
+/// its own storage mutation. The handler's own thread-affinity is the caller's
+/// contract (unchanged); this box only satisfies the `@Sendable` boundary of
+/// the dispatch barrier.
+private struct LoadCompletionBox: @unchecked Sendable {
+    let handler: (Bool) -> Void
+}
+
+/// Documented carrier for the non-Sendable `LibraryRegistryCrawler` handed
+/// from the first-page crawl Task into its nested background pagination Task
+/// in `AccountsManager.fetchFromNetwork`. `@unchecked Sendable` invariant: the
+/// crawler is used strictly sequentially — the outer Task finishes its
+/// `crawlFirstPage` await BEFORE the pagination Task is spawned, and only the
+/// pagination Task touches the crawler thereafter (`crawlRemainingPages`), so
+/// the two never touch it concurrently. Mirrors `LibraryRegistryCrawler`'s own
+/// `CrawlerFetcherBox`.
+private struct CrawlerHandoffBox: @unchecked Sendable {
+    let crawler: LibraryRegistryCrawler
+}
+
 /// Manages library accounts asynchronously with authentication & image loading
-@objcMembers final class AccountsManager: NSObject, TPPLibraryAccountsProvider, TPPUserAccountResolving {
+///
+/// `@unchecked Sendable` rationale (Swift 6 Phase B, Wave-2):
+/// `AccountsManager` is a process-wide singleton owned by `AppContainer` and
+/// shared, by design, across every actor (the background `loadCatalogs` crawl
+/// Tasks, `@MainActor` UI, token-refresh / audiobook / bookmark consumers).
+/// Its four background `Task { [weak self] in … }` crawl/refresh/preload
+/// closures require a `@Sendable` capture of `self` — and they cannot be
+/// rewritten to "snapshot Sendable fields at the site" because each one drives
+/// `self`'s instance I/O pipeline (`cacheAccountsCatalogData`,
+/// `loadAccountSetsAndAuthDoc`, `fallbackFetchFromNetwork`, `triggerCatalogPreload`,
+/// `catalogPreloader`, `currentAccount`), which is the whole purpose of the Task.
+/// So the type itself must be `Sendable`. It is safe to share because EVERY
+/// mutable stored property is synchronized. Full audit (matches #1155's
+/// `TPPUserAccount` and `AccountStateStore`'s own `@unchecked` justification):
+///
+///   Instance mutable state:
+///   - `accountSet`, `accountSets`, `accountByUUID`  → read via `performRead`
+///     (`accountSetsLock.sync`), written via `performWrite` / `mutateAccountSets`
+///     (`accountSetsLock.async(flags:.barrier)`). `accountByUUID` is only ever
+///     rebuilt inside the same barrier as `accountSets`, so the two never desync.
+///   - `loadingCompletionHandlers`  → read via `loadingHandlersQueue.sync`,
+///     written via `loadingHandlersQueue.async(flags:.barrier)`.
+///   - `inflightAuthDocFetches`  → read/written only under `inflightAuthDocLock`.
+///   - `userAccounts`, `lastKnownCurrentUserAccount`  → read/written only under
+///     `userAccountsLock`.
+///   - `_trackedCrawlTasks`  → read/written only under `_trackedCrawlTasksLock`.
+///   - `isAccountSwitching`  → storage moved into the lock-backed
+///     `AccountsManagerBoolFlag` holder (`_isAccountSwitching`), so its `Bool`
+///     set/get is serialized by the holder's own `NSLock`; the public
+///     `private(set) var` computed accessor preserves every call site and the
+///     value/timing verbatim (see property below).
+///   - `networkExecutor`, `noAccountPlaceholder`  → `lazy var`, each resolved
+///     exactly once from an already-constructed dependency and immutable
+///     thereafter; the lazy init runs on the first touch, which for
+///     `networkExecutor` is inside the background load path after `AppContainer`
+///     finishes constructing, and for `noAccountPlaceholder` only on the fresh-
+///     install `currentUserAccount` path. Effectively write-once.
+///   - `backgroundFetchTask`, `_explicitCancelCalled`  → `#if DEBUG` test-only;
+///     compiled out of release. Driven only from the test-boundary
+///     `cancelBackgroundWork()` / `_injectBackgroundFetchTaskForTesting` seams.
+///
+///   Immutable (`let`) state — inherently safe: `tppAccountUUID`, `ageCheck`,
+///   `settings`, `defaults`, `accountSetsLock`, `catalogPreloader`,
+///   `loadingHandlersQueue`, `inflightAuthDocLock`, `userAccountsLock`,
+///   `_trackedCrawlTasksLock`.
+///
+///   `currentAccountId` is a computed property backed by the injected
+///   `UserDefaults` (`defaults`), which is itself internally thread-safe — no
+///   instance storage is mutated.
+///
+/// NO property uses `nonisolated(unsafe)` and there is no bare `@unchecked`:
+/// every mutable field above has a named synchronization mechanism. Making the
+/// singleton `@MainActor` was rejected — it would move `loadCatalogs` /
+/// `init`'s background dispatch onto the main actor and change load timing,
+/// which is out of scope for this pass.
+@objcMembers final class AccountsManager: NSObject, TPPLibraryAccountsProvider, TPPUserAccountResolving, @unchecked Sendable {
 
     // MARK: – Config / state
 
@@ -145,9 +236,24 @@ private struct VoidWorkBox: @unchecked Sendable {
 
     let tppAccountUUID = AccountsManager.TPPAccountUUIDs[0]
 
+    /// Lock-backed storage for `isAccountSwitching` so the flag is
+    /// concurrency-safe without `nonisolated(unsafe)`. Written from the
+    /// `currentAccount` setter (account-switch path) and the `@MainActor`
+    /// cleanup Task; read from the sign-in-modal presenter. In practice all
+    /// accesses are main-thread, but the holder's `NSLock` makes that safe
+    /// regardless — closing the one un-synchronized-instance-var gap in the
+    /// `@unchecked Sendable` audit above. Value/timing are identical to the
+    /// prior plain `Bool` — only access is serialized.
+    private let _isAccountSwitching = AccountsManagerBoolFlag(false)
+
     /// True during an account switch — suppresses sign-in modal presentation
-    /// to prevent the intermittent login prompt (F-032).
-    private(set) var isAccountSwitching = false
+    /// to prevent the intermittent login prompt (F-032). `private(set)`
+    /// contract preserved: external readers see get-only, internal code sets
+    /// via the private setter (both routed through the lock-backed holder).
+    private(set) var isAccountSwitching: Bool {
+        get { _isAccountSwitching.value }
+        set { _isAccountSwitching.value = newValue }
+    }
 
     let ageCheck: TPPAgeCheckVerifying
     private let settings: TPPSettings
@@ -433,8 +539,12 @@ private struct VoidWorkBox: @unchecked Sendable {
     /// goes through here — adding a new write that bypasses it would silently
     /// break `account(_:)` lookups, which the index-coherence test guards against.
     private func mutateAccountSets(_ mutate: @escaping (inout [String: [Account]]) -> Void) {
+        // Carry the non-Sendable `mutate` into the `@Sendable` barrier block via
+        // a documented box (mirrors `performWrite`'s `VoidWorkBox`). Same serial-
+        // barrier execution contract; timing unchanged.
+        let box = AccountSetsMutationBox(mutate: mutate)
         accountSetsLock.async(flags: .barrier) {
-            mutate(&self.accountSets)
+            box.mutate(&self.accountSets)
             self.accountByUUID = AccountsManager.buildAccountIndex(self.accountSets)
         }
     }
@@ -689,16 +799,19 @@ private struct VoidWorkBox: @unchecked Sendable {
 
         guard !alreadyLoading else {
             if let h = handler {
+                // Box the non-Sendable handler across the `@Sendable` barrier.
+                let box = LoadCompletionBox(handler: h)
                 loadingHandlersQueue.async(flags: .barrier) { [weak self] in
-                    self?.loadingCompletionHandlers[hash]?.append(h)
+                    self?.loadingCompletionHandlers[hash]?.append(box.handler)
                 }
             }
             return true
         }
 
         // first request for this hash
+        let box = handler.map { LoadCompletionBox(handler: $0) }
         loadingHandlersQueue.async(flags: .barrier) {
-            self.loadingCompletionHandlers[hash] = handler.map { [$0] } ?? []
+            self.loadingCompletionHandlers[hash] = box.map { [$0.handler] } ?? []
         }
         return false
     }
@@ -854,10 +967,14 @@ private struct VoidWorkBox: @unchecked Sendable {
                 }
 
                 Log.info(#file, "Registry has more pages (first page: \(firstPage.catalogs.count) of \(firstPage.metadata.numberOfItems ?? -1)) — paginating in background")
+                // Carry the non-Sendable crawler into the nested pagination Task
+                // via a documented box (used strictly sequentially — see
+                // `CrawlerHandoffBox`). `firstPage`/`targetUrl` are Sendable.
+                let crawlerBox = CrawlerHandoffBox(crawler: crawler)
                 let paginationTask = Task(priority: .utility) { [weak self] in
                     guard let self = self else { return }
 
-                    let remainingResult = await crawler.crawlRemainingPages(
+                    let remainingResult = await crawlerBox.crawler.crawlRemainingPages(
                         firstPage: firstPage,
                         baseURL: targetUrl,
                         existingPublications: firstPage.catalogs,
@@ -1241,6 +1358,11 @@ private struct VoidWorkBox: @unchecked Sendable {
         key hash: String,
         completion: @escaping (Bool) -> Void
     ) {
+        // Box the non-Sendable `completion` so it can be invoked from the
+        // `@Sendable` `group.notify(queue: .main)` block below. The handler is
+        // still only called once, on `.main`; its thread-affinity contract is
+        // unchanged — the box only satisfies the `@Sendable` boundary.
+        let completionBox = LoadCompletionBox(handler: completion)
         do {
             let feed = try OPDS2CatalogsFeed.fromData(data)
             let hadAccount = self.currentAccount != nil
@@ -1328,7 +1450,7 @@ private struct VoidWorkBox: @unchecked Sendable {
                     UIApplication.shared.delegate?.window??.tintColor = TPPConfiguration.mainColor()
                 }
                 NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
-                completion(true)
+                completionBox.handler(true)
             }
 
         } catch {
