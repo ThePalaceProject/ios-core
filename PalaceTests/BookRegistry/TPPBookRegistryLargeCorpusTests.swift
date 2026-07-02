@@ -40,6 +40,14 @@ class TPPBookRegistryLargeCorpusTests: PalaceWiringTestCase {
         try super.setUpWithError()
         account = "test-large-corpus-\(UUID().uuidString)"
         store = BookRegistryStore()
+        // FLAKE-003 fix: this suite constructs an AccountsManager purely as a
+        // BookRegistrySync dependency and never reads its account sets, so skip
+        // the on-disk cached-account preload — the >5s (~1138-account) load that
+        // was the root of the intermittent BookRegistry-test timeouts on
+        // memory-pressured CI. Reset in tearDown to keep the flip scoped.
+        #if DEBUG
+        AccountsManager.deferDiskCachePreloadForTesting = true
+        #endif
         accountsManager = makeFreshAccountsManager()
         sync = BookRegistrySync(
             store: store,
@@ -57,6 +65,9 @@ class TPPBookRegistryLargeCorpusTests: PalaceWiringTestCase {
         store = nil
         sync = nil
         accountsManager = nil
+        #if DEBUG
+        AccountsManager.deferDiskCachePreloadForTesting = false
+        #endif
         try super.tearDownWithError()
     }
 

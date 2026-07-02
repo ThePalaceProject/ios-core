@@ -33,6 +33,27 @@ import XCTest
 
 class TPPBookRegistryDependencyTests: PalaceWiringTestCase {
 
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        // FLAKE-003 fix: this suite constructs an AccountsManager purely as a
+        // TPPBookRegistry dependency and never reads its account sets — the init
+        // contracts here rely on there being NO current account (the no-op
+        // mutation path). Skip the on-disk cached-account preload — the >5s
+        // (~1138-account) load that was the root of the intermittent
+        // BookRegistry-test timeouts on memory-pressured CI. Reset in tearDown
+        // to keep the flip scoped.
+        #if DEBUG
+        AccountsManager.deferDiskCachePreloadForTesting = true
+        #endif
+    }
+
+    override func tearDownWithError() throws {
+        #if DEBUG
+        AccountsManager.deferDiskCachePreloadForTesting = false
+        #endif
+        try super.tearDownWithError()
+    }
+
     // MARK: - Init contract
 
     /// The new init MUST take AccountsManager explicitly. If someone re-adds
