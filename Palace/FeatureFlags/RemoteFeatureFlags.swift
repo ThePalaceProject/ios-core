@@ -68,6 +68,10 @@ final class RemoteFeatureFlags: @unchecked Sendable {
         /// non-DEBUG, so the feature is turned on explicitly by the dev-menu
         /// toggle rather than by build configuration.
         case sideLoadingEnabled = "side_loading_enabled"
+        /// Master kill-switch for the app-rating prompt feature (Epic PP-4086).
+        /// Default ON; set to false in Remote Config to suppress the prompt
+        /// entirely regardless of engagement state.
+        case appRatingPromptEnabled = "app_rating_prompt_enabled"
 
         var defaultValue: Bool {
             switch self {
@@ -76,6 +80,8 @@ final class RemoteFeatureFlags: @unchecked Sendable {
             case .carPlayEnabled:
                 return true
             case .opds2Enabled:
+                return true
+            case .appRatingPromptEnabled:
                 return true
             default:
                 return false
@@ -105,6 +111,8 @@ final class RemoteFeatureFlags: @unchecked Sendable {
                 return .inAppPlaybackNavEnabled
             case .sideLoadingEnabled:
                 return .sideLoadingEnabled
+            case .appRatingPromptEnabled:
+                return .appRatingPromptEnabled
             default:
                 return nil
             }
@@ -382,6 +390,34 @@ final class RemoteFeatureFlags: @unchecked Sendable {
             return override
         }
         return isFeatureEnabled(.sideLoadingEnabled)
+    }
+
+    // MARK: - App Rating (Epic PP-4086)
+
+    /// Master switch for the app-rating prompt. When false, no eligibility
+    /// evaluation should proceed. Default ON.
+    var isAppRatingPromptEnabled: Bool {
+        isFeatureEnabled(.appRatingPromptEnabled)
+    }
+
+    /// The remote-tunable eligibility thresholds. Any threshold missing or
+    /// non-positive in Remote Config falls back to `RatingConfig.fallback`.
+    var appRatingConfig: RatingConfig {
+        RatingConfig(
+            minSessions: positiveIntOrFallback(.appRatingMinSessions, RatingConfig.fallback.minSessions),
+            minBooksCompleted: positiveIntOrFallback(.appRatingMinBooksCompleted, RatingConfig.fallback.minBooksCompleted),
+            cooldownDays: positiveIntOrFallback(.appRatingCooldownDays, RatingConfig.fallback.cooldownDays),
+            lifetimePromptCap: positiveIntOrFallback(.appRatingLifetimePromptCap, RatingConfig.fallback.lifetimePromptCap)
+        )
+    }
+
+    /// Reads a numeric Remote Config value, returning `fallback` when the value
+    /// is absent or non-positive (guards against a mis-set `0` disabling a
+    /// threshold). `minBooksCompleted` is allowed to be as low as 1, never 0,
+    /// so a positive-only guard is correct for every threshold here.
+    private func positiveIntOrFallback(_ key: FirebaseManager.RemoteConfigKey, _ fallback: Int) -> Int {
+        let value = FirebaseManager.shared.getDoubleValue(forKey: key)
+        return value > 0 ? Int(value) : fallback
     }
 
     // MARK: - Device Info for Targeting
