@@ -42,6 +42,28 @@ import Foundation
 import WebKit
 import PalaceLogging
 
+/// Lock-backed storage for the `forceResetUserDefaults` test seam. Swift 6
+/// `complete` mode rejects a bare `static var … = .standard` as "nonisolated
+/// global shared mutable state." `UserDefaults` is explicitly `@_nonSendable`,
+/// so it cannot be the generic state of an `OSAllocatedUnfairLock` (whose
+/// `withLock` closure is `@Sendable`). Instead, a documented `@unchecked
+/// Sendable` box guards a plain stored `UserDefaults` slot with a manual
+/// `NSLock` (no `@Sendable` closure crosses the boundary). The `@unchecked` is
+/// honest: EVERY read/write goes through `lock()`/`unlock()`, so there is no
+/// unsynchronized access — this is the documented lock-backed-carrier pattern
+/// `TPPReauthenticator` already uses, NOT `nonisolated(unsafe)` and NOT a bare
+/// `@unchecked` escape. The seam stays swappable from test setUp/tearDown while
+/// production reads it from nonisolated auth paths.
+private final class ForceResetDefaultsBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _defaults: UserDefaults = .standard
+    var defaults: UserDefaults {
+        get { lock.lock(); defer { lock.unlock() }; return _defaults }
+        set { lock.lock(); _defaults = newValue; lock.unlock() }
+    }
+}
+private let forceResetDefaultsBox = ForceResetDefaultsBox()
+
 extension TPPSignInBusinessLogic {
 
     /// UserDefaults key for the one-shot "use ephemeral browser session for
@@ -64,7 +86,13 @@ extension TPPSignInBusinessLogic {
     /// is the minimum-surface seam that lets both the static and
     /// instance call sites share one backing store.
     // PUBLIC_INTENT: swarm_cd181acd D-cleanup. Extension methods access UserDefaults via this property; static var is the only injectable seam (extensions can't have stored instance properties or init injection). Default `.standard` preserves all production callers.
-    public static var forceResetUserDefaults: UserDefaults = .standard
+    // Swift 6 `complete`: backed by the file-private `OSAllocatedUnfairLock`
+    // above (not `nonisolated(unsafe)`); the public get/set contract is
+    // unchanged so every existing caller and test seam works verbatim.
+    public static var forceResetUserDefaults: UserDefaults {
+        get { forceResetDefaultsBox.defaults }
+        set { forceResetDefaultsBox.defaults = newValue }
+    }
 
     /// Reads-and-clears the one-shot ephemeral-session flag. Returns true
     /// exactly once after `performForceReset` set it; subsequent reads
@@ -147,6 +175,14 @@ extension TPPSignInBusinessLogic {
 
         // 6. WKWebsiteDataStore — ALL data types, unconditionally. This is
         //    the big one Sign Out gates on auth-type routing; reset doesn't.
+        //    `WKWebsiteDataStore.default()`/`.allWebsiteDataTypes()`/`.removeData`
+        //    are `@MainActor`-isolated. `performForceReset` is driven from the
+        //    main-thread developer-settings VC, so assert the isolation for the
+        //    `complete`-mode checker. (The `removeData` completion-capture of the
+        //    non-Sendable `completion` param is a separate, flagged item —
+        //    closing it requires a `@Sendable` completion signature that ripples
+        //    into the non-owned `Settings/` call site.)
+        MainActor.assumeIsolated {
         let dataStore = WKWebsiteDataStore.default()
         let dataTypes = WKWebsiteDataStore.allWebsiteDataTypes()
         let epoch = Date(timeIntervalSince1970: 0)
@@ -156,6 +192,7 @@ extension TPPSignInBusinessLogic {
             DispatchQueue.main.async {
                 completion()
             }
+        }
         }
     }
 
@@ -266,6 +303,14 @@ extension TPPSignInBusinessLogic {
         //    authSurfaceHosts. Empty host set → nothing to clear (basic-auth
         //    library with no web surface); complete immediately.
         let hosts = Self.webHostsToClear(for: account)
+        // FLAGGED (non-owned caller signature): the `DispatchQueue.main.async`
+        // below captures the non-Sendable `completion` param into a `@Sendable`
+        // closure. Closing it requires `performScopedReset`/`performForceReset`/
+        // `removeScopedWebCookies` completions to be `@Sendable`, which ripples
+        // into their `Palace/Settings/` call site
+        // (`TPPDeveloperSettingsTableViewController` → `presentResetConfirmation`)
+        // — outside this module. Runtime-correct (hop lands on main); left
+        // pending that coordinated signature change.
         Self.removeScopedWebCookies(forHosts: hosts) {
             Log.info(#file, "[RESET_ACCOUNT scoped] complete — \(hosts.count) host(s) cleared; other libraries untouched")
             DispatchQueue.main.async { completion() }
@@ -288,14 +333,23 @@ extension TPPSignInBusinessLogic {
     // no-superpartner: thin WKHTTPCookieStore system-API wrapper; host-selection logic tested via hostMatches + webHostsToClear, empty-hosts no-op via performScopedReset.
     static func removeScopedWebCookies(forHosts hosts: Set<String>, completion: @escaping () -> Void) {
         guard !hosts.isEmpty else { completion(); return }
-        let cookieStore = WKWebsiteDataStore.default().httpCookieStore
-        cookieStore.getAllCookies { cookies in
-            let group = DispatchGroup()
-            for cookie in cookies where hostMatches(cookie.domain, hosts) {
-                group.enter()
-                cookieStore.delete(cookie) { group.leave() }
+        // `WKWebsiteDataStore.default().httpCookieStore` and the `WKHTTPCookieStore`
+        // methods are `@MainActor`-isolated. This static helper is only reached
+        // from `performScopedReset` on the main thread, so assert the isolation
+        // for the `complete`-mode checker. (The `getAllCookies` completion is
+        // `@Sendable` and still captures the non-Sendable `cookieStore` and
+        // `completion` — a separate, flagged item that needs a `@Sendable`
+        // completion signature rippling into the non-owned `Settings/` caller.)
+        MainActor.assumeIsolated {
+            let cookieStore = WKWebsiteDataStore.default().httpCookieStore
+            cookieStore.getAllCookies { cookies in
+                let group = DispatchGroup()
+                for cookie in cookies where hostMatches(cookie.domain, hosts) {
+                    group.enter()
+                    cookieStore.delete(cookie) { group.leave() }
+                }
+                group.notify(queue: .main) { completion() }
             }
-            group.notify(queue: .main) { completion() }
         }
     }
 

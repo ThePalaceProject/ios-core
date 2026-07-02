@@ -28,21 +28,30 @@ extension TPPSignInBusinessLogic {
     // it works across different business-logic instances for the same library,
     // while being naturally isolated per library. No global mutable state.
 
-    private static var signOutSnapshotKey = 0
-    private static var signOutInProgressKey = 0
+    /// Reference-stable sentinel type for the two associated-object keys.
+    /// Swift 6 `complete` mode rejects `static var …Key = 0` (its address was
+    /// used as the association key) as "nonisolated global shared mutable
+    /// state." A trivial empty `final class` is `Sendable`, and
+    /// `Unmanaged.passUnretained(key).toOpaque()` yields the same stable
+    /// `UnsafeRawPointer` on every call — a drop-in replacement for `&intKey`
+    /// that carries no mutable state. The associated *values* remain unchanged
+    /// (`Int` snapshot / `Bool` in-progress flag).
+    private final class AssocKey: Sendable {}
+    private static let signOutSnapshotKey = AssocKey()
+    private static let signOutInProgressKey = AssocKey()
 
     /// The signInGeneration captured when performLogOut() was called.
     private var signOutSnapshot: Int {
-        get { objc_getAssociatedObject(self, &Self.signOutSnapshotKey) as? Int ?? -1 }
-        set { objc_setAssociatedObject(self, &Self.signOutSnapshotKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
+        get { objc_getAssociatedObject(self, Unmanaged.passUnretained(Self.signOutSnapshotKey).toOpaque()) as? Int ?? -1 }
+        set { objc_setAssociatedObject(self, Unmanaged.passUnretained(Self.signOutSnapshotKey).toOpaque(), newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
     }
 
     /// Guards against re-entrant performLogOut() calls. A second call while
     /// sign-out is in progress would re-set isLoading=true and potentially
     /// leave the UI stuck in a "Signing Out..." spinner.
     private var isSignOutInProgress: Bool {
-        get { objc_getAssociatedObject(self, &Self.signOutInProgressKey) as? Bool ?? false }
-        set { objc_setAssociatedObject(self, &Self.signOutInProgressKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
+        get { objc_getAssociatedObject(self, Unmanaged.passUnretained(Self.signOutInProgressKey).toOpaque()) as? Bool ?? false }
+        set { objc_setAssociatedObject(self, Unmanaged.passUnretained(Self.signOutInProgressKey).toOpaque(), newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
     }
 
     /// Called by finalizeSignIn() to invalidate any in-flight sign-out
@@ -219,7 +228,13 @@ extension TPPSignInBusinessLogic {
         guard userAccount.signInGeneration == signOutSnapshot else {
             Log.warn(#file, "Stale sign-out for library \(libraryAccountID) — user re-authenticated. Skipping credential cleanup")
             isSignOutInProgress = false
-            DispatchQueue.main.async { [weak self] in
+            // `TPPMainThreadRun.asyncIfNeeded` (non-`@Sendable` closure) instead
+            // of `DispatchQueue.main.async` (whose closure IS `@Sendable`): the
+            // latter trips the `complete`-mode "capture of non-Sendable self in
+            // a @Sendable closure" diagnostic. Behavior-equivalent — this is the
+            // terminal UI callback of the stale path with no downstream ordering
+            // dependency; sync-if-already-on-main is indistinguishable here.
+            TPPMainThreadRun.asyncIfNeeded { [weak self] in
                 guard let self else { return }
                 self.uiDelegate?.businessLogicDidFinishDeauthorizing(self)
             }
@@ -269,7 +284,10 @@ extension TPPSignInBusinessLogic {
         //
         // CRITICAL: all async steps must finish BEFORE notifying the UI delegate.
         performFinalSignOutCleanup(cmLogoutAccessToken: cmLogoutAccessToken) { [weak self] in
-            DispatchQueue.main.async { [weak self] in
+            // `asyncIfNeeded` (non-`@Sendable`) instead of `DispatchQueue.main.async`
+            // to avoid the `complete`-mode non-Sendable-`self`-in-`@Sendable`-closure
+            // diagnostic. Terminal UI callback; behavior-equivalent.
+            TPPMainThreadRun.asyncIfNeeded { [weak self] in
                 guard let self = self else { return }
                 self.isSignOutInProgress = false
                 self.uiDelegate?.businessLogicDidFinishDeauthorizing(self)
@@ -283,6 +301,18 @@ extension TPPSignInBusinessLogic {
     /// SAML + logout link present (PP-3452): authenticated API call to CM
     ///   saml_logout_redirect, then WKWebView cleanup.
     /// Everything else: WKWebView cleanup only.
+    // FLAGGED (shared-type dependency): the residual `complete`-mode warnings on
+    // the `completion`-capturing `DispatchQueue.main.async` / WebKit `removeData`
+    // closures in the `self == nil` fallback branches below (and in
+    // `clearWebViewData`) are rooted in `completion` being a non-Sendable
+    // `() -> Void`. Its ultimate source is `completeLogOutProcess`'s
+    // `{ [weak self] in … }` closure, which captures the non-Sendable
+    // `TPPSignInBusinessLogic self`. Making `completion` `@Sendable` here would
+    // require that upstream closure to be `@Sendable`, which it cannot be while
+    // `TPPSignInBusinessLogic` is neither `Sendable` nor `@MainActor`. Closing
+    // this cluster is gated on the class-isolation decision (handoff §F). Left
+    // runtime-correct (all hops land on main) pending that decision — NOT worked
+    // around with an unsafe cast on the sign-out critical path.
     private func performFinalSignOutCleanup(cmLogoutAccessToken: String? = nil,
                                             completion: @escaping () -> Void) {
         if selectedAuthentication?.isOidc == true {

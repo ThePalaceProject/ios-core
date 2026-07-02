@@ -24,7 +24,15 @@ extension TPPSignInBusinessLogic {
     func finalizeSignIn(forDRMAuthorization drmSuccess: Bool,
                         error: Error? = nil,
                         errorMessage: String? = nil) {
+        // `TPPMainThreadRun.asyncIfNeeded` guarantees this body runs on the main
+        // thread. The body touches `@MainActor` state (`UIViewController.view`/
+        // `.superview`/`.presentingViewController`, `TPPAlertUtils`,
+        // `TPPPresentationUtils`), so assert the isolation the hop already
+        // provides. `assumeIsolated` preserves the exact sync-if-already-on-main
+        // ordering the `defer`-driven `businessLogicDidCompleteSignIn` callback
+        // depends on (a `Task { @MainActor }` swap would defer and reorder it).
         TPPMainThreadRun.asyncIfNeeded {
+          MainActor.assumeIsolated {
             defer {
                 self.uiDelegate?.businessLogicDidCompleteSignIn(self)
             }
@@ -73,6 +81,7 @@ extension TPPSignInBusinessLogic {
             }
 
             completionHandler?()
+          }
         }
     }
 
@@ -93,20 +102,31 @@ extension TPPSignInBusinessLogic {
             return nil
         }
 
-        let alert = UIAlertController(title: title,
-                                      message: msg,
-                                      preferredStyle: .alert)
-        alert.addAction(
-            UIAlertAction(title: title,
-                          style: .destructive,
-                          handler: { _ in
-                            self.performLogOut()
-                          }))
-        alert.addAction(
-            UIAlertAction(title: Strings.Generic.wait,
-                          style: .cancel,
-                          handler: nil))
+        // `UIAlertController`/`UIAlertAction` inits + `addAction` are
+        // `@MainActor`-isolated, and the `UIAlertAction` handler is a
+        // non-Sendable `@MainActor` closure. `logOutOrWarn()` is a synchronous
+        // UI method whose only callers are `@MainActor` (`AccountDetailViewModel`
+        // is `@MainActor`; the developer-settings VC is a `UIViewController`),
+        // so the main-actor precondition provably holds. `assumeIsolated`
+        // asserts that for the `complete`-mode checker without a signature
+        // change (keeping every `@objc`/synchronous caller source-compatible)
+        // and without deferring — the alert must be returned synchronously.
+        return MainActor.assumeIsolated {
+            let alert = UIAlertController(title: title,
+                                          message: msg,
+                                          preferredStyle: .alert)
+            alert.addAction(
+                UIAlertAction(title: title,
+                              style: .destructive,
+                              handler: { _ in
+                                self.performLogOut()
+                              }))
+            alert.addAction(
+                UIAlertAction(title: Strings.Generic.wait,
+                              style: .cancel,
+                              handler: nil))
 
-        return alert
+            return alert
+        }
     }
 }

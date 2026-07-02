@@ -84,8 +84,16 @@ final class LegacySAMLAuthContext: NSObject, SAMLAuthContext {
     }
 
     func reportError(_ error: Error, title: String, message: String) {
-        // Dispatch onto main since the UI delegate methods drive UIKit alerts.
-        DispatchQueue.main.async { [weak self] in
+        // Hop onto main since the UI delegate methods drive UIKit alerts. Use
+        // `TPPMainThreadRun.asyncIfNeeded` (a non-`@Sendable` closure) rather
+        // than `DispatchQueue.main.async` (whose closure IS `@Sendable`): the
+        // latter would trip the `complete`-mode "capture of non-Sendable
+        // self/businessLogic in a @Sendable closure" diagnostic. Behavior is
+        // equivalent — the sole caller (`TPPSAMLHelper.logIn`) already invokes
+        // this from a main-thread `dismissSAMLWebView` completion, so surfacing
+        // the alert synchronously-on-main vs deferred is indistinguishable for
+        // a UIKit alert.
+        TPPMainThreadRun.asyncIfNeeded { [weak self] in
             guard let businessLogic = self?.businessLogic else { return }
             businessLogic.uiDelegate?.businessLogic(
                 businessLogic,
@@ -154,7 +162,12 @@ final class LegacySAMLWebViewPresenter: NSObject, SAMLWebViewPresenting {
                 code: 0,
                 userInfo: [NSLocalizedDescriptionKey: message]
             )
-            DispatchQueue.main.async {
+            // `TPPMainThreadRun.asyncIfNeeded` (non-`@Sendable` closure) instead
+            // of `DispatchQueue.main.async` (whose closure is `@Sendable`): the
+            // latter trips the `complete`-mode "capture of non-Sendable
+            // businessLogic in a @Sendable closure" diagnostic. Behavior-
+            // equivalent for surfacing a UIKit alert.
+            TPPMainThreadRun.asyncIfNeeded {
                 businessLogic.uiDelegate?.businessLogic(
                     businessLogic,
                     didEncounterValidationError: error,
@@ -175,27 +188,47 @@ final class LegacySAMLWebViewPresenter: NSObject, SAMLWebViewPresenting {
         let request = URLRequest(url: url)
         let universalLinks = universalLinksProvider.universalLinksURL
         // HelpSpot 17870 — build the handler ON THE NONISOLATED HOP so the
-        // `[weak self]` capture happens before the Task hops to main. The
-        // handler itself dispatches to main internally.
+        // `[weak self]` capture happens before the main hop. The handler itself
+        // dispatches to main internally.
         let problemHandler = makeProblemFoundHandler()
 
-        Task { @MainActor in
-            let model = SignInWebSheetViewModel(
-                cookies: cookies,
-                request: request,
-                universalLinksURL: universalLinks,
-                autoPresentIfNeeded: false,
-                loginCompletionHandler: loginCompletion,
-                loginCancelHandler: loginCancel,
-                problemFoundHandler: problemHandler
-            )
-            SignInWebSheetPresenter.presentOnTop(model: model)
+        // `TPPMainThreadRun.asyncIfNeeded` (non-`@Sendable` closure) + inner
+        // `MainActor.assumeIsolated` instead of `Task { @MainActor in }` (whose
+        // closure IS `@Sendable`). The `loginCompletion`/`loginCancel`/
+        // `problemHandler` closures come from PalaceAuth's nonisolated
+        // `SAMLWebViewPresenting` protocol and are NOT `Sendable`; carrying them
+        // into a `@Sendable` Task tripped the `complete`-mode "sending value
+        // risks data races" diagnostic (188–198). The non-`@Sendable` hop keeps
+        // them off the sending path, and `assumeIsolated` supplies the main-actor
+        // context the `@MainActor` `SignInWebSheetViewModel` init and
+        // `SignInWebSheetPresenter.presentOnTop` require. The sole caller
+        // (`TPPSAMLHelper.logIn`) already runs on the main thread, so presenting
+        // synchronously-on-main vs. via a deferred Task is behavior-equivalent.
+        TPPMainThreadRun.asyncIfNeeded {
+            MainActor.assumeIsolated {
+                let model = SignInWebSheetViewModel(
+                    cookies: cookies,
+                    request: request,
+                    universalLinksURL: universalLinks,
+                    autoPresentIfNeeded: false,
+                    loginCompletionHandler: loginCompletion,
+                    loginCancelHandler: loginCancel,
+                    problemFoundHandler: problemHandler
+                )
+                SignInWebSheetPresenter.presentOnTop(model: model)
+            }
         }
     }
 
     func dismissSAMLWebView(animated: Bool, completion: (() -> Void)?) {
-        Task { @MainActor in
-            SignInWebSheetPresenter.dismissTop(animated: animated, completion: completion)
+        // Non-`@Sendable` main hop + `assumeIsolated` (see `presentSAMLWebView`):
+        // the `completion` closure from the nonisolated `SAMLWebViewPresenting`
+        // protocol is not `Sendable`, so it must not be carried into a
+        // `@Sendable` Task. `SignInWebSheetPresenter.dismissTop` is `@MainActor`.
+        TPPMainThreadRun.asyncIfNeeded {
+            MainActor.assumeIsolated {
+                SignInWebSheetPresenter.dismissTop(animated: animated, completion: completion)
+            }
         }
     }
 }

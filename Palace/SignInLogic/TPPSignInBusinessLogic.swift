@@ -317,7 +317,13 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
     private var validPasswordResetUrl: URL? {
         guard let passwordResetHref = libraryAccount?.authenticationDocument?.links?.first(rel: .passwordReset)?.href,
               let passwordResetUrl = URL(string: passwordResetHref),
-              UIApplication.shared.canOpenURL(passwordResetUrl) else {
+              // `UIApplication.shared.canOpenURL` is `@MainActor`-isolated. This
+              // getter feeds `canResetPassword` / `resetPassword`, both reached
+              // only from `@MainActor` UI (`AccountDetailViewModel`), so the
+              // main-actor precondition holds. `assumeIsolated` asserts it for
+              // the `complete`-mode checker without changing the synchronous
+              // getter contract that SwiftUI render bodies depend on.
+              MainActor.assumeIsolated({ UIApplication.shared.canOpenURL(passwordResetUrl) }) else {
             return nil
         }
         return passwordResetUrl
@@ -335,7 +341,13 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
         guard let passwordResetUrl = validPasswordResetUrl else {
             return
         }
-        UIApplication.shared.open(passwordResetUrl)
+        // `UIApplication.shared.open` is `@MainActor`-isolated. Only caller is
+        // `AccountDetailViewModel.resetPassword()` (`@MainActor`), so the
+        // precondition holds; assert it for the `complete`-mode checker without
+        // making this `@objc` method `async`.
+        MainActor.assumeIsolated {
+            UIApplication.shared.open(passwordResetUrl)
+        }
     }
 
     @objc var selectedIDP: OPDS2SamlIDP?
@@ -694,6 +706,16 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
         // re-entrancy guard (`isAwaitingReadinessForLogIn`) is cleared at the END
         // of the main-thread work on both paths — preserving the "at most once
         // per tap" window the `defer` previously provided.
+        //
+        // FLAGGED (shared-type dependency): the residual `complete`-mode warning
+        // "passing closure as a 'sending' parameter" on this `Task` fires
+        // because the body captures non-Sendable `account` (`Account`, owned by
+        // the Accounts module) and non-Sendable `self` (`TPPSignInBusinessLogic`).
+        // Closing it requires either `Account: Sendable` or
+        // `TPPSignInBusinessLogic: @MainActor` — both out of scope for an
+        // isolation-only pass on this module (see handoff §D/§F). Runtime is
+        // correct: `awaitReady()` is awaited, then all state mutation hops to the
+        // main thread via the non-`@Sendable` `asyncIfNeeded`.
         Task { [weak self] in
             do {
                 _ = try await account.awaitReady()
@@ -810,15 +832,25 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
                         ])
                     #endif
                 }
-                uiDelegate?.usernameTextField?.text = userAccount.barcode
-                uiDelegate?.PINTextField?.text = userAccount.PIN
+                // `UITextField.text`/`becomeFirstResponder()` are
+                // `@MainActor`-isolated. `refreshAuthIfNeeded` runs on the main
+                // actor in production (driven by the `TPPReauthenticator` →
+                // `SignInModalSheetPresenter` UI path); assert the isolation
+                // for the `complete`-mode checker without making this `@objc`
+                // Bool-returning method `async`.
+                MainActor.assumeIsolated {
+                    uiDelegate?.usernameTextField?.text = userAccount.barcode
+                    uiDelegate?.PINTextField?.text = userAccount.PIN
+                }
 
                 logIn()
                 return false
             } else {
-                uiDelegate?.usernameTextField?.text = ""
-                uiDelegate?.PINTextField?.text = ""
-                uiDelegate?.usernameTextField?.becomeFirstResponder()
+                MainActor.assumeIsolated {
+                    uiDelegate?.usernameTextField?.text = ""
+                    uiDelegate?.PINTextField?.text = ""
+                    uiDelegate?.usernameTextField?.becomeFirstResponder()
+                }
             }
         }
 
