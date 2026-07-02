@@ -845,4 +845,39 @@ struct Strings {
             comment: "Button title in the streaming reader's offline / failed state — re-evaluates reachability and retries the load."
         )
     }
+
+    // Epic PP-4086: the app-rating sentiment gate. A lightweight pre-prompt
+    // asks how the patron feels before the native App Store review prompt;
+    // a positive answer routes to the system prompt, a negative one to a
+    // feedback email, and "Ask me later" defers.
+    struct AppRating {
+        static let sentimentTitle = NSLocalizedString(
+            "Are you enjoying The Palace Project?",
+            comment: "Title of the app-rating sentiment gate shown after a positive moment (finishing a book or borrowing)."
+        )
+        static let positive = NSLocalizedString(
+            "Yes, I love it!",
+            comment: "Sentiment-gate button; a positive response that leads to the native App Store rating prompt."
+        )
+        static let negative = NSLocalizedString(
+            "Not really",
+            comment: "Sentiment-gate button; a negative response that leads to a feedback option instead of the App Store."
+        )
+        static let askLater = NSLocalizedString(
+            "Ask me later",
+            comment: "Sentiment-gate button; defers the prompt and resets the cooldown."
+        )
+        static let feedbackTitle = NSLocalizedString(
+            "We're sorry to hear that. Would you like to share feedback?",
+            comment: "Follow-up shown after a negative sentiment-gate response, offering to open a feedback email."
+        )
+        static let feedbackConfirm = NSLocalizedString(
+            "Share feedback",
+            comment: "Feedback follow-up button; opens a pre-composed support email."
+        )
+        static let feedbackDecline = NSLocalizedString(
+            "No thanks",
+            comment: "Feedback follow-up button; dismisses without opening the feedback email."
+        )
+    }
 }

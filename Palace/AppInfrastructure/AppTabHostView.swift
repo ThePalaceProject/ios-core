@@ -33,6 +33,11 @@ struct AppTabHostView: View {
     /// own `@ObservedObject`) re-renders when the presenter publishes.
     @ObservedObject private var audiobookSessionPresenter: AudiobookSessionPresenter
 
+    /// Drives the app-rating sentiment gate overlay (PP-4089). Process-cached
+    /// on the AppContainer so the trigger sites (book completion / borrow) and
+    /// this overlay share one instance.
+    @ObservedObject private var ratingPromptPresenter: RatingPromptPresenter
+
     /// Subscribes to the developer-settings local override so the view
     /// re-renders the moment the dev toggle flips. The actual gating
     /// decision delegates to `RemoteFeatureFlags.shared
@@ -58,6 +63,7 @@ struct AppTabHostView: View {
         // AppContainer so this read returns the same instance the mini-
         // player + manager + CarPlay bridge all use.
         self._audiobookSessionPresenter = ObservedObject(initialValue: appContainer.audiobookSessionPresenter)
+        self._ratingPromptPresenter = ObservedObject(initialValue: appContainer.ratingPromptPresenter)
         let client = URLSessionNetworkClient()
         let parser = OPDSParser()
         let api = DefaultCatalogAPI(client: client, parser: parser, featureFlags: RemoteFeatureFlags.shared)
@@ -138,6 +144,7 @@ struct AppTabHostView: View {
         ZStack(alignment: .bottom) {
             tabViewContent
             persistentFullPlayerOverlay
+            SentimentGateView(presenter: ratingPromptPresenter)
         }
     }
 

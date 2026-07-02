@@ -319,11 +319,27 @@ struct AppContainer {
             tracker: RatingEngagementTracker(settings: self.settings),
             configProvider: { RemoteFeatureFlags.shared.appRatingConfig },
             promptEnabledProvider: { RemoteFeatureFlags.shared.isAppRatingPromptEnabled },
+            forceEligibleProvider: { RemoteFeatureFlags.shared.isAppRatingForceEligible },
             crashFreeProbe: { FirebaseManager.shared.wasLastSessionCrashFree() },
             now: Date.init
         )
         AppContainer._appRatingService = service
         return service
+    }
+
+    /// Root-level presenter driving the app-rating sentiment gate (PP-4089).
+    /// Observed by the overlay in `AppTabHostView`; lazy + cached like the
+    /// audiobook presenter above.
+    @MainActor
+    var ratingPromptPresenter: RatingPromptPresenter {
+        if let cached = AppContainer._ratingPromptPresenter { return cached }
+        let presenter = RatingPromptPresenter(
+            service: self.appRatingService,
+            reviewRequester: RatingReviewRequester(),
+            feedbackPresenter: RatingFeedbackPresenter()
+        )
+        AppContainer._ratingPromptPresenter = presenter
+        return presenter
     }
 
     @MainActor private static var _bookCellModelCache: BookCellModelCache?
@@ -332,6 +348,7 @@ struct AppContainer {
     @MainActor private static var _audiobookSessionPresenter: AudiobookSessionPresenter?
     @MainActor private static var _playbackBootstrapper: PlaybackBootstrapper?
     @MainActor private static var _appRatingService: AppRatingService?
+    @MainActor private static var _ratingPromptPresenter: RatingPromptPresenter?
 
     init(
         bookRegistry: TPPBookRegistryProvider,
@@ -649,6 +666,7 @@ struct AppContainer {
             _audiobookSessionPresenter = nil
             _playbackBootstrapper = nil
             _appRatingService = nil
+            _ratingPromptPresenter = nil
         }
         // Side-loading (PP-2678): the side-loaded registry is a file-backed
         // shared static cache, so it WOULD bleed manifest state across test

@@ -458,6 +458,10 @@ final class BorrowOperation: @unchecked Sendable {
 
             downloadAnnouncementService.announceBorrowSucceeded(for: borrowedBook)
 
+            // App-rating secondary trigger (PP-4088): a successful borrow is a
+            // positive moment. The gate is shown only if the patron is eligible.
+            Task { @MainActor in AppContainer.production().ratingPromptPresenter.noteBorrowSucceeded() }
+
             // F-014: condition was inverted (`!= .downloadNeeded`), skipping
             // auto-download on the most common post-borrow state and stranding
             // the user on a manual Download tap. The borrow→download chain is
