@@ -20,14 +20,22 @@ struct SentimentGateView: View {
 
   var body: some View {
     ZStack {
-      if let step = presenter.step {
-        // Dimmed, tap-to-dismiss backdrop.
+      // Dimmed, tap-to-dismiss backdrop. Gated on `step != nil` (NOT on the
+      // step VALUE) so it stays mounted continuously across the
+      // sentiment→feedback card swap. If it lived inside `if let step` it would
+      // be torn down/rebuilt on each value change, and during the card's scale
+      // transition a rapid tap leaked THROUGH to the content behind the gate
+      // (chaos-QA, PP-4716). `contentShape` makes the whole frame absorb taps.
+      if presenter.step != nil {
         Color.black.opacity(0.4)
           .ignoresSafeArea()
+          .contentShape(Rectangle())
           .onTapGesture { presenter.dismiss() }
           .accessibilityLabel(Text(L.askLater))
           .accessibilityAction { presenter.dismiss() }
+      }
 
+      if let step = presenter.step {
         card(for: step)
           .transition(.opacity.combined(with: .scale(scale: 0.96)))
       }
