@@ -161,9 +161,24 @@ class TPPReaderBookmarksBusinessLogic: NSObject, @unchecked Sendable {
             }
 
             TPPAnnotations.postBookmark(bookmarkBox.bookmark, forBookID: self.book.identifier) { response in
-                Log.debug(#function, response?.serverId != nil ? "Bookmark upload succeed" : "Bookmark failed to upload")
-                bookmarkBox.bookmark.annotationId = response?.serverId
-                self.bookRegistry.add(bookmarkBox.bookmark, forIdentifier: self.book.identifier)
+                let serverId = response?.serverId
+                Log.debug(#function, serverId != nil ? "Bookmark upload succeed" : "Bookmark failed to upload")
+                // P4 Swift-6 cross-thread race fix: the bookmark boxed here is
+                // the SAME instance that `addBookmark` appended to the
+                // main-confined `bookmarks` array. This completion fires on the
+                // network-completion thread; writing `annotationId` here while
+                // the main thread reads that array element (`isEqual`,
+                // `updateLocalBookmarks`, `bookmark(at:)`) is a data race. Hop
+                // the mutation + registry add onto the main actor so the write
+                // is serialized with every read of `bookmarks`. Behavior is
+                // preserved: the bookmark still receives its server
+                // `annotationId` and, being the same object the array holds,
+                // remains findable. This mirrors the other two terminal paths,
+                // which already add via `MainActor.run`.
+                Task { @MainActor in
+                    bookmarkBox.bookmark.annotationId = serverId
+                    self.bookRegistry.add(bookmarkBox.bookmark, forIdentifier: self.book.identifier)
+                }
             }
         }
     }
@@ -417,15 +432,19 @@ class TPPReaderBookmarksBusinessLogic: NSObject, @unchecked Sendable {
 /// type Sendable — a type-level `@unchecked Sendable` would waive a real race
 /// and ripple `Sendable` onto every bookmark call site (Decision 3).
 ///
-/// INVARIANT — the boxed bookmark is never accessed concurrently: within a
-/// single `postBookmark` `Task`, exactly one of the three terminal paths runs —
-/// the `awaitReady`-failure `MainActor.run` add, the sync-not-granted
-/// `MainActor.run` add, or the `TPPAnnotations.postBookmark` completion (which
-/// mutates `annotationId` then adds to the registry). The `postBookmark`
-/// completion fires at most once. The three paths are mutually exclusive early
-/// returns, so no two touch the boxed bookmark at the same time. Threading is
-/// preserved exactly as before boxing — the annotation completion still runs on
-/// the network-completion thread, not forced onto the main actor. Mirrors
+/// INVARIANT — the boxed bookmark is only ever mutated on the main actor:
+/// within a single `postBookmark` `Task`, exactly one of the three terminal
+/// paths runs — the `awaitReady`-failure `MainActor.run` add, the
+/// sync-not-granted `MainActor.run` add, or the `TPPAnnotations.postBookmark`
+/// completion. All three touch the boxed bookmark (and the book registry) on
+/// the main actor: the first two via `MainActor.run`, the third via a
+/// `Task { @MainActor in }` hop (P4 Swift-6 race fix). This matters because the
+/// same `TPPReadiumBookmark` instance is also aliased in the main-confined
+/// `bookmarks` array; confining every mutation of `annotationId` to the main
+/// actor serializes it with every read of that array, closing the cross-thread
+/// race the network-completion thread previously introduced. The `postBookmark`
+/// completion fires at most once, and the three paths are mutually exclusive
+/// early returns, so no two touch the boxed bookmark at the same time. Mirrors
 /// `ImageCompletionBox` in `ImageLoaderImpl`.
 private final class ReadiumBookmarkBox: @unchecked Sendable {
     let bookmark: TPPReadiumBookmark
