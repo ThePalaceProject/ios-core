@@ -35,6 +35,14 @@ steps:
     action: "tap text='Trigger Rating Prompt Now'"
     expects:
       contains_text: ["Are you enjoying The", "Palace Project?", "Yes, I love it!", "Not really", "Ask me later"]
+    # MANDATORY visual check — OCR text presence is NOT enough. A prior bug
+    # rendered the "Yes, I love it!" primary button white-on-white in dark mode:
+    # OCR still read the label (invisible to a human) so text assertions passed.
+    # Every gate step must include a vision review of the rendered screenshot.
+    visual_checks:
+      - "The 'Yes, I love it!' primary button label is legible against its fill (NOT white-on-white / same-color-on-same-color)."
+      - "All three buttons ('Yes, I love it!', 'Not really', 'Ask me later') have visible, readable labels."
+      - "Run in BOTH light and dark appearance (simctl ui <udid> appearance {light,dark}); the check must pass in both."
 
   # --- Negative branch: never reaches the App Store ---
   - id: 04-not-really
