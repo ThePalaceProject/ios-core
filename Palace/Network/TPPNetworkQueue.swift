@@ -1,6 +1,6 @@
 import Foundation
 import Combine
-import SQLite
+@preconcurrency import SQLite
 import PalaceLogging
 import PalaceNetwork
 
@@ -24,7 +24,15 @@ enum HTTPMethodType: String {
  for a valid network notification from a reachability class. It then
  will retry any queued requests and purge them if necessary.
  */
-final class NetworkQueue: NSObject {
+/// - Note: `@unchecked Sendable` is safe here: all SQLite work and every access
+///   to the mutable `retryRequestCount` are funnelled through the private serial
+///   `serialQueue`, so there is no concurrent mutation of that state. `cancellables`
+///   is written once during `addObserverForOfflineQueue` at startup, and every
+///   other stored property is an immutable `let` (the `SQLite` expressions,
+///   `path`, `serialQueue`, `transport`, `reachability`). Capturing `self` in the
+///   `serialQueue.async` / URLSession-completion `@Sendable` closures therefore
+///   crosses no unsynchronized boundary.
+final class NetworkQueue: NSObject, @unchecked Sendable {
     typealias Expression = SQLite.Expression
 
     private var cancellables = Set<AnyCancellable>()

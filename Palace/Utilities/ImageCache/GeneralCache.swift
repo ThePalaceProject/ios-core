@@ -18,7 +18,12 @@ public enum CachePolicy {
     case noCache
 }
 
-public final class GeneralCache<Key: Hashable & Codable, Value: Codable> {
+// `@unchecked Sendable`: every access to mutable state (`memoryCache`, disk
+// files) is serialized through the concurrent `queue` with `.barrier` writes;
+// `memoryWarningObserver` is set once during `init` and only read in `deinit`.
+// `Key`/`Value` are constrained to `Sendable` so cached values can cross the
+// queue boundary safely (all call sites use `GeneralCache<String, Data>`).
+public final class GeneralCache<Key: Hashable & Codable & Sendable, Value: Codable & Sendable>: @unchecked Sendable {
     private let memoryCache = NSCache<WrappedKey, Entry>()
     private let fileManager = FileManager.default
     private let cacheDirectory: URL
@@ -26,7 +31,7 @@ public final class GeneralCache<Key: Hashable & Codable, Value: Codable> {
     private let mode: CachingMode
     private var memoryWarningObserver: NSObjectProtocol?
 
-    private final class Entry: Codable {
+    private final class Entry: Codable, Sendable {
         let value: Value
         let expiration: Date?
         init(value: Value, expiration: Date?) {
@@ -39,7 +44,9 @@ public final class GeneralCache<Key: Hashable & Codable, Value: Codable> {
         }
     }
 
-    private final class WrappedKey: NSObject {
+    // `@unchecked Sendable`: immutable `let key` (which is itself `Sendable`);
+    // used only as an `NSCache` key.
+    private final class WrappedKey: NSObject, @unchecked Sendable {
         let key: Key
         init(_ key: Key) { self.key = key }
         override var hash: Int { key.hashValue }
@@ -179,7 +186,7 @@ public final class GeneralCache<Key: Hashable & Codable, Value: Codable> {
     @discardableResult
     public func get(_ key: Key,
                     policy: CachePolicy,
-                    fetcher: @escaping () async throws -> Value) async throws -> Value {
+                    fetcher: @escaping @Sendable () async throws -> Value) async throws -> Value {
         switch policy {
         case .cacheFirst:
             if let cached = get(for: key) { return cached }

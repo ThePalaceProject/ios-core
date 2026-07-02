@@ -16,13 +16,19 @@ import PalaceLogging
 /// publicationOpener.open() to hang after a few back-to-back audiobook opens.
 /// See AudiobookLoader + AudiobookSessionManager for the new ownership model.
 enum BookService {
-    private static var openingBooks = Set<String>()
+    // Main-actor-confined: every mutation already happens on the main thread
+    // (callers are `@MainActor` view models; the safety-release and dispatch
+    // hops run on `DispatchQueue.main`). Isolating the lock to the main actor
+    // documents that invariant and clears the nonisolated-global-mutable-state
+    // warning without changing the threading.
+    @MainActor private static var openingBooks = Set<String>()
 
     /// Safety cap: if the open pipeline never reports completion (hang, timeout,
     /// unhandled throw inside a Task), releasing after this window prevents the
     /// lock from latching permanently and silently swallowing every retry.
     private static let openLockSafetyRelease: TimeInterval = 30
 
+    @MainActor
     static func open(_ book: TPPBook, bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry, onFinish: (() -> Void)? = nil) {
         guard !openingBooks.contains(book.identifier) else {
             Log.warn(#file, "Book \(book.title) is already being opened, ignoring duplicate request")
@@ -37,14 +43,21 @@ enum BookService {
         dispatchOpen(resolvedBook, onFinish: onFinish)
     }
 
+    @MainActor
     private static func scheduleOpenLockSafetyRelease(for identifier: String) {
         DispatchQueue.main.asyncAfter(deadline: .now() + openLockSafetyRelease) {
-            if openingBooks.remove(identifier) != nil {
-                Log.warn(#file, "⏱️ Open lock for \(identifier) auto-released after \(Int(openLockSafetyRelease))s — pipeline never reported completion")
+            // Runs on the main queue; `assumeIsolated` bridges the non-isolated
+            // dispatch closure to the main actor so the `openingBooks` access is
+            // statically safe without altering the existing timing behavior.
+            MainActor.assumeIsolated {
+                if openingBooks.remove(identifier) != nil {
+                    Log.warn(#file, "⏱️ Open lock for \(identifier) auto-released after \(Int(openLockSafetyRelease))s — pipeline never reported completion")
+                }
             }
         }
     }
 
+    @MainActor
     private static func dispatchOpen(_ book: TPPBook, onFinish: (() -> Void)?) {
         switch book.defaultBookContentType {
         case .epub:
@@ -127,7 +140,8 @@ enum BookService {
     /// Shown when an audiobook open fails. Invoked by
     /// `AudiobookSessionManager` after a loader failure, and by the PP-3707
     /// retry path below.
-    static func showAudiobookTryAgainError(book: TPPBook? = nil, onFinish: (() -> Void)? = nil) {
+    @MainActor
+  static func showAudiobookTryAgainError(book: TPPBook? = nil, onFinish: (() -> Void)? = nil) {
         Log.warn(#file, "⚠️ [ERROR ALERT] Showing 'An error was encountered while trying to open this book' alert to user")
 
         let error = NSError(

@@ -3,7 +3,12 @@ import PalaceLogging
 import PalaceCatalog
 
 /// Abstraction for preloading a feed URL. Allows mocking in tests.
-protocol CatalogFeedPreloading {
+///
+/// `Sendable`: preloaders are stateless dependency-injection values captured
+/// into a `withTaskGroup` child task. The production conformer
+/// (`OPDSFeedPreloader`) is a stateless struct and the test mock is already
+/// `@unchecked Sendable`, so requiring `Sendable` is satisfied everywhere.
+protocol CatalogFeedPreloading: Sendable {
     func preloadFeed(from url: URL) async throws
 }
 

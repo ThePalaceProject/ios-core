@@ -42,6 +42,7 @@ extension View {
 
 extension AnyTransition {
     /// Returns the transition if Reduce Motion is disabled, otherwise returns identity.
+    @MainActor
     static func accessible(_ transition: AnyTransition) -> AnyTransition {
         UIAccessibility.isReduceMotionEnabled ? .identity : transition
     }
@@ -58,6 +59,7 @@ extension AnyTransition {
 ///   showContent.toggle()
 /// }
 /// ```
+@MainActor
 func accessibleWithAnimation<Result>(_ animation: Animation? = .default, _ body: () throws -> Result) rethrows -> Result {
     if UIAccessibility.isReduceMotionEnabled {
         return try body()

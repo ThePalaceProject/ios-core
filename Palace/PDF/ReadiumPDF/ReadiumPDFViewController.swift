@@ -11,7 +11,7 @@
 import UIKit
 import SwiftUI
 import PalaceLogging
-import ReadiumShared
+@preconcurrency import ReadiumShared
 import ReadiumNavigator
 
 /// Bridges Readium's `PDFNavigatorViewController` into Palace's reading-position

@@ -29,7 +29,12 @@ protocol DeviceSpecificErrorMonitoring {
 ///
 /// NOTE: This class delegates all Firebase RemoteConfig access to FirebaseManager
 /// to prevent race conditions that cause the "recursive_mutex lock failed" crash.
-final class DeviceSpecificErrorMonitor: DeviceSpecificErrorMonitoring {
+// `@unchecked Sendable`: the only mutable stored state (`isInitialized`) is
+// guarded by `lock` (NSLock); `firebaseManagerProvider` is an immutable `let`
+// resolved once and Firebase access is delegated to the thread-safe
+// FirebaseManager facade. Safe to share the `.shared` singleton across
+// isolation domains.
+final class DeviceSpecificErrorMonitor: DeviceSpecificErrorMonitoring, @unchecked Sendable {
     static let shared = DeviceSpecificErrorMonitor()
 
     private var isInitialized = false

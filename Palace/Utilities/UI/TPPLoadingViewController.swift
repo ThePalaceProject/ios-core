@@ -6,6 +6,7 @@ protocol TPPLoadingViewController: UIViewController {
 
 extension TPPLoadingViewController {
 
+    @MainActor
     private func loadingOverlayView() -> UIView {
         let overlayView = UIView()
         overlayView.backgroundColor = UIColor.black.withAlphaComponent(0.7)
@@ -17,20 +18,24 @@ extension TPPLoadingViewController {
         return overlayView
     }
 
+    // `@MainActor` matches this protocol's `UIViewController` refinement; the
+    // previous `DispatchQueue.main.async` hops were defensive main-thread
+    // guards now enforced statically, so the UIKit work runs directly.
+    @MainActor
     func startLoading() {
         guard loadingView == nil else { return }
 
         let loadingOverlay = loadingOverlayView()
-        DispatchQueue.main.async {
-            if let win = UIApplication.shared.mainKeyWindow {
-                win.addSubview(loadingOverlay)
-            }
-            loadingOverlay.autoPinEdgesToSuperviewEdges()
+        if let win = UIApplication.shared.mainKeyWindow {
+            win.addSubview(loadingOverlay)
         }
+        loadingOverlay.autoPinEdgesToSuperviewEdges()
 
         loadingView = loadingOverlay
     }
 
+    // Left nonisolated: `CatalogLoadingViewController.deinit` calls this from a
+    // nonisolated deinit, so the main-thread hop stays inside the method.
     func stopLoading() {
         DispatchQueue.main.async {
             self.loadingView?.removeFromSuperview()

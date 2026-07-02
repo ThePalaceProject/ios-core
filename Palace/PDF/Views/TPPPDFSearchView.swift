@@ -62,7 +62,12 @@ struct TPPPDFSearchView: View {
         searchDelegate.search(text: string)
     }
 
-    class SearchDelegate: ObservableObject, TPPPDFDocumentDelegate {
+    /// `@unchecked Sendable` is safe here: `searchResults` is only ever mutated
+    /// on the main thread — `search(text:)` is called from the SwiftUI view (main)
+    /// and `didMatchString` writes through a `DispatchQueue.main.async` hop — and
+    /// `document` is an immutable `let`. No cross-thread mutable state, so
+    /// capturing `self` in the main-hop `@Sendable` closure crosses no boundary.
+    final class SearchDelegate: ObservableObject, TPPPDFDocumentDelegate, @unchecked Sendable {
 
         let document: TPPPDFDocument
 

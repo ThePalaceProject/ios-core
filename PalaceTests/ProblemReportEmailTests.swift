@@ -8,6 +8,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class ProblemReportEmailTests: XCTestCase {
 
     private var emailService: ProblemReportEmail!

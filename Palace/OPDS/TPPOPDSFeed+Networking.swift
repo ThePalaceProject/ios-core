@@ -84,13 +84,19 @@ extension TPPOPDSFeed {
     useTokenIfAvailable: Bool,
     completionHandler handler: @escaping (TPPOPDSFeed?, NSDictionary?) -> Void
   ) {
+    // Box the non-Sendable completion handler so it can be captured inside the
+    // `@Sendable` `TPPAsyncDispatch` closures below. The wrapped closure is only
+    // ever invoked once, inside a single `TPPAsyncDispatch` hop, never
+    // concurrently — so `@unchecked Sendable` is sound (see
+    // `SendableOPDSCompletionHandler`).
+    let handlerBox = SendableOPDSCompletionHandler(handler)
     guard let url = url else {
       TPPErrorLogger.logError(
         withCode: .noURL,
         summary: "NYPLOPDSFeed: nil URL",
         metadata: ["shouldResetCache": shouldResetCache]
       )
-      TPPAsyncDispatch { handler(nil, nil) }
+      TPPAsyncDispatch { handlerBox.call(nil, nil) }
       return
     }
 
@@ -105,7 +111,7 @@ extension TPPOPDSFeed {
     ) { data, response, error in
 
       if let error = error {
-        TPPAsyncDispatch { handler(nil, (error as NSError).problemDocument?.dictionaryValue as NSDictionary?) }
+        TPPAsyncDispatch { handlerBox.call(nil, (error as NSError).problemDocument?.dictionaryValue as NSDictionary?) }
         return
       }
 
@@ -118,7 +124,7 @@ extension TPPOPDSFeed {
             "Response": response ?? "N/A"
           ]
         )
-        TPPAsyncDispatch { handler(nil, nil) }
+        TPPAsyncDispatch { handlerBox.call(nil, nil) }
         return
       }
 
@@ -162,7 +168,7 @@ extension TPPOPDSFeed {
         }()
 
         let errorBox = SendableOPDSErrorDictionary(value: errorDict)
-        TPPAsyncDispatch { handler(nil, errorBox.value) }
+        TPPAsyncDispatch { handlerBox.call(nil, errorBox.value) }
         return
       }
 
@@ -194,7 +200,7 @@ extension TPPOPDSFeed {
         )
         let errorDict = try? JSONSerialization.jsonObject(with: data, options: []) as? NSDictionary
         let errorBox = SendableOPDSErrorDictionary(value: errorDict)
-        TPPAsyncDispatch { handler(nil, errorBox.value) }
+        TPPAsyncDispatch { handlerBox.call(nil, errorBox.value) }
         return
       }
 
@@ -212,11 +218,11 @@ extension TPPOPDSFeed {
             "response": response ?? "N/A"
           ]
         )
-        TPPAsyncDispatch { handler(nil, nil) }
+        TPPAsyncDispatch { handlerBox.call(nil, nil) }
         return
       }
 
-      TPPAsyncDispatch { handler(feed, nil) }
+      TPPAsyncDispatch { handlerBox.call(feed, nil) }
     }
 
     request = task?.originalRequest
@@ -234,4 +240,14 @@ extension TPPOPDSFeed {
 /// `BookRegistrySync`.
 private struct SendableOPDSErrorDictionary: @unchecked Sendable {
   let value: NSDictionary?
+}
+
+/// Sendable carrier for the non-Sendable OPDS completion handler so it can be
+/// captured across the `@Sendable` `TPPAsyncDispatch` boundary. The wrapped
+/// closure is invoked exactly once per request, inside a single
+/// `TPPAsyncDispatch` hop, never concurrently — so `@unchecked Sendable` is
+/// sound. Mirrors `CarPlayImageCompletionBox` and `SendableOPDSErrorDictionary`.
+private final class SendableOPDSCompletionHandler: @unchecked Sendable {
+  let call: (TPPOPDSFeed?, NSDictionary?) -> Void
+  init(_ call: @escaping (TPPOPDSFeed?, NSDictionary?) -> Void) { self.call = call }
 }

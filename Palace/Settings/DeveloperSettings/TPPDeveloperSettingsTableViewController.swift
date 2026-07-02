@@ -4,7 +4,7 @@ import WebKit
 import PalaceCatalog
 
 @objcMembers
-class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDelegate, UITableViewDataSource, MFMailComposeViewControllerDelegate {
+class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDelegate, UITableViewDataSource, @preconcurrency MFMailComposeViewControllerDelegate {
 
     weak var tableView: UITableView!
     var loadingView: UIView?
@@ -764,7 +764,10 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
                 trigger: trigger
             )
 
-            center.add(request) { error in
+            // Re-fetch the singleton inside the closure instead of capturing the
+            // outer `center` — UNUserNotificationCenter is non-Sendable and this
+            // block runs on a Sendable completion callback.
+            UNUserNotificationCenter.current().add(request) { error in
                 DispatchQueue.main.async {
                     if let error {
                         let alert = TPPAlertUtils.alert(title: "Error", message: error.localizedDescription)
@@ -1351,4 +1354,4 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     #endif
 }
 
-extension TPPDeveloperSettingsTableViewController: TPPRegistryDebugger {}
+extension TPPDeveloperSettingsTableViewController: @preconcurrency TPPRegistryDebugger {}

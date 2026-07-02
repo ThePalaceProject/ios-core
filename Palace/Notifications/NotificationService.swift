@@ -6,7 +6,7 @@
 //  Copyright © 2022 The Palace Project. All rights reserved.
 //
 
-import UserNotifications
+@preconcurrency import UserNotifications
 import Combine
 import FirebaseCore
 import FirebaseMessaging
@@ -217,7 +217,7 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
     }
 
     /// Runs configuration function, registers the app for remote notifications.
-    func setupPushNotifications(completion: ((_ granted: Bool) -> Void)? = nil) {
+    func setupPushNotifications(completion: (@Sendable (_ granted: Bool) -> Void)? = nil) {
         notificationCenter.delegate = self
         notificationCenter.requestAuthorization(options: [.alert, .badge, .sound]) { granted, _ in
             if granted {
@@ -230,7 +230,7 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
         Messaging.messaging().delegate = self
     }
 
-    func getNotificationStatus(completion: @escaping (_ areEnabled: Bool) -> Void) {
+    func getNotificationStatus(completion: @escaping @Sendable (_ areEnabled: Bool) -> Void) {
         notificationCenter.getNotificationSettings { notificationSettings in
             switch notificationSettings.authorizationStatus {
             case .authorized, .provisional: completion(true)
@@ -799,8 +799,10 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
                 ready: { _ in readyCount += 1 }
             )
         }
-        if UIApplication.shared.applicationIconBadgeNumber != readyCount {
-            UIApplication.shared.applicationIconBadgeNumber = readyCount
+        Task { @MainActor in
+            if UIApplication.shared.applicationIconBadgeNumber != readyCount {
+                UIApplication.shared.applicationIconBadgeNumber = readyCount
+            }
         }
     }
 

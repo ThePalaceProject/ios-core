@@ -47,13 +47,13 @@ import Foundation
     let authorizationExpires: Date?
     let settings: Settings?
 
-    private static var dateFormatter: DateFormatter = {
-        var formatter = DateFormatter()
+    private static var dateFormatter: DateFormatter {
+        let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss'Z'"
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = TimeZone(secondsFromGMT: 0)
         return formatter
-    }()
+    }
 
     enum CodingKeys: String, CodingKey {
         case authorizationIdentifier = "simplified:authorization_identifier"

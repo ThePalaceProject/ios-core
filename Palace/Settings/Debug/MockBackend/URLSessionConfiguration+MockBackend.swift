@@ -18,10 +18,12 @@ import PalaceLogging
 
 extension URLSessionConfiguration {
 
-    private static var isSwizzled = false
+    // Swizzle state is only ever toggled from MockBackendService (main actor),
+    // so it lives on the main actor rather than as free-floating global state.
+    @MainActor private static var isSwizzled = false
 
     /// Swizzle the `protocolClasses` getter to prepend MockBackendURLProtocol.
-    static func mockBackend_swizzleProtocolClasses() {
+    @MainActor static func mockBackend_swizzleProtocolClasses() {
         guard !isSwizzled else { return }
 
         let originalSelector = #selector(getter: protocolClasses)
@@ -39,7 +41,7 @@ extension URLSessionConfiguration {
     }
 
     /// Undo the swizzle.
-    static func mockBackend_unswizzleProtocolClasses() {
+    @MainActor static func mockBackend_unswizzleProtocolClasses() {
         guard isSwizzled else { return }
 
         let originalSelector = #selector(getter: protocolClasses)

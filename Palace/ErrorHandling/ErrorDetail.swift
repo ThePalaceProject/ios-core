@@ -83,11 +83,13 @@ struct ErrorDetail {
             activityTrail: trail,
             timestamp: Date(),
             bookInfo: bookInfo,
-            deviceContext: captureDeviceContext(accountsManager: accountsManager)
+            deviceContext: await captureDeviceContext(accountsManager: accountsManager)
         )
     }
 
-    /// Captures current device/app context synchronously.
+    /// Captures current device/app context. `@MainActor` because it reads
+    /// `UIDevice.current` (main-actor isolated); it is awaited from `capture`.
+    @MainActor
     private static func captureDeviceContext(accountsManager: AccountsManager = AppContainer.production().accountsManager) -> DeviceContext {
         let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
         let buildNumber = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "Unknown"

@@ -290,7 +290,7 @@ extension AppTabHostView {
     /// Pure helpers extracted for unit testability — these were previously
     /// inline closures inside `updateHoldsBadge()` that could not be exercised
     /// by tests, leaving mutations like `+= 1` → `-= 1` undetected.
-    static func computeReadyCount(books: [TPPBook]) -> Int {
+    nonisolated static func computeReadyCount(books: [TPPBook]) -> Int {
         var count = 0
         for book in books {
             book.defaultAcquisition?.availability.match(
@@ -304,7 +304,7 @@ extension AppTabHostView {
         return count
     }
 
-    static func computeReservedCount(books: [TPPBook]) -> Int {
+    nonisolated static func computeReservedCount(books: [TPPBook]) -> Int {
         var count = 0
         for book in books {
             book.defaultAcquisition?.availability.match(

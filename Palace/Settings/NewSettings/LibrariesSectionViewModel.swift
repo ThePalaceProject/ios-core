@@ -48,14 +48,22 @@ final class LibrariesSectionViewModel: ObservableObject {
     private let switchTimeout: TimeInterval = 2.5
 
     private let environment: LibrariesSectionEnvironment
-    private var accountChangeObserver: NSObjectProtocol?
+
+    /// Reference box holding the notification-observer token so `deinit`
+    /// (nonisolated) can read it without hopping the main actor. Safe as
+    /// `@unchecked Sendable`: `token` is written once during `init` on the
+    /// main actor and read once in `deinit`, never concurrently.
+    private final class ObserverTokenBox: @unchecked Sendable {
+        var token: NSObjectProtocol?
+    }
+    private let observerBox = ObserverTokenBox()
 
     init(environment: LibrariesSectionEnvironment, observeNotifications: Bool = true) {
         self.environment = environment
         refresh()
 
         if observeNotifications {
-            accountChangeObserver = NotificationCenter.default.addObserver(
+            observerBox.token = NotificationCenter.default.addObserver(
                 forName: .TPPCurrentAccountDidChange,
                 object: nil,
                 queue: .main
@@ -70,8 +78,8 @@ final class LibrariesSectionViewModel: ObservableObject {
     }
 
     deinit {
-        if let accountChangeObserver {
-            NotificationCenter.default.removeObserver(accountChangeObserver)
+        if let token = observerBox.token {
+            NotificationCenter.default.removeObserver(token)
         }
     }
 

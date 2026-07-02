@@ -17,6 +17,7 @@ class TPPAnnouncementBusinessLogic {
 
     /// Present the announcement in a view controller
     /// This method should be called on main thread
+    @MainActor
     func presentAnnouncements(_ announcements: [Announcement]) {
         let presentableAnnouncements = announcements.filter {
             shouldPresentAnnouncement(id: $0.id)
@@ -81,6 +82,7 @@ class TPPAnnouncementBusinessLogic {
      - Parameter announcements: an array of announcements that goes into alert message.
      - Returns: The alert controller to be presented.
      */
+    @MainActor
     private func alert(announcements: [Announcement]) -> UIAlertController? {
         let title = DisplayStrings.alertTitle
         var currentAlert: UIAlertController?
