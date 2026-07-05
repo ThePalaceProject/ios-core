@@ -606,6 +606,8 @@ run_phase35_detector "swiftui_placeholder_a11y" "check-swiftui-placeholder-a11y.
   "No SwiftUI placeholder/label without .accessibilityLabel" "diff"
 run_phase35_detector "notification_center_observer_storage" "check-notification-center-observer-storage.py" "warn" \
   "No NotificationCenter observer registered without storage/removal" "diff"
+run_phase35_detector "unsynchronized_sendable_mock" "check-unsynchronized-sendable-mock.py" "block" \
+  "No unsynchronized @unchecked Sendable mock driven by concurrent tests" "scan"
 
 # 4. Coverage floors
 echo "--- Coverage Floors ---"
@@ -981,6 +983,18 @@ elif ! "$HARNESS_BIN" srd --help 2>&1 | grep -q '\bcoverage\b'; then
   record "coverage_by_fr" "pass" "harness srd coverage subcommand not available (skipped)"
 else
   COV_JSON=$("$HARNESS_BIN" srd coverage --json 2>/dev/null)
+  # A missing sidecar is absent infrastructure, not code drift — failing here
+  # false-reds EVERY branch (incl. develop) on machines where the hand-curated
+  # matrix was never created or was orphaned by a project rename (Heka dogfood
+  # finding R8, 2026-07-05). Detect via the structured JSON error field (NOT
+  # stderr-string matching — wording drift would route to the false-drift
+  # branch below, because empty fr_gaps/missing/stale parse as all-zeros).
+  COV_ERR=$(printf '%s' "$COV_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin).get('error',''))" 2>/dev/null || echo "unparseable")
+  if [ "$COV_ERR" = "sidecar_missing" ]; then
+    record "coverage_by_fr" "pass" "coverage-matrix sidecar absent — skipped (hand-curated file; see harness srd coverage)"
+    COV_SKIP=1
+  fi
+  if [ "${COV_SKIP:-0}" != "1" ]; then
   COV_GAPS=$(printf '%s' "$COV_JSON" | python3 -c "import json,sys; print(len(json.load(sys.stdin).get('fr_gaps', [])))" 2>/dev/null || echo "?")
   COV_MISSING=$(printf '%s' "$COV_JSON" | python3 -c "import json,sys; print(len(json.load(sys.stdin).get('missing_test_areas', [])))" 2>/dev/null || echo "?")
   COV_STALE=$(printf '%s' "$COV_JSON" | python3 -c "import json,sys; d=json.load(sys.stdin); print(len(d.get('fr_stale',[]))+len(d.get('nfr_stale',[])))" 2>/dev/null || echo "?")
@@ -992,6 +1006,7 @@ else
     fi
   else
     record "coverage_by_fr" "fail" "FR↔Tests matrix issues — gaps=$COV_GAPS missing=$COV_MISSING stale=$COV_STALE — run: harness srd coverage"
+  fi
   fi
 fi
 

@@ -136,6 +136,60 @@ if [ "$CLEAN_EXIT" -ne 0 ]; then
   exit 1
 fi
 
-echo "PASS: 5 assertions — hook blocks violations, identifies detector, honors both"
-echo "      bypass envvars, and passes a clean diff (no detector spuriously blocks)."
+# --- Assert 6: UNSYNCHRONIZED_SENDABLE_MOCK detector fires on its fixture ---
+# (fix/sync-mock-race-segv-bookmark-keys) An @unchecked Sendable mock with
+# unsynchronized state + a test file driving it via DispatchQueue.global must
+# block; removing the concurrent usage must pass again (detector-level
+# clean-pass, complementing Assert 5's no-PalaceTests-tree pass).
+mkdir -p PalaceTests/Mocks
+cat > PalaceTests/Mocks/RacyMock.swift <<'EOF'
+import Foundation
+class RacyMock: NSObject, @unchecked Sendable {
+    var registry = [String: Int]()
+    func set(_ v: Int, for k: String) { registry[k] = v }
+}
+EOF
+cat > PalaceTests/RacyMockTests.swift <<'EOF'
+import XCTest
+final class RacyMockTests: XCTestCase {
+    func testHammer() {
+        let mock = RacyMock()
+        for i in 0..<100 { DispatchQueue.global().async { mock.set(i, for: "k") } }
+    }
+}
+EOF
+git add PalaceTests
+set +e
+MOCK_OUT=$(echo "$JSON_INPUT" | bash "$HOOK" 2>&1)
+MOCK_EXIT=$?
+set -e
+if [ "$MOCK_EXIT" -eq 0 ] || ! echo "$MOCK_OUT" | grep -q "UNSYNCHRONIZED_SENDABLE_MOCK\|unsynchronized-sendable-mock"; then
+  echo "FAIL: unsynchronized-sendable-mock violation did not block (exit $MOCK_EXIT)"
+  echo "$MOCK_OUT" | sed 's/^/    /'
+  exit 1
+fi
+# Clean path: same mock, concurrent usage removed → must pass.
+cat > PalaceTests/RacyMockTests.swift <<'EOF'
+import XCTest
+final class RacyMockTests: XCTestCase {
+    func testSequential() {
+        let mock = RacyMock()
+        mock.set(1, for: "k")
+    }
+}
+EOF
+git add PalaceTests
+set +e
+MOCK_CLEAN_OUT=$(echo "$JSON_INPUT" | bash "$HOOK" 2>&1)
+MOCK_CLEAN_EXIT=$?
+set -e
+if [ "$MOCK_CLEAN_EXIT" -ne 0 ]; then
+  echo "FAIL: latent (non-concurrent) unsynchronized mock spuriously blocked (exit $MOCK_CLEAN_EXIT)"
+  echo "$MOCK_CLEAN_OUT" | sed 's/^/    /'
+  exit 1
+fi
+
+echo "PASS: 6 assertions — hook blocks violations, identifies detector, honors both"
+echo "      bypass envvars, passes a clean diff (no detector spuriously blocks),"
+echo "      and the unsynchronized-sendable-mock detector fires + clean-passes."
 exit 0

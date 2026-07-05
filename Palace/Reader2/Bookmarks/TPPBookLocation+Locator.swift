@@ -120,14 +120,19 @@ extension TPPBookLocation {
 }
 
 private extension TPPBookLocation {
-    static let hrefKey = "href"
+    // Shared wire keys derive from the single source of truth in
+    // `TPPBookmarkDictionaryRepresentation` — these strings are a persisted
+    // disk format shared with the bookmark round-trip and must never drift
+    // (STATE.SplitBrain fix, 2026-07-05).
+    static let hrefKey = TPPBookmarkDictionaryRepresentation.hrefKey
+    static let chapterProgressKey = TPPBookmarkDictionaryRepresentation.chapterProgressKey
+    static let bookProgressKey = TPPBookmarkDictionaryRepresentation.bookProgressKey
+    static let timeKey = TPPBookmarkDictionaryRepresentation.timeKey
+    static let chapterKey = TPPBookmarkDictionaryRepresentation.chapterKey
+    // Locator-only keys (not part of the bookmark dictionary format):
     static let typeKey = "@type"
-    static let chapterProgressKey = "progressWithinChapter"
-    static let bookProgressKey = "progressWithinBook"
     static let titleKey = "title"
-    static let timeKey = "time"
     static let partKey = "part"
-    static let chapterKey = "chapter"
     static let positionKey = "position"
     static let cssSelector = "cssSelector"
 }

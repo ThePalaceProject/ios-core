@@ -491,6 +491,62 @@ final class TPPReadiumBookmarkTests: XCTestCase {
         XCTAssertNotNil(description)
         XCTAssertFalse(description!.isEmpty)
     }
+
+    /// WIRE-FORMAT PIN (fix/sync-mock-race-segv-bookmark-keys, 2026-07-05).
+    ///
+    /// `TPPBookmarkDictionaryRepresentation` is the single source of truth
+    /// for the persisted bookmark/locator key strings; its doc explicitly
+    /// says the keys must never change or users lose access to bookmarks
+    /// already on disk. The locator round-trip (`TPPBookLocation+Locator`)
+    /// and deferred read-side literal sites (`TPPBookmarkFactory`,
+    /// `TPPBookmarkSpec.locatorChapterProgressionKey`,
+    /// `RecentlyReadingService`) all consume these exact strings. This test
+    /// pins the canonical raw values so a "refactor" of the SSOT constants
+    /// fails loudly instead of silently orphaning persisted positions.
+    func testWireFormatKeys_ArePinned() {
+        XCTAssertEqual(TPPBookmarkDictionaryRepresentation.hrefKey, "href")
+        XCTAssertEqual(TPPBookmarkDictionaryRepresentation.timeKey, "time")
+        XCTAssertEqual(TPPBookmarkDictionaryRepresentation.chapterKey, "chapter")
+        XCTAssertEqual(TPPBookmarkDictionaryRepresentation.chapterProgressKey, "progressWithinChapter")
+        XCTAssertEqual(TPPBookmarkDictionaryRepresentation.bookProgressKey, "progressWithinBook")
+    }
+
+    /// Round-trip companion to the pin: the dictionary a bookmark EMITS via
+    /// `toJSONDictionary()` must be keyed by the same pinned strings, so the
+    /// encode side can never drift from the SSOT either.
+    func testToJSONDictionary_UsesPinnedWireKeys() {
+        let bookmark = TPPReadiumBookmark(
+            annotationId: "anno-1",
+            href: "/chapter1.xhtml",
+            chapter: "1",
+            page: nil,
+            location: "{\"progressWithinBook\":0.25}",
+            progressWithinChapter: 0.5,
+            progressWithinBook: 0.25,
+            readingOrderItem: nil,
+            readingOrderItemOffsetMilliseconds: 0,
+            time: nil,
+            device: nil
+        )
+
+        let dict = bookmark?.toJSONDictionary()
+
+        // `toJSONDictionary()` merges the parsed `location` JSON over the
+        // top-level entries, so VALUES for overlapping keys reflect the
+        // normalized location (href slash-stripped, chapter re-derived).
+        // The wire contract this test pins is the KEY STRINGS — every
+        // pinned key must be present in the emitted dictionary, keyed by
+        // the exact canonical string.
+        let keys = Set(dict?.keys.map { $0 } ?? [])
+        for pinned in ["href", "chapter", "time", "progressWithinChapter", "progressWithinBook"] {
+            XCTAssertTrue(keys.contains(pinned),
+                          "emitted JSON must contain the pinned wire key '\(pinned)'")
+        }
+        // Progress values pass through the merge unchanged — pin them as a
+        // sanity check that the keys carry the right payload.
+        XCTAssertEqual(dict?["progressWithinChapter"] as? Float, 0.5)
+        XCTAssertEqual(dict?["progressWithinBook"] as? Float, 0.25)
+    }
 }
 
 // MARK: - Location Matching Tests
