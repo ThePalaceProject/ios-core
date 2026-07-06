@@ -3,6 +3,15 @@ import UIKit
 import PalaceLogging
 import PalaceCatalog
 
+// swift6: This type exclusively builds, mutates, and presents UIAlertController /
+// UIViewController objects (all @MainActor-isolated in the iOS SDK) and reads
+// UIApplication.shared / UIAccessibility. Isolating the whole type to the main actor
+// is the honest model — there is no genuinely-nonisolated member here. The
+// load-bearing DispatchQueue.main.async re-dispatches (the fe741015 CA-commit-race /
+// HelpSpot 17716 coordinator-wait fixes) are preserved exactly; where a dispatched
+// closure re-enters a @MainActor member, the body is wrapped in
+// MainActor.assumeIsolated — provably safe because the closure runs on the main queue.
+@MainActor
 @objcMembers class TPPAlertUtils: NSObject {
     /**
      Generates an alert view controller. If the `message` is non-nil, it will be
@@ -241,6 +250,7 @@ import PalaceCatalog
         // If a presenter is provided, present from it on main thread
         if let vc = viewController {
             DispatchQueue.main.async {
+              MainActor.assumeIsolated {
                 guard vc.presentedViewController == nil else {
                     Log.warn(#file, "Cannot present alert: view controller already presenting")
                     completion?()
@@ -261,11 +271,13 @@ import PalaceCatalog
                 if let coordinator = vc.transitionCoordinator {
                     coordinator.animate(alongsideTransition: nil) { _ in
                         DispatchQueue.main.async {
+                          MainActor.assumeIsolated {
                             presentFromViewControllerOrNil(alertController: alertController,
                                                            viewController: viewController,
                                                            animated: animated,
                                                            completion: completion,
                                                            retryCount: retryCount)
+                          }
                         }
                     }
                     return
@@ -282,12 +294,14 @@ import PalaceCatalog
                     return
                 }
                 safePresent(alertController, on: vc, animated: animated, completion: completion)
+              }
             }
             return
         }
 
         // SwiftUI-first: present from the app's top-most UIKit controller
         DispatchQueue.main.async {
+          MainActor.assumeIsolated {
             guard let root = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController() else {
                 Log.error(#file, "Cannot present alert: no root view controller available")
                 if let msg = alertController.message {
@@ -342,11 +356,13 @@ import PalaceCatalog
             if let coordinator = top.transitionCoordinator {
                 coordinator.animate(alongsideTransition: nil) { _ in
                     DispatchQueue.main.async {
+                      MainActor.assumeIsolated {
                         presentFromViewControllerOrNil(alertController: alertController,
                                                        viewController: viewController,
                                                        animated: animated,
                                                        completion: completion,
                                                        retryCount: retryCount)
+                      }
                     }
                 }
                 return
@@ -407,6 +423,7 @@ import PalaceCatalog
             } else {
                 safePresent(alertController, on: top, animated: animated, completion: completion)
             }
+          }
         }
     }
 
@@ -438,6 +455,7 @@ import PalaceCatalog
         // Exponential backoff: 0.4s, 0.8s, 1.6s
         let delay = 0.4 * pow(2.0, Double(retryCount))
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+          MainActor.assumeIsolated {
             presentFromViewControllerOrNil(
                 alertController: alertController,
                 viewController: viewController,
@@ -445,6 +463,7 @@ import PalaceCatalog
                 completion: completion,
                 retryCount: retryCount + 1
             )
+          }
         }
     }
 

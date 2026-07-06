@@ -480,7 +480,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     }
 
     private func addBookmark(at location: TPPBookmarkR3Location) {
-        Task {
+        Task { @MainActor in
             guard let bookmark = await bookmarksBusinessLogic.addBookmark(location) else {
                 let alert = TPPAlertUtils.alert(title: "Bookmarking Error",
                                                 message: "A bookmark could not be created on the current page.")

@@ -88,8 +88,14 @@ class TPPPresentationUtils: NSObject {
             // the in-flight transition to complete, then re-walk to the (possibly
             // new) topmost VC and present there. HelpSpot 17716 follow-up.
             if let coordinator = base.transitionCoordinator {
+                // Box the non-Sendable UIKit payload BEFORE the escaping coordinator
+                // completion so only the @unchecked-Sendable carrier crosses the
+                // closure boundary — `vc`/`completion` themselves never cross. The
+                // box is built, and later read, only on the main actor (both the
+                // coordinator completion and the nested main.async run on main), so
+                // the transfer is data-race-free. Dispatch structure unchanged.
+                let payload = MainActorPresentation(vc, completion)
                 coordinator.animate(alongsideTransition: nil) { _ in
-                    let payload = MainActorPresentation(vc, completion)
                     DispatchQueue.main.async {
                         safelyPresent(payload.viewController, animated: animated, completion: payload.completion)
                     }
