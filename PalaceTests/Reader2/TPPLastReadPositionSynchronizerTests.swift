@@ -1401,6 +1401,17 @@ final class TPPLastReadPositionSynchronizer_ConcurrencyTests: XCTestCase {
         super.tearDown()
     }
 
+    /// REGRESSION PIN for the 2026-07-04 SIGSEGV (fix/sync-mock-race-segv-bookmark-keys).
+    ///
+    /// This test hammers the shared mock through the `TPPBookRegistryProvider`
+    /// protocol from 100 concurrent threads. Production consumers
+    /// (`TPPLastReadPositionSynchronizer` et al.) are entitled to exactly this
+    /// usage — the provider protocol is `Sendable` and production
+    /// `TPPBookRegistry` is split-lock thread-safe. Before the mock was
+    /// lock-backed, this test raced ARC retain/release on
+    /// `TPPBookRegistryRecord.location`, corrupting the heap and segfaulting
+    /// a LATER test in this class. If the mock's lock is ever removed, this
+    /// test is the one that should crash — not its neighbors.
     func testConcurrentLocationUpdates_DoNotCrash() {
         // Arrange
         let book = SynchronizerTestFixtures.createTestBook()
@@ -1466,23 +1477,48 @@ final class TPPLastReadPositionSynchronizer_ConcurrencyTests: XCTestCase {
         XCTAssertEqual(results.count, 100)
     }
 
-    func testMultipleSynchronizersWithSameRegistry_DoNotConflict() {        // Arrange
-        let sync1 = TPPLastReadPositionSynchronizer(bookRegistry: mockRegistry)
-        let sync2 = TPPLastReadPositionSynchronizer(bookRegistry: mockRegistry)
+    /// Two synchronizers sharing ONE registry is the production pattern (e.g.
+    /// reader mount + a second sync trigger). This drives the REAL
+    /// `sync(for:book:drmDeviceID:)` path on both instances concurrently,
+    /// interleaved with location writes through the provider API — the
+    /// honest version of what this test's name has always claimed.
+    func testMultipleSynchronizersWithSameRegistry_DoNotConflict() async {
+        // Arrange
+        let registry = mockRegistry!
+        let writer1 = SynchronizerSpyWriter()
+        let writer2 = SynchronizerSpyWriter()
+        let sync1 = TPPLastReadPositionSynchronizer(bookRegistry: registry, positionWriter: writer1)
+        let sync2 = TPPLastReadPositionSynchronizer(bookRegistry: registry, positionWriter: writer2)
 
         let book = SynchronizerTestFixtures.createTestBook()
-        mockRegistry.addBook(book, location: nil, state: .downloadSuccessful, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+        registry.addBook(book, location: nil, state: .downloadSuccessful, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+        let publication = Publication(manifest: Manifest(
+            metadata: Metadata(title: "Concurrent Sync"),
+            readingOrder: [Link(href: "/chapter1.xhtml", mediaType: .xhtml)]
+        ))
+        let bookID = book.identifier
 
-        // Act - both synchronizers exist and can access the registry
-        XCTAssertNotNil(sync1)
-        XCTAssertNotNil(sync2)
+        // Act — both synchronizers sync concurrently while a third task
+        // writes locations through the same provider the synchronizers read.
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { await sync1.sync(for: publication, book: book, drmDeviceID: "device-A") }
+            group.addTask { await sync2.sync(for: publication, book: book, drmDeviceID: "device-B") }
+            group.addTask {
+                for i in 0..<50 {
+                    let location = SynchronizerTestFixtures.createBookLocation(progress: Double(i) / 50.0)
+                    registry.setLocation(location, forIdentifier: bookID)
+                }
+            }
+        }
 
-        let location = SynchronizerTestFixtures.createBookLocation(progress: 0.5)
-        mockRegistry.setLocation(location, forIdentifier: book.identifier)
-
-        // Assert - registry state is consistent
-        let storedLocation = mockRegistry.location(forIdentifier: book.identifier)
-        XCTAssertEqual(storedLocation?.locationString, location?.locationString)
+        // Assert — both synchronizers completed a REAL load through their
+        // writer, and the shared registry survived the interleaving intact.
+        let loaded1 = await writer1.loadedBookIDs
+        let loaded2 = await writer2.loadedBookIDs
+        XCTAssertEqual(loaded1, [bookID], "sync1 must delegate to its writer exactly once")
+        XCTAssertEqual(loaded2, [bookID], "sync2 must delegate to its writer exactly once")
+        XCTAssertNotNil(registry.location(forIdentifier: bookID),
+                        "registry must hold a consistent location after concurrent syncs + writes")
     }
 }
 

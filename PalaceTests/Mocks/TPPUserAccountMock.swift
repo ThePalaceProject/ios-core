@@ -9,6 +9,12 @@
 import Foundation
 @testable import Palace
 
+// unsync-sendable-mock-deferred: 18 unsynchronized vars, wide SignInLogic test
+// blast radius — locking deferred to a follow-up pass (found by
+// scripts/check-unsynchronized-sendable-mock.py during
+// fix/sync-mock-race-segv-bookmark-keys; see the wall entry
+// 2026-07-05-sync-mock-race.md). New unsynchronized @unchecked Sendable
+// mocks are BLOCKED by that detector — do not copy this deferral.
 class TPPUserAccountMock: TPPUserAccount, @unchecked Sendable {
     /// Test-only fixed library UUID. Per-library isolation semantics are
     /// exercised separately via `TPPMultiLibraryAccountMock` /

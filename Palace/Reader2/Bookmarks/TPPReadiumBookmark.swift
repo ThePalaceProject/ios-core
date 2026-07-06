@@ -11,16 +11,22 @@ import PalaceLogging
 /// - Important: These keys should not change. If they did, that will mean
 /// that a user won't be able to retrieve the bookmarks from disk anymore.
 ///
+/// This type is the SINGLE SOURCE for these wire keys. The locator
+/// round-trip in `TPPBookLocation+Locator.swift` derives its shared keys
+/// from here — do not re-declare the string literals elsewhere
+/// (STATE.SplitBrain: an independent copy that drifts silently breaks the
+/// bookmark↔locator round-trip for persisted positions). The canonical raw
+/// values are pinned by `TPPReadiumBookmarkTests.testWireFormatKeys_ArePinned`.
 @objc class TPPBookmarkDictionaryRepresentation: NSObject {
     fileprivate static let annotationIdKey = "annotationId"
     @objc static let hrefKey = "href"
     @objc static let locationKey = "location"
-    fileprivate static let timeKey = "time"
-    fileprivate static let chapterKey = "chapter"
+    static let timeKey = "time"
+    static let chapterKey = "chapter"
     fileprivate static let pageKey = "page"
     fileprivate static let deviceKey = "device"
-    fileprivate static let chapterProgressKey = "progressWithinChapter"
-    fileprivate static let bookProgressKey = "progressWithinBook"
+    static let chapterProgressKey = "progressWithinChapter"
+    static let bookProgressKey = "progressWithinBook"
     fileprivate static let readingOrderItem = "readingOrderItem"
     fileprivate static let readingOrderItemOffsetMilliseconds = "readingOrderItemOffsetMilliseconds"
 }
@@ -186,16 +192,16 @@ extension TPPReadiumBookmark {
 extension TPPReadiumBookmark {
     func toJSONDictionary() -> [String: Any] {
         var dict: [String: Any] = [:]
-        dict["annotationId"] = self.annotationId
-        dict["chapter"] = self.chapter
-        dict["page"] = self.page
-        dict["href"] = self.href
-        dict["progressWithinChapter"] = self.progressWithinChapter
-        dict["progressWithinBook"] = self.progressWithinBook
-        dict["device"] = self.device
-        dict["time"] = self.time
-        dict["readingOrderItemOffsetMilliseconds"] = self.readingOrderItemOffsetMilliseconds
-        dict["readingOrderItem"] = self.readingOrderItem
+        dict[TPPBookmarkDictionaryRepresentation.annotationIdKey] = self.annotationId
+        dict[TPPBookmarkDictionaryRepresentation.chapterKey] = self.chapter
+        dict[TPPBookmarkDictionaryRepresentation.pageKey] = self.page
+        dict[TPPBookmarkDictionaryRepresentation.hrefKey] = self.href
+        dict[TPPBookmarkDictionaryRepresentation.chapterProgressKey] = self.progressWithinChapter
+        dict[TPPBookmarkDictionaryRepresentation.bookProgressKey] = self.progressWithinBook
+        dict[TPPBookmarkDictionaryRepresentation.deviceKey] = self.device
+        dict[TPPBookmarkDictionaryRepresentation.timeKey] = self.time
+        dict[TPPBookmarkDictionaryRepresentation.readingOrderItemOffsetMilliseconds] = self.readingOrderItemOffsetMilliseconds
+        dict[TPPBookmarkDictionaryRepresentation.readingOrderItem] = self.readingOrderItem
 
         if let locationData = self.location.data(using: .utf8),
            let locationDict = try? JSONSerialization.jsonObject(with: locationData, options: []) as? [String: Any] {
