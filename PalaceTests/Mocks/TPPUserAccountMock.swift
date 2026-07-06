@@ -9,23 +9,53 @@
 import Foundation
 @testable import Palace
 
-// unsync-sendable-mock-deferred: 18 unsynchronized vars, wide SignInLogic test
-// blast radius — locking deferred to a follow-up pass (found by
-// scripts/check-unsynchronized-sendable-mock.py during
-// fix/sync-mock-race-segv-bookmark-keys; see the wall entry
-// 2026-07-05-sync-mock-race.md). New unsynchronized @unchecked Sendable
-// mocks are BLOCKED by that detector — do not copy this deferral.
+/// `@unchecked Sendable`: production `TPPUserAccount` is lock-backed
+/// (controlLock, 5a32a8cd2) and consumers may touch accounts across
+/// concurrency domains — `TPPCredentialConcurrencyTests` drives this mock
+/// from 50–100 concurrent threads. The mock HONORS that contract: all
+/// underscore-backed override storage is guarded by a single `mockLock`
+/// (segv-class fix, follow-up to wall entry 2026-07-05-sync-mock-race.md;
+/// same recipe as `TPPBookRegistryMock`).
+///
+/// Locking rules (mirror of the TPPBookRegistryMock review):
+/// - Public members take `mockLock` EXACTLY ONCE; no public member calls
+///   another public/overridable member (or `super`) while holding it —
+///   production getters route through OVERRIDDEN accessors
+///   (`hasCredentials()` → `credentials`), so re-entering would deadlock.
+///   Derivations use pure helpers on locked SNAPSHOTS instead
+///   (`UserAccountAuthHelper.hasCredentials(_:)`).
+/// - Production-locked members (`signInGeneration` → controlLock) are only
+///   touched OUTSIDE `mockLock` — nesting stays one-directional
+///   (production → mock via overridden getters), so no lock-order inversion.
+/// - The mutable `shared` singleton is guarded by `sharedLock` (the F-008
+///   in-flight-observer race on `resetShared` was previously unsynchronized).
+/// - `atomicUpdate` records its call under the lock but runs the block
+///   OUTSIDE it (each setter the block calls locks individually). This is
+///   weaker than production's whole-block atomicity — acceptable for the
+///   mock because tests assert call-recording, not cross-field invariants;
+///   documented here so nobody assumes otherwise.
 class TPPUserAccountMock: TPPUserAccount, @unchecked Sendable {
     /// Test-only fixed library UUID. Per-library isolation semantics are
     /// exercised separately via `TPPMultiLibraryAccountMock` /
     /// `TPPPerAccountIsolationTests`; here a single shared instance is fine.
     static let testLibraryUUID = "test-library-mock"
 
+    private let mockLock = NSLock()
+    private static let sharedLock = NSLock()
+
     /// Counts `removeAll()` invocations so reset tests can assert this
     /// library's credentials were cleared.
-    private(set) var removeAllCallCount = 0
+    private var _removeAllCallCount = 0
+    private(set) var removeAllCallCount: Int {
+        get { mockLock.withLock { _removeAllCallCount } }
+        set { mockLock.withLock { _removeAllCallCount = newValue } }
+    }
 
-    private static var shared = TPPUserAccountMock(libraryUUID: testLibraryUUID)
+    private static var _shared = TPPUserAccountMock(libraryUUID: testLibraryUUID)
+    private static var shared: TPPUserAccountMock {
+        get { sharedLock.withLock { _shared } }
+        set { sharedLock.withLock { _shared = newValue } }
+    }
 
     /// Tests that call `TPPUserAccountMock.sharedAccount(libraryUUID:)` get
     /// the fixed shared mock regardless of UUID — preserves the old behaviour.
@@ -43,100 +73,102 @@ class TPPUserAccountMock: TPPUserAccount, @unchecked Sendable {
 
     // MARK: - Variable redefinitions to avoid keychain
 
-    var _authDefinition: AccountDetails.Authentication?
+    private var __authDefinition: AccountDetails.Authentication?
+    var _authDefinition: AccountDetails.Authentication? {
+        get { mockLock.withLock { __authDefinition } }
+        set { mockLock.withLock { __authDefinition = newValue } }
+    }
     override var authDefinition: AccountDetails.Authentication? {
-        get {
-            return _authDefinition
-        }
-        set {
-            _authDefinition = newValue
-        }
+        get { _authDefinition }
+        set { _authDefinition = newValue }
     }
 
-    var _credentials: TPPCredentials?
+    private var __credentials: TPPCredentials?
+    var _credentials: TPPCredentials? {
+        get { mockLock.withLock { __credentials } }
+        set { mockLock.withLock { __credentials = newValue } }
+    }
     override var credentials: TPPCredentials? {
-        get {
-            return _credentials
-        }
-        set {
-            _credentials = newValue
-        }
+        get { _credentials }
+        set { _credentials = newValue }
     }
 
     private var _authorizationIdentifier: String?
     override var authorizationIdentifier: String? {
-        return _authorizationIdentifier
+        mockLock.withLock { _authorizationIdentifier }
     }
     override func setAuthorizationIdentifier(_ identifier: String) {
-        _authorizationIdentifier = identifier
+        mockLock.withLock { _authorizationIdentifier = identifier }
     }
 
     private var _deviceID: String?
     override var deviceID: String? {
-        return _deviceID
+        mockLock.withLock { _deviceID }
     }
     override func setDeviceID(_ newValue: String) {
-        _deviceID = newValue
+        mockLock.withLock { _deviceID = newValue }
     }
 
     private var _userID: String?
     override var userID: String? {
-        return _userID
+        mockLock.withLock { _userID }
     }
     override func setUserID(_ newValue: String) {
-        _userID = newValue
+        mockLock.withLock { _userID = newValue }
     }
 
     private var _adobeVendor: String?
     override var adobeVendor: String? {
-        return _adobeVendor
+        mockLock.withLock { _adobeVendor }
     }
     override func setAdobeVendor(_ newValue: String) {
-        _adobeVendor = newValue
+        mockLock.withLock { _adobeVendor = newValue }
     }
 
     private var _provider: String?
     override var provider: String? {
-        return _provider
+        mockLock.withLock { _provider }
     }
     override func setProvider(_ newValue: String) {
-        _provider = newValue
+        mockLock.withLock { _provider = newValue }
     }
 
     private var _patron: [String: Any]?
     override var patron: [String: Any]? {
-        return _patron
+        mockLock.withLock { _patron }
     }
     override func setPatron(_ newValue: [String: Any]) {
-        _patron = newValue
+        mockLock.withLock { _patron = newValue }
     }
 
     private var _adobeToken: String?
     override var adobeToken: String? {
-        return _adobeToken
+        mockLock.withLock { _adobeToken }
     }
     override func setAdobeToken(_ newValue: String) {
-        _adobeToken = newValue
+        mockLock.withLock { _adobeToken = newValue }
     }
     override func setAdobeToken(_ token: String, patron: [String: Any]) {
-        _adobeToken = token
-        _patron = patron
+        mockLock.withLock {
+            _adobeToken = token
+            _patron = patron
+        }
     }
 
     private var _licensor: [String: Any]?
     override var licensor: [String: Any]? {
-        return _licensor
+        mockLock.withLock { _licensor }
     }
     override func setLicensor(_ newValue: [String: Any]) {
-        _licensor = newValue
+        mockLock.withLock { _licensor = newValue }
     }
 
     private var _cookies: [HTTPCookie]?
     override var cookies: [HTTPCookie]? {
-        return _cookies
+        mockLock.withLock { _cookies }
     }
     override func setCookies(_ newValue: [HTTPCookie]) {
-        _cookies = newValue
+        mockLock.withLock { _cookies = newValue }
     }
 
     override var legacyAuthToken: String? {
@@ -145,53 +177,69 @@ class TPPUserAccountMock: TPPUserAccount, @unchecked Sendable {
 
     private var _authToken: String?
     override var authToken: String? {
-        return _authToken
+        mockLock.withLock { _authToken }
     }
 
     override func setAuthToken(_ token: String, barcode: String?, pin: String?, expirationDate: Date?) {
-        _authToken = token
-        _credentials = .token(authToken: token, barcode: barcode, pin: pin, expirationDate: expirationDate)
-        // Mirror real TPPUserAccount.setAuthToken: a fresh token clears any
-        // persisted .credentialsStale flag.
-        _authState = .loggedIn
+        mockLock.withLock {
+            _authToken = token
+            __credentials = .token(authToken: token, barcode: barcode, pin: pin, expirationDate: expirationDate)
+            // Mirror real TPPUserAccount.setAuthToken: a fresh token clears any
+            // persisted .credentialsStale flag.
+            _authState = .loggedIn
+        }
     }
 
     // MARK: - Auth State
 
     private var _authState: TPPAccountAuthState = .loggedOut
     override var authState: TPPAccountAuthState {
-        // If we have credentials but state is loggedOut, derive loggedIn state
-        if _authState == .loggedOut && hasCredentials() {
+        // If we have credentials but state is loggedOut, derive loggedIn
+        // state. The derivation uses the PURE helper on a locked snapshot —
+        // calling self.hasCredentials() here would re-enter mockLock via the
+        // overridden `credentials` getter.
+        let (state, creds) = mockLock.withLock { (_authState, __credentials) }
+        if state == .loggedOut && UserAccountAuthHelper.hasCredentials(creds) {
             return .loggedIn
         }
-        return _authState
+        return state
     }
 
     override func setAuthState(_ state: TPPAccountAuthState) {
-        _authState = state
+        mockLock.withLock { _authState = state }
     }
 
     override func markCredentialsStale() {
-        guard authState == .loggedIn else { return }
-        _authState = .credentialsStale
+        // Atomic derive-and-write: the guard and the transition happen under
+        // ONE lock acquisition (a read-then-write through the public members
+        // would TOCTOU-race concurrent markLoggedIn/setAuthToken calls).
+        mockLock.withLock {
+            let derived: TPPAccountAuthState =
+                (_authState == .loggedOut && UserAccountAuthHelper.hasCredentials(__credentials))
+                ? .loggedIn : _authState
+            guard derived == .loggedIn else { return }
+            _authState = .credentialsStale
+        }
     }
 
     override func markLoggedIn() {
-        _authState = .loggedIn
+        mockLock.withLock { _authState = .loggedIn }
     }
 
     override class func credentialSnapshot(for libraryUUID: String?) -> CredentialSnapshot {
         let mock = shared
-        let creds = mock._credentials
-        let hasCreds = mock.hasCredentials()
+        // One lock acquisition for a CONSISTENT snapshot; all derivation on
+        // the snapshot afterwards (helpers are pure).
+        let (creds, state, authDef) = mock.mockLock.withLock {
+            (mock.__credentials, mock._authState, mock.__authDefinition)
+        }
+        let hasCreds = UserAccountAuthHelper.hasCredentials(creds)
         let hasToken: Bool
         if let creds = creds, case .token = creds {
             hasToken = true
         } else {
             hasToken = false
         }
-
-        let state: TPPAccountAuthState = mock._authState
 
         var barcode: String?
         var pin: String?
@@ -220,18 +268,32 @@ class TPPUserAccountMock: TPPUserAccount, @unchecked Sendable {
             barcode: barcode,
             pin: pin,
             authToken: authToken,
-            authDefinition: mock.authDefinition,
+            authDefinition: authDef,
             cookies: nil
         )
     }
 
-    var atomicUpdateCallCount = 0
-    var atomicUpdateLibraryUUIDs: [String?] = []
+    private var _atomicUpdateCallCount = 0
+    var atomicUpdateCallCount: Int {
+        get { mockLock.withLock { _atomicUpdateCallCount } }
+        set { mockLock.withLock { _atomicUpdateCallCount = newValue } }
+    }
+    private var _atomicUpdateLibraryUUIDs: [String?] = []
+    var atomicUpdateLibraryUUIDs: [String?] {
+        get { mockLock.withLock { _atomicUpdateLibraryUUIDs } }
+        set { mockLock.withLock { _atomicUpdateLibraryUUIDs = newValue } }
+    }
 
     override func atomicUpdate(for libraryUUID: String?,
                                 _ block: (TPPUserAccount) -> Void) {
-        atomicUpdateCallCount += 1
-        atomicUpdateLibraryUUIDs.append(libraryUUID)
+        mockLock.withLock {
+            _atomicUpdateCallCount += 1
+            _atomicUpdateLibraryUUIDs.append(libraryUUID)
+        }
+        // Block runs OUTSIDE the lock: it calls back into this mock's locked
+        // setters, and holding mockLock across it would self-deadlock. See
+        // the class doc for the (documented) weaker-than-production
+        // atomicity this implies.
         block(self)
     }
 
@@ -254,26 +316,31 @@ class TPPUserAccountMock: TPPUserAccount, @unchecked Sendable {
     /// also call `businessLogic.userAccount.removeAll()` at the top of the
     /// test body as defense-in-depth.
     static func resetShared() {
-        shared = TPPUserAccountMock(libraryUUID: testLibraryUUID)
-        shared.removeAll()
+        let fresh = TPPUserAccountMock(libraryUUID: testLibraryUUID)
+        shared = fresh
+        fresh.removeAll()
     }
 
     // MARK: - Clean everything up
 
     override func removeAll() {
-        removeAllCallCount += 1
-        _adobeToken = nil
-        _patron = nil
-        _adobeVendor = nil
-        _provider = nil
-        _userID = nil
-        _deviceID = nil
-        _authDefinition = nil
-        _authToken = nil
-        _credentials = nil
-        _cookies = nil
-        _authorizationIdentifier = nil
-        _authState = .loggedOut
+        mockLock.withLock {
+            _removeAllCallCount += 1
+            _adobeToken = nil
+            _patron = nil
+            _adobeVendor = nil
+            _provider = nil
+            _userID = nil
+            _deviceID = nil
+            __authDefinition = nil
+            _authToken = nil
+            __credentials = nil
+            _cookies = nil
+            _authorizationIdentifier = nil
+            _authState = .loggedOut
+        }
+        // Production-locked member (controlLock) — touched OUTSIDE mockLock
+        // so lock nesting stays one-directional (see class doc).
         signInGeneration = 0
     }
 }

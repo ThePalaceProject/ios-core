@@ -73,10 +73,15 @@ Two compounding test-quality failures:
   mock from 50–100 threads (`refreshCredentialsFromKeychain` ×50 concurrent)
   — the same segv class as this entry, active today. 18 unsynchronized vars,
   wide SignInLogic blast radius → **scope-deferred** with marker + this
-  entry as the tracking record. Follow-up is PRIORITIZED: lock it in the
-  next dedicated pass (same recipe as `TPPBookRegistryMock`). Note the
-  file-level deferral marker blinds the detector to this mock entirely —
-  remove the marker in the same PR that adds the lock.
+  entry as the tracking record. **RESOLVED 2026-07-06
+  (fix/useraccount-mock-lock):** locked with the same recipe plus two
+  subclass-specific rules — production-locked members (`signInGeneration` →
+  controlLock) touched only OUTSIDE mockLock (one-directional nesting), and
+  derivations that previously called overridable members (`hasCredentials()`
+  → overridden `credentials`) now use the pure
+  `UserAccountAuthHelper.hasCredentials(_:)` on locked snapshots. The
+  mutable `static shared` (the F-008 race vector) got its own `sharedLock`.
+  Deferral marker removed; detector re-covers this mock.
 - `MockFeatureFlagProvider`, `MockPDFDocumentMetadata`, `MockReachability` —
   latent (no concurrent usage today); detector reports as notes, `--strict`
   escalates.

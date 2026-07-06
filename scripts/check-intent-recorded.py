@@ -183,6 +183,27 @@ def _tokenize(text: str) -> list[str]:
     return [t.lower() for t in _WORDLIKE_RE.findall(text)]
 
 
+def _near_miss_score(subject: str, name: str) -> tuple[int, int]:
+    """(longest consecutive shared-token run, total shared tokens) between a
+    commit subject and an intent-file name — used ONLY for failure-message
+    ranking (R9: the old message listed 80 candidates without naming the
+    near-miss or the rule, so a semantically-obvious pairing that missed the
+    4-consecutive bar looked like a missing file rather than a naming
+    mismatch)."""
+    subj_tokens = _tokenize(_strip_noise_prefixes(subject))
+    name_tokens = _tokenize(name)
+    shared = len(set(subj_tokens) & set(name_tokens))
+    longest = 0
+    for i in range(len(subj_tokens)):
+        for j in range(len(name_tokens)):
+            k = 0
+            while (i + k < len(subj_tokens) and j + k < len(name_tokens)
+                   and subj_tokens[i + k] == name_tokens[j + k]):
+                k += 1
+            longest = max(longest, k)
+    return (longest, shared)
+
+
 def _has_consecutive_token_match(subject: str, name: str, min_run: int) -> bool:
     """True if `name` shares ≥`min_run` consecutive tokens with `subject`.
 
@@ -394,7 +415,25 @@ def main(argv: list[str]) -> int:
                 print(f"DRY-RUN: would require intent under {intent_dir} "
                       f"matching subject: {subject!r}", file=sys.stderr)
             return 0
-        cand_names = ", ".join(c.name for c in candidates) or "(none)"
+        # R9: rank candidates by near-miss score so the operator sees the
+        # closest names + the matching rule instead of an undifferentiated
+        # 80-file list.
+        scored = sorted(
+            ((c, *_near_miss_score(subject, c.stem)) for c in candidates),
+            key=lambda t: (t[1], t[2]), reverse=True)
+        near = [f"{c.name} (run={r}, shared={s})" for c, r, s in scored[:3] if s > 0]
+        if near:
+            print("INTENT-MISSING: closest candidates (longest consecutive "
+                  "token run / total shared tokens):")
+            for line in near:
+                print(f"  - {line}")
+            print("Matching rule: shared ticket-key + ≥2 consecutive content "
+                  "tokens, OR ≥4 consecutive shared tokens between commit "
+                  "subject and intent-file name. Rename the intent file or "
+                  "reword the subject to satisfy it.")
+        # Full listing replaced by a count now that near-misses are ranked
+        # above (R9) — 80 undifferentiated names buried the signal.
+        cand_names = f"{len(candidates)} file(s) in {intent_dir}/" if candidates else "(none)"
         print(f"INTENT-MISSING: prod LOC added={stats.prod_loc_added} "
               f"≥ threshold={args.threshold_loc}; no intent file in "
               f"{intent_dir} matched subject: {subject!r}. "
