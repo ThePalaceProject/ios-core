@@ -10,6 +10,7 @@ import XCTest
 @testable import Palace
 
 /// SRS: AUDIO-006 -- Return prompt displays correctly after audiobook completion
+@MainActor
 final class TPPReturnPromptHelperTests: XCTestCase {
 
     /// SRS: AUDIO-006 -- Return prompt displays correctly after audiobook completion

@@ -51,7 +51,13 @@ public final class NowPlayingCoordinator {
     private var lastUpdateTime: Date = .distantPast
     private var lastIsPlaying: Bool = false
     private var pendingUpdate: Task<Void, Never>?
-    private var foregroundObserver: NSObjectProtocol?
+    /// Foreground-notification observer token. Held in a nonisolated
+    /// `@unchecked Sendable` box so the nonisolated `deinit` can remove it
+    /// WITHOUT reading a `@MainActor`-isolated stored property (which
+    /// `complete` mode rejects, and `MainActor.assumeIsolated` is banned in
+    /// deinit). Mirrors the codebase `ObserverTokenBox` pattern
+    /// (DLNavigator / TPPBookRegistry).
+    private let foregroundObserverBox = ObserverTokenBox()
 
     /// Injectable seam for `UIApplication.shared.applicationState`. Tests
     /// flip this to drive the background / foreground branches without
@@ -101,7 +107,7 @@ public final class NowPlayingCoordinator {
         // dry-stream guard fires without coupling AudiobookSessionManager.
         // Tests drive the guard via `applicationDidBecomeActive()` directly
         // so they don't depend on UIApplication notification timing.
-        foregroundObserver = NotificationCenter.default.addObserver(
+        foregroundObserverBox.token = NotificationCenter.default.addObserver(
             forName: UIApplication.didBecomeActiveNotification,
             object: nil,
             queue: .main
@@ -113,9 +119,7 @@ public final class NowPlayingCoordinator {
     }
 
     deinit {
-        if let observer = foregroundObserver {
-            NotificationCenter.default.removeObserver(observer)
-        }
+        foregroundObserverBox.removeObserver()
         Log.info(#file, "NowPlayingCoordinator deinitialized")
     }
 
@@ -342,5 +346,21 @@ public final class NowPlayingCoordinator {
     /// gating condition.
     func _test_setLastIsPlaying(_ playing: Bool) {
         lastIsPlaying = playing
+    }
+}
+
+/// Nonisolated `Sendable` holder for the foreground-notification observer
+/// token. Mirrors the codebase `ObserverTokenBox` pattern (DLNavigator /
+/// TPPBookRegistry): the `@MainActor`-isolated `NowPlayingCoordinator` cannot
+/// read an isolated stored property from its nonisolated `deinit`, so the
+/// token lives here instead. `token` is written exactly once (right after
+/// `addObserver` returns in `init`) and read only by `removeObserver()` —
+/// write-once-then-read confinement, hence `@unchecked Sendable`.
+private final class ObserverTokenBox: @unchecked Sendable {
+    var token: NSObjectProtocol?
+    func removeObserver() {
+        if let token {
+            NotificationCenter.default.removeObserver(token)
+        }
     }
 }

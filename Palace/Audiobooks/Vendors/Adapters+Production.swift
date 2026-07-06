@@ -62,7 +62,7 @@ final class ProductionAudiobookFileReader: AudiobookFileReading {
 final class ProductionBearerTokenRefresher: BearerTokenRefreshing {
     func refreshToken(
         from fulfillURL: URL,
-        completion: @escaping (MyBooksSimplifiedBearerToken?) -> Void
+        completion: @escaping @Sendable (MyBooksSimplifiedBearerToken?) -> Void
     ) {
         MyBooksSimplifiedBearerToken.refreshToken(from: fulfillURL, completion: completion)
     }
