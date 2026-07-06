@@ -417,7 +417,7 @@ struct AppContainer {
     }
 
     static func production() -> AppContainer {
-        _cached
+        _cachedValue()
     }
 
     /// The cached app-wide composition graph. Initially populated by Swift's
@@ -431,10 +431,25 @@ struct AppContainer {
     /// residual race window.
     ///
     /// swarm_4b64e4e0 Fix 2 — closes the H1 finding from swarm_f88ae9e3 A.
-    /// Production behaviour is unchanged: first call to `production()`
-    /// triggers the static-var lazy init, which runs `_buildCachedAppContainer()`
-    /// once; subsequent reads return the cached struct value.
-    private static var _cached: AppContainer = Self._buildCachedAppContainer()
+    /// Production behaviour is unchanged: first read materialises the value via
+    /// `_buildCachedAppContainer()` under the lock; subsequent reads return it.
+    ///
+    /// Swift 6 `complete`: `OSAllocatedUnfairLock`-guarded (matching this file's
+    /// `_sideloadedBookRegistry` precedent) instead of a bare mutable `static var`,
+    /// which is a data-race hazard under strict concurrency. The lock preserves the
+    /// prior lazy-once semantics for production callers (first `production()` read
+    /// builds once; the test-only rebuild seams reassign through the lock) without
+    /// pinning `AppContainer` to any actor.
+    private static let _cachedLock = OSAllocatedUnfairLock<AppContainer?>(initialState: nil)
+
+    private static func _cachedValue() -> AppContainer {
+        _cachedLock.withLock { slot in
+            if let existing = slot { return existing }
+            let built = Self._buildCachedAppContainer()
+            slot = built
+            return built
+        }
+    }
 
     /// Builds a fresh AppContainer composition graph. Extracted from the
     /// prior `static let _cached: AppContainer = { ... }()` lambda VERBATIM
@@ -453,8 +468,19 @@ struct AppContainer {
     /// real `registry.palaceproject.io` in unit tests. The executor is rebuilt
     /// with this on every `_resetForTesting()` (which re-runs the builder below),
     /// so the protocol applies to every test's graph. Follows AppContainer's
-    /// existing `static var` pattern (e.g. `_cached`).
-    internal static var testExecutorProtocolClasses: [AnyClass] = []
+    /// existing lock-backed static pattern (e.g. `_cached`, `_sideloadedBookRegistry`).
+    ///
+    /// Swift 6 `complete`: backed by an `OSAllocatedUnfairLock` rather than a bare
+    /// mutable `static var` (a data-race hazard). The computed accessor keeps the
+    /// `AppContainer.testExecutorProtocolClasses = [...]` / read API the test seams
+    /// use, so no call site changes. Empty in production — zero behaviour change.
+    private static let _testExecutorProtocolClassesLock =
+        OSAllocatedUnfairLock<[AnyClass]>(initialState: [])
+
+    internal static var testExecutorProtocolClasses: [AnyClass] {
+        get { _testExecutorProtocolClassesLock.withLock { $0 } }
+        set { _testExecutorProtocolClassesLock.withLock { $0 = newValue } }
+    }
 
     /// Builds the shared network executor. In production `testExecutorProtocolClasses`
     /// is empty, so this is the verbatim default `TPPNetworkExecutor(cachingStrategy:
@@ -485,7 +511,7 @@ struct AppContainer {
     /// (and the FIRST test of any run would escape even under DEBUG/CI).
     /// `PalaceTestSetup` calls this once, after installing the protocol classes.
     internal static func _rebuildCachedForTestProtocols() {
-        _cached = _buildCachedAppContainer()
+        _cachedLock.withLock { $0 = _buildCachedAppContainer() }
     }
 
     private static func _buildCachedAppContainer() -> AppContainer {
@@ -665,8 +691,13 @@ struct AppContainer {
         // against (120s main-jam "auth-state-bleed"). Draining (with run-loop
         // pumping) closes that residual race globally at every test boundary.
         // WS-0 follow-up; see AccountsManager.cancelAndDrainBackgroundWork.
-        _cached.accountsManager.cancelAndDrainBackgroundWork()
-        _cached = Self._buildCachedAppContainer()
+        // Drain the prior cached graph's crawl, then rebuild. Build OUTSIDE the
+        // lock (`_buildCachedAppContainer` must not re-enter the lock) and assign
+        // the fresh graph through it — same reassign semantics as the old
+        // `_cached = ...`, now race-safe under `complete`.
+        _cachedValue().accountsManager.cancelAndDrainBackgroundWork()
+        let rebuilt = Self._buildCachedAppContainer()
+        _cachedLock.withLock { $0 = rebuilt }
         // Reset the process-wide audiobook session/presenter statics — the only
         // graph members `_buildCachedAppContainer()` does NOT rebuild. Left
         // intact, `_audiobookSessionPresenter` carries active-session state (and

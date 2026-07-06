@@ -9,7 +9,14 @@
 import Foundation
 
 /// Page bookmark object for page synchronization between devices
-@objc class TPPPDFPageBookmark: NSObject, Codable, Bookmark {
+///
+/// Swift 6 `complete` — `@unchecked Sendable` invariant: `type` and `page` are
+/// immutable `let`s; `annotationID` is a `String?` set once (right after decode /
+/// server round-trip, when the annotation URL comes back) and only read thereafter
+/// — write-once-then-read confinement, no concurrent mutation. Lets arrays of these
+/// cross the `@Sendable` bookmark-fetch completion into the main-actor
+/// `pdfBookmarks` assignment in `TPPPDFDocumentMetadata`. Documented invariant.
+@objc class TPPPDFPageBookmark: NSObject, Codable, Bookmark, @unchecked Sendable {
     let type: String
     let page: Int
     var annotationID: String?

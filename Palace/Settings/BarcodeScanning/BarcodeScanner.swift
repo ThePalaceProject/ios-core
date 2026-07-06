@@ -6,7 +6,10 @@
 //  Copyright © 2023 The Palace Project. All rights reserved.
 //
 
-import AVFoundation
+// `@preconcurrency`: AVFoundation is not Sendable-audited upstream; `AVCaptureSession`
+// is used off the main thread by design (start/stop on a background queue). Matches
+// the `AudiobookSamplePlayer` precedent. Honest ceiling until AVFoundation annotates.
+@preconcurrency import AVFoundation
 import UIKit
 
 fileprivate extension CGRect {
@@ -106,18 +109,22 @@ class BarcodeScanner: UIViewController, @preconcurrency AVCaptureMetadataOutputO
 
     private func startCaptureSession() {
         // -[AVCaptureSession startRunning] should be called from background thread. Calling it on the main thread can lead to UI unresponsiveness
+        // Snapshot the session on the main actor so the off-main closure captures the
+        // (`@preconcurrency`) `AVCaptureSession` directly, not `@MainActor self`.
+        let session = captureSession
         DispatchQueue.global(qos: .background).async {
-            if !self.captureSession.isRunning {
-                self.captureSession.startRunning()
+            if let session, !session.isRunning {
+                session.startRunning()
             }
         }
     }
 
     private func stopCaptureSession() {
         // -[AVCaptureSession startRunning] should be called from background thread. Calling it on the main thread can lead to UI unresponsiveness
+        let session = captureSession
         DispatchQueue.global(qos: .background).async {
-            if self.captureSession.isRunning {
-                self.captureSession.stopRunning()
+            if let session, session.isRunning {
+                session.stopRunning()
             }
         }
     }

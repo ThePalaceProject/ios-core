@@ -10,20 +10,19 @@ import CarPlay
 import UIKit
 import PalaceLogging
 
-/// Transports the non-`Sendable` completion handler across the `@Sendable`
-/// `Task` boundary in `artwork(for:completion:)`. The wrapped closure is ONLY
-/// ever invoked inside `await MainActor.run { ... }` — never off the main actor
-/// and never concurrently — so `@unchecked Sendable` is sound: the box merely
-/// satisfies the capture check without rippling `@Sendable` onto the public
-/// completion-handler signature. Mirrors `ImageCompletionBox` in
-/// `Palace/Utilities/ImageCache/ImageLoaderImpl.swift`.
-private final class CarPlayImageCompletionBox: @unchecked Sendable {
-    let call: (UIImage?) -> Void
-    init(_ call: @escaping (UIImage?) -> Void) { self.call = call }
-}
-
 /// Provides artwork images for CarPlay audiobook display
 /// Handles async loading, caching, and placeholder generation
+///
+/// `@MainActor`: every rendering path touches main-actor UIKit — `UIScreen.main`,
+/// `UIGraphicsImageRenderer`, `NYPLTenPrintCoverView`, `CPImageSet` — and its
+/// consumers (`CarPlayTemplateBuilder`, `CarPlayTemplateManager`) are already
+/// main-actor CarPlay UI builders. Hoisting the isolation to the type is the
+/// `complete`-mode fix for the "main-actor API from nonisolated context" warnings
+/// in `processForCarPlay`/`generatePlaceholder`, and makes `self` a `Sendable`
+/// main-actor reference so the async `Task` in `artwork(for:)` no longer needs the
+/// completion-box hop. `loadArtwork`'s `URLSession` await runs fine on the main
+/// actor (it suspends, it doesn't block).
+@MainActor
 final class CarPlayImageProvider {
 
     // MARK: - Constants
@@ -67,20 +66,18 @@ final class CarPlayImageProvider {
             return
         }
 
-        // Load asynchronously. Box the non-Sendable completion so it can cross
-        // the @Sendable Task boundary; it is only ever invoked inside
-        // MainActor.run, never off-main and never concurrently.
-        let completionBox = CarPlayImageCompletionBox(completion)
-        Task {
+        // Load asynchronously on the main actor (the type is `@MainActor`, so the
+        // Task inherits that isolation and `self` is a Sendable main-actor ref —
+        // no completion-box hop needed). `loadArtwork`'s `URLSession` await
+        // suspends without blocking main; the completion is invoked on main.
+        Task { @MainActor in
             let image = await loadArtwork(for: book)
             let finalImage = image ?? generatePlaceholder(for: book)
             let processed = processForCarPlay(finalImage)
 
             imageLoader.set(processed, for: cacheKey)
 
-            await MainActor.run {
-                completionBox.call(processed)
-            }
+            completion(processed)
         }
     }
 

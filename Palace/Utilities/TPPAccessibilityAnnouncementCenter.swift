@@ -34,9 +34,17 @@ extension Notification.Name {
 // guarded by `lock` (NSLock); the injected handlers are immutable `let`s.
 // Safe to capture `self` in the main-queue dispatch and observer closures.
 final class TPPAccessibilityAnnouncementCenter: @unchecked Sendable {
-    typealias PostHandler = (UIAccessibility.Notification, String) -> Void
-    typealias VoiceOverRunningProvider = () -> Bool
-    typealias TimeProvider = () -> Date
+    // Swift 6 `complete`: the injected handlers are stored `let`s captured into
+    // `@Sendable` main-queue dispatches (e.g. `[postHandler]` in `announce`), so the
+    // handler types are `@Sendable`. `PostHandler` is additionally `@MainActor`
+    // because posting a VoiceOver announcement is a main-actor UIKit operation and
+    // is only ever invoked on the main queue; the default value calls the
+    // `@MainActor` `UIAccessibility.post`. The VoiceOver-running and time providers
+    // stay nonisolated `@Sendable` (read from `announce`, which may run off-main);
+    // their defaults read thread-safe values.
+    typealias PostHandler = @MainActor @Sendable (UIAccessibility.Notification, String) -> Void
+    typealias VoiceOverRunningProvider = @Sendable () -> Bool
+    typealias TimeProvider = @Sendable () -> Date
 
     private let postHandler: PostHandler
     private let isVoiceOverRunning: VoiceOverRunningProvider
@@ -57,10 +65,26 @@ final class TPPAccessibilityAnnouncementCenter: @unchecked Sendable {
     private var pendingDrainWorkItem: DispatchWorkItem?
     private var transitionObserver: NSObjectProtocol?
     private var announcementFinishedObserver: NSObjectProtocol?
+    private var voiceOverStatusObserver: NSObjectProtocol?
+
+    /// Thread-safe cache of `UIAccessibility.isVoiceOverRunning` (which is
+    /// `@MainActor`-isolated under `complete`). `announce(_:)` — the caller of the
+    /// VoiceOver provider — can run off the main thread (e.g. background download
+    /// progress callbacks), so it needs an off-main-readable value. This lock-backed
+    /// box is seeded once on the main actor and refreshed by the
+    /// `voiceOverStatusDidChange` observer; the default provider closure reads it
+    /// nonisolated. Preserves the prior behavior (the old code read the thread-safe
+    /// flag directly off-main) without an off-main `@MainActor` access.
+    private let voiceOverRunningCache = LockedFlag(initialValue: false)
+
+    /// Seeds `voiceOverRunningCache` from the real flag on the main actor.
+    @MainActor private func seedVoiceOverRunningCache() {
+        voiceOverRunningCache.set(UIAccessibility.isVoiceOverRunning)
+    }
 
     init(
         postHandler: @escaping PostHandler = { UIAccessibility.post(notification: $0, argument: $1) },
-        isVoiceOverRunning: @escaping VoiceOverRunningProvider = { UIAccessibility.isVoiceOverRunning },
+        isVoiceOverRunning: VoiceOverRunningProvider? = nil,
         timeProvider: @escaping TimeProvider = { Date() },
         progressStep: Int = 20,
         deduplicationInterval: TimeInterval = 2.0,
@@ -68,13 +92,27 @@ final class TPPAccessibilityAnnouncementCenter: @unchecked Sendable {
         announcementTimeout: TimeInterval = 4.0
     ) {
         self.postHandler = postHandler
-        self.isVoiceOverRunning = isVoiceOverRunning
+        // When no provider is injected (production), read the lock-backed
+        // VoiceOver-running cache, which is seeded/refreshed on the main actor.
+        // Tests inject their own deterministic provider.
+        let cache = voiceOverRunningCache
+        self.isVoiceOverRunning = isVoiceOverRunning ?? { cache.get() }
         self.timeProvider = timeProvider
         self.progressStep = max(5, progressStep)
         self.deduplicationInterval = deduplicationInterval
         self.transitionSettleDelay = transitionSettleDelay
         self.announcementTimeout = announcementTimeout
         setupObservers()
+        // Seed the cache from the real flag. When constructed on the main thread
+        // (the production path, via AppContainer) seed SYNCHRONOUSLY so there is
+        // no startup window in which `announce()` reads a stale `false` and
+        // suppresses a VoiceOver announcement; otherwise seed as soon as we can
+        // hop to the main actor.
+        if Thread.isMainThread {
+            MainActor.assumeIsolated { seedVoiceOverRunningCache() }
+        } else {
+            Task { @MainActor [weak self] in self?.seedVoiceOverRunningCache() }
+        }
     }
 
     deinit {
@@ -82,6 +120,9 @@ final class TPPAccessibilityAnnouncementCenter: @unchecked Sendable {
             NotificationCenter.default.removeObserver(observer)
         }
         if let observer = announcementFinishedObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        if let observer = voiceOverStatusObserver {
             NotificationCenter.default.removeObserver(observer)
         }
         pendingDrainWorkItem?.cancel()
@@ -241,7 +282,11 @@ final class TPPAccessibilityAnnouncementCenter: @unchecked Sendable {
         } else {
             lock.unlock()
             DispatchQueue.main.async { [postHandler] in
-                postHandler(.announcement, message)
+                // On the main queue; `assumeIsolated` to call the `@MainActor`
+                // post handler.
+                MainActor.assumeIsolated {
+                    postHandler(.announcement, message)
+                }
             }
         }
     }
@@ -266,7 +311,12 @@ final class TPPAccessibilityAnnouncementCenter: @unchecked Sendable {
         let message = queuedAnnouncements.removeFirst()
         lock.unlock()
 
-        postHandler(.announcement, message)
+        // `drainNext` is only ever scheduled via `DispatchQueue.main.asyncAfter`
+        // (see `scheduleQueueDrain` and the work item below), so we are provably
+        // on the main actor; `assumeIsolated` to call the `@MainActor` post handler.
+        MainActor.assumeIsolated {
+            postHandler(.announcement, message)
+        }
 
         let workItem = DispatchWorkItem { [weak self] in
             self?.drainNext()
@@ -322,6 +372,17 @@ final class TPPAccessibilityAnnouncementCenter: @unchecked Sendable {
         ) { [weak self] _ in
             self?.onAnnouncementFinished()
         }
+
+        // Refresh the off-main-readable VoiceOver-running cache whenever the OS
+        // toggles VoiceOver. Delivered on `.main`, so the `@MainActor`
+        // `UIAccessibility.isVoiceOverRunning` read is valid.
+        voiceOverStatusObserver = NotificationCenter.default.addObserver(
+            forName: UIAccessibility.voiceOverStatusDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.seedVoiceOverRunningCache() }
+        }
     }
 
     // MARK: - Private — Deduplication
@@ -362,4 +423,19 @@ final class TPPAccessibilityAnnouncementCenter: @unchecked Sendable {
         lastProgressBucketByKey[identifier] = bucket
         return true
     }
+}
+
+// MARK: - LockedFlag
+
+/// Minimal lock-protected `Bool`, readable/writable from any thread. Backs the
+/// off-main VoiceOver-running cache in `TPPAccessibilityAnnouncementCenter`.
+/// Mirrors the `AccountBoolFlag` lock-backed-`Bool` precedent.
+private final class LockedFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: Bool
+
+    init(initialValue: Bool) { self.value = initialValue }
+
+    func get() -> Bool { lock.withLock { value } }
+    func set(_ newValue: Bool) { lock.withLock { value = newValue } }
 }

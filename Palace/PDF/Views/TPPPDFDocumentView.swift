@@ -7,7 +7,10 @@
 //
 
 import SwiftUI
-import PDFKit
+// `@preconcurrency`: PDFKit is not Sendable-audited upstream; its `PDFView`,
+// `PDFDocument`, and the `PDFViewDelegate` requirement cross into this file's
+// main-actor SwiftUI/coordinator paths. Matches the sibling `TPPPDFView.swift`.
+@preconcurrency import PDFKit
 import Combine
 
 /// Wraps PDFKit PDFView control

@@ -1,6 +1,11 @@
 import UIKit
 import Combine
-import ReadiumShared
+// `@preconcurrency`: ReadiumShared is not Sendable-audited upstream; its
+// `Publication`, `Link`, and `Locator` cross `await` boundaries into this
+// `@MainActor` type (TOC/positions loads, sync, locator conversion). Matches the
+// established convention in `TPPBaseReaderViewController`, `ReaderModule`,
+// `TPPLastReadPositionSynchronizer`, etc. Honest ceiling until Readium annotates.
+@preconcurrency import ReadiumShared
 import PalaceLogging
 #if LCP
 import ReadiumLCP

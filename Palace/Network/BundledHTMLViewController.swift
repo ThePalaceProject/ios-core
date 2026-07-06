@@ -27,8 +27,19 @@ import WebKit
     }
 
     deinit {
-        self.webView.navigationDelegate = nil
-        self.webView.stopLoading()
+        // `WKWebView.navigationDelegate` and `stopLoading()` are `@MainActor`-
+        // isolated, but `deinit` is nonisolated and NOT guaranteed to run on the
+        // main thread — so `MainActor.assumeIsolated` here is banned (it would risk
+        // a `fatalError`). Instead capture the `WKWebView` (a value the closure
+        // retains for the duration of the hop) and perform the defensive teardown on
+        // the main actor. Mirrors the `TPPLoadingViewController.stopLoading()` and
+        // `CarPlayTemplateManager` deinit patterns. WKWebView also self-cleans on its
+        // own dealloc, so this is belt-and-suspenders, not load-bearing.
+        let webViewToClean = self.webView
+        DispatchQueue.main.async {
+            webViewToClean.navigationDelegate = nil
+            webViewToClean.stopLoading()
+        }
     }
 
     override func viewDidLoad() {
