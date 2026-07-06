@@ -40,8 +40,18 @@ let DefaultActionIdentifier = "UNNotificationDefaultActionIdentifier"
 /// - FCM token management with the library server
 ///
 /// This service is the sole `UNUserNotificationCenterDelegate` for the app.
+// Swift 6 `complete` — `@unchecked Sendable` invariant: `self` is captured into the
+// Firebase Messaging `@Sendable` completion handlers, the `@MainActor` notification
+// Tasks, and the `.main` NotificationCenter observers. The immutable deps
+// (`notificationCenter`, `accountsManager`, `networkExecutor`, `bookRegistry`,
+// `skipsProductionAuthSubscription`) are all `let`s over Sendable types; the only two
+// mutable `var`s (`authStateSubscription`, `lastObservedAuthState`) are guarded by
+// `authStateLock`. This also makes the `static let shared` singleton concurrency-safe.
+// The class-level `@MainActor` alternative is intentionally deferred (see the
+// `@preconcurrency import FirebaseMessaging` note) because callbacks run off-main.
+// Documented invariant, not a bare waiver.
 @objcMembers
-class NotificationService: NSObject, UNUserNotificationCenterDelegate, MessagingDelegate {
+class NotificationService: NSObject, UNUserNotificationCenterDelegate, MessagingDelegate, @unchecked Sendable {
 
     /// Token data structure
     ///
@@ -66,13 +76,20 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
     private let networkExecutor: TPPNetworkExecutor
     private let bookRegistry: TPPBookRegistryProvider
 
+    /// Guards the two mutable `var`s below (`authStateSubscription`,
+    /// `lastObservedAuthState`) so the class can be `@unchecked Sendable` (see the
+    /// type declaration). Both were previously main-confined by the `@MainActor`
+    /// `UserAccountPublisher` emission, but the class-level `@MainActor` decision is
+    /// deliberately deferred (Firebase callbacks run off-main), so an explicit lock
+    /// makes the confinement sound under `complete` rather than assumed.
+    private let authStateLock = NSLock()
     /// Subscription to the auth-state-change publisher. Set in
     /// `subscribeToAuthStateChanges(_:retry:)`. Held to keep the
-    /// subscription alive for the lifetime of the service.
+    /// subscription alive for the lifetime of the service. Guarded by `authStateLock`.
     private var authStateSubscription: AnyCancellable?
     /// Last observed auth state — used to decide whether the next
     /// emission is a recovery transition (i.e. landed on `.loggedIn`
-    /// from a non-`.loggedIn` state). Nil before any emission.
+    /// from a non-`.loggedIn` state). Nil before any emission. Guarded by `authStateLock`.
     private var lastObservedAuthState: TPPAccountAuthState?
     /// True when this instance was created with the test-only
     /// `init(authStatePublisher:onAuthStateRetryRequested:)` so the
@@ -176,10 +193,13 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
         _ publisher: AnyPublisher<TPPAccountAuthState, Never>,
         retry: @escaping () -> Void
     ) {
-        authStateSubscription = publisher.sink { [weak self] newState in
+        let subscription = publisher.sink { [weak self] newState in
             guard let self else { return }
-            let previous = self.lastObservedAuthState
-            self.lastObservedAuthState = newState
+            let previous = self.authStateLock.withLock { () -> TPPAccountAuthState? in
+                let prior = self.lastObservedAuthState
+                self.lastObservedAuthState = newState
+                return prior
+            }
             // Without a prior state we have no transition to evaluate —
             // just record the first emission as the new baseline.
             guard let previous else { return }
@@ -192,15 +212,18 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
             Log.info(#file, "[FCM_REG] auth-state recovery detected: \(previous)→\(newState), hasUpdatedToken=\(flag) — re-attempting token registration")
             retry()
         }
+        authStateLock.withLock { authStateSubscription = subscription }
     }
 
     /// Cancels the auth-state subscription. Used by tests to deflake
     /// teardown; production code holds the subscription for the full
     /// app lifetime.
     func cancelAuthStateSubscription() {
-        authStateSubscription?.cancel()
-        authStateSubscription = nil
-        lastObservedAuthState = nil
+        authStateLock.withLock {
+            authStateSubscription?.cancel()
+            authStateSubscription = nil
+            lastObservedAuthState = nil
+        }
     }
 
     /// Pure decision helper for the auth-state-change retry path.
@@ -530,6 +553,10 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
         // (`.detailsLoaded` + supports / does-not-support, `.detailsFailed`,
         // nil-account) without a `UNNotificationResponse` round-trip.
         if isHoldNotification {
+            // Box the non-`Sendable` UNUserNotificationCenter completion handler so
+            // it can cross into the `@Sendable @MainActor` navigation Task; it is
+            // invoked exactly once, on the main actor. Mirrors `ImageCompletionBox`.
+            let completionBox = NotificationCompletionBox(completionHandler)
             Task { @MainActor in
                 let outcome = await Self.decideHoldNavigation(
                     currentAccount: self.accountsManager.currentAccount
@@ -545,7 +572,7 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
                 case .skipDetailsFailed:
                     Log.warn(#file, "[Notification] Cannot navigate to Holds - awaitReady failed")
                 }
-                completionHandler()
+                completionBox.call()
             }
         } else {
             completionHandler()
@@ -856,4 +883,17 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
             }
         }
     }
+}
+
+// MARK: - NotificationCompletionBox
+
+/// Carries the non-`Sendable` `UNUserNotificationCenter` completion handler across
+/// the `@Sendable @MainActor` hold-navigation Task in
+/// `userNotificationCenter(_:didReceive:withCompletionHandler:)`. Invoked exactly
+/// once, on the main actor, never concurrently — so `@unchecked Sendable` is sound.
+/// Mirrors `ImageCompletionBox` / `CarPlayImageCompletionBox`.
+private final class NotificationCompletionBox: @unchecked Sendable {
+    private let handler: () -> Void
+    init(_ handler: @escaping () -> Void) { self.handler = handler }
+    func call() { handler() }
 }

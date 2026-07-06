@@ -28,9 +28,22 @@ private struct TPPNetworkTaskInfo {
 /// This class responds to URLSession events related to the tasks being
 /// issued on the URLSession, keeping a tally of the related completion
 /// handlers in a thread-safe way.
-class TPPNetworkResponder: NSObject {
+///
+/// Swift 6 `complete` — `@unchecked Sendable` invariant: `URLSession` retains this
+/// as its delegate and delivers callbacks across its own (off-main) queues, so `self`
+/// crosses concurrency boundaries. All mutable state is guarded: `taskInfo` by the
+/// serial `taskInfoQueue`, `retriedURLs` and `tokenRefreshAttempts` by
+/// `retriedURLsLock`; `credentialsProvider` is a `weak var` written once in `init`
+/// and only read thereafter; the remaining stored members are immutable `let`s.
+/// Documented invariant, not a bare waiver. (Critical-path: isolation via existing
+/// locks only — no broadening of the 401/auth decision.)
+class TPPNetworkResponder: NSObject, @unchecked Sendable {
     typealias TaskID = Int
 
+    /// Guarded by `retriedURLsLock` at every access (reset in `clearAllRetries`,
+    /// read+incremented in the 401 delegate path). Previously a bare `var` racing
+    /// between the URLSession delegate queue and `clearAllRetries`; the lock makes
+    /// the confinement sound under `complete` without changing the retry semantics.
     private var tokenRefreshAttempts: Int = 0
     private var taskInfo: [TaskID: TPPNetworkTaskInfo]
     private let useFallbackCaching: Bool
@@ -376,8 +389,17 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
 
             if httpResponse.statusCode == 401 {
                 let snap = AppContainer.production().accountsManager.currentUserAccount.credentialSnapshot()
-                if (snap.authDefinition?.isToken ?? false) && tokenRefreshAttempts < 2 {
-                    tokenRefreshAttempts += 1
+                // Atomic check-and-increment under `retriedURLsLock` (matches the
+                // reset in `clearAllRetries`) so the token-refresh budget can't race
+                // across concurrent 401 delegate callbacks.
+                let shouldRefreshToken: Bool = retriedURLsLock.withLock {
+                    if (snap.authDefinition?.isToken ?? false) && tokenRefreshAttempts < 2 {
+                        tokenRefreshAttempts += 1
+                        return true
+                    }
+                    return false
+                }
+                if shouldRefreshToken {
                     return handleExpiredTokenIfNeeded(for: httpResponse, with: task)
                 }
 
