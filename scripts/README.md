@@ -37,9 +37,9 @@ These five scripts handle most of the day-to-day work. Read these first if you o
 
 | Script | What it does | Called by |
 |--------|--------------|-----------|
-| `setup-repo-drm.sh` | Initial repo setup with Adobe RMSDK / LCP wired in. | `unit-testing.yml`, `ui-testing.yml`, `upload.yml`, `upload-on-merge.yml` |
+| `setup-repo-drm.sh` | Initial repo setup with Adobe RMSDK / LCP wired in. | `unit-testing.yml`, `upload.yml`, `upload-on-merge.yml` |
 | `setup-repo-nodrm.sh` | Initial repo setup for the open-source `Palace-noDRM` target. | `non-drm-build.yml` |
-| `build-3rd-party-dependencies.sh` | Builds non-Carthage third-party deps (Readium etc.). | `unit-testing.yml`, `ui-testing.yml`, `non-drm-build.yml`, `upload*.yml` |
+| `build-3rd-party-dependencies.sh` | Builds non-Carthage third-party deps (Readium etc.). | `unit-testing.yml`, `non-drm-build.yml`, `upload*.yml` |
 | `build-carthage.sh` | Carthage bootstrap for binary frameworks (DRM path: also fetches AudioEngine + builds R2LCPClient). | invoked by `build-3rd-party-dependencies.sh` |
 | `bootstrap-drm.sh` | Pulls Adobe RMSDK / LCP into the working tree. | dev/local |
 | `fetch-audioengine.sh` | Fetches AudioEngine and unzips it into the build tree. | dev/local |
@@ -62,7 +62,7 @@ These five scripts handle most of the day-to-day work. Read these first if you o
 | `verify-pr.sh` | One-shot pre-PR battery: build, tests, lint, coverage, mutation, a11y. | dev/local (run before pushing) |
 | `pre-push-test-gate.sh` | Pre-push hook that runs the changed-file test selection before allowing `git push`. | local git hook |
 | `resolve-tests-for.py` | Maps a changed production-file path to the XCTest class selectors that cover it. | `verify-pr.sh`, `palace_mutate.py` |
-| `parse-xcresult.py` | Parses an `.xcresult` bundle into JSON for downstream reporting. | `unit-testing.yml`, `ui-testing.yml` |
+| `parse-xcresult.py` | Parses an `.xcresult` bundle into JSON for downstream reporting. | `unit-testing.yml` |
 | `parse-test-results.py` | Older test-results parser; kept for compatibility. | dev/local |
 | `coverage-report.py` | Extracts code coverage from `.xcresult` and writes JSON. | `unit-testing.yml` |
 | `coverage-floors.json` | Per-target coverage thresholds (see `README_coverage_floors.md`). | `enforce_coverage_floors.py` |

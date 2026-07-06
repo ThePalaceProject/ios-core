@@ -12,7 +12,6 @@ exclude:
   - Palace/Reader2/ReaderStackConfiguration/AdobeDRM
   - Palace/Reader2/ReaderStackConfiguration/LCP
   - PalaceTests
-  - PalaceUITests
   - Pods
   - .build
   - build
