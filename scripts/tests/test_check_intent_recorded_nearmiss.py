@@ -75,6 +75,33 @@ def test_candidate_dump_is_count_only(tmp_path):
     assert "closest candidates" not in out
 
 
+def test_ranking_prefers_longer_consecutive_run(tmp_path):
+    """QA finding: the ranking itself (R9's actual point) needs multi-candidate
+    discrimination — the closer name must be listed first."""
+    intent_dir = tmp_path / "intent"
+    intent_dir.mkdir()
+    # Close: shares the consecutive run "mock race" + 4 tokens total.
+    (intent_dir / "mock-race-bookmark-hardening.md").write_text(INTENT)
+    # Distant: one shared token, no run.
+    (intent_dir / "bookmark-unrelated-cleanup.md").write_text(INTENT)
+    (tmp_path / "msg.txt").write_text("fix: mock race guard for bookmark keys\n")
+    (tmp_path / "diff.txt").write_text(DIFF)
+    result = subprocess.run(
+        ["python3", str(_SCRIPT),
+         "--commit-msg", str(tmp_path / "msg.txt"),
+         "--diff", str(tmp_path / "diff.txt"),
+         "--intent-dir", str(intent_dir)],
+        capture_output=True, text=True, cwd=str(_REPO_ROOT), timeout=30,
+    )
+    out = result.stdout + result.stderr
+    assert result.returncode == 1, out
+    close = out.find("mock-race-bookmark-hardening.md")
+    distant = out.find("bookmark-unrelated-cleanup.md")
+    assert close != -1, out
+    assert distant == -1 or close < distant, (
+        f"closer candidate must rank first: {out}")
+
+
 def test_match_path_unchanged(tmp_path):
     rc, out = _run(tmp_path, "fix: segv mock race bookmark keys hardening")
     assert rc == 0, out
