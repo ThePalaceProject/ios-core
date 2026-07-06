@@ -271,11 +271,16 @@ final class TokenRefreshInterceptor: @unchecked Sendable {
 
     /// Handles invalid credentials error during borrow.
     func handleBorrowInvalidCredentials(for book: TPPBook, error: [String: Any]?) {
+        // Convert the non-Sendable `[String: Any]` payload to the `Sendable`
+        // `TPPProblemDocument` BEFORE the `Task { @MainActor }` hop so the raw
+        // dictionary never crosses the isolation boundary (Swift 6
+        // `complete`-mode). `nil` error → `nil` document (no detail to show).
+        let problemDoc = error.map { TPPProblemDocument.fromDictionary($0) }
         Task { @MainActor [weak self] in
             guard let self = self, let delegate = self.delegate else { return }
 
             guard !self.hasAttemptedAuthentication else {
-                self.showBorrowAlert(for: book, with: error)
+                self.showBorrowAlert(for: book, problemDoc: problemDoc)
                 return
             }
 
@@ -735,16 +740,24 @@ final class TokenRefreshInterceptor: @unchecked Sendable {
         session.start()
     }
 
-    private func showBorrowAlert(for book: TPPBook, with error: [String: Any]?) {
+    /// `@MainActor` (Swift 6 `complete`-mode): the sole caller
+    /// (`handleBorrowInvalidCredentials`) already dispatches on the main actor,
+    /// so hoisting the isolation here lets the body touch the non-Sendable
+    /// `delegate` / `delegate.progressReporter` and build the non-Sendable
+    /// `retryAction` closure without any of them crossing an isolation
+    /// boundary. The prior `runOnMainAsync` hop is now redundant — the
+    /// announce runs synchronously on the main actor we're already on. The
+    /// `error` payload is pre-converted to the `Sendable` `TPPProblemDocument`
+    /// by the caller so no `[String: Any]` dictionary crosses the caller's
+    /// `Task { @MainActor }` boundary.
+    @MainActor
+    private func showBorrowAlert(for book: TPPBook, problemDoc: TPPProblemDocument?) {
         guard let delegate = delegate else { return }
         let alertTitle = Strings.MyDownloadCenter.borrowFailed
         var alertMessage = String(format: Strings.MyDownloadCenter.borrowFailedMessage, book.title)
 
-        if let error = error {
-            let problemDoc = TPPProblemDocument.fromDictionary(error)
-            if let detail = problemDoc.detail {
-                alertMessage = "\(alertMessage)\n\n\(detail)"
-            }
+        if let detail = problemDoc?.detail {
+            alertMessage = "\(alertMessage)\n\n\(detail)"
         }
 
         let retryAction: (() -> Void)? = {
@@ -756,11 +769,9 @@ final class TokenRefreshInterceptor: @unchecked Sendable {
             }
         }()
 
-        runOnMainAsync {
-            delegate.progressReporter.publishAndAnnounceError(
-                DownloadErrorInfo(bookId: book.identifier, title: alertTitle, message: alertMessage, retryAction: retryAction)
-            )
-        }
+        delegate.progressReporter.publishAndAnnounceError(
+            DownloadErrorInfo(bookId: book.identifier, title: alertTitle, message: alertMessage, retryAction: retryAction)
+        )
     }
 }
 

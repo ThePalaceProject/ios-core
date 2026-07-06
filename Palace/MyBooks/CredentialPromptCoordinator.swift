@@ -28,7 +28,30 @@ protocol CredentialPromptCoordinatorDelegate: AnyObject {
 // MARK: - CredentialPromptCoordinator
 
 /// Coordinates the per-borrow credential-prompt flow.
-final class CredentialPromptCoordinator {
+///
+/// `@unchecked Sendable` (Swift 6 `complete`-mode): `requestCredentialsAndStartDownload`
+/// captures `[weak self]` into a `@Sendable Task { @MainActor … }`, so the
+/// coordinator must be `Sendable`. The conformance is honest — every stored
+/// member is immutable-after-init or main-actor-confined:
+///   • `delegate` — `weak var`, wired once during owner (`MyBooksDownloadCenter`)
+///     construction and read only on the main actor (via `self.delegate` inside
+///     the `@MainActor` Task bodies). Never captured directly across the
+///     `@Sendable` boundary — it is re-resolved through `self`.
+///   • `stateManager` — `let`; its mutable storage is the actor-isolated
+///     `DownloadCoordinator`/`SafeDictionary` it owns.
+///   • `userAccountProvider` — `let` closure, invoked only inside the
+///     `@MainActor` Task body.
+///   • `credentialRequestState` — `let`; itself `@unchecked Sendable`
+///     (its `isRequestingCredentials` bool is main-actor-confined by
+///     convention — every access in this coordinator is inside a
+///     `Task { @MainActor }` body; the confinement is not compiler-enforced,
+///     tracked for a follow-up `@MainActor` annotation on the property).
+///   • `presentSignInModal` / `isAdobeDRMExpired` / `presentAdobeExpiredAlert`
+///     — `let` closures; the two UI-presenting ones are `@MainActor`-typed and
+///     are only ever invoked from the `@MainActor` Task body, so no closure
+///     value crosses an isolation boundary in a racy way.
+/// `final`, so the invariant can't be defeated by a subclass.
+final class CredentialPromptCoordinator: @unchecked Sendable {
 
     weak var delegate: CredentialPromptCoordinatorDelegate?
 
