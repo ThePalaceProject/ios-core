@@ -9,6 +9,7 @@ import XCTest
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 final class TPPAlertUtilsTests: XCTestCase {
 
     // MARK: - Hermetic teardown for alert-presentation tests

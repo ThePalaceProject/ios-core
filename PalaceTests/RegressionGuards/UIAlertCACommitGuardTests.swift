@@ -5,6 +5,7 @@ import XCTest
 /// (55 events on Crashlytics post-3.0.0). The fix surface lives in
 /// Palace/ErrorHandling/TPPAlertUtils.swift. See
 /// PalaceTests/RegressionGuards/README.md for the full crash narrative.
+@MainActor
 final class UIAlertCACommitGuardTests: XCTestCase {
 
     /// Window tracked for hermetic teardown so a presentation test cannot leak a

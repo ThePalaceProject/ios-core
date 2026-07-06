@@ -133,14 +133,19 @@ extension TPPSignInBusinessLogic {
         }
 
         #else
-        if self.bookRegistry.isSyncing {
-            let alert = TPPAlertUtils.alert(
-                title: "SettingsAccountViewControllerCannotLogOutTitle",
-                message: "SettingsAccountViewControllerCannotLogOutMessage")
-            uiDelegate?.present(alert, animated: true, completion: nil)
-            isSignOutInProgress = false
-        } else {
-            completeLogOutProcess()
+        // `performLogOut()` requires the main thread (see doc comment above), so
+        // assert the isolation the now-@MainActor `TPPAlertUtils.alert(...)` call
+        // needs in Swift 6 complete-mode. Matches the sibling `+UI.swift` treatment.
+        MainActor.assumeIsolated {
+            if self.bookRegistry.isSyncing {
+                let alert = TPPAlertUtils.alert(
+                    title: "SettingsAccountViewControllerCannotLogOutTitle",
+                    message: "SettingsAccountViewControllerCannotLogOutMessage")
+                uiDelegate?.present(alert, animated: true, completion: nil)
+                isSignOutInProgress = false
+            } else {
+                completeLogOutProcess()
+            }
         }
         #endif
     }

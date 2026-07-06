@@ -378,33 +378,37 @@ class TPPReaderPositionsVC: UIViewController, UITableViewDataSource, UITableView
     private func userDidRefreshBookmarks(with refreshControl: UIRefreshControl) {
         delegate?.positionsVC(self, didRequestSyncBookmarksWithCompletion: { [weak self] (success, _) in
             TPPMainThreadRun.asyncIfNeeded {
-                self?.tableView.reloadData()
-                self?.bookmarksRefreshControl?.endRefreshing()
-                if !success {
-                    // Offer retry for bookmark sync failures (likely transient network issue)
-                    let operationId = "bookmark-sync"
-                    let canRetry = self?.retryTracker.canRetry(operationId: operationId) ?? false
+                // asyncIfNeeded runs on main — assert isolation so the now-@MainActor
+                // TPPAlertUtils.alert(...) call below type-checks in Swift 6 complete-mode.
+                MainActor.assumeIsolated {
+                    self?.tableView.reloadData()
+                    self?.bookmarksRefreshControl?.endRefreshing()
+                    if !success {
+                        // Offer retry for bookmark sync failures (likely transient network issue)
+                        let operationId = "bookmark-sync"
+                        let canRetry = self?.retryTracker.canRetry(operationId: operationId) ?? false
 
-                    if canRetry {
-                        let alert = UIAlertController(
-                            title: Strings.MyDownloadCenter.errorSyncingBookmarks,
-                            message: Strings.MyDownloadCenter.bookmarkSyncError,
-                            preferredStyle: .alert
-                        )
-                        alert.addAction(UIAlertAction(title: Strings.MyDownloadCenter.retry, style: .default) { [weak self] _ in
-                            self?.retryTracker.recordRetry(operationId: operationId)
-                            if let rc = self?.bookmarksRefreshControl {
-                                self?.userDidRefreshBookmarks(with: rc)
-                            }
-                        })
-                        alert.addAction(UIAlertAction(title: Strings.Generic.cancel, style: .cancel))
-                        self?.present(alert, animated: true)
-                    } else {
-                        let alert = TPPAlertUtils.alert(
-                            title: Strings.MyDownloadCenter.errorSyncingBookmarks,
-                            message: Strings.MyDownloadCenter.tryAgainLater
-                        )
-                        self?.present(alert, animated: true)
+                        if canRetry {
+                            let alert = UIAlertController(
+                                title: Strings.MyDownloadCenter.errorSyncingBookmarks,
+                                message: Strings.MyDownloadCenter.bookmarkSyncError,
+                                preferredStyle: .alert
+                            )
+                            alert.addAction(UIAlertAction(title: Strings.MyDownloadCenter.retry, style: .default) { [weak self] _ in
+                                self?.retryTracker.recordRetry(operationId: operationId)
+                                if let rc = self?.bookmarksRefreshControl {
+                                    self?.userDidRefreshBookmarks(with: rc)
+                                }
+                            })
+                            alert.addAction(UIAlertAction(title: Strings.Generic.cancel, style: .cancel))
+                            self?.present(alert, animated: true)
+                        } else {
+                            let alert = TPPAlertUtils.alert(
+                                title: Strings.MyDownloadCenter.errorSyncingBookmarks,
+                                message: Strings.MyDownloadCenter.tryAgainLater
+                            )
+                            self?.present(alert, animated: true)
+                        }
                     }
                 }
             }
