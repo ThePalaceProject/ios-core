@@ -19,6 +19,29 @@ import Foundation
 import PalaceCatalog
 import PalaceLogging
 
+// MARK: - Carrier boxes
+
+/// Carrier box that lets the non-Sendable `TPPBook` ride inside a
+/// `@Sendable` closure (the `@MainActor` re-auth Task and the `@Sendable`
+/// retry closures). The book is read-only after construction and the
+/// closures only ever touch it on the main actor, so `@unchecked Sendable`
+/// is sound. Mirrors the carrier-box precedent (`CarPlayImageCompletionBox`,
+/// `ReadiumBookmarkBox`).
+private final class BorrowBookBox: @unchecked Sendable {
+    let book: TPPBook
+    init(_ book: TPPBook) { self.book = book }
+}
+
+/// Carrier box for the non-Sendable `[String: Any]?` problem-error
+/// dictionary so it can cross into the `@MainActor @Sendable` re-auth Task.
+/// Read-only after construction; only decoded (`TPPProblemDocument.from
+/// Dictionary`) on the main actor. `@unchecked Sendable` is sound for the
+/// same read-only-single-consumer reason as `BorrowBookBox`.
+private final class BorrowErrorDictBox: @unchecked Sendable {
+    let error: [String: Any]?
+    init(_ error: [String: Any]?) { self.error = error }
+}
+
 // MARK: - CredentialRequestState
 
 /// Shared flag that gates concurrent sign-in modal presentations across
@@ -49,7 +72,20 @@ protocol BorrowErrorPresenterDelegate: AnyObject {
 /// exists" message, kick a re-auth flow on invalid credentials, present
 /// the generic borrow-failed alert with a retry action, or surface the
 /// problem-document detail in a borrow-failed alert.
-final class BorrowErrorPresenter {
+///
+/// `@unchecked Sendable` invariant (Swift 6 `complete`-mode slice): every
+/// injected collaborator is an immutable `let` (`progressReporter`,
+/// `userRetryTracker`, `reauthenticator`, `userAccountProvider`,
+/// `credentialRequestState` — the last is itself `@unchecked Sendable`). The
+/// only mutable instance storage is the `@MainActor`-isolated
+/// `hasAttemptedAuthentication` latch (read/written solely on the main actor)
+/// and `weak var delegate` (assigned once on the main thread during
+/// `MyBooksDownloadCenter` init, read only from `@MainActor`-hopped
+/// contexts). `@unchecked` is required only so `self` can be captured by the
+/// `@Sendable` alert/reauth closures — not because any state is racy. Mirrors
+/// sibling presenters in this module (`CredentialPromptCoordinator`,
+/// `BookSignInRedirectHandler`, `DownloadAuthRetryHandler`).
+final class BorrowErrorPresenter: @unchecked Sendable {
 
     typealias DisplayStrings = Strings.MyDownloadCenter
 
@@ -96,15 +132,27 @@ final class BorrowErrorPresenter {
         switch errorType {
         case TPPProblemDocument.TypeLoanAlreadyExists:
             let alertMessage = DisplayStrings.loanAlreadyExistsAlertMessage
+            // Snapshot the Sendable identifier so the non-Sendable `book` does
+            // not cross into the `@MainActor @Sendable` closure.
+            let bookId = book.identifier
             runOnMainAsync { [weak self] in
                 self?.progressReporter.publishAndAnnounceError(
-                    DownloadErrorInfo(bookId: book.identifier, title: alertTitle, message: alertMessage, kind: .borrow)
+                    DownloadErrorInfo(bookId: bookId, title: alertTitle, message: alertMessage, kind: .borrow)
                 )
             }
 
         case TPPProblemDocument.TypeInvalidCredentials:
+            // `book` (non-Sendable `TPPBook`) and `error` (`[String: Any]?`,
+            // `Any` is non-Sendable) both need to ride whole into the
+            // `@MainActor @Sendable` re-auth Task. Thread them through
+            // read-only carrier boxes; the boxed values are only touched on
+            // the main actor inside the Task.
+            let bookBox = BorrowBookBox(book)
+            let errorBox = BorrowErrorDictBox(error)
             Task { @MainActor [weak self] in
                 guard let self else { return }
+                let book = bookBox.book
+                let error = errorBox.error
 
                 guard !self.hasAttemptedAuthentication else {
                     self.showAlert(for: book, with: error, alertTitle: alertTitle)
@@ -167,9 +215,14 @@ final class BorrowErrorPresenter {
 
         let retryAction = makeBorrowRetryAction(for: book)
 
+        // Snapshot the Sendable identifier so the non-Sendable `book` does not
+        // cross into the `@MainActor @Sendable` closure. `retryAction` is now
+        // `@Sendable` (see `makeBorrowRetryAction`), so it too is safe to capture.
+        let bookId = book.identifier
+
         runOnMainAsync { [weak self] in
             self?.progressReporter.publishAndAnnounceError(
-                DownloadErrorInfo(bookId: book.identifier, title: alertTitle, message: alertMessage, kind: .borrow, retryAction: retryAction)
+                DownloadErrorInfo(bookId: bookId, title: alertTitle, message: alertMessage, kind: .borrow, retryAction: retryAction)
             )
         }
     }
@@ -178,9 +231,14 @@ final class BorrowErrorPresenter {
         let formattedMessage = String(format: DisplayStrings.borrowFailedMessage, book.title)
         let retryAction = makeBorrowRetryAction(for: book)
 
+        // Snapshot the Sendable identifier so the non-Sendable `book` does not
+        // cross into the `@MainActor @Sendable` closure. `retryAction` is now
+        // `@Sendable` (see `makeBorrowRetryAction`), so it too is safe to capture.
+        let bookId = book.identifier
+
         runOnMainAsync { [weak self] in
             self?.progressReporter.publishAndAnnounceError(
-                DownloadErrorInfo(bookId: book.identifier, title: DisplayStrings.borrowFailed, message: formattedMessage, kind: .borrow, retryAction: retryAction)
+                DownloadErrorInfo(bookId: bookId, title: DisplayStrings.borrowFailed, message: formattedMessage, kind: .borrow, retryAction: retryAction)
             )
         }
     }
@@ -188,13 +246,22 @@ final class BorrowErrorPresenter {
     /// Returns a retry closure that re-attempts the borrow for the given
     /// book when invoked, gated by the per-operation budget on
     /// `userRetryTracker`. Nil means "out of budget, hide the retry button".
-    private func makeBorrowRetryAction(for book: TPPBook) -> (() -> Void)? {
+    ///
+    /// Returns a `@Sendable` closure so it can be captured by the
+    /// `@MainActor @Sendable` alert-publication closures. The closure needs
+    /// the whole non-Sendable `book` to re-drive `startBorrow`, so it is
+    /// threaded through a `BorrowBookBox` carrier: the book is read-only
+    /// inside the closure and the closure is only ever invoked on the main
+    /// actor (from the alert's Retry button), so `@unchecked Sendable` on the
+    /// box is sound.
+    private func makeBorrowRetryAction(for book: TPPBook) -> (@Sendable () -> Void)? {
         let operationId = "borrow-\(book.identifier)"
         guard userRetryTracker.canRetry(operationId: operationId) else { return nil }
+        let bookBox = BorrowBookBox(book)
         return { [weak self] in
             guard let self else { return }
             self.userRetryTracker.recordRetry(operationId: operationId)
-            self.delegate?.startBorrow(for: book, attemptDownload: true, borrowCompletion: nil)
+            self.delegate?.startBorrow(for: bookBox.book, attemptDownload: true, borrowCompletion: nil)
         }
     }
 }

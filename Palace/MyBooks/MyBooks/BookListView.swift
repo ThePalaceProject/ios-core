@@ -1,5 +1,16 @@
 import SwiftUI
 
+/// Carrier box that lets a read-only `[TPPBook]` snapshot cross into a
+/// `@Sendable` detached prefetch task. `TPPBook` is a non-Sendable
+/// `NSObject`; the boxed array is never mutated after construction and is
+/// consumed by exactly one detached task (read-only thumbnail fetch), so
+/// `@unchecked Sendable` is sound. Mirrors the carrier-box precedent
+/// (`CarPlayImageCompletionBox`, `ReadiumBookmarkBox`).
+private final class PrefetchBooksBox: @unchecked Sendable {
+    let books: [TPPBook]
+    init(_ books: [TPPBook]) { self.books = books }
+}
+
 struct BookListView: View {
     let books: [TPPBook]
     @Binding var isLoading: Bool
@@ -105,8 +116,16 @@ struct BookListView: View {
         // for TPPBookCoverRegistry.shared. Capture the value to avoid touching
         // the SwiftUI Environment from the detached task.
         let imageLoader = appContainer.imageLoader
+        // `TPPBook` is a non-Sendable `NSObject`, so `[TPPBook]` cannot cross
+        // into the `@Sendable` detached task under `complete`-mode strict
+        // concurrency. Wrap the snapshot in a carrier box: the array is a
+        // read-only snapshot handed to a single detached task that only reads
+        // each book to fetch its thumbnail — never mutated, never shared with
+        // another consumer — so `@unchecked Sendable` is sound. (Precedent:
+        // `CarPlayImageCompletionBox`, `ReadiumBookmarkBox`.)
+        let upcomingBooksBox = PrefetchBooksBox(upcomingBooks)
         Task.detached(priority: .utility) {
-            for book in upcomingBooks {
+            for book in upcomingBooksBox.books {
                 _ = await imageLoader.thumbnailImage(for: book)
             }
         }
