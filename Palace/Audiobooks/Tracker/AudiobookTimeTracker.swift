@@ -12,8 +12,22 @@ import ULID
 import UIKit
 import PalaceAudiobookToolkit
 
+/// - Sendable invariant: instances are captured by the `willTerminateNotification`
+///   observer (`queue: .main`), the `syncQueue.async` body in `receiveValue`, and
+///   the Combine `Timer.publish(on: .main)` sink. Safe to share across those
+///   boundaries because:
+///   1. Every stored dependency (`dataManager`, `libraryId`, `bookId`,
+///      `timeTrackingUrl`, `syncQueue`, `minuteFormatter`, `tick`, `audiobookLogger`)
+///      is a `let` — immutable after `init`.
+///   2. The mutable counters (`duration`, `currentMinute`, `timeEntryId`) are read
+///      and written ONLY through the serial `syncQueue` (`.sync`/`.async`).
+///   3. The playback-lifecycle state (`isPlaying`, `playbackTimer`, `subscriptions`)
+///      is touched only from the `AudiobookPlaybackTrackerDelegate` callbacks and
+///      the main-scheduled Timer sink — i.e. the main runloop — never concurrently.
+///   Hence `@unchecked Sendable`: the `syncQueue`/main-runloop discipline is the
+///   invariant the compiler cannot see, and `DataManager` is not Sendable-audited.
 @objc
-class AudiobookTimeTracker: NSObject, AudiobookPlaybackTrackerDelegate {
+class AudiobookTimeTracker: NSObject, AudiobookPlaybackTrackerDelegate, @unchecked Sendable {
 
     private var subscriptions: Set<AnyCancellable> = []
     private let dataManager: DataManager

@@ -355,18 +355,23 @@ final class LCPAudiobooksTests: XCTestCase {
         audiobook.releaseResources()
 
         let exp = expectation(description: "contentDictionary completes after release")
-        var receivedError: NSError?
-        var receivedDict: NSDictionary?
+        // `contentDictionary`'s completion is `@Sendable` (Swift 6 complete-mode);
+        // capture results in a Sendable carrier box rather than mutable local vars.
+        final class Box: @unchecked Sendable {
+            var dict: NSDictionary?
+            var err: NSError?
+        }
+        let box = Box()
         audiobook.contentDictionary { dict, error in
-            receivedDict = dict
-            receivedError = error
+            box.dict = dict
+            box.err = error
             exp.fulfill()
         }
         wait(for: [exp], timeout: 2.0)
 
-        XCTAssertNil(receivedDict, "contentDictionary must not return a dictionary after release")
-        XCTAssertNotNil(receivedError, "contentDictionary must report an error after release")
-        XCTAssertEqual(receivedError?.domain, "Palace.LCPAudiobooks")
+        XCTAssertNil(box.dict, "contentDictionary must not return a dictionary after release")
+        XCTAssertNotNil(box.err, "contentDictionary must report an error after release")
+        XCTAssertEqual(box.err?.domain, "Palace.LCPAudiobooks")
         #else
         XCTAssertTrue(true, "LCP not enabled - test skipped")
         #endif

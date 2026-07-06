@@ -224,15 +224,25 @@ final class AudiobookLoader {
         // Structured-concurrency poll (Task.sleep, not recursive GCD) to keep
         // the audiobook open path off GCD per adr_a265ec76, mirroring the
         // sibling poll in AudiobookSessionManager.awaitAudiobookContentLocal.
+        //
+        // The `completion` closure is the caller's non-`@Sendable` callback
+        // (it captures the loader's own `completion`), but the poll runs in a
+        // `@Sendable` `Task`. Wrap it in a carrier box (precedent:
+        // `SendableDecryptCompletion` in LCPAudiobooks) so the completion can
+        // cross into the Task WITHOUT forcing `@Sendable` onto this signature —
+        // which would ripple to the single call site inside
+        // `refreshTokenIfNeeded`. The box fires the wrapped closure exactly
+        // once (success XOR timeout), so the invariant holds.
+        let completionBox = TokenReadyCompletionBox(completion)
         Task {
             let deadline = Date().addingTimeInterval(timeout)
             while true {
                 if !AppContainer.production().accountsManager.currentUserAccount.authTokenHasExpired {
-                    completion(true)
+                    completionBox.fire(true)
                     return
                 }
                 if Date() >= deadline {
-                    completion(false)
+                    completionBox.fire(false)
                     return
                 }
                 try? await Task.sleep(nanoseconds: UInt64(max(0, pollInterval) * 1_000_000_000))
@@ -501,5 +511,25 @@ final class AudiobookLoader {
         ))
 
         return chain
+    }
+}
+
+/// `Sendable` carrier for `awaitTokenReady`'s non-`@Sendable` completion so it
+/// can cross into the poll `Task` without forcing `@Sendable` onto the
+/// `awaitTokenReady` signature (which would ripple to its call site).
+///
+/// - Sendable invariant: `fire(_:)` forwards to the wrapped closure. The poll
+///   loop calls it exactly once (token-ready XOR timeout) from a single Task,
+///   never concurrently. The wrapped closure is otherwise opaque, hence
+///   `@unchecked`. Mirrors `SendableDecryptCompletion` in `LCPAudiobooks`.
+private struct TokenReadyCompletionBox: @unchecked Sendable {
+    private let completion: (Bool) -> Void
+
+    init(_ completion: @escaping (Bool) -> Void) {
+        self.completion = completion
+    }
+
+    func fire(_ becameValid: Bool) {
+        completion(becameValid)
     }
 }

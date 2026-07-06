@@ -2215,7 +2215,15 @@ public final class AudiobookSessionManager: ObservableObject {
 /// exactly once when a bounded await races a timeout against a completion
 /// callback. NSLock-guarded so the (possibly background-thread) sync callback and
 /// the MainActor timeout can race safely without a double-resume trap.
-private final class PositionResolveOnce {
+///
+/// - Sendable invariant: this guard is captured by both the (possibly
+///   off-main) `syncLocation` completion and the `@MainActor` timeout `Task` —
+///   i.e. it deliberately crosses concurrency domains. That is safe because its
+///   only mutable state (`fired`) is read and written EXCLUSIVELY under `lock`,
+///   so the two racing `fire(_:)` calls serialize and exactly one runs `block`.
+///   Hence `@unchecked Sendable` (the lock discipline is the invariant the
+///   compiler cannot see).
+private final class PositionResolveOnce: @unchecked Sendable {
     private let lock = NSLock()
     private var fired = false
     func fire(_ block: () -> Void) {

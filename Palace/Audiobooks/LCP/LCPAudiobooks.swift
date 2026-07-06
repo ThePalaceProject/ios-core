@@ -91,7 +91,7 @@ import PalaceCatalog
         )
     }
 
-    @objc func contentDictionary(completion: @escaping (_ json: NSDictionary?, _ error: NSError?) -> Void) {
+    @objc func contentDictionary(completion: @escaping @Sendable (_ json: NSDictionary?, _ error: NSError?) -> Void) {
         if isReleasedSnapshot() {
             DispatchQueue.main.async {
                 completion(nil, Self.releasedError())
@@ -119,7 +119,7 @@ import PalaceCatalog
         )
     }
 
-    private func loadContentDictionary(completion: @escaping (_ json: NSDictionary?, _ error: NSError?) -> Void) {
+    private func loadContentDictionary(completion: @escaping @Sendable (_ json: NSDictionary?, _ error: NSError?) -> Void) {
         if isReleasedSnapshot() {
             completion(nil, Self.releasedError())
             return

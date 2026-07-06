@@ -34,7 +34,7 @@ protocol AudiobookFileReading: AnyObject {
 protocol BearerTokenRefreshing {
     func refreshToken(
         from fulfillURL: URL,
-        completion: @escaping (MyBooksSimplifiedBearerToken?) -> Void
+        completion: @escaping @Sendable (MyBooksSimplifiedBearerToken?) -> Void
     )
 }
 
@@ -109,6 +109,14 @@ final class LocalFileAdapter: AudiobookVendorAdapter {
 
         if let fulfillURL = book.bearerTokenFulfillURL {
             Log.debug(#file, "  🔑 Bearer token book - refreshing token before playback")
+            // Box the non-`@Sendable` completion AND the parsed `[String: Any]`
+            // manifest so both can cross the refresh callback →
+            // `Task { @MainActor in }` hop without forcing `@Sendable` onto the
+            // `AudiobookVendorAdapter` protocol. `[String: Any]` is not
+            // `Sendable` (it holds `Any` existentials), so it needs its own
+            // carrier. See `AudiobookAdapterCompletionBox` / `ManifestJSONBox`.
+            let completionBox = AudiobookAdapterCompletionBox(completion)
+            let jsonBox = ManifestJSONBox(json)
             tokenRefresher.refreshToken(from: fulfillURL) { newToken in
                 Task { @MainActor in
                     if let newToken = newToken {
@@ -117,7 +125,7 @@ final class LocalFileAdapter: AudiobookVendorAdapter {
                     } else {
                         Log.warn(#file, "  ⚠️ Bearer token refresh failed - proceeding with existing token")
                     }
-                    completion(.success((json: json, decryptor: nil)))
+                    completionBox.fire(.success((json: jsonBox.value, decryptor: nil)))
                 }
             }
         } else {

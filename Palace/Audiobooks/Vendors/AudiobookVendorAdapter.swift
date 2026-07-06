@@ -64,3 +64,52 @@ protocol AudiobookVendorAdapter {
         completion: @escaping (Result<(json: [String: Any], decryptor: DRMDecryptor?), AudiobookLoadError>) -> Void
     )
 }
+
+/// `Sendable` carrier for an `AudiobookVendorAdapter` completion.
+///
+/// The `resolveManifest` completion is intentionally NOT `@Sendable` — the
+/// protocol is consumed by `AudiobookLoader` (and its test doubles) whose call
+/// sites pass plain callbacks; marking the protocol `@Sendable` would ripple
+/// through the loader's completion chain and every adapter test mock. But each
+/// adapter must hand the completion across a `Task { @MainActor in }` /
+/// `DispatchQueue.main.async` hop to satisfy the "completion fires on main"
+/// contract. Wrapping it in this box lets it cross that `@Sendable` boundary
+/// without the protocol change. Mirrors `SendableDecryptCompletion`
+/// (LCPAudiobooks) and `TokenReadyCompletionBox` (AudiobookLoader).
+///
+/// - Sendable invariant: `fire(_:)` forwards to the wrapped closure exactly
+///   once per adapter load (the adapters return after each `completion` call),
+///   from a single main-hop continuation — never concurrently. The wrapped
+///   closure is otherwise opaque, hence `@unchecked`.
+struct AudiobookAdapterCompletionBox: @unchecked Sendable {
+    typealias Outcome = Result<(json: [String: Any], decryptor: DRMDecryptor?), AudiobookLoadError>
+    private let completion: (Outcome) -> Void
+
+    init(_ completion: @escaping (Outcome) -> Void) {
+        self.completion = completion
+    }
+
+    func fire(_ outcome: Outcome) {
+        completion(outcome)
+    }
+}
+
+/// `Sendable` carrier for a parsed `[String: Any]` audiobook manifest.
+///
+/// `[String: Any]` is not `Sendable` (it holds `Any` existentials that may be
+/// reference-typed), so it cannot cross a `Task { @MainActor in }` boundary
+/// directly. `LocalFileAdapter` parses the manifest BEFORE its bearer-token
+/// refresh hop and must carry it across into the main-actor completion; this
+/// box makes that crossing explicit.
+///
+/// - Sendable invariant: `value` is set once at init and only read thereafter
+///   — the dictionary is not mutated after boxing, so there is no shared
+///   mutation. The `@unchecked` waiver covers only the `Any`-existential
+///   payload the compiler cannot prove `Sendable`. Adapters that build the
+///   dictionary INSIDE the hop (OpenAccess / BearerToken) don't need this box.
+struct ManifestJSONBox: @unchecked Sendable {
+    let value: [String: Any]
+    init(_ value: [String: Any]) {
+        self.value = value
+    }
+}
