@@ -185,6 +185,13 @@ enum ButtonSize {
 }
 
 struct HapticFeedback {
+    // `UIImpactFeedbackGenerator` and its `prepare()`/`impactOccurred()`
+    // members are `@MainActor`-isolated UIKit APIs. Under `complete`-mode
+    // strict concurrency a nonisolated `static func` calling them warns.
+    // The sole caller is the SwiftUI `Button(action:)` closure in
+    // `ActionButton.body`, which is already `@MainActor`, so pinning this to
+    // the main actor is the correct isolation and adds no caller ripple.
+    @MainActor
     static func medium() {
         let generator = UIImpactFeedbackGenerator(style: .medium)
         generator.prepare()
