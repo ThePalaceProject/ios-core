@@ -400,20 +400,29 @@ class TPPReaderBookmarksBusinessLogic: NSObject, @unchecked Sendable {
             let canUseExistingCredentials = userAccount.hasBarcodeAndPIN() ||
                 (userAccount.authDefinition?.isOauth == true)
 
+            // Swift 6 `complete`: box the non-Sendable `completion` closure before
+            // the `@Sendable` reauth-completion closure captures it (see
+            // `BookmarkSyncCompletionBox`). `authenticateIfNeeded`'s
+            // `authenticationCompletion` is `@Sendable`, so the trailing closure
+            // is `@Sendable` and cannot capture the raw `(Bool, [TPPReadiumBookmark])
+            // -> Void`. Boxing avoids `@Sendable`-ing `completion` on the
+            // `syncBookmarks`/`handleBookmarksSyncFail` signatures (which would
+            // ripple to every bookmark-sync caller).
+            let completionBox = BookmarkSyncCompletionBox(completion)
             reauthenticator.authenticateIfNeeded(userAccount, usingExistingCredentials: canUseExistingCredentials) { [weak self] in
                 guard let self = self else {
-                    completion(false, [])
+                    completionBox.call(false, [])
                     return
                 }
 
                 // Check if re-auth was successful
                 if userAccount.hasCredentials() && userAccount.authState == .loggedIn {
                     Log.info(#file, "📚 Re-authentication successful. Retrying bookmark sync...")
-                    self.performSyncBookmarks(completion: completion)
+                    self.performSyncBookmarks(completion: completionBox.call)
                 } else {
                     Log.info(#file, "📚 Re-authentication cancelled or failed. Returning local bookmarks.")
                     self.bookmarks = self.bookRegistry.readiumBookmarks(forIdentifier: self.book.identifier)
-                    completion(false, self.bookmarks)
+                    completionBox.call(false, self.bookmarks)
                 }
             }
             return
@@ -449,4 +458,23 @@ class TPPReaderBookmarksBusinessLogic: NSObject, @unchecked Sendable {
 private final class ReadiumBookmarkBox: @unchecked Sendable {
     let bookmark: TPPReadiumBookmark
     init(_ bookmark: TPPReadiumBookmark) { self.bookmark = bookmark }
+}
+
+/// Sendable carrier for the non-Sendable `(Bool, [TPPReadiumBookmark]) -> Void`
+/// bookmark-sync completion captured by the `@Sendable` reauth-completion closure
+/// in `handleBookmarksSyncFail`. `authenticateIfNeeded`'s `authenticationCompletion`
+/// is `@Sendable`, so the trailing closure is `@Sendable` and cannot capture the
+/// raw completion directly. Boxing keeps `syncBookmarks(completion:)` /
+/// `performSyncBookmarks(completion:)` / `handleBookmarksSyncFail(completion:)`
+/// signatures free of `@Sendable` (which would ripple to every bookmark-sync
+/// call site) and does NOT broaden `TPPReadiumBookmark` to `Sendable` (it has 10
+/// mutable `var`s — see `ReadiumBookmarkBox`).
+///
+/// INVARIANT — the boxed completion is invoked at most once per reauth outcome,
+/// on the reauth-completion path, which `TPPReauthenticator` drives on the main
+/// actor (`authenticateIfNeeded` hops `Task { @MainActor in }`). It is never
+/// invoked concurrently. Mirrors `ReadiumBookmarkBox`.
+private final class BookmarkSyncCompletionBox: @unchecked Sendable {
+    let call: (Bool, [TPPReadiumBookmark]) -> Void
+    init(_ call: @escaping (Bool, [TPPReadiumBookmark]) -> Void) { self.call = call }
 }

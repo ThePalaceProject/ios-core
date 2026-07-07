@@ -17,6 +17,14 @@ typealias TPPReaderTOCLink = (level: Int, link: Link)
 
 /// This class captures the business logic related to the Table Of Contents
 /// for a given Readium 2 Publication.
+///
+/// Swift 6 `complete`: `@MainActor`-isolated. The `Task` in `init` mutates
+/// `tocElements`, and every consumer is already a `@MainActor` `UIViewController`
+/// (`TPPReaderPositionsVC`, `TPPBaseReaderViewController`). Isolating the class to
+/// the main actor makes the `init` `Task` inherit main isolation, so the
+/// `tocElements` write is race-free without a lock. The only nonisolated caller is
+/// the XCTestCase test (see RIPPLES.md).
+@MainActor
 class TPPReaderTOCBusinessLogic {
     var tocElements: [TPPReaderTOCLink] = []
     private let publication: Publication

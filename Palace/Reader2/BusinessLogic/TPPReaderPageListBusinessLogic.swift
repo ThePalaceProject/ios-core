@@ -10,7 +10,13 @@
 //
 
 import Foundation
-import ReadiumShared
+// Swift 6 `complete`: `Publication`, `Link`, and `Locator` are non-Sendable
+// Readium types. `currentPageLabel`/`locator(at:)` `await publication.locate(_:)`,
+// whose `async` receiver-send trips a region-isolation `sending 'self.publication'`
+// diagnostic. `@preconcurrency` is the honest ceiling until Readium annotates
+// these Sendable — matches the identical sibling `TPPReaderTOCBusinessLogic`
+// (`await publication.locate(tocElements[index].link)`).
+@preconcurrency import ReadiumShared
 
 typealias TPPReaderPageEntry = (label: String, link: Link)
 
@@ -19,6 +25,15 @@ typealias TPPReaderPageEntry = (label: String, link: Link)
 /// A "print page" is a hard-coded page boundary from the source print edition,
 /// exposed by Readium as `publication.pageList` — distinct from reflowed reading
 /// position, which changes with font size and screen dimensions.
+///
+/// Swift 6 `complete`: `@MainActor`-isolated. `currentPageLabel(for:)` takes a
+/// non-Sendable Readium `Locator`; isolating the class to the main actor keeps
+/// that argument inside the caller's main-actor region (the call site in
+/// `TPPEPUBViewController.announceCurrentPosition` runs in a `Task { @MainActor }`)
+/// so nothing is *sent* across an isolation boundary. Every consumer is already a
+/// `@MainActor` `UIViewController` (`TPPEPUBViewController`, `TPPReaderPositionsVC`).
+/// The only nonisolated caller is the XCTestCase test (see RIPPLES.md).
+@MainActor
 class TPPReaderPageListBusinessLogic {
     /// Page entries in document order, each a (display label, navigable link).
     /// Entries whose label is empty/whitespace are dropped — a page boundary
@@ -141,7 +156,10 @@ class TPPReaderPageListBusinessLogic {
     /// first (lowest-index) boundary — `>` keeps the first, matching the
     /// document-order start of a page. Returns nil when no entry qualifies
     /// (every progression is nil or strictly greater than `current`).
-    static func nearestPrecedingIndex(progressions: [Double?], current: Double) -> Int? {
+    // `nonisolated`: pure function over value-type args — no access to instance
+    // state — so it stays callable from the nonisolated XCTest without forcing the
+    // whole test onto `@MainActor` for these static-only assertions.
+    nonisolated static func nearestPrecedingIndex(progressions: [Double?], current: Double) -> Int? {
         var bestIndex: Int?
         var bestValue = -Double.greatestFiniteMagnitude
         var i = 0

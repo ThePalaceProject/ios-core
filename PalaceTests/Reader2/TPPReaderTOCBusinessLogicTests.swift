@@ -10,6 +10,7 @@ import XCTest
 import ReadiumShared
 @testable import Palace
 
+@MainActor
 final class TPPReaderTOCBusinessLogicTests: XCTestCase {
 
     // MARK: - Properties
@@ -325,6 +326,7 @@ final class TPPReaderTOCBusinessLogicTests: XCTestCase {
 
 // MARK: - TOC Flatten Logic Tests
 
+@MainActor
 final class TPPReaderTOCFlattenTests: XCTestCase {
 
     func testFlatten_nestedTOC_assignsCorrectLevels() async throws {

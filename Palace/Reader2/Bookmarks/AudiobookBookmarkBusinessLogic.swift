@@ -11,10 +11,21 @@ import PalaceLogging
 import PalaceReadingPosition
 @preconcurrency import PalaceAudiobookToolkit
 
-@objc public class AudiobookBookmarkBusinessLogic: NSObject {
-    public var book: TPPBook
-    private var registry: TPPBookRegistryProvider
-    private var annotationsManager: AnnotationsManager
+// Swift 6 `complete`: `@unchecked Sendable`. This class is captured by the
+// `@Sendable` `Task` / work-`queue` / `DispatchQueue.main.async` / `DispatchWorkItem`
+// closures throughout (save / fetch / delete / sync / debounce). INVARIANT:
+//   • The injected dependencies (`book`, `registry`, `annotationsManager`,
+//     `positionWriter`) are immutable `let`s assigned once in `init`.
+//   • All mutable sync state (`isSyncing`, `completionHandlersQueue`,
+//     `deletedBookmarkIds`) is only ever read/written through `onStateQueue`, and
+//     `debounceWorkItem` only on the serial work `queue` — the file's single
+//     serialization domain (see the "Serialized sync state" note below). No
+//     unsynchronized mutable state crosses the closure boundaries.
+// This waives no real race; it matches the existing per-closure boxing strategy.
+@objc public class AudiobookBookmarkBusinessLogic: NSObject, @unchecked Sendable {
+    public let book: TPPBook
+    private let registry: TPPBookRegistryProvider
+    private let annotationsManager: AnnotationsManager
     private let positionWriter: PositionWriter
     private let queue = DispatchQueue(label: "com.palace.audiobookBookmarkBusinessLogic")
     /// Identifies execution already on `queue` so `onStateQueue` runs inline
@@ -210,7 +221,11 @@ import PalaceReadingPosition
                     if let updatedLocation = updatedPosition.toAudioBookmark().toTPPBookLocation() {
                         self.registry.addOrReplaceGenericBookmark(updatedLocation, forIdentifier: self.book.identifier)
                     }
-                    DispatchQueue.main.async { completionBox.call?(updatedPosition) }
+                    // Swift 6 `complete`: snapshot the mutated `var updatedPosition`
+                    // to a `let` before the `@Sendable` `DispatchQueue.main.async`
+                    // closure so it captures an immutable value, not the captured var.
+                    let finalPosition = updatedPosition
+                    DispatchQueue.main.async { completionBox.call?(finalPosition) }
                 }
 
                 guard let data = location.toData(), let locationString = String(data: data, encoding: .utf8) else {
@@ -267,8 +282,14 @@ import PalaceReadingPosition
                     Log.warn(#file, "⚠️ BOOKMARK CONVERSION ISSUE: \(combinedBookmarks.count - trackPositions.count) bookmarks failed to convert to TrackPosition")
                 }
 
+                // Swift 6 `complete`: box the non-Sendable `[TrackPosition]` value
+                // (produced here on the serial work `queue`, consumed once on main)
+                // before the `@Sendable` `DispatchQueue.main.async` boundary — see
+                // `TrackPositionListBox`. `@preconcurrency import` covers the type's
+                // conformance but not this region-isolation `sending` of the array.
+                let trackPositionsBox = TrackPositionListBox(trackPositions)
                 DispatchQueue.main.async {
-                    completionBox.call(trackPositions)
+                    completionBox.call(trackPositionsBox.positions)
                 }
             }
         }
@@ -306,13 +327,19 @@ import PalaceReadingPosition
             }
         }
 
-        var localDeletionSucceeded = false
+        // Swift 6 `complete`: compute the local-deletion outcome as a `let` so the
+        // downstream `@Sendable` `DispatchQueue.main.async` / server-deletion
+        // completion closures capture an immutable value, not a captured `var`.
+        // `Bool` is already Sendable; the `let` clears the "reference to captured
+        // var 'localDeletionSucceeded' in concurrently-executing code" diagnostic.
+        let localDeletionSucceeded: Bool
         if let genericLocation = bookmark.toTPPBookLocation() {
             self.registry.deleteGenericBookmark(genericLocation, forIdentifier: self.book.identifier)
             Log.info(#file, "🗑️ ✅ Local bookmark deleted from registry")
             localDeletionSucceeded = true
         } else {
             Log.error(#file, "🗑️ ❌ Failed to convert bookmark to TPPBookLocation for local deletion")
+            localDeletionSucceeded = false
         }
 
         guard !bookmark.isUnsynced else {
@@ -644,7 +671,12 @@ import PalaceReadingPosition
         }
     }
 
-    private func debounce(action: @escaping () -> Void) {
+    // Swift 6 `complete`: `action` is `@Sendable` because it is captured by the
+    // `@Sendable` work-`queue` closure and wrapped in a `DispatchWorkItem` (whose
+    // `block:` init requires a `@Sendable` block). The sole caller (`saveBookmark`)
+    // passes a closure that captures only Sendable carriers (a `TrackPositionCompletionBox`
+    // and the `@preconcurrency`-imported `TrackPosition`), so this does not ripple.
+    private func debounce(action: @escaping @Sendable () -> Void) {
         queue.async { [weak self] in
             guard let self else { return }
             self.debounceWorkItem?.cancel()
@@ -732,6 +764,19 @@ private final class AudioBookmarkListCompletionBox: @unchecked Sendable {
 private final class AudioBookmarkListBox: @unchecked Sendable {
     let bookmarks: [AudioBookmark]
     init(_ bookmarks: [AudioBookmark]) { self.bookmarks = bookmarks }
+}
+
+/// Sendable carrier for a non-Sendable `[TrackPosition]` value crossing the
+/// `@Sendable` `DispatchQueue.main.async` boundary in `fetchBookmarks`.
+/// `TrackPosition` is a `@preconcurrency`-imported PalaceAudiobookToolkit value
+/// type: the pre-concurrency import covers its missing `Sendable` conformance,
+/// but region isolation still flags *sending* the array across the async hop.
+/// INVARIANT — the array is produced on the serial work `queue` and consumed
+/// exactly once on the main queue; no two contexts touch it concurrently, so
+/// `@unchecked Sendable` waives no real race. Mirrors `AudioBookmarkListBox`.
+private final class TrackPositionListBox: @unchecked Sendable {
+    let positions: [TrackPosition]
+    init(_ positions: [TrackPosition]) { self.positions = positions }
 }
 
 /// Sendable carrier for a single non-Sendable `AudioBookmark` handed off to the

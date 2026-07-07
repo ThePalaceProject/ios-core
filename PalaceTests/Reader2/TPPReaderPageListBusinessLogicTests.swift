@@ -10,6 +10,7 @@ import XCTest
 import ReadiumShared
 @testable import Palace
 
+@MainActor
 final class TPPReaderPageListBusinessLogicTests: XCTestCase {
 
     // MARK: - Publication builders
