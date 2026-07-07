@@ -207,30 +207,55 @@ enum BookService {
 
         Log.info(#file, "  📡 Fetching manifest from bearer token location: \(token.location.host ?? "unknown")")
 
+        // Box `completion` so the `@Sendable` `dataTask` handler captures a
+        // Sendable carrier rather than the raw non-Sendable `([String: Any]?) ->
+        // Void` closure. Boxing (vs. marking the parameter `@Sendable`) keeps this
+        // static func's public signature unchanged — `@Sendable`ing it would
+        // ripple onto the `BearerTokenManifestFetching` protocol and both its
+        // production and test conformers in `Palace/Audiobooks/`. INVARIANT: the
+        // completion is invoked exactly once, on the URLSession delegate queue,
+        // per request — a single-consumer handoff, no shared mutation. Mirrors
+        // `ImageCompletionBox` / `SyncCallbacks`.
+        let completionBox = ManifestCompletionBox(completion)
         let task = session.dataTask(with: request) { data, response, error in
             if let error = error {
                 Log.error(#file, "  ❌ Network error fetching manifest via bearer token: \(error.localizedDescription)")
-                completion(nil)
+                completionBox.completion(nil)
                 return
             }
             guard let data = data, !data.isEmpty else {
                 Log.error(#file, "  ❌ No data received from bearer token manifest fetch")
-                completion(nil)
+                completionBox.completion(nil)
                 return
             }
             if let httpResponse = response as? HTTPURLResponse, !httpResponse.isSuccess() {
                 Log.error(#file, "  ❌ Bearer token manifest fetch failed with HTTP \(httpResponse.statusCode)")
-                completion(nil)
+                completionBox.completion(nil)
                 return
             }
             guard let json = (try? JSONSerialization.jsonObject(with: data, options: [])) as? [String: Any] else {
                 Log.error(#file, "  ❌ Failed to parse bearer token manifest as JSON")
-                completion(nil)
+                completionBox.completion(nil)
                 return
             }
             Log.info(#file, "  ✅ Successfully fetched manifest via bearer token (\(data.count) bytes)")
-            completion(json)
+            completionBox.completion(json)
         }
         task.resume()
     }
+}
+
+/// Sendable carrier for `fetchManifestWithBearerToken`'s non-Sendable
+/// `([String: Any]?) -> Void` completion, so the `@Sendable` URLSession
+/// `dataTask` handler can capture it under Swift 6 `complete` mode without
+/// forcing `@Sendable` onto the public parameter (which would ripple onto the
+/// `BearerTokenManifestFetching` protocol in `Palace/Audiobooks/`).
+///
+/// `@unchecked Sendable` invariant: `completion` is stored once and invoked
+/// exactly once, on the URLSession delegate queue, for a single request — a
+/// one-shot single-consumer handoff, never mutated or shared. Mirrors
+/// `ImageCompletionBox`.
+private final class ManifestCompletionBox: @unchecked Sendable {
+    let completion: ([String: Any]?) -> Void
+    init(_ completion: @escaping ([String: Any]?) -> Void) { self.completion = completion }
 }

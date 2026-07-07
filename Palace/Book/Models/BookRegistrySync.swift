@@ -118,8 +118,17 @@ final class BookRegistrySync: @unchecked Sendable {
 
     loadingAccount = account
     Log.info(#file, "Loading registry for account: \(account)")
+
+    // Box the injected callbacks so the `@Sendable` `DispatchQueue.main.async`
+    // closures below (here and in the mutateRegistry completion) capture a
+    // Sendable value rather than the raw non-Sendable `setState` / `completion`
+    // function values — otherwise `complete` mode reports "capture of … in a
+    // '@Sendable' closure" / "sending … risks data races". The callbacks are
+    // still only ever invoked on main. Mirrors `sync(...)`'s `SyncCallbacks`.
+    let callbacks = LoadCallbacks(setState: setState, completion: completion)
+
     DispatchQueue.main.async {
-      setState(.loading)
+      callbacks.setState(.loading)
     }
 
     store.mutateRegistry { [weak self] registry in
@@ -243,7 +252,7 @@ final class BookRegistrySync: @unchecked Sendable {
 
       DispatchQueue.main.async { [weak self] in
         guard let self else {
-          completion?()
+          callbacks.completion?()
           return
         }
 
@@ -251,7 +260,7 @@ final class BookRegistrySync: @unchecked Sendable {
           self.loadingAccount = nil
         }
 
-        setState(.loaded)
+        callbacks.setState(.loaded)
         self.store.registrySubject.send(snapshot)
 
         for (identifier, state) in bookStates {
@@ -265,7 +274,7 @@ final class BookRegistrySync: @unchecked Sendable {
         // notified — callers that chain sync() off load (e.g. the account-change
         // observer, AppDelegate cold-launch) need the store populated before
         // sync's reconciliation runs.
-        completion?()
+        callbacks.completion?()
 
         // PP-4129: schedule recovery for orphaned downloads. Each scheduled block
         // re-checks that the account that ran the load is still current before
@@ -546,7 +555,13 @@ final class BookRegistrySync: @unchecked Sendable {
     guard let registryUrl = registryUrl(for: account) else { return }
 
     let snapshot = store.registrySnapshot()
-    let registryObject = [TPPBookRegistryKey.records.rawValue: snapshot]
+    // Box the JSON payload so the `@Sendable` `diskWriteQueue.async` closure
+    // captures a Sendable value rather than the raw `[String: [[String: Any]]]`
+    // (non-Sendable because it holds `Any`). INVARIANT: the payload is built once
+    // here from a fresh snapshot and only ever READ inside the closure (serialized
+    // to JSON on `diskWriteQueue`), never mutated or shared — a write-once /
+    // read-once-off-thread handoff. Mirrors `SendableErrorDocument`.
+    let payload = SendableRegistryPayload(value: [TPPBookRegistryKey.records.rawValue: snapshot])
 
     diskWriteQueue.async {
       do {
@@ -555,7 +570,7 @@ final class BookRegistrySync: @unchecked Sendable {
           try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
         }
         directoryURL.excludeFromBackup()
-        let registryData = try JSONSerialization.data(withJSONObject: registryObject, options: .fragmentsAllowed)
+        let registryData = try JSONSerialization.data(withJSONObject: payload.value, options: .fragmentsAllowed)
         try registryData.write(to: registryUrl, options: .atomic)
         DispatchQueue.main.async {
           NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil, userInfo: nil)
@@ -702,6 +717,20 @@ private struct SyncCallbacks: @unchecked Sendable {
   let completion: ((_ errorDocument: [AnyHashable: Any]?, _ newBooks: Bool) -> Void)?
 }
 
+/// Sendable carrier for `load`'s injected callbacks. Same rationale as
+/// `SyncCallbacks`, but `load`'s `completion` is the no-argument `(() -> Void)?`
+/// shape (fired once the registry is populated), so it needs its own struct.
+/// `setState` and `completion` are non-Sendable function values invoked only on
+/// the main thread (inside `load`'s `DispatchQueue.main.async` blocks); boxing
+/// them here lets those `@Sendable` closures capture a Sendable value instead of
+/// the raw closures, clearing the `complete`-mode "capture … in a '@Sendable'
+/// closure" / "sending … risks data races" diagnostics WITHOUT rippling
+/// `@Sendable` onto the `TPPBookRegistry` caller closures.
+private struct LoadCallbacks: @unchecked Sendable {
+  let setState: (TPPBookRegistry.RegistryState) -> Void
+  let completion: (() -> Void)?
+}
+
 /// Sendable carrier for the OPDS sync error document (`[AnyHashable: Any]` from
 /// `NSError.userInfo`, whose `Any` values are not Sendable). It is created once
 /// from a caught error and only ever read thereafter (forwarded to `completion`),
@@ -715,4 +744,14 @@ private struct SyncCallbacks: @unchecked Sendable {
 /// than each site minting its own near-identical carrier.
 struct SendableErrorDocument: @unchecked Sendable {
   let value: [AnyHashable: Any]?
+}
+
+/// Sendable carrier for the JSON registry payload that `save(for:)` hands to the
+/// `@Sendable` `diskWriteQueue.async` closure. The value is a
+/// `[String: [[String: Any]]]` (non-Sendable — holds `Any`) built once from a
+/// fresh in-memory snapshot and only ever READ (serialized to JSON) on the disk
+/// queue, never mutated or shared. `@unchecked` documents that write-once /
+/// read-off-thread confinement. Mirrors `SendableErrorDocument`.
+private struct SendableRegistryPayload: @unchecked Sendable {
+  let value: [String: [[String: Any]]]
 }

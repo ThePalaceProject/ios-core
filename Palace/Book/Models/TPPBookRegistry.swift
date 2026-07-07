@@ -71,6 +71,24 @@ private final class ObserverTokenBox: @unchecked Sendable {
     }
 }
 
+/// Sendable carrier for the sync-completion closure captured by the `@Sendable`
+/// state-change observer block in `waitForLoadThenRunSync`. The closure is a
+/// non-Sendable `(([AnyHashable: Any]?, Bool) -> Void)?`; wrapping it lets the
+/// observer capture this box instead of the raw value, clearing the
+/// `complete`-mode "capture … in a '@Sendable' closure" diagnostic without
+/// rippling `@Sendable` onto `sync`/`runSync`'s public completion parameter.
+///
+/// `@unchecked Sendable` invariant: `completion` is stored once at construction
+/// and only ever READ, then invoked on the main queue (where the observer fires
+/// and `runSync` runs). No cross-thread mutation. Mirrors `SyncCallbacks` in
+/// `BookRegistrySync`.
+private final class SyncCompletionBox: @unchecked Sendable {
+    let completion: ((_ errorDocument: [AnyHashable: Any]?, _ newBooks: Bool) -> Void)?
+    init(_ completion: ((_ errorDocument: [AnyHashable: Any]?, _ newBooks: Bool) -> Void)?) {
+        self.completion = completion
+    }
+}
+
 /// A `Bool` that auto-resets to `false` after `delay` seconds, firing `onChange`
 /// on every edge. Used by `TPPBookRegistry` to post `TPPSyncBegan`/`TPPSyncEnded`.
 ///
@@ -426,6 +444,12 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing, @unchecked Sendable {
         // Hold the token in a Sendable box instead — the closure captures the
         // box reference (never reassigned), and the token is written exactly
         // once, right after `addObserver` returns.
+        // Box `completion` (a non-Sendable function value) so the `@Sendable`
+        // observer block captures a Sendable carrier instead of the raw closure —
+        // otherwise `complete` mode reports "capture of 'completion' … in a
+        // '@Sendable' closure". The observer fires on `.main`, where `runSync`
+        // (and thus the completion) already runs; boxing is behavior-neutral.
+        let completionBox = SyncCompletionBox(completion)
         let tokenBox = ObserverTokenBox()
         tokenBox.token = NotificationCenter.default.addObserver(
             forName: .TPPBookRegistryStateDidChange,
@@ -438,7 +462,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing, @unchecked Sendable {
             }
             if self.state == .loaded || self.state == .synced {
                 tokenBox.removeObserver()
-                self.runSync(completion: completion)
+                self.runSync(completion: completionBox.completion)
             }
         }
     }

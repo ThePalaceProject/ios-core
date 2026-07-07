@@ -321,6 +321,14 @@ actor TPPBookCoverRegistry {
             await self.acquireFetchSlot()
             defer { Task { await self.releaseFetchSlot() } }
 
+            // Recompute the cache key inside the Task from the Sendable `url`
+            // rather than capturing the outer `key` (`NSString`, non-Sendable) —
+            // capturing it made this `sending` Task closure trip the
+            // `complete`-mode "risks data races between 'self'-isolated code and
+            // concurrent execution of the closure" diagnostic. `url` is Sendable
+            // and the key is a pure function of it, so this is behavior-identical.
+            let key = url.absoluteString as NSString
+
             do {
                 let (data, _) = try await Self.imageSession.data(
                     for: URLRequest.withoutHTTP3Assumption(url: url)
