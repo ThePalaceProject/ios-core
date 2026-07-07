@@ -15,6 +15,7 @@ import SwiftUI
 /// layer in `AppTabHostView`'s root `ZStack` so it survives tab switches.
 struct SentimentGateView: View {
   @ObservedObject var presenter: RatingPromptPresenter
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   private typealias L = Strings.AppRating
 
@@ -37,10 +38,33 @@ struct SentimentGateView: View {
 
       if let step = presenter.step {
         card(for: step)
-          .transition(.opacity.combined(with: .scale(scale: 0.96)))
+          .transition(Self.cardTransition(reduceMotion: reduceMotion))
       }
     }
-    .animation(.easeInOut(duration: 0.25), value: presenter.step)
+    .animation(Self.stepAnimation(reduceMotion: reduceMotion), value: presenter.step)
+  }
+
+  // MARK: - Reduce-Motion-gated presentation (pure, testable)
+
+  /// The card's enter/exit transition. Under Reduce Motion it collapses to a
+  /// plain opacity fade with no scaling (the prior code always scaled, ignoring
+  /// the setting); otherwise it keeps the subtle opacity + 0.96 scale pop.
+  static func cardTransition(reduceMotion: Bool) -> AnyTransition {
+    usesScaleTransition(reduceMotion: reduceMotion)
+      ? .opacity.combined(with: .scale(scale: 0.96))
+      : .opacity
+  }
+
+  /// Whether the card transition includes a scale component. `false` under
+  /// Reduce Motion. Exposed so the gate can be unit-tested without a host.
+  static func usesScaleTransition(reduceMotion: Bool) -> Bool {
+    !reduceMotion
+  }
+
+  /// Animation for the sentiment -> feedback card swap. Emphasized spring
+  /// normally; `nil` (no animation) under Reduce Motion.
+  static func stepAnimation(reduceMotion: Bool) -> Animation? {
+    PalaceMotion.resolved(PalaceMotion.emphasized, reduceMotion: reduceMotion)
   }
 
   @ViewBuilder
@@ -77,6 +101,7 @@ struct SentimentGateView: View {
       RoundedRectangle(cornerRadius: 16, style: .continuous)
         .fill(Color(.secondarySystemBackground))
     )
+    .shadow(color: .black.opacity(0.18), radius: 16, y: 6)
     .padding(32)
     .accessibilityElement(children: .contain)
     .accessibilityAddTraits(.isModal)

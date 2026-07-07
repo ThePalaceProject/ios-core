@@ -142,8 +142,16 @@ private extension CatalogView {
                 )
             } else {
                 catalogStateView
+                    .accessibleAnimation(PalaceMotion.gentle, value: isCatalogLoading)
             }
         }
+    }
+
+    /// Whether the catalog is in its initial-load (skeleton) state. Drives the
+    /// skeleton -> content opacity cross-fade.
+    var isCatalogLoading: Bool {
+        if case .loading = viewModel.state { return true }
+        return false
     }
 
     @ViewBuilder
@@ -152,6 +160,7 @@ private extension CatalogView {
         case .loading:
             skeletonList
                 .accessibilityIdentifier(AccessibilityID.Catalog.loadingIndicator)
+                .transition(.opacity)
 
         case .error(let message, let sideloadedLanes):
             errorView(message: message, sideloadedLanes: sideloadedLanes)
@@ -182,6 +191,7 @@ private extension CatalogView {
             .accessibilityIdentifier(AccessibilityID.Catalog.scrollView)
             .accessibilityLabel(Strings.Generic.catalogRegion)
             .accessibilityElement(children: .contain)
+            .transition(.opacity)
 
         case .switchingEntryPoint(let selectors):
             CatalogContentView.switchingEntryPointView(

@@ -76,10 +76,6 @@ struct HoldsView: View {
                         updater: { _ in }
                     )
                 }
-
-            if model.isLoading {
-                loadingOverlay
-            }
         }
     }
 
@@ -87,6 +83,7 @@ struct HoldsView: View {
         VStack(alignment: .leading, spacing: 0) {
             if let syncError = model.syncError {
                 syncErrorBanner(syncError)
+                    .transition(.move(edge: .top).combined(with: .opacity))
             }
             if model.showSearchSheet {
                 searchBar
@@ -94,6 +91,7 @@ struct HoldsView: View {
             }
             content
         }
+        .accessibleAnimation(PalaceMotion.standard, value: model.syncError?.message)
     }
 
     private func syncErrorBanner(_ error: HoldsViewModel.SyncError) -> some View {
@@ -150,23 +148,15 @@ struct HoldsView: View {
         }
     }
 
-    /// Placeholder text when there are no holds at all
+    /// Empty state shown when the patron has no reserved or held books.
     private var emptyView: some View {
-        Text(DisplayStrings.emptyMessage)
-            .multilineTextAlignment(.center)
-            .foregroundColor(Color(white: 0.667))
-            .background(Color(TPPConfiguration.backgroundColor()))
-            .palaceFont(.body)
-            .padding(.horizontal, 24)
-            .padding(.top, 100)
-    }
-
-    /// Semi‐transparent loading overlay
-    private var loadingOverlay: some View {
-        ProgressView()
-            .scaleEffect(2)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color.black.opacity(0.5).ignoresSafeArea())
+        ContentUnavailableView {
+            Label(DisplayStrings.emptyTitle, systemImage: "clock")
+        } description: {
+            Text(DisplayStrings.emptyMessage)
+        }
+        .transition(.opacity)
+        .padding(.horizontal, 24)
     }
 
     /// Leading bar button: "Pick a new library"

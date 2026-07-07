@@ -51,7 +51,9 @@ struct PDFThumbnailStrip: View {
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
+                    .scrollTargetLayout()
                 }
+                .scrollTargetBehavior(.viewAligned)
                 .onAppear { proxy.scrollTo(currentPage, anchor: .center) }
                 .onChange(of: currentPage) { page in
                     withAnimation(.easeInOut(duration: 0.2)) {
@@ -65,6 +67,8 @@ struct PDFThumbnailStrip: View {
         // and a SwiftUI material renders unreliably over that UIViewRepresentable
         // backdrop, leaving the bar invisible over a white page.
         .background(Color(UIColor.systemBackground))
+        // Selection tick when the visible page changes (tap or snap).
+        .palaceHaptic(.selection, trigger: currentPage)
     }
 }
 

@@ -30,10 +30,13 @@ struct MyBooksView: View {
         ZStack {
             if model.isLoading {
                 BookListSkeletonView(rows: 10)
+                    .transition(.opacity)
             } else {
                 mainContent
+                    .transition(.opacity)
             }
         }
+        .accessibleAnimation(PalaceMotion.gentle, value: model.isLoading)
         .background(Color(TPPConfiguration.backgroundColor()))
         .overlay(alignment: .bottom) { SamplePreviewBarView() }
         .navigationBarTitleDisplayMode(.inline)
@@ -252,12 +255,18 @@ struct MyBooksView: View {
     }
 
     private var emptyView: some View {
-        Text(DisplayStrings.emptyViewMessage)
-            .multilineTextAlignment(.center)
-            .foregroundColor(.gray)
-            .centered()
-            .palaceFont(.body)
-            .accessibilityIdentifier(AccessibilityID.MyBooks.emptyStateView)
+        ContentUnavailableView {
+            Label(DisplayStrings.emptyViewTitle, systemImage: "books.vertical")
+        } description: {
+            Text(DisplayStrings.emptyViewMessage)
+        } actions: {
+            Button(DisplayStrings.browseCatalog) {
+                appContainer.tabRouterHub.navigate(to: .catalog)
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .transition(.opacity)
+        .accessibilityIdentifier(AccessibilityID.MyBooks.emptyStateView)
     }
 
     private func setupTabBarForiPad() {

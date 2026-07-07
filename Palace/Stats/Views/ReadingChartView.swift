@@ -57,6 +57,7 @@ struct ReadingChartView: View {
     }
     .frame(height: 200)
     .accessibilityLabel(chartAccessibilityLabel)
+    .accessibleAnimation(PalaceMotion.standard, value: dataPoints)
   }
 
   @ViewBuilder
