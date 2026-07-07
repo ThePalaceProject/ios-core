@@ -49,7 +49,36 @@ protocol DownloadStartCoordinatorDelegate: AnyObject {
 
 // MARK: - DownloadStartCoordinator
 
-final class DownloadStartCoordinator {
+/// - Sendable invariant (Swift 6 `complete`-mode): every stored dependency is a
+///   `let` bound at init (`stateManager`, `bookRegistry`, `userAccountProvider`,
+///   `currentAccountIdProvider`, `errorActivityTracker`, `queueOrchestrator`,
+///   and the three closure-injected per-state handlers). The only mutable member
+///   is `weak var delegate`, assigned exactly once during owner
+///   (`MyBooksDownloadCenter`) construction and never reassigned (weak-ref reads
+///   + ARC zeroing are atomic). `startBorrow` / `startDownloadAsync` hop into
+///   `Task { }`, touching only the actor-serialized
+///   `stateManager.downloadCoordinator` and the injected closures. The captured
+///   account-id (a `String`) is snapshotted into a `let` at start so the
+///   library-swap window stays closed — no auth-host scoping is broadened here.
+///   `@unchecked` only because the stored service types are not themselves
+///   `Sendable`.
+/// Sendable carrier for the non-Sendable `(() -> Void)?` `borrowCompletion`
+/// closure captured by the `sending` `Task` closure in `startBorrow`. Boxing
+/// lets the `Task` capture a Sendable carrier instead of the raw closure,
+/// clearing the "passing closure as a 'sending' parameter" diagnostic WITHOUT
+/// marking `borrowCompletion` `@Sendable` — which would ripple onto every
+/// caller closure (`TokenRefreshInterceptor`, `DownloadStartDispatcher`,
+/// `DownloadAuthRetryHandler`) that captures `[weak delegate]`/`[weak self]`
+/// and mutates non-Sendable state.
+/// INVARIANT — the boxed closure is invoked at most once, inside the single
+/// `startBorrow` `Task` (both the success and `catch` terminal paths), never
+/// concurrently; its own thread-affinity is the caller's contract (unchanged).
+private final class BorrowCompletionBox: @unchecked Sendable {
+    let call: (() -> Void)?
+    init(_ call: (() -> Void)?) { self.call = call }
+}
+
+final class DownloadStartCoordinator: @unchecked Sendable {
 
     weak var delegate: DownloadStartCoordinatorDelegate?
 
@@ -159,6 +188,10 @@ final class DownloadStartCoordinator {
         attemptDownload shouldAttemptDownload: Bool,
         borrowCompletion: (() -> Void)? = nil
     ) {
+        // Swift 6 `complete`: box the non-Sendable `borrowCompletion` before the
+        // `sending` `Task` boundary (see `BorrowCompletionBox`). Boxing avoids
+        // `@Sendable`-ing the param, which would ripple to the caller closures.
+        let borrowCompletionBox = BorrowCompletionBox(borrowCompletion)
         Task { [weak self] in
             guard let self else { return }
             do {
@@ -172,14 +205,14 @@ final class DownloadStartCoordinator {
                     self.delegate?.schedulePendingStartsIfPossible()
                 }
 
-                borrowCompletion?()
+                borrowCompletionBox.call?()
             } catch {
                 Log.error(#file, "Borrow failed: \(error.localizedDescription)")
                 await self.stateManager.downloadCoordinator.registerCompletion(identifier: book.identifier)
                 let remainingCount = await self.stateManager.downloadCoordinator.activeCount
                 Log.info(#file, "📊 Borrow failed for '\(book.title)', released slot, remaining active: \(remainingCount)")
                 self.delegate?.schedulePendingStartsIfPossible()
-                borrowCompletion?()
+                borrowCompletionBox.call?()
             }
         }
     }

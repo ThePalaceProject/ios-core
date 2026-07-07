@@ -86,8 +86,8 @@ private enum BorrowAuthErrorDecision {
 ///   member is `weak var delegate`, assigned exactly once during owner
 ///   (`MyBooksDownloadCenter`) construction and never reassigned; weak-reference
 ///   reads and ARC zeroing are atomic in the Swift runtime, so no explicit lock
-///   is required. Circuit-breaker state (`borrowReauthAttempted`) is `static`
-///   and serialized by `borrowReauthLock` (NSLock). `@unchecked` (rather than a
+///   is required. Circuit-breaker state lives in the `static let reauthTracker`
+///   (`ReauthTracker`), a lock-backed `@unchecked Sendable` holder. `@unchecked` (rather than a
 ///   synthesized conformance) because `delegate`'s protocol existential and the
 ///   shared service types are not themselves `Sendable`; this conformance
 ///   asserts the serialization contract above and does not change runtime
@@ -102,34 +102,43 @@ final class BorrowOperation: @unchecked Sendable {
     /// borrow operation. Prevents infinite re-auth loops for persistent
     /// auth failures. Shared across BorrowOperation instances so
     /// account-switch state can be cleared centrally.
-    private static var borrowReauthAttempted: Set<String> = []
-    private static let borrowReauthLock = NSLock()
+    ///
+    /// Lock-backed holder rather than a `static var` + sibling `NSLock`:
+    /// under Swift 6 `complete`-mode a mutable static is nonisolated global
+    /// shared mutable state (a warning even when a paired lock guards every
+    /// access, because the compiler can't see the pairing). Wrapping the set
+    /// and its lock in one `@unchecked Sendable` holder makes the serialization
+    /// contract explicit and the storage a single immutable `let`. Behavior is
+    /// identical to the previous lock/defer accessors.
+    private final class ReauthTracker: @unchecked Sendable {
+        private let lock = NSLock()
+        private var attempted: Set<String> = []
+
+        func hasAttempted(_ bookId: String) -> Bool { lock.withLock { attempted.contains(bookId) } }
+        func mark(_ bookId: String) { lock.withLock { _ = attempted.insert(bookId) } }
+        func clear(_ bookId: String) { lock.withLock { attempted.remove(bookId) } }
+        func clearAll() { lock.withLock { attempted.removeAll() } }
+    }
+
+    private static let reauthTracker = ReauthTracker()
 
     private static func hasBorrowReauthBeenAttempted(for bookId: String) -> Bool {
-        borrowReauthLock.lock()
-        defer { borrowReauthLock.unlock() }
-        return borrowReauthAttempted.contains(bookId)
+        reauthTracker.hasAttempted(bookId)
     }
 
     private static func markBorrowReauthAttempted(for bookId: String) {
-        borrowReauthLock.lock()
-        defer { borrowReauthLock.unlock() }
-        borrowReauthAttempted.insert(bookId)
+        reauthTracker.mark(bookId)
     }
 
     private static func clearBorrowReauthAttempted(for bookId: String) {
-        borrowReauthLock.lock()
-        defer { borrowReauthLock.unlock() }
-        borrowReauthAttempted.remove(bookId)
+        reauthTracker.clear(bookId)
     }
 
     /// Clears all re-auth tracking. Called on account switch via the
     /// MBDC forwarder so stale circuit-breaker state from the previous
     /// account can't suppress legitimate re-auth attempts.
     static func clearAllBorrowReauthState() {
-        borrowReauthLock.lock()
-        defer { borrowReauthLock.unlock() }
-        borrowReauthAttempted.removeAll()
+        reauthTracker.clearAll()
     }
 
     // MARK: - Pure Helpers

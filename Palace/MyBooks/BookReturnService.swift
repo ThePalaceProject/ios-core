@@ -251,7 +251,7 @@ final class BookReturnService: @unchecked Sendable {
     /// callers don't have to thread the lock through their UI work.
     @discardableResult
     private func launchTrackedMainActorTask(
-        _ body: @escaping @MainActor () async -> Void
+        _ body: @escaping @MainActor @Sendable () async -> Void
     ) -> Task<Void, Never> {
         let id = UUID()
         let task = Task { @MainActor [weak self] in
@@ -634,29 +634,35 @@ final class BookReturnService: @unchecked Sendable {
 /// Internal-only — accessible from PalaceTests via `@testable import
 /// Palace` but not exported publicly.
 internal enum BookReturnServiceTestHook {
-    private static let lock = NSLock()
-    private static var _deinitCount = 0
+    /// Lock-backed counter holder. Replaces the previous `static var _deinitCount`
+    /// + free-standing `NSLock`: under Swift 6 `complete`-mode a mutable static is
+    /// nonisolated global shared mutable state (a warning even when guarded by a
+    /// sibling lock, because the compiler can't see the pairing). Wrapping the
+    /// count + its lock in one `@unchecked Sendable` holder makes the
+    /// serialization contract explicit and the storage a single immutable `let`.
+    /// Precedent: `LockedFlag` in `TPPAccessibilityAnnouncementCenter`.
+    private final class Counter: @unchecked Sendable {
+        private let lock = NSLock()
+        private var value = 0
+
+        func increment() { lock.withLock { value += 1 } }
+        func get() -> Int { lock.withLock { value } }
+    }
+
+    private static let counter = Counter()
 
     static func recordDeinit() {
-        lock.lock()
-        _deinitCount += 1
-        lock.unlock()
+        counter.increment()
     }
 
     /// Async accessor — used in test arrange / assert hops.
     static var deinitCount: Int {
-        get async {
-            lock.lock()
-            defer { lock.unlock() }
-            return _deinitCount
-        }
+        get async { counter.get() }
     }
 
     /// Sync accessor — used inside `awaitConditionAsync` predicates
     /// which are non-async closures.
     static var deinitCountSync: Int {
-        lock.lock()
-        defer { lock.unlock() }
-        return _deinitCount
+        counter.get()
     }
 }

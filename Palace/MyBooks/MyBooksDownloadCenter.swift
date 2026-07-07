@@ -21,7 +21,54 @@ import OverdriveProcessor
 
 // DownloadCoordinator is defined in MyBooksDownloadQueue.swift
 
-@objc class MyBooksDownloadCenter: NSObject, URLSessionDelegate {
+/// Sendable carrier for the non-Sendable `@escaping (URLRequest?) -> Void`
+/// redirection completion handler captured by the `sending` `Task` closure in
+/// `urlSession(_:task:willPerformHTTPRedirection:...)`. Boxing lets the `Task`
+/// capture a Sendable carrier instead of the raw handler, clearing the "passing
+/// closure as a 'sending' parameter" diagnostic. INVARIANT — the session's
+/// `delegateQueue` is `.main` (see the class Sendable invariant), so WebKit/
+/// URLSession delivers this delegate callback on main and the handler is invoked
+/// exactly once, on main, from inside that single `Task`.
+private final class RedirectCompletionBox: @unchecked Sendable {
+    let call: (URLRequest?) -> Void
+    init(_ call: @escaping (URLRequest?) -> Void) { self.call = call }
+}
+
+/// Sendable carrier for a non-Sendable `[String: Any]` failure-metadata
+/// dictionary crossing the `sending` `Task` boundary in `logBookDownloadFailure`.
+/// INVARIANT — the dictionary is fully assembled synchronously before the `Task`
+/// is enqueued and thereafter read-only; only the single logging `Task` consumes
+/// it, so `@unchecked Sendable` waives no real race. Mirrors `BorrowErrorDictBox`.
+private final class DownloadFailureMetadataBox: @unchecked Sendable {
+    let metadata: [String: Any]
+    init(_ metadata: [String: Any]) { self.metadata = metadata }
+}
+
+/// - Sendable invariant (Swift 6 `complete`-mode): `MyBooksDownloadCenter` is a
+///   single long-lived instance owned by `AppContainer` (stored as
+///   `let downloadCenter`, cached behind `OSAllocatedUnfairLock<AppContainer?>`),
+///   which forces the container's stored services to be `Sendable`. The vast
+///   majority of MBDC's stored members are `let`-bound service references; the
+///   handful of mutable `var`s are all single-threaded:
+///     • `session` (`URLSession!`) — created during `setupSession()` at init and
+///       only re-created via main-thread flows (`recreateSessionForMockBackend`,
+///       DEBUG-only, and the reset path); the session's own `delegateQueue` is
+///       `.main`, so every delegate callback lands on the main thread.
+///     • `bookIdentifierOfBookToRemove` — scratch state for the remove-from-device
+///       confirmation alert, written and read only on the main-thread UI flow.
+///     • `reachabilityCancellable` — installed once by `bindReachability()` during
+///       main-thread wiring.
+///   The concurrent teardown/scheduling hops the class performs run through
+///   `Task { }` / `runOnMainAsync` and touch only the actor-serialized
+///   `stateManager` (`SafeDictionary` + `DownloadCoordinator` actor) or hop back
+///   to `@MainActor` before touching UI state — the same execution shape this
+///   flow had under Swift-5 mode. `@unchecked` (rather than a synthesized
+///   conformance) because the `@objc NSObject` base, the `URLSession` delegate
+///   surface, and the shared service types are not themselves `Sendable`; this
+///   conformance formalizes the single-instance, main-delegate-queue serialization
+///   contract and does not change behavior. No auth-error host scoping is
+///   broadened by this conformance.
+@objc class MyBooksDownloadCenter: NSObject, URLSessionDelegate, @unchecked Sendable {
     typealias DisplayStrings = Strings.MyDownloadCenter
 
     /// Optional override used by tests / fault-injection harnesses to pin a
@@ -69,8 +116,8 @@ import OverdriveProcessor
         return accountsManager.userAccount(for: capturedAccountId)
     }
 
-    private var reauthenticator: Reauthenticator
-    var bookRegistry: TPPBookRegistryProvider
+    private let reauthenticator: Reauthenticator
+    let bookRegistry: TPPBookRegistryProvider
     private let accountsManager: AccountsManager
     private let networkExecutor: TPPNetworkExecutor
     private let accessibilityAnnouncements: TPPAccessibilityAnnouncementCenter
@@ -1463,13 +1510,17 @@ extension MyBooksDownloadCenter: URLSessionTaskDelegate {
         newRequest request: URLRequest,
         completionHandler: @escaping (URLRequest?) -> Void
     ) {
+        // Swift 6 `complete`: box the non-Sendable `completionHandler` before the
+        // `sending` `Task` boundary (see `RedirectCompletionBox`). Delivered and
+        // invoked on the session's `.main` delegate queue.
+        let completionBox = RedirectCompletionBox(completionHandler)
         Task {
             let decision = await redirectPolicy.decide(
                 taskIdentifier: task.taskIdentifier,
                 originalScheme: task.originalRequest?.url?.scheme,
                 newRequest: request
             )
-            completionHandler(decision)
+            completionBox.call(decision)
         }
     }
 
@@ -1592,13 +1643,17 @@ extension MyBooksDownloadCenter {
         dict["response"] = downloadTask.response ?? "N/A"
         dict["downloadError"] = downloadTask.error ?? "N/A"
 
-        // Use enhanced logging if enabled
+        // Use enhanced logging if enabled.
+        // Swift 6 `complete`: box the non-Sendable `[String: Any]` metadata before
+        // the `sending` `Task` boundary (see `DownloadFailureMetadataBox`); `dict`
+        // is fully built above and read-only thereafter.
+        let metadataBox = DownloadFailureMetadataBox(dict)
         Task { [weak self] in
             await self?.deviceSpecificErrorMonitor.logDownloadFailure(
                 book: book,
                 reason: reason,
                 error: downloadTask.error,
-                metadata: dict
+                metadata: metadataBox.metadata
             )
         }
     }

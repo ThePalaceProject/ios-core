@@ -13,13 +13,18 @@ actor DownloadErrorRecovery {
 
     // MARK: - Retry Policy
 
-    struct RetryPolicy {
+    struct RetryPolicy: Sendable {
         let maxAttempts: Int
         let baseDelay: TimeInterval
         let maxDelay: TimeInterval
         /// Overall timeout for all retry attempts combined (prevents indefinite freezing)
         let overallTimeout: TimeInterval
-        let shouldRetry: (Error) -> Bool
+        /// `@Sendable`: every assigned classifier below is a pure, capture-free
+        /// closure over the passed-in `Error`, so it is safe to share across the
+        /// actor boundary. Required for the enclosing `RetryPolicy` to be
+        /// `Sendable` and thus a valid `static let` on the `DownloadErrorRecovery`
+        /// actor.
+        let shouldRetry: @Sendable (Error) -> Bool
 
         static let `default` = RetryPolicy(
             maxAttempts: 3,

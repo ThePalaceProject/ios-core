@@ -11,6 +11,18 @@ private final class PrefetchBooksBox: @unchecked Sendable {
     init(_ books: [TPPBook]) { self.books = books }
 }
 
+/// Carrier box that lets the `ImageLoading` reference cross into the
+/// `@Sendable` detached prefetch task. `ImageLoading` is a class-bound
+/// (`AnyObject`) protocol not yet annotated `Sendable`; the boxed reference is
+/// read-only (only `thumbnailImage(for:)` is called, whose own implementation
+/// is internally synchronized), consumed by exactly one detached task, so
+/// `@unchecked Sendable` is sound. Removable once `ImageLoading` is made
+/// `Sendable` upstream (tracked in RIPPLES.md). Mirrors `PrefetchBooksBox`.
+private final class PrefetchImageLoaderBox: @unchecked Sendable {
+    let loader: ImageLoading
+    init(_ loader: ImageLoading) { self.loader = loader }
+}
+
 struct BookListView: View {
     let books: [TPPBook]
     @Binding var isLoading: Bool
@@ -115,18 +127,20 @@ struct BookListView: View {
         // the AppContainer-owned cache + circuit breaker rather than reaching
         // for TPPBookCoverRegistry.shared. Capture the value to avoid touching
         // the SwiftUI Environment from the detached task.
-        let imageLoader = appContainer.imageLoader
-        // `TPPBook` is a non-Sendable `NSObject`, so `[TPPBook]` cannot cross
-        // into the `@Sendable` detached task under `complete`-mode strict
-        // concurrency. Wrap the snapshot in a carrier box: the array is a
-        // read-only snapshot handed to a single detached task that only reads
-        // each book to fetch its thumbnail — never mutated, never shared with
-        // another consumer — so `@unchecked Sendable` is sound. (Precedent:
-        // `CarPlayImageCompletionBox`, `ReadiumBookmarkBox`.)
+        // `TPPBook` is a non-Sendable `NSObject` and `ImageLoading` is a
+        // class-bound protocol not yet annotated `Sendable`, so neither
+        // `[TPPBook]` nor the loader can cross into the `@Sendable` detached
+        // task under `complete`-mode strict concurrency. Wrap both in carrier
+        // boxes: the array is a read-only snapshot and the loader reference is
+        // read-only (thumbnail fetch only), each handed to a single detached
+        // task — never mutated, never shared with another consumer — so
+        // `@unchecked Sendable` is sound. (Precedent: `CarPlayImageCompletionBox`,
+        // `ReadiumBookmarkBox`.)
         let upcomingBooksBox = PrefetchBooksBox(upcomingBooks)
+        let imageLoaderBox = PrefetchImageLoaderBox(appContainer.imageLoader)
         Task.detached(priority: .utility) {
             for book in upcomingBooksBox.books {
-                _ = await imageLoader.thumbnailImage(for: book)
+                _ = await imageLoaderBox.loader.thumbnailImage(for: book)
             }
         }
 

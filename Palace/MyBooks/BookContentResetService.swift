@@ -21,7 +21,18 @@ import PalaceLogging
 /// downloads, clears state-manager bookkeeping, removes the on-disk
 /// content directory, and (for current-account paths) broadcasts a UI
 /// update.
-final class BookContentResetService {
+///
+/// - Sendable invariant (Swift 6 `complete`-mode): every stored dependency is a
+///   `let` bound at init (`bookRegistry`, `accountsManager`, `stateManager`,
+///   `bookFileManager`, `progressReporter`, `localContentService`, `fileManager`)
+///   and there is no mutable instance state. `reset()` hops the download-state
+///   teardown into a `Task` that only touches the actor-serialized
+///   `stateManager.downloadCoordinator` / `SafeDictionary` members — the same
+///   already-shared services this flow drove under Swift-5 mode. `@unchecked`
+///   (rather than a synthesized conformance) only because the stored service
+///   types are not themselves `Sendable`; the conformance asserts the
+///   immutable-dependency contract above and does not change behavior.
+final class BookContentResetService: @unchecked Sendable {
 
     private let bookRegistry: TPPBookRegistryProvider
     private let accountsManager: AccountsManager
