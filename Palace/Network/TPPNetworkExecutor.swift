@@ -9,7 +9,12 @@
 import Foundation
 import PalaceLogging
 import PalaceNetwork
-import PalaceAuth
+// `@preconcurrency`: PalaceAuth's `TokenResponse` (an `@objcMembers` class) is not
+// Sendable-audited and crosses the `@Sendable` token-refresh Task in
+// `refreshTokenAndResume` via the `Result<TokenResponse, Error>` continuation.
+// Honest ceiling until PalaceAuth annotates `TokenResponse: Sendable`; recorded in
+// RIPPLES.md as the preferred upstream fix.
+@preconcurrency import PalaceAuth
 
 enum NYPLResult<SuccessInfo> {
     case success(SuccessInfo, URLResponse?)
@@ -81,6 +86,17 @@ private actor TokenRefreshCoordinator {
         retryQueue.removeAll()
         return tasks
     }
+}
+
+/// Carries a non-`Sendable` completion closure across a `@Sendable` `Task`
+/// boundary (the token-refresh continuations in `refreshTokenAndResume` and
+/// `executeTokenRefresh`). Each boxed completion is invoked at most once, and the
+/// producing method serializes its use, so `@unchecked Sendable` is sound. This is
+/// the isolation-preserving alternative to marking the public completion parameters
+/// `@Sendable`, which would ripple onto every caller. Mirrors `ImageCompletionBox`.
+private final class CompletionBox<T>: @unchecked Sendable {
+    let call: (T) -> Void
+    init(_ call: @escaping (T) -> Void) { self.call = call }
 }
 
 /// `@unchecked Sendable`: lets the executor satisfy the now-`Sendable`
@@ -585,10 +601,14 @@ extension TPPNetworkExecutor {
 
     func refreshTokenAndResume(task: URLSessionTask?, accountId: String? = nil, completion: ((_ result: NYPLResult<Data>) -> Void)? = nil) {
         let capturedAccountId = accountId ?? accountsManager.currentAccountId
+        // Box the non-`Sendable` completion so it can cross the `@Sendable` Task
+        // boundaries below (this Task and the nested token-refresh continuation)
+        // without rippling `@Sendable` onto the public signature.
+        let completionBox = completion.map { CompletionBox($0) }
         Task { [weak self] in
             guard let self = self else {
                 let error = NSError(domain: TPPErrorLogger.clientDomain, code: TPPErrorCode.invalidCredentials.rawValue, userInfo: [NSLocalizedDescriptionKey: "Network executor deallocated"])
-                completion?(NYPLResult.failure(error, nil))
+                completionBox?.call(NYPLResult.failure(error, nil))
                 return
             }
 
@@ -599,12 +619,12 @@ extension TPPNetworkExecutor {
                 Log.debug(#file, "Token refresh already in progress, queueing task for retry")
                 if let task {
                     await self.tokenCoordinator.appendToRetryQueue(task)
-                    if let completion {
-                        self.responder.addCompletion(completion, taskID: task.taskIdentifier)
+                    if let completionBox {
+                        self.responder.addCompletion(completionBox.call, taskID: task.taskIdentifier)
                     }
                 } else {
                     let error = NSError(domain: TPPErrorLogger.clientDomain, code: TPPErrorCode.invalidCredentials.rawValue, userInfo: [NSLocalizedDescriptionKey: "Token refresh in progress"])
-                    completion?(NYPLResult.failure(error, nil))
+                    completionBox?.call(NYPLResult.failure(error, nil))
                 }
                 return
             }
@@ -626,7 +646,7 @@ extension TPPNetworkExecutor {
                 Log.error(#file, "Cannot refresh token: missing credentials or tokenURL for account \(capturedAccountId ?? "nil")")
                 await self.tokenCoordinator.setRefreshing(false)
                 let error = NSError(domain: TPPErrorLogger.clientDomain, code: TPPErrorCode.invalidCredentials.rawValue, userInfo: [NSLocalizedDescriptionKey: "Cannot request token with empty credentials"])
-                completion?(NYPLResult.failure(error, nil))
+                completionBox?.call(NYPLResult.failure(error, nil))
                 return
             }
 
@@ -635,8 +655,8 @@ extension TPPNetworkExecutor {
 
             if let task {
                 await self.tokenCoordinator.appendToRetryQueue(task)
-                if let completion {
-                    self.responder.addCompletion(completion, taskID: task.taskIdentifier)
+                if let completionBox {
+                    self.responder.addCompletion(completionBox.call, taskID: task.taskIdentifier)
                 }
             }
 
@@ -670,7 +690,7 @@ extension TPPNetworkExecutor {
                         await self.tokenCoordinator.setRefreshing(false)
 
                         if task == nil {
-                            completion?(NYPLResult.success(Data(), nil))
+                            completionBox?.call(NYPLResult.success(Data(), nil))
                         }
 
                     case .failure(let error):
@@ -718,7 +738,7 @@ extension TPPNetworkExecutor {
                                               code: TPPErrorCode.invalidCredentials.rawValue,
                                               userInfo: userInfo)
                         }
-                        completion?(NYPLResult.failure(nsError, nil))
+                        completionBox?.call(NYPLResult.failure(nsError, nil))
                     }
                 }
             }
@@ -737,6 +757,9 @@ extension TPPNetworkExecutor {
         }
 
         let session = self.transport.urlSession
+        // Box the non-`Sendable` completion so it can cross the `@Sendable` Task
+        // boundary below; invoked exactly once.
+        let completionBox = CompletionBox(completion)
         Task {
             let tokenRequest = TokenRequest(url: tokenURL, username: username, password: password)
             let result = await tokenRequest.execute(session: session)
@@ -751,9 +774,9 @@ extension TPPNetworkExecutor {
                     expirationDate: tokenResponse.expirationDate
                 )
                 targetAccount.markLoggedIn()
-                completion(.success(tokenResponse))
+                completionBox.call(.success(tokenResponse))
             case .failure(let error):
-                completion(.failure(error))
+                completionBox.call(.failure(error))
             }
         }
     }
