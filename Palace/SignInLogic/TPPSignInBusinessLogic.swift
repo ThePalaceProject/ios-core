@@ -37,7 +37,22 @@ import PalaceAuth
 // `Palace/Accounts/User/NYPLADEPT+TPPDRMAuthorizing.swift` (added to xcodeproj
 // during the swarm_ea663ab6 recovery wiring stage).
 
-class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibraryAccountProvider {
+// Swift 6 `complete` mode: `TPPSignInBusinessLogic` is a UI-driving auth
+// orchestrator — it reads/writes `@MainActor`-isolated UIKit state (alerts,
+// `UIApplication.shared`, `WKWebsiteDataStore`), its `uiDelegate` is a UIKit
+// view controller / `@MainActor` view model, and every entry point
+// (`logIn`, `logOut`, `performForceReset`, card creation, DRM authorize) is
+// reached from the main thread. Isolating the whole type to `@MainActor` is
+// the correct isolation-only fix: it replaces the ~28 scattered
+// `MainActor.assumeIsolated` / non-`@Sendable`-hop workarounds that only
+// existed because the type was nonisolated. The two `@objc` provider
+// protocols (`TPPSignedInStateProvider`, `TPPCurrentLibraryAccountProvider`)
+// are nonisolated `@objc` protocols whose witnesses read main-actor instance
+// state, so the conformances carry `@preconcurrency` — the runtime is already
+// main-thread-correct (every call site is on main); `@preconcurrency` tells the
+// checker to accept the isolated witnesses against the nonisolated requirement.
+@MainActor
+class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider, @preconcurrency TPPCurrentLibraryAccountProvider {
     var onLocationAuthorizationCompletion: (UINavigationController?, Error?) -> Void = {_, _ in }
 
     /// Makes a business logic object with a network request executor that
@@ -564,7 +579,10 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
     /// Precedence: server-supplied problem document > network-connectivity
     /// error > default "invalid credentials". Without the connectivity check,
     /// a dropped Wi-Fi or LTE during sign-in was misreported as bad creds.
-    static func userFacingSignInError(
+    // `nonisolated`: pure error classifier over an `NSError` + optional
+    // problem document, no actor state. Kept off `@MainActor` so nonisolated
+    // callers (and the PalaceAuth `AuthReducer` mirror) can invoke it directly.
+    nonisolated static func userFacingSignInError(
         for error: NSError,
         problemDocument: TPPProblemDocument?
     ) -> (title: String?, message: String?) {
@@ -591,14 +609,14 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
     /// `TokenRequest` after its bounded retry was exhausted (5xx / 429 / 408).
     /// A genuine 401/403 has a different code and is NOT matched here, so it
     /// still falls through to the "Invalid Credentials" message.
-    static func isTransientServerError(_ error: NSError) -> Bool {
+    nonisolated static func isTransientServerError(_ error: NSError) -> Bool {
         guard error.domain == TokenRequest.httpErrorDomain else { return false }
         return error.code == 408 || error.code == 429 || (500...599).contains(error.code)
     }
 
     /// True when the error is from URLSession indicating the request never
     /// reached the server (lost connection, DNS failure, TLS handshake, etc).
-    static func isNetworkConnectivityError(_ error: NSError) -> Bool {
+    nonisolated static func isNetworkConnectivityError(_ error: NSError) -> Bool {
         guard error.domain == NSURLErrorDomain else { return false }
         switch error.code {
         case NSURLErrorNotConnectedToInternet,

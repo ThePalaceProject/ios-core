@@ -12,6 +12,7 @@ import XCTest
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 final class CredentialPrivacyTests: XCTestCase {
 
     // Realistic-looking credential fixtures we will scan log payloads for.

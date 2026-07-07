@@ -181,6 +181,7 @@ final class TPPUserAccountAuthStateTests: XCTestCase {
 
 // MARK: - Adobe Activation Skip Tests
 
+@MainActor
 final class TPPAdobeActivationSkipTests: XCTestCase {
 
     private var businessLogic: TPPSignInBusinessLogic!
@@ -420,6 +421,7 @@ final class UserAccountPublisherAuthStateTests: XCTestCase {
 
 // MARK: - Integration Test: Full SAML Re-auth Flow
 
+@MainActor
 final class TPPSAMLReauthFlowTests: XCTestCase {
 
     override func setUp() {

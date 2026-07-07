@@ -10,7 +10,13 @@ import Foundation
 import CoreLocation
 import SafariServices
 
-extension TPPSignInBusinessLogic: CLLocationManagerDelegate {
+// `@preconcurrency`: `CLLocationManagerDelegate` is a nonisolated system
+// protocol; `TPPSignInBusinessLogic` is `@MainActor`. CoreLocation delivers
+// `locationManagerDidChangeAuthorization` on the thread the manager was created
+// on (main here — the manager is configured in `continueRegularCardCreation` on
+// main), so the isolated witness is runtime-correct. `@preconcurrency` accepts
+// the `@MainActor` witness against the nonisolated requirement.
+extension TPPSignInBusinessLogic: @preconcurrency CLLocationManagerDelegate {
     @objc
     func startRegularCardCreation(completion: @escaping (UINavigationController?, Error?) -> Void) {
         // Bucket A migration: card creation is user-initiated (Sign Up button

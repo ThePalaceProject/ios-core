@@ -17,6 +17,7 @@ import PalaceCatalog
 
 // MARK: - saveDRMCredentials Tests
 
+@MainActor
 final class TPPSaveDRMCredentialsTests: XCTestCase {
 
     private var businessLogic: TPPSignInBusinessLogic!
@@ -148,6 +149,7 @@ final class TPPSaveDRMCredentialsTests: XCTestCase {
 
 // MARK: - Login Flow No-Activation Tests
 
+@MainActor
 final class TPPLoginNoActivationTests: XCTestCase {
 
     private var businessLogic: TPPSignInBusinessLogic!

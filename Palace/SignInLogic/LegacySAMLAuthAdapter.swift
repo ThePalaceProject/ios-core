@@ -40,12 +40,16 @@ final class UniversalLinksAdapter: NSObject, UniversalLinksProviding {
 /// payload through the existing OAuth/SAML handler, and surface errors
 /// through the UI delegate.
 ///
-/// Both adapters here are deliberately NOT `@MainActor` so they can be
-/// constructed from `TPPSignInBusinessLogic`'s nonisolated designated
-/// initializer. Every callback either re-enters main via `Task { @MainActor }`
-/// or `DispatchQueue.main.async`; the underlying calls to UIKit, SwiftUI, and
-/// `TPPSignInBusinessLogic` all bounce through the main thread before
-/// touching anything actor-isolated.
+/// `@MainActor`: this adapter reads/writes `@MainActor` `TPPSignInBusinessLogic`
+/// state synchronously (`selectedIDPURL`, `savedCookies`, `handleSAMLRedirect`)
+/// and is only ever constructed from `TPPSignInBusinessLogic.init` (now itself
+/// `@MainActor`) and driven by `TPPSAMLHelper` on the main-thread SAML login
+/// flow. Its `SAMLAuthContext` conformance is main-actor because the PalaceAuth
+/// protocol is `@MainActor` (see RIPPLES.md). The residual `asyncIfNeeded` hops
+/// below stay for their sync-if-already-on-main ordering guarantee, but no
+/// longer need `assumeIsolated` gymnastics to reach main-actor state — the whole
+/// adapter is now main-isolated.
+@MainActor
 final class LegacySAMLAuthContext: NSObject, SAMLAuthContext {
     weak var businessLogic: TPPSignInBusinessLogic?
 
@@ -109,14 +113,17 @@ final class LegacySAMLAuthContext: NSObject, SAMLAuthContext {
 /// `SAMLWebViewPresenting`. Mirrors the legacy `LegacySAMLWebViewPresenter`
 /// that lived inside `TPPSAMLHelper.swift` before the package extraction.
 ///
-/// Not `@MainActor` for the same reason as `LegacySAMLAuthContext`: it must be
-/// constructible from a nonisolated init. Each method hops to main via
-/// `Task { @MainActor }` before touching the SwiftUI presenter.
+/// `@MainActor` for the same reason as `LegacySAMLAuthContext`: it is
+/// constructed from `TPPSignInBusinessLogic.init` (now `@MainActor`), drives the
+/// `@MainActor` `SignInWebSheetPresenter`, and its `SAMLWebViewPresenting`
+/// conformance is main-actor because the PalaceAuth protocol is `@MainActor`
+/// (see RIPPLES.md).
 ///
 /// Holds a reference to the same `urlSettingsProvider` the businessLogic was
 /// constructed with so the universal-links URL is read from the injected
 /// settings object rather than reaching back through `AppContainer.production()`
 /// (which is a singleton seam the rest of the sign-in path no longer touches).
+@MainActor
 final class LegacySAMLWebViewPresenter: NSObject, SAMLWebViewPresenting {
     private let universalLinksProvider: NYPLUniversalLinksSettings
 
@@ -240,7 +247,13 @@ final class LegacySAMLWebViewPresenter: NSObject, SAMLWebViewPresenting {
 /// `PalaceAuth.TPPUserAccountFrontEndValidation` reads. PalaceAuth doesn't
 /// see `LoginKeyboard` (it lives on `AccountDetails`); this extension
 /// flattens each predicate to a Bool the validator can act on.
-extension TPPSignInBusinessLogic: TPPSignInValidationContext {
+// `@preconcurrency`: `TPPSignInValidationContext` (PalaceAuth) is a nonisolated
+// protocol, but these witnesses read `@MainActor` instance state
+// (`selectedAuthentication`, `userAccount`). The sole consumer,
+// `TPPUserAccountFrontEndValidation` (a `UITextFieldDelegate`), only calls them
+// on the main thread, so `@preconcurrency` accepts the isolated witnesses and
+// inserts a runtime main-actor check at the dynamic-dispatch boundary.
+extension TPPSignInBusinessLogic: @preconcurrency TPPSignInValidationContext {
     public var usernameIsEmailKeyboard: Bool {
         selectedAuthentication?.patronIDKeyboard == .email
     }

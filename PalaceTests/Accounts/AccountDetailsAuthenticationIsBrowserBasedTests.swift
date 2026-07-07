@@ -18,6 +18,7 @@ import XCTest
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 final class AccountDetailsAuthenticationIsBrowserBasedTests: XCTestCase {
 
     // MARK: - Truth table — one row per auth type

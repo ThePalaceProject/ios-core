@@ -10,6 +10,7 @@ import XCTest
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 class TPPSignInBusinessLogicTests: XCTestCase {
     var businessLogic: TPPSignInBusinessLogic!
     var libraryAccountMock: TPPLibraryAccountMock!

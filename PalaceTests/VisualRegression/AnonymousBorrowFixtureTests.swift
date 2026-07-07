@@ -10,6 +10,7 @@
 
 import XCTest
 
+@MainActor
 final class AnonymousBorrowBaselineFixtureTests: XCTestCase {
 
   override func tearDown() {

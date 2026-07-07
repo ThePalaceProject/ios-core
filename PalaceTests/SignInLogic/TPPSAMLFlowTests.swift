@@ -14,6 +14,9 @@ import PalaceAuth
 
 // MARK: - Phase 1+2: UI Decoupling + Force-Unwrap Elimination
 
+// `@MainActor`: constructs `TPPSAMLHelper` and drives `samlHelper.logIn(...)`,
+// both `@MainActor` after the SAML-protocol cascade (see RIPPLES.md §1).
+@MainActor
 final class TPPSAMLFlowTests: XCTestCase {
 
     private var mockContext: MockSAMLAuthContext!
@@ -244,6 +247,9 @@ final class TPPSAMLFlowTests: XCTestCase {
 
 // MARK: - Phase 3: Cookie Expiration Validation
 
+// `@MainActor`: constructs `TPPSAMLHelper` and drives `samlHelper.logIn(...)`,
+// both `@MainActor` after the SAML-protocol cascade (see RIPPLES.md §1).
+@MainActor
 final class TPPSAMLCookieExpirationTests: XCTestCase {
 
     private var mockContext: MockSAMLAuthContext!
@@ -470,6 +476,7 @@ final class TPPSAMLCookieExpirationTests: XCTestCase {
 
 // MARK: - Phase 4: State Machine (ignoreSignedInState replacement)
 
+@MainActor
 final class TPPSAMLStateMachineTests: XCTestCase {
 
     private var businessLogic: TPPSignInBusinessLogic!
@@ -594,6 +601,7 @@ final class TPPSAMLStateMachineTests: XCTestCase {
 
 // MARK: - Phase 5: SAML State Isolation
 
+@MainActor
 final class TPPSAMLStateIsolationTests: XCTestCase {
 
     // MARK: - Test 22: Non-SAML library doesn't create helper
@@ -723,6 +731,7 @@ final class TPPSAMLStateIsolationTests: XCTestCase {
 
 // MARK: - Regression + Contract Tests
 
+@MainActor
 final class TPPSAMLRegressionTests: XCTestCase {
 
     // MARK: - Test 27: Redirect URL matches CM pattern

@@ -73,6 +73,7 @@ private final class TokenRefresherMock: TokenRefreshing {
 
 // MARK: - OAuth Redirect URL Parser Tests
 
+@MainActor
 final class TPPSignInBusinessLogicOAuthTests: XCTestCase {
 
     private var businessLogic: TPPSignInBusinessLogic!
@@ -363,6 +364,7 @@ final class TPPSignInBusinessLogicOAuthTests: XCTestCase {
 
 // MARK: - Token-Flow (Basic → Bearer) Tests
 
+@MainActor
 final class TPPSignInBusinessLogicTokenFlowTests: XCTestCase {
 
     private let tokenURL = URL(string: "https://stub.example.com/token")!
@@ -493,6 +495,7 @@ final class TPPSignInBusinessLogicTokenFlowTests: XCTestCase {
 
 // MARK: - Basic-auth Validation Delegate-Callback Order
 
+@MainActor
 final class TPPSignInBusinessLogicValidationCallbackOrderTests: XCTestCase {
 
     private var businessLogic: TPPSignInBusinessLogic!

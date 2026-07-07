@@ -206,6 +206,7 @@ final class OIDCNSCodingTests: XCTestCase {
 
 // MARK: - Unit Tests: Business Logic — Make Request
 
+@MainActor
 final class OIDCMakeRequestTests: XCTestCase {
 
     private var businessLogic: TPPSignInBusinessLogic!
@@ -274,6 +275,7 @@ final class OIDCMakeRequestTests: XCTestCase {
 
 // MARK: - Unit Tests: Business Logic — Login Routing
 
+@MainActor
 final class OIDCLoginRoutingTests: XCTestCase {
 
     private var businessLogic: TPPSignInBusinessLogic!
@@ -338,6 +340,7 @@ final class OIDCLoginRoutingTests: XCTestCase {
 
 // MARK: - Unit Tests: Business Logic — Update User Account
 
+@MainActor
 final class OIDCUpdateUserAccountTests: XCTestCase {
 
     private var businessLogic: TPPSignInBusinessLogic!
@@ -454,6 +457,7 @@ final class OIDCUpdateUserAccountTests: XCTestCase {
 
 // MARK: - Unit Tests: OIDC Callback Scheme Constants
 
+@MainActor
 final class OIDCCallbackSchemeTests: XCTestCase {
 
     func testOidcCallbackScheme_matchesAndroidConvention() {
@@ -484,6 +488,7 @@ final class OIDCCallbackSchemeTests: XCTestCase {
 
 // MARK: - Integration Tests: OIDC Callback Handling
 
+@MainActor
 final class OIDCCallbackHandlingTests: XCTestCase {
 
     private var businessLogic: TPPSignInBusinessLogic!
@@ -602,6 +607,7 @@ final class OIDCCallbackHandlingTests: XCTestCase {
 
 // MARK: - Integration Tests: Selected Authentication Routing
 
+@MainActor
 final class OIDCSelectedAuthenticationTests: XCTestCase {
 
     private var businessLogic: TPPSignInBusinessLogic!
@@ -666,6 +672,7 @@ final class OIDCSelectedAuthenticationTests: XCTestCase {
 
 // MARK: - Regression Tests: Existing Auth Flows Unbroken
 
+@MainActor
 final class OIDCRegressionTests: XCTestCase {
 
     private var libraryMock: TPPLibraryAccountMock!
@@ -867,6 +874,7 @@ final class OIDCViewModelRegressionTests: XCTestCase {
 
 // MARK: - Unit Tests: handleOIDCCallback Edge Cases
 
+@MainActor
 final class OIDCCallbackEdgeCaseTests: XCTestCase {
 
     private var businessLogic: TPPSignInBusinessLogic!
@@ -1012,6 +1020,7 @@ final class OIDCCallbackEdgeCaseTests: XCTestCase {
 
 // MARK: - Unit Tests: Redirect URI Construction
 
+@MainActor
 final class OIDCRedirectURIConstructionTests: XCTestCase {
 
     private var businessLogic: TPPSignInBusinessLogic!
@@ -1093,6 +1102,7 @@ final class OIDCRedirectURIConstructionTests: XCTestCase {
 
 // MARK: - Regression Tests: OAuth/SAML handleRedirectURL Unaffected
 
+@MainActor
 final class OAuthSAMLRedirectRegressionTests: XCTestCase {
 
     private var businessLogic: TPPSignInBusinessLogic!
@@ -1200,6 +1210,7 @@ final class OAuthSAMLRedirectRegressionTests: XCTestCase {
 
 // MARK: - Regression Tests: Sign-Out Flow With OIDC
 
+@MainActor
 final class OIDCSignOutRegressionTests: XCTestCase {
 
     private var businessLogic: TPPSignInBusinessLogic!
@@ -1404,6 +1415,7 @@ final class OIDCSignOutRegressionTests: XCTestCase {
 
 // MARK: - Regression Tests: Token Refresh Logic
 
+@MainActor
 final class OIDCTokenRefreshRegressionTests: XCTestCase {
 
     private var businessLogic: TPPSignInBusinessLogic!
@@ -1541,6 +1553,7 @@ final class OIDCTokenRefreshRegressionTests: XCTestCase {
 
 // MARK: - Regression Tests: OIDC Does Not Interfere With Other Flows
 
+@MainActor
 final class OIDCIsolationRegressionTests: XCTestCase {
 
     private var libraryMock: TPPLibraryAccountMock!
@@ -1656,6 +1669,7 @@ final class OIDCIsolationRegressionTests: XCTestCase {
 
 // MARK: - Tests: OIDC Re-Auth on 401 / Stale Credentials
 
+@MainActor
 final class OIDCReauthOnExpiredTokenTests: XCTestCase {
 
     private var businessLogic: TPPSignInBusinessLogic!

@@ -49,6 +49,7 @@ private final class ValidationErrorCapturingUIDelegate:
     }
 }
 
+@MainActor
 final class LegacySAMLProblemDocumentPropagationTests: XCTestCase {
 
     private var businessLogic: TPPSignInBusinessLogic!

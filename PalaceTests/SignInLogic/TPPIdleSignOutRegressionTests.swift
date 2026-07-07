@@ -24,6 +24,7 @@ import XCTest
 
 // MARK: - PP-3819 Regression Tests
 
+@MainActor
 final class TPPIdleSignOutRegressionTests: XCTestCase {
 
     private var businessLogic: TPPSignInBusinessLogic!

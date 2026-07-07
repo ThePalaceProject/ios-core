@@ -13,7 +13,7 @@ import PalaceLogging
 protocol Reauthenticator: NSObject {
     func authenticateIfNeeded(_ user: TPPUserAccount,
                               usingExistingCredentials: Bool,
-                              authenticationCompletion: (() -> Void)?)
+                              authenticationCompletion: (@Sendable () -> Void)?)
 }
 
 /// This class is a front-end for taking care of situations where an
@@ -94,7 +94,7 @@ protocol Reauthenticator: NSObject {
     ///   flow completes.
     @objc func authenticateIfNeeded(_ user: TPPUserAccount,
                                     usingExistingCredentials: Bool,
-                                    authenticationCompletion: (() -> Void)?) {
+                                    authenticationCompletion: (@Sendable () -> Void)?) {
         authenticateCallCountLock.withLock { $0 += 1 }
         Task { @MainActor in
             Log.info(#file, "TPPReauthenticator: Re-authentication requested, using existing credentials: \(usingExistingCredentials)")

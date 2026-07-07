@@ -38,7 +38,7 @@ class TPPReauthenticatorMock: NSObject, Reauthenticator {
     func authenticateIfNeeded(
         _ user: TPPUserAccount,
         usingExistingCredentials: Bool,
-        authenticationCompletion: (() -> Void)?
+        authenticationCompletion: (@Sendable () -> Void)?
     ) {
         authenticateIfNeededCalled = true
         authenticateCallCount += 1

@@ -45,6 +45,7 @@ private class TPPMultiLibraryAccountMock: TPPUserAccountMock, @unchecked Sendabl
 
 // MARK: - Cross-Library Sign-Out Tests
 
+@MainActor
 final class TPPCrossLibrarySignOutTests: XCTestCase {
 
     private static let activeLibraryUUID = "urn:uuid:active-library-aaa"
