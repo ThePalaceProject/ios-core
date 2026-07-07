@@ -145,7 +145,18 @@ private extension CatalogSearchView {
 
     var resultsContent: some View {
         ScrollView {
-            if viewModel.shouldShowNoResultsState {
+            if viewModel.isLoading && viewModel.filteredBooks.isEmpty {
+                // Initial search load: show a content-shaped skeleton list
+                // (mirrors the result rows) instead of a blank screen + a lone
+                // field spinner. Built on the unified Skeleton primitives.
+                VStack(spacing: 0) {
+                    ForEach(0..<8, id: \.self) { _ in
+                        BookRowSkeletonView()
+                    }
+                }
+                .padding()
+                .id("search-results-top")
+            } else if viewModel.shouldShowNoResultsState {
                 // BUG-003: When a completed search returns zero results, render
                 // a visible empty state rather than a blank screen so the user
                 // can distinguish "no matches" from a hung request.

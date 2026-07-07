@@ -1,24 +1,26 @@
 import SwiftUI
 
+/// Skeleton row mirroring the real MyBooks book cell: a cover on the left, a
+/// title + author + a short button-shaped block on the right. Built on the
+/// unified `Skeleton` primitives so the base color, radii, and diagonal shimmer
+/// match every other skeleton in the app.
 struct BookRowSkeletonView: View {
     var imageSize: CGSize = CGSize(width: 100, height: 150)
+
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            RoundedRectangle(cornerRadius: PalaceRadius.control)
-                .fill(Color.gray.opacity(0.25))
-                .frame(width: imageSize.width, height: imageSize.height)
-                .shimmerEffect()
+            SkeletonCover(width: imageSize.width, height: imageSize.height)
 
             VStack(alignment: .leading, spacing: 10) {
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(Color.gray.opacity(0.25))
-                    .frame(width: 180, height: 14)
-                    .shimmerEffect()
+                // Title — wider, heavier line.
+                SkeletonBox(width: 180, height: 14, cornerRadius: 4)
+                // Author — shorter, lighter line.
+                SkeletonBox(width: 120, height: 12, cornerRadius: 4)
 
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(Color.gray.opacity(0.25))
-                    .frame(width: 120, height: 12)
-                    .shimmerEffect()
+                Spacer(minLength: 8)
+
+                // A button-shaped placeholder where the Read/Download control sits.
+                SkeletonBox(width: 96, height: 32, cornerRadius: PalaceRadius.control)
             }
             Spacer()
         }
@@ -46,5 +48,6 @@ struct BookListSkeletonView: View {
             }
             .padding()
         }
+        .accessibilityHidden(true)
     }
 }

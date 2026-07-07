@@ -40,9 +40,12 @@ struct CatalogLaneRowView: View {
                             width: nil,
                             height: 150,
                             usePulseSkeleton: true,
-                            treatImageAsDecorativeInLists: true
+                            treatImageAsDecorativeInLists: true,
+                            // Shadow rides the settled cover only — never the
+                            // pulsing skeleton — so the 4-layer shadow blur is
+                            // not re-rasterized every animation frame.
+                            coverShadowRadius: 4
                         )
-                        .adaptiveShadow(radius: 4)
                         .padding(.vertical)
                     })
                     .buttonStyle(.palacePressable)
@@ -101,14 +104,12 @@ private struct LaneSkeletonView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             LazyHStack(spacing: 12) {
                 ForEach(0..<6, id: \.self) { _ in
-                    Rectangle()
-                        .fill(Color.gray.opacity(0.25))
-                        .frame(width: 100, height: 150)
-                        .shimmerEffect()
+                    SkeletonCover(width: 100, height: 150)
                         .padding(.vertical)
                 }
             }
             .padding(.horizontal, 12)
         }
+        .accessibilityHidden(true)
     }
 }

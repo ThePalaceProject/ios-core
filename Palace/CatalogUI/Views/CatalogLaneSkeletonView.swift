@@ -1,35 +1,29 @@
 import SwiftUI
 
-/// Skeleton placeholder matching the exact layout of CatalogLaneRowView.
+/// Skeleton placeholder matching the layout of `CatalogLaneRowView`: a lane
+/// title followed by a horizontal row of cover placeholders.
 ///
-/// Measured from live element positions (SpecterQA):
-/// - Title: 26pt height, left-aligned at x=12
-/// - Books: 100×150pt, 12pt spacing, starts 12pt from left edge
-/// - VStack spacing between title and books: 5pt
-/// - Vertical padding around book scroller: inherits from .padding(.vertical)
+/// Built on the unified `Skeleton` primitives so the base color, card radius,
+/// and diagonal shimmer match every other skeleton. Measurements mirror the
+/// live lane (title left-aligned at x=12, 100×150 covers, 12pt spacing).
 struct CatalogLaneSkeletonView: View {
     var itemCount: Int = 6
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Rectangle()
-                .fill(Color.gray.opacity(0.25))
-                .frame(width: 200, height: 26)
-                .shimmerEffect()
+            SkeletonBox(width: 200, height: 26, cornerRadius: PalaceRadius.control)
                 .padding(.horizontal, 12)
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
                     ForEach(0..<itemCount, id: \.self) { _ in
-                        Rectangle()
-                            .fill(Color.gray.opacity(0.25))
-                            .frame(width: 100, height: 150)
-                            .shimmerEffect()
+                        SkeletonCover(width: 100, height: 150)
                     }
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical)
             }
         }
+        .accessibilityHidden(true)
     }
 }

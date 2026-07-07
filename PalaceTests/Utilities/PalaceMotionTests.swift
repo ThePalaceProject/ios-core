@@ -63,6 +63,29 @@ final class PalaceMotionTests: XCTestCase {
         XCTAssertEqual(PalaceMotion.shimmerOffset(phase: 0, width: 200), 0, accuracy: 0.001)
     }
 
+    // MARK: - shouldAnimateContinuously — the global continuous-loop gate
+
+    /// The single gate every always-on loop (shimmer sweep, cover pulse) routes
+    /// through. Continuous animation is allowed only at full power with motion on.
+    func testShouldAnimateContinuously_fullPowerMotionOn_returnsTrue() {
+        XCTAssertTrue(PalaceMotion.shouldAnimateContinuously(reduceMotion: false, lowPower: false))
+    }
+
+    /// Reduce Motion suppresses all continuous loops (accessibility).
+    func testShouldAnimateContinuously_reduceMotion_returnsFalse() {
+        XCTAssertFalse(PalaceMotion.shouldAnimateContinuously(reduceMotion: true, lowPower: false))
+    }
+
+    /// Low Power Mode suppresses all continuous loops (battery / GPU).
+    func testShouldAnimateContinuously_lowPower_returnsFalse() {
+        XCTAssertFalse(PalaceMotion.shouldAnimateContinuously(reduceMotion: false, lowPower: true))
+    }
+
+    /// Either condition alone is sufficient to stop the loops (logical OR).
+    func testShouldAnimateContinuously_eitherConditionStops() {
+        XCTAssertFalse(PalaceMotion.shouldAnimateContinuously(reduceMotion: true, lowPower: true))
+    }
+
     // MARK: - Radius tokens
 
     /// The two shared radii are the design tokens PR2 commits to. Layout that

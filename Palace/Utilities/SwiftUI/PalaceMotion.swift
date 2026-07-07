@@ -39,6 +39,19 @@ enum PalaceMotion {
         reduceMotion ? nil : animation
     }
 
+    /// The single global gate for CONTINUOUS, always-on animations (skeleton
+    /// shimmer sweeps, cover-load pulses — anything that loops until content
+    /// arrives). Such loops are suppressed when Reduce Motion is on (a11y) OR
+    /// when Low Power Mode is on (battery / GPU). One seam so every continuous
+    /// loop in the app makes the same decision.
+    ///
+    /// Pure so it is unit-testable without a SwiftUI host; the reactive views
+    /// pass the live `@Environment(\.accessibilityReduceMotion)` and
+    /// `ProcessInfo.processInfo.isLowPowerModeEnabled`.
+    static func shouldAnimateContinuously(reduceMotion: Bool, lowPower: Bool) -> Bool {
+        !reduceMotion && !lowPower
+    }
+
     /// Horizontal offset (in points) of the shimmer highlight band for a given
     /// normalized `phase` in `[-1, 1]` over a content of `width` points.
     ///
