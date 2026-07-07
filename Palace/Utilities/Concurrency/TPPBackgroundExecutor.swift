@@ -63,7 +63,14 @@ import PalaceLogging
  executed concurrently on the global background queue with the assumption that
  it is thread-safe.
  */
-@objc class TPPBackgroundExecutor: NSObject {
+// Swift 6 `complete` — `@unchecked Sendable` invariant: `self` is captured
+// (always weakly) into the `@Sendable` `beginBackgroundTask` expiration handler,
+// the `endQueue`/main hops, and the `queue.async` work item. The stored state is
+// safe to share: `taskName`, `queue`, and `endLock` are immutable `let`s; `owner`
+// is a `weak var` written exactly once in `init` and only read thereafter; and
+// `isEndingTask` is mutated and read solely under `endLock`. No unguarded mutable
+// state races — this comment is the documented invariant, not a bare waiver.
+@objc class TPPBackgroundExecutor: NSObject, @unchecked Sendable {
     private let taskName: String
     private weak var owner: NYPLBackgroundWorkOwner?
     private let queue = DispatchQueue.global(qos: .background)
@@ -87,8 +94,25 @@ import PalaceLogging
     ///  work specified in `NYPLBackgroundWorkOwner::performBackgroundWork`.
     /// All the mechanics of starting and ending a background task (including
     /// the related logging) are handled here.
+    /// Swift 6 `complete`: the background-task identifier is mutated across the
+    /// `@Sendable` `beginBackgroundTask` expiration handler, the `endQueue`/main
+    /// hops in `endTaskIfNeeded`, and the `startBackground` closure. A by-ref
+    /// captured `var bgTask` is a data race under strict concurrency, so we hold it
+    /// in a lock-backed carrier box shared by all those closures. The lock also makes
+    /// the "begin → end → invalidate" transition atomic (previously the identifier
+    /// was a plain local, relying on queue ordering). Not `nonisolated(unsafe)`:
+    /// the box is a documented, lock-guarded holder, not a race waiver.
+    private final class BackgroundTaskIDBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var value: UIBackgroundTaskIdentifier = .invalid
+
+        var rawValue: Int { lock.withLock { value.rawValue } }
+        func get() -> UIBackgroundTaskIdentifier { lock.withLock { value } }
+        func set(_ newValue: UIBackgroundTaskIdentifier) { lock.withLock { value = newValue } }
+    }
+
     @objc func dispatchBackgroundWork() {
-        var bgTask: UIBackgroundTaskIdentifier = .invalid
+        let bgTaskBox = BackgroundTaskIDBox()
 
         let endQueue = DispatchQueue(label: "com.thepalaceproject.backgroundEndQueue", qos: .userInitiated)
 
@@ -116,13 +140,14 @@ import PalaceLogging
                     let timeRemaining = UIApplication.shared.backgroundTimeRemaining
 
                     Log.info(#file, """
-            \(context) \(self.taskName) background task \(bgTask.rawValue). \
+            \(context) \(self.taskName) background task \(bgTaskBox.rawValue). \
             Time remaining: \(timeRemaining)
             """)
 
-                    if bgTask != .invalid {
-                        UIApplication.shared.endBackgroundTask(bgTask)
-                        bgTask = .invalid
+                    let currentTask = bgTaskBox.get()
+                    if currentTask != .invalid {
+                        UIApplication.shared.endBackgroundTask(currentTask)
+                        bgTaskBox.set(.invalid)
                     }
 
                     self.endLock.lock()
@@ -133,13 +158,13 @@ import PalaceLogging
         }
 
         let startBackground: () -> Void = {
-            bgTask = UIApplication.shared.beginBackgroundTask(withName: self.taskName) {
+            bgTaskBox.set(UIApplication.shared.beginBackgroundTask(withName: self.taskName) {
                 endTaskIfNeeded(context: "Expiring")
-            }
+            })
 
-            Log.debug(#file, "Beginning \(self.taskName) background task \(bgTask.rawValue)")
+            Log.debug(#file, "Beginning \(self.taskName) background task \(bgTaskBox.rawValue)")
 
-            if bgTask == .invalid {
+            if bgTaskBox.get() == .invalid {
                 Log.warn(#file, "Unable to run background task \(self.taskName)")
             }
 
@@ -149,7 +174,7 @@ import PalaceLogging
                 endTaskIfNeeded(context: "Finishing up")
             }) else {
                 Log.warn(#file,
-                         "No work item for \(self.taskName) background task \(bgTask.rawValue)!")
+                         "No work item for \(self.taskName) background task \(bgTaskBox.rawValue)!")
                 endTaskIfNeeded(context: "No work item")
                 return
             }

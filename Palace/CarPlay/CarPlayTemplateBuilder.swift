@@ -13,6 +13,10 @@ import PalaceLogging
 
 /// Pure factory for building CarPlay templates.
 /// Stateless — all context is passed in via parameters.
+// `@MainActor`: every method builds main-actor CarPlay UI (`CPListTemplate`,
+// `CPListItem`, `CPImageSet`) and drives the now-`@MainActor` `CarPlayImageProvider`.
+// Its only caller, `CarPlayTemplateManager`, is already `@MainActor`.
+@MainActor
 enum CarPlayTemplateBuilder {
 
     // MARK: - Layout Constants

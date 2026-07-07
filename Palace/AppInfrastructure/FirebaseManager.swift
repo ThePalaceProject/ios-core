@@ -292,13 +292,38 @@ final class FirebaseManager: @unchecked Sendable {
         Log.info(#file, "✅ Firebase user properties set for targeting")
     }
 
+    /// Off-main-safe snapshot of the `@MainActor`-isolated `UIDevice.current`
+    /// constants. On the main thread we read them directly via
+    /// `MainActor.assumeIsolated` (provably-main branch); off-main we return
+    /// `unknown`/`nil` rather than touch UIKit off the main actor. The values are
+    /// device constants, so a main-thread caller always gets the real values and
+    /// there is no behaviour change on the paths that matter (launch-time setup
+    /// runs on main). Mirrors `URLRequest+Extensions.cachedUserAgent()`.
+    nonisolated private static func currentDeviceConstants()
+        -> (model: String, systemVersion: String, vendorID: String?) {
+        if Thread.isMainThread {
+            return MainActor.assumeIsolated {
+                (UIDevice.current.model,
+                 UIDevice.current.systemVersion,
+                 UIDevice.current.identifierForVendor?.uuidString)
+            }
+        }
+        return ("unknown", "unknown", nil)
+    }
+
     /// Returns device information dictionary for targeting and logging.
     func getDeviceInfo() -> [String: String] {
         var info: [String: String] = [:]
 
         info["device_id"] = deviceID
-        info["device_model"] = UIDevice.current.model
-        info["ios_version"] = UIDevice.current.systemVersion
+        // `UIDevice.current` is `@MainActor`-isolated under `complete`; this method
+        // has nonisolated + off-main callers (RemoteFeatureFlags, error monitors).
+        // Read the device constants on main when we're already there, else fall back
+        // to `unknown` — same off-main-safe pattern as `URLRequest+Extensions`'
+        // `cachedUserAgent()`. Values are constant, so no correctness change.
+        let device = Self.currentDeviceConstants()
+        info["device_model"] = device.model
+        info["ios_version"] = device.systemVersion
         info["app_version"] = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
         info["build_number"] = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown"
 
@@ -324,7 +349,8 @@ final class FirebaseManager: @unchecked Sendable {
         #if FEATURE_CRASH_REPORTING
         Crashlytics.crashlytics().setCustomValue(deviceID, forKey: "PalaceDeviceID")
 
-        if let vendorID = UIDevice.current.identifierForVendor?.uuidString {
+        // Same `@MainActor` UIDevice guard as `getDeviceInfo()` above.
+        if let vendorID = Self.currentDeviceConstants().vendorID {
             Crashlytics.crashlytics().setCustomValue(vendorID, forKey: "VendorDeviceID")
         }
         #endif

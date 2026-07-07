@@ -50,7 +50,14 @@ private final class MockBackendConfigStore: @unchecked Sendable {
     }
 }
 
-final class MockBackendURLProtocol: URLProtocol {
+// Swift 6 `complete` — `@unchecked Sendable` invariant: this `URLProtocol` subclass
+// has NO instance stored properties of its own — all configuration lives in the
+// lock-backed `static let config` (`MockBackendConfigStore`, itself
+// `@unchecked Sendable`), and `client`/`request` are per-instance state owned and
+// serialized by the URL Loading System. `self` is captured only into the deferred
+// response-delivery closures below, which the loading system drives on the
+// protocol's own thread. Documented invariant, not a bare waiver.
+final class MockBackendURLProtocol: URLProtocol, @unchecked Sendable {
 
     // MARK: - Static Configuration
 

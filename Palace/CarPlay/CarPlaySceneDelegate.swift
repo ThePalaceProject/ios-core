@@ -13,6 +13,12 @@ import PalaceLogging
 /// CarPlay scene delegate that manages the CarPlay interface lifecycle
 /// and coordinates audiobook playback from the vehicle's infotainment system.
 /// Note: This class is referenced by name in Info.plist as "CarPlaySceneDelegate"
+// `@MainActor`: a `UIResponder`-derived CarPlay scene delegate. `UIResponder` and
+// `CPTemplateApplicationSceneDelegate` are both main-actor isolated, and every
+// callback drives main-actor CarPlay UI. Annotating the type is the `complete`-mode
+// fix for the "conformance crosses into the main actor" warning on
+// `CPTemplateApplicationSceneDelegate`; all members are already main-only.
+@MainActor
 @objc(CarPlaySceneDelegate)
 final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
 

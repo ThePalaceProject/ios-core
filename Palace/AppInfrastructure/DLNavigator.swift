@@ -31,6 +31,8 @@ final class DLNavigator: Sendable {
 
     /// Navigates to the screen in the link
     /// - Parameter dynamicLink: Firebase dynamic link
+    /// `@MainActor`: routes into the UIKit-driving `login(...)` path.
+    @MainActor
     func navigate(to dynamicLink: DynamicLink) {
         guard let destination = parseLink(dynamicLink) else {
             return
@@ -42,6 +44,7 @@ final class DLNavigator: Sendable {
     /// - Parameters:
     ///   - screen: `screen` parameter
     ///   - params: dynamic link parameters
+    @MainActor
     func navigate(to screen: String, params: [String: String]) {
         switch screen {
         case "login":
@@ -64,6 +67,13 @@ final class DLNavigator: Sendable {
         return Destination(screen: screen, params: params )
     }
 
+    // `@MainActor`: drives UIKit throughout (`UIApplication.shared.delegate`,
+    // `topViewController()`, `present(_:animated:)`) and the `@MainActor`
+    // `SignInModalSheetPresenter`. Confining the method to the main actor is the
+    // isolation-only fix for the `complete`-mode "main-actor API from nonisolated
+    // context" warnings on the UIKit accesses below, with no behavior change (the
+    // body already hopped to main via `DispatchQueue.main.async` / `Task { @MainActor }`).
+    @MainActor
     private func login(libraryId: String, barcode: String, accountsManager: AccountsManager = AppContainer.production().accountsManager) {
         let accountsManager = accountsManager
         guard let topViewController = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController(),
@@ -106,7 +116,12 @@ final class DLNavigator: Sendable {
     /// - Parameters:
     ///   - name: Notification name
     ///   - block: Code to run
-    private func callOnce(on name: Notification.Name, block: @escaping (_ notification: Notification) -> Void) {
+    // `block` is `@MainActor @Sendable`: it is captured into the `@Sendable`
+    // observer closure below (crossing the `complete`-mode boundary), and its
+    // callers drive `@MainActor login(...)`. The observer registers with
+    // `queue: .main`, so the block provably runs on the main actor — invoked via
+    // `MainActor.assumeIsolated`, not a hop, so timing is unchanged.
+    private func callOnce(on name: Notification.Name, block: @escaping @MainActor @Sendable (_ notification: Notification) -> Void) {
         // Mirror `ObserverTokenBox` (TPPBookRegistry.swift): a self-removing
         // `@Sendable` observer block can't reference a `var token` assigned after
         // the block is formed — the `targeted` checker rejects it as "'token'
@@ -117,7 +132,11 @@ final class DLNavigator: Sendable {
         let box = ObserverTokenBox()
         box.token = NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { notification in
             box.removeObserver(name: name)
-            block(notification)
+            // Provably on main: registered with `queue: .main`. `assumeIsolated`
+            // to call the `@MainActor` block without a re-async hop.
+            MainActor.assumeIsolated {
+                block(notification)
+            }
         }
     }
 }

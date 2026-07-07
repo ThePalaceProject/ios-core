@@ -13,7 +13,14 @@ import PalaceCatalog
 /// Manages debug/testing settings for error scenarios and QA tools.
 /// Available in DEBUG and TestFlight builds; gated behind Developer Settings UI
 /// which requires a hidden gesture to access.
-final class DebugSettings {
+///
+/// Swift 6 `complete` — `@unchecked Sendable` invariant: the ONLY stored state
+/// is `defaults` (`UserDefaults.standard`, itself thread-safe). Every other member
+/// is a computed property over `UserDefaults` or a pure factory function; there is
+/// no other mutable stored state to race. Lets `DebugSettings` cross the `@Sendable`
+/// off-main badge-computation closure in `AppTabHostView.updateHoldsBadge()` without
+/// a wrapper box. (Not a bare `@unchecked` — this comment is the documented invariant.)
+final class DebugSettings: @unchecked Sendable {
 
     private let defaults = UserDefaults.standard
 

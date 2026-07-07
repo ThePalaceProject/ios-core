@@ -180,7 +180,12 @@ actor SafeDictionary<Key: Hashable, Value> {
 // MARK: - Dictionary-like Initialization
 
 extension SafeDictionary: ExpressibleByDictionaryLiteral {
-    init(dictionaryLiteral elements: (Key, Value)...) {
+    // `nonisolated`: satisfies the synchronous, nonisolated
+    // `ExpressibleByDictionaryLiteral` requirement from the actor. The body only
+    // builds a local `[Key: Value]` and delegates to the actor's designated
+    // `init(_:)` — no isolated state is touched before delegation, so this is a
+    // sound nonisolated actor initializer under `complete`.
+    nonisolated init(dictionaryLiteral elements: (Key, Value)...) {
         var dict: [Key: Value] = [:]
         for (key, value) in elements {
             dict[key] = value

@@ -9,7 +9,12 @@
 import Foundation
 import PalaceLogging
 
-@objc class EpubLocationSampleURL: NSObject {
+/// Swift 6 `complete` — `@unchecked Sendable` invariant: `url` is set once at
+/// `init` and is not mutated afterward anywhere in the codebase (the `@objc var` is
+/// retained only for ObjC key-value access). Write-once-then-read confinement lets
+/// the value cross the `@Sendable` sample-download completion into the main-actor
+/// `completion` call. Documented invariant.
+@objc class EpubLocationSampleURL: NSObject, @unchecked Sendable {
     @objc var url: URL
 
     init(url: URL) {
@@ -19,13 +24,24 @@ import PalaceLogging
 
 @objc class EpubSampleWebURL: EpubLocationSampleURL {}
 
+/// Carries the non-`Sendable` `createSample` completion across the `@Sendable`
+/// `fetchSample` / `main.async` boundaries. Invoked exactly once. Mirrors
+/// `ImageCompletionBox`.
+private final class SampleCompletionBox: @unchecked Sendable {
+    let call: (EpubLocationSampleURL?, Error?) -> Void
+    init(_ call: @escaping (EpubLocationSampleURL?, Error?) -> Void) { self.call = call }
+}
+
 @objc class EpubSampleFactory: NSObject {
     private static let samplePath = "TestApp.epub"
 
     @objc static func createSample(book: TPPBook, completion: @escaping (EpubLocationSampleURL?, Error?) -> Void) {
+        // Box the non-`Sendable` completion so it can cross the `@Sendable`
+        // `fetchSample` / `main.async` boundaries below; invoked exactly once.
+        let completionBox = SampleCompletionBox(completion)
         guard let epubSample = book.sample as? EpubSample
         else {
-            completion(nil, SamplePlayerError.noSampleAvailable)
+            completionBox.call(nil, SamplePlayerError.noSampleAvailable)
             return
         }
 
@@ -33,27 +49,27 @@ import PalaceLogging
             epubSample.fetchSample { result in
                 switch result {
                 case .failure(let error, _):
-                    completion(nil, error)
+                    completionBox.call(nil, error)
                 case .success(let data, _):
 
                     do {
                         guard let location = try save(data: data) else {
-                            completion(nil, SamplePlayerError.fileSaveFailed(nil))
+                            completionBox.call(nil, SamplePlayerError.fileSaveFailed(nil))
                             return
                         }
 
                         let epubLocationURL = EpubLocationSampleURL(url: location)
                         DispatchQueue.main.async {
-                            completion(epubLocationURL, nil)
+                            completionBox.call(epubLocationURL, nil)
                         }
                     } catch {
-                        completion(nil, error)
+                        completionBox.call(nil, error)
                     }
                 }
             }
         } else {
             let webURL = EpubSampleWebURL(url: epubSample.url)
-            completion(webURL, nil)
+            completionBox.call(webURL, nil)
         }
     }
 

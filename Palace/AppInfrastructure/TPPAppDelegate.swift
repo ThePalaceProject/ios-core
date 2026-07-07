@@ -3,7 +3,10 @@ import os
 import FirebaseCore
 import FirebaseAnalytics
 import FirebaseCrashlytics
-import FirebaseDynamicLinks
+// `@preconcurrency`: FirebaseDynamicLinks is not Sendable-audited upstream; its
+// `DynamicLink` crosses into a `@MainActor` Task when routing a universal link.
+// Honest ceiling until Firebase annotates its concurrency (see fix vocabulary).
+@preconcurrency import FirebaseDynamicLinks
 import BackgroundTasks
 import SwiftUI
 import CarPlay
@@ -112,7 +115,12 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         }
     }
 
-    private func performBackgroundStartupTasks() {
+    // `nonisolated`: deliberately dispatched on `startupQueue` (background) 0.5s
+    // after launch. Body touches only nonisolated APIs; the one `@MainActor`
+    // access (`audiobookLifecycleManager.didFinishLaunching()`) hops to the main
+    // actor explicitly below. `complete`-mode satisfied without forcing this
+    // off-main work onto the main actor.
+    nonisolated private func performBackgroundStartupTasks() {
         let isFreshInstall = AppContainer.production().settings.appVersion == nil
         TPPKeychainManager.validateKeychain()
         TPPMigrationManager.migrate()
@@ -125,7 +133,11 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
             AppContainer.production().accountsManager.currentUserAccount.authToken
         }
 
-        DispatchQueue.main.async {
+        // `Task { @MainActor }` (was `DispatchQueue.main.async`): `didFinishLaunching()`
+        // touches the `@MainActor`-isolated `audiobookLifecycleManager`; the Task
+        // gives the closure main-actor isolation so the access is checked, not a
+        // `@Sendable` capture of main-actor state. Same "next main run-loop" timing.
+        Task { @MainActor in
             self.audiobookLifecycleManager.didFinishLaunching()
 
             // TODO: Implement audiobook downloads migration from Caches to Application Support
@@ -136,12 +148,20 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
             TransifexManager.setup()
         }
 
-        NotificationCenter.default.addObserver(forName: .TPPIsSigningIn, object: nil, queue: nil) { [weak self] notification in
-            self?.signingIn(notification)
+        // `queue: .main` + `Task { @MainActor }`: `signingIn` mutates the
+        // `@MainActor` `isSigningIn` flag. Post can arrive off-main, so hop to the
+        // main actor before touching main-actor state (previously `queue: nil`
+        // fired on the posting thread — a `complete`-mode data race on `isSigningIn`).
+        NotificationCenter.default.addObserver(forName: .TPPIsSigningIn, object: nil, queue: .main) { [weak self] notification in
+            Task { @MainActor in
+                self?.signingIn(notification)
+            }
         }
     }
 
-    private func logCredentialStateAtLaunch(isFreshInstall: Bool) {
+    // `nonisolated`: called only from the nonisolated `performBackgroundStartupTasks`;
+    // reads nonisolated account APIs and logs. No `@MainActor` state.
+    nonisolated private func logCredentialStateAtLaunch(isFreshInstall: Bool) {
         let accountsManager = AppContainer.production().accountsManager
         let account = accountsManager.currentUserAccount
         let accountId = accountsManager.currentAccountId ?? "nil"
@@ -184,7 +204,12 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         }
     }
 
-    private func setupBookRegistryAndNotifications() {
+    // `nonisolated`: intentionally invoked on `startupQueue` (a background queue)
+    // from `applicationDidFinishLaunching`. Touches only nonisolated APIs
+    // (`AppContainer.production()`, `NotificationService.shared`) — no `@MainActor`
+    // `self` state — so `complete`-mode isolation is satisfied without a main hop,
+    // preserving the deliberate off-main registry priming.
+    nonisolated private func setupBookRegistryAndNotifications() {
         // Populate the in-memory registry from disk BEFORE any view path can
         // trigger sync(). Previously this did a fire-and-forget singleton poke
         // on a background queue and never called load() — so sync() calls from
@@ -270,7 +295,11 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
                     return
                 }
                 if let dynamicLink = dynamicLink, DLNavigator.shared.isValidLink(dynamicLink) {
-                    DLNavigator.shared.navigate(to: dynamicLink)
+                    // `handleUniversalLink`'s completion is `@Sendable`/off-main; hop
+                    // to the main actor for the now-`@MainActor` `navigate(to:)`.
+                    Task { @MainActor in
+                        DLNavigator.shared.navigate(to: dynamicLink)
+                    }
                 }
             }
         }
@@ -545,7 +574,11 @@ extension TPPAppDelegate {
                 object: nil,
                 queue: .main
             ) { [weak self] _ in
-                self?.presentFirstRunFlowIfNeeded()
+                // Registered with `queue: .main`; `assumeIsolated` to call the
+                // `@MainActor` `presentFirstRunFlowIfNeeded()` without a re-hop.
+                MainActor.assumeIsolated {
+                    self?.presentFirstRunFlowIfNeeded()
+                }
             }
             accountsManager.loadCatalogs(completion: nil)
             return
