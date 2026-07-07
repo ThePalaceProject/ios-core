@@ -33,7 +33,18 @@ protocol DownloadProgressPublishing: AnyObject {
 
 /// Handles Combine-based progress reporting, error publishing, and
 /// throttled broadcast notifications for download state changes.
-final class DownloadProgressReporter: DownloadProgressPublishing {
+///
+/// - Sendable invariant (Swift 6 `complete`-mode): the stored dependencies
+///   (`accessibilityAnnouncements`, `downloadAnnouncementService`) plus the two
+///   `PassthroughSubject` publishers are `let` bound at init. All broadcast-
+///   throttling mutable state (`lastBroadcastTime`, `pendingBroadcast`) is
+///   `@MainActor`-isolated and only touched inside the `@MainActor` broadcast
+///   methods. The one non-isolated mutable member is `weak var notificationSender`,
+///   assigned once by the owner during composition-root wiring (weak-ref reads +
+///   ARC zeroing are atomic). `sendProgress` / `broadcastUpdate` hop to
+///   `@MainActor` before touching any of that state. `@unchecked` only because
+///   the stored service types are not themselves `Sendable`.
+final class DownloadProgressReporter: DownloadProgressPublishing, @unchecked Sendable {
 
     // MARK: - Publishers
 

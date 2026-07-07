@@ -43,7 +43,17 @@ protocol DownloadQueueOrchestratorDelegate: AnyObject {
 /// Coordinates the pending-download queue: parks books past the
 /// concurrency cap with the right state-broadcast UX, and pumps the
 /// queue whenever capacity opens up.
-final class DownloadQueueOrchestrator {
+///
+/// - Sendable invariant (Swift 6 `complete`-mode): the stored dependencies
+///   (`bookRegistry`, `stateManager`, `notificationCenter`) are all `let` bound
+///   at init; the only mutable member is `weak var delegate`, assigned exactly
+///   once during owner (`MyBooksDownloadCenter`) construction and never
+///   reassigned (weak-ref reads + ARC zeroing are atomic). The enqueue / pump
+///   paths hop into `Task { }`, touching only the actor-serialized
+///   `stateManager.downloadCoordinator` and posting on `notificationCenter`
+///   (thread-safe). `@unchecked` only because the stored service types are not
+///   themselves `Sendable`.
+final class DownloadQueueOrchestrator: @unchecked Sendable {
 
     weak var delegate: DownloadQueueOrchestratorDelegate?
 

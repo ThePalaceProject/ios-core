@@ -38,7 +38,18 @@ protocol OverdriveDownloadHandlerDelegate: AnyObject {
 
 /// Coordinates the Overdrive fulfillment redirect → manifest-fetch
 /// flow, plus the loans-feed-out-of-sync defer path.
-final class OverdriveDownloadHandler {
+///
+/// - Sendable invariant (Swift 6 `complete`-mode): every stored dependency is a
+///   `let` bound at init (`bookRegistry`, `stateManager`, `progressReporter`,
+///   `alertPresenter`, `userAccountProvider`, `fulfillBookRequest`,
+///   `manifestRequestFactory`). The only mutable member is `weak var delegate`,
+///   assigned exactly once during owner (`MyBooksDownloadCenter`) construction
+///   and never reassigned (weak-ref reads + ARC zeroing are atomic). The defer
+///   path hops slot-release into a `Task` (touching only the actor-serialized
+///   `stateManager.downloadCoordinator`) and the error announce into
+///   `runOnMainAsync`. `@unchecked` only because the stored service types are
+///   not themselves `Sendable`.
+final class OverdriveDownloadHandler: @unchecked Sendable {
 
     typealias DisplayStrings = Strings.MyDownloadCenter
 
@@ -114,14 +125,18 @@ final class OverdriveDownloadHandler {
     /// the registry and surface a "loan already exists" notice.
     func deferOverdriveFulfillment(for book: TPPBook) {
         Log.warn(#file, "Overdrive audiobook '\(book.title)' routed to fulfillment but default acquisition is still borrow — deferring and syncing loans feed")
+        // Snapshot the Sendable identifier so the concurrency hops below don't
+        // capture the non-Sendable `TPPBook` across the actor / MainActor
+        // boundary under Swift 6 `complete`-mode.
+        let bookIdentifier = book.identifier
         Task { [weak self] in
-            await self?.stateManager.downloadCoordinator.registerCompletion(identifier: book.identifier)
+            await self?.stateManager.downloadCoordinator.registerCompletion(identifier: bookIdentifier)
         }
         bookRegistry.sync()
         runOnMainAsync { [weak self] in
             self?.progressReporter.publishAndAnnounceError(
                 DownloadErrorInfo(
-                    bookId: book.identifier,
+                    bookId: bookIdentifier,
                     title: DisplayStrings.borrowFailed,
                     message: DisplayStrings.loanAlreadyExistsAlertMessage,
                     kind: .borrow

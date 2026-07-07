@@ -38,7 +38,19 @@ protocol DownloadThrottlingServiceDelegate: AnyObject {
 /// Concurrency policy for the download center. Suspends non-audiobook tasks
 /// when over the cap, resumes suspended tasks when under it, and re-applies
 /// the cap whenever the app becomes active again.
-final class DownloadThrottlingService {
+///
+/// - Sendable invariant (Swift 6 `complete`-mode): the stored dependencies
+///   (`stateManager`, `notificationCenter`) are `let` bound at init. `weak var
+///   delegate` is assigned exactly once during owner (`MyBooksDownloadCenter`)
+///   construction (weak-ref reads + ARC zeroing are atomic). The only other
+///   mutable member, `didBecomeActiveObserver`, is written only in
+///   `setupNetworkMonitoring` (invoked once, on the main thread, during owner
+///   wiring) and read in `deinit` — a single-threaded lifecycle, never touched
+///   from the `Task { }` hops. Those hops touch only the actor-serialized
+///   `stateManager.downloadCoordinator` / `SafeDictionary` members and the
+///   `URLSessionTask` suspend/resume API (thread-safe). `@unchecked` only
+///   because the stored service types are not themselves `Sendable`.
+final class DownloadThrottlingService: @unchecked Sendable {
 
     weak var delegate: DownloadThrottlingServiceDelegate?
 

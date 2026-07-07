@@ -17,6 +17,50 @@ import Foundation
 import UIKit
 import PalaceLogging
 
+/// Resolves the "is this an iPhone SE/8-class (small) device" flag without
+/// touching the main-actor-isolated `UIScreen.main` from a background thread.
+///
+/// The production default for `DiskBudgetManager.isSmallDevice` used to read
+/// `UIScreen.main.nativeBounds.height` inline; under Swift 6 `complete`-mode
+/// that is a main-actor-isolated access, and it was in fact already being
+/// evaluated off-main (the eviction entrypoint runs on `TPPAppDelegate`'s
+/// background `monitorQueue`). This holder resolves the pixel height exactly
+/// once, hopping to the main actor when necessary, and caches it under a lock.
+/// Screen native bounds don't change at runtime, so a one-shot cache preserves
+/// the original `<= 1334` threshold behavior exactly.
+///
+/// - Sendable invariant: the only mutable state (`cachedHeight`) is read and
+///   written solely under `lock`; `@unchecked` because `CGFloat`'s optional
+///   box isn't expressible as a stored `Sendable` without the lock contract.
+private final class SmallDeviceResolver: @unchecked Sendable {
+    static let shared = SmallDeviceResolver()
+
+    private let lock = NSLock()
+    private var cachedHeight: CGFloat?
+
+    /// iPhone 6/7/8/SE-class devices report a native height of 1334 px or less.
+    func isSmallDevice() -> Bool {
+        lock.lock()
+        if let height = cachedHeight {
+            lock.unlock()
+            return height <= 1334
+        }
+        lock.unlock()
+
+        let resolved: CGFloat
+        if Thread.isMainThread {
+            resolved = MainActor.assumeIsolated { UIScreen.main.nativeBounds.height }
+        } else {
+            resolved = DispatchQueue.main.sync { UIScreen.main.nativeBounds.height }
+        }
+
+        lock.lock()
+        cachedHeight = resolved
+        lock.unlock()
+        return resolved <= 1334
+    }
+}
+
 /// Reclaims disk space under the per-account content directory by evicting
 /// least-recently-used files until total usage + the anticipated next-write
 /// fits under the budget. Atomically flips evicted books' registry records
@@ -39,7 +83,7 @@ final class DiskBudgetManager {
         accountsManager: AccountsManager = AppContainer.production().accountsManager,
         bookFileManager: BookFileManager? = nil,
         fileManager: FileManager = .default,
-        isSmallDevice: @escaping () -> Bool = { UIScreen.main.nativeBounds.height <= 1334 }
+        isSmallDevice: @escaping () -> Bool = { SmallDeviceResolver.shared.isSmallDevice() }
     ) {
         self.bookRegistry = bookRegistry
         self.accountsManager = accountsManager

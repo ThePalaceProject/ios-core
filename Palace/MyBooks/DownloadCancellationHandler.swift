@@ -36,7 +36,16 @@ protocol DownloadCancellationHandlerDelegate: AnyObject {
 
 // MARK: - DownloadCancellationHandler
 
-final class DownloadCancellationHandler {
+/// - Sendable invariant (Swift 6 `complete`-mode): the stored dependencies
+///   (`stateManager`, `bookRegistry`, `adobeDRMService`) are all `let` bound at
+///   init; the only mutable member is `weak var delegate`, assigned exactly once
+///   during owner (`MyBooksDownloadCenter`) construction and never reassigned
+///   (weak-ref reads + ARC zeroing are atomic). The cancel paths hop teardown
+///   into `Task { }` / the URLSession `cancel` completion, touching only the
+///   actor-serialized `stateManager.downloadCoordinator` / `SafeDictionary`
+///   members and the main-thread `delegate` callbacks. `@unchecked` only
+///   because the stored service types are not themselves `Sendable`.
+final class DownloadCancellationHandler: @unchecked Sendable {
 
     /// Bookkeeping states that signify a download or borrow is in flight
     /// without a URL session task — cancellation must clean these up.
