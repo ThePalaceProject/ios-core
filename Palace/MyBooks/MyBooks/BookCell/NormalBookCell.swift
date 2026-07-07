@@ -92,6 +92,13 @@ struct NormalBookCell: View {
         .multilineTextAlignment(.leading)
         .padding(5)
         .frame(minHeight: cellHeight)
+        // Activate the (previously dead) progress-bar & dim-overlay transitions:
+        // `stableButtonState` is assigned via a Combine `.assign` with no
+        // animation context, so the declared `.transition(...)` on
+        // downloadProgressView / downloadOverlay never fired. Provide the
+        // animation context here (display-layer only — no download logic),
+        // routed through the reduce-motion-aware seam.
+        .accessibleAnimation(PalaceMotion.standard, value: model.stableButtonState)
         .onDisappear { model.isLoading = false }
         .onReceive(downloadProgressPublisher) { progress in
             accessibleWithAnimation(.easeInOut(duration: 0.15)) {

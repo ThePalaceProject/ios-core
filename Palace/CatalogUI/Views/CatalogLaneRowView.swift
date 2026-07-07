@@ -42,7 +42,7 @@ struct CatalogLaneRowView: View {
                         .adaptiveShadow(radius: 4)
                         .padding(.vertical)
                     })
-                    .buttonStyle(.plain)
+                    .buttonStyle(.palacePressable)
                     // lift the cover when a pointer (iPad pencil/mouse
                     // or iPad-on-Mac mouse) hovers it. No-op on touch-only iPhones.
                     .hoverEffect(.lift)
@@ -94,8 +94,6 @@ struct CatalogLaneRowView: View {
 
 // MARK: - Lane Skeleton View
 private struct LaneSkeletonView: View {
-    @State private var pulse: Bool = false
-
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             LazyHStack(spacing: 12) {
@@ -103,16 +101,11 @@ private struct LaneSkeletonView: View {
                     Rectangle()
                         .fill(Color.gray.opacity(0.25))
                         .frame(width: 100, height: 150)
-                        .opacity(pulse ? 0.6 : 1.0)
+                        .shimmerEffect()
                         .padding(.vertical)
                 }
             }
             .padding(.horizontal, 12)
-        }
-        .onAppear {
-            accessibleWithAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
-                pulse = true
-            }
         }
     }
 }

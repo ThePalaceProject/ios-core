@@ -9,23 +9,13 @@ struct LoadingOverlayModifier: ViewModifier {
                 .opacity(isLoading ? 0 : 1.0)
 
             if isLoading {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(
-                        LinearGradient(
-                            gradient: Gradient(colors: [
-                                Color.gray.opacity(0.3),
-                                Color.gray.opacity(0.1),
-                                Color.gray.opacity(0.3)
-                            ]),
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
+                RoundedRectangle(cornerRadius: PalaceRadius.control)
+                    .fill(Color.gray.opacity(0.25))
                     .shimmerEffect()
                     .transition(.opacity)
             }
         }
-        .accessibleAnimation(.easeInOut(duration: 0.2), value: isLoading)
+        .accessibleAnimation(PalaceMotion.gentle, value: isLoading)
     }
 }
 
@@ -35,28 +25,41 @@ extension View {
     }
 }
 
+/// A moving-highlight shimmer for loading skeletons. A light band sweeps across
+/// the masked content, driven by an animated `phase` — the offset is a function
+/// of `phase` (`PalaceMotion.shimmerOffset`), so the band actually travels.
+///
+/// (The previous implementation animated a `@State` bool that no visual property
+/// read, so it rendered as a static grey wash.) Reduce-motion aware: when Reduce
+/// Motion is on the band is parked off-screen and the content shows as a plain
+/// static placeholder.
 struct ShimmerEffect: ViewModifier {
-    @State private var isAnimating = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var phase: CGFloat = -1
 
     func body(content: Content) -> some View {
         content
             .overlay(
-                LinearGradient(
-                    gradient: Gradient(colors: [
-                        Color.gray.opacity(0.3),
-                        Color.gray.opacity(0.1),
-                        Color.gray.opacity(0.3)
-                    ]),
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
+                GeometryReader { geo in
+                    LinearGradient(
+                        gradient: Gradient(colors: [
+                            Color.white.opacity(0.0),
+                            Color.white.opacity(0.5),
+                            Color.white.opacity(0.0)
+                        ]),
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                    .frame(width: geo.size.width)
+                    .offset(x: PalaceMotion.shimmerOffset(phase: phase, width: geo.size.width))
+                }
                 .mask(content)
-                .accessibleAnimation(.linear(duration: 1.5).repeatForever(autoreverses: false), value: isAnimating)
+                .allowsHitTesting(false)
             )
             .onAppear {
-                // Only animate if reduce motion is not enabled
-                if !UIAccessibility.isReduceMotionEnabled {
-                    isAnimating = true
+                guard !reduceMotion else { return }
+                withAnimation(PalaceMotion.shimmer) {
+                    phase = 1
                 }
             }
     }
@@ -68,6 +71,8 @@ extension View {
     }
 }
 
+/// A grey placeholder rectangle that shimmers. Convenience wrapper used by
+/// hand-rolled skeletons that want a single shimmering block.
 struct ShimmerView: View {
     var width: CGFloat
     var height: CGFloat
@@ -75,9 +80,9 @@ struct ShimmerView: View {
 
     var body: some View {
         RoundedRectangle(cornerRadius: cornerRadius)
-            .fill(Color.gray.opacity(0.3))
+            .fill(Color.gray.opacity(0.25))
             .frame(width: width, height: height)
-            .modifier(ShimmerEffect())
+            .shimmerEffect()
             .transition(.opacity)
     }
 }

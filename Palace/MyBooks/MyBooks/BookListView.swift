@@ -62,7 +62,7 @@ struct BookListView: View {
                 Button(action: { onSelect(book) }, label: {
                     BookCell(model: modelCache.model(for: book), previewEnabled: previewEnabled)
                 })
-                .buttonStyle(.plain)
+                .buttonStyle(.palacePressable)
                 .applyBorderStyle()
                 .accessibilityLabel(book.voiceOverLabel)
                 .accessibilityHint(Strings.Accessibility.opensBookDetails)

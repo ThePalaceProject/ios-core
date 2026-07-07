@@ -8,8 +8,6 @@
 import SwiftUI
 
 struct AccountDetailSkeletonView: View {
-    @State private var pulse = false
-
     var body: some View {
         List {
             headerSkeleton
@@ -25,11 +23,6 @@ struct AccountDetailSkeletonView: View {
             }
         }
         .listStyle(GroupedListStyle())
-        .onAppear {
-            accessibleWithAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
-                pulse = true
-            }
-        }
     }
 
     private var headerSkeleton: some View {
@@ -37,12 +30,12 @@ struct AccountDetailSkeletonView: View {
             Circle()
                 .fill(Color.gray.opacity(0.25))
                 .frame(width: 50, height: 50)
-                .opacity(pulse ? 0.6 : 1.0)
+                .shimmerEffect()
 
             Rectangle()
                 .fill(Color.gray.opacity(0.25))
                 .frame(width: 150, height: 20)
-                .opacity(pulse ? 0.6 : 1.0)
+                .shimmerEffect()
 
             Spacer()
         }
@@ -55,6 +48,6 @@ struct AccountDetailSkeletonView: View {
         Rectangle()
             .fill(Color.gray.opacity(0.25))
             .frame(height: 44)
-            .opacity(pulse ? 0.6 : 1.0)
+            .shimmerEffect()
     }
 }
