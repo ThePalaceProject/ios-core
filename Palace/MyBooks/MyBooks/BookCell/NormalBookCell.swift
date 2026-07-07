@@ -21,6 +21,13 @@ struct NormalBookCell: View {
     // Download progress tracking
     @State private var downloadProgress: Double = 0.0
 
+    // Download-complete "moment" (display-only celebration; no download logic).
+    /// Drives a one-shot scale pulse on the incoming Read button.
+    @State private var readButtonPulseActive: Bool = false
+    /// Monotonic counter that triggers the success haptic exactly once per
+    /// download-complete transition (via `.palaceHaptic(.success, trigger:)`).
+    @State private var downloadCompleteHaptic: Int = 0
+
     /// Check download state directly from stableButtonState (source of truth for SwiftUI)
     private var isDownloading: Bool {
         model.stableButtonState == .downloadInProgress
@@ -28,6 +35,13 @@ struct NormalBookCell: View {
 
     private var isDownloadFailed: Bool {
         model.stableButtonState == .downloadFailed
+    }
+
+    /// Pure transition detector for the download-complete celebration: true only
+    /// on the transition INTO `.downloadSuccessful` (not while already in it, and
+    /// not for any other state). Display-only trigger; carries no download logic.
+    static func shouldPulseReadButton(previous: BookButtonState, current: BookButtonState) -> Bool {
+        current == .downloadSuccessful && previous != .downloadSuccessful
     }
 
     var body: some View {
@@ -44,6 +58,9 @@ struct NormalBookCell: View {
                     VStack(alignment: .leading, spacing: 4) {
                         downloadProgressView
                         buttons
+                            // One-shot scale pulse when the download completes.
+                            .scaleEffect(readButtonPulseActive ? 1.06 : 1.0)
+                            .accessibleAnimation(PalaceMotion.emphasized, value: readButtonPulseActive)
                         borrowedInfoView
                     }
                     .padding(.bottom, 5)
@@ -99,6 +116,18 @@ struct NormalBookCell: View {
         // animation context here (display-layer only — no download logic),
         // routed through the reduce-motion-aware seam.
         .accessibleAnimation(PalaceMotion.standard, value: model.stableButtonState)
+        // Download-complete moment: pref-gated success haptic + one-shot scale
+        // pulse fired only on the transition INTO `.downloadSuccessful`. Reads
+        // `stableButtonState` only — no download machinery is touched.
+        .palaceHaptic(.success, trigger: downloadCompleteHaptic)
+        .onChange(of: model.stableButtonState) { oldValue, newValue in
+            guard Self.shouldPulseReadButton(previous: oldValue, current: newValue) else { return }
+            downloadCompleteHaptic &+= 1
+            readButtonPulseActive = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                readButtonPulseActive = false
+            }
+        }
         .onDisappear { model.isLoading = false }
         .onReceive(downloadProgressPublisher) { progress in
             accessibleWithAnimation(.easeInOut(duration: 0.15)) {

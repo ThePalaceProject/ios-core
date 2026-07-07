@@ -166,6 +166,11 @@ struct TPPSettingsView: View {
                     }
             }
         }
+        // Animate add/delete of libraries (list identity keyed on the account
+        // uuids) and fire a success haptic when the current library switches
+        // (the checkmark moves to the newly-active row).
+        .accessibleAnimation(PalaceMotion.standard, value: librariesVM.accounts.map(\.uuid))
+        .palaceHaptic(.success, trigger: librariesVM.currentAccountUUID)
         .confirmationDialog(
             switchPromptTitle,
             isPresented: Binding(
@@ -531,21 +536,16 @@ private struct LibraryRowView: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            ZStack {
-                if isCurrent {
-                    Image(systemName: "checkmark.circle.fill")
-                        .resizable()
-                        .frame(width: 22, height: 22)
-                        .foregroundColor(.green)
-                } else {
-                    Image(systemName: "circle")
-                        .resizable()
-                        .frame(width: 22, height: 22)
-                        .foregroundColor(.secondary.opacity(0.4))
-                }
-            }
-            .frame(width: 28)
-            .accessibilityHidden(true)
+            // Single symbol whose glyph swaps circle <-> checkmark.circle.fill so
+            // the SF Symbol `.replace` effect can cross-fade the selection state.
+            Image(systemName: isCurrent ? "checkmark.circle.fill" : "circle")
+                .resizable()
+                .frame(width: 22, height: 22)
+                .foregroundColor(isCurrent ? .green : .secondary.opacity(0.4))
+                .contentTransition(.symbolEffect(.replace))
+                .accessibleAnimation(PalaceMotion.standard, value: isCurrent)
+                .frame(width: 28)
+                .accessibilityHidden(true)
 
             Image(uiImage: displayLogo)
                 .resizable()

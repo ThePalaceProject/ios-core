@@ -128,6 +128,9 @@ struct TypographySettingsView: View {
                 }
             }
             .background(Color(viewModel.currentSettings.theme.backgroundColor))
+            // Cross-fade the panel when the reader theme changes (light / sepia /
+            // dark) instead of hard-cutting. Reduce-motion-aware via the seam.
+            .accessibleAnimation(PalaceMotion.standard, value: viewModel.theme)
             .navigationTitle("Typography")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
