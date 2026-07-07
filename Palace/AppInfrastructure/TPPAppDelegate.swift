@@ -152,9 +152,15 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         // `@MainActor` `isSigningIn` flag. Post can arrive off-main, so hop to the
         // main actor before touching main-actor state (previously `queue: nil`
         // fired on the posting thread — a `complete`-mode data race on `isSigningIn`).
+        //
+        // `complete`: snapshot the Sendable `Bool` payload out of the non-Sendable
+        // `Notification` BEFORE the `@MainActor` Task so we don't `send` the whole
+        // notification across the boundary. `signingIn` only ever reads
+        // `notification.object as? Bool`, so this is behavior-preserving.
         NotificationCenter.default.addObserver(forName: .TPPIsSigningIn, object: nil, queue: .main) { [weak self] notification in
+            let isSigningIn = notification.object as? Bool
             Task { @MainActor in
-                self?.signingIn(notification)
+                self?.setSigningIn(isSigningIn)
             }
         }
     }
@@ -476,9 +482,13 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 
     // MARK: - User Sign-in Tracking
 
-    func signingIn(_ notification: Notification) {
-        if let boolValue = notification.object as? Bool {
-            isSigningIn = boolValue
+    /// Updates the `@MainActor` `isSigningIn` flag from the Sendable `Bool`
+    /// snapshotted out of the `.TPPIsSigningIn` notification's `object` at the
+    /// observer boundary (see `addObserver` above). Taking the `Bool` rather than
+    /// the `Notification` keeps a non-Sendable value off the `@MainActor` hop.
+    func setSigningIn(_ isSigningIn: Bool?) {
+        if let isSigningIn {
+            self.isSigningIn = isSigningIn
         }
     }
 

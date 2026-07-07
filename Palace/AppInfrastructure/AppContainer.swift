@@ -4,7 +4,18 @@ import os
 import PalaceAuth
 import PalaceNetwork
 
-struct AppContainer {
+// Swift 6 `complete` — `@unchecked Sendable` invariant: every stored member is
+// an immutable `let` established once at the composition root and only read
+// thereafter; the struct is a value-typed bag of long-lived DI references
+// (`_cachedValue()` builds it once and hands out copies). It cannot synthesize
+// `: Sendable` because `drmAuthorizerProvider` is a non-`@Sendable` closure and
+// several collaborator classes (`TPPNetworkExecutor`, `AccountsManager`, …) are
+// not yet Sendable-audited upstream — forcing `: Sendable` here would cascade
+// the requirement across the entire DI graph. The value carries no unguarded
+// mutable state of its own, so sharing a copy across the `OSAllocatedUnfairLock`
+// slot and the test-only rebuild `@Sendable` closure is data-race-free. This
+// comment is the documented invariant, not a bare waiver.
+struct AppContainer: @unchecked Sendable {
 
     let bookRegistry: TPPBookRegistryProvider
     let networkExecutor: TPPNetworkExecutor

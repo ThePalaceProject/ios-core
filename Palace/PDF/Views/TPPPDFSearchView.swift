@@ -40,7 +40,12 @@ struct TPPPDFSearchView: View {
             // PP-4421: explicit prompt with `.secondary` foreground overrides
             // the default `.placeholderText` (~30% gray) that reads as
             // disabled. Entered text retains its own .foregroundColor.
-            TextField(Strings.Generic.search, text: $searchText.onChange(performSearch),
+            // `complete`: closure literal rather than the bare `performSearch`
+            // method value — the method reference is a non-`Sendable` function
+            // value that warns when converted to `onChange`'s `@MainActor
+            // @Sendable` parameter; the literal is inferred `@MainActor @Sendable`
+            // in this main-actor `View`.
+            TextField(Strings.Generic.search, text: $searchText.onChange { performSearch(string: $0) },
                       prompt: Text(Strings.Generic.search).foregroundColor(.secondary))
                 .palaceFont(.body)
                 .frame(minHeight: 44)

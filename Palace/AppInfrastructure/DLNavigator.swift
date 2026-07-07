@@ -79,13 +79,13 @@ final class DLNavigator: Sendable {
         guard let topViewController = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController(),
               let newAccount = accountsManager.account(libraryId)
         else {
-            callOnce(on: .TPPAccountSetDidLoad) { [weak self] _ in
+            callOnce(on: .TPPAccountSetDidLoad) { [weak self] in
                 self?.login(libraryId: libraryId, barcode: barcode)
             }
             return
         }
         if newAccount.uuid != accountsManager.currentAccount?.uuid {
-            callOnce(on: .TPPCurrentAccountDidChange) { [weak self] _ in
+            callOnce(on: .TPPCurrentAccountDidChange) { [weak self] in
                 self?.login(libraryId: libraryId, barcode: barcode)
             }
             DispatchQueue.main.async {
@@ -121,7 +121,13 @@ final class DLNavigator: Sendable {
     // callers drive `@MainActor login(...)`. The observer registers with
     // `queue: .main`, so the block provably runs on the main actor — invoked via
     // `MainActor.assumeIsolated`, not a hop, so timing is unchanged.
-    private func callOnce(on name: Notification.Name, block: @escaping @MainActor @Sendable (_ notification: Notification) -> Void) {
+    //
+    // `complete`: the block takes NO `Notification` argument. Both call sites
+    // ignore the payload (`{ _ in … }`), and passing the non-Sendable
+    // `Notification` into the `@MainActor` block was the "sending 'notification'
+    // risks data races" diagnostic. Dropping the unused argument removes the only
+    // non-Sendable value that crossed the boundary — behavior is unchanged.
+    private func callOnce(on name: Notification.Name, block: @escaping @MainActor @Sendable () -> Void) {
         // Mirror `ObserverTokenBox` (TPPBookRegistry.swift): a self-removing
         // `@Sendable` observer block can't reference a `var token` assigned after
         // the block is formed — the `targeted` checker rejects it as "'token'
@@ -130,12 +136,12 @@ final class DLNavigator: Sendable {
         // thereafter, so `@unchecked Sendable` documents write-once-then-read
         // confinement, not a race waiver.
         let box = ObserverTokenBox()
-        box.token = NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { notification in
+        box.token = NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { _ in
             box.removeObserver(name: name)
             // Provably on main: registered with `queue: .main`. `assumeIsolated`
             // to call the `@MainActor` block without a re-async hop.
             MainActor.assumeIsolated {
-                block(notification)
+                block()
             }
         }
     }

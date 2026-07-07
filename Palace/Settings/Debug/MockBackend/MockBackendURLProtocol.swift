@@ -50,6 +50,16 @@ private final class MockBackendConfigStore: @unchecked Sendable {
     }
 }
 
+/// Carries the `@unchecked Sendable` `MockBackendURLProtocol` instance across the
+/// `@Sendable` `DispatchQueue.main.async` boundary in `deliverResponse` as a single
+/// owned handoff — the region-analysis-friendly form of "send `self` to main."
+/// The URL Loading System owns the protocol instance for the request lifetime and
+/// the finish callback fires once, so the strong reference is safe.
+private final class MockProtocolBox: @unchecked Sendable {
+    let value: MockBackendURLProtocol
+    init(_ value: MockBackendURLProtocol) { self.value = value }
+}
+
 // Swift 6 `complete` — `@unchecked Sendable` invariant: this `URLProtocol` subclass
 // has NO instance stored properties of its own — all configuration lives in the
 // lock-backed `static let config` (`MockBackendConfigStore`, itself
@@ -263,9 +273,16 @@ final class MockBackendURLProtocol: URLProtocol, @unchecked Sendable {
         // progressData may be empty when it tries to parse the problem document.
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: data)
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            self.client?.urlProtocolDidFinishLoading(self)
+        // `complete`: box `self` (an `@unchecked Sendable` `URLProtocol` subclass)
+        // into a carrier before the `@Sendable` `main.async` closure so the
+        // region checker sees a single owned handoff rather than "sending 'self'
+        // risks data races." The URL Loading System owns this protocol instance
+        // for the request's lifetime, and the finish callback runs exactly once,
+        // so the strong reference in the box is safe. Dispatch timing unchanged.
+        let selfBox = MockProtocolBox(self)
+        DispatchQueue.main.async {
+            let this = selfBox.value
+            this.client?.urlProtocolDidFinishLoading(this)
         }
     }
 

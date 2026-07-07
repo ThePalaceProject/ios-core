@@ -77,7 +77,13 @@ struct TPPPDFNavigation<Content>: View where Content: View {
                 .accessibilityLabel(Strings.Generic.tableOfContents)
                 .visible(when: !isShowingPdfContorls)
 
-                Picker("", selection: $pickerSelection.onChange(changeReaderMode)) {
+                // `complete`: pass a closure literal rather than the bare
+                // `changeReaderMode` method value. A method reference is a
+                // non-`Sendable` function value, so converting it to the
+                // `@MainActor @Sendable` `onChange` parameter warns; a closure
+                // literal formed in this main-actor `View` is inferred `@MainActor
+                // @Sendable` and captures only main-actor-isolated `self`.
+                Picker("", selection: $pickerSelection.onChange { changeReaderMode($0) }) {
                     ForEach(TPPPDFReaderModeValues.allValues) { readerModeValue in
                         readerModeValue.image
                             .tag(readerModeValue.rawValue)
