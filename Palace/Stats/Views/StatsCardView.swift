@@ -19,6 +19,8 @@ struct StatsCardView: View {
         .fontWeight(.bold)
         .minimumScaleFactor(0.7)
         .lineLimit(1)
+        .contentTransition(.numericText())
+        .accessibleAnimation(PalaceMotion.emphasized, value: value)
 
       Text(label)
         .font(.caption)

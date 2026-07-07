@@ -38,6 +38,7 @@ struct StatsView: View {
           Image(systemName: "flame.fill")
             .font(.title)
             .foregroundStyle(.orange)
+            .symbolEffect(.bounce, value: viewModel.currentStreak.currentStreakDays)
             .accessibilityHidden(true)
         } else {
           Image(systemName: "flame")

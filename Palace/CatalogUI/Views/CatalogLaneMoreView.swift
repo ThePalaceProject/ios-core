@@ -347,8 +347,13 @@ private extension CatalogLaneMoreView {
     }
 
     func errorView(_ errorMessage: String) -> some View {
-        Text(errorMessage)
-            .padding()
+        ContentUnavailableView {
+            Label(Strings.Generic.error, systemImage: "exclamationmark.triangle")
+        } description: {
+            Text(errorMessage)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .transition(.opacity)
     }
 
     @ViewBuilder

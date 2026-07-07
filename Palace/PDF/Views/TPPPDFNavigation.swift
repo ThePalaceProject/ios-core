@@ -118,6 +118,9 @@ struct TPPPDFNavigation<Content>: View where Content: View {
                     }
                 }
                 .accessibilityLabel(metadata.isBookmarked() ? Strings.TPPBaseReaderViewController.removeBookmark : Strings.TPPBaseReaderViewController.addBookmark)
+                .contentTransition(.symbolEffect(.replace))
+                .symbolEffect(.bounce, value: metadata.isBookmarked())
+                .palaceHaptic(.success, trigger: metadata.isBookmarked())
             }
             .visible(when: !isShowingPdfContorls)
         }

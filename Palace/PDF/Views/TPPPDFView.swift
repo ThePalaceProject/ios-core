@@ -49,11 +49,15 @@ struct TPPPDFView: View {
                 TPPPDFLabel(documentTitle)
                     .padding(.top)
                 Spacer()
-                if let pageLabel = document.page(at: metadata.currentPage)?.label, Int(pageLabel) != (metadata.currentPage + 1) {
-                    TPPPDFLabel("\(pageLabel) (\(metadata.currentPage + 1)/\(document.pageCount))")
-                } else {
-                    TPPPDFLabel("\(metadata.currentPage + 1)/\(document.pageCount)")
+                SwiftUI.Group {
+                    if let pageLabel = document.page(at: metadata.currentPage)?.label, Int(pageLabel) != (metadata.currentPage + 1) {
+                        TPPPDFLabel("\(pageLabel) (\(metadata.currentPage + 1)/\(document.pageCount))")
+                    } else {
+                        TPPPDFLabel("\(metadata.currentPage + 1)/\(document.pageCount)")
+                    }
                 }
+                .contentTransition(.numericText(value: Double(metadata.currentPage + 1)))
+                .accessibleAnimation(PalaceMotion.standard, value: metadata.currentPage)
                 if isVoiceOverRunning {
                     VStack(spacing: 0) {
                         Divider()

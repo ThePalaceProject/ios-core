@@ -18,10 +18,13 @@ struct CatalogLaneRowView: View {
 
             if isLoading || books.isEmpty {
                 laneSkeletonScroller
+                    .transition(.opacity)
             } else {
                 scroller
+                    .transition(.opacity)
             }
         }
+        .accessibleAnimation(PalaceMotion.gentle, value: isLoading)
     }
 
     // MARK: - Subviews

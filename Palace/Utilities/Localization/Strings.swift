@@ -677,6 +677,8 @@ struct Strings {
         static let sortBy = NSLocalizedString("Sort By:", comment: "")
         static let searchBooks = NSLocalizedString("Search My Books", comment: "")
         static let emptyViewMessage = NSLocalizedString("Visit the Catalog to\nadd books to My Books.", comment: "")
+        static let emptyViewTitle = NSLocalizedString("Your shelf is empty", comment: "Title of the My Books empty state shown when the patron has no books")
+        static let browseCatalog = NSLocalizedString("Browse the Catalog", comment: "Button on the My Books empty state that opens the catalog tab")
         static let findYourLibrary = NSLocalizedString("Find Your Library", comment: "Button that lets user know they can select a library they have a card for")
         static let addLibrary = NSLocalizedString("Add Library", comment: "Title of button to add a new library")
         static let accountSyncingAlertTitle = NSLocalizedString("Please wait", comment: "")
@@ -696,6 +698,8 @@ struct Strings {
         static let offlineTitle = NSLocalizedString("You're Offline", comment: "Title of the catalog offline state shown when the device has no internet connection")
         static let offlineMessage = NSLocalizedString("The catalog isn't available without an internet connection, but your downloaded books are still here to read and listen to.", comment: "Explains that catalog browsing needs a connection while downloaded books remain available offline")
         static let offlineGoToMyBooks = NSLocalizedString("Go to My Books", comment: "Button on the catalog offline state that takes the patron to their downloaded books")
+        static let emptyFeedTitle = NSLocalizedString("Nothing here yet", comment: "Title of the catalog empty state shown when a feed returns no books")
+        static let emptyFeedMessage = NSLocalizedString("This part of the catalog doesn't have any books right now. Check back later.", comment: "Body of the catalog empty state shown when a feed returns no books")
     }
 
     struct BookCell {
@@ -815,6 +819,7 @@ struct Strings {
 
     struct HoldsView {
         static let reservations = NSLocalizedString("Holds", comment: "Nav title for Holds tab")
+        static let emptyTitle = NSLocalizedString("No holds yet", comment: "Title of the Holds empty state shown when the patron has no reserved or held books")
         static let emptyMessage = NSLocalizedString("""
             When you reserve a book from the catalog, it will show up here. \
             Look here from time to time to see if your book is available to download.
