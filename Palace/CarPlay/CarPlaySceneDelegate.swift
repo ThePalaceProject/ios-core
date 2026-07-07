@@ -18,9 +18,16 @@ import PalaceLogging
 // callback drives main-actor CarPlay UI. Annotating the type is the `complete`-mode
 // fix for the "conformance crosses into the main actor" warning on
 // `CPTemplateApplicationSceneDelegate`; all members are already main-only.
+//
+// `@preconcurrency` on the `CPTemplateApplicationSceneDelegate` conformance: the
+// protocol's requirements are declared `nonisolated` by CarPlay (not yet
+// Sendable/isolation-audited upstream), so a `@MainActor` type satisfying them
+// still trips "conformance crosses into main actor-isolated code." Every callback
+// is delivered on the main thread by CarPlay, so the `@preconcurrency` conformance
+// is the honest ceiling until Apple annotates the protocol.
 @MainActor
 @objc(CarPlaySceneDelegate)
-final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
+final class CarPlaySceneDelegate: UIResponder, @preconcurrency CPTemplateApplicationSceneDelegate {
 
     // MARK: - Properties
 

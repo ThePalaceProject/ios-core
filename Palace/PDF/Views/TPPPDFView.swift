@@ -78,11 +78,7 @@ struct TPPPDFView: View {
             // injected, and the view is mounted before any long-press
             // gesture can fire.
             pdfView.allowsCopy = !metadata.book.isDRMProtected
-            Task {
-                if let title = await fetchDocumentTitle() {
-                    documentTitle = title
-                }
-            }
+            documentTitle = resolveDocumentTitle()
         }
         .onReceive(pageChangePublisher) { value in
             if let pdfView = (value.object as? PDFView), let page = pdfView.currentPage, let pageIndex = pdfView.document?.index(for: page) {
@@ -110,7 +106,20 @@ struct TPPPDFView: View {
         UIAccessibility.post(notification: .pageScrolled, argument: status)
     }
 
-    private func fetchDocumentTitle() async -> String? {
-        try? await document.title() ?? metadata.book.title
+    /// Resolves the document title synchronously on the main actor.
+    ///
+    /// `complete` (structural fix): the prior `try? await document.title()` sent
+    /// the non-`Sendable` PDFKit `PDFDocument` across the `await` boundary
+    /// ("sending 'self.document' risks data races"), which `@preconcurrency import
+    /// PDFKit` does not clear because the send is of the concrete document value,
+    /// not a cross-module type-annotation issue. PDFKit exposes the title
+    /// synchronously via `documentAttributes[.titleAttribute]` — the same read
+    /// `TPPPDFDocument.title` performs — so we read it here on the current (main)
+    /// actor without ever crossing an isolation boundary. `TPPPDFView` is a
+    /// main-actor `View` and `document` is main-actor-held, so this is
+    /// behavior-preserving and strictly cheaper (no Task/await hop).
+    private func resolveDocumentTitle() -> String {
+        let attributeTitle = document.documentAttributes?[PDFDocumentAttribute.titleAttribute] as? String
+        return attributeTitle ?? metadata.book.title
     }
 }

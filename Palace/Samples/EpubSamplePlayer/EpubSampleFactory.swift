@@ -22,7 +22,10 @@ import PalaceLogging
     }
 }
 
-@objc class EpubSampleWebURL: EpubLocationSampleURL {}
+// `@unchecked Sendable` restated: Swift requires a subclass to re-declare an
+// inherited `@unchecked Sendable` conformance. Same write-once-then-read `url`
+// invariant as the `EpubLocationSampleURL` superclass — no added mutable state.
+@objc class EpubSampleWebURL: EpubLocationSampleURL, @unchecked Sendable {}
 
 /// Carries the non-`Sendable` `createSample` completion across the `@Sendable`
 /// `fetchSample` / `main.async` boundaries. Invoked exactly once. Mirrors

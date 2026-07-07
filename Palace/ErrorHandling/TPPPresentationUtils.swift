@@ -38,9 +38,17 @@ class TPPPresentationUtils: NSObject {
     @objc class func safelyPresent(_ vc: UIViewController,
                                    animated: Bool = true,
                                    completion: (() -> Void)? = nil) {
+        // Box the non-`Sendable` UIKit payload ONCE, here in the nonisolated
+        // function region, before any `@Sendable` boundary. Every downstream use
+        // (the off-main hop, the coordinator completion, the nested main.async)
+        // reads `payload.viewController` / `payload.completion` from the
+        // `@unchecked Sendable` carrier rather than re-capturing `vc`/`completion`
+        // directly — which is what produced the "sending 'completion' risks data
+        // races" diagnostic when the box was rebuilt inside `assumeIsolated`.
+        let payload = MainActorPresentation(vc, completion)
+
         // Ensure this block is always executed on the main thread
         if !Thread.isMainThread {
-            let payload = MainActorPresentation(vc, completion)
             DispatchQueue.main.async {
                 safelyPresent(payload.viewController, animated: animated, completion: payload.completion)
             }
@@ -71,7 +79,7 @@ class TPPPresentationUtils: NSObject {
             }
 
             if let baseNavController = base as? UINavigationController,
-               let inputNavController = vc as? UINavigationController,
+               let inputNavController = payload.viewController as? UINavigationController,
                baseNavController.viewControllers.count == inputNavController.viewControllers.count,
                let baseVC = baseNavController.viewControllers.first,
                let inputVC = inputNavController.viewControllers.first {
@@ -88,13 +96,12 @@ class TPPPresentationUtils: NSObject {
             // the in-flight transition to complete, then re-walk to the (possibly
             // new) topmost VC and present there. HelpSpot 17716 follow-up.
             if let coordinator = base.transitionCoordinator {
-                // Box the non-Sendable UIKit payload BEFORE the escaping coordinator
-                // completion so only the @unchecked-Sendable carrier crosses the
-                // closure boundary — `vc`/`completion` themselves never cross. The
-                // box is built, and later read, only on the main actor (both the
-                // coordinator completion and the nested main.async run on main), so
-                // the transfer is data-race-free. Dispatch structure unchanged.
-                let payload = MainActorPresentation(vc, completion)
+                // Only the `@unchecked Sendable` `payload` carrier (built once at
+                // function entry) crosses the escaping coordinator completion —
+                // `vc`/`completion` themselves never cross. The box is built, and
+                // later read, only on the main actor (both the coordinator
+                // completion and the nested main.async run on main), so the
+                // transfer is data-race-free. Dispatch structure unchanged.
                 coordinator.animate(alongsideTransition: nil) { _ in
                     DispatchQueue.main.async {
                         safelyPresent(payload.viewController, animated: animated, completion: payload.completion)
@@ -103,7 +110,7 @@ class TPPPresentationUtils: NSObject {
                 return
             }
 
-            base.present(vc, animated: animated, completion: completion)
+            base.present(payload.viewController, animated: animated, completion: payload.completion)
         }
     }
 }

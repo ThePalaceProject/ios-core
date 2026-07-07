@@ -72,7 +72,17 @@ struct TPPPDFDocumentView: UIViewRepresentable {
         return Coordinator(currentPage: $metadata.currentPage)
     }
 
-    class Coordinator: NSObject, PDFViewDelegate {
+    // `@MainActor` + `@preconcurrency PDFViewDelegate`: the coordinator holds a
+    // `@Binding` and drives main-actor SwiftUI state. Previously the nonisolated
+    // `pdfViewPerformGo` requirement forced a `MainActor.assumeIsolated` block that
+    // captured `self` (the non-`Sendable` `Coordinator`) into a `@Sendable`
+    // closure — the "sending 'self' risks data races" diagnostic. Isolating the
+    // whole coordinator to the main actor and satisfying the nonisolated PDFKit
+    // requirement via `@preconcurrency` removes the send: PDFKit delivers
+    // `PDFViewDelegate` callbacks on the main thread, so the main-actor method is a
+    // faithful, race-free implementation.
+    @MainActor
+    class Coordinator: NSObject, @preconcurrency PDFViewDelegate {
         @Binding var currentPage: Int
 
         init(currentPage: Binding<Int>) {
@@ -80,14 +90,8 @@ struct TPPPDFDocumentView: UIViewRepresentable {
         }
 
         func pdfViewPerformGo(toPage sender: PDFView) {
-            // PDFKit invokes `PDFViewDelegate` callbacks on the main thread, but
-            // the protocol requirement is nonisolated, so `sender`'s main-actor
-            // `currentPage`/`document` (and the `@Binding currentPage` write) must
-            // be reached through an explicit main-actor assumption.
-            MainActor.assumeIsolated {
-                if let page = sender.currentPage, let pageIndex = sender.document?.index(for: page) {
-                    currentPage = pageIndex
-                }
+            if let page = sender.currentPage, let pageIndex = sender.document?.index(for: page) {
+                currentPage = pageIndex
             }
         }
     }
