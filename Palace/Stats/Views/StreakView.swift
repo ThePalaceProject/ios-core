@@ -1,7 +1,6 @@
 import SwiftUI
 
 /// Detailed streak view with a GitHub-style calendar heatmap.
-@available(iOS 16.0, *)
 struct StreakView: View {
   let streak: ReadingStreak
   @State private var selectedDate: Date?
