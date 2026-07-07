@@ -1,0 +1,66 @@
+scenario:
+  id: holds-reservations-empty
+  name: "Holds — reservations tab renders the empty state"
+  description: >
+    Structural sentinel for the Holds (Reservations) tab. With no active
+    reservations on the current account, the tab must render its empty-state
+    copy ("When you reserve a book from the catalog, it will show up here…")
+    rather than a spinner, a crash, or a stale list. Recorded live on a signed-
+    in-capable test library (Main Street City Library). Closes the empty-state
+    half of the Holds gap left when the never-wired PalaceUITests bundle
+    (ReservationsUITests) was removed in PR #1188.
+
+    The POPULATED holds flow (queue position / ready-to-borrow / cancel) is a
+    separate, still-open item — it needs a title with zero available copies to
+    reserve, which the browsable content of the test libraries checked so far is
+    open-access and does not surface. See _GAP_ANALYSIS.md for the blocker +
+    recipe.
+  tags: [tier1, ios, holds, reservations, empty-state, gap-work]
+  tier: stateful   # depends on account state (zero reservations); library-agnostic otherwise
+
+  blocking: false
+
+  preconditions:
+    - "iPhone 17 Pro / iOS 26.1 simulator booted (captured build); any recent iPhone sim is fine"
+    - "Palace app installed (org.thepalaceproject.palace), build 3.3.0 (485) or later"
+    - "At least one library added (captured with Main Street City Library; Palace Bookshelf also works)"
+    - "The current account has ZERO active reservations (the empty-state precondition)"
+    - "simdrive >= 1.0.0b12"
+
+  state_reset:
+    - "If the account has holds, cancel them (or use a fresh account) so the empty state is the pre-condition."
+
+  recording:
+    path: "~/.simdrive/recordings/holds-reservations-empty/recording.yaml"
+    steps: 1
+    captured_with: "simdrive 1.0.0b12"
+    captured_on: "2026-07-07"
+    replay_command: "mcp__simdrive__replay(session_id=..., name='holds-reservations-empty', drift_threshold=0.85)"
+
+  steps:
+    - id: open_holds_tab
+      description: "Tap the Holds tab in the bottom tab bar"
+      tap_target: { stable_id: "0f06bf1e2d8b", text: "Holds" }
+      checkpoint: |
+        The Reservations screen renders its empty state — OCR sees "When you
+        reserve a book from the catalog, it will show up here. Look here from
+        time to time to see if your book is available to download." The nav
+        title shows the current library name; the Holds tab is selected.
+
+  expected_invariants:
+    - "Tapping Holds routes to the Reservations screen (not Catalog / My Books)."
+    - "With zero reservations, the empty-state guidance copy is OCR-visible."
+    - "No error/spinner: the empty state is a settled screen, not a load state."
+
+  ssim_gating:
+    threshold: 0.85
+    on_drift: warn   # deterministic static screen — a good SSIM candidate once
+                     # multiple golden replays per OS version exist.
+
+  rationale: |
+    First Holds/Reservations journey in the corpus. Deterministic and
+    credential-light (empty state needs only an added library + zero holds).
+    The populated-holds companion is tracked in _GAP_ANALYSIS.md: it requires a
+    limited-copy (0-available) title to place a hold, which the open-access
+    curated content of the test libraries checked (Main Street City New &
+    Noteworthy ebooks + audiobooks — all "Borrow") does not provide.
