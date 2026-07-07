@@ -27,7 +27,6 @@ struct BookDetailView: View {
     @State private var titleOpacity: CGFloat = 1.0
     @State private var dragOffset: CGFloat = 0
     @State private var imageBottomPosition: CGFloat = 400
-    @State private var pulseSkeleton: Bool = false
     @State private var lastBookIdentifier: String?
     @AccessibilityFocusState private var isTitleFocused: Bool
     @State private var initialLayoutComplete: Bool = false
@@ -111,9 +110,6 @@ struct BookDetailView: View {
                 viewModel.fetchRelatedBooks()
                 Task { await viewModel.hydrateMetadataIfNeeded() }
                 self.descriptionText = viewModel.book.summary ?? ""
-                accessibleWithAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
-                    pulseSkeleton = true
-                }
 
                 NotificationCenter.default.post(name: .TPPAccessibilityScreenTransition, object: nil)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
@@ -506,10 +502,7 @@ struct BookDetailView: View {
                                             })
                                             .accessibilityLabel(bookAccessibilityLabel(for: book))
                                         } else {
-                                            RoundedRectangle(cornerRadius: 8)
-                                                .fill(Color.gray.opacity(0.25))
-                                                .frame(width: 100, height: 160)
-                                                .opacity(pulseSkeleton ? 0.6 : 1.0)
+                                            SkeletonCover(width: 100, height: 160)
                                         }
                                     }
                                 }
