@@ -70,7 +70,18 @@ final class BookRegistryStore: @unchecked Sendable {
   }
 
   func performBarrier(_ block: @escaping () -> Void) {
-    syncQueue.async(flags: .barrier, execute: block)
+    // `DispatchQueue.async(execute:)` wants a `@Sendable` closure in Swift 6
+    // `complete` mode, but `block` is a plain non-Sendable `() -> Void` (its
+    // callers — `mutateRegistry`, `BookmarkManager`'s CRUD closures — capture
+    // non-Sendable state like `save` and `TPPBookLocation`, so `@Sendable`ing
+    // this parameter would ripple the diagnostic up the whole chain). Confine
+    // the non-Sendable closure to a carrier box and submit a `@Sendable`
+    // trampoline instead. INVARIANT: the box's `block` is invoked exactly once,
+    // on `syncQueue` inside the serialized barrier window — the same
+    // single-threaded execution the parameter already had — so no capture races
+    // another thread. Mirrors `SyncCallbacks` / `SendableErrorDocument`.
+    let carrier = BarrierBlockBox(block)
+    syncQueue.async(flags: .barrier) { carrier.run() }
   }
 
   func performBarrierSync(_ block: () -> Void) {
@@ -324,4 +335,26 @@ final class BookRegistryStore: @unchecked Sendable {
       self.registry.values.map { $0.dictionaryRepresentation }
     }
   }
+}
+
+// MARK: - Sendable carrier for `performBarrier`
+
+/// Sendable carrier for the non-Sendable `() -> Void` block that `performBarrier`
+/// submits to `syncQueue`. `DispatchQueue.async(execute:)` expects a `@Sendable`
+/// closure under Swift 6 `complete`; wrapping the block here lets the barrier
+/// submission capture this box (Sendable) instead of the raw non-Sendable
+/// closure — without pushing `@Sendable` onto `performBarrier`'s public
+/// parameter (which would ripple through `mutateRegistry` and every
+/// `BookmarkManager` CRUD closure, since those capture non-Sendable `save` /
+/// `TPPBookLocation` values).
+///
+/// `@unchecked Sendable` invariant: `run()` is called exactly once, on
+/// `syncQueue` inside the serialized `.barrier` window — the identical
+/// single-threaded execution the block had before boxing. The stored closure is
+/// never invoked from more than one thread, so moving the box across the
+/// dispatch boundary is race-free. Mirrors `SyncCallbacks` / `SendableErrorDocument`.
+private final class BarrierBlockBox: @unchecked Sendable {
+  private let block: () -> Void
+  init(_ block: @escaping () -> Void) { self.block = block }
+  func run() { block() }
 }
