@@ -154,8 +154,6 @@ struct AccountDetailView: View {
         }
         .padding(.horizontal, Layout.horizontalPadding)
         .padding(.top, Layout.verticalPaddingLarge)
-        // Force view refresh when isLoading changes
-        .id("samlIDPList-\(viewModel.isLoading)")
     }
 
     private var singleSignInButton: some View {
@@ -166,8 +164,6 @@ struct AccountDetailView: View {
         )
         .padding(.horizontal, Layout.horizontalPadding)
         .padding(.top, Layout.verticalPaddingLarge)
-        // Force view refresh when isLoading changes
-        .id("signInButton-\(viewModel.isLoading)")
     }
 
     @ViewBuilder
@@ -367,6 +363,7 @@ struct AccountDetailView: View {
         // a disabled field. Both visible (TextField) and masked (SecureField)
         // branches get the same prompt — empty-state hint is darker, entered
         // text retains its own .foregroundColor below.
+        VStack(alignment: .leading, spacing: 0) {
         HStack {
             if viewModel.isPINHidden {
                 SecureField(pinLabel, text: $viewModel.pinText, prompt: Text(pinLabel).foregroundColor(.secondary))
@@ -402,6 +399,37 @@ struct AccountDetailView: View {
         .padding(.vertical, Layout.verticalPaddingInput)
         .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
         .accessibilityElement(children: .contain)
+
+            inlineFormError
+        }
+        .accessibleAnimation(PalaceMotion.emphasized,
+                             value: Self.shouldShowInlineFormError(showingAlert: viewModel.showingAlert,
+                                                                   message: viewModel.alertMessage))
+    }
+
+    /// Inline error row rendered directly UNDER the PIN field. Presentation
+    /// mirror of the SAME existing `@Published` `alertMessage`/`showingAlert` —
+    /// no new view-model state, no auth-logic change. Its placement inside
+    /// `pinInputCell` naturally scopes it to the sign-in form; the existing
+    /// `.alert` (see `body`) is kept for non-form / system errors.
+    @ViewBuilder
+    private var inlineFormError: some View {
+        if Self.shouldShowInlineFormError(showingAlert: viewModel.showingAlert,
+                                          message: viewModel.alertMessage) {
+            HStack(alignment: .top, spacing: 6) {
+                Image(systemName: "exclamationmark.circle.fill")
+                    .foregroundColor(.red)
+                    .font(.footnote)
+                Text(viewModel.alertMessage)
+                    .palaceFont(.footnote)
+                    .foregroundColor(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            }
+            .padding(.bottom, Layout.verticalPaddingSmall)
+            .accessibilityElement(children: .combine)
+            .transition(.move(edge: .top).combined(with: .opacity))
+        }
     }
 
     private var logInSignOutCell: some View {
@@ -699,6 +727,15 @@ struct AccountDetailView: View {
     }
 
     // MARK: - Helper Methods
+
+    /// Pure presentation decision: show the inline form-error row when there is
+    /// an active alert AND a non-empty message. Kept static + Bool-only so it is
+    /// unit-testable without spinning up the view or the view model, and so it
+    /// carries no authentication/credential logic — it only reflects existing
+    /// `@Published` state.
+    static func shouldShowInlineFormError(showingAlert: Bool, message: String) -> Bool {
+        showingAlert && !message.isEmpty
+    }
 
     private func keyboardType(for loginKeyboard: LoginKeyboard?) -> UIKeyboardType {
         // F-011 class-of-bug guard

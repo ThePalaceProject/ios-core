@@ -62,6 +62,10 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     var navigator: UIViewController & Navigator
     private var tocBarButton: UIBarButtonItem?
     private var bookmarkBarButton: UIBarButtonItem?
+    /// The bookmark bar button is hosted as a custom-view `UIButton` so the
+    /// add-confirmation bounce can animate its view (a plain `UIBarButtonItem`
+    /// exposes no animatable view). Same asset art / target-action as before.
+    private var bookmarkButton: UIButton?
     private(set) var stackView: UIStackView!
     private(set) var navigatorContainer: UIView!
     private(set) lazy var positionLabel = UILabel()
@@ -376,11 +380,17 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
         var buttons: [UIBarButtonItem] = []
 
         let img = UIImage(named: TPPBaseReaderViewController.bookmarkOffImageName)
-        let bookmarkBtn = UIBarButtonItem(image: img,
-                                          style: .plain,
-                                          target: self,
-                                          action: #selector(toggleBookmark))
-        bookmarkBtn.accessibilityLabel = currentLocationIsBookmarked ? Strings.TPPBaseReaderViewController.removeBookmark :  Strings.TPPBaseReaderViewController.addBookmark
+        // Custom-view button (same asset, same target/action) so the add
+        // confirmation can bounce the button's view. Tint is inherited from the
+        // navigation bar exactly as a plain image bar button item would be.
+        let button = UIButton(type: .system)
+        button.setImage(img, for: .normal)
+        button.frame = CGRect(x: 0, y: 0, width: 24, height: 24)
+        button.addTarget(self, action: #selector(toggleBookmark), for: .touchUpInside)
+        button.accessibilityLabel = currentLocationIsBookmarked ? Strings.TPPBaseReaderViewController.removeBookmark : Strings.TPPBaseReaderViewController.addBookmark
+        bookmarkButton = button
+        let bookmarkBtn = UIBarButtonItem(customView: button)
+        bookmarkBtn.accessibilityLabel = button.accessibilityLabel
         let tocButton = UIBarButtonItem(image: UIImage(named: "TOC"),
                                         style: .plain,
                                         target: self,
@@ -400,22 +410,66 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     }
 
     private func updateBookmarkButton(withState isOn: Bool) {
-        guard let btn = bookmarkBarButton else {
+        guard let button = bookmarkButton else {
             return
         }
 
-        if isOn {
-            btn.image = UIImage(named: TPPBaseReaderViewController.bookmarkOnImageName)
-            btn.accessibilityLabel = DisplayStrings.removeBookmark
-        } else {
-            btn.image = UIImage(named: TPPBaseReaderViewController.bookmarkOffImageName)
-            btn.accessibilityLabel = DisplayStrings.addBookmark
-        }
+        let imageName = isOn ? TPPBaseReaderViewController.bookmarkOnImageName : TPPBaseReaderViewController.bookmarkOffImageName
+        let label = isOn ? DisplayStrings.removeBookmark : DisplayStrings.addBookmark
+        button.setImage(UIImage(named: imageName), for: .normal)
+        button.accessibilityLabel = label
+        bookmarkBarButton?.accessibilityLabel = label
     }
 
     func toggleNavigationBar() {
         navigationBarHidden = !navigationBarHidden
-        bookTitleLabel.isHidden = UIAccessibility.isVoiceOverRunning || !navigationBarHidden
+        // Fade the overlay chrome (book title + position) in lockstep with the
+        // ~0.25s nav-bar slide so the reveal reads as one choreographed motion.
+        updateOverlayLabelsVisibility(animated: true)
+    }
+
+    /// Pure decision for the reader's overlay chrome labels (book title +
+    /// position). The chrome belongs to the immersive reading mode, so both
+    /// labels are visible when the navigation bar is hidden and hidden when it
+    /// is shown; VoiceOver always hides them (their content is surfaced through
+    /// the nav bar / rotor instead).
+    static func overlayLabelsHidden(navigationBarHidden: Bool, voiceOverRunning: Bool) -> Bool {
+        voiceOverRunning || !navigationBarHidden
+    }
+
+    /// Fades `bookTitleLabel` and `positionLabel` together to their target
+    /// visibility. `isHidden` still drives layout + accessibility; `alpha`
+    /// drives the fade so the two labels animate in lockstep with the nav-bar
+    /// slide instead of one flipping instantly and the other never moving.
+    private func updateOverlayLabelsVisibility(animated: Bool) {
+        let hidden = Self.overlayLabelsHidden(
+            navigationBarHidden: navigationBarHidden,
+            voiceOverRunning: UIAccessibility.isVoiceOverRunning)
+        let targetAlpha: CGFloat = hidden ? 0 : 1
+
+        // Reveal: unhide first so the fade-in is visible.
+        if !hidden {
+            bookTitleLabel.isHidden = false
+            positionLabel.isHidden = false
+        }
+
+        if animated && !UIAccessibility.isReduceMotionEnabled {
+            UIView.animate(withDuration: 0.25, animations: {
+                self.bookTitleLabel.alpha = targetAlpha
+                self.positionLabel.alpha = targetAlpha
+            }, completion: { _ in
+                // Conceal: hide only after the fade-out completes.
+                if hidden {
+                    self.bookTitleLabel.isHidden = true
+                    self.positionLabel.isHidden = true
+                }
+            })
+        } else {
+            bookTitleLabel.alpha = targetAlpha
+            positionLabel.alpha = targetAlpha
+            bookTitleLabel.isHidden = hidden
+            positionLabel.isHidden = hidden
+        }
     }
 
     func updateNavigationBar(animated: Bool = true) {
@@ -494,7 +548,38 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
             Log.info(#file, "Created bookmark: \(bookmark)")
 
             updateBookmarkButton(withState: true)
+            playBookmarkAddedFeedback()
         }
+    }
+
+    /// Add-only confirmation: a pref-gated light haptic plus a brief bounce on
+    /// the bookmark button. Fired ONLY from the successful add path — deleting a
+    /// bookmark and the passive re-light in `locationDidChange` do not call this.
+    ///
+    /// `addSymbolEffect(.bounce)` is only available for SF Symbol images; the
+    /// bookmark keeps its custom asset (avoids an icon redesign), so the
+    /// confirmation bounces the button view's transform instead — the same
+    /// "pop" read. The haptic goes through `AccessibilityService` (preference +
+    /// reduce-motion gated), never a raw `UIImpactFeedbackGenerator`.
+    private func playBookmarkAddedFeedback() {
+        Task { await AccessibilityService.shared.triggerHaptic(.lightImpact) }
+
+        guard Self.shouldAnimateBookmarkBounce(reduceMotion: UIAccessibility.isReduceMotionEnabled),
+              let button = bookmarkButton else {
+            return
+        }
+        UIView.animate(withDuration: 0.15, delay: 0, options: [.curveEaseOut], animations: {
+            button.transform = CGAffineTransform(scaleX: 1.3, y: 1.3)
+        }, completion: { _ in
+            UIView.animate(withDuration: 0.2, delay: 0, options: [.curveEaseIn]) {
+                button.transform = .identity
+            }
+        })
+    }
+
+    /// Pure gate: the confirmation bounce plays only when Reduce Motion is off.
+    static func shouldAnimateBookmarkBounce(reduceMotion: Bool) -> Bool {
+        !reduceMotion
     }
 
     private func deleteBookmark(_ bookmark: TPPReadiumBookmark) {
@@ -560,8 +645,10 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
         isVoiceOverRunning = isRunning
         updateNavigationBar()
         accessibilityToolbar.isHidden = !isRunning
-        positionLabel.isHidden = isRunning
-        bookTitleLabel.isHidden = isRunning
+        // Route the overlay labels through the shared visibility rule so their
+        // alpha is reset and their hidden-state tracks the immersive-mode logic
+        // (prevents a prior fade-out from leaving them alpha 0 when re-shown).
+        updateOverlayLabelsVisibility(animated: false)
 
         // Adjust bottom inset for accessibility toolbar
         if let scrollView = (navigator.view as? UIScrollView) ?? navigator.view.subviews.compactMap({ $0 as? UIScrollView }).first {

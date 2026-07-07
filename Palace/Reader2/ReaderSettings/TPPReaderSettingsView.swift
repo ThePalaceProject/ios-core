@@ -35,6 +35,9 @@ struct TPPReaderSettingsView: View {
                 .edgesIgnoringSafeArea([.top]) // This extends background to cover popover triangle
                 .foregroundColor(Color(settings.backgroundColor))
         )
+        // Cross-fade the whole panel (text + background colors) when the reader
+        // appearance changes (white / sepia / black) instead of hard-cutting.
+        .accessibleAnimation(PalaceMotion.standard, value: settings.appearanceIndex)
     }
 
     /// Set of font family buttons

@@ -68,6 +68,11 @@ struct AudiobookFullPlayerCoverContainer: View {
     /// `fullScreenCover`, which has its own clean navigation context.
     @State private var showTableOfContents = false
 
+    /// Live finger-tracking offset for the dismiss drag. Updated 1:1 (with
+    /// rubber-band resistance on upward drags) in the gesture's `.onChanged`,
+    /// and sprung back to 0 (or into the minimize) on `.onEnded`.
+    @State private var dragOffset: CGFloat = 0
+
     @ViewBuilder
     var body: some View {
         if let model = presenter.playbackModel {
@@ -76,6 +81,9 @@ struct AudiobookFullPlayerCoverContainer: View {
                     .gesture(swipeDownToMinimize)
                 topControlsOverlay
             }
+            // Track the finger during the dismiss drag (no implicit animation so
+            // it follows 1:1); the spring on release is applied in handleDragEnd.
+            .offset(y: dragOffset)
             .fullScreenCover(isPresented: $showTableOfContents) {
                 NavigationStack {
                     AudiobookNavigationView(model: model)
@@ -157,7 +165,12 @@ struct AudiobookFullPlayerCoverContainer: View {
     }
 
     private var swipeDownToMinimize: some Gesture {
-        DragGesture(minimumDistance: 50, coordinateSpace: .local)
+        DragGesture(minimumDistance: 10, coordinateSpace: .local)
+            .onChanged { value in
+                // Follow the finger live (rubber-banded upward) so the drag
+                // feels direct instead of only reacting on release.
+                dragOffset = Self.rubberBandedDragOffset(translationHeight: value.translation.height)
+            }
             .onEnded { value in
                 handleDragEnd(translation: value.translation)
             }
@@ -166,15 +179,36 @@ struct AudiobookFullPlayerCoverContainer: View {
     /// Test-visible drag-end handler. The test seam takes a raw
     /// `CGSize` so unit tests can simulate any drag without spinning
     /// up a real DragGesture. Production calls this from the
-    /// `.onEnded` closure above.
+    /// `.onEnded` closure above. Springs the tracked offset back to rest
+    /// (or into the minimize) — the same threshold contract as before, now
+    /// resolved through the pure `shouldMinimize(translation:)` seam.
     func handleDragEnd(translation: CGSize) {
-        guard
-            translation.height > Self.minimizeSwipeDownThreshold,
-            abs(translation.width) < Self.minimizeSwipeMaxHorizontalDrift
-        else {
-            return
+        let minimize = Self.shouldMinimize(translation: translation)
+        if UIAccessibility.isReduceMotionEnabled {
+            dragOffset = 0
+            if minimize { presenter.minimize() }
+        } else {
+            withAnimation(PalaceMotion.emphasized) {
+                dragOffset = 0
+                if minimize { presenter.minimize() }
+            }
         }
-        minimizeWithMotionPreference()
+    }
+
+    /// Rubber-banded finger-tracking offset for the dismiss drag. Downward
+    /// translation is followed 1:1; upward translation is heavily resisted
+    /// (15%) so the player can't be dragged up past its resting position.
+    static func rubberBandedDragOffset(translationHeight: CGFloat) -> CGFloat {
+        translationHeight >= 0 ? translationHeight : translationHeight * 0.15
+    }
+
+    /// Pure dismiss decision: a downward drag past the threshold with limited
+    /// horizontal drift. Identical contract to the guard the `.onEnded` handler
+    /// used before the finger-tracking upgrade, extracted so the boundary stays
+    /// unit-testable.
+    static func shouldMinimize(translation: CGSize) -> Bool {
+        translation.height > minimizeSwipeDownThreshold
+            && abs(translation.width) < minimizeSwipeMaxHorizontalDrift
     }
 
     /// Drives `presenter.minimize()` honoring the user's reduce-motion
