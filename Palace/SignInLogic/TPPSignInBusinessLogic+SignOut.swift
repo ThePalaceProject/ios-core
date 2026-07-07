@@ -10,6 +10,24 @@ import Foundation
 import WebKit
 import PalaceLogging
 
+/// Sendable carrier for the non-Sendable `() -> Void` sign-out `completion`
+/// closure captured by WebKit's `@Sendable` `removeData` completion closures in
+/// `performFinalSignOutCleanup` (the two `self == nil` fallback branches) and
+/// `clearWebViewData`. Boxing avoids marking those `completion` params
+/// `@Sendable` — whose ultimate source is `completeLogOutProcess`'s
+/// `{ [weak self] in … }` closure capturing the non-Sendable
+/// `TPPSignInBusinessLogic self` (see handoff §F); making `completion`
+/// `@Sendable` cannot be done while the class is neither `Sendable` nor
+/// `@MainActor`. INVARIANT — the boxed closure is invoked exactly once, on the
+/// main queue: every `removeData` call site here runs inside a
+/// `DispatchQueue.main.async` (or WebKit's main-thread completion), and each
+/// sign-out path calls `completion` on exactly one terminal branch. Mirrors
+/// `ForceResetCompletionBox` / `VoidWorkBox`.
+private final class SignOutCompletionBox: @unchecked Sendable {
+    let call: () -> Void
+    init(_ call: @escaping () -> Void) { self.call = call }
+}
+
 extension TPPSignInBusinessLogic {
 
     // MARK: - Sign-Out Race Condition Guard
@@ -306,18 +324,16 @@ extension TPPSignInBusinessLogic {
     /// SAML + logout link present (PP-3452): authenticated API call to CM
     ///   saml_logout_redirect, then WKWebView cleanup.
     /// Everything else: WKWebView cleanup only.
-    // FLAGGED (shared-type dependency): the residual `complete`-mode warnings on
-    // the `completion`-capturing `DispatchQueue.main.async` / WebKit `removeData`
-    // closures in the `self == nil` fallback branches below (and in
-    // `clearWebViewData`) are rooted in `completion` being a non-Sendable
-    // `() -> Void`. Its ultimate source is `completeLogOutProcess`'s
-    // `{ [weak self] in … }` closure, which captures the non-Sendable
-    // `TPPSignInBusinessLogic self`. Making `completion` `@Sendable` here would
-    // require that upstream closure to be `@Sendable`, which it cannot be while
-    // `TPPSignInBusinessLogic` is neither `Sendable` nor `@MainActor`. Closing
-    // this cluster is gated on the class-isolation decision (handoff §F). Left
-    // runtime-correct (all hops land on main) pending that decision — NOT worked
-    // around with an unsafe cast on the sign-out critical path.
+    // Swift 6 `complete`: the `completion`-capturing WebKit `removeData`
+    // `@Sendable` closures in the `self == nil` fallback branches below (and in
+    // `clearWebViewData`) capture a non-Sendable `() -> Void`. Its ultimate
+    // source is `completeLogOutProcess`'s `{ [weak self] in … }` closure, which
+    // captures the non-Sendable `TPPSignInBusinessLogic self`, so `completion`
+    // cannot be made `@Sendable` while the class is neither `Sendable` nor
+    // `@MainActor` (handoff §F). We box it (`SignOutCompletionBox`) so the
+    // `@Sendable` `removeData` closures capture a Sendable carrier — runtime
+    // behavior unchanged (all hops land on main), no unsafe cast on the sign-out
+    // critical path.
     private func performFinalSignOutCleanup(cmLogoutAccessToken: String? = nil,
                                             completion: @escaping () -> Void) {
         if selectedAuthentication?.isOidc == true {
@@ -325,6 +341,7 @@ extension TPPSignInBusinessLogic {
                 guard let self = self else {
                     // self deallocated — still clear WebView data and call completion
                     // to ensure the UI state is reset.
+                    let completionBox = SignOutCompletionBox(completion)
                     DispatchQueue.main.async {
                         let dataStore = WKWebsiteDataStore.default()
                         let dataTypes = WKWebsiteDataStore.allWebsiteDataTypes()
@@ -332,7 +349,7 @@ extension TPPSignInBusinessLogic {
                             if let cookies = HTTPCookieStorage.shared.cookies {
                                 for cookie in cookies { HTTPCookieStorage.shared.deleteCookie(cookie) }
                             }
-                            completion()
+                            completionBox.call()
                         }
                     }
                     return
@@ -342,6 +359,7 @@ extension TPPSignInBusinessLogic {
         } else if selectedAuthentication?.samlLogoutHref != nil {
             samlLogOut(accessToken: cmLogoutAccessToken) { [weak self] in
                 guard let self = self else {
+                    let completionBox = SignOutCompletionBox(completion)
                     DispatchQueue.main.async {
                         let dataStore = WKWebsiteDataStore.default()
                         let dataTypes = WKWebsiteDataStore.allWebsiteDataTypes()
@@ -349,7 +367,7 @@ extension TPPSignInBusinessLogic {
                             if let cookies = HTTPCookieStorage.shared.cookies {
                                 for cookie in cookies { HTTPCookieStorage.shared.deleteCookie(cookie) }
                             }
-                            completion()
+                            completionBox.call()
                         }
                     }
                     return
@@ -374,6 +392,10 @@ extension TPPSignInBusinessLogic {
         }
         #endif
 
+        // Swift 6 `complete`: box the non-Sendable `completion` before the WebKit
+        // `removeData` `@Sendable` completion closure captures it (see
+        // `SignOutCompletionBox`); invoked once on the main queue.
+        let completionBox = SignOutCompletionBox(completion)
         // WebKit operations MUST run on the main thread
         DispatchQueue.main.async {
             let dataStore = WKWebsiteDataStore.default()
@@ -390,7 +412,7 @@ extension TPPSignInBusinessLogic {
                     }
                 }
 
-                completion()
+                completionBox.call()
             }
         }
     }

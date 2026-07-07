@@ -15,7 +15,7 @@ public protocol UniversalLinksProviding: AnyObject {
 /// What `TPPSAMLHelper` needs from the sign-in orchestrator. Decouples the
 /// helper from the concrete `TPPSignInBusinessLogic` class so the package
 /// has no app-target dependency.
-public protocol SAMLAuthContext: AnyObject {
+@MainActor public protocol SAMLAuthContext: AnyObject {
     /// Resolved URL of the user-selected IdP for this SAML attempt.
     var selectedIDPURL: URL? { get }
     /// Cached cookies for re-using the IdP session, expired ones filtered
@@ -30,7 +30,7 @@ public protocol SAMLAuthContext: AnyObject {
 /// What `TPPSAMLHelper` needs to present the SAML WebView. The main target
 /// implements this against `SignInWebSheetPresenter` (or any other
 /// presentation surface) and injects it.
-public protocol SAMLWebViewPresenting: AnyObject {
+@MainActor public protocol SAMLWebViewPresenting: AnyObject {
     func presentSAMLWebView(url: URL, cookies: [HTTPCookie],
                             loginCompletion: @escaping (URL, [HTTPCookie]) -> Void,
                             loginCancel: @escaping () -> Void)
@@ -39,7 +39,7 @@ public protocol SAMLWebViewPresenting: AnyObject {
 
 // MARK: - SAML Helper
 
-public class TPPSAMLHelper {
+@MainActor public class TPPSAMLHelper {
 
     /// Cookies obtained during the SAML login flow. Cleared on `clearState()`.
     public var cookies: [HTTPCookie]?

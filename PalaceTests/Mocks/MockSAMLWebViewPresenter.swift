@@ -10,6 +10,11 @@ import Foundation
 import PalaceAuth
 @testable import Palace
 
+// `@MainActor`: `SAMLWebViewPresenting` (PalaceAuth) becomes a `@MainActor`
+// protocol as part of the `TPPSignInBusinessLogic: @MainActor` conversion
+// (see RIPPLES.md — SAML-protocol cascade), so its conformers — including this
+// test mock — inherit the isolation.
+@MainActor
 class MockSAMLWebViewPresenter: SAMLWebViewPresenting {
 
     // MARK: - Present Tracking

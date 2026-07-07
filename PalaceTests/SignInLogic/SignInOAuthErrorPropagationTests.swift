@@ -22,6 +22,7 @@ import XCTest
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 final class SignInOAuthErrorPropagationTests: XCTestCase {
 
     private var businessLogic: TPPSignInBusinessLogic!

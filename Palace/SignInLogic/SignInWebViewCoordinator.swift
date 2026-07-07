@@ -10,15 +10,29 @@
 //
 
 import Foundation
-// `@preconcurrency` so the iOS-17+ WebKit SDK's `sending decisionHandler`
-// parameters on `WKNavigationDelegate.decidePolicyFor` don't trip the
-// `complete`-mode "sending value risks data races" diagnostic when the handler
-// is carried into the `@MainActor` hop below. The handler is always invoked on
-// the main actor (WebKit guarantees delegate callbacks on main; the hop
-// re-enters main before calling it), so the pre-concurrency import is a
-// suppression of a false positive, not a correctness change.
+// `@preconcurrency` for the iOS-17+ WebKit SDK's non-Sendable delegate types
+// carried into the `@MainActor` hops below (`WKNavigationAction`,
+// `WKNavigationResponse`, `WKWebView`). The `sending decisionHandler` closures
+// are additionally boxed in `DecisionHandlerBox` (see below) — WebKit guarantees
+// delegate callbacks on main and each hop re-enters main before invoking the
+// handler, so the box waives no real race, it satisfies the `@Sendable` capture.
 @preconcurrency import WebKit
 import PalaceLogging
+
+/// Sendable carrier for WebKit's non-Sendable `decisionHandler` closures
+/// (`@escaping (WKNavigationActionPolicy) -> Void` /
+/// `@escaping (WKNavigationResponsePolicy) -> Void`) captured by the
+/// `@Sendable` `Task { @MainActor in }` hops in the `decidePolicyFor` delegate
+/// methods below. Boxing lets the Task capture a Sendable carrier instead of the
+/// raw handler, clearing the "sending 'decisionHandler' risks data races"
+/// diagnostic. INVARIANT — WebKit delivers `WKNavigationDelegate` callbacks on
+/// the main thread and each hop re-enters the main actor before calling the
+/// handler, so the boxed closure is invoked exactly once, on main, from inside
+/// that single Task. Mirrors the carrier-box precedent (`ReadiumBookmarkBox`).
+private final class DecisionHandlerBox<Policy>: @unchecked Sendable {
+    let call: (Policy) -> Void
+    init(_ call: @escaping (Policy) -> Void) { self.call = call }
+}
 
 @MainActor
 final class SignInWebViewCoordinator: NSObject, WKNavigationDelegate {
@@ -44,21 +58,25 @@ final class SignInWebViewCoordinator: NSObject, WKNavigationDelegate {
         // `targeted` "main actor-isolated property referenced from nonisolated
         // context" diagnostic. `URLRequest` is a value type, so the deferred read
         // observes the same request.
+        // Swift 6 `complete`: box the non-Sendable `decisionHandler` before the
+        // `@Sendable` `Task { @MainActor in }` hop (see `DecisionHandlerBox`);
+        // WebKit delivers on main and the hop re-enters main before calling it.
+        let decisionBox = DecisionHandlerBox(decisionHandler)
         Task { @MainActor in
             let request = navigationAction.request
             let decision = self.viewModel.decideAction(for: request)
             switch decision {
             case .allow:
-                decisionHandler(.allow)
+                decisionBox.call(.allow)
 
             case .completeLogin(let destination):
-                decisionHandler(.cancel)
+                decisionBox.call(.cancel)
                 let cookies = await webView.configuration.websiteDataStore.httpCookieStore.allCookies()
                 self.viewModel.recordLoginCompletion(destinationURL: destination, cookies: cookies)
 
             case .cancel, .bookFound, .problemFound:
                 // decideAction never returns these; defensive only.
-                decisionHandler(.allow)
+                decisionBox.call(.allow)
             }
         }
     }
@@ -73,25 +91,29 @@ final class SignInWebViewCoordinator: NSObject, WKNavigationDelegate {
         // rather than in this nonisolated delegate body, which would trip the
         // `targeted` "main actor-isolated property referenced from nonisolated
         // context" diagnostic.
+        // Swift 6 `complete`: box the non-Sendable `decisionHandler` before the
+        // `@Sendable` `Task { @MainActor in }` hop (see `DecisionHandlerBox`);
+        // WebKit delivers on main and the hop re-enters main before calling it.
+        let decisionBox = DecisionHandlerBox(decisionHandler)
         Task { @MainActor in
             let mime = navigationResponse.response.mimeType
             let decision = self.viewModel.decideResponse(mimeType: mime)
             switch decision {
             case .allow:
-                decisionHandler(.allow)
+                decisionBox.call(.allow)
 
             case .bookFound:
-                decisionHandler(.cancel)
+                decisionBox.call(.cancel)
                 let cookies = await webView.configuration.websiteDataStore.httpCookieStore.allCookies()
                 self.viewModel.recordBookFound(cookies: cookies)
 
             case .problemFound:
-                decisionHandler(.cancel)
+                decisionBox.call(.cancel)
                 self.viewModel.recordProblem(document: nil)
 
             case .cancel, .completeLogin:
                 // decideResponse never returns these; defensive only.
-                decisionHandler(.allow)
+                decisionBox.call(.allow)
             }
         }
     }

@@ -11,6 +11,7 @@ import Combine
 
 // MARK: - Extended Sign-In Business Logic Tests
 
+@MainActor
 final class TPPSignInBusinessLogicExtendedTests: XCTestCase {
 
     // MARK: - Properties
@@ -993,6 +994,7 @@ final class TPPSignInBusinessLogicExtendedTests: XCTestCase {
 
 // MARK: - OAuth Flow Tests
 
+@MainActor
 final class TPPSignInOAuthFlowTests: XCTestCase {
 
     private var businessLogic: TPPSignInBusinessLogic!
@@ -1030,6 +1032,7 @@ final class TPPSignInOAuthFlowTests: XCTestCase {
 
 // MARK: - Error Handling Tests
 
+@MainActor
 final class TPPSignInErrorHandlingTests: XCTestCase {
 
     private var businessLogic: TPPSignInBusinessLogic!

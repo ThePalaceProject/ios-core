@@ -12,6 +12,7 @@ import Combine
 
 // MARK: - SAML Sign-In Regression Tests
 
+@MainActor
 final class TPPSAMLSignInTests: XCTestCase {
   
   // MARK: - Properties

@@ -64,12 +64,31 @@ private final class ForceResetDefaultsBox: @unchecked Sendable {
 }
 private let forceResetDefaultsBox = ForceResetDefaultsBox()
 
+/// Sendable carrier for the non-Sendable `() -> Void` `completion` closure
+/// captured by WebKit's `@Sendable` `removeData` completion closure (and the
+/// `DispatchQueue.main.async` inside it) in `performForceReset`. Boxing avoids
+/// marking `performForceReset(completion:)` `@Sendable` — which would ripple to
+/// the `Settings/` call site whose closure captures non-Sendable UI state (per
+/// the lane's RIPPLES §3). INVARIANT — the boxed closure is invoked exactly
+/// once, on the main queue (the `DispatchQueue.main.async` inside `removeData`'s
+/// completion). `performForceReset` is driven from the main-thread
+/// developer-settings VC. Mirrors `VoidWorkBox` in `AccountsManager`.
+private final class ForceResetCompletionBox: @unchecked Sendable {
+    let call: () -> Void
+    init(_ call: @escaping () -> Void) { self.call = call }
+}
+
 extension TPPSignInBusinessLogic {
 
     /// UserDefaults key for the one-shot "use ephemeral browser session for
     /// the next OIDC sign-in" flag. Set by `performForceReset(...)`. Read
     /// (and cleared) by the OIDC sign-in entry points.
-    public static let nextOIDCSessionEphemeralKey =
+    // `nonisolated`: an immutable key string read from nonisolated call sites
+    // outside SignInLogic — `TPPDeveloperSettingsTableViewController` and the
+    // reset test suites read it at nonisolated stored-property-initializer
+    // scope. Keeping it off the type's `@MainActor` isolation avoids rippling
+    // those sites.
+    nonisolated public static let nextOIDCSessionEphemeralKey =
         "PalaceForceReset.nextOIDCSessionEphemeral"
 
     /// `UserDefaults` backing store for the one-shot ephemeral-session
@@ -89,7 +108,12 @@ extension TPPSignInBusinessLogic {
     // Swift 6 `complete`: backed by the file-private `OSAllocatedUnfairLock`
     // above (not `nonisolated(unsafe)`); the public get/set contract is
     // unchanged so every existing caller and test seam works verbatim.
-    public static var forceResetUserDefaults: UserDefaults {
+    // `nonisolated`: backed by the file-private lock-box `ForceResetDefaultsBox`
+    // (already `@unchecked Sendable`, `OSAllocatedUnfairLock`-guarded), so it is
+    // thread-safe independent of actor isolation. The reset test suites read and
+    // restore it from nonisolated `setUp`/`tearDown`; keeping it off `@MainActor`
+    // preserves that seam without an actor hop.
+    nonisolated public static var forceResetUserDefaults: UserDefaults {
         get { forceResetDefaultsBox.defaults }
         set { forceResetDefaultsBox.defaults = newValue }
     }
@@ -99,7 +123,12 @@ extension TPPSignInBusinessLogic {
     /// return false until the next reset. The OIDC sign-in code calls this
     /// to decide whether to force `prefersEphemeralWebBrowserSession = true`
     /// for this single session, defeating Safari-shared-cookie reuse.
-    @objc public static func consumeNextOIDCSessionEphemeralFlag() -> Bool {
+    // `nonisolated`: reached from a nonisolated context — the OIDC redirect
+    // build in `BorrowOperation`/`TokenRefreshInterceptor` reads-and-clears the
+    // one-shot flag while assembling the `ASWebAuthenticationSession`. Backed by
+    // the thread-safe `forceResetUserDefaults` lock-box, so it is safe off
+    // `@MainActor`; the `@objc` surface is preserved for ObjC callers.
+    @objc nonisolated public static func consumeNextOIDCSessionEphemeralFlag() -> Bool {
         let value = forceResetUserDefaults.bool(forKey: nextOIDCSessionEphemeralKey)
         if value {
             forceResetUserDefaults.removeObject(forKey: nextOIDCSessionEphemeralKey)
@@ -116,6 +145,12 @@ extension TPPSignInBusinessLogic {
     ///   cleanup step has finished (or skipped). Always called exactly once.
     @objc public func performForceReset(completion: @escaping () -> Void) {
         Log.info(#file, "[RESET_ACCOUNT] start — libraryAccountID=\(libraryAccountID)")
+
+        // Swift 6 `complete`: box the non-Sendable `completion` for the step-6
+        // WebKit `removeData` `@Sendable` completion capture (see
+        // `ForceResetCompletionBox`). Keeps `completion` non-`@Sendable` so the
+        // `Settings/` caller doesn't ripple.
+        let completionBox = ForceResetCompletionBox(completion)
 
         // 1. Best-effort DELETE FCM token from CM. Don't gate any cleanup on
         //    the result — that's the bug Sign Out has when the patron's app
@@ -178,10 +213,11 @@ extension TPPSignInBusinessLogic {
         //    `WKWebsiteDataStore.default()`/`.allWebsiteDataTypes()`/`.removeData`
         //    are `@MainActor`-isolated. `performForceReset` is driven from the
         //    main-thread developer-settings VC, so assert the isolation for the
-        //    `complete`-mode checker. (The `removeData` completion-capture of the
-        //    non-Sendable `completion` param is a separate, flagged item —
-        //    closing it requires a `@Sendable` completion signature that ripples
-        //    into the non-owned `Settings/` call site.)
+        //    `complete`-mode checker. The `removeData` completion-capture of the
+        //    non-Sendable `completion` param is boxed (`completionBox`) so the
+        //    `@Sendable` closure captures a Sendable carrier rather than the raw
+        //    closure — avoiding a `@Sendable` completion signature that would
+        //    ripple into the non-owned `Settings/` call site.
         MainActor.assumeIsolated {
         let dataStore = WKWebsiteDataStore.default()
         let dataTypes = WKWebsiteDataStore.allWebsiteDataTypes()
@@ -190,7 +226,7 @@ extension TPPSignInBusinessLogic {
             Log.info(#file, "[RESET_ACCOUNT] step 6 ok — WKWebsiteDataStore wiped (all types, since epoch)")
             Log.info(#file, "[RESET_ACCOUNT] complete — patron should be returned to sign-in flow")
             DispatchQueue.main.async {
-                completion()
+                completionBox.call()
             }
         }
         }
@@ -320,7 +356,9 @@ extension TPPSignInBusinessLogic {
     /// Pure, testable computation of which hosts the scoped reset clears web
     /// cookies for: the active library's auth-surface hosts. Empty when the
     /// account is nil or has no web surface (cold launch / basic-auth library).
-    static func webHostsToClear(for account: Account?) -> Set<String> {
+    // `nonisolated`: pure host-set computation exercised directly by
+    // `ScopedResetTests` from a nonisolated context; touches no actor state.
+    nonisolated static func webHostsToClear(for account: Account?) -> Set<String> {
         account?.authSurfaceHosts ?? []
     }
 
@@ -357,7 +395,7 @@ extension TPPSignInBusinessLogic {
     /// exact host, a leading-dot cookie domain (`.minotaur.example.org`), and a
     /// parent-domain cookie that covers the host. Does NOT match a sibling host
     /// under a shared parent (`gorgon.example.org` vs target `minotaur.example.org`).
-    static func hostMatches(_ cookieDomain: String, _ hosts: Set<String>) -> Bool {
+    nonisolated static func hostMatches(_ cookieDomain: String, _ hosts: Set<String>) -> Bool {
         let normalized = cookieDomain.hasPrefix(".")
             ? String(cookieDomain.dropFirst()).lowercased()
             : cookieDomain.lowercased()

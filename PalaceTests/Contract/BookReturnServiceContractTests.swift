@@ -363,7 +363,7 @@ private final class SpyReauthRecorder: NSObject, Reauthenticator {
 
     func authenticateIfNeeded(_ user: TPPUserAccount,
                                usingExistingCredentials: Bool,
-                               authenticationCompletion: (() -> Void)?) {
+                               authenticationCompletion: (@Sendable () -> Void)?) {
         log.record("reauth.authenticateIfNeeded",
                    args: ["usingExistingCredentials": "\(usingExistingCredentials)"])
         // Fire completion synchronously so the service's retry-bail-out

@@ -19,11 +19,15 @@ extension TPPSignInBusinessLogic {
     /// when initiating SAML SLO. URLSession cannot follow custom-scheme
     /// redirects — the CM's 302 back to this URL surfaces as
     /// `NSURLErrorUnsupportedURL`, which we detect as SLO success.
-    static let samlCallbackScheme = "palace-saml-callback"
-    static let samlCallbackHost = "org.thepalaceproject.saml"
+    // `nonisolated`: immutable scheme/host literals + pure derived URI, no
+    // actor state. Matches the OIDC-callback statics and the network/error
+    // classifier statics — pure SAML-logout helpers stay off the type's
+    // `@MainActor` isolation so they can be called from any context.
+    nonisolated static let samlCallbackScheme = "palace-saml-callback"
+    nonisolated static let samlCallbackHost = "org.thepalaceproject.saml"
 
     /// The full `post_logout_redirect_uri` value sent to the CM.
-    static var samlPostLogoutRedirectURI: String {
+    nonisolated static var samlPostLogoutRedirectURI: String {
         "\(samlCallbackScheme)://\(samlCallbackHost)/logout"
     }
 
@@ -37,7 +41,7 @@ extension TPPSignInBusinessLogic {
     ///
     /// - Returns: nil when the template is malformed or the href cannot be
     ///            parsed as a URL. Callers fall back to local-only cleanup.
-    static func expandSAMLLogoutHref(_ href: String,
+    nonisolated static func expandSAMLLogoutHref(_ href: String,
                                      isTemplated: Bool,
                                      postLogoutRedirectURI: String) -> URL? {
         let expanded: String
@@ -59,7 +63,7 @@ extension TPPSignInBusinessLogic {
     /// Returns `true` when the error is an `NSURLErrorUnsupportedURL` (-1002)
     /// whose failing URL starts with the SAML callback scheme — signalling a
     /// successful CM redirect that URLSession could not follow.
-    static func isSAMLLogoutCallbackRedirect(_ error: Error) -> Bool {
+    nonisolated static func isSAMLLogoutCallbackRedirect(_ error: Error) -> Bool {
         func hasCallbackSchemeURL(_ nsError: NSError) -> Bool {
             let key = NSURLErrorFailingURLStringErrorKey
             if let url = nsError.userInfo[key] as? String,

@@ -18,6 +18,7 @@ import XCTest
 
 /// Tests that barcode and PIN remain accessible after a successful sign-in flow.
 /// This is the core regression test for PP-3784 where the barcode would disappear.
+@MainActor
 final class TPPCredentialPersistenceTests: XCTestCase {
 
     private var businessLogic: TPPSignInBusinessLogic!
@@ -207,6 +208,7 @@ final class TPPCredentialPersistenceTests: XCTestCase {
 
 /// Tests that DRM-related failures do NOT wipe basic auth credentials.
 /// PP-3784 root cause: DRM failure was calling userAccount.removeAll().
+@MainActor
 final class TPPDRMFailureCredentialPreservationTests: XCTestCase {
 
     private var businessLogic: TPPSignInBusinessLogic!
@@ -463,6 +465,7 @@ final class TPPCredentialSnapshotTests: XCTestCase {
 // MARK: - Auth State Transition Tests
 
 /// Tests that auth state transitions during sign-in produce the correct end state.
+@MainActor
 final class TPPSignInAuthStateTransitionTests: XCTestCase {
 
     private var businessLogic: TPPSignInBusinessLogic!
@@ -567,6 +570,7 @@ final class TPPSignInAuthStateTransitionTests: XCTestCase {
 // MARK: - Profile Document Edge Cases
 
 /// Tests for sign-in behavior with various user profile document formats.
+@MainActor
 final class TPPSignInProfileDocEdgeCaseTests: XCTestCase {
 
     private var businessLogic: TPPSignInBusinessLogic!
@@ -776,6 +780,7 @@ final class TPPCredentialConcurrencyTests: XCTestCase {
 /// Tests that barcode/PIN are captured at login time and used by finalizeSignIn,
 /// preventing credential loss when the ViewModel's text fields are cleared by
 /// intermediate accountDidChange notifications.
+@MainActor
 final class TPPCapturedCredentialsTests: XCTestCase {
 
     private var businessLogic: TPPSignInBusinessLogic!

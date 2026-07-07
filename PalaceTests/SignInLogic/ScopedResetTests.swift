@@ -17,6 +17,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class ScopedResetTests: XCTestCase {
 
     private let ephemeralKey = TPPSignInBusinessLogic.nextOIDCSessionEphemeralKey

@@ -27,6 +27,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class TPPSignInBusinessLogicSignOutTests: XCTestCase {
 
     private var businessLogic: TPPSignInBusinessLogic!

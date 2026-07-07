@@ -17,6 +17,7 @@ import XCTest
 /// (`testLintCatchesSyntheticViolatorIfStrictModeEnabled`) so the
 /// detector logic itself is covered without affecting the warn-only
 /// posture for the real codebase.
+@MainActor
 final class UserDefaultsIsolationLintTests: XCTestCase {
 
     /// Files that are allowed to reference `UserDefaults.standard`

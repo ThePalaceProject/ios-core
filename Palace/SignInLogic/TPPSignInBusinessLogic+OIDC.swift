@@ -16,8 +16,13 @@ extension TPPSignInBusinessLogic {
     /// Mirrors Android's `palace-oidc-callback` scheme. The CM redirects to
     /// this scheme with `access_token` and `patron_info` parameters after the
     /// identity provider completes authentication.
-    static let oidcCallbackScheme = "palace-oidc-callback"
-    static let oidcCallbackHost  = "org.thepalaceproject.oidc"
+    // `nonisolated`: immutable scheme/host literals read from nonisolated
+    // cross-module call sites — `BorrowOperation.attemptOIDCSilentReauth`
+    // (a nonisolated `static async` helper) and `TokenRefreshInterceptor`
+    // (main-actor, but reads these to build the OIDC redirect URI). Keeping
+    // them off the type's `@MainActor` isolation avoids rippling those sites.
+    nonisolated static let oidcCallbackScheme = "palace-oidc-callback"
+    nonisolated static let oidcCallbackHost  = "org.thepalaceproject.oidc"
 
     /// Builds the callback URL the CM should redirect to after OIDC login.
     /// Format: `palace-oidc-callback://org.thepalaceproject.oidc/callback`
@@ -38,7 +43,9 @@ extension TPPSignInBusinessLogic {
     /// `palace-oidc-callback://…/logout?logout_status=success`. URLSession cannot
     /// follow custom-scheme redirects and surfaces this as NSURLErrorUnsupportedURL.
     /// Detecting this pattern lets us log success rather than a spurious warning.
-    private static func isOIDCLogoutCallbackRedirect(_ error: Error) -> Bool {
+    // `nonisolated`: pure NSError inspection, no actor state (mirrors the SAML
+    // sibling `isSAMLLogoutCallbackRedirect`).
+    private nonisolated static func isOIDCLogoutCallbackRedirect(_ error: Error) -> Bool {
         func hasCallbackSchemeURL(_ nsError: NSError) -> Bool {
             let key = NSURLErrorFailingURLStringErrorKey
             if let url = nsError.userInfo[key] as? String,
@@ -316,7 +323,10 @@ extension TPPSignInBusinessLogic {
 
 // MARK: - ASWebAuthenticationPresentationContextProviding
 
-extension TPPSignInBusinessLogic: ASWebAuthenticationPresentationContextProviding {
+// `@preconcurrency`: `ASWebAuthenticationPresentationContextProviding` is a
+// nonisolated system protocol; the witness returns a `@MainActor` UIWindow and
+// is only ever invoked by `ASWebAuthenticationSession` on the main thread.
+extension TPPSignInBusinessLogic: @preconcurrency ASWebAuthenticationPresentationContextProviding {
     func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
         UIApplication.shared.mainKeyWindow ?? ASPresentationAnchor()
     }
