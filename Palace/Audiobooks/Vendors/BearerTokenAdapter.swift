@@ -90,7 +90,14 @@ final class BearerTokenAdapter: AudiobookVendorAdapter {
         // onto the `AudiobookVendorAdapter` protocol. See
         // `AudiobookAdapterCompletionBox`.
         let completionBox = AudiobookAdapterCompletionBox(completion)
-        network.fetchData(from: url) { [manifestFetcher] data, response, error in
+        // `BearerTokenManifestFetching` is a Palace-local protocol that does NOT
+        // refine `Sendable` (refining it would ripple to `BookService` and every
+        // adapter test stub). Capturing the bare existential into the
+        // `Task { @MainActor in }` hop below trips `sending … risks data races`.
+        // Carry it in an `@unchecked Sendable` box whose invariant is that the
+        // fetcher is only invoked from the main-actor hop.
+        let fetcherBox = BearerManifestFetcherBox(manifestFetcher)
+        network.fetchData(from: url) { [fetcherBox] data, response, error in
             Task { @MainActor in
                 if let error = error {
                     Log.error(#file, "  ❌ Network error fetching bearer-token wrapper: \(error.localizedDescription)")
@@ -126,15 +133,22 @@ final class BearerTokenAdapter: AudiobookVendorAdapter {
                 book.bearerToken = bearerToken.accessToken
                 book.bearerTokenFulfillURL = url
 
-                manifestFetcher.fetchManifest(with: bearerToken, for: book) { manifestJSON in
+                fetcherBox.fetcher.fetchManifest(with: bearerToken, for: book) { manifestJSON in
+                    // `[String: Any]?` is not Sendable (it holds `Any`
+                    // existentials), so capturing `manifestJSON` into the
+                    // `Task { @MainActor in }` hop trips `sending … risks data
+                    // races`. Unwrap on the callback's thread and box the
+                    // dictionary before the hop; the manifest is produced once
+                    // and only read on the main actor thereafter.
+                    guard let manifestJSON = manifestJSON else {
+                        Log.error(#file, "  ❌ Bearer-token second-leg manifest fetch returned nil")
+                        Task { @MainActor in completionBox.fire(.failure(.manifestFetchFailed)) }
+                        return
+                    }
+                    let jsonBox = ManifestJSONBox(manifestJSON)
                     Task { @MainActor in
-                        guard let manifestJSON = manifestJSON else {
-                            Log.error(#file, "  ❌ Bearer-token second-leg manifest fetch returned nil")
-                            completionBox.fire(.failure(.manifestFetchFailed))
-                            return
-                        }
                         Log.debug(#file, "  ✅ Successfully fetched manifest via bearer token")
-                        completionBox.fire(.success((json: manifestJSON, decryptor: nil)))
+                        completionBox.fire(.success((json: jsonBox.value, decryptor: nil)))
                     }
                 }
             }

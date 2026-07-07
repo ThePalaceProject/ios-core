@@ -100,8 +100,14 @@ import PalaceCatalog
         }
         DispatchQueue.global(qos: .userInitiated).async {
             self.loadContentDictionary { json, error in
+                // `NSDictionary` / `NSError` are not Sendable-audited, so
+                // capturing `json` / `error` into the `main.async` `@Sendable`
+                // closure trips `sending … risks data races`. Snapshot the pair
+                // into a Sendable carrier for the single main-thread hop; the
+                // values are freshly produced by the load and consumed once.
+                let resultBox = LCPContentResultBox(json: json, error: error)
                 DispatchQueue.main.async {
-                    completion(json, error)
+                    completion(resultBox.json, resultBox.error)
                 }
             }
         }
@@ -446,6 +452,24 @@ private struct SendableDecryptCompletion: @unchecked Sendable {
     func fire(_ error: Error?) {
         completion(error)
     }
+}
+
+/// `Sendable` carrier for the `(NSDictionary?, NSError?)` result of
+/// `loadContentDictionary`, used to cross the single `DispatchQueue.main.async`
+/// hop in `contentDictionary` without a `sending` diagnostic.
+///
+/// `NSDictionary` (the parsed LCP manifest) and `NSError` are `@objc` reference
+/// types the compiler does not treat as `Sendable`. Both are produced fresh by
+/// the load and only read once on the main thread, so boxing them makes the
+/// hand-off explicit rather than sending bare non-Sendable references.
+///
+/// - Sendable invariant: `json` / `error` are set once at init and only read
+///   thereafter — neither the manifest dictionary nor the error is mutated
+///   after boxing, so there is no shared mutation. The `@unchecked` waiver
+///   covers only the un-audited `@objc` payload types.
+private struct LCPContentResultBox: @unchecked Sendable {
+    let json: NSDictionary?
+    let error: NSError?
 }
 
 #endif

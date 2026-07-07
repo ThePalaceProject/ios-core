@@ -203,7 +203,34 @@ final class LCPAdapter: AudiobookVendorAdapter {
         _ result: AudiobookAdapterCompletionBox.Outcome
     ) {
         if Thread.isMainThread { completionBox.fire(result) }
-        else { DispatchQueue.main.async { completionBox.fire(result) } }
+        else {
+            // The `Outcome` payload carries `[String: Any]` (manifest) and a
+            // `DRMDecryptor?` (toolkit protocol), neither Sendable-audited, so
+            // capturing `result` directly into the `main.async` `@Sendable`
+            // closure trips `sending 'result' risks data races`. Box it for the
+            // single main hop — the outcome is produced once and consumed once.
+            let outcomeBox = LCPOutcomeBox(result)
+            DispatchQueue.main.async { completionBox.fire(outcomeBox.value) }
+        }
+    }
+}
+
+/// `Sendable` carrier for an `AudiobookAdapterCompletionBox.Outcome` crossing
+/// the `finishOnMain` `DispatchQueue.main.async` hop.
+///
+/// The outcome's success payload holds a non-Sendable `[String: Any]` manifest
+/// and an un-audited `DRMDecryptor?`; boxing lets it cross the main hop without
+/// a `sending` diagnostic while keeping the `AudiobookVendorAdapter` completion
+/// (and its loader/test call sites) free of a `@Sendable` requirement.
+///
+/// - Sendable invariant: `value` is set once at init and only read on the main
+///   thread thereafter — the outcome is not mutated after boxing, so there is
+///   no shared mutation. The `@unchecked` waiver covers only the un-audited
+///   payload types. Mirrors `ManifestJSONBox` (AudiobookVendorAdapter).
+private struct LCPOutcomeBox: @unchecked Sendable {
+    let value: AudiobookAdapterCompletionBox.Outcome
+    init(_ value: AudiobookAdapterCompletionBox.Outcome) {
+        self.value = value
     }
 }
 
