@@ -97,17 +97,17 @@ struct HoldsView: View {
     private func syncErrorBanner(_ error: HoldsViewModel.SyncError) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundColor(.orange)
+                .foregroundStyle(.orange)
             Text(error.message)
                 .font(.caption)
-                .foregroundColor(.primary)
+                .foregroundStyle(.primary)
                 .lineLimit(2)
             Spacer()
             Button {
                 model.dismissSyncError()
             } label: {
                 Image(systemName: "xmark.circle.fill")
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
             }
             .accessibilityLabel(Strings.Generic.close)
         }
@@ -209,12 +209,12 @@ struct HoldsView: View {
             TextField(NSLocalizedString("Search Holds", comment: ""), text: $model.searchQuery)
                 .searchBarStyle()
                 .accessibilityIdentifier(AccessibilityID.Holds.searchField)
-                .onChange(of: model.searchQuery) { query in
+                .onChange(of: model.searchQuery) { _, query in
                     Task { await model.filterBooks(query: query) }
                 }
             Button(action: clearSearch, label: {
                 Image(systemName: "xmark.circle.fill")
-                    .foregroundColor(.gray)
+                    .foregroundStyle(.gray)
             })
             .accessibilityLabel(Strings.Generic.clearSearch)
         }

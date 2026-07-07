@@ -215,7 +215,7 @@ private extension CatalogView {
         VStack(spacing: 16) {
             Text(Strings.Generic.error)
                 .font(.headline)
-                .foregroundColor(.red)
+                .foregroundStyle(.red)
 
             Text(message)
                 .font(.body)
@@ -234,7 +234,7 @@ private extension CatalogView {
                 .padding(.horizontal, 24)
                 .padding(.vertical, 12)
                 .background(Color.blue)
-                .foregroundColor(.white)
+                .foregroundStyle(.white)
                 .cornerRadius(8)
             })
         }
@@ -256,7 +256,7 @@ private extension CatalogView {
         VStack(spacing: 16) {
             Image(systemName: "wifi.slash")
                 .font(.largeTitle)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
 
             Text(Strings.Catalog.offlineTitle)
@@ -264,7 +264,7 @@ private extension CatalogView {
 
             Text(Strings.Catalog.offlineMessage)
                 .font(.body)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal)
 
@@ -275,7 +275,7 @@ private extension CatalogView {
                     .padding(.horizontal, 24)
                     .padding(.vertical, 12)
                     .background(Color.blue)
-                    .foregroundColor(.white)
+                    .foregroundStyle(.white)
                     .cornerRadius(8)
             })
             .accessibilityIdentifier(AccessibilityID.Catalog.goToMyBooksButton)

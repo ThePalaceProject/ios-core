@@ -80,7 +80,7 @@ struct SignInWebSheet: View {
 
                 Text(NSLocalizedString("Loading...", comment: "Loading indicator text shown during sign-in"))
                     .font(.body)
-                    .foregroundColor(Color(UIColor.secondaryLabel))
+                    .foregroundStyle(Color(UIColor.secondaryLabel))
             }
         }
     }

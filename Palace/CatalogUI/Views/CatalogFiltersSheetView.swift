@@ -52,7 +52,7 @@ struct CatalogFiltersSheetView: View {
     }
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     ForEach(groups) { group in
@@ -219,11 +219,11 @@ private struct FacetSectionHeader: View {
     var body: some View {
         HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(title).font(.headline).foregroundColor(.primary)
+                Text(title).font(.headline).foregroundStyle(.primary)
                 if let subtitle = subtitle {
                     Text(subtitle)
                         .font(.subheadline)
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                 }
             }
             Spacer()
@@ -232,7 +232,7 @@ private struct FacetSectionHeader: View {
                     Button("Clear", action: onClear)
                         .buttonStyle(.plain)
                         .font(.subheadline)
-                        .foregroundColor(.primary)
+                        .foregroundStyle(.primary)
                         .padding(.bottom, -5)
                         .accessibilityHint(NSLocalizedString("Clears applied filters for this group", comment: "Accessibility hint for filter clear button"))
                 }
@@ -243,7 +243,7 @@ private struct FacetSectionHeader: View {
                 Image(systemName: "chevron.right")
                     .rotationEffect(.degrees(isExpanded ? 90 : 0))
                     .accessibleAnimation(.easeInOut(duration: 0.2), value: isExpanded)
-                    .foregroundColor(.primary)
+                    .foregroundStyle(.primary)
             }
             .frame(minWidth: 44, minHeight: 44, alignment: .center)
             .contentShape(Rectangle())
@@ -262,11 +262,11 @@ private struct FacetRowButton: View {
         Button(action: onTap) {
             HStack {
                 Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
-                    .foregroundColor(.primary)
+                    .foregroundStyle(.primary)
                     .accessibilityHidden(true)
                 Text(title)
                     .palaceFont(size: 16)
-                    .foregroundColor(.primary)
+                    .foregroundStyle(.primary)
                 Spacer()
             }
         }
@@ -290,7 +290,7 @@ private struct ResultsButton: View {
                     .padding(.vertical, 12)
                     .padding(.horizontal, 20)
                     .background(Color.clear)
-                    .foregroundColor(.primary)
+                    .foregroundStyle(.primary)
                     .overlay(
                         RoundedRectangle(cornerRadius: 8)
                             .stroke(Color.primary, lineWidth: 1)
@@ -312,7 +312,7 @@ private struct ResultsButton: View {
                 .padding(.vertical, 12)
                 .padding(.horizontal, 20)
                 .background(isApplying ? buttonBackground.opacity(0.7) : buttonBackground)
-                .foregroundColor(buttonForeground)
+                .foregroundStyle(buttonForeground)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
             }
             .disabled(isApplying)

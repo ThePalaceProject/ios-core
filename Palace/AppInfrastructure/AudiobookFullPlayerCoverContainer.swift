@@ -92,7 +92,7 @@ struct AudiobookFullPlayerCoverContainer: View {
             .onAppear {
                 postVoiceOverLayoutChangeIfNeeded()
             }
-            .onChange(of: presenter.isPlayerExpanded) { expanded in
+            .onChange(of: presenter.isPlayerExpanded) { _, expanded in
                 // Push focus into the cover on expand → true, and back
                 // out (system handles) on expand → false. The same
                 // `layoutChanged` post tells VoiceOver to re-acquire from

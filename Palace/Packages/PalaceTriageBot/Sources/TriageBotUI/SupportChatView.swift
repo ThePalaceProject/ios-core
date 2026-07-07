@@ -41,7 +41,7 @@ public struct SupportChatView: View {
                 .padding(.horizontal)
                 .padding(.vertical, 12)
             }
-            .onChange(of: viewModel.state.messages.count) { _ in
+            .onChange(of: viewModel.state.messages.count) { _, _ in
                 guard let last = viewModel.state.messages.last else { return }
                 withAnimation(.easeOut(duration: 0.2)) {
                     proxy.scrollTo(last.id, anchor: .bottom)
@@ -142,7 +142,7 @@ public struct SupportChatView: View {
                     } label: {
                         Label("Skip this question", systemImage: "chevron.right")
                             .font(.footnote)
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(.secondary)
                     }
                     .buttonStyle(.plain)
                     .frame(maxWidth: .infinity, alignment: .center)

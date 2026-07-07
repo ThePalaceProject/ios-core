@@ -54,7 +54,7 @@ struct ActionButtonView: View {
             .frame(maxWidth: .infinity)
             .frame(height: Constants.buttonHeight)
             .background(style == .primary ? fillColor : Color.clear)
-            .foregroundColor(style == .primary ? primaryTextColor : fillColor)
+            .foregroundStyle(style == .primary ? primaryTextColor : fillColor)
             .cornerRadius(Constants.buttonCornerRadius)
             .overlay(
                 style == .secondary

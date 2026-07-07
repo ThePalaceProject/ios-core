@@ -114,7 +114,7 @@ struct AccountDetailView: View {
 
             Text(viewModel.libraryName)
                 .palaceFont(.headline)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
 
             Spacer()
         }
@@ -125,7 +125,7 @@ struct AccountDetailView: View {
     private var signInMessageSection: some View {
         Text(Strings.AccountDetail.signInMessage(libraryName: viewModel.libraryName))
             .palaceFont(.footnote)
-            .foregroundColor(.primary)
+            .foregroundStyle(.primary)
             .padding(.horizontal, Layout.horizontalPadding)
             .padding(.vertical, Layout.verticalPaddingLarge)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -198,14 +198,14 @@ struct AccountDetailView: View {
             Button(action: handleReportIssue, label: {
                 Text(DisplayStrings.reportIssue)
                     .palaceFont(.footnote)
-                    .foregroundColor(Color(TPPConfiguration.mainColor()))
+                    .foregroundStyle(Color(TPPConfiguration.mainColor()))
                     .underline()
             })
         } else if viewModel.selectedAccount?.supportURL != nil {
             NavigationLink(destination: reportIssueWebView, label: {
                 Text(DisplayStrings.reportIssue)
                     .palaceFont(.footnote)
-                    .foregroundColor(Color(TPPConfiguration.mainColor()))
+                    .foregroundStyle(Color(TPPConfiguration.mainColor()))
                     .underline()
             })
         }
@@ -253,7 +253,7 @@ struct AccountDetailView: View {
 
             Text(viewModel.libraryName)
                 .palaceFont(.headline)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
 
             Spacer()
         }
@@ -324,7 +324,7 @@ struct AccountDetailView: View {
 
                 Button(action: { withAnimation(UIAccessibility.isReduceMotionEnabled ? .none : .default) { viewModel.showBarcode.toggle() } }, label: {
                     Text(viewModel.showBarcode ? DisplayStrings.hideBarcode : DisplayStrings.showBarcode)
-                        .foregroundColor(Color(TPPConfiguration.mainColor()))
+                        .foregroundStyle(Color(TPPConfiguration.mainColor()))
                 })
             }
         }
@@ -337,13 +337,13 @@ struct AccountDetailView: View {
         // default `.placeholderText` (~30% gray) that patrons read as a
         // disabled field. Entered text retains its own .foregroundColor
         // below — only the empty-state hint is darkened.
-        return TextField(label, text: $viewModel.usernameText, prompt: Text(label).foregroundColor(.secondary))
+        return TextField(label, text: $viewModel.usernameText, prompt: Text(label).foregroundStyle(.secondary))
             .textContentType(.username)
             .autocapitalization(.none)
             .autocorrectionDisabled()
             .keyboardType(keyboardType(for: viewModel.businessLogic.selectedAuthentication?.patronIDKeyboard))
             .disabled(viewModel.isSignedIn)
-            .foregroundColor(viewModel.isSignedIn ? .secondary : .primary)
+            .foregroundStyle(viewModel.isSignedIn ? .secondary : .primary)
             .accessibilityIdentifier(AccessibilityID.SignIn.barcodeField)
             .accessibilityLabel(label)
             .focused($focusedField, equals: .barcode)
@@ -366,22 +366,22 @@ struct AccountDetailView: View {
         VStack(alignment: .leading, spacing: 0) {
         HStack {
             if viewModel.isPINHidden {
-                SecureField(pinLabel, text: $viewModel.pinText, prompt: Text(pinLabel).foregroundColor(.secondary))
+                SecureField(pinLabel, text: $viewModel.pinText, prompt: Text(pinLabel).foregroundStyle(.secondary))
                     .textContentType(.password)
                     .keyboardType(keyboardType(for: viewModel.businessLogic.selectedAuthentication?.pinKeyboard))
                     .disabled(viewModel.isSignedIn)
-                    .foregroundColor(viewModel.isSignedIn ? .secondary : .primary)
+                    .foregroundStyle(viewModel.isSignedIn ? .secondary : .primary)
                     .accessibilityIdentifier(AccessibilityID.SignIn.pinField)
                     .accessibilityLabel(pinLabel)
                     .focused($focusedField, equals: .pin)
                     .onSubmit { if viewModel.canSignIn { viewModel.signIn() } }
                     .submitLabel(.go)
             } else {
-                TextField(pinLabel, text: $viewModel.pinText, prompt: Text(pinLabel).foregroundColor(.secondary))
+                TextField(pinLabel, text: $viewModel.pinText, prompt: Text(pinLabel).foregroundStyle(.secondary))
                     .textContentType(.password)
                     .keyboardType(keyboardType(for: viewModel.businessLogic.selectedAuthentication?.pinKeyboard))
                     .disabled(viewModel.isSignedIn)
-                    .foregroundColor(viewModel.isSignedIn ? .secondary : .primary)
+                    .foregroundStyle(viewModel.isSignedIn ? .secondary : .primary)
                     .accessibilityIdentifier(AccessibilityID.SignIn.pinField)
                     .accessibilityLabel(pinLabel)
                     .focused($focusedField, equals: .pin)
@@ -392,7 +392,7 @@ struct AccountDetailView: View {
             if LAContext().canEvaluatePolicy(.deviceOwnerAuthentication, error: nil) {
                 Button(action: { viewModel.togglePINVisibility() }, label: {
                     Text(viewModel.isPINHidden ? DisplayStrings.show : DisplayStrings.hide)
-                        .foregroundColor(Color(TPPConfiguration.mainColor()))
+                        .foregroundStyle(Color(TPPConfiguration.mainColor()))
                 })
             }
         }
@@ -418,11 +418,11 @@ struct AccountDetailView: View {
                                           message: viewModel.alertMessage) {
             HStack(alignment: .top, spacing: 6) {
                 Image(systemName: "exclamationmark.circle.fill")
-                    .foregroundColor(.red)
+                    .foregroundStyle(.red)
                     .font(.footnote)
                 Text(viewModel.alertMessage)
                     .palaceFont(.footnote)
-                    .foregroundColor(.red)
+                    .foregroundStyle(.red)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
             }
@@ -446,16 +446,16 @@ struct AccountDetailView: View {
                         ProgressView()
                             .progressViewStyle(CircularProgressViewStyle())
                         Text(viewModel.isSigningOut ? DisplayStrings.signingOut : DisplayStrings.signingIn)
-                            .foregroundColor(.primary)
+                            .foregroundStyle(.primary)
                     }
                     .horizontallyCentered()
                 } else if viewModel.isSignedIn {
                     Text(DisplayStrings.signOut)
-                        .foregroundColor(Color(TPPConfiguration.mainColor()))
+                        .foregroundStyle(Color(TPPConfiguration.mainColor()))
                         .horizontallyCentered()
                 } else {
                     Text(Strings.Generic.signin)
-                        .foregroundColor(viewModel.canSignIn ? Color(TPPConfiguration.mainColor()) : .secondary)
+                        .foregroundStyle(viewModel.canSignIn ? Color(TPPConfiguration.mainColor()) : Color.secondary)
                         .horizontallyCentered()
                 }
             }
@@ -478,7 +478,7 @@ struct AccountDetailView: View {
 
             if settings.userPresentedAgeCheck {
                 Image(systemName: "checkmark.circle.fill")
-                    .foregroundColor(.green)
+                    .foregroundStyle(.green)
                     .accessibilityLabel(NSLocalizedString("Verified", comment: "Age check verified"))
             }
         }
@@ -501,7 +501,7 @@ struct AccountDetailView: View {
                 .labelsHidden()
                 .tint(.green)
                 .accessibilityIdentifier("signIn.syncBookmarksToggle")
-                .onChange(of: viewModel.isSyncEnabled) { newValue in
+                .onChange(of: viewModel.isSyncEnabled) { _, newValue in
                     viewModel.updateSync(enabled: newValue)
                 }
         }
@@ -510,7 +510,7 @@ struct AccountDetailView: View {
     private var registrationCell: some View {
         Button(action: { viewModel.openRegistration() }, label: {
             Text(DisplayStrings.signUpForCard)
-                .foregroundColor(Color(TPPConfiguration.mainColor()))
+                .foregroundStyle(Color(TPPConfiguration.mainColor()))
                 .horizontallyCentered()
         })
     }
@@ -595,7 +595,7 @@ struct AccountDetailView: View {
             Spacer()
             Text(Strings.Error.pageLoadFailedError)
                 .palaceFont(.body)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, Layout.horizontalPadding)
             Spacer()
@@ -657,7 +657,7 @@ struct AccountDetailView: View {
         Button(action: { viewModel.selectAuthMethod(auth) }, label: {
             Text(auth.methodDescription ?? "")
                 .font(.system(.body))
-                .foregroundColor(.primary)
+                .foregroundStyle(.primary)
         })
     }
 
@@ -673,14 +673,14 @@ struct AccountDetailView: View {
                 }
             }
             .font(.system(.body))
-            .foregroundColor(.primary)
+            .foregroundStyle(.primary)
         })
     }
 
     private func infoHeaderCell(text: String) -> some View {
         Text(text)
             .font(.system(.footnote))
-            .foregroundColor(.secondary)
+            .foregroundStyle(.secondary)
             .listRowBackground(Color.clear)
     }
 
@@ -690,7 +690,7 @@ struct AccountDetailView: View {
         NavigationLink(destination: eulaView, label: {
             Text(DisplayStrings.eulaAgreement)
                 .font(.system(.caption))
-                .foregroundColor(.blue)
+                .foregroundStyle(.blue)
                 .underline()
         })
         .padding(.top, Layout.verticalPaddingSmall)
@@ -706,7 +706,7 @@ struct AccountDetailView: View {
     private var syncFooter: some View {
         Text(DisplayStrings.syncDescription)
             .font(.system(.caption))
-            .foregroundColor(.secondary)
+            .foregroundStyle(.secondary)
             .padding(.top, Layout.verticalPaddingSmall)
     }
 

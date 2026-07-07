@@ -38,13 +38,13 @@ struct EPUBReaderView: View {
                 VStack(spacing: 16) {
                     Image(systemName: "exclamationmark.triangle")
                         .font(.largeTitle)
-                        .foregroundColor(.red)
+                        .foregroundStyle(.red)
                         .accessibilityHidden(true) // Error text provides context
                     Text("Failed to open book")
                         .font(.headline)
                     Text(error.localizedDescription)
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal)
                 }
@@ -75,7 +75,7 @@ struct EPUBReaderView: View {
         }, label: {
             Image(systemName: "xmark.circle.fill")
                 .font(.title)
-                .foregroundColor(.white)
+                .foregroundStyle(.white)
                 .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
                 .padding(16)
         })

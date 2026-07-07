@@ -165,15 +165,32 @@ final class ContinueRowSectionTests: XCTestCase {
         XCTAssertEqual(viewModel.continueListening.first?.book.title, "Audio Title One",
                        "Listening item MUST carry the audiobook's title for the view to render")
 
-        // Structural contract: the view's source MUST render the book
-        // title and the section's localized title. Source-level check is
-        // honest here — Mirror reflection over a SwiftUI body cannot
-        // reliably extract `Text` content (private storage).
+        // Single-item design (in-app-nav-polish): the section renders the
+        // single most-recent candidate. With an active audiobook session
+        // (and no reading item), `mostRecent` MUST be the listening item —
+        // exactly what the view renders. Reversing the priority in
+        // `deriveMostRecent`, or dropping the listening derivation, fails
+        // this assertion.
+        guard case .listening(let mostRecent)? = viewModel.mostRecent else {
+            return XCTFail("mostRecent MUST be .listening when an audiobook session is active")
+        }
+        XCTAssertEqual(mostRecent.bookId, "AB1",
+                       "mostRecent.listening MUST carry the active audiobook")
+
+        // Structural contract: the view gates on `viewModel.mostRecent` and
+        // renders it via `ContinueSingleItemRow`, which renders the item's
+        // title through `Text(item.title)`. Source-level check is honest
+        // here — Mirror reflection over a SwiftUI body cannot reliably
+        // extract `Text` content (private storage). These tokens track the
+        // CURRENT single-item design; the pre-single-item `ContinueListeningRow`
+        // and `continueListeningTitle` header were removed in PR5.
         let source = try Self.readContinueRowSectionSource()
-        XCTAssertTrue(source.contains("item.book.title"),
-                      "ContinueListeningCard MUST render `item.book.title` so the audiobook title appears in the row")
-        XCTAssertTrue(source.contains("continueListeningTitle"),
-                      "ContinueListeningRow MUST render `Strings.CatalogContinueRows.continueListeningTitle` as the row header")
+        XCTAssertTrue(source.contains("viewModel.mostRecent"),
+                      "ContinueRowSection MUST gate the rendered branch on `viewModel.mostRecent`")
+        XCTAssertTrue(source.contains("ContinueSingleItemRow("),
+                      "ContinueRowSection MUST render the most-recent candidate via `ContinueSingleItemRow`")
+        XCTAssertTrue(source.contains("Text(item.title)"),
+                      "ContinueSingleItemRow MUST render `item.title` so the audiobook's title appears in the row")
     }
 
     // MARK: - Test 3 — reading row data flows when populated
@@ -195,11 +212,28 @@ final class ContinueRowSectionTests: XCTestCase {
         XCTAssertEqual(viewModel.continueReading.first?.book.title, "Read Title One",
                        "Reading item MUST carry the book's title for the view to render")
 
+        // Single-item design: with only a reading item present (no active
+        // audiobook session), `mostRecent` MUST be that reading item — the
+        // candidate the view renders. Dropping the reading fallback in
+        // `deriveMostRecent` fails this.
+        guard case .reading(let mostRecent)? = viewModel.mostRecent else {
+            return XCTFail("mostRecent MUST be .reading when only a reading item is present")
+        }
+        XCTAssertEqual(mostRecent.bookId, "R1",
+                       "mostRecent.reading MUST carry the stubbed reading book")
+
+        // Structural contract: the view gates on `viewModel.mostRecent` and
+        // renders it via `ContinueSingleItemRow` -> `Text(item.title)`.
+        // These tokens track the CURRENT single-item design; the
+        // pre-single-item `ContinueReadingRow` and `continueReadingTitle`
+        // header were removed in PR5.
         let source = try Self.readContinueRowSectionSource()
-        XCTAssertTrue(source.contains("continueReadingTitle"),
-                      "ContinueReadingRow MUST render `Strings.CatalogContinueRows.continueReadingTitle`")
-        XCTAssertTrue(source.contains("ContinueReadingRow"),
-                      "ContinueRowSection MUST conditionally render `ContinueReadingRow` when items are non-empty")
+        XCTAssertTrue(source.contains("viewModel.mostRecent"),
+                      "ContinueRowSection MUST gate the rendered branch on `viewModel.mostRecent`")
+        XCTAssertTrue(source.contains("ContinueSingleItemRow("),
+                      "ContinueRowSection MUST render the reading candidate via `ContinueSingleItemRow`")
+        XCTAssertTrue(source.contains("Text(item.title)"),
+                      "ContinueSingleItemRow MUST render `item.title` so the reading book's title appears in the row")
     }
 
     // MARK: - Test 4 — Audible row order

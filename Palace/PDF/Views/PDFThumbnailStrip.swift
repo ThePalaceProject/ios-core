@@ -55,7 +55,7 @@ struct PDFThumbnailStrip: View {
                 }
                 .scrollTargetBehavior(.viewAligned)
                 .onAppear { proxy.scrollTo(currentPage, anchor: .center) }
-                .onChange(of: currentPage) { page in
+                .onChange(of: currentPage) { _, page in
                     withAnimation(.easeInOut(duration: 0.2)) {
                         proxy.scrollTo(page, anchor: .center)
                     }

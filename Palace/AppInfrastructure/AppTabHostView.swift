@@ -259,7 +259,7 @@ struct AppTabHostView: View {
             appContainer.tabRouterHub.router = router
             appContainer.tabRouterHub.applyPending()
         }
-        .onChange(of: router.selected) { newTab in
+        .onChange(of: router.selected) { _, newTab in
             // Respect reduce motion accessibility setting
             if UIAccessibility.isReduceMotionEnabled {
                 appContainer.navigationCoordinatorHub.coordinator?.popToRoot()

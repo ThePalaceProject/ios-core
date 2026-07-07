@@ -68,7 +68,7 @@ private struct AccountCredentialsObserver: ViewModifier {
     let action: (Bool) -> Void
 
     func body(content: Content) -> some View {
-        content.onChange(of: publisher.hasCredentials, perform: action)
+        content.onChange(of: publisher.hasCredentials) { _, newValue in action(newValue) }
     }
 }
 
@@ -77,7 +77,7 @@ private struct AccountSignOutObserver: ViewModifier {
     let action: () -> Void
 
     func body(content: Content) -> some View {
-        content.onChange(of: publisher.isSigningOut) { isSigningOut in
+        content.onChange(of: publisher.isSigningOut) { _, isSigningOut in
             if isSigningOut {
                 action()
             }
@@ -91,7 +91,7 @@ private struct AccountSignInObserver: ViewModifier {
     let action: () -> Void
 
     func body(content: Content) -> some View {
-        content.onChange(of: publisher.hasCredentials) { hasCredentials in
+        content.onChange(of: publisher.hasCredentials) { _, hasCredentials in
             // Fire only on transition from false -> true
             if hasCredentials && !previousState {
                 action()

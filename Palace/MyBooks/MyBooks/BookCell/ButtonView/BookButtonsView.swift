@@ -131,7 +131,7 @@ struct ActionButton<T: BookButtonProvider>: View {
             .padding(size.padding)
             .frame(minHeight: size.height)
             .background(type.buttonBackgroundColor(isDarkBackground))
-            .foregroundColor(type.buttonTextColor(isDarkBackground))
+            .foregroundStyle(type.buttonTextColor(isDarkBackground))
             .cornerRadius(8)
             .overlay(
                 RoundedRectangle(cornerRadius: 8)

@@ -63,7 +63,7 @@ struct KBMatchCard: View {
                 onAction(.dismiss)
             }
             .font(.footnote)
-            .foregroundColor(.secondary)
+            .foregroundStyle(.secondary)
         }
         .padding(BotUI.Spacing.cardPadding)
         .background(BotUI.cardBackground)
@@ -94,7 +94,7 @@ struct KBMatchCard: View {
             Image(systemName: symbol)
                 .font(.caption.weight(.semibold))
         }
-        .foregroundColor(color)
+        .foregroundStyle(color)
         .lineLimit(2)
     }
 }
