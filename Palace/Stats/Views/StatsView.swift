@@ -1,7 +1,6 @@
 import SwiftUI
 
 /// Main stats tab showing streak, reading chart, key stats, and recent badges.
-@available(iOS 16.0, *)
 struct StatsView: View {
   @ObservedObject var viewModel: StatsViewModel
   let badgesViewModel: BadgesViewModel

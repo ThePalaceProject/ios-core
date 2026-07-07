@@ -2,7 +2,6 @@ import SwiftUI
 import Charts
 
 /// A reusable bar chart component for reading time data using Swift Charts.
-@available(iOS 16.0, *)
 struct ReadingChartView: View {
   let dataPoints: [ChartDataPoint]
   let timePeriod: TimePeriod

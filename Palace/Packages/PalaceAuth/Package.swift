@@ -4,10 +4,10 @@ import PackageDescription
 let package = Package(
     name: "PalaceAuth",
     platforms: [
-        .iOS(.v16),
+        .iOS(.v17),
         // macOS host floor 13 to match the PalaceLogging dependency
         // (OSAllocatedUnfairLock, macOS 13+). Host-build only; shipping app is
-        // iOS 16. Same floor the other modernized packages established.
+        // iOS 17. Same floor the other modernized packages established.
         .macOS(.v13)
     ],
     products: [

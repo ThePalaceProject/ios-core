@@ -1,7 +1,6 @@
 import SwiftUI
 
 /// Full badge collection grid showing earned, in-progress, and locked badges.
-@available(iOS 16.0, *)
 struct BadgesView: View {
   @ObservedObject var viewModel: BadgesViewModel
 
@@ -76,7 +75,6 @@ struct BadgesView: View {
 }
 
 /// A single cell in the badge grid.
-@available(iOS 16.0, *)
 private struct BadgeGridCell: View {
   let badge: Badge
   let isNewlyEarned: Bool
