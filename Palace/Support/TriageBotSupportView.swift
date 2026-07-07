@@ -41,12 +41,12 @@ private struct UnavailableView: View {
         VStack(spacing: 16) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.largeTitle)
-                .foregroundColor(.orange)
+                .foregroundStyle(.orange)
             Text("Get Help is temporarily unavailable")
                 .font(.headline)
             Text("Please force-quit and reopen Palace, then try again. If the problem persists, email support@thepalaceproject.org.")
                 .font(.subheadline)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
         }

@@ -66,7 +66,7 @@ enum BotUI {
                 .frame(maxWidth: .infinity)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 11)
-                .foregroundColor(.white)
+                .foregroundStyle(.white)
                 .background(Color(.systemBlue))
                 .clipShape(Capsule())
             }
@@ -102,7 +102,7 @@ enum BotUI {
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 7)
-                .foregroundColor(Color(.systemBlue))
+                .foregroundStyle(Color(.systemBlue))
                 .background(Color(.systemBlue).opacity(0.14))
                 .clipShape(Capsule())
             }
@@ -132,7 +132,7 @@ enum BotUI {
                     .frame(maxWidth: .infinity)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 11)
-                    .foregroundColor(Color(.systemBlue))
+                    .foregroundStyle(Color(.systemBlue))
                     .background(Color(.systemBlue).opacity(0.12))
                     .clipShape(Capsule())
             }
@@ -158,7 +158,7 @@ enum BotUI {
                         .frame(maxWidth: .infinity)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 11)
-                        .foregroundColor(Color(.systemBlue))
+                        .foregroundStyle(Color(.systemBlue))
                         .background(Color(.systemBlue).opacity(0.12))
                         .clipShape(Capsule())
                 }
@@ -177,7 +177,7 @@ enum BotUI {
                     .frame(maxWidth: .infinity)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 11)
-                    .foregroundColor(.white)
+                    .foregroundStyle(.white)
                     .background(Color(.systemGreen))
                     .clipShape(Capsule())
                 }

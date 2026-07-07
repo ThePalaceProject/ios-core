@@ -36,4 +36,27 @@ final class DownloadCompleteMomentTests: XCTestCase {
         XCTAssertFalse(NormalBookCell.shouldPulseReadButton(previous: .canBorrow, current: .downloadNeeded),
                        "Unrelated transitions must not pulse — kills the `current == .downloadSuccessful` → true mutation.")
     }
+
+    // MARK: - Progress high-water-mark reset (PP-4748)
+
+    /// Resets the progress display on entry into the downloading state so a
+    /// cancel→retry doesn't strand the bar at the previous download's high.
+    func test_shouldResetDownloadProgress_resetsOnEntryToDownloading() {
+        XCTAssertTrue(NormalBookCell.shouldResetDownloadProgress(wasDownloading: false, isDownloading: true),
+                      "false→true (retry after cancel) must reset the progress high-water mark.")
+    }
+
+    /// Does NOT reset while a download is already in progress (bar keeps climbing).
+    func test_shouldResetDownloadProgress_doesNotResetWhileDownloading() {
+        XCTAssertFalse(NormalBookCell.shouldResetDownloadProgress(wasDownloading: true, isDownloading: true),
+                       "true→true must NOT reset — kills the drop-`!wasDownloading` mutation that would zero the bar mid-download.")
+    }
+
+    /// Does NOT reset when leaving the downloading state or while idle.
+    func test_shouldResetDownloadProgress_doesNotResetOutsideEntry() {
+        XCTAssertFalse(NormalBookCell.shouldResetDownloadProgress(wasDownloading: true, isDownloading: false),
+                       "true→false (finished/cancelled) must not trigger a reset.")
+        XCTAssertFalse(NormalBookCell.shouldResetDownloadProgress(wasDownloading: false, isDownloading: false),
+                       "false→false (idle) must not reset — kills the always-true and `isDownloading`-only mutations.")
+    }
 }

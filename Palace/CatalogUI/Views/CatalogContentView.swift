@@ -71,7 +71,7 @@ struct CatalogContentView: View {
                     .padding(.vertical, 17)
                 }
                 .refreshable { await onRefresh() }
-                .onChange(of: scrollGeneration) { _ in
+                .onChange(of: scrollGeneration) { _, _ in
                     accessibleWithAnimation(.easeInOut(duration: 0.3)) {
                         proxy.scrollTo("catalog-content-top", anchor: .top)
                     }

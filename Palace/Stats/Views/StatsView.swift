@@ -71,7 +71,7 @@ struct StatsView: View {
       } label: {
         Text("Details")
           .font(.subheadline)
-          .foregroundColor(.accentColor)
+          .foregroundStyle(Color.accentColor)
       }
     }
     .padding()

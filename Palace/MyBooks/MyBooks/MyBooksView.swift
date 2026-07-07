@@ -165,10 +165,10 @@ struct MyBooksView: View {
             // the default `.placeholderText` (~30% gray) that reads as
             // disabled. Entered text retains its own .foregroundColor.
             TextField(DisplayStrings.searchBooks, text: $model.searchQuery,
-                      prompt: Text(DisplayStrings.searchBooks).foregroundColor(.secondary))
+                      prompt: Text(DisplayStrings.searchBooks).foregroundStyle(.secondary))
                 .searchBarStyle()
                 .focused($isSearchFocused)
-                .onChange(of: model.searchQuery) { query in
+                .onChange(of: model.searchQuery) { _, query in
                     guard model.showSearchSheet else { return }
                     Task {
                         await model.filterBooks(query: query)
@@ -176,12 +176,12 @@ struct MyBooksView: View {
                 }
             Button(action: clearSearch, label: {
                 Image(systemName: "xmark.circle.fill")
-                    .foregroundColor(.gray)
+                    .foregroundStyle(.gray)
             })
             .accessibilityLabel(Strings.Generic.clearSearch)
         }
         .padding(.horizontal)
-        .onChange(of: model.showSearchSheet) { isShown in
+        .onChange(of: model.showSearchSheet) { _, isShown in
             if isShown {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                     isSearchFocused = true

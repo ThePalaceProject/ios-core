@@ -124,7 +124,7 @@ struct SideLoadingView: View {
               Text(book.title)
               Text(viewModel.caption(for: book))
                 .font(.caption)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .lineLimit(1)
             }
             .swipeActions {
@@ -163,31 +163,13 @@ struct SideLoadingView: View {
   }
 
   /// UI-1: a real empty state instead of a `Text` that reads as a disabled row.
-  /// `ContentUnavailableView` is iOS 17+, so iOS 16 gets an equivalent centered
-  /// VStack (deployment target is iOS 16.0 — do not raise it).
-  @ViewBuilder
   private var emptyState: some View {
     let title = "No Imported Books"
     let description = "Tap \"Import File…\" above to add an EPUB, PDF, or audiobook."
-    if #available(iOS 17.0, *) {
-      ContentUnavailableView(
-        title,
-        systemImage: "arrow.down.doc",
-        description: Text(description)
-      )
-    } else {
-      VStack(spacing: 12) {
-        Image(systemName: "arrow.down.doc")
-          .font(.largeTitle)
-          .foregroundColor(.secondary)
-        Text(title)
-          .font(.headline)
-        Text(description)
-          .font(.subheadline)
-          .foregroundColor(.secondary)
-          .multilineTextAlignment(.center)
-      }
-      .padding(.vertical, 24)
-    }
+    return ContentUnavailableView(
+      title,
+      systemImage: "arrow.down.doc",
+      description: Text(description)
+    )
   }
 }

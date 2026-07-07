@@ -29,7 +29,7 @@ struct AdvancedSettingsView: View {
                     Button(action: { showDeleteAlert = true }, label: {
                         Text(DisplayStrings.deleteServerData)
                             .font(.system(.body))
-                            .foregroundColor(.red)
+                            .foregroundStyle(.red)
                     })
                 })
             }
@@ -44,7 +44,7 @@ struct AdvancedSettingsView: View {
             })
         } else {
             Text("Account unavailable")
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .onAppear { dismiss() }
         }
     }

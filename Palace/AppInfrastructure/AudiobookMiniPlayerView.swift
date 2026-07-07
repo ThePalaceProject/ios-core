@@ -150,7 +150,7 @@ struct AudiobookMiniPlayerView: View {
             Image(systemName: "book.closed")
                 .resizable()
                 .aspectRatio(contentMode: .fit)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .padding(8)
         }
     }
@@ -165,13 +165,13 @@ struct AudiobookMiniPlayerView: View {
             if let authors = presenter.currentBook?.authors, !authors.isEmpty {
                 Text(authors)
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.tail)
             }
             Text(timeLabel)
                 .font(.caption2)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(.tail)
         }

@@ -124,7 +124,7 @@ struct SentimentGateView: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 12)
         .background(Color.palaceBlueBase)
-        .foregroundColor(.white)
+        .foregroundStyle(.white)
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
   }
@@ -138,7 +138,7 @@ struct SentimentGateView: View {
           RoundedRectangle(cornerRadius: 10, style: .continuous)
             .stroke(Color.primary, lineWidth: 1)
         )
-        .foregroundColor(.primary)
+        .foregroundStyle(.primary)
     }
   }
 
@@ -147,7 +147,7 @@ struct SentimentGateView: View {
       Text(title)
         .frame(maxWidth: .infinity)
         .padding(.vertical, 8)
-        .foregroundColor(.secondary)
+        .foregroundStyle(.secondary)
     }
   }
 }

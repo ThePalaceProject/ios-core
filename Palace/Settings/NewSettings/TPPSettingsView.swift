@@ -84,7 +84,7 @@ struct TPPSettingsView: View {
                     .tint(.white)
                 Text(DisplayStrings.switchingLibrary)
                     .palaceFont(.body)
-                    .foregroundColor(.white)
+                    .foregroundStyle(.white)
             }
             .padding(28)
             .background(
@@ -103,7 +103,7 @@ struct TPPSettingsView: View {
     @ViewBuilder private var placeholderDetail: some View {
         Text(DisplayStrings.settings)
             .palaceFont(.body)
-            .foregroundColor(.secondary)
+            .foregroundStyle(.secondary)
     }
 
     @ViewBuilder private var listView: some View {
@@ -263,7 +263,7 @@ struct TPPSettingsView: View {
                     .accessibilityLabel(DisplayStrings.downloadOnlyOnWiFi)
                 Text(DisplayStrings.downloadOnlyOnWiFiDescription)
                     .font(.footnote)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
             }
             .padding(.vertical, 4)
         }
@@ -541,7 +541,7 @@ private struct LibraryRowView: View {
             Image(systemName: isCurrent ? "checkmark.circle.fill" : "circle")
                 .resizable()
                 .frame(width: 22, height: 22)
-                .foregroundColor(isCurrent ? .green : .secondary.opacity(0.4))
+                .foregroundStyle(isCurrent ? Color.green : Color.secondary.opacity(0.4))
                 .contentTransition(.symbolEffect(.replace))
                 .accessibleAnimation(PalaceMotion.standard, value: isCurrent)
                 .frame(width: 28)
@@ -560,7 +560,7 @@ private struct LibraryRowView: View {
                 if let subtitle = account.subtitle, !subtitle.isEmpty {
                     Text(subtitle)
                         .font(.footnote)
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                         .lineLimit(2)
                 }
             }

@@ -146,7 +146,6 @@ struct AudiobookSampleToolbar: View {
             .progressViewStyle(CircularProgressViewStyle())
             .scaleEffect(1.25)
             .transition(.opacity)
-            .animation(UIAccessibility.isReduceMotionEnabled ? .none : .default, value: true)
     }
 }
 

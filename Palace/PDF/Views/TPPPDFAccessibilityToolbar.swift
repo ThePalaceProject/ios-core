@@ -32,7 +32,7 @@ struct TPPPDFAccessibilityToolbar: View {
 
             Text(pageStatus)
                 .font(.caption)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .accessibilityLabel(pageStatus)
 
             Spacer()

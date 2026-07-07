@@ -2,7 +2,7 @@ import SwiftUI
 import UIKit
 
 struct BookDetailView: View {
-    @Environment(\.presentationMode) var presentationMode
+    @Environment(\.dismiss) var dismiss
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.appContainer) private var appContainer
 
@@ -72,14 +72,14 @@ struct BookDetailView: View {
                             .padding(.bottom, 100)
                             .background(GeometryReader { proxy in
                                 Color.clear
-                                    .onChange(of: proxy.frame(in: .global).minY) { newValue in
+                                    .onChange(of: proxy.frame(in: .global).minY) { _, newValue in
                                         updateHeaderHeight(for: newValue)
                                     }
                             })
                     }
                 }
                 .ignoresSafeArea(.container, edges: [.top, .bottom])
-                .onChange(of: viewModel.book.identifier) { newIdentifier in
+                .onChange(of: viewModel.book.identifier) { _, newIdentifier in
                     if lastBookIdentifier != newIdentifier {
                         lastBookIdentifier = newIdentifier
                         resetSampleToolbar()
@@ -149,7 +149,7 @@ struct BookDetailView: View {
                     if let coordinator = coordinator {
                         coordinator.pop()
                     } else {
-                        presentationMode.wrappedValue.dismiss()
+                        dismiss()
                     }
                 }
                 // Ignore other state changes - they're handled by the ViewModel's publishers
@@ -164,7 +164,6 @@ struct BookDetailView: View {
                         viewModel.processingButtons.removeAll()
                     }
             }
-            .presentationDetents([.height(0), .height(300)])
             .alert(item: $viewModel.confirmationAlert) { alert in
                 if let secondaryTitle = alert.secondaryButtonTitle {
                     Alert(
@@ -216,7 +215,7 @@ struct BookDetailView: View {
                     if let coordinator = coordinator {
                         coordinator.pop()
                     } else {
-                        presentationMode.wrappedValue.dismiss()
+                        dismiss()
                     }
                 }, label: {
                     HStack(spacing: 6) {
@@ -226,7 +225,7 @@ struct BookDetailView: View {
                         Text(Strings.Generic.back)
                             .palaceFont(.body)
                     }
-                    .foregroundColor(headerColor.isDark ? .white : .black)
+                    .foregroundStyle(headerColor.isDark ? .white : .black)
                 })
                 .accessibilityLabel(Strings.Generic.goBack)
             }
@@ -332,7 +331,7 @@ struct BookDetailView: View {
             .background(GeometryReader { _ in
                 Color.clear
                     .onAppear { updateImageBottomPosition() }
-                    .onChange(of: imageScale) { _ in updateImageBottomPosition() }
+                    .onChange(of: imageScale) { _, _ in updateImageBottomPosition() }
             })
     }
 
@@ -364,7 +363,7 @@ struct BookDetailView: View {
                     .padding(.top)
             }
         }
-        .foregroundColor(viewModel.isFullSize ? (headerColor.isDark ? .white : .black) : Color(UIColor.label))
+        .foregroundStyle(viewModel.isFullSize ? (headerColor.isDark ? .white : .black) : Color(UIColor.label))
         .accessibleAnimation(scaleAnimation, value: imageScale)
     }
 
@@ -393,12 +392,12 @@ struct BookDetailView: View {
                     .lineLimit(nil)
                     .multilineTextAlignment(.center)
                     .font(.subheadline)
-                    .foregroundColor(headerColor.isDark ? .white : .black)
+                    .foregroundStyle(headerColor.isDark ? .white : .black)
 
                 if let authors = viewModel.book.authors, !authors.isEmpty {
                     Text(authors)
                         .font(.caption)
-                        .foregroundColor(headerColor.isDark ? .white.opacity(0.8) : .black.opacity(0.8))
+                        .foregroundStyle(headerColor.isDark ? .white.opacity(0.8) : .black.opacity(0.8))
                 }
             }
             Spacer()
@@ -453,7 +452,7 @@ struct BookDetailView: View {
                         isExpanded.toggle()
                     }
                 }
-                .foregroundColor(.primary)
+                .foregroundStyle(.primary)
                 .frame(maxWidth: .infinity, alignment: .trailing)
             }
             .padding(.bottom)
@@ -487,7 +486,7 @@ struct BookDetailView: View {
                                 if let url = lane.subsectionURL {
                                     NavigationLink(destination: CatalogLaneMoreView(url: url, appContainer: appContainer)) {
                                         Text(DisplayStrings.more.capitalized)
-                                            .foregroundColor(.primary)
+                                            .foregroundStyle(.primary)
                                     }
                                 }
                             }
@@ -660,7 +659,7 @@ struct BookDetailView: View {
                         .lineLimit(nil)
                         .multilineTextAlignment(.leading)
                         .fixedSize(horizontal: false, vertical: true)
-                        .foregroundColor(.primary)
+                        .foregroundStyle(.primary)
                 }
                 .accessibilityIdentifier(AccessibilityID.BookDetail.seriesLink)
             }
@@ -877,7 +876,7 @@ struct BookDetailView: View {
                     if let coordinator = coordinator {
                         coordinator.pop()
                     } else {
-                        presentationMode.wrappedValue.dismiss()
+                        dismiss()
                     }
                 }, label: {
                     HStack(spacing: 6) {
@@ -886,7 +885,7 @@ struct BookDetailView: View {
                         Text("Back")
                             .palaceFont(.body)
                     }
-                    .foregroundColor(headerColor.isDark ? .white : .black)
+                    .foregroundStyle(headerColor.isDark ? .white : .black)
                 })
                 .padding(.leading, 8)
                 .padding(.top, UIDevice.current.isIpad ? 8 : 0)
@@ -902,7 +901,7 @@ struct BookDetailView: View {
 private struct BookStateModifier: ViewModifier {
     @ObservedObject var viewModel: BookDetailViewModel
     @Binding var showHalfSheet: Bool
-    @Environment(\.presentationMode) var presentationMode
+    @Environment(\.dismiss) var dismiss
     @Environment(\.appContainer) private var appContainer
 
     private var coordinator: NavigationCoordinator? {
@@ -911,7 +910,7 @@ private struct BookStateModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .onChange(of: viewModel.bookState) { _ in
+            .onChange(of: viewModel.bookState) { _, _ in
             }
     }
 }

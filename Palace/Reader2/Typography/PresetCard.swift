@@ -21,7 +21,7 @@ struct PresetCard: View {
                 // Mini text preview
                 Text("Aa")
                     .font(Font(preset.settings.fontFamily.uiFont(size: 22)))
-                    .foregroundColor(Color(preset.settings.theme.textColor))
+                    .foregroundStyle(Color(preset.settings.theme.textColor))
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.top, 8)
 
@@ -29,13 +29,13 @@ struct PresetCard: View {
                 Text(preset.name)
                     .font(.caption)
                     .fontWeight(.semibold)
-                    .foregroundColor(Color(preset.settings.theme.textColor))
+                    .foregroundStyle(Color(preset.settings.theme.textColor))
                     .frame(maxWidth: .infinity, alignment: .center)
 
                 // Description
                 Text(preset.description)
                     .font(.caption2)
-                    .foregroundColor(Color(preset.settings.theme.textColor).opacity(0.7))
+                    .foregroundStyle(Color(preset.settings.theme.textColor).opacity(0.7))
                     .lineLimit(2)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity, alignment: .center)

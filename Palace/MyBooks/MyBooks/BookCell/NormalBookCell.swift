@@ -44,6 +44,15 @@ struct NormalBookCell: View {
         current == .downloadSuccessful && previous != .downloadSuccessful
     }
 
+    /// Pure seam (PP-4748): the progress bar tracks a max-seen high-water mark
+    /// (`max(downloadProgress, progress)`), which strands the bar at the previous
+    /// download's high after a cancel→retry. Returns true exactly on the
+    /// transition INTO the downloading state (false→true), signalling a reset of
+    /// the display value to 0. Display-only; carries no download machinery.
+    static func shouldResetDownloadProgress(wasDownloading: Bool, isDownloading: Bool) -> Bool {
+        isDownloading && !wasDownloading
+    }
+
     var body: some View {
         ZStack {
             HStack(alignment: .center, spacing: 15) {
@@ -121,6 +130,15 @@ struct NormalBookCell: View {
         // `stableButtonState` only — no download machinery is touched.
         .palaceHaptic(.success, trigger: downloadCompleteHaptic)
         .onChange(of: model.stableButtonState) { oldValue, newValue in
+            // Bug PP-4748: reset the progress high-water mark on entry into the
+            // downloading state so a cancel→retry doesn't strand the bar at the
+            // previous download's max. Display-only; no download machinery.
+            if Self.shouldResetDownloadProgress(
+                wasDownloading: oldValue == .downloadInProgress,
+                isDownloading: newValue == .downloadInProgress
+            ) {
+                downloadProgress = 0
+            }
             guard Self.shouldPulseReadButton(previous: oldValue, current: newValue) else { return }
             downloadCompleteHaptic &+= 1
             readButtonPulseActive = true
@@ -208,7 +226,7 @@ struct NormalBookCell: View {
         } else if isDownloadFailed {
             Text(Strings.BookCell.downloadFailedMessage)
                 .palaceFont(size: 11)
-                .foregroundColor(.red)
+                .foregroundStyle(.red)
                 .padding(.bottom, 4)
                 .transition(.opacity)
         }
@@ -267,7 +285,7 @@ struct NormalBookCell: View {
         VStack {
             ImageProviders.MyBooksView.unreadBadge
                 .frame(width: 10, height: 10)
-                .foregroundColor(Color(TPPConfiguration.accentColor()))
+                .foregroundStyle(Color(TPPConfiguration.accentColor()))
             Spacer()
         }
         .opacity(model.showUnreadIndicator ? 1.0 : 0.0)
@@ -320,10 +338,10 @@ struct NormalBookCell: View {
             HStack(alignment: .bottom, spacing: 10) {
                 Text("Due \(expirationDate.monthDayYearString)")
                     .font(.subheadline)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
                 Spacer()
                 Text("\(expirationDate.timeUntil().value) \(expirationDate.timeUntil().unit)")
-                    .foregroundColor(colorScheme == .dark ? .palaceSuccessLight : .palaceSuccessDark)
+                    .foregroundStyle(colorScheme == .dark ? Color.palaceSuccessLight : Color.palaceSuccessDark)
             }
             .palaceFont(size: 12)
             .minimumScaleFactor(0.8)

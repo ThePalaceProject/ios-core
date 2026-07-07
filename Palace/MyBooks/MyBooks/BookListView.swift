@@ -84,7 +84,7 @@ struct BookListView: View {
                         containerWidth = geometry.size.width
                         screenSize = UIScreen.main.bounds.size
                     }
-                    .onChange(of: geometry.size.width) { newWidth in
+                    .onChange(of: geometry.size.width) { _, newWidth in
                         containerWidth = newWidth
                     }
             }

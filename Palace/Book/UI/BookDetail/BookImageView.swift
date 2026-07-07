@@ -70,7 +70,7 @@ struct BookImageView: View {
             // the async disk→memory promotion path.
             book.fetchCoverImage(forDisplayHeight: height)
         }
-        .onChange(of: book.coverImage) { newImage in
+        .onChange(of: book.coverImage) { _, newImage in
             if newImage != nil {
                 if UIAccessibility.isReduceMotionEnabled {
                     showSkeleton = false
@@ -81,7 +81,7 @@ struct BookImageView: View {
                 }
             }
         }
-        .onChange(of: book.thumbnailImage) { newImage in
+        .onChange(of: book.thumbnailImage) { _, newImage in
             if newImage != nil && book.coverImage == nil {
                 if UIAccessibility.isReduceMotionEnabled {
                     showSkeleton = false

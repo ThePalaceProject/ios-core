@@ -24,16 +24,18 @@ struct SignInModalView: View {
     }
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             // forceReauthMode: true ensures sign-in form is shown even if user has stale credentials
             // This is needed for re-auth flows (e.g., after 401 from borrow)
             AccountDetailView(libraryAccountID: libraryAccountID, appContainer: appContainer, forceReauthMode: true)
                 .navigationTitle(Strings.Generic.signin)
                 .navigationBarTitleDisplayMode(.inline)
-                .navigationBarItems(leading: cancelButton)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarLeading) { cancelButton }
+                }
                 .toolbarBackground(.visible, for: .navigationBar)
                 .toolbarBackground(Color(UIColor.systemGroupedBackground), for: .navigationBar)
-                .onChange(of: accountPublisher.authState) { authState in
+                .onChange(of: accountPublisher.authState) { _, authState in
                     // Auto-dismiss when user successfully signs in (including re-auth from stale state)
                     //
                     // We deliberately do NOT call `completion?()` here. SwiftUI's `dismiss()` is
@@ -57,7 +59,6 @@ struct SignInModalView: View {
                     }
                 }
         }
-        .navigationViewStyle(.stack)
     }
 
     /// Pure-function predicate for the auto-dismiss-on-loggedIn branch.
