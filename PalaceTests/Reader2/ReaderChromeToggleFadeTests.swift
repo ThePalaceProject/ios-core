@@ -6,7 +6,7 @@
 //
 //  These pin the pure decision seams extracted from
 //  `TPPBaseReaderViewController`. The VC itself is a UIKit view controller whose
-//  `init` reaches into `AppContainer.production()` (navigator + publication),
+//  `init` reaches into the live app dependency graph (navigator + publication),
 //  so it is not cheaply constructible in a unit test — the presentation logic
 //  is therefore extracted into `static` functions that carry the branch behavior
 //  and are exercised directly here (a static call is the sanctioned alternative
