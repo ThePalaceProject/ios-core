@@ -9,14 +9,13 @@ import SwiftUI
 /// - Vertical padding around book scroller: inherits from .padding(.vertical)
 struct CatalogLaneSkeletonView: View {
     var itemCount: Int = 6
-    @State private var pulse: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             Rectangle()
                 .fill(Color.gray.opacity(0.25))
                 .frame(width: 200, height: 26)
-                .opacity(pulse ? 0.6 : 1.0)
+                .shimmerEffect()
                 .padding(.horizontal, 12)
 
             ScrollView(.horizontal, showsIndicators: false) {
@@ -25,16 +24,11 @@ struct CatalogLaneSkeletonView: View {
                         Rectangle()
                             .fill(Color.gray.opacity(0.25))
                             .frame(width: 100, height: 150)
-                            .opacity(pulse ? 0.6 : 1.0)
+                            .shimmerEffect()
                     }
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical)
-            }
-        }
-        .onAppear {
-            accessibleWithAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
-                pulse = true
             }
         }
     }

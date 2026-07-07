@@ -54,6 +54,13 @@ struct BookImageView: View {
         // promoted element is hidden, not just its (ignored) children.
         .accessibilityHidden(treatImageAsDecorativeInLists)
         .frame(width: width, height: height)
+        // Cover fades in: `book.coverImage` changes outside any animation
+        // context (only the skeleton fade-out was animated), so the cover's
+        // `.transition(.opacity)` never fired. Provide the animation context
+        // here, keyed on the cover/thumbnail, routed through the reduce-motion
+        // aware seam (honors a mid-session Reduce Motion toggle).
+        .accessibleAnimation(PalaceMotion.gentle, value: book.coverImage)
+        .accessibleAnimation(PalaceMotion.gentle, value: book.thumbnailImage)
         .onAppear {
             if hasPreloadedCover {
                 showSkeleton = false
