@@ -10,7 +10,16 @@ import Foundation
 /// Tracks user-initiated retry attempts per operation to enforce a retry limit.
 /// Prevents users from endlessly retrying failed operations while still
 /// allowing a reasonable number of attempts for transient errors.
-final class UserRetryTracker {
+///
+/// `@unchecked Sendable` (Swift 6 `complete`-mode): the shared singleton is
+/// captured by value into retry-alert closures and read from arbitrary
+/// re-auth completion queues, so it must be `Sendable`. The conformance is
+/// honest — the only mutable state (`retries`) is *always* mutated under
+/// `lock` (`canRetry`, `recordRetry`, `clearRetries`, and the private
+/// `cleanupStaleEntries` each take `lock.lock()`/`defer unlock`). The
+/// remaining stored members (`maxRetries`, `resetInterval`) are immutable
+/// `let`s. `final`, so the lock invariant can't be defeated by a subclass.
+final class UserRetryTracker: @unchecked Sendable {
     static let shared = UserRetryTracker()
 
     private struct RetryInfo {

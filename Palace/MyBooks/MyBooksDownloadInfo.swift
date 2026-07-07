@@ -9,7 +9,15 @@
 import Foundation
 import UIKit
 
-@objc class MyBooksDownloadInfo: NSObject {
+// `@unchecked Sendable` (Swift 6 complete-mode): stored in the actor-isolated
+// SafeDictionary download-info tracking and returned across that actor
+// boundary. `downloadTask` (URLSessionDownloadTask) is @unchecked Sendable in
+// the SDK; `bearerToken` is now Sendable (see RIPPLE 2). The value is a
+// per-download record produced once and read on the main actor / mutated via
+// the copy-returning `withDownloadProgress` / `withRightsManagement` helpers
+// (which build a fresh instance) rather than in-place from multiple isolation
+// domains. `final` to keep the invariant.
+@objc final class MyBooksDownloadInfo: NSObject, @unchecked Sendable {
 
     @objc enum MyBooksDownloadRightsManagement: Int {
         case unknown
