@@ -16,27 +16,54 @@ import PalaceAudiobookToolkit
 import ReadiumShared
 import ReadiumLCP
 
-@objc class LCPLibraryService: NSObject, DRMLibraryService {
+// Swift 6 `complete`: `@unchecked Sendable`. This type is exposed as the shared
+// global `lcpService` (see `TPPLCPClient.swift`) which is read from multiple
+// concurrency domains (the Audiobooks LCP path in `LCPAudiobooks`, the reader
+// content-protection path). INVARIANT — every stored member is either immutable
+// (`licenseExtension`, `lcpClient`, `serviceQueue`, `serviceLock`) or guarded:
+// the lazily-built `_lcpService` and `_contentProtection` are both initialized
+// once behind `serviceQueue.sync` + `serviceLock`, so no unsynchronized mutable
+// state crosses threads. `TPPLCPClient` is itself lock-backed (its own
+// `contextQueue`). The parallel precedent is `AdobeDRMService` (lock-backed
+// `@unchecked Sendable`). The test subclass `SpyLCPLibraryService` overrides
+// `fulfill` only and adds no cross-thread mutable state.
+@objc class LCPLibraryService: NSObject, DRMLibraryService, @unchecked Sendable {
 
     /// Readium licensee file extension
     @objc public let licenseExtension = "lcpl"
 
-    private var lcpClient = TPPLCPClient()
+    private let lcpClient = TPPLCPClient()
     private var _lcpService: LCPService?
+    private var _contentProtection: ContentProtection?
     private let serviceQueue = DispatchQueue(label: "com.palace.LCPLibraryService.serviceQueue", qos: .userInitiated)
     private let serviceLock = NSLock()
 
-    /// ContentProtection unlocks protected publication, providing a custom `Fetcher`
-    lazy var contentProtection: ContentProtection? = lcpService?.contentProtection(with: LCPPassphraseAuthenticationService())
-
-    /// [LicenseDocument.id: passphrase callback]
-    private var authenticationCallbacks: [String: (String?) -> Void] = [:]
+    /// ContentProtection unlocks protected publication, providing a custom `Fetcher`.
+    ///
+    /// Init-once behind `serviceQueue.sync` so concurrent reads (reader open +
+    /// audiobook open) share a single instance without racing the lazy backing
+    /// store (a plain `lazy var` is not concurrency-safe under `complete`).
+    var contentProtection: ContentProtection? {
+        serviceQueue.sync {
+            if _contentProtection == nil {
+                _contentProtection = lcpService(locked: true)?.contentProtection(with: LCPPassphraseAuthenticationService())
+            }
+            return _contentProtection
+        }
+    }
 
     private var lcpService: LCPService? {
-        serviceQueue.sync {
-            if _lcpService == nil {
-                serviceLock.lock()
-                defer { serviceLock.unlock() }
+        lcpService(locked: false)
+    }
+
+    /// - Parameter locked: `true` when the caller already holds `serviceQueue`
+    ///   (the `contentProtection` accessor), to avoid re-entrant `serviceQueue.sync`
+    ///   deadlock; `false` for direct callers, which acquire the queue here.
+    private func lcpService(locked: Bool) -> LCPService? {
+        let build: () -> LCPService? = {
+            if self._lcpService == nil {
+                self.serviceLock.lock()
+                defer { self.serviceLock.unlock() }
 
                 // Readium 3.8.0+: license/passphrase storage moved from the
                 // deprecated SQLite repositories to the Keychain repositories
@@ -47,7 +74,7 @@ import ReadiumLCP
                 let licenseRepo = LCPKeychainLicenseRepository()
                 let passphraseRepo = LCPKeychainPassphraseRepository()
 
-                _lcpService = LCPService(
+                self._lcpService = LCPService(
                     client: TPPLCPClient(),
                     licenseRepository: licenseRepo,
                     passphraseRepository: passphraseRepo,
@@ -55,8 +82,9 @@ import ReadiumLCP
                     httpClient: LCPCredentialStrippingHTTPClient()
                 )
             }
-            return _lcpService
+            return self._lcpService
         }
+        return locked ? build() : serviceQueue.sync(execute: build)
     }
 
     override init() {

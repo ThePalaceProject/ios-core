@@ -35,6 +35,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class AdobeDRMCharacterizationTests: XCTestCase {
 
     private var drm: TPPDRMAuthorizingMock!

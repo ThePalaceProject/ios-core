@@ -170,10 +170,18 @@ protocol AnnotationsManager {
             var didResume = false
 
             postReadingPosition(forBook: bookID, selectorValue: selectorValue, motivation: .bookmark) { response in
-                DispatchQueue.main.async {
-                    guard !didResume else { return }
-                    didResume = true
+                // Swift 6 `complete`: the double-resume guard (`didResume`) is
+                // checked/set in this NON-`@Sendable` completion closure so the
+                // `@Sendable` `DispatchQueue.main.async` hop below no longer
+                // captures-and-mutates the local `var` (which the region-isolation
+                // checker rejects). `response` (a `Sendable` struct) and
+                // `continuation` (`Sendable`) are the only values that cross into
+                // the main hop. Behavior is unchanged: resume still happens on the
+                // main queue, exactly once.
+                guard !didResume else { return }
+                didResume = true
 
+                DispatchQueue.main.async {
                     if let response {
                         continuation.resume(returning: response)
                     } else {

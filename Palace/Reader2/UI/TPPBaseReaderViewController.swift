@@ -518,6 +518,13 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     // MARK: - Accessibility
 
     private lazy var accessibilityToolbar: UIToolbar = {
+        // Swift 6 `complete`: a nested local `func` does NOT inherit the enclosing
+        // type's `@MainActor` isolation, so its `UIBarButtonItem` / `accessibilityLabel`
+        // (both `@MainActor`) uses would cross into the main actor. This toolbar is
+        // built lazily on the main thread (UIKit view setup), so annotating the
+        // helper `@MainActor` is the honest isolation-only fix — no hop, no behavior
+        // change.
+        @MainActor
         func makeItem(_ item: UIBarButtonItem.SystemItem, label: String? = nil, action: UIKit.Selector? = nil) -> UIBarButtonItem {
             let button = UIBarButtonItem(barButtonSystemItem: item, target: (action != nil) ? self : nil, action: action)
             button.accessibilityLabel = label

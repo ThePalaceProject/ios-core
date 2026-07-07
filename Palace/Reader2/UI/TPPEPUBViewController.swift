@@ -640,7 +640,14 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.configureKeyboardInput()
+            // Swift 6 `complete`: the observer block is a nonisolated `@Sendable`
+            // closure, but `queue: .main` guarantees it is delivered on the main
+            // thread, so accessing the `@MainActor` members (`configureKeyboardInput`,
+            // `keyboardInput`) is provably safe. `MainActor.assumeIsolated` asserts
+            // that invariant without a hop — behavior unchanged. (Not a `deinit`.)
+            MainActor.assumeIsolated {
+                self?.configureKeyboardInput()
+            }
         }
 
         keyboardDisconnectObserver = NotificationCenter.default.addObserver(
@@ -648,8 +655,12 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.keyboardInput?.keyChangedHandler = nil
-            self?.keyboardInput = nil
+            // See the connect-observer note above: `queue: .main` makes the
+            // `@MainActor` teardown provably main-isolated.
+            MainActor.assumeIsolated {
+                self?.keyboardInput?.keyChangedHandler = nil
+                self?.keyboardInput = nil
+            }
         }
 
         configureKeyboardInput()

@@ -10,6 +10,7 @@ import XCTest
 import ReadiumShared
 @testable import Palace
 
+@MainActor
 final class TPPReaderTOCBusinessLogicTests: XCTestCase {
 
     // MARK: - Properties
@@ -74,7 +75,7 @@ final class TPPReaderTOCBusinessLogicTests: XCTestCase {
             predicate: NSPredicate { [weak self] _, _ in !(self?.tocBusinessLogic?.tocElements.isEmpty ?? true) },
             object: nil
         )
-        wait(for: [loaded], timeout: 10.0)
+        await fulfillment(of: [loaded], timeout: 10.0)
 
         guard !tocBusinessLogic.tocElements.isEmpty else {
             return
@@ -125,7 +126,7 @@ final class TPPReaderTOCBusinessLogicTests: XCTestCase {
             predicate: NSPredicate { [weak self] _, _ in !(self?.tocBusinessLogic?.tocElements.isEmpty ?? true) },
             object: nil
         )
-        wait(for: [loaded], timeout: 10.0)
+        await fulfillment(of: [loaded], timeout: 10.0)
 
         let title = tocBusinessLogic.title(for: "/nonexistent.xhtml")
 
@@ -141,7 +142,7 @@ final class TPPReaderTOCBusinessLogicTests: XCTestCase {
             predicate: NSPredicate { [weak self] _, _ in !(self?.tocBusinessLogic?.tocElements.isEmpty ?? true) },
             object: nil
         )
-        wait(for: [loaded], timeout: 10.0)
+        await fulfillment(of: [loaded], timeout: 10.0)
 
         guard !tocBusinessLogic.tocElements.isEmpty else {
             return
@@ -325,6 +326,7 @@ final class TPPReaderTOCBusinessLogicTests: XCTestCase {
 
 // MARK: - TOC Flatten Logic Tests
 
+@MainActor
 final class TPPReaderTOCFlattenTests: XCTestCase {
 
     func testFlatten_nestedTOC_assignsCorrectLevels() async throws {
@@ -363,7 +365,7 @@ final class TPPReaderTOCFlattenTests: XCTestCase {
             predicate: NSPredicate { _, _ in businessLogic.tocElements.count > 0 },
             object: nil
         )
-        wait(for: [loaded], timeout: 10.0)
+        await fulfillment(of: [loaded], timeout: 10.0)
 
         guard businessLogic.tocElements.count > 0 else { return }
 

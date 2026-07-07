@@ -14,7 +14,12 @@ import PalaceLogging
 /// Adobe DRM Certificate structure.
 ///
 /// Includes only fields Palace checks to verify the certificate is not expired.
-@objc class AdobeCertificate: NSObject, Codable {
+///
+/// Swift 6 `complete`: `final` + `Sendable`. The only stored property is the
+/// immutable `let expireson: UInt?` (Sendable), so the value is deeply immutable
+/// and safe to share across concurrency domains — which is what lets the cached
+/// `static let defaultCertificate` be concurrency-safe. No subclasses exist.
+@objc final class AdobeCertificate: NSObject, Codable, Sendable {
 
     /// Certificate expiration date, seconds since UNIX epoch.
     ///
@@ -66,7 +71,11 @@ extension AdobeCertificate {
     }
 
     /// Default certificate for Palace app.
-    @objc static var defaultCertificate: AdobeCertificate? = {
+    ///
+    /// Swift 6 `complete`: `static let` (was `var`, never reassigned). Now that
+    /// `AdobeCertificate` is `Sendable`, this cached immutable value is
+    /// concurrency-safe to read from any thread.
+    @objc static let defaultCertificate: AdobeCertificate? = {
         let bundle: Bundle = (ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil) ? Bundle(for: TPPAppDelegate.self) : Bundle.main
         guard let adobeCertUrl = bundle.url(forResource: "ReaderClientCert", withExtension: "sig"),
               let adobeCertData = try? Data(contentsOf: adobeCertUrl),
@@ -89,21 +98,85 @@ extension AdobeCertificate {
     /// Period of notification for expired Adobe DRM certificate
     fileprivate static let notificationPeriod: TimeInterval = 60 * 60
 
-    /// Last expired DRM certificate notification date
-    fileprivate static var notificationDate: Date?
+    /// Last expired DRM certificate notification date.
+    ///
+    /// Swift 6 `complete`: backed by a lock-backed `@unchecked Sendable` holder
+    /// instead of a bare mutable `static var` (which is not concurrency-safe).
+    /// `shouldNotifyAboutExpiration` may be evaluated from any thread that hits an
+    /// expired-cert branch, so the read-decide-write must be serialized.
+    fileprivate static let notificationDateHolder = DateHolder()
 
     /// Returns true every `notificationPeriod` time interval.
     ///
     /// Used to avoid showing expiration message every time the user opens the app with expired certificate.
     @objc static var shouldNotifyAboutExpiration: Bool {
-        if let notificationDate = notificationDate, -notificationDate.timeIntervalSinceNow < notificationPeriod {
-            return false
-        } else {
-            notificationDate = Date()
-            return true
-        }
+        // Perform the read-decide-write atomically under the holder's lock so two
+        // concurrent expired-cert checks can't both return `true` for the same window.
+        notificationDateHolder.notifyIfElapsed(period: notificationPeriod)
     }
 
+}
+
+/// Lock-backed holder for the expired-certificate notification timestamp.
+///
+/// Swift 6 `complete`: replaces the bare mutable `static var notificationDate`.
+/// `@unchecked Sendable` is honest here because the single mutable field is only
+/// ever touched inside `notifyIfElapsed`, which holds `lock` for the whole
+/// read-decide-write — so no unsynchronized access is possible. Precedent:
+/// `AdobeDRMService`'s lock-backed statics in this same file.
+private final class DateHolder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var date: Date?
+
+    /// Atomically returns `true` at most once per `period`, recording "now" on the
+    /// firing call. Mirrors the original `shouldNotifyAboutExpiration` semantics.
+    func notifyIfElapsed(period: TimeInterval) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        if let date, -date.timeIntervalSinceNow < period {
+            return false
+        }
+        date = Date()
+        return true
+    }
+}
+
+/// Lock-backed holder for the iPad-on-Mac static-destructor-bypass flags.
+///
+/// Swift 6 `complete`: replaces the two bare mutable `static var`s
+/// (`staticDestructorBypassRegistered`, `adobeDRMUsed`) and their `NSLock`.
+/// `@unchecked Sendable` is honest because both fields are only ever read or
+/// written inside a method that holds `lock` for the whole operation — there is no
+/// unsynchronized access. The `markRegisteredIfNeeded` closure runs while the lock
+/// is held, so the caller's decision sees a consistent `registered` snapshot and
+/// the flip is atomic with it.
+private final class BypassState: @unchecked Sendable {
+    private let lock = NSLock()
+    private var registered = false
+    private var used = false
+
+    var adobeDRMUsed: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return used
+    }
+
+    func setAdobeDRMUsed(_ value: Bool) {
+        lock.lock()
+        defer { lock.unlock() }
+        used = value
+    }
+
+    /// Atomically evaluates `decide(currentRegisteredFlag)` and, if it returns
+    /// `true`, flips `registered` to `true` and returns `true` (meaning "you should
+    /// install now"). Returns `false` otherwise. One-shot install guard.
+    func markRegisteredIfNeeded(_ decide: (Bool) -> Bool) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard decide(registered) else { return false }
+        registered = true
+        return true
+    }
 }
 
 // MARK: - Safe DRM Access
@@ -111,8 +184,15 @@ extension AdobeCertificate {
 /// Provides thread-safe access to Adobe DRM functionality.
 /// Wraps NYPLADEPT.sharedInstance() with defensive error handling to prevent crashes.
 /// Note: Named AdobeDRMService to avoid conflict with Obj-C AdobeDRMContainer (the decryption container)
+///
+/// Swift 6 `complete`: `@unchecked Sendable`. INVARIANT — all instance mutable
+/// state (`_adeptInstance`, `initializationAttempted`, `initializationFailed`) is
+/// accessed only under `lock`, and all mutable static state is owned by the
+/// `bypassState` lock-backed holder below. No unsynchronized shared mutation
+/// remains, which is what makes the `static let shared` singleton
+/// concurrency-safe.
 @objcMembers
-class AdobeDRMService: NSObject {
+class AdobeDRMService: NSObject, @unchecked Sendable {
 
     /// Singleton for safe DRM access
     static let shared = AdobeDRMService()
@@ -153,48 +233,31 @@ class AdobeDRMService: NSObject {
 
     // MARK: - iPad-on-Mac static-destructor bypass
 
-    /// Tracks whether the process-exit interceptor has been installed, so
-    /// repeated calls to `registerStaticDestructorBypassIfNeeded()` install it
-    /// at most once.
-    private static var staticDestructorBypassRegistered = false
-
-    /// Serializes the idempotency check + atexit registration + the
-    /// `adobeDRMUsed` flag.
-    private static let staticDestructorBypassLock = NSLock()
-
-    /// Set once Adobe DRM is being exercised at runtime this session. Marked at
-    /// `AdobeDRMContainer` construction in `AdobeDRMContentProtection.open` — the
-    /// sole `.adept` reader entry, which dominates every ungated RMSDK op
-    /// (decode / displayUntilDate license-read / init → `GPFile::lock`) that can
-    /// construct the faulting static `recursive_mutex`. Gates the watchdog-exit
-    /// interceptor install so we only bypass exit cleanup when there is actually
-    /// an Adobe dtor to outrun.
-    private static var adobeDRMUsed = false
+    /// Swift 6 `complete`: the two process-exit-bypass flags plus their lock are
+    /// consolidated into one lock-backed `@unchecked Sendable` holder instead of
+    /// bare mutable `static var`s (which are not concurrency-safe). The holder is
+    /// the single serialization domain for `registered` + `adobeDRMUsed`; every
+    /// read-decide-write below runs inside it, so the semantics are unchanged.
+    private static let bypassState = BypassState()
 
     /// Records that Adobe DRM is being exercised this session. Called when an
     /// `AdobeDRMContainer` is constructed (the broad reader-DRM umbrella).
     static func markAdobeDRMUsed() {
-        staticDestructorBypassLock.lock()
-        defer { staticDestructorBypassLock.unlock() }
-        adobeDRMUsed = true
+        bypassState.setAdobeDRMUsed(true)
     }
 
     /// Whether Adobe DRM has been exercised this session. The
     /// `applicationDidEnterBackground` install site consults this so the
     /// `_exit(0)` interceptor is only installed once an Adobe dtor exists.
     static var didUseAdobeDRMThisSession: Bool {
-        staticDestructorBypassLock.lock()
-        defer { staticDestructorBypassLock.unlock() }
-        return adobeDRMUsed
+        bypassState.adobeDRMUsed
     }
 
     /// Test-only: reset the session "DRM used" flag so the false→true contract
     /// can be asserted hermetically (the flag is otherwise set-once per process).
     /// Internal — not part of any production call path.
     static func resetAdobeDRMUsedForTesting() {
-        staticDestructorBypassLock.lock()
-        defer { staticDestructorBypassLock.unlock() }
-        adobeDRMUsed = false
+        bypassState.setAdobeDRMUsed(false)
     }
 
     /// Pure decision: should *this* call install the atexit interceptor now?
@@ -231,15 +294,18 @@ class AdobeDRMService: NSObject {
     /// Idempotent; no-op on iOS devices. End-to-end behavior (crash-at-exit) is
     /// not unit-testable — requires simdrive validation on a Mac host (CHECK 2).
     static func registerStaticDestructorBypassIfNeeded() {
-        staticDestructorBypassLock.lock()
-        defer { staticDestructorBypassLock.unlock() }
-
-        guard shouldRegisterStaticDestructorBypass(
-            isiOSAppOnMac: ProcessInfo.processInfo.isiOSAppOnMac,
-            alreadyRegistered: staticDestructorBypassRegistered
-        ) else { return }
-
-        staticDestructorBypassRegistered = true
+        // Atomic check-and-set inside the holder's lock: the pure decision
+        // (`shouldRegisterStaticDestructorBypass`) runs against the currently-stored
+        // `registered` flag, and the flag is only flipped to `true` when the guard
+        // passes — so the `atexit` interceptor installs at most once even under
+        // concurrent callers.
+        let shouldInstall = bypassState.markRegisteredIfNeeded { alreadyRegistered in
+            shouldRegisterStaticDestructorBypass(
+                isiOSAppOnMac: ProcessInfo.processInfo.isiOSAppOnMac,
+                alreadyRegistered: alreadyRegistered
+            )
+        }
+        guard shouldInstall else { return }
         _ = atexit { _exit(0) }
     }
 
@@ -316,10 +382,15 @@ class AdobeDRMService: NSObject {
     }
 
     /// Safely return a DRM loan.
+    // Swift 6 `complete`: `completion` is `@Sendable` because it is forwarded to
+    // `NYPLADEPT.returnLoan`, whose imported Obj-C block parameter is `@Sendable`
+    // (the DRM callback fires on a background RMSDK thread). The sole caller
+    // (`BookReturnService`) passes a closure that captures nothing non-Sendable, so
+    // this does not ripple.
     func returnLoan(_ fulfillmentId: String?,
                     userID: String?,
                     deviceID: String?,
-                    completion: @escaping (Bool, Error?) -> Void) {
+                    completion: @escaping @Sendable (Bool, Error?) -> Void) {
         guard let adept = adeptInstance else {
             Log.warn(#file, "Cannot return DRM loan - Adobe DRM not available")
             completion(false, NSError(domain: "AdobeDRM", code: -1, userInfo: [NSLocalizedDescriptionKey: "Adobe DRM not available"]))
