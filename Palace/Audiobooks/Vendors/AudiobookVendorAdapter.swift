@@ -113,3 +113,23 @@ struct ManifestJSONBox: @unchecked Sendable {
         self.value = value
     }
 }
+
+/// `Sendable` carrier for a `BearerTokenManifestFetching` existential.
+///
+/// `BearerTokenManifestFetching` is a Palace-local protocol that intentionally
+/// does NOT refine `Sendable` — refining it would ripple to the production
+/// `BookService` conformance and every adapter test stub. `BearerTokenAdapter`
+/// and `OpenAccessAdapter` capture the fetcher into a `Task { @MainActor in }`
+/// hop to run the bearer-token second leg on the main actor; the bare
+/// existential cannot cross that boundary. This box carries it across.
+///
+/// - Sendable invariant: `fetcher` is set once at init and only read thereafter.
+///   Both adapters invoke `fetcher.fetchManifest(...)` exclusively from inside
+///   the main-actor hop, so there is no concurrent access. The `@unchecked`
+///   waiver covers only the non-`Sendable` protocol existential.
+struct BearerManifestFetcherBox: @unchecked Sendable {
+    let fetcher: BearerTokenManifestFetching
+    init(_ fetcher: BearerTokenManifestFetching) {
+        self.fetcher = fetcher
+    }
+}

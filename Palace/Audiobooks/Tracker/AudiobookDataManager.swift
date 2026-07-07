@@ -217,10 +217,14 @@ class AudiobookDataManager: @unchecked Sendable {
         // than capturing a mutable local `var` by reference across the
         // concurrency boundaries. Behavior is unchanged: begin once, end once.
         let backgroundTask = BackgroundTaskToken()
-        backgroundTask.set(UIApplication.shared.beginBackgroundTask(withName: "AudiobookTimeSync") {
-            // Cleanup handler if time expires
-            backgroundTask.end()
-        })
+        // `UIApplication.shared` is `@MainActor`-isolated, so both the
+        // `beginBackgroundTask` and `endBackgroundTask` touches must run on the
+        // main actor. The token owns those hops internally (see `begin`/`end`),
+        // which keeps `syncValues` free of a `@MainActor` annotation that would
+        // ripple to its Combine-sink call sites and tests. The main-queue hops
+        // are FIFO-ordered — `begin` is enqueued here before `syncQueue.async`
+        // can enqueue any `end`, so "begin once, end once" ordering holds.
+        backgroundTask.begin(named: "AudiobookTimeSync")
 
         syncQueue.async { [weak self] in
             guard let self = self else {
@@ -437,27 +441,49 @@ class AudiobookDataManager: @unchecked Sendable {
 /// expiration handler and every POST-completion `@Sendable` closure; the lock
 /// serializes access and makes the holder `Sendable`.
 ///
+/// The token also owns the two `UIApplication.shared` touches. Because
+/// `UIApplication.shared` is `@MainActor`-isolated, both `beginBackgroundTask`
+/// and `endBackgroundTask` are performed inside a `DispatchQueue.main.async`
+/// hop (mirroring `TPPBackgroundExecutor`), so callers on any queue — the
+/// `syncQueue.async` body and the per-request POST completions — can drive the
+/// lifecycle without a main-actor-isolation error and without forcing
+/// `@MainActor` onto `AudiobookDataManager`.
+///
 /// - Sendable invariant: `id` is only ever read/written under `lock`. `end()`
 ///   is idempotent — it ends the task at most once and resets to `.invalid`,
 ///   preserving the original code's "begin once, end once" semantics even if
-///   two completion paths race to finish.
+///   two completion paths race to finish. The main-queue is FIFO, so a `begin`
+///   enqueued before any `end` always runs first.
 private final class BackgroundTaskToken: @unchecked Sendable {
     private let lock = NSLock()
     private var id: UIBackgroundTaskIdentifier = .invalid
 
-    func set(_ newId: UIBackgroundTaskIdentifier) {
+    private func set(_ newId: UIBackgroundTaskIdentifier) {
         lock.lock()
         id = newId
         lock.unlock()
     }
 
+    /// Begins the background task on the main actor and stores its identifier.
+    /// The expiration handler ends the task via `end()` (also main-hopped).
+    func begin(named name: String) {
+        DispatchQueue.main.async { [self] in
+            let newId = UIApplication.shared.beginBackgroundTask(withName: name) { [self] in
+                end()
+            }
+            set(newId)
+        }
+    }
+
     func end() {
-        lock.lock()
-        let current = id
-        id = .invalid
-        lock.unlock()
-        if current != .invalid {
-            UIApplication.shared.endBackgroundTask(current)
+        DispatchQueue.main.async { [self] in
+            lock.lock()
+            let current = id
+            id = .invalid
+            lock.unlock()
+            if current != .invalid {
+                UIApplication.shared.endBackgroundTask(current)
+            }
         }
     }
 }

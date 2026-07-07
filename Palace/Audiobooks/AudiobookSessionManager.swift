@@ -1271,19 +1271,29 @@ public final class AudiobookSessionManager: ObservableObject {
     ) async -> TrackPosition? {
         guard let concreteRegistry = bookRegistry as? TPPBookRegistry else { return nil }
         let toc = audiobook.tableOfContents
-        return await withCheckedContinuation { (cont: CheckedContinuation<TrackPosition?, Never>) in
+        // `TrackPosition` (PalaceAudiobookToolkit) is not Sendable-audited, so
+        // resuming the continuation with a bare `TrackPosition?` trips the
+        // `sending 'position' risks data races` diagnostic — the `syncLocation`
+        // completion fires off the caller's actor (inside TPPBookRegistry's
+        // detached sync Task, see `SyncLocationBox`), and `@preconcurrency
+        // import` downgrades the Sendable-conformance warning but NOT the
+        // `sending` one. Carry the value through the continuation in a Sendable
+        // box and unwrap after the `await` (back on this `@MainActor` method).
+        let box: SendableTrackPositionBox = await withCheckedContinuation { (cont: CheckedContinuation<SendableTrackPositionBox, Never>) in
             let once = PositionResolveOnce()
             concreteRegistry.syncLocation(for: book) { (remoteBookmark: AudioBookmark?) in
                 let position = remoteBookmark.flatMap {
                     TrackPosition(audioBookmark: $0, toc: toc.toc, tracks: toc.tracks)
                 }
-                once.fire { cont.resume(returning: position) }
+                let boxed = SendableTrackPositionBox(position)
+                once.fire { cont.resume(returning: boxed) }
             }
             Task { @MainActor in
                 try? await Task.sleep(nanoseconds: UInt64(max(0, timeout) * 1_000_000_000))
-                once.fire { cont.resume(returning: nil) }
+                once.fire { cont.resume(returning: SendableTrackPositionBox(nil)) }
             }
         }
+        return box.value
     }
 
     /// True iff `remote` should be preferred over `local` — i.e. the remote save
@@ -2235,5 +2245,26 @@ private final class PositionResolveOnce: @unchecked Sendable {
         fired = true
         lock.unlock()
         block()
+    }
+}
+
+/// `Sendable` carrier for a resolved `TrackPosition?` crossing the
+/// `awaitRemotePosition` continuation boundary.
+///
+/// `TrackPosition` lives in the un-Sendable-audited PalaceAudiobookToolkit, so
+/// resuming `CheckedContinuation<TrackPosition?, …>` with it trips the
+/// `sending` diagnostic (which `@preconcurrency import` does not silence). The
+/// value is produced fresh inside the off-actor `syncLocation` completion and
+/// consumed once on `@MainActor` after the `await`, so boxing it makes the
+/// hand-off explicit rather than crossing a bare non-Sendable value.
+///
+/// - Sendable invariant: `value` is set once at init and only read thereafter
+///   — the wrapped `TrackPosition?` is never mutated after boxing, so there is
+///   no shared mutation. The `@unchecked` waiver covers only the toolkit type
+///   the compiler cannot prove `Sendable`.
+private struct SendableTrackPositionBox: @unchecked Sendable {
+    let value: TrackPosition?
+    init(_ value: TrackPosition?) {
+        self.value = value
     }
 }
