@@ -75,7 +75,7 @@ final class TPPReaderTOCBusinessLogicTests: XCTestCase {
             predicate: NSPredicate { [weak self] _, _ in !(self?.tocBusinessLogic?.tocElements.isEmpty ?? true) },
             object: nil
         )
-        wait(for: [loaded], timeout: 10.0)
+        await fulfillment(of: [loaded], timeout: 10.0)
 
         guard !tocBusinessLogic.tocElements.isEmpty else {
             return
@@ -126,7 +126,7 @@ final class TPPReaderTOCBusinessLogicTests: XCTestCase {
             predicate: NSPredicate { [weak self] _, _ in !(self?.tocBusinessLogic?.tocElements.isEmpty ?? true) },
             object: nil
         )
-        wait(for: [loaded], timeout: 10.0)
+        await fulfillment(of: [loaded], timeout: 10.0)
 
         let title = tocBusinessLogic.title(for: "/nonexistent.xhtml")
 
@@ -142,7 +142,7 @@ final class TPPReaderTOCBusinessLogicTests: XCTestCase {
             predicate: NSPredicate { [weak self] _, _ in !(self?.tocBusinessLogic?.tocElements.isEmpty ?? true) },
             object: nil
         )
-        wait(for: [loaded], timeout: 10.0)
+        await fulfillment(of: [loaded], timeout: 10.0)
 
         guard !tocBusinessLogic.tocElements.isEmpty else {
             return
@@ -365,7 +365,7 @@ final class TPPReaderTOCFlattenTests: XCTestCase {
             predicate: NSPredicate { _, _ in businessLogic.tocElements.count > 0 },
             object: nil
         )
-        wait(for: [loaded], timeout: 10.0)
+        await fulfillment(of: [loaded], timeout: 10.0)
 
         guard businessLogic.tocElements.count > 0 else { return }
 
