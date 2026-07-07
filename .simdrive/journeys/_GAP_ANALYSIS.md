@@ -17,8 +17,8 @@ What's automated under simdrive vs what still requires manual testing or has no 
 | Sign-in: basic (barcode/PIN) | — | — | ⏳ Next |
 | Sign-in: SAML | — | — | ⏳ Manual only (out-of-process IdP) |
 | Sign-in: OAuth/Clever | — | — | ⏳ Manual only (out-of-process IdP) |
-| Holds: reservations empty state | (observed 2026-07-06, recording pending) | stateless | 🟡 Partial — empty-reservations screen renders; see gap-work note below |
-| Holds: place reservation (populated) | — | — | ⏳ Next (needs a seeded hold — recipe in gap-work note) |
+| Holds: reservations empty state | `holds-reservations-empty` | stateful | ✅ Done (2026-07-07 — Reservations tab renders empty-state) |
+| Holds: place reservation (populated) | — | — | ⏳ Blocked on a 0-available title — see gap-work note |
 | Library switcher (account list, add, switch) | — | — | ⏳ Next |
 | Reader2 TOC navigation | — | — | ⏳ Next |
 | Reader2 bookmark + restore | — | — | ⏳ Next |
@@ -41,16 +41,25 @@ began closing the three coverage gaps that bundle *aspired* to (it never ran):
   a page (Cover → Acknowledgments via OCR'd page indicator), and surfaced the
   reader chrome. Credential-free and portable.
 
-- **Holds → PARTIAL.** The **empty-reservations** screen was observed rendering
-  ("When you reserve a book from the catalog, it will show up here…"). The
-  **populated** holds flow (queue position / ready-to-borrow / cancel) needs a
-  seeded reservation, which is not reachable anonymously. Recipe to record it:
-  1. `harness creds get palace-ios.lib.<lib>` — a test library with limited-copy
-     titles (e.g. `minotaur`, `main-street-city`, `a1qa`). Enable beta libraries
-     if the lib is hidden: `defaults write org.thepalaceproject.palace NYPLUseBetaLibrariesKey -bool true`.
-  2. Settings → + ADD LIBRARY → add the lib → sign in (barcode + PIN from vault).
-  3. Find a title with **no available copies** (shows "Reserve"/"Place Hold"),
-     place the hold, then Holds tab shows the queue position → record.
+- **Holds empty state → DONE.** `holds-reservations-empty` recorded live on
+  Main Street City Library: the Reservations tab renders its empty-state copy
+  ("When you reserve a book from the catalog, it will show up here…").
+
+- **Holds populated → BLOCKED on inventory (not tooling).** The populated flow
+  (queue position / ready-to-borrow / cancel) needs a title with **zero
+  available copies** to show "Reserve"/"Place Hold". Setup that DOES work
+  (verified 2026-07-07): enable beta libs
+  (`defaults write org.thepalaceproject.palace NYPLUseBetaLibrariesKey -bool true`),
+  Settings → + ADD LIBRARY → search **"Main Street City"** → add → browse (no
+  sign-in needed until borrow/reserve). But every title checked in Main Street
+  City's curated lanes is **open-access** — "The Hill" (ebook) and "Listen to
+  the Girls" (audiobook) both show **Borrow**, not Reserve. So a hold can't be
+  placed there. To finish this journey, someone with inventory knowledge must
+  point to a **specific 0-available title** (or a test library configured with a
+  limited-copy hold demo — the `minotaur*` / `*-2` variants are candidates but
+  `minotaur` did not appear in the registry search). Note: `a1qa` sign-in creds
+  are vaulted, but sign-in alone doesn't create a reservable title. Recipe is
+  proven up to "find a held title"; that one precondition is the gap.
 
 - **Accessibility audits → documented decision.** Element-level
   `performAccessibilityAudit` is the one XCUITest-unique capability simdrive's
