@@ -472,7 +472,18 @@ extension TPPSignInBusinessLogic {
                     return
                 }
 
-                strongSelf.completeLogOutProcess()
+                // Swift 6: the DRM deauthorize completion is `@Sendable` and fires
+                // off the main actor (Adobe deauth thread); `completeLogOutProcess()`
+                // is `@MainActor`-isolated (the whole type is `@MainActor`). Hop onto
+                // the main actor to call it. `strongSelf` is a `@MainActor` class and
+                // therefore Sendable, so the capture is safe. This also corrects the
+                // latent off-main execution of the credential/WebKit cleanup that
+                // Swift 5 did not enforce across the `@Sendable` boundary; the stale-
+                // callback validity check at the top of `completeLogOutProcess()`
+                // remains correct when it runs one main-runloop turn later.
+                Task { @MainActor in
+                    strongSelf.completeLogOutProcess()
+                }
             }
         } else {
             self.completeLogOutProcess()
