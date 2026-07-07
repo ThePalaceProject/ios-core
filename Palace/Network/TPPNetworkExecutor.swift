@@ -99,6 +99,18 @@ private final class CompletionBox<T>: @unchecked Sendable {
     init(_ call: @escaping (T) -> Void) { self.call = call }
 }
 
+/// Carries a non-`Sendable` token-refresh `Result` across the `@Sendable` `Task`
+/// boundary inside `refreshTokenAndResume`. The `Result<TokenResponse, Error>`
+/// value is produced on the refresh completion callback and consumed exactly once
+/// inside the follow-up `Task`, so single-ownership handoff makes `@unchecked
+/// Sendable` sound — the honest alternative to marking the completion `@Sendable`
+/// (which would ripple onto the public `executeTokenRefresh` signature) or waiting
+/// on `TokenResponse: Sendable` from PalaceAuth. Mirrors `CompletionBox`.
+private final class CompletionResultBox: @unchecked Sendable {
+    let result: Result<TokenResponse, Error>
+    init(_ result: Result<TokenResponse, Error>) { self.result = result }
+}
+
 /// `@unchecked Sendable`: lets the executor satisfy the now-`Sendable`
 /// `NetworkClient` boundary (`URLSessionNetworkClient` holds one) and be captured
 /// across concurrency domains as it already is in production. The conformance is
@@ -662,8 +674,17 @@ extension TPPNetworkExecutor {
 
             self.executeTokenRefresh(username: username, password: password, tokenURL: tokenURL, accountId: capturedAccountId) { [weak self] result in
                 guard let self else { return }
+                // Box the non-`Sendable` `Result<TokenResponse, Error>` before the
+                // `sending` `Task` closure below. `TokenResponse` is not yet
+                // Sendable-audited upstream (PalaceAuth) and the `Error` existential
+                // is never Sendable, so `result` cannot be captured directly into
+                // the Task without the "passing closure as a 'sending' parameter"
+                // diagnostic. The box is produced here and consumed exactly once
+                // inside the Task — same isolation-preserving carrier pattern as
+                // `CompletionBox`. Behavior unchanged.
+                let resultBox = CompletionResultBox(result)
                 Task {
-                    switch result {
+                    switch resultBox.result {
                     case .success(let tokenResponse):
                         Log.info(#file, "Token refresh successful for account \(capturedAccountId ?? "current"), expires in \(tokenResponse.expiresIn)s")
 
