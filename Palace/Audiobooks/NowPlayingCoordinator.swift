@@ -215,7 +215,19 @@ public final class NowPlayingCoordinator {
             return
         }
 
-        let artwork = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+        // MediaPlayer invokes this request handler OFF the main actor (it
+        // serializes the artwork on a background queue via
+        // `-[MPMediaItemArtwork jpegDataWithSize:]` when building the
+        // Now-Playing / lock-screen info). Under the Swift 6 language mode the
+        // closure would otherwise inherit this type's `@MainActor` isolation
+        // and trip `dispatch_assert_queue` → crash on every audiobook open
+        // (regression from the SWIFT_VERSION 5→6 flip, #1199). `@Sendable`
+        // strips the inherited isolation so the handler is callable on
+        // MediaPlayer's queue; `nonisolated(unsafe)` opts the captured image
+        // out of Sendable checking (reading a `UIImage` for rasterization is
+        // thread-safe here — it is created once and never mutated).
+        nonisolated(unsafe) let capturedImage = image
+        let artwork = MPMediaItemArtwork(boundsSize: image.size) { @Sendable _ in capturedImage }
         currentArtwork = artwork
 
         var info = currentInfo
