@@ -635,6 +635,78 @@ final class BookReturnServiceTests: XCTestCase {
             imageCache: MockImageCache()
         )
     }
+
+    // MARK: - INV-3: offline return enqueues, no local cleanup
+
+    /// A genuine offline (`NSURLError`) revoke failure must NOT dead-end in
+    /// an alert. It enqueues an `OfflineAction(.return, ...)` and — the
+    /// critical part — does NOT delete local content or unregister the book
+    /// until the queued return is later server-confirmed.
+    func testOfflineReturn_enqueues_doesNotDeleteLocalContent() async {
+        let enqueueSpy = EnqueueSpy()
+        let book = makeBookWithRevokeURL()
+        registry.addBook(book, location: nil, state: .downloadSuccessful,
+                         fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+
+        let offlineService = BookReturnService(
+            bookRegistry: registry,
+            localContentService: localContent,
+            opdsFeedService: feedFetcher,
+            downloadAnnouncementService: announcementService,
+            bookmarkDeletionLog: bookmarkLog,
+            reauthenticator: reauthenticator,
+            userRetryTracker: retryTracker,
+            userAccountProvider: { [unowned self] in self.userAccount },
+            offlineReturnEnqueuer: { action in await enqueueSpy.record(action) }
+        )
+        offlineService.delegate = spyDelegate
+
+        // A real no-connection transport error.
+        feedFetcher.stubbedError = NSError(domain: NSURLErrorDomain,
+                                           code: NSURLErrorNotConnectedToInternet)
+
+        let exp = expectation(description: "completion")
+        offlineService.returnBook(withIdentifier: book.identifier) { exp.fulfill() }
+        await fulfillment(of: [exp], timeout: 3.0)
+
+        // Enqueued exactly one return for this book.
+        let enqueued = await enqueueSpy.actions
+        XCTAssertEqual(enqueued.count, 1)
+        XCTAssertEqual(enqueued.first?.type, .return)
+        XCTAssertEqual(enqueued.first?.bookID, book.identifier)
+
+        // INV-3: NO local cleanup, NO unregister until server-confirmed.
+        XCTAssertTrue(localContent.deleteForIdentifierCalls.isEmpty,
+            "INV-3: offline return must not delete local content")
+        XCTAssertNotEqual(registry.state(for: book.identifier), .unregistered,
+            "INV-3: offline return must not unregister before server confirmation")
+        XCTAssertNotNil(registry.book(forIdentifier: book.identifier),
+            "INV-3: the book stays in the registry until the queued return succeeds")
+    }
+
+    /// Pins the offline-error classifier used by the INV-3 branch: genuine
+    /// no-connection codes are offline; other NSURLErrors (and non-URL
+    /// errors) are not — so only real offline failures get enqueued.
+    func testIsOfflineNSURLError_classifiesConnectivityCodes() {
+        XCTAssertTrue(BookReturnService.isOfflineNSURLError(
+            NSError(domain: NSURLErrorDomain, code: NSURLErrorNotConnectedToInternet)))
+        XCTAssertTrue(BookReturnService.isOfflineNSURLError(
+            NSError(domain: NSURLErrorDomain, code: NSURLErrorNetworkConnectionLost)))
+        XCTAssertTrue(BookReturnService.isOfflineNSURLError(
+            NSError(domain: NSURLErrorDomain, code: NSURLErrorTimedOut)))
+        // A non-connectivity URL error is NOT offline.
+        XCTAssertFalse(BookReturnService.isOfflineNSURLError(
+            NSError(domain: NSURLErrorDomain, code: NSURLErrorBadURL)))
+        // A non-URL error domain is NOT offline.
+        XCTAssertFalse(BookReturnService.isOfflineNSURLError(
+            NSError(domain: "some.other.domain", code: NSURLErrorNotConnectedToInternet)))
+    }
+}
+
+/// Records enqueued offline actions for the INV-3 test.
+private actor EnqueueSpy {
+    private(set) var actions: [OfflineAction] = []
+    func record(_ action: OfflineAction) { actions.append(action) }
 }
 
 // MARK: - Test fakes
