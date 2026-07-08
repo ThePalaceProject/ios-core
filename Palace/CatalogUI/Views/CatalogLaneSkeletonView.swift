@@ -42,3 +42,41 @@ struct CatalogLaneSkeletonView: View {
         .accessibilityHidden(true)
     }
 }
+
+/// Skeleton placeholder that traces `EntryPointsSelectorView` — the segmented
+/// "All · Ebooks · Audiobooks" control that renders above the first lane once
+/// the grouped catalog feed loads. The initial-load skeleton (`skeletonList`)
+/// has no selector of its own, so without this placeholder the first lane sits
+/// ~44pt higher in the skeleton than in the loaded state and every lane visibly
+/// pops DOWN when the selector appears (PP-4752).
+///
+/// Geometry is pulled 1:1 from `EntryPointsSelectorView` so the real control
+/// lands in exactly the space the placeholder reserved (zero layout shift):
+///   * height `placeholderHeight` (44) — the selector's
+///     `Picker(.segmented).frame(minHeight: 44)`. The real control has NO
+///     vertical padding, so its reserved footprint IS this height.
+///   * `.frame(maxWidth: 700)` then centered — same width clamp as the control.
+///   * `.padding(.horizontal, 12)` — same leading/trailing inset.
+///   * radius `PalaceRadius.control` (8) — the segmented control's pill radius.
+///
+/// Only trace this where the real selector actually appears: the initial-load
+/// skeleton. The switching-entry-point skeleton (`CatalogLoadingView`, driven by
+/// `switchingEntryPointView`) already renders the *real* `EntryPointsSelectorView`
+/// above it, so it must NOT get a second placeholder.
+struct CatalogEntryPointsSkeletonView: View {
+    /// The vertical footprint (points) the entry-point selector reserves, and
+    /// therefore the height the placeholder must reserve. Mirrors
+    /// `EntryPointsSelectorView`'s `Picker(.segmented).frame(minHeight: 44)`
+    /// (the control carries no vertical padding). A regression that zeroes or
+    /// shrinks this reintroduces the ~44pt lane pop (PP-4752), so it is pinned
+    /// by `SkeletonTests`.
+    static let placeholderHeight: CGFloat = 44
+
+    var body: some View {
+        SkeletonBox(height: Self.placeholderHeight, cornerRadius: PalaceRadius.control)
+            .frame(maxWidth: 700)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.horizontal, 12)
+            .accessibilityHidden(true)
+    }
+}

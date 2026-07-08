@@ -185,4 +185,25 @@ final class SkeletonTests: XCTestCase {
     XCTAssertNotEqual(Skeleton.highlightColor(.light), Skeleton.highlightColor(.dark),
                       "Highlight must adapt to color scheme")
   }
+
+  // MARK: - Catalog entry-point selector placeholder (PP-4752 lane-pop fix)
+
+  /// The initial-load catalog skeleton reserves the entry-point segmented
+  /// selector's vertical footprint so the first lane lands at the same y in the
+  /// skeleton and the loaded feed — no downward pop when content arrives. The
+  /// real control is `EntryPointsSelectorView`'s
+  /// `Picker(.segmented).frame(minHeight: 44)` with no vertical padding, so the
+  /// placeholder MUST reserve exactly that 44pt. A mutant that zeroes or shrinks
+  /// the placeholder reintroduces the lane pop this fix removed.
+  func testEntryPointsSkeleton_reservesRealSelectorFootprint() {
+    XCTAssertEqual(CatalogEntryPointsSkeletonView.placeholderHeight, 44, accuracy: 0.001,
+                   "Placeholder must reserve the selector's 44pt minHeight footprint")
+  }
+
+  /// Guards the specific regression: a non-positive placeholder height means no
+  /// space is reserved and the lanes pop down when the real selector appears.
+  func testEntryPointsSkeleton_footprintIsNonDegenerate() {
+    XCTAssertGreaterThan(CatalogEntryPointsSkeletonView.placeholderHeight, 0,
+                         "A zero-height placeholder reserves no space — lanes would pop")
+  }
 }
