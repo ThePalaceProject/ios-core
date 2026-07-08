@@ -56,13 +56,22 @@ struct AudiobookMiniPlayerView: View {
     /// cache. Production wires this to `appContainer.audiobookSession`.
     let audiobookSession: AudiobookSessionManaging
 
+    /// Guards against a rapid double-tap on `✕` enqueuing two teardowns: the
+    /// button stays mounted until `hasActiveSession` flips false (after the
+    /// async `stopPlayback` completes), so without this a second tap in that
+    /// window would fire a second `stopPlayback`. `stopPlayback` is idempotent,
+    /// but one teardown is the correct contract.
+    @State private var isDismissing = false
+
     @ViewBuilder
     var body: some View {
         // SwiftUI.Group + explicit else: Xcode 26's type-checker otherwise
         // mis-picks a Group initializer (CodingKey cascade) for an if-without-
         // else inside a modified Group.
         SwiftUI.Group {
-            if Self.shouldShowChrome(hasActiveSession: presenter.hasActiveSession, isReaderActive: presenter.isReaderActive) {
+            if Self.shouldShowChrome(hasActiveSession: presenter.hasActiveSession,
+                                     isReaderActive: presenter.isReaderActive,
+                                     isCollapsed: presenter.isCollapsed) {
                 miniPlayerChrome
                     // Slide in/out from the bottom (paired with a fade) instead
                     // of popping when a session starts/ends or a reader opens.
@@ -73,7 +82,8 @@ struct AudiobookMiniPlayerView: View {
         }
         .accessibleAnimation(PalaceMotion.standard,
                              value: Self.shouldShowChrome(hasActiveSession: presenter.hasActiveSession,
-                                                          isReaderActive: presenter.isReaderActive))
+                                                          isReaderActive: presenter.isReaderActive,
+                                                          isCollapsed: presenter.isCollapsed))
     }
 
     /// Pure decision predicate extracted for unit testability —
@@ -81,9 +91,12 @@ struct AudiobookMiniPlayerView: View {
     /// SwiftUI bodies are opaque and the test can only read the
     /// flags it set. The static fn makes the truth table directly
     /// testable. §7.3 Option α — mini-player visible iff session active
-    /// AND not in a reader.
-    static func shouldShowChrome(hasActiveSession: Bool, isReaderActive: Bool) -> Bool {
-        return hasActiveSession && !isReaderActive
+    /// AND not in a reader AND not collapsed to the pill (`isCollapsed`
+    /// hands off to `AudiobookCollapsedPillView` — see that view's
+    /// `shouldShow` predicate, which is the exact complement on the
+    /// collapsed axis).
+    static func shouldShowChrome(hasActiveSession: Bool, isReaderActive: Bool, isCollapsed: Bool) -> Bool {
+        return hasActiveSession && !isReaderActive && !isCollapsed
     }
 
     // MARK: - Chrome
@@ -103,6 +116,7 @@ struct AudiobookMiniPlayerView: View {
                 skipBackButton
                 playPauseButton
                 skipForwardButton
+                dismissButton
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
@@ -110,6 +124,12 @@ struct AudiobookMiniPlayerView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.ultraThinMaterial)
+        // Swipe the bar DOWN to collapse it to the compact floating pill
+        // (playback keeps running). Paired with the visible `✕` button that
+        // performs the hard dismiss — same discoverability lesson the full
+        // player learned (a gesture alone wasn't discoverable, so we ship
+        // both a gesture AND a visible control).
+        .gesture(swipeDownToCollapse)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityHint(Strings.Generic.expandPlayerHint)
@@ -221,6 +241,89 @@ struct AudiobookMiniPlayerView: View {
         .buttonStyle(.plain)
         .tint(.accentColor)
         .accessibilityLabel(Strings.Generic.skipForward30)
+    }
+
+    /// The `✕` hard-dismiss control. Unlike the swipe-down collapse (which
+    /// only tucks the bar into the pill and keeps audio playing), this ENDS
+    /// the session: `stopPlayback(dismissPhoneUI: true, persistFinalPosition:
+    /// true)` saves the final position, tears down the toolkit player, and —
+    /// via `dismissPlayerOnPhone` → `clearActiveSession()` — drops both the
+    /// mini-bar and the pill. Re-opening the book resumes from the saved
+    /// position. Rendered with a secondary tint + smaller glyph so it reads
+    /// as the low-frequency destructive action, not a transport control.
+    private var dismissButton: some View {
+        Button(action: dismiss) {
+            Image(systemName: "xmark")
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .padding(14)
+                .frame(width: 44, height: 44)
+        }
+        .buttonStyle(.plain)
+        .tint(.secondary)
+        .accessibilityLabel(Strings.Generic.stopAudiobook)
+    }
+
+    /// Swipe DOWN on the bar → collapse to the pill. Mirrors the full
+    /// player's `swipeDownToMinimize` shape (drag with a directional +
+    /// horizontal-drift threshold) but drives `presenter.collapse()` instead
+    /// of `minimize()`. Threshold is smaller than the full player's 100pt
+    /// because the mini-bar is only ~60pt tall — a 100pt swipe would overshoot
+    /// the bar entirely before registering.
+    private var swipeDownToCollapse: some Gesture {
+        DragGesture(minimumDistance: 10, coordinateSpace: .local)
+            .onEnded { value in
+                handleCollapseDragEnd(translation: value.translation)
+            }
+    }
+
+    /// Test-visible drag-end handler — takes a raw `CGSize` so unit tests can
+    /// drive the boundary without spinning up a real `DragGesture`. Collapses
+    /// (honoring reduce-motion) iff the drag clears the pure `shouldCollapse`
+    /// threshold.
+    func handleCollapseDragEnd(translation: CGSize) {
+        guard Self.shouldCollapse(translation: translation) else { return }
+        if UIAccessibility.isReduceMotionEnabled {
+            presenter.collapse()
+        } else {
+            withAnimation(PalaceMotion.standard) { presenter.collapse() }
+        }
+    }
+
+    /// Downward-drag threshold (points) past which a swipe collapses the bar.
+    /// Smaller than the full player's 100pt (the bar is short).
+    static let collapseSwipeDownThreshold: CGFloat = 44
+
+    /// Max horizontal drift before a downward swipe stops counting as
+    /// "vertical" — filters diagonal scrolls, same contract as the full
+    /// player's `minimizeSwipeMaxHorizontalDrift`.
+    static let collapseSwipeMaxHorizontalDrift: CGFloat = 60
+
+    /// Pure collapse decision: a downward drag past the threshold with limited
+    /// horizontal drift. Extracted `static` so the `&&` / `>` / `<` operators
+    /// are mutation-testable without a SwiftUI host — the view body is opaque.
+    static func shouldCollapse(translation: CGSize) -> Bool {
+        return translation.height > collapseSwipeDownThreshold
+            && abs(translation.width) < collapseSwipeMaxHorizontalDrift
+    }
+
+    /// Fires the hard dismiss. `stopPlayback` is `async`, so we hop onto a
+    /// `Task` (the `@MainActor` context is preserved). The manager's
+    /// teardown clears the presenter, so no explicit UI mutation is needed
+    /// here — the bar/pill drop when `hasActiveSession` flips false.
+    private func dismiss() {
+        guard !isDismissing else { return }
+        isDismissing = true
+        Task { await performDismiss() }
+    }
+
+    /// The awaitable teardown the `✕` button drives. Split from `dismiss()`
+    /// (which only wraps it in a `Task` + double-tap guard) so tests can
+    /// `await` it directly and pin the exact arguments — `persistFinalPosition:
+    /// true` so re-opening resumes, `dismissPhoneUI: true` so the phone chrome
+    /// tears down.
+    func performDismiss() async {
+        await audiobookSession.stopPlayback(dismissPhoneUI: true, persistFinalPosition: true)
     }
 
     private var scrubber: some View {
