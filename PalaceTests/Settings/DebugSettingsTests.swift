@@ -124,6 +124,61 @@ final class DebugSettingsTests: XCTestCase {
         XCTAssertNotNil(result?.problemDocument)
     }
 
+    // MARK: - Debug-simulation marker (PP-4454 follow-up)
+    // A stale "Simulate Borrow Error" toggle was reported as a real server bug
+    // because the simulated alert was indistinguishable from a genuine failure.
+    // Every simulated error must now carry an unmistakable banner.
+
+    // SRS: the simulated problem-document detail leads with the debug banner so
+    // it is the first thing shown in the borrow-error alert body AND the report.
+    func testCreateSimulatedBorrowError_detailIsBannerPrefixed() {
+        settings.simulatedBorrowError = .genericServerError
+        let detail = settings.createSimulatedBorrowError()?.problemDocument.detail
+
+        XCTAssertNotNil(detail)
+        XCTAssertTrue(detail?.hasPrefix(DebugSettings.debugSimulationMarker) == true,
+                      "Simulated detail must LEAD with the marker so it heads the alert body; got: \(detail ?? "nil")")
+        // Actionable: it must tell the reader where the toggle lives and how to stop it.
+        XCTAssertTrue(detail?.contains("Developer Settings") == true,
+                      "Banner must name Developer Settings so QA can find the toggle")
+        XCTAssertTrue(detail?.localizedCaseInsensitiveContains("not a real") == true,
+                      "Banner must state this is not a real failure")
+    }
+
+    // SRS: the banner is additive — the original realistic detail is preserved
+    // below it, so QA can still preview what the genuine error copy looks like.
+    func testCreateSimulatedBorrowError_preservesOriginalDetailBelowBanner() {
+        settings.simulatedBorrowError = .genericServerError
+        let originalDetail = DebugSettings.SimulatedBorrowError.genericServerError.problemDocument?.detail
+        let markedDetail = settings.createSimulatedBorrowError()?.problemDocument.detail
+
+        XCTAssertNotNil(originalDetail)
+        XCTAssertTrue(markedDetail?.contains(originalDetail!) == true,
+                      "The genuine detail copy must survive beneath the banner for QA preview")
+    }
+
+    // SRS: the problem-document title is marked too, so the "Palace Error Report"
+    // Title line and any title-driven UI reads as a simulation at a glance.
+    func testCreateSimulatedBorrowError_titleIsMarked() {
+        settings.simulatedBorrowError = .credentialsSuspended
+        let title = settings.createSimulatedBorrowError()?.problemDocument.title
+
+        XCTAssertNotNil(title)
+        XCTAssertTrue(title?.contains(DebugSettings.debugSimulationMarker) == true,
+                      "Simulated problem-document title must carry the debug marker")
+    }
+
+    // SRS: the marked error keeps its debug domain + simulated HTTP status so the
+    // report's Domain line and downstream status handling are unchanged.
+    func testCreateSimulatedBorrowError_keepsDebugDomainAndStatus() {
+        settings.simulatedBorrowError = .genericServerError
+        let result = settings.createSimulatedBorrowError()
+
+        XCTAssertEqual(result?.error.domain, "DebugSimulatedBorrowError")
+        XCTAssertEqual(result?.error.code, 500, "Generic server error must retain its 500 status")
+        XCTAssertEqual(result?.problemDocument.status, 500)
+    }
+
     // MARK: - Badge Logging
 
     // SRS: isBadgeLoggingEnabled defaults to false
