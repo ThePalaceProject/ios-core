@@ -21,6 +21,8 @@ import PalaceCatalog
 ///     and `sync`), and the reads that gate behaviour (e.g. `syncUrl != loansUrl`,
 ///     the duplicate-load guard) run on that same main queue. No write races
 ///     another write across threads.
+///   • `_needsRebuildFromServer` (the INV-1 rebuild flag) is guarded by its own
+///     `rebuildFlagLock`, so the disk-write queue can read/clear it race-free.
 ///
 /// Marking the type Sendable lets it be captured by the structured-concurrency
 /// (`Task { … }` / `await MainActor.run { … }`) closures in `sync(...)` without
@@ -69,6 +71,20 @@ final class BookRegistrySync: @unchecked Sendable {
 
   var syncUrl: URL?
   var loadingAccount: String?
+
+  /// INV-1 (Reliability WS-B): set true when `load` finds the registry file
+  /// corrupt/unrecoverable and leaves the in-memory shelf empty. While true,
+  /// `save(for:)`/`saveSync(for:)` refuse to persist an EMPTY snapshot over a
+  /// non-empty last-good `.bak` unless the save is marked server-authoritative
+  /// (`sync()`'s loans-feed reconciliation). Cleared by the next successful
+  /// non-empty or authoritative save. Lock-guarded so the disk-write queue can
+  /// read it race-free (the class is `@unchecked Sendable`).
+  private let rebuildFlagLock = NSLock()
+  private var _needsRebuildFromServer = false
+  var needsRebuildFromServer: Bool {
+    get { rebuildFlagLock.lock(); defer { rebuildFlagLock.unlock() }; return _needsRebuildFromServer }
+    set { rebuildFlagLock.lock(); defer { rebuildFlagLock.unlock() }; _needsRebuildFromServer = newValue }
+  }
 
   /// Resolved-on-demand accessors. Tests may inject closures returning
   /// fakes; production wires `AppContainer.production().downloadCenter`
@@ -142,11 +158,51 @@ final class BookRegistrySync: @unchecked Sendable {
       var orphanedBooksNeedingRedownload = [TPPBook]()
 
       var newRegistry = [String: TPPBookRegistryRecord]()
-      if FileManager.default.fileExists(atPath: url.path),
-         let data = try? Data(contentsOf: url),
-         let json = try? JSONSerialization.jsonObject(with: data) as? TPPBookRegistryData,
-         let records = json.array(for: .records) {
+      var needsRebuild = false
 
+      // Reliability WS-B / INV-1: distinguish an ABSENT registry file from an
+      // existing-but-CORRUPT one. The old code conflated both into a single
+      // `else` that silently zeroed the shelf, and the next save() then
+      // overwrote the (recoverable) corrupt file with a valid-but-empty one —
+      // erasing the patron's whole shelf on a single bad write. We now classify
+      // the bytes, quarantine a corrupt file (never destroy), and try the
+      // last-good `.bak` before falling back to empty + a rebuild flag.
+      let fileExists = FileManager.default.fileExists(atPath: url.path)
+      let fileData: Data? = fileExists ? try? Data(contentsOf: url) : nil
+      let classification: RegistryFileRecovery.Classification
+      if !fileExists {
+        classification = .empty
+      } else if let fileData {
+        classification = RegistryFileRecovery.classify(data: fileData)
+      } else {
+        // File exists but could not be read — treat as corrupt (recoverable).
+        classification = .corrupt
+      }
+
+      var recordsToParse: [TPPBookRegistryData]? = nil
+      switch classification {
+      case .valid(let records):
+        recordsToParse = records
+        if RegistryFileRecovery.needsMigration(data: fileData) {
+          Log.info(#file, "  Registry file is unversioned (legacy) — will migrate to schema v\(RegistryFileRecovery.currentSchemaVersion) on next save")
+        }
+      case .empty:
+        Log.info(#file, "  No existing registry file found — starting with an empty registry")
+      case .corrupt:
+        Log.error(#file, "  Registry file exists but is CORRUPT — quarantining (never overwriting/destroying)")
+        if let quarantined = RegistryFileRecovery.quarantine(corruptFileAt: url) {
+          Log.error(#file, "  Quarantined corrupt registry to \(quarantined.lastPathComponent)")
+        }
+        if let recovered = RegistryFileRecovery.recoverFromBackup(for: url) {
+          Log.info(#file, "  Recovered \(recovered.count) record(s) from last-good .bak backup")
+          recordsToParse = recovered
+        } else {
+          Log.error(#file, "  No usable .bak backup — leaving registry empty and flagging needsRebuildFromServer (next authenticated sync repopulates from the loans feed)")
+          needsRebuild = true
+        }
+      }
+
+      if let records = recordsToParse {
         Log.debug(#file, "  Found \(records.count) books in registry")
 
         for obj in records {
@@ -238,8 +294,6 @@ final class BookRegistrySync: @unchecked Sendable {
 
           newRegistry[record.book.identifier] = record
         }
-      } else {
-        Log.info(#file, "  No existing registry file found or failed to parse")
       }
 
       registry = newRegistry
@@ -259,6 +313,12 @@ final class BookRegistrySync: @unchecked Sendable {
         if self.loadingAccount == loadedAccount {
           self.loadingAccount = nil
         }
+
+        // INV-1: publish the rebuild flag on main (matches this class's
+        // main-thread-confinement invariant for its mutable state). While set,
+        // save() refuses to persist an empty snapshot over a non-empty backup
+        // until an authoritative server sync repopulates the shelf.
+        self.needsRebuildFromServer = needsRebuild
 
         callbacks.setState(.loaded)
         self.store.registrySubject.send(snapshot)
@@ -534,7 +594,10 @@ final class BookRegistrySync: @unchecked Sendable {
         }
 
         if changesMade {
-          self.save(for: accountUUID)
+          // Server-authoritative: this snapshot is the result of reconciling
+          // against the loans feed (guarded by shouldSkipBulkDeletion), so it is
+          // allowed to persist an empty shelf and it clears needsRebuildFromServer.
+          self.save(for: accountUUID, serverAuthoritative: true)
         }
 
         callbacks.setState(.synced)
@@ -552,18 +615,43 @@ final class BookRegistrySync: @unchecked Sendable {
   /// would persist A's state to B's registry file and cause cross-account
   /// contamination (PP-4129 regression).
   func save(for account: String) {
+    save(for: account, serverAuthoritative: false)
+  }
+
+  /// - Parameter serverAuthoritative: `true` only when the snapshot being
+  ///   persisted is the result of an authoritative server reconciliation
+  ///   (`sync()`'s loans-feed pass). An authoritative save may persist an empty
+  ///   registry (e.g. all loans genuinely returned) and clears
+  ///   `needsRebuildFromServer`. A non-authoritative save (local mutation,
+  ///   content validation) is REFUSED when it would overwrite a non-empty
+  ///   last-good `.bak` with an empty snapshot during the post-corrupt rebuild
+  ///   window (INV-1).
+  func save(for account: String, serverAuthoritative: Bool) {
     guard let registryUrl = registryUrl(for: account) else { return }
 
     let snapshot = store.registrySnapshot()
+    let isEmpty = snapshot.isEmpty
+    let needsRebuild = needsRebuildFromServer
     // Box the JSON payload so the `@Sendable` `diskWriteQueue.async` closure
-    // captures a Sendable value rather than the raw `[String: [[String: Any]]]`
-    // (non-Sendable because it holds `Any`). INVARIANT: the payload is built once
-    // here from a fresh snapshot and only ever READ inside the closure (serialized
-    // to JSON on `diskWriteQueue`), never mutated or shared — a write-once /
-    // read-once-off-thread handoff. Mirrors `SendableErrorDocument`.
-    let payload = SendableRegistryPayload(value: [TPPBookRegistryKey.records.rawValue: snapshot])
+    // captures a Sendable value rather than the raw `[String: Any]` (non-Sendable
+    // because it holds `Any`). INVARIANT: the payload is built once here from a
+    // fresh snapshot and only ever READ inside the closure (serialized to JSON on
+    // `diskWriteQueue`), never mutated or shared. Mirrors `SendableErrorDocument`.
+    let payload = SendableRegistryPayload(value: [
+      RegistryFileRecovery.schemaVersionKey: RegistryFileRecovery.currentSchemaVersion,
+      TPPBookRegistryKey.records.rawValue: snapshot
+    ])
 
-    diskWriteQueue.async {
+    diskWriteQueue.async { [self] in
+      // INV-1: during the post-corrupt-load rebuild window, only an authoritative
+      // server sync may persist an empty shelf. Refuse any other empty save — the
+      // corrupt original is quarantined and the last-good `.bak` (if present) still
+      // holds the shelf, so we must not overwrite the primary with an empty file
+      // before `sync()` repopulates from the loans feed.
+      if isEmpty, !serverAuthoritative, needsRebuild {
+        Log.error(#file, "INV-1: refusing to persist an EMPTY registry during rebuild window (no server authority) — backup non-empty: \(RegistryFileRecovery.backupHasRecords(for: registryUrl))")
+        return
+      }
       do {
         let directoryURL = registryUrl.deletingLastPathComponent()
         if !FileManager.default.fileExists(atPath: directoryURL.path) {
@@ -571,7 +659,16 @@ final class BookRegistrySync: @unchecked Sendable {
         }
         directoryURL.excludeFromBackup()
         let registryData = try JSONSerialization.data(withJSONObject: payload.value, options: .fragmentsAllowed)
+        // Refresh the last-good `.bak` BEFORE overwriting the primary, but only
+        // for a good snapshot (non-empty, or a server-authoritative empty) so a
+        // transient empty can never clobber the backup.
+        if !isEmpty || serverAuthoritative {
+          try? RegistryFileRecovery.writeBackup(data: registryData, for: registryUrl)
+        }
         try registryData.write(to: registryUrl, options: .atomic)
+        if !isEmpty || serverAuthoritative {
+          needsRebuildFromServer = false
+        }
         DispatchQueue.main.async {
           NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil, userInfo: nil)
         }
@@ -595,7 +692,12 @@ final class BookRegistrySync: @unchecked Sendable {
     // race). The in-memory snapshot is independent of disk-flush ordering, so
     // reading it here is behavior-equivalent for persistence.
     let snapshot = store.registrySnapshot()
-    let registryObject = [TPPBookRegistryKey.records.rawValue: snapshot]
+    let isEmpty = snapshot.isEmpty
+    let needsRebuild = needsRebuildFromServer
+    let registryObject: [String: Any] = [
+      RegistryFileRecovery.schemaVersionKey: RegistryFileRecovery.currentSchemaVersion,
+      TPPBookRegistryKey.records.rawValue: snapshot
+    ]
 
     // Serialize the disk write through `diskWriteQueue` so a sync save can't run
     // its `.atomic` rename-replace concurrently with an in-flight async write to
@@ -603,6 +705,13 @@ final class BookRegistrySync: @unchecked Sendable {
     // ALREADY executing on `diskWriteQueue`, run inline — a nested
     // `diskWriteQueue.sync` would deadlock against itself.
     let write = {
+      // INV-1: saveSync is teardown persistence (bookmarks/location), never a
+      // server reconciliation — so it is always non-authoritative. Refuse an
+      // empty snapshot over a non-empty backup during the rebuild window.
+      if isEmpty, needsRebuild {
+        Log.error(#file, "INV-1: refusing synchronous EMPTY registry save during rebuild window (backup non-empty: \(RegistryFileRecovery.backupHasRecords(for: registryUrl)))")
+        return
+      }
       do {
         let directoryURL = registryUrl.deletingLastPathComponent()
         if !FileManager.default.fileExists(atPath: directoryURL.path) {
@@ -610,7 +719,13 @@ final class BookRegistrySync: @unchecked Sendable {
         }
         directoryURL.excludeFromBackup()
         let registryData = try JSONSerialization.data(withJSONObject: registryObject, options: .fragmentsAllowed)
+        if !isEmpty {
+          try? RegistryFileRecovery.writeBackup(data: registryData, for: registryUrl)
+        }
         try registryData.write(to: registryUrl, options: .atomic)
+        if !isEmpty {
+          self.needsRebuildFromServer = false
+        }
         Log.debug(#file, "Synchronously saved registry to disk")
       } catch {
         Log.error(#file, "Error saving book registry synchronously: \(error.localizedDescription)")
@@ -748,10 +863,10 @@ struct SendableErrorDocument: @unchecked Sendable {
 
 /// Sendable carrier for the JSON registry payload that `save(for:)` hands to the
 /// `@Sendable` `diskWriteQueue.async` closure. The value is a
-/// `[String: [[String: Any]]]` (non-Sendable — holds `Any`) built once from a
+/// `[String: Any]` (non-Sendable — the `schemaVersion` Int and the `records` array, — holds `Any`) built once from a
 /// fresh in-memory snapshot and only ever READ (serialized to JSON) on the disk
 /// queue, never mutated or shared. `@unchecked` documents that write-once /
 /// read-off-thread confinement. Mirrors `SendableErrorDocument`.
 private struct SendableRegistryPayload: @unchecked Sendable {
-  let value: [String: [[String: Any]]]
+  let value: [String: Any]
 }
