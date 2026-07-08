@@ -21,3 +21,19 @@
 - **Wave B / PR2 (Network N1/N2)** — cache-clear split-brain routing; SoD review (touches SignInLogic + executor).
 - **Wave C / PR3 (critical_path D1/D2/D3)** — slim launch snapshot, credential-snapshot caching, first-run off-main decode; each needs architect Phase 1a + SoD.
 - **Tier 4** — OPDSFeedCache disk-persist + ETag (not contracted).
+
+---
+
+## Wave C (PR3) — D1 + D2 complete, dual-SoD approved
+
+- **D1 (launch snapshot):** slim sync hydration + off-main full decode; fixed a real ordering bug (eviction-marker clobbered by cancelled-fetch completion → awaitReady consumers stuck) via fetchCompletionMayWriteTerminal guard; F4 (reuse slim instance) + F5 (refresh slim on switch + full-hydrate fallback). Architect BLOCKED on F4/F5, both fixed + re-APPROVED (rev_89a182f5); QA APPROVED (rev_ad57b8d3).
+- **D2 (credential snapshot):** removed per-request keychain re-read (coherence via write-through + single-instance, verified); event-driven invalidation on sign-out + switch. Architect (rev_50928319) + QA (rev_45b56ca3) APPROVED; fixed a shared-singleton test-pollution bleed + a zero-tests -only-testing selector.
+- **Combined tests:** 44 pass, 0 failures (independently verified on sim 141BD227).
+- **D1 mutation (diff-only vs pre-Wave-C, AccountsManagerLaunchSnapshotTests):** 6 killed / 3 survived = **66.7%** (>50% critical-path threshold). Ordering-guard + F4/F5 + .detailsLoading-entry mutants all KILLED. Survivors: line 808 (`!=`→`==` account-switch guard) is D2's line — killed by D2's testAccountSwitch, out of this run's selector; lines 711/558 are minor carveSlimFeed boundary guards (malformed-no-id / empty-accounts edge cases, low-risk). D2 TPPUserAccount mutation: reviewer-verified mutant-kill (restore-per-read + no-op) per QA review; exact palace_mutate number deferrable to verify-pr --enforce-mutations.
+- **Sim safety:** all Wave-C builds on 141BD227; avoided 1C4E6D56 (pp4531) + 743E6F1D (live simdrive).
+
+## Wave C follow-ups (tracked, non-blocking)
+- F6: rapid A→B→A dedup-vs-cancel (pre-existing; slim drive widens window slightly).
+- D1 QA #2/#3: a consumer test that actually awaits awaitReady(); a direct slimSnapshotUUIDs() unit test.
+- Architect minor: clearCache() sweeps the slim file but not in-memory slimAccountsByUUID (self-healing).
+- D2 advisory: a future launch-migration that rewrites credential VALUES out-of-band must fire invalidateCredentialCaches().

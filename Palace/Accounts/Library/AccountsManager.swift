@@ -322,7 +322,7 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
     #if DEBUG
     /// Test-only opt-out from the post-init background `loadCatalogs` spawn.
     /// When `true`, `AccountsManager.init()` skips the
-    /// `DispatchQueue.global(qos: .background).async { loadCatalogs(...) }`
+    /// `DispatchQueue.global(qos: .utility).async { loadCatalogs(...) }`
     /// dispatch — eliminating the cross-test race where lingering background
     /// work from a previously-constructed AccountsManager instance writes
     /// through to `accountSets` / `AccountStateStore.shared` mid-test.
@@ -422,6 +422,28 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
     private let _trackedCrawlTasksLock = NSLock()
     private var _trackedCrawlTasks: [Task<Void, Never>] = []
 
+    /// Resolves the build-time bundled registry snapshot resource. Production
+    /// binds `Bundle.main`; tests inject a stub (`BundleResourceResolving`) to
+    /// observe the first-launch bundled decode's thread + invocation count
+    /// WITHOUT a `#if DEBUG` seam (mirrors `BundledRegistrySnapshot.load(resolver:)`,
+    /// which was designed for exactly this injection). Read on the first-run
+    /// decode task; never mutated in production.
+    var snapshotResourceResolver: BundleResourceResolving = Bundle.main
+
+    /// Test-observability: count of `fetchFromNetwork` entries. Incremented
+    /// only under XCTest (same env-var gate as `_trackCrawlTask` — no
+    /// `#if DEBUG`, so blast-radius BR-2 stays clean). Lets the first-run-decode
+    /// tests assert the network fetch STILL fires after the bundled snapshot
+    /// decode (the Phase 1a regression the naive dedupe would swallow) without
+    /// waiting on a live network round-trip.
+    private let _fetchFromNetworkCountLock = NSLock()
+    private var _fetchFromNetworkCount = 0
+    var fetchFromNetworkCountForTesting: Int {
+        _fetchFromNetworkCountLock.lock()
+        defer { _fetchFromNetworkCountLock.unlock() }
+        return _fetchFromNetworkCount
+    }
+
     /// Register a spawned background crawl task so `cancelBackgroundWork()` can
     /// cancel it. No-op outside an XCTest process.
     private func _trackCrawlTask(_ task: Task<Void, Never>) {
@@ -484,14 +506,16 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
         }
         // DEBUG-only arm: use `Task.detached` so the background work is
         // cancellable from `cancelBackgroundWork()` (called by
-        // `AppContainer._resetForTesting()`). Production continues to use
-        // `DispatchQueue.global(qos: .background).async` — byte-identical to
-        // the prior behaviour. swarm_4b64e4e0 Fix 2.
-        backgroundFetchTask = Task.detached(priority: .background) { [weak self] in
+        // `AppContainer._resetForTesting()`). Production uses
+        // `DispatchQueue.global(qos: .utility).async`. Both arms run at
+        // `.utility` (bumped from `.background` in CP-D3) so the cold-launch
+        // registry crawl is not starved behind lower-priority work — and so
+        // DEBUG tests exercise the same QoS as production. swarm_4b64e4e0 Fix 2.
+        backgroundFetchTask = Task.detached(priority: .utility) { [weak self] in
             self?.loadCatalogs(completion: nil)
         }
         #else
-        DispatchQueue.global(qos: .background).async { [weak self] in
+        DispatchQueue.global(qos: .utility).async { [weak self] in
             self?.loadCatalogs(completion: nil)
         }
         #endif
@@ -1121,38 +1145,58 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
             return
         }
 
-        // 2.5. No disk cache — try the build-time bundled snapshot for
-        // immediate library-picker display (PP-4258). The network fetch
-        // still runs to pick up anything that changed since the snapshot
-        // was cut, so this is purely a fast-path for cold first launch.
-        if let bundledData = BundledRegistrySnapshot.load() {
-            // Cooperative-cancel guard: if our enclosing Task was cancelled
-            // between the bundled-load decision and the disk write, skip the
-            // cache write. Mirrors the guard in `fetchFromNetwork` on the
-            // post-await branch. Without this, a cancelled background
-            // `loadCatalogs` Task can still race a fixture-seeded test:
-            // cancel→continue→write-bundled-snapshot overwrites the test's
-            // 171-account fixture with the 1142 bundled accounts on disk.
-            if Task.isCancelled { return }
-            Log.info(#file, "First launch — loading bundled registry snapshot for hash \(hash), dataSize=\(bundledData.count)")
-            // isBundled=true keeps the cache flagged as non-authoritative so
-            // every subsequent loadCatalogs call still triggers refresh until
-            // a real network response overwrites the metadata.
-            cacheAccountsCatalogData(bundledData, hash: hash, isBundled: true)
-            loadAccountSetsAndAuthDoc(fromCatalogData: bundledData, key: hash) { _ in
-                NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
-            }
-            // Fall through to the network fetch — the caller's completion
-            // fires when the fresh data arrives, not on the bundled load.
-        }
-
-        // 3. No cache or expired - must fetch from network
-        Log.debug(#file, "Loading catalogs from network for hash \(hash)…")
-
-        // dedupe concurrent loads
+        // 2.5 + 3. No disk cache: the build-time bundled snapshot fast-path
+        // (PP-4258) for immediate library-picker display, THEN the network
+        // fetch that supersedes it.
+        //
+        // SINGLE dedupe guard covering BOTH the bundled decode and the network
+        // fetch. It is placed ABOVE the bundled branch (so a concurrent second
+        // caller short-circuits HERE, before paying the ~2.4 MB bundled decode
+        // — the double-decode bug) and is deliberately NOT re-checked before
+        // `fetchFromNetwork` below. Re-checking there is the Phase 1a
+        // regression: the first caller would observe its OWN registration and
+        // `return` before the network ever fires, stranding the picker on
+        // stale bundled data until the next launch. The previous redundant
+        // guard immediately before `fetchFromNetwork` has been removed.
         if addLoadingHandler(for: hash, completion) { return }
 
-        fetchFromNetwork(targetUrl: targetUrl, hash: hash)
+        // Hop the bundled decode + network kickoff OFF the calling thread. On
+        // cold first launch `loadCatalogs` is reachable from
+        // `TPPAppDelegate.presentFirstRunFlowIfNeeded` (@MainActor); decoding
+        // the ~2.4 MB snapshot there would block the main thread. Runs at
+        // `.utility` (matching the init crawl arms) and is tracked via
+        // `_trackCrawlTask` so `cancelBackgroundWork()` cancels it — which
+        // keeps the `Task.isCancelled` guard below meaningful (mirrors the
+        // crawl tasks spawned inside `fetchFromNetwork`).
+        let firstRunTask = Task.detached(priority: .utility) { [weak self] in
+            guard let self = self else { return }
+
+            // 2.5. Bundled snapshot fast-path. The `Task.isCancelled` guard
+            // mirrors `fetchFromNetwork`'s post-await branch: a cancelled
+            // first-run task must not write the bundled bytes over a
+            // fixture-seeded test's on-disk cache.
+            if let bundledData = BundledRegistrySnapshot.load(resolver: self.snapshotResourceResolver),
+               !Task.isCancelled {
+                Log.info(#file, "First launch — loading bundled registry snapshot for hash \(hash), dataSize=\(bundledData.count)")
+                // isBundled=true keeps the cache flagged as non-authoritative so
+                // every subsequent loadCatalogs call still triggers refresh until
+                // a real network response overwrites the metadata.
+                self.cacheAccountsCatalogData(bundledData, hash: hash, isBundled: true)
+                self.loadAccountSetsAndAuthDoc(fromCatalogData: bundledData, key: hash) { _ in
+                    NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
+                }
+            }
+
+            // 3. Network fetch — ALWAYS fires (the bundled snapshot is a
+            // fast-path, not a replacement). The caller's completion is cleared
+            // on network completion via `callAndClearLoadingHandlers` inside
+            // `fetchFromNetwork`, NOT on the bundled load (whose completion
+            // above is `_ in`).
+            if Task.isCancelled { return }
+            Log.debug(#file, "Loading catalogs from network for hash \(hash)…")
+            self.fetchFromNetwork(targetUrl: targetUrl, hash: hash)
+        }
+        _trackCrawlTask(firstRunTask)
     }
 
     /// Fetches catalog data using the first-page fast path:
@@ -1160,6 +1204,16 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
     /// 2. Paginate remaining pages in background → update cache when done
     /// Falls back to a direct GET if even the first page fails.
     private func fetchFromNetwork(targetUrl: URL, hash: String) {
+        // Test-observability (env-gated, no-op outside XCTest — see
+        // `_fetchFromNetworkCount`): record that the network fetch fired so the
+        // first-run-decode tests can prove the bundled-snapshot dedupe did not
+        // swallow it (Phase 1a regression guard).
+        if Self._isRunningUnderXCTest {
+            _fetchFromNetworkCountLock.lock()
+            _fetchFromNetworkCount += 1
+            _fetchFromNetworkCountLock.unlock()
+        }
+
         // A developer-configured explicit registry URL is fetched verbatim via a
         // direct GET — no crawlable rewrite — so the exact endpoint (e.g. a bare
         // /libraries feed) is exercised. Gated behind a custom registry being set;
