@@ -450,7 +450,18 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     internal func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String, completionHandler: @escaping () -> Void) {
-        audiobookLifecycleManager.handleEventsForBackgroundURLSession(for: identifier, completionHandler: completionHandler)
+        // Reliability WS-A (INV-7): route the book download center's background
+        // session wake to MyBooksDownloadCenter — store its system completion
+        // handler (invoked once, then cleared, in urlSessionDidFinishEvents) and,
+        // by accessing `downloadCenter`, ensure its background session is
+        // instantiated so iOS reconnects and re-delivers the pending delegate
+        // callbacks. Every OTHER identifier keeps the byte-for-byte audiobook
+        // route.
+        if MyBooksDownloadCenter.isDownloadCenterBackgroundSession(identifier) {
+            AppContainer.production().downloadCenter.setBackgroundCompletionHandler(completionHandler)
+        } else {
+            audiobookLifecycleManager.handleEventsForBackgroundURLSession(for: identifier, completionHandler: completionHandler)
+        }
     }
 
     // MARK: - Scene Configuration

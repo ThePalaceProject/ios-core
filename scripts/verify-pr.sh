@@ -450,6 +450,26 @@ else
   record "blast_radius" "pass" "check-blast-radius.py not found (skipped)"
 fi
 
+# Repo rule: never commit code-signing info (team ID / provisioning profile) and
+# never add Automatic signing. Diff-based. See `scripts/check-no-committed-signing.sh`.
+echo "--- Committed-signing ---"
+if [ "$MUTATION_ONLY" = "true" ]; then
+  record "committed_signing" "pass" "Skipped (--mutation-only)"
+elif [ -f scripts/check-no-committed-signing.sh ]; then
+  NS_DIFF=$(mktemp -t ns-diff.XXXX)
+  git diff "$BASE"...HEAD > "$NS_DIFF" 2>/dev/null || true
+  NS_OUT=$(bash scripts/check-no-committed-signing.sh "$NS_DIFF" 2>&1)
+  NS_EXIT=$?
+  rm -f "$NS_DIFF"
+  if [ "$NS_EXIT" -eq 0 ]; then
+    record "committed_signing" "pass" "No committed signing info / Automatic style added"
+  else
+    record "committed_signing" "fail" "$(echo "$NS_OUT" | grep -m1 BLOCK)"
+  fi
+else
+  record "committed_signing" "pass" "check-no-committed-signing.sh not found (skipped)"
+fi
+
 # 3c. Adjacency staleness (M1 universal-rigor-floor gate, warn-only)
 # Greps comments in the surviving codebase for references to removed/renamed
 # declarations in the diff. Always passes; counts warnings.

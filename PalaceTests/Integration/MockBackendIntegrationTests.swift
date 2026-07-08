@@ -206,3 +206,74 @@ final class MockBackendRouteMatchingTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(env.scenario.routes.count, 5)
     }
 }
+
+// MARK: - Holds (Reserved + Ready)
+
+/// Exercises the `holds_reserved` scenario: the mock backend serves a
+/// loans/holds feed with one reserved hold (queue position 3 of 8) plus one
+/// ready-to-borrow hold, so the populated Holds tab can be tested without real
+/// limited-copy inventory.
+final class MockBackendHoldsTests: XCTestCase {
+
+    private var env: MockBackendEnvironment!
+    private let loansURL = URL(string: "https://gorgon.staging.palaceproject.io/a1qa-test/loans")!
+
+    override func setUp() async throws {
+        try await super.setUp()
+        env = try MockBackendTestHelper.activate(scenario: "holds_reserved")
+    }
+
+    override func tearDown() {
+        MockBackendTestHelper.deactivate()
+        env = nil
+        super.tearDown()
+    }
+
+    func testHoldsScenario_LoansFeed_ServesReservedAndReadyEntries() async throws {
+        let (data, status) = try await env.fetchWithStatus(loansURL)
+        XCTAssertEqual(status, 200)
+
+        guard let xml = TPPXML.xml(withData: data), let feed = TPPOPDSFeed(xml: xml) else {
+            return XCTFail("Holds feed did not parse as OPDS")
+        }
+        XCTAssertEqual(feed.entries.count, 2)
+        XCTAssertEqual(feed.entries[0].title, "The Glass Menagerie Reimagined")
+        XCTAssertEqual(feed.entries[1].title, "Quantum Cooking: Science in the Kitchen")
+    }
+
+    func testHoldsScenario_ReservedEntry_ExposesQueuePosition() async throws {
+        let (data, _) = try await env.fetchWithStatus(loansURL)
+        guard let xml = TPPXML.xml(withData: data), let feed = TPPOPDSFeed(xml: xml),
+              let reserved = feed.entries.first?.acquisitions.first else {
+            return XCTFail("Reserved acquisition missing from holds feed")
+        }
+        var isReserved = false
+        var holdPosition: UInt = 0
+        reserved.availability.match(
+            unavailable: nil,
+            limited: nil,
+            unlimited: nil,
+            reserved: { isReserved = true; holdPosition = $0.holdPosition },
+            ready: nil
+        )
+        XCTAssertTrue(isReserved, "First hold entry must be reserved (queued)")
+        XCTAssertEqual(holdPosition, 3, "Queue position must be 3 of 8")
+    }
+
+    func testHoldsScenario_ReadyEntry_HasReadyAvailability() async throws {
+        let (data, _) = try await env.fetchWithStatus(loansURL)
+        guard let xml = TPPXML.xml(withData: data), let feed = TPPOPDSFeed(xml: xml),
+              feed.entries.count >= 2 else {
+            return XCTFail("Ready hold entry missing from holds feed")
+        }
+        var isReady = false
+        feed.entries[1].acquisitions[0].availability.match(
+            unavailable: nil,
+            limited: nil,
+            unlimited: nil,
+            reserved: nil,
+            ready: { _ in isReady = true }
+        )
+        XCTAssertTrue(isReady, "Second hold entry must be ready-to-borrow")
+    }
+}

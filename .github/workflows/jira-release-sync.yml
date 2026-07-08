@@ -109,14 +109,40 @@ jobs:
             exit 0
           fi
           echo "Found tickets: $KEYS"
+          added=0; skipped=0; failed=0
           for KEY in $KEYS; do
-            echo "Updating fixVersion on $KEY..."
-            curl -s --fail -X PUT \
+            # Guard against release-notes over-inclusion (see
+            # docs/architecture/release-merge-policy.md + the wall-failure entry):
+            # ReleaseNotes.py collects every PP key mentioned in any commit since
+            # the last tag, so a merge commit sweeps in tickets that already
+            # shipped in an EARLIER iOS release. Stamping those with the new
+            # fixVersion corrupts release reporting. Skip any ticket that already
+            # carries a different "iOS *" fixVersion — it was attributed to an
+            # earlier release and is a re-mention, not new work in this one.
+            EXISTING=$(curl -s --fail \
+              --url "${JIRA_URL}/rest/api/3/issue/$KEY?fields=fixVersions" \
+              --user "${JIRA_EMAIL}:${JIRA_API_TOKEN}" \
+              --header 'Accept: application/json' \
+              | jq -r '.fields.fixVersions[]?.name' 2>/dev/null) || EXISTING=""
+            PRIOR_IOS=$(printf '%s\n' "$EXISTING" | grep -E '^iOS ' | grep -vxF "$RELEASE_NAME" || true)
+            if [ -n "$PRIOR_IOS" ]; then
+              echo "Skipping $KEY — already shipped in: $(printf '%s' "$PRIOR_IOS" | tr '\n' ',' | sed 's/,$//')"
+              skipped=$((skipped + 1))
+              continue
+            fi
+            echo "Adding $RELEASE_NAME to $KEY..."
+            if curl -s --fail -X PUT \
               --url "${JIRA_URL}/rest/api/3/issue/$KEY" \
               --user "${JIRA_EMAIL}:${JIRA_API_TOKEN}" \
               --header 'Accept: application/json' \
               --header 'Content-Type: application/json' \
               --data "$(jq -n --arg name "$RELEASE_NAME" '{
                 update: { fixVersions: [{ add: { name: $name } }] }
-              }')" || echo "Warning: failed to update $KEY"
+              }')"; then
+              added=$((added + 1))
+            else
+              echo "Warning: failed to update $KEY"
+              failed=$((failed + 1))
+            fi
           done
+          echo "fixVersion sync summary: added=$added skipped(already-shipped)=$skipped failed=$failed"

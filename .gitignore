@@ -141,3 +141,10 @@ scripts/tests/__pycache__/
 
 # Regression-rebuild campaign run artifacts (generated, never committed)
 .regression-runs/
+
+# Code signing — provide team ID / provisioning locally, never commit (repo rule).
+# See scripts/check-no-committed-signing.sh.
+*.local.xcconfig
+Signing.local.xcconfig
+*.mobileprovision
+*.p12

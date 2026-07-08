@@ -111,6 +111,21 @@ actor DownloadErrorRecovery {
             }
         )
 
+        /// Retry policy for the plain CONTENT transfer (the URLSession bytes
+        /// download), added for Reliability WS-A. Reuses `default`'s NSURLError
+        /// classifier verbatim — it already refuses auth / 404 / bad-URL /
+        /// file-permission / no-permissions errors and admits transient network
+        /// failures — so a transient transfer blip retries with backoff while a
+        /// non-transient failure fails fast into the existing alert path. INV-6:
+        /// this governs the content transfer only; DRM fulfillment is untouched.
+        static let downloadTransfer = RetryPolicy(
+            maxAttempts: 3,
+            baseDelay: 2.0,
+            maxDelay: 30.0,
+            overallTimeout: 120.0,
+            shouldRetry: RetryPolicy.default.shouldRetry
+        )
+
         /// Retry policy for borrow operations — tolerant of slow servers (hold notifications
         /// can fire before the loan is fully ready on the CM side).
         static let borrowOperation = RetryPolicy(

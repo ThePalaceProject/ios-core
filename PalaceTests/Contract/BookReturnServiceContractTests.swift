@@ -64,7 +64,8 @@ final class BookReturnServiceContractTests: XCTestCase {
             bookmarkDeletionLog: bookmarkLog,
             reauthenticator: reauth,
             userRetryTracker: retryTracker,
-            userAccountProvider: { [unowned self] in self.userAccount }
+            userAccountProvider: { [unowned self] in self.userAccount },
+            offlineReturnEnqueuer: { _ in } // test isolation: never touch OfflineQueueService.shared
         )
         #else
         service = BookReturnService(
@@ -75,7 +76,8 @@ final class BookReturnServiceContractTests: XCTestCase {
             bookmarkDeletionLog: bookmarkLog,
             reauthenticator: reauth,
             userRetryTracker: retryTracker,
-            userAccountProvider: { [unowned self] in self.userAccount }
+            userAccountProvider: { [unowned self] in self.userAccount },
+            offlineReturnEnqueuer: { _ in } // test isolation: never touch OfflineQueueService.shared
         )
         #endif
         service.delegate = purgeDelegate
@@ -220,6 +222,45 @@ final class BookReturnServiceContractTests: XCTestCase {
         await fulfillment(of: [exp], timeout: 2.0)
 
         ContractSnapshot.assert(log, named: "genericError_announcesFailure")
+    }
+
+    // MARK: - Offline return -> enqueue (INV-3)
+
+    /// A genuine offline (`NSURLError`) revoke failure enqueues the return
+    /// and performs NO local cleanup. The contract must show the enqueue
+    /// and must NOT contain `localContent.deleteLocalContent`,
+    /// `registry.setState`, or `registry.removeBook` — the client stays
+    /// consistent with the server until the queued return is confirmed.
+    func test_returnBook_offlineError_enqueues_noLocalCleanup() async throws {
+        let book = Self.makeBook(identifier: "RET-OFFLINE",
+                                 revokeURL: URL(string: "http://example.com/revoke")!)
+        registry.addBookStub(book, state: .downloadSuccessful)
+
+        let log = self.log!
+        let offlineService = BookReturnService(
+            bookRegistry: registry,
+            localContentService: localContent,
+            opdsFeedService: feedFetcher,
+            downloadAnnouncementService: announce,
+            bookmarkDeletionLog: bookmarkLog,
+            reauthenticator: reauth,
+            userRetryTracker: retryTracker,
+            userAccountProvider: { [unowned self] in self.userAccount },
+            offlineReturnEnqueuer: { action in
+                log.record("queue.enqueue",
+                           args: ["type": action.type.rawValue, "bookId": action.bookID])
+            }
+        )
+        offlineService.delegate = purgeDelegate
+
+        feedFetcher.stubbedError = NSError(domain: NSURLErrorDomain,
+                                           code: NSURLErrorNotConnectedToInternet)
+
+        let exp = expectation(description: "completion")
+        offlineService.returnBook(withIdentifier: book.identifier) { exp.fulfill() }
+        await fulfillment(of: [exp], timeout: 3.0)
+
+        ContractSnapshot.assert(log, named: "offlineError_enqueues_noLocalCleanup")
     }
 
     // MARK: - Helpers

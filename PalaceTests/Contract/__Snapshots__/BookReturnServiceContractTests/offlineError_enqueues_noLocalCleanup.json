@@ -1,0 +1,29 @@
+[
+  {
+    "args" : {
+      "bookId" : "RET-OFFLINE"
+    },
+    "method" : "announce.returnStarted"
+  },
+  {
+    "args" : {
+      "bookId" : "RET-OFFLINE",
+      "processing" : "true"
+    },
+    "method" : "registry.setProcessing"
+  },
+  {
+    "args" : {
+      "bookId" : "RET-OFFLINE",
+      "processing" : "false"
+    },
+    "method" : "registry.setProcessing"
+  },
+  {
+    "args" : {
+      "bookId" : "RET-OFFLINE",
+      "type" : "return"
+    },
+    "method" : "queue.enqueue"
+  }
+]

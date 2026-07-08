@@ -2105,4 +2105,60 @@ final class MyBooksViewModelFacetPublisherTests: XCTestCase {
         viewModel.facetViewModel.activeSort = .title
         XCTAssertEqual(viewModel.activeFacetSort, .title)
     }
+
+    // MARK: - INV-2: offline eviction guard (Reliability WS-C)
+
+    /// The headline invariant. An expired-by-cached-`until` downloaded book
+    /// must NOT be deleted or unregistered while offline — the loans feed
+    /// can't be consulted, so the cached `until` is not authoritative.
+    func testLoadData_offline_doesNotDeleteExpiredLocalContent() {
+        let mock = TPPBookRegistryMock()
+        let past = Date(timeIntervalSinceNow: -100_000)
+        let expired = TPPBookMocker.mockBookWithLimitedAvailability(
+            identifier: "exp-off", until: past, title: "Expired Offline")
+        mock.myBooks = [expired]
+        mock.addBook(expired, state: .downloadSuccessful)
+        let appContainer = makeTestAppContainer()
+
+        // Precondition: the book is genuinely expired by its cached `until`.
+        XCTAssertTrue(expired.isExpired)
+
+        // Constructing the VM offline runs loadData() through the eviction gate.
+        let vm = MyBooksViewModel(
+            bookRegistry: mock,
+            accountsManager: appContainer.accountsManager,
+            settings: TPPSettings(),
+            downloadCenter: appContainer.downloadCenter,
+            isUserAuthorizedForRegistry: { true },
+            isOnline: { false })
+
+        XCTAssertNotEqual(mock.state(for: "exp-off"), .unregistered,
+            "INV-2: an offline expired book must NOT be unregistered")
+        XCTAssertTrue(vm.books.contains { $0.identifier == "exp-off" },
+            "INV-2: an offline expired book stays visible/readable in My Books")
+    }
+
+    /// Contrast: online + well past the grace window, eviction proceeds as
+    /// before (the loan is provably over).
+    func testLoadData_onlinePastGrace_evictsExpiredContent() {
+        let mock = TPPBookRegistryMock()
+        let past = Date(timeIntervalSinceNow: -100_000) // far past the 5-min grace
+        let expired = TPPBookMocker.mockBookWithLimitedAvailability(
+            identifier: "exp-on", until: past, title: "Expired Online")
+        mock.myBooks = [expired]
+        mock.addBook(expired, state: .downloadSuccessful)
+        let appContainer = makeTestAppContainer()
+
+        let vm = MyBooksViewModel(
+            bookRegistry: mock,
+            accountsManager: appContainer.accountsManager,
+            settings: TPPSettings(),
+            downloadCenter: appContainer.downloadCenter,
+            isUserAuthorizedForRegistry: { true },
+            isOnline: { true })
+
+        XCTAssertEqual(mock.state(for: "exp-on"), .unregistered,
+            "online + past grace: the confirmed-expired book is evicted")
+        XCTAssertFalse(vm.books.contains { $0.identifier == "exp-on" })
+    }
 }
