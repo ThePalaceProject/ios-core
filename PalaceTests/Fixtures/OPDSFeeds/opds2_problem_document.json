@@ -1,0 +1,7 @@
+{
+  "type": "http://librarysimplified.org/terms/problem/loan-already-exists",
+  "title": "Loan Already Exists",
+  "status": 409,
+  "detail": "This patron already has a loan for the requested item.",
+  "instance": "https://example.org/instance/abc-123"
+}

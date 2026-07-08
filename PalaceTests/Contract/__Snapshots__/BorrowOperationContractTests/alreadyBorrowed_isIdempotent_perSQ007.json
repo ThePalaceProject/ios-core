@@ -1,0 +1,10 @@
+[
+  {
+    "args" : {
+      "resetCache" : "true",
+      "url" : "SQ007-BOOK",
+      "useToken" : "true"
+    },
+    "method" : "fetchBook"
+  }
+]

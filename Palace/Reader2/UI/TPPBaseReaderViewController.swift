@@ -16,6 +16,20 @@ import ReadiumShared
 import Combine
 import PalaceLogging
 
+/// Bridges Readium's `Navigator` (which has a `go(to:options:)` method)
+/// to our internal `NavigatorGoTo` testing seam, used by
+/// `ReaderInitialLocationNavigator` to gate the initial restore call.
+/// `Navigator` is already `@MainActor`-bound in Readium 3.x.
+private final class GoToNavigatorAdapter: NavigatorGoTo {
+    private let navigator: UIViewController & Navigator
+    init(_ navigator: UIViewController & Navigator) {
+        self.navigator = navigator
+    }
+    func go(to locator: Locator, options: NavigatorGoOptions) async -> Bool {
+        await navigator.go(to: locator, options: options)
+    }
+}
+
 /// This class is meant to be subclassed by each publication format view controller. It contains the shared behavior, eg. navigation bar toggling.
 class TPPBaseReaderViewController: UIViewController, Loggable {
     typealias DisplayStrings = Strings.TPPBaseReaderViewController
@@ -45,6 +59,17 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     private var isShowingSample: Bool = false
     private var initialLocation: Locator?
     private var subscriptions: Set<AnyCancellable> = []
+
+    /// P0 #3: gates the initial `navigator.go(to:)` call behind a
+    /// WKWebView-ready signal. See `ReaderInitialLocationNavigator` for
+    /// the rationale — the prior unguarded `Task { go }` raced first
+    /// paint and occasionally dropped the patron at chapter 1.
+    private let initialLocationGate: ReaderInitialLocationNavigator
+
+    /// Strong-held adapter that bridges `Navigator` to `NavigatorGoTo`.
+    /// The gate holds a weak ref so the adapter must outlive it; the VC
+    /// is the natural owner of both.
+    private var initialNavigatorAdapter: GoToNavigatorAdapter?
 
     /// When `true`, the legacy `VisualNavigatorDelegate.didTapAt` is skipped.
     /// Subclasses using Readium's input observer system (`.tap` observer,
@@ -88,6 +113,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
         self.publication = publication
         self.isShowingSample = forSample
         self.initialLocation = initialLocation
+        self.initialLocationGate = ReaderInitialLocationNavigator(initialLocation: initialLocation)
 
         lastReadPositionPoster = TPPLastReadPositionPoster(
             book: book,
@@ -216,11 +242,15 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
         // Accessibility
         updateViewsForVoiceOver(isRunning: UIAccessibility.isVoiceOverRunning)
 
-        if let initialLocation = initialLocation {
-            Task {
-                await navigator.go(to: initialLocation)
-            }
-        }
+        // P0 #3: hand the navigator to the gate. The actual `go(to:)`
+        // fires from `viewDidAppear` via `signalReady()`, by which time
+        // the WKWebView has reported first paint and the navigator's
+        // location-mapping table is populated. Going earlier (as the
+        // prior `viewDidLoad` Task did) raced layout and occasionally
+        // landed the patron at chapter 1.
+        let adapter = GoToNavigatorAdapter(navigator)
+        initialNavigatorAdapter = adapter
+        initialLocationGate.attach(navigator: adapter)
     }
 
     private func setupStackView() {
@@ -288,7 +318,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
         super.viewDidAppear(animated)
         accessibilityToolbar.accessibilityElementsHidden = false
 
-        // PP-4326 follow-up (product requirement): when a book is opened
+        // follow-up (product requirement): when a book is opened
         // with VoiceOver already running, the reader navbar (back / TOC /
         // bookmark / settings) must auto-present. `updateNavigationBar()`
         // checks `UIAccessibility.isVoiceOverRunning` and sets the navbar
@@ -308,6 +338,13 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
             self?.configureScrollViewInsets()
         }
 
+        // P0 #3: trip the initial-location gate. By viewDidAppear, the
+        // navigation controller has fully integrated this VC and the
+        // WKWebView's first paint is complete (Readium's onLoad observer
+        // has fired by then). Safe to navigate to the saved location now.
+        // The gate latches internally — repeated viewDidAppear calls
+        // (e.g. modal dismissals) won't re-trigger the restore.
+        initialLocationGate.signalReady()
     }
 
     override func viewWillDisappear(_ animated: Bool) {

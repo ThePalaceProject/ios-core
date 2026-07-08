@@ -1,26 +1,20 @@
 {
   "module": "Book",
-  "generated_at": "2026-05-12T16:15:16+00:00",
+  "generated_at": "2026-06-03T17:51:23+00:00",
   "file_count": 33,
-  "shared_singleton_reads": 32,
+  "shared_singleton_reads": 14,
   "public_types": [
     {
       "name": "ReservationDetails",
       "kind": "class",
       "file": "Models/TPPBook.swift",
-      "line": 664
+      "line": 697
     },
     {
       "name": "TPPBook",
       "kind": "class",
       "file": "Models/TPPBook.swift",
-      "line": 49
-    },
-    {
-      "name": "TPPBookCoverRegistryBridge",
-      "kind": "class",
-      "file": "Models/TPPBookCoverRegistry.swift",
-      "line": 488
+      "line": 50
     },
     {
       "name": "TPPBookLocation",
@@ -44,7 +38,7 @@
       "name": "func",
       "kind": "class",
       "file": "Models/TPPBook+Presentation.swift",
-      "line": 166
+      "line": 179
     }
   ],
   "objc_surface": [
@@ -64,7 +58,7 @@
       "name": "ReservationDetails",
       "kind": "class",
       "file": "Models/TPPBook.swift",
-      "line": 664
+      "line": 697
     },
     {
       "name": "TPPBook",
@@ -89,12 +83,6 @@
       "kind": "enum",
       "file": "Models/TPPContentType.swift",
       "line": 11
-    },
-    {
-      "name": "TPPBookCoverRegistryBridge",
-      "kind": "class",
-      "file": "Models/TPPBookCoverRegistry.swift",
-      "line": 488
     },
     {
       "name": "TPPBookDetailDownloadFailedView",
@@ -154,7 +142,7 @@
       "name": "acquisitions",
       "kind": "var",
       "file": "Models/TPPBook.swift",
-      "line": 50
+      "line": 51
     },
     {
       "name": "allBookStates",
@@ -166,43 +154,43 @@
       "name": "alternateURL",
       "kind": "var",
       "file": "Models/TPPBook.swift",
-      "line": 65
+      "line": 66
     },
     {
       "name": "analyticsURL",
       "kind": "var",
       "file": "Models/TPPBook.swift",
-      "line": 64
+      "line": 65
     },
     {
       "name": "annotationsURL",
       "kind": "var",
       "file": "Models/TPPBook.swift",
-      "line": 63
+      "line": 64
     },
     {
       "name": "audience",
       "kind": "var",
       "file": "Models/TPPBook.swift",
-      "line": 79
+      "line": 86
     },
     {
       "name": "authorLinkArray",
       "kind": "var",
       "file": "Models/TPPBook.swift",
-      "line": 476
+      "line": 490
     },
     {
       "name": "authorNameArray",
       "kind": "var",
       "file": "Models/TPPBook.swift",
-      "line": 472
+      "line": 486
     },
     {
       "name": "authors",
       "kind": "var",
       "file": "Models/TPPBook.swift",
-      "line": 480
+      "line": 494
     },
     {
       "name": "book",
@@ -214,13 +202,13 @@
       "name": "bookAuthors",
       "kind": "var",
       "file": "Models/TPPBook.swift",
-      "line": 51
+      "line": 52
     },
     {
       "name": "bookDuration",
       "kind": "var",
       "file": "Models/TPPBook.swift",
-      "line": 74
+      "line": 81
     },
     {
       "name": "bookState",
@@ -232,13 +220,13 @@
       "name": "bookTokenQueue",
       "kind": "var",
       "file": "Models/TPPBook.swift",
-      "line": 73
+      "line": 80
     },
     {
       "name": "bookWithMetadata",
       "kind": "func",
       "file": "Models/TPPBook.swift",
-      "line": 339
+      "line": 350
     },
     {
       "name": "cancel",
@@ -250,13 +238,13 @@
       "name": "categories",
       "kind": "var",
       "file": "Models/TPPBook.swift",
-      "line": 484
+      "line": 498
     },
     {
       "name": "categoryStrings",
       "kind": "var",
       "file": "Models/TPPBook.swift",
-      "line": 52
+      "line": 53
     },
     {
       "name": "configureFailMessage",
@@ -268,7 +256,7 @@
       "name": "contributors",
       "kind": "var",
       "file": "Models/TPPBook.swift",
-      "line": 72
+      "line": 79
     },
     {
       "name": "create",
@@ -280,25 +268,25 @@
       "name": "defaultAcquisition",
       "kind": "var",
       "file": "Models/TPPBook.swift",
-      "line": 492
+      "line": 506
     },
     {
       "name": "defaultAcquisitionIfBorrow",
       "kind": "var",
       "file": "Models/TPPBook.swift",
-      "line": 607
+      "line": 621
     },
     {
       "name": "defaultAcquisitionIfOpenAccess",
       "kind": "var",
       "file": "Models/TPPBook.swift",
-      "line": 611
+      "line": 625
     },
     {
       "name": "defaultBookContentType",
       "kind": "var",
       "file": "Models/TPPBook.swift",
-      "line": 615
+      "line": 629
     },
     {
       "name": "delegate",
@@ -310,7 +298,7 @@
       "name": "dictionaryRepresentation",
       "kind": "func",
       "file": "Models/TPPBook.swift",
-      "line": 432
+      "line": 445
     },
     {
       "name": "didChangePreferredContentSize",
@@ -322,157 +310,169 @@
       "name": "displayLanguage",
       "kind": "var",
       "file": "Models/TPPBook.swift",
-      "line": 467
+      "line": 481
     },
     {
       "name": "distributor",
       "kind": "var",
       "file": "Models/TPPBook.swift",
-      "line": 53
+      "line": 54
     },
     {
       "name": "getExpirationDate",
       "kind": "func",
       "file": "Models/TPPBook.swift",
-      "line": 518
+      "line": 532
     },
     {
       "name": "getReservationDetails",
       "kind": "func",
       "file": "Models/TPPBook.swift",
-      "line": 536
+      "line": 550
     },
     {
       "name": "handleBookRegistryChange",
       "kind": "func",
       "file": "UI/BookDetail/BookDetailViewModel.swift",
-      "line": 366
+      "line": 406
     },
     {
       "name": "handleDownloadStateDidChange",
       "kind": "func",
       "file": "UI/BookDetail/BookDetailViewModel.swift",
-      "line": 389
+      "line": 429
     },
     {
       "name": "hasDuration",
       "kind": "var",
       "file": "Models/TPPBook.swift",
-      "line": 101
+      "line": 108
     },
     {
       "name": "identifier",
       "kind": "var",
       "file": "Models/TPPBook.swift",
-      "line": 54
+      "line": 55
     },
     {
       "name": "imageThumbnailURL",
       "kind": "var",
       "file": "Models/TPPBook.swift",
-      "line": 56
+      "line": 57
     },
     {
       "name": "imageURL",
       "kind": "var",
       "file": "Models/TPPBook.swift",
-      "line": 55
+      "line": 56
     },
     {
       "name": "isAudiobook",
       "kind": "var",
       "file": "Models/TPPBook.swift",
-      "line": 97
+      "line": 104
+    },
+    {
+      "name": "isDRMProtected",
+      "kind": "var",
+      "file": "Models/TPPBook.swift",
+      "line": 666
     },
     {
       "name": "isExpired",
       "kind": "var",
       "file": "Models/TPPBook.swift",
-      "line": 513
+      "line": 527
     },
     {
       "name": "language",
       "kind": "var",
       "file": "Models/TPPBook.swift",
-      "line": 83
+      "line": 90
     },
     {
       "name": "mergingPreservingMetadata",
       "kind": "func",
       "file": "Models/TPPBook.swift",
-      "line": 383
+      "line": 395
     },
     {
       "name": "narrators",
       "kind": "var",
       "file": "Models/TPPBook.swift",
-      "line": 488
+      "line": 502
     },
     {
       "name": "ordinalString",
       "kind": "func",
       "file": "Models/TPPBook+Presentation.swift",
-      "line": 166
+      "line": 179
     },
     {
       "name": "pollAudiobookReadingLocation",
       "kind": "func",
       "file": "UI/BookDetail/BookDetailViewModel.swift",
-      "line": 1028
+      "line": 1082
     },
     {
       "name": "previewLink",
       "kind": "var",
       "file": "Models/TPPBook.swift",
-      "line": 67
+      "line": 68
     },
     {
       "name": "published",
       "kind": "var",
       "file": "Models/TPPBook.swift",
-      "line": 57
+      "line": 58
     },
     {
       "name": "publisher",
       "kind": "var",
       "file": "Models/TPPBook.swift",
-      "line": 58
+      "line": 59
     },
     {
       "name": "relatedWorksURL",
       "kind": "var",
       "file": "Models/TPPBook.swift",
-      "line": 66
+      "line": 67
     },
     {
       "name": "reportURL",
       "kind": "var",
       "file": "Models/TPPBook.swift",
-      "line": 70
+      "line": 77
     },
     {
       "name": "requiresAdobeDRM",
       "kind": "var",
       "file": "Models/TPPBook.swift",
-      "line": 635
+      "line": 649
     },
     {
       "name": "revokeURL",
       "kind": "var",
       "file": "Models/TPPBook.swift",
-      "line": 69
+      "line": 76
     },
     {
       "name": "sampleAcquisition",
       "kind": "var",
       "file": "Models/TPPBook.swift",
-      "line": 502
+      "line": 516
+    },
+    {
+      "name": "seriesName",
+      "kind": "var",
+      "file": "Models/TPPBook.swift",
+      "line": 75
     },
     {
       "name": "seriesURL",
       "kind": "var",
       "file": "Models/TPPBook.swift",
-      "line": 68
+      "line": 69
     },
     {
       "name": "stringValue",
@@ -496,31 +496,31 @@
       "name": "subtitle",
       "kind": "var",
       "file": "Models/TPPBook.swift",
-      "line": 59
+      "line": 60
     },
     {
       "name": "summary",
       "kind": "var",
       "file": "Models/TPPBook.swift",
-      "line": 60
+      "line": 61
     },
     {
       "name": "timeTrackingURL",
       "kind": "var",
       "file": "Models/TPPBook.swift",
-      "line": 71
+      "line": 78
     },
     {
       "name": "title",
       "kind": "var",
       "file": "Models/TPPBook.swift",
-      "line": 61
+      "line": 62
     },
     {
       "name": "updated",
       "kind": "var",
       "file": "Models/TPPBook.swift",
-      "line": 62
+      "line": 63
     },
     {
       "name": "voiceOverLabel",

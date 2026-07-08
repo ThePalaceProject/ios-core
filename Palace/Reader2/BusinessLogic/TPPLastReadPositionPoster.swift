@@ -7,11 +7,21 @@
 //
 
 import Foundation
+import PalaceReadingPosition
 import ReadiumShared
 
-/// A front-end to the Annotations API to post a new reading progress for a given book.
+/// A front-end to the position-write path that builds an EPUB-shaped
+/// `PositionSnapshot` and delegates to a `PositionWriter` for throttling,
+/// queuing, and background-task lifetime.
+///
+/// Throttle bookkeeping previously lived in this class (a serial
+/// `DispatchQueue` + `lastReadPositionUploadDate` + `queuedReadPosition`).
+/// As of the PalaceReadingPosition migration that state is owned by
+/// `RemotePositionWriter` and shared across EPUB, audiobook, and PDF.
 class TPPLastReadPositionPoster {
-    /// Interval used to throttle request submission.
+    /// Interval used to throttle request submission. Retained as a public
+    /// constant so `PalaceTests/Reader/EPUBPositionTests` can pin the
+    /// 15-second contract without reaching into the SPM.
     static let throttlingInterval: TimeInterval = 15.0
 
     // Models
@@ -20,30 +30,26 @@ class TPPLastReadPositionPoster {
 
     // External dependencies
     private let bookRegistryProvider: TPPBookRegistryProvider
-
-    // Internal state management
-    private var lastReadPositionUploadDate: Date
-    private var queuedReadPosition: Locator?
-    private let serialQueue = DispatchQueue(label: "\(Bundle.main.bundleIdentifier ?? "org.thepalaceproject.palace").lastReadPositionPoster", qos: .utility)
+    private let positionWriter: PositionWriter
+    private let deviceID: String
 
     init(book: TPPBook,
          publication: Publication,
-         bookRegistryProvider: TPPBookRegistryProvider) {
+         bookRegistryProvider: TPPBookRegistryProvider,
+         positionWriter: PositionWriter? = nil) {
         self.book = book
         self.publication = publication
         self.bookRegistryProvider = bookRegistryProvider
-        self.lastReadPositionUploadDate = Date()
-            .addingTimeInterval(-TPPLastReadPositionPoster.throttlingInterval)
-
-        NotificationCenter.default.addObserver(self,
-                                               selector: #selector(postQueuedReadPositionInSerialQueue),
-                                               name: UIApplication.willResignActiveNotification,
-                                               object: nil)
+        self.positionWriter = positionWriter ?? EPUBPositionWriterFactory.make(for: book)
+        self.deviceID = AnnotationDevice.currentID()
     }
 
     // MARK: - Storing
 
     /// Stores a new reading progress location on the server.
+    ///
+    /// Local save is synchronous; the server-side post is delegated to the
+    /// injected `PositionWriter`, which throttles and queues internally.
     /// - Parameter locator: The new local progress to be stored.
     func storeReadPosition(locator: Locator) {
         guard shouldStore(locator: locator) else { return }
@@ -52,45 +58,70 @@ class TPPLastReadPositionPoster {
         let location = TPPBookLocation(locator: locator, type: "LocatorHrefProgression", publication: publication)
         bookRegistryProvider.setLocation(location, forIdentifier: book.identifier)
 
-        // Queue posting of this position
-        postReadPosition(locator: locator)
+        guard let snapshot = makeSnapshot(from: locator) else { return }
+        Task { [positionWriter] in
+            _ = try? await positionWriter.save(snapshot)
+        }
     }
 
     /// Determines if a locator should be stored and posted.
-    private func shouldStore(locator: Locator) -> Bool {
-        let progression = locator.locations.totalProgression ?? 0
-        return progression > 0 || locator.locations.otherLocations["cssSelector"] != nil
-    }
-
-    /// Queues the read position for posting.
     ///
-    /// Requests are throttled to avoid excessive updates.
-    private func postReadPosition(locator: Locator) {
-        serialQueue.async { [weak self] in
-            guard let self = self else { return }
-
-            self.queuedReadPosition = locator
-
-            if Date() > self.lastReadPositionUploadDate.addingTimeInterval(TPPLastReadPositionPoster.throttlingInterval) {
-                self.postQueuedReadPosition()
-            }
+    /// Contract (P0 #1, swarm `swarm_f3b9b087`):
+    /// - **Reject** any locator with `totalProgression == nil`. Readium
+    ///   emits an initial locator-change *before* the WKWebView has
+    ///   laid out the document; `totalProgression` is nil at that point.
+    ///   Persisting that locator overwrites the patron's real saved
+    ///   position with pre-render junk and is the root cause of the
+    ///   "opens at chapter 1" regression.
+    /// - **Accept** any locator with `position` > 0 (PDF / fixed-layout
+    ///   EPUB page index — a legitimate anchor independent of
+    ///   continuous progression).
+    /// - **Accept** any locator with `totalProgression` > 0 (mid-book).
+    /// - **Accept** a locator with `totalProgression == 0.0` only when
+    ///   paired with a `cssSelector` — the selector pinpoints an
+    ///   in-chapter element (Readium-style CFI anchor), and the
+    ///   non-nil progression confirms the page has rendered.
+    /// - Otherwise reject.
+    private func shouldStore(locator: Locator) -> Bool {
+        // Reject pre-render junk: nil totalProgression means the WKWebView
+        // hasn't reported layout metrics yet.
+        guard let totalProgression = locator.locations.totalProgression else {
+            return false
         }
-    }
 
-    private func postQueuedReadPosition() {
-        guard let locator = self.queuedReadPosition, let selectorValue = locator.jsonString else { return }
-
-        TPPAnnotations.postReadingPosition(forBook: book.identifier,
-                                           selectorValue: selectorValue,
-                                           motivation: .readingProgress)
-
-        self.queuedReadPosition = nil
-        self.lastReadPositionUploadDate = Date()
-    }
-
-    @objc private func postQueuedReadPositionInSerialQueue() {
-        serialQueue.async { [weak self] in
-            self?.postQueuedReadPosition()
+        // Explicit positional anchor (PDF / fixed-layout EPUB page).
+        if let position = locator.locations.position, position > 0 {
+            return true
         }
+
+        // Mid-book continuous progression.
+        if totalProgression > 0 {
+            return true
+        }
+
+        // First-paint cssSelector anchor — selector is meaningful only
+        // when the page has actually rendered (totalProgression non-nil,
+        // verified by the guard above).
+        if locator.locations.otherLocations["cssSelector"] != nil {
+            return true
+        }
+
+        return false
     }
+
+    /// Serializes the Readium `Locator` into the wire-shaped DTO consumed
+    /// by `PositionWriter`. EPUB's payload is the Readium-locator JSON;
+    /// it round-trips through `TPPAnnotations.postReadingPosition`'s
+    /// existing `selectorValue` parameter.
+    private func makeSnapshot(from locator: Locator) -> PositionSnapshot? {
+        guard let selectorValue = try? locator.jsonString() else { return nil }
+        return PositionSnapshot(
+            bookID: book.identifier,
+            format: .epubLocator,
+            payload: Data(selectorValue.utf8),
+            timestamp: Date(),
+            device: deviceID
+        )
+    }
+
 }

@@ -14,6 +14,26 @@ import XCTest
 @MainActor
 final class AudiobookSessionStateTransitionTests: XCTestCase {
 
+    /// Locally-constructed session manager — Module B replaced the singleton,
+    /// so each test gets a fresh instance with no pollution to reset.
+    private var manager: AudiobookSessionManager!
+    /// Per-test isolated container — built via `makeTestAppContainer()` so
+    /// each test method gets a fresh service graph (no cross-test pollution
+    /// through `AppContainer._cached`).
+    private var appContainer: AppContainer!
+
+    override func setUp() async throws {
+        try await super.setUp()
+        appContainer = makeTestAppContainer()
+        manager = AudiobookSessionManager(appContainer: appContainer)
+    }
+
+    override func tearDown() async throws {
+        manager = nil
+        appContainer = nil
+        try await super.tearDown()
+    }
+
     // MARK: - State Enum Tests
 
     /// SRS: AUDIO-001 -- Playback state machine transitions correctly
@@ -103,11 +123,7 @@ final class AudiobookSessionStateTransitionTests: XCTestCase {
 
     /// SRS: AUDIO-001 -- Playback state machine transitions correctly
     @MainActor
-    func testSessionManager_initialState_isIdle() async {
-        let manager = AudiobookSessionManager.shared
-        // Reset to idle in case a previous test modified the singleton
-        await manager.stopPlayback(dismissPhoneUI: false)
-
+    func testSessionManager_initialState_isIdle() {
         XCTAssertEqual(manager.state, .idle)
         XCTAssertNil(manager.currentBook)
         XCTAssertFalse(manager.isPlaying)
@@ -119,7 +135,6 @@ final class AudiobookSessionStateTransitionTests: XCTestCase {
 
     /// SRS: AUDIO-001 -- Playback state machine transitions correctly
     func testSessionManager_play_withoutManager_doesNotCrash() {
-        let manager = AudiobookSessionManager.shared
         // Should be a no-op when no manager is bound
         manager.play()
         XCTAssertFalse(manager.isPlaying)
@@ -129,7 +144,6 @@ final class AudiobookSessionStateTransitionTests: XCTestCase {
 
     /// SRS: AUDIO-001 -- Playback state machine transitions correctly
     func testSessionManager_pause_withoutManager_doesNotCrash() {
-        let manager = AudiobookSessionManager.shared
         // Should be a no-op when no manager is bound
         manager.pause()
         XCTAssertFalse(manager.isPlaying)
@@ -139,7 +153,6 @@ final class AudiobookSessionStateTransitionTests: XCTestCase {
 
     /// SRS: AUDIO-001 -- Playback state machine transitions correctly
     func testSessionManager_togglePlayPause_withoutManager_doesNotCrash() {
-        let manager = AudiobookSessionManager.shared
         manager.togglePlayPause()
         XCTAssertFalse(manager.isPlaying)
         // State must remain idle after toggle without a manager
@@ -148,18 +161,27 @@ final class AudiobookSessionStateTransitionTests: XCTestCase {
 
     /// SRS: AUDIO-001 -- Playback state machine transitions correctly
     func testSessionManager_skipToChapter_withoutManager_doesNotCrash() {
-        let manager = AudiobookSessionManager.shared
-        // Should be a no-op with no manager
+        // Defensive contract: skipToChapter must be a no-op when there is no
+        // underlying audiobook manager. Pair-assert that state stays `.idle`
+        // AND that isPlaying does not spuriously flip to true (which would
+        // indicate the call went deeper than a guard early-return).
+        let initialState = manager.state
+        let initialPlaying = manager.isPlaying
+
         manager.skipToChapter(at: 0)
         manager.skipToChapter(at: -1)
         manager.skipToChapter(at: 999)
-        // State must remain idle after all skip calls
-        XCTAssertEqual(manager.state, .idle, "State must remain idle after skipToChapter calls without a manager")
+
+        XCTAssertEqual(manager.state, .idle,
+                       "State must remain idle after skipToChapter calls without a manager")
+        XCTAssertEqual(manager.state, initialState,
+                       "State must equal the initial state — skip is a no-op without a manager")
+        XCTAssertEqual(manager.isPlaying, initialPlaying,
+                       "isPlaying must not spuriously flip — skip-without-manager must early-return cleanly")
     }
 
     /// SRS: AUDIO-001 -- Playback state machine transitions correctly
     func testSessionManager_cyclePlaybackRate_withoutManager_returnsNormalTime() {
-        let manager = AudiobookSessionManager.shared
         let rate = manager.cyclePlaybackRate()
         XCTAssertEqual(rate, .normalTime, "Without a manager, should return normalTime")
         // Calling again must return the same value (deterministic for no-op case)
@@ -170,7 +192,6 @@ final class AudiobookSessionStateTransitionTests: XCTestCase {
 
     /// SRS: AUDIO-001 -- Playback state machine transitions correctly
     func testSessionManager_stopPlayback_resetsState() async {
-        let manager = AudiobookSessionManager.shared
         await manager.stopPlayback()
 
         XCTAssertEqual(manager.state, .idle)
@@ -186,7 +207,6 @@ final class AudiobookSessionStateTransitionTests: XCTestCase {
 
     /// SRS: AUDIO-001 -- Playback state machine transitions correctly
     func testSessionManager_updateCoverImage_setsImage() {
-        let manager = AudiobookSessionManager.shared
         let testImage = UIImage()
         manager.updateCoverImage(testImage)
         XCTAssertNotNil(manager.coverImage)
@@ -197,7 +217,6 @@ final class AudiobookSessionStateTransitionTests: XCTestCase {
 
     /// SRS: AUDIO-001 -- Playback state machine transitions correctly
     func testSessionManager_updateCoverImage_nil_clearsImage() {
-        let manager = AudiobookSessionManager.shared
         manager.updateCoverImage(UIImage())
         manager.updateCoverImage(nil)
         XCTAssertNil(manager.coverImage)
@@ -210,7 +229,6 @@ final class AudiobookSessionStateTransitionTests: XCTestCase {
 
     /// SRS: AUDIO-001 -- Playback state machine transitions correctly
     func testSessionManager_stopPlayback_publishesIdleState() async {
-        let manager = AudiobookSessionManager.shared
         var receivedStates: [AudiobookSessionState] = []
         let cancellable = manager.playbackStatePublisher
             .sink { state in

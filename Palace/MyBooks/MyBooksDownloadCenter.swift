@@ -10,12 +10,13 @@ import Foundation
 import UIKit
 import PalaceAudiobookToolkit
 import Combine
-
-#if FEATURE_OVERDRIVE
-import OverdriveProcessor
+import PalaceAuth
 import PalaceLogging
 import PalaceNetwork
 import PalaceCatalog
+
+#if FEATURE_OVERDRIVE
+import OverdriveProcessor
 #endif
 
 // DownloadCoordinator is defined in MyBooksDownloadQueue.swift
@@ -32,11 +33,40 @@ import PalaceCatalog
     /// account-scoped, not global).
     private let injectedUserAccount: TPPUserAccount?
 
+    /// Sentinel UUID for "no account selected" — captured at download-start
+    /// time when `currentAccountId` is nil so the rest of the path
+    /// deterministically resolves against the no-credentials placeholder
+    /// (rather than re-reading `currentUserAccount` and silently picking up
+    /// whatever account becomes current mid-flight).
+    ///
+    /// Kept lexically identical to `AccountsManager.noAccountSentinelUUID`
+    /// (private there) so `accountsManager.userAccount(for:)` returns the
+    /// same placeholder instance the resolver path would have returned.
+    static let capturedNoAccountSentinelUUID = "__no_account_selected__"
+
     /// The user account whose credentials should drive download requests.
     /// Always reflects the *current* account so library switches and fresh
     /// sign-ins propagate to in-flight download decisions.
+    ///
+    /// This is the legacy resolver-fallback path used by code that doesn't
+    /// have a captured accountId in scope. New code on the start-download /
+    /// bearer-auth path should call `userAccount(forCapturedId:)` with the
+    /// pinned id from `DownloadStartCoordinator.startDownloadAsync` instead
+    /// — that path is deterministic across library-swap windows.
     public var userAccount: TPPUserAccount {
         injectedUserAccount ?? accountsManager.currentUserAccount
+    }
+
+    /// Resolves the user account for a captured accountId — the deterministic
+    /// path that avoids `currentUserAccount`'s re-resolution window. Pass the
+    /// captured-at-start UUID; if `injectedUserAccount` is set (test seam),
+    /// it wins regardless. Returns the no-credentials placeholder when the
+    /// captured id is the sentinel and no real account is selected.
+    public func userAccount(forCapturedId capturedAccountId: String) -> TPPUserAccount {
+        if let injected = injectedUserAccount {
+            return injected
+        }
+        return accountsManager.userAccount(for: capturedAccountId)
     }
 
     private var reauthenticator: Reauthenticator
@@ -252,7 +282,26 @@ import PalaceCatalog
         // production background session is constructed as before — behavior
         // preserved exactly. When provided, the caller is responsible for
         // pointing the session's delegate at this instance.
-        urlSession: URLSession? = nil
+        urlSession: URLSession? = nil,
+        // Test seam: overrides the per-account content directory lookup.
+        // Production passes nil — `fileUrl(for:account:)` resolves through
+        // `BookFileManager.contentDirectoryURL(_:)` as it always has.
+        // Tests inject a closure returning a temp dir so synthetic test
+        // accounts (which don't have a real per-account App Support
+        // directory) can stage on-disk fixtures and observe the production
+        // file-URL contract — see `ColdStartResumeIntegrationTests`'
+        // "present file → .downloadSuccessful" promotion case.
+        // When `bookFileManager` is also injected, the explicit
+        // BookFileManager wins; this param only configures the default
+        // `BookFileManager` MBDC constructs when none is supplied.
+        directoryProvider: ((String?) -> URL?)? = nil,
+        // swarm_66819d80 Module C: AuthCoordinator from PalaceAuth.
+        // Production (AppContainer.production()) passes its constructed
+        // coordinator so BookReturnService can route 401/403 through the
+        // single seam. Optional so existing tests that construct MBDC
+        // manually keep compiling — they fall back to the legacy
+        // reauthenticator path until updated to inject a SpyAuthCoordinator.
+        authCoordinator: AuthCoordinator? = nil
     ) {
         self.injectedUserAccount = userAccount
         self.bookRegistry = bookRegistry
@@ -265,9 +314,13 @@ import PalaceCatalog
         // we just resolved — passing nil here uses those, avoiding a second
         // re-entrant AppContainer.production() lookup (the same cycle that
         // motivated AppContainer.production()'s explicit-deps comment).
+        // The `directoryProvider` seam (default nil) flows into the
+        // default-constructed BookFileManager so tests can override the
+        // per-account directory without standing up a custom BookFileManager.
         self.bookFileManager = bookFileManager ?? BookFileManager(
             bookRegistry: bookRegistry,
-            accountsManager: accountsManager
+            accountsManager: accountsManager,
+            directoryProvider: directoryProvider
         )
         // DiskBudgetManager pulls from the same registry + accounts manager
         // we just resolved AND shares the BookFileManager instance — so
@@ -290,6 +343,12 @@ import PalaceCatalog
         // deletion log / reauthenticator / retry tracker. The userAccount
         // provider closure preserves MBDC's just-in-time userAccount
         // resolution semantics across library switches.
+        //
+        // Resolver path (intentional): book return fires AFTER a user-
+        // initiated action against the currently-selected library — there
+        // is no "captured at download start" id to thread here. Closing the
+        // bearer-auth window for return is out-of-scope for Module A
+        // (the spurious-login-modal bug is mid-DOWNLOAD, not mid-return).
         let resolveAccountForReturn: () -> TPPUserAccount = {
             userAccount ?? accountsManager.currentUserAccount
         }
@@ -301,7 +360,12 @@ import PalaceCatalog
             bookmarkDeletionLog: bookmarkDeletionLog,
             reauthenticator: reauthenticator,
             userRetryTracker: userRetryTracker,
-            userAccountProvider: resolveAccountForReturn
+            userAccountProvider: resolveAccountForReturn,
+            // swarm_66819d80 Module C: forward the coordinator MBDC's init
+            // received so BookReturnService's auth-error branch routes
+            // through the single seam. Tests that construct MBDC without
+            // a coordinator fall back to the legacy reauthenticator path.
+            authCoordinator: authCoordinator
         )
         self.stateManager = stateManager
         // DownloadAlertPresenter built eagerly so `self` can wire as its
@@ -317,7 +381,13 @@ import PalaceCatalog
         // `self` can wire as their delegate after `super.init()`. Both default
         // to nil-init so callers (production + tests) can substitute mocks.
         self.tokenInterceptor = tokenInterceptor ?? TokenRefreshInterceptor(
-            reauthenticator: reauthenticator
+            reauthenticator: reauthenticator,
+            authCoordinator: authCoordinator,
+            // Foreign-host guard (PR #1018 cross-host regression fix —
+            // wall-failure 2026-06-05-pr1018-icarus-cross-host-logout.md).
+            currentAccountHostsProvider: {
+                AppContainer.production().accountsManager.currentAccount?.authSurfaceHosts
+            }
         )
         self.backgroundDownloadHandler = backgroundDownloadHandler ?? BackgroundDownloadHandler()
         // Parses URL session download completions before MBDC's per-
@@ -335,6 +405,12 @@ import PalaceCatalog
         // through the just-resolved accountsManager — same library-
         // switch semantics as the rest of MBDC. Adobe DRM service is
         // wired only when FEATURE_DRM_CONNECTOR is on.
+        //
+        // Resolver path (intentional): rights-management fires AFTER the
+        // download completes — bearer auth has already been applied at
+        // download START via the captured-accountId path. Re-resolution at
+        // rights-dispatch time correctly observes any sign-in refresh that
+        // landed during the download window.
         let resolveAccountForDispatcher: () -> TPPUserAccount = {
             userAccount ?? accountsManager.currentUserAccount
         }
@@ -420,6 +496,14 @@ import PalaceCatalog
         // closure resolves through `accountsManager.currentUserAccount` each
         // call so library switches mid-flow are observed correctly (matches
         // MBDC's `userAccount` computed property semantics).
+        //
+        // Resolver path (intentional): the auth retry handler fires AFTER a
+        // 401 on the captured-accountId download path. By the time it runs,
+        // either the user has refreshed credentials (resolver picks up the
+        // new token) or they've library-swapped (in which case the original
+        // download is intentionally abandoned and any retry should bind to
+        // the new current account). Threading the captured id here would
+        // pin the retry to a library the user has already abandoned.
         let resolveAccount: () -> TPPUserAccount = {
             userAccount ?? accountsManager.currentUserAccount
         }
@@ -428,7 +512,13 @@ import PalaceCatalog
             bookRegistry: bookRegistry,
             reauthenticator: reauthenticator,
             alertPresenter: self.alertPresenter,
-            userAccountProvider: resolveAccount
+            userAccountProvider: resolveAccount,
+            authCoordinator: authCoordinator,
+            // Foreign-host guard (PR #1018 cross-host regression fix —
+            // wall-failure 2026-06-05-pr1018-icarus-cross-host-logout.md).
+            currentAccountHostsProvider: {
+                AppContainer.production().accountsManager.currentAccount?.authSurfaceHosts
+            }
         )
         // DownloadThrottlingService shares the same DownloadStateManager
         // MBDC owns so cap + suspend/resume policy stays coherent with the
@@ -441,6 +531,14 @@ import PalaceCatalog
         // MBDC's `requestCredentialsAndStartDownload` so concurrent
         // sign-in modals across the borrow + start-download paths are
         // prevented at the source.
+        //
+        // Resolver path (intentional): the borrow error presenter, the
+        // sign-in redirect handler, the overdrive download handler, and
+        // the credential prompt coordinator all share this provider. They
+        // run BEFORE the download bearer-auth step or in response to a
+        // sign-in prompt — there is no captured-accountId pinning at the
+        // point these fire. Closing the auth-doc-fetch / re-borrow windows
+        // for these consumers is out-of-scope for Module A.
         let resolveAccountForBorrow: () -> TPPUserAccount = {
             userAccount ?? accountsManager.currentUserAccount
         }
@@ -497,7 +595,10 @@ import PalaceCatalog
             userAccountProvider: resolveAccountForBorrow,
             credentialRequestState: self.credentialRequestState,
             presentSignInModal: { completion in
-                SignInModalPresenter.presentSignInModalForCurrentAccount(completion: completion)
+                // swarm_d8f11437 Module A wave 4 — migrated to
+                // AppContainer-injected sheet presenter.
+                AppContainer.production().signInModalSheetPresenter
+                    .presentSignInModalForCurrentAccount(completion: completion)
             },
             isAdobeDRMExpired: {
                 #if FEATURE_DRM_CONNECTOR
@@ -530,13 +631,31 @@ import PalaceCatalog
         // overdrive handler when FEATURE_OVERDRIVE is on so its
         // distributor=Overdrive branch can dispatch without a back-
         // delegate hop into MBDC.
+        // Resolver path (intentional): DownloadStartDispatcher's
+        // userAccount provider drives the SAML-cookies branch +
+        // credential checks BEFORE the bearer-auth step. The bearer-auth
+        // step itself uses the captured accountId via `applyBearerAuth`
+        // (next closure) — that's the window the contract is closing.
+        // SAML cookies binding has its own per-session HTTPCookieStorage
+        // path and doesn't suffer the currentUserAccount swap window.
         let resolveAccountForDispatcher2: () -> TPPUserAccount = {
             userAccount ?? accountsManager.currentUserAccount
+        }
+        // Bearer-auth applier: routes through the executor's INSTANCE method
+        // `bearerAuthorized(request:accountId:)` so the captured accountId
+        // pins credentials to the originally-selected library — never
+        // re-resolves `currentUserAccount` mid-download. Test seam: the
+        // dispatcher tests pass a recorder closure that captures the
+        // accountId argument without standing up a real network executor.
+        let executorForBearer = self.networkExecutor
+        let applyBearerAuthForDispatcher: (URLRequest, String) -> URLRequest = { req, accountId in
+            return executorForBearer.bearerAuthorized(request: req, accountId: accountId)
         }
         let dispatcherReachability = reachability
         #if FEATURE_OVERDRIVE
         self.startDispatcher = startDispatcher ?? DownloadStartDispatcher(
             userAccountProvider: resolveAccountForDispatcher2,
+            applyBearerAuth: applyBearerAuthForDispatcher,
             settings: settings,
             isOnWiFi: { dispatcherReachability.isOnWiFi },
             memoryPressureMonitor: memoryPressureMonitor,
@@ -545,6 +664,7 @@ import PalaceCatalog
         #else
         self.startDispatcher = startDispatcher ?? DownloadStartDispatcher(
             userAccountProvider: resolveAccountForDispatcher2,
+            applyBearerAuth: applyBearerAuthForDispatcher,
             settings: settings,
             isOnWiFi: { dispatcherReachability.isOnWiFi },
             memoryPressureMonitor: memoryPressureMonitor
@@ -556,8 +676,22 @@ import PalaceCatalog
         // queueOrchestrator / credentialPromptCoordinator so the
         // coordinator can hold those concrete services directly
         // (smaller delegate surface than routing through MBDC).
+        // Resolver path (intentional): the coordinator's userAccount
+        // provider drives the loginRequired check BEFORE the bearer-auth
+        // step. The bearer-auth step itself uses the captured accountId
+        // (threaded via `processWithCredentials`). loginRequired needs the
+        // current account because the user's authentication state is
+        // what gates the credential-prompt branch — capturing pre-prompt
+        // would mean a fresh sign-in's credentials don't take effect.
         let resolveAccountForStart: () -> TPPUserAccount = {
             userAccount ?? accountsManager.currentUserAccount
+        }
+        // Capture-at-start seam: reads currentAccountId from the same
+        // accountsManager MBDC owns, evaluated lazily so each new
+        // startDownloadAsync sees the CURRENT current-account-id at its
+        // entry — pinning it for the rest of THAT download path.
+        let captureCurrentAccountId: () -> String? = {
+            accountsManager.currentAccountId
         }
         let coordinatorDispatcher = self.startDispatcher
         let coordinatorCredentialPrompt = self.credentialPromptCoordinator
@@ -565,13 +699,14 @@ import PalaceCatalog
             stateManager: stateManager,
             bookRegistry: bookRegistry,
             userAccountProvider: resolveAccountForStart,
+            currentAccountIdProvider: captureCurrentAccountId,
             errorActivityTracker: errorActivityTracker,
             queueOrchestrator: self.queueOrchestrator,
             processUnregistered: { book, location, loginRequired in
                 coordinatorDispatcher.processUnregisteredState(for: book, location: location, loginRequired: loginRequired)
             },
-            processWithCredentials: { book, state, request in
-                coordinatorDispatcher.processDownloadWithCredentials(for: book, withState: state, andRequest: request)
+            processWithCredentials: { book, state, request, capturedAccountId in
+                coordinatorDispatcher.processDownloadWithCredentials(for: book, withState: state, andRequest: request, capturedAccountId: capturedAccountId)
             },
             requestCredentials: { book in
                 coordinatorCredentialPrompt.requestCredentialsAndStartDownload(for: book)
@@ -613,6 +748,12 @@ import PalaceCatalog
         // retries), the TPPAlertUtils error-presentation path, the
         // SignInModalPresenter, and the OIDC silent-reauth web session.
         // Tests substitute simpler stubs.
+        // Resolver path (intentional): BorrowOperation owns the complete
+        // borrow lifecycle including OIDC silent reauth. The bearer-auth
+        // window on borrow OPDS fetches is its own (separate from the
+        // download bearer-auth window Module A closes). Threading a
+        // captured-accountId here would couple the borrow flow's mid-
+        // flight refresh semantics to the start-download capture seam.
         let resolveAccountForBorrowOp: () -> TPPUserAccount = {
             userAccount ?? accountsManager.currentUserAccount
         }
@@ -647,7 +788,10 @@ import PalaceCatalog
             )
         }
         let presentSignInModalClosure: @MainActor (@escaping () -> Void) -> Void = { completion in
-            SignInModalPresenter.presentSignInModalForCurrentAccount(completion: completion)
+            // swarm_d8f11437 Module A wave 4 — migrated to
+            // AppContainer-injected sheet presenter.
+            AppContainer.production().signInModalSheetPresenter
+                .presentSignInModalForCurrentAccount(completion: completion)
         }
         let attemptOIDCReauthClosure: () async -> Bool = {
             await BorrowOperation.attemptOIDCSilentReauth(userAccount: resolveAccountForBorrowOp())
@@ -664,7 +808,8 @@ import PalaceCatalog
             fetchBook: fetchBookClosure,
             presentBorrowErrorAlert: presentBorrowErrorAlertClosure,
             presentSignInModal: presentSignInModalClosure,
-            attemptOIDCReauth: attemptOIDCReauthClosure
+            attemptOIDCReauth: attemptOIDCReauthClosure,
+            authCoordinator: authCoordinator
         )
         #else
         self.borrowOperation = borrowOperation ?? BorrowOperation(
@@ -677,7 +822,8 @@ import PalaceCatalog
             fetchBook: fetchBookClosure,
             presentBorrowErrorAlert: presentBorrowErrorAlertClosure,
             presentSignInModal: presentSignInModalClosure,
-            attemptOIDCReauth: attemptOIDCReauthClosure
+            attemptOIDCReauth: attemptOIDCReauthClosure,
+            authCoordinator: authCoordinator
         )
         #endif
 
@@ -757,7 +903,7 @@ import PalaceCatalog
         // lives on the throttlingService which holds the handle for cleanup.
         self.throttlingService.setupNetworkMonitoring()
 
-        // PP-4114 follow-up: react to mid-flight reachability drops. PR #901
+        // follow-up: react to mid-flight reachability drops. PR #901
         // fixed the borrow path on BookCellModel; the parallel gap on this
         // side was that an in-progress URLSession download could sit in
         // flight for up to 60 s (per-request default) or longer (no resource
@@ -862,7 +1008,8 @@ import PalaceCatalog
             downloadAnnouncementService: appContainer.downloadAnnouncementService,
             opdsFeedService: appContainer.opdsFeedService,
             debugSettings: appContainer.debugSettings,
-            settings: appContainer.settings
+            settings: appContainer.settings,
+            authCoordinator: appContainer.authCoordinator
         )
     }
 
@@ -892,7 +1039,7 @@ import PalaceCatalog
         session?.invalidateAndCancel()
     }
 
-    // MARK: - Error Announcements (PP-3673)
+    // MARK: - Error Announcements
 
     /// Publishes an error to `downloadErrorPublisher` and simultaneously announces
     /// it via VoiceOver so assistive technology users hear the error without
@@ -929,7 +1076,7 @@ import PalaceCatalog
     // and the start-download path can't both fire concurrent sign-in modals.
 
     @objc func startDownload(for book: TPPBook, withRequest initedRequest: URLRequest? = nil) {
-        // PP-4114 follow-up: pre-flight reachability before kicking off a new
+        // follow-up: pre-flight reachability before kicking off a new
         // URLSession download task. The Retry button on the failure alert
         // routes through DownloadAlertPresenter.makeRetryAction → this method,
         // bypassing BookCellModel's pre-flight. Without this guard, tapping

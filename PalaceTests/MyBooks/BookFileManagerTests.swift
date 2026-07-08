@@ -112,9 +112,17 @@ final class BookFileManagerTests: XCTestCase {
     }
 
     func testFileUrl_byIdentifier_returnsNilWhenBookNotInRegistry() {
-        // Registry empty for "unknown-id"
+        // Registry empty for "unknown-id" — assert the precondition AND that
+        // the call doesn't accidentally register the book as a side-effect
+        // (a regression we explicitly want to catch — file-URL lookup must
+        // be a pure read, not a write).
+        XCTAssertNil(registry.book(forIdentifier: "unknown-id"),
+                     "Precondition: registry has no entry for 'unknown-id'")
         let url = sut.fileUrl(for: "unknown-id", account: testAccountId)
-        XCTAssertNil(url, "Unknown identifier must short-circuit to nil — never invent a file path for a book the registry doesn't know about.")
+        XCTAssertNil(url,
+                     "Unknown identifier must short-circuit to nil — never invent a file path for a book the registry doesn't know about.")
+        XCTAssertNil(registry.book(forIdentifier: "unknown-id"),
+                     "Postcondition: fileUrl(for:account:) must not auto-register the lookup — pure read, no side-effect")
     }
 
     // MARK: - fileUrl(for:account:) and fileUrl(for: TPPBook, account:) agree

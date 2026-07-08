@@ -25,9 +25,9 @@ extension AudioBookVendors {
     /// Update vendor's DRM key
     /// - Parameter completion: Completion
     func updateDrmCertificate(completion: ((_ error: Error?) -> Void)? = nil) {
+        // F-011 class-of-bug guard
         switch self {
         case .cantook: updateCantookDRMCertificate(completion: completion)
-        default: return
         }
     }
 

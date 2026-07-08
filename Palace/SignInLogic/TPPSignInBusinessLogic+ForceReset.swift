@@ -50,15 +50,31 @@ extension TPPSignInBusinessLogic {
     public static let nextOIDCSessionEphemeralKey =
         "PalaceForceReset.nextOIDCSessionEphemeral"
 
+    /// `UserDefaults` backing store for the one-shot ephemeral-session
+    /// flag. Production code reads `.standard` (the default); tests
+    /// swap a per-suite `UserDefaults(suiteName:)` for isolation and
+    /// restore the prior value in tearDown. There is NO fallback —
+    /// once swapped, every read/write goes through this property only.
+    ///
+    /// Why `static var` instead of an init parameter: this extension
+    /// adds two `static` methods (`consumeNextOIDCSessionEphemeralFlag`)
+    /// and one `instance` method (`performForceReset`) that all touch
+    /// the same flag, and Swift does not allow stored properties on
+    /// extensions — including init injection. A swappable `static var`
+    /// is the minimum-surface seam that lets both the static and
+    /// instance call sites share one backing store.
+    // PUBLIC_INTENT: swarm_cd181acd D-cleanup. Extension methods access UserDefaults via this property; static var is the only injectable seam (extensions can't have stored instance properties or init injection). Default `.standard` preserves all production callers.
+    public static var forceResetUserDefaults: UserDefaults = .standard
+
     /// Reads-and-clears the one-shot ephemeral-session flag. Returns true
     /// exactly once after `performForceReset` set it; subsequent reads
     /// return false until the next reset. The OIDC sign-in code calls this
     /// to decide whether to force `prefersEphemeralWebBrowserSession = true`
     /// for this single session, defeating Safari-shared-cookie reuse.
     @objc public static func consumeNextOIDCSessionEphemeralFlag() -> Bool {
-        let value = UserDefaults.standard.bool(forKey: nextOIDCSessionEphemeralKey)
+        let value = forceResetUserDefaults.bool(forKey: nextOIDCSessionEphemeralKey)
         if value {
-            UserDefaults.standard.removeObject(forKey: nextOIDCSessionEphemeralKey)
+            forceResetUserDefaults.removeObject(forKey: nextOIDCSessionEphemeralKey)
             Log.info(#file, "[RESET_ACCOUNT] consumed nextOIDCSessionEphemeral flag — next ASWebAuthenticationSession will use ephemeral cookies")
         }
         return value
@@ -126,7 +142,7 @@ extension TPPSignInBusinessLogic {
         // 5. Set the one-shot ephemeral-session flag for the next OIDC
         //    sign-in. Defeats Safari-shared-cookie reuse that otherwise
         //    survives app deletion for OIDC libraries.
-        UserDefaults.standard.set(true, forKey: Self.nextOIDCSessionEphemeralKey)
+        Self.forceResetUserDefaults.set(true, forKey: Self.nextOIDCSessionEphemeralKey)
         Log.info(#file, "[RESET_ACCOUNT] step 5 ok — nextOIDCSessionEphemeral flag set")
 
         // 6. WKWebsiteDataStore — ALL data types, unconditionally. This is
@@ -185,6 +201,114 @@ extension TPPSignInBusinessLogic {
             // or similar) — RMSDK still clears local activation, which is what
             // matters for the next sign-in's clean re-activation.
             Log.info(#file, "[RESET_ACCOUNT] step 2.5 — DRM deauthorize callback (success=\(success), error=\(error?.localizedDescription ?? "nil")). Local activation cleared regardless.")
+        }
+    }
+
+    // MARK: - Scoped (active-library-only) reset
+
+    /// Active-library-scoped reset. Unlike `performForceReset`, this clears ONLY
+    /// the current library's local state and leaves every OTHER library intact:
+    ///
+    ///   - credentials (`userAccount.removeAll` — `userAccount` is resolved
+    ///     `for: libraryAccountID`, so this is this library's keychain only)
+    ///   - downloaded books + bookmarks + registry (`reset(libraryAccountID)`)
+    ///   - FCM device token for this library
+    ///   - `selectedIDP` + SAML helper state
+    ///   - this library's web cookies, deleted host-precisely via
+    ///     `WKHTTPCookieStore` scoped to `Account.authSurfaceHosts`
+    ///
+    /// What it deliberately does NOT do (the difference from `performForceReset`):
+    ///   - NO Adobe DRM device deauthorize — that is device-wide and would make
+    ///     OTHER libraries' downloaded books unreadable. Scoped reset never
+    ///     touches it; the "Full Reset (All Libraries)" path
+    ///     (`performForceReset`) still does.
+    ///   - NO blanket `WKWebsiteDataStore.default()` wipe — that destroys every
+    ///     library's web session. We delete only this library's cookies.
+    ///
+    /// Residual edge (documented, not a bug): `localStorage`/`IndexedDB` records
+    /// are keyed by registrable domain, not full host, so two libraries sharing
+    /// a base domain (e.g. `*.palaceproject.io`) cannot have those stores
+    /// separated. Cookies — the auth-bearing surface — ARE host-isolated, which
+    /// is what determines whether the patron is signed out.
+    ///
+    /// - Parameter completion: invoked on the main queue exactly once.
+    /// Internal (not `public`): the only caller is the in-module Developer
+    /// Settings controller; no ObjC or cross-module consumer needs it.
+    func performScopedReset(completion: @escaping () -> Void) {
+        Log.info(#file, "[RESET_ACCOUNT scoped] start — libraryAccountID=\(libraryAccountID)")
+
+        let account = libraryAccountsProvider.account(libraryAccountID)
+
+        // 1. FCM token for THIS library (best-effort).
+        if let account {
+            NotificationService.shared.deleteToken(for: account)
+            account.hasUpdatedToken = false
+            Log.info(#file, "[RESET_ACCOUNT scoped] step 1 ok — FCM token DELETE dispatched; hasUpdatedToken cleared")
+        }
+
+        // 2. Books + registry for THIS library only.
+        bookDownloadsCenter.reset(libraryAccountID)
+        bookRegistry.reset(libraryAccountID)
+        Log.info(#file, "[RESET_ACCOUNT scoped] step 2 ok — downloads + registry reset for \(libraryAccountID)")
+
+        // 3. Credentials for THIS library only (userAccount is resolved for
+        //    libraryAccountID). NO DRM deauthorize — device-wide, out of scope.
+        userAccount.removeAll()
+        selectedIDP = nil
+        samlHelper.clearState()
+        Log.info(#file, "[RESET_ACCOUNT scoped] step 3 ok — userAccount.removeAll, selectedIDP=nil, samlHelper.clearState (DRM deauth intentionally skipped)")
+
+        // 4. One-shot ephemeral OIDC flag so the next sign-in for this library
+        //    doesn't silently reuse a Safari-shared cookie.
+        Self.forceResetUserDefaults.set(true, forKey: Self.nextOIDCSessionEphemeralKey)
+
+        // 5. This library's web cookies only — host-precise, scoped to
+        //    authSurfaceHosts. Empty host set → nothing to clear (basic-auth
+        //    library with no web surface); complete immediately.
+        let hosts = Self.webHostsToClear(for: account)
+        Self.removeScopedWebCookies(forHosts: hosts) {
+            Log.info(#file, "[RESET_ACCOUNT scoped] complete — \(hosts.count) host(s) cleared; other libraries untouched")
+            DispatchQueue.main.async { completion() }
+        }
+    }
+
+    /// Pure, testable computation of which hosts the scoped reset clears web
+    /// cookies for: the active library's auth-surface hosts. Empty when the
+    /// account is nil or has no web surface (cold launch / basic-auth library).
+    static func webHostsToClear(for account: Account?) -> Set<String> {
+        account?.authSurfaceHosts ?? []
+    }
+
+    /// Deletes cookies whose domain matches one of `hosts` (exact or
+    /// dot-suffixed parent match), host-precisely via `WKHTTPCookieStore`.
+    /// This is the seam that isolates sibling libraries sharing a base domain:
+    /// per-cookie deletion keys on the cookie's exact `.domain`, where the
+    /// record-level `WKWebsiteDataStore` API would over-clear the whole
+    /// registrable domain. System-API boundary — exercised via `webHostsToClear`.
+    // no-superpartner: thin WKHTTPCookieStore system-API wrapper; host-selection logic tested via hostMatches + webHostsToClear, empty-hosts no-op via performScopedReset.
+    static func removeScopedWebCookies(forHosts hosts: Set<String>, completion: @escaping () -> Void) {
+        guard !hosts.isEmpty else { completion(); return }
+        let cookieStore = WKWebsiteDataStore.default().httpCookieStore
+        cookieStore.getAllCookies { cookies in
+            let group = DispatchGroup()
+            for cookie in cookies where hostMatches(cookie.domain, hosts) {
+                group.enter()
+                cookieStore.delete(cookie) { group.leave() }
+            }
+            group.notify(queue: .main) { completion() }
+        }
+    }
+
+    /// True when a cookie domain belongs to one of the target hosts. Matches an
+    /// exact host, a leading-dot cookie domain (`.minotaur.example.org`), and a
+    /// parent-domain cookie that covers the host. Does NOT match a sibling host
+    /// under a shared parent (`gorgon.example.org` vs target `minotaur.example.org`).
+    static func hostMatches(_ cookieDomain: String, _ hosts: Set<String>) -> Bool {
+        let normalized = cookieDomain.hasPrefix(".")
+            ? String(cookieDomain.dropFirst()).lowercased()
+            : cookieDomain.lowercased()
+        return hosts.contains { host in
+            normalized == host || host.hasSuffix("." + normalized)
         }
     }
 }

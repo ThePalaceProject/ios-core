@@ -2,25 +2,21 @@ import Foundation
 import UIKit
 import ReadiumShared
 import ReadiumStreamer
-import ReadiumAdapterGCDWebServer
 
 /// The LibraryService makes a book ready for presentation without dealing
 /// with the specifics of how a book should be presented.
 ///
 /// It sets up the various components necessary for presenting a book,
-/// such as the HTTP server, DRM systems, etc.
+/// such as the DRM systems and publication opener.
 final class LibraryService: Loggable {
 
     private let assetRetriever: AssetRetriever
     private let publicationOpener: PublicationOpener
     private var drmLibraryServices = [DRMLibraryService]()
 
-    let httpServer: GCDHTTPServer
-
     init() {
         let httpClient = DefaultHTTPClient()
         assetRetriever = AssetRetriever(httpClient: httpClient)
-        httpServer = GCDHTTPServer(assetRetriever: assetRetriever)
 
         // DRM configurations
         #if LCP
@@ -59,7 +55,6 @@ final class LibraryService: Loggable {
                 if !self.validatePublication(publication, for: book.identifier, completion: completion) {
                     return
                 }
-                self.preparePresentation(of: publication, book: book)
                 completion(.success(publication))
 
             case .failure(let error):
@@ -82,7 +77,6 @@ final class LibraryService: Loggable {
                 if !self.validatePublication(publication, for: book.identifier, completion: completion) {
                     return
                 }
-                self.preparePresentation(of: publication, book: book)
                 completion(.success(publication))
 
             case .failure(let error):
@@ -112,24 +106,6 @@ final class LibraryService: Loggable {
         }
     }
 
-    private func preparePresentation(of publication: Publication, book: TPPBook) {
-        guard let selfLink = publication.linkWithRel(.self), selfLink.href.isHTTPURL else {
-            let endpoint = "/publications/\(book.identifier)"
-
-            do {
-                try httpServer.serve(at: endpoint, publication: publication)
-            } catch {
-                log(.error, "Failed to serve publication at endpoint \(endpoint): \(error)")
-            }
-            return
-        }
-
-        if let selfLinkURL = URL(string: selfLink.href)?.standardized {
-            log(.debug, "Serving at URL: \(selfLinkURL)")
-        } else {
-            log(.error, "Malformed self link: \(selfLink.href)")
-        }
-    }
     private func validatePublication(_ publication: Publication, for identifier: String, completion: (Result<Publication, LibraryServiceError>) -> Void) -> Bool {
         guard !publication.isRestricted else {
             stopOpeningIndicator(identifier: identifier)
@@ -152,11 +128,3 @@ final class LibraryService: Loggable {
     }
 }
 
-extension String {
-    var isHTTPURL: Bool {
-        if let url = URL(string: self), url.scheme == "http" || url.scheme == "https" {
-            return true
-        }
-        return false
-    }
-}

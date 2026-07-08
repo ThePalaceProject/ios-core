@@ -82,9 +82,7 @@ struct AccountDetailView: View {
         let needsSignIn = !viewModel.isSignedIn
         let needsReauth = forceReauthMode && viewModel.selectedUserAccount.authState == .credentialsStale
 
-        let isBrowserBasedAuth = viewModel.businessLogic.selectedAuthentication?.isOauth == true ||
-            viewModel.businessLogic.selectedAuthentication?.isSaml == true ||
-            viewModel.businessLogic.selectedAuthentication?.isOidc == true
+        let isBrowserBasedAuth = viewModel.businessLogic.selectedAuthentication?.isBrowserBased == true
 
         return (needsSignIn || needsReauth) && isBrowserBasedAuth
     }
@@ -274,6 +272,7 @@ struct AccountDetailView: View {
 
     @ViewBuilder
     private func cellView(for cellType: CellType) -> some View {
+        // F-011 class-of-bug guard
         switch cellType {
         case .barcodeImage:
             barcodeImageCell
@@ -283,8 +282,6 @@ struct AccountDetailView: View {
             pinInputCell
         case .logInSignOut:
             logInSignOutCell
-        case .resetAccount:
-            resetAccountCell
         case .ageCheck:
             ageCheckCell
         case .syncButton:
@@ -307,7 +304,7 @@ struct AccountDetailView: View {
             samlIDPCell(idp: idp)
         case .infoHeader(let text):
             infoHeaderCell(text: text)
-        default:
+        case .about:
             EmptyView()
         }
     }
@@ -339,23 +336,25 @@ struct AccountDetailView: View {
     }
 
     private var barcodeInputCell: some View {
-        TextField(
-            viewModel.businessLogic.selectedAuthentication?.patronIDLabel ?? DisplayStrings.barcodeOrUsername,
-            text: $viewModel.usernameText
-        )
-        .textContentType(.username)
-        .autocapitalization(.none)
-        .autocorrectionDisabled()
-        .keyboardType(keyboardType(for: viewModel.businessLogic.selectedAuthentication?.patronIDKeyboard))
-        .disabled(viewModel.isSignedIn)
-        .foregroundColor(viewModel.isSignedIn ? .secondary : .primary)
-        .accessibilityIdentifier(AccessibilityID.SignIn.barcodeField)
-        .accessibilityLabel(viewModel.businessLogic.selectedAuthentication?.patronIDLabel ?? DisplayStrings.barcodeOrUsername)
-        .focused($focusedField, equals: .barcode)
-        .onSubmit { focusedField = .pin }
-        .submitLabel(.next)
-        .padding(.vertical, Layout.verticalPaddingInput)
-        .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
+        let label = viewModel.businessLogic.selectedAuthentication?.patronIDLabel ?? DisplayStrings.barcodeOrUsername
+        // PP-4421: explicit prompt with `.secondary` foreground overrides the
+        // default `.placeholderText` (~30% gray) that patrons read as a
+        // disabled field. Entered text retains its own .foregroundColor
+        // below — only the empty-state hint is darkened.
+        return TextField(label, text: $viewModel.usernameText, prompt: Text(label).foregroundColor(.secondary))
+            .textContentType(.username)
+            .autocapitalization(.none)
+            .autocorrectionDisabled()
+            .keyboardType(keyboardType(for: viewModel.businessLogic.selectedAuthentication?.patronIDKeyboard))
+            .disabled(viewModel.isSignedIn)
+            .foregroundColor(viewModel.isSignedIn ? .secondary : .primary)
+            .accessibilityIdentifier(AccessibilityID.SignIn.barcodeField)
+            .accessibilityLabel(label)
+            .focused($focusedField, equals: .barcode)
+            .onSubmit { focusedField = .pin }
+            .submitLabel(.next)
+            .padding(.vertical, Layout.verticalPaddingInput)
+            .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
     }
 
     private var pinLabel: String {
@@ -363,9 +362,14 @@ struct AccountDetailView: View {
     }
 
     private var pinInputCell: some View {
+        // PP-4421: explicit prompt with `.secondary` foreground overrides
+        // the default `.placeholderText` (~30% gray) that patrons read as
+        // a disabled field. Both visible (TextField) and masked (SecureField)
+        // branches get the same prompt — empty-state hint is darker, entered
+        // text retains its own .foregroundColor below.
         HStack {
             if viewModel.isPINHidden {
-                SecureField(pinLabel, text: $viewModel.pinText)
+                SecureField(pinLabel, text: $viewModel.pinText, prompt: Text(pinLabel).foregroundColor(.secondary))
                     .textContentType(.password)
                     .keyboardType(keyboardType(for: viewModel.businessLogic.selectedAuthentication?.pinKeyboard))
                     .disabled(viewModel.isSignedIn)
@@ -376,7 +380,7 @@ struct AccountDetailView: View {
                     .onSubmit { if viewModel.canSignIn { viewModel.signIn() } }
                     .submitLabel(.go)
             } else {
-                TextField(pinLabel, text: $viewModel.pinText)
+                TextField(pinLabel, text: $viewModel.pinText, prompt: Text(pinLabel).foregroundColor(.secondary))
                     .textContentType(.password)
                     .keyboardType(keyboardType(for: viewModel.businessLogic.selectedAuthentication?.pinKeyboard))
                     .disabled(viewModel.isSignedIn)
@@ -433,26 +437,6 @@ struct AccountDetailView: View {
         .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
         .accessibilityIdentifier(AccessibilityID.SignIn.signInButton)
         .accessibilityLabel(viewModel.isSignedIn ? DisplayStrings.signOut : Strings.Generic.signin)
-        .accessibilityAddTraits(.isButton)
-        .accessibilityRemoveTraits(.isStaticText)
-    }
-
-    /// PP-4282 / HelpSpot 17716: destructive "Reset This Library Account"
-    /// button. Patron-self-service recovery for stuck-state cases that
-    /// Sign Out alone can't fix (CM DELETE hangs, broken-state-survives-
-    /// reinstall, etc.). See `TPPSignInBusinessLogic+ForceReset.swift`.
-    private var resetAccountCell: some View {
-        Button(action: {
-            viewModel.confirmResetAccount()
-        }, label: {
-            Text(NSLocalizedString("Reset This Library Account", comment: "Destructive reset-account button label"))
-                .foregroundColor(.red)
-                .horizontallyCentered()
-        })
-        .buttonStyle(.plain)
-        .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
-        .accessibilityLabel(NSLocalizedString("Reset This Library Account", comment: "Accessibility label for the destructive reset-account button"))
-        .accessibilityHint(NSLocalizedString("Deletes downloads, bookmarks, and sign-in for this library so you can start fresh", comment: "Accessibility hint for the reset-account button"))
         .accessibilityAddTraits(.isButton)
         .accessibilityRemoveTraits(.isStaticText)
     }
@@ -717,12 +701,13 @@ struct AccountDetailView: View {
     // MARK: - Helper Methods
 
     private func keyboardType(for loginKeyboard: LoginKeyboard?) -> UIKeyboardType {
+        // F-011 class-of-bug guard
         switch loginKeyboard {
         case .email:
             .emailAddress
         case .numeric:
             .numberPad
-        default:
+        case .standard, .some(.none), nil:
             .asciiCapable
         }
     }

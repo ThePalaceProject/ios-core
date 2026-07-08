@@ -56,6 +56,24 @@ public final class ActiveTasksStore {
         tasks.forEach { $0.resume() }
     }
 
+    /// Number of registered tasks that are not yet finished or cancelling.
+    /// Counts only `.running` and `.suspended` (i.e. live URLSession state).
+    /// Used by adversarial tests to verify that `cancelNonEssential` drops
+    /// the live count to zero. Pure observation — no state mutation.
+    public var liveTaskCount: Int {
+        lock.lock(); defer { lock.unlock() }
+        return tasks.reduce(into: 0) { count, task in
+            switch task.state {
+            case .running, .suspended:
+                count += 1
+            case .canceling, .completed:
+                break
+            @unknown default:
+                break
+            }
+        }
+    }
+
     @discardableResult
     public func cancelNonEssential() -> Int {
         lock.lock(); defer { lock.unlock() }

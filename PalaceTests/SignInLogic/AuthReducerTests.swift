@@ -15,15 +15,30 @@ final class AuthReducerTests: XCTestCase {
     // MARK: - Authentication-document loading
 
     func testAuthDocumentLoadStarted_setsLoadingFlag() {
-        var state = AuthState()
+        // Pair-assert that .authDocumentLoadStarted only touches the loading
+        // flag — no other state changes. A mutation that accidentally also
+        // clears captured credentials or surfaces an error would fail.
+        var state = AuthState(capturedBarcode: "12345", lastErrorTitle: "prior-error")
         _ = AuthReducer.reduce(&state, .authDocumentLoadStarted)
-        XCTAssertTrue(state.isAuthenticationDocumentLoading)
+        XCTAssertTrue(state.isAuthenticationDocumentLoading,
+                      ".authDocumentLoadStarted must set isAuthenticationDocumentLoading=true")
+        XCTAssertEqual(state.capturedBarcode, "12345",
+                       ".authDocumentLoadStarted must NOT touch captured credentials")
+        XCTAssertEqual(state.lastErrorTitle, "prior-error",
+                       ".authDocumentLoadStarted must NOT clear prior errors (use .errorCleared for that)")
     }
 
     func testAuthDocumentLoadCompleted_clearsLoadingFlag() {
-        var state = AuthState(isAuthenticationDocumentLoading: true)
+        // Pair-assert that the round-trip start→complete leaves the flag false.
+        // Drive through both transitions via the reducer (production seam) so
+        // a mutation that wires loadStarted to ALSO clear the flag is caught.
+        var state = AuthState()
+        _ = AuthReducer.reduce(&state, .authDocumentLoadStarted)
+        XCTAssertTrue(state.isAuthenticationDocumentLoading,
+                      "Precondition: load-started flipped the flag to true")
         _ = AuthReducer.reduce(&state, .authDocumentLoadCompleted)
-        XCTAssertFalse(state.isAuthenticationDocumentLoading)
+        XCTAssertFalse(state.isAuthenticationDocumentLoading,
+                       ".authDocumentLoadCompleted must clear isAuthenticationDocumentLoading")
     }
 
     // MARK: - Credential capture

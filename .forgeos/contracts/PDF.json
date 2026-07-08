@@ -1,39 +1,27 @@
 {
   "module": "PDF",
-  "generated_at": "2026-05-12T16:15:16+00:00",
+  "generated_at": "2026-06-03T17:51:23+00:00",
   "file_count": 43,
-  "shared_singleton_reads": 0,
+  "shared_singleton_reads": 5,
   "public_types": [],
   "objc_surface": [
     {
       "name": "LCPPDFs",
       "kind": "class",
       "file": "LCP/LCPPDFs.swift",
-      "line": 19
-    },
-    {
-      "name": "TPPEncryptedPDFDataProvider",
-      "kind": "class",
-      "file": "Model/TPPEncryptedPDFDataProvider.swift",
-      "line": 4
-    },
-    {
-      "name": "TPPEncryptedPDFDocument",
-      "kind": "class",
-      "file": "Model/TPPEncryptedPDFDocument.swift",
-      "line": 13
+      "line": 23
     },
     {
       "name": "TPPPDFDocument",
       "kind": "class",
       "file": "Model/TPPPDFDocument.swift",
-      "line": 18
+      "line": 37
     },
     {
       "name": "TPPPDFDocumentMetadata",
       "kind": "class",
       "file": "Model/TPPPDFDocumentMetadata.swift",
-      "line": 16
+      "line": 17
     },
     {
       "name": "TPPPDFPageBookmark",
@@ -45,55 +33,13 @@
       "name": "canOpenBook",
       "kind": "func",
       "file": "LCP/LCPPDFs.swift",
-      "line": 33
+      "line": 35
     },
     {
-      "name": "create",
-      "kind": "func",
-      "file": "Views/TPPPDFViewController.swift",
-      "line": 17
-    },
-    {
-      "name": "dataProvider",
-      "kind": "func",
-      "file": "Model/TPPEncryptedPDFDataProvider.swift",
-      "line": 15
-    },
-    {
-      "name": "decryptData",
+      "name": "hasLCPAcquisition",
       "kind": "func",
       "file": "LCP/LCPPDFs.swift",
-      "line": 159
-    },
-    {
-      "name": "deletePdfContent",
-      "kind": "func",
-      "file": "LCP/LCPPDFs.swift",
-      "line": 245
-    },
-    {
-      "name": "extract",
-      "kind": "func",
-      "file": "LCP/LCPPDFs.swift",
-      "line": 205
-    },
-    {
-      "name": "extract",
-      "kind": "func",
-      "file": "LCP/LCPPDFs.swift",
-      "line": 228
-    },
-    {
-      "name": "tappedToZoom",
-      "kind": "func",
-      "file": "Views/TPPEncryptedPDFPageViewController.swift",
-      "line": 88
-    },
-    {
-      "name": "temporaryUrlForPDF",
-      "kind": "func",
-      "file": "LCP/LCPPDFs.swift",
-      "line": 200
+      "line": 63
     }
   ],
   "public_functions": [],
@@ -106,7 +52,7 @@
     {
       "name": "TPPPDFDocumentDelegate",
       "file": "Model/TPPPDFDocument.swift",
-      "line": 13
+      "line": 30
     },
     {
       "name": "TPPPDFPreviewGridDelegate",

@@ -1,0 +1,232 @@
+swarm_id: swarm_efd1f0c3
+task: Audiobook toolkit overhaul — T1 + T2 + T3 (Player async migration + Coordinator rename)
+base_repo: https://github.com/ThePalaceProject/ios-audiobooktoolkit
+base_ref: origin/main
+toolkit_head_at_start: 7577ecb6
+toolkit_origin_main_at_start: 298f3934039763cd30a9da621bc652ae2236b528
+orchestrator_branch: swarm/swarm_efd1f0c3-scaffold
+orchestrator_worktree: .claude/worktrees/swarm_efd1f0c3-orchestrator
+ios_core_epic_branch: epic/audiobook-toolkit-overhaul
+created_at: 2026-05-21T00:00:00Z
+status: complete
+completed_at: 2026-05-22T13:30:00Z
+adr_reference: docs/architecture/audiobook-systemic-overhaul.md (committed 888732787)
+
+modules:
+  - name: T1-Player-Protocol-OpenAccess
+    bucket_id: T1
+    toolkit_branch: feat/swarm_efd1f0c3-T1
+    base_ref: toolkit origin/main
+    dispatch_order: parallel with T3 (no dependency)
+    files_scope:
+      - ios-audiobooktoolkit/PalaceAudiobookToolkit/Player/Player.swift
+      - ios-audiobooktoolkit/PalaceAudiobookToolkit/Player/OpenAccessPlayer.swift
+      - ios-audiobooktoolkit/PalaceAudiobookToolkit/Player/LCPStreamingPlayer.swift
+      - ios-audiobooktoolkit/PalaceAudiobookToolkitTests/PlayerMock.swift
+    contract_path: contracts/T1-Player-Protocol-OpenAccess.md
+    implementer_prompt: |
+      You are the T1 implementer for swarm swarm_efd1f0c3 (toolkit-side
+      audiobook overhaul). Your contract is at
+      .forgeos/swarms/swarm_efd1f0c3/contracts/T1-Player-Protocol-OpenAccess.md
+      on the orchestrator branch.
+
+      Migrate the toolkit's Player protocol from completion-handler shape to
+      async/await. The protocol shape is defined in your contract — the three
+      async methods replace the three completion-handler methods exactly.
+      You must migrate OpenAccessPlayer and LCPStreamingPlayer in the same
+      branch (LCP subclasses OpenAccess; signatures must match). Update
+      PlayerMock.swift and any toolkit tests that compile against the old
+      completion shape.
+
+      Work in a toolkit worktree at
+      /Users/mauricework/PalaceProject/toolkit-worktrees/swarm_efd1f0c3-T1/
+      off origin/main (toolkit primary branch). Branch name:
+      feat/swarm_efd1f0c3-T1.
+
+      Validate build + tests via the commands in the contract. TDD: write the
+      failing async test first for each new behavior. No fluff tests; every
+      test must kill at least one mutant.
+
+      Decide on the seekTo migration (keep callback OR migrate to async) and
+      document the choice + LOC impact in your transcript. Coordinate with the
+      T2 contract author if you change seekTo — T2 needs to know.
+
+      When done: push toolkit branch, open toolkit PR to main, write transcript
+      to .forgeos/swarms/swarm_efd1f0c3/transcripts/T1.md on the orchestrator
+      branch.
+
+      Do NOT touch T2 or T3 territory. Do NOT bump the Palace submodule pin.
+      Do NOT open a Palace PR.
+
+  - name: T2-Player-LCP-Findaway
+    bucket_id: T2
+    toolkit_branch: feat/swarm_efd1f0c3-T2
+    base_ref: feat/swarm_efd1f0c3-T1 (stacks on T1)
+    dispatch_order: after T1 commits + pushes its protocol shape
+    files_scope:
+      - ios-audiobooktoolkit/PalaceAudiobookToolkit/Player/FindawayPlayer.swift
+      - ios-audiobooktoolkit/PalaceAudiobookToolkit/Core/AudiobookManager.swift (lines 219/223/847/861-area only)
+      - ios-audiobooktoolkit/PalaceAudiobookToolkit/UI/AudiobookPlaybackModel.swift (lines 48/178/189/199/409/443/483-area only)
+      - ios-audiobooktoolkit/PalaceAudiobookToolkit/Player/Helpers/FindawayPlaybackNotificationHandler.swift (only if needed)
+    contract_path: contracts/T2-Player-LCP-Findaway.md
+    implementer_prompt: |
+      You are the T2 implementer for swarm swarm_efd1f0c3 (toolkit-side
+      audiobook overhaul). Your contract is at
+      .forgeos/swarms/swarm_efd1f0c3/contracts/T2-Player-LCP-Findaway.md
+      on the orchestrator branch.
+
+      Wait for T1's branch feat/swarm_efd1f0c3-T1 to be pushed to toolkit
+      origin (the orchestrator will notify you). Then base your worktree off
+      origin/feat/swarm_efd1f0c3-T1 — you are stacking on T1, not on main.
+
+      Migrate FindawayPlayer to T1's async Player protocol. Migrate the
+      external completion-handler call sites in AudiobookManager.swift (3
+      sites) and AudiobookPlaybackModel.swift (7 sites) to await / try await.
+      Use withCheckedContinuation / withCheckedThrowingContinuation to bridge
+      Findaway's SDK callbacks; the continuation MUST be guarded against
+      duplicate resumes (Findaway emits duplicate notifications on rapid
+      skips).
+
+      Work in a toolkit worktree at
+      /Users/mauricework/PalaceProject/toolkit-worktrees/swarm_efd1f0c3-T2/.
+      Branch name: feat/swarm_efd1f0c3-T2.
+
+      Validate build + tests via the commands in the contract. TDD: write the
+      failing async test first. The continuation-guard test is non-negotiable
+      — it's the load-bearing regression gate for Findaway's SDK quirk.
+
+      When done: push toolkit branch, open toolkit PR to main with base = T1's
+      branch (stacked PR). Write transcript to
+      .forgeos/swarms/swarm_efd1f0c3/transcripts/T2.md on the orchestrator
+      branch.
+
+      Do NOT touch T1 territory (Player.swift, OpenAccessPlayer.swift,
+      LCPStreamingPlayer.swift, PlayerMock.swift) or T3 territory
+      (AudiobookSessionManager.swift, listener helpers). Do NOT bump Palace
+      submodule pin.
+
+  - name: T3-Rename-DownloadCoordinator
+    bucket_id: T3
+    toolkit_branch: feat/swarm_efd1f0c3-T3
+    base_ref: toolkit origin/main
+    dispatch_order: parallel with T1 (no dependency)
+    files_scope:
+      - ios-audiobooktoolkit/PalaceAudiobookToolkit/Core/AudiobookSessionManager.swift (renamed to AudiobookDownloadCoordinator.swift via git mv)
+      - ios-audiobooktoolkit/PalaceAudiobookToolkit/Player/Helpers/OpenAccessBackgroundListener.swift
+      - ios-audiobooktoolkit/PalaceAudiobookToolkit/Player/Helpers/OverdriveBackgroundListener.swift
+      - ios-audiobooktoolkit/PalaceAudiobookToolkit.xcodeproj/project.pbxproj (4 path-field updates)
+    contract_path: contracts/T3-Rename-DownloadCoordinator.md
+    implementer_prompt: |
+      You are the T3 implementer for swarm swarm_efd1f0c3 (toolkit-side
+      audiobook overhaul). Your contract is at
+      .forgeos/swarms/swarm_efd1f0c3/contracts/T3-Rename-DownloadCoordinator.md
+      on the orchestrator branch.
+
+      Rename the toolkit's AudiobookSessionManager class to
+      AudiobookDownloadCoordinator. This is a pure rename — the .shared
+      singleton and all public methods stay. Use git mv to preserve file
+      history. Update references in OpenAccessBackgroundListener.swift,
+      OverdriveBackgroundListener.swift, and the toolkit project.pbxproj.
+
+      Work in a toolkit worktree at
+      /Users/mauricework/PalaceProject/toolkit-worktrees/swarm_efd1f0c3-T3/
+      off toolkit origin/main. Branch: feat/swarm_efd1f0c3-T3. You are FULLY
+      PARALLEL with T1 — no need to wait for it.
+
+      Validate build + tests. The toolkit compiles iff every reference is
+      updated — a failing build IS your regression gate. Add exactly one
+      sanity test locking the new type name; no fluff coverage tests.
+
+      When done: push toolkit branch, open toolkit PR to main. Write
+      transcript to .forgeos/swarms/swarm_efd1f0c3/transcripts/T3.md on the
+      orchestrator branch.
+
+      Do NOT touch T1 or T2 territory. Do NOT remove .shared. Do NOT add a
+      deprecated typealias unless you discover an external caller (none
+      expected). Do NOT bump Palace submodule pin.
+
+forgeos:
+  project_id: proj_87884c17
+  initiative_id: null   # integrator opens a new umbrella initiative when bumping Palace submodule pin
+  changeset_id: null
+  notes: |
+    Unusual: implementation in submodule. ForgeOS changeset tracks the
+    Palace-side coordination work (ADR + submodule bumps + Palace call-site
+    updates), not the toolkit-side PRs directly. Toolkit PRs governed by
+    toolkit repo's own conventions (ThePalaceProject/ios-audiobooktoolkit).
+    No ForgeOS hooks fire on toolkit-side commits.
+
+triage_notes:
+  partition_revised: |
+    ADR-stated partition was "T1 establishes async shape + migrates one player;
+    T2 migrates the remaining implementations." Architect re-partitioned to:
+    T1 = protocol + OpenAccess + LCPStreamingPlayer (LCP inherits from
+    OpenAccess; signatures must change atomically — non-disjoint with T1's
+    protocol commit). T2 = FindawayPlayer (standalone) + external callers
+    AudiobookManager + AudiobookPlaybackModel. Findaway is unblocked because
+    it does not inherit from OpenAccess.
+  audiobookmanager_status: |
+    Not read-only. AudiobookManager.swift calls Player completion-handler
+    methods at lines 219/223/847/861. Reassigned to T2 (call-site-only edits;
+    rest of the 33KB file is read-only).
+  t3_palace_callers: |
+    Zero Palace-side callers of the toolkit's AudiobookSessionManager exist
+    (verified by grep on epic/audiobook-toolkit-overhaul HEAD). Palace's
+    Palace.AudiobookSessionManager is a distinct class (Phase 3 / PR #982)
+    that has nothing to do with the toolkit's. The rename is purely internal
+    to the toolkit module.
+  shared_singleton_recommendation: |
+    KEEP .shared on the toolkit's AudiobookSessionManager (renamed to
+    AudiobookDownloadCoordinator). iOS delivers URLSession background
+    completion to a process-wide handler in AppDelegate/SceneDelegate;
+    instance-based ownership would require AppDelegate rework across every
+    consumer app. Out of scope for this swarm. ADR's "pure rename, .shared
+    stays" guidance confirmed.
+
+risks:
+  - description: LCPStreamingPlayer has 14 override declarations
+    impact: T1 implementer must verify all overrides still match base
+      signatures after the async migration. Compiler enforces this — a build
+      failure on T1 means a missed override.
+    mitigation: T1 contract requires build + test green before push.
+
+  - description: Findaway SDK emits duplicate completion notifications on rapid skips
+    impact: withCheckedContinuation will crash on second resume.
+    mitigation: T2 contract REQUIRES an atomic single-resume guard, locked
+      by testPlayAt_resumesContinuationOnce.
+
+  - description: Toolkit has no pbxproj helper script
+    impact: T1/T3 implementers may hand-edit project.pbxproj. T1 likely
+      doesn't need pbxproj edits (no new files); T3 has 4 line edits.
+    mitigation: Both contracts document the exact lines/fields to update.
+
+  - description: Toolkit base ref drift between T1 push and T2 worktree creation
+    impact: If toolkit main advances between T1's push and T2's worktree, T2
+      must rebase on the new main.
+    mitigation: Orchestrator notifies T2 immediately after T1 push;
+      Toolkit's release cadence is low (last 5 commits over multiple weeks).
+
+  - description: ForgeOS scope ambiguity for submodule work
+    impact: Toolkit PRs are not under ForgeOS governance; the eventual
+      Palace submodule-bump PR will need its own initiative.
+    mitigation: manifest.yaml documents initiative_id=null; integrator opens
+      a new initiative at submodule-bump time.
+
+dispatch_recommendation:
+  parallel_set_1:
+    - T1
+    - T3
+  dependent:
+    - T2 (waits for T1 push)
+  rationale: |
+    Two-wave dispatch. Wave 1 = T1 + T3 in parallel (disjoint files).
+    Wave 2 = T2 (after T1 protocol shape is committed and pushed). T3 lands
+    independently of either wave; can merge first to toolkit main.
+
+orchestrator_post_dispatch_checklist:
+  - Confirm toolkit worktrees created at /Users/mauricework/PalaceProject/toolkit-worktrees/swarm_efd1f0c3-T{1,2,3}/
+  - Confirm T1 + T3 implementer agents launched in parallel
+  - When T1 transcript arrives at transcripts/T1.md, dispatch T2 implementer
+  - When all 3 transcripts present, open the 3 toolkit PRs (T1 → main, T2 → T1 stacked, T3 → main)
+  - Toolkit-side reviewer + CI runs; merge T1 first, then T2 (auto-retargets to main), then T3 (or T3 first if reviewer prefers)
+  - After all 3 toolkit merges, open Palace-side PR bumping submodule pin to the new toolkit SHA — that PR opens its own ForgeOS initiative

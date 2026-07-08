@@ -14,47 +14,58 @@ struct BookButtonMapper {
 
     /// First look at registryState. If that alone dictates a clear UI state,
     /// return it. Otherwise fall back to OPDS availability via `stateForAvailability(_)`.
+    ///
+    /// The mapping is an **exhaustive `switch` with no `default:`** — the
+    /// compiler forces every `TPPBookState` case to be handled here. Phase 7
+    /// siblings audit (`.forgeos/audits/phase7-synthesis-2026-05-26.md`) flagged
+    /// the previous if-cascade fall-through as the same trap that produced
+    /// F-011 (silent `.downloadNeeded` swallow → first-open audiobook hang):
+    /// any new `TPPBookState` case would inherit `.unsupported` silently. The
+    /// switch makes adding a case a compile error until the mapping is decided.
     static func map(
         registryState: TPPBookState,
         availability: TPPOPDSAcquisitionAvailability?,
         isProcessingDownload: Bool
     ) -> BookButtonState {
-        if registryState == .downloading || isProcessingDownload {
+        // Precondition: an active in-flight download short-circuits the
+        // registry-state decision tree. Keeps the SAML/borrow handoff window
+        // visually consistent even while the registry hasn't flipped yet.
+        if isProcessingDownload {
             return .downloadInProgress
         }
 
-        if registryState == .downloadFailed {
+        switch registryState {
+        case .downloading:
+            return .downloadInProgress
+        case .SAMLStarted:
+            // SAML authentication is part of the download flow — auth completes,
+            // then download begins. UI should render "in progress" so the cell
+            // doesn't oscillate between Get/Requesting/Downloading. Matches the
+            // parallel mapping in `BookButtonState.init?(_:bookRegistry:)`.
+            return .downloadInProgress
+        case .downloadFailed:
             return .downloadFailed
-        }
-
-        if registryState == .downloadSuccessful {
+        case .downloadSuccessful:
             return .downloadSuccessful
-        }
-
-        if registryState == .downloadNeeded {
+        case .downloadNeeded:
             return .downloadNeeded
-        }
-
-        if registryState == .used {
+        case .used:
             return .used
-        }
-
-        if registryState == .holding {
+        case .holding:
             if availability is TPPOPDSAcquisitionAvailabilityReady {
                 return .canBorrow
             }
             return .holding
-        }
-
-        if registryState == .returning {
+        case .returning:
             return .returning
+        case .unregistered:
+            // No registry signal — derive from OPDS availability. nil
+            // availability with no registry state means we genuinely don't know
+            // how to render the cell, so .unsupported is the honest answer.
+            return stateForAvailability(availability) ?? .unsupported
+        case .unsupported:
+            return .unsupported
         }
-
-        if let availState = stateForAvailability(availability) {
-            return availState
-        }
-
-        return .unsupported
     }
 
     /// Map OPDS availability (unavailable/limited/unlimited/reserved/ready)

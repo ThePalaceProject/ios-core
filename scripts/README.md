@@ -4,6 +4,18 @@ Build, test, release, and quality-gate automation for the Palace iOS app. Most s
 
 If you are an outside contributor, the only scripts you generally need to run by hand are listed under [Quick reference](#quick-reference). Everything else is invoked by CI on your behalf.
 
+## The five workhorses
+
+These five scripts handle most of the day-to-day work. Read these first if you only have time for five:
+
+| Script | Purpose | When you'll touch it |
+|--------|---------|----------------------|
+| **`verify-pr.sh`** | One-shot pre-PR battery (build, tests, lint, coverage, mutation, a11y). | Before every `gh pr create`. Run `--quick` to skip mutation. |
+| **`pre-push-test-gate.sh`** | Pre-push hook that runs the changed-file test selection before allowing a push. | Automatic via git hook; tune timeouts when CI lag surfaces. |
+| **`lint-test-quality.py`** | Static linter for fluff/flake test patterns. Supports `// lint-ignore: FLUFF-XXX` per-line markers. | Every test PR — failures here block CI. |
+| **`snapshot-library-registry.py`** | Snapshots the library registry (account JSON) and produces a diff against the live registry. | Account/auth-doc churn investigations; weekly drift checks. |
+| **`palace_mutate.py`** | Mutation-testing harness (mutate Swift file, run tests, report surviving mutants). | Anything on a critical path (sign-in, borrow, download, DRM). |
+
 ## Quick reference
 
 | Task | Command |
@@ -17,7 +29,7 @@ If you are an outside contributor, the only scripts you generally need to run by
 | Generate release notes from git history | `./scripts/create-release-notes.sh` |
 | Run mutation testing on a single file | `python3 scripts/palace_mutate.py --file Palace/Path.swift --tests PalaceTests/` |
 | Lint test quality (find fluff tests) | `python3 scripts/lint-test-quality.py` |
-| Count lines of code | `./scripts/count-loc.sh` |
+| Export an archive for ad-hoc or App Store distribution | `./scripts/xcode-export.sh --format <adhoc\|appstore>` |
 
 ## Categories
 
@@ -34,9 +46,9 @@ If you are an outside contributor, the only scripts you generally need to run by
 | `xcode-build-nodrm.sh` | Builds the `Palace-noDRM` scheme. | `non-drm-build.yml` |
 | `xcode-archive.sh` | Creates a release archive of the app. | `upload*.yml` |
 | `xcode-settings.sh` | Sources common build env vars. | `release-rc.yml`, dev/local |
-| `xcode-export-adhoc.sh` | Exports an ad-hoc-signed `.ipa`. | `upload*.yml` |
-| `xcode-export-appstore.sh` | Exports an App Store-signed `.ipa`. | `upload*.yml` |
-| `archive-and-upload-adhoc.sh` | Archive + ad-hoc export + upload in one step. | dev/local |
+| `xcode-export.sh` | Unified export driver. `--format adhoc` or `--format appstore`. Sources `xcode-settings.sh` once, branches on format. | invoked by the two shims below; new call sites should use this directly |
+| `xcode-export-adhoc.sh` | Thin shim → `xcode-export.sh --format adhoc`. Kept so `upload*.yml` CI workflows don't break. | `upload*.yml` |
+| `xcode-export-appstore.sh` | Thin shim → `xcode-export.sh --format appstore`. Kept so `upload*.yml` CI workflows don't break. | `upload*.yml` |
 | `add_palace_catalog_package.rb` | Wires the local PalaceCatalog SPM package into `Palace.xcodeproj`. | one-shot, dev/local |
 | `add_palace_keychain_package.rb` | Wires PalaceKeychain SPM package into the project. | one-shot, dev/local |
 | `add_palace_logging_package.rb` | Wires PalaceLogging SPM package into the project. | one-shot, dev/local |
@@ -48,6 +60,8 @@ If you are an outside contributor, the only scripts you generally need to run by
 |--------|--------------|-----------|
 | `xcode-test-optimized.sh` | Runs the full Palace test plan with caching and timeouts tuned for CI. | `unit-testing.yml` |
 | `verify-pr.sh` | One-shot pre-PR battery: build, tests, lint, coverage, mutation, a11y. | dev/local (run before pushing) |
+| `pre-push-test-gate.sh` | Pre-push hook that runs the changed-file test selection before allowing `git push`. | local git hook |
+| `resolve-tests-for.py` | Maps a changed production-file path to the XCTest class selectors that cover it. | `verify-pr.sh`, `palace_mutate.py` |
 | `parse-xcresult.py` | Parses an `.xcresult` bundle into JSON for downstream reporting. | `unit-testing.yml`, `ui-testing.yml` |
 | `parse-test-results.py` | Older test-results parser; kept for compatibility. | dev/local |
 | `coverage-report.py` | Extracts code coverage from `.xcresult` and writes JSON. | `unit-testing.yml` |
@@ -105,9 +119,11 @@ If you are an outside contributor, the only scripts you generally need to run by
 
 | Script | What it does | Called by |
 |--------|--------------|-----------|
-| `accessibility-lint.sh` | Runs AccessLint accessibility analysis on the project. | `ledger.yml` |
 | `a11y-coverage.py` | Measures VoiceOver label coverage against a simdrive fixture. | dev/local |
-| `count-loc.sh` | Reports lines of code by language using `scc`. | dev/local |
+| `snapshot-library-registry.py` | Snapshots the library registry JSON and diffs against live; surfaces account/auth-doc drift. | dev/local, drift-investigation |
+| `check_registry_snapshot_freshness.sh` | CI guard that fails if the committed registry snapshot is older than the live registry. | `ledger.yml` |
+| `export-module-contracts.py` | Emits module public-API contracts to `.forgeos/contracts/<module>.json`; consumed by the architect agent and `verify-pr.sh --check`. | dev/local, swarm |
+| `crashlytics-sentinel.py` | Compares Crashlytics issue counts week-over-week and alerts on new top issues. | `crashlytics-sentinel.yml` |
 
 ### Release and TestFlight
 
@@ -118,13 +134,9 @@ If you are an outside contributor, the only scripts you generally need to run by
 | `ios-check-version.sh` | Validates the build number against tags before upload. | `upload*.yml`, `check-build-number.yml` |
 | `ios-binaries-check.sh` | Checks whether a binary with the current build number already exists. | `check-build-number.yml` |
 | `ios-binaries-upload.sh` | Uploads exported `.ipa` to the Palace binaries bucket. | `upload*.yml` |
-| `firebase-upload.sh` | Uploads an `.ipa` to Firebase App Distribution. | `upload*.yml` |
-| `firebase-upload-symbols.sh` | Uploads dSYMs to Firebase. | `upload*.yml` |
-| `testflight-upload.sh` | Uploads an `.ipa` to TestFlight. | `upload*.yml` |
+| `testflight-upload.sh` | Uploads an `.ipa` to TestFlight. | dev/local (manual maintainer run) |
 | `install-profile.sh` | Installs a distribution provisioning profile on the CI runner. | `upload*.yml` |
-| `decode-install-secrets.sh` | Creates a build keychain and installs the Apple distribution identity. | `upload*.yml` |
 | `update-certificates.sh` | Refreshes the developer certificates checked into `mobile-certificates`. | dev/local |
-| `firebase/` | Firebase CLI helpers and config. | `firebase-upload*.sh` |
 
 ### Crash and Jira reporting
 
@@ -146,9 +158,13 @@ These are maintainer scripts; outside contributors do not run them. ForgeOS is t
 | `forgeos-session.sh` | Per-session governance: start, evidence, promote, close changesets. | every maintainer session that produces code |
 | `forgeos-orchestrate.sh` | Multi-agent orchestration extension on top of `forgeos-session.sh`. | multi-agent / multi-task sessions |
 | `forgeos-gate-hook.sh` | Pre-PR gate check, called by the Claude Code hook before `gh pr create`. | automatic via hook |
-| `forgeos-bootstrap-palace-evolution.sh` | One-time bootstrap that creates the Palace evolution initiative + changesets. | one-time bootstrap |
-| `forgeos-apply-palace-gate-template.sh` | One-time setup that applies the Palace gate template to the ForgeOS project. | one-time setup |
-| `forgeos-full-suite.sh` | Ad-hoc smoke run that exercises every ForgeOS gate against the current branch. | gate-template development |
+
+The previous one-shot bootstrap scripts (`forgeos-bootstrap-palace-evolution.sh`,
+`forgeos-apply-palace-gate-template.sh`, `forgeos-full-suite.sh`,
+`palace-agentic-readiness-scan.sh`) were removed as zombie scripts —
+they had zero callers in CI, fastlane, or other scripts and had not run
+since the original Palace evolution bootstrap. If you need the bootstrap
+flow again, replay it via the ForgeOS MCP (`mcp__forgeos__forge_init`).
 
 ### git hooks
 

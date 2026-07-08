@@ -195,7 +195,11 @@ enum Group: Int {
         guard !isLoading else { return }
 
         if accountsManager.currentUserAccount.needsAuth, !accountsManager.currentUserAccount.hasCredentials() {
-            SignInModalPresenter.presentSignInModalForCurrentAccount(accountsManager: accountsManager, completion: nil)
+            // swarm_d8f11437 Module A wave 4 — migrated to AppContainer-
+            // injected sheet presenter. The presenter reads from the same
+            // `_cached` accountsManager singleton.
+            AppContainer.production().signInModalSheetPresenter
+                .presentSignInModalForCurrentAccount(completion: nil)
         } else {
             bookRegistry.sync { [weak self] _, _ in
                 self?.loadData()

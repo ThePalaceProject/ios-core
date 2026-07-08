@@ -10,17 +10,67 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     var loadingView: UIView?
     enum Section: Int, CaseIterable {
         case librarySettings = 0
+        case triageBot
+        case featureFlags
         case libraryRegistryDebugging
         case dataManagement
         case developerTools
         case pushNotificationTesting
-        case featurePreviews
         case badgeTesting
         case errorSimulation
         #if DEBUG
         case mockBackend
         case resetAccountTesting
         #endif
+
+        enum Audience { case support, engineering }
+        var audience: Audience {
+            switch self {
+            case .dataManagement: return .support   // Clear Cached Data + account resets — support/patron-facing
+            default: return .engineering
+            }
+        }
+    }
+
+    /// Engineering tools render in DEBUG, simulator, and TestFlight, but are
+    /// hidden from production App Store users (who can still reach this menu via
+    /// the hidden version-label unlock). Support-tier sections always render.
+    ///
+    /// Detection is by receipt rather than a compile-time `#if DEBUG` (which
+    /// blast-radius BR-2 flags on a production path). Only a real App Store
+    /// install hides the tools, identified by BOTH: a receipt named "receipt"
+    /// AND that receipt file actually existing on disk. A DEBUG/simulator build
+    /// reports an `appStoreReceiptURL` whose lastPathComponent is "receipt" too,
+    /// but the file does NOT exist — so the name check alone is insufficient and
+    /// would wrongly hide the tools in dev/sim (caught via simdrive 2026-06-08).
+    /// TestFlight carries a "sandboxReceipt"; no receipt URL at all → dev.
+    private var showEngineeringTools: Bool {
+        Self.shouldShowEngineeringTools(
+            receiptURL: Bundle.main.appStoreReceiptURL,
+            fileExists: { FileManager.default.fileExists(atPath: $0) }
+        )
+    }
+
+    /// Pure, testable core of `showEngineeringTools`. Engineering tools hide
+    /// ONLY for a real App Store install: a receipt named "receipt" that also
+    /// exists on disk. A DEBUG/sim build reports a "receipt"-named URL whose
+    /// file does NOT exist (the name check alone wrongly hid the tools — caught
+    /// via simdrive 2026-06-08, now pinned by DeveloperSettingsTierTests).
+    /// TestFlight uses "sandboxReceipt"; no URL → dev.
+    static func shouldShowEngineeringTools(receiptURL: URL?,
+                                           fileExists: (String) -> Bool) -> Bool {
+        guard let receiptURL else { return true }
+        if receiptURL.lastPathComponent == "sandboxReceipt" { return true }
+        let isProductionAppStore = receiptURL.lastPathComponent == "receipt"
+            && fileExists(receiptURL.path)
+        return !isProductionAppStore
+    }
+
+    /// The sections actually shown, in order. Engineering sections drop out in
+    /// App Store builds. ALL data-source methods must index THIS array, never
+    /// `Section(rawValue:)` directly, so section indices stay contiguous.
+    private var visibleSections: [Section] {
+        Section.allCases.filter { $0.audience == .support || showEngineeringTools }
     }
 
     private let fcmTokenCellIdentifier = "fcmTokenCell"
@@ -30,9 +80,17 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     private let emailLogsCellIdentifier = "emailLogsCell"
     private let sendErrorLogsCellIdentifier = "sendErrorLogsCell"
     private let errorSimulationCellIdentifier = "errorSimulationCell"
-    private let incrementalSpeedSliderCellIdentifier = "incrementalSpeedSliderCell"
     private let badgeLoggingCellIdentifier = "badgeLoggingCell"
     private let testHoldsCellIdentifier = "testHoldsCell"
+    private let triageBotEnabledCellIdentifier = "triageBotEnabledCell"
+    private let triageBotTicketSubmissionCellIdentifier = "triageBotTicketSubmissionCell"
+    private let triageBotAIFallbackCellIdentifier = "triageBotAIFallbackCell"
+    private let inAppPlaybackNavCellIdentifier = "inAppPlaybackNavCell"
+    private let triageBotAnthropicKeyCellIdentifier = "triageBotAnthropicKeyCell"
+
+    /// Manages the Keychain-backed Anthropic key for the Triage Bot AI
+    /// fallback (paste/clear/status). See `cellForTriageBotAnthropicKey`.
+    private let triageBotKeyAdmin = TriageBotKeyAdmin()
 
     private var pushNotificationsStatus = false
     private let settings: TPPSettings
@@ -80,20 +138,26 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: emailLogsCellIdentifier)
         self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: sendErrorLogsCellIdentifier)
         self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: errorSimulationCellIdentifier)
-        self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: incrementalSpeedSliderCellIdentifier)
         self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: badgeLoggingCellIdentifier)
         self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: testHoldsCellIdentifier)
+        self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: triageBotEnabledCellIdentifier)
+        self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: triageBotTicketSubmissionCellIdentifier)
+        self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: triageBotAIFallbackCellIdentifier)
+        self.tableView.register(UITableViewCell.self, forCellReuseIdentifier: inAppPlaybackNavCellIdentifier)
     }
 
     // MARK: - UITableViewDataSource
 
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        guard let sectionType = Section(rawValue: section) else { return 0 }
+        guard section >= 0, section < visibleSections.count else { return 0 }
+        let sectionType = visibleSections[section]
         switch sectionType {
         case .librarySettings: return 2
+        case .triageBot: return 4  // enabled + ticket submission + AI fallback + Anthropic key
+        case .featureFlags: return 1
+        case .dataManagement: return 3  // Clear Cached Data + Reset This Library + Full Reset
         case .developerTools: return 2
         case .pushNotificationTesting: return 3
-        case .featurePreviews: return 1
         case .badgeTesting:
             #if DEBUG
             return 2
@@ -115,21 +179,35 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     }
 
     func numberOfSections(in tableView: UITableView) -> Int {
-        return Section.allCases.count
+        return visibleSections.count
     }
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        guard let sectionType = Section(rawValue: indexPath.section) else {
+        guard indexPath.section >= 0, indexPath.section < visibleSections.count else {
             return UITableViewCell()
         }
+        let sectionType = visibleSections[indexPath.section]
         switch sectionType {
         case .librarySettings:
             switch indexPath.row {
             case 0: return cellForBetaLibraries()
             default: return cellForLCPPassphrase()
             }
+        case .triageBot:
+            switch indexPath.row {
+            case 0: return cellForTriageBotEnabled()
+            case 1: return cellForTriageBotTicketSubmission()
+            case 2: return cellForTriageBotAIFallback()
+            default: return cellForTriageBotAnthropicKey()
+            }
+        case .featureFlags: return cellForInAppPlaybackNav()
         case .libraryRegistryDebugging: return cellForCustomRegsitry()
-        case .dataManagement: return cellForClearCache()
+        case .dataManagement:
+            switch indexPath.row {
+            case 0: return cellForClearCache()
+            case 1: return cellForResetThisLibrary()
+            default: return cellForFullReset()
+            }
         case .developerTools:
             switch indexPath.row {
             case 0: return cellForSendErrorLogs()
@@ -141,8 +219,6 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
             case 1: return cellForTestHoldNotification()
             default: return cellForTestLoanExpiryNotification()
             }
-        case .featurePreviews:
-            return cellForIncrementalSpeedSlider()
         case .badgeTesting:
             #if DEBUG
             switch indexPath.row {
@@ -177,20 +253,23 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     }
 
     func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
-        guard let sectionType = Section(rawValue: section) else { return nil }
+        guard section >= 0, section < visibleSections.count else { return nil }
+        let sectionType = visibleSections[section]
         switch sectionType {
         case .librarySettings:
             return "Library Settings"
+        case .triageBot:
+            return "Triage Bot"
+        case .featureFlags:
+            return "Feature Flags"
         case .libraryRegistryDebugging:
             return "Library Registry Debugging"
         case .dataManagement:
-            return "Data Management"
+            return "Data & Reset"
         case .developerTools:
             return "Developer Tools"
         case .pushNotificationTesting:
             return "Push Notification Testing"
-        case .featurePreviews:
-            return "Feature Previews"
         case .badgeTesting:
             #if DEBUG
             return "Badge Testing"
@@ -237,10 +316,151 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         return cell
     }
 
+    // MARK: - Triage Bot
+
+    /// Master kill-switch toggle. Writes the
+    /// `RemoteFeatureFlags.triageBotLocalOverrideKey` UserDefault so it
+    /// wins over the DEBUG-default-on policy and the Firebase Remote
+    /// Config value. Initial state reflects the effective flag
+    /// (`isTriageBotEnabled`) so QA sees the live behavior.
+    private func cellForTriageBotEnabled() -> UITableViewCell {
+        guard let cell = tableView.dequeueReusableCell(withIdentifier: triageBotEnabledCellIdentifier) else {
+            fatalError("Failed to dequeue cell with identifier \(triageBotEnabledCellIdentifier)")
+        }
+        cell.selectionStyle = .none
+        cell.textLabel?.text = "Enabled (master)"
+        cell.textLabel?.adjustsFontSizeToFitWidth = true
+        cell.textLabel?.minimumScaleFactor = 0.5
+        cell.accessoryView = createSwitch(
+            isOn: RemoteFeatureFlags.shared.isTriageBotEnabled,
+            action: #selector(triageBotEnabledSwitchDidChange)
+        )
+        return cell
+    }
+
+    private func cellForTriageBotTicketSubmission() -> UITableViewCell {
+        guard let cell = tableView.dequeueReusableCell(withIdentifier: triageBotTicketSubmissionCellIdentifier) else {
+            fatalError("Failed to dequeue cell with identifier \(triageBotTicketSubmissionCellIdentifier)")
+        }
+        cell.selectionStyle = .none
+        cell.textLabel?.text = "Ticket Submission (HelpSpot)"
+        cell.textLabel?.adjustsFontSizeToFitWidth = true
+        cell.textLabel?.minimumScaleFactor = 0.5
+        cell.accessoryView = createSwitch(
+            isOn: RemoteFeatureFlags.shared.isTriageBotTicketSubmissionEnabled,
+            action: #selector(triageBotTicketSubmissionSwitchDidChange)
+        )
+        return cell
+    }
+
+    private func cellForTriageBotAIFallback() -> UITableViewCell {
+        guard let cell = tableView.dequeueReusableCell(withIdentifier: triageBotAIFallbackCellIdentifier) else {
+            fatalError("Failed to dequeue cell with identifier \(triageBotAIFallbackCellIdentifier)")
+        }
+        cell.selectionStyle = .none
+        cell.textLabel?.text = "AI Fallback (Claude)"
+        cell.textLabel?.adjustsFontSizeToFitWidth = true
+        cell.textLabel?.minimumScaleFactor = 0.5
+        cell.accessoryView = createSwitch(
+            isOn: RemoteFeatureFlags.shared.isTriageBotAIFallbackEnabled,
+            action: #selector(triageBotAIFallbackSwitchDidChange)
+        )
+        return cell
+    }
+
+    @objc func triageBotEnabledSwitchDidChange(sender: UISwitch) {
+        UserDefaults.standard.set(sender.isOn, forKey: RemoteFeatureFlags.triageBotLocalOverrideKey)
+    }
+
+    @objc func triageBotTicketSubmissionSwitchDidChange(sender: UISwitch) {
+        UserDefaults.standard.set(sender.isOn, forKey: RemoteFeatureFlags.triageBotTicketSubmissionLocalOverrideKey)
+    }
+
+    @objc func triageBotAIFallbackSwitchDidChange(sender: UISwitch) {
+        UserDefaults.standard.set(sender.isOn, forKey: RemoteFeatureFlags.triageBotAIFallbackLocalOverrideKey)
+    }
+
+    /// Tappable row to load the Anthropic API key into the device Keychain at
+    /// runtime (so the AI fallback can be exercised on TestFlight without the
+    /// token ever entering source or the binary). `.value1` style so the
+    /// "Stored"/"Not set" status shows on the trailing edge. Tapping presents
+    /// the paste/clear alert in `presentAnthropicKeyEntry()`.
+    private func cellForTriageBotAnthropicKey() -> UITableViewCell {
+        let cell = UITableViewCell(style: .value1, reuseIdentifier: triageBotAnthropicKeyCellIdentifier)
+        cell.selectionStyle = .default
+        cell.accessoryType = .disclosureIndicator
+        cell.textLabel?.text = "Anthropic API Key"
+        cell.textLabel?.adjustsFontSizeToFitWidth = true
+        cell.textLabel?.minimumScaleFactor = 0.5
+        cell.detailTextLabel?.text = triageBotKeyAdmin.hasStoredKey ? "Stored" : "Not set"
+        return cell
+    }
+
+    /// Presents a secure-text alert to paste an Anthropic key (and, when one is
+    /// already stored, to clear it). Empty/whitespace pastes are rejected by
+    /// `TriageBotKeyAdmin.save`, so a stray Save can't wipe a working key.
+    private func presentAnthropicKeyEntry() {
+        let hasKey = triageBotKeyAdmin.hasStoredKey
+        let alert = UIAlertController(
+            title: "Anthropic API Key",
+            message: "Paste a key to enable the Triage Bot AI fallback on this device. "
+                + "The key is stored only in this device's Keychain — never in the app "
+                + "binary or source. Production users can't reach this screen, so their "
+                + "AI fallback stays off.",
+            preferredStyle: .alert
+        )
+        alert.addTextField { textField in
+            textField.placeholder = "sk-ant-…"
+            textField.isSecureTextEntry = true
+            textField.autocapitalizationType = .none
+            textField.autocorrectionType = .no
+            textField.spellCheckingType = .no
+        }
+        alert.addAction(UIAlertAction(title: "Save", style: .default) { [weak self, weak alert] _ in
+            guard let self = self else { return }
+            let raw = alert?.textFields?.first?.text ?? ""
+            self.triageBotKeyAdmin.save(raw)
+            self.tableView.reloadData()
+        })
+        if hasKey {
+            alert.addAction(UIAlertAction(title: "Clear Key", style: .destructive) { [weak self] _ in
+                self?.triageBotKeyAdmin.clear()
+                self?.tableView.reloadData()
+            })
+        }
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        present(alert, animated: true)
+    }
+
     private func cellForCustomRegsitry() -> UITableViewCell {
         let cell = TPPRegistryDebuggingCell()
         cell.delegate = self
         return cell
+    }
+
+    /// Local-override toggle for the in-app playback navigation feature
+    /// (swarm_0b7616e7 + polish 2026-06-02). Mirrors the
+    /// `cellForBetaLibraries` shape — single switch, no subtitle.
+    /// Writes via `inAppPlaybackNavSwitchDidChange(_:)` to the
+    /// `RemoteFeatureFlags.inAppPlaybackNavLocalOverrideKey` UserDefault,
+    /// so the flag flips immediately without a Firebase round-trip.
+    private func cellForInAppPlaybackNav() -> UITableViewCell {
+        guard let cell = tableView.dequeueReusableCell(withIdentifier: inAppPlaybackNavCellIdentifier) else {
+            fatalError("Failed to dequeue cell with identifier \(inAppPlaybackNavCellIdentifier)")
+        }
+        cell.selectionStyle = .none
+        cell.textLabel?.text = "In-App Playback Navigation"
+        cell.textLabel?.adjustsFontSizeToFitWidth = true
+        cell.textLabel?.minimumScaleFactor = 0.5
+        cell.accessoryView = createSwitch(
+            isOn: RemoteFeatureFlags.shared.isInAppPlaybackNavEnabled,
+            action: #selector(inAppPlaybackNavSwitchDidChange)
+        )
+        return cell
+    }
+
+    @objc func inAppPlaybackNavSwitchDidChange(sender: UISwitch) {
+        UserDefaults.standard.set(sender.isOn, forKey: RemoteFeatureFlags.inAppPlaybackNavLocalOverrideKey)
     }
 
     private func cellForClearCache() -> UITableViewCell {
@@ -250,6 +470,76 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         cell.selectionStyle = .none
         cell.textLabel?.text = "Clear Cached Data"
         return cell
+    }
+
+    private func cellForResetThisLibrary() -> UITableViewCell {
+        let cell = UITableViewCell(style: .subtitle, reuseIdentifier: "resetThisLibraryCell")
+        cell.textLabel?.text = "Reset This Library"
+        cell.textLabel?.textColor = .systemRed
+        cell.detailTextLabel?.text = "Signs out & deletes this library's downloads, bookmarks, saved login. Other libraries unaffected."
+        cell.detailTextLabel?.numberOfLines = 0
+        return cell
+    }
+
+    private func cellForFullReset() -> UITableViewCell {
+        let cell = UITableViewCell(style: .subtitle, reuseIdentifier: "fullResetCell")
+        cell.textLabel?.text = "Full Reset (All Libraries)"
+        cell.textLabel?.textColor = .systemRed
+        cell.detailTextLabel?.text = "For a stuck app. Signs out of ALL libraries & re-activates DRM device-wide. Use only if a single-library reset didn't fix it."
+        cell.detailTextLabel?.numberOfLines = 0
+        return cell
+    }
+
+    // MARK: - Account Reset (support tier)
+
+    private func currentAccountBusinessLogic() -> TPPSignInBusinessLogic? {
+        let container = AppContainer.production()
+        guard let accountId = container.accountsManager.currentAccountId,
+              let registry = container.bookRegistry as? TPPBookRegistrySyncing else { return nil }
+        return TPPSignInBusinessLogic(
+            libraryAccountID: accountId,
+            libraryAccountsProvider: container.accountsManager,
+            urlSettingsProvider: container.settings,
+            bookRegistry: registry,
+            bookDownloadsCenter: container.downloadCenter,
+            userAccountProvider: TPPUserAccount.self,
+            uiDelegate: nil,
+            drmAuthorizer: container.drmAuthorizerProvider()
+        )
+    }
+
+    private func confirmResetThisLibrary() {
+        presentResetConfirmation(
+            title: "Reset This Library?",
+            message: "Signs you out of the current library and deletes its downloads, bookmarks, and saved login on this device. Other libraries and your server loans/holds are not affected.",
+            confirmTitle: "Reset Library"
+        ) { logic, done in logic.performScopedReset(completion: done) }
+    }
+
+    private func confirmFullReset() {
+        presentResetConfirmation(
+            title: "Full Reset — All Libraries?",
+            message: "Signs you out of EVERY library on this device and re-activates DRM device-wide. Use only if resetting a single library did not fix the problem. Server loans/holds are not affected.",
+            confirmTitle: "Full Reset"
+        ) { logic, done in logic.performForceReset(completion: done) }
+    }
+
+    private func presentResetConfirmation(title: String, message: String, confirmTitle: String,
+                                          action: @escaping (TPPSignInBusinessLogic, @escaping () -> Void) -> Void) {
+        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: confirmTitle, style: .destructive) { [weak self] _ in
+            guard let self, let logic = self.currentAccountBusinessLogic() else { return }
+            action(logic) { [weak self] in
+                DispatchQueue.main.async {
+                    self?.tableView?.reloadData()
+                    let doneAlert = UIAlertController(title: "Reset complete", message: "You may need to sign in again.", preferredStyle: .alert)
+                    doneAlert.addAction(UIAlertAction(title: "OK", style: .default))
+                    self?.present(doneAlert, animated: true)
+                }
+            }
+        })
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        present(alert, animated: true)
     }
 
     private func cellForSendErrorLogs() -> UITableViewCell {
@@ -285,24 +575,6 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     }
 
     #if DEBUG
-    @objc func incrementalSpeedSliderSwitchDidChange(sender: UISwitch) {
-        self.debugSettings.isIncrementalSpeedSliderEnabled = sender.isOn
-    }
-
-    private func cellForIncrementalSpeedSlider() -> UITableViewCell {
-        guard let cell = tableView.dequeueReusableCell(withIdentifier: incrementalSpeedSliderCellIdentifier) else {
-            fatalError("Failed to dequeue cell with identifier \(incrementalSpeedSliderCellIdentifier)")
-        }
-        cell.selectionStyle = .none
-        cell.textLabel?.text = "Incremental Speed Slider"
-        cell.textLabel?.adjustsFontSizeToFitWidth = true
-        cell.accessoryView = createSwitch(
-            isOn: self.debugSettings.isIncrementalSpeedSliderEnabled,
-            action: #selector(incrementalSpeedSliderSwitchDidChange)
-        )
-        return cell
-    }
-
     @objc func badgeLoggingSwitchDidChange(sender: UISwitch) {
         self.debugSettings.isBadgeLoggingEnabled = sender.isOn
     }
@@ -333,21 +605,6 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         return cell
     }
     #else
-    private func cellForIncrementalSpeedSlider() -> UITableViewCell {
-        guard let cell = tableView.dequeueReusableCell(withIdentifier: incrementalSpeedSliderCellIdentifier) else {
-            fatalError("Failed to dequeue cell with identifier \(incrementalSpeedSliderCellIdentifier)")
-        }
-        cell.selectionStyle = .none
-        cell.textLabel?.text = "Incremental Speed Slider"
-        cell.textLabel?.adjustsFontSizeToFitWidth = true
-        // In non-DEBUG builds, the switch reads the same DebugSettings property
-        let switchControl = UISwitch()
-        switchControl.isOn = self.debugSettings.isIncrementalSpeedSliderEnabled
-        switchControl.isEnabled = false
-        cell.accessoryView = switchControl
-        return cell
-    }
-
     private func cellForBadgeLogging() -> UITableViewCell {
         return UITableViewCell()
     }
@@ -629,12 +886,23 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         self.tableView.deselectRow(at: indexPath, animated: true)
 
-        switch Section(rawValue: indexPath.section) {
+        guard indexPath.section >= 0, indexPath.section < visibleSections.count else { return }
+        let sectionType = visibleSections[indexPath.section]
+
+        // F-011 class-of-bug guard
+        switch sectionType {
         case .dataManagement:
-            accountsManager.clearCache()
-            ImageCache.shared.clear()
-            let alert = TPPAlertUtils.alert(title: "Data Management", message: "Cache Cleared")
-            self.present(alert, animated: true, completion: nil)
+            switch indexPath.row {
+            case 0:
+                accountsManager.clearCache()
+                ImageCache.shared.clear()
+                let alert = TPPAlertUtils.alert(title: "Data Management", message: "Cache Cleared")
+                self.present(alert, animated: true, completion: nil)
+            case 1:
+                confirmResetThisLibrary()
+            default:
+                confirmFullReset()
+            }
 
         case .developerTools:
             switch indexPath.row {
@@ -681,7 +949,14 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
             }
         #endif
 
-        default:
+        case .triageBot:
+            // Rows 0–2 are toggles (handled by their switches); row 3 is the
+            // Anthropic key entry.
+            if indexPath.row == 3 {
+                presentAnthropicKeyEntry()
+            }
+
+        case .librarySettings, .featureFlags, .libraryRegistryDebugging:
             break
         }
     }
@@ -911,7 +1186,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         controller.dismiss(animated: true, completion: nil)
     }
 
-    // MARK: - Reset Account Testing (PP-4282 / HelpSpot 17716)
+    // MARK: - Reset Account Testing
     //
     // Test harness for the patron-self-service Reset Account button. Lets QA
     // and support reproduce the stuck-state condition (so they can verify
@@ -961,7 +1236,7 @@ class TPPDeveloperSettingsTableViewController: UIViewController, UITableViewDele
         let user = accountsManager.currentUserAccount
 
         // 1. Simulate "we think we registered FCM but actually didn't" — the
-        //    PP-4275 silent-failure mode that Reset Account heals on next launch.
+        // silent-failure mode that Reset Account heals on next launch.
         account.hasUpdatedToken = true
 
         // 2. Simulate stale SAML/OIDC session — the credentialsStale state that

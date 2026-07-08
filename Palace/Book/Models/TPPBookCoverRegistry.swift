@@ -264,6 +264,20 @@ actor TPPBookCoverRegistry {
             return img
         }
 
+        // Memory pressure backoff: while an LCP PDF is opening, the
+        // decrypt walk + Readium page rendering consume large memory
+        // buffers; layering background cover prefetches on top is what
+        // tipped device opens into OOM (visible in the device log as
+        // "Memory warning received" followed by SIGABRT). Skip the
+        // network + decode here — callers see the same nil-on-miss
+        // they'd see during a transient network failure, and the
+        // catalog re-fetches naturally when the user scrolls back.
+        #if LCP
+        if LCPPDFOpenProgress.isOpenInProgress {
+            return nil
+        }
+        #endif
+
         guard let data = await sourceData(for: url) else { return nil }
 
         guard let image = Self.downsampleImage(
@@ -485,91 +499,13 @@ actor TPPBookCoverRegistry {
 }
 
 // MARK: - Objective-C Bridge
-@objcMembers
-public class TPPBookCoverRegistryBridge: NSObject {
-    public static let shared = TPPBookCoverRegistryBridge()
-
-    /// Shared image cache reference for safe access
-    private let sharedImageCache = ImageCache.shared
-
-    /// Asynchronous, Objective-C friendly cover fetch
-    /// - Parameters:
-    ///   - book: The TPPBook instance
-    ///   - completion: Block called on main thread with the UIImage or nil
-    /// - Note: Uses weak reference to book to prevent crashes if book is deallocated during fetch
-    public func coverImageForBook(_ book: TPPBook, completion: @escaping (UIImage?) -> Void) {
-        // Capture all needed data early to avoid accessing potentially deallocated book later
-        let bookIdentifier = book.identifier
-        let coverKey = "\(bookIdentifier)_cover"
-        let imageURL = book.imageURL
-        let thumbnailURL = book.imageThumbnailURL
-        let title = book.title
-        let authors = book.authors
-
-        Task { [weak book, sharedImageCache] in
-            // Fetch using captured URLs instead of book reference
-            var img: UIImage?
-
-            if let url = imageURL {
-                img = await TPPBookCoverRegistry.shared.fetchImageByURL(url, identifier: bookIdentifier, isCover: true)
-            }
-
-            // Fall back to thumbnail if cover fetch fails
-            if img == nil, let url = thumbnailURL {
-                img = await TPPBookCoverRegistry.shared.fetchImageByURL(url, identifier: bookIdentifier, isCover: false)
-            }
-
-            // Fall back to placeholder if all fetches fail
-            if img == nil {
-                img = await TPPBookCoverRegistry.shared.generatePlaceholder(title: title, authors: authors)
-            }
-
-            // Use main actor for UI-related cache operations
-            let finalImg = img
-            let capturedBook = book
-            await MainActor.run {
-                if let finalImg {
-                    sharedImageCache.set(finalImg, for: coverKey)
-                    capturedBook?.imageCache.set(finalImg, for: coverKey)
-                }
-                completion(finalImg)
-            }
-        }
-    }
-
-    /// Asynchronous, Objective-C friendly thumbnail fetch
-    /// - Note: Uses weak reference to book to prevent crashes if book is deallocated during fetch
-    public func thumbnailImageForBook(_ book: TPPBook, completion: @escaping (UIImage?) -> Void) {
-        // Capture all needed data early to avoid accessing potentially deallocated book later
-        let bookIdentifier = book.identifier
-        let thumbnailKey = "\(bookIdentifier)_thumbnail"
-        let thumbnailURL = book.imageThumbnailURL
-        let title = book.title
-        let authors = book.authors
-
-        Task { [weak book, sharedImageCache] in
-            // Fetch using captured URLs instead of book reference
-            var img: UIImage?
-
-            if let url = thumbnailURL {
-                img = await TPPBookCoverRegistry.shared.fetchImageByURL(url, identifier: bookIdentifier, isCover: false)
-            }
-
-            // Fall back to placeholder if fetch fails
-            if img == nil {
-                img = await TPPBookCoverRegistry.shared.generatePlaceholder(title: title, authors: authors)
-            }
-
-            // Use main actor for UI-related cache operations
-            let finalImg = img
-            let capturedBook = book
-            await MainActor.run {
-                if let finalImg {
-                    sharedImageCache.set(finalImg, for: thumbnailKey)
-                    capturedBook?.imageCache.set(finalImg, for: thumbnailKey)
-                }
-                completion(finalImg)
-            }
-        }
-    }
-}
+//
+// `TPPBookCoverRegistryBridge` was removed in the swarm_d5a3d473 Track A
+// consolidation (2026-05-19). Its responsibilities moved to the
+// `ImageLoading` umbrella's completion-style overloads on `ImageLoader`,
+// which is constructed once in `AppContainer.production()` and injected
+// through `AppContainer.imageLoader`. Call sites that used to read
+// `TPPBookCoverRegistryBridge.shared` now read `imageLoader` either via
+// explicit `AppContainer` injection (BookListView, TPPBookRegistry,
+// CarPlayImageProvider) or via the `AppContainer.production().imageLoader`
+// computed accessor on TPPBook+Presentation.

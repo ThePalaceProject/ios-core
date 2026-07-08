@@ -15,11 +15,18 @@ final class BookCellModelCacheTests: XCTestCase {
     var sut: BookCellModelCache!
     var mockImageCache: MockImageCache!
     var mockBookRegistry: TPPBookRegistryMock!
+    /// Per-test isolated AppContainer (swarm_47883816 work package A).
+    /// Supplies collaborators (downloadCenter, accountsManager,
+    /// samplePreviewManager, readerService) without reaching into the
+    /// process-wide production cache. Fresh per `setUp()` so cache
+    /// invalidation logic exercised in one test does not poison the next.
+    var appContainer: AppContainer!
 
     override func setUp() async throws {
         try await super.setUp()
         mockImageCache = MockImageCache()
         mockBookRegistry = TPPBookRegistryMock()
+        appContainer = makeTestAppContainer()
 
         sut = BookCellModelCache(
             configuration: .init(
@@ -29,10 +36,10 @@ final class BookCellModelCacheTests: XCTestCase {
             ),
             imageCache: mockImageCache,
             bookRegistry: mockBookRegistry,
-            downloadCenter: AppContainer.production().downloadCenter,
-            accountsManager: AppContainer.production().accountsManager,
-            samplePreviewManager: AppContainer.production().samplePreviewManager,
-            readerService: AppContainer.production().readerService
+            downloadCenter: appContainer.downloadCenter,
+            accountsManager: appContainer.accountsManager,
+            samplePreviewManager: appContainer.samplePreviewManager,
+            readerService: appContainer.readerService
         )
     }
 
@@ -40,6 +47,7 @@ final class BookCellModelCacheTests: XCTestCase {
         sut = nil
         mockImageCache = nil
         mockBookRegistry = nil
+        appContainer = nil
         try await super.tearDown()
     }
 
@@ -207,10 +215,10 @@ final class BookCellModelCacheTests: XCTestCase {
             ),
             imageCache: mockImageCache,
             bookRegistry: mockBookRegistry,
-            downloadCenter: AppContainer.production().downloadCenter,
-            accountsManager: AppContainer.production().accountsManager,
-            samplePreviewManager: AppContainer.production().samplePreviewManager,
-            readerService: AppContainer.production().readerService
+            downloadCenter: appContainer.downloadCenter,
+            accountsManager: appContainer.accountsManager,
+            samplePreviewManager: appContainer.samplePreviewManager,
+            readerService: appContainer.readerService
         )
 
         let book = makeTestBook(identifier: "downloadingBook", title: "Test Book")
@@ -248,10 +256,10 @@ final class BookCellModelCacheTests: XCTestCase {
             ),
             imageCache: mockImageCache,
             bookRegistry: mockBookRegistry,
-            downloadCenter: AppContainer.production().downloadCenter,
-            accountsManager: AppContainer.production().accountsManager,
-            samplePreviewManager: AppContainer.production().samplePreviewManager,
-            readerService: AppContainer.production().readerService
+            downloadCenter: appContainer.downloadCenter,
+            accountsManager: appContainer.accountsManager,
+            samplePreviewManager: appContainer.samplePreviewManager,
+            readerService: appContainer.readerService
         )
 
         let book = makeTestBook(identifier: "activeDownload", title: "Active Download")
@@ -288,10 +296,10 @@ final class BookCellModelCacheTests: XCTestCase {
             ),
             imageCache: mockImageCache,
             bookRegistry: mockBookRegistry,
-            downloadCenter: AppContainer.production().downloadCenter,
-            accountsManager: AppContainer.production().accountsManager,
-            samplePreviewManager: AppContainer.production().samplePreviewManager,
-            readerService: AppContainer.production().readerService
+            downloadCenter: appContainer.downloadCenter,
+            accountsManager: appContainer.accountsManager,
+            samplePreviewManager: appContainer.samplePreviewManager,
+            readerService: appContainer.readerService
         )
 
         let book = makeTestBook(identifier: "holdBook", title: "Hold Book")

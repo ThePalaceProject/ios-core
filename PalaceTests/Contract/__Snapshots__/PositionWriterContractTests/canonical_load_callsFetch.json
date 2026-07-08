@@ -1,0 +1,17 @@
+[
+  {
+    "args" : {
+      "bookID" : "contract-book-1",
+      "returnsNil" : "false"
+    },
+    "method" : "network.fetch"
+  },
+  {
+    "args" : {
+      "bookID" : "contract-book-1",
+      "isNil" : "false",
+      "payloadByteCount" : "8"
+    },
+    "method" : "writer.load.return"
+  }
+]

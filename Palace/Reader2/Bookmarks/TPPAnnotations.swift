@@ -105,6 +105,15 @@ protocol AnnotationsManager {
     nonisolated(unsafe) static var executorOverride: TPPNetworkExecutor?
     nonisolated(unsafe) static var accountsManagerOverride: TPPLibraryAccountsProvider?
 
+    /// Test-only override for the annotations URL. When set, `annotationsURL`
+    /// returns this value instead of deriving from `TPPConfiguration.mainFeedURL()`.
+    /// CI runners boot with no signed-in library, so `mainFeedURL()` is nil and
+    /// every annotation POST/GET path early-returns before hitting the
+    /// HTTPStubURLProtocol handler. Tests that exercise the annotation network
+    /// surface (e.g. CrossDeviceSyncE2ETests) inject their MockSyncBackend's
+    /// base URL here. Never set from production code.
+    nonisolated(unsafe) static var annotationsURLOverride: URL?
+
     /// Returns the executor TPPAnnotations should use for the current call.
     /// In production this is always `.shared`. In tests, setting
     /// `executorOverride` lets the test inject a stubbed executor.
@@ -449,7 +458,21 @@ protocol AnnotationsManager {
             Log.info(#file, "📡 PARSED BOOKMARKS COUNT: \(bookmarks.count) (from \(items.count) raw items)")
 
             if bookmarks.count < items.count {
-                Log.warn(#file, "📡 ⚠️ Some items failed to parse: \(items.count - bookmarks.count) items were not converted to bookmarks")
+                // The server's `/annotations/` endpoint returns ALL of
+                // the user's annotations across every book they've ever
+                // read, not just bookmarks for the requested book. Most
+                // skipped items are filtered by `make()` for being
+                // bookmarks for *other* books (`source != bookID`),
+                // not parse failures. Logged at info, not warn, to
+                // avoid alarming the support team — the number scales
+                // with how much the user has read across the library.
+                //
+                // The cold-open latency from this endpoint dominates
+                // bookmark load on books with many annotations: every
+                // open re-downloads the same N-thousand-item payload
+                // just to extract the few that match. A CM-side
+                // per-book filter parameter would be the right fix.
+                Log.info(#file, "📡 Filtered \(items.count - bookmarks.count) items belonging to other books (kept \(bookmarks.count) for \(book.identifier))")
             }
 
             completion(bookmarks)
@@ -579,6 +602,24 @@ protocol AnnotationsManager {
     }
     // MARK: -
 
+    /// State-machine-aware accessor used by Phase 2 (Bucket B) sync
+    /// gates. Returns `nil` until the account is in `.detailsLoaded` —
+    /// any other state (`.notLoaded`, `.basicInfoLoaded`, `.detailsLoading`,
+    /// `.detailsFailed`, or the `.detailsEvicted` eviction-marker added by
+    /// the swarm_51f248d5 enum split) yields nil. This preserves the
+    /// nil-tolerance the legacy `account.details?` reads provided, but no
+    /// longer races a partially-populated auth doc. Bookmark sync is a
+    /// best-effort silent-failure path per the ADR, so nil during the
+    /// loading window is correct (the next render after `.detailsLoaded`
+    /// fires re-enables the sync paths).
+    fileprivate static func loadedDetails(of account: Account?) -> AccountDetails? {
+        guard let account = account,
+              case .detailsLoaded(let details) = account.loadState else {
+            return nil
+        }
+        return details
+    }
+
     /// Annotation-syncing is possible only if the given `account` is signed-in
     /// and if the currently selected library supports it.
     ///
@@ -589,26 +630,30 @@ protocol AnnotationsManager {
     static func syncIsPossible(_ account: TPPUserAccount, accountsManager: TPPLibraryAccountsProvider? = nil) -> Bool {
         let manager = accountsManager ?? Self.currentAccountsManager
         let library = manager.currentAccount
-        return account.hasCredentials() && library?.details?.supportsSimplyESync == true
+        return account.hasCredentials() && loadedDetails(of: library)?.supportsSimplyESync == true
     }
 
     static func syncIsPossibleAndPermitted(accountsManager: TPPLibraryAccountsProvider? = nil) -> Bool {
         let manager = accountsManager ?? Self.currentAccountsManager
         let account = manager.currentUserAccount
         let acct = manager.currentAccount
+        let details = loadedDetails(of: acct)
         let hasCreds = account.hasCredentials()
-        let supportsSync = acct?.details?.supportsSimplyESync == true
-        let permissionGranted = acct?.details?.syncPermissionGranted == true
+        let supportsSync = details?.supportsSimplyESync == true
+        let permissionGranted = details?.syncPermissionGranted == true
         let result = hasCreds && supportsSync && permissionGranted
 
         if !result {
-            Log.debug(#file, "syncIsPossibleAndPermitted=\(result): hasCredentials=\(hasCreds), supportsSimplyESync=\(supportsSync), syncPermissionGranted=\(permissionGranted), accountDetails=\(acct?.details != nil ? "present" : "nil")")
+            Log.debug(#file, "syncIsPossibleAndPermitted=\(result): hasCredentials=\(hasCreds), supportsSimplyESync=\(supportsSync), syncPermissionGranted=\(permissionGranted), loadedDetails=\(details != nil ? "present" : "nil (state-machine not yet .detailsLoaded)")")
         }
 
         return result
     }
 
     static var annotationsURL: URL? {
+        if let override = annotationsURLOverride {
+            return override
+        }
         return TPPConfiguration.mainFeedURL()?.appendingPathComponent("annotations/")
     }
 

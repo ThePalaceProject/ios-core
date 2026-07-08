@@ -1,0 +1,18 @@
+[
+  {
+    "args" : {
+      "resetCache" : "true",
+      "url" : "HOLD-PRE",
+      "useToken" : "true"
+    },
+    "method" : "fetchBook"
+  },
+  {
+    "args" : {
+      "bookId" : "HOLD-PRE",
+      "hasRetryAction" : "false",
+      "title" : "Borrow Failed"
+    },
+    "method" : "presentBorrowErrorAlert"
+  }
+]

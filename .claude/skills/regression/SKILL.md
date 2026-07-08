@@ -3,6 +3,13 @@ name: regression
 description: Run a full release regression test — sets up workspace, runs automated tools, guides manual testing, generates report and Jira tickets. Use for release gates and QA cycles.
 argument-hint: <ticket> [--baseline-version X.X.X] [--candidate-version X.X.X]
 allowed-tools: Bash(*), Read, Write, Edit, Glob, Grep, Agent
+# doc-lifecycle metadata (added by Module B sweep)
+type: evolving
+status: active
+created: 2026-04-29
+last_refresh: 2026-05-15
+freshness_window: 365d
+owners: [general]
 ---
 
 # Palace iOS Release Regression
@@ -54,12 +61,17 @@ delta or crashes>0 is auto-failed. Each failing journey becomes a finding.
 **Step 2b — full automated tool sweep**:
 
 ```bash
+# IMPORTANT: --mutation-run is now MANDATORY for a release regression.
+# CI no longer runs mutation (removed 2026-05-15 — too expensive on every
+# PR push); the local regression run is the only place mutation results
+# get produced for a candidate. Skipping it leaves test-quality regressions
+# unmonitored.
 scripts/regression-report.sh auto \
   --output-dir ~/Desktop/regression-<TICKET> \
   --baseline-ref <BASELINE_REF> \
   --candidate-branch <CANDIDATE_BRANCH> \
   --run-sync-tests \
-  [--mutation-run]
+  --mutation-run
 ```
 
 Notes on flags:
@@ -97,7 +109,9 @@ at 0% kill rate this way.
 
 This is the highest-value phase. Read `TEST_MATRIX.md` and walk through each priority tier.
 
-### Driving the sim: `simdrive` (MCP, current version 0.3.0a1)
+### Driving the sim: `simdrive` (MCP)
+
+Run `~/harness/bin/harness simdrive status` to confirm the current installed version before driving — do not assume a pinned version here.
 
 `simdrive` is the canonical iOS sim driver. Real CoreSimulator HID input — taps focus
 UITextFields and accept keyboard input on iOS 26+ (the v15/v16 cliclick path didn't).
@@ -121,11 +135,11 @@ After upgrade, run `/mcp` reload so new MCP tools become available.
 - `swipe`, `type_text` (with optional `tap_first`), `press_key`
 - `record_start` / `record_stop` / `replay` — replay supports `mask_regions` + auto-load `ssim_masks` from YAML
 
-*Diagnostics + perf (new in 0.3.0a1)*
+*Diagnostics + perf*
 - `app_state`, `apps`, `crashes`, `doctor`, `memory`
 - `perf` (snapshot), `perf_baseline` (labeled), `perf_compare` (returns severity: low/medium/high)
 
-*Robustness (new in 0.3.0a1)*
+*Robustness*
 - `pre_grant_permissions` — `simctl privacy grant` BEFORE launch (avoids SpringBoard PIDChange race)
 - `set_appearance` — light/dark mode
 - `dismiss_first_launch_alerts` — handles the 1-in-4 Allow-button-misses race

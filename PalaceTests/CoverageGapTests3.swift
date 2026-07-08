@@ -17,6 +17,10 @@ import OSLog
 
 final class AudioBookmarkGapTests: XCTestCase {
 
+    override func tearDown() {
+        super.tearDown()
+    }
+
     /// Coverage Gap: AudioBookmark — verify creation and basic properties
     func testAudioBookmark_creation_storesBasicProperties() {
         let bookmark = AudioBookmark(
@@ -197,10 +201,15 @@ final class TPPUserAccountGapTests: XCTestCase {
 
     /// Coverage Gap: TPPUserAccount.sharedAccount — is accessible
     func testTPPUserAccount_sharedAccount_isAccessible() {
-        let account = TPPUserAccount.sharedAccount()
+        // Identity test of the AccountsManager-cached account: two
+        // calls to sharedAccount() must return the SAME instance.
+        // Replacing with TPPUserAccountTestFactory would invert the
+        // test's meaning (the factory deliberately bypasses the cache).
+        // Per swarm_47883816 contract C, the lint allows these bare
+        // calls because of the // MIGRATED: marker on each line.
+        let account = TPPUserAccount.sharedAccount() // MIGRATED: keep — identity test of shared cache
         XCTAssertNotNil(account, "sharedAccount() should return non-nil account")
-        // The shared account should be the same singleton across calls
-        XCTAssertTrue(account === TPPUserAccount.sharedAccount(),
+        XCTAssertTrue(account === TPPUserAccount.sharedAccount(), // MIGRATED: keep — identity test of shared cache
                       "sharedAccount() should return the same singleton instance")
         // Auth state should be queryable without crashing
         let authState = account.authState

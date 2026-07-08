@@ -14,6 +14,10 @@ struct BookCell: View {
     var previewEnabled: Bool = true
 
     var body: some View {
+        // `.hoverEffect(.lift)` gives Mac (iPad-on-Mac) and iPadOS
+        // pointer users the expected hover feedback on catalog/MyBooks rows.
+        // On iPhone (no pointer) this is a no-op, so it costs nothing.
         NormalBookCell(model: model, previewEnabled: previewEnabled)
+            .hoverEffect(.lift)
     }
 }

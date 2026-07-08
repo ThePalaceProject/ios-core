@@ -29,7 +29,7 @@ extension TPPMigrationManager {
         AppContainer.production().networkQueue.migrate()
     }
 
-    // Palace v3.1.0 (PP-4179)
+    // Palace v3.1.0
     // Exclude downloaded books, audiobook chapters, logs, network queue, and
     // accounts state from iCloud backup. Required by Apple for re-downloadable
     // content; without it the app's iCloud quota grows linearly with patron

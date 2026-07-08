@@ -1247,7 +1247,7 @@ final class TPPAnnotationsHermeticTests: XCTestCase {
         mock.postStub = (Data("{}".utf8), httpResponse(200), nil)
         let params: [String: Any] = ["foo": "bar", "n": 42]
 
-        _ = postAndWait(parameters: params, timeout: 17)
+        _ = postAndWait(parameters: params, timeout: 17) // FLAKE-003-OK: timeout: 17 is the production-API URLRequest timeoutInterval value being asserted in the next request-shape check, NOT an XCTest wait timeout.
 
         XCTAssertEqual(mock.postCallCount, 1)
         let req = try! XCTUnwrap(mock.lastPostRequest)

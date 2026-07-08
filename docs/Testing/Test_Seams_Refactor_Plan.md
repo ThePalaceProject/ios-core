@@ -726,9 +726,113 @@ final class KeychainFake: KeychainProviding {
 |----------|------|--------|
 | `CatalogRepositoryProtocol` | `CatalogRepositoryProtocol.swift` | Has mock |
 | `CatalogAPI` | `CatalogAPI.swift` | Has mock |
+
+### Clock / Time Seams
+
+| Seam | File | Notes |
+|------|------|-------|
+| `CatalogRepository.init(api:now:)` | `Palace/Packages/PalaceCatalog/Sources/PalaceCatalog/CatalogRepository.swift` | Injectable `() -> Date` clock used by `isExpired` / `isStaleButUsable` / `isTooOld` and all `CachedFeed` timestamp writes. Production code uses the default `init(api:)` which binds `now = Date.init`. Added to drive stale-while-revalidate boundary tests deterministically (see `PalaceTests/CatalogDomain/CatalogRepositoryStaleWhileRevalidateTests.swift`). |
 | `NetworkClient` | `NetworkClient.swift` | Has mock |
 | `TPPLibraryAccountsProvider` | `AccountsManager.swift` | Has mock |
 | `TPPCurrentLibraryAccountProvider` | `AccountsManager.swift` | Has mock |
 | `PDFDocumentProviding` | `PDFDocumentProviding.swift` | Has mock |
 | `ImageCacheType` | `ImageCacheType.swift` | Has mock |
 | `AnnotationsManager` | `TPPAnnotations.swift` | Has mock |
+
+## 9. Addendum (2026-05): TPPNetworkExecutor full-DI initializer
+
+To support adversarial coverage of the token-refresh + 401 retry-queue
+paths in `TPPNetworkExecutor.refreshTokenAndResume`, a new initializer was
+added that accepts BOTH a custom `URLSessionConfiguration` (for
+`URLProtocol`-based stubbing of the token endpoint and retried requests)
+AND an injected `TPPLibraryAccountsProvider` (so per-account credential
+reads and `setAuthToken` writes target a test-controlled
+`TPPLibraryAccountMock` / `TPPUserAccountMock` instead of the production
+singleton via `AppContainer.production().accountsManager`).
+
+```swift
+init(credentialsProvider: NYPLBasicAuthCredentialsProvider? = nil,
+     cachingStrategy: NYPLCachingStrategy,
+     sessionConfiguration: URLSessionConfiguration,
+     accountsManager: TPPLibraryAccountsProvider,
+     delegateQueue: OperationQueue? = nil)
+```
+
+The two pre-existing initializers cover all production callers; combining
+them via a third overload avoids forcing every existing caller through a
+sessionConfig argument they don't care about. The injected
+`accountsManager` flows through `self.accountsManager` for the
+token-refresh failure paths (`markCredentialsStale`, signed-in modal
+dispatch, retried-request construction). See
+`PalaceTests/Network/TokenRefreshAndRetryQueueTests`.
+
+## 10. Addendum (2026-05): TPPSignInBusinessLogic deep-test seam gaps
+
+While adding mutation-killing tests for `TPPSignInBusinessLogic` (see
+`PalaceTests/SignInLogic/TPPSignInBusinessLogicOAuthTests.swift`,
+`TPPSignInBusinessLogicSignOutTests.swift`, `TPPAgeCheckDeepTests.swift`),
+the following seam gaps were identified. **None require production-code
+changes today** — each test file works around the gap with techniques
+documented inline. The notes here exist so a future seam-sweep PR can
+tighten the public test affordance for these surfaces.
+
+### 10.1 `TPPSignInBusinessLogic.handleRedirectURL` — notification observer ordering — RESOLVED (commit gap/signin-seams)
+
+**Resolution:** Added an injectable `notificationCenter` property on
+`TPPSignInBusinessLogic` (default `.default`) plus an `@objc
+setNotificationCenterForTests(_:)` helper. `oauthLogIn()` and
+`handleRedirectURL` now register / remove the observer against
+`self.notificationCenter`, allowing tests to drive a hermetic
+`NotificationCenter()` for full add → fire → remove verification without
+polluting the process-global default center. See new test
+`test_oauthRedirectObserver_registersAndRemovesItself_viaInjectedCenter`
+in `TPPSignInBusinessLogicOAuthTests`.
+
+### 10.2 `TPPSignInBusinessLogic.getBearerToken` — `TPPNetworkExecutor` is a concrete dependency — RESOLVED (commit gap/signin-seams)
+
+**Resolution:** Added a `TokenRefreshing` protocol in
+`Palace/Network/TPPRequestExecuting.swift` exposing just
+`executeTokenRefresh(username:password:tokenURL:accountId:completion:)`.
+`TPPNetworkExecutor` conforms via an empty extension (witness signature
+already matches). A new overload
+`getBearerToken(username:password:tokenURL:tokenRefresher:completion:)`
+takes the protocol; the existing concrete-typed overload forwards
+through it, so every existing call site continues to compile unchanged
+and ObjC interop is preserved.
+
+`TPPSignInBusinessLogicTokenFlowTests` no longer constructs a real
+`TPPNetworkExecutor` + `URLSessionConfiguration` + `HTTPStubURLProtocol`
+triad — it uses a pure in-memory `TokenRefresherMock` and asserts the
+argument flow plus reducer hand-off directly.
+
+### 10.3 `TPPAgeCheck` — private `serialQueue` has no flush hook — RESOLVED (commit gap/signin-seams)
+
+**Resolution:** Added an `@objc flushPendingForTests()` method on
+`TPPAgeCheck`, gated `#if DEBUG`. It calls `serialQueue.sync { }` — by
+the time it returns, every `.async` block enqueued earlier in program
+order has executed. The deep tests no longer rely on the implicit FIFO
+guarantee:
+
+* `runVerifyThenComplete` now drains the queue between the `verify` and
+  `didCompleteAgeCheck` calls.
+* `test_didFail_doesNotSetUserPresentedAgeCheck` drains synchronously
+  instead of using an inverted expectation + wall-clock drain timer.
+* `test_verify_nilCompletion_doesNotCrash` drains synchronously instead
+  of a 100ms `asyncAfter` deadline.
+
+### 10.4 `TPPSignInBusinessLogic+SignOut.signInGeneration` — associated-object guard — RESOLVED (commit gap/signin-seams)
+
+**Resolution:** Added two `@objc` accessors on
+`TPPSignInBusinessLogic+SignOut`, gated `#if DEBUG`:
+
+* `signOutSnapshotForTests: Int` — exposes the `signInGeneration`
+  captured at the top of the current `performLogOut()` call (returns
+  -1 if no sign-out has run yet).
+* `isSignOutInProgressForTests: Bool` — exposes the re-entrancy guard
+  flag.
+
+`TPPSignInBusinessLogicSignOutTests.test_signOut_preservesNewCredentials_whenUserReauthenticatesDuringSignOut`
+now pins the snapshot value directly across the race window
+(`capturedGeneration` → `cancelPendingSignOut` → `capturedGeneration + 1`)
+and asserts `isSignOutInProgress` clears on the stale-callback path —
+instead of observing only the post-condition.

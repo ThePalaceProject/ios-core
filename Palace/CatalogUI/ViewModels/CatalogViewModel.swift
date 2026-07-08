@@ -425,7 +425,7 @@ extension CatalogViewModel {
     for group in groups {
       let books = (group.publications ?? []).compactMap { $0.toBook() }
       guard !books.isEmpty else { continue }
-      lanes.append(CatalogLaneModel(title: group.title, books: books, moreURL: group.moreURL, isLoading: books.count < 3))
+      lanes.append(CatalogLaneModel(title: group.title, books: books, moreURL: group.moreURL))
     }
     Log.info(#file, "[OPDS2-DIAG] Built \(lanes.count) lanes from OPDS2 groups, total books=\(lanes.reduce(0) { $0 + $1.books.count })")
     return lanes
@@ -505,7 +505,7 @@ extension CatalogViewModel {
       }
     }
     return (orderedTitles.map { title in
-      CatalogLaneModel(title: title, books: titleToBooks[title] ?? [], moreURL: titleToMoreURL[title] ?? nil, isLoading: (titleToBooks[title] ?? []).count < 3)
+      CatalogLaneModel(title: title, books: titleToBooks[title] ?? [], moreURL: titleToMoreURL[title] ?? nil)
     }, [])
   }
 

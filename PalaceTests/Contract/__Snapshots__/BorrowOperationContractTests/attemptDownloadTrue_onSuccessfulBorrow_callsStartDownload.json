@@ -1,0 +1,17 @@
+[
+  {
+    "args" : {
+      "resetCache" : "true",
+      "url" : "F014-OK",
+      "useToken" : "true"
+    },
+    "method" : "fetchBook"
+  },
+  {
+    "args" : {
+      "bookId" : "F014-OK",
+      "hasRequest" : "false"
+    },
+    "method" : "startDownload"
+  }
+]

@@ -1,0 +1,11 @@
+diff --git a/Palace/MyBooks/BorrowOperation.swift b/Palace/MyBooks/BorrowOperation.swift
+index 1111111..2222222 100644
+--- a/Palace/MyBooks/BorrowOperation.swift
++++ b/Palace/MyBooks/BorrowOperation.swift
+@@ -10,3 +10,6 @@ final class BorrowOperation {
+     func existing() {}
++
++    func computeRenewalEligibility(for book: TPPBook) -> Bool {
++        return book.isRenewable && !book.isExpired
++    }
+ }

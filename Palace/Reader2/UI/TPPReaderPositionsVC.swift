@@ -296,7 +296,7 @@ class TPPReaderPositionsVC: UIViewController, UITableViewDataSource, UITableView
                 self?.tableView.reloadData()
                 self?.bookmarksRefreshControl?.endRefreshing()
                 if !success {
-                    // PP-3707: Offer retry for bookmark sync failures (likely transient network issue)
+                    // Offer retry for bookmark sync failures (likely transient network issue)
                     let operationId = "bookmark-sync"
                     let canRetry = self?.retryTracker.canRetry(operationId: operationId) ?? false
 

@@ -341,11 +341,10 @@ final class TPPNetworkExecutorStubbedTests: XCTestCase {
 
         executor.POST(request, useTokenIfAvailable: false, completion: nil)
 
-        // Wait briefly to ensure no crash, then verify the executor remains usable.
-        // 8s budget covers the 0.5s asyncAfter slot + suite-wide dispatch saturation.
-        let wait = XCTestExpectation(description: "Wait")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { wait.fulfill() }
-        self.wait(for: [wait], timeout: 8.0)
+        // Fire-and-forget POST schedules its work on the main queue. Drain the
+        // main queue so any subsequent main-queue blocks have flushed before we
+        // assert the executor is still usable.
+        drainMainQueue()
         // Executor must remain functional after fire-and-forget POST
         XCTAssertGreaterThan(self.executor.requestTimeout, 0,
                              "Executor requestTimeout must remain positive after nil-completion POST")
@@ -383,9 +382,9 @@ final class TPPNetworkExecutorStubbedTests: XCTestCase {
 
         executor.DELETE(request, useTokenIfAvailable: false, completion: nil)
 
-        let wait = XCTestExpectation(description: "Wait")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { wait.fulfill() }
-        self.wait(for: [wait], timeout: 2.0)
+        // Fire-and-forget DELETE schedules its work on the main queue. Drain it
+        // so any subsequent main-queue blocks have flushed before we assert.
+        drainMainQueue()
         // Executor must remain functional after fire-and-forget DELETE
         XCTAssertGreaterThan(self.executor.requestTimeout, 0,
                              "Executor requestTimeout must remain positive after nil-completion DELETE")

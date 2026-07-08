@@ -1,5 +1,5 @@
 {
-  "originHash" : "19156183b4f2a62ae3731579a826a8128b07dadbb3a02f987000b669c3f79663",
+  "originHash" : "6b3d05989d7ed978a5123126bc368d7901ded954f588f07dd50a100a638360e5",
   "pins" : [
     {
       "identity" : "abseil-cpp-binary",
@@ -222,8 +222,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/readium/swift-toolkit.git",
       "state" : {
-        "revision" : "907f35b67193e53361b7c7042ff1c2dee258f743",
-        "version" : "3.7.0"
+        "revision" : "de07026e9f825a5791f27a7ac4cd6bb1a784ab8d",
+        "version" : "3.9.0"
       }
     },
     {

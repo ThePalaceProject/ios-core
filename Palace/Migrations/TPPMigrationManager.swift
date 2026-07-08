@@ -25,6 +25,13 @@ class TPPMigrationManager: NSObject {
         runMigrations(settings: settings)
         performPostUpdateTasksIfNeeded()
 
+        #if LCP
+        // Readium 3.8.0+: carry existing LCP licenses/passphrases from the
+        // deprecated SQLite store into the Keychain store. Idempotent and
+        // gated by its own flag; safe to fire-and-forget at launch.
+        Task { await LCPKeychainMigration.runIfNeeded() }
+        #endif
+
         // Update app version
         settings.appVersion = targetVersion
     }

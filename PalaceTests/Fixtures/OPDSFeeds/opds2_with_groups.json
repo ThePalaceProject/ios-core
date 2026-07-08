@@ -1,0 +1,90 @@
+{
+  "metadata": {
+    "title": "Grouped OPDS2 Feed",
+    "identifier": "urn:uuid:opds2-grouped"
+  },
+  "links": [
+    {
+      "rel": "self",
+      "href": "https://example.org/opds2/grouped",
+      "type": "application/opds+json"
+    }
+  ],
+  "groups": [
+    {
+      "metadata": { "title": "Best Sellers" },
+      "links": [
+        {
+          "rel": "self",
+          "href": "https://example.org/opds2/grouped/bestsellers",
+          "type": "application/opds+json"
+        }
+      ],
+      "publications": [
+        {
+          "metadata": {
+            "identifier": "urn:uuid:bs-001",
+            "title": "Top Title One",
+            "author": [{ "name": "Bestseller Author A" }]
+          },
+          "links": [
+            {
+              "rel": "http://opds-spec.org/acquisition/borrow",
+              "href": "https://example.org/opds2/grouped/bs-001/borrow",
+              "type": "application/atom+xml;type=entry;profile=opds-catalog"
+            }
+          ]
+        },
+        {
+          "metadata": {
+            "identifier": "urn:uuid:bs-002",
+            "title": "Top Title Two",
+            "author": [{ "name": "Bestseller Author B" }]
+          },
+          "links": [
+            {
+              "rel": "http://opds-spec.org/acquisition/open-access",
+              "href": "https://example.org/opds2/grouped/bs-002/openaccess.epub",
+              "type": "application/epub+zip"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "metadata": { "title": "Staff Picks" },
+      "links": [
+        {
+          "rel": "subsection",
+          "href": "https://example.org/opds2/grouped/staff-picks",
+          "type": "application/opds+json"
+        }
+      ],
+      "publications": [
+        {
+          "metadata": {
+            "identifier": "urn:uuid:sp-001",
+            "title": "Staff Selection",
+            "author": [{ "name": "Staff Pick Author" }]
+          },
+          "links": [
+            {
+              "rel": "http://opds-spec.org/acquisition/borrow",
+              "href": "https://example.org/opds2/grouped/sp-001/borrow",
+              "type": "application/atom+xml;type=entry;profile=opds-catalog"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "metadata": { "title": "New Arrivals" },
+      "navigation": [
+        {
+          "href": "https://example.org/opds2/grouped/new",
+          "title": "All New Arrivals"
+        }
+      ]
+    }
+  ]
+}

@@ -5,6 +5,50 @@ import ReadiumLCP
 import ReadiumShared
 import PalaceAudiobookToolkit
 import PalaceLogging
+import UIKit
+
+/// Per-process LRU cache of decrypted blocks, keyed by the ciphertext
+/// bytes. PDFNavigator walks the PDF cross-ref table on every open,
+/// and many blocks (especially the cross-ref index and font tables)
+/// are requested repeatedly within the same render pass — caching the
+/// decrypted output skips the AES work for every repeat hit, which is
+/// what dominates open time on large Marketplace LCP PDFs.
+///
+/// `NSCache` auto-evicts under memory pressure (matched against
+/// `totalCostLimit`), so the cache cannot itself contribute to an OOM
+/// on a device that's already tight. The 16MB cap is intentionally
+/// conservative: it's enough to hold all the cross-ref + first-page
+/// blocks for a typical 50MB book but small enough that the OS will
+/// reclaim it before evicting the foreground app.
+///
+/// `NotificationCenter` listener purges everything on a system memory
+/// warning (or our pre-emptive `ReaderService.openPDF` notification).
+private final class LCPDecryptCache {
+    static let shared = LCPDecryptCache()
+    private let cache = NSCache<NSData, NSData>()
+
+    private init() {
+        cache.totalCostLimit = 16 * 1024 * 1024  // 16MB
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleMemoryWarning),
+            name: UIApplication.didReceiveMemoryWarningNotification,
+            object: nil
+        )
+    }
+
+    @objc private func handleMemoryWarning() {
+        cache.removeAllObjects()
+    }
+
+    func decrypted(for ciphertext: Data) -> Data? {
+        cache.object(forKey: ciphertext as NSData) as Data?
+    }
+
+    func store(_ plaintext: Data, for ciphertext: Data) {
+        cache.setObject(plaintext as NSData, forKey: ciphertext as NSData, cost: plaintext.count)
+    }
+}
 
 enum LCPContextError: Error {
     case creationReturnedNil
@@ -118,12 +162,27 @@ class TPPLCPClient: ReadiumLCP.LCPClient {
             return nil
         }
 
+        // Cache hit: same ciphertext bytes → same plaintext (LCP keys
+        // are per-license and stable for the open lifetime). Skips the
+        // R2LCPClient AES round-trip entirely.
+        if let cached = LCPDecryptCache.shared.decrypted(for: data) {
+            LCPPDFOpenProgress.shared.recordDecrypt(byteCount: data.count, fromCache: true)
+            return cached
+        }
+
         do {
             let decrypted = R2LCPClient.decrypt(data: data, using: drmContext)
-            if decrypted == nil {
-                Log.error(#file, "R2LCPClient.decrypt returned nil for \(data.count) bytes")
+            if let decrypted {
+                // Per-call success log dropped intentionally — at ~7k
+                // calls/s during a PDF cross-ref walk the string
+                // formatting + log-system writes were measurable
+                // memory churn on the device. The progress reporter +
+                // periodic [PERF] [LCP-PDF] residentMB line carry the
+                // same information without the per-call cost.
+                LCPDecryptCache.shared.store(decrypted, for: data)
+                LCPPDFOpenProgress.shared.recordDecrypt(byteCount: data.count)
             } else {
-                Log.debug(#file, "Successfully decrypted \(data.count) bytes -> \(decrypted?.count ?? 0) bytes")
+                Log.error(#file, "R2LCPClient.decrypt returned nil for \(data.count) bytes")
             }
             return decrypted
         } catch {
@@ -133,7 +192,30 @@ class TPPLCPClient: ReadiumLCP.LCPClient {
     }
 
     func findOneValidPassphrase(jsonLicense: String, hashedPassphrases: [String]) -> String? {
-        return R2LCPClient.findOneValidPassphrase(jsonLicense: jsonLicense, hashedPassphrases: hashedPassphrases)
+        // F-002 symmetric gap: R2LCPClient.findOneValidPassphrase → Botan can
+        // throw C++ exceptions (notably std::logic_error "id value cannot not
+        // be null" on empty license JSON, "expected null, got not" on non-JSON
+        // license strings) that escape Swift's do/catch entirely and reach
+        // std::terminate. Mirror the createContext wrapper so a bad license
+        // surfaces as a nil return ("no valid passphrase found") instead of a
+        // crash. Returning nil is the same shape callers already handle for
+        // the no-match case, so no upstream contract changes.
+        var result: String?
+        let caughtNativeException = TPPObjCExceptionCatcher.catchAllExceptions {
+            result = R2LCPClient.findOneValidPassphrase(
+                jsonLicense: jsonLicense,
+                hashedPassphrases: hashedPassphrases
+            )
+        }
+
+        if let exception = caughtNativeException {
+            let name = exception.name.rawValue
+            let reason = exception.reason ?? "Unknown native exception"
+            Log.error(#file, "LCP findOneValidPassphrase threw native exception: \(name) — \(reason)")
+            return nil
+        }
+
+        return result
     }
 }
 
@@ -149,12 +231,18 @@ extension TPPLCPClient {
             return nil
         }
 
+        if let cached = LCPDecryptCache.shared.decrypted(for: data) {
+            LCPPDFOpenProgress.shared.recordDecrypt(byteCount: data.count, fromCache: true)
+            return cached
+        }
+
         do {
             let result = R2LCPClient.decrypt(data: data, using: drmContext)
-            if result == nil {
-                Log.error(#file, "R2LCPClient.decrypt returned nil for \(data.count) bytes")
+            if let result {
+                LCPDecryptCache.shared.store(result, for: data)
+                LCPPDFOpenProgress.shared.recordDecrypt(byteCount: data.count)
             } else {
-                Log.debug(#file, "Successfully decrypted \(data.count) bytes -> \(result?.count ?? 0) bytes")
+                Log.error(#file, "R2LCPClient.decrypt returned nil for \(data.count) bytes")
             }
             return result
         } catch {

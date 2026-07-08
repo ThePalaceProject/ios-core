@@ -112,18 +112,44 @@ class TPPReaderBookmarksBusinessLogic: NSObject {
     }
 
     private func postBookmark(_ bookmark: TPPReadiumBookmark) {
-        guard
-            let currentAccount = currentLibraryAccountProvider.currentAccount,
-            let accountDetails = currentAccount.details,
-            accountDetails.syncPermissionGranted else {
+        guard let currentAccount = currentLibraryAccountProvider.currentAccount else {
             self.bookRegistry.add(bookmark, forIdentifier: book.identifier)
             return
         }
 
-        TPPAnnotations.postBookmark(bookmark, forBookID: book.identifier) { response in
-            Log.debug(#function, response?.serverId != nil ? "Bookmark upload succeed" : "Bookmark failed to upload")
-            bookmark.annotationId = response?.serverId
-            self.bookRegistry.add(bookmark, forIdentifier: self.book.identifier)
+        // PHASE 1 (swarm_81b5099e Bucket A): bookmark posting is best-effort,
+        // silent-failure — on `AccountLoadError` we log and fall back to
+        // local-only persistence (no user-visible surface). Hoisted into a
+        // Task so we can await `Account.awaitReady()` without changing the
+        // sync function signature; pre-Phase-1 this read `currentAccount
+        // .details` directly and silently skipped the server post whenever
+        // the auth document hadn't loaded yet, even if sync permission
+        // would have been granted once details arrived.
+        Task { [weak self] in
+            guard let self else { return }
+            let details: AccountDetails
+            do {
+                details = try await currentAccount.awaitReady()
+            } catch {
+                Log.warn(#file, "postBookmark: awaitReady failed for \(currentAccount.uuid): \(error) — local-only persistence")
+                await MainActor.run {
+                    self.bookRegistry.add(bookmark, forIdentifier: self.book.identifier)
+                }
+                return
+            }
+
+            guard details.syncPermissionGranted else {
+                await MainActor.run {
+                    self.bookRegistry.add(bookmark, forIdentifier: self.book.identifier)
+                }
+                return
+            }
+
+            TPPAnnotations.postBookmark(bookmark, forBookID: self.book.identifier) { response in
+                Log.debug(#function, response?.serverId != nil ? "Bookmark upload succeed" : "Bookmark failed to upload")
+                bookmark.annotationId = response?.serverId
+                self.bookRegistry.add(bookmark, forIdentifier: self.book.identifier)
+            }
         }
     }
 
@@ -157,26 +183,41 @@ class TPPReaderBookmarksBusinessLogic: NSObject {
         bookRegistry.delete(bookmark, forIdentifier: book.identifier)
 
         guard let currentAccount = currentLibraryAccountProvider.currentAccount,
-              let details = currentAccount.details,
               let annotationId = bookmark.annotationId else {
             Log.debug(#file, "Delete on Server skipped: Annotation ID did not exist for bookmark.")
             return
         }
 
-        // Log the deletion so sync can retry if immediate deletion fails.
-        // This ensures ghost bookmarks (from previous loans or other devices) can be deleted.
-        TPPBookmarkDeletionLog.shared.logDeletion(annotationId: annotationId, forBook: book.identifier)
+        // PHASE 1 (swarm_81b5099e Bucket A): same shape as `postBookmark`.
+        // Bookmark deletion sync is best-effort; on `AccountLoadError` we
+        // log and skip the server delete. The deletion log persists so the
+        // next successful sync cleans up. Local registry delete already
+        // ran above — that's the visible-on-device source of truth.
+        Task { [weak self] in
+            guard let self else { return }
+            let details: AccountDetails
+            do {
+                details = try await currentAccount.awaitReady()
+            } catch {
+                Log.warn(#file, "didDeleteBookmark: awaitReady failed for \(currentAccount.uuid): \(error) — skipping server delete")
+                return
+            }
 
-        if details.syncPermissionGranted && annotationId.count > 0 {
-            TPPAnnotations.deleteBookmark(annotationId: annotationId) { [weak self] (success) in
-                if success {
-                    Log.debug(#file, "Bookmark successfully deleted from server")
-                    // Clear from deletion log since it succeeded
-                    if let bookId = self?.book.identifier {
-                        TPPBookmarkDeletionLog.shared.clearDeletion(annotationId: annotationId, forBook: bookId)
+            // Log the deletion so sync can retry if immediate deletion fails.
+            // This ensures ghost bookmarks (from previous loans or other devices) can be deleted.
+            TPPBookmarkDeletionLog.shared.logDeletion(annotationId: annotationId, forBook: self.book.identifier)
+
+            if details.syncPermissionGranted && annotationId.count > 0 {
+                TPPAnnotations.deleteBookmark(annotationId: annotationId) { [weak self] (success) in
+                    if success {
+                        Log.debug(#file, "Bookmark successfully deleted from server")
+                        // Clear from deletion log since it succeeded
+                        if let bookId = self?.book.identifier {
+                            TPPBookmarkDeletionLog.shared.clearDeletion(annotationId: annotationId, forBook: bookId)
+                        }
+                    } else {
+                        Log.warn(#file, "Failed to delete bookmark from server. Will retry on next sync.")
                     }
-                } else {
-                    Log.warn(#file, "Failed to delete bookmark from server. Will retry on next sync.")
                 }
             }
         }

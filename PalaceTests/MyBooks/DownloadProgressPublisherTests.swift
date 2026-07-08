@@ -179,13 +179,12 @@ final class DownloadProgressPublisherCoreTests: XCTestCase {
             reporter.broadcastUpdate()
         }
 
-        // Wait for throttle interval
-        let waitExpectation = XCTestExpectation(description: "Wait for throttle")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            waitExpectation.fulfill()
-        }
-
-        wait(for: [waitExpectation], timeout: 3.0)
+        // The publisher emits one notification immediately and schedules a
+        // single trailing broadcast at +0.5s. Poll until the trailing fires
+        // (count >= 2) rather than sleeping for a fixed window. Generous
+        // 5s timeout keeps the test resilient under loaded CI without
+        // disguising a real regression as flake.
+        awaitCondition(timeout: 5.0) { notificationCount >= 2 }
         NotificationCenter.default.removeObserver(token)
 
         // Should have throttled - fewer notifications than calls

@@ -1,12 +1,12 @@
 import Combine
 import SwiftUI
 import PalaceAudiobookToolkit
+import PalaceLogging
+import PalaceCatalog
 
 #if LCP
 import ReadiumShared
 import ReadiumStreamer
-import PalaceLogging
-import PalaceCatalog
 #endif
 
 struct BookLane {
@@ -499,7 +499,8 @@ final class BookDetailViewModel: ObservableObject {
             alternateURL: current.alternateURL,
             relatedWorksURL: current.relatedWorksURL,
             previewLink: current.previewLink ?? fresh.previewLink,
-            seriesURL: current.seriesURL,
+            seriesURL: current.seriesURL ?? fresh.seriesURL,
+            seriesName: (current.seriesName?.isEmpty ?? true) ? fresh.seriesName : current.seriesName,
             revokeURL: current.revokeURL,
             reportURL: current.reportURL,
             timeTrackingURL: current.timeTrackingURL,
@@ -632,12 +633,44 @@ final class BookDetailViewModel: ObservableObject {
 
         case .download, .get, .retry:
             self.downloadProgress = 0
+            // PP-4161 Wave 4 (Path X): streaming-HTML titles funnel through
+            // the same didSelectDownload path as every other content type.
+            // DownloadStartDispatcher.processUnregisteredState already sets
+            // the registry to .downloadNeeded via the open-access branch,
+            // and processDownloadWithCredentials early-returns for
+            // streamingHTML (no asset to download). The button set then
+            // maps to [.readStreaming, .return] on next render, so the
+            // user taps Read on a second tap.
             didSelectDownload(for: book)
         // Don't remove processing here - will be removed when state changes to .downloading or .downloadFailed
 
         case .read, .listen:
+            // PP-4633: dismiss the half-sheet so it does not linger over the
+            // reader/player. On iPhone the .medium detent is covered by the
+            // full-screen presentation; on iPad it renders as a floating
+            // form-sheet that otherwise stays on screen.
+            //
+            // The dismiss MUST happen in the open completion (after the
+            // reader/player is presented), NOT on tap: on iPad, dismissing the
+            // form-sheet while the player is being presented races the two
+            // modal transitions, so the player fails to present and the screen
+            // freezes. Presenting first, then dismissing the sheet underneath,
+            // avoids the race. Mirrors the .reserve / .return cases.
             didSelectRead(for: book) {
                 self.removeProcessingButton(button)
+                self.showHalfSheet = false
+            }
+
+        case .readStreaming:
+            // PP-4161: streaming-HTML titles don't go through ensureAuthAndExecute
+            // / openBook; the asset is online-only and presented directly via
+            // the NavigationCoordinator streamingHTML route. processingButtons
+            // is cleared after the route push completes.
+            // PP-4633: dismiss the half-sheet in the completion (after the
+            // reader is presented), same ordering as .read/.listen.
+            didSelectReadStreaming(for: book) {
+                self.removeProcessingButton(button)
+                self.showHalfSheet = false
             }
 
         case .cancel:
@@ -700,40 +733,45 @@ final class BookDetailViewModel: ObservableObject {
                     Log.info(#file, "[SAML-REAUTH] ensureAuthAndExecute presenting modal: needsSignIn=\(needsSignIn) needsReauth=\(needsReauth)")
                     let halfSheetWasShowing = self.showHalfSheet
                     self.showHalfSheet = false
-                    SignInModalPresenter.presentSignInModalForCurrentAccount(accountsManager: self.accountsManager) { [weak self] in
-                        guard let self else { return }
-                        let post = self.accountsManager.currentUserAccount
-                        // Proceed only if the user actually re-authenticated
-                        // — they have credentials AND state is loggedIn.
-                        // Cancelling the modal leaves authState unchanged
-                        // (still .credentialsStale) and we should NOT call
-                        // the action; otherwise we'd hand the reader a stale
-                        // book and reproduce the original hang.
-                        guard post.hasCredentials() && post.authState == .loggedIn else {
-                            Log.info(#file, "[SAML-REAUTH] Sign-in cancelled or incomplete (hasCredentials=\(post.hasCredentials()) authState=\(post.authState)) — not proceeding with action")
-                            // Clear ALL processing state. A bailed-out modal can
-                            // leave .read/.listen/.reserve/etc. stuck in the set,
-                            // and `handleAction` ignores any tap whose button is
-                            // already processing — i.e. the next Read tap is
-                            // silently dropped until the view is recreated.
-                            self.processingButtons.removeAll()
-                            // Restore the half-sheet so the patron can retry. We
-                            // only re-show it if the caller had it open before
-                            // the modal stole the screen (e.g. download in
-                            // flight); pure book-detail actions like Read don't
-                            // use the half-sheet and shouldn't summon it now.
+                    // swarm_d8f11437 Module A wave 4 — migrated to
+                    // AppContainer-injected sheet presenter. self.accountsManager
+                    // is the same `_cached` singleton the presenter resolves
+                    // internally, so the behavior is preserved.
+                    AppContainer.production().signInModalSheetPresenter
+                        .presentSignInModalForCurrentAccount { [weak self] in
+                            guard let self else { return }
+                            let post = self.accountsManager.currentUserAccount
+                            // Proceed only if the user actually re-authenticated
+                            // — they have credentials AND state is loggedIn.
+                            // Cancelling the modal leaves authState unchanged
+                            // (still .credentialsStale) and we should NOT call
+                            // the action; otherwise we'd hand the reader a stale
+                            // book and reproduce the original hang.
+                            guard post.hasCredentials() && post.authState == .loggedIn else {
+                                Log.info(#file, "[SAML-REAUTH] Sign-in cancelled or incomplete (hasCredentials=\(post.hasCredentials()) authState=\(post.authState)) — not proceeding with action")
+                                // Clear ALL processing state. A bailed-out modal can
+                                // leave .read/.listen/.reserve/etc. stuck in the set,
+                                // and `handleAction` ignores any tap whose button is
+                                // already processing — i.e. the next Read tap is
+                                // silently dropped until the view is recreated.
+                                self.processingButtons.removeAll()
+                                // Restore the half-sheet so the patron can retry. We
+                                // only re-show it if the caller had it open before
+                                // the modal stole the screen (e.g. download in
+                                // flight); pure book-detail actions like Read don't
+                                // use the half-sheet and shouldn't summon it now.
+                                if halfSheetWasShowing {
+                                    self.showHalfSheet = true
+                                }
+                                return
+                            }
+                            // Restore the half-sheet on the success path too — it
+                            // was only dismissed to make room for the SAML modal.
                             if halfSheetWasShowing {
                                 self.showHalfSheet = true
                             }
-                            return
+                            action()
                         }
-                        // Restore the half-sheet on the success path too — it
-                        // was only dismissed to make room for the SAML modal.
-                        if halfSheetWasShowing {
-                            self.showHalfSheet = true
-                        }
-                        action()
-                    }
                     return
                 }
                 action()
@@ -841,12 +879,20 @@ final class BookDetailViewModel: ObservableObject {
         switch contentType {
         case .epub:
             Log.debug(#file, "  → Opening as EPUB")
-            processingButtons.removeAll()
-            presentEPUB(resolvedBook)
+            presentEPUB(resolvedBook) { [weak self] in
+                DispatchQueue.main.async {
+                    self?.processingButtons.removeAll()
+                    completion?()
+                }
+            }
         case .pdf:
             Log.debug(#file, "  → Opening as PDF")
-            processingButtons.removeAll()
-            presentPDF(resolvedBook)
+            presentPDF(resolvedBook) { [weak self] in
+                DispatchQueue.main.async {
+                    self?.processingButtons.removeAll()
+                    completion?()
+                }
+            }
         case .audiobook:
             Log.debug(#file, "  → Opening as AUDIOBOOK")
             openAudiobook(resolvedBook) { [weak self] in
@@ -855,6 +901,16 @@ final class BookDetailViewModel: ObservableObject {
                     completion?()
                 }
             }
+        case .streamingHTML:
+            // PP-4161: streaming-media titles use the in-app WKWebView reader
+            // presented via NavigationCoordinator. Note: handleAction(.readStreaming)
+            // is the canonical entry point; this case handles the rare path
+            // where some other call site funnels a streamingHTML book through
+            // openBook(_:completion:) (e.g. a coordinator-level resume).
+            Log.debug(#file, "  → Opening as STREAMING-HTML")
+            presentStreamingReader(resolvedBook)
+            processingButtons.removeAll()
+            completion?()
         default:
             Log.error(#file, "  ❌ UNSUPPORTED CONTENT TYPE - showing error to user")
             processingButtons.removeAll()
@@ -862,18 +918,44 @@ final class BookDetailViewModel: ObservableObject {
         }
     }
 
-    @MainActor private func presentEPUB(_ book: TPPBook) {
-        BookService.open(book)
+    @MainActor private func presentEPUB(_ book: TPPBook, completion: (() -> Void)? = nil) {
+        BookService.open(book, onFinish: completion)
     }
 
-    @MainActor private func presentPDF(_ book: TPPBook) {
-        BookService.open(book)
+    @MainActor private func presentPDF(_ book: TPPBook, completion: (() -> Void)? = nil) {
+        BookService.open(book, onFinish: completion)
     }
 
     // MARK: - Audiobook Opening
 
     func openAudiobook(_ book: TPPBook, completion: (() -> Void)? = nil) {
         BookService.open(book, onFinish: completion)
+    }
+
+    // MARK: - Streaming HTML Reader (PP-4161)
+
+    /// Presents the in-app WKWebView reader for streaming-media (text/html)
+    /// titles. Distinct from `didSelectRead` because there's no auth document
+    /// dependency (no DRM grant), no openBook dispatch (no LCP / Readium /
+    /// audiobook session), and no `BookService.open` reentrancy guard — we
+    /// route straight to `NavigationCoordinator.push(.streamingHTML(...))`.
+    @MainActor
+    func didSelectReadStreaming(for book: TPPBook, completion: (() -> Void)? = nil) {
+        TPPCirculationAnalytics.postEvent("open_book", withBook: book)
+        presentStreamingReader(book)
+        completion?()
+    }
+
+    /// Pushes the streamingHTML route on the navigation coordinator after
+    /// storing the book payload so the destination resolver can look it up.
+    @MainActor
+    private func presentStreamingReader(_ book: TPPBook) {
+        guard let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator else {
+            Log.warn(#file, "No NavigationCoordinator available — cannot present streaming reader for \(book.identifier)")
+            return
+        }
+        coordinator.store(book: book)
+        coordinator.push(.streamingHTML(BookRoute(id: book.identifier)))
     }
 
     private func getLCPLicenseURL(for book: TPPBook) -> URL? {

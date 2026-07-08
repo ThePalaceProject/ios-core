@@ -229,6 +229,23 @@ protocol AccountLogoDelegate: AnyObject {
             authType == .oidc
         }
 
+        /// True for authentication mechanisms that require an external
+        /// browser / web-sheet flow to re-authenticate (SAML IdP, OAuth
+        /// intermediary like Clever, OIDC provider). Use this to gate
+        /// behavior on "user must complete an interactive browser auth
+        /// to refresh credentials" — distinct from `needsAuth` (which
+        /// also includes in-app Basic + Token auth) and from
+        /// `isOauth || isOidc` (which excludes SAML and represents a
+        /// different concern, e.g. profile-fetch decisions).
+        ///
+        /// Substituted at six scattered predicate sites by Module B of
+        /// swarm_66819d80; broadens BorrowOperation / BookReturnService
+        /// browser-reauth routing to also cover OAuth-intermediary
+        /// (Clever). See `BorrowOperationCleverReauthTests`.
+        var isBrowserBased: Bool {
+            isOauth || isSaml || isOidc
+        }
+
         /// Describes how the app should re-authenticate when credentials expire.
         /// Use this instead of checking individual auth type booleans for re-auth decisions.
         enum ReauthStrategy {
@@ -360,8 +377,13 @@ protocol AccountLogoDelegate: AnyObject {
         }
     }
 
-    init(authenticationDocument: OPDS2AuthenticationDocument, uuid: String) {
-        defaults = .standard
+    /// Designated initializer. `defaults` defaults to `.standard` so
+    /// production callers keep working unchanged; tests inject a per-suite
+    /// `UserDefaults(suiteName:)` so per-UUID dictionary writes (EULA,
+    /// syncPermissionGranted, urlEULA, etc.) cannot leak across tests.
+    /// There is NO fallback once injected.
+    init(authenticationDocument: OPDS2AuthenticationDocument, uuid: String, defaults: UserDefaults = .standard) {
+        self.defaults = defaults
         self.uuid = uuid
 
         auths = authenticationDocument.authentication?.map({ (opdsAuth) -> Authentication in
@@ -553,6 +575,34 @@ protocol AccountLogoDelegate: AnyObject {
     /// returns nil to avoid swallowing legitimate failures on cold launch.
     var needsAuth: Bool? {
         return details?.needsAuth
+    }
+
+    // PUBLIC_INTENT: exposes the set of hosts that constitute this account's
+    // auth surface (auth-doc, catalog, loans, home-page). Consumed by
+    // AuthErrorClassifier's `currentAccountHostsProvider` closure and the two
+    // legacy sibling auth-classification sites (TokenRefreshInterceptor,
+    // DownloadAuthRetryHandler) to short-circuit a 401 from a foreign host as
+    // "not our account's session" — fixes the cross-host logout regression
+    // documented in .forgeos/wall-failures/2026-06-05-pr1018-icarus-cross-host-logout.md.
+    //
+    // Hosts are lowercased AT THE PRODUCER (defense-in-depth against a
+    // consumer that forgets to lowercase). Empty set is the cold-launch
+    // signal — auth doc not yet loaded; consumers must fall back to legacy
+    // behavior (do not false-block) when this is empty.
+    var authSurfaceHosts: Set<String> {
+        var hosts = Set<String>()
+        for raw in [authenticationDocumentUrl, catalogUrl, homePageUrl] {
+            if let str = raw,
+               let url = URL(string: str),
+               let host = url.host?.lowercased(),
+               !host.isEmpty {
+                hosts.insert(host)
+            }
+        }
+        if let loansHost = details?.loansUrl?.host?.lowercased(), !loansHost.isEmpty {
+            hosts.insert(loansHost)
+        }
+        return hosts
     }
 
     init(publication: OPDS2Publication, imageCache: ImageCacheType) {

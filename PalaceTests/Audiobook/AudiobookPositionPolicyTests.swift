@@ -1,0 +1,431 @@
+//
+//  AudiobookPositionPolicyTests.swift
+//  PalaceTests
+//
+//  Boundary + behavior tests for the pure-function policies that drive
+//  the audiobook position state machine. Critical-path file — mutation
+//  kill goal ≥75% per swarm_f3b9b087 contract.
+//
+//  Copyright (c) 2026 The Palace Project. All rights reserved.
+//
+
+import XCTest
+@testable import Palace
+
+// MARK: - BeginningPositionPolicy
+
+final class BeginningPositionPolicyTests: XCTestCase {
+
+    func testIsAtBeginning_track0_time0_isBeginning() {
+        XCTAssertTrue(BeginningPositionPolicy.isAtBeginning(trackIndex: 0, playbackTime: 0))
+    }
+
+    func testIsAtBeginning_track0_29s_isNotBeginning() {
+        // Was true under the 30s-grace rule; new strict-zero rule says false.
+        // Patron who paused at 0:29 of chapter 1 now keeps that position
+        // against incoming track-0 / time-0 sync attempts.
+        XCTAssertFalse(BeginningPositionPolicy.isAtBeginning(trackIndex: 0, playbackTime: 29.0))
+    }
+
+    func testIsAtBeginning_track0_30s_isNotBeginning() {
+        // Was the exclusion boundary under the old rule; still false.
+        XCTAssertFalse(BeginningPositionPolicy.isAtBeginning(trackIndex: 0, playbackTime: 30.0))
+    }
+
+    func testIsAtBeginning_track0_smallestPositiveTime_isNotBeginning() {
+        // Boundary: any positive time, however tiny, is real progress.
+        // Locks the strict-equality semantics — a mutation `==` → `<=` would
+        // pass on this case but a mutation `==` → `>=` would fail (only
+        // exactly-zero hits).
+        XCTAssertFalse(BeginningPositionPolicy.isAtBeginning(trackIndex: 0, playbackTime: 0.001))
+    }
+
+    func testIsAtBeginning_track1_time0_isNotBeginning() {
+        // Track-index gate: any track > 0 is not the start.
+        XCTAssertFalse(BeginningPositionPolicy.isAtBeginning(trackIndex: 1, playbackTime: 0))
+    }
+
+    func testIsAtBeginning_track1_anyTime_isNotBeginning() {
+        XCTAssertFalse(BeginningPositionPolicy.isAtBeginning(trackIndex: 1, playbackTime: 100))
+    }
+
+    func testIsAtBeginning_negativeTrackIndex_isNotBeginning() {
+        // Defensive against corrupt data. Negative track indices are nonsense
+        // but shouldn't be treated as "at beginning."
+        XCTAssertFalse(BeginningPositionPolicy.isAtBeginning(trackIndex: -1, playbackTime: 0))
+    }
+
+    func testIsAtBeginning_negativePlaybackTime_isNotBeginning() {
+        // Documented in policy doc-comment: nonsense input → not at beginning.
+        XCTAssertFalse(BeginningPositionPolicy.isAtBeginning(trackIndex: 0, playbackTime: -1.0))
+    }
+}
+
+// MARK: - AudiobookPositionPolicy (validator)
+
+final class AudiobookPositionPolicyValidatorTests: XCTestCase {
+
+    private let okTrackKey = "track-key-1"
+
+    private func validate(
+        timestamp: TimeInterval = 100,
+        positionDuration: TimeInterval = 100,
+        totalDuration: TimeInterval = 3600,
+        trackKeyMatchesManifest: Bool = true
+    ) -> Result<Void, AudiobookPositionValidationFailure> {
+        AudiobookPositionPolicy.validate(
+            timestamp: timestamp,
+            positionDuration: positionDuration,
+            totalDuration: totalDuration,
+            trackKeyMatchesManifest: trackKeyMatchesManifest,
+            savedTrackKey: okTrackKey
+        )
+    }
+
+    // Result<Void, _> is not Equatable (Void isn't), so XCTAssertEqual on these
+    // results won't compile. Helpers below pattern-match instead.
+    private func assertValidationSuccess(
+        _ result: Result<Void, AudiobookPositionValidationFailure>,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        if case .failure(let failure) = result {
+            XCTFail("expected .success, got .failure(\(failure))", file: file, line: line)
+        }
+    }
+
+    private func assertValidationFailure(
+        _ result: Result<Void, AudiobookPositionValidationFailure>,
+        is expected: AudiobookPositionValidationFailure,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        switch result {
+        case .success:
+            XCTFail("expected .failure(\(expected)), got .success", file: file, line: line)
+        case .failure(let actual):
+            XCTAssertEqual(actual, expected, file: file, line: line)
+        }
+    }
+
+    func testValidate_happyPath_succeeds() {
+        assertValidationSuccess(validate())
+    }
+
+    func testValidate_negativeTimestamp_fails() {
+        assertValidationFailure(validate(timestamp: -1), is: .negativeTimestamp(-1))
+    }
+
+    func testValidate_timestampZero_succeeds() {
+        // Boundary: 0 is a valid position (top-of-track).
+        assertValidationSuccess(validate(timestamp: 0, positionDuration: 0))
+    }
+
+    func testValidate_timestampExactlyAtNegativeBoundary_fails() {
+        // -0.0001 is finite but < 0 — must fail.
+        assertValidationFailure(validate(timestamp: -0.0001), is: .negativeTimestamp(-0.0001))
+    }
+
+    func testValidate_infiniteTimestamp_fails() {
+        assertValidationFailure(validate(timestamp: .infinity), is: .nonFiniteTimestamp)
+    }
+
+    func testValidate_NaNTimestamp_fails() {
+        assertValidationFailure(validate(timestamp: .nan), is: .nonFiniteTimestamp)
+    }
+
+    func testValidate_trackKeyMismatch_fails() {
+        assertValidationFailure(
+            validate(trackKeyMatchesManifest: false),
+            is: .trackKeyNotInManifest(savedKey: okTrackKey)
+        )
+    }
+
+    func testValidate_positionAtExactTotalDuration_succeeds() {
+        // End-of-book marker — must accept.
+        assertValidationSuccess(validate(positionDuration: 3600, totalDuration: 3600))
+    }
+
+    func testValidate_positionAtExact110Percent_succeeds() {
+        // Boundary: == cap is acceptable; only `>` cap fails.
+        assertValidationSuccess(validate(positionDuration: 3960, totalDuration: 3600))
+    }
+
+    func testValidate_positionExceeds110Percent_fails() {
+        assertValidationFailure(
+            validate(positionDuration: 3961, totalDuration: 3600),
+            is: .positionExceedsCap(positionDuration: 3961, totalDuration: 3600)
+        )
+    }
+
+    func testValidate_totalDurationZero_skipsCapCheck() {
+        // When manifest doesn't report duration, we can't compare; accept.
+        assertValidationSuccess(validate(positionDuration: 99_999, totalDuration: 0))
+    }
+
+    func testValidate_totalDurationNegative_skipsCapCheck() {
+        // Defensive: corrupt manifest data shouldn't reject every position.
+        assertValidationSuccess(validate(positionDuration: 100, totalDuration: -1))
+    }
+
+    func testValidate_finiteCheckRunsBeforeNegativeCheck() {
+        // .infinity is also < 0 false; covered by ordering. NaN < 0 is false.
+        // Pin the order: nonFinite is reported first because it's a corruption
+        // signal independent of sign.
+        assertValidationFailure(validate(timestamp: -.infinity), is: .nonFiniteTimestamp)
+    }
+
+    func testValidate_capMultiplier_isExactly1Point1() {
+        // Mutation guard: flipping the literal would change the boundary.
+        XCTAssertEqual(AudiobookPositionPolicy.totalDurationCap, 1.1)
+    }
+}
+
+// MARK: - ChapterChangeDetector
+
+final class ChapterChangeDetectorTests: XCTestCase {
+
+    func testDidChange_noPriorChapter_fires() {
+        XCTAssertTrue(ChapterChangeDetector.didChange(
+            oldKey: nil,
+            oldTitle: nil,
+            newKey: "k1",
+            newTitle: "Chapter 1"
+        ))
+    }
+
+    func testDidChange_differentKey_fires() {
+        XCTAssertTrue(ChapterChangeDetector.didChange(
+            oldKey: "k1",
+            oldTitle: "Chapter 1",
+            newKey: "k2",
+            newTitle: "Chapter 2"
+        ))
+    }
+
+    func testDidChange_sameKeyDifferentTitle_doesNotFire() {
+        // The bug guard: anthology audiobook with two "Untitled Section"
+        // chapters in the same track must NOT trigger a chapter-change event.
+        XCTAssertFalse(ChapterChangeDetector.didChange(
+            oldKey: "k1",
+            oldTitle: "Untitled Section",
+            newKey: "k1",
+            newTitle: "Untitled Section v2"
+        ))
+    }
+
+    func testDidChange_sameKeySameTitle_doesNotFire() {
+        XCTAssertFalse(ChapterChangeDetector.didChange(
+            oldKey: "k1",
+            oldTitle: "Chapter 1",
+            newKey: "k1",
+            newTitle: "Chapter 1"
+        ))
+    }
+
+    func testDidChange_differentKeySameTitle_fires() {
+        // Anthology case in reverse: same title across two tracks.
+        // Real chapter crossing because the track key changed.
+        XCTAssertTrue(ChapterChangeDetector.didChange(
+            oldKey: "k1",
+            oldTitle: "Prologue",
+            newKey: "k2",
+            newTitle: "Prologue"
+        ))
+    }
+}
+
+// MARK: - ChapterTOCNormalizer
+
+final class ChapterTOCNormalizerTests: XCTestCase {
+
+    func testIsOversubdivided_belowThreshold_returnsFalse() {
+        // 56 chapters, 56 entries — exact match, normal book.
+        XCTAssertFalse(ChapterTOCNormalizer.isOversubdivided(
+            tocCount: 56,
+            expectedChapterCount: 56
+        ))
+    }
+
+    func testIsOversubdivided_atExactThreshold_returnsFalse() {
+        // 56 * 1.5 == 84. 84 is NOT > 84.
+        XCTAssertFalse(ChapterTOCNormalizer.isOversubdivided(
+            tocCount: 84,
+            expectedChapterCount: 56
+        ))
+    }
+
+    func testIsOversubdivided_oneAboveThreshold_returnsTrue() {
+        // 56 * 1.5 == 84. 85 > 84.
+        XCTAssertTrue(ChapterTOCNormalizer.isOversubdivided(
+            tocCount: 85,
+            expectedChapterCount: 56
+        ))
+    }
+
+    func testIsOversubdivided_realWorldCase_returnsTrue() {
+        // The motivating case: 182 TOC entries for a 56-chapter book.
+        XCTAssertTrue(ChapterTOCNormalizer.isOversubdivided(
+            tocCount: 182,
+            expectedChapterCount: 56
+        ))
+    }
+
+    func testIsOversubdivided_slightInflation_returnsFalse() {
+        // 100 chapters + 1 "Acknowledgments" entry = 1.01x — must keep.
+        XCTAssertFalse(ChapterTOCNormalizer.isOversubdivided(
+            tocCount: 101,
+            expectedChapterCount: 100
+        ))
+    }
+
+    func testIsOversubdivided_zeroExpectedChapterCount_returnsFalse() {
+        // Can't divide by zero; treat as "can't decide → don't normalize."
+        XCTAssertFalse(ChapterTOCNormalizer.isOversubdivided(
+            tocCount: 50,
+            expectedChapterCount: 0
+        ))
+    }
+
+    func testInflationThreshold_isExactly1Point5() {
+        // Mutation guard.
+        XCTAssertEqual(ChapterTOCNormalizer.inflationThreshold, 1.5)
+    }
+}
+
+// MARK: - PlaybackOpenPolicy
+//
+// Pins the 2x2 truth table for the openAudiobook teardown + gate-bypass
+// decisions. Both predicates protect against a real, real-device-verified
+// regression class:
+//
+//   FINDING-D (HelpSpot 17988 Iron Flame "missing first hour"): same-book
+//   teardown must NOT save the prior session's live position into the
+//   freshly-borrowed registry record. Predicate flip:
+//   `persistFinalPositionOnTeardown` = `!isReBorrowOfSameBook`.
+//
+//   FINDING-B (HelpSpot 17981 / 17989 / 18002 "won't play"): LCP audiobooks
+//   must NOT wait on the pre-play readiness gate (LCPStreamingPlayer.isLoaded
+//   only flips after AVPlayer.playing, which requires play() — deadlock).
+//   Predicate flip: `bypassReadinessGate` = `hasDecryptor`.
+//
+// Mutation surface this class kills:
+//   * Flipping `hasDecryptor` to `!hasDecryptor` (or `== nil` to `!= nil` at
+//     the production call site in AudiobookSessionManager.startPlaybackAndSyncPosition)
+//     reintroduces FINDING-B and fails Test 3 / Test 4.
+//   * Flipping `!isReBorrowOfSameBook` to `isReBorrowOfSameBook` (or removing
+//     the `!`) reintroduces FINDING-D and fails Test 1 / Test 2.
+//   * Swapping the struct field assignments fails all four tests.
+
+final class PlaybackOpenPolicyTests: XCTestCase {
+
+    // Test 1 — FINDING-D regression guard: re-borrow of same book must
+    // suppress the teardown's final-position save.
+    func testDecide_reBorrowOfSameBook_doesNotPersistFinalPosition() {
+        let decision = PlaybackOpenPolicy.decide(
+            isReBorrowOfSameBook: true,
+            hasDecryptor: false
+        )
+        XCTAssertFalse(decision.persistFinalPositionOnTeardown,
+                       "Same-book teardown must suppress save — otherwise the stale prior-loan position leaks into the freshly-borrowed registry record (FINDING-D / HelpSpot 17988)")
+    }
+
+    // Test 2 — control case for FINDING-D: different-book switch must
+    // persist the prior session's position normally.
+    func testDecide_switchToDifferentBook_persistsFinalPosition() {
+        let decision = PlaybackOpenPolicy.decide(
+            isReBorrowOfSameBook: false,
+            hasDecryptor: false
+        )
+        XCTAssertTrue(decision.persistFinalPositionOnTeardown,
+                      "Switching to a different book must persist the prior book's position — the prior loan is still active, the position is still valid for that loan")
+    }
+
+    // Test 3 — FINDING-B regression guard: LCP audiobook must bypass the
+    // pre-play readiness gate.
+    func testDecide_lcpAudiobook_bypassesReadinessGate() {
+        let decision = PlaybackOpenPolicy.decide(
+            isReBorrowOfSameBook: false,
+            hasDecryptor: true
+        )
+        XCTAssertTrue(decision.bypassReadinessGate,
+                      "LCP path must bypass the gate — LCPStreamingPlayer.isLoaded only flips true after AVPlayer.playing, which requires play() to have been called, so a pre-play gate deadlocks (FINDING-B / HelpSpot 17981/17989/18002)")
+    }
+
+    // Test 4 — control case for FINDING-B: non-LCP audiobook must keep
+    // the gate intact (that's where F-011 / PP-4436 originally fired).
+    func testDecide_nonLCPAudiobook_keepsReadinessGate() {
+        let decision = PlaybackOpenPolicy.decide(
+            isReBorrowOfSameBook: false,
+            hasDecryptor: false
+        )
+        XCTAssertFalse(decision.bypassReadinessGate,
+                       "Non-LCP path (Findaway / Overdrive / OpenAccess) must keep the gate — that's where F-011 first-open hang originally repro'd, and these players' isLoaded reflects manifest-load not audio-play, so the gate works correctly there")
+    }
+
+    // Test 5 — decideForLoad call-site adapter: nil decryptor maps to
+    // "no bypass" (gate stays in place for Findaway / OpenAccess /
+    // Overdrive — that's where F-011 originally fired). Pins the
+    // `decryptor != nil` predicate inside the adapter so a call-site
+    // mutation (`!= nil` → `== nil`) at production line 732 fails the test.
+    func testDecideForLoad_nilDecryptor_keepsGate() {
+        let decision = PlaybackOpenPolicy.decideForLoad(decryptor: nil)
+        XCTAssertFalse(decision.bypassReadinessGate,
+                       "nil decryptor (non-LCP path) must keep the gate — flipping `!= nil` to `== nil` at AudiobookSessionManager.swift would lose F-011 protection on Findaway/OpenAccess and falsely bypass for them")
+    }
+
+    // Test 6 — decideForLoad call-site adapter: non-nil decryptor maps to
+    // "bypass gate" (LCP path). Pins the production call site at line 732.
+    func testDecideForLoad_nonNilDecryptor_bypassesGate() {
+        let fakeDecryptor = NSObject()  // any non-nil AnyObject works — decideForLoad only checks identity
+        let decision = PlaybackOpenPolicy.decideForLoad(decryptor: fakeDecryptor)
+        XCTAssertTrue(decision.bypassReadinessGate,
+                      "non-nil decryptor (LCP path) must bypass the gate — flipping `!= nil` to `== nil` at AudiobookSessionManager.swift would deadlock LCP playback again (FINDING-B)")
+    }
+
+    // Test 7 — the two predicates are independent: the 2x2 truth table.
+    // Pins that `isReBorrowOfSameBook` and `hasDecryptor` don't accidentally
+    // share state via a struct field swap.
+    func testDecide_predicates_areIndependent() {
+        let same_lcp = PlaybackOpenPolicy.decide(isReBorrowOfSameBook: true, hasDecryptor: true)
+        XCTAssertFalse(same_lcp.persistFinalPositionOnTeardown,
+                       "Same-book LCP must still suppress teardown save")
+        XCTAssertTrue(same_lcp.bypassReadinessGate,
+                      "Same-book LCP must still bypass the gate")
+
+        let different_nonlcp = PlaybackOpenPolicy.decide(isReBorrowOfSameBook: false, hasDecryptor: false)
+        XCTAssertTrue(different_nonlcp.persistFinalPositionOnTeardown,
+                      "Different-book non-LCP must persist teardown save")
+        XCTAssertFalse(different_nonlcp.bypassReadinessGate,
+                       "Different-book non-LCP must keep the gate")
+    }
+}
+
+// MARK: - Spy logger
+
+/// Test spy for `AudiobookPositionLogging`. Records every call so tests
+/// can assert reason + context. Pattern mirrors the
+/// `feedback_test_patterns_phase7` spy convention.
+final class AudiobookPositionLoggerSpy: AudiobookPositionLogging {
+    struct Entry: Equatable {
+        let kind: String  // "FAIL" or "FALLBACK"
+        let reason: String
+        let context: [String: String]
+    }
+    private(set) var entries: [Entry] = []
+
+    func logFailure(reason: String, context: [String: String]) {
+        entries.append(.init(kind: "FAIL", reason: reason, context: context))
+    }
+
+    func logFallback(reason: String, context: [String: String]) {
+        entries.append(.init(kind: "FALLBACK", reason: reason, context: context))
+    }
+}
+
+// DefaultAudiobookPositionLogger formats via Log.warn (Crashlytics-bridged).
+// We intentionally don't unit-test it without an injected sink — coverage-only
+// "doesn't crash" tests have no failure mode and were removed per CLAUDE.md
+// (Banned test patterns / Coverage-only tests are banned). If we ever need to
+// pin the formatter, add a sink protocol to DefaultAudiobookPositionLogger and
+// test that protocol directly.

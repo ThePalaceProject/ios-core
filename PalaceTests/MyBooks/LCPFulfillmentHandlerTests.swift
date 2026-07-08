@@ -114,12 +114,15 @@ final class LCPFulfillmentHandlerTests: XCTestCase {
         return url
     }
 
-    private func waitForPublishedError(timeout: TimeInterval = 1.0) async {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if !capturedErrors.isEmpty { return }
-            try? await Task.sleep(nanoseconds: 20_000_000)
-            await Task.yield()
+    /// Wraps the shared `awaitConditionAsync` helper. `file`/`line`
+    /// forwarded so timeout XCTFail blames the call site.
+    private func waitForPublishedError(
+        timeout: TimeInterval = 10.0,
+        file: StaticString = #file,
+        line: UInt = #line
+    ) async {
+        await awaitConditionAsync(timeout: timeout, file: file, line: line) { [weak self] in
+            self?.capturedErrors.isEmpty == false
         }
     }
 
@@ -255,6 +258,33 @@ final class LCPFulfillmentHandlerTests: XCTestCase {
                        "LCP audiobook with streaming-ready license must NOT flip to .downloadFailed when the phase-2 content download fails")
         XCTAssertTrue(capturedErrors.isEmpty,
                       "No user-facing 'Fulfilment Error' alert should publish for an audiobook that's still streaming-playable")
+    }
+
+    /// Future-proofing for the `.used` transition. Audiobooks don't
+    /// transition through `.used` today (only PDFs do), but the guard
+    /// matches the established `(.downloadSuccessful || .used)` pattern
+    /// from BookReturnService — so if audiobook open ever wires through
+    /// open-once → `.used`, the regression doesn't silently return.
+    func testFulfill_audiobook_inUsedState_secondaryDownloadError_doesNotFlipToFailed() async throws {
+        let audiobook = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        let sourceURL = try writeSourceFile(ext: "lcpa")
+        let downloadTask = FakeDownloadTask(state: .completed, identifier: 1)
+
+        handler.fulfillLCPLicense(fileUrl: sourceURL, forBook: audiobook, downloadTask: downloadTask)
+        // Stage the future state: book has been opened at least once.
+        registry.addBook(audiobook, state: .used)
+
+        let completion = try XCTUnwrap(lcpService.lastCompletion)
+        completion(nil, NSError(domain: NSURLErrorDomain,
+                                code: NSURLErrorNetworkConnectionLost,
+                                userInfo: [NSLocalizedDescriptionKey: "lost"]))
+        try? await Task.sleep(nanoseconds: 250_000_000)
+        await Task.yield()
+
+        XCTAssertEqual(registry.state(for: audiobook.identifier), .used,
+                       "Audiobook in .used (already-opened) must survive a phase-2 failure same as .downloadSuccessful")
+        XCTAssertTrue(capturedErrors.isEmpty,
+                      "No alert should publish for an already-opened audiobook on phase-2 failure")
     }
 
     /// Sibling check: a non-audiobook (e.g. LCP EPUB) does NOT get the

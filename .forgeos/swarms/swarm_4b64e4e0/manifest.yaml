@@ -1,0 +1,167 @@
+swarm_id: swarm_4b64e4e0
+task: "Wave 1 iOS test-flakiness fix — PalaceTestSetup XCTestObservation + AppContainer reset seam"
+status: complete
+mode: implementation
+created_at: 2026-05-29
+architect_review:
+  status: pending_phase_1a
+  notes: |
+    Architect (this swarm) referenced swarm_f88ae9e3/outcome.md user-approved
+    direction. Module decomposition is the same A/B split outcome.md
+    proposed. Cross-module dependency (A registers B's symbol by name)
+    is handled by bundled-PR merge strategy.
+
+problem_summary: |
+  swarm_f88ae9e3 outcome.md identified two highest-leverage structural fixes
+  for iOS test flakiness:
+    Fix 1 — PalaceTestSetup XCTestObservation reset hook (closes A's blast
+            radius, neutralizes D's process-global state, recovers B's
+            leaked SpyDelegate Tasks via process-wide reset registry).
+    Fix 2 — AppContainer._resetForTesting() DEBUG-only seam (closes A's
+            structural root: the static _cached AppContainer constructs
+            AccountsManager() without the test opt-out, spawning a
+            process-lifetime background loadCatalogs Task).
+  User-approved direction: structural first, no stop-the-bleeding patch,
+  implementation via /swarm. Wave 1 = Fix 1 + Fix 2 only.
+
+modules:
+  - name: A-test-infrastructure
+    contract_path: .forgeos/swarms/swarm_4b64e4e0/contracts/A-test-infrastructure.md
+    depends_on:
+      - module: B-appcontainer-reset-seam
+        reason: |
+          Module A's PalaceTestSetup bootstrap registers
+          AppContainer._resetForTesting by name. Module B owns the symbol.
+          The closure is invoked at RUNTIME, not bootstrap-compile time —
+          so as long as B's symbol exists when the test bundle loads, the
+          registry resolves. Recommended integration: bundled PR (A+B
+          squash-merged together).
+    files_scope:
+      modified:
+        - PalaceTests/PalaceTestSetup.swift
+        - PalaceTests/HTTPStubURLProtocol.swift
+        - PalaceTests/URLSession+Stubbing.swift
+      new:
+        - PalaceTests/Support/SingletonResetRegistry.swift
+        - PalaceTests/Support/SingletonResetRegistryTests.swift
+        - PalaceTests/PalaceTestSetupObservationTests.swift
+        - PalaceTests/URLSessionStubbingResetTests.swift
+      pbxproj_register:
+        - PalaceTests/Support/SingletonResetRegistry.swift
+        - PalaceTests/Support/SingletonResetRegistryTests.swift
+        - PalaceTests/PalaceTestSetupObservationTests.swift
+        - PalaceTests/URLSessionStubbingResetTests.swift
+    critical_path: false
+    mutation_gate: not_applicable_test_target
+    test_count_new: 11
+    implementer_prompt_short: |
+      Land Fix 1 from swarm_f88ae9e3/outcome.md. Extend PalaceTestSetup.swift
+      with an XCTestObservation + SingletonResetRegistry. 5 built-in
+      resetters wired at bootstrap (AppContainer._resetForTesting,
+      AccountStateStore._resetAllForTesting, TPPUserAccountMock.resetShared,
+      HTTPStubURLProtocol.removeAllHandlers, URLSession._resetStubbedSession).
+      NotificationCenter observer-count audit via debugDescription regex.
+      11 new tests across 3 test files. See contract for full spec.
+
+  - name: B-appcontainer-reset-seam
+    contract_path: .forgeos/swarms/swarm_4b64e4e0/contracts/B-appcontainer-reset-seam.md
+    depends_on: []
+    files_scope:
+      modified:
+        - Palace/AppInfrastructure/AppContainer.swift
+        - Palace/Accounts/Library/AccountsManager.swift
+      new:
+        - PalaceTests/AppInfrastructure/AppContainerResetTests.swift
+        - PalaceTests/Accounts/AccountsManagerCancellationTests.swift
+      pbxproj_register:
+        - PalaceTests/AppInfrastructure/AppContainerResetTests.swift
+        - PalaceTests/Accounts/AccountsManagerCancellationTests.swift
+    critical_path: true
+    mutation_gate:
+      AppContainer.swift: ">=80%"
+      AccountsManager.swift: ">=50%"
+    test_count_new: 7
+    implementer_prompt_short: |
+      Land Fix 2 from swarm_f88ae9e3/outcome.md. Add #if DEBUG
+      AppContainer._resetForTesting() that flips
+      AccountsManager.deferInitialLoadCatalogsForTesting=true BEFORE
+      rebuilding the _cached graph (requires static let → static var
+      conversion; composition lambda extracted into private static
+      _buildCachedAppContainer()). Add #if DEBUG AccountsManager.cancelBackgroundWork()
+      with a stored backgroundFetchTask handle. Add 7 new tests. Mutation
+      kill-rate ≥80% on AppContainer.swift, ≥50% on AccountsManager.swift.
+      See contract for full spec.
+
+anti_scope:
+  - Any scheme / xcscheme edits — Wave 2 (Fix 5)
+  - Any .github/workflows/** edits — Wave 2 (Fix 5)
+  - Any ios-audiobooktoolkit/** edits — separate submodule pipeline
+  - HTTPStubURLProtocol restructure (canInit narrowing, releaseGate
+    removal) — Wave 2 (Fix 3)
+  - Lint suite (check-singleton-leaks.py et al) — Wave 2 (Fix 4)
+  - Actor-iso Tier 1+2 cleanup — Wave 2 (Fix 6)
+  - Per-test fixes to A's H2-H10 sites — Wave 1 closes them via the
+    process-wide observer; per-test base-class migration is Wave 3
+    if needed
+  - ios-audiobooktoolkit (separate submodule pipeline)
+
+dispatch_order:
+  wave_1: [B-appcontainer-reset-seam, A-test-infrastructure]
+  parallelism: full  # both implementers spawn together; A's #if DEBUG
+                     # closure body compiles independently of B's symbol
+                     # because the closure invocation is at runtime
+  integration_strategy: bundled_pr
+  notes: |
+    Implementers branch off swarm/swarm_4b64e4e0-scaffold. Orchestrator
+    rebases both onto the scaffold tip after both report READY, then
+    opens a single PR against develop.
+
+acceptance_criteria:
+  global:
+    - Both module contract verification batteries pass
+    - Module B mutation kill rates met (≥80% AppContainer, ≥50% AccountsManager)
+    - scripts/verify-pr.sh --quick PASS
+    - scripts/check-blast-radius.py --quiet exit 0
+    - scripts/check-contract-reconciliation.py --commit-msg <file> --quiet exit 0
+    - All 18 new tests pass on iPhone 16 Pro / iOS 26
+    - Existing AppContainerTests + AccountsManagerStateMachineWiringTests still green
+    - No new force unwraps; no new .shared reads in Palace/
+    - DoD 10-check evidence pasted per implementer
+    - SoD review: architect + qa_test + clean_code all signed off
+  swarm_specific:
+    - "Cross-module contract (A registers B's symbol by name) validated by grep -c 'AppContainer._resetForTesting' across Palace/AppInfrastructure/AppContainer.swift and PalaceTests/PalaceTestSetup.swift — must be >= 2 (one definition + one registration)."
+    - "Wave 2 scheme work (Fix 5) explicitly noted as deferred in PR body and tracked in a follow-up swarm ID."
+
+risks:
+  - static_let_to_var_conversion:
+      severity: HIGH
+      file: Palace/AppInfrastructure/AppContainer.swift
+      mitigation: Module B contract verification #4 + mutation pass
+  - residual_cancellation_race_window:
+      severity: MED
+      where: AppContainer._resetForTesting / AccountsManager.cancelBackgroundWork
+      mitigation: documented intentional per user direction;
+                  old instance unreachable from production() post-reset
+  - xctestobservation_arc_drop:
+      severity: LOW
+      mitigation: Module A contract verification #6 (static var retain)
+  - debug_description_regex_parse_fails:
+      severity: LOW
+      mitigation: audit-only; nil-fallback silently skips
+  - url_session_invalidate_race:
+      severity: MED
+      mitigation: finishTasksAndInvalidate (NOT invalidateAndCancel);
+                  contract test pins the property
+  - mutation_time_budget:
+      severity: MED
+      mitigation: --diff-only scopes; cache reuse
+
+evidence_anchors:
+  outcome_doc: .forgeos/swarms/swarm_f88ae9e3/outcome.md
+  fix_1_section: "Fix 1: PalaceTestSetup + XCTestObservation reset hook"
+  fix_2_section: "Fix 2: AccountsManager._resetCachedAccountsManager() DEBUG-only seam in AppContainer"
+  investigator_transcript: .forgeos/swarms/swarm_f88ae9e3/transcripts/A-singleton-residue.md
+  damning_lines:
+    - "Palace/AppInfrastructure/AppContainer.swift:223 — static let _cached AccountsManager() w/o test opt-out"
+    - "Palace/Accounts/Library/AccountsManager.swift:213 — DispatchQueue.global(qos: .background).async loadCatalogs"
+    - "deferInitialLoadCatalogsForTesting flag adopted by 1 of 25 test sites"

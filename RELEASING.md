@@ -74,12 +74,10 @@ populated by `xcode-settings.sh`.
 
 ## App Store
 
-Two helpers exist for archive and export:
+One helper exists for archive and export:
 
 - `scripts/xcode-export-appstore.sh` — produces an App Store-signed `.ipa`
   from a built archive.
-- `scripts/archive-and-upload-adhoc.sh` — archives and uploads an ad-hoc
-  build (used for one-off device installs, not the App Store).
 
 The release workflow ([`release-on-merge.yml`](./.github/workflows/release-on-merge.yml))
 fires on merge to `main` and creates the GitHub release with generated

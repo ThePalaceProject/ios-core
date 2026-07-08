@@ -9,8 +9,8 @@
 #if LCP
 
 import Foundation
-import PalaceCatalog
 import PalaceLogging
+import PalaceCatalog
 @preconcurrency import ReadiumShared
 @preconcurrency import ReadiumStreamer
 @preconcurrency import ReadiumLCP
@@ -193,35 +193,47 @@ import PalaceLogging
         }
     }
 
-    /// Check if the book is LCP audiobook
+    /// Check if the book is LCP audiobook. Delegates to `hasLCPAcquisition(_:)`
+    /// so all three OPDS feed shapes (`/loans/` XML, `/groups/` JSON, and the
+    /// OPDS-catalog wrapping shape) resolve correctly — PP-4407 / PP-4454.
     /// - Parameter book: audiobook
     /// - Returns: `true` if the book is an LCP DRM protected audiobook, `false` otherwise
     @objc static func canOpenBook(_ book: TPPBook) -> Bool {
-        guard let defaultAcquisition = book.defaultAcquisition else { return false }
-        return book.defaultBookContentType == .audiobook && defaultAcquisition.type == expectedAcquisitionType
+        return hasLCPAcquisition(book)
     }
 
-    /// Whether the book has *any* LCP-licensed acquisition entry, looking at
-    /// the entire acquisition chain (top-level `type` AND all nested
-    /// `indirectAcquisitions[*].type`). The LCP license MIME is almost always
-    /// inside the indirect chain on Palace Marketplace audiobooks — the
-    /// top-level `type` is typically `application/atom+xml;...` (OPDS Catalog)
-    /// — so a flat `acquisitions.contains { $0.type == LCP }` check misses
-    /// every Marketplace book. This recursive walk is the predicate
-    /// `AudiobookLoader` uses to decide whether to retry through the LCP
-    /// path after a JSON-parse failure on the local file.
+    /// Returns `true` iff `book` is an LCP-protected audiobook, regardless of
+    /// which OPDS feed shape Marketplace happened to populate it from. Unlike
+    /// `canOpenBook(_:)` — which only matches the `/loans/` XML shape that
+    /// places the LCP MIME at the top of `defaultAcquisition.type` — this
+    /// predicate also walks `indirectAcquisitions[*].type` recursively so the
+    /// `/groups/` JSON feed shape (top-level `application/opds-publication+json`
+    /// with the LCP license nested one or more levels deep) is caught.
+    ///
+    /// This is the load-bearing fix for the PP-4407 regression class. Ported
+    /// from the 3.0.3 hotfix commit `ca2ff13b6`, which only landed on the
+    /// 3.0.x release branch and was never forward-merged to develop. The
+    /// `defaultBookContentType == .audiobook` clause is required so LCP-typed
+    /// EPUBs and PDFs do NOT match here — only audiobooks.
     @objc static func hasLCPAcquisition(_ book: TPPBook) -> Bool {
-        for acquisition in book.acquisitions {
-            if acquisition.type == expectedAcquisitionType { return true }
-            if indirectChainContainsLCP(acquisition.indirectAcquisitions) { return true }
+        guard book.defaultBookContentType == .audiobook,
+              let acquisition = book.defaultAcquisition else {
+            return false
         }
-        return false
+        if acquisition.type == expectedAcquisitionType {
+            return true
+        }
+        return indirectChainContainsLCP(acquisition.indirectAcquisitions)
     }
 
-    private static func indirectChainContainsLCP(_ indirect: [TPPOPDSIndirectAcquisition]) -> Bool {
-        for entry in indirect {
-            if entry.type == expectedAcquisitionType { return true }
-            if indirectChainContainsLCP(entry.indirectAcquisitions) { return true }
+    private static func indirectChainContainsLCP(_ chain: [TPPOPDSIndirectAcquisition]) -> Bool {
+        for node in chain {
+            if node.type == expectedAcquisitionType {
+                return true
+            }
+            if indirectChainContainsLCP(node.indirectAcquisitions) {
+                return true
+            }
         }
         return false
     }

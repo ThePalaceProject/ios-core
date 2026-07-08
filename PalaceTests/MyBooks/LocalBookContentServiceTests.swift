@@ -121,8 +121,9 @@ final class LocalBookContentServiceTests: XCTestCase {
     }
 
     func testDeleteForBook_unresolvableFileURL_doesNotCrashAndLogsWarning() {
-        // SpyBookFileManager returns nil for "lookup-fail-id" — exercises
-        // the "Could not resolve fileUrl" early-return branch.
+        // MISSING-001-OK: crash-guard — exercises the "Could not resolve fileUrl"
+        // early-return; observable contract is "no crash, no exception, no side
+        // effect on the file manager beyond the lookup attempt".
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
         bookFileManager.failResolutionForIdentifier = book.identifier
 

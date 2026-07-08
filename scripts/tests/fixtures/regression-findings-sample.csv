@@ -1,0 +1,10 @@
+id,area,device_cell,severity,classification,verified,evidence_paths,screenshot_pair,first_seen_commit,dedup_cluster,disposition
+F-001,Audiobook playback (Adobe),C-ipad-on-mac,,unknown,true,crashes/f001_recursive_mutex.ips;logs/f001.log,,a1b2c3d,,
+F-002,Audiobook playback (Adobe),C-ipad-on-mac,,unknown,true,crashes/f002_recursive_mutex.ips,,a1b2c3d,,
+F-003,Catalog lane rendering,C-iphone-26,,unknown,true,diffs/f003_lane_skeleton.png;logs/f003.log,baselines/lane.png|candidates/lane.png,e4f5a6b,,
+F-004,Catalog lane rendering,C-ipad-26,,unknown,true,diffs/f004_lane_skeleton.png,baselines/lane2.png|candidates/lane2.png,e4f5a6b,,
+F-005,Sign-in OIDC,C-iphone-26,,unknown,false,logs/f005_keychain_errSecMissingEntitlement.log;red@3,,c7d8e9f,,
+F-006,Token refresh,C-iphone-26,,unknown,false,logs/f006_loadCatalogs_pool-starvation.log;green@3,,b1c2d3e,,
+F-007,Misc UI polish,C-iphone-26,,unknown,true,,,f9a8b7c,,
+F-008,Downloads queue,C-iphone-26,,unknown,false,logs/f008_download_stall.log,,d2e3f4a,,
+F-009,Reader EPUB perf,C-iphone-26,,unknown,true,logs/f009_latency_high.log,,a9b8c7d,,

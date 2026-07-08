@@ -365,11 +365,11 @@ class AccountDetailViewModel: NSObject, ObservableObject {
         // OIDC was missing here, so signed-in OIDC accounts were rendering
         // the barcode/PIN/sign-in cells inappropriately.
         if auth.isOauth || auth.isOidc {
-            return appendResetIfSignedIn([.logInSignOut])
+            return [.logInSignOut]
         }
 
         if auth.isSaml && isSignedIn {
-            return appendResetIfSignedIn([.logInSignOut])
+            return [.logInSignOut]
         }
 
         if auth.isSaml {
@@ -377,22 +377,13 @@ class AccountDetailViewModel: NSObject, ObservableObject {
         }
 
         if auth.pinKeyboard != .none {
-            return appendResetIfSignedIn([.barcode, .pin, .logInSignOut])
+            return [.barcode, .pin, .logInSignOut]
         }
 
-        return appendResetIfSignedIn([.barcode, .logInSignOut])
+        return [.barcode, .logInSignOut]
     }
 
-    /// Conditionally appends the destructive `.resetAccount` cell. Two gates:
-    /// (1) signed-in (no state to clear when signed-out), (2) the
-    /// `reset_account_enabled` feature flag is on for this device. Default in
-    /// production is OFF; support enables it per-patron via Firebase Remote
-    /// Config (`reset_account_enabled_device_<id>`) when a stuck-state ticket
-    /// comes in, then disables it again after the patron recovers.
-    private func appendResetIfSignedIn(_ cells: [CellType]) -> [CellType] {
-        guard isSignedIn, RemoteFeatureFlags.shared.isResetAccountEnabled else { return cells }
-        return cells + [.resetAccount]
-    }
+    // Reset moved to Developer Settings → Support tier (was Firebase-gated reset_account_enabled).
 
     // MARK: - Actions
 
@@ -460,56 +451,6 @@ class AccountDetailViewModel: NSObject, ObservableObject {
         ))
 
         return alert
-    }
-
-    // MARK: - Reset Account (PP-4282 / HelpSpot 17716)
-
-    /// Entry point for the destructive "Reset This Library Account" button.
-    /// Presents a confirmation alert before tearing down all local state.
-    /// See `TPPSignInBusinessLogic+ForceReset.swift` for the cleanup contract.
-    func confirmResetAccount() {
-        TPPPresentationUtils.safelyPresent(makeResetAccountConfirmationAlert(), animated: true)
-    }
-
-    /// Builds the destructive confirmation alert. Library name is interpolated
-    /// into the message so the patron can confirm they're resetting the right
-    /// account (relevant for multi-library installs).
-    func makeResetAccountConfirmationAlert() -> UIAlertController {
-        let libraryName = businessLogic.libraryAccount?.name ?? DisplayStrings.account
-        let alert = UIAlertController(
-            title: NSLocalizedString("Reset \(libraryName)?", comment: "Title for the reset-account confirmation alert"),
-            message: NSLocalizedString(
-                "This will sign you out, delete your downloaded books and bookmarks for this library, and clear local sign-in state. Your loans and holds on the server are not affected. You'll need to sign in again.",
-                comment: "Body for the reset-account confirmation alert"
-            ),
-            preferredStyle: .alert
-        )
-
-        alert.addAction(UIAlertAction(
-            title: NSLocalizedString("Reset", comment: "Destructive confirmation button for reset-account"),
-            style: .destructive,
-            handler: { [weak self] _ in self?.performResetAccount() }
-        ))
-
-        alert.addAction(UIAlertAction(
-            title: Strings.Generic.cancel,
-            style: .cancel
-        ))
-
-        return alert
-    }
-
-    /// Invokes the unconditional cleanup. After completion, refreshes the
-    /// view-model's sign-in state so the UI shows the unsigned state and
-    /// the patron can sign back in immediately. Diagnostic logging lives
-    /// inside `performForceReset(...)` itself.
-    func performResetAccount() {
-        isSigningOut = true
-        businessLogic.performForceReset { [weak self] in
-            guard let self = self else { return }
-            self.isSigningOut = false
-            self.refreshSignInState()
-        }
     }
 
     func togglePINVisibility() {
@@ -668,7 +609,6 @@ enum CellType: Hashable {
     case barcode
     case pin
     case logInSignOut
-    case resetAccount
     case registration
     case syncButton
     case about
@@ -694,8 +634,6 @@ enum CellType: Hashable {
             hasher.combine("pin")
         case .logInSignOut:
             hasher.combine("logInSignOut")
-        case .resetAccount:
-            hasher.combine("resetAccount")
         case .registration:
             hasher.combine("registration")
         case .syncButton:
@@ -756,9 +694,7 @@ extension AccountDetailViewModel: TPPSignInOutBusinessLogicUIDelegate {
         // For browser-based auth (SAML, OAuth, OIDC), don't start a timeout here -
         // the user will be in a WebView / ASWebAuthenticationSession.
         // The timeout starts when the browser session dismisses.
-        let isBrowserBasedAuth = businessLogic.selectedAuthentication?.isSaml == true ||
-            businessLogic.selectedAuthentication?.isOauth == true ||
-            businessLogic.selectedAuthentication?.isOidc == true
+        let isBrowserBasedAuth = businessLogic.selectedAuthentication?.isBrowserBased == true
 
         if !isBrowserBasedAuth {
             startDRMProcessingTimeout()

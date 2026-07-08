@@ -9,6 +9,7 @@
 //
 
 import Foundation
+import PalaceReadingPosition
 
 /// Provides centralized access to platform services.
 /// All services are singletons gated by feature flag checks where appropriate.
@@ -68,7 +69,7 @@ enum PlatformServices {
     }
 
     /// Check for cross-format sync opportunity.
-    static func checkForSync(bookID: String, openingFormat: ReadingFormat) async -> ReadingPosition? {
+    static func checkForSync(bookID: String, openingFormat: PalaceReadingPosition.ReadingFormat) async -> ReadingPosition? {
         await positionSync.checkForSyncOffer(bookID: bookID, openingFormat: openingFormat)
     }
 }

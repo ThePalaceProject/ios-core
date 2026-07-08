@@ -31,6 +31,50 @@ struct Strings {
         static let rightBarButtonItem = NSLocalizedString("Next", comment: "Button title for completing age verification")
     }
 
+    struct CatalogContinueRows {
+        static let continueListeningTitle = NSLocalizedString(
+            "Continue Listening",
+            comment: "Title above the Catalog hero row that resumes the active audiobook session."
+        )
+        static let continueReadingTitle = NSLocalizedString(
+            "Continue Reading",
+            comment: "Title above the Catalog hero row that resumes the most-recent in-progress ebook."
+        )
+        static let continueListeningHint = NSLocalizedString(
+            "Opens the audiobook player.",
+            comment: "VoiceOver hint for the Continue Listening row card; activating it expands the audiobook player."
+        )
+        static let continueReadingHint = NSLocalizedString(
+            "Opens the book at your last position.",
+            comment: "VoiceOver hint for the Continue Reading row card; activating it opens the reader at the saved position."
+        )
+        static let currentlyPlaying = NSLocalizedString(
+            "currently playing",
+            comment: "VoiceOver fragment appended to a Continue Listening row card when the audiobook is actively playing."
+        )
+        static let continueHeader = NSLocalizedString(
+            "Continue",
+            comment: "Polish-phase: collapsible single-row title above the most-recent Continue Reading/Listening item on the Catalog top."
+        )
+        static let expandHint = NSLocalizedString(
+            "Expands to show the most recent book.",
+            comment: "VoiceOver hint for the Continue section header when collapsed."
+        )
+        static let collapseHint = NSLocalizedString(
+            "Collapses the Continue section.",
+            comment: "VoiceOver hint for the Continue section header when expanded."
+        )
+        static func byAuthor(_ author: String) -> String {
+            String(
+                format: NSLocalizedString(
+                    "by %@",
+                    comment: "VoiceOver fragment '%@' is an author name — used in Continue Listening / Continue Reading card labels."
+                ),
+                author
+            )
+        }
+    }
+
     struct Announcments {
         static let alertTitle = NSLocalizedString("Announcement", comment: "")
         static let ok = NSLocalizedString("OK", comment: "Button to dismiss announcement alert")
@@ -87,13 +131,17 @@ struct Strings {
         static let accept = NSLocalizedString("Accept", comment: "Title for a Accept button")
         static let signin = NSLocalizedString("Sign in", comment: "")
         static let close = NSLocalizedString("Close", comment: "Title for close button")
+        static let yes = NSLocalizedString("Yes", comment: "Affirmative answer in a confirmation prompt.")
+        static let no = NSLocalizedString("No", comment: "Negative answer in a confirmation prompt.")
         static let search = NSLocalizedString("Search", comment: "Placeholder for Search Field")
         static let done =  NSLocalizedString("Done", comment: "Title for Done button")
         static let clear = NSLocalizedString("Clear", comment: "Button to clear selection")
 
         // Accessibility - General
         static let audiobook = NSLocalizedString("Audiobook", comment: "VoiceOver: Indicates the book is an audiobook")
+        static let ebook = NSLocalizedString("Ebook", comment: "VoiceOver: Indicates the book is an ebook (used by polish-phase Continue row).")
         static let switchLibrary = NSLocalizedString("Switch Library", comment: "VoiceOver: Button to switch between libraries")
+        static let selected = NSLocalizedString("Selected", comment: "VoiceOver: Indicates an item is currently selected (e.g. the active library in Settings).")
         static let searchBooks = NSLocalizedString("Search Books", comment: "VoiceOver: Button to search for books")
         static let searchCatalog = NSLocalizedString("Search Catalog", comment: "VoiceOver: Button to search the catalog")
         static let scanBarcode = NSLocalizedString("Scan Barcode", comment: "VoiceOver: Button to scan library card barcode")
@@ -127,6 +175,21 @@ struct Strings {
         static let playAudiobook = NSLocalizedString("Play", comment: "VoiceOver: Play audiobook")
         static let pauseAudiobook = NSLocalizedString("Pause", comment: "VoiceOver: Pause audiobook")
         static let skipBack30 = NSLocalizedString("Skip back 30 seconds", comment: "VoiceOver: Rewind audiobook 30 seconds")
+        static let skipForward30 = NSLocalizedString("Skip forward 30 seconds", comment: "VoiceOver: Skip audiobook forward 30 seconds")
+        static let dismissPlayer = NSLocalizedString("Dismiss player", comment: "VoiceOver: Done button on the full audiobook player, dismisses to the mini-player")
+        // Accessibility - Audiobook mini-player (swarm_0b7616e7 Module D)
+        static let nowPlayingLabelTitleAndAuthor = NSLocalizedString(
+            "Now playing: %1$@ by %2$@. Double-tap to expand.",
+            comment: "VoiceOver: Combined accessibility label for the audiobook mini-player, including title and author"
+        )
+        static let nowPlayingLabelTitleOnly = NSLocalizedString(
+            "Now playing: %1$@. Double-tap to expand.",
+            comment: "VoiceOver: Combined accessibility label for the audiobook mini-player when no author is available"
+        )
+        static let expandPlayerHint = NSLocalizedString(
+            "Expands the full audiobook player",
+            comment: "VoiceOver hint announced for the audiobook mini-player explaining that tapping expands the full player"
+        )
 
         // Accessibility - EPUB Reader (Full Keyboard Access)
         static let bookReader = NSLocalizedString("Book reader", comment: "VoiceOver: Accessibility label for the book reading area")
@@ -400,6 +463,8 @@ struct Strings {
         static let libraries = NSLocalizedString("Libraries", comment: "A title for a list of libraries the user may select or add to.")
         static let catalog = NSLocalizedString("Catalog", comment: "For the catalog tab")
         static let addLibrary = NSLocalizedString("Add Library", comment: "Title of button to add a new library")
+        static let switchLibraryPromptFormat = NSLocalizedString("Would you like to switch to %@?", comment: "Confirmation shown when tapping an inactive library in Settings. %@ is the library name.")
+        static let switchingLibrary = NSLocalizedString("Switching library…", comment: "Loading overlay text shown while the app switches the active library.")
         static let aboutApp = NSLocalizedString("About App", comment: "")
         static let softwareLicenses = NSLocalizedString("Software Licenses", comment: "")
         static let privacyPolicy = NSLocalizedString("Privacy Policy", comment: "")
@@ -424,7 +489,7 @@ struct Strings {
         static let forgotPassword = NSLocalizedString("Forgot your password?", comment: "")
         static let signUpForCard = NSLocalizedString("Sign up for a library card", comment: "")
         static let eulaAgreement = NSLocalizedString("By signing in, you agree to the End User License Agreement.", comment: "")
-        static let syncDescription = NSLocalizedString("Save your reading position and bookmarks to all your other devices.", comment: "")
+        static let syncDescription = NSLocalizedString("Toggle on sync bookmarks to save your reading position and bookmarks across all of your devices. This must be done on all devices where you are accessing Palace to synchronize reading position.", comment: "Instructional text under Sync Bookmarks in Settings")
         static let authenticateToRevealPIN = NSLocalizedString("Authenticate to reveal your PIN.", comment: "")
         static let deleteServerData = NSLocalizedString("Delete Server Data", comment: "")
         static let downloads = NSLocalizedString("Downloads", comment: "Section header for download-related settings")
@@ -479,10 +544,15 @@ struct Strings {
         static let pdfContentType = NSLocalizedString("PDF", comment: "PDF")
         static let audiobookContentType = NSLocalizedString("Audiobook", comment: "Audiobook")
         static let unsupportedContentType = NSLocalizedString("Unsupported format", comment: "Unsupported format")
+        /// PP-4161: format-row label for `text/html;profile=streaming-media`
+        /// titles. Shown in the BookDetail "Format" row alongside ePub / PDF /
+        /// Audiobook.
+        static let streamingHTMLContentType = NSLocalizedString("Web Article", comment: "Format label for streaming-media (text/html) titles.")
     }
 
     struct TPPPDFNavigation {
         static let resume = NSLocalizedString("Resume", comment: "A button to continue reading title.")
+        static let loadingPDF = NSLocalizedString("Loading…", comment: "Shown under the book title while an LCP-protected PDF is being decrypted and opened.")
     }
 
     struct TPPDeveloperSettingsTableViewController {
@@ -667,6 +737,7 @@ struct Strings {
         static let category = NSLocalizedString("Category", comment: "")
         static let categories = NSLocalizedString("Categories", comment: "")
         static let distributor = NSLocalizedString("Distributor", comment: "")
+        static let series = NSLocalizedString("Series", comment: "Book detail metadata label introducing the series this title belongs to")
         static let narrators = NSLocalizedString("Narrators", comment: "")
         static let duration = NSLocalizedString("Duration", comment: "")
         static let more = NSLocalizedString("More", comment: "")
@@ -712,6 +783,10 @@ struct Strings {
         static let cancelHold = NSLocalizedString("Cancel Hold", comment: "")
         static let otherBooks = NSLocalizedString("Other books by this author", comment: "")
         static let close = NSLocalizedString("Close", comment: "")
+        /// PP-4161: terminal action label for streaming-HTML titles. Reuses
+        /// the "Read" wording — the user-facing affordance is the same, only
+        /// the underlying renderer differs (in-app WKWebView vs Reader2).
+        static let readStreaming = NSLocalizedString("Read", comment: "Action button title to open a borrowed streaming-media (text/html) title in the in-app web reader.")
     }
 
     struct HoldsView {
@@ -724,6 +799,26 @@ struct Strings {
         static let syncFailedMessage = NSLocalizedString(
             "There was a problem loading your holds. Please try again later.",
             comment: "Error message when holds sync fails"
+        )
+    }
+
+    // PP-4161: copy for the new streaming-media reader chrome. Online-only
+    // experience; the offline state surfaces `connectionRequired` plus a
+    // Retry button per the reader's `.offline` state. Dismissal is via the
+    // system back chevron from the NavigationStack push — no explicit close
+    // bar button (see StreamingReaderViewController for the UX rationale).
+    struct StreamingReader {
+        static let connectionRequired = NSLocalizedString(
+            "Connection Required",
+            comment: "Title shown in the streaming reader when the device is offline; the asset is online-only and cannot be cached."
+        )
+        static let loadError = NSLocalizedString(
+            "We couldn't load this title. Please check your connection and try again.",
+            comment: "Error message shown when the streaming reader's web view fails to load the title."
+        )
+        static let retry = NSLocalizedString(
+            "Retry",
+            comment: "Button title in the streaming reader's offline / failed state — re-evaluates reachability and retries the load."
         )
     }
 }

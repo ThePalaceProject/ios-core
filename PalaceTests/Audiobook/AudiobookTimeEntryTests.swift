@@ -2,7 +2,7 @@
 //  AudiobookTimeEntryTests.swift
 //  PalaceTests
 //
-//  Tests for AudiobookTimeEntry, LatestAudiobookLocation, DataManager protocol,
+//  Tests for AudiobookTimeEntry, DataManager protocol,
 //  and NotificationService.TokenData.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
@@ -10,7 +10,7 @@
 
 import XCTest
 import Combine
-import PalaceCatalog
+@testable import PalaceCatalog
 @testable import Palace
 
 // MARK: - AudiobookTimeEntry Tests
@@ -88,57 +88,6 @@ final class AudiobookTimeEntryTests: XCTestCase {
         let entry60 = AudiobookTimeEntry(id: "2", bookId: "b", libraryId: "l", timeTrackingUrl: url, duringMinute: "m", duration: 60)
         XCTAssertEqual(entry60.duration, 60, "Duration of 60 must be stored as-is")
         XCTAssertNotEqual(entry.duration, entry60.duration, "120 must not equal 60")
-    }
-}
-
-// MARK: - LatestAudiobookLocation Tests
-
-final class LatestAudiobookLocationTests: XCTestCase {
-
-    // SRS: latestAudiobookLocation initially nil
-    func testLatestLocation_defaultNil() {
-        // Save and restore
-        let saved = latestAudiobookLocation
-        latestAudiobookLocation = nil
-        XCTAssertNil(latestAudiobookLocation)
-        // After setting a value it must be non-nil
-        latestAudiobookLocation = (book: "test-book", location: "chapter:1")
-        XCTAssertNotNil(latestAudiobookLocation, "After assignment value must be non-nil")
-        latestAudiobookLocation = saved
-    }
-
-    // SRS: latestAudiobookLocation can be set and read
-    func testLatestLocation_setAndRead() {
-        let saved = latestAudiobookLocation
-        latestAudiobookLocation = (book: "book-1", location: "chapter:3")
-        XCTAssertEqual(latestAudiobookLocation?.book, "book-1")
-        XCTAssertEqual(latestAudiobookLocation?.location, "chapter:3")
-        latestAudiobookLocation = saved
-    }
-
-    // SRS: latestAudiobookLocation thread-safe access
-    func testLatestLocation_threadSafe() {
-        let saved = latestAudiobookLocation
-        let expectation = expectation(description: "Concurrent access")
-        expectation.expectedFulfillmentCount = 10
-        var completedReads = 0
-        let lock = NSLock()
-
-        for i in 0..<10 {
-            DispatchQueue.global().async {
-                latestAudiobookLocation = (book: "book-\(i)", location: "loc-\(i)")
-                let read = latestAudiobookLocation
-                lock.lock()
-                if read != nil { completedReads += 1 }
-                lock.unlock()
-                expectation.fulfill()
-            }
-        }
-
-        wait(for: [expectation], timeout: 5)
-        // All threads must have read a non-nil value (they each set before reading)
-        XCTAssertGreaterThan(completedReads, 0, "At least one concurrent read must return a non-nil value")
-        latestAudiobookLocation = saved
     }
 }
 

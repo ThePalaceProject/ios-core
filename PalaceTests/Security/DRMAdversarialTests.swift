@@ -16,16 +16,22 @@ import XCTest
 final class DRMAdversarialTests: XCTestCase {
 
     private var session: URLSession!
+    /// Per-test isolated container — built via `makeTestAppContainer()` so
+    /// each test method gets a fresh service graph (no cross-test pollution
+    /// through `AppContainer._cached`).
+    private var appContainer: AppContainer!
 
     override func setUp() {
         super.setUp()
         HTTPStubURLProtocol.reset()
         session = URLSession.stubbedSession()
+        appContainer = makeTestAppContainer()
     }
 
     override func tearDown() {
         HTTPStubURLProtocol.reset()
         session = nil
+        appContainer = nil
         super.tearDown()
     }
 
@@ -73,44 +79,46 @@ final class DRMAdversarialTests: XCTestCase {
 
     // MARK: - Adobe DRM: on-demand activation at download fulfillment time
 
-    func testAdobe_fulfillmentPath_callsEnsureDeviceActivated() throws {
+    func testAdobe_fulfillmentPath_callsEnsureDeviceActivated() async throws {
         #if FEATURE_DRM_CONNECTOR
         // The download completion handler for .adobe rights must call
         // ensureDeviceActivated() BEFORE calling fulfill(withACSMData:).
-        // This test validates the code path exists by checking that a book
-        // with no DRM authorization (no userID/deviceID) does NOT trigger
-        // the old didIgnoreFulfillmentWithNoAuthorizationPresent callback
-        // (which showed a confusing sign-in modal), but instead fails
-        // gracefully through the activation error path.
+        // This test validates the code path exists by checking that, with
+        // no DRM authorization (no userID/deviceID/licensor) on the live
+        // user account, ensureDeviceActivated throws a typed `PalaceError.drm`
+        // rather than silently succeeding — proving the activation gate is
+        // wired and that callers can react to the failure.
 
-        let mockRegistry = TPPBookRegistryMock()
-        let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
-        mockRegistry.addBook(book, state: .downloading)
+        // Precondition: production user account exposed via the singleton
+        // has no Adobe licensor credentials in a test bundle.
+        let liveAccount = AppContainer.production().accountsManager.currentUserAccount
+        XCTAssertNil(liveAccount.userID, "Precondition: live account has no Adobe userID")
+        XCTAssertNil(liveAccount.deviceID, "Precondition: live account has no Adobe deviceID")
+        XCTAssertNil(liveAccount.licensor, "Precondition: live account has no Adobe licensor")
 
-        // Without userID and deviceID, ensureDeviceActivated should throw
-        // (no licensor credentials), and the book state should become downloadFailed.
-        // This verifies the activation check runs before fulfillment.
-        let userAccount = TPPUserAccountMock()
-        userAccount._credentials = .barcodeAndPin(barcode: "user", pin: "pin")
-        // Importantly: NO userID, NO deviceID, NO licensor set
-
-        // The activation will fail because there are no licensor credentials.
-        // In the old code, this would show a sign-in modal via
-        // didIgnoreFulfillmentWithNoAuthorizationPresent. In the fixed code,
-        // ensureDeviceActivated catches the error and sets state to downloadFailed.
-        XCTAssertNil(userAccount.userID, "Precondition: no Adobe userID")
-        XCTAssertNil(userAccount.deviceID, "Precondition: no Adobe deviceID")
-
-        // Verify the contract: AdobeDRMService.ensureDeviceActivated() requires
-        // licensor credentials. Without them, it should throw.
-        Task {
-            do {
-                try await AdobeDRMService.shared.ensureDeviceActivated()
-                XCTFail("ensureDeviceActivated should throw when no licensor is available")
-            } catch {
-                // Expected: activation fails because no licensor credentials
-                XCTAssertTrue(true, "Activation correctly failed without licensor credentials")
+        // Direct await — replaces the prior fire-and-forget Task whose
+        // assertions never reached XCTest. The call MUST throw because
+        // either the Adobe certificate is unavailable in the test bundle
+        // OR no licensor is stored on the live account; both surface as
+        // `PalaceError.drm` (specifically `.noActivation`).
+        do {
+            try await AdobeDRMService.shared.ensureDeviceActivated()
+            XCTFail("ensureDeviceActivated must throw when no licensor / no DRM cert is available")
+        } catch let error as PalaceError {
+            guard case .drm(let drmError) = error else {
+                XCTFail("Expected PalaceError.drm(...), got PalaceError.\(error)")
+                return
             }
+            // `.noActivation` is the contracted failure when licensor or
+            // certificate is missing; `.authenticationFailed` is the
+            // RMSDK callback failure if a partial cert path completes.
+            // Either is acceptable evidence that the activation gate ran.
+            XCTAssertTrue(
+                drmError == .noActivation || drmError == .authenticationFailed,
+                "Expected DRMError.noActivation or .authenticationFailed; got \(drmError)"
+            )
+        } catch {
+            XCTFail("Expected PalaceError.drm; got \(type(of: error)): \(error)")
         }
         #else
         throw XCTSkip("FEATURE_DRM_CONNECTOR disabled — Adobe DRM not linkable in this build.")
@@ -123,7 +131,7 @@ final class DRMAdversarialTests: XCTestCase {
         // should NOT trigger reauthenticator (which showed a sign-in modal).
         // Instead it should just log a warning, because activation is now
         // handled before fulfillment.
-        let downloadCenter = AppContainer.production().downloadCenter
+        let downloadCenter = appContainer.downloadCenter
         // This should not present any UI — just log
         downloadCenter.didIgnoreFulfillmentWithNoAuthorizationPresent()
         // If we got here without a crash or modal presentation, the test passes.

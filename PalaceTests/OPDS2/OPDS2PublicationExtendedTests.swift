@@ -601,6 +601,121 @@ final class OPDS2PublicationExtendedTests: XCTestCase {
         XCTAssertEqual(book?.bookDuration, "45:00")
     }
 
+    // MARK: - Series Metadata (PP-4463)
+
+    /// PP-4463: when an OPDS2 publication carries `belongsTo.series[]`,
+    /// `OPDS2FullPublication.toBook()` must surface the first series's name
+    /// and the href of its first link onto the resulting `TPPBook`. The Book
+    /// Detail SERIES row keys off both fields; dropping either hides the row.
+    func testFullPublication_seriesNameAndURL_extractedFromBelongsTo() {
+        let seriesLink = OPDS2Link(href: "https://example.com/series/foundation")
+        let series = OPDS2Collection(name: "Foundation", links: [seriesLink])
+        let metadata = OPDS2FullMetadata(
+            identifier: "urn:test:series",
+            title: "Foundation: Book 1",
+            belongsTo: OPDS2BelongsTo(series: [series])
+        )
+        let pub = OPDS2FullPublication(
+            metadata: metadata,
+            links: [
+                OPDS2Link(
+                    href: "https://example.com/borrow",
+                    type: "application/epub+zip",
+                    rel: "http://opds-spec.org/acquisition/borrow"
+                )
+            ],
+            images: nil
+        )
+
+        let book = pub.toBook()
+
+        XCTAssertEqual(book?.seriesName, "Foundation",
+                       "Series name from belongsTo.series.first.name must reach TPPBook.seriesName")
+        XCTAssertEqual(book?.seriesURL?.absoluteString,
+                       "https://example.com/series/foundation",
+                       "Series link href from belongsTo.series.first.links.first must reach TPPBook.seriesURL")
+    }
+
+    func testFullPublication_seriesNil_whenBelongsToAbsent() {
+        let pub = OPDS2FullPublication(
+            metadata: makeMinimalMetadata(),
+            links: [
+                OPDS2Link(
+                    href: "https://example.com/borrow",
+                    type: "application/epub+zip",
+                    rel: "http://opds-spec.org/acquisition/borrow"
+                )
+            ],
+            images: nil
+        )
+
+        let book = pub.toBook()
+
+        XCTAssertNil(book?.seriesName,
+                     "seriesName must be nil when belongsTo is absent — guards against a mutant that defaults to empty string")
+        XCTAssertNil(book?.seriesURL,
+                     "seriesURL must be nil when belongsTo is absent")
+    }
+
+    /// `OPDS2BelongsTo.series` is `[OPDS2Collection]?` — the toBook conversion
+    /// picks the FIRST entry. Pin that contract: if a feed somehow ships an
+    /// empty series array, the row stays hidden rather than crashing.
+    func testFullPublication_seriesNil_whenBelongsToSeriesEmpty() {
+        let metadata = OPDS2FullMetadata(
+            identifier: "urn:test:empty-series",
+            title: "Standalone",
+            belongsTo: OPDS2BelongsTo(series: [])
+        )
+        let pub = OPDS2FullPublication(
+            metadata: metadata,
+            links: [
+                OPDS2Link(
+                    href: "https://example.com/borrow",
+                    type: "application/epub+zip",
+                    rel: "http://opds-spec.org/acquisition/borrow"
+                )
+            ],
+            images: nil
+        )
+
+        let book = pub.toBook()
+
+        XCTAssertNil(book?.seriesName,
+                     "Empty belongsTo.series array must yield nil seriesName, not a crash")
+        XCTAssertNil(book?.seriesURL)
+    }
+
+    /// A series may exist with no navigation link (rare but valid per spec).
+    /// In that case `seriesName` is populated but `seriesURL` is nil, which
+    /// the Book Detail view's render predicate treats as "hide the row" —
+    /// there's no destination to navigate to.
+    func testFullPublication_seriesNameOnly_whenLinksAbsent() {
+        let series = OPDS2Collection(name: "Mystery Series", links: nil)
+        let metadata = OPDS2FullMetadata(
+            identifier: "urn:test:nolink",
+            title: "Unlinked Series Title",
+            belongsTo: OPDS2BelongsTo(series: [series])
+        )
+        let pub = OPDS2FullPublication(
+            metadata: metadata,
+            links: [
+                OPDS2Link(
+                    href: "https://example.com/borrow",
+                    type: "application/epub+zip",
+                    rel: "http://opds-spec.org/acquisition/borrow"
+                )
+            ],
+            images: nil
+        )
+
+        let book = pub.toBook()
+
+        XCTAssertEqual(book?.seriesName, "Mystery Series",
+                       "seriesName must still extract from the collection even when links is nil")
+        XCTAssertNil(book?.seriesURL,
+                     "seriesURL must be nil when the series collection carries no links")
+    }
+
     func testFullPublicationToBookReturnsNilWithNoAcquisitions() {
         let pub = OPDS2FullPublication(
             metadata: makeMinimalMetadata(),
@@ -611,6 +726,109 @@ final class OPDS2PublicationExtendedTests: XCTestCase {
         )
 
         XCTAssertNil(pub.toBook(), "toBook should return nil if no acquisition links exist")
+    }
+
+    // MARK: - PP-4161: Streaming-HTML pass-through (both toBook sites)
+
+    /// PP-4161: lightweight `OPDS2Publication.toBook()` must NOT drop a
+    /// publication whose only acquisition leaf is the LibrarySimplified
+    /// streaming-media MIME. Pre-fix, the `hasOpenablePath` guard
+    /// (lines 270-282) rejected streaming-media because
+    /// `TPPOPDSAcquisitionPath.supportedTypes()` excluded it. This test
+    /// fails until Module A adds `ContentTypeStreamingHTML` to
+    /// `supportedTypes()` + the `supportedSubtypes(forType: ContentTypeOPDSPublication)`
+    /// leaf set in PalaceCatalog — proving the filter behaviour, not the
+    /// production-code edit at the filter site (which is generic).
+    func testOPDS2Publication_toBook_streamingMediaOnlyAcquisition_doesNotDrop() {
+        let indirect = OPDS2IndirectAcquisition(
+            type: ContentTypeStreamingHTML,
+            child: nil
+        )
+        let link = OPDS2Link(
+            href: "https://example.com/borrow/streaming",
+            type: ContentTypeOPDSPublication,
+            rel: "http://opds-spec.org/acquisition/borrow",
+            properties: OPDS2LinkProperties(indirectAcquisition: [indirect])
+        )
+        let metadata = OPDS2Publication.Metadata(
+            id: "urn:uuid:84dac408-77ce-4afc-8393-9e0ced7ea3ef",
+            title: "Streaming-HTML Test Publication"
+        )
+        let publication = OPDS2Publication(
+            links: [link],
+            metadata: metadata,
+            images: nil
+        )
+
+        let book = publication.toBook()
+
+        XCTAssertNotNil(book,
+                        "Streaming-media-only publications must NOT be dropped by the hasOpenablePath filter once supportedTypes() includes ContentTypeStreamingHTML")
+        XCTAssertEqual(book?.identifier,
+                       "urn:uuid:84dac408-77ce-4afc-8393-9e0ced7ea3ef",
+                       "Identifier must round-trip through toBook unchanged")
+        XCTAssertEqual(book?.defaultBookContentType, .streamingHTML,
+                       "Resulting TPPBook must report .streamingHTML so Book Detail routes to the streaming reader")
+    }
+
+    /// PP-4161: parallel filter at `OPDS2FullPublication.toBook()`
+    /// (lines 386-398). Same contract — streaming-media-only publications
+    /// pass through. Pins the second `hasOpenablePath` site.
+    func testOPDS2FullPublication_toBook_streamingMediaOnlyAcquisition_doesNotDrop() {
+        let indirect = OPDS2IndirectAcquisition(
+            type: ContentTypeStreamingHTML,
+            child: nil
+        )
+        let link = OPDS2Link(
+            href: "https://example.com/borrow/streaming-full",
+            type: ContentTypeOPDSPublication,
+            rel: "http://opds-spec.org/acquisition/borrow",
+            properties: OPDS2LinkProperties(indirectAcquisition: [indirect])
+        )
+        let metadata = OPDS2FullMetadata(
+            identifier: "urn:uuid:full-streaming-test",
+            title: "Full Streaming-HTML Publication"
+        )
+        let publication = OPDS2FullPublication(
+            metadata: metadata,
+            links: [link],
+            images: nil
+        )
+
+        let book = publication.toBook()
+
+        XCTAssertNotNil(book,
+                        "Full-publication streaming-media-only books must NOT be dropped by the parallel hasOpenablePath filter")
+        XCTAssertEqual(book?.identifier, "urn:uuid:full-streaming-test")
+        XCTAssertEqual(book?.defaultBookContentType, .streamingHTML)
+    }
+
+    /// Sanity: a publication whose ONLY acquisition is a truly unsupported
+    /// MIME (e.g. text/csv) is still dropped. Catches a mutant that made
+    /// the filter universally permissive after the streaming-HTML edit.
+    func testOPDS2Publication_toBook_trulyUnsupportedFormat_stillDropped() {
+        let indirect = OPDS2IndirectAcquisition(
+            type: "text/csv",
+            child: nil
+        )
+        let link = OPDS2Link(
+            href: "https://example.com/borrow/unsupported",
+            type: ContentTypeOPDSPublication,
+            rel: "http://opds-spec.org/acquisition/borrow",
+            properties: OPDS2LinkProperties(indirectAcquisition: [indirect])
+        )
+        let metadata = OPDS2Publication.Metadata(
+            id: "urn:test:unsupported",
+            title: "Unsupported Format Publication"
+        )
+        let publication = OPDS2Publication(
+            links: [link],
+            metadata: metadata,
+            images: nil
+        )
+
+        XCTAssertNil(publication.toBook(),
+                     "Publications with truly unsupported formats (text/csv) must still be dropped by hasOpenablePath")
     }
 
     // MARK: - Helpers

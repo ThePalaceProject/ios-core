@@ -40,7 +40,7 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
 
         Log.info(#file, "🚗 CarPlay scene connected - setting up templates")
 
-        PlaybackBootstrapper.shared.ensureInitializedForCarPlay()
+        AppContainer.production().playbackBootstrapper.ensureInitializedForCarPlay()
 
         self.templateManager = CarPlayTemplateManager(interfaceController: interfaceController)
 
@@ -127,11 +127,7 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
 
         let comingSoonTemplate = CPListTemplate(title: "Palace", sections: [section])
 
-        interfaceController.setRootTemplate(comingSoonTemplate, animated: true) { _, error in
-            if let error = error {
-                Log.warn(#file, "CarPlay: setRootTemplate(comingSoon) failed: \(error)")
-            }
-        }
+        interfaceController.setRootTemplate(comingSoonTemplate, animated: true, completion: nil)
     }
 
     private func createCarPlayLogo() -> UIImage? {

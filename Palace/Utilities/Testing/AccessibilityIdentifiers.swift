@@ -105,6 +105,10 @@ public enum AccessibilityID {
         public static let downloadButton = "bookDetail.downloadButton"
         public static let readButton = "bookDetail.readButton"
         public static let listenButton = "bookDetail.listenButton"
+        /// PP-4161: terminal action for streaming-HTML titles. Distinct from
+        /// `readButton` so QA / simdrive can disambiguate the in-app WKWebView
+        /// reader from the Reader2 EPUB reader at the accessibility-tree level.
+        public static let readStreamingButton = "bookDetail.readStreamingButton"
         public static let deleteButton = "bookDetail.deleteButton"
         public static let returnButton = "bookDetail.returnButton"
         public static let reserveButton = "bookDetail.reserveButton"
@@ -139,6 +143,8 @@ public enum AccessibilityID {
         public static let publishedLabel = "bookDetail.publishedLabel"
         public static let publisherLabel = "bookDetail.publisherLabel"
         public static let distributorLabel = "bookDetail.distributorLabel"
+        public static let seriesLabel = "bookDetail.seriesLabel"
+        public static let seriesLink = "bookDetail.seriesLink"
         public static let relatedBooksSection = "bookDetail.relatedBooksSection"
     }
 
@@ -367,7 +373,19 @@ public enum AccessibilityID {
         public static let getStartedButton = "tutorial.getStartedButton"
     }
 
-    // MARK: - Error Alerts (PP-3707)
+    // MARK: - Streaming Reader
+
+    /// PP-4161: WKWebView-based streaming-media reader chrome. Online-only;
+    /// dismissal is via the system back chevron from the NavigationStack push
+    /// (no explicit close button — see StreamingReaderViewController). Offline
+    /// state exposes a Retry button and an error container.
+    public enum StreamingReader {
+        public static let webView = "streamingReader.webView"
+        public static let errorContainer = "streamingReader.errorContainer"
+        public static let retryButton = "streamingReader.retryButton"
+    }
+
+    // MARK: - Error Alerts
 
     /// Identifiers for error alerts with retry support
     public enum ErrorAlert {

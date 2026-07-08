@@ -1,0 +1,2260 @@
+{
+  "project": "palace-ios",
+  "scope": [
+    "Palace/"
+  ],
+  "files_scanned": 598,
+  "summary": {
+    "total": 224,
+    "blockers": 17,
+    "warnings": 207,
+    "by_category": {
+      "force_unwraps": 17,
+      "ticket_refs": 168,
+      "archaeology": 7,
+      "commented_out_code": 32
+    }
+  },
+  "findings": [
+    {
+      "file": "Palace/Settings/TPPSettings+SE.swift",
+      "line": 12,
+      "column": 31,
+      "detector": "force_unwraps",
+      "severity": "block",
+      "message": "force unwrap \u2014 use guard let / if let / ??",
+      "snippet": "return URL(string: \"https://librarysimplified.org/callbacks/SimplyE\")!",
+      "autofix_available": false
+    },
+    {
+      "file": "Palace/Settings/AccountDetailView.swift",
+      "line": 344,
+      "column": 9,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4421' in comment",
+      "snippet": "// PP-4421: explicit prompt with `.secondary` foreground overrides the",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Settings/AccountDetailView.swift",
+      "line": 369,
+      "column": 9,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4421' in comment",
+      "snippet": "// PP-4421: explicit prompt with `.secondary` foreground overrides",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Settings/AccountDetailView.swift",
+      "line": 448,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4282' in comment",
+      "snippet": "/// PP-4282 / HelpSpot 17716: destructive \"Reset This Library Account\"",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Settings/TPPSettingsAccountsList.swift",
+      "line": 228,
+      "column": 9,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3707' in comment",
+      "snippet": "// PP-3707: Offer retry for library loading failures (likely transient)",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Settings/TPPSettingsAccountsList.swift",
+      "line": 75,
+      "column": 9,
+      "detector": "archaeology",
+      "severity": "warn",
+      "message": "archaeology comment ('removed')",
+      "snippet": "// the user previously added that have since been renamed, removed, or whose",
+      "autofix_available": false
+    },
+    {
+      "file": "Palace/Settings/TPPSettingsProviding.swift",
+      "line": 24,
+      "column": 1,
+      "detector": "commented_out_code",
+      "severity": "warn",
+      "message": "block of 2 lines of commented-out code",
+      "snippet": "///     }",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Settings/EULAView.swift",
+      "line": 27,
+      "column": 57,
+      "detector": "force_unwraps",
+      "severity": "block",
+      "message": "force unwrap \u2014 use guard let / if let / ??",
+      "snippet": "private static let fallbackEULAURL = URL(string: \"https://thepalaceproject.org\")!",
+      "autofix_available": false
+    },
+    {
+      "file": "Palace/Settings/AccountDetailViewModel.swift",
+      "line": 78,
+      "column": 9,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4020' in comment",
+      "snippet": "// what silently blocked OIDC sign-in after PP-4020; the symmetric miss",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Settings/AccountDetailViewModel.swift",
+      "line": 437,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4229' in comment",
+      "snippet": "/// the user does not get signed out by an accidental tap (PP-4229).",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Settings/AccountDetailViewModel.swift",
+      "line": 465,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4282' in comment",
+      "snippet": "// MARK: - Reset Account (PP-4282 / HelpSpot 17716)",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Settings/DeveloperSettings/TPPDeveloperSettingsTableViewController.swift",
+      "line": 874,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4282' in comment",
+      "snippet": "// MARK: - Reset Account Testing (PP-4282 / HelpSpot 17716)",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Settings/DeveloperSettings/TPPDeveloperSettingsTableViewController.swift",
+      "line": 924,
+      "column": 9,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4275' in comment",
+      "snippet": "//    PP-4275 silent-failure mode that Reset Account heals on next launch.",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Settings/DeveloperSettings/TPPDeveloperSettingsTableViewController.swift",
+      "line": 928,
+      "column": 9,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4276' in comment",
+      "snippet": "//    triggers the audiobook-OPEN re-auth in PP-4276 and that Reset clears.",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Settings/NewSettings/SettingsViewModel.swift",
+      "line": 108,
+      "column": 75,
+      "detector": "force_unwraps",
+      "severity": "block",
+      "message": "force unwrap \u2014 use guard let / if let / ??",
+      "snippet": "customLibraryRegistryServer != nil && !customLibraryRegistryServer!.isEmpty",
+      "autofix_available": false
+    },
+    {
+      "file": "Palace/Settings/NewSettings/SettingsViewModel.swift",
+      "line": 26,
+      "column": 1,
+      "detector": "commented_out_code",
+      "severity": "warn",
+      "message": "block of 2 lines of commented-out code",
+      "snippet": "/// let mockSettings = TPPSettingsMock()",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Settings/NewSettings/TPPSettingsView.swift",
+      "line": 138,
+      "column": 53,
+      "detector": "force_unwraps",
+      "severity": "block",
+      "message": "force unwrap \u2014 use guard let / if let / ??",
+      "snippet": "private static let fallbackURL = URL(string: \"https://thepalaceproject.org\")!",
+      "autofix_available": false
+    },
+    {
+      "file": "Palace/Settings/Debug/DebugSettings.swift",
+      "line": 284,
+      "column": 34,
+      "detector": "force_unwraps",
+      "severity": "block",
+      "message": "force unwrap \u2014 use guard let / if let / ??",
+      "snippet": "let url = URL(string: \"https://example.com/test-reserved-\\(index)\")!",
+      "autofix_available": false
+    },
+    {
+      "file": "Palace/Settings/Debug/DebugSettings.swift",
+      "line": 333,
+      "column": 34,
+      "detector": "force_unwraps",
+      "severity": "block",
+      "message": "force unwrap \u2014 use guard let / if let / ??",
+      "snippet": "let url = URL(string: \"https://example.com/test-ready-\\(index)\")!",
+      "autofix_available": false
+    },
+    {
+      "file": "Palace/OPDS2/Models/OPDS2PublicationExtended.swift",
+      "line": 298,
+      "column": 9,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4230' in comment",
+      "snippet": "// PP-4230: surface narrator into TPPBook.contributors so audiobook",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Migrations/SEMigrations.swift",
+      "line": 79,
+      "column": 69,
+      "detector": "force_unwraps",
+      "severity": "block",
+      "message": "force unwrap \u2014 use guard let / if let / ??",
+      "snippet": "return $0 as? String ?? (idInt != nil ? accountMap[idInt!] : nil)",
+      "autofix_available": false
+    },
+    {
+      "file": "Palace/Migrations/SEMigrations.swift",
+      "line": 32,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4179' in comment",
+      "snippet": "// Palace v3.1.0 (PP-4179)",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Migrations/SEMigrations.swift",
+      "line": 36,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'HelpSpot 17517' in comment",
+      "snippet": "// loans (HelpSpot 17517 \u2014 patron reported 1.2 GB backup footprint).",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Migrations/BackupExclusionMigration.swift",
+      "line": 5,
+      "column": 1,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4179' in comment",
+      "snippet": "//  PP-4179 \u2014 one-shot upgrade pass that walks Application Support and",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/CarPlay/CarPlayTemplateManager.swift",
+      "line": 94,
+      "column": 9,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3679' in comment",
+      "snippet": "// PP-3679: If an audiobook is already playing, jump straight to Now Playing",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/CatalogUI/ViewModels/CatalogLaneMoreViewModel.swift",
+      "line": 212,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3629' in comment",
+      "snippet": "// Extract facets (including sort facets) from grouped feeds (PP-3629)",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/CatalogUI/Views/CatalogLaneRowView.swift",
+      "line": 46,
+      "column": 21,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4289' in comment",
+      "snippet": "// PP-4289: lift the cover when a pointer (iPad pencil/mouse,",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/CatalogUI/Views/CatalogLaneRowView.swift",
+      "line": 56,
+      "column": 44,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3980' in comment",
+      "snippet": ".accessibilityAddTraits(.isHeader) // PP-3980: scroll container exposes title in heading rotor",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/CatalogUI/Views/CatalogLaneRowView.swift",
+      "line": 61,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3968' in comment",
+      "snippet": "/// PP-3968: Single source of truth for the catalog cell VoiceOver label.",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/CatalogUI/Views/CatalogLaneRowView.swift",
+      "line": 80,
+      "column": 52,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3980' in comment",
+      "snippet": ".accessibilityAddTraits(.isHeader) // PP-3980: expose swimlane title in heading rotor",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/CatalogUI/Views/CatalogLaneMoreView.swift",
+      "line": 21,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4065' in comment",
+      "snippet": "// PP-4065: scroll-to-top should fire exactly once, on the first appearance",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/CatalogUI/Views/CatalogLaneMoreView.swift",
+      "line": 395,
+      "column": 17,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4065' in comment",
+      "snippet": "// PP-4065: scroll to top on the FIRST appearance only.",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/CatalogUI/Views/CatalogSearchView.swift",
+      "line": 7,
+      "column": 1,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3834' in comment",
+      "snippet": "// MARK: - Accessibility focus target (PP-3834: move VoiceOver to results after search)",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/CatalogUI/Views/CatalogSearchView.swift",
+      "line": 71,
+      "column": 13,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4115' in comment",
+      "snippet": "// PP-4115: when returning from book detail, registry state may have",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/ErrorHandling/TPPPresentationUtils.swift",
+      "line": 69,
+      "column": 9,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'HelpSpot 17716' in comment",
+      "snippet": "// new) topmost VC and present there. HelpSpot 17716 follow-up.",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/ErrorHandling/PalaceError.swift",
+      "line": 555,
+      "column": 9,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3716' in comment",
+      "snippet": "// PP-3716: OPDSFeedService wraps PalaceErrors in NSErrors to attach problem",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/ErrorHandling/TPPAlertUtils.swift",
+      "line": 211,
+      "column": 9,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3673' in comment",
+      "snippet": "// PP-3673: Announce the alert to VoiceOver without moving focus.",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/ErrorHandling/TPPAlertUtils.swift",
+      "line": 448,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3707' in comment",
+      "snippet": "/// instead of a single \"OK\" button (PP-3707).",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/ErrorHandling/TPPAlertUtils.swift",
+      "line": 450,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3439' in comment",
+      "snippet": "/// This is the primary integration point for PP-3439.",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/ErrorHandling/TPPAlertUtils.swift",
+      "line": 526,
+      "column": 9,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3707' in comment",
+      "snippet": "// PP-3707: Add Retry + Cancel for retryable errors, or OK for non-retryable",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/ErrorHandling/ProblemReportEmail.swift",
+      "line": 86,
+      "column": 9,
+      "detector": "commented_out_code",
+      "severity": "warn",
+      "message": "block of 2 lines of commented-out code",
+      "snippet": "//    case .vision:",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Reader2/UI/TPPReaderPositionsVC.swift",
+      "line": 299,
+      "column": 21,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3707' in comment",
+      "snippet": "// PP-3707: Offer retry for bookmark sync failures (likely transient network issue)",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Reader2/UI/TPPBaseReaderViewController.swift",
+      "line": 321,
+      "column": 9,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4326' in comment",
+      "snippet": "// PP-4326 follow-up (product requirement): when a book is opened",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Reader2/UI/TPPBaseReaderViewController.swift",
+      "line": 495,
+      "column": 9,
+      "detector": "archaeology",
+      "severity": "warn",
+      "message": "archaeology comment ('removed')",
+      "snippet": "// at this point the bookmark has already been removed, so we just need",
+      "autofix_available": false
+    },
+    {
+      "file": "Palace/Reader2/UI/TPPEPUBViewController.swift",
+      "line": 281,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3715' in comment",
+      "snippet": "/// from its text fields (PP-3715).",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Reader2/UI/TPPEPUBViewController.swift",
+      "line": 297,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3715' in comment",
+      "snippet": "/// and the keyboard won't appear (PP-3715).",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Reader2/UI/TPPEPUBViewController.swift",
+      "line": 333,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4289' in comment",
+      "snippet": "/// Exposed at internal access (default) so PP-4289 regression tests can",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Reader2/UI/TPPEPUBViewController.swift",
+      "line": 337,
+      "column": 9,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4289' in comment",
+      "snippet": "// Cmd+W: PP-4289 \u2014 single-scene iPad-on-Mac apps treat default Cmd+W as",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Reader2/UI/TPPEPUBViewController.swift",
+      "line": 342,
+      "column": 9,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4289' in comment",
+      "snippet": "// Cmd+,: PP-4289 \u2014 discoverable shortcut for reader preferences.",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Reader2/Bookmarks/TPPAnnotations.swift",
+      "line": 98,
+      "column": 5,
+      "detector": "commented_out_code",
+      "severity": "warn",
+      "message": "block of 2 lines of commented-out code",
+      "snippet": "//   }",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Reader2/ReaderStackConfiguration/AdobeDRM/AdobeDRMContainer.h",
+      "line": 24,
+      "column": 1,
+      "detector": "commented_out_code",
+      "severity": "warn",
+      "message": "block of 2 lines of commented-out code",
+      "snippet": "/// @param fileURL file URL",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Reader2/ReaderStackConfiguration/AdobeDRM/AdobeDRMContainer.h",
+      "line": 28,
+      "column": 1,
+      "detector": "commented_out_code",
+      "severity": "warn",
+      "message": "block of 2 lines of commented-out code",
+      "snippet": "/// @param data Encrypted data",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Reader2/ReaderStackConfiguration/AdobeDRM/AdobeCertificate.swift",
+      "line": 251,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3649' in comment",
+      "snippet": "// MARK: - On-Demand Activation (PP-3649)",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Reader2/ReaderStackConfiguration/LCP/LicensesService.swift",
+      "line": 59,
+      "column": 13,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3704' in comment",
+      "snippet": "// PP-3704: No credentials may be sent to googleapis.com \u2014 use ephemeral session",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Reader2/ReaderStackConfiguration/LCP/LicensesService.swift",
+      "line": 66,
+      "column": 13,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3704' in comment",
+      "snippet": "// Use sha256 for a stable session identifier across app launches (PP-3704).",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Reader2/ReaderStackConfiguration/LCP/LCPPassphraseAuthenticationService.swift",
+      "line": 8,
+      "column": 48,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref '#41' in comment",
+      "snippet": "For Passphrase in License Document, see https://readium.org/lcp-specs/releases/lcp/latest#41-introduction",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Reader2/Typography/ReaderTypographyButton.swift",
+      "line": 19,
+      "column": 1,
+      "detector": "commented_out_code",
+      "severity": "warn",
+      "message": "block of 2 lines of commented-out code",
+      "snippet": "/// }",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Reader2/Typography/TypographyService.swift",
+      "line": 240,
+      "column": 9,
+      "detector": "commented_out_code",
+      "severity": "warn",
+      "message": "block of 2 lines of commented-out code",
+      "snippet": "//   let css = typographyService.cssForCurrentSettings()",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Audiobooks/NowPlayingCoordinator.swift",
+      "line": 38,
+      "column": 9,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'HelpSpot 17865' in comment",
+      "snippet": "/// HelpSpot 17865 \u2014 if the writer was dry for longer than this while",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Audiobooks/NowPlayingCoordinator.swift",
+      "line": 100,
+      "column": 9,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'HelpSpot 17865' in comment",
+      "snippet": "// HelpSpot 17865 \u2014 self-subscribe to foreground notification so the",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Audiobooks/NowPlayingCoordinator.swift",
+      "line": 240,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'HelpSpot 17865' in comment",
+      "snippet": "/// fires. HelpSpot 17865 instrumentation.",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Audiobooks/NowPlayingCoordinator.swift",
+      "line": 251,
+      "column": 9,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'HelpSpot 17865' in comment",
+      "snippet": "// HelpSpot 17865 \u2014 when the app is NOT active, bypass debounce.",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Audiobooks/NowPlayingCoordinator.swift",
+      "line": 311,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'HelpSpot 17865' in comment",
+      "snippet": "/// HelpSpot 17865 instrumentation \u2014 on foreground return, if the writer",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Audiobooks/AudiobookPositionPolicy.swift",
+      "line": 193,
+      "column": 5,
+      "detector": "commented_out_code",
+      "severity": "warn",
+      "message": "block of 2 lines of commented-out code",
+      "snippet": "///     toolkit's track count as a stand-in. Must be > 0 to evaluate;",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Audiobooks/AudiobookSessionManager.swift",
+      "line": 331,
+      "column": 25,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3707' in comment",
+      "snippet": "// Surface the retry-with-dialog UX (PP-3707) for user-visible",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Audiobooks/AudiobookSessionManager.swift",
+      "line": 341,
+      "column": 29,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'HelpSpot 17727' in comment",
+      "snippet": "// HelpSpot 17727: SAML credentials went stale upstream",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Audiobooks/AudiobookSessionManager.swift",
+      "line": 905,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'HelpSpot 17727' in comment",
+      "snippet": "/// HelpSpot 17727: Returns true when an audiobook OPEN (load) failed and the",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Audiobooks/AudiobookSessionManager.swift",
+      "line": 910,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3703' in comment",
+      "snippet": "/// `shouldTriggerSAMLReauthForPlaybackFailure` (PP-3703, which handles the",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Audiobooks/AudiobookSessionManager.swift",
+      "line": 938,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3703' in comment",
+      "snippet": "/// PP-3703: Returns true when playback failed due to bearer token refresh (e.g. 401 on CM fulfill)",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Audiobooks/AudiobookSessionManager.swift",
+      "line": 1118,
+      "column": 13,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3703' in comment",
+      "snippet": "// PP-3703: When BiblioBoard bearer token refresh fails due to SAML session expiration",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Audiobooks/AudiobookSessionManager.swift",
+      "line": 238,
+      "column": 5,
+      "detector": "commented_out_code",
+      "severity": "warn",
+      "message": "block of 2 lines of commented-out code",
+      "snippet": "/// for errors that have other dedicated presentation paths \u2014 keep this",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Audiobooks/Vendors/LCPAdapter.swift",
+      "line": 9,
+      "column": 1,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4407' in comment",
+      "snippet": "//  catches the Marketplace OPDS-shape regression PP-4407 (kill point lives in",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Audiobooks/Vendors/LocalFileAdapter.swift",
+      "line": 45,
+      "column": 1,
+      "detector": "commented_out_code",
+      "severity": "warn",
+      "message": "block of 2 lines of commented-out code",
+      "snippet": "/// Constructor-style DI per CLAUDE.md \u2014 `downloadCenter`, `fileReader`,",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Audiobooks/DPLA/DPLAAudiobooks.swift",
+      "line": 38,
+      "column": 48,
+      "detector": "force_unwraps",
+      "severity": "block",
+      "message": "force unwrap \u2014 use guard let / if let / ??",
+      "snippet": "static let certificateUrl = URL(string: \"https://listen.cantookaudio.com/.well-known/jwks.json\")!",
+      "autofix_available": false
+    },
+    {
+      "file": "Palace/Audiobooks/LCP/LCPAudiobooks.swift",
+      "line": 212,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4407' in comment",
+      "snippet": "/// This is the load-bearing fix for the PP-4407 regression class. Ported",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Audiobooks/LCP/LCPAudiobooks.swift",
+      "line": 45,
+      "column": 5,
+      "detector": "archaeology",
+      "severity": "warn",
+      "message": "archaeology comment ('deprecated')",
+      "snippet": "/// - Parameter licenseUrl: optional license URL for streaming authentication (deprecated, use audiobookUrl)",
+      "autofix_available": false
+    },
+    {
+      "file": "Palace/AppInfrastructure/TPPConfiguration+SE.swift",
+      "line": 15,
+      "column": 41,
+      "detector": "force_unwraps",
+      "severity": "block",
+      "message": "force unwrap \u2014 use guard let / if let / ??",
+      "snippet": "static let betaUrl = URL(string: \"https://registry.palaceproject.io/libraries/qa\")!",
+      "autofix_available": false
+    },
+    {
+      "file": "Palace/AppInfrastructure/TPPConfiguration+SE.swift",
+      "line": 16,
+      "column": 41,
+      "detector": "force_unwraps",
+      "severity": "block",
+      "message": "force unwrap \u2014 use guard let / if let / ??",
+      "snippet": "static let prodUrl = URL(string: \"https://registry.palaceproject.io/libraries\")!",
+      "autofix_available": false
+    },
+    {
+      "file": "Palace/AppInfrastructure/NavigationHostView.swift",
+      "line": 72,
+      "column": 29,
+      "detector": "commented_out_code",
+      "severity": "warn",
+      "message": "block of 2 lines of commented-out code",
+      "snippet": "// .overlay { CarModeEntryButton ... }",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/AppInfrastructure/TPPAppDelegate.swift",
+      "line": 19,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4329' in comment",
+      "snippet": "// PP-4329: state for the first-run library picker. Without these,",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/AppInfrastructure/TPPAppDelegate.swift",
+      "line": 456,
+      "column": 9,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4329' in comment",
+      "snippet": "// PP-4329: idempotency \u2014 once we've presented the picker this",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/AppInfrastructure/TPPAppDelegate.swift",
+      "line": 466,
+      "column": 13,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4329' in comment",
+      "snippet": "// PP-4329: remove the previous deferred observer (if any)",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/AppInfrastructure/NavigationCoordinator.swift",
+      "line": 172,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3783' in comment",
+      "snippet": "/// and \"My Books\" in the player returns to book detail instead of catalog (PP-3783).",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/AppInfrastructure/NavigationCoordinator.swift",
+      "line": 70,
+      "column": 5,
+      "detector": "archaeology",
+      "severity": "warn",
+      "message": "archaeology comment ('deprecated')",
+      "snippet": "/// Weak references to prevent retain cycles (deprecated, kept for backward compatibility)",
+      "autofix_available": false
+    },
+    {
+      "file": "Palace/AppInfrastructure/SceneDelegate.swift",
+      "line": 38,
+      "column": 9,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4289' in comment",
+      "snippet": "// PP-4289: when running as \"Designed for iPad\" on Apple Silicon Macs,",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/AppInfrastructure/SceneDelegate.swift",
+      "line": 101,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4289' in comment",
+      "snippet": "// MARK: - PP-4289 Mac geometry",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Network/TPPUserFriendlyError.swift",
+      "line": 18,
+      "column": 5,
+      "detector": "commented_out_code",
+      "severity": "warn",
+      "message": "block of 2 lines of commented-out code",
+      "snippet": "/// A user-friendly short message describing the error in more detail,",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Network/TPPNetworkExecutor.swift",
+      "line": 570,
+      "column": 13,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4045' in comment",
+      "snippet": "// Note: empty password is valid for pinless libraries (PP-4045).",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Network/TPPNetworkResponder.swift",
+      "line": 459,
+      "column": 13,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'HelpSpot 17716' in comment",
+      "snippet": "// HelpSpot 17716 follow-up, hotfix-branch device test 2026-05-01.",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/PDF/LCP/LCPPDFs.swift",
+      "line": 115,
+      "column": 5,
+      "detector": "commented_out_code",
+      "severity": "warn",
+      "message": "block of 2 lines of commented-out code",
+      "snippet": "/// Decrypting data takes time;",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/PDF/Views/TPPPDFAccessibilityToolbar.swift",
+      "line": 5,
+      "column": 1,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3838' in comment",
+      "snippet": "//  Created for PP-3838: Accessible page navigation for PDF Reader.",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Holds/HoldsViewModel.swift",
+      "line": 213,
+      "column": 9,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3811' in comment",
+      "snippet": "//      existing PP-3811 behaviour, kept verbatim so the auth-required",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Utilities/TPPAccessibilityAnnouncementCenter.swift",
+      "line": 24,
+      "column": 1,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3673' in comment",
+      "snippet": "/// avoid flooding the user with repeated announcements (PP-3673).",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Utilities/TPPAccessibilityAnnouncementCenter.swift",
+      "line": 26,
+      "column": 1,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3839' in comment",
+      "snippet": "/// **Transition-aware queuing (PP-3839):**",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Utilities/TPPAccessibilityAnnouncementCenter.swift",
+      "line": 86,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3839' in comment",
+      "snippet": "// MARK: - Screen Transition Awareness (PP-3839)",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Utilities/TPPAccessibilityAnnouncementCenter.swift",
+      "line": 144,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3707' in comment",
+      "snippet": "// MARK: - Retry Announcements (PP-3707)",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Utilities/TPPAccessibilityAnnouncementCenter.swift",
+      "line": 174,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3673' in comment",
+      "snippet": "// MARK: - Search Announcements (PP-3673)",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Utilities/TPPAccessibilityAnnouncementCenter.swift",
+      "line": 197,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3673' in comment",
+      "snippet": "// MARK: - Error / Status Announcements (PP-3673)",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Utilities/ImageCache/GeneralCache.swift",
+      "line": 79,
+      "column": 9,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4020' in comment",
+      "snippet": "// PP-4020: Reduced limits \u2014 GeneralCache backs ImageCache's compressed JPEG",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Utilities/Networking/URL+BackupExclusion.swift",
+      "line": 7,
+      "column": 1,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'HelpSpot 17517' in comment",
+      "snippet": "//  re-downloadable content (HelpSpot 17517 / PP-4179: patron reported",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Utilities/Testing/AccessibilityIdentifiers.swift",
+      "line": 370,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3707' in comment",
+      "snippet": "// MARK: - Error Alerts (PP-3707)",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Utilities/Concurrency/TPPBackgroundExecutor.swift",
+      "line": 30,
+      "column": 5,
+      "detector": "commented_out_code",
+      "severity": "warn",
+      "message": "block of 6 lines of commented-out code",
+      "snippet": "/// {",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Utilities/Localization/Strings.swift",
+      "line": 18,
+      "column": 9,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4326' in comment",
+      "snippet": "// PP-4326: VoiceOver hint announced after the book row's canonical",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Utilities/Localization/Strings.swift",
+      "line": 137,
+      "column": 9,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3968' in comment",
+      "snippet": "// Accessibility - Book cell labels (PP-3968)",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Utilities/Localization/Strings.swift",
+      "line": 272,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3673' in comment",
+      "snippet": "// MARK: - Search Announcements (PP-3673)",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Utilities/Localization/Strings.swift",
+      "line": 356,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3673' in comment",
+      "snippet": "// MARK: - Status Announcements (PP-3673)",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Utilities/Localization/Strings.swift",
+      "line": 678,
+      "column": 9,
+      "detector": "commented_out_code",
+      "severity": "warn",
+      "message": "block of 2 lines of commented-out code",
+      "snippet": "/// borrow phase (network request to the borrow URL is in flight,",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/SignInLogic/TPPSignInBusinessLogic+SAML.swift",
+      "line": 7,
+      "column": 1,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3452' in comment",
+      "snippet": "// SP-initiated SAML Single Logout client (PP-3452).",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/SignInLogic/TPPSignInBusinessLogic+SAML.swift",
+      "line": 79,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3452' in comment",
+      "snippet": "/// CM contract (PP-3452 / commit 914bff6):",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/SignInLogic/LegacySAMLAuthAdapter.swift",
+      "line": 115,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'HelpSpot 17870' in comment",
+      "snippet": "/// HelpSpot 17870 \u2014 weak back-reference so the presenter can synthesise",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/SignInLogic/LegacySAMLAuthAdapter.swift",
+      "line": 177,
+      "column": 9,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'HelpSpot 17870' in comment",
+      "snippet": "// HelpSpot 17870 \u2014 build the handler ON THE NONISOLATED HOP so the",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/SignInLogic/TPPSignInBusinessLogic+SignOut.swift",
+      "line": 240,
+      "column": 9,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3452' in comment",
+      "snippet": "// CM logout endpoints (OIDC and SAML SLO / PP-3452) require",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/SignInLogic/TPPSignInBusinessLogic+SignOut.swift",
+      "line": 262,
+      "column": 9,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3452' in comment",
+      "snippet": "// SAML: if the CM advertises a logout link (PP-3452), call the CM's",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/SignInLogic/TPPSignInBusinessLogic+SignOut.swift",
+      "line": 283,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3452' in comment",
+      "snippet": "/// SAML + logout link present (PP-3452): authenticated API call to CM",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/SignInLogic/TPPSignInBusinessLogic+SignOut.swift",
+      "line": 28,
+      "column": 5,
+      "detector": "commented_out_code",
+      "severity": "warn",
+      "message": "block of 2 lines of commented-out code",
+      "snippet": "// it works across different business-logic instances for the same library,",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/SignInLogic/TPPSignInBusinessLogic+UI.swift",
+      "line": 32,
+      "column": 13,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3819' in comment",
+      "snippet": "// PP-3819: Cancel any pending sign-out for this library so that",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/SignInLogic/TPPSignInBusinessLogic+OAuth.swift",
+      "line": 96,
+      "column": 13,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'HelpSpot 17870' in comment",
+      "snippet": "// HelpSpot 17870 \u2014 TPPSAMLHelper's `if let error, let errorTitle,",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/SignInLogic/TPPSignInBusinessLogic+OAuth.swift",
+      "line": 127,
+      "column": 13,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'HelpSpot 17870' in comment",
+      "snippet": "// HelpSpot 17870 \u2014 synthesise an Error so TPPSAMLHelper's guard fires.",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/SignInLogic/TPPSignInBusinessLogic+OAuth.swift",
+      "line": 149,
+      "column": 13,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'HelpSpot 17870' in comment",
+      "snippet": "// HelpSpot 17870 \u2014 synthesise an Error so TPPSAMLHelper's guard fires.",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/SignInLogic/TPPSignInBusinessLogic+OAuth.swift",
+      "line": 184,
+      "column": 13,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'HelpSpot 17870' in comment",
+      "snippet": "// HelpSpot 17870 \u2014 preserve the parsed title in the title slot",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/SignInLogic/TPPSignInBusinessLogic+OAuth.swift",
+      "line": 214,
+      "column": 13,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'HelpSpot 17870' in comment",
+      "snippet": "// HelpSpot 17870 \u2014 this is the literal silent-failure shape from",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/SignInLogic/TPPSignInBusinessLogic+OAuth.swift",
+      "line": 96,
+      "column": 13,
+      "detector": "commented_out_code",
+      "severity": "warn",
+      "message": "block of 2 lines of commented-out code",
+      "snippet": "// HelpSpot 17870 \u2014 TPPSAMLHelper's `if let error, let errorTitle,",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/SignInLogic/SignInWebSheet.swift",
+      "line": 107,
+      "column": 9,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4289' in comment",
+      "snippet": "// PP-4289: suppress automatic content-inset adjustments that cause the",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/SignInLogic/TPPSignInBusinessLogic+OIDC.swift",
+      "line": 236,
+      "column": 13,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4282' in comment",
+      "snippet": "// PP-4282 (HelpSpot 17716): the patron-driven \"Reset Account\"",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/SignInLogic/TPPSignInBusinessLogic.swift",
+      "line": 32,
+      "column": 144,
+      "detector": "force_unwraps",
+      "severity": "block",
+      "message": "force unwrap \u2014 use guard let / if let / ??",
+      "snippet": "func authorize(withVendorID vendorID: String!, username: String!, password: String!, completion: ((Bool, Error?, String\u2026",
+      "autofix_available": false
+    },
+    {
+      "file": "Palace/SignInLogic/TPPSignInBusinessLogic.swift",
+      "line": 33,
+      "column": 145,
+      "detector": "force_unwraps",
+      "severity": "block",
+      "message": "force unwrap \u2014 use guard let / if let / ??",
+      "snippet": "func deauthorize(withUsername username: String!, password: String!, userID: String!, deviceID: String!, completion: ((B\u2026",
+      "autofix_available": false
+    },
+    {
+      "file": "Palace/SignInLogic/TPPSignInBusinessLogic.swift",
+      "line": 98,
+      "column": 9,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'HelpSpot 17870' in comment",
+      "snippet": "// - presenter (HelpSpot 17870): needs businessLogic so its",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/SignInLogic/TPPSignInBusinessLogic.swift",
+      "line": 445,
+      "column": 17,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3649' in comment",
+      "snippet": "// PP-3649: Save DRM credentials from profile document but defer Adobe",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/SignInLogic/TPPSignInBusinessLogic.swift",
+      "line": 295,
+      "column": 5,
+      "detector": "commented_out_code",
+      "severity": "warn",
+      "message": "block of 2 lines of commented-out code",
+      "snippet": "/// - password reset link exists in authentication document;",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/SignInLogic/TPPSignInBusinessLogic+ForceReset.swift",
+      "line": 9,
+      "column": 1,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'HelpSpot 17716' in comment",
+      "snippet": "// patrons whose app is already broken (HelpSpot 17716 Cornell SAML and",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/SignInLogic/TPPSignInBusinessLogic+ForceReset.swift",
+      "line": 96,
+      "column": 9,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3649' in comment",
+      "snippet": "//      decrypt the EPUB. When activation gets desynced (PP-3649,",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/SignInLogic/TPPSignInBusinessLogic+DRM.swift",
+      "line": 17,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3649' in comment",
+      "snippet": "/// Adobe device activation. Activation is deferred to borrow time (PP-3649).",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/SignInLogic/TPPSignInBusinessLogic+DRM.swift",
+      "line": 22,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3784' in comment",
+      "snippet": "/// PP-3784 (barcode disappearing after sign-in).",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Accounts/Library/Account+profileDocument.swift",
+      "line": 29,
+      "column": 9,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4164' in comment",
+      "snippet": "// /patrons/me/ 401 storm at every cold relaunch (PP-4164 \u2192 F-007 \u2192",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Accounts/Library/AccountsManager.swift",
+      "line": 318,
+      "column": 5,
+      "detector": "commented_out_code",
+      "severity": "warn",
+      "message": "block of 2 lines of commented-out code",
+      "snippet": "/// `AppContainer.production().audiobookSession.openAudiobook`,",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Accounts/Library/AccountsManager.swift",
+      "line": 402,
+      "column": 5,
+      "detector": "commented_out_code",
+      "severity": "warn",
+      "message": "block of 2 lines of commented-out code",
+      "snippet": "/// If we blindly fell back to a fresh/empty instance in that window,",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Accounts/Library/Account.swift",
+      "line": 95,
+      "column": 9,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3452' in comment",
+      "snippet": "/// added by CM PP-3452 for SP-initiated Single Logout.",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Accounts/Library/Account.swift",
+      "line": 374,
+      "column": 9,
+      "detector": "commented_out_code",
+      "severity": "warn",
+      "message": "block of 2 lines of commented-out code",
+      "snippet": "//      return Authentication.init(auth: opdsAuth)",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Accounts/User/TPPUserAccount.swift",
+      "line": 61,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3819' in comment",
+      "snippet": "/// PP-3819: Incremented by `cancelPendingSignOut()` each time the user",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Packages/PalaceKeychain/Tests/PalaceKeychainTests/TPPKeychainSwiftTests.swift",
+      "line": 46,
+      "column": 3,
+      "detector": "archaeology",
+      "severity": "warn",
+      "message": "archaeology comment ('removed')",
+      "snippet": "// MARK: - Absence (missing, removed, cross-key)",
+      "autofix_available": false
+    },
+    {
+      "file": "Palace/Packages/PalaceAuth/Sources/PalaceAuth/TokenRequest.swift",
+      "line": 58,
+      "column": 9,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4045' in comment",
+      "snippet": "// Memorial Library (PP-4045).",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Packages/PalaceAuth/Sources/PalaceAuth/AuthSeams.swift",
+      "line": 14,
+      "column": 1,
+      "detector": "commented_out_code",
+      "severity": "warn",
+      "message": "block of 2 lines of commented-out code",
+      "snippet": "//  Moving `TPPCurrentLibraryAccountProvider`, `TPPUserAccountResolving`,",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Packages/PalaceCatalog/Sources/PalaceCatalog/TPPOPDSEntry.swift",
+      "line": 78,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4046' in comment",
+      "snippet": "// PP-4046 \u2014 Audience is published as `<category scheme=\"schema.org/audience\">`;",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Packages/PalaceCatalog/Sources/PalaceCatalog/TPPOPDSEntry.swift",
+      "line": 85,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4046' in comment",
+      "snippet": "// PP-4046 \u2014 `<dcterms:language>` is normally namespace-stripped to",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Packages/PalaceCatalog/Sources/PalaceCatalog/TPPOPDSEntry.swift",
+      "line": 89,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4230' in comment",
+      "snippet": "// as the role/opf:role lookup in parseContributors (PP-4230).",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Packages/PalaceCatalog/Sources/PalaceCatalog/TPPOPDSEntry.swift",
+      "line": 130,
+      "column": 7,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4230' in comment",
+      "snippet": "// PP-4230: Foundation's XMLParser with shouldProcessNamespaces=true",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Packages/PalaceCatalog/Sources/PalaceCatalog/OPDS2Feed.swift",
+      "line": 59,
+      "column": 41,
+      "detector": "force_unwraps",
+      "severity": "block",
+      "message": "force unwrap \u2014 use guard let / if let / ??",
+      "snippet": "navigation != nil && !navigation!.isEmpty",
+      "autofix_available": false
+    },
+    {
+      "file": "Palace/Packages/PalaceCatalog/Sources/PalaceCatalog/OPDS2Feed.swift",
+      "line": 63,
+      "column": 45,
+      "detector": "force_unwraps",
+      "severity": "block",
+      "message": "force unwrap \u2014 use guard let / if let / ??",
+      "snippet": "publications != nil && !publications!.isEmpty",
+      "autofix_available": false
+    },
+    {
+      "file": "Palace/Packages/PalaceCatalog/Sources/PalaceCatalog/OPDS2Feed.swift",
+      "line": 67,
+      "column": 33,
+      "detector": "force_unwraps",
+      "severity": "block",
+      "message": "force unwrap \u2014 use guard let / if let / ??",
+      "snippet": "groups != nil && !groups!.isEmpty",
+      "autofix_available": false
+    },
+    {
+      "file": "Palace/Packages/PalaceCatalog/Sources/PalaceCatalog/OPDS2Publication.swift",
+      "line": 53,
+      "column": 13,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4230' in comment",
+      "snippet": "// Narrator follows the same array-or-single shape \u2014 PP-4230",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Book/UI/BookDetail/BookDetailView.swift",
+      "line": 543,
+      "column": 9,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4046' in comment",
+      "snippet": "// PP-4046: ordered by patron decision-making priority \u2014 Format/Audience/",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Book/UI/BookDetail/BookButtonMapper.swift",
+      "line": 15,
+      "column": 5,
+      "detector": "commented_out_code",
+      "severity": "warn",
+      "message": "block of 2 lines of commented-out code",
+      "snippet": "/// First look at registryState. If that alone dictates a clear UI state,",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Book/UI/BookDetail/BookService.swift",
+      "line": 95,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3707' in comment",
+      "snippet": "/// `AudiobookSessionManager` after a loader failure, and by the PP-3707",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Book/UI/BookDetail/BookService.swift",
+      "line": 114,
+      "column": 9,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3707' in comment",
+      "snippet": "// PP-3707: Offer retry for audiobook open failures (may be transient)",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Book/UI/BookDetail/BookImageView.swift",
+      "line": 46,
+      "column": 9,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4326' in comment",
+      "snippet": "// PP-4326 follow-up: the inner Image carries .accessibilityHidden(true)",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Book/UI/BookDetail/BookDetailViewModel.swift",
+      "line": 697,
+      "column": 17,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'HelpSpot 17716' in comment",
+      "snippet": "// reinstalling. HelpSpot 17716 (Cornell SAML).",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Book/UI/BookDetail/BookDetailViewModel.swift",
+      "line": 636,
+      "column": 9,
+      "detector": "archaeology",
+      "severity": "warn",
+      "message": "archaeology comment ('removed')",
+      "snippet": "// Don't remove processing here - will be removed when state changes to .downloading or .downloadFailed",
+      "autofix_available": false
+    },
+    {
+      "file": "Palace/Book/Models/BookRegistrySync.swift",
+      "line": 82,
+      "column": 7,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4129' in comment",
+      "snippet": "// PP-4129: books whose registry state says \"downloaded\" but whose content file",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Book/Models/BookRegistrySync.swift",
+      "line": 164,
+      "column": 17,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3704' in comment",
+      "snippet": "// from GCS (PP-3704).",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Book/Models/BookRegistrySync.swift",
+      "line": 224,
+      "column": 9,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4129' in comment",
+      "snippet": "// PP-4129: schedule recovery for orphaned downloads. Each scheduled block",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Book/Models/BookRegistrySync.swift",
+      "line": 281,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4129' in comment",
+      "snippet": "// when the save commits (PP-4129 regression).",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Book/Models/BookRegistrySync.swift",
+      "line": 297,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4164' in comment",
+      "snippet": "// Discovered by chaos-qa dogfood-3 \u2192 F-007 (PP-4164).",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Book/Models/BookRegistrySync.swift",
+      "line": 314,
+      "column": 7,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4407' in comment",
+      "snippet": "// PHASE 1 (swarm_81b5099e Bucket A \u2014 PP-4407): the loansUrl read used",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Book/Models/BookRegistrySync.swift",
+      "line": 488,
+      "column": 3,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4129' in comment",
+      "snippet": "/// contamination (PP-4129 regression).",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Book/Models/BookRegistryStore.swift",
+      "line": 75,
+      "column": 3,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4129' in comment",
+      "snippet": "/// exclusive access\" (PP-4129 crash fix).",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Book/Models/TPPBook+Accessibility.swift",
+      "line": 5,
+      "column": 1,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3968' in comment",
+      "snippet": "//  PP-3968: Single source of truth for the VoiceOver label of a book cell.",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Book/Models/TPPBookRegistry.swift",
+      "line": 97,
+      "column": 1,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4129' in comment",
+      "snippet": "/// loop\" symptom captured in PP-4129.",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Book/Models/TPPBookRegistry.swift",
+      "line": 134,
+      "column": 17,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4129' in comment",
+      "snippet": "// mutations against a mismatched auth context (PP-4129).",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Book/Models/TPPBookRegistry.swift",
+      "line": 563,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4129' in comment",
+      "snippet": "// can't retarget the save to the wrong account \u2014 PP-4129), then pass it",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Book/Models/TPPBookCoverRegistry.swift",
+      "line": 489,
+      "column": 1,
+      "detector": "archaeology",
+      "severity": "warn",
+      "message": "archaeology comment ('removed')",
+      "snippet": "// `TPPBookCoverRegistryBridge` was removed in the swarm_d5a3d473 Track A",
+      "autofix_available": false
+    },
+    {
+      "file": "Palace/Book/Models/TPPBookRegistryRecord.swift",
+      "line": 128,
+      "column": 51,
+      "detector": "force_unwraps",
+      "severity": "block",
+      "message": "force unwrap \u2014 use guard let / if let / ??",
+      "snippet": "guard let state = TPPBookState(stateString!) else {",
+      "autofix_available": false
+    },
+    {
+      "file": "Palace/Book/Models/TPPBookRegistryRecord.swift",
+      "line": 132,
+      "column": 25,
+      "detector": "force_unwraps",
+      "severity": "block",
+      "message": "force unwrap \u2014 use guard let / if let / ??",
+      "snippet": "self.book = book!",
+      "autofix_available": false
+    },
+    {
+      "file": "Palace/Book/Models/TPPBook.swift",
+      "line": 78,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4046' in comment",
+      "snippet": "/// own row in the book detail INFORMATION section (PP-4046).",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Book/Models/TPPBook.swift",
+      "line": 82,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4046' in comment",
+      "snippet": "/// Use ``displayLanguage`` for a localized name (PP-4046).",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Book/Models/TPPBook.swift",
+      "line": 633,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3649' in comment",
+      "snippet": "/// PP-3649: Whether this book requires Adobe DRM activation before download.",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Book/Models/BookmarkManager.swift",
+      "line": 12,
+      "column": 1,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4129' in comment",
+      "snippet": "/// while the async work was in flight (PP-4129 regression).",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/FeatureFlags/RemoteFeatureFlags.swift",
+      "line": 187,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4282' in comment",
+      "snippet": "/// PP-4282: UserDefaults override that lets QA / support force the Reset",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/FeatureFlags/RemoteFeatureFlags.swift",
+      "line": 193,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4282' in comment",
+      "snippet": "/// PP-4282 / HelpSpot 17716: gate for the destructive \"Reset This Library",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Logging/TPPErrorLogger.swift",
+      "line": 161,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'HelpSpot 17865' in comment",
+      "snippet": "/// HelpSpot 17865 \u2014 NowPlayingCoordinator dry while `isPlaying` was true",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/MyBooks/MyBooksDownloadCenter.swift",
+      "line": 129,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4114' in comment",
+      "snippet": "/// `bindReachability()`. PP-4114 follow-up: lets a mid-flight reachability",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/MyBooks/MyBooksDownloadCenter.swift",
+      "line": 776,
+      "column": 9,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4114' in comment",
+      "snippet": "// PP-4114 follow-up: react to mid-flight reachability drops. PR #901",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/MyBooks/MyBooksDownloadCenter.swift",
+      "line": 788,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4114' in comment",
+      "snippet": "// MARK: - PP-4114: mid-flight network drop handling",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/MyBooks/MyBooksDownloadCenter.swift",
+      "line": 827,
+      "column": 13,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4114' in comment",
+      "snippet": "// the regression of PP-4114 reported on iPad. Only states that",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/MyBooks/MyBooksDownloadCenter.swift",
+      "line": 911,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3673' in comment",
+      "snippet": "// MARK: - Error Announcements (PP-3673)",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/MyBooks/MyBooksDownloadCenter.swift",
+      "line": 948,
+      "column": 9,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4114' in comment",
+      "snippet": "// PP-4114 follow-up: pre-flight reachability before kicking off a new",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/MyBooks/MyBooksDownloadCenter.swift",
+      "line": 106,
+      "column": 5,
+      "detector": "commented_out_code",
+      "severity": "warn",
+      "message": "block of 2 lines of commented-out code",
+      "snippet": "/// regular), and the inner regular-download routing (re-borrow,",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/MyBooks/MyBooksDownloadCenter.swift",
+      "line": 868,
+      "column": 5,
+      "detector": "commented_out_code",
+      "severity": "warn",
+      "message": "block of 2 lines of commented-out code",
+      "snippet": "/// Services not yet in `AppContainer` (`errorActivityTracker`,",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/MyBooks/MyBooksDownloadCenter.swift",
+      "line": 1593,
+      "column": 1,
+      "detector": "commented_out_code",
+      "severity": "warn",
+      "message": "block of 2 lines of commented-out code",
+      "snippet": "// Empty conformance \u2014 every required surface (bookRegistry, userAccount,",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/MyBooks/DownloadAuthRetryHandler.swift",
+      "line": 128,
+      "column": 13,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3716' in comment",
+      "snippet": "// PP-3716: When browser-based auth expires, the server may return",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/MyBooks/DownloadAuthRetryHandler.swift",
+      "line": 183,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3716' in comment",
+      "snippet": "/// PP-3716: same treatment as the browser-session-expired path but",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/MyBooks/MyBooksDownloadCenter+Async.swift",
+      "line": 32,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4178' in comment",
+      "snippet": "/// the canonical implementation, PP-4178 rationale, and Place Hold",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/MyBooks/RightsManagementDispatcher.swift",
+      "line": 132,
+      "column": 17,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3649' in comment",
+      "snippet": "// PP-3649 deferred Adobe device activation from login to borrow",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/MyBooks/RightsManagementDispatcher.swift",
+      "line": 15,
+      "column": 1,
+      "detector": "commented_out_code",
+      "severity": "warn",
+      "message": "block of 2 lines of commented-out code",
+      "snippet": "//    - `.simplifiedBearerTokenJSON` \u2014 parse bearer-token JSON,",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/MyBooks/BookContentResetService.swift",
+      "line": 73,
+      "column": 5,
+      "detector": "commented_out_code",
+      "severity": "warn",
+      "message": "block of 2 lines of commented-out code",
+      "snippet": "/// Resets the *current* account: cancels every in-flight download,",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/MyBooks/DownloadAlertPresenter.swift",
+      "line": 106,
+      "column": 13,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4114' in comment",
+      "snippet": "// (the regression of PP-4114 \u2014 same root cause as the",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/MyBooks/DownloadAlertPresenter.swift",
+      "line": 139,
+      "column": 9,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3673' in comment",
+      "snippet": "// Publish error and announce via VoiceOver (PP-3673)",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/MyBooks/DownloadAlertPresenter.swift",
+      "line": 179,
+      "column": 9,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3673' in comment",
+      "snippet": "// Publish error and announce via VoiceOver (PP-3673)",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/MyBooks/DownloadAlertPresenter.swift",
+      "line": 22,
+      "column": 1,
+      "detector": "commented_out_code",
+      "severity": "warn",
+      "message": "block of 2 lines of commented-out code",
+      "snippet": "//  for the retry-action closure, and `schedulePendingStartsIfPossible()`",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/MyBooks/TokenRefreshInterceptor.swift",
+      "line": 113,
+      "column": 9,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3716' in comment",
+      "snippet": "// Check for \"no active loan\" with browser-based auth \u2014 treat as session expiry (PP-3716)",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/MyBooks/TokenRefreshInterceptor.swift",
+      "line": 527,
+      "column": 9,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4282' in comment",
+      "snippet": "// EXCEPT when the patron just ran \"Reset Account\" (PP-4282 / HelpSpot 17716)",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/MyBooks/BookReturnService.swift",
+      "line": 7,
+      "column": 1,
+      "detector": "commented_out_code",
+      "severity": "warn",
+      "message": "block of 2 lines of commented-out code",
+      "snippet": "//  LOC of nested error handling: Adobe DRM return, OPDS revoke fetch,",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/MyBooks/LCPFulfillmentHandler.swift",
+      "line": 124,
+      "column": 17,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4114' in comment",
+      "snippet": "// PP-4114-adjacent: LCP audiobooks are marked",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/MyBooks/BorrowOperation.swift",
+      "line": 11,
+      "column": 1,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4178' in comment",
+      "snippet": "//      injected fetchBook closure, evaluates the response (PP-4178",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/MyBooks/BorrowOperation.swift",
+      "line": 18,
+      "column": 1,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3707' in comment",
+      "snippet": "//      gated by UserRetryTracker (PP-3707).",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/MyBooks/BorrowOperation.swift",
+      "line": 129,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4178' in comment",
+      "snippet": "///   NOT a failure. (PP-4178 follow-up \u2014 pre-fix, the alert was a false",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/MyBooks/BorrowOperation.swift",
+      "line": 137,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4178' in comment",
+      "snippet": "/// PP-4178 behavior (treat `unavailable`/`reserved` as race losses) for",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/MyBooks/BorrowOperation.swift",
+      "line": 198,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4178' in comment",
+      "snippet": "/// no-copies title and able only to Place Hold? PP-4178 follow-up.",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/MyBooks/BorrowOperation.swift",
+      "line": 357,
+      "column": 9,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3649' in comment",
+      "snippet": "// PP-3649: ensure Adobe DRM device activation before proceeding.",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/MyBooks/BorrowOperation.swift",
+      "line": 401,
+      "column": 13,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4178' in comment",
+      "snippet": "// PP-4178 follow-up: pass `book` (pre-borrow) so the helper can",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/MyBooks/BorrowOperation.swift",
+      "line": 441,
+      "column": 13,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3811' in comment",
+      "snippet": "// PP-3811: trigger a sync after a short delay so hold position",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/MyBooks/BorrowOperation.swift",
+      "line": 709,
+      "column": 9,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3707' in comment",
+      "snippet": "// PP-3707: gate retry button on per-operation retry budget.",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/MyBooks/LocalBookContentService.swift",
+      "line": 8,
+      "column": 1,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3704' in comment",
+      "snippet": "//  `.lcpl` license is left on disk (PP-3704).",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/MyBooks/LocalBookContentService.swift",
+      "line": 134,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3704' in comment",
+      "snippet": "/// runs in the background (PP-3704).",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/MyBooks/AdobeDRMHandler.swift",
+      "line": 147,
+      "column": 9,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3649' in comment",
+      "snippet": "// Pre-PP-3649 behavior was to show a sign-in modal, but now that we call",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/MyBooks/MyBooks/BookListView.swift",
+      "line": 19,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3682' in comment",
+      "snippet": "/// when browsing catalogs with many entries (e.g., Stanislaus County PP-3682).",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/MyBooks/MyBooks/BookListView.swift",
+      "line": 25,
+      "column": 17,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4326' in comment",
+      "snippet": "// PP-4326: just wrap the cell in a SwiftUI Button with a",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/MyBooks/MyBooks/BookListView.swift",
+      "line": 35,
+      "column": 17,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3968' in comment",
+      "snippet": "// that location, the outer row Button gets focus. PP-3968",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/MyBooks/MyBooks/MyBooksViewModel.swift",
+      "line": 51,
+      "column": 5,
+      "detector": "commented_out_code",
+      "severity": "warn",
+      "message": "block of 2 lines of commented-out code",
+      "snippet": "/// Tracks whether the My Books tab is currently visible. When false,",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/MyBooks/MyBooks/BookCell/BookCellModel.swift",
+      "line": 64,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4116' in comment",
+      "snippet": "// reader presentations (PP-4116) because isLoading flips back to false",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/MyBooks/MyBooks/BookCell/BookCellModel.swift",
+      "line": 266,
+      "column": 17,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-3811' in comment",
+      "snippet": "// PP-3811: Update book from registry so availability data (hold position,",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/MyBooks/MyBooks/BookCell/BookCellModel.swift",
+      "line": 377,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4114' in comment",
+      "snippet": "/// PP-4114: react to mid-flight network drops. The pre-flight check on",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/MyBooks/MyBooks/BookCell/BookCellModel.swift",
+      "line": 468,
+      "column": 9,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4114' in comment",
+      "snippet": "// PP-4114 pre-flight: Download/Retry/Get/Reserve all hit the network",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/MyBooks/MyBooks/BookCell/BookCell.swift",
+      "line": 17,
+      "column": 9,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'PP-4289' in comment",
+      "snippet": "// PP-4289: `.hoverEffect(.lift)` gives Mac (iPad-on-Mac) and iPadOS",
+      "autofix_available": true
+    },
+    {
+      "file": "Palace/Notifications/NotificationService.swift",
+      "line": 293,
+      "column": 5,
+      "detector": "ticket_refs",
+      "severity": "warn",
+      "message": "ticket ref 'HelpSpot 17680' in comment",
+      "snippet": "/// Why `hasUpdatedToken` is set only on confirmed success (HelpSpot 17680):",
+      "autofix_available": true
+    }
+  ]
+}

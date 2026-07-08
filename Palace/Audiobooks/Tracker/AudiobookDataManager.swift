@@ -112,9 +112,31 @@ class AudiobookDataManager {
     var store = AudiobookDataManagerStore()
     private let audiobookLogger = AudiobookFileLogger.shared
     private let networkService: TPPNetworkExecutor
-    init(syncTimeInterval: TimeInterval = 60, networkService: TPPNetworkExecutor = AppContainer.production().networkExecutor) {
+    /// Cross-account scope guard for playtimes uploads (Bug B, swarm_162a3219).
+    ///
+    /// Returns the UUID of the currently-selected library. The `syncValues()`
+    /// loop compares each queued `LibraryBook.libraryId` against this value
+    /// and SKIPS uploads whose library is not the active one — the entries
+    /// stay in the queue and flush on the next sync after the user switches
+    /// back. Default closure reads `AppContainer.production().accountsManager
+    /// .currentAccountId`; tests inject a captured closure so they can flip
+    /// the "current library" mid-test without instantiating the full app
+    /// container or the real `AccountsManager` state machine.
+    ///
+    /// See `.forgeos/handoffs/2026-06-05-icarus-cross-host-logout-regression.md`
+    /// §2 Bug B for the regression that motivated this guard.
+    private let currentAccountIdProvider: () -> String?
+    /// Observer token for `.TPPCurrentAccountDidChange` posted by
+    /// `AccountsManager.currentAccount.didSet`. Held so the observer is
+    /// removed at dealloc; the notification only logs (no queue mutation)
+    /// because the scope guard above is the actual enforcement mechanism.
+    private var accountChangeObserver: NSObjectProtocol?
+    init(syncTimeInterval: TimeInterval = 60,
+         networkService: TPPNetworkExecutor = AppContainer.production().networkExecutor,
+         currentAccountIdProvider: @escaping () -> String? = { AppContainer.production().accountsManager.currentAccountId }) {
         self.syncTimeInterval = syncTimeInterval
         self.networkService = networkService
+        self.currentAccountIdProvider = currentAccountIdProvider
 
         // Use .common RunLoop mode for reliable timer firing during UI interactions
         Timer.publish(every: syncTimeInterval, on: .main, in: .common)
@@ -128,6 +150,32 @@ class AudiobookDataManager {
             .store(in: &subscriptions)
 
         loadStore()
+        subscribeToAccountChanges()
+    }
+
+    deinit {
+        if let observer = accountChangeObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+    }
+
+    /// Observes `.TPPCurrentAccountDidChange` for diagnostic logging only.
+    /// The actual cross-account scope decision lives in `syncValues()`'s
+    /// per-`libraryBook` guard, so on account change there is NOTHING to
+    /// mutate here — entries queued for the prior library MUST be preserved
+    /// so they flush when the user switches back. Destructive queue clear
+    /// on switch would lose playtimes for any book the user toggles between.
+    private func subscribeToAccountChanges() {
+        accountChangeObserver = NotificationCenter.default.addObserver(
+            forName: .TPPCurrentAccountDidChange,
+            object: nil,
+            queue: nil
+        ) { [weak self] _ in
+            self?.audiobookLogger.logEvent(
+                forBookId: "",
+                event: "Account changed — cross-account playtimes uploads will be deferred to next foreground sync"
+            )
+        }
     }
 
     func save(time: AudiobookTimeEntry) {
@@ -161,18 +209,53 @@ class AudiobookDataManager {
 
             let queuedLibraryBooks: Set<LibraryBook> = Set(self.store.queue.map { LibraryBook(time: $0) })
 
-            // Track pending requests to end background task when all complete
-            let pendingCount = queuedLibraryBooks.count
+            // Cross-account scope guard (Bug B, swarm_162a3219). A book whose
+            // libraryId does not match the currently-selected library MUST
+            // NOT have its playtimes POSTed — the receiving circulation-
+            // manager host is scoped to that library's credentials and would
+            // 401, mis-attributing the failure to the active account (the
+            // PR #1018 regression that surfaced as a per-minute Icarus
+            // sign-in modal). Skipped entries stay in the queue and flush
+            // when the user switches back. `nil` from the provider (no
+            // active library at all) skips every upload defensively.
+            let activeAccountId = self.currentAccountIdProvider()
+            let postableLibraryBooks = queuedLibraryBooks.filter { $0.libraryId == activeAccountId }
+            let skippedLibraryBooks = queuedLibraryBooks.subtracting(postableLibraryBooks)
+
+            for skipped in skippedLibraryBooks {
+                self.audiobookLogger.logEvent(
+                    forBookId: skipped.bookId,
+                    event: """
+                        Skipping cross-account playtimes upload:
+                        Book Library ID: \(skipped.libraryId)
+                        Active Library ID: \(activeAccountId ?? "nil")
+                        Entries retained in queue for flush on switch-back.
+                        """
+                )
+                TPPErrorLogger.logError(nil, summary: "Skipping cross-account playtimes upload", metadata: [
+                    "bookLibraryId": skipped.libraryId,
+                    "activeLibraryId": activeAccountId ?? "nil",
+                    "bookId": skipped.bookId
+                ])
+            }
+
+            // Track pending requests to end background task when all complete.
+            // Skipped (cross-account) entries do NOT count toward pendingCount —
+            // they produce no completion callback, so counting them would leak
+            // the background task until iOS reclaims it.
+            let pendingCount = postableLibraryBooks.count
             var completedCount = 0
             let countLock = NSLock()
 
-            // If no entries to sync, end background task immediately
+            // If no postable entries (queue empty OR every entry is cross-
+            // account), end background task immediately so iOS doesn't bill
+            // the app for an open background slot that will never close.
             if pendingCount == 0 {
                 UIApplication.shared.endBackgroundTask(backgroundTaskId)
                 return
             }
 
-            for libraryBook in queuedLibraryBooks {
+            for libraryBook in postableLibraryBooks {
                 let requestData = RequestData(
                     libraryBook: libraryBook,
                     timeEntries: self.store.queue.filter { libraryBook == LibraryBook(time: $0) }

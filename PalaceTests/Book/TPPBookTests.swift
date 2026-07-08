@@ -42,7 +42,8 @@ final class TPPBookTests: XCTestCase {
         reportURL: URL? = URL(string: "http://example.com/report"),
         timeTrackingURL: URL? = URL(string: "http://example.com/timetracking"),
         contributors: [String: Any]? = nil,
-        bookDuration: String? = nil
+        bookDuration: String? = nil,
+        seriesName: String? = nil
     ) -> TPPBook {
         let acq = acquisitions ?? [TPPFake.genericAcquisition]
         return TPPBook(
@@ -65,6 +66,7 @@ final class TPPBookTests: XCTestCase {
             relatedWorksURL: relatedWorksURL,
             previewLink: previewLink,
             seriesURL: seriesURL,
+            seriesName: seriesName,
             revokeURL: revokeURL,
             reportURL: reportURL,
             timeTrackingURL: timeTrackingURL,
@@ -151,6 +153,115 @@ final class TPPBookTests: XCTestCase {
 
         XCTAssertEqual(restored?.subtitle, "Vol. 1")
         XCTAssertEqual(restored?.summary, "An epic tale")
+    }
+
+    // MARK: - Series Metadata (PP-4463)
+
+    /// PP-4463: the Book Detail SERIES row is gated on both `seriesName` and
+    /// `seriesURL`. Persistence must round-trip both — a registry reload that
+    /// dropped one but kept the other would hide the row on subsequent
+    /// app launches even though the catalog feed delivered it.
+    func test_dictionaryRoundTrip_preservesSeriesName() {
+        let book = makeBook(
+            seriesURL: URL(string: "http://example.com/series/foundation"),
+            seriesName: "Foundation"
+        )
+        let restored = TPPBook(dictionary: book.dictionaryRepresentation())
+
+        XCTAssertEqual(restored?.seriesName, "Foundation",
+                       "Round-trip must preserve seriesName — the Book Detail SERIES row's label")
+        XCTAssertEqual(restored?.seriesURL?.absoluteString,
+                       "http://example.com/series/foundation",
+                       "Round-trip must preserve seriesURL — the SERIES row's navigation destination")
+    }
+
+    func test_dictionaryRepresentation_writesSeriesNameUnderSeriesNameKey() {
+        let book = makeBook(seriesName: "The Foundation Trilogy")
+        let dict = book.dictionaryRepresentation()
+
+        XCTAssertEqual(dict[SeriesNameKey] as? String, "The Foundation Trilogy",
+                       "dictionaryRepresentation must surface seriesName under SeriesNameKey")
+    }
+
+    func test_dictionaryInit_readsSeriesNameFromSeriesNameKey() {
+        let acqs = [TPPFake.genericAcquisition.dictionaryRepresentation()]
+        let book = TPPBook(dictionary: [
+            "acquisitions": acqs,
+            "categories": ["Fiction"],
+            "id": "series-restore",
+            "title": "Foundation",
+            "updated": "2024-01-01T00:00:00Z",
+            SeriesNameKey: "The Foundation Trilogy"
+        ])
+
+        XCTAssertEqual(book?.seriesName, "The Foundation Trilogy",
+                       "Dictionary init must read seriesName when SeriesNameKey is present")
+    }
+
+    func test_dictionaryInit_seriesNameNilWhenKeyAbsent() {
+        let acqs = [TPPFake.genericAcquisition.dictionaryRepresentation()]
+        let book = TPPBook(dictionary: [
+            "acquisitions": acqs,
+            "categories": ["Fiction"],
+            "id": "no-series",
+            "title": "Standalone Novel",
+            "updated": "2024-01-01T00:00:00Z"
+        ])
+
+        XCTAssertNil(book?.seriesName,
+                     "Dictionary init must leave seriesName nil when SeriesNameKey is absent — guards against a mutant that defaults to empty string")
+    }
+
+    /// Books from the loans feed sometimes ship lean (missing series metadata
+    /// even when the catalog version had it). The merge guard must NOT wipe
+    /// the previously-enriched seriesName when the fresh entry has nothing.
+    func test_mergingPreservingMetadata_preservesSelfSeriesNameWhenFreshIsEmpty() {
+        let selfBook = makeBook(
+            seriesURL: URL(string: "http://example.com/series/foundation"),
+            seriesName: "Foundation"
+        )
+        let leanFresh = makeBook(seriesURL: nil, seriesName: nil)
+
+        let merged = selfBook.mergingPreservingMetadata(from: leanFresh)
+
+        XCTAssertEqual(merged.seriesName, "Foundation",
+                       "Lean fresh entry must not wipe previously-enriched seriesName")
+        XCTAssertEqual(merged.seriesURL?.absoluteString,
+                       "http://example.com/series/foundation",
+                       "Lean fresh entry must not wipe previously-enriched seriesURL")
+    }
+
+    func test_mergingPreservingMetadata_takesFreshSeriesNameWhenPresent() {
+        let selfBook = makeBook(
+            seriesURL: URL(string: "http://example.com/series/old"),
+            seriesName: "Old Series Name"
+        )
+        let fresh = makeBook(
+            seriesURL: URL(string: "http://example.com/series/new"),
+            seriesName: "Updated Series Name"
+        )
+
+        let merged = selfBook.mergingPreservingMetadata(from: fresh)
+
+        XCTAssertEqual(merged.seriesName, "Updated Series Name",
+                       "Non-empty fresh seriesName must replace self's value — state-carrying field")
+    }
+
+    func test_bookWithMetadata_takesSeriesNameFromMetadataBook() {
+        let selfBook = makeBook(identifier: "self-id", seriesName: nil)
+        let metadataBook = makeBook(
+            identifier: "meta-id",
+            seriesURL: URL(string: "http://example.com/series/foundation"),
+            seriesName: "Foundation"
+        )
+
+        let merged = selfBook.bookWithMetadata(from: metadataBook)
+
+        XCTAssertEqual(merged.seriesName, "Foundation",
+                       "bookWithMetadata must pull seriesName from the metadata source")
+        XCTAssertEqual(merged.seriesURL?.absoluteString,
+                       "http://example.com/series/foundation",
+                       "bookWithMetadata must also pull seriesURL from the metadata source")
     }
 
     // MARK: - Dictionary Init Edge Cases
@@ -373,6 +484,150 @@ final class TPPBookTests: XCTestCase {
         let book = makeBook(bookDuration: "")
         XCTAssertFalse(book.hasDuration)
         XCTAssertEqual(book.bookDuration, "", "bookDuration must store empty string as empty string")
+    }
+
+    // MARK: - PP-4161: isStreamingHTML
+
+    /// PP-4161: a book whose ONLY acquisition is a streaming-HTML leaf
+    /// must report `isStreamingHTML == true`. Drives the Book Detail
+    /// "Read" button routing to the new streaming reader.
+    func testTPPBook_isStreamingHTML_streamingMediaOnly_returnsTrue() {
+        let leaf = TPPOPDSIndirectAcquisition(
+            type: ContentTypeStreamingHTML,
+            indirectAcquisitions: []
+        )
+        let streamingAcquisition = TPPOPDSAcquisition(
+            relation: .borrow,
+            type: ContentTypeOPDSPublication,
+            hrefURL: URL(string: "https://example.com/borrow/streaming")!,
+            indirectAcquisitions: [leaf],
+            availability: TPPOPDSAcquisitionAvailabilityUnlimited()
+        )
+        let book = makeBook(acquisitions: [streamingAcquisition])
+
+        XCTAssertTrue(book.isStreamingHTML,
+                      "A streaming-HTML-only book must report isStreamingHTML == true")
+        XCTAssertEqual(book.defaultBookContentType, .streamingHTML,
+                       "defaultBookContentType must resolve to .streamingHTML for streaming-HTML-only books")
+        XCTAssertFalse(book.isAudiobook, "Streaming-HTML is not an audiobook")
+    }
+
+    /// Regression (Palace Bookshelf "EPUB opens as webview"): when a
+    /// publication offers BOTH a streaming-HTML and an `epub+zip` acquisition,
+    /// the downloadable EPUB must win — regardless of OPDS feed order.
+    /// `supportedAcquisitionPaths` preserves feed order, so a feed listing the
+    /// streaming-HTML acquisition FIRST previously misrouted EPUBs into the
+    /// WKWebView streaming reader (PP-4161 added streaming-HTML support without
+    /// a format preference).
+    func testTPPBook_mixedStreamingAndEpub_streamingFirst_prefersEpub() {
+        let streamingLeaf = TPPOPDSIndirectAcquisition(type: ContentTypeStreamingHTML, indirectAcquisitions: [])
+        let epubLeaf = TPPOPDSIndirectAcquisition(type: ContentTypeEpubZip, indirectAcquisitions: [])
+        let acquisition = TPPOPDSAcquisition(
+            relation: .borrow,
+            type: ContentTypeOPDSPublication,
+            hrefURL: URL(string: "https://example.com/borrow/mixed-streaming-first")!,
+            indirectAcquisitions: [streamingLeaf, epubLeaf], // streaming FIRST — the regression order
+            availability: TPPOPDSAcquisitionAvailabilityUnlimited()
+        )
+        let book = makeBook(acquisitions: [acquisition])
+
+        XCTAssertEqual(book.defaultBookContentType, .epub,
+                       "A book offering both streaming-HTML and epub+zip must open in the EPUB reader even when the feed lists streaming-HTML first")
+        XCTAssertFalse(book.isStreamingHTML,
+                       "A book with a downloadable EPUB must not be treated as streaming-only")
+    }
+
+    /// Order-independence guard: epub listed first must also resolve to .epub
+    /// (proves the fix is preference-based, not merely re-ordered).
+    func testTPPBook_mixedStreamingAndEpub_epubFirst_prefersEpub() {
+        let epubLeaf = TPPOPDSIndirectAcquisition(type: ContentTypeEpubZip, indirectAcquisitions: [])
+        let streamingLeaf = TPPOPDSIndirectAcquisition(type: ContentTypeStreamingHTML, indirectAcquisitions: [])
+        let acquisition = TPPOPDSAcquisition(
+            relation: .borrow,
+            type: ContentTypeOPDSPublication,
+            hrefURL: URL(string: "https://example.com/borrow/mixed-epub-first")!,
+            indirectAcquisitions: [epubLeaf, streamingLeaf],
+            availability: TPPOPDSAcquisitionAvailabilityUnlimited()
+        )
+        let book = makeBook(acquisitions: [acquisition])
+        XCTAssertEqual(book.defaultBookContentType, .epub)
+        XCTAssertFalse(book.isStreamingHTML)
+    }
+
+    /// Regression for the ACTUAL Palace Bookshelf shape (verified against the
+    /// live OPDS1 feed for "Multi-National Pulp Industries…"): the same
+    /// open-access work is offered as SEPARATE direct links — streaming-media,
+    /// PDF and EPUB — with the streaming-media link FIRST. Unlike the OPDS2
+    /// single-acquisition-with-indirects case above, `defaultBookContentType`
+    /// only inspects `defaultAcquisition`, so the fix has to live in
+    /// `defaultAcquisition` (prefer a downloadable acquisition over streaming).
+    /// Without it, `defaultAcquisition` = the first supported = streaming →
+    /// `.streamingHTML` → WKWebView reader.
+    func testTPPBook_openAccessSeparateLinks_streamingFirst_defaultsToEpub() {
+        let streamingAcq = TPPOPDSAcquisition(
+            relation: .openAccess, type: ContentTypeStreamingHTML,
+            hrefURL: URL(string: "https://example.com/oa/stream")!,
+            indirectAcquisitions: [], availability: TPPOPDSAcquisitionAvailabilityUnlimited())
+        let pdfAcq = TPPOPDSAcquisition(
+            relation: .openAccess, type: ContentTypeOpenAccessPDF,
+            hrefURL: URL(string: "https://example.com/oa/pdf")!,
+            indirectAcquisitions: [], availability: TPPOPDSAcquisitionAvailabilityUnlimited())
+        let epubAcq = TPPOPDSAcquisition(
+            relation: .openAccess, type: ContentTypeEpubZip,
+            hrefURL: URL(string: "https://example.com/oa/epub")!,
+            indirectAcquisitions: [], availability: TPPOPDSAcquisitionAvailabilityUnlimited())
+        // Streaming FIRST — the real feed order.
+        let book = makeBook(acquisitions: [streamingAcq, pdfAcq, epubAcq])
+
+        XCTAssertEqual(book.defaultAcquisition?.type, ContentTypeEpubZip,
+                       "defaultAcquisition must prefer the downloadable EPUB link over the streaming-media link that appears first")
+        XCTAssertEqual(book.defaultBookContentType, .epub,
+                       "Multi-format open-access book must open in the EPUB reader, not the streaming WKWebView")
+        XCTAssertFalse(book.isStreamingHTML)
+    }
+
+    /// And when EPUB is absent, a downloadable PDF must still beat streaming.
+    func testTPPBook_openAccessSeparateLinks_streamingFirst_fallsBackToPDF() {
+        let streamingAcq = TPPOPDSAcquisition(
+            relation: .openAccess, type: ContentTypeStreamingHTML,
+            hrefURL: URL(string: "https://example.com/oa/stream2")!,
+            indirectAcquisitions: [], availability: TPPOPDSAcquisitionAvailabilityUnlimited())
+        let pdfAcq = TPPOPDSAcquisition(
+            relation: .openAccess, type: ContentTypeOpenAccessPDF,
+            hrefURL: URL(string: "https://example.com/oa/pdf2")!,
+            indirectAcquisitions: [], availability: TPPOPDSAcquisitionAvailabilityUnlimited())
+        let book = makeBook(acquisitions: [streamingAcq, pdfAcq])
+        XCTAssertEqual(book.defaultAcquisition?.type, ContentTypeOpenAccessPDF)
+        XCTAssertEqual(book.defaultBookContentType, .pdf)
+    }
+
+    /// Streaming-only must still resolve to streaming (no downloadable format).
+    func testTPPBook_openAccessSeparateLinks_streamingOnly_staysStreaming() {
+        let streamingAcq = TPPOPDSAcquisition(
+            relation: .openAccess, type: ContentTypeStreamingHTML,
+            hrefURL: URL(string: "https://example.com/oa/stream-only")!,
+            indirectAcquisitions: [], availability: TPPOPDSAcquisitionAvailabilityUnlimited())
+        let book = makeBook(acquisitions: [streamingAcq])
+        XCTAssertEqual(book.defaultBookContentType, .streamingHTML)
+        XCTAssertTrue(book.isStreamingHTML)
+    }
+
+    /// PP-4161: a plain EPUB book must NOT report isStreamingHTML.
+    /// Catches a mutant that flipped the predicate to always-true.
+    func testTPPBook_isStreamingHTML_epubOnly_returnsFalse() {
+        let book = makeBook()
+        XCTAssertFalse(book.isStreamingHTML,
+                       "An EPUB-only book must NOT report isStreamingHTML")
+        XCTAssertEqual(book.defaultBookContentType, .epub)
+    }
+
+    /// PP-4161: a book with NO acquisitions (unsupported content type)
+    /// must NOT report isStreamingHTML. Catches a mutant that returned
+    /// `defaultBookContentType != .epub` style negation.
+    func testTPPBook_isStreamingHTML_unsupported_returnsFalse() {
+        let book = makeBook(acquisitions: [])
+        XCTAssertFalse(book.isStreamingHTML)
+        XCTAssertEqual(book.defaultBookContentType, .unsupported)
     }
 
     // MARK: - Default Book Content Type

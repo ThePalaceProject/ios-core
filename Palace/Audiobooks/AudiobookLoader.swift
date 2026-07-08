@@ -3,20 +3,21 @@
 //  Palace
 //
 //  Owned by AudiobookSessionManager. Builds an audiobook manager from a TPPBook:
-//  token refresh, LCP pipeline (local file / license file / license re-download),
-//  manifest retrieval (local / network / bearer-token), vendor key patching,
-//  manifest decoding, AudiobookFactory, DefaultAudiobookNetworkService, and
-//  DefaultAudiobookManager creation. Returns a LoadedAudiobook to the session
-//  manager, which owns its lifetime and drives playback/UI/navigation.
+//  token refresh, vendor-shape dispatch via the AudiobookVendorAdapter chain,
+//  vendor key patching, manifest decoding, AudiobookFactory, DefaultAudiobookManager.
+//  Returns a LoadedAudiobook; the session manager owns its lifetime.
 //
-//  Does NOT fire events, push navigation, start playback, or show error UI —
-//  those are session-manager concerns.
+//  Module D of swarm_5c8ddbd5 collapsed the pre-swarm implicit source-shape
+//  branches (resolveManifestAndDecryptor + fetchOpenAccessManifest, ~150 LOC,
+//  6-deep callbacks) into one linear chain:
+//      let adapter = adapters.first(where: { $0.canHandle(book) })
+//  Chain order: [LCP (#if LCP), LocalFile, BearerToken (MIME-gated), OpenAccess].
+//  See `Vendors/Adapters+Production.swift` for the MIME gate + production wiring.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
 
 import Foundation
-import PalaceCatalog
 import PalaceLogging
 @preconcurrency import PalaceAudiobookToolkit
 
@@ -53,6 +54,23 @@ final class AudiobookLoader {
 
     private var isCancelled: Bool = false
 
+    /// Adapter chain in priority order. First match wins. Tests inject a
+    /// custom chain; production code uses `AudiobookLoader()` which builds
+    /// the default chain via `Self.makeProductionAdapters()`.
+    private let adapters: [AudiobookVendorAdapter]
+
+    init(adapters: [AudiobookVendorAdapter]? = nil) {
+        self.adapters = adapters ?? Self.makeProductionAdapters()
+    }
+
+    /// WS-3: re-fulfill loader. Bypasses `LocalFileAdapter` so an already-
+    /// downloaded OverDrive book routes to `BearerTokenAdapter` for a FRESH
+    /// fulfillment (fresh signed URLs) instead of replaying the stale on-disk
+    /// manifest. Used only by the OverDrive expired-URL recovery path.
+    convenience init(forceRefulfill: Bool) {
+        self.init(adapters: forceRefulfill ? Self.makeProductionAdapters(excludeLocalFile: true) : nil)
+    }
+
     // MARK: - Public API
 
     /// Load an audiobook end-to-end. Calls completion on the main thread.
@@ -75,7 +93,7 @@ final class AudiobookLoader {
                 finish(.failure(err))
                 return
             }
-            self.resolveManifestAndDecryptor(for: book) { [weak self] resolveResult in
+            self.resolveSource(for: book) { [weak self] resolveResult in
                 guard let self else { finish(.failure(.cancelled)); return }
                 switch resolveResult {
                 case .success(let (json, decryptor)):
@@ -92,45 +110,33 @@ final class AudiobookLoader {
         isCancelled = true
     }
 
-    /// Recursive flatten of a `TPPOPDSIndirectAcquisition` chain into a flat
-    /// list of MIME types, for diagnostic logging only.
-    fileprivate static func flattenIndirectTypes(_ indirect: [TPPOPDSIndirectAcquisition]) -> [String] {
-        indirect.flatMap { entry in [entry.type] + flattenIndirectTypes(entry.indirectAcquisitions) }
-    }
+    // MARK: - Adapter chain dispatch
 
-    /// Returns a URL whose `pathExtension` is `lcpa`, regardless of the input
-    /// extension. If the input already has `.lcpa` extension, returns it
-    /// unchanged. Otherwise creates a sibling symlink with `.lcpa` extension
-    /// pointing at the original file and returns the symlink URL. Failures
-    /// (symlink-already-exists, permission errors, unsupported filesystem)
-    /// fall back to returning the original URL — the caller's LCP-load
-    /// attempt will surface the resulting error via its own path.
-    ///
-    /// Why a symlink and not a rename: existing call sites (registry sync,
-    /// download book-state, etc.) look up the file at the original path via
-    /// `MyBooksDownloadCenter.fileUrl(for:)`. Renaming would break those
-    /// lookups for legacy `.epub`-named LCP content. A sibling symlink
-    /// leaves the canonical file in place and gives ReadiumStreamer the
-    /// `.lcpa`-extension URL it needs for its extension-based parser
-    /// dispatch.
-    fileprivate static func ensureLCPExtensionLink(for url: URL) -> URL {
-        if url.pathExtension.lowercased() == "lcpa" {
-            return url
-        }
-        let lcpaURL = url.deletingPathExtension().appendingPathExtension("lcpa")
-        let fm = FileManager.default
+    /// Run the adapter chain. First `canHandle == true` wins; the picked
+    /// adapter owns the result. If no adapter matches, surface
+    /// `.manifestFetchFailed` — matches the pre-swarm "no default
+    /// acquisition URL" failure mode.
+    private func resolveSource(
+        for book: TPPBook,
+        completion: @escaping (Result<([String: Any], DRMDecryptor?), AudiobookLoadError>) -> Void
+    ) {
+        Log.debug(#file, "🎵 [AUDIOBOOK] Resolving source for: \(book.title) (ID: \(book.identifier))")
+        Log.debug(#file, "  Distributor: \(book.distributor ?? "nil")")
 
-        if fm.fileExists(atPath: lcpaURL.path) {
-            return lcpaURL
+        guard let adapter = adapters.first(where: { $0.canHandle(book) }) else {
+            Log.error(#file, "  ❌ No adapter claimed the book — surfacing .manifestFetchFailed")
+            completion(.failure(.manifestFetchFailed))
+            return
         }
 
-        do {
-            try fm.createSymbolicLink(at: lcpaURL, withDestinationURL: url)
-            Log.info(#file, "  🔗 Created .lcpa symlink → \(url.lastPathComponent)")
-            return lcpaURL
-        } catch {
-            Log.warn(#file, "  ⚠️ Could not create .lcpa symlink (\(error.localizedDescription)) — falling back to original URL")
-            return url
+        Log.debug(#file, "  → Dispatching to \(type(of: adapter))")
+        adapter.resolveManifest(for: book) { result in
+            switch result {
+            case .success(let value):
+                completion(.success((value.json, value.decryptor)))
+            case .failure(let err):
+                completion(.failure(err))
+            }
         }
     }
 
@@ -147,14 +153,15 @@ final class AudiobookLoader {
         Log.info(#file, "🔄 Auth token expired for audiobook - refreshing before opening")
         logAccountDiagnostics(userAccount: userAccount, book: book)
 
-        guard let username = userAccount.username, !username.isEmpty,
-              let pin = userAccount.PIN, !pin.isEmpty,
-              userAccount.authDefinition?.tokenURL != nil else {
+        guard Self.hasRefreshableCredentials(
+            username: userAccount.username,
+            pin: userAccount.PIN,
+            tokenURL: userAccount.authDefinition?.tokenURL
+        ) else {
             Log.error(#file, "Cannot refresh token: missing or empty credentials")
             completion(.failure(.missingCredentialsForTokenRefresh))
             return
         }
-        _ = username // guard-bound but unused beyond the predicate check
 
         AppContainer.production().networkExecutor.refreshTokenAndResume(task: nil, accountId: accountsManager.currentAccount?.uuid) { result in
             switch result {
@@ -162,8 +169,73 @@ final class AudiobookLoader {
                 Log.info(#file, "✅ Token refresh successful - proceeding to open audiobook")
                 completion(.success(()))
             case .failure(let error, _):
+                // PP-4542: the open requested a token but another refresh
+                // (almost always the proactive launch refresh of a near-expiry
+                // token) already held the single-flight slot, so
+                // refreshTokenAndResume(task: nil) returned "Token refresh in
+                // progress" *immediately* instead of queueing+retrying the way
+                // the URLSession-task path does. That hard failure was the
+                // dominant field cause of "Audiobook failed to open — please try
+                // again" (Crashlytics issue 27f5746…: ~45k events / 8.2k users,
+                // since 2.0.4). It is purely a timing race — tap an audiobook in
+                // the first second after launch and it dead-ends. Don't fail:
+                // AWAIT the in-flight refresh and proceed the instant it
+                // populates a valid token.
+                if Self.isRefreshInProgressError(error) {
+                    Log.info(#file, "⏳ A token refresh is already in progress — awaiting it before opening audiobook")
+                    Self.awaitTokenReady { becameValid in
+                        if becameValid {
+                            Log.info(#file, "✅ In-flight token refresh completed — proceeding to open audiobook")
+                            completion(.success(()))
+                        } else {
+                            Log.error(#file, "❌ Timed out awaiting in-flight token refresh")
+                            completion(.failure(.tokenRefreshFailed(underlying: error)))
+                        }
+                    }
+                    return
+                }
                 Log.error(#file, "❌ Token refresh failed: \(error.localizedDescription)")
                 completion(.failure(.tokenRefreshFailed(underlying: error)))
+            }
+        }
+    }
+
+    /// True when `error` is the "Token refresh in progress" signal from
+    /// `TPPNetworkExecutor.refreshTokenAndResume(task:)` — i.e. another refresh
+    /// already owns the single-flight slot. Matched on the message (not the
+    /// code) because `invalidCredentials` is overloaded for several token
+    /// failures; only this one is safe to wait on.
+    nonisolated static func isRefreshInProgressError(_ error: Error) -> Bool {
+        (error as NSError).localizedDescription.localizedCaseInsensitiveContains("token refresh in progress")
+    }
+
+    /// Polls the *current* account's token state until a concurrently-running
+    /// refresh populates a valid (unexpired) token, or `timeout` elapses.
+    /// Re-reads `currentUserAccount` each tick so a mid-flight account-object
+    /// swap can't strand us on a stale instance. Bounded so a failed/stuck
+    /// in-flight refresh can't hang the open forever — on timeout the caller
+    /// surfaces the original error (same as the pre-fix behaviour, just after
+    /// giving the in-flight refresh a chance).
+    nonisolated static func awaitTokenReady(
+        timeout: TimeInterval = 10.0,
+        pollInterval: TimeInterval = 0.15,
+        completion: @escaping (Bool) -> Void
+    ) {
+        // Structured-concurrency poll (Task.sleep, not recursive GCD) to keep
+        // the audiobook open path off GCD per adr_a265ec76, mirroring the
+        // sibling poll in AudiobookSessionManager.awaitAudiobookContentLocal.
+        Task {
+            let deadline = Date().addingTimeInterval(timeout)
+            while true {
+                if !AppContainer.production().accountsManager.currentUserAccount.authTokenHasExpired {
+                    completion(true)
+                    return
+                }
+                if Date() >= deadline {
+                    completion(false)
+                    return
+                }
+                try? await Task.sleep(nanoseconds: UInt64(max(0, pollInterval) * 1_000_000_000))
             }
         }
     }
@@ -179,340 +251,6 @@ final class AudiobookLoader {
         Log.info(#file, "    book.distributor=\(book.distributor ?? "nil"), book.hasBearerToken=\(book.bearerToken != nil)")
     }
 
-    // MARK: - Manifest + decryptor resolution
-
-    private func resolveManifestAndDecryptor(
-        for book: TPPBook,
-        completion: @escaping (Result<([String: Any], DRMDecryptor?), AudiobookLoadError>) -> Void
-    ) {
-        Log.debug(#file, "🎵 [AUDIOBOOK] Attempting to present audiobook: \(book.title) (ID: \(book.identifier))")
-        Log.debug(#file, "  Distributor: \(book.distributor ?? "nil")")
-
-        #if LCP
-        if LCPAudiobooks.canOpenBook(book) {
-            Log.debug(#file, "  ✅ LCP audiobook detected")
-            prepareLCPSource(for: book) { [weak self] sourceResult in
-                guard let self else { completion(.failure(.cancelled)); return }
-                switch sourceResult {
-                case .success(let sourceURL):
-                    self.loadLCPContent(book: book, lcpSourceURL: sourceURL, completion: completion)
-                case .failure(let err):
-                    completion(.failure(err))
-                }
-            }
-            return
-        } else {
-            Log.debug(#file, "  Not an LCP audiobook")
-        }
-        #else
-        Log.debug(#file, "  LCP not compiled in this build")
-        #endif
-
-        Log.debug(#file, "  Checking for local audiobook manifest...")
-        if let url = AppContainer.production().downloadCenter.fileUrl(for: book.identifier),
-           FileManager.default.fileExists(atPath: url.path) {
-            Log.debug(#file, "  Local file exists at: \(url.path)")
-
-            guard let data = try? Data(contentsOf: url) else {
-                Log.error(#file, "  ❌ Failed to read local file data")
-                completion(.failure(.manifestParseFailed))
-                return
-            }
-
-            guard let json = try? JSONSerialization.jsonObject(with: data, options: []) as? [String: Any] else {
-                Log.error(#file, "  ❌ Failed to parse local file as JSON")
-
-                // Diagnostic dump so we can root-cause the 3.0.2+ Marketplace
-                // audiobook regression. The on-disk file fails JSON parse but
-                // a binary container at this path is unexpected — either the
-                // borrow path saved LCP-fulfilled bytes under the wrong path
-                // extension, or the OPDS feed for this distributor changed.
-                let prefix = data.prefix(16).map { String(format: "%02x", $0) }.joined(separator: " ")
-                Log.error(#file, "    diag: bytes=\(data.count), first16=\(prefix), ext=\(url.pathExtension)")
-                let topLevelTypes = book.acquisitions.map { $0.type }.joined(separator: " | ")
-                Log.error(#file, "    diag: acquisitions[*].type=[\(topLevelTypes)]")
-                for (i, acq) in book.acquisitions.enumerated() {
-                    let indirectFlat = Self.flattenIndirectTypes(acq.indirectAcquisitions).joined(separator: " | ")
-                    Log.error(#file, "    diag: acquisitions[\(i)].indirect=[\(indirectFlat)]")
-                }
-                Log.error(#file, "    diag: defaultAcquisition.type=\(book.defaultAcquisition?.type ?? "nil"), defaultBookContentType=\(book.defaultBookContentType.rawValue)")
-                #if LCP
-                Log.error(#file, "    diag: LCPAudiobooks.canOpenBook=\(LCPAudiobooks.canOpenBook(book)), hasLCPAcquisition=\(LCPAudiobooks.hasLCPAcquisition(book))")
-                #endif
-
-                #if LCP
-                // Marketplace audiobook recovery: the OPDS acquisition chain
-                // for Marketplace books is `opds-publication+json →
-                // [LCP license → audiobook+lcp]`, with the LCP MIME nested
-                // inside the indirect chain. `LCPAudiobooks.canOpenBook`
-                // only inspects `defaultAcquisition.type` so it returns
-                // false, which makes `MyBooksDownloadCenter.pathExtension`
-                // save the file with `.epub` extension. The downloaded
-                // bytes ARE the LCP audiobook .lcpa ZIP container, but
-                // ReadiumStreamer's parser dispatch is extension-based —
-                // `.epub` routes to the EPUB parser which then fails on
-                // missing META-INF/container.xml (LCP audiobook ZIPs have
-                // manifest.json at the root, not container.xml).
-                //
-                // Recovery: create a `.lcpa` symlink alongside the `.epub`
-                // file pointing at the same data, and pass the symlink URL
-                // to LCPAudiobooks so the extension-based dispatch picks
-                // the audiobook parser. The underlying `.epub` file is
-                // left alone so any other reader code that already knows
-                // the path keeps working.
-                //
-                // Going forward, `BookFileManager.pathExtension` uses
-                // `hasLCPAcquisition` so new downloads save with `.lcpa`
-                // directly. This recovery only fires for legacy downloads
-                // saved under the old logic.
-                if LCPAudiobooks.hasLCPAcquisition(book) {
-                    Log.info(#file, "  🔁 Local file failed JSON parse but book has an LCP acquisition — retrying via LCP path")
-                    let lcpSourceURL = Self.ensureLCPExtensionLink(for: url)
-                    self.loadLCPContent(book: book, lcpSourceURL: lcpSourceURL, completion: completion)
-                    return
-                }
-                #endif
-
-                completion(.failure(.manifestParseFailed))
-                return
-            }
-
-            Log.debug(#file, "  ✅ Successfully parsed local manifest JSON")
-
-            if let fulfillURL = book.bearerTokenFulfillURL {
-                Log.debug(#file, "  🔑 Bearer token book - refreshing token before playback")
-                MyBooksSimplifiedBearerToken.refreshToken(from: fulfillURL) { newToken in
-                    Task { @MainActor in
-                        if let newToken = newToken {
-                            Log.info(#file, "  ✅ Bearer token refreshed before playback")
-                            book.bearerToken = newToken.accessToken
-                        } else {
-                            Log.warn(#file, "  ⚠️ Bearer token refresh failed - proceeding with existing token")
-                        }
-                        completion(.success((json, nil)))
-                    }
-                }
-            } else {
-                completion(.success((json, nil)))
-            }
-            return
-        } else {
-            Log.debug(#file, "  No local audiobook file found")
-        }
-
-        Log.debug(#file, "  → Fetching open access manifest from network...")
-        fetchOpenAccessManifest(for: book) { json in
-            guard let json else {
-                Log.error(#file, "  ❌ Failed to fetch or parse open access manifest")
-                completion(.failure(.manifestFetchFailed))
-                return
-            }
-            Log.debug(#file, "  ✅ Successfully fetched and parsed open access manifest")
-            completion(.success((json, nil)))
-        }
-    }
-
-    #if LCP
-    private func prepareLCPSource(
-        for book: TPPBook,
-        completion: @escaping (Result<URL, AudiobookLoadError>) -> Void
-    ) {
-        if let localURL = AppContainer.production().downloadCenter.fileUrl(for: book.identifier),
-           FileManager.default.fileExists(atPath: localURL.path) {
-            Log.debug(#file, "  → Using LOCAL LCP file: \(localURL.path)")
-            completion(.success(localURL))
-            return
-        }
-
-        if let license = licenseURL(forBookIdentifier: book.identifier) {
-            Log.debug(#file, "  → Using LCP LICENSE file: \(license.path)")
-            completion(.success(license))
-            return
-        }
-
-        Log.info(#file, "  LCP audiobook with no local files - re-downloading LCP license from fulfill URL")
-        redownloadLCPLicense(for: book, completion: completion)
-    }
-
-    private func loadLCPContent(
-        book: TPPBook,
-        lcpSourceURL: URL,
-        completion: @escaping (Result<([String: Any], DRMDecryptor?), AudiobookLoadError>) -> Void
-    ) {
-        Log.debug(#file, "🔐 [LCP AUDIOBOOK] Building LCP-protected audiobook")
-        Log.debug(#file, "  LCP source: \(lcpSourceURL.path)")
-
-        guard let lcpAudiobooks = LCPAudiobooks(for: lcpSourceURL) else {
-            Log.error(#file, "  ❌ Failed to create LCPAudiobooks instance from URL")
-            completion(.failure(.lcpInstantiationFailed))
-            return
-        }
-        Log.debug(#file, "  ✅ LCPAudiobooks instance created")
-
-        if let cached = lcpAudiobooks.cachedContentDictionary() as? [String: Any] {
-            Log.debug(#file, "  → Using CACHED content dictionary from LCP")
-            completion(.success((cached, lcpAudiobooks)))
-            return
-        }
-
-        Log.debug(#file, "  → Fetching content dictionary from LCP...")
-        lcpAudiobooks.contentDictionary { dict, error in
-            Task { @MainActor in
-                if let error = error {
-                    Log.error(#file, "  ❌ Error fetching LCP content dictionary: \(error.localizedDescription)")
-                    completion(.failure(.lcpDecryptionFailed(underlying: error)))
-                    return
-                }
-                guard let json = dict as? [String: Any] else {
-                    Log.error(#file, "  ❌ LCP content dictionary is not a valid JSON dictionary")
-                    completion(.failure(.lcpDecryptionFailed(underlying: nil)))
-                    return
-                }
-                Log.debug(#file, "  ✅ Successfully retrieved LCP content dictionary")
-                Log.debug(#file, "    Dictionary keys: \(json.keys.joined(separator: ", "))")
-                completion(.success((json, lcpAudiobooks)))
-            }
-        }
-    }
-
-    private func redownloadLCPLicense(
-        for book: TPPBook,
-        completion: @escaping (Result<URL, AudiobookLoadError>) -> Void
-    ) {
-        guard let fulfillURL = book.defaultAcquisition?.hrefURL else {
-            Log.error(#file, "  ❌ No fulfill URL for LCP audiobook re-download")
-            completion(.failure(.missingFulfillURL))
-            return
-        }
-
-        guard let contentURL = AppContainer.production().downloadCenter.fileUrl(for: book.identifier) else {
-            Log.error(#file, "  ❌ Cannot determine content directory for LCP license")
-            completion(.failure(.missingContentDirectory))
-            return
-        }
-
-        let licenseFileURL = contentURL.deletingPathExtension().appendingPathExtension("lcpl")
-        Log.info(#file, "  📡 Fetching LCP license from: \(fulfillURL.host ?? "unknown")")
-
-        _ = AppContainer.production().networkExecutor.GET(fulfillURL) { data, response, error in
-            if let error = error {
-                Log.error(#file, "  ❌ Network error re-downloading LCP license: \(error.localizedDescription)")
-                completion(.failure(.licenseDownloadFailed(underlying: error)))
-                return
-            }
-            guard let data = data, !data.isEmpty else {
-                Log.error(#file, "  ❌ No data received for LCP license re-download")
-                completion(.failure(.licenseDownloadFailed(underlying: nil)))
-                return
-            }
-            if let httpResponse = response as? HTTPURLResponse, !httpResponse.isSuccess() {
-                Log.error(#file, "  ❌ LCP license re-download failed with HTTP \(httpResponse.statusCode)")
-                completion(.failure(.licenseDownloadFailed(underlying: nil)))
-                return
-            }
-
-            do {
-                let directory = licenseFileURL.deletingLastPathComponent()
-                if !FileManager.default.fileExists(atPath: directory.path) {
-                    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-                }
-                try data.write(to: licenseFileURL, options: .atomic)
-                Log.info(#file, "  ✅ LCP license saved to: \(licenseFileURL.lastPathComponent) (\(data.count) bytes)")
-            } catch {
-                Log.error(#file, "  ❌ Failed to save LCP license: \(error.localizedDescription)")
-                completion(.failure(.licenseSaveFailed(underlying: error)))
-                return
-            }
-
-            completion(.success(licenseFileURL))
-        }
-    }
-
-    private func licenseURL(forBookIdentifier identifier: String) -> URL? {
-        guard let contentURL = AppContainer.production().downloadCenter.fileUrl(for: identifier) else { return nil }
-        let license = contentURL.deletingPathExtension().appendingPathExtension("lcpl")
-        return FileManager.default.fileExists(atPath: license.path) ? license : nil
-    }
-    #endif
-
-    // MARK: - Manifest network fetch (open access + bearer token)
-
-    private func fetchOpenAccessManifest(for book: TPPBook, completion: @escaping ([String: Any]?) -> Void) {
-        guard let url = book.defaultAcquisition?.hrefURL else {
-            Log.error(#file, "  ❌ No default acquisition URL for fetching manifest")
-            completion(nil)
-            return
-        }
-
-        Log.debug(#file, "  📡 Fetching manifest from URL: \(url.absoluteString)")
-
-        _ = AppContainer.production().networkExecutor.GET(url) { [weak self] data, response, error in
-            guard let self else { completion(nil); return }
-            if let error = error {
-                Log.error(#file, "  ❌ Network error fetching manifest: \(error.localizedDescription)")
-                completion(nil)
-                return
-            }
-            guard let data = data else {
-                Log.error(#file, "  ❌ No data received from manifest fetch")
-                completion(nil)
-                return
-            }
-            Log.debug(#file, "  ✅ Received \(data.count) bytes of manifest data")
-
-            guard let json = (try? JSONSerialization.jsonObject(with: data, options: [])) as? [String: Any] else {
-                Log.error(#file, "  ❌ Failed to parse manifest data as JSON dictionary")
-                if let httpResponse = response as? HTTPURLResponse {
-                    Log.error(#file, "    HTTP status: \(httpResponse.statusCode)")
-                    let isHTML = (httpResponse.allHeaderFields["Content-Type"] as? String)?.contains("html") == true
-                    if isHTML {
-                        Log.error(#file, "    ⚠️ Server returned HTML instead of JSON - likely a redirect to login or error page")
-                    }
-                    let contentType = (httpResponse.allHeaderFields["Content-Type"] as? String) ?? "unknown"
-                    Log.error(#file, "    diag: content-type=\(contentType)")
-                }
-                // Diagnostic dump: the manifest fetch path (Marketplace audiobook
-                // route via `opds-publication+json` borrow URL) is one of the
-                // failure modes we don't yet root-cause from logs alone. Capture
-                // the response shape so we can decide between (a) array-vs-dict
-                // JSON, (b) OPDS Publication doc that contains an LCP indirect
-                // chain we should follow, or (c) some other server-side surprise.
-                let prefix = data.prefix(64).map { String(format: "%02x", $0) }.joined(separator: " ")
-                Log.error(#file, "    diag: bytes=\(data.count), first64=\(prefix)")
-                if let preview = String(data: data.prefix(256), encoding: .utf8) {
-                    Log.error(#file, "    diag: utf8-preview=\(preview)")
-                }
-                let topLevelTypes = book.acquisitions.map { $0.type }.joined(separator: " | ")
-                Log.error(#file, "    diag: acquisitions[*].type=[\(topLevelTypes)]")
-                for (i, acq) in book.acquisitions.enumerated() {
-                    let indirectFlat = Self.flattenIndirectTypes(acq.indirectAcquisitions).joined(separator: " | ")
-                    Log.error(#file, "    diag: acquisitions[\(i)].indirect=[\(indirectFlat)]")
-                }
-                Log.error(#file, "    diag: defaultAcquisition.type=\(book.defaultAcquisition?.type ?? "nil")")
-                #if LCP
-                Log.error(#file, "    diag: hasLCPAcquisition=\(LCPAudiobooks.hasLCPAcquisition(book))")
-                #endif
-                completion(nil)
-                return
-            }
-
-            // The CM fulfill endpoint for bearer-token audiobooks returns a bearer
-            // token response (with access_token/location), not the manifest itself.
-            // Detect this and follow the two-step flow: fulfill -> bearer token -> manifest.
-            if let bearerToken = MyBooksSimplifiedBearerToken.simplifiedBearerToken(with: json) {
-                Log.info(#file, "  🔑 Received bearer token response from fulfill URL - fetching actual manifest")
-                bearerToken.fulfillURL = url
-                book.bearerToken = bearerToken.accessToken
-                book.bearerTokenFulfillURL = url
-                BookService.fetchManifestWithBearerToken(bearerToken, for: book, completion: completion)
-                return
-            }
-
-            Log.debug(#file, "  ✅ Successfully parsed manifest JSON")
-            completion(json)
-        }
-    }
-
     // MARK: - Build pipeline
 
     private func build(
@@ -523,8 +261,7 @@ final class AudiobookLoader {
     ) {
         Log.debug(#file, "🏗️ [AUDIOBOOK FACTORY] Building audiobook from manifest")
         Log.debug(#file, "  Book: \(book.title) (ID: \(book.identifier))")
-        Log.debug(#file, "  Has decryptor: \(decryptor != nil)")
-        Log.debug(#file, "  Has bearer token: \(book.bearerToken != nil)")
+        Log.debug(#file, "  Has decryptor: \(decryptor != nil), Has bearer token: \(book.bearerToken != nil)")
 
         // Pre-serialize JSON on the calling thread to avoid capturing the
         // [String: Any] dictionary (which contains reference-typed values)
@@ -574,6 +311,9 @@ final class AudiobookLoader {
         }
     }
 
+    // F-004 EXC_BREAKPOINT (Crashlytics, 3.0.0, distributor=Overdrive,
+    // decryptor=nil, bearerToken present) enters here. Mockability seam
+    // captured in `PalaceTests/Audiobooks/AudiobookLoaderFinalizeBuildTests`.
     private func finalizeBuild(
         book: TPPBook,
         jsonData: Data,
@@ -674,5 +414,92 @@ final class AudiobookLoader {
         @unknown default:
             Log.error(#file, "    Unknown decoding error")
         }
+    }
+
+    // MARK: - Testable predicates
+    //
+    // Two deterministic decisions extracted from inline branches so unit
+    // tests can drive them without touching AppContainer.production() or
+    // hitting the network. The predicates correspond to `cmp`-style mutation
+    // points that previously survived every test because no isolated test
+    // could reach them. Each has TRUE/FALSE bifurcation pinned in
+    // AudiobookLoaderPredicateTests.
+
+    /// True iff all three credential components a token refresh needs are
+    /// present: a non-empty username, a non-empty PIN, and a non-nil
+    /// tokenURL. Pure function over its primitive inputs — no AppContainer,
+    /// no keychain. The branch on `tokenURL != nil` is the kill point for
+    /// the corresponding mutation; tests provide a non-nil URL to assert
+    /// the original returns `true` (mutant flips to `==`, returns `false`,
+    /// test fails the mutant).
+    nonisolated static func hasRefreshableCredentials(username: String?, pin: String?, tokenURL: URL?) -> Bool {
+        guard let username, !username.isEmpty else { return false }
+        guard let pin, !pin.isEmpty else { return false }
+        guard tokenURL != nil else { return false }
+        return true
+    }
+
+    /// True iff `response` advertises an HTML body via its `Content-Type`
+    /// header. Used to distinguish "manifest endpoint returned a login
+    /// redirect page" from "manifest endpoint returned malformed JSON" —
+    /// the two failures have the same downstream completion (nil) but
+    /// log differently for diagnosis.
+    nonisolated static func looksLikeHTMLResponse(_ response: HTTPURLResponse) -> Bool {
+        return (response.allHeaderFields["Content-Type"] as? String)?.contains("html") == true
+    }
+
+    // MARK: - Production adapter chain wiring
+    //
+    // Default chain pulled from AppContainer.production(); tests bypass
+    // with the `adapters:` init. Order: LCP > LocalFile > BearerToken
+    // (MIME-gated — see `BearerTokenMIMEGate` in Adapters+Production.swift)
+    // > OpenAccess. OpenAccess keeps in-band wrapper auto-detection as a
+    // defensive fallback for CM fulfill responses missing the wrapper MIME.
+
+    /// Builds the production adapter chain. `excludeLocalFile` drops the
+    /// `LocalFileAdapter` so an already-downloaded book is NOT served from its
+    /// (possibly stale) on-disk manifest — used by the WS-3 OverDrive re-fulfill
+    /// path so the book routes to `BearerTokenAdapter` for a FRESH fulfillment
+    /// (fresh signed URLs), not a cached-manifest replay.
+    private static func makeProductionAdapters(excludeLocalFile: Bool = false) -> [AudiobookVendorAdapter] {
+        let downloadCenter = AppContainer.production().downloadCenter
+        let networkExecutor = AppContainer.production().networkExecutor
+        let manifestNetwork = ProductionAudiobookManifestFetcher(executor: networkExecutor)
+
+        var chain: [AudiobookVendorAdapter] = []
+
+        #if LCP
+        chain.append(LCPAdapter(
+            downloadCenter: downloadCenter,
+            networkExecutor: networkExecutor
+        ))
+        #endif
+
+        if !excludeLocalFile {
+            chain.append(LocalFileAdapter(
+                downloadCenter: downloadCenter,
+                fileReader: ProductionAudiobookFileReader(),
+                tokenRefresher: ProductionBearerTokenRefresher()
+            ))
+        }
+
+        // BearerTokenAdapter.canHandle is unconditional; the MIME gate
+        // (BearerTokenMIMEGate) is Module D's chain placement gate.
+        let bearerTokenAdapter = BearerTokenAdapter(
+            network: manifestNetwork,
+            manifestFetcher: ProductionBearerTokenManifestFetcher()
+        )
+        chain.append(BearerTokenMIMEGate(wrapped: bearerTokenAdapter))
+
+        // OpenAccessAdapter is the fallback for books the MIME gate does not
+        // claim; it is given the bearer-token second-leg fetcher so it can
+        // recover OverDrive / Unlimited Listens loans whose bearer-token MIME
+        // is nested in the indirectAcquisition chain (PP-4631).
+        chain.append(OpenAccessAdapter(
+            network: manifestNetwork,
+            bearerTokenManifestFetcher: ProductionBearerTokenManifestFetcher()
+        ))
+
+        return chain
     }
 }

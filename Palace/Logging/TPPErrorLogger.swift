@@ -158,6 +158,10 @@ private let nullString = "null"
     // audiobooks
     case audiobookCorrupted = 401
     case audiobookExternalError = 402
+    /// HelpSpot 17865 — NowPlayingCoordinator dry while `isPlaying` was true
+    /// across a background → foreground transition. Indicates the toolkit
+    /// timer or position publisher has regressed.
+    case audiobookNowPlayingDry = 403
 
     // ereader
     case nilCFI = 500

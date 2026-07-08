@@ -72,7 +72,21 @@ enum BookService {
                     openingBooks.remove(book.identifier)
                     onFinish?()
                 }
-                _ = await AudiobookSessionManager.shared.openAudiobook(book, startPlaying: true)
+                _ = await AppContainer.production().audiobookSession.openAudiobook(book, startPlaying: true)
+            }
+        case .streamingHTML:
+            // PP-4161: streaming-HTML titles route through NavigationCoordinator
+            // directly — no AudiobookSessionManager-style lifecycle owner,
+            // no LCP / DRM grant, no on-disk asset.
+            Task { @MainActor in
+                defer {
+                    openingBooks.remove(book.identifier)
+                    onFinish?()
+                }
+                if let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator {
+                    coordinator.store(book: book)
+                    coordinator.push(.streamingHTML(BookRoute(id: book.identifier)))
+                }
             }
         default:
             openingBooks.remove(book.identifier)
@@ -81,6 +95,25 @@ enum BookService {
     }
 
     @MainActor private static func presentPDF(_ book: TPPBook, completion: (() -> Void)? = nil) {
+        // LCP-protected PDFs go through Readium's PDFNavigator — no temp
+        // extract, pages stream on demand via the shared httpServer. Use
+        // hasLCPAcquisition (walks all acquisitions + indirect chains)
+        // rather than canOpenBook so OPDS-Catalog-wrapped LCP PDFs (where
+        // the LCP MIME is a sibling acquisition rather than the default)
+        // get routed correctly. Defer `completion?()` until the
+        // publication opens — LCP open is async (~1–3s) and the caller
+        // typically holds a loading indicator on this completion.
+        #if LCP
+        if LCPPDFs.hasLCPAcquisition(book) {
+            AppContainer.production().readerService.openPDF(book) {
+                completion?()
+            }
+            return
+        }
+        #endif
+
+        // Plain (non-LCP) PDFs keep the PDFKit path: PDFDocument(url:) mmaps
+        // the file and pages in on demand without the HTTP-server hop.
         guard let url = AppContainer.production().downloadCenter.fileUrl(for: book.identifier) else { completion?(); return }
         let metadata = TPPPDFDocumentMetadata(with: book)
         let document = TPPPDFDocument(url: url)
@@ -111,7 +144,7 @@ enum BookService {
             metadata: ["user_message": Strings.Error.tryAgain]
         )
 
-        // PP-3707: Offer retry for audiobook open failures (may be transient)
+        // Offer retry for audiobook open failures (may be transient)
         let retryAction: (() -> Void)? = {
             guard let book = book else { return nil }
             let operationId = "audiobook-open-\(book.identifier)"

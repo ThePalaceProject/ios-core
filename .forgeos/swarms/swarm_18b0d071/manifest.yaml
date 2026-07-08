@@ -1,0 +1,62 @@
+swarm_id: swarm_18b0d071
+wave: 3
+base_branch: swarm/swarm_51f248d5-scaffold
+base_pr: 1022
+parent_pr: 1020
+status: complete
+risk_bar:
+  A: critical_path  # SignInModal — Palace/SignInLogic
+  B: critical_path  # SAML hardening + AccountsManager:967 — SAML has 25+ historical regressions
+modules:
+  - id: A
+    name: SignInModal-SheetPresenter-foundation
+    contract: .forgeos/swarms/swarm_18b0d071/contracts/A-SignInModal-SheetPresenter.md
+    status: pending
+    files:
+      production_new:
+        - Palace/SignInLogic/SignInModalSheetPresenter.swift
+      production_modified:
+        - Palace/SignInLogic/SignInModalView.swift
+        - Palace/SignInLogic/TPPReauthenticator.swift
+        - Palace/AppInfrastructure/AppContainer.swift
+      tests_new:
+        - PalaceTests/SignInLogic/SignInModalLifecycleTests.swift
+      tests_unchanged_must_pass:
+        - PalaceTests/SignInLogic/SignInModalPredicateTests.swift
+        - PalaceTests/SignInLogic/SignInModalSAMLOIDCTests.swift
+    risk: critical_path
+    reviewers_required: [architect, qa_test, clean_code]
+    estimated_loc: 350-400
+    deferral_note: |
+      Wave 3 ships the presenter + 1 caller migration (TPPReauthenticator).
+      Wave 4 migrates the remaining 9 callers, removes SignInModalHostingController,
+      and removes the legacy TPPPresentationUtils.safelyPresent direct call.
+  - id: B
+    name: SAML-hardening-plus-AccountsManager-comment
+    contract: .forgeos/swarms/swarm_18b0d071/contracts/B-SAML-hardening.md
+    status: pending
+    files:
+      production_modified:
+        - Palace/SignInLogic/LegacySAMLAuthAdapter.swift  # audit-only; expected zero diff
+        - Palace/SignInLogic/TPPSignInBusinessLogic.swift  # TODO comment expansion line 189-192
+        - Palace/Accounts/Library/AccountsManager.swift  # comment expansion lines 967-981
+      tests_modified:
+        - PalaceTests/SignInLogic/TPPSAMLFlowTests.swift  # add 2 cookie edge-case tests
+    risk: critical_path
+    reviewers_required: [architect, qa_test, clean_code]
+    estimated_loc: 80
+    module_c_bundled: true  # AccountsManager.swift:967 comment is here, not a separate module
+anti_scope:
+  - Palace/Audiobooks/
+  - ios-audiobooktoolkit/
+  - .claude/skills/swarm/SKILL.md
+  - .claude/skills/rigorous-fix/SKILL.md
+  - CLAUDE.md  # rigor sections already in PR #1022
+  - worktree-refactor-saml-auth branch contents
+  - SignInModal call-site migration for the 9 non-TPPReauthenticator callers (wave 4)
+  - SignInModalHostingController removal (wave 4)
+overlap_audit:
+  A_files: [Palace/SignInLogic/SignInModalSheetPresenter.swift, Palace/SignInLogic/SignInModalView.swift, Palace/SignInLogic/TPPReauthenticator.swift, Palace/AppInfrastructure/AppContainer.swift]
+  B_files: [Palace/SignInLogic/LegacySAMLAuthAdapter.swift, Palace/SignInLogic/TPPSignInBusinessLogic.swift, Palace/Accounts/Library/AccountsManager.swift, PalaceTests/SignInLogic/TPPSAMLFlowTests.swift]
+  shared_files: []
+  verified_disjoint: true

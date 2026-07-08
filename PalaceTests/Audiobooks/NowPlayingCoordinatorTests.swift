@@ -339,12 +339,14 @@ final class NowPlayingCoordinatorTests: XCTestCase {
             )
         }
 
-        // Wait for debounce to flush — CI runners may be slower
-        let expectation = XCTestExpectation(description: "Debounce settles")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            expectation.fulfill()
+        // Production debounce schedules a `Task { try await Task.sleep(...) }`
+        // (NowPlayingCoordinator.swift L282-292). Tasks don't hop the main
+        // queue, so `drainMainQueue` would miss the resolution — poll the
+        // observable system signal instead.
+        awaitCondition(timeout: 5) {
+            let info = MPNowPlayingInfoCenter.default().nowPlayingInfo
+            return (info?[MPMediaItemPropertyTitle] as? String) == "Chapter 9"
         }
-        wait(for: [expectation], timeout: 3.0)
 
         let info = MPNowPlayingInfoCenter.default().nowPlayingInfo
         let title = info?[MPMediaItemPropertyTitle] as? String

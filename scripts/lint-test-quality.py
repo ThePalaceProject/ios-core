@@ -44,6 +44,209 @@ FLUFF_PATTERNS = [
      "FLUFF-004: Enum raw value assertion. Tests the enum definition, not behavior."),
 ]
 
+# Methods/calls that act as assertions (raise XCTFail on failure). The linter
+# treats any of these the same as a direct XCTAssert call when counting whether
+# a test has *any* failable expectations. Keeping this in one place avoids
+# false MISSING-001 on tests that fail via helpers (ContractSnapshot, the
+# drainMainQueue family) instead of bare XCTAssert calls.
+ASSERTION_EQUIVALENT_PATTERN = re.compile(
+    r'XCTAssert'                       # All XCTAssert* variants
+    r'|XCTFail\b'                      # Direct fail
+    r'|wait\(for:'                     # Expectation wait (fails on timeout)
+    r'|fulfillment\(of:'               # async-aware expectation wait
+    r'|ContractSnapshot\.assert'       # CallLog + JSON snapshot (Contract/)
+    r'|drainMainQueue\b'               # XCTestCase+drainMainQueue helper
+    r'|awaitCondition\b'               # Sync-predicate poll helper
+    r'|awaitConditionAsync\b'          # Async-predicate poll helper
+    # Custom assertion helpers — any `assert<Word>(` (capitalized first
+    # letter after the prefix) or `.assert<Word>(` method call. Catches
+    # `assertValidationSuccess(...)`, `f.assertText(...)`,
+    # `f.assertContainsText(...)`, etc. without also matching Swift's
+    # bare `assert(condition, _:)` (lowercase next char). Misses tests
+    # that route through helpers with no `assert` prefix — those should
+    # rename their helper to `assertX` or add the helper here.
+    r'|(?<![\w])assert[A-Z]\w*\('
+    r'|\.assert[A-Z]\w*\('
+)
+
+# Flake patterns. Hard-blocking in verify-pr.sh. Each entry is
+# (regex, rule_text, dotall_flag). Allow-listing is per-line via a
+# `// FLAKE-NNN-OK: <reason>` comment on the matched line — keeps rare
+# legitimate cases (integration tests, large-corpus loads) explicit instead
+# of relying on a global SKIP list.
+FLAKE_PATTERNS = [
+    # Raw sleep in test bodies. Thread.sleep / usleep / nanosleep / bare sleep().
+    # Fixed-delay waits — first thing that breaks under CI contention.
+    #
+    # KNOWN GAP — Task.sleep(nanoseconds:) and Task.sleep(for:) are the
+    # Swift-Concurrency equivalent of Thread.sleep and ARE the same flake
+    # pattern, but detecting them without false-flagging the polling helper
+    # (XCTestCase+drainMainQueue.swift's `Task.sleep(nanoseconds:
+    # UInt64(pollInterval * 1e9))`) and the deliberate timing-simulation
+    # mocks under PalaceTests/Mocks/ (CatalogAPIMock, CatalogRepositoryMock,
+    # NetworkClientMock — `try await Task.sleep(nanoseconds: UInt64(delay
+    # * 1e9))`) requires a separate FLAKE-004 rule with file-scope allow-
+    # listing. Tracking as Phase 2 follow-up per cs_2e842c4e and cs_6afc8b96
+    # QA reviewer findings (rev_9cbd0540, rev_5acda1bf).
+    (r'\b(Thread\.sleep|usleep|nanosleep)\b|(?<![\w.])sleep\(\s*\d',
+     "FLAKE-001: Raw sleep in test. Use XCTestExpectation, drainMainQueue, or awaitCondition.",
+     False),
+
+    # asyncAfter used as sleep-disguised-as-expectation. Matches an
+    # `asyncAfter` whose closure body is *only* `<expectation>.fulfill()`.
+    # That's the banned pattern from CLAUDE.md — fixed delay that fails
+    # under load. CLAUDE.md: "never use sleep/delay waits, always use
+    # XCTestExpectation". XCTestCase+drainMainQueue.swift is the migration.
+    # `.*?` (non-greedy) is needed because the deadline arg contains nested
+    # parens — `.now() + 0.5` — and `[^)]+` chokes on the inner `.now()`.
+    # NOTE: per-line allow-list (FLAKE-002-OK) is NOT supported for this
+    # rule because the multi-line DOTALL match resolves to the opening
+    # `asyncAfter(` line where a comment is unreliable. Migration is
+    # mandatory for any FLAKE-002 hit — there is no legitimate sleep-as-
+    # expectation case (that's the whole point of the rule).
+    (r'asyncAfter\(deadline:.*?\)\s*\{\s*\w+\.fulfill\(\s*\)\s*\}',
+     "FLAKE-002: asyncAfter used as sleep-disguised-as-expectation. Use drainMainQueue or awaitCondition. (No allow-list — migration is mandatory.)",
+     True),
+
+    # Timeouts >= 15s. Almost always symptomatic of FLAKE-002 or hidden
+    # real-I/O. The 15s floor is empirical: large-corpus tests, integration
+    # tests, and a few coldstart paths legitimately need >=15s — allow-list
+    # those with `// FLAKE-003-OK: <reason>` on the same line.
+    (r'timeout:\s*(\d{2,}\.?\d*)',
+     "FLAKE-003: Timeout >= 15s. Symptomatic of FLAKE-002 or real-I/O leak. "
+     "Allow with `// FLAKE-003-OK: <reason>` if integration-test scoped.",
+     False),
+]
+
+# Per-rule allow-list comment regex. A line carrying its rule's comment
+# suppresses the violation on that line only (or, for MISSING-001, anywhere
+# in the test body). Keep the allow-list comment self-documenting:
+#
+#     // FLAKE-001-OK: NetworkRetryTests exercises real retry-backoff timing;
+#     //               the 50ms Thread.sleep is intentional, not a flake.
+#     // MISSING-001-OK: crash-guard — passes if `setProblemDocument(nil:)`
+#     //                 doesn't deref-nil. No state to assert on.
+ALLOWLIST_COMMENT_RE = {
+    'FLAKE-001': re.compile(r'//\s*FLAKE-001-OK'),
+    'FLAKE-002': re.compile(r'//\s*FLAKE-002-OK'),
+    'FLAKE-003': re.compile(r'//\s*FLAKE-003-OK'),
+    'MISSING-001': re.compile(r'//\s*MISSING-001-OK'),
+}
+
+# Generic line-level lint-ignore marker. A line carrying
+#   // lint-ignore: FLUFF-003
+# (or the line immediately above it carrying the same marker) suppresses the
+# named FLUFF rule on that line. Designed for the case where the pattern is
+# intentional — e.g. `XCTAssertNotNil(TPPBook(dictionary: brokenDict))` IS
+# the assertion: it pins the salvage contract on the failable initializer.
+LINT_IGNORE_MARKER_RE = re.compile(r'//\s*lint-ignore:\s*([A-Z]+-\d+(?:\s*,\s*[A-Z]+-\d+)*)')
+
+def line_has_lint_ignore(file_lines: List[str], line_no: int, rule_id: str) -> bool:
+    """
+    True if `line_no` (1-indexed) or the line immediately above it carries
+    a `// lint-ignore: <rule_id>` marker. Multiple rules can be listed
+    comma-separated on the same marker.
+    """
+    if line_no < 1 or line_no > len(file_lines):
+        return False
+    candidates = [file_lines[line_no - 1]]
+    if line_no >= 2:
+        candidates.append(file_lines[line_no - 2])
+    for line in candidates:
+        m = LINT_IGNORE_MARKER_RE.search(line)
+        if not m:
+            continue
+        rules = [r.strip() for r in m.group(1).split(',')]
+        if rule_id in rules:
+            return True
+    return False
+
+# File-level patterns — scanned across the whole file, not just inside
+# `func test*` bodies. Helper functions (private) live outside test
+# methods but harbor structural test-infrastructure bugs that show up as
+# misleading assertion failures inside the tests that call them.
+
+# Files exempt from TIMEOUT-001. Each entry needs a written reason so a
+# future reader understands WHY this file is allowlisted instead of
+# silently filtering it out.
+#
+# Keep this list small. Prefer fixing the rule's heuristic (below) to
+# catch a loud-via-X pattern over hardcoding an allowlist entry.
+# CatalogDomain helpers used to live here — removed once the
+# `is_loud_via_xctfail` heuristic was confirmed to catch them.
+SILENT_TIMEOUT_ALLOWLIST = {
+    "PalaceTests/XCTestCase+drainMainQueue.swift":
+        "Canonical implementation — `awaitConditionAsync` is the helper this rule recommends.",
+    "PalaceTests/Logging/LogTests.swift":
+        "pollForLog returns the polled value; caller asserts on its contents — informative downstream failure.",
+    "PalaceTests/Accounts/AccountsManagerStateMachineWiringTests.swift":
+        "Wiring suite exercises AccountsManager() instances whose background `loadCatalogs` Task outlives the synchronous test scope. XCTestExpectation `wait(for:)` deadlocks @MainActor async (see feedback_wiring_suite_test_isolation). The `while Date() < deadline` poll in Test 7 (redrive-stale-marker) is the documented escape — exits early on the desired state and the surrounding XCTestExpectation marks pass/fail loudly.",
+}
+
+def lint_silent_timeout(content: str, filepath: str) -> List["Violation"]:
+    """
+    TIMEOUT-001: silent `while Date() < deadline` polling loops in tests.
+
+    The disease: a polling helper that silently `return`s on timeout
+    causes the next assertion to read stale values and surface as a
+    misleading downstream-assertion failure ("0 != 1") instead of a
+    clear "the poll timed out" message. See PR #983 for the rationale +
+    PalaceTests/XCTestCase+drainMainQueue.swift `awaitConditionAsync`
+    for the recommended replacement.
+
+    Heuristic: flag any `while Date() < deadline` whose enclosing
+    function neither (a) ends with an explicit `XCTFail`, nor
+    (b) returns Bool back to a loud caller, nor (c) is in the
+    allowlist above with a documented reason.
+    """
+    if filepath in SILENT_TIMEOUT_ALLOWLIST:
+        return []
+
+    findings: List[Violation] = []
+    # Use a multi-line regex anchored to line start (with optional
+    # leading whitespace) to skip the same pattern appearing inside
+    # `///` doc comments that describe the anti-pattern. Skipping doc-
+    # comments via a separate strip pass risks shifting line numbers in
+    # the reported violation — anchoring is simpler.
+    for m in re.finditer(r'^\s*while Date\(\) < deadline', content, re.MULTILINE):
+        # Look at the surrounding window for indicators of "this helper
+        # is actually loud." The pre-window (~300 chars before the
+        # match) catches the function signature + any `expectation`
+        # declarations that precede the while loop; the post-window
+        # (~600 chars after) catches XCTFail/return-condition at the
+        # end of the helper body.
+        window_start = max(0, m.start() - 300)
+        window_end = min(len(content), m.end() + 600)
+        window = content[window_start:window_end]
+
+        is_loud_via_xctfail = 'XCTFail(' in window
+        # Bool-returning helpers end with `return condition()` or
+        # `return predicate()` — caller checks the bool to surface the
+        # timeout (XCTAssertTrue(waitForCondition...)) so the loop
+        # itself doesn't need XCTFail.
+        is_loud_via_bool_return = bool(re.search(r'return\s+(?:condition|predicate)\(\)', window))
+        # An outer XCTestExpectation + wait(for:) makes the surrounding
+        # test loud even if the inline loop is silent — the expectation
+        # never fulfills and the outer wait fires.
+        is_loud_via_expectation = ('XCTestExpectation' in window or 'expectation(description:' in window) and 'wait(for:' in window
+
+        if is_loud_via_xctfail or is_loud_via_bool_return or is_loud_via_expectation:
+            continue
+
+        line_no = content[:m.start()].count('\n') + 1
+        findings.append(Violation(
+            file=filepath,
+            line=line_no,
+            method='<file scope>',
+            rule="TIMEOUT-001",
+            detail="TIMEOUT-001: silent `while Date() < deadline` polling loop. "
+                   "Use `awaitConditionAsync` from PalaceTests/XCTestCase+drainMainQueue.swift — "
+                   "fails the test loudly on timeout with accurate file/line attribution. "
+                   "If this loop IS intentionally silent, add the file to "
+                   "SILENT_TIMEOUT_ALLOWLIST in scripts/lint-test-quality.py with a written reason.",
+        ))
+    return findings
+
 def find_test_methods(content: str) -> List[dict]:
     """Extract test methods with their bodies and line numbers."""
     methods = []
@@ -61,10 +264,12 @@ def find_test_methods(content: str) -> List[dict]:
         body = content[start:i-1]
 
         lines = [l.strip() for l in body.split('\n') if l.strip() and not l.strip().startswith('//')]
-        # wait(for:) on an XCTestExpectation IS an assertion — it raises
-        # XCTFail on timeout. Treating it the same as XCTAssert* fixes a
-        # false-positive MISSING-001 on legitimate expectation-based tests.
-        asserts = len(re.findall(r'XCTAssert|XCTFail|wait\(for:', body))
+        # Count assertion-equivalents — XCTAssert*, XCTFail, wait/fulfillment,
+        # ContractSnapshot.assert, drainMainQueue, awaitCondition*. Routed
+        # through ASSERTION_EQUIVALENT_PATTERN (top of file) so the helper set
+        # lives in one place; missing any of these used to flag legitimate
+        # helper-based tests as MISSING-001.
+        asserts = len(ASSERTION_EQUIVALENT_PATTERN.findall(body))
         has_mock = bool(re.search(r'Mock|mock|stub|Stub', body))
         has_async = bool(re.search(r'await |expectation|fulfillment', body))
 
@@ -79,6 +284,43 @@ def find_test_methods(content: str) -> List[dict]:
         })
     return methods
 
+def lint_flake_patterns(content: str, filepath: str) -> List[Violation]:
+    """
+    Scan whole file for FLAKE-* patterns. File-scope (not method-scope) so
+    private setup helpers, fixture builders, and async closures captured by
+    `Task { ... }` blocks are caught alongside test bodies. The matched-line
+    text is checked for the per-rule allow-list comment.
+    """
+    findings: List[Violation] = []
+    file_lines = content.split('\n')
+    for pattern, rule_text, dotall in FLAKE_PATTERNS:
+        flags = re.MULTILINE | (re.DOTALL if dotall else 0)
+        for m in re.finditer(pattern, content, flags):
+            rule_id = rule_text.split(':')[0]
+            line_no = content[:m.start()].count('\n') + 1
+            # Skip if the matched line carries the allow-list comment.
+            matched_line = file_lines[line_no - 1] if 1 <= line_no <= len(file_lines) else ''
+            if ALLOWLIST_COMMENT_RE[rule_id].search(matched_line):
+                continue
+            # FLAKE-003 floor: rule fires only at >= 15s. The regex grabs
+            # 2+ digit timeouts (10..); filter the 10..14 second cases out
+            # here. Below 10s legitimately means tight expectation, no flake.
+            if rule_id == 'FLAKE-003':
+                try:
+                    val = float(m.group(1))
+                    if val < 15.0:
+                        continue
+                except (IndexError, ValueError):
+                    continue
+            findings.append(Violation(
+                file=filepath,
+                line=line_no,
+                method='<file scope>',
+                rule=rule_id,
+                detail=rule_text,
+            ))
+    return findings
+
 def lint_file(filepath: str) -> List[Violation]:
     """Lint a single test file for quality violations."""
     violations = []
@@ -86,19 +328,40 @@ def lint_file(filepath: str) -> List[Violation]:
     with open(filepath) as f:
         content = f.read()
 
+    file_lines = content.split('\n')
+
+    # File-level checks (scan the whole file body, not just inside test
+    # methods — covers private helpers + inline patterns).
+    violations.extend(lint_silent_timeout(content, filepath))
+    violations.extend(lint_flake_patterns(content, filepath))
+
     methods = find_test_methods(content)
 
     for method in methods:
         body = method['body']
 
-        # Check fluff patterns
+        # Check fluff patterns. Each match's actual line is computed so the
+        # `// lint-ignore: FLUFF-NNN` marker can suppress the finding at
+        # the exact site (or on the line immediately above). Without this,
+        # patterns like `XCTAssertNotNil(TPPBook(dictionary: ...))` that
+        # ARE the assertion (registry-salvage guards) can't be exempted.
         for pattern, rule in FLUFF_PATTERNS:
-            if re.search(pattern, body):
+            rule_id = rule.split(':')[0]
+            for m in re.finditer(pattern, body):
+                # method['line'] is the line of the func declaration; the
+                # method body starts on the line immediately below it. Add
+                # 1 to convert the body-offset back to a file line. (Off-by-
+                # one risk is acceptable — the marker check inspects this
+                # line AND the line above, so a 1-line slip is absorbed.)
+                body_line_offset = body[:m.start()].count('\n')
+                file_line_no = method['line'] + body_line_offset + 1
+                if line_has_lint_ignore(file_lines, file_line_no, rule_id):
+                    continue
                 violations.append(Violation(
                     file=filepath,
-                    line=method['line'],
+                    line=file_line_no,
                     method=method['name'],
-                    rule=rule.split(':')[0],
+                    rule=rule_id,
                     detail=rule,
                 ))
 
@@ -113,20 +376,30 @@ def lint_file(filepath: str) -> List[Violation]:
                     detail="SHALLOW-001: Test has 1 assertion, <4 lines, no mocks/async. Likely too shallow to catch regressions.",
                 ))
 
-        # Check: no assertions at all
+        # Check: no assertions at all. Authors can opt-out with a
+        # `// MISSING-001-OK: <reason>` comment in the test body for
+        # legitimate crash-guard tests (where the assertion IS "did not
+        # crash"). Forces the reason to be documented inline rather than
+        # silently allowed.
         if method['assert_count'] == 0 and 'XCTSkip' not in body:
-            violations.append(Violation(
-                file=filepath,
-                line=method['line'],
-                method=method['name'],
-                rule="MISSING-001",
-                detail="MISSING-001: Test has no assertions. It can never fail.",
-            ))
+            if not ALLOWLIST_COMMENT_RE['MISSING-001'].search(body):
+                violations.append(Violation(
+                    file=filepath,
+                    line=method['line'],
+                    method=method['name'],
+                    rule="MISSING-001",
+                    detail="MISSING-001: Test has no assertions. It can never fail.",
+                ))
 
     return violations
 
 def main():
     fix_mode = '--fix' in sys.argv
+    # `--per-file` emits one line per violation: <relpath>:<line>:<rule>
+    # That gives verify-pr.sh a machine-parseable per-file view so it can
+    # distinguish blocking rules (FLAKE/FLUFF/MISSING/TIMEOUT) from
+    # advisory (SHALLOW) when deciding whether to fail this PR.
+    per_file_mode = '--per-file' in sys.argv
     single_file = None
     if '--file' in sys.argv:
         idx = sys.argv.index('--file')
@@ -147,6 +420,19 @@ def main():
     for filepath in sorted(files):
         violations = lint_file(filepath)
         all_violations.extend(violations)
+
+    if per_file_mode:
+        # One line per violation. Format: `<relpath>:<line>:<rule>`
+        # Designed for `grep` in CI — verify-pr.sh greps for blocking
+        # rule prefixes within the changed-file list.
+        for v in all_violations:
+            print(f"{os.path.relpath(v.file)}:{v.line}:{v.rule}")
+        # Exit code mirrors the human-mode exit code so callers can use
+        # both modes interchangeably for the pass/fail signal.
+        missing = sum(1 for v in all_violations if v.rule.startswith('MISSING'))
+        timeout = sum(1 for v in all_violations if v.rule.startswith('TIMEOUT'))
+        flake = sum(1 for v in all_violations if v.rule.startswith('FLAKE'))
+        sys.exit(1 if (missing or timeout or flake) else 0)
 
     # Group by rule
     by_rule = {}
@@ -173,21 +459,29 @@ def main():
     print(f"\n{'=' * 70}")
     print(f"Total: {len(all_violations)} violations across {len(set(v.file for v in all_violations))} files")
 
-    # Summary by severity
+    # Summary by family
     fluff = sum(1 for v in all_violations if v.rule.startswith('FLUFF'))
     shallow = sum(1 for v in all_violations if v.rule.startswith('SHALLOW'))
     missing = sum(1 for v in all_violations if v.rule.startswith('MISSING'))
-    print(f"  Fluff (should replace):    {fluff}")
-    print(f"  Shallow (should deepen):   {shallow}")
-    print(f"  Missing asserts (broken):  {missing}")
+    timeout = sum(1 for v in all_violations if v.rule.startswith('TIMEOUT'))
+    flake = sum(1 for v in all_violations if v.rule.startswith('FLAKE'))
+    print(f"  Flake   (blocking — CI-fragile):   {flake}")
+    print(f"  Fluff   (should replace):          {fluff}")
+    print(f"  Shallow (should deepen):           {shallow}")
+    print(f"  Missing (broken — no assertion):   {missing}")
+    print(f"  Silent timeouts (CI-flake fuel):   {timeout}")
 
     if fix_mode:
         print("\n--fix mode: review violations above and replace manually.")
         print("Each fluff test should be replaced 1:1 with a test that exercises")
         print("real logic in the same class (edge case, error path, state transition).")
 
-    # Exit with error if there are MISSING assertion tests (those are actually broken)
-    if missing > 0:
+    # Exit with error on MISSING (broken tests that can never fail), TIMEOUT
+    # (silent-timeout polling — PR #983), and FLAKE (raw sleep / asyncAfter
+    # as expectation / pathological >=15s timeouts — the actual flake driver
+    # behind the CI-flake pandemic this sweep addresses). All three are
+    # structural CI-fragility patterns gated against reintroduction.
+    if missing > 0 or timeout > 0 or flake > 0:
         sys.exit(1)
 
     sys.exit(0)

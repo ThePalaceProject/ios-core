@@ -38,6 +38,19 @@ final class AdobeDRMContentProtection: ContentProtection, Loggable {
 
                 let decryptedContainer = AdobeDRMContainer(url: sourceURL, encryptionData: encryptionData)
 
+                // iPad-on-Mac watchdog-exit guard (WS-4): mark that Adobe DRM is
+                // being exercised this session. Every ungated RMSDK op that can
+                // construct Adobe's faulting static recursive_mutex (decode,
+                // displayUntilDate license-read, init → GPFile::lock) runs inside
+                // an AdobeDRMContainer method, and EVERY AdobeDRMContainer is
+                // created here (the sole `.adept` content-protection entry; the
+                // gated AdobeDRMService/NYPLADEPT fulfillment path does not run on
+                // iPad-on-Mac). Marking at construction therefore dominates all
+                // mutex-constructing paths and precedes any of them. The actual
+                // atexit{_exit(0)} interceptor is installed later, at
+                // applicationDidEnterBackground, only when this flag is set.
+                AdobeDRMService.markAdobeDRMUsed()
+
                 let newContainerAsset = ContainerAsset(container: decryptedContainer, format: container.format)
                 let cpAsset = ContentProtectionAsset(asset: .container(newContainerAsset)) { manifest, _, services in
                     let copyManifest = manifest
@@ -250,8 +263,14 @@ public actor DRMDataResource: Resource {
 
 extension ResourceProperties {
     public var length: UInt64? {
-        get { self["length"] }
-        set { self["length"] = newValue }
+        // Readium 3.9.0: ResourceProperties values must be JSONValueEncodable
+        // *and* JSONValueDecodable. UInt64 is only Encodable, so persist as Int
+        // (which conforms to both) and bridge to UInt64 at this typed accessor.
+        get {
+            let value: Int? = self["length"]
+            return value.map(UInt64.init)
+        }
+        set { self["length"] = newValue.map { Int($0) } }
     }
 }
 

@@ -26,15 +26,25 @@ class BookFileManager {
     private let bookRegistry: TPPBookRegistryProvider
     private let accountsManager: AccountsManager
     private let fileManager: FileManager
+    /// Test-only override for the per-account content directory lookup.
+    /// Production passes nil so `contentDirectoryURL(_:)` resolves the
+    /// directory under iOS's Application Support, as it always has.
+    /// Tests (e.g. `ColdStartResumeIntegrationTests`) inject a closure
+    /// returning a temp dir so on-disk fixtures can be staged without
+    /// depending on a real per-account App Support directory. Semantics
+    /// match the existing production return: nil means "no directory".
+    private let directoryProvider: ((String?) -> URL?)?
 
     init(
         bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry,
         accountsManager: AccountsManager = AppContainer.production().accountsManager,
-        fileManager: FileManager = .default
+        fileManager: FileManager = .default,
+        directoryProvider: ((String?) -> URL?)? = nil
     ) {
         self.bookRegistry = bookRegistry
         self.accountsManager = accountsManager
         self.fileManager = fileManager
+        self.directoryProvider = directoryProvider
     }
 
     // MARK: - File URL
@@ -70,6 +80,12 @@ class BookFileManager {
     /// resolve the per-account directory (which means the account string was
     /// invalid) or if directory creation fails.
     func contentDirectoryURL(_ account: String?) -> URL? {
+        // Test seam: when an override is installed, it owns the directory
+        // contract end-to-end (no App Support resolution, no on-disk
+        // create). Production code path is the `else` branch below.
+        if let directoryProvider {
+            return directoryProvider(account)
+        }
         guard let directoryURL = TPPBookContentMetadataFilesHelper.directory(for: account ?? "")?.appendingPathComponent("content") else {
             NSLog("[contentDirectoryURL] nil directory.")
             return nil
@@ -98,22 +114,19 @@ class BookFileManager {
     /// LCP detection uses `hasLCPAcquisition` (recursive scan of the full
     /// acquisition chain including indirect entries) rather than
     /// `canOpenBook` (which inspects only `defaultAcquisition.type`).
-    /// Marketplace audiobook OPDS feeds have the structure
-    /// `opds-publication+json → [LCP license → audiobook+lcp]` with the
-    /// LCP MIME *nested* in the indirect chain — `canOpenBook` misses
-    /// this and the file gets saved as `.epub`, then ReadiumStreamer's
-    /// extension-based dispatch routes the LCP audiobook container to
-    /// the EPUB parser and fails on missing META-INF/container.xml.
-    /// Using the recursive predicate makes new downloads save with the
-    /// correct extension; the AudiobookLoader recovery handles legacy
-    /// `.epub`-named LCP content that was saved under the old logic.
+    /// Marketplace OPDS feeds wrap the LCP license in
+    /// `opds-publication+json → [LCP license → audiobook+lcp | application/pdf]`
+    /// with the LCP MIME *nested* in the indirect chain — `canOpenBook`
+    /// misses this and the file gets saved as `.epub`, breaking the LCP
+    /// extract pass. PP-4407 closed this for audiobooks; PP-4454 mirrors
+    /// the fix to PDFs.
     func pathExtension(for book: TPPBook?) -> String {
         #if LCP
         if let book = book {
             if LCPAudiobooks.hasLCPAcquisition(book) {
                 return "lcpa"
             }
-            if LCPPDFs.canOpenBook(book) {
+            if LCPPDFs.hasLCPAcquisition(book) {
                 return "zip"
             }
         }

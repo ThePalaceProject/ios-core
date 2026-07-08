@@ -1,0 +1,58 @@
+{
+  "id": "https://example.org/auth-doc/library-123",
+  "title": "Testlib Authentication",
+  "service_description": "Sign in with your library card.",
+  "color_scheme": "blue",
+  "links": [
+    {
+      "rel": "logo",
+      "href": "https://example.org/auth-doc/logo.png",
+      "type": "image/png"
+    },
+    {
+      "rel": "register",
+      "href": "https://example.org/auth-doc/register"
+    },
+    {
+      "rel": "help",
+      "href": "mailto:help@example.org"
+    }
+  ],
+  "features": {
+    "enabled": ["https://librarysimplified.org/rel/policy/reservations"],
+    "disabled": []
+  },
+  "authentication": [
+    {
+      "type": "http://opds-spec.org/auth/basic",
+      "description": "Library Card",
+      "labels": {
+        "login": "Barcode",
+        "password": "PIN"
+      },
+      "inputs": {
+        "login": {
+          "keyboard": "numeric",
+          "maximumLength": 14,
+          "barcodeFormat": "codabar"
+        },
+        "password": {
+          "keyboard": "numeric",
+          "maximumLength": 4
+        }
+      },
+      "links": [
+        {
+          "rel": "http://librarysimplified.org/terms/rel/patron-password-reset",
+          "href": "https://example.org/auth-doc/forgot-pin"
+        }
+      ]
+    }
+  ],
+  "announcements": [
+    {
+      "id": "announcement-1",
+      "content": "Library closed for holiday on July 4."
+    }
+  ]
+}

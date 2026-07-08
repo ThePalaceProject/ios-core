@@ -56,7 +56,7 @@ class TPPLicensesService: NSObject {
         let session: URLSession
 
         if url.host?.lowercased().contains("googleapis.com") == true {
-            // PP-3704: No credentials may be sent to googleapis.com — use ephemeral session
+            // No credentials may be sent to googleapis.com use ephemeral session
             Log.info(#file, "  Session type: ephemeral (no credentials for googleapis.com)")
             let config = URLSessionConfiguration.ephemeral
             config.timeoutIntervalForRequest = 60

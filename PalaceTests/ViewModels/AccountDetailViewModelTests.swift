@@ -463,7 +463,7 @@ final class AccountDetailCredentialStateTests: XCTestCase {
         let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
 
         // Given: User has OAuth credentials (token-based) that are stale
-        let account = TPPUserAccount.sharedAccount(libraryUUID: libraryID)
+        let account = AppContainer.production().accountsManager.userAccount(for: libraryID)
 
         // OAuth uses token credentials - this is how we detect OAuth
         account.setAuthToken("expired_token", barcode: nil, pin: nil, expirationDate: Date().addingTimeInterval(-3600))
@@ -493,7 +493,7 @@ final class AccountDetailCredentialStateTests: XCTestCase {
         let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
 
         // Given: User has SAML/Basic credentials (barcode/PIN) that are stale
-        let account = TPPUserAccount.sharedAccount(libraryUUID: libraryID)
+        let account = AppContainer.production().accountsManager.userAccount(for: libraryID)
 
         // SAML/Basic uses barcode/PIN credentials - NOT token credentials
         account.setBarcode("test_user", PIN: "1234")
@@ -524,7 +524,7 @@ final class AccountDetailCredentialStateTests: XCTestCase {
         let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
 
         // Given: User has credentials and is fully logged in
-        let account = TPPUserAccount.sharedAccount(libraryUUID: libraryID)
+        let account = AppContainer.production().accountsManager.userAccount(for: libraryID)
         account.setBarcode("test_user", PIN: "1234")
         account.setAuthState(.loggedIn)
 
@@ -549,7 +549,7 @@ final class AccountDetailCredentialStateTests: XCTestCase {
         let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
 
         // Given: User starts logged in with SAML/Basic (barcode/PIN credentials)
-        let account = TPPUserAccount.sharedAccount(libraryUUID: libraryID)
+        let account = AppContainer.production().accountsManager.userAccount(for: libraryID)
         account.setBarcode("test_user", PIN: "1234")
         account.setAuthState(.loggedIn)
         viewModel.refreshSignInState()
@@ -578,7 +578,7 @@ final class AccountDetailCredentialStateTests: XCTestCase {
         let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
 
         // Given: User starts logged in with OAuth (token credentials)
-        let account = TPPUserAccount.sharedAccount(libraryUUID: libraryID)
+        let account = AppContainer.production().accountsManager.userAccount(for: libraryID)
         account.setAuthToken("valid_token", barcode: nil, pin: nil, expirationDate: Date().addingTimeInterval(3600))
         account.setAuthState(.loggedIn)
         viewModel.refreshSignInState()
@@ -606,7 +606,7 @@ final class AccountDetailCredentialStateTests: XCTestCase {
         let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
 
         // Given: User has stale SAML/Basic credentials (barcode/PIN)
-        let account = TPPUserAccount.sharedAccount(libraryUUID: libraryID)
+        let account = AppContainer.production().accountsManager.userAccount(for: libraryID)
         account.setBarcode("test_user", PIN: "1234")
         account.setAuthState(.credentialsStale)
         viewModel.refreshSignInState()
@@ -634,7 +634,7 @@ final class AccountDetailCredentialStateTests: XCTestCase {
         }
 
         // Given: User has stale credentials
-        let account = TPPUserAccount.sharedAccount(libraryUUID: libraryID)
+        let account = AppContainer.production().accountsManager.userAccount(for: libraryID)
         account.setBarcode("test_user", PIN: "1234")
         account.setAuthState(.credentialsStale)
 
@@ -665,14 +665,14 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
         // Reset shared user account state to prevent test pollution from
         // previous tests (in this class or elsewhere) that set credentials.
         if let libraryID = AppContainer.production().accountsManager.currentAccountId {
-            TPPUserAccount.sharedAccount(libraryUUID: libraryID).removeAll()
+            AppContainer.production().accountsManager.userAccount(for: libraryID).removeAll()
         }
     }
 
     override func tearDown() {
         // Same reset on the way out so we don't pollute downstream classes.
         if let libraryID = AppContainer.production().accountsManager.currentAccountId {
-            TPPUserAccount.sharedAccount(libraryUUID: libraryID).removeAll()
+            AppContainer.production().accountsManager.userAccount(for: libraryID).removeAll()
         }
         super.tearDown()
     }
@@ -926,7 +926,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
             return
         }
         let vm = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
-        let account = TPPUserAccount.sharedAccount(libraryUUID: libraryID)
+        let account = AppContainer.production().accountsManager.userAccount(for: libraryID)
         account.removeAll()
         vm.refreshSignInState()
         XCTAssertFalse(vm.isSignedIn)
@@ -945,7 +945,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
             XCTSkip("No current account available for testing")
             return
         }
-        let account = TPPUserAccount.sharedAccount(libraryUUID: libraryID)
+        let account = AppContainer.production().accountsManager.userAccount(for: libraryID)
         account.setBarcode("foo", PIN: "9999")
         account.setAuthState(.loggedIn)
 
@@ -1041,7 +1041,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
             XCTSkip("No current account available for testing")
             return
         }
-        let account = TPPUserAccount.sharedAccount(libraryUUID: libraryID)
+        let account = AppContainer.production().accountsManager.userAccount(for: libraryID)
         account.setBarcode("x", PIN: "1")
         account.setAuthState(.loggedIn)
 
@@ -1094,13 +1094,13 @@ final class AccountDetailSignOutConfirmationTests: XCTestCase {
         try super.setUpWithError()
         try KeychainAvailability.skipIfUnavailable()
         if let libraryID = AppContainer.production().accountsManager.currentAccountId {
-            TPPUserAccount.sharedAccount(libraryUUID: libraryID).removeAll()
+            AppContainer.production().accountsManager.userAccount(for: libraryID).removeAll()
         }
     }
 
     override func tearDown() {
         if let libraryID = AppContainer.production().accountsManager.currentAccountId {
-            TPPUserAccount.sharedAccount(libraryUUID: libraryID).removeAll()
+            AppContainer.production().accountsManager.userAccount(for: libraryID).removeAll()
         }
         super.tearDown()
     }
@@ -1115,7 +1115,7 @@ final class AccountDetailSignOutConfirmationTests: XCTestCase {
             return
         }
 
-        let account = TPPUserAccount.sharedAccount(libraryUUID: libraryID)
+        let account = AppContainer.production().accountsManager.userAccount(for: libraryID)
         account.setBarcode("user1234", PIN: "9999")
         account.setAuthState(.loggedIn)
 

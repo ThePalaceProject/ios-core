@@ -34,8 +34,9 @@ final class UIAlertCACommitGuardTests: XCTestCase {
     // MARK: - setProblemDocument — nil arguments short-circuit
 
     func testSetProblemDocument_WithNilController_DoesNothing() {
-        // Guards against a nil-deref that would otherwise crash on the
-        // `alert.title = ...` mutation on line ~153.
+        // MISSING-001-OK: crash-guard — verifies the nil-controller branch
+        // short-circuits BEFORE the `alert.title = ...` mutation that would
+        // otherwise crash. No observable state to assert on.
         TPPAlertUtils.setProblemDocument(controller: nil, document: nil, append: false)
         // Test passes if no crash.
     }

@@ -32,6 +32,13 @@ struct BookDetailView: View {
     @AccessibilityFocusState private var isTitleFocused: Bool
     @State private var initialLayoutComplete: Bool = false
     @State private var currentOrientation: UIDeviceOrientation = UIDevice.current.orientation
+    /// Tracks whether this view instance has already laid out its collapsing
+    /// header. `.onAppear` fires again on back-navigation (e.g. returning from
+    /// the series list), but the ScrollView keeps its scrolled-down position —
+    /// so re-running the expand reset would leave an expanded header stranded
+    /// over scrolled content. Reset the header only on the first appearance and
+    /// preserve the collapsed/expanded state on subsequent re-appearances.
+    @State private var hasAppeared: Bool = false
 
     private let scaleAnimation = Animation.linear(duration: 0.35)
 
@@ -79,6 +86,9 @@ struct BookDetailView: View {
                         let newSummary = viewModel.book.summary ?? ""
                         if self.descriptionText != newSummary { self.descriptionText = newSummary }
                         proxy.scrollTo(0, anchor: .top)
+                        // A genuinely new book scrolls back to the top, so the
+                        // collapsing header must expand to match (see hasAppeared).
+                        expandHeader()
                     } else {
                         let newSummary = viewModel.book.summary ?? self.descriptionText
                         if self.descriptionText != newSummary { self.descriptionText = newSummary }
@@ -89,12 +99,14 @@ struct BookDetailView: View {
                 headerColor = Color(viewModel.book.dominantUIColor)
                 lastBookIdentifier = viewModel.book.identifier
 
-                showCompactHeader = false
-                headerHeight = viewModel.isFullSize ? 300 : 225
-                imageScale = 1.0
-                imageOpacity = 1.0
-                titleOpacity = 1.0
-                lastOffset = 0
+                // Only reset the collapsing header on the first appearance.
+                // On back-navigation the ScrollView retains its offset, so
+                // preserving the header state keeps it in sync with the
+                // scroll position instead of snapping back to fully expanded.
+                if !hasAppeared {
+                    hasAppeared = true
+                    expandHeader()
+                }
 
                 viewModel.fetchRelatedBooks()
                 Task { await viewModel.hydrateMetadataIfNeeded() }
@@ -540,7 +552,7 @@ struct BookDetailView: View {
     }
 
     @ViewBuilder private var informationView: some View {
-        // PP-4046: ordered by patron decision-making priority — Format/Audience/
+        // ordered by patron decision-making priority Format/Audience/
         // Category/Language up top ("what is this?"), Narrators/Duration next
         // ("what's the listening experience like?" — audiobooks only),
         // publication metadata last. Empty fields are omitted entirely
@@ -584,6 +596,14 @@ struct BookDetailView: View {
             infoRow(label: DisplayStrings.published.uppercased(),
                     value: book.published?.monthDayYearString,
                     accessibilityID: AccessibilityID.BookDetail.publishedLabel)
+
+            // PP-4463: series row links to the same destination as the bottom
+            // series carousel — CatalogLaneMoreView keyed on book.seriesURL.
+            // Hidden entirely when either the name or the URL is missing so
+            // the Information block stays free of empty rows (AC #2).
+            // Positioned right after PUBLISHED per design.
+            seriesRow(book: book)
+
             infoRow(label: DisplayStrings.publisher.uppercased(),
                     value: book.publisher,
                     accessibilityID: AccessibilityID.BookDetail.publisherLabel)
@@ -617,6 +637,38 @@ struct BookDetailView: View {
         Text(label)
             .palaceFont(.caption, weight: .bold)
             .lineLimit(1)
+    }
+
+    /// PP-4463: SERIES information row. Renders only when the book carries
+    /// both a series name and series URL (AC #2). The series name is wrapped
+    /// in a NavigationLink whose destination matches the existing series-lane
+    /// "More" affordance at the bottom of the screen — `CatalogLaneMoreView`
+    /// keyed on `book.seriesURL` — so the row is an alternate path to the
+    /// same list, not a new navigation paradigm (AC #4).
+    @ViewBuilder
+    private func seriesRow(book: TPPBook) -> some View {
+        if let seriesName = book.seriesName, !seriesName.isEmpty,
+           let seriesURL = book.seriesURL {
+            HStack(alignment: .top, spacing: 10) {
+                infoLabel(label: DisplayStrings.series.uppercased())
+                    .frame(minWidth: 100, alignment: .leading)
+                    .fixedSize(horizontal: true, vertical: false)
+                NavigationLink(destination: CatalogLaneMoreView(url: seriesURL, appContainer: appContainer)) {
+                    Text(seriesName)
+                        .font(.subheadline)
+                        .underline()
+                        .lineLimit(nil)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .foregroundColor(.primary)
+                }
+                .accessibilityIdentifier(AccessibilityID.BookDetail.seriesLink)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(DisplayStrings.series): \(seriesName)")
+            .accessibilityAddTraits(.isLink)
+            .accessibilityIdentifier(AccessibilityID.BookDetail.seriesLabel)
+        }
     }
 
     @ViewBuilder private func infoValue(value: String) -> some View {
@@ -698,6 +750,9 @@ struct BookDetailView: View {
         let account = appContainer.accountsManager.currentUserAccount
         let needsAuth = account.needsAuth && !account.hasCredentials()
 
+        // Exhaustive (no `default:`) — F-011 class-of-bug guard. Compiler
+        // now flags this if BookButtonType gains a new case, so a button
+        // can't be silently funneled into the half-sheet-toggle fallback.
         switch buttonType {
         case .sample, .audiobookSample:
             viewModel.handleAction(for: buttonType)
@@ -725,6 +780,14 @@ struct BookDetailView: View {
             accessibleWithAnimation(.spring()) {
                 viewModel.showHalfSheet.toggle()
             }
+
+        case .readStreaming:
+            // PP-4161: route straight through the view model — no half-sheet,
+            // no sign-in detour. The reader is presented by
+            // NavigationCoordinator's streamingHTML route; if the user isn't
+            // signed in they wouldn't have a borrowed streaming-HTML book in
+            // the first place (the button only surfaces post-borrow).
+            viewModel.handleAction(for: buttonType)
 
         case .return, .remove, .cancelHold:
             if needsAuth {
@@ -756,11 +819,26 @@ struct BookDetailView: View {
                 }
             }
 
-        default:
+        case .read, .listen, .retry, .cancel, .returning, .close:
+            // read/listen open the reader, retry/cancel/returning/close are
+            // half-sheet-local actions — all share the same "toggle half-sheet"
+            // fallback. Listed explicitly to preserve exhaustive matching.
             accessibleWithAnimation(.spring()) {
                 viewModel.showHalfSheet.toggle()
             }
         }
+    }
+
+    /// Resets the collapsing header to fully expanded. Shared by the
+    /// first-appearance path and the new-book path (both land the scroll at
+    /// the top, so the header must match).
+    private func expandHeader() {
+        showCompactHeader = false
+        headerHeight = viewModel.isFullSize ? 300 : 225
+        imageScale = 1.0
+        imageOpacity = 1.0
+        titleOpacity = 1.0
+        lastOffset = 0
     }
 
     private func updateHeaderHeight(for offset: CGFloat) {

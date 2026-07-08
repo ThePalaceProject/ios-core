@@ -10,6 +10,10 @@ import XCTest
 
 final class RemoteFeatureFlagsTests: XCTestCase {
 
+    override func tearDown() {
+        super.tearDown()
+    }
+
     // MARK: - Shared Instance
 
     func testShared_isNotNil() {
@@ -113,47 +117,10 @@ final class RemoteFeatureFlagsTests: XCTestCase {
                        "getDeviceInfo() must return the same set of keys across calls")
     }
 
-    // MARK: - Reset Account Flag (PP-4282 / HelpSpot 17716)
-
-    /// The flag must default OFF in production. Support enables it per-patron
-    /// via Firebase Remote Config; if we ever default it ON, the destructive
-    /// Reset button ships to every patron unexpectedly.
-    func testIsResetAccountEnabled_defaultsOff_withoutOverrideOrFirebase() {
-        UserDefaults.standard.removeObject(forKey: RemoteFeatureFlags.resetAccountLocalOverrideKey)
-        defer { UserDefaults.standard.removeObject(forKey: RemoteFeatureFlags.resetAccountLocalOverrideKey) }
-
-        XCTAssertFalse(RemoteFeatureFlags.shared.isResetAccountEnabled,
-                       "Reset Account button must default OFF when no override and no Firebase remote value")
-    }
-
-    /// The local UserDefaults override is the per-device QA escape hatch. A
-    /// `true` value must enable the flag even when the remote default is OFF.
-    func testIsResetAccountEnabled_localOverrideTrue_enablesFlag() {
-        UserDefaults.standard.set(true, forKey: RemoteFeatureFlags.resetAccountLocalOverrideKey)
-        defer { UserDefaults.standard.removeObject(forKey: RemoteFeatureFlags.resetAccountLocalOverrideKey) }
-
-        XCTAssertTrue(RemoteFeatureFlags.shared.isResetAccountEnabled,
-                      "Local override = true must enable the Reset Account button regardless of remote config")
-    }
-
-    /// Override = false must also win — prevents a misconfigured Firebase value
-    /// from forcing the button on for a specific QA device that's been
-    /// explicitly opted out.
-    func testIsResetAccountEnabled_localOverrideFalse_disablesFlag() {
-        UserDefaults.standard.set(false, forKey: RemoteFeatureFlags.resetAccountLocalOverrideKey)
-        defer { UserDefaults.standard.removeObject(forKey: RemoteFeatureFlags.resetAccountLocalOverrideKey) }
-
-        XCTAssertFalse(RemoteFeatureFlags.shared.isResetAccountEnabled,
-                       "Local override = false must disable the Reset Account button regardless of remote config")
-    }
-
-    /// `resetAccountEnabled` must declare device-specific support so per-patron
-    /// rollouts work via the `<key>_device_<id>` Firebase RC pattern. If this
-    /// regresses to false, support's per-patron enablement breaks silently.
-    func testResetAccountEnabled_supportsDeviceSpecificOverride() {
-        XCTAssertTrue(RemoteFeatureFlags.FeatureFlag.resetAccountEnabled.supportsDeviceSpecificOverride,
-                      "resetAccountEnabled must opt into the per-device Firebase RC override pattern")
-    }
+    // The `reset_account_enabled` flag (PP-4282 / HelpSpot 17716) was retired
+    // when the account reset became a permanent Developer Settings feature
+    // (init_401f1be1) — the flag, its accessor, and override key were removed,
+    // so the tests that pinned them were removed with it.
 
     // MARK: - Fetch
 
@@ -166,5 +133,39 @@ final class RemoteFeatureFlagsTests: XCTestCase {
         // In unit tests (no Firebase), values must be identical before and after the no-op fetch
         XCTAssertEqual(flagsBefore, flagsAfter,
                        "fetchIfNeeded() must not change flag values in a test environment without Firebase")
+    }
+
+    // MARK: - FirebaseManager.withTimeout (bounds the remote-config fetch hang)
+
+    /// `withTimeout` must bound an operation that would otherwise hang
+    /// indefinitely — this is what stops `fetchIfNeeded()` from hanging the
+    /// caller (dead network in production / unconfigured Firebase in tests).
+    /// A regression that removed the timeout race would let this run for the
+    /// full inner 10s "hang" (or forever), so the elapsed-time assertion fails.
+    func testWithTimeout_boundsAHangingOperation() async {
+        let start = Date()
+        do {
+            _ = try await FirebaseManager.withTimeout(seconds: 0.2) { () async throws -> Bool in
+                // Simulate a fetch that never completes within the bound.
+                try await Task.sleep(nanoseconds: 10_000_000_000) // 10s
+                return true
+            }
+            XCTFail("withTimeout must throw when the operation exceeds the bound")
+        } catch is FirebaseManager.RemoteConfigFetchTimeout {
+            let elapsed = Date().timeIntervalSince(start)
+            XCTAssertLessThan(elapsed, 2.0,
+                              "withTimeout(0.2s) must bound a hanging operation well under the inner 10s, got \(elapsed)s")
+        } catch {
+            XCTFail("Expected RemoteConfigFetchTimeout, got \(type(of: error)): \(error)")
+        }
+    }
+
+    /// A fast operation must return its value, NOT be falsely timed out —
+    /// kills a mutant that always throws / always loses the race.
+    func testWithTimeout_returnsResultOfFastOperation() async throws {
+        let value = try await FirebaseManager.withTimeout(seconds: 5.0) { () async throws -> Int in
+            42
+        }
+        XCTAssertEqual(value, 42, "withTimeout must return the operation's result when it completes within the bound")
     }
 }

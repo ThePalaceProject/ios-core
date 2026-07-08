@@ -1,0 +1,16 @@
+[
+  {
+    "args" : {
+      "bookID" : "contract-reader2-bookmark-1",
+      "hasProgression" : "false"
+    },
+    "method" : "bookmarkSave.begin"
+  },
+  {
+    "args" : {
+      "appendedCount" : "0",
+      "returnedNonNil" : "false"
+    },
+    "method" : "bookmarkSave.end"
+  }
+]

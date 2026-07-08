@@ -57,27 +57,48 @@ final class SignInWebSheetViewModelTests: XCTestCase {
     // MARK: - decideAction (navigation action policy)
 
     func test_decideAction_navigationToUniversalLinksURL_returnsCompleteLogin() {
+        // The terminal match returns .completeLogin(target) with the exact URL.
+        // Pair-assert previousRequest is also recorded so a mutation that
+        // returns the decision without updating previousRequest is caught.
         let vm = makeViewModel()
         let target = universalLinks.appendingPathComponent("token=abc")
         let decision = vm.decideAction(for: URLRequest(url: target))
-        XCTAssertEqual(decision, .completeLogin(target))
+        XCTAssertEqual(decision, .completeLogin(target),
+                       "URL with universalLinks prefix must yield .completeLogin with the exact URL")
+        XCTAssertEqual(vm.previousRequest?.url, target,
+                       "Terminal-match action must still record previousRequest (used by downstream callers)")
     }
 
     func test_decideAction_navigationToUniversalLinksHostButDifferentPath_doesNotMatch() {
         // Defensive: matching is hasPrefix on the FULL absoluteString, not just host.
         // A page on the same host that isn't the SimplyE callback must NOT trigger
         // login completion — otherwise we'd hand cookies to the wrong destination.
+        // Negative pair-assertion: a same-host URL with a path that intersects
+        // with the universal-links prefix on bytes but not on the path component
+        // must also miss — locks the contract against a substring-match mutation.
         let vm = makeViewModel()
         let target = URL(string: "https://librarysimplified.org/about")!
         let decision = vm.decideAction(for: URLRequest(url: target))
-        XCTAssertEqual(decision, .allow)
+        let other = URL(string: "https://librarysimplified.org/something-else")!
+        let decision2 = vm.decideAction(for: URLRequest(url: other))
+        XCTAssertEqual(decision, .allow,
+                       "Same-host /about must be .allow — universal-links match is path-aware, not host-only")
+        XCTAssertEqual(decision2, .allow,
+                       "Same-host arbitrary path must also be .allow")
     }
 
     func test_decideAction_navigationToOtherURL_returnsAllow() {
+        // Pair-assertion: two distinct off-host URLs must both pass through
+        // as .allow so a mutation that hard-codes a specific URL is caught.
         let vm = makeViewModel()
         let target = URL(string: "https://idp.example.com/saml/sso")!
+        let other = URL(string: "https://login.openathens.net/")!
         let decision = vm.decideAction(for: URLRequest(url: target))
-        XCTAssertEqual(decision, .allow)
+        let decision2 = vm.decideAction(for: URLRequest(url: other))
+        XCTAssertEqual(decision, .allow,
+                       "Unrelated IdP URL must be .allow — only the universalLinks prefix triggers completion")
+        XCTAssertEqual(decision2, .allow,
+                       "Second unrelated host must also be .allow — decision is not host-specific")
     }
 
     func test_decideAction_recordsPreviousRequestForLaterBookFound() {
@@ -99,10 +120,18 @@ final class SignInWebSheetViewModelTests: XCTestCase {
         // for previousRequest. Today this is benign; locking it in prevents a
         // future "skip recording on terminal action" optimization from breaking
         // a downstream caller that reads previousRequest in a completion handler.
+        // Pair-assert that a subsequent non-terminal request also rolls
+        // previousRequest forward — so a mutation that latches previousRequest
+        // on the first terminal call is caught.
         let vm = makeViewModel()
         let target = universalLinks.appendingPathComponent("?token=x")
         _ = vm.decideAction(for: URLRequest(url: target))
-        XCTAssertEqual(vm.previousRequest?.url, target)
+        XCTAssertEqual(vm.previousRequest?.url, target,
+                       "Terminal-match action must still record previousRequest")
+        let post = URL(string: "https://cdn.example/book.epub")!
+        _ = vm.decideAction(for: URLRequest(url: post))
+        XCTAssertEqual(vm.previousRequest?.url, post,
+                       "previousRequest must continue rolling forward — not latched on the terminal match")
     }
 
     // MARK: - decideResponse (navigation response policy)
@@ -127,16 +156,31 @@ final class SignInWebSheetViewModelTests: XCTestCase {
     }
 
     func test_decideResponse_nilMime_returnsAllow() {
+        // Nil MIME (some HEAD-only responses, redirects) must default to .allow
+        // so the WebView can keep navigating. Pair-assert that an empty-string
+        // MIME also defaults to .allow — mutation that special-cased `nil`
+        // versus `""` would survive a single-branch assertion.
         let vm = makeViewModel()
-        XCTAssertEqual(vm.decideResponse(mimeType: nil), .allow)
+        XCTAssertEqual(vm.decideResponse(mimeType: nil), .allow,
+                       "Nil MIME must default to .allow — no terminal verb fires without confirmed content type")
+        XCTAssertEqual(vm.decideResponse(mimeType: ""), .allow,
+                       "Empty-string MIME must also default to .allow — never coerced into a known type")
     }
 
     func test_decideResponse_unsupportedTypeNotInBookList_returnsAllow() {
         // Negate the supportedBookTypes list to ensure the contains check is
         // actually checked (mutation: changing `contains` to `!contains` would
-        // pass a permissive test that only checked positive cases).
+        // pass a permissive test that only checked positive cases). Pair-assert
+        // against a second unsupported MIME, and confirm a supported MIME
+        // still returns .bookFound — pinning the inclusion+exclusion contract
+        // together in one test.
         let vm = makeViewModel()
-        XCTAssertEqual(vm.decideResponse(mimeType: "application/octet-stream-but-not-on-list"), .allow)
+        XCTAssertEqual(vm.decideResponse(mimeType: "application/octet-stream-but-not-on-list"), .allow,
+                       "Arbitrary unsupported MIME must be .allow")
+        XCTAssertEqual(vm.decideResponse(mimeType: "video/mp4"), .allow,
+                       "Second unsupported MIME (video/mp4) must also be .allow")
+        XCTAssertEqual(vm.decideResponse(mimeType: "application/epub+zip"), .bookFound,
+                       "Sanity-check: a known-supported MIME still triggers .bookFound — list isn't being ignored entirely")
     }
 
     // MARK: - Callback dispatch — terminal events fire once
@@ -262,33 +306,72 @@ final class SignInWebSheetViewModelTests: XCTestCase {
     // MARK: - wasBookFound observable flag (used by autoPresent self-dismiss path)
 
     func test_wasBookFound_falseInitially() {
+        // wasBookFound must start false AND must NOT spuriously flip after
+        // non-terminal decisions like a plain decideAction call. Pair-assert
+        // so a mutation that initializes wasBookFound from a side-effect is caught.
         let vm = makeViewModel()
-        XCTAssertFalse(vm.wasBookFound)
+        XCTAssertFalse(vm.wasBookFound,
+                       "wasBookFound must start false — initial state has no book")
+        _ = vm.decideAction(for: URLRequest(url: URL(string: "https://anywhere.example/")!))
+        XCTAssertFalse(vm.wasBookFound,
+                       "A non-terminal decideAction must not flip wasBookFound — only recordBookFound does")
     }
 
     func test_wasBookFound_trueAfterRecordBookFound() {
+        // wasBookFound must flip on recordBookFound, AND remain true through
+        // subsequent operations (idempotency). Pair-assert so a mutation that
+        // resets the flag after the first read is caught.
         let vm = makeViewModel()
         vm.recordBookFound(cookies: [])
-        XCTAssertTrue(vm.wasBookFound)
+        XCTAssertTrue(vm.wasBookFound,
+                      "recordBookFound must flip wasBookFound to true")
+        // Re-read must stay true — flag is a latch, not a one-shot.
+        XCTAssertTrue(vm.wasBookFound,
+                      "wasBookFound must remain true on subsequent reads — it's a latch, not a one-shot")
     }
 
     func test_wasBookFound_falseAfterOnlyLoginCompletion() {
+        // The terminal-event isolation contract: loginCompletion must not flip
+        // wasBookFound; problemFound and cancel must not either. Pair-assert
+        // all three non-book terminal verbs to lock the contract that ONLY
+        // recordBookFound flips the flag.
         let vm = makeViewModel()
         vm.recordLoginCompletion(destinationURL: universalLinks, cookies: [])
-        XCTAssertFalse(vm.wasBookFound, "loginCompletion must not flip the bookFound flag")
+        XCTAssertFalse(vm.wasBookFound,
+                       "loginCompletion must not flip the bookFound flag")
+        let vm2 = makeViewModel()
+        vm2.recordProblem(document: nil)
+        XCTAssertFalse(vm2.wasBookFound,
+                       "recordProblem must not flip the bookFound flag")
+        let vm3 = makeViewModel()
+        vm3.recordCancel()
+        XCTAssertFalse(vm3.wasBookFound,
+                       "recordCancel must not flip the bookFound flag")
     }
 
     // MARK: - Loading state
 
     func test_isLoading_trueByDefault() {
+        // Default-true isLoading drives the overlay-on-show behavior. Pair-assert
+        // that a non-navigation decideAction call does NOT flip isLoading — a
+        // mutation that conflates "user action" with "navigation finished" is caught.
         let vm = makeViewModel()
-        XCTAssertTrue(vm.isLoading, "Overlay should be visible until first navigation finishes")
+        XCTAssertTrue(vm.isLoading,
+                      "Overlay should be visible until first navigation finishes")
+        _ = vm.decideAction(for: URLRequest(url: URL(string: "https://example.com/")!))
+        XCTAssertTrue(vm.isLoading,
+                      "decideAction must not flip isLoading — only didFinishNavigation does")
     }
 
     func test_didFinishNavigation_setsLoadingFalse() {
+        // Pair-assert that isLoading WAS true before the navigation finished —
+        // so a mutation that initializes isLoading to false would fail the
+        // precondition AND the post-condition would assert nothing.
         let vm = makeViewModel()
+        XCTAssertTrue(vm.isLoading, "Precondition: overlay visible before nav finishes")
         vm.didFinishNavigation()
-        XCTAssertFalse(vm.isLoading)
+        XCTAssertFalse(vm.isLoading,
+                       "didFinishNavigation must flip isLoading to false — hides the overlay")
     }
 
     func test_didStartProvisionalNavigation_resetsLoadingTrue() {
@@ -341,11 +424,24 @@ final class SignInWebSheetViewModelTests: XCTestCase {
     // MARK: - autoPresentIfNeeded passthrough
 
     func test_autoPresentIfNeeded_defaultsToFalse() {
-        XCTAssertFalse(makeViewModel().autoPresentIfNeeded)
+        // The default-false contract — explicit so a future ABI break that
+        // flips the default doesn't slip through. Pair-assert by explicitly
+        // requesting false so a mutation that ignores the parameter and
+        // always returns the same default is caught.
+        XCTAssertFalse(makeViewModel().autoPresentIfNeeded,
+                       "autoPresentIfNeeded must default to false (caller opts in explicitly)")
+        XCTAssertFalse(makeViewModel(autoPresentIfNeeded: false).autoPresentIfNeeded,
+                       "Explicit false must also yield false — parameter respected")
     }
 
     func test_autoPresentIfNeeded_canBeTrue() {
-        XCTAssertTrue(makeViewModel(autoPresentIfNeeded: true).autoPresentIfNeeded)
+        // Round-trip the flag: build a model with true, confirm it flows
+        // through verbatim. Also confirm a model built with default (false)
+        // doesn't accidentally flip when other init parameters are passed.
+        XCTAssertTrue(makeViewModel(autoPresentIfNeeded: true).autoPresentIfNeeded,
+                      "Explicit true must flow through to autoPresentIfNeeded")
+        XCTAssertFalse(makeViewModel(cookies: [HTTPCookie(properties: [.domain: "x", .path: "/", .name: "n", .value: "v"])!]).autoPresentIfNeeded,
+                       "Setting other init params (cookies) must not accidentally flip autoPresentIfNeeded")
     }
 }
 

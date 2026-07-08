@@ -39,9 +39,15 @@ final class TPPSettingsTests: XCTestCase {
         defer { settings.customMainFeedURL = original }
 
         var notificationCount = 0
+        // Scope the observer to THIS instance — TPPSettings is no longer a
+        // singleton (8836c3263), so other code paths (parallel tests, the
+        // production AppContainer's own settings instance) can also post
+        // `.TPPSettingsDidChange` during the drain window. `object: nil`
+        // would catch those and inflate the count, producing a CI flake
+        // that doesn't reflect this setter's guard at all.
         let observer = NotificationCenter.default.addObserver(
             forName: Notification.Name.TPPSettingsDidChange,
-            object: nil,
+            object: settings,
             queue: .main
         ) { _ in
             notificationCount += 1
@@ -68,9 +74,14 @@ final class TPPSettingsTests: XCTestCase {
         defer { settings.accountMainFeedURL = original }
 
         var notificationCount = 0
+        // See sibling `testCustomMainFeedURL_setToSameValue...` for why we
+        // scope to `object: settings` instead of `nil` — TPPSettings is no
+        // longer a singleton, and `object: nil` catches notifications from
+        // every other TPPSettings instance in the process, including the
+        // production AppContainer's.
         let observer = NotificationCenter.default.addObserver(
             forName: Notification.Name.TPPSettingsDidChange,
-            object: nil,
+            object: settings,
             queue: .main
         ) { _ in
             notificationCount += 1

@@ -34,6 +34,7 @@
 
 import AuthenticationServices
 import Foundation
+import PalaceAuth
 import PalaceLogging
 import PalaceCatalog
 
@@ -45,6 +46,33 @@ import PalaceCatalog
 protocol BorrowOperationDelegate: AnyObject {
     @MainActor func startDownload(for book: TPPBook, withRequest initedRequest: URLRequest?)
     func startBorrow(for book: TPPBook, attemptDownload: Bool, borrowCompletion: (() -> Void)?)
+}
+
+// MARK: - BorrowAuthErrorDecision
+
+/// Decision returned by `handleBorrowAuthErrorIfNeeded` so the caller in
+/// `borrowAsync` can correctly route the post-decision UI side effects.
+///
+/// - `routeToReauth`: an auth-recovery path (OIDC silent reauth or sign-in
+///   modal) was kicked off. Caller MUST NOT also surface a borrow-error
+///   alert — that would race the re-auth UI and confuse the patron.
+/// - `suppressAndClearSpinner`: SQ-007 case — the book is already in the
+///   patron's loans with active credentials, so the auth-flavored borrow
+///   error is benign (the auto-re-borrow ran but wasn't needed). Caller
+///   MUST NOT show the alert (the toast would be a false credentials
+///   warning) AND MUST ensure the cell spinner is cleared idempotently
+///   (defends against any path that bypasses `clearProcessingState`).
+/// - `showGenericError`: not an auth error OR auth recovery isn't
+///   available — caller proceeds with the standard `showBorrowError`
+///   alert path.
+///
+/// Internal-only by design — we explicitly do NOT expand the public
+/// surface here; the enum threads the decision out of an existing
+/// `private` helper into its existing `private` caller in the same file.
+private enum BorrowAuthErrorDecision {
+    case routeToReauth
+    case suppressAndClearSpinner
+    case showGenericError
 }
 
 // MARK: - BorrowOperation
@@ -107,7 +135,7 @@ final class BorrowOperation {
     ///   downgraded to a hold. Surface the alert.
     ///
     /// Backward-compat: when `preBorrowBook` is nil, retains the original
-    /// PP-4178 behavior (treat `unavailable`/`reserved` as race losses) for
+    /// behavior (treat `unavailable`/`reserved` as race losses) for
     /// callers that don't have pre-borrow context.
     /// Race an async operation against a deadline. Whichever finishes first
     /// wins; the other is cancelled. On deadline expiry, throws
@@ -246,6 +274,19 @@ final class BorrowOperation {
     /// a deterministic Bool.
     private let attemptOIDCReauth: () async -> Bool
 
+    /// swarm_66819d80 Module C: auth-refresh coordinator. When non-nil,
+    /// the SAML / generic browser sign-in modal dispatch inside
+    /// `handleBorrowAuthErrorIfNeeded` routes through the coordinator's
+    /// single seam instead of presenting the modal via the closure-injected
+    /// `presentSignInModal`. The per-book circuit breaker
+    /// (`hasBorrowReauthBeenAttempted`) STAYS — the coordinator is
+    /// process-wide single-flight, NOT per-book, so the per-book guard
+    /// is still required to prevent runaway retries for a specific book.
+    /// The static `attemptOIDCSilentReauth` helper also stays — only its
+    /// trigger routes through the coordinator's fallback on failure.
+    /// Optional so existing tests keep compiling without rework.
+    private let authCoordinator: AuthCoordinator?
+
     // MARK: - Init
 
     #if FEATURE_DRM_CONNECTOR
@@ -260,7 +301,8 @@ final class BorrowOperation {
         fetchBook: @escaping (URL, Bool, Bool) async throws -> TPPBook,
         presentBorrowErrorAlert: @escaping @MainActor (String, String, NSError?, TPPProblemDocument?, TPPBook, (() -> Void)?) -> Void,
         presentSignInModal: @escaping @MainActor (@escaping () -> Void) -> Void,
-        attemptOIDCReauth: @escaping () async -> Bool
+        attemptOIDCReauth: @escaping () async -> Bool,
+        authCoordinator: AuthCoordinator? = nil
     ) {
         self.bookRegistry = bookRegistry
         self.downloadAnnouncementService = downloadAnnouncementService
@@ -273,6 +315,7 @@ final class BorrowOperation {
         self.presentBorrowErrorAlert = presentBorrowErrorAlert
         self.presentSignInModal = presentSignInModal
         self.attemptOIDCReauth = attemptOIDCReauth
+        self.authCoordinator = authCoordinator
     }
     #else
     init(
@@ -285,7 +328,8 @@ final class BorrowOperation {
         fetchBook: @escaping (URL, Bool, Bool) async throws -> TPPBook,
         presentBorrowErrorAlert: @escaping @MainActor (String, String, NSError?, TPPProblemDocument?, TPPBook, (() -> Void)?) -> Void,
         presentSignInModal: @escaping @MainActor (@escaping () -> Void) -> Void,
-        attemptOIDCReauth: @escaping () async -> Bool
+        attemptOIDCReauth: @escaping () async -> Bool,
+        authCoordinator: AuthCoordinator? = nil
     ) {
         self.bookRegistry = bookRegistry
         self.downloadAnnouncementService = downloadAnnouncementService
@@ -297,6 +341,7 @@ final class BorrowOperation {
         self.presentBorrowErrorAlert = presentBorrowErrorAlert
         self.presentSignInModal = presentSignInModal
         self.attemptOIDCReauth = attemptOIDCReauth
+        self.authCoordinator = authCoordinator
     }
     #endif
 
@@ -327,7 +372,7 @@ final class BorrowOperation {
             throw simulated.error
         }
 
-        // PP-3649: ensure Adobe DRM device activation before proceeding.
+        // ensure Adobe DRM device activation before proceeding.
         #if FEATURE_DRM_CONNECTOR
         if book.requiresAdobeDRM {
             Task { [errorActivityTracker] in await errorActivityTracker.log("Book requires Adobe DRM — checking device activation", category: .borrow) }
@@ -371,7 +416,7 @@ final class BorrowOperation {
             await clearProcessingState()
 
             let location = self.bookRegistry.location(forIdentifier: borrowedBook.identifier)
-            // PP-4178 follow-up: pass `book` (pre-borrow) so the helper can
+            // follow-up: pass `book` (pre-borrow) so the helper can
             // tell Place Hold success apart from a CM Loan→Hold race loss.
             let mapping = Self.borrowResponseState(for: borrowedBook, preBorrowBook: book)
 
@@ -405,13 +450,14 @@ final class BorrowOperation {
             // whenever the borrow lands on .downloadNeeded. .holding (hold placed,
             // not yet ready) and other terminal-after-borrow states correctly
             // skip the chain — there's nothing to download yet.
-            if attemptDownload && mapping.state == .downloadNeeded {
+            // PP-4161 advisory F: streaming-HTML has no downloadable asset; readStreaming is the terminal action.
+            if attemptDownload && mapping.state == .downloadNeeded && !borrowedBook.isStreamingHTML {
                 await MainActor.run { [weak self] in
                     self?.delegate?.startDownload(for: borrowedBook, withRequest: nil)
                 }
             }
 
-            // PP-3811: trigger a sync after a short delay so hold position
+            // trigger a sync after a short delay so hold position
             // updates from the loans feed (immediate borrow response often
             // returns holdPosition=0).
             if mapping.state == .holding {
@@ -428,14 +474,38 @@ final class BorrowOperation {
         } catch let error as PalaceError {
             await clearProcessingState()
 
-            if await handleBorrowAuthErrorIfNeeded(error, originalError: nil, for: book, attemptDownload: attemptDownload) {
+            // Pass the PalaceError itself as `originalError` so the predicate
+            // can also inspect `.network(.unauthorized)` / `.network(.forbidden)`
+            // surfacing from a 401-with-no-problem-doc throw path that arrives
+            // here instead of the second catch block (item #7 fix).
+            let decision = await handleBorrowAuthErrorIfNeeded(
+                error,
+                originalError: error,
+                for: book,
+                attemptDownload: attemptDownload
+            )
+
+            switch decision {
+            case .routeToReauth:
+                throw error
+            case .suppressAndClearSpinner:
+                // SQ-007: the book is already in the registry with active
+                // credentials. Skip the misleading alert AND idempotently
+                // re-clear setProcessing — `clearProcessingState` above
+                // already cleared it, but bookRegistry implementations
+                // (e.g. the cell-driven mock used in some UI plumbing
+                // paths) may have flipped it back from a notification
+                // dispatch between then and now. Cheap defense.
+                await MainActor.run {
+                    self.bookRegistry.setProcessing(false, for: book.identifier)
+                }
+                throw error
+            case .showGenericError:
+                await MainActor.run {
+                    self.showBorrowError(error, originalError: nil, for: book)
+                }
                 throw error
             }
-
-            await MainActor.run {
-                self.showBorrowError(error, originalError: nil, for: book)
-            }
-            throw error
         } catch {
             await clearProcessingState()
 
@@ -444,33 +514,60 @@ final class BorrowOperation {
 
             let palaceError = PalaceError.from(error)
 
-            if await handleBorrowAuthErrorIfNeeded(palaceError, originalError: error, for: book, attemptDownload: attemptDownload, problemDocument: problemDoc) {
+            let decision = await handleBorrowAuthErrorIfNeeded(
+                palaceError,
+                originalError: error,
+                for: book,
+                attemptDownload: attemptDownload,
+                problemDocument: problemDoc
+            )
+
+            switch decision {
+            case .routeToReauth:
+                throw palaceError
+            case .suppressAndClearSpinner:
+                await MainActor.run {
+                    self.bookRegistry.setProcessing(false, for: book.identifier)
+                }
+                throw palaceError
+            case .showGenericError:
+                await MainActor.run {
+                    self.showBorrowError(palaceError, originalError: error, for: book, problemDocument: problemDoc)
+                }
                 throw palaceError
             }
-
-            await MainActor.run {
-                self.showBorrowError(palaceError, originalError: error, for: book, problemDocument: problemDoc)
-            }
-            throw palaceError
         }
     }
 
     // MARK: - Auth-Error Handling
 
-    /// Returns `true` if re-auth was triggered (caller should not show error), `false` otherwise.
+    /// Inspects a borrow failure and returns the routing decision the
+    /// caller should follow. See `BorrowAuthErrorDecision` for the
+    /// three cases. Old return contract (`Bool`) coalesced the
+    /// SQ-007 suppression with the "not an auth error at all" path,
+    /// which sent the patron through a misleading credentials alert
+    /// when the auto-re-borrow ran but wasn't needed.
     private func handleBorrowAuthErrorIfNeeded(
         _ error: PalaceError,
         originalError: Error?,
         for book: TPPBook,
         attemptDownload: Bool,
         problemDocument: TPPProblemDocument? = nil
-    ) async -> Bool {
+    ) async -> BorrowAuthErrorDecision {
         let userAccount = userAccountProvider()
         let authDef = userAccount.authDefinition
         let hasCredentials = userAccount.hasCredentials()
 
         let isAuthError: Bool = {
             if case .authentication = error { return true }
+
+            // Item #7: a 401 surfacing as `.network(.unauthorized)` /
+            // `.network(.forbidden)` (e.g. from an OPDS path that strips
+            // the problem doc) must route to re-auth instead of falling
+            // through to a generic "unknown network error" alert.
+            // Drives 35k+ "Network request failed (912)" non-fatals.
+            if case .network(.unauthorized) = error { return true }
+            if case .network(.forbidden) = error { return true }
 
             if let problemDoc = problemDocument {
                 if problemDoc.type == TPPProblemDocument.TypeInvalidCredentials { return true }
@@ -481,9 +578,9 @@ final class BorrowOperation {
                 }
 
                 if problemDoc.type == TPPProblemDocument.TypeNoActiveLoan,
-                   (authDef?.isSaml == true || authDef?.isOidc == true),
+                   authDef?.isBrowserBased == true,
                    hasCredentials {
-                    Log.info(#file, "SAML/OIDC: 'no-active-loan' with active credentials — treating as auth error (PP-3716)")
+                    Log.info(#file, "Browser-based auth (SAML/OIDC/OAuth): 'no-active-loan' with active credentials — treating as auth error (PP-3716; swarm_66819d80 broadened from SAML+OIDC to include OAuth-intermediary)")
                     return true
                 }
             }
@@ -492,10 +589,10 @@ final class BorrowOperation {
                 return true
             }
 
-            return false
+            return true
         }()
 
-        guard isAuthError else { return false }
+        guard isAuthError else { return .showGenericError }
 
         // SQ-007: suppress auth-error if the user already has an active
         // loan for this book. The auto-re-borrow path can fire 401
@@ -516,13 +613,13 @@ final class BorrowOperation {
         }()
         if alreadyHasLoan && hasCredentials {
             Log.warn(#file, "[SQ-007] Borrow auth-error suppressed for '\(book.title)' — book is already in registry with state \(registeredState) and credentials are present. Treating as benign auto-re-borrow failure, not a credentials problem.")
-            return false
+            return .suppressAndClearSpinner
         }
 
         // Circuit breaker: don't re-auth if we already tried for this book.
         guard !Self.hasBorrowReauthBeenAttempted(for: book.identifier) else {
             Log.warn(#file, "Borrow re-auth already attempted for '\(book.title)' - showing error instead")
-            return false
+            return .showGenericError
         }
 
         Log.info(#file, "Borrow failed with auth error for '\(book.title)' - attempting re-authentication")
@@ -532,7 +629,11 @@ final class BorrowOperation {
             userAccount.markCredentialsStale()
         }
 
-        let needsBrowserReauth = (authDef?.isSaml == true || authDef?.isOidc == true) && hasCredentials
+        // Broadened from `(isSaml || isOidc)` to `isBrowserBased` by
+        // swarm_66819d80 so OAuth-intermediary (Clever) follows the same
+        // browser-reauth recovery path as SAML/OIDC. Pinned by
+        // `BorrowOperationCleverReauthTests`.
+        let needsBrowserReauth = (authDef?.isBrowserBased == true) && hasCredentials
         if needsBrowserReauth {
             if authDef?.isOidc == true {
                 Log.info(#file, "OIDC session expired during borrow - attempting silent re-auth via ASWebAuthenticationSession")
@@ -548,14 +649,46 @@ final class BorrowOperation {
                         }
                     }
                 } else {
+                    // swarm_66819d80 Module C: OIDC fallback routes through
+                    // coordinator when wired (modal flow is identical to
+                    // SAML at this point — IdP session needs interactive
+                    // re-establishment). Per Option A, only the FAILURE
+                    // path routes through the coordinator.
                     Log.info(#file, "OIDC silent re-auth failed/cancelled - falling back to sign-in modal")
-                    await presentSignInModalAndRetryBorrow(book: book, attemptDownload: attemptDownload, authLabel: "OIDC")
+                    if let coordinator = self.authCoordinator {
+                        await coordinatorRetryBorrow(
+                            book: book,
+                            attemptDownload: attemptDownload,
+                            coordinator: coordinator,
+                            reason: .oidcRefreshFailed,
+                            authLabel: "OIDC"
+                        )
+                    } else {
+                        await presentSignInModalAndRetryBorrow(book: book, attemptDownload: attemptDownload, authLabel: "OIDC")
+                    }
                 }
             } else {
-                Log.info(#file, "SAML session expired during borrow - credentials marked stale, triggering re-auth flow")
-                await presentSignInModalAndRetryBorrow(book: book, attemptDownload: attemptDownload, authLabel: "SAML")
+                // swarm_66819d80 Module C: SAML / OAuth-intermediary
+                // browser flow routes through coordinator when wired.
+                // Coordinator dispatches modal (always for SAML/OAuth-
+                // intermediary per its routing matrix).
+                Log.info(#file, "SAML/OAuth-intermediary session expired during borrow - credentials marked stale, triggering re-auth flow")
+                if let coordinator = self.authCoordinator {
+                    let reason: ReauthReason = (authDef?.isSaml == true)
+                        ? .samlSessionExpired
+                        : .invalidCredentials
+                    await coordinatorRetryBorrow(
+                        book: book,
+                        attemptDownload: attemptDownload,
+                        coordinator: coordinator,
+                        reason: reason,
+                        authLabel: (authDef?.isSaml == true) ? "SAML" : "OAuth-intermediary"
+                    )
+                } else {
+                    await presentSignInModalAndRetryBorrow(book: book, attemptDownload: attemptDownload, authLabel: "SAML")
+                }
             }
-            return true
+            return .routeToReauth
 
         } else if !hasCredentials && (authDef?.needsAuth ?? false) {
             Log.info(#file, "No credentials for borrow - showing sign-in modal")
@@ -583,11 +716,11 @@ final class BorrowOperation {
                     }
                 }
             }
-            return true
+            return .routeToReauth
         }
 
         Log.warn(#file, "Auth error for \(authDef?.authType.rawValue ?? "unknown") auth type - no automatic recovery")
-        return false
+        return .showGenericError
     }
 
     // MARK: - Error Presentation
@@ -628,7 +761,7 @@ final class BorrowOperation {
             problemDocument: problemDoc
         )
 
-        // PP-3707: gate retry button on per-operation retry budget.
+        // gate retry button on per-operation retry budget.
         let operationId = "borrow-\(book.identifier)"
         let isRetryable = DownloadErrorRecovery.isRetryableForUser(error)
         let canRetry = isRetryable && self.userRetryTracker.canRetry(operationId: operationId)
@@ -729,6 +862,59 @@ final class BorrowOperation {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                     session.start()
                 }
+            }
+        }
+    }
+
+    // MARK: - Coordinator-Routed Retry
+
+    /// swarm_66819d80 Module C: coordinator-routed reauth-then-retry.
+    /// Asks the coordinator to refresh credentials (it dispatches the
+    /// appropriate modal flow per IdP); on success clears the per-book
+    /// circuit breaker and retries the borrow. On failure leaves the
+    /// circuit breaker armed and lets the caller surface the alert.
+    private func coordinatorRetryBorrow(
+        book: TPPBook,
+        attemptDownload: Bool,
+        coordinator: AuthCoordinator,
+        reason: ReauthReason,
+        authLabel: String
+    ) async {
+        let outcome = await coordinator.refreshCredentialsIfNeeded(reason: reason)
+        switch outcome {
+        case .success:
+            guard self.userAccountProvider().hasCredentials() else {
+                Log.info(#file, "\(authLabel) coordinator refresh reported success but credentials missing — not retrying borrow for '\(book.title)'")
+                Self.clearBorrowReauthAttempted(for: book.identifier)
+                return
+            }
+            Log.info(#file, "\(authLabel) coordinator refresh succeeded, retrying borrow for '\(book.title)'")
+            Self.clearBorrowReauthAttempted(for: book.identifier)
+            Task { [weak self] in
+                do {
+                    _ = try await self?.borrowAsync(book, attemptDownload: attemptDownload)
+                } catch {
+                    Log.error(#file, "Retry borrow failed after \(authLabel) coordinator refresh: \(error.localizedDescription)")
+                }
+            }
+        case .failure(let cancellation):
+            Log.info(#file, "\(authLabel) coordinator declined refresh for '\(book.title)' — \(cancellation)")
+            // Per-book circuit-breaker contract: keep the breaker armed on
+            // `.userCancelled` / `.refreshAlreadyFailed` so the same book
+            // doesn't re-prompt the user on a subsequent borrow tap. The
+            // user explicitly said no (or the coordinator is in cooldown
+            // from a recent failure) — re-prompting on the next tap is
+            // exactly the loop the per-book breaker exists to prevent.
+            // Only clear on programming-error cancellations so a future
+            // tap can attempt fresh dispatch once the underlying problem
+            // (e.g., no active account) resolves.
+            switch cancellation {
+            case .userCancelled, .refreshAlreadyFailed:
+                // Keep breaker armed — book stays gated until retry button
+                // (explicit user action) clears or account-switch resets.
+                break
+            case .noActiveAccount, .unsupportedAuthenticationType:
+                Self.clearBorrowReauthAttempted(for: book.identifier)
             }
         }
     }

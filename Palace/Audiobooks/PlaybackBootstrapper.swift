@@ -33,9 +33,9 @@ import PalaceLogging
 /// - `TPPAppDelegate.application(_:didFinishLaunchingWithOptions:)`
 /// - `CarPlaySceneDelegate.templateApplicationScene(_:didConnect:)`
 ///
-/// In production callers go through the `.shared` accessor; in tests
-/// construct a fresh `PlaybackBootstrapper(appContainer:)` with a mock
-/// `audiobookSessionProvider` to avoid hitting the global session.
+/// In production callers go through `AppContainer.production().playbackBootstrapper`;
+/// in tests construct a fresh `PlaybackBootstrapper(appContainer:audiobookSessionProvider:)`
+/// with a mock `audiobookSessionProvider` to avoid hitting the cached session.
 ///
 /// ## Regression Test Plan
 /// 1. Force-quit the Palace app on your phone
@@ -51,10 +51,6 @@ import PalaceLogging
 @MainActor
 public final class PlaybackBootstrapper {
 
-    // MARK: - Singleton
-
-    public static let shared = PlaybackBootstrapper()
-
     // MARK: - State
 
     private var isInitialized = false
@@ -63,10 +59,10 @@ public final class PlaybackBootstrapper {
     private let bookRegistry: TPPBookRegistryProvider
     /// Resolved-on-demand audiobook session. The bootstrapper is constructed
     /// at app launch — long before any audiobook is opened — and the session
-    /// manager itself is a singleton that participates in cold-launch init,
-    /// so taking the reference at construction time would risk an init-order
-    /// race. Closure form lets tests inject a mock and lets the production
-    /// closure resolve `AudiobookSessionManager.shared` lazily.
+    /// manager participates in cold-launch init, so taking the reference at
+    /// construction time would risk an init-order race. Closure form lets
+    /// tests inject a mock and lets the production closure resolve through
+    /// `AppContainer.production().audiobookSession` lazily.
     private let audiobookSessionProvider: () -> AudiobookSessionManaging
 
     // MARK: - Initialization
@@ -85,22 +81,13 @@ public final class PlaybackBootstrapper {
         Log.info(#file, "🚀 Launch context: \(launchReason)")
     }
 
-    /// Backwards-compatible convenience for the singleton accessor. Resolves
-    /// every dependency from `.shared` at first touch.
-    private convenience init() {
-        self.init(
-            bookRegistry: AppContainer.production().bookRegistry,
-            audiobookSessionProvider: { AudiobookSessionManager.shared }
-        )
-    }
-
     /// AppContainer-friendly initializer for future call sites that thread
     /// the container down. Defaults the audiobook session provider to the
     /// `.shared` accessor since AppContainer doesn't currently hold the
     /// audiobook session manager.
     convenience init(
         appContainer: AppContainer,
-        audiobookSessionProvider: @escaping () -> AudiobookSessionManaging = { AudiobookSessionManager.shared }
+        audiobookSessionProvider: @escaping () -> AudiobookSessionManaging
     ) {
         self.init(
             bookRegistry: appContainer.bookRegistry,
@@ -202,13 +189,42 @@ public final class PlaybackBootstrapper {
         // Full initialization if not done yet
         ensureInitialized()
 
-        // Re-activate audio session in case it was deactivated
-        activateAudioSession()
+        // Re-activate audio session in case it was deactivated. Runs as a
+        // detached MainActor task so the synchronous CarPlay `didConnect`
+        // path is NOT blocked by the bounded retry/backoff — the deferral in
+        // `.forgeos/intent/3.2.0-crash-triage.md` flagged a ~1s main-thread
+        // block if this retried synchronously. WS-2 / Crashlytics d45f5aa9.
+        Task { @MainActor [weak self] in
+            await self?.activateAudioSessionWithRetry()
+        }
 
         // Re-apply command configuration to ensure correctness after reconnect
         configureCommandSettings()
 
         Log.debug(#file, "🚀 PlaybackBootstrapper ready for CarPlay")
+    }
+
+    /// Ensure the audio session is configured AND active before a normal (phone)
+    /// audiobook open issues `play()`.
+    ///
+    /// At cold launch `configureAudioSession()` can fail with OSStatus -50 ("no
+    /// scenes yet"), and `setActive(true)` previously ran ONLY on CarPlay connect
+    /// (`ensureInitializedForCarPlay`) or foreground re-entry — never on a plain
+    /// first open. So the first `play()` of a freshly-opened audiobook was issued
+    /// against an INACTIVE session and failed with AVError -11849 ("Operation
+    /// Stopped"), recovering only on a retry/auto-reopen — the "slow to start"
+    /// symptom (pre-existing; also reproduces on 3.1.0, so not a 3.2.0
+    /// regression). By open time the scenes ARE connected, so re-running the
+    /// category setup now succeeds, and we activate with the same bounded retry
+    /// used for CarPlay. Idempotent and safe to call on every open; the activator
+    /// skips activation when other audio is already playing. Fire-and-forget so
+    /// the synchronous open path is never blocked by the backoff.
+    // PUBLIC_INTENT: lifecycle entry point on the public PlaybackBootstrapper, matching the sibling `public` ensureInitialized()/ensureInitializedForCarPlay() bootstrap surface.
+    public func ensureAudioSessionActiveForPlayback() {
+        configureAudioSession()
+        Task { @MainActor [weak self] in
+            await self?.activateAudioSessionWithRetry()
+        }
     }
 
     // MARK: - Audio Session
@@ -238,16 +254,33 @@ public final class PlaybackBootstrapper {
         }
     }
 
-    private func activateAudioSession() {
+    /// Activates the audio session with a bounded async retry/backoff.
+    ///
+    /// CarPlay cold launch can transiently refuse activation (observed
+    /// OSStatus 561015905, plus `-50` in the very-early window). Before WS-2
+    /// a single refusal left the session inactive, so the toolkit's
+    /// OpenAccessPlayer reported not-ready and the CarPlay play command hit
+    /// `.playerNotReady` (Crashlytics d45f5aa9). The retry gives the session
+    /// time to become active before play is issued. Async so the bounded
+    /// backoff never blocks the MainActor `didConnect` path.
+    private func activateAudioSessionWithRetry() async {
         let session = AVAudioSession.sharedInstance()
-
-        do {
-            if !session.isOtherAudioPlaying {
-                try session.setActive(true)
-                Log.debug(#file, "🔊 Audio session activated")
+        let activator = AudioSessionActivator(
+            isOtherAudioPlaying: { session.isOtherAudioPlaying },
+            setActive: { try session.setActive(true) },
+            sleep: { seconds in
+                let nanos = UInt64(max(0, seconds) * 1_000_000_000)
+                try? await Task.sleep(nanoseconds: nanos)
             }
-        } catch {
-            Log.error(#file, "🔊 Failed to activate audio session: \(error)")
+        )
+
+        switch await activator.activate() {
+        case .activated(let attempts):
+            Log.debug(#file, "🔊 Audio session activated (attempts: \(attempts))")
+        case .skippedOtherAudioPlaying:
+            Log.debug(#file, "🔊 Audio session activation skipped — other audio playing")
+        case .failed(let attempts, let code):
+            Log.error(#file, "🔊 Failed to activate audio session after \(attempts) attempts (last OSStatus \(code))")
         }
     }
 

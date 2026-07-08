@@ -1,3 +1,14 @@
+---
+name: regression-qa-qa-quickstart
+type: evolving
+status: active
+created: 2026-05-11
+last_refresh: 2026-05-12
+freshness_window: 365d
+owners: [general]
+description: QA Quickstart — Manual Regression with Claude Code
+---
+
 # QA Quickstart — Manual Regression with Claude Code
 
 This is the manual-only regression flow. No simdrive, no automation tooling, no maintainer-only setup. Everything runs from a fresh ios-core clone.

@@ -18,9 +18,16 @@ import Combine
 /// hit the production registry / TPPUserAccount.sharedAccount, which can
 /// deadlock on CI when the main-thread syncQueue and notification observers
 /// re-enter loadData().
+///
+/// swarm_47883816 work package A — sources collaborators from a fresh
+/// isolated AppContainer (built per call) rather than the process-wide
+/// `AppContainer.production()` graph. Each call mints a fresh container,
+/// so the downloadCenter + accountsManager passed to MyBooksViewModel
+/// cannot retain state across tests.
 @MainActor
 private func makeViewModel() -> MyBooksViewModel {
-    MyBooksViewModel(bookRegistry: TPPBookRegistryMock(), accountsManager: AppContainer.production().accountsManager, settings: TPPSettings(), downloadCenter: AppContainer.production().downloadCenter, isUserAuthorizedForRegistry: { true })
+    let appContainer = makeTestAppContainer()
+    return MyBooksViewModel(bookRegistry: TPPBookRegistryMock(), accountsManager: appContainer.accountsManager, settings: TPPSettings(), downloadCenter: appContainer.downloadCenter, isUserAuthorizedForRegistry: { true })
 }
 
 // MARK: - Facet Enum Tests (Real Production Enum)
@@ -77,7 +84,8 @@ final class GroupEnumTests: XCTestCase {
     // Verify that groupSortBy is the only case and that the FacetViewModel
     // receives the correct group name from MyBooksViewModel.
     func testGroup_UsedAsSection_FacetViewModelGroupNameMatches() {
-        let vm = MyBooksViewModel(bookRegistry: TPPBookRegistryMock(), accountsManager: AppContainer.production().accountsManager, settings: TPPSettings(), downloadCenter: AppContainer.production().downloadCenter, isUserAuthorizedForRegistry: { true })
+        let appContainer = makeTestAppContainer()
+        let vm = MyBooksViewModel(bookRegistry: TPPBookRegistryMock(), accountsManager: appContainer.accountsManager, settings: TPPSettings(), downloadCenter: appContainer.downloadCenter, isUserAuthorizedForRegistry: { true })
         XCTAssertEqual(vm.facetViewModel.groupName, Strings.MyBooksView.sortBy,
             "FacetViewModel must use the Sort By group name so the picker header is localised correctly")
     }
@@ -150,7 +158,8 @@ final class MyBooksViewModelExtendedTests: XCTestCase {
             TPPBookMocker.mockBook(identifier: "b1", title: "Harry Potter"),
             TPPBookMocker.mockBook(identifier: "b2", title: "Lord of the Rings")
         ]
-        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: AppContainer.production().accountsManager, settings: TPPSettings(), downloadCenter: AppContainer.production().downloadCenter, isUserAuthorizedForRegistry: { true })
+        let appContainer = makeTestAppContainer()
+        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: appContainer.accountsManager, settings: TPPSettings(), downloadCenter: appContainer.downloadCenter, isUserAuthorizedForRegistry: { true })
 
         // Act: filter to narrow, then clear
         await viewModel.filterBooks(query: "Harry")
@@ -168,7 +177,8 @@ final class MyBooksViewModelExtendedTests: XCTestCase {
             TPPBookMocker.mockBook(identifier: "b1", title: "Harry Potter"),
             TPPBookMocker.mockBook(identifier: "b2", title: "Lord of the Rings")
         ]
-        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: AppContainer.production().accountsManager, settings: TPPSettings(), downloadCenter: AppContainer.production().downloadCenter, isUserAuthorizedForRegistry: { true })
+        let appContainer = makeTestAppContainer()
+        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: appContainer.accountsManager, settings: TPPSettings(), downloadCenter: appContainer.downloadCenter, isUserAuthorizedForRegistry: { true })
 
         // Act
         await viewModel.filterBooks(query: "Harry")
@@ -187,7 +197,8 @@ final class MyBooksViewModelExtendedTests: XCTestCase {
             TPPBookMocker.mockBook(identifier: "r1", title: "Harry Potter"),
             TPPBookMocker.mockBook(identifier: "r2", title: "Moby Dick")
         ]
-        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: AppContainer.production().accountsManager, settings: TPPSettings(), downloadCenter: AppContainer.production().downloadCenter, isUserAuthorizedForRegistry: { true })
+        let appContainer = makeTestAppContainer()
+        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: appContainer.accountsManager, settings: TPPSettings(), downloadCenter: appContainer.downloadCenter, isUserAuthorizedForRegistry: { true })
         await viewModel.filterBooks(query: "Harry")
         XCTAssertEqual(viewModel.books.count, 1, "Precondition: filter must have narrowed the list")
 
@@ -208,7 +219,8 @@ final class MyBooksViewModelExtendedTests: XCTestCase {
             TPPBookMocker.mockBook(identifier: "s1", title: "Book", authors: "Zane Grey"),
             TPPBookMocker.mockBook(identifier: "s2", title: "Book", authors: "Anne Rice")
         ]
-        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: AppContainer.production().accountsManager, settings: TPPSettings(), downloadCenter: AppContainer.production().downloadCenter, isUserAuthorizedForRegistry: { true })
+        let appContainer = makeTestAppContainer()
+        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: appContainer.accountsManager, settings: TPPSettings(), downloadCenter: appContainer.downloadCenter, isUserAuthorizedForRegistry: { true })
 
         // Act: switch sort to author
         viewModel.facetViewModel.activeSort = .author
@@ -226,7 +238,8 @@ final class MyBooksViewModelExtendedTests: XCTestCase {
             TPPBookMocker.mockBook(identifier: "t1", title: "Zebra Stories"),
             TPPBookMocker.mockBook(identifier: "t2", title: "Apple Tales")
         ]
-        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: AppContainer.production().accountsManager, settings: TPPSettings(), downloadCenter: AppContainer.production().downloadCenter, isUserAuthorizedForRegistry: { true })
+        let appContainer = makeTestAppContainer()
+        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: appContainer.accountsManager, settings: TPPSettings(), downloadCenter: appContainer.downloadCenter, isUserAuthorizedForRegistry: { true })
 
         // Act: switch sort to title
         viewModel.facetViewModel.activeSort = .title
@@ -243,11 +256,12 @@ final class MyBooksViewModelExtendedTests: XCTestCase {
         // Arrange: mock registry reports it is syncing
         let mock = TPPBookRegistryMock()
         mock.isSyncing = true
-        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: AppContainer.production().accountsManager, settings: TPPSettings(), downloadCenter: AppContainer.production().downloadCenter, isUserAuthorizedForRegistry: { true })
+        let appContainer = makeTestAppContainer()
+        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: appContainer.accountsManager, settings: TPPSettings(), downloadCenter: appContainer.downloadCenter, isUserAuthorizedForRegistry: { true })
 
         // Act: trigger account loading while syncing
         // (loadAccount only needs isSyncing to be true to show the alert)
-        guard let currentAccount = AppContainer.production().accountsManager.currentAccount else {
+        guard let currentAccount = appContainer.accountsManager.currentAccount else {
             // If no account is configured in the test environment, set the alert directly
             // to verify the alert machinery works
             viewModel.alert = AlertModel(
@@ -269,7 +283,8 @@ final class MyBooksViewModelExtendedTests: XCTestCase {
     func testAlert_ClearsOnNilAssignment() {
         // Arrange: set an alert via the published property
         let mock = TPPBookRegistryMock()
-        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: AppContainer.production().accountsManager, settings: TPPSettings(), downloadCenter: AppContainer.production().downloadCenter, isUserAuthorizedForRegistry: { true })
+        let appContainer = makeTestAppContainer()
+        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: appContainer.accountsManager, settings: TPPSettings(), downloadCenter: appContainer.downloadCenter, isUserAuthorizedForRegistry: { true })
         viewModel.alert = AlertModel(
             title: Strings.MyBooksView.accountSyncingAlertTitle,
             message: Strings.MyBooksView.accountSyncingAlertMessage
@@ -370,7 +385,8 @@ final class MyBooksViewModelLoginStateTests: XCTestCase {
         mock.myBooks = []
 
         // Act
-        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: AppContainer.production().accountsManager, settings: TPPSettings(), downloadCenter: AppContainer.production().downloadCenter, isUserAuthorizedForRegistry: { true })
+        let appContainer = makeTestAppContainer()
+        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: appContainer.accountsManager, settings: TPPSettings(), downloadCenter: appContainer.downloadCenter, isUserAuthorizedForRegistry: { true })
 
         // Assert: empty state shows the instructions label
         XCTAssertTrue(viewModel.showInstructionsLabel,
@@ -384,7 +400,8 @@ final class MyBooksViewModelLoginStateTests: XCTestCase {
         mock.myBooks = [TPPBookMocker.mockBook(identifier: "x1", title: "One Book")]
 
         // Act
-        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: AppContainer.production().accountsManager, settings: TPPSettings(), downloadCenter: AppContainer.production().downloadCenter, isUserAuthorizedForRegistry: { true })
+        let appContainer = makeTestAppContainer()
+        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: appContainer.accountsManager, settings: TPPSettings(), downloadCenter: appContainer.downloadCenter, isUserAuthorizedForRegistry: { true })
 
         // Assert
         XCTAssertFalse(viewModel.showInstructionsLabel,
@@ -403,7 +420,8 @@ final class MyBooksViewModelLoginStateTests: XCTestCase {
         ]
 
         // Act
-        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: AppContainer.production().accountsManager, settings: TPPSettings(), downloadCenter: AppContainer.production().downloadCenter, isUserAuthorizedForRegistry: { true })
+        let appContainer = makeTestAppContainer()
+        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: appContainer.accountsManager, settings: TPPSettings(), downloadCenter: appContainer.downloadCenter, isUserAuthorizedForRegistry: { true })
 
         // Assert: all three books are surfaced through the published property
         XCTAssertEqual(viewModel.books.count, 3,
@@ -417,19 +435,20 @@ final class MyBooksViewModelLoginStateTests: XCTestCase {
         // Arrange: start with empty registry
         let mock = TPPBookRegistryMock()
         mock.myBooks = []
-        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: AppContainer.production().accountsManager, settings: TPPSettings(), downloadCenter: AppContainer.production().downloadCenter, isUserAuthorizedForRegistry: { true })
+        let appContainer = makeTestAppContainer()
+        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: appContainer.accountsManager, settings: TPPSettings(), downloadCenter: appContainer.downloadCenter, isUserAuthorizedForRegistry: { true })
         XCTAssertEqual(viewModel.books.count, 0, "Precondition: empty")
 
         // Act: mark visible (ViewModel ignores notifications when offscreen),
         // add a book, and fire the registry-change notification (debounced 300 ms)
         viewModel.isVisible = true
         mock.myBooks = [TPPBookMocker.mockBook(identifier: "n1", title: "New Book")]
-        let expectation = XCTestExpectation(description: "books updated after notification")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            expectation.fulfill()
-        }
         NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
-        wait(for: [expectation], timeout: 2.0)
+
+        // Poll the observable state directly — the debounced reload hops the
+        // main queue, so we wait on the published `books` array landing the
+        // newly registered book rather than a fixed-delay sleep.
+        awaitCondition(timeout: 5.0) { viewModel.books.count == 1 }
 
         // Assert: the viewModel now exposes the new book
         XCTAssertEqual(viewModel.books.count, 1,
@@ -716,7 +735,8 @@ final class MyBooksViewModelFilterTests: XCTestCase {
             TPPBookMocker.mockBook(identifier: "r1", title: "Reset Book 1"),
             TPPBookMocker.mockBook(identifier: "r2", title: "Reset Book 2")
         ]
-        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: AppContainer.production().accountsManager, settings: TPPSettings(), downloadCenter: AppContainer.production().downloadCenter, isUserAuthorizedForRegistry: { true })
+        let appContainer = makeTestAppContainer()
+        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: appContainer.accountsManager, settings: TPPSettings(), downloadCenter: appContainer.downloadCenter, isUserAuthorizedForRegistry: { true })
 
         viewModel.searchQuery = "Some Query"
         viewModel.resetFilter()
@@ -836,7 +856,8 @@ final class MyBooksViewModelEmptyStateTests: XCTestCase {
     func testShowInstructionsLabel_TrueWhenRegistryEmpty() {
         let mock = TPPBookRegistryMock()
         mock.myBooks = []
-        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: AppContainer.production().accountsManager, settings: TPPSettings(), downloadCenter: AppContainer.production().downloadCenter, isUserAuthorizedForRegistry: { true })
+        let appContainer = makeTestAppContainer()
+        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: appContainer.accountsManager, settings: TPPSettings(), downloadCenter: appContainer.downloadCenter, isUserAuthorizedForRegistry: { true })
 
         XCTAssertTrue(viewModel.showInstructionsLabel,
             "Empty registry must show the instructions label so the user knows how to add a library")
@@ -846,7 +867,8 @@ final class MyBooksViewModelEmptyStateTests: XCTestCase {
     func testShowInstructionsLabel_FalseWhenRegistryHasBooks() {
         let mock = TPPBookRegistryMock()
         mock.myBooks = [TPPBookMocker.mockBook(identifier: "e1", title: "Any Book")]
-        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: AppContainer.production().accountsManager, settings: TPPSettings(), downloadCenter: AppContainer.production().downloadCenter, isUserAuthorizedForRegistry: { true })
+        let appContainer = makeTestAppContainer()
+        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: appContainer.accountsManager, settings: TPPSettings(), downloadCenter: appContainer.downloadCenter, isUserAuthorizedForRegistry: { true })
 
         XCTAssertFalse(viewModel.showInstructionsLabel,
             "Non-empty registry must hide the instructions label")
@@ -861,7 +883,8 @@ final class MyBooksViewModelEmptyStateTests: XCTestCase {
             TPPBookMocker.mockBook(identifier: "p1", title: "Book A"),
             TPPBookMocker.mockBook(identifier: "p2", title: "Book B")
         ]
-        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: AppContainer.production().accountsManager, settings: TPPSettings(), downloadCenter: AppContainer.production().downloadCenter, isUserAuthorizedForRegistry: { true })
+        let appContainer = makeTestAppContainer()
+        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: appContainer.accountsManager, settings: TPPSettings(), downloadCenter: appContainer.downloadCenter, isUserAuthorizedForRegistry: { true })
         viewModel.$books.sink { emitted.append($0) }.store(in: &cancellables)
 
         // Assert: the first emission (current state) already contains the two registry books
@@ -874,7 +897,8 @@ final class MyBooksViewModelEmptyStateTests: XCTestCase {
     func testBooksAndInstructionsLabel_CoordinateAfterFilterReset() async {
         let mock = TPPBookRegistryMock()
         mock.myBooks = [TPPBookMocker.mockBook(identifier: "c1", title: "Only Book")]
-        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: AppContainer.production().accountsManager, settings: TPPSettings(), downloadCenter: AppContainer.production().downloadCenter, isUserAuthorizedForRegistry: { true })
+        let appContainer = makeTestAppContainer()
+        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: appContainer.accountsManager, settings: TPPSettings(), downloadCenter: appContainer.downloadCenter, isUserAuthorizedForRegistry: { true })
 
         // Narrow to zero matches
         await viewModel.filterBooks(query: "NoMatchXYZ")
@@ -902,8 +926,9 @@ final class MyBooksViewModelLoadAccountTests: XCTestCase {
         // Arrange: registry is syncing
         let mock = TPPBookRegistryMock()
         mock.isSyncing = true
-        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: AppContainer.production().accountsManager, settings: TPPSettings(), downloadCenter: AppContainer.production().downloadCenter, isUserAuthorizedForRegistry: { true })
-        let account = AppContainer.production().accountsManager.currentAccount ?? TPPLibraryAccountMock().tppAccount
+        let appContainer = makeTestAppContainer()
+        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: appContainer.accountsManager, settings: TPPSettings(), downloadCenter: appContainer.downloadCenter, isUserAuthorizedForRegistry: { true })
+        let account = appContainer.accountsManager.currentAccount ?? TPPLibraryAccountMock().tppAccount
 
         // Act
         viewModel.loadAccount(account)
@@ -920,8 +945,9 @@ final class MyBooksViewModelLoadAccountTests: XCTestCase {
         // Arrange: registry is NOT syncing
         let mock = TPPBookRegistryMock()
         mock.isSyncing = false
-        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: AppContainer.production().accountsManager, settings: TPPSettings(), downloadCenter: AppContainer.production().downloadCenter, isUserAuthorizedForRegistry: { true })
-        let account = AppContainer.production().accountsManager.currentAccount ?? TPPLibraryAccountMock().tppAccount
+        let appContainer = makeTestAppContainer()
+        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: appContainer.accountsManager, settings: TPPSettings(), downloadCenter: appContainer.downloadCenter, isUserAuthorizedForRegistry: { true })
+        let account = appContainer.accountsManager.currentAccount ?? TPPLibraryAccountMock().tppAccount
 
         // Act
         viewModel.loadAccount(account)
@@ -945,7 +971,8 @@ final class MyBooksViewModelDownloadStateTests: XCTestCase {
         let book = TPPBookMocker.mockBook(identifier: "dl1", title: "Downloading Book")
         mock.myBooks = [book]
         mock.addBook(book, state: .downloading)
-        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: AppContainer.production().accountsManager, settings: TPPSettings(), downloadCenter: AppContainer.production().downloadCenter, isUserAuthorizedForRegistry: { true })
+        let appContainer = makeTestAppContainer()
+        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: appContainer.accountsManager, settings: TPPSettings(), downloadCenter: appContainer.downloadCenter, isUserAuthorizedForRegistry: { true })
 
         // Act: mark it complete in the registry
         mock.setState(.downloadSuccessful, for: book.identifier)
@@ -963,7 +990,8 @@ final class MyBooksViewModelDownloadStateTests: XCTestCase {
         let book = TPPBookMocker.mockBook(identifier: "dl2", title: "Failed Download")
         mock.myBooks = [book]
         mock.addBook(book, state: .downloading)
-        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: AppContainer.production().accountsManager, settings: TPPSettings(), downloadCenter: AppContainer.production().downloadCenter, isUserAuthorizedForRegistry: { true })
+        let appContainer = makeTestAppContainer()
+        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: appContainer.accountsManager, settings: TPPSettings(), downloadCenter: appContainer.downloadCenter, isUserAuthorizedForRegistry: { true })
 
         mock.setState(.downloadFailed, for: book.identifier)
         mock.myBooks = [book]
@@ -981,7 +1009,8 @@ final class MyBooksViewModelDownloadStateTests: XCTestCase {
         // Add to registry as holding but do NOT add to myBooks
         mock.addBook(holdBook, state: .holding)
         mock.myBooks = []  // My Books only shows checked-out/downloaded books
-        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: AppContainer.production().accountsManager, settings: TPPSettings(), downloadCenter: AppContainer.production().downloadCenter, isUserAuthorizedForRegistry: { true })
+        let appContainer = makeTestAppContainer()
+        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: appContainer.accountsManager, settings: TPPSettings(), downloadCenter: appContainer.downloadCenter, isUserAuthorizedForRegistry: { true })
 
         XCTAssertEqual(viewModel.books.count, 0,
             "Held books absent from myBooks must not appear in the My Books list")
@@ -997,7 +1026,8 @@ final class MyBooksViewModelNotificationTests: XCTestCase {
     func testRegistryChangeNotification_IsRegistered() {
         let mock = TPPBookRegistryMock()
         mock.myBooks = [TPPBookMocker.mockBook(identifier: "notif1", title: "Notif Book")]
-        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: AppContainer.production().accountsManager, settings: TPPSettings(), downloadCenter: AppContainer.production().downloadCenter, isUserAuthorizedForRegistry: { true })
+        let appContainer = makeTestAppContainer()
+        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: appContainer.accountsManager, settings: TPPSettings(), downloadCenter: appContainer.downloadCenter, isUserAuthorizedForRegistry: { true })
         let bookCountBefore = viewModel.books.count
 
         NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
@@ -1011,7 +1041,8 @@ final class MyBooksViewModelNotificationTests: XCTestCase {
     func testStateChangeNotification_IsRegistered() {
         let mock = TPPBookRegistryMock()
         mock.myBooks = []
-        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: AppContainer.production().accountsManager, settings: TPPSettings(), downloadCenter: AppContainer.production().downloadCenter, isUserAuthorizedForRegistry: { true })
+        let appContainer = makeTestAppContainer()
+        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: appContainer.accountsManager, settings: TPPSettings(), downloadCenter: appContainer.downloadCenter, isUserAuthorizedForRegistry: { true })
 
         NotificationCenter.default.post(name: .TPPBookRegistryStateDidChange, object: nil)
 
@@ -1023,7 +1054,8 @@ final class MyBooksViewModelNotificationTests: XCTestCase {
     func testSyncEndedNotification_IsRegistered() {
         let mock = TPPBookRegistryMock()
         mock.myBooks = []
-        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: AppContainer.production().accountsManager, settings: TPPSettings(), downloadCenter: AppContainer.production().downloadCenter, isUserAuthorizedForRegistry: { true })
+        let appContainer = makeTestAppContainer()
+        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: appContainer.accountsManager, settings: TPPSettings(), downloadCenter: appContainer.downloadCenter, isUserAuthorizedForRegistry: { true })
 
         NotificationCenter.default.post(name: .TPPSyncEnded, object: nil)
 
@@ -1036,7 +1068,8 @@ final class MyBooksViewModelNotificationTests: XCTestCase {
     func testSyncEndedNotification_CausesBookListToUpdate() {
         let mock = TPPBookRegistryMock()
         mock.myBooks = []
-        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: AppContainer.production().accountsManager, settings: TPPSettings(), downloadCenter: AppContainer.production().downloadCenter, isUserAuthorizedForRegistry: { true })
+        let appContainer = makeTestAppContainer()
+        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: appContainer.accountsManager, settings: TPPSettings(), downloadCenter: appContainer.downloadCenter, isUserAuthorizedForRegistry: { true })
         XCTAssertEqual(viewModel.books.count, 0, "Precondition: empty list")
 
         // Simulate sync completing and bringing in a new book
@@ -1107,7 +1140,8 @@ final class MyBooksViewModelGuardConditionsTests: XCTestCase {
     func testLoadData_CompletesWithIsLoadingFalse() {
         let mock = TPPBookRegistryMock()
         mock.myBooks = [TPPBookMocker.mockBook(identifier: "g1", title: "Guard Book")]
-        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: AppContainer.production().accountsManager, settings: TPPSettings(), downloadCenter: AppContainer.production().downloadCenter, isUserAuthorizedForRegistry: { true })
+        let appContainer = makeTestAppContainer()
+        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: appContainer.accountsManager, settings: TPPSettings(), downloadCenter: appContainer.downloadCenter, isUserAuthorizedForRegistry: { true })
 
         // Assert: loading gate closed and books are ready
         XCTAssertFalse(viewModel.isLoading,
@@ -1124,7 +1158,8 @@ final class MyBooksViewModelGuardConditionsTests: XCTestCase {
             TPPBookMocker.mockBook(identifier: "s1", title: "Swift Guide"),
             TPPBookMocker.mockBook(identifier: "s2", title: "Python Primer")
         ]
-        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: AppContainer.production().accountsManager, settings: TPPSettings(), downloadCenter: AppContainer.production().downloadCenter, isUserAuthorizedForRegistry: { true })
+        let appContainer = makeTestAppContainer()
+        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: appContainer.accountsManager, settings: TPPSettings(), downloadCenter: appContainer.downloadCenter, isUserAuthorizedForRegistry: { true })
 
         // First filter
         await viewModel.filterBooks(query: "Swift")
@@ -1250,7 +1285,8 @@ final class MyBooksViewModelBooksPublisherTests: XCTestCase {
             TPPBookMocker.mockBook(identifier: "bp1", title: "Readium Guide"),
             TPPBookMocker.mockBook(identifier: "bp2", title: "Swift Programming")
         ]
-        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: AppContainer.production().accountsManager, settings: TPPSettings(), downloadCenter: AppContainer.production().downloadCenter, isUserAuthorizedForRegistry: { true })
+        let appContainer = makeTestAppContainer()
+        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: appContainer.accountsManager, settings: TPPSettings(), downloadCenter: appContainer.downloadCenter, isUserAuthorizedForRegistry: { true })
         XCTAssertEqual(viewModel.books.count, 2, "Precondition: both books present")
 
         // Act: filter to only "Readium Guide"
@@ -1269,7 +1305,8 @@ final class MyBooksViewModelBooksPublisherTests: XCTestCase {
             TPPBookMocker.mockBook(identifier: "br1", title: "Alpha"),
             TPPBookMocker.mockBook(identifier: "br2", title: "Beta")
         ]
-        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: AppContainer.production().accountsManager, settings: TPPSettings(), downloadCenter: AppContainer.production().downloadCenter, isUserAuthorizedForRegistry: { true })
+        let appContainer = makeTestAppContainer()
+        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: appContainer.accountsManager, settings: TPPSettings(), downloadCenter: appContainer.downloadCenter, isUserAuthorizedForRegistry: { true })
 
         await viewModel.filterBooks(query: "Alpha")
         XCTAssertEqual(viewModel.books.count, 1, "Precondition: filter narrowed to 1")
@@ -1290,7 +1327,8 @@ final class MyBooksViewModelConcurrencyTests: XCTestCase {
     func testLoadData_AfterInit_IsNotLoadingAndHasBooks() {
         let mock = TPPBookRegistryMock()
         mock.myBooks = [TPPBookMocker.mockBook(identifier: "c1", title: "Concurrency Book")]
-        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: AppContainer.production().accountsManager, settings: TPPSettings(), downloadCenter: AppContainer.production().downloadCenter, isUserAuthorizedForRegistry: { true })
+        let appContainer = makeTestAppContainer()
+        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: appContainer.accountsManager, settings: TPPSettings(), downloadCenter: appContainer.downloadCenter, isUserAuthorizedForRegistry: { true })
 
         XCTAssertFalse(viewModel.isLoading, "isLoading must be false after init")
         XCTAssertEqual(viewModel.books.count, 1, "Books must be populated")
@@ -1301,7 +1339,8 @@ final class MyBooksViewModelConcurrencyTests: XCTestCase {
         let mock = TPPBookRegistryMock()
         mock.isSyncing = false
         mock.myBooks = [TPPBookMocker.mockBook(identifier: "c2", title: "Reload Book")]
-        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: AppContainer.production().accountsManager, settings: TPPSettings(), downloadCenter: AppContainer.production().downloadCenter, isUserAuthorizedForRegistry: { true })
+        let appContainer = makeTestAppContainer()
+        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: appContainer.accountsManager, settings: TPPSettings(), downloadCenter: appContainer.downloadCenter, isUserAuthorizedForRegistry: { true })
 
         // reloadData on a non-auth library will call sync then loadData
         // Since mock.sync() is synchronous, the result is deterministic
@@ -1316,7 +1355,8 @@ final class MyBooksViewModelConcurrencyTests: XCTestCase {
             TPPBookMocker.mockBook(identifier: "fc2", title: "Beta Chronicles"),
             TPPBookMocker.mockBook(identifier: "fc3", title: "Gamma Files")
         ]
-        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: AppContainer.production().accountsManager, settings: TPPSettings(), downloadCenter: AppContainer.production().downloadCenter, isUserAuthorizedForRegistry: { true })
+        let appContainer = makeTestAppContainer()
+        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: appContainer.accountsManager, settings: TPPSettings(), downloadCenter: appContainer.downloadCenter, isUserAuthorizedForRegistry: { true })
 
         await viewModel.filterBooks(query: "Alpha")
         XCTAssertEqual(viewModel.books.count, 1, "First query: only Alpha")
@@ -1337,7 +1377,8 @@ final class MyBooksViewModelConcurrencyTests: XCTestCase {
             TPPBookMocker.mockBook(identifier: "r1", title: "Query 5 Book"),
             TPPBookMocker.mockBook(identifier: "r2", title: "Something Else")
         ]
-        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: AppContainer.production().accountsManager, settings: TPPSettings(), downloadCenter: AppContainer.production().downloadCenter, isUserAuthorizedForRegistry: { true })
+        let appContainer = makeTestAppContainer()
+        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: appContainer.accountsManager, settings: TPPSettings(), downloadCenter: appContainer.downloadCenter, isUserAuthorizedForRegistry: { true })
 
         // Simulate rapid changes ending on "Query 5"
         for i in 0..<5 {
@@ -1596,17 +1637,22 @@ final class MyBooksViewModelStateTransitionTests: XCTestCase {
         // Arrange: empty registry — label must show
         let mock = TPPBookRegistryMock()
         mock.myBooks = []
-        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: AppContainer.production().accountsManager, settings: TPPSettings(), downloadCenter: AppContainer.production().downloadCenter, isUserAuthorizedForRegistry: { true })
+        let appContainer = makeTestAppContainer()
+        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: appContainer.accountsManager, settings: TPPSettings(), downloadCenter: appContainer.downloadCenter, isUserAuthorizedForRegistry: { true })
         XCTAssertTrue(viewModel.showInstructionsLabel,
             "Precondition: empty registry must show instructions label")
 
         // Act: mark visible, add a book to the registry, and fire the change notification
         viewModel.isVisible = true
         mock.myBooks = [TPPBookMocker.mockBook(identifier: "st2", title: "New Book")]
-        let exp = XCTestExpectation(description: "showInstructionsLabel transitions to false")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { exp.fulfill() }
         NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
-        wait(for: [exp], timeout: 3.0)
+
+        // Wait on the production-observable transition rather than a fixed
+        // delay — the debounced loadData publishes the new `books` array on
+        // the main queue and clears `showInstructionsLabel` in the same pass.
+        awaitCondition(timeout: 5.0) {
+            viewModel.books.count == 1 && viewModel.showInstructionsLabel == false
+        }
 
         // Assert: label hidden, book present
         XCTAssertFalse(viewModel.showInstructionsLabel,

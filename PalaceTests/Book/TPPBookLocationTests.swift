@@ -170,9 +170,10 @@ final class TPPBookContentTypeConverterTests: XCTestCase {
         XCTAssertNotEqual(pdfString, TPPBookContentTypeConverter.stringValue(of: .epub))
     }
 
-    // SRS: TPPBookContentTypeConverter unsupported string — all four type strings are unique
+    // SRS: TPPBookContentTypeConverter unsupported string — all five type strings are unique
+    // (PP-4161: `.streamingHTML` joined the enum; the test set grew from 4 to 5).
     func testStringValue_unsupported() {
-        let types: [TPPBookContentType] = [.epub, .audiobook, .pdf, .unsupported]
+        let types: [TPPBookContentType] = [.epub, .audiobook, .pdf, .unsupported, .streamingHTML]
         let strings = types.map { TPPBookContentTypeConverter.stringValue(of: $0) }
 
         XCTAssertEqual(TPPBookContentTypeConverter.stringValue(of: .unsupported), "Unsupported")

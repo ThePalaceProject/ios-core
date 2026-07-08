@@ -39,7 +39,28 @@ import PalaceCatalog
         self.password = password
     }
 
+    // PUBLIC_INTENT: shared error-domain constant so the producer (this type)
+    // and the main-target consumer (TPPSignInBusinessLogic.isTransientServerError)
+    // agree on the NSError domain at COMPILE time. Was a duplicated magic string
+    // ("TokenRequest") across two files — architect review rev_37c23a0e flagged
+    // that a rename in one place would silently regress the 18046 fix.
+    public static let httpErrorDomain = "TokenRequest"
+
+    /// Public entry point — single Basic-Auth POST to the /token endpoint, now
+    /// with bounded retry on TRANSIENT failures (HelpSpot 18046). A transient
+    /// server hiccup (intermittent 5xx/429/408) or a retriable network error no
+    /// longer surfaces as "Invalid Credentials" on the first try; genuine auth
+    /// failures (401/403) still fail immediately and are never retried.
     public func execute(session: URLSession = .shared) async -> Result<TokenResponse, Error> {
+        await execute(session: session, maxAttempts: 3, backoff: Self.defaultBackoff)
+    }
+
+    /// Injectable overload (internal — reached by tests via `@testable`). Keeps
+    /// `maxAttempts` / `backoff` out of the public surface while letting tests
+    /// drive the retry loop deterministically with a no-op backoff.
+    func execute(session: URLSession,
+                 maxAttempts: Int,
+                 backoff: @Sendable (Int) async -> Void) async -> Result<TokenResponse, Error> {
         Log.info(#file, "Requesting token from: \(url.absoluteString)")
 
         let looksLikeBarcode = username.allSatisfy({ $0.isNumber }) && username.count >= 5
@@ -48,7 +69,7 @@ import PalaceCatalog
 
         guard !username.isEmpty else {
             Log.error(#file, "Aborting token request: empty username")
-            return .failure(NSError(domain: "TokenRequest", code: -1,
+            return .failure(NSError(domain: Self.httpErrorDomain, code: -1,
                                     userInfo: [NSLocalizedDescriptionKey: "Cannot request token with empty username"]))
         }
         // Note: empty password is valid for libraries that don't require a PIN.
@@ -77,38 +98,92 @@ import PalaceCatalog
 
         Log.debug(#file, "Sending POST with Basic Auth (base64 len=\(base64LoginString.count))")
 
-        do {
-            let (data, response) = try await session.data(for: request)
+        let attempts = max(1, maxAttempts)
+        var lastError: Error = NSError(domain: Self.httpErrorDomain, code: -1,
+                                       userInfo: [NSLocalizedDescriptionKey: "Token request did not complete"])
 
-            Log.info(#file, "Token request returned \(data.count) bytes")
+        for attempt in 1...attempts {
+            do {
+                let (data, response) = try await session.data(for: request)
+                Log.info(#file, "Token request returned \(data.count) bytes (attempt \(attempt)/\(attempts))")
 
-            if let httpResponse = response as? HTTPURLResponse {
-                Log.info(#file, "Token request status: \(httpResponse.statusCode)")
-                if httpResponse.statusCode != 200 {
-                    let errorMsg = String(data: data, encoding: .utf8) ?? "No error message"
-                    Log.error(#file, "Token request failed with status \(httpResponse.statusCode): \(errorMsg)")
-                    return .failure(NSError.makeTokenRequestHTTPError(
-                        data: data,
-                        statusCode: httpResponse.statusCode,
-                        domain: "TokenRequest",
-                        userInfo: [NSLocalizedDescriptionKey: "Server returned status \(httpResponse.statusCode)"]))
+                if let httpResponse = response as? HTTPURLResponse {
+                    Log.info(#file, "Token request status: \(httpResponse.statusCode)")
+                    if httpResponse.statusCode != 200 {
+                        let errorMsg = String(data: data, encoding: .utf8) ?? "No error message"
+                        let httpError = NSError.makeTokenRequestHTTPError(
+                            data: data,
+                            statusCode: httpResponse.statusCode,
+                            domain: Self.httpErrorDomain,
+                            userInfo: [NSLocalizedDescriptionKey: "Server returned status \(httpResponse.statusCode)"])
+                        // Retry only transient infrastructure failures. A 401/403
+                        // is a genuine auth rejection — surface it immediately so
+                        // we never hammer the endpoint with bad credentials.
+                        if Self.isTransientStatus(httpResponse.statusCode), attempt < attempts {
+                            Log.warn(#file, "Transient token status \(httpResponse.statusCode) — retrying after backoff (attempt \(attempt)/\(attempts))")
+                            lastError = httpError
+                            await backoff(attempt)
+                            continue
+                        }
+                        Log.error(#file, "Token request failed with status \(httpResponse.statusCode): \(errorMsg)")
+                        return .failure(httpError)
+                    }
                 }
-            }
 
-            let decoder = JSONDecoder()
-            decoder.keyDecodingStrategy = .convertFromSnakeCase
-            let tokenResponse = try decoder.decode(TokenResponse.self, from: data)
-            Log.info(#file, "Successfully decoded token response, expires in \(tokenResponse.expiresIn)s")
-            return .success(tokenResponse)
-        } catch {
-            Log.error(#file, "Token request failed with error: \(error.localizedDescription)")
-            if let urlError = error as? URLError {
-                Log.error(#file, "URLError code: \(urlError.code.rawValue)")
+                let decoder = JSONDecoder()
+                decoder.keyDecodingStrategy = .convertFromSnakeCase
+                let tokenResponse = try decoder.decode(TokenResponse.self, from: data)
+                Log.info(#file, "Successfully decoded token response, expires in \(tokenResponse.expiresIn)s")
+                return .success(tokenResponse)
+            } catch {
+                // Retriable transport error (timeout, connection dropped, DNS):
+                // back off and try again. A non-retriable error (e.g. decoding,
+                // bad URL, hard offline) fails immediately.
+                if Self.isRetriableURLError(error), attempt < attempts {
+                    Log.warn(#file, "Transient network error on token request — retrying after backoff (attempt \(attempt)/\(attempts)): \(error.localizedDescription)")
+                    lastError = error
+                    await backoff(attempt)
+                    continue
+                }
+                Log.error(#file, "Token request failed with error: \(error.localizedDescription)")
+                if let urlError = error as? URLError {
+                    Log.error(#file, "URLError code: \(urlError.code.rawValue)")
+                }
+                if let decodingError = error as? DecodingError {
+                    Log.error(#file, "Decoding error: \(decodingError)")
+                }
+                return .failure(error)
             }
-            if let decodingError = error as? DecodingError {
-                Log.error(#file, "Decoding error: \(decodingError)")
-            }
-            return .failure(error)
+        }
+
+        return .failure(lastError)
+    }
+
+    /// Default backoff between retry attempts: short, linear, capped — login is
+    /// interactive, so we trade a little latency for resilience without stalling.
+    static let defaultBackoff: @Sendable (Int) async -> Void = { attempt in
+        let milliseconds = min(2000, 400 * attempt)
+        try? await Task.sleep(nanoseconds: UInt64(milliseconds) * 1_000_000)
+    }
+
+    /// HTTP statuses worth retrying: request timeout, rate-limit, and any 5xx.
+    /// Deliberately EXCLUDES 401/403 (genuine auth) and other 4xx (client error).
+    static func isTransientStatus(_ statusCode: Int) -> Bool {
+        statusCode == 408 || statusCode == 429 || (500...599).contains(statusCode)
+    }
+
+    /// Transport-level errors worth retrying. Excludes `.notConnectedToInternet`
+    /// (hard offline — fast-fail to the network-unavailable message) and
+    /// non-`URLError`s (e.g. decoding).
+    static func isRetriableURLError(_ error: Error) -> Bool {
+        guard let urlError = error as? URLError else { return false }
+        switch urlError.code {
+        case .timedOut, .networkConnectionLost, .cannotConnectToHost,
+             .dnsLookupFailed, .cannotFindHost, .resourceUnavailable,
+             .badServerResponse:
+            return true
+        default:
+            return false
         }
     }
 }

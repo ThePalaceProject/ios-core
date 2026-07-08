@@ -47,12 +47,21 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         let deviceModel = UIDevice.current.model
         Log.info(#file, "[BUILD MARKER] App=\(appVersion) (\(buildNumber)), iOS=\(iosVersion), device=\(deviceModel)")
 
+        // NOTE: the iPad-on-Mac watchdog-exit interceptor is NOT installed here.
+        // A launch-time atexit install is too early: Adobe RMSDK's recursive_mutex
+        // destructor is registered (via __cxa_atexit) at first DRM use, which can
+        // be LATER than launch — so a launch-time handler would be LIFO-popped
+        // AFTER Adobe's faulting dtor. The interceptor is instead installed right
+        // after the first Adobe-DRM decode (AdobeDRMContentProtection), where it is
+        // LIFO-after Adobe's dtor regardless of whether the mutex is constructed at
+        // dylib-load or lazily. See AdobeDRMService.registerStaticDestructorBypassIfNeeded.
+
         // CRITICAL: Initialize playback infrastructure FIRST for CarPlay cold starts
         // This ensures MPRemoteCommandCenter handlers are registered before any UI loads
         // Without this, CarPlay remote controls won't work when the app is launched
         // directly from CarPlay without the phone UI ever being shown
         Log.info(#file, "📱 App launch - initializing playback bootstrapper")
-        PlaybackBootstrapper.shared.ensureInitialized()
+        AppContainer.production().playbackBootstrapper.ensureInitialized()
 
         // Configure Firebase once at startup. The SDK MUST be initialized
         // (other code paths assume FirebaseApp.app() is non-nil and call
@@ -332,12 +341,30 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         // Pause Firebase operations when app goes to background
         // This helps prevent the "recursive_mutex lock failed" crash
         FirebaseManager.shared.applicationDidEnterBackground()
+
+        #if FEATURE_DRM_CONNECTOR
+        // iPad-on-Mac watchdog-exit guard (WS-4). Once Adobe DRM has been used
+        // this session (reader decrypt → its static recursive_mutex dtor is
+        // registered), install the _exit(0) atexit interceptor HERE: background
+        // entry is (a) guaranteed after every Adobe DRM decode of this session
+        // ⇒ LIFO-after Adobe's dtor regardless of when the mutex was constructed,
+        // and (b) adjacent to the background suspension where the watchdog forces
+        // exit() and the 294 recursive_mutex faults occur (Crashlytics
+        // 9a91840677, all iOS_ON_MAC). Idempotent; gated to iPad-on-Mac inside.
+        if AdobeDRMService.didUseAdobeDRMThisSession {
+            AdobeDRMService.registerStaticDestructorBypassIfNeeded()
+        }
+        #endif
     }
 
     func applicationWillTerminate(_ application: UIApplication) {
-        // Clean up Adobe DRM first to prevent "recursive_mutex lock failed" crashes
-        // on Mac Catalyst. The FinalTerminationWatchdog can force exit() which triggers
-        // C++ static destructors - clearing our references helps avoid mutex corruption.
+        // Non-Mac Adobe DRM cleanup: clear our cached NYPLADEPT delegate/ref so
+        // we don't touch RMSDK during teardown. NOTE: this is a NO-OP on
+        // iPad-on-Mac — `isDRMAvailable` is false there, so this branch is
+        // skipped. It does NOT protect the iPad-on-Mac recursive_mutex crash
+        // (it never destroyed the C++ object anyway). The actual iPad-on-Mac
+        // protection is the `_exit(0)` at the END of this method (Cmd-Q path)
+        // plus the background-installed atexit interceptor (watchdog path).
         #if FEATURE_DRM_CONNECTOR
         if AdobeCertificate.isDRMAvailable {
             AdobeDRMService.shared.prepareForTermination()
@@ -347,6 +374,16 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         audiobookLifecycleManager.willTerminate()
         NotificationCenter.default.removeObserver(self)
         AppContainer.production().reachability.stopMonitoring()
+
+        // iPad-on-Mac only: bypass C++ static destructors on normal (Cmd-Q)
+        // termination. exit()'s static-destructor pass faults in Adobe RMSDK's
+        // static recursive_mutex destructor (Crashlytics 9a91840677, all events
+        // iOS_ON_MAC). _exit(0) terminates immediately, skipping atexit handlers
+        // and static destructors. MUST be the last statement; never runs on real
+        // iOS devices.
+        if shouldSkipStaticDestructorsOnExit(isiOSAppOnMac: ProcessInfo.processInfo.isiOSAppOnMac) {
+            _exit(0)
+        }
     }
 
     internal func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String, completionHandler: @escaping () -> Void) {
@@ -448,6 +485,21 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         UINavigationBar.appearance().scrollEdgeAppearance = defaultAppearance
         UINavigationBar.appearance().compactScrollEdgeAppearance = defaultAppearance
     }
+}
+
+// MARK: - iPad-on-Mac static-destructor bypass
+
+/// Decides whether process exit should bypass C++ static destructors by
+/// calling `_exit(0)`. Returns `true` ONLY when running as an iOS app on Mac,
+/// where Adobe RMSDK's static `recursive_mutex` destructor faults during
+/// teardown (Crashlytics 9a91840677 — all events iOS_ON_MAC).
+///
+/// On real iOS devices this MUST return `false`: there `exit()`'s normal
+/// static-destructor pass is correct and `_exit` would skip legitimate
+/// teardown. Pure + injectable so the decision is unit-testable; the
+/// crash-at-exit itself can only be validated via simdrive on a Mac host.
+func shouldSkipStaticDestructorsOnExit(isiOSAppOnMac: Bool) -> Bool {
+    isiOSAppOnMac
 }
 
 // MARK: - First Run Flow
@@ -706,7 +758,7 @@ final class MemoryPressureMonitor {
 
         // Clear caches first
         URLCache.shared.removeAllCachedResponses()
-        ImageCache.shared.clear()
+        AppContainer.production().imageLoader.clearAll()
         GeneralCache<String, Data>.clearAllCaches()
 
         // Evict least-recently-used book files

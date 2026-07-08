@@ -1,0 +1,18 @@
+[
+  {
+    "args" : {
+      "bookID" : "contract-reader2-1",
+      "hasLocation" : "true",
+      "renderer" : "readium3"
+    },
+    "method" : "registry.setLocation"
+  },
+  {
+    "args" : {
+      "bookID" : "contract-reader2-1",
+      "format" : "epubLocator",
+      "payloadIsEmpty" : "false"
+    },
+    "method" : "writer.save"
+  }
+]

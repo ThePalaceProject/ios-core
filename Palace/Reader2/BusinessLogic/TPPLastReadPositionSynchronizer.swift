@@ -8,21 +8,31 @@
 
 import Foundation
 import PalaceLogging
+import PalaceReadingPosition
 @preconcurrency import ReadiumShared
 
-/// A front-end to the Annotations api to sync the reading progress for
-/// a given book with the progress on the server.
+/// A front-end to the position-load path that resolves cross-device read
+/// position conflicts. The remote fetch is delegated to a `PositionWriter`;
+/// the conflict-resolution rule (same-device-no-precedence, equal-location
+/// no-op) stays in this class because it's EPUB-specific and not part of
+/// the writer's contract.
 class TPPLastReadPositionSynchronizer {
     typealias DisplayStrings = Strings.TPPLastReadPositionSynchronizer
 
     private let bookRegistry: TPPBookRegistryProvider
+    private let positionWriter: PositionWriter?
 
     /// Designated initializer.
     ///
     /// - Parameters:
     ///   - bookRegistry: The registry that stores the reading progresses.
-    init(bookRegistry: TPPBookRegistryProvider) {
+    ///   - positionWriter: The writer used to load the server-side position.
+    ///     When `nil` (the default), a fresh `EPUBPositionAdapter`-backed
+    ///     writer is constructed per-call against the syncing book.
+    init(bookRegistry: TPPBookRegistryProvider,
+         positionWriter: PositionWriter? = nil) {
         self.bookRegistry = bookRegistry
+        self.positionWriter = positionWriter
     }
 
     /// Fetches the read position from the server and alerts the user
@@ -66,18 +76,23 @@ class TPPLastReadPositionSynchronizer {
 
     private func syncReadPosition(for book: TPPBook, drmDeviceID: String?, publication: Publication) async -> Locator? {
         let localLocation = bookRegistry.location(forIdentifier: book.identifier)
+        let writer = positionWriter ?? EPUBPositionWriterFactory.make(for: book)
 
-        guard let bookmark = await TPPAnnotations.syncReadingPosition(ofBook: book, toURL: TPPAnnotations.annotationsURL) else {
+        let remote: PositionSnapshot?
+        do {
+            remote = try await writer.load(for: book.identifier)
+        } catch {
+            Log.info(#function, "Failed to load remote reading position for \(book.loggableShortString()): \(error)")
+            return nil
+        }
+
+        guard let snapshot = remote else {
             Log.info(#function, "No reading position annotation exists on the server for \(book.loggableShortString()).")
             return nil
         }
 
-        guard let bookmark = bookmark as? TPPReadiumBookmark else {
-            return nil
-        }
-
-        let deviceID = bookmark.device ?? ""
-        let serverLocationString = bookmark.location
+        let deviceID = snapshot.device
+        let serverLocationString = String(data: snapshot.payload, encoding: .utf8) ?? ""
 
         // Pass through returning nil (meaning the server doesn't have a
         // last read location worth restoring) if:

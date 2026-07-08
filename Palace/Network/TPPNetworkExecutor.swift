@@ -63,7 +63,12 @@ private actor TokenRefreshCoordinator {
     let transport: NetworkTransport
     private let tokenCoordinator = TokenRefreshCoordinator()
 
-    private let responder: TPPNetworkResponder
+    // `internal` (default) rather than `private` so adversarial tests can
+    // wire a completion onto a synthetic task before invoking
+    // `refreshTokenAndResume(task:)`. The responder is otherwise only ever
+    // touched by the executor itself; production callers must keep going
+    // through the executor's higher-level GET / PUT / POST / DELETE surface.
+    let responder: TPPNetworkResponder
     private var _accountsManager: TPPLibraryAccountsProvider?
     private var accountsManager: TPPLibraryAccountsProvider {
         _accountsManager ?? AppContainer.production().accountsManager
@@ -114,6 +119,32 @@ private actor TokenRefreshCoordinator {
         super.init()
     }
 
+    /// Full-DI initializer used by adversarial tests that need BOTH a custom
+    /// `URLSessionConfiguration` (for `URLProtocol`-based stubbing) and an
+    /// injected `TPPLibraryAccountsProvider` (so the executor's per-account
+    /// credential reads target a test-controlled mock instead of
+    /// `AppContainer.production().accountsManager`). No production caller
+    /// needs both seams at once; this exists for token-refresh / retry-queue
+    /// coverage where the executor's token-refresh code path reads from
+    /// `self.accountsManager` and writes via `setAuthToken` on the resolved
+    /// `TPPUserAccount`. See `TokenRefreshAndRetryQueueTests` for the
+    /// motivating scenarios.
+    init(credentialsProvider: NYPLBasicAuthCredentialsProvider? = nil,
+         cachingStrategy: NYPLCachingStrategy,
+         sessionConfiguration: URLSessionConfiguration,
+         accountsManager: TPPLibraryAccountsProvider,
+         delegateQueue: OperationQueue? = nil) {
+        self.responder = TPPNetworkResponder(credentialsProvider: credentialsProvider,
+                                             useFallbackCaching: cachingStrategy == .fallback)
+        self.transport = NetworkTransport(delegate: self.responder,
+                                          sessionConfiguration: sessionConfiguration,
+                                          delegateQueue: delegateQueue,
+                                          cachingStrategy: cachingStrategy,
+                                          requestTimeout: TPPNetworkExecutor.defaultRequestTimeout)
+        self._accountsManager = accountsManager
+        super.init()
+    }
+
     #if DEBUG
     /// Recreate the underlying URLSession so it picks up any newly-registered
     /// URLProtocol classes (e.g. MockBackendURLProtocol). Delegates to the
@@ -160,7 +191,23 @@ private actor TokenRefreshCoordinator {
     @objc func cancelNonEssentialTasks() {
         transport.cancelNonEssentialTasks()
     }
+
+    /// Number of in-flight tasks the transport currently holds — i.e. tasks
+    /// in `.running` or `.suspended` URLSessionTask state. Read-only
+    /// observation surface for tests that need to verify
+    /// `cancelNonEssentialTasks` actually drops the live count. Production
+    /// callers must not use this for control flow; the transport's task
+    /// registry is the source of truth.
+    var liveTaskCount: Int {
+        transport.activeTasksStore.liveTaskCount
+    }
 }
+
+// `executeTokenRefresh(username:password:tokenURL:accountId:completion:)`
+// is defined further down on `TPPNetworkExecutor` (no `accountId` default
+// parameter is needed for protocol witness selection at the test seam
+// callers — see §10.2 of `docs/Testing/Test_Seams_Refactor_Plan.md`).
+extension TPPNetworkExecutor: TokenRefreshing { }
 
 extension TPPNetworkExecutor: TPPRequestExecuting {
     @discardableResult
@@ -253,6 +300,23 @@ extension TPPNetworkExecutor {
 }
 
 extension TPPNetworkExecutor {
+    /// Legacy class-func bearer-auth applier. Resolves credentials through
+    /// `AppContainer.production().accountsManager.currentUserAccount` — which
+    /// re-reads the "current" account on every call. During a library swap
+    /// mid-download that resolution can transiently point at the wrong
+    /// account (the swap window), producing the spurious-login-modal class
+    /// of bugs.
+    ///
+    /// **Prefer the instance overload `bearerAuthorized(request:accountId:)`
+    /// for any new call site.** It uses the executor's injected
+    /// `accountsManager` and an explicit captured `accountId`, deterministically
+    /// closing the swap window.
+    ///
+    /// This static remains for legacy Objective-C / non-injected call sites
+    /// where threading a captured accountId would require lifting a lot of
+    /// upstream code. It is the **only** place in the file that resolves
+    /// `currentUserAccount` — that invariant is asserted by
+    /// `MyBooksDownloadCenterAccountIdThreadingTests`.
     @objc class func bearerAuthorized(request: URLRequest) -> URLRequest {
         var request = request
         let snapshot = AppContainer.production().accountsManager.currentUserAccount.credentialSnapshot()
@@ -263,6 +327,39 @@ extension TPPNetworkExecutor {
             request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
         } else {
             Log.warn(#file, "No auth token available for request to \(request.url?.host ?? "unknown") - hasCredentials: \(snapshot.hasCredentials)")
+            request.setValue("", forHTTPHeaderField: "Authorization")
+        }
+        return request
+    }
+
+    /// Apply the bearer token for an explicit `accountId`, eliminating the
+    /// transient `currentUserAccount` re-resolution window observed during
+    /// library swaps mid-download. The resolved snapshot is taken against
+    /// the executor's injected `accountsManager`, never through
+    /// `AppContainer.production()` — that singleton read is reserved for
+    /// the legacy no-arg overload above (the migration tail).
+    ///
+    /// Pass `nil` to fall back to the resolver — same behavior as the legacy
+    /// `bearerAuthorized(request:)` class func, but routed through the
+    /// instance so tests can substitute an injected `accountsManager`. Pass
+    /// a real UUID captured at download START to pin credentials to the
+    /// originally-selected account; downstream library swaps cannot affect
+    /// the resulting Authorization header.
+    @objc func bearerAuthorized(request: URLRequest, accountId: String?) -> URLRequest {
+        var request = request
+        // When `accountId` is non-nil, resolve directly against the
+        // injected accountsManager. When nil, fall back to `currentAccountId`
+        // — the legacy resolver path, but contained to this single instance
+        // method so test executors can supply a fixed accountsManager.
+        let resolvedId = accountId ?? accountsManager.currentAccountId ?? ""
+        let snapshot = accountsManager.userAccount(for: resolvedId).credentialSnapshot()
+
+        if let authToken = snapshot.authToken, !authToken.isEmpty {
+            let tokenPrefix = String(authToken.prefix(8))
+            Log.debug(#file, "Adding Bearer token (prefix: \(tokenPrefix)...) to request for \(request.url?.host ?? "unknown") (accountId: \(accountId ?? "<resolver-fallback>"))")
+            request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
+        } else {
+            Log.warn(#file, "No auth token available for request to \(request.url?.host ?? "unknown") - hasCredentials: \(snapshot.hasCredentials), accountId: \(accountId ?? "<resolver-fallback>")")
             request.setValue("", forHTTPHeaderField: "Authorization")
         }
         return request
@@ -485,9 +582,17 @@ extension TPPNetworkExecutor {
                         if let nsError = error as? NSError, nsError.code == 401 {
                             Log.info(#file, "Token refresh failed due to invalid credentials - marking credentials stale for account \(capturedAccountId ?? "current")")
                             await MainActor.run {
+                                // capturedAccountId is bound at refresh-start time by the closure
+                                // capture, so this mark-stale is already scoped to the originating
+                                // account, not the current account at 401-receipt time. See
+                                // .forgeos/changesets/fix-icarus-cross-host-logout/fix-contract.md.
+                                // no-host-scoping: closure-bound capturedAccountId (see comment above)
                                 self.accountsManager.userAccount(for: capturedAccountId ?? self.accountsManager.currentAccountId ?? "").markCredentialsStale()
                                 if capturedAccountId == nil || capturedAccountId == self.accountsManager.currentAccountId {
-                                    SignInModalPresenter.presentSignInModalForCurrentAccount(completion: nil)
+                                    // swarm_d8f11437 Module A wave 4 — migrated to
+                                    // AppContainer-injected sheet presenter.
+                                    AppContainer.production().signInModalSheetPresenter
+                                        .presentSignInModalForCurrentAccount(completion: nil)
                                 }
                             }
                         }

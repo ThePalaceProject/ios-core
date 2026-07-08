@@ -26,7 +26,19 @@ final class TPPBookmarkDeletionLog: NSObject {
     /// In-memory cache of pending deletions: [bookIdentifier: Set<annotationId>]
     private var deletionLog: [String: Set<String>] = [:]
 
-    private override init() {
+    /// `UserDefaults` backing store. `.shared` binds `.standard` via the
+    /// no-arg initializer; tests construct a fresh instance via the
+    /// explicit initializer with a per-suite `UserDefaults(suiteName:)`
+    /// so persisted deletion-log state can't leak across tests. There
+    /// is NO fallback once injected.
+    private let defaults: UserDefaults
+
+    /// Designated initializer. Defaults to `.standard` so the
+    /// `static let shared = TPPBookmarkDeletionLog()` site keeps working
+    /// unchanged. Tests construct a per-suite instance with their own
+    /// `UserDefaults(suiteName:)` for isolation.
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
         super.init()
         loadFromDisk()
     }
@@ -105,12 +117,12 @@ final class TPPBookmarkDeletionLog: NSObject {
         let serializable = deletionLog.mapValues { Array($0) }
 
         if let data = try? JSONEncoder().encode(serializable) {
-            UserDefaults.standard.set(data, forKey: userDefaultsKey)
+            defaults.set(data, forKey: userDefaultsKey)
         }
     }
 
     private func loadFromDisk() {
-        guard let data = UserDefaults.standard.data(forKey: userDefaultsKey),
+        guard let data = defaults.data(forKey: userDefaultsKey),
               let decoded = try? JSONDecoder().decode([String: [String]].self, from: data) else {
             return
         }
