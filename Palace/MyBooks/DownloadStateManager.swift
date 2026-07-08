@@ -51,6 +51,21 @@ final class DownloadStateManager: DownloadStateManaging {
     let downloadCoordinator = DownloadCoordinator()
     var maxConcurrentDownloads: Int = 4
 
+    // MARK: - Durable persistence (seam S1)
+
+    /// Crash-durable mirror of the in-flight download records. The
+    /// SafeDictionaries above stay the hot cache; this cold store survives a
+    /// mid-download kill so launch reconciliation can re-adopt / restart tasks.
+    let taskPersistence: DownloadTaskPersistence
+
+    /// Per-book transient-transfer retry counter (content transfer only). Reset
+    /// on terminal completion so a later independent failure starts fresh.
+    private let transferRetryCounts = SafeDictionary<String, Int>()
+
+    init(taskPersistence: DownloadTaskPersistence = DownloadTaskPersistence()) {
+        self.taskPersistence = taskPersistence
+    }
+
     // MARK: - Download Info Queries
 
     /// Async-first download info accessor with cache update
@@ -76,6 +91,53 @@ final class DownloadStateManager: DownloadStateManaging {
         Double(self.downloadInfo(forBookIdentifier: bookIdentifier)?.downloadProgress ?? 0.0)
     }
 
+    // MARK: - Durable persistence API
+
+    /// Persist a started task so a mid-download kill can be reconciled at launch.
+    func persistStartedTask(
+        bookID: String,
+        taskIdentifier: Int,
+        downloadURL: URL,
+        account: String,
+        expectedBytes: Int64?
+    ) {
+        taskPersistence.record(
+            PersistedDownloadRecord(
+                bookID: bookID,
+                taskIdentifier: taskIdentifier,
+                downloadURL: downloadURL,
+                account: account,
+                expectedBytes: expectedBytes,
+                startedAt: Date()
+            )
+        )
+    }
+
+    /// Drop the durable record for a book on terminal completion.
+    func removePersistedRecord(for bookID: String) {
+        taskPersistence.remove(bookID: bookID)
+    }
+
+    /// All durable records (for launch reconciliation).
+    func persistedRecords() -> [PersistedDownloadRecord] {
+        taskPersistence.all()
+    }
+
+    // MARK: - Transient-transfer retry counters
+
+    func transferRetryAttempts(for bookID: String) async -> Int {
+        await transferRetryCounts.get(bookID) ?? 0
+    }
+
+    func incrementTransferRetryAttempts(for bookID: String) async {
+        let current = await transferRetryCounts.get(bookID) ?? 0
+        await transferRetryCounts.set(bookID, value: current + 1)
+    }
+
+    func resetTransferRetryAttempts(for bookID: String) async {
+        await transferRetryCounts.remove(bookID)
+    }
+
     // MARK: - Cleanup
 
     /// Removes all tracking state for a completed or failed download.
@@ -83,6 +145,8 @@ final class DownloadStateManager: DownloadStateManaging {
         await bookIdentifierToDownloadInfo.remove(bookIdentifier)
         await downloadCoordinator.removeCachedDownloadInfo(for: bookIdentifier)
         await downloadCoordinator.registerCompletion(identifier: bookIdentifier)
+        await transferRetryCounts.remove(bookIdentifier)
+        removePersistedRecord(for: bookIdentifier)
 
         if let taskId = taskIdentifier {
             await taskIdentifierToBook.remove(taskId)
@@ -98,6 +162,8 @@ final class DownloadStateManager: DownloadStateManaging {
 
         await bookIdentifierToDownloadInfo.removeAll()
         await taskIdentifierToBook.removeAll()
+        await transferRetryCounts.removeAll()
+        taskPersistence.removeAll()
         await downloadCoordinator.reset()
     }
 }

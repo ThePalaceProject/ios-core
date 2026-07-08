@@ -428,7 +428,32 @@ struct AppContainer: @unchecked Sendable {
     }
 
     static func production() -> AppContainer {
-        _cachedValue()
+        let container = _cachedValue()
+        container.ensureOfflineQueueExecutorRegistered()
+        return container
+    }
+
+    /// Reliability WS-C (seam S2): install the offline-queue executor
+    /// exactly once. The coordinator is retained in a process-wide slot so
+    /// its `[weak self]` executor closure stays alive; the actual
+    /// `setExecutor` call lives in `OfflineQueueCoordinator.registerExecutor()`
+    /// (WS-C owns the wiring). Empty-fast on every subsequent call.
+    private static let _offlineQueueCoordinator =
+        OSAllocatedUnfairLock<OfflineQueueCoordinator?>(initialState: nil)
+
+    func ensureOfflineQueueExecutorRegistered() {
+        let coordinator: OfflineQueueCoordinator? =
+            AppContainer._offlineQueueCoordinator.withLock { slot in
+                if slot != nil { return nil }
+                let c = OfflineQueueCoordinator.production(
+                    downloadCenter: self.downloadCenter,
+                    bookRegistry: self.bookRegistry
+                )
+                slot = c
+                return c
+            }
+        guard let coordinator else { return }
+        Task { await coordinator.registerExecutor() }
     }
 
     /// The cached app-wide composition graph. Initially populated by Swift's

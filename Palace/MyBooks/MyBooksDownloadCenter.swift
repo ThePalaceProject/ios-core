@@ -224,6 +224,39 @@ private final class DownloadFailureMetadataBox: @unchecked Sendable {
     private var bookIdentifierOfBookToRemove: String?
     private var session: URLSession!
 
+    // MARK: - Reliability WS-A: background session identity + completion handler
+
+    /// Single source of truth for the download center's background session
+    /// identifier (previously duplicated across 3 inline `Bundle`-derived
+    /// literals). Exposed so the app delegate can route the system background
+    /// completion handler to us vs. the audiobook lifecycle manager.
+    @objc static let backgroundSessionIdentifier =
+        (Bundle.main.bundleIdentifier ?? "") + ".downloadCenterBackgroundIdentifier"
+
+    /// True iff `identifier` names the book download center's background session.
+    /// INV-7: the app delegate uses this to preserve the audiobook route for
+    /// every other identifier.
+    @objc static func isDownloadCenterBackgroundSession(_ identifier: String) -> Bool {
+        identifier == backgroundSessionIdentifier
+    }
+
+    /// The system completion handler iOS hands us when it relaunches the app to
+    /// finish delivering background-session events. Guarded by a lock; invoked
+    /// exactly once (on main) then cleared in `urlSessionDidFinishEvents`.
+    private let backgroundCompletionHandlerLock = NSLock()
+    private var _backgroundCompletionHandler: (() -> Void)?
+
+    /// Store the system completion handler (called by the app delegate when the
+    /// background-session wake matches `backgroundSessionIdentifier`).
+    @objc func setBackgroundCompletionHandler(_ handler: @escaping () -> Void) {
+        backgroundCompletionHandlerLock.lock()
+        _backgroundCompletionHandler = handler
+        backgroundCompletionHandlerLock.unlock()
+    }
+
+    /// Deferred launch-reconciliation observer (see `scheduleReconcileDownloadsAtLaunch`).
+    private var reconcileObserver: NSObjectProtocol?
+
     /// Owns the thread-safe download tracking dictionaries + DownloadCoordinator
     /// + maxConcurrentDownloads. The properties below are computed wrappers
     /// that route through this single state owner — preserves the call-site
@@ -927,7 +960,7 @@ private final class DownloadFailureMetadataBox: @unchecked Sendable {
                 let configuration = URLSessionConfiguration.default
                 self.session = URLSession(configuration: configuration, delegate: self, delegateQueue: .main)
             } else {
-                let backgroundIdentifier = (Bundle.main.bundleIdentifier ?? "") + ".downloadCenterBackgroundIdentifier"
+                let backgroundIdentifier = Self.backgroundSessionIdentifier
                 let configuration = URLSessionConfiguration.background(withIdentifier: backgroundIdentifier)
                 configuration.isDiscretionary = false
                 configuration.waitsForConnectivity = false
@@ -935,7 +968,7 @@ private final class DownloadFailureMetadataBox: @unchecked Sendable {
                 self.session = URLSession(configuration: configuration, delegate: self, delegateQueue: .main)
             }
             #else
-            let backgroundIdentifier = (Bundle.main.bundleIdentifier ?? "") + ".downloadCenterBackgroundIdentifier"
+            let backgroundIdentifier = Self.backgroundSessionIdentifier
             let configuration = URLSessionConfiguration.background(withIdentifier: backgroundIdentifier)
             configuration.isDiscretionary = false
             configuration.waitsForConnectivity = false
@@ -960,6 +993,14 @@ private final class DownloadFailureMetadataBox: @unchecked Sendable {
         // CurrentValueSubject's initial-value replay so we only act on real
         // transitions.
         self.bindReachability()
+
+        // Reliability WS-A: reconcile persisted download records against live
+        // URLSession tasks once the registry has loaded. Production only — an
+        // injected/mock session or the test harness opts out so the suite stays
+        // hermetic (the reconciler is driven directly in tests instead).
+        if urlSession == nil && !TPPProcessInfo.isRunningTests {
+            scheduleReconcileDownloadsAtLaunch()
+        }
     }
 
     // MARK: - PP-4114: mid-flight network drop handling
@@ -1077,7 +1118,7 @@ private final class DownloadFailureMetadataBox: @unchecked Sendable {
             session = URLSession(configuration: configuration, delegate: self, delegateQueue: .main)
             Log.info(#file, "MyBooksDownloadCenter: switched to default session for mock backend")
         } else {
-            let backgroundIdentifier = (Bundle.main.bundleIdentifier ?? "") + ".downloadCenterBackgroundIdentifier"
+            let backgroundIdentifier = Self.backgroundSessionIdentifier
             let configuration = URLSessionConfiguration.background(withIdentifier: backgroundIdentifier)
             configuration.isDiscretionary = false
             configuration.waitsForConnectivity = false
@@ -1456,6 +1497,10 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
         await taskIdentifierToBook.remove(task.taskIdentifier)
         await downloadCoordinator.removeCachedDownloadInfo(for: book.identifier)
         await downloadCoordinator.registerCompletion(identifier: book.identifier)
+        // Reliability WS-A: download reached a terminal outcome — drop the
+        // durable record and reset the transient-transfer retry counter.
+        await stateManager.resetTransferRetryAttempts(for: book.identifier)
+        stateManager.removePersistedRecord(for: book.identifier)
         let remainingCount = await downloadCoordinator.activeCount
         Log.info(#file, "📊 Download flow completed for '\(book.identifier)', remaining active: \(remainingCount)")
 
@@ -1535,6 +1580,12 @@ extension MyBooksDownloadCenter: URLSessionTaskDelegate {
     }
 
     func handleTaskCompletionError(task: URLSessionTask, error: Error?) async {
+        // Reliability WS-A #4: give a transient content-transfer failure a bounded
+        // retry with backoff before surfacing the failure. Returns true only when
+        // a retry was scheduled — in which case we must NOT fail the download yet.
+        if let error, await maybeRetryTransientTransfer(task: task, error: error) {
+            return
+        }
         await taskLifecycleService.handleTaskCompletionError(task: task, error: error)
     }
 
@@ -1554,6 +1605,10 @@ extension MyBooksDownloadCenter: URLSessionTaskDelegate {
             Log.warn(#file, "addDownloadTask: session unavailable, skipping download of '\(book.title)' (\(exception?.name.rawValue ?? "task=nil"))")
             return
         }
+
+        // Reliability WS-A: durably record the started task so a mid-download kill
+        // can be reconciled (adopted / restarted) at next launch.
+        persistStartedTaskRecord(task: task, book: book, request: modifiableRequest)
 
         Task {
             await self.taskLifecycleService.registerStartedTask(
@@ -1879,3 +1934,222 @@ extension MyBooksDownloadCenter: BookReturnServiceDelegate {}
 #if LCP
 extension MyBooksDownloadCenter: LCPFulfillmentHandlerDelegate {}
 #endif
+
+// MARK: - Reliability WS-A: durable downloads (background handler, retry, reconciliation)
+
+/// Reference box so the launch-reconciliation orchestrator can snapshot live
+/// URLSession tasks inside the `getAllTasks` completion (non-`Sendable` task
+/// objects never cross the continuation boundary) and hand them to `apply`.
+private final class LiveDownloadTaskBox: @unchecked Sendable {
+    var map: [Int: URLSessionDownloadTask] = [:]
+}
+
+extension MyBooksDownloadCenter {
+
+    // MARK: Background session completion handler (INV-7)
+
+    /// `URLSessionDelegate`: iOS invokes this once ALL background-session events
+    /// have been delivered after an app relaunch. Invoke + clear the stored system
+    /// completion handler exactly once, on the main thread (INV-7). A second call
+    /// finds the handler already cleared and is a safe no-op.
+    public func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
+        backgroundCompletionHandlerLock.lock()
+        let handler = _backgroundCompletionHandler
+        _backgroundCompletionHandler = nil
+        backgroundCompletionHandlerLock.unlock()
+
+        guard let handler else { return }
+        if Thread.isMainThread {
+            handler()
+        } else {
+            DispatchQueue.main.async { handler() }
+        }
+    }
+
+    // MARK: Durable persistence of a started task
+
+    /// Persist a started task so a mid-download kill can be reconciled at launch.
+    /// Called on the initial start (`addDownloadTask`) and on each transfer retry
+    /// re-issue so the persisted `taskIdentifier` always tracks the live task.
+    func persistStartedTaskRecord(task: URLSessionDownloadTask, book: TPPBook, request: URLRequest) {
+        guard let url = task.originalRequest?.url ?? request.url else { return }
+        stateManager.persistStartedTask(
+            bookID: book.identifier,
+            taskIdentifier: task.taskIdentifier,
+            downloadURL: url,
+            account: accountsManager.currentAccountId ?? "",
+            expectedBytes: nil
+        )
+    }
+
+    // MARK: Transient-transfer retry (INV-6 — content transfer only)
+
+    private static let maxTransferRetries = 3
+    private static let transferRetryBaseDelay: TimeInterval = 2.0
+
+    /// Bounded transient-transfer retry. INV-6: this is the plain URLSession
+    /// content-transfer error path; DRM fulfillment (which runs on the SUCCESS
+    /// path via `rightsDispatcher`) is never touched here. Reuses the existing
+    /// NSURLError classifier (`RetryPolicy.downloadTransfer.shouldRetry`), which
+    /// refuses auth / 404 / bad-URL / permission / insufficient-space errors and
+    /// admits transient network failures. Returns `true` iff a retry was
+    /// scheduled — the caller must then NOT surface the failure.
+    func maybeRetryTransientTransfer(task: URLSessionTask, error: Error) async -> Bool {
+        let nsError = error as NSError
+        // Cancellations (user tap / navigation) are never retried.
+        guard nsError.code != NSURLErrorCancelled else { return false }
+        guard DownloadErrorRecovery.RetryPolicy.downloadTransfer.shouldRetry(error) else { return false }
+        guard let book = await taskIdentifierToBook.get(task.taskIdentifier) else { return false }
+
+        let attempts = await stateManager.transferRetryAttempts(for: book.identifier)
+        guard attempts < Self.maxTransferRetries else {
+            // Exhausted — reset so a later independent failure starts fresh, and
+            // let the normal failure path (alert) run.
+            await stateManager.resetTransferRetryAttempts(for: book.identifier)
+            return false
+        }
+        await stateManager.incrementTransferRetryAttempts(for: book.identifier)
+
+        // The dead task's routing entry is stale — drop it so nothing double-fires.
+        await taskIdentifierToBook.remove(task.taskIdentifier)
+
+        // Exponential backoff before re-issue (bounded by maxTransferRetries).
+        let delay = Self.transferRetryBaseDelay * pow(2.0, Double(attempts))
+        try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+        if Task.isCancelled { return false }
+
+        let resumeData = nsError.userInfo[NSURLSessionDownloadTaskResumeData] as? Data
+        reissueTransferDownloadTask(for: book, resumeData: resumeData, previousRequest: task.originalRequest)
+        return true
+    }
+
+    /// Re-issue a resumable (or fresh) content-transfer download task after a
+    /// transient failure, routing it through the same lifecycle seam a first-time
+    /// start uses. INV-6: content transfer only — no DRM fulfillment involvement.
+    private func reissueTransferDownloadTask(for book: TPPBook, resumeData: Data?, previousRequest: URLRequest?) {
+        var newTask: URLSessionDownloadTask?
+        let exception = TPPObjCExceptionCatcher.catchException {
+            if let resumeData {
+                newTask = self.session.downloadTask(withResumeData: resumeData)
+            } else if var previousRequest {
+                newTask = self.session.downloadTask(with: previousRequest.applyCustomUserAgent())
+            }
+        }
+        guard let newTask, exception == nil else {
+            Log.warn(#file, "Transfer retry: could not re-issue download for '\(book.title)' (\(exception?.name.rawValue ?? "task=nil"))")
+            return
+        }
+        persistStartedTaskRecord(task: newTask, book: book, request: previousRequest ?? URLRequest(url: URL(fileURLWithPath: "/dev/null")))
+        Task {
+            await self.taskLifecycleService.registerStartedTask(
+                newTask,
+                book: book,
+                maxConcurrentDownloads: self.maxConcurrentDownloads
+            )
+        }
+    }
+
+    // MARK: Launch reconciliation (INV-4 — adopt, don't double-start or spuriously fail)
+
+    /// True once the registry has completed its disk load. Reconciliation must
+    /// not run before this (INV-4 ordering) — it reads registry state as the
+    /// source of truth for each book's lifecycle.
+    var isRegistryLoadedForReconcile: Bool {
+        switch bookRegistry.registryState {
+        case .loaded, .syncing, .synced:
+            return true
+        case .unloaded, .loading:
+            return false
+        @unknown default:
+            return false
+        }
+    }
+
+    /// Run launch reconciliation now if the registry has loaded; otherwise defer
+    /// until it does (via a one-shot `.TPPBookRegistryStateDidChange` observer).
+    func scheduleReconcileDownloadsAtLaunch() {
+        if isRegistryLoadedForReconcile {
+            Task { await reconcileDownloadsAtLaunch() }
+            return
+        }
+        reconcileObserver = NotificationCenter.default.addObserver(
+            forName: .TPPBookRegistryStateDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self, self.isRegistryLoadedForReconcile else { return }
+            if let token = self.reconcileObserver {
+                NotificationCenter.default.removeObserver(token)
+                self.reconcileObserver = nil
+            }
+            Task { await self.reconcileDownloadsAtLaunch() }
+        }
+    }
+
+    /// Reconcile persisted download records against the live URLSession tasks and
+    /// the registry, then apply each decision. Order (registry-loaded gate →
+    /// persisted → live tasks → reconcile → apply) is pinned by
+    /// `DownloadReconciliation.runLaunchReconciliation` and its contract test.
+    func reconcileDownloadsAtLaunch() async {
+        let box = LiveDownloadTaskBox()
+        await DownloadReconciliation.runLaunchReconciliation(
+            isRegistryLoaded: { [weak self] in self?.isRegistryLoadedForReconcile ?? false },
+            loadPersisted: { [weak self] in self?.stateManager.persistedRecords() ?? [] },
+            liveTaskIdentifiers: { [weak self] in
+                await self?.snapshotLiveDownloadTasks(into: box)
+                return Set(box.map.keys)
+            },
+            registryState: { [weak self] bookID in self?.bookRegistry.state(for: bookID) ?? .unregistered },
+            apply: { [weak self] decision in await self?.applyReconcileDecision(decision, liveTasks: box.map) }
+        )
+    }
+
+    /// Snapshot the still-running download tasks into `box`. The non-`Sendable`
+    /// task objects stay inside the `getAllTasks` completion — only the box
+    /// (Sendable) is captured.
+    private func snapshotLiveDownloadTasks(into box: LiveDownloadTaskBox) async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            session.getAllTasks { tasks in
+                for case let downloadTask as URLSessionDownloadTask in tasks {
+                    box.map[downloadTask.taskIdentifier] = downloadTask
+                }
+                continuation.resume()
+            }
+        }
+    }
+
+    /// Apply a single reconciliation decision. INV-4: `.adopt` re-seeds the hot
+    /// maps from the live task WITHOUT starting a second task or touching registry
+    /// state; `.restart` re-drives the existing start path; `.markFailed` pins the
+    /// terminal failed state; `.cleanup` just drops the stale record.
+    private func applyReconcileDecision(_ decision: ReconcileDecision, liveTasks: [Int: URLSessionDownloadTask]) async {
+        switch decision {
+        case let .adopt(bookID, taskIdentifier):
+            guard let book = bookRegistry.book(forIdentifier: bookID),
+                  let task = liveTasks[taskIdentifier] else {
+                return
+            }
+            let info = MyBooksDownloadInfo(downloadProgress: 0.0, downloadTask: task, rightsManagement: .unknown)
+            await bookIdentifierToDownloadInfo.set(bookID, value: info)
+            await bookIdentifierToDownloadTask.set(bookID, value: task)
+            await taskIdentifierToBook.set(taskIdentifier, value: book)
+            Log.info(#file, "Reconcile: adopted still-running download task \(taskIdentifier) for '\(bookID)'")
+
+        case let .restart(bookID):
+            guard let book = bookRegistry.book(forIdentifier: bookID) else {
+                stateManager.removePersistedRecord(for: bookID)
+                return
+            }
+            Log.info(#file, "Reconcile: restarting dead download for '\(bookID)'")
+            startDownload(for: book)
+
+        case let .markFailed(bookID):
+            bookRegistry.setState(.downloadFailed, for: bookID)
+            stateManager.removePersistedRecord(for: bookID)
+            Log.info(#file, "Reconcile: marked '\(bookID)' downloadFailed (task dead, registry already failed)")
+
+        case let .cleanup(bookID):
+            stateManager.removePersistedRecord(for: bookID)
+        }
+    }
+}
