@@ -1739,26 +1739,6 @@ public final class AudiobookSessionManager: ObservableObject {
         return status == 410
     }
 
-    /// PP-4542: decides whether a `.playbackFailed` should trigger ONE silent
-    /// auto-reopen before surfacing the "Audiobook Unavailable" alert. Pure so
-    /// the per-session bound is unit-pinned without driving the auth-gated open
-    /// flow. Distributor-agnostic on purpose: the regression (Readium 3.9.0
-    /// rangeOutOfBounds on a not-yet-materialized LCP package) is a cold-load
-    /// race that any first-open can hit, and a reopen demonstrably recovers it.
-    /// - `hasEverStartedPlayback == false`: only a COLD-load failure (playback
-    ///   never started this session) is a candidate; a mid-playback failure is a
-    ///   different surface and must NOT silently reopen.
-    /// - `hasCurrentBook`: there must be a book to reopen.
-    /// - `alreadyAttempted == false`: bounded to one reopen per book per session
-    ///   so a genuinely persistent failure reaches the alert instead of looping.
-    static func shouldAutoReopenOnColdLoadFailure(
-        hasEverStartedPlayback: Bool,
-        hasCurrentBook: Bool,
-        alreadyAttempted: Bool
-    ) -> Bool {
-        !hasEverStartedPlayback && hasCurrentBook && !alreadyAttempted
-    }
-
     /// Extracts an HTTP status code from a playback error. The toolkit's network
     /// layer stamps `userInfo["httpStatusCode"]` on download/streaming failures
     /// (`OpenAccessDownloadTask`); we also walk one level of the
@@ -1773,6 +1753,32 @@ public final class AudiobookSessionManager: ObservableObject {
         return nil
     }
 #endif
+
+    /// PP-4542: decides whether a `.playbackFailed` should trigger ONE silent
+    /// auto-reopen before surfacing the "Audiobook Unavailable" alert. Pure so
+    /// the per-session bound is unit-pinned without driving the auth-gated open
+    /// flow. Distributor-agnostic on purpose: the regression (Readium 3.9.0
+    /// rangeOutOfBounds on a not-yet-materialized LCP package) is a cold-load
+    /// race that any first-open can hit, and a reopen demonstrably recovers it.
+    /// - `hasEverStartedPlayback == false`: only a COLD-load failure (playback
+    ///   never started this session) is a candidate; a mid-playback failure is a
+    ///   different surface and must NOT silently reopen.
+    /// - `hasCurrentBook`: there must be a book to reopen.
+    /// - `alreadyAttempted == false`: bounded to one reopen per book per session
+    ///   so a genuinely persistent failure reaches the alert instead of looping.
+    ///
+    /// Lives OUTSIDE `#if FEATURE_OVERDRIVE` (unlike the sibling OverDrive
+    /// helpers): the cold-load auto-recovery call site (`stopPlayback` error
+    /// path) is unconditional, so gating this behind FEATURE_OVERDRIVE broke the
+    /// `Palace-noDRM` target build (`type 'Self' has no member ...`). It is a
+    /// pure LCP/first-open helper with no OverDrive dependency.
+    static func shouldAutoReopenOnColdLoadFailure(
+        hasEverStartedPlayback: Bool,
+        hasCurrentBook: Bool,
+        alreadyAttempted: Bool
+    ) -> Bool {
+        !hasEverStartedPlayback && hasCurrentBook && !alreadyAttempted
+    }
 
     /// True once the LCP audiobook's full content package is on disk. The `.lcpa`
     /// is moved into place atomically on download completion
