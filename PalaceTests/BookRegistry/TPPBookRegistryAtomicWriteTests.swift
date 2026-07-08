@@ -149,9 +149,17 @@ class TPPBookRegistryAtomicWriteTests: PalaceWiringTestCase {
         let contents = try FileManager.default.contentsOfDirectory(atPath: dir.path)
             // Filter macOS metadata
             .filter { !$0.hasPrefix(".") }
+            .sorted()
 
-        XCTAssertEqual(contents, ["registry.json"],
-                       "Registry dir must contain only registry.json — kills mutant that leaves staging .tmp files")
+        // #1212 ("Bulletproof Ownership") writes a durable last-good
+        // `registry.json.bak` sidecar on every non-empty save
+        // (RegistryFileRecovery.writeBackup, BookRegistrySync.saveSync) — an
+        // INTENTIONAL backup, not a staging artifact. The mutant this test kills
+        // is a leaked `.tmp` staging file from the atomic rename, so assert the dir
+        // holds exactly registry.json + its backup and NOTHING else: a stray
+        // `.tmp` (or any other file) makes this set comparison fail.
+        XCTAssertEqual(contents, ["registry.json", "registry.json.bak"],
+                       "Registry dir must contain only registry.json + its durable .bak backup — no leaked staging .tmp files")
     }
 
     /// Two back-to-back saves (write a registry, then a smaller one) must
