@@ -542,6 +542,27 @@ private enum StorageKey: String {
         }
     }
 
+    /// Event-driven credential-cache invalidation (CP-D2). Drops every keychain
+    /// variable's in-memory cache so the next `credentialSnapshot()` /
+    /// credential read pulls fresh from the keychain.
+    ///
+    /// `credentialSnapshot()` no longer invalidates the cache on every read (it
+    /// relies on the write-through keychain cache + the one-instance-per-library
+    /// invariant). Callers invoke this at the two boundaries where credential
+    /// state can change out of band relative to this instance's cache:
+    ///   1. Sign-out finalisation — handled inline by `removeAll()`.
+    ///   2. Account switch — `AccountsManager.currentAccount.didSet` calls this
+    ///      on the newly-current account so its first snapshot after the switch
+    ///      reads fresh keychain state.
+    /// It is defense-in-depth against any future non-instance / cross-process
+    /// writer; in the normal single-instance path the write-through cache has
+    /// already kept this instance coherent.
+    func invalidateCredentialCaches() {
+        accountInfoQueue.sync {
+            invalidateAllKeychainCaches()
+        }
+    }
+
     // MARK: - Atomic Snapshot
 
     struct CredentialSnapshot {
@@ -559,17 +580,28 @@ private enum StorageKey: String {
     /// On bound (per-account) instances the keys are immutable, so this is
     /// inherently race-free without needing a barrier.
     ///
-    /// Cache coherence: each `TPPKeychainVariable` caches its last-read value
-    /// and only invalidates explicitly. Another instance of the same library
-    /// (or a different process) may have written under the same keys, so we
-    /// drop every cache before reading. Without this, the view model can read
-    /// "signed in" state even after sign-out has completed (build 459 → HEAD
-    /// regression).
+    /// Cache coherence (CP-D2): this path deliberately does NOT invalidate the
+    /// keychain caches on every read. Each `TPPKeychainVariable` is
+    /// write-through (`write()` updates `cachedValue` AND persists), and
+    /// production keeps exactly one `TPPUserAccount` instance per library UUID
+    /// (`AccountsManager.userAccount(for:)` cache) — the instance that writes
+    /// credentials (sign-in / sign-out via `setBarcode`/`setAuthToken`/
+    /// `removeAll`) is the same instance every reader (`AccountDetailViewModel`,
+    /// `TPPNetworkExecutor`, `TPPNetworkResponder`) reads through. So the cache
+    /// is always coherent without dropping it on every request build. There is
+    /// also no cross-process keychain writer (no app-groups / keychain-sharing /
+    /// extensions in the entitlements), so per-read invalidation was pure
+    /// overhead on the request hot path.
+    ///
+    /// Coherence at the two boundaries where credential state can change out of
+    /// band relative to a given instance's cache is preserved by EVENT-DRIVEN
+    /// invalidation instead: sign-out finalisation (`removeAll()`) and account
+    /// switch (`AccountsManager.currentAccount.didSet` → `invalidateCredentialCaches()`).
+    /// This removes the build-459 staleness (which came from a singleton writer
+    /// vs. per-account reader split that no longer exists) without re-reading
+    /// the keychain on every network request.
     func credentialSnapshot() -> CredentialSnapshot {
         return accountInfoQueue.sync {
-            if libraryUUID != nil {
-                invalidateAllKeychainCaches()
-            }
             let creds = self.credentials
             let hasCreds = UserAccountAuthHelper.hasCredentials(creds)
             let hasToken = UserAccountAuthHelper.hasAuthToken(credentials: creds)
@@ -657,6 +689,17 @@ private enum StorageKey: String {
                 _pin.write(nil)
                 _authToken.write(nil)
             }
+
+            // CP-D2: event-driven cache invalidation on sign-out finalisation.
+            // The write-through `write(nil)` calls above already left every
+            // cache nil, but `credentialSnapshot()` no longer invalidates per
+            // read — so drop the caches here too, synchronously and BEFORE the
+            // `.TPPDidSignOut` notification posts. This guarantees any consumer
+            // that reacts to sign-out (`AccountDetailViewModel.accountDidChange`,
+            // and — critically — the `TPPNetworkResponder` 401-decision reading
+            // `currentUserAccount.credentialSnapshot()`) can never observe a
+            // stale "signed in" snapshot after sign-out has completed.
+            invalidateAllKeychainCaches()
         }
 
         Task { @MainActor in

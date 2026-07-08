@@ -284,6 +284,25 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
     private var accountByUUID = [String: Account]()
     private let accountSetsLock = DispatchQueue(label: "com.tpp.accountSetsLock", attributes: .concurrent)
 
+    /// Launch-hydration (CP-D1) slim lookup: the current + `settingsAccountIdsList`
+    /// accounts (~2 accounts, a few KB) decoded SYNCHRONOUSLY at launch from the
+    /// small `accounts_catalog_slim_<hash>.json` snapshot, so `currentAccount`
+    /// resolves — and its `awaitReady()` gate is driven — within a few ms of
+    /// launch instead of paying the full ~207ms (fast sim) / ~0.3-0.6s (device)
+    /// 1142-account decode+map on the launch main thread.
+    ///
+    /// Deliberately kept SEPARATE from `accountSets`: `accountsHaveLoaded` and
+    /// `accounts()` MUST keep reflecting the FULL 1142-account list (the library
+    /// picker — `TPPAccountList` / `TPPAppDelegate.presentFirstRunFlowIfNeeded`
+    /// — reads them), so the ~2-account slim set must NOT flip `accountsHaveLoaded`
+    /// true (a truncated-picker bug). This structure only backs `account(_:)`'s
+    /// FALLBACK; full instances (in `accountByUUID`) always win once the full
+    /// list materializes off-main via the background `loadCatalogs`. Guarded by
+    /// its own `NSLock` so `account(_:)`'s `accountSetsLock` read and this
+    /// fallback never contend on the same lock.
+    private var slimAccountsByUUID = [String: Account]()
+    private let slimAccountsLock = NSLock()
+
     private let catalogPreloader = CatalogPreloader()
 
     // Per‐catalog in‐flight tracking:
@@ -486,10 +505,95 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
     /// path directly after seeding the on-disk cache.
     internal func preloadAccountsFromDiskCacheSync() {
         let hash = self.accountSet
+        // Fast path (CP-D1 LaunchHydration): when a slim snapshot exists, decode
+        // ONLY the current + settings accounts (a few KB) synchronously so
+        // `currentAccount` resolves and its auth-doc drive fires within a few ms
+        // of launch. The full 1142-account decode+map moves OFF the launch main
+        // thread — it materializes into `accountSets` via the background
+        // `loadCatalogs` that `init()` dispatches immediately after this call
+        // (its disk-cache branch decodes the full blob off-main and posts
+        // `.TPPCatalogDidLoad`). Consumers block on the EXISTING
+        // `Account.awaitReady()` gate, which reads `AccountStateStore` keyed by
+        // uuid and so survives the slim→full Account-instance swap.
+        //
+        // Gated on `hasCachedCatalogData` (full-cache freshness): the slim
+        // snapshot carries no separate metadata, so a truly-expired cache still
+        // falls through to the no-op below rather than hydrating stale data.
+        if hasCachedCatalogData(hash: hash), hydrateSlimLaunchSnapshot(hash: hash) {
+            refreshSlimLaunchSnapshotOffMain(hash: hash)
+            return
+        }
+        // Slow path: no slim snapshot yet (first launch after this ships, or a
+        // fresh install whose catalog cache was just written). Hydrate the full
+        // set synchronously exactly as before so behaviour is unchanged on that
+        // one launch, then seed a slim snapshot off-main so the NEXT launch takes
+        // the fast path above.
         guard hasCachedCatalogData(hash: hash),
               let cachedData = readCachedAccountsCatalogData(hash: hash) else {
             return
         }
+        hydrateFullAccountSets(fromCatalogData: cachedData, hash: hash)
+        refreshSlimLaunchSnapshotOffMain(hash: hash)
+    }
+
+    /// Decode the small `accounts_catalog_slim_<hash>.json` snapshot and hydrate
+    /// the current + settings accounts into `slimAccountsByUUID` (NOT
+    /// `accountSets` — see that property's doc for why). Drives each slim account
+    /// to `.basicInfoLoaded` (only if still `.notLoaded`, so a state already
+    /// advanced by a concurrent path is never knocked back) and fires the current
+    /// account's auth-doc drive. Returns `false` when there is no slim snapshot,
+    /// it is empty, or it fails to decode — the caller then takes the full sync
+    /// path. CP-D1.
+    private func hydrateSlimLaunchSnapshot(hash: String) -> Bool {
+        guard let url = slimSnapshotUrl(hash: hash),
+              FileManager.default.fileExists(atPath: url.path),
+              let data = try? Data(contentsOf: url) else {
+            return false
+        }
+        do {
+            let feed = try OPDS2CatalogsFeed.fromData(data)
+            let accounts = feed.catalogs.map {
+                Account(publication: $0, imageCache: ImageCache.shared)
+            }
+            guard !accounts.isEmpty else { return false }
+            // CP-D1 (Finding 5): the slim snapshot is written from the
+            // then-current account at launch; a mid-session library switch does
+            // NOT rewrite it, so a stale slim file can LACK the now-current
+            // account (currentAccountId persisted in UserDefaults ≠ slim set).
+            // If the current account is absent from the decoded slim set, fall
+            // through to the full sync hydrate (return false) rather than taking
+            // the fast path with a slim set that can't resolve `currentAccount`
+            // — otherwise there'd be a transient nil-currentAccount window at
+            // launch (spurious sign-in modals / empty library UI) that did not
+            // exist pre-D1. Belt-and-suspenders alongside the setter refresh.
+            if let currentId = currentAccountId,
+               !accounts.contains(where: { $0.uuid == currentId }) {
+                return false
+            }
+            storeSlimAccounts(accounts)
+            for account in accounts {
+                if case .notLoaded = AccountStateStore.shared.state(for: account.uuid) {
+                    account._setState(.basicInfoLoaded)
+                }
+            }
+            // Drive the current account's auth-doc so `awaitReady()` consumers
+            // (audiobook open, token refresh, bookmark sync, CarPlay auth)
+            // resolve without waiting on the full off-main materialization.
+            // `currentAccount` resolves via `account(_:)`'s slim fallback.
+            driveCurrentAccountAuthDocIfNeeded()
+            Log.info(#file, "CP-D1: slim launch snapshot hydrated \(accounts.count) accounts (hash=\(hash))")
+            return true
+        } catch {
+            Log.warn(#file, "CP-D1: slim launch snapshot decode failed: \(error). Falling back to full sync hydrate.")
+            return false
+        }
+    }
+
+    /// The original synchronous full-hydrate path, factored out of
+    /// `preloadAccountsFromDiskCacheSync` so the slow (no-slim-snapshot) launch
+    /// keeps behaving exactly as before. Only advances still-`.notLoaded` uuids
+    /// so a concurrently-advanced current account is never downgraded. CP-D1.
+    private func hydrateFullAccountSets(fromCatalogData cachedData: Data, hash: String) {
         do {
             let feed = try OPDS2CatalogsFeed.fromData(cachedData)
             let accounts = feed.catalogs.map {
@@ -500,9 +604,11 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
             // preloaded account into `.basicInfoLoaded`. Display-only
             // consumers (Settings/Libraries) can render the row immediately;
             // critical-path readers `awaitReady()` continue blocking until
-            // the auth-doc transition completes below.
+            // the auth-doc transition completes.
             for account in accounts {
-                account._setState(.basicInfoLoaded)
+                if case .notLoaded = AccountStateStore.shared.state(for: account.uuid) {
+                    account._setState(.basicInfoLoaded)
+                }
             }
             Log.info(#file, "Pre-loaded \(accounts.count) accounts from disk cache (sync, hash=\(hash))")
         } catch {
@@ -510,6 +616,105 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
             // we silently fall through to the async network refresh.
             Log.warn(#file, "Sync disk-cache pre-load failed: \(error). Will refresh from network async.")
         }
+    }
+
+    /// Thread-safe write of the slim launch-hydration accounts. CP-D1.
+    private func storeSlimAccounts(_ accounts: [Account]) {
+        slimAccountsLock.lock()
+        defer { slimAccountsLock.unlock() }
+        for account in accounts {
+            slimAccountsByUUID[account.uuid] = account
+        }
+    }
+
+    /// Thread-safe read of a slim launch-hydration account. CP-D1.
+    private func slimAccount(_ uuid: String) -> Account? {
+        slimAccountsLock.lock()
+        defer { slimAccountsLock.unlock() }
+        return slimAccountsByUUID[uuid]
+    }
+
+    /// Rebuild the slim launch snapshot from the authoritative full on-disk
+    /// catalog cache, OFF the main thread. Best-effort: keeps the slim file in
+    /// sync with the latest current + settings selection so the NEXT cold
+    /// launch's synchronous hydrate reflects it. Reads the full blob and
+    /// serializes off-main so no launch main-thread time is spent here. CP-D1.
+    private func refreshSlimLaunchSnapshotOffMain(hash: String) {
+        // Skip the background slim-snapshot write under XCTest. A detached
+        // best-effort file write outlives the test (cooperative cancel can't
+        // stop an in-progress `Data.write`), leaking an
+        // `accounts_catalog_slim_<hash>.json` — whose slim uuids are the writer
+        // test's, not the reader's — into a sibling test's launch, flipping it
+        // onto the slim fast path with a non-matching current account. Same
+        // cross-test-pollution rationale + mechanism as `_trackCrawlTask`'s
+        // XCTest gate (BR-2: runtime env gate, not `#if DEBUG`, so no
+        // conditional compilation on the production path). Production always
+        // refreshes; tests seed slim snapshots explicitly.
+        guard !Self._isRunningUnderXCTest else { return }
+        let task = Task.detached(priority: .utility) { [weak self] in
+            guard let self, !Task.isCancelled else { return }
+            guard let data = self.readCachedAccountsCatalogData(hash: hash) else { return }
+            guard !Task.isCancelled else { return }
+            self.writeSlimSnapshot(fromFullCatalogData: data, hash: hash)
+        }
+        _trackCrawlTask(task)
+    }
+
+    /// Carve the current + settings accounts out of the full catalog blob and
+    /// persist them as a small OPDS2 feed at `accounts_catalog_slim_<hash>.json`.
+    /// Runs on a background queue (never the launch main thread). CP-D1.
+    private func writeSlimSnapshot(fromFullCatalogData data: Data, hash: String) {
+        let keepUUIDs = slimSnapshotUUIDs()
+        guard !keepUUIDs.isEmpty, let url = slimSnapshotUrl(hash: hash) else { return }
+        guard let carved = Self.carveSlimFeed(fromFullCatalogData: data, keepUUIDs: keepUUIDs) else {
+            Log.warn(#file, "CP-D1: slim snapshot carve produced no data (hash=\(hash))")
+            return
+        }
+        do {
+            try carved.write(to: url)
+            Log.info(#file, "CP-D1: slim launch snapshot written (\(keepUUIDs.count) uuids, \(carved.count) bytes, hash=\(hash))")
+        } catch {
+            Log.warn(#file, "CP-D1: slim snapshot write failed: \(error)")
+        }
+    }
+
+    /// The uuids the slim launch snapshot must carry: the current account plus
+    /// `settingsAccountIdsList` (which itself always includes the current
+    /// account + the SimplyE instant-classics default per `TPPSettings+SE`). CP-D1.
+    private func slimSnapshotUUIDs() -> Set<String> {
+        var uuids = Set<String>()
+        if let current = currentAccountId {
+            uuids.insert(current)
+        }
+        for uuid in settings.settingsAccountIdsList {
+            uuids.insert(uuid)
+        }
+        return uuids
+    }
+
+    /// Pure raw-JSON carve: parse the full OPDS2 catalog blob with
+    /// `JSONSerialization`, keep only the `catalogs` entries whose
+    /// `metadata.id` is in `keepUUIDs`, and re-serialize the (otherwise
+    /// unchanged) root. Carving the raw JSON rather than re-encoding decoded
+    /// models preserves the exact date-string format `OPDS2CatalogsFeed.fromData`'s
+    /// custom date decoder expects, so the slim snapshot round-trips through the
+    /// same reader with no encoder date-strategy hazard. Returns nil if the blob
+    /// isn't the expected shape or no entries match. Static + pure so it is
+    /// unit-testable without a manager or disk. CP-D1.
+    static func carveSlimFeed(fromFullCatalogData data: Data, keepUUIDs: Set<String>) -> Data? {
+        guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let catalogs = root["catalogs"] as? [[String: Any]] else {
+            return nil
+        }
+        let kept = catalogs.filter { entry in
+            guard let metadata = entry["metadata"] as? [String: Any],
+                  let id = metadata["id"] as? String else { return false }
+            return keepUUIDs.contains(id)
+        }
+        guard !kept.isEmpty else { return nil }
+        var slimRoot = root
+        slimRoot["catalogs"] = kept
+        return try? JSONSerialization.data(withJSONObject: slimRoot)
     }
 
     // MARK: – Thread‐safe accountSets access
@@ -592,6 +797,18 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
             self.currentAccount?.hasUpdatedToken = false
             currentAccountId = newValue?.uuid
 
+            // CP-D2: event-driven credential-cache invalidation on account
+            // switch. `credentialSnapshot()` no longer invalidates the keychain
+            // cache on every read (it relies on the write-through cache + the
+            // one-instance-per-UUID invariant). When the current library
+            // changes, drop the newly-current account's cache so its first
+            // snapshot after the switch reads fresh keychain state rather than a
+            // value cached before it became "current". Only fires on a real
+            // change (nil→B, A→B), not on a redundant B→B reassignment.
+            if previousAccountId != newAccountId, let newId = newAccountId {
+                userAccount(for: newId).invalidateCredentialCaches()
+            }
+
             // Account state-machine wiring (3.2.0): Phase 1 — when the user
             // switches libraries, terminate any lingering `awaitReady()`
             // callers on the *prior* account with a definitive answer.
@@ -633,6 +850,16 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
             if Self.shouldFinishSwitchingImmediately(previousAccountId: previousAccountId, newAccountId: newAccountId) {
                 isAccountSwitching = false
             }
+            // CP-D1 (Finding 5): rewrite the slim launch snapshot off-main so it
+            // reflects the newly-selected current account. `slimSnapshotUUIDs()`
+            // is evaluated at write time, so without this a mid-session switch
+            // would leave the slim file listing the PRIOR account — and the next
+            // cold launch would resolve `currentAccount` nil in the
+            // pre-materialization window (self-healed only one launch later).
+            // Off-main + best-effort + XCTest-gated (see the method); no launch
+            // main-thread cost. The `hydrateSlimLaunchSnapshot` current-account
+            // presence check is the belt-and-suspenders if this ever lags.
+            refreshSlimLaunchSnapshotOffMain(hash: self.accountSet)
             NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
         }
     }
@@ -669,9 +896,15 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
     }
 
     func account(_ uuid: String) -> Account? {
-        return performRead {
-            accountByUUID[uuid]
+        if let full = performRead({ accountByUUID[uuid] }) {
+            return full
         }
+        // CP-D1 launch-hydration fallback: before the full 1142-account list has
+        // materialized off-main, the slim snapshot backs current-account
+        // resolution so `currentAccount` (and its auth-doc drive) work in the
+        // pre-materialization window. Full instances take precedence (checked
+        // first, above) once present.
+        return slimAccount(uuid)
     }
 
     func accounts(_ key: String? = nil) -> [Account] {
@@ -1144,6 +1377,20 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
         return appSupport.appendingPathComponent("accounts_catalog_metadata_\(hash).json")
     }
 
+    /// On-disk location of the CP-D1 slim launch snapshot (current + settings
+    /// accounts). The `accounts_catalog_slim_` name shares the
+    /// `accounts_catalog_` prefix, so `clearCache()` and the wiring-suite
+    /// disk-cache purge already sweep it with no extra bookkeeping. CP-D1.
+    private func slimSnapshotUrl(hash: String) -> URL? {
+        guard let appSupport = try? FileManager.default.url(
+                for: .applicationSupportDirectory,
+                in: .userDomainMask,
+                appropriateFor: nil,
+                create: true)
+        else { return nil }
+        return appSupport.appendingPathComponent("accounts_catalog_slim_\(hash).json")
+    }
+
     private func cacheAccountsCatalogData(_ data: Data, hash: String, isBundled: Bool = false) {
         // Save catalog data
         guard let url = accountsCatalogUrl(hash: hash) else { return }
@@ -1260,6 +1507,18 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
     ///
     /// Exposed `internal` so contract-snapshot tests can drive the wiring
     /// path directly without going through the full `loadCatalogs` cycle.
+    /// Whether an auth-doc fetch completion may write its own terminal
+    /// (`.detailsLoaded`/`.detailsFailed`). Returns `false` when the account has
+    /// since been evicted by a library switch — the deliberate, newer
+    /// `.detailsEvicted` terminal supersedes the in-flight fetch this completion
+    /// belonged to, and awaiters rely on it to fail-fast + redrive on return.
+    /// Pure so the guard is unit-testable without a controllable async fetch.
+    /// CP-D1 (swarm_27c181b5).
+    static func fetchCompletionMayWriteTerminal(currentState: Account.LoadState) -> Bool {
+        if case .detailsEvicted = currentState { return false }
+        return true
+    }
+
     internal func fetchAuthDocumentWithStateMachine(
         for account: Account,
         completion: @escaping (Bool) -> Void
@@ -1290,12 +1549,32 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
             self.inflightAuthDocFetches.remove(account.uuid)
             self.inflightAuthDocLock.unlock()
 
-            if success, let details = account.details {
-                account._setState(.detailsLoaded(details))
-            } else {
-                account._setState(.detailsFailed(
-                    .authDocumentFetchFailed(underlyingDescription: "loadAuthenticationDocument returned false")
-                ))
+            // A fetch that was SUPERSEDED by a library switch must not overwrite
+            // the eviction marker the `currentAccount` setter wrote. Sequence
+            // (CP-D1, swarm_27c181b5): the setter cancels this account's in-flight
+            // fetch (`cancelNonEssentialTasks`) THEN writes
+            // `.detailsEvicted(.libraryDeselected)`; this cancellation completion
+            // then fires ASYNC with `success == false` (NSURLError -999). Without
+            // this guard it clobbers `.detailsEvicted` with
+            // `.detailsFailed(.authDocumentFetchFailed)`, and on switch-back
+            // `driveCurrentAccountAuthDocIfNeeded` reads `.detailsFailed` → the
+            // "genuine failure, don't redrive" arm → `awaitReady()` consumers
+            // (audiobook open, token refresh, bookmark sync, CarPlay auth) stay
+            // stuck (the regression class PR #1021 split the enum to prevent). A
+            // switch-cancellation is NOT a genuine auth failure — the deliberate,
+            // newer `.detailsEvicted` terminal must win. Applies to success too:
+            // a fetch that landed just before cancellation must not resurrect the
+            // now-non-current account.
+            if AccountsManager.fetchCompletionMayWriteTerminal(
+                currentState: AccountStateStore.shared.state(for: account.uuid)
+            ) {
+                if success, let details = account.details {
+                    account._setState(.detailsLoaded(details))
+                } else {
+                    account._setState(.detailsFailed(
+                        .authDocumentFetchFailed(underlyingDescription: "loadAuthenticationDocument returned false")
+                    ))
+                }
             }
             completion(success)
         }
@@ -1391,7 +1670,28 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
                 oldAccounts.map { ($0.uuid, $0) },
                 uniquingKeysWith: { first, _ in first }
             )
-            let newAccounts = feed.catalogs.map { Account(publication: $0, imageCache: ImageCache.shared) }
+            let newAccounts = feed.catalogs.map { publication -> Account in
+                // CP-D1 (Finding 4): on the slim→full LAUNCH materialization
+                // (accountSets/`oldAccounts` empty for this uuid), REUSE the
+                // existing slim instance instead of constructing a fresh one.
+                // `details`/`authenticationDocument` are per-INSTANCE stored
+                // properties, and the slim current-account drive fetches the
+                // auth-doc onto the SLIM instance. If we swapped in a fresh
+                // instance here, an in-flight slim fetch would land on the
+                // discarded instance — leaving `currentAccount.details == nil`
+                // while state reads `.detailsLoaded` (split-brain: legacy direct
+                // readers `.details`/`.needsAuth`/`.loansUrl`/`.authSurfaceHosts`
+                // see nil). Reusing keeps ONE Account per uuid so the fetch
+                // completion lands on the current instance. BOUNDED to launch:
+                // once `accountSets` is populated (warm / network-refresh path),
+                // `oldAccountsByUUID` carries the auth-doc forward via the loop
+                // below and fresh network data must win, so we do NOT reuse then.
+                if oldAccountsByUUID[publication.metadata.id] == nil,
+                   let slim = slimAccount(publication.metadata.id) {
+                    return slim
+                }
+                return Account(publication: publication, imageCache: ImageCache.shared)
+            }
 
             // Carry over authenticationDocument (and thus details) from old
             // accounts so a background refresh doesn't nil-out details while
@@ -1427,7 +1727,17 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
                     // mock-data publication could in principle land here
                     // with an authDoc that fails to construct details.
                     newAccount._setState(.detailsLoaded(details))
-                } else {
+                } else if case .notLoaded = AccountStateStore.shared.state(for: newAccount.uuid) {
+                    // CP-D1: preserve any state the slim launch snapshot already
+                    // advanced this uuid to. The slim current-account drive can
+                    // reach `.detailsLoading`/`.detailsLoaded` BEFORE this async
+                    // full-list materialization runs; only stamp `.basicInfoLoaded`
+                    // on a still-fresh uuid so the off-main full load can't knock a
+                    // mid-flight current account back down and force a redundant
+                    // re-drive. (No-op change for the cold-launch case where the
+                    // store is fresh `.notLoaded` — this else-branch only fires for
+                    // accounts without a carry-over auth doc, which were previously
+                    // `.notLoaded`/`.basicInfoLoaded` anyway.)
                     newAccount._setState(.basicInfoLoaded)
                 }
             }
