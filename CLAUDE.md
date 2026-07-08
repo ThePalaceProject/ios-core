@@ -72,6 +72,17 @@ failed, cited as whole-suite green. Don't repeat it.
 - Two targets: `Palace` (full DRM) and `Palace-noDRM` (open-source)
 - DRM builds run natively on Apple Silicon — Rosetta is no longer required
 
+**`nearly matches optional requirement` on an `@objc` delegate is NEVER benign.**
+It means your method is silently NOT registered as the protocol witness, so the
+callback (WebKit/UIKit/CarPlay delegate) is skipped at runtime — no error, no
+crash. This is exactly how Xcode 26.2 broke web-sheet sign-in: `WKNavigationDelegate`
+became `@MainActor` (`WK_SWIFT_UI_ACTOR`) and a `nonisolated`/non-`@MainActor`
+`decisionHandler` stopped matching (#1205). Match the SDK requirement's isolation
+exactly — `@MainActor` method + `@escaping @MainActor` handler for `WK_SWIFT_UI_ACTOR`
+protocols. When a delegate callback "isn't firing," read this warning FIRST before
+theorizing about timing. Gated in CI by `scripts/check-objc-witness-nearly-matches.sh`
+(fires only on same-name drift; benign different-name matches like CarPlay are ignored).
+
 ## CI/CD reliability — the green-board contract
 
 A CI board that is usually-red-from-flakes provides **no signal** — it trains
