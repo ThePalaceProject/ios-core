@@ -1,0 +1,32 @@
+[
+  {
+    "args" : {
+
+    },
+    "method" : "isRegistryLoaded"
+  },
+  {
+    "args" : {
+
+    },
+    "method" : "loadPersisted"
+  },
+  {
+    "args" : {
+
+    },
+    "method" : "getAllTasks"
+  },
+  {
+    "args" : {
+      "bookID" : "b"
+    },
+    "method" : "registryState"
+  },
+  {
+    "args" : {
+      "decision" : "restart(bookID: \"b\")"
+    },
+    "method" : "apply"
+  }
+]
