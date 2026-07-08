@@ -7,9 +7,13 @@ allowed-tools: Bash(*), Read, Write, Edit, Glob, Grep, Agent
 type: evolving
 status: active
 created: 2026-04-29
-last_refresh: 2026-05-15
+last_refresh: 2026-07-08
 freshness_window: 365d
 owners: [general]
+# changelog:
+#   2026-07-08 — added "Fleet campaign (device-matrix) mode" note referencing the
+#                regression-area-worker.sh shard fan + .simdrive/regression-areas.json
+#                area-group × device-cell matrix + generate-regression-campaign-report.py.
 ---
 
 # Palace iOS Release Regression
@@ -104,6 +108,65 @@ Any automated failures should be logged as findings. Help the user add them to t
 finding worth filing as `pre-existing major` even if it isn't a regression — the
 test suite has insufficient discriminating power. PP-4164 found `AccountsManager.swift`
 at 0% kill rate this way.
+
+### Fleet campaign (device-matrix) mode — parallel coverage across devices
+
+The phases above are a **linear, single-sim** pass. For a real release-candidate
+regression that needs **multi-device × multi-area** coverage, use the **fleet
+campaign** tooling instead — it fans hermetic-sim workers, one per
+`(area-group × device-cell)` shard, so device coverage runs in parallel rather
+than serially. This was exercised for real (the `.regression-runs/rc-2026061*-*`
+run dirs are live campaign output). Use it when the release warrants the full
+device matrix; stick to the linear phases for a quick single-sim smoke.
+
+**Area groups × device cells** (from `.simdrive/regression-areas.json`):
+
+- Area groups: `auth`, `circulation`, `reading`, `audiobook`, `catalog`, `ui-nav`
+  (each resolves its own `.simdrive/journeys/*.yaml` set + `chaos_seeds`).
+- Device cells: `C-iphone-26` (iPhone 16 Pro / iOS 26 — baseline parity),
+  `C-ipad-26` (iPadOS 26 layout parity), `C-ios18` (iOS 18 back-compat floor),
+  `C-ipad-on-mac` (Designed-for-iPad native — device-divergence crashes).
+  (`C-carplay` is a separate headless-XCTest cell, not in the manifest device list.)
+
+**Per-shard worker** — `scripts/regression-area-worker.sh` runs one shard on a
+dedicated keychain-reset sim, replays that area-group's journeys, captures perf
+delta + crashes + a candidate screenshot, and appends a findings row per real
+failure to its **own** per-shard file `<run-dir>/findings/<cell>__<area>.csv`
+(never a shared file — parallel workers never race). **No evidence ⇒ no finding**
+(anti-hallucination). One shard:
+
+```bash
+scripts/regression-area-worker.sh \
+  --area-group circulation \
+  --device-cell C-iphone-26 \
+  --run-dir .regression-runs/rc-<ver>-$(date +%Y%m%d-%H%M%S) \
+  [--sim-id <UDID>] [--chaos] [--dry-run]
+```
+
+Fan every area-group across each device cell (each cell provisioned by its own
+sim; `HARNESS_SESSION_SIM_UDID` supplies the UDID when the harness allocates it).
+Sibling cells that can't be simdrive-driven have dedicated scripts:
+`scripts/regression-carplay-cell.sh` (headless CarPlay XCTest suite),
+`scripts/regression-ipad-on-mac.sh` (native Designed-for-iPad WS-4 crash harvest),
+and `scripts/regression-chaos-fan.sh` (fans `run-chaos-pass.sh` across every
+area-group's `chaos_seeds`).
+
+**Campaign report** — merge the per-shard shards into a master `findings.csv`,
+then generate the HTML:
+
+```bash
+python3 scripts/generate-regression-campaign-report.py \
+  --csv .regression-runs/rc-<ver>-.../findings.csv \
+  --output .regression-runs/rc-<ver>-.../report.html \
+  --run-id rc-<ver> --assets-root .regression-runs/rc-<ver>-...
+```
+
+**The fleet campaign and the linear phases are complementary, not either/or.**
+The fleet path parallelizes automated *device coverage* (journeys + chaos + perf
++ crash harvest per cell). The linear skill phases still own the **human matrix**
+(Phase 3 side-by-side, P0/P1/P2 tiers), **finding review** (Phase 4), the
+**HTML/publish** steps you present to stakeholders, and **Jira ticketing**
+(Phase 6). Feed campaign findings into the manual review, don't skip it.
 
 ## Phase 3: Manual Side-by-Side Testing
 

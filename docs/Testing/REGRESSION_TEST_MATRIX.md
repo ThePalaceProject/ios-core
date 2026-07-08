@@ -95,6 +95,15 @@ Borrow and fulfillment paths branch by distributor. Every circulation row below 
 | B8 | Concurrent borrow | Rapid taps on Borrow button | All | simdrive (`concurrent-borrow.yaml`) | Verify no double-borrow, debounce works. |
 | B9 | Borrow after sign-out | Anonymous flow: Borrow without any sign-in | anonymous | Manual | SQ-005 regression: must not show empty sign-in modal. |
 
+### Upgrade path (in-place)
+
+The highest-consequence failure class is **user data loss on upgrade** — a schema/persistence change that silently zeroes a patron's shelf, credentials, or reading positions when they update the app over an existing install. A clean install tests nothing here; the whole point is upgrading *in place* over real prior-version state. Run each row across **at least `basic` + one SSO type** (`saml` or `oidc`) so credential-format migration is exercised, not just registry migration.
+
+| ID | Area | Description | Auth Types | Automation | Notes |
+|----|------|-------------|------------|------------|-------|
+| UP1 | In-place upgrade — state preservation | **On the last shipped release build (3.2.0, TestFlight or App Store):** sign in (pick an auth type), borrow ≥1 book, download it, open it and set a reading position; for an audiobook set a playback position. This populates registry state + keychain credentials + downloaded files on disk. **Then upgrade IN PLACE to the 3.3.0 candidate** — do NOT delete the app (in-place upgrade is the whole point; a clean install tests nothing). **Verify post-upgrade:** loans still present, downloaded books still openable offline, reading/playback positions preserved, still signed in (credentials survived), no duplicate/lost entries, no crash-loop, no data wipe. | basic + one SSO (saml or oidc), min 2 runs | Manual | **3.3.0 blind spot — zero prior coverage.** Carries PR #1212 (registry "Bulletproof Ownership": quarantine + `.bak` backup + `schemaVersion` bump) and PR #1199 (Swift 6 language-mode flip). Registry lives at `<Application Support>/<accountID>/registry/registry.json` (see `BookRegistrySync.registryUrl`). Backup scheme: durable last-good sidecar `registry.json.bak` (`RegistryFileRecovery.writeBackup`, write-temp→fsync→atomic-rename); corrupt files copied aside to `registry.json.corrupt-<unix-timestamp>` and NEVER deleted; INV-1 refuses to persist an empty registry while a non-empty `.bak` exists. **A 3.2.0-written unversioned file must load as v1, migrate to `schemaVersion: 1` on next save, and never be quarantined or zeroed.** Watch the console for `INV-1: refusing to persist an EMPTY registry` (a fired guard means the load path saw the shelf as empty — investigate before shipping). |
+| UP1-Result | *(expected result for UP1)* | All prior state preserved end-to-end: loans, downloaded files, EPUB/audiobook positions, and sign-in survive the upgrade with no data loss. App launches cleanly (no crash-loop, no forced re-sign-in, no empty-shelf flash that then repopulates). `registry.json` gains `schemaVersion: 1` on first post-upgrade save; any `.corrupt-*` quarantine file present ⇒ FAIL (real corruption, not the migration path). | basic + one SSO | Manual | If ANY prior-version state is lost, classify `blocker` (data loss) per the Severity Guide and block the release. |
+
 ---
 
 ## P1 — Core Experience (test every release)
@@ -268,6 +277,7 @@ Auth area has good depth on SAML (3 test files), basic (`TPPBasicAuthTests`), cr
 
 ## Change log
 
+- 2026-07-08 — Added P0 in-place upgrade-path rows (UP1 / UP1-Result) for the 3.3.0 cycle. Motivation: 3.3.0 carries PR #1212 (registry "Bulletproof Ownership" — quarantine + `.bak` backup + `schemaVersion` bump) and PR #1199 (Swift 6 language-mode flip), and there was ZERO coverage of the in-place upgrade path — the highest-consequence failure class (user data loss). Row references the real persistence mechanism: `registry.json` + `registry.json.bak` + `.corrupt-<ts>` quarantine + INV-1 empty-save guard.
 - 2026-05-27 — Added E2-Hang, E3-LCP-Resume, N4 from HelpSpot triage for the 3.2.0 regression. Sources: 17964 (Marketplace audiobook mid-book resume failure), 17960 + 17971 (hold-ready notification ↔ holds-list desync), 17966 (generic reader open hang outside Marketplace LCP PDFs). Each row pins the originating ticket so the link survives.
 - 2026-04-17 — Added test-fixture mapping, expanded auth types from 3 to 7, split B6 by distributor, added B7 (hold→loan), A3 by auth type, E1/E3/E6 split by DRM + distributor, added critical auth × distributor cross-product (9 rows), added Automation Gaps roadmap.
 - 2026-04-16 — Initial matrix from PP-4020 sprint findings.
