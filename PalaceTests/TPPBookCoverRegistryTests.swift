@@ -150,7 +150,11 @@ final class TPPBookCoverRegistryTests: XCTestCase {
     /// returning DNS errors), it should be marked as failing so subsequent requests skip immediately
     /// instead of waiting for DNS timeouts.
     func testHostFailureTracker_RecordsFailureAndSkips() async {
-        // Arrange
+        // Arrange — pin failureThreshold: 1 so a single recorded failure trips the
+        // breaker. The production DEFAULT is now 3 (#1215: don't blacklist a whole
+        // cover CDN after one Wi-Fi↔cellular blip); the below/at-threshold semantics
+        // are covered by HostFailureTrackerTests.swift. This test isolates the
+        // "a tripped host is skipped" behavior, so threshold 1 keeps it single-failure.
         let tracker = HostFailureTracker(cooldownInterval: 300, failureThreshold: 1)
         let failingHost = "palace-bookshelf-downloads.dp.la"
 
@@ -170,7 +174,8 @@ final class TPPBookCoverRegistryTests: XCTestCase {
 
     /// Verify that a successful request clears the failure record
     func testHostFailureTracker_SuccessClearsFailure() async {
-        // Arrange
+        // Arrange — threshold 1 so one failure trips; this test targets the
+        // success-clears-the-record behavior, not the threshold (see comment above).
         let tracker = HostFailureTracker(cooldownInterval: 300, failureThreshold: 1)
         let host = "example.com"
 
@@ -189,7 +194,8 @@ final class TPPBookCoverRegistryTests: XCTestCase {
 
     /// Verify that the circuit breaker resets after the cooldown period
     func testHostFailureTracker_ResetsAfterCooldown() async {
-        // Arrange - Use a very short cooldown for testing
+        // Arrange - Use a very short cooldown for testing; threshold 1 so one
+        // failure trips (this test targets cooldown expiry, not the threshold).
         let tracker = HostFailureTracker(cooldownInterval: 0.1, failureThreshold: 1) // 100ms
         let host = "expired-failure.example.com"
 
@@ -219,6 +225,8 @@ final class TPPBookCoverRegistryTests: XCTestCase {
 
     /// Verify that different hosts are tracked independently
     func testHostFailureTracker_TracksHostsIndependently() async {
+        // threshold 1 so one failure trips the failing host; this test targets
+        // per-host independence, not the threshold (see RecordsFailureAndSkips).
         let tracker = HostFailureTracker(failureThreshold: 1)
         let failingHost = "dead-host.example.com"
         let healthyHost = "healthy-host.example.com"

@@ -41,7 +41,11 @@ struct AccountDetailSkeletonView: View {
     //     real header's x/y, and `.listRowBackground(.clear)`.
     private var headerSkeleton: some View {
         HStack(spacing: 12) {
-            SkeletonBox(width: 50, height: 50, cornerRadius: PalaceRadius.card)
+            // Square (r=0) to match the real library logo, which renders as a
+            // plain `Image(uiImage:).scaledToFit()` with no corner rounding
+            // (AccountDetailView headerView / headerRow). A rounded skeleton
+            // here snaps to square when the logo loads.
+            SkeletonBox(width: 50, height: 50, cornerRadius: 0)
 
             SkeletonBox(width: 150, height: 20, cornerRadius: 4)
 

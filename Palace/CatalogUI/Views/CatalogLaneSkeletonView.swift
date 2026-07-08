@@ -25,7 +25,9 @@ struct CatalogLaneSkeletonView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             // Header — traces `Text(title).font(.title2)` (~28pt line height).
-            SkeletonBox(width: 200, height: 28, cornerRadius: PalaceRadius.control)
+            // Text-bar radius (4) — matches the other text placeholders; a text
+            // line has no shape to snap against, so this is convention-consistency.
+            SkeletonBox(width: 200, height: 28, cornerRadius: 4)
                 .padding(.horizontal, 12)
 
             // Scroller — mirrors `CatalogLaneRowView.scroller` exactly.

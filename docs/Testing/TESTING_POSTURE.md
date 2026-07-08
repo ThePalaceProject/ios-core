@@ -1,6 +1,6 @@
 # Palace iOS — Testing Posture
 
-Last updated: 2026-04-16
+Last updated: 2026-07-08
 
 ## Testing Pyramid
 
@@ -17,14 +17,14 @@ Last updated: 2026-04-16
               ┌──┤  │ Integra-│  6 integration tests, contract tests,
               │  │  │ tion    │  mock backend scenarios
               │  │  ├─────────┤
-           ┌──┤  │  │ Unit    │  5,823 tests, 367 files, 674 classes
+           ┌──┤  │  │ Unit    │  7,916 tests, 634 files (896 classes)
            │  │  │  │         │  Mutation testing, coverage floors
            └──┴──┴──┴─────────┘
 ```
 
 | Layer | Count | Automation | CI Gated |
 |-------|-------|------------|----------|
-| Unit tests | 5,823 methods / 674 classes | Fully automated | Yes (blocking) |
+| Unit tests | 7,916 methods / 896 classes | Fully automated | Yes (blocking) |
 | Integration | 6 test files | Fully automated | Yes (in unit suite) |
 | Contract/API | 1 suite + 35 fixtures | Fully automated | Yes (in unit suite) |
 | Snapshot | 11 test files | Automated capture | Artifact only |

@@ -144,9 +144,57 @@ struct AppTabHostView: View {
         ZStack(alignment: .bottom) {
             tabViewContent
             persistentFullPlayerOverlay
+            collapsedPillOverlay
             SentimentGateView(presenter: ratingPromptPresenter)
         }
     }
+
+    /// The compact floating pill shown when the user has collapsed the
+    /// mini-bar (`presenter.isCollapsed == true`). Mounted as a bottom-
+    /// trailing overlay at the ZStack root — NOT a `.safeAreaInset` like the
+    /// mini-bar — so it floats over content without reserving full-width
+    /// height or pushing the tab content up. Pinned above the tab bar via
+    /// `pillBottomInset`. Gated behind the same feature flag as the mini-bar
+    /// so the flag flip removes all three player surfaces together.
+    @ViewBuilder
+    private var collapsedPillOverlay: some View {
+        if inAppPlaybackNavEnabled,
+           AudiobookCollapsedPillView.shouldShow(
+               hasActiveSession: audiobookSessionPresenter.hasActiveSession,
+               isReaderActive: audiobookSessionPresenter.isReaderActive,
+               isCollapsed: audiobookSessionPresenter.isCollapsed) {
+            // GeometryReader so the bottom inset is DERIVED from the device's
+            // real bottom safe-area inset (home indicator) rather than a magic
+            // constant — a hardcoded value floats too high on non-notched
+            // devices (iPhone SE: no home indicator) and can clip the tab bar
+            // on others. `ignoresSafeArea()` lets the reader report the true
+            // insets; our explicit padding then positions the pill.
+            GeometryReader { geo in
+                AudiobookCollapsedPillView(
+                    presenter: audiobookSessionPresenter,
+                    audiobookSession: appContainer.audiobookSession
+                )
+                .padding(.trailing, 16)
+                .padding(.bottom, geo.safeAreaInsets.bottom + Self.tabBarHeight + Self.pillMargin)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+            }
+            .ignoresSafeArea()
+            // Scale + fade in from the corner (paired with the mini-bar's
+            // slide-out) rather than popping.
+            .transition(.scale(scale: 0.6, anchor: .bottomTrailing).combined(with: .opacity))
+            .accessibleAnimation(PalaceMotion.standard, value: audiobookSessionPresenter.isCollapsed)
+        }
+    }
+
+    /// Standard `UITabBar` height (points) the floating pill must clear. The
+    /// device's variable home-indicator inset is added on top at runtime via
+    /// `GeometryReader.safeAreaInsets.bottom`, so only the fixed tab-bar height
+    /// lives here. NOTE: the exact resting position is a best-effort default —
+    /// it has NOT yet been visually confirmed on-device (the live simdrive pass
+    /// is deferred; see the PR's "Not done"). Refine after that pass if needed.
+    private static let tabBarHeight: CGFloat = 49
+    /// Breathing room between the pill and the tab bar.
+    private static let pillMargin: CGFloat = 12
 
     /// Persistent full-player overlay — keeps the toolkit's
     /// `AudiobookPlayerView` mounted across minimize/expand cycles so its

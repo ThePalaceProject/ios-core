@@ -82,28 +82,26 @@ jobs:
         id: replays
         if: steps.corpus.outputs.present == 'true'
         run: |
-          UDID="${{ steps.sim.outputs.udid }}"
-          FAIL=0
-          PASS=0
+          # scripts/chaos-replay.sh stages each .simdrive/replays/chaos/<name>/
+          # recording into simdrive's recordings_root and replays it via the
+          # Python API (recorder.replay), classifying the result with the same
+          # anti-false-pass gate the fleet worker uses. It exits non-zero if any
+          # replay diverges or a corpus entry is malformed.
+          #
+          # (This replaces the old inline `simdrive replay ...` CLI call, which
+          # invoked a subcommand that does not exist — replay is Python/MCP-only.)
+          set -o pipefail
           REPORT=/tmp/replay-report.txt
-          : > "$REPORT"
-          for yaml in .simdrive/replays/chaos/*.yaml; do
-            [[ -f "$yaml" ]] || continue
-            NAME=$(basename "$yaml" .yaml)
-            echo "::group::$NAME"
-            # simdrive.replay accepts on_drift={halt,warn,force}; halt = exit
-            # non-zero if the replay diverges (post-state SSIM < threshold).
-            if simdrive replay --name "$NAME" --on-drift halt --drift-threshold 0.85 --udid "$UDID" 2>&1 | tee -a "$REPORT"; then
-              PASS=$((PASS + 1))
-            else
-              FAIL=$((FAIL + 1))
-              echo "::error::Replay $NAME diverged from recorded state — chaos-discovered regression has reappeared"
-            fi
-            echo "::endgroup::"
-          done
-          echo "pass=$PASS" >> "$GITHUB_OUTPUT"
-          echo "fail=$FAIL" >> "$GITHUB_OUTPUT"
-          [[ "$FAIL" == "0" ]]
+          scripts/chaos-replay.sh \
+            --udid "${{ steps.sim.outputs.udid }}" \
+            --threshold 0.85 2>&1 | tee "$REPORT"
+          RC=${PIPESTATUS[0]}
+          # Summary line: "chaos-replay: N passed, M failed (of K)"
+          PASS=$(grep -oE 'chaos-replay: [0-9]+ passed' "$REPORT" | grep -oE '[0-9]+' | head -1 || echo 0)
+          FAIL=$(grep -oE '[0-9]+ failed' "$REPORT" | grep -oE '[0-9]+' | head -1 || echo 0)
+          echo "pass=${PASS:-0}" >> "$GITHUB_OUTPUT"
+          echo "fail=${FAIL:-0}" >> "$GITHUB_OUTPUT"
+          exit "$RC"
 
       - name: Comment summary on PR
         if: failure() && steps.corpus.outputs.present == 'true'

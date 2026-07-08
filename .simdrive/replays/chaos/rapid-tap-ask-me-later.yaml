@@ -1,0 +1,86 @@
+scenario:
+  id: rapid-tap-ask-me-later
+  name: "Chaos: rapid-tap 'Ask me later' on the app-rating gate must not double-dismiss / bleed through"
+  description: >
+    Curated chaos replay seeded from the 2026-07-02 chaos-QA sweep of the
+    app-rating sentiment gate (Epic PP-4086). Drives THREE rapid taps at the
+    exact 'Ask me later' button coordinate while the rating gate is displayed.
+
+    The adversarial intent: a rapid multi-tap on a modal dismiss button must
+    dismiss the gate EXACTLY ONCE and must NOT let a trailing tap fall through
+    to the Catalog/Settings content behind the gate (tap-outside-dismiss +
+    fast input race). This is the dismiss-bleed-through lineage — the same
+    class of bug that the app-rating gate app-rating dismiss tap-bleed-through
+    finding (Epic PP-4086 chaos pass) exposed: the gate is a tap-outside-to-
+    dismiss overlay, so a fast 3x tap can land the 1st on the button, the gate
+    dismisses, and taps 2+3 hit whatever content is now under the finger.
+
+    See CLAUDE.md "Local chaos pass for risk-bearing UI changes" and the
+    wall-failure .forgeos/wall-failures/2026-07-02-pr1168-darkmode-contrast.md
+    (same 2026-07-02 gate sweep, contrast sibling).
+
+  tags: [chaos, chaos-rapid-tap, sentiment-gate, app-rating, PP-4086, dismiss-bleed]
+  tier: stateful
+  blocking: false   # advisory corpus; the gate that consumes this
+                    # (chaos-replay-on-pr.yml) is dormant until a self-hosted
+                    # [macos, palace-ios] runner + ENABLE_CHAOS_QA_RUNNER=true.
+
+  preconditions:
+    - "showDeveloperSettings = true (xcrun simctl spawn <udid> defaults write org.thepalaceproject.palace showDeveloperSettings -bool true)"
+    - "App-rating gate FORCE-eligible and displayed: Settings → Testing → FEATURE FLAGS → 'Trigger Rating Prompt Now' so 'Are you enjoying The Palace Project?' + Yes, I love it! / Not really / Ask me later is on screen"
+    - "The 'Ask me later' button is at the recorded coordinate (x:604 y:1615 @ 1206x2622, iPhone 16 Pro)"
+
+  # The engine resolves this by directory NAME against SIMDRIVE_HOME/recordings
+  # (recorder.replay: rec_dir = recordings_root() / name). The co-located
+  # recording dir below is the replayable payload; SSIM runs per-step against
+  # its snapshots/*.png. See ./README.md "How the gate resolves a replay".
+  recording:
+    path: ".simdrive/replays/chaos/rapid-tap-ask-me-later/recording.yaml"
+    steps: 3
+    captured_with: "simdrive 1.0.0b12"
+    captured_on: "2026-07-02"
+    app_version: "484"
+
+  steps:
+    - id: tap_ask_me_later_1
+      description: "1st rapid tap on 'Ask me later' — dismisses the rating gate"
+      tap_target: { x: 604, y: 1615 }
+    - id: tap_ask_me_later_2
+      description: "2nd rapid tap at the same coord — gate should already be gone; this must NOT re-trigger a dismiss nor land on content behind"
+      tap_target: { x: 604, y: 1615 }
+    - id: tap_ask_me_later_3
+      description: "3rd rapid tap — final trailing tap; asserts no bleed-through to Catalog/Settings underneath"
+      tap_target: { x: 604, y: 1615 }
+
+  expected_invariants:
+    - "The rating gate dismisses exactly once (post-state OCR shows no 'Are you enjoying', no 'Yes, I love it!', no 'Ask me later')"
+    - "No second modal / no re-presented gate appears from the trailing taps"
+    - "No navigation change from a bled-through tap: the screen behind (LIBRARY SETTINGS / Catalog / Settings tab bar) is unchanged — taps 2 and 3 did NOT open a book, push a detail view, or toggle a Setting"
+    - "No crash across the 3 rapid taps (chaos sweep 2026-07-02 recorded zero crashes)"
+
+  structural_checks:
+    text_subset_forbidden_post:
+      - "Are you enjoying The"
+      - "Yes, I love it!"
+      - "Ask me later"
+
+  ssim_gating:
+    threshold: 0.85
+    on_drift: halt   # deterministic dismiss — post-state should be stable
+                     # (gate gone, content behind unchanged). Divergence = the
+                     # dismiss-bleed regression reappeared.
+    masks:
+      - { x: 0, y: 0, w: 1206, h: 180, label: status_bar }
+
+  rationale: |
+    Kills the "rapid multi-tap on a tap-outside-dismiss modal bleeds through
+    to underlying content" bug class on the app-rating gate. Unit tests and
+    OCR-presence assertions miss this — it is a timing-sensitive HID-input
+    race only visible when real CoreSimulator taps arrive faster than the
+    dismiss animation completes. This is exactly the finding class the
+    Epic PP-4086 local chaos pass caught (dismiss tap-bleed-through) that the
+    fixture tests did not.
+
+  known_issues:
+    - "Known low-sev from the source sweep: a rapid 3x tap during the dismiss CAN land a trailing tap on content behind the gate (documented in app-rating-sentiment-gate.yaml notes). If this replay's SSIM diverges post-dismiss, that low-sev has become observable — triage before dismissing as flake."
+    - "Replaying mutates rating-state engagement signals. Reset via Developer Settings → 'Reset Rating State' before re-running so the gate is re-triggerable."

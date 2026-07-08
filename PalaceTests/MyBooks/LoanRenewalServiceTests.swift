@@ -196,7 +196,13 @@ final class LoanRenewalServiceTests: XCTestCase {
     func testProductionFactory_foreignHost401_classifiesOk() async {
         let book = makeBook(identifier: "PF1", borrowHost: "foreign.host")
         let service = LoanRenewalService.production(
-            executor: TPPNetworkExecutor(cachingStrategy: .fallback), // throwaway: unused (test injects StubPoster); a fresh executor keeps this test off the production DI graph, so it needs no per-test teardown.
+            // The factory takes a concrete TPPNetworkExecutor, but this test
+            // injects `poster:` so the executor is never used (see production():
+            // it only wraps `executor` when `poster == nil`). Use a throwaway
+            // ephemeral executor rather than the shared production container, so
+            // the test touches no process-wide singleton (TearDownRequiredLint)
+            // and needs no teardown.
+            executor: TPPNetworkExecutor(credentialsProvider: nil, cachingStrategy: .ephemeral, delegateQueue: nil),
             bookRegistry: TPPBookRegistryMock(),
             poster: StubPoster(status: 401),
             hostsProvider: { ["our.host"] })

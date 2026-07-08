@@ -135,6 +135,21 @@ class AudiobookSessionPresenter: ObservableObject {
     /// can drive it directly.
     @Published var isReaderActive: Bool = false
 
+    /// True when the user has collapsed the mini-player down to the compact
+    /// floating pill (`AudiobookCollapsedPillView`). This is a SEPARATE axis
+    /// from `isPlayerExpanded`:
+    ///   - `isPlayerExpanded` is the full-player ⇄ mini-bar axis.
+    ///   - `isCollapsed` is the mini-bar ⇄ pill axis.
+    /// When `isCollapsed == true`, `AppTabHostView` renders the pill instead
+    /// of the full mini-bar; **playback keeps running** — collapsing is
+    /// strictly a chrome change, unlike the `✕` dismiss which tears the
+    /// session down via `stopPlayback`. Only reachable from the mini-bar
+    /// (swipe-down → `collapse()`); tapping the pill restores it
+    /// (`restoreFromCollapsed()`). Reset to false on every path that shows
+    /// the full chrome (`expand()`, `minimize()`, `presentOnFirstOpen()`,
+    /// `clearActiveSession()`) so the pill state is never stale.
+    @Published var isCollapsed: Bool = false
+
     // MARK: - Private state
 
     private let sessionManager: AudiobookSessionManaging
@@ -170,12 +185,17 @@ class AudiobookSessionPresenter: ObservableObject {
     /// `.forgeos/swarms/swarm_0b7616e7/contracts/C-AudiobookSessionPresenter-and-Migration.md`.
     func presentOnFirstOpen() {
         isPlayerExpanded = true
+        // A fresh open always shows the full chrome — never the leftover
+        // pill from a previously-collapsed session.
+        isCollapsed = false
     }
 
     /// Tap-on-mini-player entry point. Sets `isPlayerExpanded = true` so
     /// the root fullScreenCover shows the full player.
     func expand() {
         isPlayerExpanded = true
+        // Expanding to the full player supersedes the collapsed pill state.
+        isCollapsed = false
     }
 
     /// Swipe-down-on-full-player or CarPlay-disconnect entry point. Sets
@@ -184,6 +204,23 @@ class AudiobookSessionPresenter: ObservableObject {
     /// strictly a UI dismiss.
     func minimize() {
         isPlayerExpanded = false
+        // Returning from the full player always lands on the full mini-bar,
+        // not the pill — so a prior collapse doesn't survive an expand cycle.
+        isCollapsed = false
+    }
+
+    /// Swipe-down-on-mini-bar entry point. Collapses the full mini-bar to
+    /// the compact floating pill (`AudiobookCollapsedPillView`). Playback
+    /// keeps running — this is strictly a chrome change, distinct from the
+    /// `✕` dismiss which calls `stopPlayback`. Idempotent.
+    func collapse() {
+        isCollapsed = true
+    }
+
+    /// Tap-on-pill entry point. Restores the full mini-bar from the compact
+    /// pill. Playback is unaffected. Idempotent.
+    func restoreFromCollapsed() {
+        isCollapsed = false
     }
 
     /// Called by the session manager's `dismissPlayerOnPhone` path
@@ -204,6 +241,7 @@ class AudiobookSessionPresenter: ObservableObject {
         currentBook = nil
         hasActiveSession = false
         isPlayerExpanded = false
+        isCollapsed = false
         isPlaying = false
         coverImage = nil
         progress.currentLocation = nil
