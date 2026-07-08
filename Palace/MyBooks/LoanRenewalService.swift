@@ -64,6 +64,11 @@ final class LoanRenewalService: @unchecked Sendable {
     /// called on a foreign-host 401 (INV-5).
     private let markCredentialsStale: @Sendable () -> Void
 
+    /// Designated init. `classifier` is REQUIRED and must be host-scoped
+    /// (built with a non-nil `currentAccountHostsProvider`) — use
+    /// `LoanRenewalService.production(...)` in app code, which guarantees
+    /// this. A bare `AuthErrorClassifier()` here would disable INV-5
+    /// host scoping. Tests may inject a classifier with a fixed provider.
     init(
         poster: RenewalPosting,
         classifier: AuthErrorClassifier,
@@ -139,6 +144,41 @@ final class LoanRenewalService: @unchecked Sendable {
         default:
             return .failed(status: status)
         }
+    }
+}
+
+// MARK: - Production factory (INV-5-safe construction)
+
+extension LoanRenewalService {
+    /// The ONLY sanctioned way to build a production `LoanRenewalService`.
+    /// Binds the classifier's `currentAccountHostsProvider` to the active
+    /// account's auth-surface hosts, mirroring `TPPNetworkResponder` and the
+    /// borrow/return sites — so a 401 from a host outside the current
+    /// account\'s surface classifies as `.ok` and never triggers a blanket
+    /// logout (INV-5). Do NOT construct this service with a bare
+    /// `AuthErrorClassifier()`: its provider defaults to `{ nil }`, which
+    /// disables Rule 4b and re-opens the cross-host logout hole
+    /// (`.forgeos/wall-failures/2026-06-05-pr1018-icarus-cross-host-logout.md`).
+    ///
+    /// `poster` and `hostsProvider` are injectable purely for tests; both
+    /// default to the production wiring.
+    static func production(
+        executor: TPPNetworkExecutor,
+        bookRegistry: TPPBookRegistryProvider,
+        poster: RenewalPosting? = nil,
+        hostsProvider: (@Sendable () -> Set<String>?)? = nil
+    ) -> LoanRenewalService {
+        let hosts: @Sendable () -> Set<String>? = hostsProvider ?? {
+            AppContainer.production().accountsManager.currentAccount?.authSurfaceHosts
+        }
+        let classifier = AuthErrorClassifier(currentAccountHostsProvider: hosts)
+        return LoanRenewalService(
+            poster: poster ?? NetworkExecutorRenewalPoster(executor: executor),
+            classifier: classifier,
+            bookRegistry: bookRegistry,
+            markCredentialsStale: {
+                AppContainer.production().accountsManager.currentUserAccount.markCredentialsStale()
+            })
     }
 }
 

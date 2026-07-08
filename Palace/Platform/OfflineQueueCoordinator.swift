@@ -55,11 +55,24 @@ final class OfflineQueueCoordinator: @unchecked Sendable {
 
     private let queue: OfflineExecutorRegistering
     private let handlers: Handlers
-    private let dedupe = DedupeBox()
+    private let dedupe: DedupeBox
 
-    init(queue: OfflineExecutorRegistering, handlers: Handlers) {
+    /// - Parameters:
+    ///   - dedupeTTL: how long a *completed* (server-confirmed) bookID+type
+    ///     stays deduped. After it elapses, a legitimate second same-type
+    ///     action for the same book in the same session (e.g. return -> re-borrow
+    ///     -> return again) is allowed through rather than silently skipped.
+    ///     In-flight dedupe is unconditional (never TTL-bounded).
+    ///   - now: injectable clock for deterministic TTL tests.
+    init(
+        queue: OfflineExecutorRegistering,
+        handlers: Handlers,
+        dedupeTTL: TimeInterval = 300,
+        now: @escaping @Sendable () -> Date = { Date() }
+    ) {
         self.queue = queue
         self.handlers = handlers
+        self.dedupe = DedupeBox(ttl: dedupeTTL, now: now)
     }
 
     /// Register the executor on the queue. Idempotent at the queue level
@@ -118,6 +131,31 @@ final class OfflineQueueCoordinator: @unchecked Sendable {
     static func dedupeKey(for action: OfflineAction) -> String {
         "\(action.type.rawValue):\(action.bookID)"
     }
+
+    /// States that represent a confirmed active loan after a borrow. Used
+    /// to fail-closed the offline `.borrow` executor branch.
+    static func isActiveLoanState(_ state: TPPBookState) -> Bool {
+        switch state {
+        case .downloadNeeded, .downloading, .downloadSuccessful, .used:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// A placed hold lands in `.holding`. Used to fail-closed the offline
+    /// `.hold` executor branch. Pure so the decision is unit-testable
+    /// without a live download center.
+    static func isHeldState(_ state: TPPBookState) -> Bool {
+        state == .holding
+    }
+
+    /// Server-confirmed return: the registry either no longer knows the
+    /// book, or has moved it out of any active-loan state. Pure so the
+    /// `.return`/`.cancelHold` confirmation is unit-testable.
+    static func isReturnConfirmed(state: TPPBookState, bookPresent: Bool) -> Bool {
+        state == .unregistered || !bookPresent
+    }
 }
 
 // MARK: - DedupeBox
@@ -128,17 +166,35 @@ final class OfflineQueueCoordinator: @unchecked Sendable {
 /// failure so the queue's retry can re-attempt it.
 private actor DedupeBox {
     private var inFlight: Set<String> = []
-    private var completed: Set<String> = []
+    /// Completed keys with the timestamp of completion. A key blocks a
+    /// duplicate only while within `ttl` of its completion, so a book's
+    /// legitimate later same-type action isn\'t permanently suppressed.
+    private var completed: [String: Date] = [:]
+    private let ttl: TimeInterval
+    private let now: @Sendable () -> Date
+
+    init(ttl: TimeInterval, now: @escaping @Sendable () -> Date) {
+        self.ttl = ttl
+        self.now = now
+    }
 
     func begin(_ key: String) -> Bool {
-        if inFlight.contains(key) || completed.contains(key) { return false }
+        // In-flight is always a hard block (no concurrent double-apply).
+        if inFlight.contains(key) { return false }
+        // Completed blocks only within the TTL window; prune stale entries.
+        if let completedAt = completed[key] {
+            if now().timeIntervalSince(completedAt) < ttl {
+                return false
+            }
+            completed[key] = nil
+        }
         inFlight.insert(key)
         return true
     }
 
     func complete(_ key: String) {
         inFlight.remove(key)
-        completed.insert(key)
+        completed[key] = now()
     }
 
     func rollback(_ key: String) {
@@ -174,9 +230,9 @@ extension OfflineQueueCoordinator {
                     downloadCenter.returnBook(withIdentifier: bookID) {
                         // Server-confirmed if the registry no longer holds
                         // the book as an active downloaded loan.
-                        let state = bookRegistry.state(for: bookID)
-                        let confirmed = (state == .unregistered)
-                            || bookRegistry.book(forIdentifier: bookID) == nil
+                        let confirmed = Self.isReturnConfirmed(
+                            state: bookRegistry.state(for: bookID),
+                            bookPresent: bookRegistry.book(forIdentifier: bookID) != nil)
                         continuation.resume(returning: confirmed)
                     }
                 }
@@ -191,7 +247,14 @@ extension OfflineQueueCoordinator {
                         return
                     }
                     downloadCenter.startBorrow(for: book, attemptDownload: true) {
-                        continuation.resume(returning: true)
+                        // `startBorrow` carries no success/error signal, so
+                        // confirm via registry state: a borrowed loan lands
+                        // in an active-loan state. Anything else (still
+                        // unregistered, download-failed) is NOT confirmed —
+                        // return false so the queue keeps it and retries,
+                        // rather than optimistically dropping a failed borrow.
+                        let confirmed = Self.isActiveLoanState(bookRegistry.state(for: bookID))
+                        continuation.resume(returning: confirmed)
                     }
                 }
             }
@@ -205,7 +268,10 @@ extension OfflineQueueCoordinator {
                         return
                     }
                     downloadCenter.startBorrow(for: book, attemptDownload: false) {
-                        continuation.resume(returning: true)
+                        // A placed hold lands in `.holding`. Any other state
+                        // is not a confirmed hold -> fail-closed (stay queued).
+                        let confirmed = Self.isHeldState(bookRegistry.state(for: bookID))
+                        continuation.resume(returning: confirmed)
                     }
                 }
             }

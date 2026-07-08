@@ -185,4 +185,24 @@ final class LoanRenewalServiceTests: XCTestCase {
         XCTAssertEqual(outcome, .failed(status: 500))
         XCTAssertFalse(staleSpy.called)
     }
+
+    // MARK: - #2 production factory is INV-5-safe
+
+    /// The production factory must build a HOST-SCOPED classifier. A
+    /// foreign-host 401 through the factory-constructed service classifies
+    /// as `.ok` (-> `.foreignHost401`) and never marks credentials stale —
+    /// proving the factory binds `currentAccountHostsProvider` rather than
+    /// leaving the unsafe `{ nil }` default that re-opens cross-host logout.
+    func testProductionFactory_foreignHost401_classifiesOk() async {
+        let book = makeBook(identifier: "PF1", borrowHost: "foreign.host")
+        let service = LoanRenewalService.production(
+            executor: AppContainer.production().networkExecutor,
+            bookRegistry: TPPBookRegistryMock(),
+            poster: StubPoster(status: 401),
+            hostsProvider: { ["our.host"] })
+
+        let outcome = await service.renew(book: book)
+        XCTAssertEqual(outcome, .foreignHost401,
+            "the production-constructed service must host-scope a foreign-host 401 to .ok")
+    }
 }

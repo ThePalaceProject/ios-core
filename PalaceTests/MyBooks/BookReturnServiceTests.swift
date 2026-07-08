@@ -62,7 +62,8 @@ final class BookReturnServiceTests: XCTestCase {
             bookmarkDeletionLog: bookmarkLog,
             reauthenticator: reauthenticator,
             userRetryTracker: retryTracker,
-            userAccountProvider: { [unowned self] in self.userAccount }
+            userAccountProvider: { [unowned self] in self.userAccount },
+            offlineReturnEnqueuer: { _ in } // test isolation: never touch OfflineQueueService.shared
         )
         #else
         service = BookReturnService(
@@ -73,7 +74,8 @@ final class BookReturnServiceTests: XCTestCase {
             bookmarkDeletionLog: bookmarkLog,
             reauthenticator: reauthenticator,
             userRetryTracker: retryTracker,
-            userAccountProvider: { [unowned self] in self.userAccount }
+            userAccountProvider: { [unowned self] in self.userAccount },
+            offlineReturnEnqueuer: { _ in } // test isolation: never touch OfflineQueueService.shared
         )
         #endif
 
