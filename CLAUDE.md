@@ -428,6 +428,16 @@ Some critical-path classes are easier to pin behaviorally than to mutation-test:
 
 Never commit: `APIKeys.swift`, `GoogleService-Info.plist`, `TPPSecrets.swift`, `.env` files.
 
+**Code signing must be Manual, and signing info must NOT be committed.**
+`CODE_SIGN_STYLE = Manual` on every config (Automatic lets Xcode rewrite the team
+ID / provisioning profile into the pbxproj on each dev's machine, causing churn +
+leaking signing identity). `DEVELOPMENT_TEAM` and `PROVISIONING_PROFILE` are
+per-machine/per-account — provide them via a gitignored `*.local.xcconfig` or a CI
+secret, never in git (`DEVELOPMENT_TEAM = ""` in the committed pbxproj is fine).
+Enforced by `scripts/check-no-committed-signing.sh` (diff-based; wired into the
+pre-commit hook + `verify-pr.sh` + `tooling-checks.yml`). To intentionally allow an
+entry, add a substring to `.forgeos/committed-signing-allowlist.txt` with a reason.
+
 ## E2E / UI sim driving — simdrive
 
 **simdrive is the canonical iOS sim driver.** SpecterQA is **deprecated** as of 2026-04-29 (cutover) and **fully migrated** as of 2026-04-30 (everything moved under `.simdrive/`). The old SpecterQA corpus lives under `.simdrive/_archive/` (do **not** extend). Active flows live under `.simdrive/fixtures/flows/` (declarative, with `expects:` blocks) and `.simdrive/journeys/` (recording-aligned, paired with `~/.simdrive/recordings/`). Per-version visual baselines live under `.simdrive/fixtures/baselines/<version>/<flow>/<step>.{json,png}`.

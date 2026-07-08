@@ -97,6 +97,16 @@ fi
 # Adjacency is warn-only at the hook layer too.
 run_m1_check "adjacency_staleness" "scripts/check-adjacency-staleness.py" || true
 
+# Repo rule: never commit code-signing info (team ID / provisioning profile) and
+# never add Automatic signing. Bash detector (not python), so invoked directly
+# rather than via run_m1_check. Diff-based — blocks NEW signing info only.
+if [[ -f "$REPO_ROOT_M1/scripts/check-no-committed-signing.sh" ]]; then
+  if ! _ns_out=$(bash "$REPO_ROOT_M1/scripts/check-no-committed-signing.sh" "$M1_DIFF" 2>&1); then
+    echo "$_ns_out" >&2
+    M1_FAIL=$((M1_FAIL + 1))
+  fi
+fi
+
 m1_enforce "$M1_FAIL"
 
 # Friendly nudge — non-blocking. Only print if anything is staged at all.
