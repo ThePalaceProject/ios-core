@@ -32,14 +32,22 @@ scenario:
   staging:
     recipe: audiobook-cold-load-first-open   # scripts/regression_staging.py (status: ready)
     note: |
-      DETERMINISTIC staging via the `forge_streaming_state` primitive — no longer
-      needs to race the live ~1.5s download window (the reason this was PHASE2).
-      The recipe signs into A1QA, lands on My Books, then deletes the downloaded
-      LCP audiobook's .lcpa CONTENT file while keeping its .lcpl license + the
-      registry's .downloadSuccessful marker. Opening then routes through the LCP
-      streaming path — the exact PP-4613 surface — reproducibly. (registry-state
-      and content-file presence are decoupled: a book is marked downloadSuccessful
-      when the tiny .lcpl lands, independent of the .lcpa content.)
+      Stages a REAL in-flight download via `reborrow_audiobook_streaming`: sign
+      into A1QA, then return-and-re-borrow a LARGE LCP audiobook (the Audible-lane
+      "Dungeon Crawler Carl", a long ~15 hr LitRPG audiobook) and leave WITHOUT
+      waiting for the download to finish. The journey then opens it while the `.lcpa` content is
+      still downloading — the exact PP-4613 surface. A large title keeps the
+      download window wide, so the open reliably lands mid-transfer without racing
+      a ~1.5s window (the old PHASE2 flake).
+
+      Supersedes the earlier `forge_streaming_state` delete-shortcut: the PP-4542
+      fix (#1094) replaced the LCP streaming path with `awaitAudiobookContentLocal`
+      — a bounded 180s POLL of an ALREADY-in-flight download. Deleting a COMPLETED
+      `.lcpa` leaves no active transfer, so that poll can only time out after 3
+      minutes → an artifact, not the regression. The state IS decoupled (a book is
+      `.downloadSuccessful` the instant its tiny `.lcpl` lands, independent of the
+      `.lcpa` content) — which is exactly why opening mid-download exercises the
+      gate.
 
   recording:
     path: "~/.simdrive/recordings/audiobook-cold-load-first-open/recording.yaml"
@@ -112,7 +120,7 @@ scenario:
     isRefreshInProgressError); this journey is the end-to-end backstop.
 
   known_issues:
-    - "No longer time-sensitive: the forge_streaming_state staging primitive deletes the .lcpa deterministically, so the not-yet-local window no longer depends on catching a live ~1.5s download. (Previously PHASE2 for exactly that reason.)"
-    - "Does not assert WHICH LCP title is open (A1QA ODL feed contents change) — book-agnostic by design; the forge content-strips every downloaded LCP audiobook, so whichever one My Books shows is exercised."
-    - "forge_streaming_state strips the LOCAL .lcpa cache (not the loan) — a re-download or A1QA fixture re-provision restores it; it does NOT return/mutate the read-only standing fixture."
-    - "Sibling journey audiobook-download-indicator-stateful stays PHASE2 — it needs a genuinely ACTIVE download to show 'Downloading… %', which the content-delete forge cannot produce (a different mechanism: a per-sim download throttle / progress-injection seam)."
+    - "Window-sensitive by design (but wide): the open must land while the .lcpa is still downloading. Mitigated by using a LARGE title (a long ~15 hr audiobook) whose download window is minutes, not the ~1.5s of a small audiobook — the reason this was PHASE2. If the open still races ahead of the download, borrow a larger title / throttle the sim network."
+    - "Title-coupled: pins the Audible-lane 'Dungeon Crawler Carl' (a returnable LCP audiobook; the earlier pin 'Carl's Doomsday Scenario' was dropped from the A1QA feed 2026-07-08). If the A1QA feed drops it, update _COLD_LOAD_LCP_AUDIOBOOK in scripts/regression_staging.py to another large returnable LCP audiobook (must fulfill as 'Listen' + download a .lcpa)."
+    - "reborrow_audiobook_streaming returns-then-re-borrows a RETURNABLE loan (not the read-only standing fixture), so each run re-downloads a fresh copy — idempotent. It never mutates a standing fixture."
+    - "Sibling journey audiobook-download-indicator-stateful stays PHASE2 — it asserts the 'Downloading… %' progress UI mid-transfer; this recipe's mid-download stage now produces a real active transfer, so that journey is a candidate for promotion using the same reborrow primitive (revisit separately)."
