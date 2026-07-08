@@ -187,21 +187,25 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     // MARK: - Setup
 
     private func setupObservers() {
+        // `.receive(on: RunLoop.main)` is REQUIRED, not cosmetic: this sink
+        // closure is `@MainActor`-isolated (the view model is `@MainActor`), and
+        // `.TPPUserAccountDidChange` is posted on WHATEVER thread `setAuthToken`
+        // runs on — notably a BACKGROUND queue during the token-refresh-before-
+        // playback path (`TPPNetworkExecutor.executeTokenRefresh` →
+        // `TPPUserAccount.notifyAccountDidChange`). Without the hop, Combine runs
+        // the `@MainActor` closure on that background queue and Swift 6 traps
+        // (`dispatch_assert_queue_fail`) — it crashed audiobook startup. The
+        // hop also makes the inner `Task { @MainActor }` unnecessary. Mirrors the
+        // two subscribers below that already receive on main.
         NotificationCenter.default.publisher(for: .TPPUserAccountDidChange)
-            .sink { [weak self] _ in
-                Task { @MainActor in
-                    self?.accountDidChange()
-                }
-            }
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.accountDidChange() }
             .store(in: &cancellables)
 
         // Listen for account switches to refresh sign-in state
         NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)
-            .sink { [weak self] _ in
-                Task { @MainActor in
-                    self?.accountDidChange()
-                }
-            }
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.accountDidChange() }
             .store(in: &cancellables)
 
         // Belt-and-suspenders refresh signals. The `.TPPUserAccountDidChange`
