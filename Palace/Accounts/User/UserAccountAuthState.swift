@@ -82,24 +82,26 @@ class UserAccountAuthHelper: NSObject {
 
     static func barcode(from credentials: TPPCredentials?) -> String? {
         guard let credentials = credentials else { return nil }
+        // F-011 class-of-bug guard
         switch credentials {
         case let .barcodeAndPin(barcode: barcode, pin: _):
             return barcode
         case let .token(_, barcode, _, _):
             return barcode
-        default:
+        case .cookies:
             return nil
         }
     }
 
     static func pin(from credentials: TPPCredentials?) -> String? {
         guard let credentials = credentials else { return nil }
+        // F-011 class-of-bug guard
         switch credentials {
         case let .barcodeAndPin(barcode: _, pin: pin):
             return pin
         case let .token(_, _, pin, _):
             return pin
-        default:
+        case .cookies:
             return nil
         }
     }

@@ -9,6 +9,7 @@
 
 import Combine
 import Foundation
+import PalaceReadingPosition
 
 /// Data for a single health metric displayed in the dashboard.
 struct HealthMetricItem: Identifiable {

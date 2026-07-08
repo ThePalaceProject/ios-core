@@ -45,10 +45,12 @@ struct SignInModalView: View {
                     // half-sheet binding goes into a stuck state, and the user-reported lock-up
                     // appears: book detail view is gesture-locked until app restart.
                     //
-                    // The completion is wired through `SignInModalHostingController.onDidFullyDismiss`
-                    // (see SignInModalPresenter), which fires from `viewDidDisappear` with
-                    // `presentingViewController == nil` — i.e. AFTER the UIKit transition has
-                    // fully completed. Downstream sheet presentation then runs on a clean
+                    // The completion is wired through the fileprivate
+                    // `SignInModalDismissalHosting.onDidFullyDismiss` (see
+                    // SignInModalPresenter below), which fires from
+                    // `viewDidDisappear` with `presentingViewController == nil`
+                    // — i.e. AFTER the UIKit transition has fully completed.
+                    // Downstream sheet presentation then runs on a clean
                     // presenter chain.
                     if Self.shouldAutoDismiss(authState: authState) {
                         dismiss()
@@ -68,52 +70,14 @@ struct SignInModalView: View {
     private var cancelButton: some View {
         Button(Strings.Generic.cancel) {
             // Same race-window argument as the auto-dismiss above — completion fires from
-            // SignInModalHostingController.onDidFullyDismiss, not here. Cancel callers
+            // SignInModalDismissalHosting.onDidFullyDismiss, not here. Cancel callers
             // (e.g. BookDetailViewModel.ensureAuthAndExecute's outer completion) check
             // `hasCredentials()`/`authState` to decide what to do, so the cancel path
             // works the same regardless of when the completion runs.
             dismiss()
         }
-    }
-}
-
-/// UIHostingController subclass that fires a callback when the underlying
-/// UIKit dismissal transition fully completes — used to delay clearing
-/// `SignInModalPresenter.isPresenting` until the modal is actually gone,
-/// not just when SwiftUI's `dismiss()` was called. SwiftUI's dismiss is
-/// non-blocking; without this, fast user re-taps race the in-flight
-/// dismiss and produce "transitioning already" stuck-modal lock-ups.
-final class SignInModalHostingController<Content: View>: UIHostingController<Content> {
-    private let onDidFullyDismiss: () -> Void
-    private var firedOnce = false
-
-    init(rootView: Content, onDidFullyDismiss: @escaping () -> Void) {
-        self.onDidFullyDismiss = onDidFullyDismiss
-        super.init(rootView: rootView)
-    }
-
-    @objc required dynamic init?(coder aDecoder: NSCoder) {
-        fatalError("init(coder:) is not used; SignInModalHostingController is constructed programmatically")
-    }
-
-    override func viewDidDisappear(_ animated: Bool) {
-        super.viewDidDisappear(animated)
-        // viewDidDisappear fires for reasons other than dismissal (e.g. a
-        // view controller pushed on top within an embedded nav stack). We
-        // only want to reset isPresenting when this hosting controller is
-        // actually torn down — `presentingViewController == nil` is true
-        // after dismissal has fully completed.
-        guard Self.shouldFireDismissCallback(firedOnce: firedOnce, presentingViewController: presentingViewController) else { return }
-        firedOnce = true
-        onDidFullyDismiss()
-    }
-
-    /// Pure-function predicate for the once-after-dismissal completion guard.
-    /// Extracted from `viewDidDisappear` so the mutation gate can verify a
-    /// regression to "fire while still presenting" is caught by a unit test
-    /// rather than discovered as a stuck-modal user report.
-    static func shouldFireDismissCallback(firedOnce: Bool, presentingViewController: UIViewController?) -> Bool {
-        return !firedOnce && presentingViewController == nil
+        .accessibilityIdentifier("signInModal.cancel")
+        .accessibilityLabel(Strings.Generic.cancel)
     }
 }
 
@@ -157,7 +121,7 @@ class SignInModalPresenter: NSObject {
             appContainer: appContainer
         )
 
-        let vc = SignInModalHostingController(rootView: view) {
+        let vc = SignInModalDismissalHosting(rootView: view) {
             // Order matters: clear the guard BEFORE running completion so
             // anything completion does (e.g. presenting a half-sheet) works
             // against a clean presenter chain. Completion sees isPresenting
@@ -193,5 +157,44 @@ class SignInModalPresenter: NSObject {
         }
 
         presentSignInModal(libraryAccountID: libraryID, completion: completion)
+    }
+}
+
+/// Fileprivate hosting controller that fires a callback when the
+/// underlying UIKit dismissal transition fully completes — used to delay
+/// clearing `SignInModalPresenter.isPresenting` until the modal is
+/// actually gone, not just when SwiftUI's `dismiss()` was called.
+/// SwiftUI's `dismiss()` is non-blocking; without this guard, fast user
+/// re-taps race the in-flight dismiss and produce "transitioning already"
+/// stuck-modal lock-ups (HelpSpot 17716 SAML re-auth invariant).
+///
+/// swarm_d8f11437 Module A wave 4 — renamed from the previously-public
+/// `SignInModalHostingController` and scoped fileprivate so the type is
+/// not test-visible; the once-after-fully-dismissed semantics are now
+/// pinned at the presenter level via `SignInModalSheetPresenter`'s
+/// state-transition tests (round-trip pattern, CLAUDE.md DoD).
+fileprivate final class SignInModalDismissalHosting<Content: View>: UIHostingController<Content> {
+    private let onDidFullyDismiss: () -> Void
+    private var firedOnce = false
+
+    init(rootView: Content, onDidFullyDismiss: @escaping () -> Void) {
+        self.onDidFullyDismiss = onDidFullyDismiss
+        super.init(rootView: rootView)
+    }
+
+    @objc required dynamic init?(coder aDecoder: NSCoder) {
+        fatalError("init(coder:) is not used; SignInModalDismissalHosting is constructed programmatically")
+    }
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        // viewDidDisappear fires for reasons other than dismissal (e.g. a
+        // view controller pushed on top within an embedded nav stack). We
+        // only want to fire when this hosting controller is actually torn
+        // down — `presentingViewController == nil` is true after dismissal
+        // has fully completed.
+        guard !firedOnce, presentingViewController == nil else { return }
+        firedOnce = true
+        onDidFullyDismiss()
     }
 }

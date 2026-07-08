@@ -29,6 +29,10 @@ final class FirebaseManager {
         static let minimumFetchIntervalDebug: TimeInterval = 60 // 1 minute
         static let minimumFetchIntervalRelease: TimeInterval = 3600 // 1 hour
         static let deviceIdentifierKey = "TPPDeviceIdentifier"
+        /// Hard upper bound on a single remote-config fetch+activate so it can
+        /// never hang the caller (dead network in production; unconfigured
+        /// Firebase in unit tests). Generous vs. a healthy fetch (~1-3s).
+        static let fetchTimeoutSeconds: Double = 10
     }
 
     // MARK: - Immutable State (thread-safe by design)
@@ -55,7 +59,10 @@ final class FirebaseManager {
         case circuitBreakerEnabled = "circuit_breaker_enabled"
         case carPlayEnabled = "carplay_enabled"
         case opds2Enabled = "opds2_enabled"
-        case resetAccountEnabled = "reset_account_enabled"
+        case triageBotEnabled = "triage_bot_enabled"
+        case triageBotTicketSubmissionEnabled = "triage_bot_ticket_submission_enabled"
+        case triageBotAIFallbackEnabled = "triage_bot_ai_fallback_enabled"
+        case inAppPlaybackNavEnabled = "in_app_playback_nav_enabled"
     }
 
     // MARK: - Initialization
@@ -99,7 +106,10 @@ final class FirebaseManager {
             RemoteConfigKey.circuitBreakerEnabled.rawValue: NSNumber(value: true),
             RemoteConfigKey.carPlayEnabled.rawValue: NSNumber(value: true),
             RemoteConfigKey.opds2Enabled.rawValue: NSNumber(value: true),
-            RemoteConfigKey.resetAccountEnabled.rawValue: NSNumber(value: false)
+            RemoteConfigKey.triageBotEnabled.rawValue: NSNumber(value: false),
+            RemoteConfigKey.triageBotTicketSubmissionEnabled.rawValue: NSNumber(value: false),
+            RemoteConfigKey.triageBotAIFallbackEnabled.rawValue: NSNumber(value: false),
+            RemoteConfigKey.inAppPlaybackNavEnabled.rawValue: NSNumber(value: false)
         ])
     }
 
@@ -126,7 +136,16 @@ final class FirebaseManager {
         }
 
         do {
-            let status = try await remoteConfig.fetchAndActivate()
+            // Bound the fetch so it can never hang indefinitely. Firebase's
+            // `fetchAndActivate()` can stall when the network is dead/slow or
+            // (in unit tests) when Firebase is not configured — leaving the
+            // `await` suspended forever. A real user on a dead network must not
+            // have flag-fetch hang the caller, and the unit-test
+            // `testFetchIfNeeded_doesNotCrash` must not hang the suite. On
+            // timeout we proceed with cached/default config (return false).
+            let status = try await Self.withTimeout(seconds: Configuration.fetchTimeoutSeconds) {
+                try await self.remoteConfig.fetchAndActivate()
+            }
 
             switch status {
             case .successFetchedFromRemote:
@@ -141,9 +160,40 @@ final class FirebaseManager {
             @unknown default:
                 return false
             }
+        } catch is RemoteConfigFetchTimeout {
+            Log.error(#file, "Remote config fetch timed out — proceeding with cached/default values")
+            return false
         } catch {
             Log.error(#file, "Failed to fetch remote config: \(error.localizedDescription)")
             return false
+        }
+    }
+
+    /// Sentinel thrown by `withTimeout` when the wrapped operation exceeds the bound.
+    struct RemoteConfigFetchTimeout: Error {}
+
+    /// Runs `operation`, racing it against a timeout. If the timeout wins, the
+    /// operation's task is cancelled and `RemoteConfigFetchTimeout` is thrown.
+    /// (The underlying Firebase call may not honour cancellation; the orphaned
+    /// fetch completes harmlessly in the background while the caller proceeds.)
+    ///
+    /// `internal` (not `private`) so the tests can pin the bound-a-hang
+    /// behaviour deterministically (see `RemoteFeatureFlagsTests`).
+    static func withTimeout<T: Sendable>(
+        seconds: Double,
+        _ operation: @escaping @Sendable () async throws -> T
+    ) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask { try await operation() }
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                throw RemoteConfigFetchTimeout()
+            }
+            defer { group.cancelAll() }
+            guard let result = try await group.next() else {
+                throw RemoteConfigFetchTimeout()
+            }
+            return result
         }
     }
 

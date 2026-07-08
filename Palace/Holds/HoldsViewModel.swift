@@ -92,11 +92,15 @@ final class HoldsViewModel: ObservableObject {
         self.currentLibraryNeedsAuth = currentLibraryNeedsAuth ?? { [accountsManager] in
             return accountsManager.currentAccount?.needsAuth ?? true
         }
-        self.presentSignIn = presentSignIn ?? { [accountsManager] completion in
-            SignInModalPresenter.presentSignInModalForCurrentAccount(
-                accountsManager: accountsManager,
-                completion: completion
-            )
+        self.presentSignIn = presentSignIn ?? { completion in
+            // swarm_d8f11437 Module A wave 4 — migrated to AppContainer-
+            // injected sheet presenter. The presenter resolves
+            // `currentAccountId` from its container's accountsManager,
+            // which is the same `_cached` singleton used everywhere else
+            // (accountsManager was previously captured by the static-API
+            // call; capture removed as the presenter handles resolution).
+            AppContainer.production().signInModalSheetPresenter
+                .presentSignInModalForCurrentAccount(completion: completion)
         }
 
         let environment = HoldsEnvironment(filterBooks: { query, books in

@@ -83,7 +83,7 @@ final class TPPAccessibilityAnnouncementCenter {
         pendingDrainWorkItem?.cancel()
     }
 
-    // MARK: - Screen Transition Awareness (PP-3839)
+    // MARK: - Screen Transition Awareness
 
     /// Signal that a screen transition just occurred. Announcements will be
     /// queued and delivered after `transitionSettleDelay` seconds, giving
@@ -141,7 +141,7 @@ final class TPPAccessibilityAnnouncementCenter {
         announce(Strings.DownloadAnnouncements.returnFailed(title))
     }
 
-    // MARK: - Retry Announcements (PP-3707)
+    // MARK: - Retry Announcements
 
     func announceRetryingBorrow(title: String) {
         announce(Strings.DownloadAnnouncements.retryingBorrow(title))
@@ -171,7 +171,7 @@ final class TPPAccessibilityAnnouncementCenter {
         lock.unlock()
     }
 
-    // MARK: - Search Announcements (PP-3673)
+    // MARK: - Search Announcements
 
     func announceSearchResults(query: String, count: Int) {
         if count > 0 {
@@ -194,7 +194,7 @@ final class TPPAccessibilityAnnouncementCenter {
         announce(Strings.SearchAnnouncements.additionalResultsLoaded(count))
     }
 
-    // MARK: - Error / Status Announcements (PP-3673)
+    // MARK: - Error / Status Announcements
 
     /// Announces an error message without moving VoiceOver focus.
     /// Duplicate messages within `deduplicationInterval` are suppressed.

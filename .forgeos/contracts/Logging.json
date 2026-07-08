@@ -1,6 +1,6 @@
 {
   "module": "Logging",
-  "generated_at": "2026-05-12T16:15:16+00:00",
+  "generated_at": "2026-06-03T17:51:23+00:00",
   "file_count": 10,
   "shared_singleton_reads": 15,
   "public_types": [],
@@ -27,7 +27,7 @@
       "name": "TPPErrorLogger",
       "kind": "class",
       "file": "TPPErrorLogger.swift",
-      "line": 241
+      "line": 245
     },
     {
       "name": "TPPErrorOrigin",
@@ -92,6 +92,11 @@
   ],
   "public_functions": [],
   "internal_protocols": [
+    {
+      "name": "AudiobookFileLogging",
+      "file": "AudiobookFileLogger.swift",
+      "line": 13
+    },
     {
       "name": "ErrorLogging",
       "file": "ErrorLogging.swift",

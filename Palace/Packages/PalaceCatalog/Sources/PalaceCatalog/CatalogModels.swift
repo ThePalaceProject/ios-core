@@ -56,7 +56,19 @@ public struct CatalogFeed {
         let allPubs = opds2Feed.groups?.flatMap { $0.publications ?? [] }
             ?? opds2Feed.publications
             ?? []
-        self.entries = allPubs.map { CatalogEntry(opds2Publication: $0) }
+        // Dedupe by publication id across groups while preserving group ordering
+        // (keep the FIRST occurrence). A publication that appears in two groups
+        // (e.g. "Featured" and "New Releases") used to surface twice in the
+        // flattened entries list.
+        var seenIDs = Set<String>()
+        var deduped: [OPDS2Publication] = []
+        deduped.reserveCapacity(allPubs.count)
+        for pub in allPubs {
+            if seenIDs.insert(pub.metadata.id).inserted {
+                deduped.append(pub)
+            }
+        }
+        self.entries = deduped.map { CatalogEntry(opds2Publication: $0) }
     }
 }
 

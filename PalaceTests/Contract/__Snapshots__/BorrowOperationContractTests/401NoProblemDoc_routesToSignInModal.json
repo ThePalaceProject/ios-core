@@ -1,0 +1,16 @@
+[
+  {
+    "args" : {
+      "resetCache" : "true",
+      "url" : "ITEM7-BOOK",
+      "useToken" : "true"
+    },
+    "method" : "fetchBook"
+  },
+  {
+    "args" : {
+
+    },
+    "method" : "presentSignInModal"
+  }
+]

@@ -57,11 +57,28 @@ extension BookButtonState {
                 buttons = [.cancelHold]
             }
         case .downloadNeeded:
-            if let authDef = AppContainer.production().accountsManager.currentUserAccount.authDefinition,
-               authDef.needsAuth || book.defaultAcquisitionIfOpenAccess != nil {
-                buttons = [.download, .return]
-            } else {
-                buttons = [.download, .remove]
+            // PP-4161 Option (c): purely presentation-layer mapping. After a
+            // streaming-HTML borrow the registry transitions to its NORMAL
+            // `.downloadNeeded` state (no state-machine shortcut). Here we map
+            // that state directly to `[.readStreaming, .return]` — there is no
+            // download phase for streaming-media, so the user goes straight
+            // from borrow to read. The BorrowOperation:453 guard prevents the
+            // auto-download chain from firing for these books.
+            //
+            // Exhaustive (no `default:`) — F-011 class-of-bug guard. Compiler
+            // flags this if TPPBookContentType gains a case so a future
+            // content type can't silently fall through to the legacy
+            // `[.download, .return]` mapping.
+            switch book.defaultBookContentType {
+            case .streamingHTML:
+                buttons = [.readStreaming, .return]
+            case .epub, .pdf, .audiobook, .unsupported:
+                if let authDef = AppContainer.production().accountsManager.currentUserAccount.authDefinition,
+                   authDef.needsAuth || book.defaultAcquisitionIfOpenAccess != nil {
+                    buttons = [.download, .return]
+                } else {
+                    buttons = [.download, .remove]
+                }
             }
         case .downloadSuccessful, .used:
             switch book.defaultBookContentType {
@@ -69,6 +86,12 @@ extension BookButtonState {
                 buttons.append(.listen)
             case .pdf, .epub:
                 buttons.append(.read)
+            case .streamingHTML:
+                // PP-4161: a streaming-HTML title that's somehow in
+                // .downloadSuccessful (e.g. carried over from a prior session
+                // where the registry persisted that state) still uses the
+                // streaming reader — there's nothing on disk to read.
+                buttons.append(.readStreaming)
             case .unsupported:
                 break
             }

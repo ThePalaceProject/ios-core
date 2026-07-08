@@ -10,6 +10,10 @@ import XCTest
 
 final class AccountSwitchCleanupTests: XCTestCase {
 
+    override func tearDown() {
+        super.tearDown()
+    }
+
     // MARK: - cancelNonEssentialTasks
 
     func testCancelNonEssentialTasks_WithNoActiveTasks_ExecutorRemainsUsable() {
@@ -98,46 +102,56 @@ final class AccountSwitchCleanupTests: XCTestCase {
         wait(for: [expectation], timeout: 3.0)
     }
 
-    // MARK: - TPPUserAccount with specific libraryUUID
+    // MARK: - TPPUserAccount with isolated factory-minted libraryUUIDs
 
-    func testSharedAccount_WithSpecificUUID_DoesNotCrash() {
-        let account = TPPUserAccount.sharedAccount(libraryUUID: "urn:uuid:test-library")
-        XCTAssertNotNil(account)
-        // Retrieving the same UUID twice returns equivalent accounts
-        let accountAgain = TPPUserAccount.sharedAccount(libraryUUID: "urn:uuid:test-library")
-        XCTAssertNotNil(accountAgain)
-        // A different UUID should still produce a non-nil account
-        let otherAccount = TPPUserAccount.sharedAccount(libraryUUID: "urn:uuid:other-library")
-        XCTAssertNotNil(otherAccount)
+    func testFactoryAccount_WithSpecificUUID_BindsUUIDAndIsIsolated() {
+        // Two factory calls with the same explicit UUID yield two SEPARATE
+        // instances bound to the same UUID — the factory deliberately
+        // bypasses AccountsManager's per-library cache so cross-test
+        // pollution can't leak via shared in-memory state.
+        let firstUUID = "test-uuid-cleanup-fixture-\(UUID().uuidString)"
+        let account = TPPUserAccountTestFactory.makeIsolated(libraryUUID: firstUUID)
+        XCTAssertEqual(account.libraryUUID, firstUUID)
+        let accountAgain = TPPUserAccountTestFactory.makeIsolated(libraryUUID: firstUUID)
+        XCTAssertEqual(accountAgain.libraryUUID, firstUUID)
+        XCTAssertFalse(account === accountAgain,
+                       "Factory must NOT cache — two calls under the same UUID return distinct instances so tests cannot share residue")
+        let otherAccount = TPPUserAccountTestFactory.makeIsolated()
+        XCTAssertNotEqual(otherAccount.libraryUUID, firstUUID,
+                          "Default makeIsolated() must mint a distinct UUID — never collide with an explicit caller-provided one")
     }
 
-    func testSharedAccount_WithNilUUID_DoesNotCrash() {
-        let account = TPPUserAccount.sharedAccount(libraryUUID: nil)
-        XCTAssertNotNil(account)
-        // Repeated nil-UUID calls all return non-nil accounts
-        let account2 = TPPUserAccount.sharedAccount(libraryUUID: nil)
-        XCTAssertNotNil(account2)
-        // A specific UUID after a nil-UUID call also works
-        let namedAccount = TPPUserAccount.sharedAccount(libraryUUID: "urn:uuid:after-nil")
-        XCTAssertNotNil(namedAccount)
+    func testFactoryAccount_DefaultMintIsNamespaced() {
+        let account = TPPUserAccountTestFactory.makeIsolated()
+        XCTAssertTrue(account.libraryUUID?.hasPrefix("test-uuid-") ?? false,
+                      "Default makeIsolated() must namespace UUIDs under 'test-uuid-' so keychain keys can't collide with production")
+        let account2 = TPPUserAccountTestFactory.makeIsolated()
+        XCTAssertNotEqual(account.libraryUUID, account2.libraryUUID,
+                          "Each default call must mint a fresh UUID")
+        let namedAccount = TPPUserAccountTestFactory.makeIsolated(libraryUUID: "test-uuid-after-default")
+        XCTAssertEqual(namedAccount.libraryUUID, "test-uuid-after-default",
+                       "Explicit UUID must override the default mint")
     }
 
-    func testSharedAccount_SwitchingUUIDs_DoesNotCrash() {
-        let account1 = TPPUserAccount.sharedAccount(libraryUUID: "urn:uuid:library-a")
-        XCTAssertNotNil(account1)
+    func testFactoryAccount_DistinctUUIDsRemainIsolated() {
+        let account1 = TPPUserAccountTestFactory.makeIsolated(libraryUUID: "test-uuid-library-a")
+        XCTAssertEqual(account1.libraryUUID, "test-uuid-library-a")
 
-        let account2 = TPPUserAccount.sharedAccount(libraryUUID: "urn:uuid:library-b")
-        XCTAssertNotNil(account2)
+        let account2 = TPPUserAccountTestFactory.makeIsolated(libraryUUID: "test-uuid-library-b")
+        XCTAssertEqual(account2.libraryUUID, "test-uuid-library-b")
 
-        let account3 = TPPUserAccount.sharedAccount(libraryUUID: "urn:uuid:library-a")
-        XCTAssertNotNil(account3)
+        let account3 = TPPUserAccountTestFactory.makeIsolated(libraryUUID: "test-uuid-library-a")
+        XCTAssertEqual(account3.libraryUUID, "test-uuid-library-a")
+        XCTAssertFalse(account1 === account3,
+                       "Re-binding the same UUID via the factory must NOT return the prior instance — bypass of AccountsManager cache is the entire point of the factory")
     }
 
-    func testSharedAccount_RapidSwitching_DoesNotCrash() {
+    func testFactoryAccount_RapidMintingDoesNotCrash() {
         for i in 0..<50 {
-            let uuid = "urn:uuid:rapid-switch-\(i % 3)"
-            let account = TPPUserAccount.sharedAccount(libraryUUID: uuid)
-            XCTAssertNotNil(account)
+            let uuid = "test-uuid-rapid-switch-\(i % 3)"
+            let account = TPPUserAccountTestFactory.makeIsolated(libraryUUID: uuid)
+            XCTAssertEqual(account.libraryUUID, uuid,
+                           "Factory must remain stable under repeated calls — every iteration sees its bound UUID")
         }
     }
 

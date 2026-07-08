@@ -1,0 +1,9 @@
+{
+  "_comment": "Example mask config for visual-diff.py (RC-VISUAL). Rects are FRACTIONAL (0..1 of image w/h) so one config works across resolutions within a device cell. type=exclude is fully ignored (dynamic chrome); type=content is compared for structural presence (covers->skeleton collapse fires, cover-identity changes do not). Calibrate per-area; this is a starting point for a catalog screen.",
+  "regions": [
+    { "type": "exclude", "rect": [0.0, 0.0, 0.45, 0.045], "label": "status-bar-clock" },
+    { "type": "exclude", "rect": [0.78, 0.0, 0.22, 0.045], "label": "status-bar-battery-signal" },
+    { "type": "content", "rect": [0.02, 0.18, 0.96, 0.30], "label": "catalog-lane-1-covers" },
+    { "type": "content", "rect": [0.02, 0.50, 0.96, 0.30], "label": "catalog-lane-2-covers" }
+  ]
+}

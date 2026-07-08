@@ -35,6 +35,14 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         Log.info(#file, "📱 Main app scene connecting")
         SceneDelegate.hasMainSceneConnected = true
 
+        // when running as "Designed for iPad" on Apple Silicon Macs
+        // the default window size (~715x800pt) is undersized for Mac monitors.
+        // Set a Mac-class minimum and request a larger initial geometry so the
+        // first-launch experience uses the available screen real estate.
+        // ProcessInfo.isiOSAppOnMac is false on iPad / iPhone — guard ensures
+        // no behavioral change on those platforms.
+        Self.applyMacWindowGeometry(to: windowScene)
+
         // Create window for this scene
         let newWindow = UIWindow(windowScene: windowScene)
         newWindow.tintColor = TPPConfiguration.mainColor()
@@ -88,5 +96,30 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         guard let url = URLContexts.first?.url else { return }
         let appDelegate = UIApplication.shared.delegate as? TPPAppDelegate
         _ = appDelegate?.application(UIApplication.shared, open: url, options: [:])
+    }
+
+    // MARK: - PP-4289 Mac geometry
+
+    /// Mac-friendly default window dimensions (in points) for "Designed for iPad"
+    /// on Apple Silicon Macs. Pulled out as a constant so tests can assert without
+    /// instantiating a UIWindowScene.
+    static let macPreferredWindowSize = CGSize(width: 1100, height: 800)
+    static let macMinimumWindowSize = CGSize(width: 700, height: 500)
+
+    /// Apply iPadOnMac-only window size hints. No-op on iPhone / iPad. The
+    /// `requestGeometryUpdate` is best-effort — older macOS versions may
+    /// ignore the size hint, but the minimum-size restriction always sticks
+    /// and prevents the window from being shrunk into a broken layout.
+    static func applyMacWindowGeometry(to windowScene: UIWindowScene) {
+        guard ProcessInfo.processInfo.isiOSAppOnMac else { return }
+
+        windowScene.sizeRestrictions?.minimumSize = macMinimumWindowSize
+
+        let preferences = UIWindowScene.GeometryPreferences.Mac(
+            systemFrame: CGRect(origin: .zero, size: macPreferredWindowSize)
+        )
+        windowScene.requestGeometryUpdate(preferences) { error in
+            Log.info(#file, "Mac initial-size request rejected: \(error.localizedDescription)")
+        }
     }
 }

@@ -77,6 +77,11 @@ struct ActionButton<T: BookButtonProvider>: View {
             return AccessibilityID.BookDetail.readButton
         case .listen:
             return AccessibilityID.BookDetail.listenButton
+        case .readStreaming:
+            // PP-4161: distinct identifier from `readButton` so a simdrive
+            // journey can disambiguate "open EPUB reader" from "open streaming
+            // web reader" at the accessibility-tree level.
+            return AccessibilityID.BookDetail.readStreamingButton
         case .remove:
             return AccessibilityID.BookDetail.deleteButton
         case .return:

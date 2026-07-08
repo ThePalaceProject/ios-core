@@ -121,7 +121,7 @@ final class LCPFulfillmentHandler {
                     "localURL": localUrl?.absoluteString ?? "N/A"
                 ])
 
-                // PP-4114-adjacent: LCP audiobooks are marked
+                // adjacent: LCP audiobooks are marked
                 // `.downloadSuccessful` the moment the .lcpl license lands
                 // (streaming-ready). A phase-2 .lcpa content download
                 // failure — typically airplane mode mid-fetch from
@@ -131,9 +131,18 @@ final class LCPFulfillmentHandler {
                 // the Read/Listen affordance the second they went offline.
                 // Streaming still works off the license; offline playback
                 // just isn't ready until they retry.
+                //
+                // `.used` is included for future-proofing — audiobooks
+                // don't transition through `.used` today (only PDFs do, see
+                // TPPPDFDocumentMetadata), but mirroring the established
+                // `(.downloadSuccessful || .used)` pattern from
+                // BookReturnService keeps the guard correct if audiobook
+                // playback ever wires through the open-once → `.used`
+                // transition.
                 let currentState = self.bookRegistry.state(for: book.identifier)
-                if book.defaultBookContentType == .audiobook && currentState == .downloadSuccessful {
-                    Log.warn(#file, "LCP audiobook content download failed but streaming license intact — leaving '\(book.title)' (\(book.identifier)) as .downloadSuccessful")
+                let isStreamingReady = currentState == .downloadSuccessful || currentState == .used
+                if book.defaultBookContentType == .audiobook && isStreamingReady {
+                    Log.warn(#file, "LCP audiobook content download failed but streaming license intact — leaving '\(book.title)' (\(book.identifier)) as \(currentState)")
                     return
                 }
 
@@ -162,14 +171,12 @@ final class LCPFulfillmentHandler {
                 Log.info(#file, "Audiobook content stored successfully, offline playback now available")
             }
 
-            Task { [weak self] in
-                guard let self else { return }
-                if book.defaultBookContentType == .pdf,
-                   let bookURL = self.bookFileManager.fileUrl(for: book.identifier) {
-                    self.bookRegistry.setState(.downloading, for: book.identifier)
-                    _ = try? await LCPPDFs(url: bookURL)?.extract(url: bookURL)
-                    self.delegate?.markDownloadSuccessful(for: book)
-                }
+            // PDF fulfillment: Readium's PDFNavigator streams decrypted
+            // pages on demand via the shared GCDHTTPServer, so no eager
+            // zip→temp extract is needed here. Just mark the book
+            // successful once the LCP container + license are on disk.
+            if book.defaultBookContentType == .pdf {
+                self.delegate?.markDownloadSuccessful(for: book)
             }
         }
 

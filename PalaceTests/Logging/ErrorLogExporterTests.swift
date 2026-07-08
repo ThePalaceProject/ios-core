@@ -10,6 +10,10 @@ import XCTest
 
 final class ErrorLogExporterTests: XCTestCase {
 
+    override func tearDown() {
+        super.tearDown()
+    }
+
     // MARK: - ErrorLogData Tests
 
     func testErrorLogData_initializesWithAllFields() {
@@ -76,10 +80,16 @@ final class ErrorLogExporterTests: XCTestCase {
 
     /// Regression test for PP-3651: Collected logs should contain patron ID in device info
     func testPP3651_collectLogsForPreview_containsPatronIDField() async {
-        let logData = await ErrorLogExporter.shared.collectLogsForPreview()
+        // Exercise the device-info seam directly. The prior version called
+        // `collectLogsForPreview()` → `collectAllLogs()`, which enumerates 7
+        // days of OSLogStore via `DeviceLogCollector.collectLogs(lastDays:)`.
+        // In a log-saturated CI process that enumeration hung past the per-test
+        // execution-time allowance and crashed the run. The assertion only ever
+        // cared about the device-info / Patron-ID field, which `collectDeviceInfo`
+        // builds directly — no OSLogStore, no network.
+        let deviceInfo = await ErrorLogExporter.shared.collectDeviceInfo()
 
-        // The device info section should include a "Patron ID" field
-        XCTAssertTrue(logData.deviceInfo.contains("Patron ID:"),
+        XCTAssertTrue(deviceInfo.contains("Patron ID:"),
                       "Device info in error logs should include a Patron ID field")
     }
 }

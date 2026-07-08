@@ -29,6 +29,7 @@ final class BookCellModelCachePrefetchSafetyTests: XCTestCase {
         mockImageCache = MockImageCache()
         mockBookRegistry = TPPBookRegistryMock()
 
+        let appContainer = makeTestAppContainer()
         sut = BookCellModelCache(
             configuration: .init(
                 maxEntries: 50,
@@ -37,10 +38,10 @@ final class BookCellModelCachePrefetchSafetyTests: XCTestCase {
             ),
             imageCache: mockImageCache,
             bookRegistry: mockBookRegistry,
-            downloadCenter: AppContainer.production().downloadCenter,
-            accountsManager: AppContainer.production().accountsManager,
-            samplePreviewManager: AppContainer.production().samplePreviewManager,
-            readerService: AppContainer.production().readerService
+            downloadCenter: appContainer.downloadCenter,
+            accountsManager: appContainer.accountsManager,
+            samplePreviewManager: appContainer.samplePreviewManager,
+            readerService: appContainer.readerService
         )
     }
 
@@ -152,7 +153,7 @@ final class CatalogSearchViewModelRegistryUpdateTests: XCTestCase {
             repository: mockRepository,
             baseURL: { URL(string: "https://example.com/search") },
             debounceInterval: 0.0,
-            bookCellModelCache: AppContainer.production().bookCellModelCache
+            bookCellModelCache: makeTestAppContainer().bookCellModelCache
         )
     }
 

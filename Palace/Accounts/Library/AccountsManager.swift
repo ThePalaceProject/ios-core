@@ -10,6 +10,32 @@ let currentAccountIdentifierKey = "TPPCurrentAccountIdentifier"
 struct CatalogCacheMetadata: Codable {
     let timestamp: Date
     let hash: String
+    /// `true` when this cache entry was populated from the build-time
+    /// bundled snapshot (`Palace/Accounts/Library/bundled_registry.json`),
+    /// `false` for entries written from a network response. Bundled-origin
+    /// caches return `true` from `isStale(serverMaxAge:now:)` regardless
+    /// of timestamp so the refresh trigger keeps firing on every
+    /// `loadCatalogs` call until a real network response overwrites the
+    /// metadata with `isBundled = false`. Decodes as `false` for legacy
+    /// metadata files written before this field existed.
+    let isBundled: Bool
+
+    init(timestamp: Date, hash: String, isBundled: Bool = false) {
+        self.timestamp = timestamp
+        self.hash = hash
+        self.isBundled = isBundled
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case timestamp, hash, isBundled
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.timestamp = try container.decode(Date.self, forKey: .timestamp)
+        self.hash = try container.decode(String.self, forKey: .hash)
+        self.isBundled = try container.decodeIfPresent(Bool.self, forKey: .isBundled) ?? false
+    }
 
     /// Default stale TTL: 6 hours (half the server's typical Cache-Control
     /// max-age of 12hr). Overridden dynamically by `staleTTL(serverMaxAge:)`.
@@ -31,7 +57,17 @@ struct CatalogCacheMetadata: Codable {
 
     /// Returns true if cache is stale given the server's max-age hint.
     func isStale(serverMaxAge: TimeInterval?) -> Bool {
-        Date().timeIntervalSince(timestamp) > Self.staleTTL(serverMaxAge: serverMaxAge)
+        isStale(serverMaxAge: serverMaxAge, now: Date())
+    }
+
+    func isStale(serverMaxAge: TimeInterval?, now: Date) -> Bool {
+        // Bundled-origin caches are always stale for refresh purposes
+        // regardless of timestamp. The bundled bytes are usable for
+        // immediate display but not authoritative, so refresh has to
+        // keep firing until a real network response overwrites with
+        // `isBundled = false`.
+        if isBundled { return true }
+        return now.timeIntervalSince(timestamp) > Self.staleTTL(serverMaxAge: serverMaxAge)
     }
 
     /// Returns true if cache is stale using the default TTL (no server hint).
@@ -41,7 +77,11 @@ struct CatalogCacheMetadata: Codable {
 
     /// Returns true if cache is expired (older than 24 hours)
     var isExpired: Bool {
-        Date().timeIntervalSince(timestamp) > Self.maxAge
+        isExpired(now: Date())
+    }
+
+    func isExpired(now: Date) -> Bool {
+        now.timeIntervalSince(timestamp) > Self.maxAge
     }
 }
 
@@ -87,6 +127,14 @@ struct CatalogCacheMetadata: Codable {
 
     let ageCheck: TPPAgeCheckVerifying
     private let settings: TPPSettings
+
+    /// `UserDefaults` backing store for the persisted
+    /// `currentAccountIdentifierKey` read/written by `currentAccountId`.
+    /// Production callers use the no-arg `init()` which binds `.standard`;
+    /// tests inject a per-suite `UserDefaults(suiteName:)` via the
+    /// explicit initializer so two tests touching the current-account
+    /// key cannot pollute each other. There is NO fallback once injected.
+    private let defaults: UserDefaults
     /// Lazy-resolved from AppContainer to break the singleton init cycle:
     /// AccountsManager is constructed inline by AppContainer._cached's
     /// initializer, so we cannot read AppContainer.production() during this
@@ -103,11 +151,110 @@ struct CatalogCacheMetadata: Codable {
     private var loadingCompletionHandlers = [String: [(Bool) -> Void]]()
     private let loadingHandlersQueue = DispatchQueue(label: "com.tpp.loadingHandlers", attributes: .concurrent)
 
+    /// Per-UUID single-flight guard for `authentication_document` fetches.
+    /// Without this, two concurrent consumers calling `awaitReady()` on the
+    /// same Account would each cause `current.loadAuthenticationDocument` to
+    /// fire a duplicate HTTP request. The state machine's broadcast
+    /// (`CurrentValueSubject`) handles multi-consumer observation; this set
+    /// just prevents the duplicate network request. See ADR
+    /// docs/architecture/account-state-machine.md Open Q #1.
+    private var inflightAuthDocFetches = Set<String>()
+    private let inflightAuthDocLock = NSLock()
+
+    #if DEBUG
+    /// Test-only opt-out from the post-init background `loadCatalogs` spawn.
+    /// When `true`, `AccountsManager.init()` skips the
+    /// `DispatchQueue.global(qos: .background).async { loadCatalogs(...) }`
+    /// dispatch — eliminating the cross-test race where lingering background
+    /// work from a previously-constructed AccountsManager instance writes
+    /// through to `accountSets` / `AccountStateStore.shared` mid-test.
+    ///
+    /// Production callers never set this. The suite-level `setUp` of any
+    /// XCTestCase that constructs multiple `AccountsManager()` instances
+    /// should set it to `true` in `setUp` and reset to `false` in `tearDown`
+    /// to keep the flag flip scoped. NOT compiled into release builds.
+    ///
+    /// See `feedback_wiring_suite_test_isolation.md` for the underlying race.
+    ///
+    /// swarm_4b64e4e0 Wave 1d — default value now derives from
+    /// `XCTestConfigurationFilePath` env var. When this process is hosting
+    /// XCTest, the flag defaults to `true` so the very first cached
+    /// `AppContainer.production()` call (which may happen before any test's
+    /// setUp — e.g. via a static `let` or default arg in a class touched by
+    /// the test runner's discovery phase) doesn't fire a background
+    /// `loadCatalogs` Task that races with later test-fixture seeds. Tests
+    /// that need the background `loadCatalogs` to fire (e.g.
+    /// `AppContainerResetTests`) explicitly flip the flag back to `false`
+    /// in their own setUp. Production runs (no `XCTestConfigurationFilePath`
+    /// in the env) keep the original `false` default so the background load
+    /// fires as designed.
+    internal static var deferInitialLoadCatalogsForTesting: Bool = {
+        return ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+    }()
+
+    /// Test-only handle to the post-init background `loadCatalogs` task so
+    /// `cancelBackgroundWork()` can issue cooperative cancellation. Only ever
+    /// non-nil under DEBUG builds AND when `deferInitialLoadCatalogsForTesting`
+    /// was `false` at init time. Production reads this field implicitly via
+    /// `cancelBackgroundWork()` (called by `AppContainer._resetForTesting()`);
+    /// production does NOT pay the storage cost in release builds because the
+    /// whole field is `#if DEBUG`-gated.
+    ///
+    /// swarm_4b64e4e0 Fix 2 — closes the H1 finding from swarm_f88ae9e3 A.
+    private var backgroundFetchTask: Task<Void, Never>?
+
+    /// Test-only flag flipped to `true` inside `cancelBackgroundWork()` BEFORE
+    /// the `.cancel()` is issued on `backgroundFetchTask`. Used by
+    /// `AccountsManagerCancellationTests` to disambiguate "explicit cancel was
+    /// called" from "task handle was nilled out by some other path." swarm_4b64e4e0
+    /// qa-fixup — addresses qa_test concern about the prior single observation
+    /// surface conflating those two semantics.
+    private var _explicitCancelCalled: Bool = false
+    #endif
+
+    /// Registry of the unstructured background `Task`s spawned by
+    /// `loadCatalogs` → `fetchFromNetwork` / `refreshInBackground` (the
+    /// registry crawl, pagination, and catalog-preload). These are independent
+    /// tasks — NOT children of `backgroundFetchTask` — so `cancelBackgroundWork()`
+    /// did not previously cancel them. When a test constructed an
+    /// `AccountsManager` under `deferInitialLoadCatalogsForTesting = false`
+    /// (e.g. `AppContainerResetTests`), these tasks outlived the test and the
+    /// cooperative-cancel of `backgroundFetchTask`, leaking a live multi-page
+    /// network crawl into whatever test ran next — the root of the intermittent
+    /// cross-test CI crashes (a different victim each run).
+    ///
+    /// `_trackCrawlTask` no-ops outside an XCTest process (the runtime gate
+    /// below), so release / TestFlight / dev-sim builds never append — the
+    /// array stays empty and there is no storage cost or unbounded growth. The
+    /// only consumer that drains/cancels the list is `cancelBackgroundWork()`,
+    /// which is itself `#if DEBUG` and only invoked under `_resetForTesting()`
+    /// / wiring-suite tearDown. Using the XCTest env-var gate rather than
+    /// `#if DEBUG` on these production call sites keeps the crawl-spawn paths
+    /// free of conditional compilation (blast-radius BR-2).
+    private static let _isRunningUnderXCTest =
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+    private let _trackedCrawlTasksLock = NSLock()
+    private var _trackedCrawlTasks: [Task<Void, Never>] = []
+
+    /// Register a spawned background crawl task so `cancelBackgroundWork()` can
+    /// cancel it. No-op outside an XCTest process.
+    private func _trackCrawlTask(_ task: Task<Void, Never>) {
+        guard Self._isRunningUnderXCTest else { return }
+        _trackedCrawlTasksLock.lock()
+        _trackedCrawlTasks.append(task)
+        _trackedCrawlTasksLock.unlock()
+    }
+
     /// Initializer is `internal` rather than `private` so `AppContainer` can
     /// construct the single live instance directly. Outside of `AppContainer`
     /// (and tests that need an isolated instance), do not call this directly
     /// — read `appContainer.accountsManager` instead.
-    override init() {
+    ///
+    /// - Parameter defaults: UserDefaults backing store for
+    ///   `currentAccountIdentifierKey` reads/writes. Defaults to `.standard`
+    ///   so production callers stay green; tests pass a per-suite instance.
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
         self.settings = TPPSettings()
         self.accountSet = TPPConfiguration.customUrlHash()
             ?? (settings.useBetaLibraries
@@ -131,15 +278,38 @@ struct CatalogCacheMetadata: Codable {
         // server-side registry changes.
         preloadAccountsFromDiskCacheSync()
 
+        #if DEBUG
+        if Self.deferInitialLoadCatalogsForTesting {
+            // Test-only path: skip the background dispatch. The wiring suite
+            // (and any future XCTestCase constructing multiple instances)
+            // sets this flag to eliminate the cross-test race where lingering
+            // background work writes through state mid-test. Tests that need
+            // `loadCatalogs` semantics call `manager.loadCatalogs(...)`
+            // explicitly. Production never takes this branch.
+            return
+        }
+        // DEBUG-only arm: use `Task.detached` so the background work is
+        // cancellable from `cancelBackgroundWork()` (called by
+        // `AppContainer._resetForTesting()`). Production continues to use
+        // `DispatchQueue.global(qos: .background).async` — byte-identical to
+        // the prior behaviour. swarm_4b64e4e0 Fix 2.
+        backgroundFetchTask = Task.detached(priority: .background) { [weak self] in
+            self?.loadCatalogs(completion: nil)
+        }
+        #else
         DispatchQueue.global(qos: .background).async { [weak self] in
             self?.loadCatalogs(completion: nil)
         }
+        #endif
     }
 
     /// Hydrate `accountSets[accountSet]` from the on-disk OPDS2 catalog cache
     /// without dispatching to a background queue. Safe to call from `init()`
     /// because the cache read is local I/O measured in single-digit ms.
-    private func preloadAccountsFromDiskCacheSync() {
+    ///
+    /// Exposed `internal` so contract-snapshot tests can drive the preload
+    /// path directly after seeding the on-disk cache.
+    internal func preloadAccountsFromDiskCacheSync() {
         let hash = self.accountSet
         guard hasCachedCatalogData(hash: hash),
               let cachedData = readCachedAccountsCatalogData(hash: hash) else {
@@ -151,6 +321,14 @@ struct CatalogCacheMetadata: Codable {
                 Account(publication: $0, imageCache: ImageCache.shared)
             }
             performWrite { self.accountSets[hash] = accounts }
+            // Account state-machine wiring (3.2.0): Phase 1 — drive every
+            // preloaded account into `.basicInfoLoaded`. Display-only
+            // consumers (Settings/Libraries) can render the row immediately;
+            // critical-path readers `awaitReady()` continue blocking until
+            // the auth-doc transition completes below.
+            for account in accounts {
+                account._setState(.basicInfoLoaded)
+            }
             Log.info(#file, "Pre-loaded \(accounts.count) accounts from disk cache (sync, hash=\(hash))")
         } catch {
             // Best-effort. If the cached blob is corrupt or schema-shifted,
@@ -197,6 +375,42 @@ struct CatalogCacheMetadata: Codable {
 
             self.currentAccount?.hasUpdatedToken = false
             currentAccountId = newValue?.uuid
+
+            // Account state-machine wiring (3.2.0): Phase 1 — when the user
+            // switches libraries, terminate any lingering `awaitReady()`
+            // callers on the *prior* account with a definitive answer.
+            // `.detailsEvicted(.libraryDeselected)` is the chosen terminal:
+            //   - `.notLoaded` would leave awaiters hanging until reselect.
+            //   - `.detailsFailed(.accountNotFound)` was the original
+            //     terminal (PR #961) and confused this eviction marker with
+            //     a real HTTP-404 load failure — `driveCurrentAccountAuthDoc
+            //     IfNeeded` had to special-case the conflation. PR #1021
+            //     (Module A, swarm_51f248d5) split the case so the two
+            //     meanings stop sharing storage; the driver READ matches on
+            //     `.detailsEvicted(.libraryDeselected)` directly.
+            // Awaiters on this terminal throw `AccountLoadError.evicted`
+            // (distinct from `.accountNotFound`) so consumers can decide
+            // whether to retry, re-resolve, or simply discard the request.
+            // Re-entering the same UUID later overwrites the marker through
+            // the `.basicInfoLoaded` path on the next preload/loadCatalogs.
+            if let prev = previousAccountId, prev != newAccountId {
+                AccountStateStore.shared.setState(
+                    .detailsEvicted(.libraryDeselected(uuid: prev)),
+                    for: prev
+                )
+            }
+
+            // Account state-machine wiring (3.2.0): drive the NEW
+            // currentAccount past `.basicInfoLoaded` after the switch.
+            // Sibling of the `loadCatalogs` warm-path driver (PR #975) —
+            // same disease class, different trigger. Without this, every
+            // `awaitReady()` caller (audiobook open, token refresh,
+            // bookmark sync, CarPlay auth) hangs forever the first time
+            // the user opens content on the newly-selected library.
+            // Single-flight guard inside `fetchAuthDocumentWithStateMachine`
+            // dedupes against any concurrent fetch from refresh-in-background.
+            driveCurrentAccountAuthDocIfNeeded()
+
             TPPErrorLogger.setUserID(self.currentUserAccount.barcode)
             // isAccountSwitching is reset asynchronously by cleanupActiveContentBeforeAccountSwitch
             // after navigation cleanup completes — NOT here, to avoid premature reset (F-032).
@@ -231,10 +445,10 @@ struct CatalogCacheMetadata: Codable {
     }
 
     private(set) var currentAccountId: String? {
-        get { UserDefaults.standard.string(forKey: currentAccountIdentifierKey) }
+        get { defaults.string(forKey: currentAccountIdentifierKey) }
         set {
             Log.debug(#file, "Setting currentAccountId to \(newValue ?? "N/A")")
-            UserDefaults.standard.set(newValue, forKey: currentAccountIdentifierKey)
+            defaults.set(newValue, forKey: currentAccountIdentifierKey)
         }
     }
 
@@ -252,6 +466,47 @@ struct CatalogCacheMetadata: Codable {
             return self.accountSets[k] ?? []
         }
     }
+
+    #if DEBUG
+    /// Test-only: seed an Account into `accountSets[currentHash]` and set
+    /// `currentAccountId` to its UUID, so `AppContainer.production()
+    /// .accountsManager.currentAccount` returns it. Used by Bucket A
+    /// integration tests that need to exercise production-stack code
+    /// paths reading `currentAccount` (e.g.
+    /// `AppContainer.production().audiobookSession.openAudiobook`,
+    /// `CarPlayAuthHelper.isAuthenticated`,
+    /// `TPPBookRegistry.syncAsync`, `BookRegistrySync.sync`) without
+    /// requiring a real OPDS2 catalog fixture load. Closes the 4 XCTSkip
+    /// blocks the swarm Phase 1 implementers flagged.
+    ///
+    /// Returns a teardown closure that removes the seeded account and
+    /// restores the prior `currentAccountIdentifierKey`. Callers should
+    /// defer-call it to keep the production singleton uncontaminated.
+    ///
+    /// NOT exposed in production builds.
+    @discardableResult
+    func _seedAccountForTesting(_ account: Account) -> () -> Void {
+        let seedKey = self.accountSet
+        performWrite {
+            var seeded = self.accountSets[seedKey] ?? []
+            seeded.removeAll { $0.uuid == account.uuid }
+            seeded.append(account)
+            self.accountSets[seedKey] = seeded
+        }
+        let previousId = defaults.string(forKey: currentAccountIdentifierKey)
+        defaults.set(account.uuid, forKey: currentAccountIdentifierKey)
+        return {
+            self.performWrite {
+                self.accountSets[seedKey]?.removeAll { $0.uuid == account.uuid }
+            }
+            if let prev = previousId {
+                self.defaults.set(prev, forKey: currentAccountIdentifierKey)
+            } else {
+                self.defaults.removeObject(forKey: currentAccountIdentifierKey)
+            }
+        }
+    }
+    #endif
 
     var accountsHaveLoaded: Bool {
         return performRead {
@@ -376,6 +631,20 @@ struct CatalogCacheMetadata: Codable {
 
         // 1. If already loaded in memory, return immediately
         if performRead({ self.accountSets[hash]?.isEmpty == false }) {
+            // State-machine wiring (3.2.0): the cold path drives the
+            // current account's LoadState past `.basicInfoLoaded` via
+            // `loadAccountSetsAndAuthDoc → fetchAuthDocumentWithStateMachine`.
+            // The warm path historically returned here without firing the
+            // auth-doc transition, leaving every `awaitReady()` caller
+            // (audiobook open, token refresh, bookmark sync, CarPlay auth)
+            // blocked forever on cold-launch for already-signed-in users
+            // whose accounts were populated by `preloadAccountsFromDiskCacheSync`.
+            // Restore the invariant: any account in `accountSets[hash]`
+            // must reach a terminal LoadState. The single-flight guard
+            // inside `fetchAuthDocumentWithStateMachine` dedupes against
+            // any concurrent invocation from refreshInBackground or a
+            // library switch.
+            driveCurrentAccountAuthDocIfNeeded()
             completion?(true)
             // Still refresh in background if stale
             if isCacheStale(hash: hash) {
@@ -402,6 +671,31 @@ struct CatalogCacheMetadata: Codable {
             return
         }
 
+        // 2.5. No disk cache — try the build-time bundled snapshot for
+        // immediate library-picker display (PP-4258). The network fetch
+        // still runs to pick up anything that changed since the snapshot
+        // was cut, so this is purely a fast-path for cold first launch.
+        if let bundledData = BundledRegistrySnapshot.load() {
+            // Cooperative-cancel guard: if our enclosing Task was cancelled
+            // between the bundled-load decision and the disk write, skip the
+            // cache write. Mirrors the guard in `fetchFromNetwork` on the
+            // post-await branch. Without this, a cancelled background
+            // `loadCatalogs` Task can still race a fixture-seeded test:
+            // cancel→continue→write-bundled-snapshot overwrites the test's
+            // 171-account fixture with the 1142 bundled accounts on disk.
+            if Task.isCancelled { return }
+            Log.info(#file, "First launch — loading bundled registry snapshot for hash \(hash), dataSize=\(bundledData.count)")
+            // isBundled=true keeps the cache flagged as non-authoritative so
+            // every subsequent loadCatalogs call still triggers refresh until
+            // a real network response overwrites the metadata.
+            cacheAccountsCatalogData(bundledData, hash: hash, isBundled: true)
+            loadAccountSetsAndAuthDoc(fromCatalogData: bundledData, key: hash) { _ in
+                NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
+            }
+            // Fall through to the network fetch — the caller's completion
+            // fires when the fresh data arrives, not on the bundled load.
+        }
+
         // 3. No cache or expired - must fetch from network
         Log.debug(#file, "Loading catalogs from network for hash \(hash)…")
 
@@ -416,7 +710,7 @@ struct CatalogCacheMetadata: Codable {
     /// 2. Paginate remaining pages in background → update cache when done
     /// Falls back to a direct GET if even the first page fails.
     private func fetchFromNetwork(targetUrl: URL, hash: String) {
-        Task(priority: .userInitiated) { [weak self] in
+        let crawlTask = Task(priority: .userInitiated) { [weak self] in
             guard let self = self else { return }
             Log.debug(#file, "Fetching catalogs via first-page fast path for hash \(hash)")
 
@@ -424,6 +718,14 @@ struct CatalogCacheMetadata: Codable {
 
             // Step 1: Fetch first page for immediate display
             let firstPageResult = await crawler.crawlFirstPage(baseURL: targetUrl)
+            // Cooperative cancellation observation (swarm_4b64e4e0 Fix 2):
+            // if `cancelBackgroundWork()` was called while we were awaiting
+            // `crawlFirstPage`, drop the result on the floor instead of
+            // writing through to `accountSets` / `cacheAccountsCatalogData`.
+            // Without this, a test that `_resetForTesting()`s the AppContainer
+            // mid-fetch still sees the prior `AccountsManager`'s response
+            // land in its caches a few ms later.
+            if Task.isCancelled { return }
 
             switch firstPageResult {
             case .success(let firstPageData, let firstPage):
@@ -444,7 +746,7 @@ struct CatalogCacheMetadata: Codable {
                 }
 
                 Log.info(#file, "Registry has more pages (first page: \(firstPage.catalogs.count) of \(firstPage.metadata.numberOfItems ?? -1)) — paginating in background")
-                Task(priority: .utility) { [weak self] in
+                let paginationTask = Task(priority: .utility) { [weak self] in
                     guard let self = self else { return }
 
                     let remainingResult = await crawler.crawlRemainingPages(
@@ -464,6 +766,7 @@ struct CatalogCacheMetadata: Codable {
                     }
                     self.triggerCatalogPreload()
                 }
+                self._trackCrawlTask(paginationTask)
 
             case .noChanges:
                 self.callAndClearLoadingHandlers(for: hash, true)
@@ -473,6 +776,7 @@ struct CatalogCacheMetadata: Codable {
                 self.fallbackFetchFromNetwork(targetUrl: targetUrl, hash: hash)
             }
         }
+        _trackCrawlTask(crawlTask)
     }
 
     /// Fallback direct GET when crawler fails on first launch.
@@ -505,7 +809,7 @@ struct CatalogCacheMetadata: Codable {
     /// Refreshes catalog data in background using the incremental crawler.
     /// Falls back to a direct GET if the crawlable endpoint fails.
     private func refreshInBackground(targetUrl: URL, hash: String) {
-        Task(priority: .utility) { [weak self] in
+        let refreshTask = Task(priority: .utility) { [weak self] in
             guard let self = self else { return }
             Log.debug(#file, "Starting background refresh (crawl) for catalog hash \(hash)")
 
@@ -550,6 +854,7 @@ struct CatalogCacheMetadata: Codable {
                 self.fallbackDirectRefresh(targetUrl: targetUrl, hash: hash)
             }
         }
+        _trackCrawlTask(refreshTask)
     }
 
     /// Fallback to direct GET when crawlable endpoint fails.
@@ -571,7 +876,7 @@ struct CatalogCacheMetadata: Codable {
 
     /// Triggers catalog feed preloading for active accounts.
     private func triggerCatalogPreload() {
-        Task(priority: .utility) { [weak self] in
+        let preloadTask = Task(priority: .utility) { [weak self] in
             guard let self = self else { return }
             await self.catalogPreloader.preloadCatalogs(
                 currentAccount: self.currentAccount,
@@ -579,6 +884,7 @@ struct CatalogCacheMetadata: Codable {
                 accountProvider: { self.account($0) }
             )
         }
+        _trackCrawlTask(preloadTask)
     }
 
     // MARK: – Disk cache helpers
@@ -603,13 +909,15 @@ struct CatalogCacheMetadata: Codable {
         return appSupport.appendingPathComponent("accounts_catalog_metadata_\(hash).json")
     }
 
-    private func cacheAccountsCatalogData(_ data: Data, hash: String) {
+    private func cacheAccountsCatalogData(_ data: Data, hash: String, isBundled: Bool = false) {
         // Save catalog data
         guard let url = accountsCatalogUrl(hash: hash) else { return }
         try? data.write(to: url)
 
-        // Save metadata with current timestamp
-        let metadata = CatalogCacheMetadata(timestamp: Date(), hash: hash)
+        // Save metadata with current timestamp. `isBundled` distinguishes
+        // build-time-snapshot writes from authoritative network writes so
+        // staleness logic can keep refresh alive on bundled-origin caches.
+        let metadata = CatalogCacheMetadata(timestamp: Date(), hash: hash, isBundled: isBundled)
         if let metadataUrl = cacheMetadataUrl(hash: hash),
            let metadataData = try? JSONEncoder().encode(metadata) {
             try? metadataData.write(to: metadataUrl)
@@ -633,7 +941,7 @@ struct CatalogCacheMetadata: Codable {
         guard readCachedAccountsCatalogData(hash: hash) != nil else { return false }
         guard let metadata = readCacheMetadata(hash: hash) else {
             // Data exists but no metadata - treat as usable but stale
-            return true
+            return false
         }
         return !metadata.isExpired
     }
@@ -692,9 +1000,129 @@ struct CatalogCacheMetadata: Codable {
         return try? JSONDecoder().decode(CrawlState.self, from: data)
     }
 
+    // MARK: – Auth Document fetch with state-machine wiring
+
+    /// Wraps `Account.loadAuthenticationDocument` with:
+    /// 1. Per-UUID single-flight guard — the second concurrent caller for
+    ///    the same UUID does NOT fire a duplicate HTTP request; the state
+    ///    stream's broadcast (`CurrentValueSubject`) ensures both callers
+    ///    observe the same eventual transition.
+    /// 2. State-machine transitions — `.detailsLoading` before the fetch;
+    ///    `.detailsLoaded(details)` on success; `.detailsFailed(...)` on
+    ///    failure. New code that reads `account.details` must go through
+    ///    `Account.awaitReady()`, which observes these transitions.
+    ///
+    /// Exposed `internal` so contract-snapshot tests can drive the wiring
+    /// path directly without going through the full `loadCatalogs` cycle.
+    internal func fetchAuthDocumentWithStateMachine(
+        for account: Account,
+        completion: @escaping (Bool) -> Void
+    ) {
+        inflightAuthDocLock.lock()
+        let alreadyInflight = inflightAuthDocFetches.contains(account.uuid)
+        if !alreadyInflight {
+            inflightAuthDocFetches.insert(account.uuid)
+        }
+        inflightAuthDocLock.unlock()
+
+        if alreadyInflight {
+            // A fetch for this UUID is already in flight. Don't fire a
+            // duplicate HTTP request — the state stream's broadcast covers
+            // multi-consumer observation. Caller's completion gets `true`
+            // so the calling DispatchGroup (if any) balances.
+            completion(true)
+            return
+        }
+
+        account._setState(.detailsLoading)
+        account.loadAuthenticationDocument(using: self.currentUserAccount) { [weak self] success in
+            guard let self = self else {
+                completion(success)
+                return
+            }
+            self.inflightAuthDocLock.lock()
+            self.inflightAuthDocFetches.remove(account.uuid)
+            self.inflightAuthDocLock.unlock()
+
+            if success, let details = account.details {
+                account._setState(.detailsLoaded(details))
+            } else {
+                account._setState(.detailsFailed(
+                    .authDocumentFetchFailed(underlyingDescription: "loadAuthenticationDocument returned false")
+                ))
+            }
+            completion(success)
+        }
+    }
+
+    /// Fires `fetchAuthDocumentWithStateMachine` for the current account
+    /// when its `LoadState` is non-terminal. Used by the `loadCatalogs`
+    /// warm-path to close the driver gap on cold-launch with a hot
+    /// in-memory accountSets cache — without this, `awaitReady()` callers
+    /// (audiobook open, token refresh, bookmark sync, CarPlay auth) hang
+    /// indefinitely waiting for `.detailsLoaded`/`.detailsFailed` because
+    /// nothing drives the transition. No-op when there is no current
+    /// account, or when state has already settled at a terminal value
+    /// (existing `awaitReady()` awaiters resolve via that terminal).
+    /// Single-flight guard inside `fetchAuthDocumentWithStateMachine`
+    /// dedupes against concurrent callers from `refreshInBackground` or
+    /// the library-switch path.
+    internal func driveCurrentAccountAuthDocIfNeeded() {
+        guard let account = currentAccount else { return }
+        switch AccountStateStore.shared.state(for: account.uuid) {
+        case .detailsLoaded:
+            return // terminal — `awaitReady()` awaiters resolve via the loaded details
+        case .detailsEvicted(.libraryDeselected):
+            // `.detailsEvicted(.libraryDeselected)` is the eviction marker
+            // the `currentAccount` setter writes against the PRIOR uuid
+            // when the user switches libraries. If this account is back to
+            // being the current account, that marker is stale — re-drive
+            // the auth-doc fetch so awaitReady() callers (audiobook open,
+            // token refresh, bookmark sync, CarPlay auth) don't throw
+            // `.evicted` forever after a swap-away/swap-back.
+            //
+            // PR #1021 (Module A, swarm_51f248d5) split this case off from
+            // `.detailsFailed(.accountNotFound)` so the eviction marker
+            // stops sharing storage with the genuine HTTP-404 load failure
+            // below. Now a real `.accountNotFound` correctly hits the
+            // `.detailsFailed` arm and does NOT redrive.
+            //
+            // FORWARD-COMPAT (added by swarm_18b0d071 wave 3 Module B):
+            // This arm matches ONLY `.libraryDeselected` today because
+            // that is the only known `AccountEvictionReason`. When a NEW
+            // `AccountEvictionReason` case is added in the future, the
+            // implementer must decide between two semantics:
+            //   (a) "Re-drive on re-entry" — same semantics as
+            //       `.libraryDeselected`: the eviction was triggered by a
+            //       reversible UX action (library swap, sign-out-on-
+            //       current, etc.). Add `case .detailsEvicted(.<newReason>):`
+            //       to THIS arm (alongside `.libraryDeselected`) so
+            //       awaitReady() callers can resume after re-entry.
+            //   (b) "Do NOT re-drive" — the eviction was triggered by an
+            //       irreversible state (account deleted server-side,
+            //       policy expiry, etc.). Add a NEW
+            //       `case .detailsEvicted(.<newReason>):` arm that
+            //       `return`s (mirroring the `.detailsFailed` arm below at
+            //       line ~983) so awaitReady() correctly surfaces the
+            //       failure to consumers instead of looping fetches.
+            // The `default` case is deliberately NOT added to this switch
+            // — Swift's switch-exhaustiveness check will fail at compile
+            // time when a new `AccountEvictionReason` case is added,
+            // forcing the future implementer to make the (a)/(b) decision
+            // explicit here rather than silently inheriting the wrong
+            // behaviour from a default fall-through.
+            break
+        case .detailsFailed:
+            return // genuine load failure — caller must retry explicitly
+        case .notLoaded, .basicInfoLoaded, .detailsLoading:
+            break
+        }
+        fetchAuthDocumentWithStateMachine(for: account) { _ in }
+    }
+
     // MARK: – Parsing & notifying
 
-    private func loadAccountSetsAndAuthDoc(
+    internal func loadAccountSetsAndAuthDoc(
         fromCatalogData data: Data,
         key hash: String,
         completion: @escaping (Bool) -> Void
@@ -725,6 +1153,27 @@ struct CatalogCacheMetadata: Codable {
                 self.accountSets[hash] = newAccounts
             }
 
+            // Account state-machine wiring (3.2.0): Phase 1 — drive every
+            // freshly-constructed account into its post-load terminal state.
+            // The `authentication_document` carry-over path above means an
+            // account that previously held `.detailsLoaded` continues to
+            // observe loaded details (under the new instance). Accounts
+            // without a carry-over auth doc fall back to `.basicInfoLoaded`
+            // until the current-account fetch below drives them through
+            // `.detailsLoading` → `.detailsLoaded` / `.detailsFailed`.
+            for newAccount in newAccounts {
+                if newAccount.authenticationDocument != nil,
+                   let details = newAccount.details {
+                    // Belt-and-suspenders `guard let`: `authenticationDocument`
+                    // didSet populates `details` synchronously, but a
+                    // mock-data publication could in principle land here
+                    // with an authDoc that fails to construct details.
+                    newAccount._setState(.detailsLoaded(details))
+                } else {
+                    newAccount._setState(.basicInfoLoaded)
+                }
+            }
+
             let group = DispatchGroup()
 
             let accountExistenceChanged = hadAccount != (self.currentAccount != nil)
@@ -733,7 +1182,7 @@ struct CatalogCacheMetadata: Codable {
             if accountExistenceChanged || currentAccountMissingDetails, let current = self.currentAccount {
                 group.enter()
                 current.loadLogo()
-                current.loadAuthenticationDocument(using: self.currentUserAccount) { _ in
+                fetchAuthDocumentWithStateMachine(for: current) { _ in
                     if current.details?.needsAgeCheck ?? false {
                         group.enter()
                         self.ageCheck.verifyCurrentAccountAgeRequirement(
@@ -792,12 +1241,14 @@ struct CatalogCacheMetadata: Codable {
     func clearCache() {
         // network cache
         networkExecutor.clearCache()
-        // file caches — delete all files matching known prefixes
+        // file caches — delete all files matching known prefixes written to the
+        // Application Support root. (`authentication_document_` was removed: no
+        // code path writes a file with that prefix — auth docs live in `Account`
+        // state / are re-fetched, not persisted as files — so it cleared nothing.)
         let prefixes = [
             "library_list_",
             "accounts_catalog_",
             "accounts_catalog_metadata_",
-            "authentication_document_",
             "crawl_state_",
         ]
         let fm = FileManager.default
@@ -821,3 +1272,174 @@ struct CatalogCacheMetadata: Codable {
         }
     }
 }
+
+#if DEBUG
+extension AccountsManager {
+    /// Test-only seam: populate an accountSets bucket without going through
+    /// OPDS2 parsing. Routes through `performWrite` so concurrent-access
+    /// invariants are preserved. Used by mutation-killing tests for
+    /// `account(_ uuid:)` — multi-bucket scenarios are not otherwise
+    /// reachable from outside the class.
+    func _testSetAccountSet(_ accounts: [Account], forKey key: String) {
+        performWrite { self.accountSets[key] = accounts }
+    }
+
+    /// Test-only: cancel the in-flight background `loadCatalogs` Task (if any)
+    /// and the network executor's non-essential URL session tasks. Cooperative
+    /// — returns immediately after issuing the cancel; observation is delegated
+    /// to the Task's own `Task.isCancelled` check inside `fetchFromNetwork`.
+    /// Idempotent: safe to call repeatedly. Does NOT mutate persistent state;
+    /// only cancels in-flight async work.
+    ///
+    /// Production-safe — guarded by `#if DEBUG` and called only from
+    /// `AppContainer._resetForTesting()`. swarm_4b64e4e0 Fix 2 — closes the
+    /// H1 finding from swarm_f88ae9e3 A.
+    ///
+    /// Residual race window (documented intentional): if `loadCatalogs` is
+    /// already past the post-await `Task.isCancelled` check inside
+    /// `fetchFromNetwork`, the network response still lands in `accountSets`
+    /// on the OLD AccountsManager instance — but the OLD instance is no
+    /// longer reachable from `AppContainer.production()` post-reset, so the
+    /// write is observable only by code paths holding a strong reference to
+    /// the prior `accountsManager` (vanishingly few in tests; none in
+    /// production). Acceptable per swarm_4b64e4e0 outcome.md.
+    func cancelBackgroundWork() {
+        // Order matters: flip the explicit-cancel flag BEFORE issuing the
+        // .cancel() so the observation surface
+        // `_backgroundFetchTaskWasExplicitlyCancelled` distinguishes "we
+        // called cancel" from "the handle was nilled by some other path."
+        // swarm_4b64e4e0 qa-fixup Fix 3.
+        _explicitCancelCalled = true
+        backgroundFetchTask?.cancel()
+        backgroundFetchTask = nil
+        // Cancel the unstructured crawl / pagination / preload tasks spawned by
+        // loadCatalogs. These are independent of backgroundFetchTask, so
+        // without this they leak a live registry crawl past the test boundary
+        // and pollute the next test (the intermittent cross-test CI crash).
+        _trackedCrawlTasksLock.lock()
+        let crawlTasks = _trackedCrawlTasks
+        _trackedCrawlTasks.removeAll()
+        _trackedCrawlTasksLock.unlock()
+        crawlTasks.forEach { $0.cancel() }
+        networkExecutor.cancelNonEssentialTasks()
+    }
+
+    /// Test-only: cancel the in-flight background `loadCatalogs` crawl AND
+    /// synchronously DRAIN it before returning, so no orphan crawl outlives the
+    /// test boundary holding the `accountSetsLock` barrier.
+    ///
+    /// Why this exists (WS-0 follow-up — closes the residual race documented on
+    /// `cancelBackgroundWork()` above): the cooperative `cancelBackgroundWork()`
+    /// returns immediately, so a just-cancelled crawl can still be mid-flight —
+    /// holding the `performWrite` `.barrier` on `accountSetsLock` — when the
+    /// NEXT test's `@MainActor` reauth path does a synchronous
+    /// `currentUserAccount` / `performRead` `.sync` read. That read blocks
+    /// behind the barrier; because the crawl hops to the main actor to complete,
+    /// and main is now blocked on the read, the two deadlock → the victim test's
+    /// 5s `waitForExpectations` timer never fires → 120s main-thread jam. This
+    /// is the "auth-state-bleed" board-red whose ROOT is a leaked
+    /// `deferInitialLoadCatalogsForTesting = false` crawl (flag-value-restored ≠
+    /// crawl-drained — the gap the flag-value defer gate could not see).
+    ///
+    /// The drain MUST pump the run loop while waiting: the crawl needs the main
+    /// actor to finish, so blocking main outright would re-create the deadlock.
+    /// Pumping lets the cancelled crawl's main-hops + barrier writes complete,
+    /// then it observes cancellation and exits — bounded by `timeout`.
+    ///
+    /// Production-safe — `#if DEBUG`, called only from
+    /// `AppContainer._resetForTesting()` (every test boundary) so the fix is
+    /// global across ALL flag-false crawl spawners, not a per-test patch.
+    func cancelAndDrainBackgroundWork(timeout: TimeInterval = 3.0) {
+        // Capture the in-flight tasks BEFORE cancelBackgroundWork() clears them.
+        _trackedCrawlTasksLock.lock()
+        let crawlTasks = _trackedCrawlTasks
+        _trackedCrawlTasksLock.unlock()
+        let fetchTask = backgroundFetchTask
+        let tasksToDrain = crawlTasks + [fetchTask].compactMap { $0 }
+
+        cancelBackgroundWork() // requests cancellation, nils handles, clears list
+
+        guard !tasksToDrain.isEmpty else { return }
+
+        // Await all (now-cancelled) tasks while pumping the run loop, so any
+        // barrier the crawl holds is released and its main-actor hops complete
+        // before we return. Bounded by `timeout` so a stuck task can't hang the
+        // boundary.
+        let started = Date()
+        let group = DispatchGroup()
+        for task in tasksToDrain {
+            group.enter()
+            Task { _ = await task.value; group.leave() }
+        }
+        let deadline = started.addingTimeInterval(timeout)
+        while group.wait(timeout: .now()) == .timedOut && Date() < deadline {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.02))
+        }
+        // Telemetry: a fast drain (cancelled crawl + pumped main unwinds in
+        // single-digit ms) is the expected case. Hitting the `timeout` ceiling
+        // means the cancel did NOT actually stop the crawl — surface it loudly
+        // (a stuck crawl is a real bug) but never hang the boundary.
+        let elapsedMs = Int(Date().timeIntervalSince(started) * 1000)
+        if group.wait(timeout: .now()) == .timedOut {
+            NSLog("[WS0-DRAIN] cancelAndDrainBackgroundWork TIMED OUT after %dms draining %d task(s) — crawl did not observe cancellation; investigate.", elapsedMs, tasksToDrain.count)
+        } else if elapsedMs >= 50 {
+            NSLog("[WS0-DRAIN] cancelAndDrainBackgroundWork drained %d task(s) in %dms.", tasksToDrain.count, elapsedMs)
+        }
+    }
+
+    /// Test-only setter that swaps a caller-provided Task into
+    /// `backgroundFetchTask`. Used by the race-guard test in
+    /// `AccountsManagerCancellationTests` to install a Task it controls (via
+    /// a CheckedContinuation) so it can drive cancel-mid-await semantics
+    /// without going through a live network round-trip. Returns the prior
+    /// task so the caller can restore it or cancel it as needed.
+    ///
+    /// swarm_4b64e4e0 qa-fixup Fix 2 — addresses qa_test concern that the
+    /// cooperative-cancel guard at line 651 of `fetchFromNetwork` has no
+    /// behavioral test covering the post-resume branch.
+    @discardableResult
+    func _injectBackgroundFetchTaskForTesting(_ task: Task<Void, Never>?) -> Task<Void, Never>? {
+        let prior = backgroundFetchTask
+        backgroundFetchTask = task
+        return prior
+    }
+
+    /// Test-only observation surface. Returns `true` iff `cancelBackgroundWork()`
+    /// was called on this instance (the flag is flipped BEFORE the underlying
+    /// `.cancel()` call so a partial cancel-then-throw cannot leave this
+    /// false). Pin this in tests when you want to prove the explicit
+    /// production seam was invoked, distinct from the task handle being nil.
+    ///
+    /// swarm_4b64e4e0 qa-fixup Fix 3.
+    var _backgroundFetchTaskWasExplicitlyCancelled: Bool {
+        return _explicitCancelCalled
+    }
+
+    /// Test-only observation surface. Returns `true` iff `backgroundFetchTask`
+    /// is currently `nil` (post-cancel cleanup OR pre-init OR opt-out
+    /// construction). Pin this in tests when you want to prove the handle
+    /// was nilled out.
+    ///
+    /// swarm_4b64e4e0 qa-fixup Fix 3.
+    var _backgroundFetchTaskHandleIsNil: Bool {
+        return backgroundFetchTask == nil
+    }
+
+    /// Test-only observation surface for `backgroundFetchTask`. Returns
+    /// `true` if the task is currently in a cancelled state OR if the task
+    /// handle has been nilled out by `cancelBackgroundWork()`. Used by
+    /// `AccountsManagerCancellationTests` to verify the cooperative-cancel
+    /// invariant without poking at the private storage directly.
+    ///
+    /// - DEPRECATED in qa-fixup: this property conflates "explicit cancel
+    ///   was called" with "task handle was nilled." Prefer
+    ///   `_backgroundFetchTaskWasExplicitlyCancelled` AND
+    ///   `_backgroundFetchTaskHandleIsNil` together so a mutation that
+    ///   removes only ONE of the two effects fails its dedicated test.
+    @available(*, deprecated, message: "Use _backgroundFetchTaskWasExplicitlyCancelled + _backgroundFetchTaskHandleIsNil so cancel-vs-nil mutations are independently observable. See swarm_4b64e4e0 qa-fixup Fix 3.")
+    var _backgroundFetchTaskIsCancelledOrCleared: Bool {
+        guard let task = backgroundFetchTask else { return true }
+        return task.isCancelled
+    }
+}
+#endif

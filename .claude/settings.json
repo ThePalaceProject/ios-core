@@ -1,0 +1,131 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash scripts/hooks/session-start.sh",
+            "timeout": 45,
+            "statusMessage": "Loading governance requirements..."
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash scripts/hooks/pre-destructive-check.sh",
+            "timeout": 5,
+            "statusMessage": "Checking active swarms..."
+          },
+          {
+            "type": "command",
+            "command": "bash scripts/hooks/pre-commit-check.sh",
+            "timeout": 10,
+            "statusMessage": "Checking ForgeOS changeset..."
+          },
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.command // empty' | grep -q 'gh pr create' && bash scripts/forgeos-gate-hook.sh || true",
+            "timeout": 30,
+            "statusMessage": "Checking ForgeOS gates for PR..."
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash scripts/hooks/clean-code-check.sh",
+            "timeout": 15,
+            "statusMessage": "Clean-code (git commit only)..."
+          },
+          {
+            "type": "command",
+            "command": "bash scripts/hooks/pre-public-surface-drift.sh",
+            "timeout": 5,
+            "statusMessage": "Checking public-surface drift (PalaceAuth + SPM packages)..."
+          },
+          {
+            "type": "command",
+            "command": "bash scripts/hooks/pre-critical-path-mutation.sh",
+            "timeout": 5,
+            "statusMessage": "Checking mutation evidence for critical-path changes..."
+          },
+          {
+            "type": "command",
+            "command": "bash scripts/pre-commit-phase35-detectors.sh",
+            "timeout": 15,
+            "statusMessage": "Phase 3.5 class-detectable detectors (6 wall-failure detectors)..."
+          },
+          {
+            "type": "command",
+            "command": "bash scripts/hooks/pre-commit-doc-lifecycle.sh",
+            "timeout": 10,
+            "statusMessage": "Validating governance doc frontmatter..."
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash scripts/hooks/pre-push-check.sh",
+            "timeout": 30,
+            "statusMessage": "Pre-push gate (git push only)..."
+          },
+          {
+            "type": "command",
+            "command": "bash scripts/hooks/pre-push-critical-path-review.sh",
+            "timeout": 10,
+            "statusMessage": "Checking critical-path review evidence (git push only)..."
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 scripts/hooks/audit-before-assert.py",
+            "timeout": 5,
+            "statusMessage": "Auditing factual claims..."
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash scripts/hooks/session-stop.sh",
+            "statusMessage": "Harness cleanup...",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash scripts/hooks/post-pr-retro.sh",
+            "timeout": 5,
+            "statusMessage": "Checking for post-PR retro..."
+          }
+        ]
+      }
+    ]
+  }
+}

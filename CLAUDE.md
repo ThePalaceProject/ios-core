@@ -12,6 +12,23 @@ Library reading app supporting EPUB, PDF, and audiobooks with multiple DRM syste
 
 **Architecture decisions:** see [`docs/architecture/`](./docs/architecture/) for the rationale behind major refactors (the post-modernization triad work, the parallel-agent rebase pattern, post-PR retros).
 
+## Release & hotfix merge policy
+
+**Merges into `main` use regular merge commits (`--no-ff`), never squash.** Applies to:
+- `release/X.Y.Z` → `main` (full release cycle)
+- `hotfix/X.Y.Z-*` → `main` (point hotfix)
+- Forward-port merges of those hotfix branches into `develop` (so the next release branch absorbs them with original SHAs)
+
+`gh pr merge <num> --merge` — NOT `--squash`.
+
+**Why:** squash-merge replaces a branch's commits with a single new commit that has no SHA-level relationship to the original work. When the next release branch tries to merge into main, git treats the squashed commits as different history from the original commits the release branch absorbed via forward-port — even though the content is logically identical. The result is a conflict storm that's pure squash-merge identity loss, not real divergence.
+
+This is what happened to 3.1.0: PR #953 (3.0.2 hotfix) and PR #972 (3.0.3 hotfix) were squash-merged into main, then `release/3.1.0 → main` produced **296 conflicts** that all had to be resolved manually before the release could ship. PR #998 ultimately landed via a custom merge commit built with `git commit-tree`. See [`docs/architecture/release-merge-policy.md`](./docs/architecture/release-merge-policy.md) for the full forensic + the recovery recipe.
+
+**Squash-merge is fine for feature PRs into `develop`** (or any branch that doesn't feed back into main). The damage is specifically squash on commits that later need to be reconciled by another branch — that's a release-branch-to-main scenario, not a feature-to-develop one.
+
+**Branch protection:** `main` should be configured to allow only "Create a merge commit" — disable both "Squash and merge" and "Rebase and merge" in repo settings → branch protection rules. UI change; verify periodically.
+
 ## Build & Test
 
 ```bash
@@ -25,15 +42,81 @@ xcodebuild -project Palace.xcodeproj -scheme Palace \
 xcodebuild -project Palace.xcodeproj -scheme Palace \
   -destination 'platform=iOS Simulator,name=iPhone 16 Pro' test
 
-# Run a single test class
+# Run a single test class — SPOT CHECK ONLY, never "validation" (see rule below)
 xcodebuild -project Palace.xcodeproj -scheme Palace \
   -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
   -only-testing:PalaceTests/MyTestClass test
 ```
 
+**Local validation MUST run the same full suite CI runs — never a `-only-testing`
+subset.** CI executes the whole `Palace` scheme across ALL test targets
+(`PalaceTests` + `TenPrintCoverTests`) with `-test-iterations 3
+-retry-tests-on-failure` via `scripts/xcode-test-optimized.sh` (~7k executions).
+Before claiming a change is verified / green:
+- Run `scripts/xcode-test-optimized.sh` (CI parity) **or** `scripts/verify-pr.sh
+  --quick` (full-scheme single pass). A `-only-testing:<Class>` run is a scoped
+  spot-check for fast iteration/mutation/debugging — it is NEVER "the suite" and
+  must never be reported as a full or green pass.
+- Confirm the run ended `** TEST SUCCEEDED **` with **no** `exceeded execution
+  time allowance` or `Restarting after … test timeout` lines. A timeout/restart
+  is a FAILURE even if the final assertion tally reads "0 failures."
+- Read the top-level `Test Suite 'All tests'/'Selected tests'` rollup for the
+  count; never sum per-suite `Executed N` lines (they double/triple-count).
+
+Incident (PP-4542, 2026-06-09): a `-only-testing:PalaceTests` run was reported as
+"full local suite 2359 / 0 failures, PRs verifiably correct." It was one bundle
+(CI runs 7121) AND had actually hung + `** TEST FAILED **`. A subset run, itself
+failed, cited as whole-suite green. Don't repeat it.
+
 - Xcode 26, iOS 16.0+ deployment target (CI release path: `macos-26` + `xcode-version: '26'`)
 - Two targets: `Palace` (full DRM) and `Palace-noDRM` (open-source)
 - DRM builds run natively on Apple Silicon — Rosetta is no longer required
+
+## CI/CD reliability — the green-board contract
+
+A CI board that is usually-red-from-flakes provides **no signal** — it trains
+everyone to ignore CI and admin-merge, and a real failure then hides in the
+noise. (That is exactly how PR #1045 shipped a `verify-pr.sh` that didn't pass
+`bash -n` and a pre-commit hook that would have blocked every commit: the board
+was already red from pollution, so nobody trusted it.) The contract below keeps
+the board trustworthy.
+
+**1. Flakes don't redden the board; real failures do.** `scripts/xcode-test-optimized.sh`
+runs with `-retry-tests-on-failure -test-iterations 3`. A test that passes on
+any of 3 attempts counts as a pass; a real failure fails all 3 and stays red.
+Retry is a safety net, **not** a substitute for fixing pollution — see #2.
+
+**2. Fix test pollution at the root; do not just document flake #N.** The
+recurring red is shared mutable state bleeding across tests (`.shared`
+singletons, `AccountsManager()` background `loadCatalogs` outliving the test,
+layout-engine-off-main, keychain/UserDefaults bleed). When a flake appears: run
+the polluter-diagnosis (`scripts/find-test-polluter.sh`) to find the test that
+leaves state dirty, then fix the leak (tear down the singleton, await the
+background task, force main-thread layout). Adding a sixth "known flake" memo is
+not a fix.
+
+**3. The tooling is under CI too.** `verify-pr.sh`, the detectors, and the
+pre-commit hooks gate everything else, so they get their own gate:
+`.github/workflows/tooling-checks.yml` runs `bash -n` on every committed shell
+script, the detector pytests (`scripts/tests/`), and the hook fixture test on
+every PR (~1 min, ubuntu). A broken gate script is a CI failure, not a
+ship-green surprise.
+
+**4. Don't land a gate faster than you can verify it.** A new detector / hook /
+verify-pr gate does not merge until: (a) it has a pytest in `scripts/tests/`;
+(b) its **wiring** is end-to-end tested — the hook fixture test
+(`test_pre_commit_phase35_detectors.sh`) must exercise the new detector,
+including a **clean-diff pass** assertion (a detector invoked with an interface
+it rejects must not block); (c) it's been dry-run on the current tree for zero
+false positives. Wiring bugs (a scan-only detector called with `--diff`) are
+invisible to a fixture that only ever stages a violation — always assert the
+clean path passes too.
+
+**5. Retire the admin-merge reflex.** Once the board is trustworthy (1–4), red
+means **stop**. `--admin` over a red check is allowed ONLY when the failure is a
+specific, named, already-tracked flake that passes in isolation — and that flake
+must have a de-flake item per #2. Never `--admin` over a red board whose failure
+you have not individually identified; that is how real breakage lands.
 
 ## Project Structure
 
@@ -137,6 +220,15 @@ python3 scripts/palace_mutate.py \
 python3 scripts/palace_mutate.py \
   --file Palace/Path/ChangedFile.swift \
   --tests PalaceTests/ChangedFileTests
+
+# Diff-scoped: only mutate lines this PR changes vs origin/develop.
+# Useful when a file has pre-existing low-coverage areas you don't want
+# to be punished for — kill rate reflects YOUR PR's coverage, not the
+# whole file's history. Cache-keyed independently from whole-file runs.
+python3 scripts/palace_mutate.py \
+  --file Palace/Path/ChangedFile.swift \
+  --tests PalaceTests/ChangedFileTests \
+  --diff-only [--diff-base origin/develop]
 ```
 
 The `--tests` arg is an XCTest **class** name (not a directory) — `-only-testing` matches `<TestBundle>/<XCTestCase subclass>`. A run that says "0 tests executed" is a misconfiguration, not a clean pass.
@@ -154,25 +246,113 @@ A test that doesn't kill any mutants should be rewritten to test the actual beha
 
 **Critical path tests must be air-tight.** For sign-in, borrow, download, DRM fulfillment, and payment flows: every branch must have a test, every error path must be exercised, and every test must kill at least one mutant. These paths handle user money and access — fluff is not acceptable here.
 
-### LCP audiobook test matrix — MANDATORY for any audiobook-touching test
+## Definition of Done — paste evidence before declaring work complete
 
-LCP audiobooks have multiple on-the-wire OPDS shapes, and **every recent audiobook regression has come from a shape that the test suite didn't cover** (PP-4407 / 3.0.3 hotfix: Marketplace acquisition chain wrapping LCP two levels deep in indirect; legacy tests only covered top-level LCP). Going forward, any test touching audiobook detection, file routing, manifest parsing, or DRM dispatch MUST assert against the full matrix of real CM-served shapes.
+<!-- audit-verified -->
+Per `.forgeos/wall-failures/` (lessons from PR #1018 reviewer-blocked findings + the swarm_c8fcab76 arch1 fake-wiring-test finding), every non-trivial work item — solo-agent or swarm — must pass these 11 self-checks BEFORE declaring READY or opening a PR. Paste the evidence in the commit body, the swarm transcript, or the user-facing summary. **Without evidence, the work is not done; it is "implemented but unverified."**
 
-The canonical shapes (re-verify any time the CM changes):
+1. **SUT instantiation check** — for every test file you added or modified named `<SUT>Tests.swift` (e.g. `BookReturnServiceTests.swift`, `TPPNetworkResponderAuthCoordinatorTests.swift`), run `grep -c "<SUT>(" <test-file>`. The count must be ≥ 1. If you wrote a `BookReturnServiceAuthCoordinatorTests` that never constructs a `BookReturnService`, the test is theater — rewrite or rename. Catches PR #1018 qa2/qa3 (fake-test-instantiation).
 
-| Shape name | top-level `type` | indirect chain | Where it appears |
-|---|---|---|---|
-| **Marketplace LCP** | `application/opds-publication+json` | `LCP license → audiobook+lcp` | `/groups/` OPDS 2.0 JSON (current default in 3.0.2+) |
-| **Legacy LCP loans** | `application/vnd.readium.lcp.license.v1.0+json` | `audiobook+lcp` | `/loans/` OPDS 1.x XML |
-| **OPDS-wrapped open-access** | `application/opds-publication+json` | `audiobook+json` | OPDS 2.0 non-DRM audiobooks |
-| **Bearer-token open-access** | `application/vnd.librarysimplified.bearer-token+json` | `audiobook+json` | Some Marketplace open-access flows |
-| **Findaway** | `application/vnd.librarysimplified.findaway.license+json` | (none) | Findaway distributor |
+   **Method-level extension (added wave 4 / cs_9a267b63 escalation):** For each test METHOD whose name embeds a PascalCase production-class noun (e.g. `testX_TPPReauthenticatorPath_invokesY` embeds `TPPReauthenticator` and `Y`), the same test method's body must call `TPPReauthenticator(...)` (instantiation) or `TPPReauthenticator.method(...)` (static call) or have an explicit type annotation `: TPPReauthenticator`. Verify mechanically with:
 
-Tests for `LCPAudiobooks`, `AudiobookLoader`, `MyBooksDownloadCenter.pathExtension(for:)`, and the audiobook-borrow path must assert correct behavior against **every** shape in this matrix. The existing canonical example is `PalaceTests/LCP/LCPAudiobooksTests.swift` — the `testHasLCPAcquisition_*Shape_*` tests are the template; copy that pattern.
+   ```bash
+   python3 scripts/check-test-name-vs-body.py PalaceTests/<your-modified-file>.swift
+   ```
 
-When a new shape is discovered in the wild (e.g., from a Crashlytics fingerprint or HelpSpot report): **(1)** add the shape to this table, **(2)** add a regression test for the predicate / loader / pathExtension that the shape triggered, and **(3)** verify the existing fix's predicate handles the shape recursively (top-level + indirect chain). If the predicate only handles top-level, fix it before merging.
+   A non-zero exit means the test name embeds a noun the body doesn't reference. Fake-wiring tests of this shape have escaped into the codebase twice (cs_847892e8 arch1 + cs_9a267b63 arch1) and the runnable script is the structural fix that makes the pattern impossible to land. The same script is wired into `.claude/skills/swarm/SKILL.md` Phase 4.5 check 5b so the orchestrator gates all diffed test files automatically.
 
-The PoC matrix tests live in `PalaceTests/LCP/LCPAudiobooksTests.swift` under the section "Real-world OPDS shape regression tests (LCP discovery matrix)".
+2. **Function-result usage check** — for every new production-code call to a function added or contracted-in, paste evidence the result is used (bound via `let outcome = ...`, pattern-matched, returned, or has a `// TODO(ticket): result intentionally discarded because <reason>` comment). `grep -E "= <fnName>\(|let _ = <fnName>" <prod-file>`. Catches PR #1018 arch3 (dishonest migration — classifier called but outcome only logged).
+
+3. **Multi-step test body check** — for every test name containing `across`, `twice`, `reset`, `retry`, `again`, `roundtrip`, `inProduction`, `viaX`: confirm the body literally does each step the name claims. A test named `testCoordinator_perBookCircuitBreaker_isStillHonored_acrossTwoSeparateAttempts` MUST drive two attempts; if the second-attempt half is in comments, the test is fluff. Catches PR #1018 qa1 (half-done test) and arch2 (fake wiring test).
+
+4. **Scope coverage audit** — for every item in the original task (or contract, in swarm mode), confirm it's in your diff OR explicitly listed as a deferred scope item via the scope-deferral protocol below. Don't bury reductions in a gaps section while claiming done. Catches PR #1018 Module C scope-reduction.
+
+5. **Mutation pass (MANDATORY for critical paths)** — run `python3 scripts/palace_mutate.py --file <modified-file> --tests <test-class> --diff-only` for every modified production file in a critical path (`Palace/Audiobooks/`, `Palace/SignInLogic/`, `Palace/MyBooks/Download*`, `Palace/Packages/PalaceAuth/`, anything touching auth/borrow/return/DRM/credentials). Paste the kill rate. Must be ≥ 50% diff-scoped, ideally 100% on the touched lines. Catches PR #1018 qa1 (mutation deferred to integrator → half-done test shipped).
+
+6. **Build + verify-pr** — `xcodebuild ... build` clean and `scripts/verify-pr.sh --quick` PASS. Paste the tails.
+
+7. **Multi-step / wiring-claim check (v2):** for every test name claiming to exercise a multi-step path through production code, line-coverage report must show non-zero hits on the cited lines from that test. Catches `.forgeos/wall-failures/2026-05-28-cs847892e8-arch1.md` — the "fake wiring test" pattern where `openAudiobook(...)` mock-books fail in the loader before `bind() → startPlaybackAndSyncPosition()` ever runs, so the cited production lines (e.g. `AudiobookSessionManager.swift:684-710`) get zero coverage from the test claiming to exercise them. Without coverage evidence on the cited lines, the "multi-step production-seam test" claim is unverified — treat it as a check #3 failure.
+
+8. **Contract reconciliation** — for non-trivial work (≥10 prod LOC), every "removes X" / "deletes X" / "migrates Y to Z" / "renames X to Y" / "adds field A to type B" claim in your commit body, PR body, or `.forgeos/intent/<name>.md` must reconcile against the staged diff. Run `python3 scripts/check-contract-reconciliation.py --commit-msg <file>` — exit 0 means all claims supported. Catches cluster pattern from waves 1-4. Paste exit code.
+
+9. **Blast-radius check** — for ANY commit, run `python3 scripts/check-blast-radius.py --quiet`. Exit 0 means no new public API surface, no `#if DEBUG` on production paths, no test-only AppContainer init params, no discarded function results without `// TODO(ticket):` justification. High-severity findings block. Paste exit code.
+
+10. **Adjacency staleness check** — for ANY commit removing/renaming a production type, run `python3 scripts/check-adjacency-staleness.py --quiet`. Warn-only. Paste output.
+
+11. **Test-pairing check (superpartner spectrum)** — for ANY commit, run `python3 scripts/check-superpartner-spectrum.py --quiet`. Flags new functions, enum cases, and state changes that have no matching test in the diff. Add a test that references the item, or mark it intentional with `// no-superpartner: <reason>`. Warn-only for now (promotion path in `docs/architecture/superpartner-spectrum.md`); high-severity findings are on critical paths and should be cleared, not ignored. This is the fast "is there a test at all?" floor — mutation testing (`palace_mutate.py`, check #5) remains the proof that the test catches bugs. Paste exit code.
+
+If you cannot produce evidence for all 11 checks applicable to your change, do NOT report READY. Either complete the missing check OR explicitly STOP with a scope-deferral proposal (below) so the user can decide.
+
+## Scope-deferral protocol — STOP, do not partial-ship
+
+If you discover you cannot complete the original scope within your time/context budget, **STOP and propose scope reduction explicitly** — do not silently ship partial work. The right response is:
+
+```
+BLOCKED: scope reduction proposal.
+
+Original scope: <N> sites / files / tests.
+I can land cleanly: <M>.
+Remaining <N - M> have <specific reason — entangled state-machine cleanup,
+unrecoverable test-fixture dependency, time budget exhausted>.
+
+Options for the user/orchestrator:
+  (a) extend my pass with more budget
+  (b) accept the reduction; track remaining as next-sprint scope
+  (c) split into <K> smaller passes
+
+I will not ship partial as READY without explicit direction.
+```
+
+Burying scope reductions in a "gaps" / "deferred" / "follow-up" section while claiming READY is the failure mode this protocol prevents. The decision point is the user's, not yours. This applies to single-agent work AND swarm implementers.
+
+Canonical bad pattern (PR #1018 Module C): "Migrated 2 of 7 contracted sites. READY FOR INTEGRATION (partial). Remaining 5 have entangled cleanup — see gaps." → forced an unplanned continuation pass. Correct response would have been BLOCKED with the 3-option proposal up front.
+
+## Risk-driven rigor bar
+
+The "swarm vs single-agent" decision is based on module count (≥2 modules = swarm). The "how much rigor" decision is **risk-based, not size-based**. A 30-LOC change to `BookReturnService` (critical-path return flow) gets the same rigor as a 500-LOC multi-module refactor — because the consequences of a bug are the same regardless of LOC.
+
+**Critical paths requiring architect + SoD review regardless of LOC count:**
+- `Palace/SignInLogic/`, `Palace/Packages/PalaceAuth/` — auth, sign-in, credential storage
+- `Palace/MyBooks/Borrow*`, `Palace/MyBooks/BookReturn*`, `Palace/MyBooks/Download*` — borrow / return / download / DRM fulfillment
+- `Palace/Audiobooks/` — audiobook playback (toolkit fragile per memory)
+- `Palace/Migrations/` — anything touching persistence schema
+- `Palace/Network/TPPNetworkResponder.swift`, `Palace/Network/TPPNetworkExecutor.swift` — the auth-error decision point
+
+For single-module work in a critical path, use the `/rigorous-fix` skill (or `/swarm --solo`) — runs architect + SoD review without parallel implementers. For 1-LOC trivial fixes in a critical path, still run `/forge-review` after coding. The bar is: *if a regression here would hit users, the review must happen.*
+
+For non-critical paths under 50 LOC, single-agent + `/clean-code` (which now includes the skeptic-pass greps) is sufficient.
+
+**Auth-error host scoping (added 2026-06-05 per wall-failure `2026-06-05-pr1018-icarus-cross-host-logout.md`):** any 401 / credentials-stale decision must be scoped to the current account's auth-surface host. A 401 from a non-account host is never an account session expiry. Reviewers BLOCK any auth-error decision path that does not provably consult a current-account host set — base-domain matching (`URLResponse.isSameDomain`) is insufficient when multiple library backends share a base domain (true for every `*.palaceproject.io` library). The canonical mechanism is `Account.authSurfaceHosts` exposed via `AuthErrorClassifier.currentAccountHostsProvider` (the classifier returns `.ok` on a foreign-host 401), with parallel inline guards at the two legacy sibling sites `Palace/MyBooks/TokenRefreshInterceptor.swift` and `Palace/MyBooks/DownloadAuthRetryHandler.swift`. Property-fuzz Invariant 8 in `AuthErrorClassifierPropertyTests` enforces this structurally.
+
+## Architect reviewer canon
+
+For structural review — new abstractions, type-hierarchy changes, protocol surfaces, concurrency model shifts — consult [`.forgeos/reviewer-refs/architect-swift-canon.md`](./.forgeos/reviewer-refs/architect-swift-canon.md) as a **lens, not a checklist**. It covers Swift-native architecture defaults (POP, value semantics, structured concurrency), SOLID translated to Swift mechanisms, a GoF → Swift-idiom translation table (with anti-translations called out), and a smell vocabulary the architect can cite in findings.
+
+The canon and the [wall-failures catalog](./.forgeos/wall-failures/) are complements: the canon is *what good Swift architecture looks like*; the wall-failures are *what we've actually shipped that broke*. When they agree, the finding is strong. When they disagree, **trust the wall-failures** — they're real incidents from this codebase.
+
+Skip the canon for mechanical changes (renames, formatting, dependency bumps) where structure isn't the question. Do not pattern-match findings to canon entries to seem rigorous — approval still requires a real reason; rejection still requires a concrete failure mode.
+
+## Wall-failure catalog — every reviewer block becomes a permanent improvement
+
+When a reviewer BLOCKS a PR (whether via `/forge-review` or external code review), the finding is a **system bug**, not just an implementer bug. The system let it through; the wall has a hole. Per `.forgeos/wall-failures/README.md`:
+
+1. Within 24h of the block, create an entry at `.forgeos/wall-failures/YYYY-MM-DD-pr<NNNN>-<short-id>.md` using `TEMPLATE.md`.
+2. Classify which wall(s) should have caught it (contract / implementer / TDD / mutation / verify-pr / orchestrator / reviewer / hook).
+3. Propose a permanent fix — a contract clause, orchestrator check, implementer constraint, hook addition, CLAUDE.md edit — that makes the finding **structurally impossible to land**, not "more likely to be noticed."
+4. Within 1 week, apply the fix; link the commit back from the entry; update `INDEX.md` and `derived-improvements.md`.
+
+This is how the system gets less leaky over time. Without it, the same finding class can recur next swarm.
+
+**State-machine wiring tests must exercise round-trips, not just transitions.** Any code that drives a state machine (e.g. `_setState`, `setState`, reducer-action dispatches, accessor setters that write a terminal state) gets a test class that proves the **full lifecycle**, not just individual transitions. Required cycles:
+
+- **Write → reset → re-enter.** If a write can be undone (manually, via re-entry, or by a later setter call), a single test must drive the value through the cycle via the **production seam** (the public setter / driver function), not via direct `_setState` shortcuts. Direct shortcut writes prove the storage works; they don't prove the wiring works.
+- **Enum cases reused with two meanings get an explicit semantics test.** When a terminal case (e.g. `.detailsFailed(.accountNotFound)`) is written for both "real failure" and "eviction marker," there must be a test that pins each meaning and a third test that proves they're correctly disambiguated by downstream consumers. If you can't pin them separately, the enum needs to split.
+- **Consumer-side smoke test.** For every readiness gate (`awaitReady()`-style) that has ≥2 production consumers, write one test that drives the gate through a real consumer call site (audiobook open, token refresh, bookmark sync, CarPlay auth) after a non-trivial scenario (cold launch, library swap, sign-out/back-in). Unit-level transition tests are necessary but not sufficient — they prove the gate moves; the consumer test proves the gate is *useful*.
+- **User-action → registry-state cycle for new content types (added 2026-06-03 per PP-4161 wall-failure).** For every new `TPPBookContentType` case, add an integration-style test that drives `BookDetailViewModel.handleAction(for: .get)` (or the cell-side equivalent `BookCellModel.callDelegate(for: .get)`) AND asserts the book reaches the expected `BookButtonState` for that content type via the production seam — NOT via `bookRegistry.setState(...)` direct shortcuts. Direct shortcut writes prove the storage works; they don't prove the user-action → display wiring works. **PP-4161 took two layered escalations (v2.2 hotfix attempt + Wave 4 Path X) to catch this because Module C unit tests pinned `BookButtonState.downloadNeeded + .streamingHTML → [.readStreaming, .return]` without proving any production path could transition the registry to `.downloadNeeded` for streaming-HTML books.** The architect Phase 1a SKILL.md check #5 (call-graph completeness) is the upstream gate; this rule is the downstream test requirement.
+
+Reviewer checklist: when a PR adds a `case .Foo:` to a state-machine switch, ask "where's the test that proves we can recover from being IN `.Foo`?" When a PR adds a setter that writes a terminal state, ask "where's the test that proves the round-trip A→B→A works through this setter, not through `_setState` directly?" When a PR adds a new `TPPBookContentType` case, ask "where's the test that drives `handleAction(.get)` for that content type and asserts the book ends up in the right `BookButtonState` via the production path?"
+
+Canonical reference for the round-trip pattern: `PalaceTests/Accounts/AccountsManagerStateMachineWiringTests.swift`, Test 7 (`testDriveCurrentAccountAuthDoc_staleAccountNotFoundMarker_redrives`).
 
 ## pbxproj
 
@@ -194,9 +374,44 @@ Module contracts under `.forgeos/contracts/<module>.json` are emitted by `script
 
 ## Mutation testing
 
-Mutation results cache to `.forgeos/mutation-cache/` keyed by file SHA + test selection. `verify-pr.sh` reads the cache automatically — repeat runs on unchanged files are near-instant (<1s vs minutes).
+**Local-only as of 2026-05-15** — mutation runs are part of the **regression workflow** (`/regression` skill) and the pre-release self-check, not CI. macOS GitHub-hosted runners bill at $0.08/min; on a cold first-touch PR with 16+ changed production files, mutation walltime is 90–120 min ≈ $7–10 per push. We pay that once locally, before tag-cut, instead of every push to every PR. The mutation-on-pr.yml + mutation-gate.yml workflows were removed for this reason (commit history preserved if you need to revive them).
 
-`verify-pr.sh --enforce-mutations` makes the 50% kill-rate threshold strict for ALL changed files. Default mode keeps strict-only on critical paths: `Palace/Audiobooks/`, `Palace/SignInLogic/`, `Palace/MyBooks/Download*`. Other paths warn but don't fail.
+```bash
+# Default — full battery sans mutation, fast (~5 min):
+scripts/verify-pr.sh --quick
+
+# Pre-release: add mutation gate (cache reuses across runs):
+scripts/verify-pr.sh --quick --enforce-mutations
+
+# Mutation-only for a single file (used by /regression skill):
+python3 scripts/palace_mutate.py \
+  --file Palace/Path/ChangedFile.swift \
+  --tests PalaceTests/ChangedFileTests
+```
+
+Mutation results cache to `.forgeos/mutation-cache/` keyed by file SHA + test selection. Repeat runs on unchanged files are near-instant (<1s vs minutes). `verify-pr.sh --enforce-mutations` makes the 50% kill-rate threshold strict for ALL changed files. Default mode keeps strict-only on critical paths: `Palace/Audiobooks/`, `Palace/SignInLogic/`, `Palace/MyBooks/Download*`.
+
+The mutation engine itself (`scripts/palace_mutate.py`) skips mutation points inside `Log.{trace,debug,info,warn,error}` / `print` / `NSLog` / `os_log` / `Logger` call lines — those flip a string interpolation but don't change observable behavior, so they were silently deflating every file's kill rate. AudiobookLoader.swift went from 9 discovered mutants (7 log-noise, 2 real, 0% kill rate) to 6 real mutants (6/6 = 100% kill rate) after the skip rule landed.
+
+Test-class resolution for changed production files goes through `scripts/resolve-tests-for.py` — it maps `Palace/Foo/Bar.swift` → `PalaceTests/<XCTestCaseClass>` selectors by scanning `PalaceTests/**/*Tests*.swift` filenames and extracting class declarations (an optional `TPP` prefix is stripped so `TPPLCPClient.swift` resolves to `LCPClientTests`). If a production file has no resolvable tests it is skipped with a logged warning — that warning is a signal the file is uncovered and should get tests.
+
+## Contract-snapshot tests
+
+Some critical-path classes are easier to pin behaviorally than to mutation-test: state machines that emit ordered sequences of dependency calls (BorrowOperation → fetchBook then startDownload; BookReturnService → setProcessing → setState → removeBook → announce.returnSucceeded). For these we lock the *call order + argument shape* as a JSON snapshot — refactors that change the contract drift the snapshot and fail the test loudly.
+
+**Where:** `PalaceTests/Contract/`. The framework lives in `CallLog.swift` (thread-safe recorder) + `ContractSnapshot.swift` (assert / record / diff). First-run records a baseline at `__Snapshots__/<TestClass>/<name>.json` and fails with "snapshot recorded — re-run to verify"; subsequent runs assert equality. Set `CONTRACT_SNAPSHOT_RECORD=1` to deliberately re-record (review the diff in `git diff` before committing).
+
+**When to write a contract test:**
+- The class under test calls 2+ dependencies in a known order and a swap would silently break callers (e.g. removing `registry.setProcessing(false)` mid-cleanup would leak forever).
+- The behavior is too coarse to mutation-test usefully (string-keyed dispatch, ordered side effects, decision trees over enum cases).
+- A regression in the class is high-cost: `Borrow`, `BookReturn`, `DownloadStart`, `BorrowReducer` already have contracts; `SignIn`/`OIDC` callbacks and `BookRegistry` mutation paths are good candidates.
+
+**When NOT:**
+- Pure transformations (use unit tests with explicit assertions).
+- Single-call methods (snapshot adds noise vs. a direct assertion).
+- Anything that hits a real network/keychain/UserDefaults (mock the dependency, snapshot the calls — but the dependency layer is the contract, not the integration).
+
+**Pattern:** instantiate the class under test with spy dependencies that record into a `CallLog`, drive the scenario, call `ContractSnapshot.assert(log, named: "scenarioName")`. Production-code seams that block deterministic exercise (static singletons inside the SUT) get documented as inline comments rather than worked around — the inability to write the test IS the test feedback.
 
 ## Secrets
 
@@ -254,6 +469,6 @@ Test library credentials live in your local environment (e.g. `~/.simdrive/crede
 - `.simdrive/replays/chaos/` — curated mutation-killing replay corpus (active, gates `chaos-replay-on-pr.yml`)
 - `.simdrive/_archive/journeys/`, `.simdrive/_archive/replays/`, `.simdrive/_archive/{personas,products,evidence}/`, `.simdrive/_archive/REGRESSION_PLAN.md` — old SpecterQA corpus (do not extend)
 - `~/.simdrive/sessions/<id>/observations/` — per-session screenshots + SoM annotations
-- `scripts/specterqa-*.sh`, `scripts/fix-replay-assertions.py` — legacy build/coverage tooling kept for archive-replay; do not author new SpecterQA scripts
+- `scripts/fix-replay-assertions.py`, `scripts/fix-replay-timing.py` — legacy replay-fixup tooling kept for archive-replay; do not author new SpecterQA scripts
 
 When in doubt, run `~/harness/bin/harness simdrive status` to confirm version + active sessions.

@@ -7,6 +7,14 @@ DerivedData
 .vscode
 Build
 adobe-rmsdk
+
+# Swift Package Manager build artifacts. Apply at any depth so nested
+# packages under Palace/Packages/<name>/ are covered without each one
+# needing its own .gitignore. Without this, cross-branch builds (e.g.
+# building feat/palace-triage-bot-ios-demo and then switching branches)
+# leak empty package shells with .build/ + .swiftpm/ into git status.
+**/.build/
+**/.swiftpm/
 .accesslint-cache/
 accesslint-reports/
 artifacts/
@@ -16,6 +24,8 @@ tools/*
 **/ReaderClientCert.sig
 **/APIKeys.swift
 Carthage*
+.build/
+**/.build/
 **/TPPSecrets.swift
 **/GoogleService-Info.plist
 fastlane/report.xml
@@ -114,8 +124,20 @@ docs/spec/
 !.specterqa/DOGFOOD_NOTES.md
 scripts/sim-test/
 
+# Per-machine git/PreToolUse hook symlinks (created by the local dev setup;
+# must NOT be tracked — a tracked symlink here previously pointed at its own
+# path and broke every governance hook with ELOOP on checkout).
+/scripts/hooks
+
 # Backup pbxproj variants
 *.pbxproj.swift-only
 *.pbxproj.bak
 ios-core-cm-monitor
 scripts/__pycache__/
+
+# palace-mutate report artifact (regenerated on every run)
+palace-mutate-report.json
+scripts/tests/__pycache__/
+
+# Regression-rebuild campaign run artifacts (generated, never committed)
+.regression-runs/

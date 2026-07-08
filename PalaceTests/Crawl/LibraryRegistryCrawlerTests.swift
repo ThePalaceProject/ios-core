@@ -55,14 +55,30 @@ final class LibraryRegistryCrawlerTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private func makeCrawler() -> LibraryRegistryCrawler {
+    private func makeCrawler(
+        currentAppVersion: String? = "3.2.0",
+        now: @escaping () -> Date = Date.init
+    ) -> LibraryRegistryCrawler {
         let crawler = LibraryRegistryCrawler(
             fetcher: fetcher,
             hash: "test_hash",
-            stateDirectory: tempDir
+            stateDirectory: tempDir,
+            currentAppVersion: currentAppVersion,
+            now: now
         )
         crawler.delegate = delegate
         return crawler
+    }
+
+    private func writeCrawlState(_ state: CrawlState) throws {
+        let data = try JSONEncoder().encode(state)
+        try data.write(to: tempDir.appendingPathComponent("crawl_state_test_hash.json"))
+    }
+
+    private func readCrawlState() throws -> CrawlState {
+        let stateURL = tempDir.appendingPathComponent("crawl_state_test_hash.json")
+        let data = try Data(contentsOf: stateURL)
+        return try JSONDecoder().decode(CrawlState.self, from: data)
     }
 
     private func makeFeedJSON(
@@ -214,29 +230,35 @@ final class LibraryRegistryCrawlerTests: XCTestCase {
 
     // MARK: - Incremental Crawl Tests
 
-    func testIncrementalCrawl_StopsAtLastCrawlTimestamp() async {
+    func testIncrementalCrawl_StopsAtLastCrawlTimestamp() async throws {
+        let now = Date(timeIntervalSince1970: 1713160000 + 24 * 60 * 60)
+        let lastCrawl = Date(timeIntervalSince1970: 1713160000) // ~24h before `now`
         let baseURL = URL(string: "https://registry.example.com/libraries")!
         let facetURL = URL(string: "https://registry.example.com/libraries/crawlable?order=modified")!
+        let page2URL = URL(string: "https://registry.example.com/libraries/crawlable?order=modified&offset=2")!
 
-        // Pre-seed crawl state
-        let state = CrawlState(
-            lastSuccessfulCrawlDate: Date(timeIntervalSince1970: 1713160000), // April 15, 2024 ~06:00 UTC
+        // Pre-seed crawl state with lastFullCrawlDate within the 7-day window
+        // so the periodic forced-full-crawl doesn't fire.
+        try writeCrawlState(CrawlState(
+            lastSuccessfulCrawlDate: lastCrawl,
             orderModifiedFacetURL: facetURL,
-            lastFullCrawlDate: Date(timeIntervalSince1970: 1713160000)
-        )
-        let stateData = try! JSONEncoder().encode(state)
-        try! stateData.write(to: tempDir.appendingPathComponent("crawl_state_test_hash.json"))
+            lastFullCrawlDate: lastCrawl,
+            lastCrawlAppVersion: "3.2.0"
+        ))
 
         let sortFacet = makeSortFacet(
             modifiedHref: facetURL.absoluteString,
             modifiedActive: true
         )
 
+        // Page 1 has one new entry + rel=next; the loop early-stops on page
+        // contents so we never reach end-of-feed (existing entries preserved).
         let page = makeFeedJSON(
             publications: [
                 makePublicationJSON(id: "lib-new", updated: "2026-04-15T12:00:00Z"),
                 makePublicationJSON(id: "lib-old", updated: "2024-04-14T06:00:00Z"), // older than last crawl
             ],
+            nextURL: page2URL.absoluteString,
             facets: [sortFacet]
         )
 
@@ -250,7 +272,7 @@ final class LibraryRegistryCrawlerTests: XCTestCase {
             )
         ]
 
-        let crawler = makeCrawler()
+        let crawler = makeCrawler(currentAppVersion: "3.2.0", now: { now })
         let result = await crawler.crawl(
             baseURL: baseURL,
             existingPublications: existingPubs,
@@ -262,7 +284,7 @@ final class LibraryRegistryCrawlerTests: XCTestCase {
             return
         }
 
-        let feed = try! OPDS2CatalogsFeed.fromData(data)
+        let feed = try OPDS2CatalogsFeed.fromData(data)
         // Should have: lib-new (new), lib-existing (preserved), but NOT lib-old (filtered out)
         let ids = Set(feed.catalogs.map(\.metadata.id))
         XCTAssertTrue(ids.contains("lib-new"))
@@ -419,5 +441,240 @@ final class LibraryRegistryCrawlerTests: XCTestCase {
         let state = try! JSONDecoder().decode(CrawlState.self, from: stateData)
 
         XCTAssertEqual(state.orderModifiedFacetURL, URL(string: modifiedURL))
+    }
+
+    // MARK: - PP-4259: Forced full crawl on app-version change
+
+    func testCrawl_WhenAppVersionChanged_HitsCrawlableURL_NotFacetURL() async throws {
+        let baseURL = URL(string: "https://registry.example.com/libraries")!
+        let crawlableURL = URL(string: "https://registry.example.com/libraries/crawlable")!
+        let facetURL = URL(string: "https://registry.example.com/libraries/crawlable?order=modified")!
+
+        // Pre-seed fresh, healthy state from a prior app version
+        try writeCrawlState(CrawlState(
+            lastSuccessfulCrawlDate: Date(),
+            orderModifiedFacetURL: facetURL,
+            lastFullCrawlDate: Date(),
+            lastCrawlAppVersion: "3.1.0"
+        ))
+
+        let sortFacet = makeSortFacet(modifiedHref: facetURL.absoluteString, modifiedActive: true)
+        let page = makeFeedJSON(
+            publications: [makePublicationJSON(id: "lib-1", updated: "2026-04-15T10:00:00Z")],
+            facets: [sortFacet]
+        )
+        fetcher.responses[crawlableURL] = .success(page)
+
+        let crawler = makeCrawler(currentAppVersion: "3.2.0")
+        _ = await crawler.crawl(
+            baseURL: baseURL,
+            existingPublications: [],
+            feedMetadata: makeCatalogMetadata()
+        )
+
+        XCTAssertEqual(fetcher.fetchedURLs, [crawlableURL],
+                       "Version upgrade must bypass the order=modified facet URL")
+    }
+
+    func testCrawl_PersistsCurrentAppVersion() async throws {
+        let baseURL = URL(string: "https://registry.example.com/libraries")!
+        let crawlableURL = URL(string: "https://registry.example.com/libraries/crawlable")!
+
+        let sortFacet = makeSortFacet(
+            modifiedHref: "https://example.com/crawlable?order=modified",
+            modifiedActive: true
+        )
+        let page = makeFeedJSON(
+            publications: [makePublicationJSON(id: "lib-1", updated: "2026-04-15T10:00:00Z")],
+            facets: [sortFacet]
+        )
+        fetcher.responses[crawlableURL] = .success(page)
+
+        let crawler = makeCrawler(currentAppVersion: "3.3.0")
+        _ = await crawler.crawl(
+            baseURL: baseURL,
+            existingPublications: [],
+            feedMetadata: makeCatalogMetadata()
+        )
+
+        let state = try readCrawlState()
+        XCTAssertEqual(state.lastCrawlAppVersion, "3.3.0")
+    }
+
+    // MARK: - PP-4259: Periodic forced full crawl
+
+    func testCrawl_WhenLastFullCrawlOlderThan7Days_HitsCrawlableURL() async throws {
+        let now = Date()
+        let baseURL = URL(string: "https://registry.example.com/libraries")!
+        let crawlableURL = URL(string: "https://registry.example.com/libraries/crawlable")!
+        let facetURL = URL(string: "https://registry.example.com/libraries/crawlable?order=modified")!
+
+        try writeCrawlState(CrawlState(
+            lastSuccessfulCrawlDate: now.addingTimeInterval(-60),
+            orderModifiedFacetURL: facetURL,
+            lastFullCrawlDate: now.addingTimeInterval(-8 * 24 * 60 * 60),
+            lastCrawlAppVersion: "3.2.0"
+        ))
+
+        let sortFacet = makeSortFacet(modifiedHref: facetURL.absoluteString, modifiedActive: true)
+        let page = makeFeedJSON(
+            publications: [makePublicationJSON(id: "lib-1", updated: "2026-04-15T10:00:00Z")],
+            facets: [sortFacet]
+        )
+        fetcher.responses[crawlableURL] = .success(page)
+
+        let crawler = makeCrawler(currentAppVersion: "3.2.0", now: { now })
+        _ = await crawler.crawl(
+            baseURL: baseURL,
+            existingPublications: [],
+            feedMetadata: makeCatalogMetadata()
+        )
+
+        XCTAssertEqual(fetcher.fetchedURLs, [crawlableURL],
+                       "7-day periodic forced-full-crawl must hit crawlable URL, not facet URL")
+    }
+
+    func testCrawl_WhenLastFullCrawlWithin7Days_UsesFacetURL() async throws {
+        let now = Date()
+        let baseURL = URL(string: "https://registry.example.com/libraries")!
+        let facetURL = URL(string: "https://registry.example.com/libraries/crawlable?order=modified")!
+
+        try writeCrawlState(CrawlState(
+            lastSuccessfulCrawlDate: now.addingTimeInterval(-60),
+            orderModifiedFacetURL: facetURL,
+            lastFullCrawlDate: now.addingTimeInterval(-3 * 24 * 60 * 60),
+            lastCrawlAppVersion: "3.2.0"
+        ))
+
+        let sortFacet = makeSortFacet(modifiedHref: facetURL.absoluteString, modifiedActive: true)
+        let page = makeFeedJSON(
+            publications: [makePublicationJSON(id: "lib-new", updated: "2026-04-15T10:00:00Z")],
+            facets: [sortFacet]
+        )
+        fetcher.responses[facetURL] = .success(page)
+
+        let crawler = makeCrawler(currentAppVersion: "3.2.0", now: { now })
+        _ = await crawler.crawl(
+            baseURL: baseURL,
+            existingPublications: [],
+            feedMetadata: makeCatalogMetadata()
+        )
+
+        XCTAssertEqual(fetcher.fetchedURLs, [facetURL],
+                       "Fresh state should still use incremental facet URL")
+    }
+
+    // MARK: - PP-4259: Opportunistic deletion when incremental reaches end-of-feed
+
+    func testIncrementalCrawl_ReachingEndOfFeed_ReconcilesDeletions() async throws {
+        let now = Date()
+        let baseURL = URL(string: "https://registry.example.com/libraries")!
+        let facetURL = URL(string: "https://registry.example.com/libraries/crawlable?order=modified")!
+
+        // Pre-seed: incremental possible, last crawl yesterday
+        try writeCrawlState(CrawlState(
+            lastSuccessfulCrawlDate: now.addingTimeInterval(-24 * 60 * 60),
+            orderModifiedFacetURL: facetURL,
+            lastFullCrawlDate: now.addingTimeInterval(-2 * 24 * 60 * 60),
+            lastCrawlAppVersion: "3.2.0"
+        ))
+
+        // Feed: single page, no next-page link, contains lib-1 and lib-2
+        // (older than cutoff so they'd normally be filtered in incremental mode).
+        let sortFacet = makeSortFacet(modifiedHref: facetURL.absoluteString, modifiedActive: true)
+        let page = makeFeedJSON(
+            publications: [
+                makePublicationJSON(id: "lib-1", updated: "2024-01-01T00:00:00Z"),
+                makePublicationJSON(id: "lib-2", updated: "2024-01-02T00:00:00Z"),
+            ],
+            facets: [sortFacet]
+        )
+        fetcher.responses[facetURL] = .success(page)
+
+        // Existing cache contains an orphan that no longer appears in the feed
+        let existingPubs = [
+            OPDS2Publication(links: [], metadata: OPDS2Publication.Metadata(id: "lib-1", title: "Lib 1"), images: nil),
+            OPDS2Publication(links: [], metadata: OPDS2Publication.Metadata(id: "lib-orphan", title: "Orphan"), images: nil),
+        ]
+
+        let crawler = makeCrawler(currentAppVersion: "3.2.0", now: { now })
+        let result = await crawler.crawl(
+            baseURL: baseURL,
+            existingPublications: existingPubs,
+            feedMetadata: makeCatalogMetadata()
+        )
+
+        guard case .success(let data) = result else {
+            XCTFail("Expected success, got \(result)")
+            return
+        }
+
+        let feed = try OPDS2CatalogsFeed.fromData(data)
+        let ids = Set(feed.catalogs.map(\.metadata.id))
+        XCTAssertTrue(ids.contains("lib-1"))
+        XCTAssertTrue(ids.contains("lib-2"))
+        XCTAssertFalse(ids.contains("lib-orphan"),
+                       "End-of-feed reached during incremental walk should reconcile deletions")
+
+        // Promotion: state.lastFullCrawlDate must advance to `now`
+        let state = try readCrawlState()
+        let lastFull = try XCTUnwrap(state.lastFullCrawlDate)
+        XCTAssertEqual(lastFull.timeIntervalSinceReferenceDate,
+                       now.timeIntervalSinceReferenceDate,
+                       accuracy: 0.1,
+                       "End-of-feed incremental crawl must be promoted to a full crawl")
+    }
+
+    func testIncrementalCrawl_WhenNotReachingEndOfFeed_PreservesExistingEntries() async throws {
+        let now = Date()
+        let baseURL = URL(string: "https://registry.example.com/libraries")!
+        let facetURL = URL(string: "https://registry.example.com/libraries/crawlable?order=modified")!
+        let page2URL = URL(string: "https://registry.example.com/libraries/crawlable?order=modified&offset=1")!
+
+        try writeCrawlState(CrawlState(
+            lastSuccessfulCrawlDate: Date(timeIntervalSince1970: 1713160000),
+            orderModifiedFacetURL: facetURL,
+            lastFullCrawlDate: now.addingTimeInterval(-2 * 24 * 60 * 60),
+            lastCrawlAppVersion: "3.2.0"
+        ))
+
+        // Page 1: one newer entry + rel=next; page 2: only OLD entries — incremental
+        // should early-stop on page 2 (no rel=next still pointing forward),
+        // i.e. NOT walk to true end-of-feed.
+        let sortFacet = makeSortFacet(modifiedHref: facetURL.absoluteString, modifiedActive: true)
+        let page1 = makeFeedJSON(
+            publications: [makePublicationJSON(id: "lib-new", updated: "2026-04-15T10:00:00Z")],
+            nextURL: page2URL.absoluteString,
+            facets: [sortFacet]
+        )
+        let page2 = makeFeedJSON(
+            publications: [makePublicationJSON(id: "lib-old", updated: "2024-04-14T06:00:00Z")],
+            nextURL: page2URL.absoluteString + "&page=3",
+            facets: [sortFacet]
+        )
+        fetcher.responses[facetURL] = .success(page1)
+        fetcher.responses[page2URL] = .success(page2)
+
+        let existingPubs = [
+            OPDS2Publication(links: [], metadata: OPDS2Publication.Metadata(id: "lib-existing", title: "Existing"), images: nil)
+        ]
+
+        let crawler = makeCrawler(currentAppVersion: "3.2.0", now: { now })
+        let result = await crawler.crawl(
+            baseURL: baseURL,
+            existingPublications: existingPubs,
+            feedMetadata: makeCatalogMetadata()
+        )
+
+        guard case .success(let data) = result else {
+            XCTFail("Expected success, got \(result)")
+            return
+        }
+
+        let feed = try OPDS2CatalogsFeed.fromData(data)
+        let ids = Set(feed.catalogs.map(\.metadata.id))
+        XCTAssertTrue(ids.contains("lib-new"))
+        XCTAssertTrue(ids.contains("lib-existing"),
+                      "Early-stopped incremental walk must preserve existing entries (no deletion reconciliation)")
     }
 }

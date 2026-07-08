@@ -134,7 +134,7 @@ final class TokenRefreshInterceptorTests: XCTestCase {
     func testHandleDownloadFailure_noDelegateReturnsFalse() {
         interceptor.delegate = nil
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
-        let task = URLSession.shared.downloadTask(with: URL(string: "https://example.com")!)
+        let task = fakeDownloadTask()
 
         let result = interceptor.handleDownloadFailureWithAuthCheck(
             for: book, task: task, problemDoc: nil, failureError: nil
@@ -145,7 +145,7 @@ final class TokenRefreshInterceptorTests: XCTestCase {
 
     func testHandleDownloadFailure_noCredentialsLoginRequired_triggersSignIn() {
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
-        let task = URLSession.shared.downloadTask(with: URL(string: "https://example.com")!)
+        let task = fakeDownloadTask()
 
         // Setup: no credentials, login required (basic auth needs auth)
         mockUserAccount._credentials = nil
@@ -163,7 +163,7 @@ final class TokenRefreshInterceptorTests: XCTestCase {
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
         mockRegistry.addBook(book, state: .downloading)
 
-        let task = URLSession.shared.downloadTask(with: URL(string: "https://example.com")!)
+        let task = fakeDownloadTask()
 
         let problemDoc = TPPProblemDocument.fromDictionary([
             "type": TPPProblemDocument.TypeNoActiveLoan,
@@ -189,7 +189,7 @@ final class TokenRefreshInterceptorTests: XCTestCase {
 
     func testHandleDownloadFailure_nonAuthRelatedError_returnsFalse() {
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
-        let task = URLSession.shared.downloadTask(with: URL(string: "https://example.com")!)
+        let task = fakeDownloadTask()
 
         // Has credentials, anonymous auth (needsAuth is false)
         mockUserAccount._credentials = .barcodeAndPin(barcode: "user", pin: "pin")
@@ -383,7 +383,7 @@ final class TokenRefreshInterceptorTests: XCTestCase {
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
         mockRegistry.addBook(book, state: .downloading)
 
-        let task = URLSession.shared.downloadTask(with: URL(string: "https://example.com")!)
+        let task = fakeDownloadTask()
 
         let problemDoc = TPPProblemDocument.fromDictionary([
             "type": TPPProblemDocument.TypeNoActiveLoan,
@@ -402,11 +402,116 @@ final class TokenRefreshInterceptorTests: XCTestCase {
         XCTAssertTrue(result, "SAML + no-active-loan should be treated as session expiry")
     }
 
+    // MARK: - F-008 / PP-4542 — SAML vs browser legacy-path split (lines 166 & 216)
+    //
+    // In the legacy (no-coordinator) re-auth dispatch, `authDefinition?.isSaml
+    // == true` selects `triggerSAMLReauth` over `triggerBrowserReauth`:
+    //   :166 — the 401 / indicatesAuthenticationNeedsRefresh branch
+    //   :216 — the no-active-loan-as-session-expiry branch
+    // The two helpers differ OBSERVABLY:
+    //   triggerSAMLReauth   → registry state .SAMLStarted, calls startDownload,
+    //                         does NOT call the reauthenticator
+    //   triggerBrowserReauth → registry state .downloadNeeded, CALLS the
+    //                         reauthenticator (sign-in modal)
+    // Flipping `== true` to `!= true` at either site routes a SAML account to
+    // triggerBrowserReauth, so .SAMLStarted/startDownload/no-reauth all flip.
+    // The interceptor under test is built WITHOUT a coordinator (setUp), so
+    // these legacy branches are live.
+
+    /// SAML 401 (legacy path, no coordinator) must take `triggerSAMLReauth`:
+    /// state → .SAMLStarted, download retried via startDownload, and the
+    /// reauthenticator is NOT invoked (SAML re-auth is driven by the app's
+    /// own SAML state machine, not the sign-in modal).
+    ///
+    /// Kills :166 `isSaml == true`→`!= true`: under the mutant a SAML account
+    /// routes to `triggerBrowserReauth` instead → state becomes .downloadNeeded
+    /// AND the reauthenticator IS called — both assertions below flip.
+    func testHandleDownloadFailure_SAML_401_legacyPath_retriesViaSAMLNotBrowserModal() {
+        let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        mockRegistry.addBook(book, state: .downloading)
+
+        let url = URL(string: "https://example.com/book")!
+        let response401 = HTTPURLResponse(
+            url: url, statusCode: 401, httpVersion: "HTTP/1.1", headerFields: nil
+        )!
+        let task = MockURLSessionDownloadTask(
+            taskIdentifier: 101, request: URLRequest(url: url), response: response401
+        )
+
+        mockUserAccount._credentials = .barcodeAndPin(barcode: "user", pin: "pin")
+        mockUserAccount._authDefinition = makeAuthDefinition(authType: .saml)
+
+        let result = interceptor.handleDownloadFailureWithAuthCheck(
+            for: book, task: task, problemDoc: nil, failureError: nil
+        )
+        XCTAssertTrue(result, "SAML 401 must claim the failure")
+
+        // triggerSAMLReauth is async (state-manager cleanup then MainActor hop).
+        let expectation = XCTestExpectation(description: "SAML retry via startDownload")
+        let pollItem = DispatchWorkItem { [weak self] in
+            if let self, !self.mockDelegate.startDownloadCalls.isEmpty { expectation.fulfill() }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: pollItem)
+        wait(for: [expectation], timeout: 3.0)
+        pollItem.cancel()
+
+        XCTAssertEqual(mockRegistry.state(for: book.identifier), .SAMLStarted,
+                       "SAML 401 must route to triggerSAMLReauth → .SAMLStarted. The :166 `!= true` " +
+                       "mutant routes to triggerBrowserReauth → .downloadNeeded instead.")
+        XCTAssertEqual(mockDelegate.startDownloadCalls.count, 1,
+                       "SAML re-auth retries the download via startDownload.")
+        XCTAssertFalse(mockReauthenticator.authenticateIfNeededCalled,
+                       "SAML path must NOT present the sign-in modal — that's the browser path the " +
+                       ":166 `!= true` mutant would wrongly take.")
+    }
+
+    /// SAML no-active-loan (legacy path, no coordinator) must take
+    /// `triggerSAMLReauth` (treats it as a session expiry): state →
+    /// .SAMLStarted, startDownload called, reauthenticator NOT invoked.
+    ///
+    /// Kills :216 `isSaml == true`→`!= true`: the mutant routes the SAML
+    /// no-active-loan to `triggerBrowserReauth` → .downloadNeeded + reauth.
+    func testHandleDownloadFailure_SAML_noActiveLoan_legacyPath_retriesViaSAMLNotBrowserModal() {
+        let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        mockRegistry.addBook(book, state: .downloading)
+
+        let task = fakeDownloadTask()
+        let problemDoc = TPPProblemDocument.fromDictionary([
+            "type": TPPProblemDocument.TypeNoActiveLoan,
+            "title": "No Active Loan",
+            "status": 404
+        ])
+
+        mockUserAccount._credentials = .barcodeAndPin(barcode: "user", pin: "pin")
+        mockUserAccount._authDefinition = makeAuthDefinition(authType: .saml)
+
+        let result = interceptor.handleDownloadFailureWithAuthCheck(
+            for: book, task: task, problemDoc: problemDoc, failureError: nil
+        )
+        XCTAssertTrue(result, "SAML no-active-loan must be claimed as a session expiry")
+
+        let expectation = XCTestExpectation(description: "SAML no-active-loan retry via startDownload")
+        let pollItem = DispatchWorkItem { [weak self] in
+            if let self, !self.mockDelegate.startDownloadCalls.isEmpty { expectation.fulfill() }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: pollItem)
+        wait(for: [expectation], timeout: 3.0)
+        pollItem.cancel()
+
+        XCTAssertEqual(mockRegistry.state(for: book.identifier), .SAMLStarted,
+                       "SAML no-active-loan must route to triggerSAMLReauth → .SAMLStarted (:216). " +
+                       "The `!= true` mutant routes to triggerBrowserReauth → .downloadNeeded.")
+        XCTAssertEqual(mockDelegate.startDownloadCalls.count, 1,
+                       "SAML no-active-loan re-auth retries the download.")
+        XCTAssertFalse(mockReauthenticator.authenticateIfNeededCalled,
+                       "SAML no-active-loan must NOT present the sign-in modal (that's the :216 mutant path).")
+    }
+
     // MARK: - handleDownloadFailure with no problem doc and no auth issue
 
     func testHandleDownloadFailure_hasCredentials_noLoginRequired_returnsFalse() {
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
-        let task = URLSession.shared.downloadTask(with: URL(string: "https://example.com")!)
+        let task = fakeDownloadTask()
 
         mockUserAccount._credentials = .barcodeAndPin(barcode: "user", pin: "pin")
         // No auth definition at all

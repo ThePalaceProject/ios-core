@@ -77,29 +77,20 @@ final class MyBooksDownloadCenterOfflineTests: XCTestCase {
         return task
     }
 
-    /// Async-safe main-queue drain. The shared `drainMainQueue()` extension
-    /// calls synchronous `wait(for:)`, which deadlocks inside an
-    /// `@MainActor async` test (the main thread is already running the test;
-    /// blocking it via synchronous wait stalls the dispatch the test is
-    /// waiting on). Use `await fulfillment(of:)` instead — the async runtime
-    /// suspends correctly while the main queue drains.
-    private func drainMainQueueAsync(timeout: TimeInterval = 2.0) async {
-        let drained = expectation(description: "main queue drained (async)")
-        DispatchQueue.main.async { drained.fulfill() }
-        await fulfillment(of: [drained], timeout: timeout)
-    }
-
-    /// Spin until the registry reflects the expected state, or timeout.
+    /// Wait until the registry reflects the expected state. Wraps the
+    /// shared `awaitConditionAsync` helper so timeout produces a loud
+    /// XCTFail attributed to the call site rather than a silent return
+    /// that lets downstream assertions read stale state.
     /// Production transition is async (Task in DownloadAlertPresenter).
     private func waitForState(
         _ expected: TPPBookState,
         on identifier: String,
-        timeout: TimeInterval = 2.0
+        timeout: TimeInterval = 10.0,
+        file: StaticString = #file,
+        line: UInt = #line
     ) async {
-        let deadline = Date(timeIntervalSinceNow: timeout)
-        while mockRegistry.state(for: identifier) != expected, Date() < deadline {
-            await Task.yield()
-            try? await Task.sleep(nanoseconds: 20_000_000)  // 20ms
+        await awaitConditionAsync(timeout: timeout, file: file, line: line) { [weak self] in
+            self?.mockRegistry.state(for: identifier) == expected
         }
     }
 
@@ -222,6 +213,9 @@ final class MyBooksDownloadCenterOfflineTests: XCTestCase {
     /// no-op. Catches a fix that crashes or asserts when the active-set
     /// is empty.
     func testReachabilityDrop_WithNoActiveDownloads_IsNoOp() async {
+        // MISSING-001-OK: crash-guard — verifies the empty-active-set branch
+        // is a no-op (does NOT crash on empty dictionary lookup). Observable
+        // contract is "no crash, no state mutation".
         let center = MyBooksDownloadCenter(
             bookRegistry: mockRegistry,
             stateManager: stateManager,

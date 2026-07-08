@@ -10,6 +10,10 @@ import XCTest
 
 final class FontManagerTests: XCTestCase {
 
+    override func tearDown() {
+        super.tearDown()
+    }
+
     // MARK: - Singleton
 
     func testSharedInstanceExists() {

@@ -1,0 +1,15 @@
+[
+  {
+    "args" : {
+      "attemptDownload" : "true",
+      "bookId" : "DSC-HOLD"
+    },
+    "method" : "delegate.borrowAsync"
+  },
+  {
+    "args" : {
+
+    },
+    "method" : "schedulePendingStartsIfPossible"
+  }
+]

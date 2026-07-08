@@ -1,0 +1,18 @@
+[
+  {
+    "args" : {
+      "bookId" : "DSC-UNREG",
+      "hasLocation" : "false",
+      "loginRequired" : "false"
+    },
+    "method" : "processUnregistered"
+  },
+  {
+    "args" : {
+      "bookId" : "DSC-UNREG",
+      "hasRequest" : "false",
+      "state" : "download-needed"
+    },
+    "method" : "processWithCredentials"
+  }
+]

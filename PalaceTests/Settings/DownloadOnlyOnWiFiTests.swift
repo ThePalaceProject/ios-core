@@ -14,22 +14,28 @@ final class DownloadOnlyOnWiFiTests: XCTestCase {
 
     private let settingsKey = TPPSettings.downloadOnlyOnWiFiKey
     private var settings: TPPSettings!
+    /// Per-test isolated UserDefaults — injected into `TPPSettings`
+    /// via the swarm_47883816 Module D production DI seam. No write
+    /// here touches `.standard`; the resetter wipes the suite at the
+    /// end of every test.
+    private var isolatedDefaults: UserDefaults!
 
     override func setUp() {
         super.setUp()
-        settings = TPPSettings()
+        isolatedDefaults = testUserDefaults()
+        settings = TPPSettings(defaults: isolatedDefaults)
     }
 
     override func tearDown() {
-        UserDefaults.standard.removeObject(forKey: settingsKey)
         settings = nil
+        isolatedDefaults = nil
         super.tearDown()
     }
 
     // MARK: - AC2: Default State
 
     func testDefaultValue_isFalse() {
-        UserDefaults.standard.removeObject(forKey: settingsKey)
+        // Fresh suite — no prior write to remove. The default must be OFF.
         XCTAssertFalse(
             settings.downloadOnlyOnWiFi,
             "Download only on Wi-Fi should default to OFF"
@@ -38,33 +44,34 @@ final class DownloadOnlyOnWiFiTests: XCTestCase {
 
     // MARK: - Setting Persistence
 
-    /// Setting persists to UserDefaults synchronously through the
-    /// `TPPSettings` getter/setter bridge. Lock the full toggle cycle
-    /// (off→on→off) plus a fresh-instance read after each write to catch
-    /// a mutant that caches the value in memory but drops the
-    /// UserDefaults write (which would silently revert on app relaunch).
+    /// Setting persists to the injected UserDefaults synchronously
+    /// through the `TPPSettings` getter/setter bridge. Lock the full
+    /// toggle cycle (off→on→off) plus a fresh-instance read against
+    /// the SAME suite after each write to catch a mutant that caches
+    /// the value in memory but drops the UserDefaults write (which
+    /// would silently revert on app relaunch).
     func testSetting_persistsToUserDefaultsAcrossToggleCycle() {
         // Toggle on: in-memory + UserDefaults must agree.
         settings.downloadOnlyOnWiFi = true
-        XCTAssertTrue(UserDefaults.standard.bool(forKey: settingsKey),
+        XCTAssertTrue(isolatedDefaults.bool(forKey: settingsKey),
                       "Setter must write through to UserDefaults synchronously")
-        // A fresh TPPSettings instance must observe the same value —
-        // this is the cross-relaunch invariant the setting depends on.
-        XCTAssertTrue(TPPSettings().downloadOnlyOnWiFi,
-                      "A new TPPSettings must observe the persisted value — guards against an in-memory-only mutant")
+        // A fresh TPPSettings instance reading from the SAME suite must
+        // observe the persisted value — the cross-relaunch invariant.
+        XCTAssertTrue(TPPSettings(defaults: isolatedDefaults).downloadOnlyOnWiFi,
+                      "A new TPPSettings against the same suite must observe the persisted value")
 
         // Toggle off: same round-trip.
         settings.downloadOnlyOnWiFi = false
-        XCTAssertFalse(UserDefaults.standard.bool(forKey: settingsKey),
+        XCTAssertFalse(isolatedDefaults.bool(forKey: settingsKey),
                        "Setting to false must write through to UserDefaults")
-        XCTAssertFalse(TPPSettings().downloadOnlyOnWiFi,
-                       "A new TPPSettings must read the now-false value")
+        XCTAssertFalse(TPPSettings(defaults: isolatedDefaults).downloadOnlyOnWiFi,
+                       "A new TPPSettings against the same suite must read the now-false value")
     }
 
     func testSetting_persistsAcrossReads() {
         settings.downloadOnlyOnWiFi = true
-        let value = UserDefaults.standard.bool(forKey: settingsKey)
-        XCTAssertTrue(value, "Setting should be persisted in UserDefaults")
+        let value = isolatedDefaults.bool(forKey: settingsKey)
+        XCTAssertTrue(value, "Setting should be persisted in the injected UserDefaults")
         // Reading the setting again must return the same value (no side effects)
         XCTAssertTrue(settings.downloadOnlyOnWiFi,
                       "Re-reading the setting after setting to true must still return true")
@@ -90,6 +97,10 @@ final class DownloadOnlyOnWiFiTests: XCTestCase {
 
     // MARK: - Reachability isOnWiFi
 
+    // TODO(swarm_47883816-A-followup): migrate to `makeTestAppContainer()`
+    // once Module A's TestAppContainerFactory lands. Until then these
+    // tests still call `AppContainer.production()` — that's a separate
+    // polluter category tracked by Module A's contract, not Module D's.
     func testReachability_isOnWiFi_returnsBool() {
         // isOnWiFi must return a Bool without crashing. In CI the interface is
         // unknown, but we can verify the value is consistent with the detailed status.
@@ -101,6 +112,8 @@ final class DownloadOnlyOnWiFiTests: XCTestCase {
                        "isOnWiFi must be idempotent: repeated calls must return the same value")
     }
 
+    // TODO(swarm_47883816-A-followup): migrate to `makeTestAppContainer()`
+    // once Module A's TestAppContainerFactory lands.
     func testReachability_isOnWiFi_consistentWithDetailedStatus() {
         let detailed = AppContainer.production().reachability.getDetailedConnectivityStatus()
         let isWiFi = AppContainer.production().reachability.isOnWiFi

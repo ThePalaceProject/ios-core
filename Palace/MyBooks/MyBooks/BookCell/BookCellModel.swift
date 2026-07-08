@@ -31,12 +31,17 @@ enum BookCellState {
 
 extension BookCellState {
     init(_ bookButtonState: BookButtonState) {
+        // Exhaustive (no `default:`) — F-011 class-of-bug guard. Compiler
+        // flags this site if BookButtonState gains a case, so a download-
+        // adjacent state can't silently classify as `.normal`.
         switch bookButtonState {
         case .downloadInProgress:
             self = .downloading(bookButtonState)
         case .downloadFailed:
             self = .downloadFailed(bookButtonState)
-        default:
+        case .canBorrow, .canHold, .holding, .holdingFrontOfQueue,
+             .downloadNeeded, .downloadSuccessful, .used, .returning,
+             .managingHold, .unsupported:
             self = .normal(bookButtonState)
         }
     }
@@ -258,7 +263,7 @@ class BookCellModel: ObservableObject {
             .sink { [weak self] newState in
                 guard let self else { return }
 
-                // PP-3811: Update book from registry so availability data (hold position,
+                // Update book from registry so availability data (hold position
                 // loan duration, etc.) is current. Without this, views like holdingInfoView
                 // read stale data from the pre-borrow catalog book.
                 if let updatedBook = self.bookRegistry.book(forIdentifier: self.book.identifier) {
@@ -267,12 +272,16 @@ class BookCellModel: ObservableObject {
 
                 self.registryState = newState
 
-                // Clear loading state based on state transitions
+                // Clear loading state based on state transitions.
+                // Exhaustive (no `default:`) — F-011 class-of-bug guard.
+                // Compiler flags this site if TPPBookState gains a case, so
+                // a new completed/terminal state can't silently leave the
+                // cell stuck with isLoading=true.
                 switch newState {
                 case .downloading, .downloadFailed, .downloadSuccessful, .holding, .unregistered:
                     // These states indicate the action completed - clear loading
                     self.isLoading = false
-                default:
+                case .downloadNeeded, .returning, .used, .unsupported, .SAMLStarted:
                     break
                 }
             }
@@ -365,7 +374,7 @@ class BookCellModel: ObservableObject {
             .assign(to: &$stableButtonState)
     }
 
-    /// PP-4114: react to mid-flight network drops. The pre-flight check on
+    /// react to mid-flight network drops. The pre-flight check on
     /// Download/Reserve handles the cold-offline tap; this subscription
     /// handles the case where reachability drops AFTER the user already
     /// kicked off a borrow/download (so isLoading is true and the spinner
@@ -456,35 +465,60 @@ class BookCellModel: ObservableObject {
 
 extension BookCellModel {
     func callDelegate(for action: BookButtonType) {
-        // PP-4114 pre-flight: Download/Retry/Get/Reserve all hit the network
+        // pre-flight: Download/Retry/Get/Reserve all hit the network
         // (borrow → fulfillment → download). If we're offline, surface the
         // retryable no-connection alert instead of setting isLoading=true and
         // waiting ~60s for URLSession to time out (the original "stale button"
         // bug). Other actions (Read, Listen, Cancel, Return, Remove) are
         // either local or have their own confirmation paths and don't need
         // a connection to begin.
+        // Exhaustive (no `default:`) — F-011 class-of-bug guard. Compiler
+        // flags this site if BookButtonType gains a case, so a new
+        // network-bound action can't silently skip the offline pre-flight.
         switch action {
         case .download, .retry, .get, .reserve:
             if !reachability.isConnectedToNetwork() {
                 presentOfflineAlert()
                 return
             }
-        default:
+        case .readStreaming:
+            // PP-4161: streaming-media reader needs network too — the asset
+            // is online-only. Same pre-flight as download/get so the user
+            // doesn't tap through to a doomed WKWebView load.
+            if !reachability.isConnectedToNetwork() {
+                presentOfflineAlert()
+                return
+            }
+        case .read, .listen, .cancel, .close, .sample, .audiobookSample,
+             .remove, .cancelHold, .manageHold, .return, .returning:
             break
         }
 
         // Set loading state for actions that need it.
         // .return and .cancelHold are excluded here because they show a
         // confirmation alert first; loading starts only after the patron confirms.
+        // Exhaustive (no `default:`) — F-011 class-of-bug guard.
         switch action {
         case .download, .retry, .get, .reserve, .remove, .returning, .cancel:
             isLoading = true
-        default:
+        case .read, .listen, .close, .sample, .audiobookSample,
+             .cancelHold, .manageHold, .return, .readStreaming:
+            // .readStreaming presents the reader directly — loading state is
+            // owned by the StreamingReaderViewModel after presentation. No
+            // cell-level spinner so the tap → present transition stays snappy.
             break
         }
 
         switch action {
         case .download, .retry, .get:
+            // PP-4161 Wave 4 (Path X): streaming-HTML titles funnel through
+            // didSelectDownload like every other content type.
+            // DownloadStartDispatcher.processDownloadWithCredentials early-
+            // returns for streamingHTML so the asset-download attempt is
+            // suppressed; the registry transitions to .downloadNeeded via
+            // processUnregisteredState's open-access branch, and the cell's
+            // button set then surfaces [.readStreaming, .return] on next
+            // render.
             didSelectDownload()
         case .reserve:
             didSelectReserve()
@@ -533,7 +567,10 @@ extension BookCellModel {
             }
         case .sample, .audiobookSample:
             didSelectSample()
-        case .read, .listen:
+        case .read, .listen, .readStreaming:
+            // PP-4161: all three terminal "open the content" actions funnel
+            // through didSelectRead — the content-type switch inside picks
+            // the right renderer.
             didSelectRead()
         case .close:
             return
@@ -551,6 +588,18 @@ extension BookCellModel {
             readerService.openEPUB(book)
             self.isLoading = false
         case .pdf:
+            #if LCP
+            if LCPPDFs.hasLCPAcquisition(book) {
+                // LCP PDFs go through the Readium publication opener which
+                // is async + heavy (LCP key derivation + asset retrieval).
+                // Hold isLoading until the route is pushed so the cell
+                // spinner stays visible while the user waits.
+                readerService.openPDF(book) { [weak self] in
+                    self?.isLoading = false
+                }
+                return
+            }
+            #endif
             guard let url = downloadCenter.fileUrl(for: book.identifier) else { self.isLoading = false; return }
             let metadata = TPPPDFDocumentMetadata(with: book)
             let document = TPPPDFDocument(url: url)
@@ -561,6 +610,16 @@ extension BookCellModel {
             self.isLoading = false
         case .audiobook:
             openAudiobookFromCell()
+        case .streamingHTML:
+            // PP-4161: streaming-media titles present via the
+            // NavigationCoordinator's streamingHTML route. No on-disk asset,
+            // no reader-service round-trip — just push the route and let
+            // StreamingReaderView own the lifecycle from there.
+            if let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator {
+                coordinator.store(book: book)
+                coordinator.push(.streamingHTML(BookRoute(id: book.identifier)))
+            }
+            self.isLoading = false
         default:
             self.isLoading = false
         }
@@ -625,15 +684,19 @@ extension BookCellModel {
     func didSelectDownload() {
         let account = accountsManager.currentUserAccount
         if account.needsAuth && !account.hasCredentials() {
-            SignInModalPresenter.presentSignInModalForCurrentAccount(accountsManager: accountsManager) { [weak self] in
-                guard let self else { return }
-                // Only proceed if user successfully logged in, not if they cancelled
-                guard accountsManager.currentUserAccount.hasCredentials() else {
-                    Log.info(#file, "Sign-in cancelled or failed, not starting download")
-                    return
+            // swarm_d8f11437 Module A wave 4 — migrated to AppContainer-
+            // injected sheet presenter. accountsManager retained on the
+            // post-dismiss closure side for the `hasCredentials()` gate.
+            AppContainer.production().signInModalSheetPresenter
+                .presentSignInModalForCurrentAccount { [weak self] in
+                    guard let self else { return }
+                    // Only proceed if user successfully logged in, not if they cancelled
+                    guard accountsManager.currentUserAccount.hasCredentials() else {
+                        Log.info(#file, "Sign-in cancelled or failed, not starting download")
+                        return
+                    }
+                    self.startDownloadNow()
                 }
-                self.startDownloadNow()
-            }
             return
         }
         startDownloadNow()
@@ -650,24 +713,27 @@ extension BookCellModel {
         isLoading = true
         let account = accountsManager.currentUserAccount
         if account.needsAuth && !account.hasCredentials() {
-            SignInModalPresenter.presentSignInModalForCurrentAccount(accountsManager: accountsManager) { [weak self] in
-                guard let self else { return }
-                // Only proceed if user successfully logged in, not if they cancelled
-                guard accountsManager.currentUserAccount.hasCredentials() else {
-                    Log.info(#file, "Sign-in cancelled or failed, not proceeding with reservation")
-                    self.isLoading = false
-                    return
-                }
-                NotificationService.requestAuthorization()
-                Task {
-                    do {
-                        _ = try await self.downloadCenter.borrowAsync(self.book, attemptDownload: false)
-                    } catch {
-                        Log.error(#file, "Failed to borrow book: \(error.localizedDescription)")
+            // swarm_d8f11437 Module A wave 4 — migrated to AppContainer-
+            // injected sheet presenter.
+            AppContainer.production().signInModalSheetPresenter
+                .presentSignInModalForCurrentAccount { [weak self] in
+                    guard let self else { return }
+                    // Only proceed if user successfully logged in, not if they cancelled
+                    guard accountsManager.currentUserAccount.hasCredentials() else {
+                        Log.info(#file, "Sign-in cancelled or failed, not proceeding with reservation")
+                        self.isLoading = false
+                        return
                     }
-                    self.isLoading = false
+                    NotificationService.requestAuthorization()
+                    Task {
+                        do {
+                            _ = try await self.downloadCenter.borrowAsync(self.book, attemptDownload: false)
+                        } catch {
+                            Log.error(#file, "Failed to borrow book: \(error.localizedDescription)")
+                        }
+                        self.isLoading = false
+                    }
                 }
-            }
             return
         }
         NotificationService.requestAuthorization()

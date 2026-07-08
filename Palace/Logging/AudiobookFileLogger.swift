@@ -8,15 +8,42 @@
 
 import Foundation
 
-class AudiobookFileLogger {
+/// Protocol seam for test-time injection. Production call sites continue to
+/// use `AudiobookFileLogger.shared`.
+protocol AudiobookFileLogging {
+    func getLogsDirectoryUrl() -> URL?
+    func logEvent(forBookId bookId: String, event: String)
+    func retrieveLog(forBookId bookId: String) -> String?
+    func retrieveLogs(forBookIds bookIds: [String]) -> [String: String]
+}
+
+class AudiobookFileLogger: AudiobookFileLogging {
 
     static let shared = AudiobookFileLogger()
 
     private let maxTotalLogSize: Int64 = 10_000_000 // 10MB total for all audiobook logs
 
+    /// Optional override of the directory where per-book log files are written.
+    /// When non-nil, this URL is used directly (created on demand). When nil,
+    /// the previous behavior of deriving from `.documentDirectory` is preserved
+    /// for production singleton callers.
+    private let logsRootURLOverride: URL?
+
+    /// Designated initializer. Pass `logsRootURL` to redirect log writes to a
+    /// caller-controlled directory (used by tests to isolate from on-disk
+    /// shared state). Defaults to the production document-directory path.
+    internal init(logsRootURL: URL? = nil) {
+        self.logsRootURLOverride = logsRootURL
+    }
+
     private var logsDirectoryUrl: URL? {
         let fileManager = FileManager.default
-        let logsPath = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first?.appendingPathComponent("AudiobookLogs")
+        let logsPath: URL?
+        if let override = logsRootURLOverride {
+            logsPath = override
+        } else {
+            logsPath = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first?.appendingPathComponent("AudiobookLogs")
+        }
         if let logsPath = logsPath {
             if !fileManager.fileExists(atPath: logsPath.path) {
                 try? fileManager.createDirectory(at: logsPath, withIntermediateDirectories: true, attributes: nil)

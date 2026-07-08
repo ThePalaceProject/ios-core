@@ -46,11 +46,14 @@ final class AuthFlowSecurityTests: XCTestCase {
         // testToken_networkExecutorRefreshCount_singleFlightSemantics below.
         let reauth = TPPReauthenticator()
         XCTAssertEqual(reauth.authenticateCallCount, 0)
-        reauth.authenticateIfNeeded(TPPUserAccount.sharedAccount(),
+        // Account identity does not matter to the raw call counter — use the
+        // isolated factory so no keychain residue from prior tests leaks in.
+        let account = TPPUserAccountTestFactory.makeIsolated()
+        reauth.authenticateIfNeeded(account,
                                     usingExistingCredentials: true,
                                     authenticationCompletion: nil)
         XCTAssertEqual(reauth.authenticateCallCount, 1)
-        reauth.authenticateIfNeeded(TPPUserAccount.sharedAccount(),
+        reauth.authenticateIfNeeded(account,
                                     usingExistingCredentials: true,
                                     authenticationCompletion: nil)
         XCTAssertEqual(reauth.authenticateCallCount, 2,
@@ -82,8 +85,10 @@ final class AuthFlowSecurityTests: XCTestCase {
         // SEAM-VERIFIED: TPPUserAccount.sessionIdentifier is now public-readable
         // and rotates inside the credentials setter and setAuthToken. Both
         // sign-in entry points (basic + token) trigger rotation.
-        let account = TPPUserAccount.sharedAccount()
-        defer { account.removeAll() } // Cleanup so we don't pollute downstream tests
+        // The isolated factory writes under a UUID-namespaced keychain key,
+        // so this test cannot pollute (or be polluted by) any other library's
+        // credentials; the registered resetter clears residue at testDidFinish.
+        let account = TPPUserAccountTestFactory.makeIsolated()
         let before = account.sessionIdentifier
 
         // Drive a sign-in via setBarcode (routes through the credentials setter,

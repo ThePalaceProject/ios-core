@@ -1,0 +1,18 @@
+[
+  {
+    "args" : {
+      "bookID" : "contract-audiobook-1",
+      "hasLocation" : "true",
+      "renderer" : "PalaceAudiobookToolkit"
+    },
+    "method" : "registry.setLocation"
+  },
+  {
+    "args" : {
+      "bookID" : "contract-audiobook-1",
+      "format" : "audiobook",
+      "payloadIsEmpty" : "false"
+    },
+    "method" : "writer.save"
+  }
+]

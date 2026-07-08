@@ -32,6 +32,16 @@ class TPPSignInBusinessLogicTests: XCTestCase {
             networkExecutor: TPPRequestExecutorMock(),
             uiDelegate: uiDelegate,
             drmAuthorizer: drmAuthorizer)
+
+        // Bucket A migration (swarm_81b5099e): drive the state machine to
+        // `.detailsLoaded` so the sub-sites that now read `loadedAccountDetails`
+        // (selectedAuthentication, makeRequest, registrationIsPossible,
+        // isSamlPossible, selectPreferredAuthIfNeeded, shouldShowEULALink)
+        // can see the fixture's details. State-machine-aware tests for the
+        // migration live in TPPSignInBusinessLogicStateMachineTests.swift.
+        if let details = libraryAccountMock.tppAccount.details {
+            libraryAccountMock.tppAccount._setState(.detailsLoaded(details))
+        }
     }
 
     override func tearDownWithError() throws {
@@ -42,6 +52,9 @@ class TPPSignInBusinessLogicTests: XCTestCase {
         libraryAccountMock = nil
         drmAuthorizer = nil
         uiDelegate = nil
+        #if DEBUG
+        AccountStateStore.shared._resetAllForTesting()
+        #endif
     }
 
     func testUpdateUserAccountWithNoSelectedAuthentication() throws {
@@ -257,6 +270,47 @@ class TPPSignInBusinessLogicTests: XCTestCase {
         XCTAssertFalse(TPPSignInBusinessLogic.isNetworkConnectivityError(
             NSError(domain: "TPPErrorDomain", code: NSURLErrorNotConnectedToInternet)),
             "Same code under a different domain is not a URLSession connectivity error.")
+    }
+
+    // MARK: - HelpSpot 18046 — transient server errors are not "invalid credentials"
+
+    /// A transient server failure surfaced by TokenRequest after retries are
+    /// exhausted (5xx) must show the "try again" message, NOT "Invalid
+    /// Credentials" — the 18046 misreport.
+    func testUserFacingSignInError_TransientServer5xx_ReturnsTryAgain_Not_InvalidCredentials() {
+        let error = NSError(domain: "TokenRequest", code: 503)
+
+        let (title, message) = TPPSignInBusinessLogic.userFacingSignInError(for: error, problemDocument: nil)
+
+        XCTAssertEqual(title, Strings.Error.networkUnavailableErrorTitle)
+        XCTAssertEqual(message, Strings.Error.networkUnavailableErrorMessage)
+        XCTAssertNotEqual(title, Strings.Error.invalidCredentialsErrorTitle,
+                          "A transient 5xx from /token must NOT be reported as invalid credentials (HelpSpot 18046)")
+    }
+
+    /// A genuine 401 from /token IS a credential rejection — it must still show
+    /// "Invalid Credentials", proving the transient branch does not over-match.
+    func testUserFacingSignInError_TokenRequest401_StillReturnsInvalidCredentials() {
+        let error = NSError(domain: "TokenRequest", code: 401)
+
+        let (title, _) = TPPSignInBusinessLogic.userFacingSignInError(for: error, problemDocument: nil)
+
+        XCTAssertEqual(title, Strings.Error.invalidCredentialsErrorTitle,
+                       "A real 401 must remain an invalid-credentials message — the transient branch covers only 5xx/429/408")
+    }
+
+    func testIsTransientServerError_classification() {
+        for code in [408, 429, 500, 502, 503, 504] {
+            XCTAssertTrue(TPPSignInBusinessLogic.isTransientServerError(NSError(domain: "TokenRequest", code: code)),
+                          "\(code) from TokenRequest should be transient")
+        }
+        for code in [200, 400, 401, 403, 404] {
+            XCTAssertFalse(TPPSignInBusinessLogic.isTransientServerError(NSError(domain: "TokenRequest", code: code)),
+                           "\(code) from TokenRequest should NOT be transient")
+        }
+        // A transient code under a different domain is not a TokenRequest error.
+        XCTAssertFalse(TPPSignInBusinessLogic.isTransientServerError(NSError(domain: "TPPErrorDomain", code: 503)),
+                       "Domain must be TokenRequest to count as a transient token-exchange failure")
     }
 
     // MARK: - BUG-002 — EULA agreement copy leaks post-auth

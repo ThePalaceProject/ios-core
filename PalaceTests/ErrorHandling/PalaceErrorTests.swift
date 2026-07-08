@@ -224,4 +224,57 @@ final class PalaceErrorCategoryTests: XCTestCase {
             XCTAssertNotNil(error.errorDescription)
         }
     }
+
+    // MARK: - OPDS Feed Invalid — swarm_f3b9b087 item #9
+    //
+    // The previous copy was the raw technical string "Invalid OPDS feed",
+    // which leaked the protocol name (OPDS) to end users. The new copy is
+    // a placeholder NSLocalizedString — final wording awaits design
+    // review (memory ref: `feedback_no_new_copy_without_design`). These
+    // tests pin three contracts that survive design rewording:
+    //   1. It must be non-empty user-facing copy.
+    //   2. It must NOT contain the protocol name "OPDS".
+    //   3. The placeholder English value the design team will replace.
+
+    func testOpdsFeedInvalid_errorDescriptionIsUserFacing() {
+        let error = PalaceError.parsing(.opdsFeedInvalid)
+        let description = error.errorDescription
+
+        XCTAssertNotNil(description, "OPDS feed-invalid error must have a description")
+        XCTAssertFalse(description!.isEmpty,
+                       "OPDS feed-invalid description must not be empty")
+        // CRITICAL: must not leak the protocol name to end users.
+        XCTAssertFalse(description!.contains("OPDS"),
+                       "OPDS feed-invalid description must NOT contain the technical term 'OPDS' — it's user-facing copy. Got: '\(description!)'")
+        XCTAssertFalse(description!.contains("opds"),
+                       "OPDS feed-invalid description must NOT contain 'opds' (case-insensitive guard). Got: '\(description!)'")
+    }
+
+    func testOpdsFeedInvalid_recoverySuggestionPresent() {
+        let error = PalaceError.parsing(.opdsFeedInvalid)
+        let suggestion = error.recoverySuggestion
+
+        XCTAssertNotNil(suggestion,
+                        "OPDS feed-invalid must have a recovery suggestion so the user knows what to do next")
+        XCTAssertFalse(suggestion!.isEmpty,
+                       "Recovery suggestion must not be empty")
+    }
+
+    func testOpdsFeedInvalid_localizedKey_hasPlaceholderEnglishValue() {
+        // The placeholder English value is fixed until design supplies
+        // the final wording. If this assertion fires after a copy edit,
+        // confirm design approval before adjusting the placeholder.
+        let placeholder = NSLocalizedString(
+            "opds.error.feed_invalid",
+            value: "We can't load your library catalog right now — try again in a moment.",
+            comment: "Placeholder; final wording awaits design review per feedback_no_new_copy_without_design"
+        )
+        // The localized string must resolve to a non-empty value either
+        // from the placeholder or from a Localizable.strings override.
+        XCTAssertFalse(placeholder.isEmpty,
+                       "NSLocalizedString resolution for opds.error.feed_invalid must produce a non-empty value")
+        // Sanity: must not equal the legacy raw string.
+        XCTAssertNotEqual(placeholder, "Invalid OPDS feed",
+                          "OPDS feed-invalid copy must NOT regress to the raw technical legacy string")
+    }
 }

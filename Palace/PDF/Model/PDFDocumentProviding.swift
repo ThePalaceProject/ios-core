@@ -27,6 +27,3 @@ protocol PDFDocumentProviding: AnyObject {
     func makeThumbnails()
 }
 
-// MARK: - TPPEncryptedPDFDocument Conformance
-
-extension TPPEncryptedPDFDocument: PDFDocumentProviding {}

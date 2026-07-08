@@ -2,7 +2,7 @@
 //  TPPBook+Accessibility.swift
 //  Palace
 //
-//  PP-3968: Single source of truth for the VoiceOver label of a book cell.
+// Single source of truth for the VoiceOver label of a book cell.
 //  Used by every list view (catalog lanes, My Books, Holds, etc.) so that
 //  VoiceOver always announces a book the same way — title, author, and (for
 //  audiobooks) narrator — and never leaks summaries, blurbs, or cover-art OCR.

@@ -64,21 +64,25 @@ import PalaceLogging
 
     parseLinks(from: entryXML)
 
-    if let dateString = entryXML.firstChild(withName: "issued")?.value {
+    // Atom (RFC 4287) uses <published> for the canonical publication date.
+    // Legacy/Dublin Core feeds use <issued>. Prefer <published>, fall back
+    // to <issued>, else leave nil.
+    if let dateString = entryXML.firstChild(withName: "published")?.value
+        ?? entryXML.firstChild(withName: "issued")?.value {
       published = NSDate.date(withISO8601DateString: dateString) as Date?
     }
 
     publisher = entryXML.firstChild(withName: "publisher")?.value
     summary = entryXML.firstChild(withName: "summary")?.value.stringByDecodingHTMLEntities
 
-    // PP-4046 — Audience is published as `<category scheme="schema.org/audience">`;
+    // Audience is published as `<category scheme="schema.org/audience">`
     // extract the label/term so the detail view can render it as its own row
     // independent from the genre category list.
     audience = categories.first(where: {
       $0.scheme?.absoluteString == "http://schema.org/audience"
     }).map { $0.label ?? $0.term }
 
-    // PP-4046 — `<dcterms:language>` is normally namespace-stripped to
+    // `<dcterms:language>` is normally namespace-stripped to
     // `language` (TPPXML sets shouldProcessNamespaces=true); legacy feeds
     // that omit the `xmlns:dcterms` declaration leave the literal prefix in
     // place. Read either, prefer the unprefixed form. Same defensive pattern
@@ -123,7 +127,7 @@ import PalaceLogging
     var contribs = [String: [String]]()
 
     for contributorNode in entryXML.childrenWithName("contributor") {
-      // PP-4230: Foundation's XMLParser with shouldProcessNamespaces=true
+      // Foundation's XMLParser with shouldProcessNamespaces=true
       // strips the `opf:` prefix from attribute names when the feed declares
       // `xmlns:opf` (real-world feeds do — A1QA, Bibliotheca, BiblioBoard,
       // ODL providers). The unprefixed `"role"` is the canonical key in that
@@ -231,9 +235,15 @@ import PalaceLogging
   }
 
   private func parseSeries(from entryXML: TPPXML) {
-    if let seriesXML = entryXML.firstChild(withName: "Series"),
-       let linkXML = seriesXML.firstChild(withName: "link") {
-      seriesLink = TPPOPDSLink(xml: linkXML)
+    // Palace OPDS 1.x feeds serve the series element as `<schema:series>`.
+    // `TPPXML` parses with namespace processing on, so the matched name is the
+    // lowercase local name `series`. Some feeds/fixtures use `Series`; match
+    // either casing rather than the qualified prefix.
+    guard let seriesXML = entryXML.firstChild(withName: "series")
+            ?? entryXML.firstChild(withName: "Series"),
+          let linkXML = seriesXML.firstChild(withName: "link") else {
+      return
     }
+    seriesLink = TPPOPDSLink(xml: linkXML)
   }
 }

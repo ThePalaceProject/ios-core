@@ -1804,12 +1804,27 @@ final class OIDCReauthOnExpiredTokenTests: XCTestCase {
 @MainActor
 final class OIDCViewModelSignInTests: XCTestCase {
 
+    /// Per-test isolated container — built via `makeTestAppContainer()` so
+    /// each test method gets a fresh service graph (no cross-test pollution
+    /// through `AppContainer._cached`).
+    private var appContainer: AppContainer!
+
+    override func setUp() {
+        super.setUp()
+        appContainer = makeTestAppContainer()
+    }
+
+    override func tearDown() {
+        appContainer = nil
+        super.tearDown()
+    }
+
     func testSignIn_withStaleOIDCCredentials_proceedsToLogin() {
-        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
+        guard let libraryID = appContainer.accountsManager.currentAccountId else {
             return
         }
 
-        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
+        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: appContainer)
 
         let userAccount = viewModel.selectedUserAccount
         let originalState = userAccount.authState
@@ -1829,11 +1844,11 @@ final class OIDCViewModelSignInTests: XCTestCase {
     }
 
     func testSignIn_withActiveCredentials_showsSignOutAlert() {
-        guard let libraryID = AppContainer.production().accountsManager.currentAccountId else {
+        guard let libraryID = appContainer.accountsManager.currentAccountId else {
             return
         }
 
-        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
+        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: appContainer)
 
         let isSignedIn = viewModel.isSignedIn
         let isStale = viewModel.selectedUserAccount.authState == .credentialsStale

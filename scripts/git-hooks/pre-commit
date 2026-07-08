@@ -53,6 +53,52 @@ EOF
   exit 1
 fi
 
+# =============================================================================
+# M1 Universal-Rigor Floor (swarm_M1_83be56fc) — diff-only gates
+# =============================================================================
+#
+# Runs the DIFF-ONLY universal-rigor scripts against the STAGED diff with
+# tri-state block/warn escalation (see m1-rigor-lib.sh for the mode table).
+#
+# The message-dependent gates (contract-reconciliation, intent-recorded) run
+# in the commit-msg hook, NOT here: pre-commit fires before git writes the
+# new commit message, so COMMIT_EDITMSG still holds the PREVIOUS commit's
+# message at this stage. An earlier revision of this hook read it anyway and
+# validated stale claims — a leftover "removes X" phrase from the last commit
+# blocked clean commits, and claims in the commit actually being authored
+# were never checked. commit-msg receives the real message file as $1.
+#
+# Bypass: `git commit --no-verify` (per project policy — emergency-only,
+# rationale required in the commit body).
+
+# Resolve the script directory (the hook lives in scripts/git-hooks/) so the
+# floor still works when the hook is invoked via core.hooksPath or symlink.
+HOOK_DIR_M1="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT_M1="$(cd "$HOOK_DIR_M1/../.." && pwd)"
+
+M1_HOOK_NAME="pre-commit"
+# shellcheck source=scripts/git-hooks/m1-rigor-lib.sh
+source "$REPO_ROOT_M1/scripts/git-hooks/m1-rigor-lib.sh"
+m1_compute_mode
+
+# Capture the staged diff once and feed it to each script via a temp file
+# (one tmpfile is simpler than stdin pipelines and lets each script read
+# independently).
+M1_DIFF=$(mktemp -t m1-diff.XXXX)
+trap 'rm -f "$M1_DIFF"' EXIT
+git diff --cached > "$M1_DIFF" 2>/dev/null || true
+
+echo "pre-commit M1: prod-LOC added=$PROD_LOC_ADDED critical=$([[ -n "$STAGED_CRITICAL" ]] && echo yes || echo no) mode=$M1_MODE"
+
+M1_FAIL=0
+if ! run_m1_check "blast_radius" "scripts/check-blast-radius.py"; then
+  M1_FAIL=$((M1_FAIL + 1))
+fi
+# Adjacency is warn-only at the hook layer too.
+run_m1_check "adjacency_staleness" "scripts/check-adjacency-staleness.py" || true
+
+m1_enforce "$M1_FAIL"
+
 # Friendly nudge — non-blocking. Only print if anything is staged at all.
 echo "pre-commit: ok. Tip — run 'scripts/verify-pr.sh --quick' before pushing."
 exit 0

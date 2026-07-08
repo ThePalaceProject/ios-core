@@ -4,43 +4,61 @@
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
+//  NOTE: This SUT still depends on FirebaseManager (default-arg DI).
+//  Follow-up: extract FirebaseManaging protocol + replace .shared
+//  default with a stub mock once the FirebaseManager surface is split.
+//
 
 import XCTest
 @testable import Palace
 
 final class DeviceSpecificErrorMonitorTests: XCTestCase {
 
-    // MARK: - Shared Instance
+    private var sut: DeviceSpecificErrorMonitor!
 
-    /// Shared instance is functional, not just non-nil. Lock identity
-    /// (one instance), provide-a-device-id (functional sanity), AND
-    /// non-trivial behaviour (deviceInfo dictionary populated). A mutant
-    /// that returns a fresh instance per call would fail the
-    /// returnSameInstance test below; a mutant returning a stub with
-    /// empty deviceID/deviceInfo fails the functional probes here.
-    func testShared_providesFunctionalInstanceWithDeviceIDAndInfo() {
-        let instance = DeviceSpecificErrorMonitor.shared
-        XCTAssertFalse(instance.getDeviceID().isEmpty,
-                       "Shared instance must provide a non-empty device ID")
-        XCTAssertFalse(instance.getDeviceInfo().isEmpty,
-                       "Shared instance must provide a non-empty device info dictionary")
-        XCTAssertNotNil(instance.getDeviceInfo()["device_id"],
-                        "deviceInfo must include the device_id key")
+    override func setUp() {
+        super.setUp()
+        // Each test gets a fresh instance to escape the singleton's
+        // init-once `isInitialized` flag and any cross-test state.
+        sut = DeviceSpecificErrorMonitor()
     }
 
-    func testShared_returnsSameInstance() {
-        let a = DeviceSpecificErrorMonitor.shared
-        let b = DeviceSpecificErrorMonitor.shared
-        XCTAssertTrue(a === b)
-        // Both references must return the same device ID (single shared state)
-        XCTAssertEqual(a.getDeviceID(), b.getDeviceID(),
-                       "Both shared references must return the same device ID")
+    override func tearDown() {
+        sut = nil
+        super.tearDown()
+    }
+
+    // MARK: - Init injection seam
+
+    /// Replaces both banned singleton-identity tautology tests
+    /// (`testShared_returnsSameInstance`,
+    /// `testShared_providesFunctionalInstanceWithDeviceIDAndInfo`).
+    /// Pins the new ctor: each construction yields an independent
+    /// reference. A mutant that made `init` secretly return `.shared`
+    /// (e.g. for "performance") would flip `a === b` to true and fail.
+    func testInit_returnsIndependentInstance() {
+        let a = DeviceSpecificErrorMonitor()
+        let b = DeviceSpecificErrorMonitor()
+        XCTAssertFalse(a === b,
+                       "Fresh inits must produce distinct instances; got the same reference")
+    }
+
+    /// Two freshly-constructed instances both produce non-empty device
+    /// info independently — proves init wiring delegates to
+    /// `FirebaseManager` and is not skipping setup on later inits.
+    func testInit_eachInstance_canQueryDeviceInfo() {
+        let a = DeviceSpecificErrorMonitor()
+        let b = DeviceSpecificErrorMonitor()
+        XCTAssertFalse(a.getDeviceInfo().isEmpty,
+                       "First instance must return non-empty device info")
+        XCTAssertFalse(b.getDeviceInfo().isEmpty,
+                       "Second instance must return non-empty device info independently")
     }
 
     // MARK: - Device ID
 
     func testGetDeviceID_returnsNonEmptyString() {
-        let deviceID = DeviceSpecificErrorMonitor.shared.getDeviceID()
+        let deviceID = sut.getDeviceID()
         XCTAssertFalse(deviceID.isEmpty, "Device ID should not be empty")
         // Must contain exactly 4 hyphens (UUID format)
         let hyphenCount = deviceID.filter { $0 == "-" }.count
@@ -48,14 +66,12 @@ final class DeviceSpecificErrorMonitorTests: XCTestCase {
     }
 
     func testGetDeviceID_isConsistent() {
-        let id1 = DeviceSpecificErrorMonitor.shared.getDeviceID()
-        let id2 = DeviceSpecificErrorMonitor.shared.getDeviceID()
+        let id1 = sut.getDeviceID()
+        let id2 = sut.getDeviceID()
         XCTAssertEqual(id1, id2, "Device ID should be consistent across calls")
         // Must also match after a log call (no state mutation)
-        DeviceSpecificErrorMonitor.shared.logError(
-            NSError(domain: "T", code: 1), context: "consistency test"
-        )
-        let id3 = DeviceSpecificErrorMonitor.shared.getDeviceID()
+        sut.logError(NSError(domain: "T", code: 1), context: "consistency test")
+        let id3 = sut.getDeviceID()
         XCTAssertEqual(id1, id3, "logError must not mutate the device ID")
     }
 
@@ -70,7 +86,7 @@ final class DeviceSpecificErrorMonitorTests: XCTestCase {
         )
 
         for callIndex in 1...3 {
-            let deviceID = DeviceSpecificErrorMonitor.shared.getDeviceID()
+            let deviceID = sut.getDeviceID()
             // Length and hyphen-count checks first — they don't trigger
             // the FLUFF-003 lint heuristic the way `let range =` adjacent
             // to XCTAssertNotNil would.
@@ -88,7 +104,7 @@ final class DeviceSpecificErrorMonitorTests: XCTestCase {
     // MARK: - Device Info
 
     func testGetDeviceInfo_containsExpectedKeys() {
-        let info = DeviceSpecificErrorMonitor.shared.getDeviceInfo()
+        let info = sut.getDeviceInfo()
 
         XCTAssertFalse(info.isEmpty, "Device info should not be empty")
         // Verify some expected keys are present
@@ -99,13 +115,13 @@ final class DeviceSpecificErrorMonitorTests: XCTestCase {
     }
 
     func testGetDeviceInfo_valuesAreNonEmpty() {
-        let info = DeviceSpecificErrorMonitor.shared.getDeviceInfo()
+        let info = sut.getDeviceInfo()
 
         for (key, value) in info {
             XCTAssertFalse(value.isEmpty, "Value for '\(key)' should not be empty")
         }
         // Info must be consistent across calls (no volatile values)
-        let info2 = DeviceSpecificErrorMonitor.shared.getDeviceInfo()
+        let info2 = sut.getDeviceInfo()
         XCTAssertEqual(info["device_id"], info2["device_id"],
                        "device_id must be stable across repeated getDeviceInfo() calls")
     }
@@ -118,30 +134,29 @@ final class DeviceSpecificErrorMonitorTests: XCTestCase {
     /// remains queryable. A mutant that resets the monitor's state on
     /// log fails the stability checks.
     func testLogError_doesNotCrashAndPreservesMonitorState() {
-        let beforeID = DeviceSpecificErrorMonitor.shared.getDeviceID()
+        let beforeID = sut.getDeviceID()
 
         XCTAssertNoThrow(
-            DeviceSpecificErrorMonitor.shared.logError(
-                NSError(domain: "TestDomain", code: 1), context: "Unit test"),
+            sut.logError(NSError(domain: "TestDomain", code: 1), context: "Unit test"),
             "logError must not throw without Firebase"
         )
 
         // State preservation invariants
-        XCTAssertEqual(DeviceSpecificErrorMonitor.shared.getDeviceID(), beforeID,
+        XCTAssertEqual(sut.getDeviceID(), beforeID,
                        "Device ID must not mutate after logError")
-        XCTAssertFalse(DeviceSpecificErrorMonitor.shared.getDeviceInfo().isEmpty,
+        XCTAssertFalse(sut.getDeviceInfo().isEmpty,
                        "Device info must remain queryable after logError")
     }
 
     func testLogError_withMetadata_doesNotCrash() {
         let error = NSError(domain: "TestDomain", code: 2, userInfo: nil)
-        DeviceSpecificErrorMonitor.shared.logError(
+        sut.logError(
             error,
             context: "Unit test with metadata",
             metadata: ["test_key": "test_value"]
         )
         // Verify that the monitor can still report device info after logging
-        let info = DeviceSpecificErrorMonitor.shared.getDeviceInfo()
+        let info = sut.getDeviceInfo()
         XCTAssertFalse(info.isEmpty,
                        "Device info must remain accessible after logError with metadata call")
     }
@@ -150,21 +165,21 @@ final class DeviceSpecificErrorMonitorTests: XCTestCase {
         let error = NSError(domain: NSURLErrorDomain, code: NSURLErrorTimedOut, userInfo: nil)
         let url = URL(string: "https://example.com/test")!
 
-        DeviceSpecificErrorMonitor.shared.logNetworkFailure(
+        sut.logNetworkFailure(
             url: url,
             error: error,
             context: "Unit test network failure"
         )
         // Verify the device ID is stable after a network failure log (no state corruption)
-        let deviceID = DeviceSpecificErrorMonitor.shared.getDeviceID()
+        let deviceID = sut.getDeviceID()
         XCTAssertFalse(deviceID.isEmpty,
                        "Device ID must remain non-empty after logNetworkFailure call")
     }
 
     // MARK: - Enhanced Logging Status
 
-    func testIsEnhancedLoggingEnabled_returnsBool() async {
-        let isEnabled = await DeviceSpecificErrorMonitor.shared.isEnhancedLoggingEnabled()
+    func testIsEnhancedLoggingEnabled_returnsBool() {
+        let isEnabled = sut.isEnhancedLoggingEnabled()
         // In test environment without Firebase, should return false
         XCTAssertFalse(isEnabled, "Enhanced logging should be disabled without Firebase")
     }

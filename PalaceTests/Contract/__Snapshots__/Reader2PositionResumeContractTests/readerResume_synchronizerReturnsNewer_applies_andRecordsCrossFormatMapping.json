@@ -1,0 +1,31 @@
+[
+  {
+    "args" : {
+      "bookID" : "contract-reader2-resume-1",
+      "drmDeviceID" : "device-resume-A",
+      "remoteDevice" : "device-resume-OTHER"
+    },
+    "method" : "resumeSamePayload.begin"
+  },
+  {
+    "args" : {
+      "bookID" : "contract-reader2-resume-1",
+      "returnsNil" : "false"
+    },
+    "method" : "registry.location"
+  },
+  {
+    "args" : {
+      "bookID" : "contract-reader2-resume-1",
+      "returnsNil" : "false"
+    },
+    "method" : "writer.load"
+  },
+  {
+    "args" : {
+      "bookID" : "contract-reader2-resume-1",
+      "localUnchanged" : "true"
+    },
+    "method" : "resumeSamePayload.end"
+  }
+]

@@ -48,7 +48,11 @@ struct EPUBSearchView: View {
 
     @ViewBuilder private var searchBar: some View {
         HStack {
-            TextField("\(Strings.Generic.search)...", text: $searchQuery)
+            // PP-4421: explicit prompt with `.secondary` foreground overrides
+            // the default `.placeholderText` (~30% gray) that reads as
+            // disabled. Entered text retains its own .foregroundColor.
+            TextField("\(Strings.Generic.search)...", text: $searchQuery,
+                      prompt: Text("\(Strings.Generic.search)...").foregroundColor(.secondary))
                 .focused($isSearchFieldFocused)
             Button(action: {
                 searchQuery = ""

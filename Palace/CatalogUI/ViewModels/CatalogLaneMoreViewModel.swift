@@ -209,7 +209,7 @@ class CatalogLaneMoreViewModel: ObservableObject {
     // Store original catalog books for restoration after returns
     storeOriginalCatalogBooks(lanes.flatMap { $0.books })
     
-    // Extract facets (including sort facets) from grouped feeds (PP-3629)
+    // Extract facets (including sort facets) from grouped feeds
     facetGroups = CatalogViewModel.extractFacets(from: feedObjc).0
   }
   
@@ -241,8 +241,7 @@ class CatalogLaneMoreViewModel: ObservableObject {
       newLanes.append(CatalogLaneModel(
         title: group.title,
         books: books,
-        moreURL: group.moreURL,
-        isLoading: books.count < 3
+        moreURL: group.moreURL
       ))
     }
     lanes = newLanes

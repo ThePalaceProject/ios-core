@@ -1,0 +1,23 @@
+[
+  {
+    "args" : {
+      "bookID" : "contract-reader2-bookmark-1"
+    },
+    "method" : "bookmarkSave.begin"
+  },
+  {
+    "args" : {
+      "bookID" : "contract-reader2-bookmark-1",
+      "hasAnnotationID" : "false",
+      "href" : "\/chapter1.xhtml"
+    },
+    "method" : "registry.add(bookmark)"
+  },
+  {
+    "args" : {
+      "appendedCount" : "1",
+      "returnedNonNil" : "true"
+    },
+    "method" : "bookmarkSave.end"
+  }
+]

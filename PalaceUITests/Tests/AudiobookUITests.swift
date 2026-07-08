@@ -146,7 +146,10 @@ final class AudiobookUITests: PalaceUITestCase {
 
     // MARK: - Speed Control
 
-    func testPlaybackSpeedButtonCyclesRates() throws {
+    /// Tapping the speed chip on the now-playing screen opens the speed
+    /// bottom sheet (slider + presets). Cycling-on-tap is gone — the sheet
+    /// is the only speed-control surface.
+    func testPlaybackSpeedButton_OpensSpeedSheet() throws {
         try skipIfNoAudiobook()
         XCTExpectFailure("Depends on audiobook availability")
 
@@ -154,17 +157,15 @@ final class AudiobookUITests: PalaceUITestCase {
 
         let speedButton = app.buttons["audiobookPlayer.playbackSpeedButton"]
         waitForElement(speedButton)
-
-        let labelBefore = speedButton.label
         speedButton.tap()
 
-        // After tapping, the speed should cycle to the next value
-        Thread.sleep(forTimeInterval: 0.5)
-        // Speed button label or value should have changed
-        let labelAfter = speedButton.label
-        // Just assert the button is still there; exact cycling depends on implementation
-        XCTAssertTrue(speedButton.exists, "Speed button should remain visible after tap")
-        _ = (labelBefore, labelAfter) // suppress unused warnings
+        // The "Playback Speed" header text only exists inside the sheet, so
+        // its presence is sufficient to prove the sheet opened. A direct
+        // slider query would race with the audiobook progress slider — the
+        // sheet view lives in the PalaceAudiobookToolkit submodule and needs
+        // its own a11y identifier before we can assert the slider here.
+        let sheetHeader = app.staticTexts["Playback Speed"]
+        waitForElement(sheetHeader)
     }
 
     // MARK: - Sleep Timer

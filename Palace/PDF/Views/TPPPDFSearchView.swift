@@ -37,7 +37,11 @@ struct TPPPDFSearchView: View {
                 .padding()
             }
             Divider()
-            TextField(Strings.Generic.search, text: $searchText.onChange(performSearch))
+            // PP-4421: explicit prompt with `.secondary` foreground overrides
+            // the default `.placeholderText` (~30% gray) that reads as
+            // disabled. Entered text retains its own .foregroundColor.
+            TextField(Strings.Generic.search, text: $searchText.onChange(performSearch),
+                      prompt: Text(Strings.Generic.search).foregroundColor(.secondary))
                 .palaceFont(.body)
                 .frame(minHeight: 44)
                 .padding(.horizontal)

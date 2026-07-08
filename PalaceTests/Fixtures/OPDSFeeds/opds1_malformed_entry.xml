@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"
+      xmlns:opds="http://opds-spec.org/2010/catalog">
+
+  <id>https://example.org/testlib/malformed</id>
+  <title>Mixed Valid and Malformed Entries</title>
+  <updated>2024-07-04T12:00:00Z</updated>
+
+  <!-- Valid entry: sibling around the malformed ones -->
+  <entry>
+    <id>urn:uuid:valid-001</id>
+    <title>Valid First</title>
+    <updated>2024-07-04T11:00:00Z</updated>
+    <author>
+      <name>Alpha Author</name>
+    </author>
+    <link href="https://example.org/testlib/works/V1/openaccess.epub" rel="http://opds-spec.org/acquisition/open-access" type="application/epub+zip"/>
+  </entry>
+
+  <!-- Malformed: missing required <id>; parser must skip this entry -->
+  <entry>
+    <title>Missing ID</title>
+    <updated>2024-07-04T11:05:00Z</updated>
+    <author>
+      <name>Ghost Author</name>
+    </author>
+    <link href="https://example.org/testlib/works/M1/openaccess.epub" rel="http://opds-spec.org/acquisition/open-access" type="application/epub+zip"/>
+  </entry>
+
+  <!-- Malformed: missing required <title>; parser must skip this entry -->
+  <entry>
+    <id>urn:uuid:no-title</id>
+    <updated>2024-07-04T11:10:00Z</updated>
+    <author>
+      <name>Titleless</name>
+    </author>
+  </entry>
+
+  <!-- Malformed: missing required <updated>; parser must skip -->
+  <entry>
+    <id>urn:uuid:no-updated</id>
+    <title>Stale</title>
+  </entry>
+
+  <!-- Valid entry following the malformed ones -->
+  <entry>
+    <id>urn:uuid:valid-002</id>
+    <title>Valid Last</title>
+    <updated>2024-07-04T11:15:00Z</updated>
+    <author>
+      <name>Omega Author</name>
+    </author>
+    <link href="https://example.org/testlib/works/V2/openaccess.epub" rel="http://opds-spec.org/acquisition/open-access" type="application/epub+zip"/>
+  </entry>
+
+</feed>

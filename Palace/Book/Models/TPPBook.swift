@@ -40,6 +40,7 @@ let PreviewURLKey = "preview-url"
 let ReportURLKey = "report-url"
 let RevokeURLKey = "revoke-url"
 let SeriesLinkKey = "series-link"
+let SeriesNameKey = "series-name"
 let SubtitleKey = "subtitle"
 let SummaryKey = "summary"
 let TitleKey = "title"
@@ -66,6 +67,12 @@ public class TPPBook: NSObject, ObservableObject {
     @objc var relatedWorksURL: URL?
     @objc var previewLink: TPPOPDSAcquisition?
     @objc var seriesURL: URL?
+
+    /// PP-4463: display label for the series this title belongs to. Sourced from
+    /// the OPDS1 `<Series><link title="…"/>` attribute or the OPDS2
+    /// `metadata.belongsTo.series[].name`. Used by the Book Detail screen's
+    /// SERIES row; combined with `seriesURL` to make the row a tappable link.
+    @objc var seriesName: String?
     @objc var revokeURL: URL?
     @objc var reportURL: URL?
     @objc var timeTrackingURL: URL?
@@ -98,6 +105,14 @@ public class TPPBook: NSObject, ObservableObject {
         defaultBookContentType == .audiobook
     }
 
+    /// PP-4161: True when the book's default acquisition resolves to the
+    /// LibrarySimplified streaming-media MIME. Book Detail routes the
+    /// "Read" action to the streaming reader and MyBooks treats the title
+    /// as no-download (the asset is fetched on demand by the WKWebView).
+    @objc var isStreamingHTML: Bool {
+        defaultBookContentType == .streamingHTML
+    }
+
     @objc var hasDuration: Bool {
         !(bookDuration?.isEmpty ?? true)
     }
@@ -124,6 +139,7 @@ public class TPPBook: NSObject, ObservableObject {
         relatedWorksURL: URL?,
         previewLink: TPPOPDSAcquisition?,
         seriesURL: URL?,
+        seriesName: String? = nil,
         revokeURL: URL?,
         reportURL: URL?,
         timeTrackingURL: URL?,
@@ -152,6 +168,7 @@ public class TPPBook: NSObject, ObservableObject {
         self.relatedWorksURL = relatedWorksURL
         self.previewLink = previewLink
         self.seriesURL = seriesURL
+        self.seriesName = seriesName
         self.revokeURL = revokeURL
         self.reportURL = reportURL
         self.timeTrackingURL = timeTrackingURL
@@ -220,6 +237,7 @@ public class TPPBook: NSObject, ObservableObject {
             relatedWorksURL: entry.relatedWorks?.href,
             previewLink: entry.previewLink,
             seriesURL: entry.seriesLink?.href,
+            seriesName: entry.seriesLink?.title,
             revokeURL: revoke,
             reportURL: report,
             timeTrackingURL: entry.timeTrackingLink?.href,
@@ -325,6 +343,7 @@ public class TPPBook: NSObject, ObservableObject {
             relatedWorksURL: URL(string: dictionary[RelatedURLKey] as? String ?? ""),
             previewLink: (dictionary[PreviewURLKey] as? NSDictionary).flatMap { TPPOPDSAcquisition.acquisition(withDictionary: $0) },
             seriesURL: URL(string: dictionary[SeriesLinkKey] as? String ?? ""),
+            seriesName: dictionary[SeriesNameKey] as? String,
             revokeURL: revokeURL,
             reportURL: reportURL,
             timeTrackingURL: URL(string: dictionary[TimeTrackingURLURLKey] as? String ?? ""),
@@ -357,6 +376,7 @@ public class TPPBook: NSObject, ObservableObject {
             relatedWorksURL: book.relatedWorksURL,
             previewLink: book.previewLink,
             seriesURL: book.seriesURL,
+            seriesName: book.seriesName,
             revokeURL: self.revokeURL,
             reportURL: self.reportURL,
             timeTrackingURL: self.timeTrackingURL,
@@ -410,6 +430,7 @@ public class TPPBook: NSObject, ObservableObject {
             relatedWorksURL: fresh.relatedWorksURL ?? self.relatedWorksURL,
             previewLink: fresh.previewLink ?? self.previewLink,
             seriesURL: fresh.seriesURL ?? self.seriesURL,
+            seriesName: preferNonEmpty(fresh.seriesName, self.seriesName),
             revokeURL: fresh.revokeURL ?? self.revokeURL,
             reportURL: fresh.reportURL ?? self.reportURL,
             timeTrackingURL: fresh.timeTrackingURL ?? self.timeTrackingURL,
@@ -452,6 +473,7 @@ public class TPPBook: NSObject, ObservableObject {
             ReportURLKey: reportURL?.absoluteString as Any,
             RevokeURLKey: revokeURL?.absoluteString as Any,
             SeriesLinkKey: seriesURL?.absoluteString as Any,
+            SeriesNameKey: seriesName as Any,
             PreviewURLKey: previewLink?.dictionaryRepresentation() as Any,
             SubtitleKey: subtitle as Any,
             SummaryKey: summary as Any,
@@ -490,13 +512,45 @@ public class TPPBook: NSObject, ObservableObject {
     }
 
     @objc var defaultAcquisition: TPPOPDSAcquisition? {
-        acquisitions.first(where: {
-            !TPPOPDSAcquisitionPath.supportedAcquisitionPaths(
-                forAllowedTypes: TPPOPDSAcquisitionPath.supportedTypes(),
-                allowedRelations: TPPOPDSAcquisitionRelationSetDefaultAcquisition,
-                acquisitions: [$0]
-            ).isEmpty
-        })
+        let supported = acquisitions.filter { Self.isSupportedDefaultAcquisition($0) }
+        // Prefer a downloadable format over streaming-HTML when the same work is
+        // offered as separate open-access links. Palace Bookshelf OPDS1 entries
+        // list streaming-media, PDF and EPUB as distinct `open-access` links,
+        // often with streaming-media FIRST. PP-4161 made streaming-media a
+        // *supported* type, so the previous `acquisitions.first(where:supported)`
+        // returned the streaming link → `defaultBookContentType` became
+        // `.streamingHTML` → the book opened in the WKWebView reader and never
+        // downloaded the EPUB/PDF (the reported regression). Streaming-media is
+        // chosen only when no downloadable format is offered.
+        let preference: [TPPBookContentType] = [.epub, .pdf, .audiobook, .streamingHTML]
+        for candidate in preference {
+            if let match = supported.first(where: { Self.defaultAcquisitionContentType($0) == candidate }) {
+                return match
+            }
+        }
+        return supported.first
+    }
+
+    private static func isSupportedDefaultAcquisition(_ acquisition: TPPOPDSAcquisition) -> Bool {
+        !TPPOPDSAcquisitionPath.supportedAcquisitionPaths(
+            forAllowedTypes: TPPOPDSAcquisitionPath.supportedTypes(),
+            allowedRelations: TPPOPDSAcquisitionRelationSetDefaultAcquisition,
+            acquisitions: [acquisition]
+        ).isEmpty
+    }
+
+    /// Content type of a single acquisition, resolved with the default-acquisition
+    /// relation set and the same downloadable-over-streaming preference used by
+    /// `defaultBookContentType`. Used to rank candidate acquisitions.
+    private static func defaultAcquisitionContentType(_ acquisition: TPPOPDSAcquisition) -> TPPBookContentType {
+        let paths = TPPOPDSAcquisitionPath.supportedAcquisitionPaths(
+            forAllowedTypes: TPPOPDSAcquisitionPath.supportedTypes(),
+            allowedRelations: TPPOPDSAcquisitionRelationSetDefaultAcquisition,
+            acquisitions: [acquisition]
+        )
+        let types = paths.compactMap { TPPBookContentType.from(mimeType: $0.types.last) }
+        let preference: [TPPBookContentType] = [.epub, .pdf, .audiobook, .streamingHTML]
+        return preference.first(where: { types.contains($0) }) ?? .unsupported
     }
 
     @objc var sampleAcquisition: TPPOPDSAcquisition? {
@@ -627,7 +681,21 @@ public class TPPBook: NSObject, ObservableObject {
             TPPBookContentType.from(mimeType: path.types.last)
         }
 
-        return contentTypes.first(where: { $0 != .unsupported }) ?? .unsupported
+        // Prefer a downloadable format over streaming-HTML, independent of OPDS
+        // feed order. PP-4161 added `.streamingHTML` as a supported acquisition
+        // type; `supportedAcquisitionPaths` preserves the feed's
+        // indirect-acquisition order, so a Palace Bookshelf open-access title
+        // that advertises a "read online" streaming-HTML acquisition BEFORE its
+        // `epub+zip` would otherwise be classified as `.streamingHTML` and open
+        // in the WKWebView shell instead of the EPUB reader. Streaming-HTML is
+        // only the correct choice when no downloadable format is offered, so it
+        // ranks last. (Previously this returned the first non-unsupported type,
+        // which was feed-order-dependent.)
+        let preference: [TPPBookContentType] = [.epub, .pdf, .audiobook, .streamingHTML]
+        for candidate in preference where contentTypes.contains(candidate) {
+            return candidate
+        }
+        return .unsupported
     }
 
     /// PP-3649: Whether this book requires Adobe DRM activation before download.
@@ -641,6 +709,25 @@ public class TPPBook: NSObject, ObservableObject {
         )
         return paths.contains { path in
             path.types.contains(ContentTypeAdobeAdept)
+        }
+    }
+
+    /// True when any DRM scheme protects this book (Adobe ACS or Readium LCP,
+    /// across EPUB/PDF/audiobook content). Readers use this to gate the system
+    /// text-selection edit menu — DRM titles do not surface Copy/Cut/Paste/etc.
+    /// Walks the full nested acquisition chain so license types two levels
+    /// deep are still detected (cf. PP-4407 acquisition-chain regression).
+    @objc var isDRMProtected: Bool {
+        guard let acquisition = defaultAcquisition else { return false }
+        let paths = TPPOPDSAcquisitionPath.supportedAcquisitionPaths(
+            forAllowedTypes: TPPOPDSAcquisitionPath.supportedTypes(),
+            allowedRelations: NYPLOPDSAcquisitionRelationSetAll,
+            acquisitions: [acquisition]
+        )
+        return paths.contains { path in
+            path.types.contains(ContentTypeAdobeAdept) ||
+            path.types.contains(ContentTypeReadiumLCP) ||
+            path.types.contains(ContentTypeAudiobookLCP)
         }
     }
 }

@@ -1,0 +1,70 @@
+swarm_id: swarm_5c8ddbd5
+task: Audiobook Vendor Adapter Extraction (Phase 1 of audiobook systemic overhaul)
+created_at: 2026-05-21
+status: complete
+pr: https://github.com/ThePalaceProject/ios-core/pull/979
+forgeos_changeset: cs_ff3b8638
+evidence_id: ev_adf65f58
+base_ref: origin/develop
+base_sha: ae1fb8aec
+forgeos_project: proj_87884c17
+companion_adr: docs/architecture/audiobook-systemic-overhaul.md
+
+modules:
+  - name: A-AdapterProtocol
+    files_scope:
+      - "Palace/Audiobooks/Vendors/AudiobookVendorAdapter.swift (new)"
+      - "PalaceTests/Audiobook/Vendors/AudiobookVendorAdapterTests.swift (new)"
+    contract_path: .forgeos/swarms/swarm_5c8ddbd5/contracts/A-AdapterProtocol.md
+    blocks: [B-NetworkAdapters, C-LCPAdapter, D-LoaderDispatch]
+    depends_on: []
+
+  - name: B-NetworkAdapters
+    files_scope:
+      - "Palace/Audiobooks/Vendors/OpenAccessAdapter.swift (new)"
+      - "Palace/Audiobooks/Vendors/BearerTokenAdapter.swift (new)"
+      - "Palace/Audiobooks/Vendors/LocalFileAdapter.swift (new)"
+      - "PalaceTests/Audiobook/Vendors/OpenAccessAdapterTests.swift (new)"
+      - "PalaceTests/Audiobook/Vendors/BearerTokenAdapterTests.swift (new)"
+      - "PalaceTests/Audiobook/Vendors/LocalFileAdapterTests.swift (new)"
+    contract_path: .forgeos/swarms/swarm_5c8ddbd5/contracts/B-NetworkAdapters.md
+    depends_on: [A-AdapterProtocol]
+
+  - name: C-LCPAdapter
+    files_scope:
+      - "Palace/Audiobooks/LCP/LCPAudiobooks.swift (modified — add hasLCPAcquisition + recursive helper; preserve #if LCP gate; do NOT remove canOpenBook)"
+      - "Palace/Audiobooks/Vendors/LCPAdapter.swift (new, #if LCP-gated)"
+      - "PalaceTests/Audiobook/Vendors/LCPAdapterTests.swift (new)"
+      - "PalaceTests/Audiobook/LCPAcquisitionPredicateTests.swift (new)"
+    contract_path: .forgeos/swarms/swarm_5c8ddbd5/contracts/C-LCPAdapter.md
+    depends_on: [A-AdapterProtocol]
+
+  - name: D-LoaderDispatch
+    files_scope:
+      - "Palace/Audiobooks/AudiobookLoader.swift (modified — two-stage rewrite: consolidate then route through adapter chain)"
+      - "PalaceTests/Audiobook/AudiobookLoaderDispatchTests.swift (new)"
+      - "PalaceTests/Audiobook/AudiobookLoaderOPDSShapeMatrixTests.swift (new)"
+    contract_path: .forgeos/swarms/swarm_5c8ddbd5/contracts/D-LoaderDispatch.md
+    depends_on: [A-AdapterProtocol, B-NetworkAdapters, C-LCPAdapter]
+
+don't_touch:
+  - PalaceTests/Audiobook/AudiobookPositionPolicyTests.swift
+  - PalaceTests/Audiobook/AudiobookSessionManagerTests.swift
+  - PalaceTests/Reader2/TPPLastReadPositionPosterTests.swift
+  - Palace/Audiobooks/AudiobookSessionManager.swift
+  - Palace/Audiobooks/PlaybackBootstrapper.swift
+  - Palace/Audiobooks/Tracker/
+  - Palace/CarPlay/
+  - ios-audiobooktoolkit/
+  - Palace/Audiobooks/AudioBookVendors+Extensions.swift
+  - Palace/Audiobooks/AudioBookVendorsHelper.swift
+  - Palace/MyBooks/MyBooksDownloadCenter.swift
+
+acceptance_gates:
+  - "scripts/verify-pr.sh --quick passes"
+  - "palace_mutate.py --diff-only kill rate >=100% on new adapter dispatch surface"
+  - "AudiobookLoader.swift LOC reduction >=30% vs ae1fb8aec"
+  - "OPDS shape matrix includes explicit PP-4407 fixture + property-check-regression assertion"
+  - "All existing AudiobookLoader / Predicate / FinalizeBuild tests continue to pass"
+  - "mcp__forgeos__forge_check_gates: architect + qa_test gates satisfied"
+  - "No edits in don't_touch list"

@@ -1,3 +1,14 @@
+---
+name: regression-qa-quickstart
+type: evolving
+status: active
+created: 2026-04-29
+last_refresh: 2026-04-29
+freshness_window: 365d
+owners: [general]
+description: QA Quick Start — Regression Testing with Claude Code
+---
+
 # QA Quick Start — Regression Testing with Claude Code
 
 ## Prerequisites

@@ -11,6 +11,77 @@ import PalaceCatalog
 
 final class TPPAlertUtilsTests: XCTestCase {
 
+    // MARK: - Hermetic teardown for alert-presentation tests
+    //
+    // Several tests below present a REAL UIAlertController on a live, key
+    // UIWindow to exercise the presentation/retry path. Their happy-path
+    // cleanup lives in the test body, so a failure or timeout BEFORE that
+    // cleanup — or a `presentFromViewControllerOrNil` retry block
+    // (DispatchQueue.main.asyncAfter, exponential backoff up to ~1.6s) firing
+    // AFTER `waitForExpectations` returns — can leave an alert presented on a
+    // key window. That window then stays reachable via the SHARED
+    // `(UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController()`
+    // resolution, so the NEXT test's nil-presenter path finds a leftover
+    // UIAlertController and exhausts its 3 retries ("top controller is still a
+    // UIAlertController"). This is a test-isolation leak, not a production bug.
+    //
+    // tearDown guarantees the shared UIKit hierarchy is clean between tests
+    // regardless of how a test exited: it drains pending retry blocks, then
+    // synchronously dismisses any presented controller and releases the window
+    // (resign key + drop from the app's window list) so nothing leaks forward.
+    private var presentationWindow: UIWindow?
+    private var presentationRootVC: UIViewController?
+
+    /// Track a window/root created by a presentation test so `tearDown` can
+    /// guarantee its cleanup even if the test body exits early.
+    private func trackForHermeticTeardown(_ window: UIWindow, _ rootVC: UIViewController) {
+        presentationWindow = window
+        presentationRootVC = rootVC
+    }
+
+    /// Spin the main run loop so any scheduled `asyncAfter` retry blocks fire
+    /// now (against the about-to-be-released hierarchy) instead of bleeding
+    /// into the next test.
+    private func drainMainRunLoop(_ seconds: TimeInterval) {
+        RunLoop.current.run(until: Date().addingTimeInterval(seconds))
+    }
+
+    override func tearDown() {
+        // Only the presentation tests register a window. Every other test in
+        // this class is a pure unit test with nothing to tear down — skip the
+        // run-loop pump and dismissal entirely so they stay fast.
+        if presentationWindow != nil {
+            // 1. Pump the main run loop once so any work the presentation
+            //    scheduled settles before we tear the hierarchy down.
+            drainMainRunLoop(0.05)
+
+            // 2. Synchronously dismiss anything still presented on the tracked
+            //    root (covers tests that exited before their body cleanup).
+            if presentationRootVC?.presentedViewController != nil {
+                let dismissed = expectation(description: "tearDown: dismiss leaked alert")
+                presentationRootVC?.dismiss(animated: false) { dismissed.fulfill() }
+                wait(for: [dismissed], timeout: 2.0)
+            }
+
+            // 3. Release the window: relinquish key status and drop it from the
+            //    app's window list so a later test can't resolve it as the top
+            //    VC via TPPAppDelegate.topViewController(). This is the load-
+            //    bearing step — a released test window can never leak forward.
+            presentationWindow?.isHidden = true
+            presentationWindow?.rootViewController = nil
+            presentationWindow?.resignKey()
+            if #available(iOS 13.0, *) { presentationWindow?.windowScene = nil }
+            presentationRootVC = nil
+            presentationWindow = nil
+
+            // 4. Final pump so a block scheduled during dismissal resolves
+            //    against the now-empty hierarchy, not the next test's.
+            drainMainRunLoop(0.05)
+        }
+
+        super.tearDown()
+    }
+
     // MARK: - Basic Alert Creation
 
     func testAlert_titleAndMessage_createsAlert() {
@@ -263,6 +334,7 @@ final class TPPAlertUtilsTests: XCTestCase {
         let rootVC = UIViewController()
         window.rootViewController = rootVC
         window.makeKeyAndVisible()
+        trackForHermeticTeardown(window, rootVC)
 
         // Present the first alert (simulating first borrow failure)
         let firstAlert = TPPAlertUtils.alert(title: "Error", message: "No licenses available")
@@ -320,6 +392,7 @@ final class TPPAlertUtilsTests: XCTestCase {
         let rootVC = UIViewController()
         window.rootViewController = rootVC
         window.makeKeyAndVisible()
+        trackForHermeticTeardown(window, rootVC)
 
         // Present first alert
         let firstAlert = TPPAlertUtils.alert(title: "Error", message: "First error")
@@ -345,8 +418,10 @@ final class TPPAlertUtilsTests: XCTestCase {
             }
         )
 
-        // Dismiss the first alert after a brief delay, allowing retry to succeed
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+        // Dismiss the first alert after a brief delay, allowing retry to succeed.
+        // FLAKE-002-OK: closure dismisses the alert (real production action), not a `.fulfill()` —
+        //               the linter regex spans across the unrelated dismissExpectation.fulfill below.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { // FLAKE-002-OK
             rootVC.dismiss(animated: false, completion: nil)
         }
 
@@ -371,6 +446,7 @@ final class TPPAlertUtilsTests: XCTestCase {
         let rootVC = UIViewController()
         window.rootViewController = rootVC
         window.makeKeyAndVisible()
+        trackForHermeticTeardown(window, rootVC)
 
         let blockingAlert = TPPAlertUtils.alert(title: "Blocking", message: "I stay forever")
         let blockingPresented = expectation(description: "Blocking alert presented")
@@ -665,6 +741,7 @@ final class TPPAlertUtilsTests: XCTestCase {
         let rootVC = UIViewController()
         window.rootViewController = rootVC
         window.makeKeyAndVisible()
+        trackForHermeticTeardown(window, rootVC)
 
         let alert = TPPAlertUtils.alert(title: "Test", message: "Test Message")
 

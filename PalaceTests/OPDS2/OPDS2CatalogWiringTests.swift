@@ -14,6 +14,10 @@ import PalaceCatalog
 @MainActor
 final class OPDS2CatalogWiringTests: XCTestCase {
 
+    override func tearDown() {
+        super.tearDown()
+    }
+
     // MARK: - OPDSParser Format Detection
 
     func testParser_detectsOPDS2JSON() throws {
@@ -104,7 +108,7 @@ final class OPDS2CatalogWiringTests: XCTestCase {
         let opds2 = makeGroupedFeed(title: "Grouped Library", groupCount: 2, pubsPerGroup: 3)
         let feed = CatalogFeed(opds2Feed: opds2)
 
-        let mapped = CatalogViewModel.mapFeed(feed, bookRegistry: AppContainer.production().bookRegistry)
+        let mapped = CatalogViewModel.mapFeed(feed, bookRegistry: makeTestAppContainer().bookRegistry)
 
         XCTAssertEqual(mapped.title, "Grouped Library")
         XCTAssertEqual(mapped.lanes.count, 2)
@@ -117,7 +121,7 @@ final class OPDS2CatalogWiringTests: XCTestCase {
         let opds2 = makeGroupedFeed(title: "Test", groupTitles: ["New Releases", "Popular"])
         let feed = CatalogFeed(opds2Feed: opds2)
 
-        let mapped = CatalogViewModel.mapFeed(feed, bookRegistry: AppContainer.production().bookRegistry)
+        let mapped = CatalogViewModel.mapFeed(feed, bookRegistry: makeTestAppContainer().bookRegistry)
 
         XCTAssertEqual(mapped.lanes[0].title, "New Releases")
         XCTAssertEqual(mapped.lanes[1].title, "Popular")
@@ -127,7 +131,7 @@ final class OPDS2CatalogWiringTests: XCTestCase {
         let opds2 = makeGroupedFeed(title: "Test", groupCount: 1, pubsPerGroup: 1)
         let feed = CatalogFeed(opds2Feed: opds2)
 
-        let mapped = CatalogViewModel.mapFeed(feed, bookRegistry: AppContainer.production().bookRegistry)
+        let mapped = CatalogViewModel.mapFeed(feed, bookRegistry: makeTestAppContainer().bookRegistry)
 
         XCTAssertNotNil(mapped.lanes.first?.moreURL)
         // The moreURL must be a valid absolute URL
@@ -142,7 +146,7 @@ final class OPDS2CatalogWiringTests: XCTestCase {
         let opds2 = makePublicationFeed(title: "Search Results", pubCount: 5)
         let feed = CatalogFeed(opds2Feed: opds2)
 
-        let mapped = CatalogViewModel.mapFeed(feed, bookRegistry: AppContainer.production().bookRegistry)
+        let mapped = CatalogViewModel.mapFeed(feed, bookRegistry: makeTestAppContainer().bookRegistry)
 
         XCTAssertTrue(mapped.lanes.isEmpty)
         XCTAssertEqual(mapped.ungroupedBooks.count, 5)
@@ -152,7 +156,7 @@ final class OPDS2CatalogWiringTests: XCTestCase {
         let opds2 = makePublicationFeed(title: "Test", pubCount: 1)
         let feed = CatalogFeed(opds2Feed: opds2)
 
-        let mapped = CatalogViewModel.mapFeed(feed, bookRegistry: AppContainer.production().bookRegistry)
+        let mapped = CatalogViewModel.mapFeed(feed, bookRegistry: makeTestAppContainer().bookRegistry)
         let book = mapped.ungroupedBooks.first
 
         XCTAssertNotNil(book)
@@ -172,7 +176,7 @@ final class OPDS2CatalogWiringTests: XCTestCase {
         )
         let feed = CatalogFeed(opds2Feed: opds2)
 
-        let mapped = CatalogViewModel.mapFeed(feed, bookRegistry: AppContainer.production().bookRegistry)
+        let mapped = CatalogViewModel.mapFeed(feed, bookRegistry: makeTestAppContainer().bookRegistry)
 
         XCTAssertTrue(mapped.lanes.isEmpty)
         XCTAssertTrue(mapped.ungroupedBooks.isEmpty)
@@ -195,7 +199,7 @@ final class OPDS2CatalogWiringTests: XCTestCase {
             facets: facets
         )
         let feed = CatalogFeed(opds2Feed: opds2)
-        let mapped = CatalogViewModel.mapFeed(feed, bookRegistry: AppContainer.production().bookRegistry)
+        let mapped = CatalogViewModel.mapFeed(feed, bookRegistry: makeTestAppContainer().bookRegistry)
 
         XCTAssertEqual(mapped.facetGroups.count, 1)
         XCTAssertEqual(mapped.facetGroups.first?.name, "Sort By")
@@ -296,7 +300,7 @@ final class OPDS2CatalogWiringTests: XCTestCase {
 
         XCTAssertTrue(feed.isOPDS2)
 
-        let mapped = CatalogViewModel.mapFeed(feed, bookRegistry: AppContainer.production().bookRegistry)
+        let mapped = CatalogViewModel.mapFeed(feed, bookRegistry: makeTestAppContainer().bookRegistry)
 
         XCTAssertEqual(mapped.title, "Palace Test Library")
         XCTAssertEqual(mapped.lanes.count, 3)
@@ -310,6 +314,60 @@ final class OPDS2CatalogWiringTests: XCTestCase {
         // Verify facets
         XCTAssertEqual(mapped.facetGroups.count, 1)
         XCTAssertEqual(mapped.facetGroups.first?.name, "Sort By")
+    }
+
+    // MARK: - PP-4553: low-title-count lanes must render their covers
+
+    // A lane built from a fully-parsed grouped feed has a FINAL book count —
+    // it is not "loading." Deriving `isLoading` from `books.count < 3` left
+    // 1- and 2-title lanes permanently marked loading, so CatalogLaneRowView
+    // rendered the gray skeleton scroller (`if isLoading || books.isEmpty`)
+    // instead of the actual cover. The header + "More…" still drew, so a
+    // single-title lane looked empty. Genuine streaming is signalled
+    // separately by `isOptimisticLoading` at the view layer.
+
+    func testMapFeed_opds2SingleTitleLane_isNotLoading_soCoverRenders() throws {
+        let opds2 = makeGroupedFeed(title: "One Book Library", groupCount: 1, pubsPerGroup: 1)
+        let feed = CatalogFeed(opds2Feed: opds2)
+
+        let mapped = CatalogViewModel.mapFeed(feed, bookRegistry: makeTestAppContainer().bookRegistry)
+
+        let lane = try XCTUnwrap(mapped.lanes.first, "A 1-title group must still produce a lane")
+        XCTAssertEqual(lane.books.count, 1, "The single title must survive lane assembly")
+        XCTAssertFalse(lane.isLoading,
+                       "A fully-built 1-title lane must not be flagged loading; otherwise CatalogLaneRowView shows the skeleton scroller and the cover never renders (PP-4553)")
+    }
+
+    func testMapFeed_opds2TwoTitleLane_isNotLoading() throws {
+        let opds2 = makeGroupedFeed(title: "Two Book Library", groupCount: 1, pubsPerGroup: 2)
+        let feed = CatalogFeed(opds2Feed: opds2)
+
+        let mapped = CatalogViewModel.mapFeed(feed, bookRegistry: makeTestAppContainer().bookRegistry)
+
+        let lane = try XCTUnwrap(mapped.lanes.first)
+        XCTAssertEqual(lane.books.count, 2)
+        XCTAssertFalse(lane.isLoading,
+                       "A fully-built 2-title lane must not be stuck in the loading skeleton either (PP-4553)")
+    }
+
+    func testMapFeed_opds2MultiTitleLane_isNotLoading_unchanged() throws {
+        let opds2 = makeGroupedFeed(title: "Full Library", groupCount: 1, pubsPerGroup: 4)
+        let feed = CatalogFeed(opds2Feed: opds2)
+
+        let mapped = CatalogViewModel.mapFeed(feed, bookRegistry: makeTestAppContainer().bookRegistry)
+
+        let lane = try XCTUnwrap(mapped.lanes.first)
+        XCTAssertEqual(lane.books.count, 4)
+        XCTAssertFalse(lane.isLoading, "Multi-title lanes were already correct and must remain not-loading")
+    }
+
+    func testMapFeed_opds2ZeroTitleGroup_producesNoLane() throws {
+        let opds2 = makeGroupedFeed(title: "Empty Group Library", groupCount: 1, pubsPerGroup: 0)
+        let feed = CatalogFeed(opds2Feed: opds2)
+
+        let mapped = CatalogViewModel.mapFeed(feed, bookRegistry: makeTestAppContainer().bookRegistry)
+
+        XCTAssertTrue(mapped.lanes.isEmpty, "A group with zero books must produce no lane (still hidden)")
     }
 
     // MARK: - Helpers

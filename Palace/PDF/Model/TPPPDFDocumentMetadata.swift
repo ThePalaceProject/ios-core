@@ -9,6 +9,7 @@
 import Foundation
 import Combine
 import PalaceLogging
+import PalaceReadingPosition
 
 /// PDF Document metadata
 ///
@@ -17,6 +18,8 @@ import PalaceLogging
     private let rendererString = "TPPPDFReader"
     let book: TPPBook
     private let bookRegistry: TPPBookRegistryProvider
+    private let positionWriter: PositionWriter
+    private let deviceID: String
     var bookIdentifier: String { book.identifier }
 
     /// Page numbers for boomarks.
@@ -60,9 +63,13 @@ import PalaceLogging
     ///
     /// This function gets data from `TPPBookRegistry`,
     /// `bookIdentifier` must be present in the registry, otherwise the app crashes..
-    init(with book: TPPBook, bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry) {
+    init(with book: TPPBook,
+         bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry,
+         positionWriter: PositionWriter? = nil) {
         self.book = book
         self.bookRegistry = bookRegistry
+        self.positionWriter = positionWriter ?? EPUBPositionWriterFactory.make(for: book)
+        self.deviceID = AnnotationDevice.currentID()
         currentPage = bookRegistry.location(forIdentifier: book.identifier)?.pageNumber ?? 0
         bookRegistry.setState(.used, for: book.identifier)
         super.init()
@@ -92,7 +99,16 @@ import PalaceLogging
         }
         bookRegistry.setLocation(location, forIdentifier: self.bookIdentifier)
         if canSync {
-            TPPAnnotations.postReadingPosition(forBook: bookIdentifier, selectorValue: bookmarkSelector, motivation: .readingProgress)
+            let snapshot = PositionSnapshot(
+                bookID: bookIdentifier,
+                format: .pdfPage,
+                payload: Data(bookmarkSelector.utf8),
+                timestamp: Date(),
+                device: deviceID
+            )
+            Task { [positionWriter] in
+                _ = try? await positionWriter.save(snapshot)
+            }
         }
     }
 
@@ -118,6 +134,55 @@ import PalaceLogging
             return
         }
         currentPage = remotePage
+        // Clear any prior Stay decision so the next genuinely-new
+        // remote page surfaces a prompt again.
+        Self.clearDeclinedRemotePage(forBookIdentifier: bookIdentifier)
+    }
+
+    /// Records that the user chose Stay for the current remote page,
+    /// so subsequent opens with the SAME remote page won't re-prompt.
+    /// If the server later advances to a different page (i.e., real
+    /// new progress from another device), the prompt fires again.
+    func dismissRemotePageSync() {
+        guard let remotePage = remotePage else { return }
+        Self.storeDeclinedRemotePage(remotePage, forBookIdentifier: bookIdentifier)
+    }
+
+    /// Whether the sync-position prompt should fire for the current
+    /// `(currentPage, remotePage)` combination. Suppresses prompts
+    /// when the values match, when there's no remote position, or
+    /// when the user has previously chosen Stay for this remote-page
+    /// value on this book.
+    func shouldPromptRemotePageSync() -> Bool {
+        guard let remotePage = remotePage else { return false }
+        if remotePage == currentPage { return false }
+        if Self.declinedRemotePage(forBookIdentifier: bookIdentifier) == remotePage { return false }
+        return true
+    }
+
+    // MARK: - Decline persistence
+    //
+    // Stored in UserDefaults keyed by book identifier. The value is the
+    // remote-page number the user explicitly chose NOT to sync to. We
+    // only suppress the prompt if the CURRENT remote page matches —
+    // if the server later moves to a different page (e.g., the user
+    // read further on another device), the new value surfaces the
+    // prompt again.
+
+    private static let declinedRemotePagePrefix = "TPPPDFDocumentMetadata.declinedRemotePage."
+
+    private static func storeDeclinedRemotePage(_ page: Int, forBookIdentifier identifier: String) {
+        UserDefaults.standard.set(page, forKey: declinedRemotePagePrefix + identifier)
+    }
+
+    private static func declinedRemotePage(forBookIdentifier identifier: String) -> Int? {
+        let key = declinedRemotePagePrefix + identifier
+        guard UserDefaults.standard.object(forKey: key) != nil else { return nil }
+        return UserDefaults.standard.integer(forKey: key)
+    }
+
+    private static func clearDeclinedRemotePage(forBookIdentifier identifier: String) {
+        UserDefaults.standard.removeObject(forKey: declinedRemotePagePrefix + identifier)
     }
 
     /// Fetch bookmarks from the server.

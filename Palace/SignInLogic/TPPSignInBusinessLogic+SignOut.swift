@@ -51,6 +51,33 @@ extension TPPSignInBusinessLogic {
         userAccount.signInGeneration += 1
     }
 
+    // MARK: - Test seams (§10.4)
+    //
+    // The race-condition guard uses `objc_setAssociatedObject` /
+    // `objc_getAssociatedObject` to attach `signOutSnapshot` and
+    // `isSignOutInProgress` to the `TPPSignInBusinessLogic` instance.
+    // That keeps the production surface clean (no stored properties on
+    // an extension) but makes the snapshot value hard to observe from a
+    // test across the race window. Tests that want to assert the
+    // generation snapshot directly can read it via the `#if DEBUG`
+    // accessors below.
+    #if DEBUG
+    /// The `signInGeneration` captured at the start of the current
+    /// `performLogOut()` call. Returns -1 if no sign-out has run yet.
+    /// Test-only — production code reads the associated-object slot
+    /// directly via `signOutSnapshot`.
+    @objc var signOutSnapshotForTests: Int {
+        signOutSnapshot
+    }
+
+    /// Whether a sign-out is currently in flight. Useful for verifying
+    /// the re-entrancy guard from a test without scheduling a deferred
+    /// DRM callback. Test-only.
+    @objc var isSignOutInProgressForTests: Bool {
+        isSignOutInProgress
+    }
+    #endif
+
     /// Main entry point for logging a user out.
     ///
     /// - Important: Requires to be called from the main thread.

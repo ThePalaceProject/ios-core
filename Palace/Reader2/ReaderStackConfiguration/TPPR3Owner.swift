@@ -28,7 +28,6 @@ import PalaceLogging
         super.init()
         libraryService = LibraryService()
         readerModule = ReaderModule(delegate: self,
-                                    resourcesServer: libraryService.httpServer,
                                     bookRegistry: bookRegistry)
 
         ReadiumEnableLog(withMinimumSeverityLevel: .debug)

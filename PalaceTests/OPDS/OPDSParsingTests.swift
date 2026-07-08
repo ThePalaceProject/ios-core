@@ -206,9 +206,9 @@ final class OPDSParsingTests: XCTestCase {
             <id>urn:uuid:series-001</id>
             <title>Book One of the Series</title>
             <updated>2024-01-20T08:00:00Z</updated>
-            <schema:Series>
+            <schema:series name="The Test Series">
                 <link href="http://example.org/series/test-series" rel="series" title="The Test Series" schema:position="1"/>
-            </schema:Series>
+            </schema:series>
             <link href="http://example.org/entry" rel="alternate" type="application/atom+xml"/>
             <link href="http://example.org/acquire" rel="http://opds-spec.org/acquisition/open-access" type="application/epub+zip"/>
         </entry>
@@ -1189,6 +1189,100 @@ final class OPDSParsingTests: XCTestCase {
         }
 
         XCTAssertNotNil(entry.previewLink, "HTML preview should be accepted for non-Marketplace providers")
+    }
+
+    // MARK: - Series Metadata (PP-4463)
+
+    /// PP-4463: when the OPDS 1.x feed serves `<schema:series><link/></schema:series>`,
+    /// the entry's `seriesLink` must surface both the href and the title.
+    /// TPPBook downstream pulls `.title` into `seriesName` and `.href` into
+    /// `seriesURL`; the Book Detail SERIES row keys off both.
+    ///
+    /// Fixture mirrors the real Palace feed shape: a lowercase `schema:series`
+    /// element (local name `series` after namespace processing) wrapping a
+    /// `rel="series"` link. The earlier capital-`Series` fixture never matched
+    /// the live feed casing, so it masked the parser's case-sensitive lookup.
+    func testSeriesLinkParsedFromEntry() {
+        let entryWithSeries = """
+            <entry xmlns="http://www.w3.org/2005/Atom"
+                   xmlns:schema="http://schema.org/">
+                <id>urn:uuid:series-001</id>
+                <title>Foundation: Book 1</title>
+                <updated>2024-01-20T08:00:00Z</updated>
+                <schema:series name="Foundation">
+                    <link href="http://example.org/series/foundation" rel="series" title="Foundation"/>
+                </schema:series>
+            </entry>
+            """
+
+        guard let data = entryWithSeries.data(using: .utf8),
+              let xml = TPPXML(data: data),
+              let entry = TPPOPDSEntry(xml: xml) else {
+            XCTFail("Failed to create entry from series fixture")
+            return
+        }
+
+        XCTAssertEqual(entry.seriesLink?.title, "Foundation",
+                       "TPPOPDSEntry must surface the Series link's title attribute — the SERIES row label")
+        XCTAssertEqual(entry.seriesLink?.href.absoluteString,
+                       "http://example.org/series/foundation",
+                       "TPPOPDSEntry must surface the Series link's href — the SERIES row navigation destination")
+    }
+
+    /// End-to-end OPDS1 → TPPBook conversion: the series row's two inputs
+    /// (`seriesName`, `seriesURL`) reach the model from the real-feed
+    /// `<schema:series name="…"><link rel="series" title="…"/></schema:series>`.
+    func testTPPBookFromEntry_populatesSeriesNameAndURLFromSeriesLink() {
+        let entryWithSeries = """
+            <entry xmlns="http://www.w3.org/2005/Atom"
+                   xmlns:schema="http://schema.org/">
+                <id>urn:uuid:series-book-001</id>
+                <title>Foundation: Book 1</title>
+                <updated>2024-01-20T08:00:00Z</updated>
+                <link href="http://example.org/borrow" type="application/epub+zip" rel="http://opds-spec.org/acquisition/borrow"/>
+                <schema:series name="Foundation">
+                    <link href="http://example.org/series/foundation" rel="series" title="Foundation"/>
+                </schema:series>
+            </entry>
+            """
+
+        guard let data = entryWithSeries.data(using: .utf8),
+              let xml = TPPXML(data: data),
+              let entry = TPPOPDSEntry(xml: xml),
+              let book = TPPBook(entry: entry) else {
+            XCTFail("Failed to convert series entry to TPPBook")
+            return
+        }
+
+        XCTAssertEqual(book.seriesName, "Foundation",
+                       "TPPBook(entry:) must map seriesLink.title to seriesName")
+        XCTAssertEqual(book.seriesURL?.absoluteString,
+                       "http://example.org/series/foundation",
+                       "TPPBook(entry:) must map seriesLink.href to seriesURL")
+    }
+
+    func testTPPBookFromEntry_seriesNameAndURLNilWhenNoSeriesElement() {
+        let entryWithoutSeries = """
+            <entry xmlns="http://www.w3.org/2005/Atom">
+                <id>urn:uuid:no-series-001</id>
+                <title>Standalone Novel</title>
+                <updated>2024-01-20T08:00:00Z</updated>
+                <link href="http://example.org/borrow" type="application/epub+zip" rel="http://opds-spec.org/acquisition/borrow"/>
+            </entry>
+            """
+
+        guard let data = entryWithoutSeries.data(using: .utf8),
+              let xml = TPPXML(data: data),
+              let entry = TPPOPDSEntry(xml: xml),
+              let book = TPPBook(entry: entry) else {
+            XCTFail("Failed to convert no-series entry to TPPBook")
+            return
+        }
+
+        XCTAssertNil(book.seriesName,
+                     "Books with no <Series> element must have seriesName == nil — guards a mutant that defaults to empty string")
+        XCTAssertNil(book.seriesURL,
+                     "Books with no <Series> element must have seriesURL == nil")
     }
 
     // MARK: - HTML Entity Decoding Test

@@ -2,7 +2,7 @@
 //  BackupExclusionMigration.swift
 //  The Palace Project
 //
-//  PP-4179 — one-shot upgrade pass that walks Application Support and
+// one-shot upgrade pass that walks Application Support and
 //  Documents on first 3.1.0 launch and flags every existing entry as
 //  excluded from iCloud backup. Forward-fix at directory-creation sites
 //  uses `URL.excludeFromBackup()` directly.

@@ -1,0 +1,49 @@
+{
+  "metadata": {
+    "identifier": "urn:uuid:opds2-pub-multi-acq",
+    "title": "Multi-Acquisition Publication",
+    "author": [
+      { "name": "Penelope Vance" }
+    ],
+    "description": "Publication with multiple acquisition links across rels."
+  },
+  "images": [
+    {
+      "href": "https://example.org/pubs/multi-cover.png",
+      "type": "image/png",
+      "rel": "http://opds-spec.org/image"
+    },
+    {
+      "href": "https://example.org/pubs/multi-thumb.png",
+      "type": "image/png",
+      "rel": "http://opds-spec.org/image/thumbnail"
+    }
+  ],
+  "links": [
+    {
+      "rel": "http://opds-spec.org/acquisition/borrow",
+      "href": "https://example.org/pubs/multi/borrow",
+      "type": "application/atom+xml;type=entry;profile=opds-catalog"
+    },
+    {
+      "rel": "http://opds-spec.org/acquisition/open-access",
+      "href": "https://example.org/pubs/multi/openaccess.epub",
+      "type": "application/epub+zip"
+    },
+    {
+      "rel": "http://opds-spec.org/acquisition/sample",
+      "href": "https://example.org/pubs/multi/sample.epub",
+      "type": "application/epub+zip"
+    },
+    {
+      "rel": "preview",
+      "href": "https://example.org/pubs/multi/preview.epub",
+      "type": "application/epub+zip"
+    },
+    {
+      "rel": "alternate",
+      "href": "https://example.org/pubs/multi/web",
+      "type": "text/html"
+    }
+  ]
+}

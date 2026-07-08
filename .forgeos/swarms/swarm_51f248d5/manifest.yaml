@@ -1,0 +1,42 @@
+swarm_id: swarm_51f248d5
+task: "3.2.0 close-out wave 2 — accountNotFound split + SignInModal SwiftUI refactor + apply arch1 wall-failure fixes"
+created_at: 2026-05-28
+status: complete
+base_ref: swarm/swarm_c8fcab76-scaffold  # stacked on PR #1020
+modules:
+  - name: A-AccountNotFound-EnumSplit
+    rigor: critical-path
+    contract_path: .forgeos/swarms/swarm_51f248d5/contracts/A-AccountNotFound-EnumSplit.md
+    files_scope:
+      - Palace/Accounts/Library/Account+State.swift
+      - Palace/Accounts/Library/AccountStateStore.swift
+      - Palace/Accounts/Library/AccountsManager.swift
+      - PalaceTests/Accounts/AccountsManagerStateMachineWiringTests.swift
+      - PalaceTests/Accounts/AccountStateMachineTests.swift  # touch only if new semantics tests live here
+  - name: B-SignInModal-SwiftUI
+    rigor: critical-path
+    contract_path: .forgeos/swarms/swarm_51f248d5/contracts/B-SignInModal-SwiftUI.md
+    files_scope:
+      - Palace/SignInLogic/SignInModalView.swift
+      - Palace/SignInLogic/SignInModalPresenter+SignInModalPresenting.swift
+      - Palace/AppInfrastructure/DLNavigator.swift
+      - Palace/Network/TPPNetworkExecutor.swift
+      - Palace/Holds/HoldsViewModel.swift
+      - Palace/SignInLogic/TPPReauthenticator.swift
+      - Palace/Book/UI/BookDetail/BookDetailViewModel.swift
+      - Palace/MyBooks/MyBooksDownloadCenter.swift
+      - Palace/MyBooks/TokenRefreshInterceptor.swift
+      - Palace/MyBooks/MyBooks/MyBooksViewModel.swift
+      - Palace/MyBooks/MyBooks/BookCell/BookCellModel.swift
+      - PalaceTests/SignInLogic/SignInModalPredicateTests.swift  # update only
+      - PalaceTests/SignInLogic/SignInModalSAMLOIDCTests.swift   # update only
+      - PalaceTests/SignInLogic/SignInModalLifecycleTests.swift  # NEW
+  - name: C-Apply-Arch1-Fixes
+    rigor: standard
+    contract_path: .forgeos/swarms/swarm_51f248d5/contracts/C-Apply-Arch1-Fixes.md
+    files_scope:
+      - CLAUDE.md
+      - .claude/skills/swarm/SKILL.md
+      - .claude/skills/rigorous-fix/SKILL.md
+      - .forgeos/wall-failures/2026-05-28-cs847892e8-arch1.md
+      - .forgeos/wall-failures/derived-improvements.md

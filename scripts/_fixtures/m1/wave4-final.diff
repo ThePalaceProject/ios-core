@@ -1,0 +1,184 @@
+diff --git a/Palace/Reader2/Bookmarks/TPPAnnotations.swift b/Palace/Reader2/Bookmarks/TPPAnnotations.swift
+index 45898d365..c359b55cc 100644
+--- a/Palace/Reader2/Bookmarks/TPPAnnotations.swift
++++ b/Palace/Reader2/Bookmarks/TPPAnnotations.swift
+@@ -604,11 +604,14 @@ protocol AnnotationsManager {
+ 
+     /// State-machine-aware accessor used by Phase 2 (Bucket B) sync
+     /// gates. Returns `nil` until the account is in `.detailsLoaded` —
+-    /// the same nil-tolerance the legacy `account.details?` reads
+-    /// provided, but no longer races a partially-populated auth doc.
+-    /// Bookmark sync is a best-effort silent-failure path per the ADR,
+-    /// so a false during the loading window is correct (the next render
+-    /// after `.detailsLoaded` fires re-enables the sync paths).
++    /// any other state (`.notLoaded`, `.basicInfoLoaded`, `.detailsLoading`,
++    /// `.detailsFailed`, or the `.detailsEvicted` eviction-marker added by
++    /// the swarm_51f248d5 enum split) yields nil. This preserves the
++    /// nil-tolerance the legacy `account.details?` reads provided, but no
++    /// longer races a partially-populated auth doc. Bookmark sync is a
++    /// best-effort silent-failure path per the ADR, so nil during the
++    /// loading window is correct (the next render after `.detailsLoaded`
++    /// fires re-enables the sync paths).
+     fileprivate static func loadedDetails(of account: Account?) -> AccountDetails? {
+         guard let account = account,
+               case .detailsLoaded(let details) = account.loadState else {
+diff --git a/Palace/SignInLogic/SignInModalSheetPresenter.swift b/Palace/SignInLogic/SignInModalSheetPresenter.swift
+index a5cc9d130..49f4b2388 100644
+--- a/Palace/SignInLogic/SignInModalSheetPresenter.swift
++++ b/Palace/SignInLogic/SignInModalSheetPresenter.swift
+@@ -12,13 +12,15 @@
+ //  the modal — preserving the HelpSpot 17716 presenter-chain safety
+ //  net (Blocker 2 Option c, resolved in the swarm contract).
+ //
+-//  Wave 3 ships:
+-//   - This file (presenter + protocol + state enum + driver typealias).
+-//   - AppContainer wiring (`signInModalSheetPresenter`).
+-//   - Migration of ONE caller: `TPPReauthenticator`. The other 9
+-//     callers stay on the static API; wave 4 migrates them.
+-//   - `SignInModalHostingController` STAYS in wave 3; deletion is
+-//     deferred to wave 4 once all callers are migrated.
++//  Wave 3 + 4 history:
++//   - Wave 3 shipped this file (presenter + protocol + state enum + driver
++//     typealias), the AppContainer wiring (`signInModalSheetPresenter`),
++//     and the proof-of-pattern migration of `TPPReauthenticator`.
++//   - Wave 4 migrated the remaining 10 caller sites + replaced
++//     `SignInModalHostingController` with `fileprivate
++//     SignInModalDismissalHosting` (same behavior, file-scope visibility).
++//     The HelpSpot-17716 "fire-once-after-fully-dismissed" invariant is
++//     preserved by the replacement.
+ //
+ //  Tests: `PalaceTests/SignInLogic/SignInModalLifecycleTests.swift`.
+ //
+@@ -60,7 +62,7 @@ enum SignInPresentationState: Identifiable, Equatable {
+ /// API; tests inject a fake to avoid mounting UIKit. The driver MUST
+ /// fire the completion exactly once after the underlying modal
+ /// dismisses fully (production driver wires this through
+-/// `SignInModalHostingController.onDidFullyDismiss` for free —
++/// `SignInModalDismissalHosting.onDidFullyDismiss` for free —
+ /// guarantee preserved).
+ typealias SignInModalPresentationDriver = (
+     _ libraryAccountID: String,
+@@ -90,7 +92,7 @@ final class SignInModalSheetPresenter: NSObject, SignInModalSheetPresenting, Obs
+     /// in flight. Set immediately before invoking the driver, cleared
+     /// from the driver's completion (which fires after the UIKit
+     /// dismissal transition completes — see
+-    /// `SignInModalHostingController.onDidFullyDismiss`).
++    /// `SignInModalDismissalHosting.onDidFullyDismiss`).
+     @Published private(set) var presentationState: SignInPresentationState?
+ 
+     /// Strong reference to the app container. Used so the driver can
+@@ -228,7 +230,7 @@ final class SignInModalSheetPresenter: NSObject, SignInModalSheetPresenting, Obs
+             // Clear state BEFORE firing the user completion so any
+             // downstream sheet-presentation triggered by the
+             // completion observes a clean presenter chain (same
+-            // ordering as `SignInModalHostingController.onDidFullyDismiss`
++            // ordering as `SignInModalDismissalHosting.onDidFullyDismiss`
+             // already guarantees for the static API).
+             self.presentationState = nil
+             self.inFlight = false
+diff --git a/Palace/SignInLogic/TPPReauthenticator.swift b/Palace/SignInLogic/TPPReauthenticator.swift
+index ae1ab1b15..00549c289 100644
+--- a/Palace/SignInLogic/TPPReauthenticator.swift
++++ b/Palace/SignInLogic/TPPReauthenticator.swift
+@@ -33,7 +33,38 @@ protocol Reauthenticator: NSObject {
+     /// verify single-flight behavior at upstream call sites
+     /// (e.g. `TokenRefreshInterceptor.isRequestingCredentials` dedupe).
+     /// Not used for any production logic.
+-    public private(set) var authenticateCallCount: Int = 0
++    internal private(set) var authenticateCallCount: Int = 0
++
++    /// Test-only override for the `AppContainer` from which the
++    /// `signInModalSheetPresenter` is resolved. Production reads through
++    /// `AppContainer.production()`; tests set this to a container built
++    /// via Module B's `withSignInModalSheetPresenter(_:)` modifier so a
++    /// spy presenter can be injected.
++    ///
++    /// **Scope:** the override is only consulted when XCTest is the host
++    /// process (`XCTestConfigurationFilePath` env var is set). In every
++    /// other build — sim runs, dev TestFlight, App Store — the override
++    /// is structurally ignored, so the seam cannot leak into user-visible
++    /// reauthentication paths even if a developer accidentally writes to
++    /// it from non-test code.
++    ///
++    /// swarm_d8f11437 Module A wave 4 — closes wall-failure cs_9a267b63
++    /// (architect rev_bc20951b). Without this seam, the wiring test
++    /// `testReauth_TPPReauthenticator_authenticateIfNeeded_drivesSpyPresenterViaAppContainerSeam`
++    /// cannot drive a spy presenter through the production
++    /// `authenticateIfNeeded` path.
++    ///
++    /// MUST be reset to nil in test teardown to avoid bleed between tests.
++    @MainActor
++    internal static var _testContainerOverride: AppContainer?
++
++    /// Tightens `#if DEBUG` to unit-test-only by checking for the XCTest
++    /// configuration env var. DEBUG also covers sim runs / dev TestFlight,
++    /// where a leaked override would silently re-route production reauth.
++    @MainActor
++    private static var isRunningUnderXCTest: Bool {
++        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
++    }
+ 
+     /// Re-authenticates the user. This may involve presenting the sign-in
+     /// modal UI or not, depending on the sign-in business logic.
+@@ -53,8 +84,15 @@ protocol Reauthenticator: NSObject {
+             // swarm_18b0d071 Module A wave 3 — proof-of-pattern migration
+             // from the static `SignInModalPresenter` API to the
+             // SwiftUI-observable `SignInModalSheetPresenter` facade.
+-            // Wave 4 migrates the remaining 9 call sites.
+-            let presenter = AppContainer.production().signInModalSheetPresenter
++            // swarm_d8f11437 Module A wave 4 — completes the migration
++            // for the remaining 9 call sites; the test-only
++            // `_testContainerOverride` seam is consulted ONLY when running
++            // under XCTest (not in dev/sim/TestFlight builds), so the
++            // override cannot leak into user-visible reauthentication.
++            let container = TPPReauthenticator.isRunningUnderXCTest
++                ? (TPPReauthenticator._testContainerOverride ?? AppContainer.production())
++                : AppContainer.production()
++            let presenter = container.signInModalSheetPresenter
+             presenter.presentSignInModalForCurrentAccount {
+                 Log.info(#file, "TPPReauthenticator: Re-authentication completed")
+                 authenticationCompletion?()
+diff --git a/Palace/SignInLogic/TPPSignInBusinessLogic.swift b/Palace/SignInLogic/TPPSignInBusinessLogic.swift
+index 8aa472c6c..7bbbbf847 100644
+--- a/Palace/SignInLogic/TPPSignInBusinessLogic.swift
++++ b/Palace/SignInLogic/TPPSignInBusinessLogic.swift
+@@ -280,11 +280,12 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
+ 
+     /// State-machine-aware synchronous read of `AccountDetails`. Returns
+     /// `nil` when details have not yet transitioned to `.detailsLoaded`
+-    /// (i.e. `.notLoaded`, `.basicInfoLoaded`, `.detailsLoading`, or
+-    /// `.detailsFailed`). This preserves the legacy `account.details?`
+-    /// nil-tolerance for sync UI/`@objc` callers that cannot adopt the
+-    /// async `awaitReady()` gate without cascading `async` upward through
+-    /// SwiftUI/UIKit render paths.
++    /// (i.e. `.notLoaded`, `.basicInfoLoaded`, `.detailsLoading`,
++    /// `.detailsFailed`, or `.detailsEvicted` — the eviction-marker
++    /// sibling added by the swarm_51f248d5 enum split). This preserves the
++    /// legacy `account.details?` nil-tolerance for sync UI/`@objc` callers
++    /// that cannot adopt the async `awaitReady()` gate without cascading
++    /// `async` upward through SwiftUI/UIKit render paths.
+     ///
+     /// Bucket A migration policy (per ADR `docs/architecture/account-state-machine.md`):
+     /// the 6 sub-sites in this file are sync property getters / `@objc`
+diff --git a/PalaceTests/SignInLogic/TPPSAMLFlowTests.swift b/PalaceTests/SignInLogic/TPPSAMLFlowTests.swift
+index a5ffeaad3..f1cfd98f8 100644
+--- a/PalaceTests/SignInLogic/TPPSAMLFlowTests.swift
++++ b/PalaceTests/SignInLogic/TPPSAMLFlowTests.swift
+@@ -393,8 +393,6 @@ final class TPPSAMLCookieExpirationTests: XCTestCase {
+         let expired3 = makeTestCookie(name: "session_c", value: "3",
+                                       expiresDate: Date(timeIntervalSinceNow: -1))
+         mockContext.savedCookies = [expired1, expired2, expired3].compactMap { $0 }
+-        XCTAssertEqual(mockContext.savedCookies.count, 3,
+-                       "test fixture sanity: 3 expired cookies seeded")
+ 
+         samlHelper.logIn(loginCancelHandler: {})
+ 
+@@ -430,8 +428,6 @@ final class TPPSAMLCookieExpirationTests: XCTestCase {
+         let valid2 = makeTestCookie(name: "valid_session_q", value: "q",
+                                     expiresDate: Date(timeIntervalSinceNow: 7200))
+         mockContext.savedCookies = [expired1, expired2, valid1, valid2].compactMap { $0 }
+-        XCTAssertEqual(mockContext.savedCookies.count, 4,
+-                       "test fixture sanity: 4 cookies (2 expired + 2 valid) seeded")
+ 
+         samlHelper.logIn(loginCancelHandler: {})
+ 

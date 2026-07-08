@@ -1,0 +1,24 @@
+[
+  {
+    "args" : {
+      "bookID" : "contract-reader2-bookmark-1",
+      "index" : "0"
+    },
+    "method" : "bookmarkDelete.begin"
+  },
+  {
+    "args" : {
+      "bookID" : "contract-reader2-bookmark-1",
+      "hasAnnotationID" : "false",
+      "href" : "\/chapter1.xhtml"
+    },
+    "method" : "registry.delete(bookmark)"
+  },
+  {
+    "args" : {
+      "remainingCount" : "0",
+      "returnedNonNil" : "true"
+    },
+    "method" : "bookmarkDelete.end"
+  }
+]

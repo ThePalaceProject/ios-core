@@ -43,7 +43,7 @@ struct BookImageView: View {
             }
         }
         .accessibilityElement(children: treatImageAsDecorativeInLists ? .ignore : .combine)
-        // PP-4326 follow-up: the inner Image carries .accessibilityHidden(true)
+        // follow-up: the inner Image carries .accessibilityHidden(true)
         // when `treatImageAsDecorativeInLists` is true, but the outer
         // `.accessibilityElement(children: .ignore)` above promotes the ZStack
         // itself to a single accessibility element — and that promotion

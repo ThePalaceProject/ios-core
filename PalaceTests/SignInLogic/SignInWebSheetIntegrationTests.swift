@@ -95,13 +95,15 @@ final class SignInWebSheetIntegrationTests: XCTestCase {
         // ACT
         webView.loadHTMLString(html, baseURL: URL(string: "https://idp.test.local"))
 
-        // ASSERT — wait up to 15s for the redirect navigation to be intercepted.
-        // 5s isn't enough on shared GH macOS runners: WKWebView cold-starts three
-        // helper processes (WebContent, GPU, Networking) and CI logs have shown
-        // ~1.4s WebContent + ~1.6s GPU launch alone, leaving <2s for HTML parse,
-        // JS exec, and navigation policy IPC — which intermittently misses the
-        // deadline. (Same defensive bump pattern as TypographyServiceTests.)
-        await fulfillment(of: [loginExpectation], timeout: 15.0)
+        // ASSERT — wait up to 30s for the redirect navigation to be intercepted.
+        // 5s wasn't enough on shared GH macOS runners; 15s still intermittently
+        // missed (run 26108544964 timed out at 15.0s, 37.97s elapsed). WKWebView
+        // cold-starts three helper processes (WebContent, GPU, Networking) and
+        // on memory-pressured CI nodes (the same runs report "Skipping image
+        // cache due to low memory (49 MB available)") the JS-setTimeout + nav
+        // IPC pipeline can stretch into 20s+. 30s tolerates that without making
+        // a wedged delegate hide forever.
+        await fulfillment(of: [loginExpectation], timeout: 30.0) // FLAKE-003-OK: real WKWebView cold-start (WebContent + GPU + Networking helpers) + JS-setTimeout + nav IPC under memory-pressured CI nodes.
         XCTAssertEqual(capturedURL?.absoluteString, "\(universalLinks.absoluteString)?token=test123")
     }
 
@@ -173,7 +175,7 @@ final class SignInWebSheetIntegrationTests: XCTestCase {
         webView.loadHTMLString("<html><body>OK</body></html>", baseURL: URL(string: "https://idp.test.local"))
 
         // ASSERT — 15s for the same WebKit cold-start reason as the test above.
-        await fulfillment(of: [exp], timeout: 15.0)
+        await fulfillment(of: [exp], timeout: 15.0) // FLAKE-003-OK: real WKWebView cold-start (WebContent + GPU + Networking helpers) under CI load.
         XCTAssertFalse(viewModel.isLoading, "Post-load: overlay must be hidden")
         cancellable.cancel()
     }

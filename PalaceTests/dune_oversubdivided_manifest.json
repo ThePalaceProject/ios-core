@@ -1,0 +1,32 @@
+{
+ "metadata": {
+  "author": ["Herbert, Frank"],
+  "@type": "http://bib.schema.org/Audiobook",
+  "title": "Dune (synthetic oversubdivided Findaway repro)",
+  "encrypted": {
+   "findaway:licenseId": "00000000000000000000repro",
+   "findaway:sessionKey": "00000000-0000-0000-0000-000000repro",
+   "findaway:checkoutId": "00000000000000000000chkout",
+   "findaway:fulfillmentId": "32884",
+   "findaway:accountId": "REPRO-acct",
+   "scheme": "http://librarysimplified.org/terms/drm/scheme/FAE"
+  },
+  "identifier": "urn:librarysimplified.org/terms/id/Findaway%20ID/32884",
+  "language": "en",
+  "duration": 4943.924
+ },
+ "links": [
+  { "rel": "cover", "href": "https://example.org/cover/32884" }
+ ],
+ "@context": [
+  "http://readium.org/webpub/default.jsonld",
+  { "findaway": "http://librarysimplified.org/terms/third-parties/findaway.com/" }
+ ],
+ "readingOrder": [
+  {"findaway:part": 1, "findaway:sequence": 1, "title": "Chapter 1", "type": "audio/mpeg", "duration": 600.0},
+  {"findaway:part": 1, "findaway:sequence": 3, "title": "Chapter 2", "type": "audio/mpeg", "duration": 1257.874},
+  {"findaway:part": 1, "findaway:sequence": 3, "title": "Chapter 3", "type": "audio/mpeg", "duration": 998.243},
+  {"findaway:part": 1, "findaway:sequence": 3, "title": "Chapter 4", "type": "audio/mpeg", "duration": 1387.807},
+  {"findaway:part": 1, "findaway:sequence": 4, "title": "Chapter 5", "type": "audio/mpeg", "duration": 700.0}
+ ]
+}

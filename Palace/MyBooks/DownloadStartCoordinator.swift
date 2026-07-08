@@ -56,6 +56,12 @@ final class DownloadStartCoordinator {
     private let stateManager: DownloadStateManager
     private let bookRegistry: TPPBookRegistryProvider
     private let userAccountProvider: () -> TPPUserAccount
+    /// Reads the "currently selected library UUID" at download-start time.
+    /// Captured once into a let-binding at the top of
+    /// `startDownloadAsync` so the rest of the path resolves credentials
+    /// against the originally-selected account — closes the library-swap-
+    /// mid-download window that produced spurious sign-in modals.
+    private let currentAccountIdProvider: () -> String?
     private let errorActivityTracker: ErrorActivityTracker
     private let queueOrchestrator: DownloadQueueOrchestrator
 
@@ -65,11 +71,57 @@ final class DownloadStartCoordinator {
     /// CredentialPromptCoordinator.requestCredentialsAndStartDownload.
     /// Closure injection keeps tests from having to stand up the full
     /// dispatcher + credential-prompt graph just to verify routing.
+    ///
+    /// `processWithCredentials` takes the captured `accountId` so the
+    /// dispatcher can resolve `bearerAuthorized(request:accountId:)` against
+    /// the originally-selected library, even if `currentAccountId` flips
+    /// mid-flight (library swap during a multi-chunk download).
     private let processUnregistered: (TPPBook, TPPBookLocation?, Bool?) -> TPPBookState
-    private let processWithCredentials: (TPPBook, TPPBookState, URLRequest?) -> Void
+    private let processWithCredentials: (TPPBook, TPPBookState, URLRequest?, String) -> Void
     private let requestCredentials: (TPPBook) -> Void
 
+    /// Sentinel UUID for "no account selected at capture time." Kept lexically
+    /// identical to `AccountsManager.noAccountSentinelUUID` (private there) so
+    /// downstream `userAccount(for:)` lookups return the same no-credentials
+    /// placeholder instance the rest of the resolver path returns. Capturing
+    /// this token instead of `nil` makes the capture-at-start invariant
+    /// explicit: there is always SOME id, and a missing one is the sentinel,
+    /// not the current account at request-build time.
+    static let capturedNoAccountSentinelUUID = "__no_account_selected__"
+
+    /// Module-A designated init: accepts a `processWithCredentials` closure
+    /// that takes the captured accountId as its 4th argument so the
+    /// dispatcher can pin bearer auth to the originally-selected library.
     init(
+        stateManager: DownloadStateManager,
+        bookRegistry: TPPBookRegistryProvider,
+        userAccountProvider: @escaping () -> TPPUserAccount,
+        currentAccountIdProvider: @escaping () -> String?,
+        errorActivityTracker: ErrorActivityTracker,
+        queueOrchestrator: DownloadQueueOrchestrator,
+        processUnregistered: @escaping (TPPBook, TPPBookLocation?, Bool?) -> TPPBookState,
+        processWithCredentials: @escaping (TPPBook, TPPBookState, URLRequest?, String) -> Void,
+        requestCredentials: @escaping (TPPBook) -> Void
+    ) {
+        self.stateManager = stateManager
+        self.bookRegistry = bookRegistry
+        self.userAccountProvider = userAccountProvider
+        self.currentAccountIdProvider = currentAccountIdProvider
+        self.errorActivityTracker = errorActivityTracker
+        self.queueOrchestrator = queueOrchestrator
+        self.processUnregistered = processUnregistered
+        self.processWithCredentials = processWithCredentials
+        self.requestCredentials = requestCredentials
+    }
+
+    /// Legacy convenience init used by pre-Module-A tests that constructed
+    /// the coordinator with a 3-arg `processWithCredentials` closure (no
+    /// accountId). Adapts to the 4-arg internal shape by dropping the
+    /// captured accountId at the call boundary. `currentAccountIdProvider`
+    /// defaults to a nil reader; the resulting captured id is the sentinel,
+    /// which is appropriate for tests that don't exercise captured-accountId
+    /// semantics (they assert routing only).
+    convenience init(
         stateManager: DownloadStateManager,
         bookRegistry: TPPBookRegistryProvider,
         userAccountProvider: @escaping () -> TPPUserAccount,
@@ -79,14 +131,19 @@ final class DownloadStartCoordinator {
         processWithCredentials: @escaping (TPPBook, TPPBookState, URLRequest?) -> Void,
         requestCredentials: @escaping (TPPBook) -> Void
     ) {
-        self.stateManager = stateManager
-        self.bookRegistry = bookRegistry
-        self.userAccountProvider = userAccountProvider
-        self.errorActivityTracker = errorActivityTracker
-        self.queueOrchestrator = queueOrchestrator
-        self.processUnregistered = processUnregistered
-        self.processWithCredentials = processWithCredentials
-        self.requestCredentials = requestCredentials
+        self.init(
+            stateManager: stateManager,
+            bookRegistry: bookRegistry,
+            userAccountProvider: userAccountProvider,
+            currentAccountIdProvider: { nil },
+            errorActivityTracker: errorActivityTracker,
+            queueOrchestrator: queueOrchestrator,
+            processUnregistered: processUnregistered,
+            processWithCredentials: { book, state, request, _ in
+                processWithCredentials(book, state, request)
+            },
+            requestCredentials: requestCredentials
+        )
     }
 
     // MARK: - startBorrow
@@ -148,6 +205,22 @@ final class DownloadStartCoordinator {
     // MARK: - startDownloadAsync
 
     func startDownloadAsync(for book: TPPBook, withRequest initedRequest: URLRequest? = nil) async {
+        // Capture-at-start invariant (Option 1 of the TPPUserAccount migration
+        // retro): pin the user's currently-selected library UUID into a let-
+        // binding BEFORE any branch can re-resolve `currentUserAccount`. The
+        // captured id is threaded through to the dispatcher, which feeds it
+        // into `bearerAuthorized(request:accountId:)` — closing the library-
+        // swap-mid-download window deterministically.
+        //
+        // The sentinel branch is intentional: when no account is selected at
+        // capture time, we record the sentinel rather than nil. Downstream
+        // `userAccount(for:)` lookups on the sentinel return the same no-
+        // credentials placeholder for the life of the download, so a fresh-
+        // install user who selects a library mid-flight won't have THIS
+        // download silently start carrying that new library's bearer token.
+        let capturedAccountId: String = currentAccountIdProvider()
+            ?? DownloadStartCoordinator.capturedNoAccountSentinelUUID
+
         let existingInfo = await stateManager.bookIdentifierToDownloadInfo.get(book.identifier)
         if existingInfo != nil {
             Log.debug(#file, "Download already in progress for '\(book.title)', skipping duplicate start")
@@ -159,7 +232,7 @@ final class DownloadStartCoordinator {
         let location = bookRegistry.location(forIdentifier: book.identifier)
         let loginRequired = (userAccount.authDefinition?.needsAuth ?? false) && !userAccount.hasCredentials()
 
-        Log.info(#file, "📥 Starting download for '\(book.title)' - state: \(state), hasCredentials: \(userAccount.hasCredentials()), loginRequired: \(loginRequired)")
+        Log.info(#file, "📥 Starting download for '\(book.title)' - state: \(state), hasCredentials: \(userAccount.hasCredentials()), loginRequired: \(loginRequired), capturedAccountId: \(capturedAccountId)")
 
         await errorActivityTracker.log("Starting download for '\(book.title)'", category: .download)
 
@@ -199,7 +272,7 @@ final class DownloadStartCoordinator {
             requestCredentials(book)
         } else {
             Log.info(#file, "Credentials available, processing download for '\(book.title)'")
-            processWithCredentials(book, state, initedRequest)
+            processWithCredentials(book, state, initedRequest, capturedAccountId)
         }
     }
 }

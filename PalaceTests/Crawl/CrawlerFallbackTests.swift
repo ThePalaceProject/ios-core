@@ -29,7 +29,15 @@ final class CrawlerFallbackTests: XCTestCase {
     }
 
     private func makeCrawler() -> LibraryRegistryCrawler {
-        LibraryRegistryCrawler(fetcher: fetcher, hash: "test", stateDirectory: tempDir)
+        // currentAppVersion: nil keeps existing tests on the incremental path
+        // by disabling the version-upgrade trigger (legacy persisted state
+        // has no recorded app version either, so nil-vs-nil never triggers).
+        LibraryRegistryCrawler(
+            fetcher: fetcher,
+            hash: "test",
+            stateDirectory: tempDir,
+            currentAppVersion: nil
+        )
     }
 
     private let baseURL = URL(string: "https://registry.example.com/libraries")!
