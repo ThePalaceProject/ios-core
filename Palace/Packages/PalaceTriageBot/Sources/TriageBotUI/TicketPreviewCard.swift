@@ -16,7 +16,7 @@ struct TicketPreviewCard: View {
             HStack(spacing: BotUI.Spacing.xsmall) {
                 Image(systemName: "envelope.fill")
                     .font(.headline)
-                    .foregroundColor(Color(.systemBlue))
+                    .foregroundStyle(Color(.systemBlue))
                 Text("Ticket preview")
                     .font(.headline)
                 Spacer()
@@ -66,11 +66,11 @@ struct TicketPreviewCard: View {
         HStack(alignment: .top, spacing: BotUI.Spacing.small) {
             Text(label)
                 .font(.caption)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .frame(width: 94, alignment: .leading)
             Text(value)
                 .font(.caption)
-                .foregroundColor(.primary)
+                .foregroundStyle(.primary)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -84,15 +84,15 @@ struct TicketReceiptCard: View {
         VStack(alignment: .leading, spacing: BotUI.Spacing.small) {
             Label("Sent", systemImage: "checkmark.seal.fill")
                 .font(.headline)
-                .foregroundColor(.green)
+                .foregroundStyle(.green)
             Text("Reference: \(receipt.ticketId)")
                 .font(.subheadline)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(.middle)
             Text("Support will reply within 1 business day.")
                 .font(.footnote)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
         }
         .padding(BotUI.Spacing.cardPadding)
         .background(BotUI.cardBackground)

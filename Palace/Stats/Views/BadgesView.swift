@@ -1,7 +1,36 @@
 import SwiftUI
 
+/// Phases for the badge-unlock pop, driven by SwiftUI's `PhaseAnimator`.
+///
+/// Replaces the prior manual `asyncAfter`-based reset (a dangling timer that
+/// fired `animateUnlock = false` 0.5s later): the animator advances
+/// idle -> pop -> settle exactly once each time a badge becomes newly earned,
+/// then rests at `settle` (identical scale to `idle`), so there is no timer to
+/// leak and no state to reset. Reduce-motion is honored by returning a `nil`
+/// animation for every phase (the scale still resolves to its resting value
+/// instantly).
+enum BadgeUnlockPhase: CaseIterable {
+  case idle, pop, settle
+
+  /// Scale applied to the badge medallion while in this phase.
+  var scale: CGFloat {
+    switch self {
+    case .idle, .settle: return 1.0
+    case .pop: return 1.2
+    }
+  }
+
+  /// Animation used to move INTO this phase; `nil` at rest (idle).
+  var animation: Animation? {
+    switch self {
+    case .idle: return nil
+    case .pop: return PalaceMotion.emphasized
+    case .settle: return PalaceMotion.gentle
+    }
+  }
+}
+
 /// Full badge collection grid showing earned, in-progress, and locked badges.
-@available(iOS 16.0, *)
 struct BadgesView: View {
   @ObservedObject var viewModel: BadgesViewModel
 
@@ -76,12 +105,11 @@ struct BadgesView: View {
 }
 
 /// A single cell in the badge grid.
-@available(iOS 16.0, *)
 private struct BadgeGridCell: View {
   let badge: Badge
   let isNewlyEarned: Bool
 
-  @State private var animateUnlock = false
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   var body: some View {
     VStack(spacing: 8) {
@@ -111,8 +139,11 @@ private struct BadgeGridCell: View {
             .foregroundStyle(.secondary.opacity(0.5))
         }
       }
-      .scaleEffect(animateUnlock ? 1.2 : 1.0)
-      .animation(.spring(response: 0.5, dampingFraction: 0.5), value: animateUnlock)
+      .phaseAnimator(BadgeUnlockPhase.allCases, trigger: isNewlyEarned) { medallion, phase in
+        medallion.scaleEffect(phase.scale)
+      } animation: { phase in
+        reduceMotion ? nil : phase.animation
+      }
 
       Text(badge.isEarned || badge.isInProgress ? badge.name : "???")
         .font(.caption2)
@@ -134,16 +165,6 @@ private struct BadgeGridCell: View {
     .frame(maxWidth: .infinity)
     .accessibilityElement(children: .combine)
     .accessibilityLabel(accessibilityLabel)
-    .onChange(of: isNewlyEarned) { newValue in
-      if newValue {
-        withAnimation {
-          animateUnlock = true
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-          withAnimation { animateUnlock = false }
-        }
-      }
-    }
   }
 
   private var backgroundFill: some ShapeStyle {

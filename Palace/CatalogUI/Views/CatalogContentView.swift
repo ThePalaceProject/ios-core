@@ -65,12 +65,13 @@ struct CatalogContentView: View {
                             feedContentView
                                 .padding(.vertical, 17)
                                 .id("catalog-content-top")
+                                .accessibleAnimation(PalaceMotion.standard, value: feedIsEmpty)
                         }
                     }
                     .padding(.vertical, 17)
                 }
                 .refreshable { await onRefresh() }
-                .onChange(of: scrollGeneration) { _ in
+                .onChange(of: scrollGeneration) { _, _ in
                     accessibleWithAnimation(.easeInOut(duration: 0.3)) {
                         proxy.scrollTo("catalog-content-top", anchor: .top)
                     }
@@ -145,8 +146,21 @@ private extension CatalogContentView {
             .accessibleAnimation(.easeInOut(duration: 0.2), value: isOptimisticLoading)
 
         case .empty:
-            EmptyView()
+            ContentUnavailableView {
+                Label(Strings.Catalog.emptyFeedTitle, systemImage: "books.vertical")
+            } description: {
+                Text(Strings.Catalog.emptyFeedMessage)
+            }
+            .frame(maxWidth: .infinity, minHeight: 240)
+            .transition(.opacity)
         }
+    }
+
+    /// Whether the current feed renders no books (drives the empty-state
+    /// cross-fade animation below).
+    var feedIsEmpty: Bool {
+        if case .empty = content.feed { return true }
+        return false
     }
 }
 

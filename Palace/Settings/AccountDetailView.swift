@@ -114,7 +114,7 @@ struct AccountDetailView: View {
 
             Text(viewModel.libraryName)
                 .palaceFont(.headline)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
 
             Spacer()
         }
@@ -125,7 +125,7 @@ struct AccountDetailView: View {
     private var signInMessageSection: some View {
         Text(Strings.AccountDetail.signInMessage(libraryName: viewModel.libraryName))
             .palaceFont(.footnote)
-            .foregroundColor(.primary)
+            .foregroundStyle(.primary)
             .padding(.horizontal, Layout.horizontalPadding)
             .padding(.vertical, Layout.verticalPaddingLarge)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -154,8 +154,6 @@ struct AccountDetailView: View {
         }
         .padding(.horizontal, Layout.horizontalPadding)
         .padding(.top, Layout.verticalPaddingLarge)
-        // Force view refresh when isLoading changes
-        .id("samlIDPList-\(viewModel.isLoading)")
     }
 
     private var singleSignInButton: some View {
@@ -166,8 +164,6 @@ struct AccountDetailView: View {
         )
         .padding(.horizontal, Layout.horizontalPadding)
         .padding(.top, Layout.verticalPaddingLarge)
-        // Force view refresh when isLoading changes
-        .id("signInButton-\(viewModel.isLoading)")
     }
 
     @ViewBuilder
@@ -202,14 +198,14 @@ struct AccountDetailView: View {
             Button(action: handleReportIssue, label: {
                 Text(DisplayStrings.reportIssue)
                     .palaceFont(.footnote)
-                    .foregroundColor(Color(TPPConfiguration.mainColor()))
+                    .foregroundStyle(Color(TPPConfiguration.mainColor()))
                     .underline()
             })
         } else if viewModel.selectedAccount?.supportURL != nil {
             NavigationLink(destination: reportIssueWebView, label: {
                 Text(DisplayStrings.reportIssue)
                     .palaceFont(.footnote)
-                    .foregroundColor(Color(TPPConfiguration.mainColor()))
+                    .foregroundStyle(Color(TPPConfiguration.mainColor()))
                     .underline()
             })
         }
@@ -257,7 +253,7 @@ struct AccountDetailView: View {
 
             Text(viewModel.libraryName)
                 .palaceFont(.headline)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
 
             Spacer()
         }
@@ -328,7 +324,7 @@ struct AccountDetailView: View {
 
                 Button(action: { withAnimation(UIAccessibility.isReduceMotionEnabled ? .none : .default) { viewModel.showBarcode.toggle() } }, label: {
                     Text(viewModel.showBarcode ? DisplayStrings.hideBarcode : DisplayStrings.showBarcode)
-                        .foregroundColor(Color(TPPConfiguration.mainColor()))
+                        .foregroundStyle(Color(TPPConfiguration.mainColor()))
                 })
             }
         }
@@ -341,13 +337,13 @@ struct AccountDetailView: View {
         // default `.placeholderText` (~30% gray) that patrons read as a
         // disabled field. Entered text retains its own .foregroundColor
         // below — only the empty-state hint is darkened.
-        return TextField(label, text: $viewModel.usernameText, prompt: Text(label).foregroundColor(.secondary))
+        return TextField(label, text: $viewModel.usernameText, prompt: Text(label).foregroundStyle(.secondary))
             .textContentType(.username)
             .autocapitalization(.none)
             .autocorrectionDisabled()
             .keyboardType(keyboardType(for: viewModel.businessLogic.selectedAuthentication?.patronIDKeyboard))
             .disabled(viewModel.isSignedIn)
-            .foregroundColor(viewModel.isSignedIn ? .secondary : .primary)
+            .foregroundStyle(viewModel.isSignedIn ? .secondary : .primary)
             .accessibilityIdentifier(AccessibilityID.SignIn.barcodeField)
             .accessibilityLabel(label)
             .focused($focusedField, equals: .barcode)
@@ -367,24 +363,25 @@ struct AccountDetailView: View {
         // a disabled field. Both visible (TextField) and masked (SecureField)
         // branches get the same prompt — empty-state hint is darker, entered
         // text retains its own .foregroundColor below.
+        VStack(alignment: .leading, spacing: 0) {
         HStack {
             if viewModel.isPINHidden {
-                SecureField(pinLabel, text: $viewModel.pinText, prompt: Text(pinLabel).foregroundColor(.secondary))
+                SecureField(pinLabel, text: $viewModel.pinText, prompt: Text(pinLabel).foregroundStyle(.secondary))
                     .textContentType(.password)
                     .keyboardType(keyboardType(for: viewModel.businessLogic.selectedAuthentication?.pinKeyboard))
                     .disabled(viewModel.isSignedIn)
-                    .foregroundColor(viewModel.isSignedIn ? .secondary : .primary)
+                    .foregroundStyle(viewModel.isSignedIn ? .secondary : .primary)
                     .accessibilityIdentifier(AccessibilityID.SignIn.pinField)
                     .accessibilityLabel(pinLabel)
                     .focused($focusedField, equals: .pin)
                     .onSubmit { if viewModel.canSignIn { viewModel.signIn() } }
                     .submitLabel(.go)
             } else {
-                TextField(pinLabel, text: $viewModel.pinText, prompt: Text(pinLabel).foregroundColor(.secondary))
+                TextField(pinLabel, text: $viewModel.pinText, prompt: Text(pinLabel).foregroundStyle(.secondary))
                     .textContentType(.password)
                     .keyboardType(keyboardType(for: viewModel.businessLogic.selectedAuthentication?.pinKeyboard))
                     .disabled(viewModel.isSignedIn)
-                    .foregroundColor(viewModel.isSignedIn ? .secondary : .primary)
+                    .foregroundStyle(viewModel.isSignedIn ? .secondary : .primary)
                     .accessibilityIdentifier(AccessibilityID.SignIn.pinField)
                     .accessibilityLabel(pinLabel)
                     .focused($focusedField, equals: .pin)
@@ -395,13 +392,44 @@ struct AccountDetailView: View {
             if LAContext().canEvaluatePolicy(.deviceOwnerAuthentication, error: nil) {
                 Button(action: { viewModel.togglePINVisibility() }, label: {
                     Text(viewModel.isPINHidden ? DisplayStrings.show : DisplayStrings.hide)
-                        .foregroundColor(Color(TPPConfiguration.mainColor()))
+                        .foregroundStyle(Color(TPPConfiguration.mainColor()))
                 })
             }
         }
         .padding(.vertical, Layout.verticalPaddingInput)
         .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
         .accessibilityElement(children: .contain)
+
+            inlineFormError
+        }
+        .accessibleAnimation(PalaceMotion.emphasized,
+                             value: Self.shouldShowInlineFormError(showingAlert: viewModel.showingAlert,
+                                                                   message: viewModel.alertMessage))
+    }
+
+    /// Inline error row rendered directly UNDER the PIN field. Presentation
+    /// mirror of the SAME existing `@Published` `alertMessage`/`showingAlert` —
+    /// no new view-model state, no auth-logic change. Its placement inside
+    /// `pinInputCell` naturally scopes it to the sign-in form; the existing
+    /// `.alert` (see `body`) is kept for non-form / system errors.
+    @ViewBuilder
+    private var inlineFormError: some View {
+        if Self.shouldShowInlineFormError(showingAlert: viewModel.showingAlert,
+                                          message: viewModel.alertMessage) {
+            HStack(alignment: .top, spacing: 6) {
+                Image(systemName: "exclamationmark.circle.fill")
+                    .foregroundStyle(.red)
+                    .font(.footnote)
+                Text(viewModel.alertMessage)
+                    .palaceFont(.footnote)
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            }
+            .padding(.bottom, Layout.verticalPaddingSmall)
+            .accessibilityElement(children: .combine)
+            .transition(.move(edge: .top).combined(with: .opacity))
+        }
     }
 
     private var logInSignOutCell: some View {
@@ -418,16 +446,16 @@ struct AccountDetailView: View {
                         ProgressView()
                             .progressViewStyle(CircularProgressViewStyle())
                         Text(viewModel.isSigningOut ? DisplayStrings.signingOut : DisplayStrings.signingIn)
-                            .foregroundColor(.primary)
+                            .foregroundStyle(.primary)
                     }
                     .horizontallyCentered()
                 } else if viewModel.isSignedIn {
                     Text(DisplayStrings.signOut)
-                        .foregroundColor(Color(TPPConfiguration.mainColor()))
+                        .foregroundStyle(Color(TPPConfiguration.mainColor()))
                         .horizontallyCentered()
                 } else {
                     Text(Strings.Generic.signin)
-                        .foregroundColor(viewModel.canSignIn ? Color(TPPConfiguration.mainColor()) : .secondary)
+                        .foregroundStyle(viewModel.canSignIn ? Color(TPPConfiguration.mainColor()) : Color.secondary)
                         .horizontallyCentered()
                 }
             }
@@ -450,7 +478,7 @@ struct AccountDetailView: View {
 
             if settings.userPresentedAgeCheck {
                 Image(systemName: "checkmark.circle.fill")
-                    .foregroundColor(.green)
+                    .foregroundStyle(.green)
                     .accessibilityLabel(NSLocalizedString("Verified", comment: "Age check verified"))
             }
         }
@@ -473,7 +501,7 @@ struct AccountDetailView: View {
                 .labelsHidden()
                 .tint(.green)
                 .accessibilityIdentifier("signIn.syncBookmarksToggle")
-                .onChange(of: viewModel.isSyncEnabled) { newValue in
+                .onChange(of: viewModel.isSyncEnabled) { _, newValue in
                     viewModel.updateSync(enabled: newValue)
                 }
         }
@@ -482,7 +510,7 @@ struct AccountDetailView: View {
     private var registrationCell: some View {
         Button(action: { viewModel.openRegistration() }, label: {
             Text(DisplayStrings.signUpForCard)
-                .foregroundColor(Color(TPPConfiguration.mainColor()))
+                .foregroundStyle(Color(TPPConfiguration.mainColor()))
                 .horizontallyCentered()
         })
     }
@@ -567,7 +595,7 @@ struct AccountDetailView: View {
             Spacer()
             Text(Strings.Error.pageLoadFailedError)
                 .palaceFont(.body)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, Layout.horizontalPadding)
             Spacer()
@@ -629,7 +657,7 @@ struct AccountDetailView: View {
         Button(action: { viewModel.selectAuthMethod(auth) }, label: {
             Text(auth.methodDescription ?? "")
                 .font(.system(.body))
-                .foregroundColor(.primary)
+                .foregroundStyle(.primary)
         })
     }
 
@@ -645,14 +673,14 @@ struct AccountDetailView: View {
                 }
             }
             .font(.system(.body))
-            .foregroundColor(.primary)
+            .foregroundStyle(.primary)
         })
     }
 
     private func infoHeaderCell(text: String) -> some View {
         Text(text)
             .font(.system(.footnote))
-            .foregroundColor(.secondary)
+            .foregroundStyle(.secondary)
             .listRowBackground(Color.clear)
     }
 
@@ -662,7 +690,7 @@ struct AccountDetailView: View {
         NavigationLink(destination: eulaView, label: {
             Text(DisplayStrings.eulaAgreement)
                 .font(.system(.caption))
-                .foregroundColor(.blue)
+                .foregroundStyle(.blue)
                 .underline()
         })
         .padding(.top, Layout.verticalPaddingSmall)
@@ -678,7 +706,7 @@ struct AccountDetailView: View {
     private var syncFooter: some View {
         Text(DisplayStrings.syncDescription)
             .font(.system(.caption))
-            .foregroundColor(.secondary)
+            .foregroundStyle(.secondary)
             .padding(.top, Layout.verticalPaddingSmall)
     }
 
@@ -699,6 +727,15 @@ struct AccountDetailView: View {
     }
 
     // MARK: - Helper Methods
+
+    /// Pure presentation decision: show the inline form-error row when there is
+    /// an active alert AND a non-empty message. Kept static + Bool-only so it is
+    /// unit-testable without spinning up the view or the view model, and so it
+    /// carries no authentication/credential logic — it only reflects existing
+    /// `@Published` state.
+    static func shouldShowInlineFormError(showingAlert: Bool, message: String) -> Bool {
+        showingAlert && !message.isEmpty
+    }
 
     private func keyboardType(for loginKeyboard: LoginKeyboard?) -> UIKeyboardType {
         // F-011 class-of-bug guard

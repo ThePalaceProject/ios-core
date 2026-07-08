@@ -281,7 +281,7 @@ private extension HalfSheetView {
                     .controlSize(.small)
                 Text(Strings.BookDetailView.borrowingInProgress)
                     .font(.footnote)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
                 Spacer(minLength: 0)
             }
             .frame(height: 6)
@@ -324,13 +324,13 @@ private extension HalfSheetView {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(viewModel.book.title)
                         .font(.body)
-                        .foregroundColor(.primary)
+                        .foregroundStyle(.primary)
                         .accessibilityFocused($isBookTitleFocused)
 
                     if let authors = viewModel.book.authors, !authors.isEmpty {
                         Text(authors)
                             .font(.subheadline)
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(.secondary)
                     }
                 }
                 Spacer()
@@ -409,10 +409,10 @@ private extension HalfSheetView {
                 HStack {
                     Text(DisplayStrings.borrowingFor)
                         .font(.subheadline)
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                     Spacer()
                     Text("\(timeUntil.value) \(timeUntil.unit)")
-                        .foregroundColor(colorScheme == .dark ? .palaceSuccessLight : .palaceSuccessDark)
+                        .foregroundStyle(colorScheme == .dark ? Color.palaceSuccessLight : Color.palaceSuccessDark)
                 }
 
                 Divider()
@@ -428,10 +428,10 @@ private extension HalfSheetView {
                 HStack {
                     Text(DisplayStrings.borrowedUntil)
                         .font(.subheadline)
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                     Spacer()
                     Text(availableUntil)
-                        .foregroundColor(colorScheme == .dark ? .palaceSuccessLight : .palaceSuccessDark)
+                        .foregroundStyle(colorScheme == .dark ? Color.palaceSuccessLight : Color.palaceSuccessDark)
                 }
 
                 Divider()
@@ -447,10 +447,10 @@ private extension HalfSheetView {
                 HStack {
                     Text("\(DisplayStrings.due) \(expirationDate.monthDayYearString)")
                         .font(.subheadline)
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                     Spacer()
                     Text("\(expirationDate.timeUntil().value) \(expirationDate.timeUntil().unit)")
-                        .foregroundColor(colorScheme == .dark ? .palaceSuccessLight : .palaceSuccessDark)
+                        .foregroundStyle(colorScheme == .dark ? Color.palaceSuccessLight : Color.palaceSuccessDark)
                 }
 
                 Divider()

@@ -134,43 +134,55 @@ extension TPPSignInBusinessLogic {
       VendorID: \(vendor ?? "N/A")
       """)
 
+        // Box the non-Sendable loggingContext in the (@MainActor) enclosing
+        // scope so the @Sendable authorize-completion captures the Sendable box,
+        // not the raw [String: Any].
+        let contextBox = DRMLoggingContextBox(loggingContext: loggingContext)
+
         drmAuthorizer?
             .authorize(withVendorID: vendor,
                        username: username,
                        password: password) { success, error, deviceID, userID in
 
-                // make sure to cancel the previously scheduled selector
-                // from the same thread it was scheduled on
-                TPPMainThreadRun.asyncIfNeeded { [weak self] in
-                    if let self = self {
-                        NSObject.cancelPreviousPerformRequests(withTarget: self)
-                    }
-                }
+                // Swift 6: the @objc DRM protocol completion is @Sendable
+                // (NYPLADEPT's ObjC block imports @Sendable) and fires from the
+                // Adobe activation thread. All work below touches @MainActor
+                // state (userAccount / libraryAccount / finalizeSignIn), so hop
+                // to the main actor once, carrying the non-Sendable error +
+                // loggingContext in a documented box. Behavior preserved: the
+                // cancel -> set-IDs -> finalize order is unchanged and now runs
+                // as one main-actor unit. This is ordering-neutral, not a fix:
+                // the off-main callback path already serialized these steps via
+                // main-queue FIFO (and finalizeSignIn does not read the IDs).
+                let box = DRMAuthCompletionBox(error: error, loggingContext: contextBox.loggingContext)
+                Task { @MainActor in
 
-                Log.info(#file, """
-                    Activation success: \(success)
-                    Error: \(error?.localizedDescription ?? "N/A")
-                    DeviceID: \(deviceID ?? "N/A")
-                    UserID: \(userID ?? "N/A")
-                    ***DRM Auth/Activation completion***
-                    """)
+                    // cancel the previously scheduled unexpected-delay selector
+                    NSObject.cancelPreviousPerformRequests(withTarget: self)
 
-                var success = success
+                    Log.info(#file, """
+                        Activation success: \(success)
+                        Error: \(box.error?.localizedDescription ?? "N/A")
+                        DeviceID: \(deviceID ?? "N/A")
+                        UserID: \(userID ?? "N/A")
+                        ***DRM Auth/Activation completion***
+                        """)
 
-                if success, let userID = userID, let deviceID = deviceID {
-                    TPPMainThreadRun.asyncIfNeeded {
+                    var success = success
+
+                    if success, let userID = userID, let deviceID = deviceID {
                         self.userAccount.setUserID(userID)
                         self.userAccount.setDeviceID(deviceID)
+                    } else {
+                        success = false
+                        TPPErrorLogger.logLocalAuthFailed(error: box.error as NSError?,
+                                                          library: self.libraryAccount,
+                                                          metadata: box.loggingContext)
                     }
-                } else {
-                    success = false
-                    TPPErrorLogger.logLocalAuthFailed(error: error as NSError?,
-                                                      library: self.libraryAccount,
-                                                      metadata: loggingContext)
-                }
 
-                self.finalizeSignIn(forDRMAuthorization: success,
-                                    error: error as NSError?)
+                    self.finalizeSignIn(forDRMAuthorization: success,
+                                        error: box.error as NSError?)
+                }
             }
 
         // Skip the 25-second timeout timer in test environments to prevent
@@ -233,3 +245,19 @@ extension TPPSignInBusinessLogic {
 }
 
 #endif
+
+/// Carrier for the non-Sendable `error` / `loggingContext` handed to the
+/// `@Sendable` DRM-authorization completion and hopped once onto the main
+/// actor. `@unchecked Sendable`: both fields are read-only after construction
+/// and consumed on the main actor exactly once.
+private struct DRMAuthCompletionBox: @unchecked Sendable {
+    let error: Error?
+    let loggingContext: [String: Any]
+}
+
+/// Carrier for the non-Sendable `loggingContext` captured by the `@Sendable`
+/// DRM-authorization completion. Built in the enclosing `@MainActor` scope;
+/// read-only after construction.
+private struct DRMLoggingContextBox: @unchecked Sendable {
+    let loggingContext: [String: Any]
+}

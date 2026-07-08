@@ -24,7 +24,7 @@ struct TPPPDFLabel: View {
         Text(text)
             .palaceFont(.subheadline, weight: .semibold)
             .multilineTextAlignment(.center)
-            .foregroundColor(.white)
+            .foregroundStyle(.white)
             .padding(.horizontal, 14)
             .padding(.vertical, 7)
             // A translucent dark capsule (not a SwiftUI material): the label floats

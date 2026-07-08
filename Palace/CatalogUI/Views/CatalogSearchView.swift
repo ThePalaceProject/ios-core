@@ -95,7 +95,7 @@ struct CatalogSearchView: View {
                 isSearchFieldFocused = true
             }
         }
-        .onChange(of: books) { newBooks in
+        .onChange(of: books) { _, newBooks in
             viewModel.updateBooks(newBooks)
         }
         .onReceive(registryChangePublisher) { note in
@@ -134,10 +134,10 @@ private extension CatalogSearchView {
                 .simultaneousGesture(
                     TapGesture().onEnded { isSearchFieldFocused = false }
                 )
-                .onChange(of: viewModel.searchId) { _ in
+                .onChange(of: viewModel.searchId) { _, _ in
                     proxy.scrollTo("search-results-top", anchor: .top)
                 }
-                .onChange(of: viewModel.isLoading) { isLoading in
+                .onChange(of: viewModel.isLoading) { _, isLoading in
                     handlePostSearchAccessibility(isLoading: isLoading)
                 }
         }
@@ -145,7 +145,21 @@ private extension CatalogSearchView {
 
     var resultsContent: some View {
         ScrollView {
-            if viewModel.shouldShowNoResultsState {
+            if viewModel.isLoading && viewModel.filteredBooks.isEmpty {
+                // Initial search load: show a content-shaped skeleton list
+                // (mirrors the result rows) instead of a blank screen + a lone
+                // field spinner. Built on the unified Skeleton primitives.
+                VStack(spacing: 0) {
+                    ForEach(0..<8, id: \.self) { _ in
+                        BookRowSkeletonView()
+                    }
+                }
+                // Match `BookListView`'s insets (the loaded results container)
+                // so rows don't shift horizontally when the search completes.
+                .padding(.horizontal, 12)
+                .padding(.vertical, 12)
+                .id("search-results-top")
+            } else if viewModel.shouldShowNoResultsState {
                 // BUG-003: When a completed search returns zero results, render
                 // a visible empty state rather than a blank screen so the user
                 // can distinguish "no matches" from a hung request.
@@ -177,14 +191,14 @@ private extension CatalogSearchView {
         VStack(spacing: 12) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 44, weight: .light))
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
             Text(Strings.SearchAnnouncements.noResultsTitle)
                 .font(.headline)
                 .multilineTextAlignment(.center)
             Text(Strings.SearchAnnouncements.noResultsBody)
                 .font(.subheadline)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
@@ -269,7 +283,7 @@ private extension CatalogSearchView {
                 } else if !viewModel.searchQuery.isEmpty {
                     Button(action: { viewModel.clearSearch() }, label: {
                         Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(.gray)
+                            .foregroundStyle(.gray)
                     })
                     .accessibilityLabel(Strings.Generic.clearSearch)
                     .padding(.trailing, 8)

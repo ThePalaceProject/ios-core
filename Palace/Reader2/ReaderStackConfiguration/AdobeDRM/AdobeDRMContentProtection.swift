@@ -208,13 +208,27 @@ extension AdobeDRMContainer: Container {
         }
 
         do {
-            var data = Data()
-            _ = try await archive.extract(entry, consumer: { data.append($0) })
-            return data
+            // Swift 6: the `extract` consumer closure may execute in a
+            // concurrent context, so a captured `var data` is a data race.
+            // Accumulate into a lock-backed box (chunks arrive sequentially;
+            // the lock documents the invariant and satisfies the checker).
+            let accumulator = ArchiveDataAccumulator()
+            _ = try await archive.extract(entry, consumer: { accumulator.append($0) })
+            return accumulator.data
         } catch {
             return nil
         }
     }
+}
+
+/// Lock-backed `Data` accumulator for `Archive.extract`'s `@Sendable` consumer
+/// closure (Swift 6 `complete`): chunks are appended under an `NSLock` so the
+/// captured accumulator is race-free even though extraction is sequential.
+private final class ArchiveDataAccumulator: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage = Data()
+    func append(_ chunk: Data) { lock.withLock { storage.append(chunk) } }
+    var data: Data { lock.withLock { storage } }
 }
 
 /// A DRM-enabled Resource that decrypts (decodes) its data once and then serves

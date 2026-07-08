@@ -25,7 +25,7 @@ struct GuidedStepCard: View {
             HStack(spacing: BotUI.Spacing.small) {
                 Text("Step \(stepNumber) of \(totalSteps)")
                     .font(.caption.weight(.semibold))
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
 
                 Spacer()
 
@@ -46,7 +46,7 @@ struct GuidedStepCard: View {
 
             Text(step.check)
                 .font(.body.weight(.medium))
-                .foregroundColor(.primary)
+                .foregroundStyle(.primary)
                 .fixedSize(horizontal: false, vertical: true)
 
             // Render either the step's specific responses (preferred)
@@ -67,7 +67,7 @@ struct GuidedStepCard: View {
             } label: {
                 Label("Skip & file a ticket", systemImage: "chevron.right")
                     .font(.footnote)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Skip remaining steps and file a support ticket")
@@ -131,7 +131,7 @@ private struct ResponseButtons: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 11)
-            .foregroundColor(fg)
+            .foregroundStyle(fg)
             .background(bg)
             .clipShape(Capsule())
         }

@@ -30,10 +30,13 @@ struct MyBooksView: View {
         ZStack {
             if model.isLoading {
                 BookListSkeletonView(rows: 10)
+                    .transition(.opacity)
             } else {
                 mainContent
+                    .transition(.opacity)
             }
         }
+        .accessibleAnimation(PalaceMotion.gentle, value: model.isLoading)
         .background(Color(TPPConfiguration.backgroundColor()))
         .overlay(alignment: .bottom) { SamplePreviewBarView() }
         .navigationBarTitleDisplayMode(.inline)
@@ -162,10 +165,10 @@ struct MyBooksView: View {
             // the default `.placeholderText` (~30% gray) that reads as
             // disabled. Entered text retains its own .foregroundColor.
             TextField(DisplayStrings.searchBooks, text: $model.searchQuery,
-                      prompt: Text(DisplayStrings.searchBooks).foregroundColor(.secondary))
+                      prompt: Text(DisplayStrings.searchBooks).foregroundStyle(.secondary))
                 .searchBarStyle()
                 .focused($isSearchFocused)
-                .onChange(of: model.searchQuery) { query in
+                .onChange(of: model.searchQuery) { _, query in
                     guard model.showSearchSheet else { return }
                     Task {
                         await model.filterBooks(query: query)
@@ -173,12 +176,12 @@ struct MyBooksView: View {
                 }
             Button(action: clearSearch, label: {
                 Image(systemName: "xmark.circle.fill")
-                    .foregroundColor(.gray)
+                    .foregroundStyle(.gray)
             })
             .accessibilityLabel(Strings.Generic.clearSearch)
         }
         .padding(.horizontal)
-        .onChange(of: model.showSearchSheet) { isShown in
+        .onChange(of: model.showSearchSheet) { _, isShown in
             if isShown {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                     isSearchFocused = true
@@ -252,12 +255,18 @@ struct MyBooksView: View {
     }
 
     private var emptyView: some View {
-        Text(DisplayStrings.emptyViewMessage)
-            .multilineTextAlignment(.center)
-            .foregroundColor(.gray)
-            .centered()
-            .palaceFont(.body)
-            .accessibilityIdentifier(AccessibilityID.MyBooks.emptyStateView)
+        ContentUnavailableView {
+            Label(DisplayStrings.emptyViewTitle, systemImage: "books.vertical")
+        } description: {
+            Text(DisplayStrings.emptyViewMessage)
+        } actions: {
+            Button(DisplayStrings.browseCatalog) {
+                appContainer.tabRouterHub.navigate(to: .catalog)
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .transition(.opacity)
+        .accessibilityIdentifier(AccessibilityID.MyBooks.emptyStateView)
     }
 
     private func setupTabBarForiPad() {

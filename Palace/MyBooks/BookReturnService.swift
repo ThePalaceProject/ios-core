@@ -72,6 +72,23 @@ final class BookReturnService: @unchecked Sendable {
     /// `reauthenticator.authenticateIfNeeded` closure.
     private let authCoordinator: AuthCoordinator?
 
+    /// Reliability WS-C (INV-3): enqueue seam for a genuine offline
+    /// return. When non-nil and the revoke fetch fails with an offline
+    /// `NSURLError`, the return is queued for later drain instead of
+    /// dead-ending in an alert — and NO local content is deleted /
+    /// unregistered until the queued return is server-confirmed. Optional
+    /// so existing tests/callers that don't wire the queue keep the legacy
+    /// alert behavior. Production injects the real queue enqueue.
+    private let offlineReturnEnqueuer: (@Sendable (OfflineAction) async -> Void)?
+
+    /// Production default for `offlineReturnEnqueuer`: enqueue onto the
+    /// app-wide offline queue. Used so the MBDC-constructed instance gets
+    /// INV-3 behavior without MBDC (owned by WS-A) having to change. Tests
+    /// inject their own spy to observe the enqueue deterministically.
+    static let productionOfflineReturnEnqueuer: @Sendable (OfflineAction) async -> Void = { action in
+        await OfflineQueueService.shared.enqueue(action)
+    }
+
     /// Closure resolves the current user account each call so library
     /// switches mid-flow are observed correctly (matches MBDC's `userAccount`
     /// computed property semantics).
@@ -127,7 +144,8 @@ final class BookReturnService: @unchecked Sendable {
         userRetryTracker: UserRetryTracker,
         userAccountProvider: @escaping () -> TPPUserAccount,
         adobeDRMService: AdobeDRMService = .shared,
-        authCoordinator: AuthCoordinator? = nil
+        authCoordinator: AuthCoordinator? = nil,
+        offlineReturnEnqueuer: (@Sendable (OfflineAction) async -> Void)? = BookReturnService.productionOfflineReturnEnqueuer
     ) {
         self.bookRegistry = bookRegistry
         self.localContentService = localContentService
@@ -139,6 +157,7 @@ final class BookReturnService: @unchecked Sendable {
         self.userAccountProvider = userAccountProvider
         self.adobeDRMService = adobeDRMService
         self.authCoordinator = authCoordinator
+        self.offlineReturnEnqueuer = offlineReturnEnqueuer
     }
     #else
     init(
@@ -150,7 +169,8 @@ final class BookReturnService: @unchecked Sendable {
         reauthenticator: Reauthenticator,
         userRetryTracker: UserRetryTracker,
         userAccountProvider: @escaping () -> TPPUserAccount,
-        authCoordinator: AuthCoordinator? = nil
+        authCoordinator: AuthCoordinator? = nil,
+        offlineReturnEnqueuer: (@Sendable (OfflineAction) async -> Void)? = BookReturnService.productionOfflineReturnEnqueuer
     ) {
         self.bookRegistry = bookRegistry
         self.localContentService = localContentService
@@ -161,6 +181,7 @@ final class BookReturnService: @unchecked Sendable {
         self.userRetryTracker = userRetryTracker
         self.userAccountProvider = userAccountProvider
         self.authCoordinator = authCoordinator
+        self.offlineReturnEnqueuer = offlineReturnEnqueuer
     }
     #endif
 
@@ -234,9 +255,7 @@ final class BookReturnService: @unchecked Sendable {
         let task = Task { [weak self] in
             await body()
             guard let self else { return }
-            self.inFlightLock.lock()
-            self.inFlightTasks.removeValue(forKey: id)
-            self.inFlightLock.unlock()
+            self.inFlightLock.withLock { self.inFlightTasks.removeValue(forKey: id) }
         }
         inFlightLock.lock()
         inFlightTasks[id] = task
@@ -257,9 +276,7 @@ final class BookReturnService: @unchecked Sendable {
         let task = Task { @MainActor [weak self] in
             await body()
             guard let self else { return }
-            self.inFlightLock.lock()
-            self.inFlightTasks.removeValue(forKey: id)
-            self.inFlightLock.unlock()
+            self.inFlightLock.withLock { self.inFlightTasks.removeValue(forKey: id) }
         }
         inFlightLock.lock()
         inFlightTasks[id] = task
@@ -525,6 +542,27 @@ final class BookReturnService: @unchecked Sendable {
             return
         }
 
+        // Reliability WS-C (INV-3): a genuine offline / no-connection error
+        // is NOT a return failure — the loan is still ours and the revoke
+        // simply couldn't reach the server. Enqueue the return for a later
+        // drain and inform the patron. Critically, do NOT delete local
+        // content or unregister here — cleanup only runs once the queued
+        // return is server-confirmed (via OfflineQueueCoordinator ->
+        // returnBook -> the normal ordered cleanup contract).
+        if Self.isOfflineNSURLError(error), let enqueuer = self.offlineReturnEnqueuer {
+            Log.info(#file, "Offline return for '\(book.title)' — enqueuing for later; no local cleanup")
+            let action = OfflineAction(type: .return, bookID: identifier, bookTitle: book.title)
+            launchTrackedTask { [weak self] in
+                await enqueuer(action)
+                guard let self else { return }
+                runOnMainAsync {
+                    self.presentOfflineReturnQueuedAlert(for: book)
+                    completion?()
+                }
+            }
+            return
+        }
+
         // All other errors — show alert with problem document if available
         launchTrackedMainActorTask { [weak self] in
             guard let self else { return }
@@ -596,6 +634,44 @@ final class BookReturnService: @unchecked Sendable {
         TPPPresentationUtils.safelyPresent(alert)
         downloadAnnouncementService.announceReturnFailed(for: book)
         completion?()
+    }
+
+    // MARK: - Offline return (INV-3)
+
+    /// Whether `error` is a genuine offline / no-connection transport
+    /// failure — the only class of return error that should be queued
+    /// rather than surfaced as a failure. Auth / problem-doc / parsing
+    /// errors are handled by their own branches above.
+    static func isOfflineNSURLError(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        guard nsError.domain == NSURLErrorDomain else { return false }
+        switch nsError.code {
+        case NSURLErrorNotConnectedToInternet,
+             NSURLErrorNetworkConnectionLost,
+             NSURLErrorCannotConnectToHost,
+             NSURLErrorTimedOut,
+             NSURLErrorDataNotAllowed,
+             NSURLErrorInternationalRoamingOff,
+             NSURLErrorCannotFindHost:
+            return true
+        default:
+            return false
+        }
+    }
+
+    @MainActor
+    private func presentOfflineReturnQueuedAlert(for book: TPPBook) {
+        let message = String(
+            format: NSLocalizedString(
+                "\"%@\" will be returned automatically when you're back online.",
+                comment: "Informs the user an offline return was queued"),
+            book.title)
+        let alert = UIAlertController(
+            title: NSLocalizedString("Return Queued", comment: "Title for a queued offline return"),
+            message: message,
+            preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: Strings.Generic.ok, style: .default))
+        TPPPresentationUtils.safelyPresent(alert)
     }
 
     // MARK: - Post-return sync

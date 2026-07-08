@@ -237,4 +237,37 @@ final class AudiobookFullPlayerCoverContainerTests: XCTestCase {
         XCTAssertFalse(spyPresenter.isPlayerExpanded,
                        "Swipe-down must drive isPlayerExpanded → false so the binding dismisses the cover")
     }
+
+    // MARK: - PR3 (PP-4746): finger-tracking rubber-band + shouldMinimize seam
+
+    /// Downward drag is followed 1:1 so the player tracks the finger directly.
+    func test_rubberBandedDragOffset_followsDownwardDrag1to1() {
+        XCTAssertEqual(AudiobookFullPlayerCoverContainer.rubberBandedDragOffset(translationHeight: 0), 0,
+                       "Zero translation → zero offset.")
+        XCTAssertEqual(AudiobookFullPlayerCoverContainer.rubberBandedDragOffset(translationHeight: 120), 120,
+                       "Downward drag must be followed 1:1 (no damping) so the dismiss tracks the finger.")
+    }
+
+    /// Upward drag is heavily resisted (15%) so the player can't be dragged up
+    /// past its resting position — the rubber-band effect.
+    func test_rubberBandedDragOffset_resistsUpwardDrag() {
+        let offset = AudiobookFullPlayerCoverContainer.rubberBandedDragOffset(translationHeight: -100)
+        XCTAssertEqual(offset, -15, accuracy: 0.0001,
+                       "Upward drag must be rubber-banded to 15% (-100 → -15) — kills a mutation that follows up-drags 1:1.")
+        XCTAssertGreaterThan(offset, -100,
+                             "Resisted upward offset must be closer to rest than the raw translation.")
+    }
+
+    /// `shouldMinimize` reproduces the exact dismissal contract: past the 100pt
+    /// vertical threshold AND under the 60pt horizontal-drift filter.
+    func test_shouldMinimize_matchesThresholdAndDriftContract() {
+        XCTAssertTrue(AudiobookFullPlayerCoverContainer.shouldMinimize(translation: CGSize(width: 0, height: 101)),
+                      "Past 100pt with no drift → minimize.")
+        XCTAssertFalse(AudiobookFullPlayerCoverContainer.shouldMinimize(translation: CGSize(width: 0, height: 100)),
+                       "Exactly 100pt is NOT past the strict `>` threshold → no minimize (kills `>` → `>=`).")
+        XCTAssertFalse(AudiobookFullPlayerCoverContainer.shouldMinimize(translation: CGSize(width: 80, height: 200)),
+                       "Excessive horizontal drift (80pt > 60pt) → no minimize even past the vertical threshold.")
+        XCTAssertFalse(AudiobookFullPlayerCoverContainer.shouldMinimize(translation: CGSize(width: 0, height: -200)),
+                       "Upward drag → never minimize.")
+    }
 }

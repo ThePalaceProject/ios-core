@@ -157,16 +157,50 @@ final class DebugSettings: @unchecked Sendable {
         return simulatedBorrowError != .none
     }
 
+    // MARK: - Debug-simulation marker
+
+    /// Unmistakable banner stamped onto every simulated debug error. PP-4454
+    /// follow-up: a QA tester left the "Simulate Borrow Error" toggle on and
+    /// reported the resulting fake 500 as a real server bug, because the alert
+    /// was indistinguishable from a genuine failure. The marker leads the alert
+    /// body and the "Palace Error Report" so a simulation can never masquerade
+    /// as a real error again.
+    static let debugSimulationMarker = "⚠️ DEBUG SIMULATION"
+
+    /// Actionable banner line that names the toggle and how to disable it.
+    private static func debugSimulationBanner(_ displayName: String) -> String {
+        "\(debugSimulationMarker) — this is a FAKE error triggered by "
+        + "Developer Settings ▸ Simulate Borrow Error (\(displayName)). "
+        + "It is NOT a real failure. Set it to “None” to stop seeing it."
+    }
+
     // MARK: - Error Generation
 
-    /// Creates a simulated NSError with problem document for testing
-    /// Returns nil if simulation is disabled
+    /// Creates a simulated NSError with problem document for testing.
+    /// Returns nil if simulation is disabled.
+    ///
+    /// The returned problem document is a *marked* copy of the catalog document:
+    /// its title and detail carry `debugSimulationMarker` so the simulation is
+    /// obvious in every surface QA sees (borrow-error alert body + error report),
+    /// while the genuine copy is preserved beneath the banner for realistic preview.
     func createSimulatedBorrowError() -> (error: NSError, problemDocument: TPPProblemDocument)? {
-        guard let problemDoc = simulatedBorrowError.problemDocument else {
+        let simulated = simulatedBorrowError
+        guard let baseDoc = simulated.problemDocument else {
             return nil
         }
 
-        Log.warn(#file, "⚠️ DEBUG: Simulating borrow error: \(simulatedBorrowError.displayName)")
+        Log.warn(#file, "⚠️ DEBUG: Simulating borrow error: \(simulated.displayName)")
+
+        let markedTitle = "\(Self.debugSimulationMarker): \(baseDoc.title ?? "Simulated error")"
+        let markedDetail = Self.debugSimulationBanner(simulated.displayName)
+            + "\n\n" + (baseDoc.detail ?? "")
+
+        let problemDoc = TPPProblemDocument.fromDictionary([
+            "type": baseDoc.type ?? "",
+            "title": markedTitle,
+            "status": baseDoc.status ?? 403,
+            "detail": markedDetail
+        ])
 
         let error = NSError.makeFromProblemDocument(
             problemDoc,

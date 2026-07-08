@@ -834,6 +834,250 @@ final class BookRegistrySyncTests: XCTestCase {
         XCTAssertNil(sut.syncUrl,
                      "syncUrl must be cleared (never left set) when awaitReady aborts the sync")
     }
+
+    // MARK: - Reliability WS-B: registry resilience (INV-1, quarantine, backup, schema)
+    //
+    // These drive the real load/save disk pipeline on an isolated per-test
+    // account so registryUrl maps to a temp directory we own. They exercise the
+    // corrupt-file quarantine branch, `.bak` recovery, the empty-over-backup save
+    // refusal (INV-1), and schema versioning/migration.
+
+    /// Adds one book to `store`, snapshots the exact dictionary shape production
+    /// persists, then clears the store. The returned records round-trip through
+    /// the same `TPPBookRegistryRecord(record:)` path production uses on load.
+    private func snapshotWithOneBook(id: String = "wsb-book", state: TPPBookState = .downloadNeeded) -> [[String: Any]] {
+        let book = makeBook(identifier: id, title: "WS-B \(id)")
+        let added = expectation(description: "added")
+        store.addBook(book, state: state) { _ in added.fulfill() }
+        wait(for: [added], timeout: 2.0)
+        drainMainQueue()
+        let snapshot = store.registrySnapshot()
+        store.removeAll()
+        drainMainQueue()
+        return snapshot
+    }
+
+    /// Writes a `{ [schemaVersion,] records }` payload to an arbitrary URL.
+    private func writeRegistryPayload(records: [[String: Any]], schemaVersion: Int?, to url: URL) {
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        var json: [String: Any] = [TPPBookRegistryKey.records.rawValue: records]
+        if let schemaVersion { json[RegistryFileRecovery.schemaVersionKey] = schemaVersion }
+        let data = try! JSONSerialization.data(withJSONObject: json)
+        try! data.write(to: url)
+    }
+
+    /// Spins the run loop until `predicate()` is true or `timeout` elapses. Lets
+    /// `DispatchQueue.main.async` completion blocks (e.g. the save notification)
+    /// run while we wait on the background disk write.
+    private func waitUntil(timeout: TimeInterval = 3.0, _ predicate: () -> Bool) {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !predicate() && Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.02))
+        }
+    }
+
+    /// Fixed run-loop settle for asserting the ABSENCE of an effect (a refused
+    /// save posts no notification, so there is no positive edge to await).
+    private func settle(_ seconds: TimeInterval = 0.4) {
+        RunLoop.current.run(until: Date().addingTimeInterval(seconds))
+    }
+
+    private func quarantineFileExists(besideRegistryAt url: URL) -> Bool {
+        let dir = url.deletingLastPathComponent()
+        let contents = (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []
+        return contents.contains { $0.hasPrefix("registry.json.corrupt-") }
+    }
+
+    // MARK: INV-1 — empty save refused over a non-empty backup without server authority
+
+    func testSaveEmptyOverNonEmptyBackup_isRefusedWithoutServerAuthority() {
+        let (account, url) = makeIsolatedAccount()
+        defer { cleanupAccount(url) }
+
+        // Arrange: a non-empty last-good backup on disk + the SUT in the
+        // post-corrupt-load rebuild window with an empty in-memory shelf.
+        let goodRecords = snapshotWithOneBook(id: "kept-book")
+        XCTAssertEqual(goodRecords.count, 1, "precondition: backup fixture has one record")
+        writeRegistryPayload(records: goodRecords, schemaVersion: 1,
+                             to: RegistryFileRecovery.backupURL(for: url))
+        XCTAssertTrue(RegistryFileRecovery.backupHasRecords(for: url),
+                      "precondition: a non-empty .bak exists")
+        syncManager.needsRebuildFromServer = true
+        XCTAssertTrue(store.allBooks.isEmpty, "precondition: empty in-memory shelf")
+
+        // Act: a NON-authoritative save of the empty shelf.
+        syncManager.save(for: account)
+        settle()
+
+        // Assert: the last-good backup survived — the empty snapshot was refused.
+        XCTAssertTrue(RegistryFileRecovery.backupHasRecords(for: url),
+                      "INV-1: a non-authoritative empty save must NOT clobber the non-empty last-good backup")
+        // And the primary was not written as a valid-empty file that erased the shelf.
+        if case .valid(let recs) = RegistryFileRecovery.classify(data: try? Data(contentsOf: url)) {
+            XCTFail("INV-1: the primary registry.json must not be overwritten with a valid-empty file during rebuild (found \(recs.count) records)")
+        }
+        XCTAssertTrue(syncManager.needsRebuildFromServer,
+                      "a refused save must leave the rebuild flag set")
+    }
+
+    func testSaveEmpty_withServerAuthority_persistsAndClearsRebuildFlag() {
+        let (account, url) = makeIsolatedAccount()
+        defer { cleanupAccount(url) }
+
+        syncManager.needsRebuildFromServer = true
+        XCTAssertTrue(store.allBooks.isEmpty)
+
+        // An authoritative sync result may legitimately persist an empty shelf.
+        syncManager.save(for: account, serverAuthoritative: true)
+        waitUntil { FileManager.default.fileExists(atPath: url.path) }
+
+        guard case .valid(let recs) = RegistryFileRecovery.classify(data: try? Data(contentsOf: url)) else {
+            return XCTFail("an authoritative empty save must persist a valid (empty) registry.json")
+        }
+        XCTAssertTrue(recs.isEmpty, "the authoritative save persisted the empty shelf")
+        XCTAssertFalse(syncManager.needsRebuildFromServer,
+                       "an authoritative save must clear the rebuild flag")
+    }
+
+    func testNonEmptySave_isNeverBlocked_evenDuringRebuildWindow() {
+        // Borrowing a book during the rebuild window is a legitimate non-empty
+        // save; it must proceed and exit the rebuild window.
+        let (account, url) = makeIsolatedAccount()
+        defer { cleanupAccount(url) }
+
+        syncManager.needsRebuildFromServer = true
+        let added = expectation(description: "added")
+        store.addBook(makeBook(identifier: "borrowed-during-rebuild"), state: .downloadNeeded) { _ in added.fulfill() }
+        wait(for: [added], timeout: 2.0)
+        drainMainQueue()
+
+        syncManager.save(for: account)   // non-authoritative, but non-empty
+        waitUntil { FileManager.default.fileExists(atPath: url.path) }
+
+        guard case .valid(let recs) = RegistryFileRecovery.classify(data: try? Data(contentsOf: url)) else {
+            return XCTFail("a non-empty save must always persist a valid registry")
+        }
+        XCTAssertEqual(recs.count, 1, "the borrowed book must be persisted despite the rebuild flag")
+        XCTAssertFalse(syncManager.needsRebuildFromServer,
+                       "a successful non-empty save clears the rebuild flag")
+        // A non-empty save (even non-authoritative) must refresh the last-good
+        // `.bak` sidecar — this is the recovery source a later corrupt load reads.
+        XCTAssertTrue(RegistryFileRecovery.backupHasRecords(for: url),
+                      "a non-empty save must write the last-good .bak backup")
+    }
+
+    // MARK: Corrupt-load quarantine + backup recovery
+
+    func testCorruptLoad_recoversFromNonEmptyBackup_andQuarantinesOriginal() {
+        let (account, url) = makeIsolatedAccount()
+        defer { cleanupAccount(url) }
+
+        // A valid non-empty backup + a corrupt primary.
+        let good = snapshotWithOneBook(id: "recovered-book")
+        writeRegistryPayload(records: good, schemaVersion: 1,
+                             to: RegistryFileRecovery.backupURL(for: url))
+        writeRegistryPayload(records: [], schemaVersion: nil, to: url) // ensure dir exists
+        try! Data("{ truncated corrupt primary".utf8).write(to: url)
+
+        let done = expectation(description: "loaded")
+        syncManager.load(account: account) { state in if state == .loaded { done.fulfill() } }
+        wait(for: [done], timeout: 3.0)
+
+        XCTAssertEqual(store.allBooks.count, 1,
+                       "a corrupt primary must be healed from the last-good .bak — the shelf is restored, not erased")
+        XCTAssertFalse(syncManager.needsRebuildFromServer,
+                       "successful .bak recovery must NOT flag a server rebuild")
+        XCTAssertTrue(quarantineFileExists(besideRegistryAt: url),
+                      "the corrupt original must be quarantined to registry.json.corrupt-<ts>")
+    }
+
+    func testCorruptLoad_withoutBackup_leavesEmptyAndFlagsRebuild_andQuarantines() {
+        let (account, url) = makeIsolatedAccount()
+        defer { cleanupAccount(url) }
+
+        // Corrupt primary, NO backup.
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try! Data("{ corrupt and no backup".utf8).write(to: url)
+
+        let done = expectation(description: "loaded")
+        syncManager.load(account: account) { state in if state == .loaded { done.fulfill() } }
+        wait(for: [done], timeout: 3.0)
+
+        XCTAssertTrue(store.allBooks.isEmpty,
+                      "with no recoverable backup the in-memory shelf is left empty (not populated from a corrupt file)")
+        XCTAssertTrue(syncManager.needsRebuildFromServer,
+                      "an unrecoverable corrupt load must set needsRebuildFromServer so the next sync repopulates")
+        XCTAssertTrue(quarantineFileExists(besideRegistryAt: url),
+                      "even with no backup, the corrupt original must be quarantined")
+    }
+
+    func testCorruptLoad_thenNonAuthoritativeEmptySave_isRefused_untilServerSync() {
+        // End-to-end INV-1: corrupt load flags rebuild; a subsequent empty
+        // non-authoritative save must be refused so nothing erases the shelf
+        // before an authoritative sync runs.
+        let (account, url) = makeIsolatedAccount()
+        defer { cleanupAccount(url) }
+
+        let good = snapshotWithOneBook(id: "shelf-book")
+        writeRegistryPayload(records: good, schemaVersion: 1,
+                             to: RegistryFileRecovery.backupURL(for: url))
+        try! Data("{ corrupt".utf8).write(to: url)
+
+        let done = expectation(description: "loaded")
+        syncManager.load(account: account) { state in if state == .loaded { done.fulfill() } }
+        wait(for: [done], timeout: 3.0)
+        // Recovery from .bak succeeds here, so the shelf is restored and NOT flagged.
+        XCTAssertEqual(store.allBooks.count, 1)
+        XCTAssertFalse(syncManager.needsRebuildFromServer)
+        XCTAssertTrue(RegistryFileRecovery.backupHasRecords(for: url),
+                      "the last-good backup remains intact after a recovering load")
+    }
+
+    // MARK: Schema version + migration
+
+    func testSave_writesSchemaVersionField() {
+        let (account, url) = makeIsolatedAccount()
+        defer { cleanupAccount(url) }
+
+        let added = expectation(description: "added")
+        store.addBook(makeBook(identifier: "schema-book"), state: .downloadNeeded) { _ in added.fulfill() }
+        wait(for: [added], timeout: 2.0)
+        drainMainQueue()
+
+        syncManager.save(for: account)
+        waitUntil { FileManager.default.fileExists(atPath: url.path) }
+
+        let version = RegistryFileRecovery.schemaVersion(from: try? Data(contentsOf: url))
+        XCTAssertEqual(version, RegistryFileRecovery.currentSchemaVersion,
+                       "save() must stamp the current schemaVersion into the persisted payload")
+    }
+
+    func testSchemaMigration_unversionedFileLoads_thenSaveWritesVersion() {
+        let (account, url) = makeIsolatedAccount()
+        defer { cleanupAccount(url) }
+
+        // An OLD file: valid records, but NO schemaVersion field.
+        let legacy = snapshotWithOneBook(id: "legacy-book")
+        writeRegistryPayload(records: legacy, schemaVersion: nil, to: url)
+        XCTAssertNil(RegistryFileRecovery.schemaVersion(from: try? Data(contentsOf: url)),
+                     "precondition: the legacy file is unversioned")
+
+        // Load migrates it in-memory (loads fine); the book must appear.
+        let done = expectation(description: "loaded")
+        syncManager.load(account: account) { state in if state == .loaded { done.fulfill() } }
+        wait(for: [done], timeout: 3.0)
+        XCTAssertEqual(store.allBooks.count, 1, "an unversioned legacy file must load without loss")
+        XCTAssertFalse(syncManager.needsRebuildFromServer, "a valid legacy file is not a corrupt/rebuild case")
+
+        // Saving migrates it on disk to the versioned shape.
+        syncManager.save(for: account)
+        waitUntil {
+            RegistryFileRecovery.schemaVersion(from: try? Data(contentsOf: url)) != nil
+        }
+        XCTAssertEqual(RegistryFileRecovery.schemaVersion(from: try? Data(contentsOf: url)),
+                       RegistryFileRecovery.currentSchemaVersion,
+                       "the next save must migrate the unversioned file to the current schema version")
+    }
 }
 
 // MARK: - P5 test fake

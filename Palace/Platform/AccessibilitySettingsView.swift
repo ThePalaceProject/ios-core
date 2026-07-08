@@ -88,7 +88,7 @@ struct AccessibilitySettingsView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("These settings supplement your system accessibility preferences. They do not override system settings.")
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(.secondary)
                 }
             }
 
@@ -101,13 +101,13 @@ struct AccessibilitySettingsView: View {
                         .tag(level)
                     }
                 }
-                .onChange(of: viewModel.preferences.verbosity) { newValue in
+                .onChange(of: viewModel.preferences.verbosity) { _, newValue in
                     viewModel.updateVerbosity(newValue)
                 }
 
                 Text(viewModel.preferences.verbosity.description)
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
 
                 Toggle("Custom Rotor Actions", isOn: Binding(
                     get: { viewModel.preferences.customRotorActionsEnabled },
@@ -116,7 +116,7 @@ struct AccessibilitySettingsView: View {
 
                 Text("Adds rotor actions for jumping between chapters and bookmarks.")
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Motion & Animation") {
@@ -127,7 +127,7 @@ struct AccessibilitySettingsView: View {
 
                 Text("Reduces animations beyond the system Reduce Motion setting.")
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
 
                 Toggle("Haptic Feedback", isOn: Binding(
                     get: { viewModel.preferences.hapticFeedbackEnabled },
@@ -143,7 +143,7 @@ struct AccessibilitySettingsView: View {
 
                 Text("Increases contrast beyond the system setting for better readability.")
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
 
                 Toggle("Button Shapes", isOn: Binding(
                     get: { viewModel.preferences.buttonShapesEnabled },
@@ -152,7 +152,7 @@ struct AccessibilitySettingsView: View {
 
                 Text("Shows outlines around interactive elements.")
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Preview") {
@@ -174,18 +174,18 @@ private struct AccessibilityPreviewView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Sample Book Title")
                 .font(.headline)
-                .foregroundColor(preferences.highContrastBoost ? .primary : .primary.opacity(0.87))
+                .foregroundStyle(preferences.highContrastBoost ? Color.primary : Color.primary.opacity(0.87))
 
             Text("By Sample Author")
                 .font(.subheadline)
-                .foregroundColor(preferences.highContrastBoost ? .secondary : .secondary.opacity(0.8))
+                .foregroundStyle(preferences.highContrastBoost ? Color.secondary : Color.secondary.opacity(0.8))
 
             Button(action: {}) {
                 Text("Borrow")
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
                     .background(Color.accentColor)
-                    .foregroundColor(.white)
+                    .foregroundStyle(.white)
                     .cornerRadius(preferences.buttonShapesEnabled ? 4 : 8)
                     .overlay(
                         RoundedRectangle(cornerRadius: preferences.buttonShapesEnabled ? 4 : 8)

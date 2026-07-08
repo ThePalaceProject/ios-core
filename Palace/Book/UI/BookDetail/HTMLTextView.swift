@@ -17,7 +17,7 @@ struct HTMLTextView: View {
             .onAppear {
                 parseHTML()
             }
-            .onChange(of: htmlContent) { _ in
+            .onChange(of: htmlContent) { _, _ in
                 parseHTML()
             }
     }

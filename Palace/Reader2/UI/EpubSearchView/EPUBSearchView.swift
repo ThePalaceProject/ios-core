@@ -18,16 +18,16 @@ struct EPUBSearchView: View {
     @State private var debounceSearch: AnyCancellable?
 
     @FocusState private var isSearchFieldFocused: Bool
-    @Environment(\.presentationMode) var presentationMode
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         VStack {
             HStack {
                 Button(action: {
-                    presentationMode.wrappedValue.dismiss()
+                    dismiss()
                 }, label: {
                     Image(systemName: "chevron.left")
-                        .foregroundColor(.primary)
+                        .foregroundStyle(.primary)
                         .padding(.trailing, 8)
                         .accessibilityHidden(true)
                 })
@@ -41,7 +41,7 @@ struct EPUBSearchView: View {
             searchBar
             listView
         }
-        .onChange(of: searchQuery, perform: search)
+        .onChange(of: searchQuery) { _, newValue in search(newValue: newValue) }
         .padding()
         .ignoresSafeArea(.keyboard)
     }
@@ -52,14 +52,14 @@ struct EPUBSearchView: View {
             // the default `.placeholderText` (~30% gray) that reads as
             // disabled. Entered text retains its own .foregroundColor.
             TextField("\(Strings.Generic.search)...", text: $searchQuery,
-                      prompt: Text("\(Strings.Generic.search)...").foregroundColor(.secondary))
+                      prompt: Text("\(Strings.Generic.search)...").foregroundStyle(.secondary))
                 .focused($isSearchFieldFocused)
             Button(action: {
                 searchQuery = ""
                 viewModel.cancelSearch()
             }, label: {
                 Image(systemName: "xmark.circle.fill")
-                    .foregroundColor(Color.gray)
+                    .foregroundStyle(Color.gray)
                     .padding(.leading, 5)
             })
             .accessibilityLabel(Strings.Generic.clearSearch)
@@ -129,7 +129,7 @@ struct EPUBSearchView: View {
     private func sectionHeaderView(title: String) -> some View {
         Text(title.uppercased())
             .palaceFont(.headline)
-            .foregroundColor(.black.opacity(0.8))
+            .foregroundStyle(.primary)
             .textCase(.none)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -146,30 +146,16 @@ struct EPUBSearchView: View {
     private func rowView(_ locator: Locator) -> some View {
         let text = locator.text.sanitized()
 
-        if #available(iOS 15.0, *) {
-            var combinedText = AttributedString(text.before ?? "")
+        var combinedText = AttributedString(text.before ?? "")
 
-            var highlight = AttributedString(text.highlight ?? "")
-            highlight.backgroundColor = .red.opacity(0.3)
-            highlight.font = .semiBoldPalaceFont(ofSize: UIFont.preferredFont(forTextStyle: .body).pointSize)
+        var highlight = AttributedString(text.highlight ?? "")
+        highlight.backgroundColor = .red.opacity(0.3)
+        highlight.font = .semiBoldPalaceFont(ofSize: UIFont.preferredFont(forTextStyle: .body).pointSize)
 
-            combinedText.append(highlight)
-            combinedText.append(AttributedString(text.after ?? ""))
+        combinedText.append(highlight)
+        combinedText.append(AttributedString(text.after ?? ""))
 
-            return Text(combinedText)
-                .palaceFont(.body)
-                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    viewModel.userSelected(locator)
-                }
-                .padding(.horizontal, 5)
-        } else {
-            return VStack {
-                Text(text.before ?? "") +
-                    Text(text.highlight ?? "").foregroundColor(Color.red).fontWeight(.medium) +
-                    Text(text.after ?? "")
-            }
+        return Text(combinedText)
             .palaceFont(.body)
             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             .contentShape(Rectangle())
@@ -177,7 +163,6 @@ struct EPUBSearchView: View {
                 viewModel.userSelected(locator)
             }
             .padding(.horizontal, 5)
-        }
     }
 
     private func search(newValue: String) {

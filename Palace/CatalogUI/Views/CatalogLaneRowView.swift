@@ -18,10 +18,13 @@ struct CatalogLaneRowView: View {
 
             if isLoading || books.isEmpty {
                 laneSkeletonScroller
+                    .transition(.opacity)
             } else {
                 scroller
+                    .transition(.opacity)
             }
         }
+        .accessibleAnimation(PalaceMotion.gentle, value: isLoading)
     }
 
     // MARK: - Subviews
@@ -37,12 +40,15 @@ struct CatalogLaneRowView: View {
                             width: nil,
                             height: 150,
                             usePulseSkeleton: true,
-                            treatImageAsDecorativeInLists: true
+                            treatImageAsDecorativeInLists: true,
+                            // Shadow rides the settled cover only — never the
+                            // pulsing skeleton — so the 4-layer shadow blur is
+                            // not re-rasterized every animation frame.
+                            coverShadowRadius: 4
                         )
-                        .adaptiveShadow(radius: 4)
                         .padding(.vertical)
                     })
-                    .buttonStyle(.plain)
+                    .buttonStyle(.palacePressable)
                     // lift the cover when a pointer (iPad pencil/mouse
                     // or iPad-on-Mac mouse) hovers it. No-op on touch-only iPhones.
                     .hoverEffect(.lift)
@@ -94,25 +100,16 @@ struct CatalogLaneRowView: View {
 
 // MARK: - Lane Skeleton View
 private struct LaneSkeletonView: View {
-    @State private var pulse: Bool = false
-
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             LazyHStack(spacing: 12) {
                 ForEach(0..<6, id: \.self) { _ in
-                    Rectangle()
-                        .fill(Color.gray.opacity(0.25))
-                        .frame(width: 100, height: 150)
-                        .opacity(pulse ? 0.6 : 1.0)
+                    SkeletonCover(width: 100, height: 150)
                         .padding(.vertical)
                 }
             }
             .padding(.horizontal, 12)
         }
-        .onAppear {
-            accessibleWithAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
-                pulse = true
-            }
-        }
+        .accessibilityHidden(true)
     }
 }

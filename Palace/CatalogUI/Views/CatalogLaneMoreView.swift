@@ -233,10 +233,10 @@ struct CatalogLaneMoreView: View {
                         }, label: {
                             HStack {
                                 Image(systemName: facet.active ? "largecircle.fill.circle" : "circle")
-                                    .foregroundColor(.primary)
+                                    .foregroundStyle(.primary)
                                     .accessibilityHidden(true)
                                 Text(facet.title)
-                                    .foregroundColor(.primary)
+                                    .foregroundStyle(.primary)
                                 Spacer()
                             }
                             .padding(.vertical, 12)
@@ -317,7 +317,7 @@ private extension CatalogLaneMoreView {
             if viewModel.isApplyingFilters {
                 Text("Filtering...")
                     .palaceFont(size: 12)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
             }
         }
         .padding(.trailing, 12)
@@ -347,8 +347,13 @@ private extension CatalogLaneMoreView {
     }
 
     func errorView(_ errorMessage: String) -> some View {
-        Text(errorMessage)
-            .padding()
+        ContentUnavailableView {
+            Label(Strings.Generic.error, systemImage: "exclamationmark.triangle")
+        } description: {
+            Text(errorMessage)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .transition(.opacity)
     }
 
     @ViewBuilder

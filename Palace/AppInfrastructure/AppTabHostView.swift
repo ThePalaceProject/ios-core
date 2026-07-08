@@ -188,8 +188,11 @@ struct AppTabHostView: View {
             // when expanded.
             .ignoresSafeArea(edges: .bottom)
             .offset(y: audiobookSessionPresenter.isPlayerExpanded ? 0 : screenHeight)
+            // Spring (PalaceMotion.emphasized) instead of the old easeInOut(0.3)
+            // so minimize/expand feels responsive. Same offset architecture —
+            // only the animation curve changed. Reduce-motion still gets nil.
             .animation(
-                UIAccessibility.isReduceMotionEnabled ? nil : .easeInOut(duration: 0.3),
+                UIAccessibility.isReduceMotionEnabled ? nil : PalaceMotion.emphasized,
                 value: audiobookSessionPresenter.isPlayerExpanded
             )
             .allowsHitTesting(audiobookSessionPresenter.isPlayerExpanded)
@@ -256,7 +259,7 @@ struct AppTabHostView: View {
             appContainer.tabRouterHub.router = router
             appContainer.tabRouterHub.applyPending()
         }
-        .onChange(of: router.selected) { newTab in
+        .onChange(of: router.selected) { _, newTab in
             // Respect reduce motion accessibility setting
             if UIAccessibility.isReduceMotionEnabled {
                 appContainer.navigationCoordinatorHub.coordinator?.popToRoot()

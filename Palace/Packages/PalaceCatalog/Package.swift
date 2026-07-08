@@ -4,10 +4,10 @@ import PackageDescription
 let package = Package(
     name: "PalaceCatalog",
     platforms: [
-        .iOS(.v16),
+        .iOS(.v17),
         // macOS host floor 13 to match the PalaceLogging dependency (it needs
         // OSAllocatedUnfairLock, macOS 13+). Host-build only — the shipping app
-        // is iOS 16. Same floor PalaceLogging/PalaceKeychain established.
+        // is iOS 17. Same floor PalaceLogging/PalaceKeychain established.
         .macOS(.v13)
     ],
     products: [

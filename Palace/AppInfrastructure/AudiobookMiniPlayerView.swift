@@ -58,11 +58,22 @@ struct AudiobookMiniPlayerView: View {
 
     @ViewBuilder
     var body: some View {
-        if Self.shouldShowChrome(hasActiveSession: presenter.hasActiveSession, isReaderActive: presenter.isReaderActive) {
-            miniPlayerChrome
-        } else {
-            EmptyView()
+        // SwiftUI.Group + explicit else: Xcode 26's type-checker otherwise
+        // mis-picks a Group initializer (CodingKey cascade) for an if-without-
+        // else inside a modified Group.
+        SwiftUI.Group {
+            if Self.shouldShowChrome(hasActiveSession: presenter.hasActiveSession, isReaderActive: presenter.isReaderActive) {
+                miniPlayerChrome
+                    // Slide in/out from the bottom (paired with a fade) instead
+                    // of popping when a session starts/ends or a reader opens.
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            } else {
+                EmptyView()
+            }
         }
+        .accessibleAnimation(PalaceMotion.standard,
+                             value: Self.shouldShowChrome(hasActiveSession: presenter.hasActiveSession,
+                                                          isReaderActive: presenter.isReaderActive))
     }
 
     /// Pure decision predicate extracted for unit testability —
@@ -139,7 +150,7 @@ struct AudiobookMiniPlayerView: View {
             Image(systemName: "book.closed")
                 .resizable()
                 .aspectRatio(contentMode: .fit)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .padding(8)
         }
     }
@@ -154,13 +165,13 @@ struct AudiobookMiniPlayerView: View {
             if let authors = presenter.currentBook?.authors, !authors.isEmpty {
                 Text(authors)
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.tail)
             }
             Text(timeLabel)
                 .font(.caption2)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(.tail)
         }
@@ -189,6 +200,10 @@ struct AudiobookMiniPlayerView: View {
                 .aspectRatio(contentMode: .fit)
                 .padding(12)
                 .frame(width: 44, height: 44)
+                // Play<->pause glyph cross-fades via the SF Symbol replace effect
+                // instead of hard-swapping the image.
+                .contentTransition(.symbolEffect(.replace))
+                .accessibleAnimation(PalaceMotion.standard, value: presenter.isPlaying)
         }
         .buttonStyle(.plain)
         .tint(.accentColor)

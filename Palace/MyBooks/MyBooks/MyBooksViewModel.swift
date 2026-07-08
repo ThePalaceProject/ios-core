@@ -39,6 +39,11 @@ enum Group: Int {
     private let accountsManager: AccountsManager
     private let settings: TPPSettings
     private let downloadCenter: MyBooksDownloadCenter
+    /// Whether the device currently has connectivity. Injected so the
+    /// eviction gate (INV-2) can keep offline-expired downloads readable
+    /// instead of deleting them on a possibly-stale cached `until`.
+    /// Default reads production reachability.
+    private let isOnline: () -> Bool
     private var allBooks: [TPPBook] = []
 
     /// Decides whether `loadData()` may show the registry contents. Defaults
@@ -64,11 +69,13 @@ enum Group: Int {
     // MARK: - Initialization
 
     convenience init(appContainer: AppContainer) {
+        let reachability = appContainer.reachability
         self.init(
             bookRegistry: appContainer.bookRegistry,
             accountsManager: appContainer.accountsManager,
             settings: appContainer.settings,
-            downloadCenter: appContainer.downloadCenter
+            downloadCenter: appContainer.downloadCenter,
+            isOnline: { reachability.isConnectedToNetwork() }
         )
     }
 
@@ -77,12 +84,16 @@ enum Group: Int {
         accountsManager: AccountsManager,
         settings: TPPSettings,
         downloadCenter: MyBooksDownloadCenter,
-        isUserAuthorizedForRegistry: (() -> Bool)? = nil
+        isUserAuthorizedForRegistry: (() -> Bool)? = nil,
+        isOnline: (() -> Bool)? = nil
     ) {
         self.bookRegistry = bookRegistry
         self.accountsManager = accountsManager
         self.settings = settings
         self.downloadCenter = downloadCenter
+        // Default to production reachability. Tests inject a stub so the
+        // offline eviction guard (INV-2) is deterministic.
+        self.isOnline = isOnline ?? { AppContainer.production().reachability.isConnectedToNetwork() }
         self.activeFacetSort = .author
         self.facetViewModel = FacetViewModel(
             groupName: DisplayStrings.sortBy,
@@ -125,21 +136,49 @@ enum Group: Int {
 
         let registryBooks = bookRegistry.myBooks
 
-        // Always filter out expired books. Previously this only happened offline,
-        // relying on sync to remove expired books when online. But if sync hasn't
-        // run yet (or is delayed), expired books would remain visible with stale UI.
-        let (active, expired) = registryBooks.reduce(into: ([TPPBook](), [TPPBook]())) { result, book in
-            if book.isExpired {
-                result.1.append(book)
+        // Eviction gate (seam S3 / INV-2). An expired-by-cached-`until` book
+        // is NOT unconditionally deleted. LoanEvictionPolicy decides:
+        //   - offline + expired      -> keep (never destroy on a stale `until`)
+        //   - online + past grace    -> evict (loan provably over)
+        //   - online + within grace  -> keep locally; the loans-feed sync
+        //                               reconciles. We do not delete here.
+        let now = Date()
+        // `isOnline` is evaluated lazily — only when an expired book is
+        // actually found — so a shelf with no expired loans never triggers
+        // a reachability read.
+        var onlineCache: Bool?
+        var active: [TPPBook] = []
+        var toEvict: [TPPBook] = []
+        for book in registryBooks {
+            guard book.isExpired else {
+                active.append(book)
+                continue
+            }
+            let online: Bool
+            if let cached = onlineCache {
+                online = cached
             } else {
-                result.0.append(book)
+                online = isOnline()
+                onlineCache = online
+            }
+            switch LoanEvictionPolicy.decide(
+                expiration: book.getExpirationDate(),
+                now: now,
+                isOnline: online
+            ) {
+            case .evict:
+                toEvict.append(book)
+            case .keep, .confirmWithServer:
+                // INV-2: keep the downloaded file + registry record so the
+                // book stays openable. No delete, no unregister.
+                active.append(book)
             }
         }
 
-        if !expired.isEmpty {
-            Log.info(#file, "📚 Removing \(expired.count) expired book(s) from My Books")
-            for book in expired {
-                Log.info(#file, "  → '\(book.title)' expired")
+        if !toEvict.isEmpty {
+            Log.info(#file, "Removing \(toEvict.count) confirmed-expired book(s) from My Books")
+            for book in toEvict {
+                Log.info(#file, "  -> '\(book.title)' expired (online, past grace) — evicting")
                 downloadCenter.deleteLocalContent(for: book.identifier)
                 bookRegistry.setState(.unregistered, for: book.identifier)
             }

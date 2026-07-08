@@ -69,12 +69,17 @@ final class DeviceSpecificErrorMonitor: DeviceSpecificErrorMonitoring, @unchecke
     /// Initializes the error monitor by fetching remote config.
     /// This should only be called once during app startup.
     func initialize() async {
-        lock.lock()
-        let alreadyInitialized = isInitialized
-        if !alreadyInitialized {
-            isInitialized = true
+        // Swift 6: NSLock.lock()/unlock() are unavailable from async contexts.
+        // Use the async-safe scoped `withLock` — the guarded region is the
+        // check-and-set of `isInitialized`; the returned Bool carries the prior
+        // value out so the once-only guard below runs outside the lock.
+        let alreadyInitialized = lock.withLock { () -> Bool in
+            let wasInitialized = isInitialized
+            if !wasInitialized {
+                isInitialized = true
+            }
+            return wasInitialized
         }
-        lock.unlock()
 
         guard !alreadyInitialized else { return }
 

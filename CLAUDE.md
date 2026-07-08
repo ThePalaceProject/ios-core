@@ -72,6 +72,17 @@ failed, cited as whole-suite green. Don't repeat it.
 - Two targets: `Palace` (full DRM) and `Palace-noDRM` (open-source)
 - DRM builds run natively on Apple Silicon — Rosetta is no longer required
 
+**`nearly matches optional requirement` on an `@objc` delegate is NEVER benign.**
+It means your method is silently NOT registered as the protocol witness, so the
+callback (WebKit/UIKit/CarPlay delegate) is skipped at runtime — no error, no
+crash. This is exactly how Xcode 26.2 broke web-sheet sign-in: `WKNavigationDelegate`
+became `@MainActor` (`WK_SWIFT_UI_ACTOR`) and a `nonisolated`/non-`@MainActor`
+`decisionHandler` stopped matching (#1205). Match the SDK requirement's isolation
+exactly — `@MainActor` method + `@escaping @MainActor` handler for `WK_SWIFT_UI_ACTOR`
+protocols. When a delegate callback "isn't firing," read this warning FIRST before
+theorizing about timing. Gated in CI by `scripts/check-objc-witness-nearly-matches.sh`
+(fires only on same-name drift; benign different-name matches like CarPlay are ignored).
+
 ## CI/CD reliability — the green-board contract
 
 A CI board that is usually-red-from-flakes provides **no signal** — it trains
@@ -416,6 +427,16 @@ Some critical-path classes are easier to pin behaviorally than to mutation-test:
 ## Secrets
 
 Never commit: `APIKeys.swift`, `GoogleService-Info.plist`, `TPPSecrets.swift`, `.env` files.
+
+**Code signing must be Manual, and signing info must NOT be committed.**
+`CODE_SIGN_STYLE = Manual` on every config (Automatic lets Xcode rewrite the team
+ID / provisioning profile into the pbxproj on each dev's machine, causing churn +
+leaking signing identity). `DEVELOPMENT_TEAM` and `PROVISIONING_PROFILE` are
+per-machine/per-account — provide them via a gitignored `*.local.xcconfig` or a CI
+secret, never in git (`DEVELOPMENT_TEAM = ""` in the committed pbxproj is fine).
+Enforced by `scripts/check-no-committed-signing.sh` (diff-based; wired into the
+pre-commit hook + `verify-pr.sh` + `tooling-checks.yml`). To intentionally allow an
+entry, add a substring to `.forgeos/committed-signing-allowlist.txt` with a reason.
 
 ## E2E / UI sim driving — simdrive
 

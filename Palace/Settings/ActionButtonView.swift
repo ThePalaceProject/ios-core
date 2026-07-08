@@ -46,12 +46,15 @@ struct ActionButtonView: View {
                 }
                 Text(title)
                     .palaceFont(.body, weight: .semibold)
-                    .opacity(isLoading ? 0.5 : 1)
+                    // Fully hide the title while loading so the spinner never
+                    // overlaps dimmed text (was 0.5 -> visually muddy).
+                    // Presentation only; `isLoading` is the same @Published input.
+                    .opacity(Self.titleOpacity(isLoading: isLoading))
             }
             .frame(maxWidth: .infinity)
             .frame(height: Constants.buttonHeight)
             .background(style == .primary ? fillColor : Color.clear)
-            .foregroundColor(style == .primary ? primaryTextColor : fillColor)
+            .foregroundStyle(style == .primary ? primaryTextColor : fillColor)
             .cornerRadius(Constants.buttonCornerRadius)
             .overlay(
                 style == .secondary
@@ -60,7 +63,20 @@ struct ActionButtonView: View {
             )
         }
         .disabled(isLoading)
-        .buttonStyle(.plain)
+        // PR2 pressable style replaces `.plain`: keeps the untinted look but adds
+        // the shared reduce-motion-aware press response. Paired with the
+        // `accessibleAnimation` below it replaces the old `.id(isLoading)`
+        // teardown hack (removed in AccountDetailView) with a reactive cross-fade.
+        .buttonStyle(.palacePressable)
+        .accessibleAnimation(PalaceMotion.standard, value: isLoading)
+    }
+
+    // MARK: - Pure, testable presentation decision
+
+    /// Title opacity for the loading / idle states. Loading hides the title
+    /// entirely (0) so the centered spinner reads cleanly; idle shows it (1).
+    static func titleOpacity(isLoading: Bool) -> Double {
+        isLoading ? 0 : 1
     }
 }
 

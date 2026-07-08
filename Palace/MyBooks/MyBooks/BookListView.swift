@@ -62,7 +62,7 @@ struct BookListView: View {
                 Button(action: { onSelect(book) }, label: {
                     BookCell(model: modelCache.model(for: book), previewEnabled: previewEnabled)
                 })
-                .buttonStyle(.plain)
+                .buttonStyle(.palacePressable)
                 .applyBorderStyle()
                 .accessibilityLabel(book.voiceOverLabel)
                 .accessibilityHint(Strings.Accessibility.opensBookDetails)
@@ -84,7 +84,7 @@ struct BookListView: View {
                         containerWidth = geometry.size.width
                         screenSize = UIScreen.main.bounds.size
                     }
-                    .onChange(of: geometry.size.width) { newWidth in
+                    .onChange(of: geometry.size.width) { _, newWidth in
                         containerWidth = newWidth
                     }
             }

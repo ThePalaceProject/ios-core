@@ -46,7 +46,7 @@ struct ReaderTypographyButton: View {
         } label: {
             Image(systemName: "textformat.size")
                 .font(.body)
-                .foregroundColor(.accentColor)
+                .foregroundStyle(Color.accentColor)
         }
         .accessibilityLabel("Typography Settings")
         .accessibilityHint("Opens advanced typography controls")

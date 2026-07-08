@@ -142,8 +142,16 @@ private extension CatalogView {
                 )
             } else {
                 catalogStateView
+                    .accessibleAnimation(PalaceMotion.gentle, value: isCatalogLoading)
             }
         }
+    }
+
+    /// Whether the catalog is in its initial-load (skeleton) state. Drives the
+    /// skeleton -> content opacity cross-fade.
+    var isCatalogLoading: Bool {
+        if case .loading = viewModel.state { return true }
+        return false
     }
 
     @ViewBuilder
@@ -152,6 +160,7 @@ private extension CatalogView {
         case .loading:
             skeletonList
                 .accessibilityIdentifier(AccessibilityID.Catalog.loadingIndicator)
+                .transition(.opacity)
 
         case .error(let message, let sideloadedLanes):
             errorView(message: message, sideloadedLanes: sideloadedLanes)
@@ -182,6 +191,7 @@ private extension CatalogView {
             .accessibilityIdentifier(AccessibilityID.Catalog.scrollView)
             .accessibilityLabel(Strings.Generic.catalogRegion)
             .accessibilityElement(children: .contain)
+            .transition(.opacity)
 
         case .switchingEntryPoint(let selectors):
             CatalogContentView.switchingEntryPointView(
@@ -205,7 +215,7 @@ private extension CatalogView {
         VStack(spacing: 16) {
             Text(Strings.Generic.error)
                 .font(.headline)
-                .foregroundColor(.red)
+                .foregroundStyle(.red)
 
             Text(message)
                 .font(.body)
@@ -224,7 +234,7 @@ private extension CatalogView {
                 .padding(.horizontal, 24)
                 .padding(.vertical, 12)
                 .background(Color.blue)
-                .foregroundColor(.white)
+                .foregroundStyle(.white)
                 .cornerRadius(8)
             })
         }
@@ -246,7 +256,7 @@ private extension CatalogView {
         VStack(spacing: 16) {
             Image(systemName: "wifi.slash")
                 .font(.largeTitle)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
 
             Text(Strings.Catalog.offlineTitle)
@@ -254,7 +264,7 @@ private extension CatalogView {
 
             Text(Strings.Catalog.offlineMessage)
                 .font(.body)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal)
 
@@ -265,7 +275,7 @@ private extension CatalogView {
                     .padding(.horizontal, 24)
                     .padding(.vertical, 12)
                     .background(Color.blue)
-                    .foregroundColor(.white)
+                    .foregroundStyle(.white)
                     .cornerRadius(8)
             })
             .accessibilityIdentifier(AccessibilityID.Catalog.goToMyBooksButton)
@@ -390,15 +400,30 @@ private extension CatalogView {
     // MARK: - Subviews
 
     /// Top-level skeleton used during initial load.
+    ///
+    /// Mirrors `CatalogContentView`'s loaded layout so the first lane lands at
+    /// the same y in both states and does not pop when content arrives (PP-4752):
+    ///   * `CatalogEntryPointsSkeletonView` traces the "All · Ebooks ·
+    ///     Audiobooks" segmented selector that renders above the lanes once the
+    ///     grouped feed loads (reserving its ~44pt footprint).
+    ///   * the lane scroller carries a 34pt vertical inset — matching
+    ///     `CatalogContentView`'s doubled `.padding(.vertical, 17)` (the outer
+    ///     `LazyVStack` plus the inner feed content) — so the first lane's top
+    ///     inset equals the loaded feed's.
     @ViewBuilder
     var skeletonList: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                ForEach(0..<3, id: \.self) { _ in
-                    CatalogLaneSkeletonView()
+        VStack(alignment: .leading, spacing: 0) {
+            CatalogEntryPointsSkeletonView()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    ForEach(0..<3, id: \.self) { _ in
+                        CatalogLaneSkeletonView()
+                    }
                 }
+                // 17 (outer LazyVStack) + 17 (feed content) in CatalogContentView.
+                .padding(.vertical, 34)
             }
-            .padding(.vertical, 17)
         }
     }
 }

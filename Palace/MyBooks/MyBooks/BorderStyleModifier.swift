@@ -13,7 +13,7 @@ struct BorderStyleModifier: ViewModifier {
                 .overlay(
                     Rectangle()
                         .frame(height: 1)
-                        .foregroundColor(Color.gray.opacity(0.5))
+                        .foregroundStyle(Color.gray.opacity(0.5))
                         .offset(y: 0.5),
                     alignment: .bottom
                 )

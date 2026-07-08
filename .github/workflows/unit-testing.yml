@@ -95,11 +95,23 @@ jobs:
       - name: Run Palace unit tests
         id: tests
         timeout-minutes: 60
-        run: ./scripts/xcode-test-optimized.sh
+        # tee to a log so the @objc-witness-drift gate below can scan the build
+        # warnings. GitHub Actions runs `run:` with `pipefail`, so the tee does
+        # not mask the script's exit code.
+        run: ./scripts/xcode-test-optimized.sh 2>&1 | tee build-output.log
         env:
           BUILD_CONTEXT: ci
         continue-on-error: true
-          
+
+      # Fails the job when a build warning shows an `@objc` optional-protocol
+      # method that "nearly matches" its requirement by the same name — i.e. the
+      # method silently is NOT the delegate witness and the callback is skipped
+      # at runtime (the Xcode-26.2 WKNavigationDelegate sign-in break, #1205).
+      # Benign different-name nearly-matches (e.g. CarPlay) are ignored.
+      - name: Guard against @objc witness drift (silent delegate skip)
+        if: always()
+        run: scripts/check-objc-witness-nearly-matches.sh build-output.log
+
       - name: Find Test Results
         if: always()
         id: find_results

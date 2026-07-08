@@ -158,9 +158,7 @@ final class RemoteFeatureFlags: @unchecked Sendable {
     func fetchAndActivate() async -> Bool {
         let success = await FirebaseManager.shared.fetchAndActivateRemoteConfig()
 
-        lock.lock()
-        lastFetchTime = Date()
-        lock.unlock()
+        lock.withLock { lastFetchTime = Date() }
 
         return success
     }

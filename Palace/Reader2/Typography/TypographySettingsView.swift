@@ -16,7 +16,7 @@ struct TypographySettingsView: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView {
                 VStack(spacing: 0) {
                     // Live preview area
@@ -128,6 +128,9 @@ struct TypographySettingsView: View {
                 }
             }
             .background(Color(viewModel.currentSettings.theme.backgroundColor))
+            // Cross-fade the panel when the reader theme changes (light / sepia /
+            // dark) instead of hard-cutting. Reduce-motion-aware via the seam.
+            .accessibleAnimation(PalaceMotion.standard, value: viewModel.theme)
             .navigationTitle("Typography")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -150,7 +153,7 @@ struct TypographySettingsView: View {
         VStack(spacing: 0) {
             Text(viewModel.previewText)
                 .font(Font(viewModel.currentSettings.fontFamily.uiFont(size: viewModel.currentSettings.fontSize)))
-                .foregroundColor(Color(viewModel.currentSettings.theme.textColor))
+                .foregroundStyle(Color(viewModel.currentSettings.theme.textColor))
                 .lineSpacing((viewModel.currentSettings.lineSpacing - 1.0) * viewModel.currentSettings.fontSize)
                 .tracking(viewModel.currentSettings.letterSpacing)
                 .multilineTextAlignment(viewModel.currentSettings.textAlignment == .justified ? .leading : .leading)
@@ -170,7 +173,7 @@ struct TypographySettingsView: View {
             Text("Presets")
                 .font(.subheadline)
                 .fontWeight(.medium)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .padding(.horizontal)
                 .accessibilityAddTraits(.isHeader)
 
@@ -199,11 +202,11 @@ struct TypographySettingsView: View {
                 Text("Font")
                     .font(.subheadline)
                     .fontWeight(.medium)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
 
                 Text(viewModel.fontFamily.displayName)
                     .font(Font(viewModel.fontFamily.uiFont(size: 17)))
-                    .foregroundColor(.primary)
+                    .foregroundStyle(.primary)
             }
 
             Spacer()
@@ -212,7 +215,7 @@ struct TypographySettingsView: View {
                 showFontPicker = true
             } label: {
                 Image(systemName: "chevron.right")
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
                     .font(.body)
             }
             .accessibilityLabel("Choose font")
@@ -231,7 +234,7 @@ struct TypographySettingsView: View {
             Text("Margins")
                 .font(.subheadline)
                 .fontWeight(.medium)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .accessibilityAddTraits(.isHeader)
 
             Picker("Margin Width", selection: $viewModel.marginLevel) {
@@ -253,7 +256,7 @@ struct TypographySettingsView: View {
             Text("Alignment")
                 .font(.subheadline)
                 .fontWeight(.medium)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .accessibilityAddTraits(.isHeader)
 
             HStack(spacing: 16) {
@@ -267,7 +270,7 @@ struct TypographySettingsView: View {
                             Text(alignment.displayName)
                                 .font(.caption)
                         }
-                        .foregroundColor(viewModel.textAlignment == alignment ? .accentColor : .secondary)
+                        .foregroundStyle(viewModel.textAlignment == alignment ? Color.accentColor : Color.secondary)
                         .frame(width: 80, height: 56)
                         .background(
                             RoundedRectangle(cornerRadius: 8)
@@ -306,7 +309,7 @@ struct TypographySettingsView: View {
             }
             .font(.subheadline)
             .fontWeight(.medium)
-            .foregroundColor(.accentColor)
+            .foregroundStyle(Color.accentColor)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 12)
         }
@@ -328,14 +331,14 @@ struct TypographySettingsView: View {
                 Text(title)
                     .font(.subheadline)
                     .fontWeight(.medium)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
 
                 Spacer()
 
                 Text(String(format: format, value.wrappedValue))
                     .font(.subheadline)
                     .monospacedDigit()
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.secondary)
             }
 
             Slider(
