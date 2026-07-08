@@ -234,9 +234,7 @@ final class BookReturnService: @unchecked Sendable {
         let task = Task { [weak self] in
             await body()
             guard let self else { return }
-            self.inFlightLock.lock()
-            self.inFlightTasks.removeValue(forKey: id)
-            self.inFlightLock.unlock()
+            self.inFlightLock.withLock { self.inFlightTasks.removeValue(forKey: id) }
         }
         inFlightLock.lock()
         inFlightTasks[id] = task
@@ -257,9 +255,7 @@ final class BookReturnService: @unchecked Sendable {
         let task = Task { @MainActor [weak self] in
             await body()
             guard let self else { return }
-            self.inFlightLock.lock()
-            self.inFlightTasks.removeValue(forKey: id)
-            self.inFlightLock.unlock()
+            self.inFlightLock.withLock { self.inFlightTasks.removeValue(forKey: id) }
         }
         inFlightLock.lock()
         inFlightTasks[id] = task

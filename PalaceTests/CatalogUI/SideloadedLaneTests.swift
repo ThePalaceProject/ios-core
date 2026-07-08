@@ -191,10 +191,16 @@ final class SideloadedLaneViewModelTests: XCTestCase {
   }
 
   private func awaitLoaded(_ vm: CatalogViewModel) async {
+    // FLAKE-003-OK: CatalogViewModel.load() spawns a Task that awaits the repo
+    // fetch, an off-actor mapFeed, and imageCache warming. Under Swift-6 timing on
+    // memory-pressured CI nodes that chain stretches past 5s (state stuck at
+    // .loading), a reliable full-suite timeout that passes in isolation. 20s
+    // tolerates the load without letting a genuinely-wedged VM hide forever —
+    // same rationale as SignInWebSheetIntegrationTests' 5s→30s widening.
     let exp = XCTestExpectation(description: "loaded")
     vm.$state.sink { if case .loaded = $0 { exp.fulfill() } }.store(in: &cancellables)
     await vm.load()
-    await fulfillment(of: [exp], timeout: 5.0)
+    await fulfillment(of: [exp], timeout: 20.0)
   }
 
   /// Drive `load()` to a terminal failure state (`.error` or `.offline`,
@@ -209,7 +215,7 @@ final class SideloadedLaneViewModelTests: XCTestCase {
       }
     }.store(in: &cancellables)
     await vm.load()
-    await fulfillment(of: [exp], timeout: 5.0)
+    await fulfillment(of: [exp], timeout: 20.0)
   }
 
   private func groupedLanes(_ vm: CatalogViewModel) -> [CatalogLaneModel]? {

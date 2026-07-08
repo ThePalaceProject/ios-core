@@ -42,13 +42,13 @@ class TPPDRMAuthorizingMock: NSObject, TPPDRMAuthorizing {
         return isUserAuthorizedReturnValue
     }
 
-    func authorize(withVendorID vendorID: String!, username: String!, password: String!, completion: ((Bool, Error?, String?, String?) -> Void)!) {
+    func authorize(withVendorID vendorID: String!, username: String!, password: String!, completion: (@Sendable (Bool, Error?, String?, String?) -> Void)!) {
         authorizeWasCalled = true
         authorizeCallCount += 1
         completion(true, nil, deviceID, userID)
     }
 
-    func deauthorize(withUsername username: String!, password: String!, userID: String!, deviceID: String!, completion: ((Bool, Error?) -> Void)!) {
+    func deauthorize(withUsername username: String!, password: String!, userID: String!, deviceID: String!, completion: (@Sendable (Bool, Error?) -> Void)!) {
         deauthorizeWasCalled = true
         deauthorizeCallCount += 1
         if shouldDeferDeauthorize {

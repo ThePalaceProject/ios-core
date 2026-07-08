@@ -29,8 +29,8 @@ import PalaceAuth
 @objc protocol TPPDRMAuthorizing: NSObjectProtocol {
     var workflowsInProgress: Bool {get}
     func isUserAuthorized(_ userID: String!, withDevice device: String!) -> Bool
-    func authorize(withVendorID vendorID: String!, username: String!, password: String!, completion: ((Bool, Error?, String?, String?) -> Void)!)
-    func deauthorize(withUsername username: String!, password: String!, userID: String!, deviceID: String!, completion: ((Bool, Error?) -> Void)!)
+    func authorize(withVendorID vendorID: String!, username: String!, password: String!, completion: (@Sendable (Bool, Error?, String?, String?) -> Void)!)
+    func deauthorize(withUsername username: String!, password: String!, userID: String!, deviceID: String!, completion: (@Sendable (Bool, Error?) -> Void)!)
 }
 
 // NYPLADEPT's conformance to TPPDRMAuthorizing now lives at
