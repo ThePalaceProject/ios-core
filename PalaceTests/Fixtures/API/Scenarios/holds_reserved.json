@@ -1,0 +1,38 @@
+{
+  "id": "holds_reserved",
+  "displayName": "Holds — Reserved + Ready",
+  "description": "The loans/holds feed serves one reserved hold (The Glass Menagerie Reimagined, queue position 3 of 8) plus one ready-to-borrow hold (Quantum Cooking: Science in the Kitchen), so the populated Holds tab can be exercised without live limited-copy inventory. All other endpoints return the standard happy-path fixtures.",
+  "routes": [
+    {
+      "pathPattern": ".*/libraries.*",
+      "fixtureName": "opds2_feed",
+      "statusCode": 200,
+      "contentType": "application/opds+json"
+    },
+    {
+      "pathPattern": ".*/authentication_document",
+      "fixtureName": "auth_document",
+      "statusCode": 200,
+      "contentType": "application/vnd.opds.authentication+json"
+    },
+    {
+      "pathPattern": ".*/loans.*",
+      "fixtureName": "opds1_hold_entries",
+      "statusCode": 200,
+      "contentType": "application/atom+xml;profile=opds-catalog;kind=acquisition"
+    },
+    {
+      "pathPattern": ".*/borrow",
+      "method": "POST",
+      "fixtureName": "opds1_borrow_entry",
+      "statusCode": 200,
+      "contentType": "application/atom+xml;type=entry;profile=opds-catalog"
+    },
+    {
+      "pathPattern": ".*",
+      "fixtureName": "opds2_feed",
+      "statusCode": 200,
+      "contentType": "application/opds+json"
+    }
+  ]
+}
