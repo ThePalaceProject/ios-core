@@ -190,6 +190,19 @@ struct Strings {
             "Expands the full audiobook player",
             comment: "VoiceOver hint announced for the audiobook mini-player explaining that tapping expands the full player"
         )
+        // Accessibility - Audiobook mini-player dismiss + collapse
+        static let stopAudiobook = NSLocalizedString(
+            "Stop audiobook",
+            comment: "VoiceOver: X button on the audiobook mini-player. Stops playback, saves the position, and dismisses the player."
+        )
+        static let nowPlayingCompactLabel = NSLocalizedString(
+            "Now playing: %@",
+            comment: "VoiceOver: Accessibility label for the collapsed audiobook pill; %@ is the book title"
+        )
+        static let restoreAudiobookPlayerHint = NSLocalizedString(
+            "Shows the full audiobook player controls",
+            comment: "VoiceOver hint announced for the collapsed audiobook pill explaining that tapping restores the full mini-player"
+        )
 
         // Accessibility - EPUB Reader (Full Keyboard Access)
         static let bookReader = NSLocalizedString("Book reader", comment: "VoiceOver: Accessibility label for the book reading area")

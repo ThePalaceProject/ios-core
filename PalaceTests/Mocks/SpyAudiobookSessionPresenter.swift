@@ -108,6 +108,19 @@ final class SpyAudiobookSessionPresenter: AudiobookSessionPresenter {
         super.clearActiveSession()
     }
 
+    private(set) var collapseCallCount: Int = 0
+    private(set) var restoreFromCollapsedCallCount: Int = 0
+
+    override func collapse() {
+        collapseCallCount += 1
+        super.collapse()
+    }
+
+    override func restoreFromCollapsed() {
+        restoreFromCollapsedCallCount += 1
+        super.restoreFromCollapsed()
+    }
+
     override func adoptCoverImage(_ image: UIImage?) {
         adoptCoverImageCallCount += 1
         lastAdoptedCoverImage = image
@@ -169,6 +182,14 @@ final class SpyShimSession: AudiobookSessionManaging {
     /// / `audiobookSession.skipForward()` via AppContainer).
     private(set) var skipBackCallCount: Int = 0
     private(set) var skipForwardCallCount: Int = 0
+    private(set) var togglePlayPauseCallCount: Int = 0
+
+    /// Records the `✕`-dismiss teardown so mini-player tests can assert the
+    /// button routes through `stopPlayback` with the position-preserving
+    /// arguments (dismissPhoneUI: true, persistFinalPosition: true).
+    private(set) var stopPlaybackCallCount: Int = 0
+    private(set) var lastStopPlaybackDismissPhoneUI: Bool?
+    private(set) var lastStopPlaybackPersistFinalPosition: Bool?
 
     @discardableResult
     func openAudiobook(_ book: TPPBook, startPlaying: Bool) async -> Result<Void, AudiobookSessionError> {
@@ -176,12 +197,16 @@ final class SpyShimSession: AudiobookSessionManaging {
     }
     func play() {}
     func pause() {}
-    func togglePlayPause() {}
+    func togglePlayPause() { togglePlayPauseCallCount += 1 }
     func skipToChapter(at index: Int) {}
     func skipBack() { skipBackCallCount += 1 }
     func skipForward() { skipForwardCallCount += 1 }
     func cyclePlaybackRate() -> PlaybackRate { .normalTime }
-    func stopPlayback(dismissPhoneUI: Bool, persistFinalPosition: Bool) async {}
+    func stopPlayback(dismissPhoneUI: Bool, persistFinalPosition: Bool) async {
+        stopPlaybackCallCount += 1
+        lastStopPlaybackDismissPhoneUI = dismissPhoneUI
+        lastStopPlaybackPersistFinalPosition = persistFinalPosition
+    }
     func updateCoverImage(_ image: UIImage?) {}
     func recoverPlaybackForForegroundEntry() {}
 }

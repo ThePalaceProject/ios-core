@@ -74,24 +74,124 @@ final class AudiobookMiniPlayerViewTests: XCTestCase {
     ///   - Drop `!`: row (session=true, reader=true) flips
     ///     EXPECTED false → ACTUAL true.
     func testShouldShowChrome_truthTable_killsBooleanMutations() {
-        // Row 1: session active + no reader → SHOW (happy path).
-        XCTAssertTrue(AudiobookMiniPlayerView.shouldShowChrome(hasActiveSession: true, isReaderActive: false),
-                      "Row 1: active session + no reader → must SHOW chrome (§11 row 7 Settings visibility, the happy path)")
+        // All rows below are NOT collapsed unless stated — the collapsed
+        // axis is exercised in its own row set at the bottom.
+
+        // Row 1: session active + no reader + not collapsed → SHOW (happy path).
+        XCTAssertTrue(AudiobookMiniPlayerView.shouldShowChrome(hasActiveSession: true, isReaderActive: false, isCollapsed: false),
+                      "Row 1: active session + no reader + not collapsed → must SHOW chrome (the happy path)")
 
         // Row 2: session active + reader active → HIDE (§7.3 Option α
         // — the load-bearing reader suppression).
-        XCTAssertFalse(AudiobookMiniPlayerView.shouldShowChrome(hasActiveSession: true, isReaderActive: true),
-                       "Row 2: active session + reader active → must HIDE chrome (§7.3 Option α reader suppression). A mutation dropping the `!` would flip this true.")
+        XCTAssertFalse(AudiobookMiniPlayerView.shouldShowChrome(hasActiveSession: true, isReaderActive: true, isCollapsed: false),
+                       "Row 2: active session + reader active → must HIDE chrome (§7.3 Option α reader suppression). A mutation dropping the `!` on isReaderActive would flip this true.")
 
         // Row 3: no session + no reader → HIDE. KEY ROW for &&→|| mutation:
         // with &&, `false && true == false`; with ||, `false || true == true`.
         // This row is the one that distinguishes && from ||.
-        XCTAssertFalse(AudiobookMiniPlayerView.shouldShowChrome(hasActiveSession: false, isReaderActive: false),
+        XCTAssertFalse(AudiobookMiniPlayerView.shouldShowChrome(hasActiveSession: false, isReaderActive: false, isCollapsed: false),
                        "Row 3: no session + no reader → must HIDE chrome. KEY ROW: distinguishes `&&` from `||` — with `||` this would flip true (no session SHOULD never show chrome).")
 
         // Row 4: no session + reader active → HIDE.
-        XCTAssertFalse(AudiobookMiniPlayerView.shouldShowChrome(hasActiveSession: false, isReaderActive: true),
+        XCTAssertFalse(AudiobookMiniPlayerView.shouldShowChrome(hasActiveSession: false, isReaderActive: true, isCollapsed: false),
                        "Row 4: no session + reader active → must HIDE chrome.")
+
+        // Row 5: session active + no reader BUT collapsed → HIDE the full
+        // bar (the pill is shown instead by AudiobookCollapsedPillView).
+        // KEY ROW for the new `!isCollapsed` term: dropping it flips this true
+        // and both the bar AND the pill would render at once.
+        XCTAssertFalse(AudiobookMiniPlayerView.shouldShowChrome(hasActiveSession: true, isReaderActive: false, isCollapsed: true),
+                       "Row 5: active session + collapsed → must HIDE the full bar (pill takes over). Dropping `!isCollapsed` renders bar + pill simultaneously.")
+
+        // Row 6: collapsed complements the pill's predicate — the bar and the
+        // pill are never both visible for the same (active, not-in-reader) state.
+        XCTAssertNotEqual(
+            AudiobookMiniPlayerView.shouldShowChrome(hasActiveSession: true, isReaderActive: false, isCollapsed: true),
+            AudiobookMiniPlayerView.shouldShowChrome(hasActiveSession: true, isReaderActive: false, isCollapsed: false),
+            "Bar visibility must flip with the collapsed axis — pins the bar/pill mutual exclusivity")
+    }
+
+    // MARK: - Collapse gesture (swipe-down → pill)
+
+    /// Truth table for `shouldCollapse(translation:)` — the pure swipe-down
+    /// decision. Extracted so the `&&` / `>` / `<` operators are mutation-
+    /// testable without a SwiftUI host.
+    func testShouldCollapse_truthTable_killsThresholdMutations() {
+        let threshold = AudiobookMiniPlayerView.collapseSwipeDownThreshold
+        let drift = AudiobookMiniPlayerView.collapseSwipeMaxHorizontalDrift
+
+        // Straight-down past threshold → collapse.
+        XCTAssertTrue(AudiobookMiniPlayerView.shouldCollapse(translation: CGSize(width: 0, height: threshold + 1)),
+                      "Downward drag past threshold with no drift → must collapse")
+        // EXACTLY at the threshold → no collapse. This is the ONLY input that
+        // distinguishes `>` from `>=`: at height == threshold, `> threshold`
+        // is false (no collapse) but `>= threshold` would be true (collapse).
+        // Testing threshold-1 does NOT kill the mutant (both false there).
+        XCTAssertFalse(AudiobookMiniPlayerView.shouldCollapse(translation: CGSize(width: 0, height: threshold)),
+                       "Drag EXACTLY at threshold → must NOT collapse (kills `>` → `>=`)")
+        // Well under threshold → no collapse.
+        XCTAssertFalse(AudiobookMiniPlayerView.shouldCollapse(translation: CGSize(width: 0, height: threshold - 1)),
+                       "Drag under threshold → must NOT collapse")
+        // Upward drag → no collapse (kills a sign flip).
+        XCTAssertFalse(AudiobookMiniPlayerView.shouldCollapse(translation: CGSize(width: 0, height: -(threshold + 1))),
+                       "Upward drag → must NOT collapse (bar collapses on DOWN only)")
+        // EXACTLY at the horizontal-drift limit → no collapse. The ONLY input
+        // that distinguishes `<` from `<=`: at width == drift, `< drift` is
+        // false (no collapse) but `<= drift` would be true.
+        XCTAssertFalse(AudiobookMiniPlayerView.shouldCollapse(translation: CGSize(width: drift, height: threshold + 1)),
+                       "Drift EXACTLY at limit → must NOT collapse (kills `<` → `<=`)")
+        // Past threshold vertically but too much horizontal drift → no collapse
+        // (kills dropping the horizontal-drift guard: a diagonal scroll must not collapse).
+        XCTAssertFalse(AudiobookMiniPlayerView.shouldCollapse(translation: CGSize(width: drift + 1, height: threshold + 1)),
+                       "Diagonal drag beyond drift limit → must NOT collapse (kills `&&` → true / dropped drift guard)")
+    }
+
+    /// The swipe-down handler drives `presenter.collapse()` exactly once when
+    /// the drag clears the threshold — and does NOT tear the session down
+    /// (collapse keeps playing; only `✕` stops).
+    func testMiniPlayer_swipeDownPastThreshold_collapsesWithoutStoppingPlayback() {
+        let sut = makeSUT()
+        XCTAssertEqual(spyPresenter.collapseCallCount, 0, "PRECONDITION: not collapsed yet")
+
+        sut.handleCollapseDragEnd(translation: CGSize(width: 0, height: AudiobookMiniPlayerView.collapseSwipeDownThreshold + 20))
+
+        XCTAssertEqual(spyPresenter.collapseCallCount, 1,
+                       "A qualifying swipe-down must call presenter.collapse() exactly once")
+        XCTAssertTrue(spyPresenter.isCollapsed, "Presenter must be in the collapsed state after the swipe")
+        XCTAssertEqual(spySession.stopPlaybackCallCount, 0,
+                       "Collapse must NOT stop playback — kills a mutation that wires swipe-down to the hard dismiss")
+    }
+
+    /// A sub-threshold drag is a no-op (does not collapse).
+    func testMiniPlayer_swipeDownUnderThreshold_doesNotCollapse() {
+        let sut = makeSUT()
+        sut.handleCollapseDragEnd(translation: CGSize(width: 0, height: AudiobookMiniPlayerView.collapseSwipeDownThreshold - 5))
+        XCTAssertEqual(spyPresenter.collapseCallCount, 0,
+                       "A drag under the threshold must not collapse the bar")
+    }
+
+    // MARK: - Hard dismiss (✕ → stopPlayback)
+
+    /// The `✕` button routes through `audiobookSession.stopPlayback` with the
+    /// position-preserving arguments — NOT through `collapse()` (which would
+    /// leave audio playing). This is the load-bearing teardown wiring.
+    func testMiniPlayer_dismissButton_callsStopPlaybackPreservingPosition() async {
+        let sut = makeSUT()
+        XCTAssertEqual(spySession.stopPlaybackCallCount, 0, "PRECONDITION: no stopPlayback yet")
+
+        // Drive the PRODUCTION teardown seam the ✕ button's action wraps in a
+        // Task — so the arguments asserted below are the ones the production
+        // code bakes in (a mutation flipping persistFinalPosition is caught).
+        await sut.performDismiss()
+
+        XCTAssertEqual(spySession.stopPlaybackCallCount, 1,
+                       "Dismiss (✕) must call stopPlayback exactly once")
+        XCTAssertEqual(spySession.lastStopPlaybackDismissPhoneUI, true,
+                       "Dismiss must pass dismissPhoneUI: true so the phone chrome tears down")
+        XCTAssertEqual(spySession.lastStopPlaybackPersistFinalPosition, true,
+                       "Dismiss must pass persistFinalPosition: true so re-opening resumes where the user left off — kills a mutation flipping this to false")
+        XCTAssertTrue(sut.audiobookSession as AnyObject === spySession as AnyObject,
+                      "Mini-player must hold the INJECTED session — proves the dismiss routes to the spy, not a hardcoded singleton")
     }
 
     // MARK: - Visibility predicate (§7.3 Option α)
@@ -112,10 +212,14 @@ final class AudiobookMiniPlayerViewTests: XCTestCase {
         // type so the if/else short-circuit is mechanically pinned.
         let body = sut.body
 
-        // Assert
-        let predicate = spyPresenter.hasActiveSession && !spyPresenter.isReaderActive
-        XCTAssertFalse(predicate,
-                       "Visibility predicate must be false when hasActiveSession is false")
+        // Assert via the ACTUAL production predicate (not a recomputed copy)
+        // so a mutation in `shouldShowChrome` is caught here too.
+        XCTAssertFalse(
+            AudiobookMiniPlayerView.shouldShowChrome(
+                hasActiveSession: spyPresenter.hasActiveSession,
+                isReaderActive: spyPresenter.isReaderActive,
+                isCollapsed: spyPresenter.isCollapsed),
+            "Visibility predicate must be false when hasActiveSession is false")
         _ = body
     }
 
@@ -129,9 +233,12 @@ final class AudiobookMiniPlayerViewTests: XCTestCase {
         XCTAssertTrue(spyPresenter.hasActiveSession, "PRECONDITION: must be active")
         XCTAssertTrue(spyPresenter.isReaderActive, "PRECONDITION: reader active")
 
-        let predicate = spyPresenter.hasActiveSession && !spyPresenter.isReaderActive
-        XCTAssertFalse(predicate,
-                       "Reader-suppression predicate (§7.3 Option α): when isReaderActive == true, mini-player must hide regardless of hasActiveSession")
+        XCTAssertFalse(
+            AudiobookMiniPlayerView.shouldShowChrome(
+                hasActiveSession: spyPresenter.hasActiveSession,
+                isReaderActive: spyPresenter.isReaderActive,
+                isCollapsed: spyPresenter.isCollapsed),
+            "Reader-suppression predicate (§7.3 Option α): when isReaderActive == true, mini-player must hide regardless of hasActiveSession")
     }
 
     /// PRE: `hasActiveSession == true`, `isReaderActive == false`.
@@ -142,10 +249,14 @@ final class AudiobookMiniPlayerViewTests: XCTestCase {
         spyPresenter.isReaderActive = false
         XCTAssertTrue(spyPresenter.hasActiveSession, "PRECONDITION: must be active")
         XCTAssertFalse(spyPresenter.isReaderActive, "PRECONDITION: reader not active")
+        XCTAssertFalse(spyPresenter.isCollapsed, "PRECONDITION: not collapsed")
 
-        let predicate = spyPresenter.hasActiveSession && !spyPresenter.isReaderActive
-        XCTAssertTrue(predicate,
-                      "Happy path: active session + non-reader tab → mini-player must be visible")
+        XCTAssertTrue(
+            AudiobookMiniPlayerView.shouldShowChrome(
+                hasActiveSession: spyPresenter.hasActiveSession,
+                isReaderActive: spyPresenter.isReaderActive,
+                isCollapsed: spyPresenter.isCollapsed),
+            "Happy path: active session + non-reader tab + not collapsed → mini-player must be visible")
     }
 
     // MARK: - Tap → expand wiring
@@ -226,10 +337,12 @@ final class AudiobookMiniPlayerViewTests: XCTestCase {
         // injected. The button's action body calls
         // `audiobookSession.togglePlayPause()`; calling the same protocol
         // method directly on the SUT's injected reference exercises the
-        // same wiring. SpyShimSession's `togglePlayPause` is a no-op,
-        // but the identity assertion is the load-bearing pin.
+        // same wiring; the spy now records the call count so we pin BOTH the
+        // count and the injected identity.
         sut.audiobookSession.togglePlayPause()
 
+        XCTAssertEqual(spySession.togglePlayPauseCallCount, 1,
+                       "Play/pause button must call audiobookSession.togglePlayPause() exactly once")
         XCTAssertTrue(sut.audiobookSession as AnyObject === spySession as AnyObject,
                       "Mini-player must hold the INJECTED audiobookSession reference — proves the togglePlayPause action routes to the test spy, not a hardcoded production singleton")
         // Also pin the negative: skipBack/skipForward must NOT have been
