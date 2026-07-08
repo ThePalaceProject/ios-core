@@ -340,11 +340,19 @@ struct SkeletonText: View {
   }
 }
 
-/// A book-cover placeholder — cover aspect at the caller's size, card radius.
+/// A book-cover placeholder — cover aspect at the caller's size, SQUARE corners
+/// to match the settled cover. `BookImageView` renders the real cover as a plain
+/// `Image(...).aspectRatio(.fit)` with NO corner rounding, so a rounded skeleton
+/// (previously `PalaceRadius.card` = 12pt) visibly snapped to square corners when
+/// the cover faded in. Square here keeps the placeholder → cover transition
+/// shape-stable. If book covers ever gain a corner radius, change BOTH sites.
 struct SkeletonCover: View {
   var width: CGFloat = 100
   var height: CGFloat = 150
   var active: Bool = true
+
+  /// Matches `BookImageView`'s cover, which is not corner-rounded. `0` = square.
+  static let coverCornerRadius: CGFloat = 0
 
   init(width: CGFloat = 100, height: CGFloat = 150, active: Bool = true) {
     self.width = width
@@ -355,7 +363,7 @@ struct SkeletonCover: View {
   var body: some View {
     SkeletonBox(
       width: width, height: height,
-      cornerRadius: PalaceRadius.card, active: active
+      cornerRadius: Self.coverCornerRadius, active: active
     )
   }
 }
