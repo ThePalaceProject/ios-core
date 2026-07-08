@@ -400,15 +400,30 @@ private extension CatalogView {
     // MARK: - Subviews
 
     /// Top-level skeleton used during initial load.
+    ///
+    /// Mirrors `CatalogContentView`'s loaded layout so the first lane lands at
+    /// the same y in both states and does not pop when content arrives (PP-4752):
+    ///   * `CatalogEntryPointsSkeletonView` traces the "All · Ebooks ·
+    ///     Audiobooks" segmented selector that renders above the lanes once the
+    ///     grouped feed loads (reserving its ~44pt footprint).
+    ///   * the lane scroller carries a 34pt vertical inset — matching
+    ///     `CatalogContentView`'s doubled `.padding(.vertical, 17)` (the outer
+    ///     `LazyVStack` plus the inner feed content) — so the first lane's top
+    ///     inset equals the loaded feed's.
     @ViewBuilder
     var skeletonList: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                ForEach(0..<3, id: \.self) { _ in
-                    CatalogLaneSkeletonView()
+        VStack(alignment: .leading, spacing: 0) {
+            CatalogEntryPointsSkeletonView()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    ForEach(0..<3, id: \.self) { _ in
+                        CatalogLaneSkeletonView()
+                    }
                 }
+                // 17 (outer LazyVStack) + 17 (feed content) in CatalogContentView.
+                .padding(.vertical, 34)
             }
-            .padding(.vertical, 17)
         }
     }
 }

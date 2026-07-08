@@ -7,6 +7,11 @@ struct BookImageView: View {
     var usePulseSkeleton: Bool = true
     /// When true, the cover is not announced by VoiceOver (e.g. in list cells where the cell already announces title/author).
     var treatImageAsDecorativeInLists: Bool = false
+    /// Drop shadow radius applied ONLY to the settled cover image — never to the
+    /// loading placeholder. Keeping the shadow off the animated placeholder
+    /// avoids re-rasterizing 4 shadow layers every frame while it pulses (the
+    /// real GPU cost on a full catalog). `nil` = no shadow.
+    var coverShadowRadius: CGFloat? = nil
 
     @State private var showSkeleton: Bool = true
 
@@ -18,13 +23,16 @@ struct BookImageView: View {
         ZStack(alignment: .bottomTrailing) {
             // Show pulsing skeleton until image is ready
             if showSkeleton && !hasPreloadedCover {
-                PulsingSkeletonView(width: width ?? (height * 2.0 / 3.0), height: height)
+                // Shared-clock skeleton (one TimelineView driver, reduce-motion +
+                // low-power aware) — replaces the old per-cover repeatForever pulse.
+                SkeletonCover(width: width ?? (height * 2.0 / 3.0), height: height)
             }
 
             if let coverImage = book.coverImage ?? book.thumbnailImage {
                 Image(uiImage: coverImage)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
+                    .modifier(SettledCoverShadow(radius: coverShadowRadius))
                     .transition(.opacity)
                     .accessibilityLabel(treatImageAsDecorativeInLists ? "" : String(format: NSLocalizedString("Cover image for %@", comment: "Book cover accessibility"), book.title))
                     .accessibilityHidden(treatImageAsDecorativeInLists)
@@ -95,24 +103,21 @@ struct BookImageView: View {
     }
 }
 
-// MARK: - Pulsing Skeleton
+// MARK: - Settled-cover shadow
 
-/// Self-contained pulsing skeleton that starts animating immediately on init
-private struct PulsingSkeletonView: View {
-    let width: CGFloat
-    let height: CGFloat
+/// Applies `adaptiveShadow` to the settled cover image only when a radius is
+/// provided. Deliberately NOT applied to the loading skeleton: an animated
+/// shadow re-rasterizes its (4-layer) blur every frame, which on a full catalog
+/// is the dominant GPU cost. The shadow therefore appears once, on the static
+/// settled cover, and never animates.
+private struct SettledCoverShadow: ViewModifier {
+    let radius: CGFloat?
 
-    @State private var pulse: Bool = false
-
-    var body: some View {
-        Rectangle()
-            .fill(Color.gray.opacity(0.25))
-            .frame(width: width, height: height)
-            .opacity(pulse ? 0.6 : 1.0)
-            .onAppear {
-                withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
-                    pulse = true
-                }
-            }
+    func body(content: Content) -> some View {
+        if let radius {
+            content.adaptiveShadow(radius: radius)
+        } else {
+            content
+        }
     }
 }
