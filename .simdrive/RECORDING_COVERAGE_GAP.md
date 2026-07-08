@@ -1,92 +1,82 @@
 # Regression journey recording-coverage gap
 > Generated inventory (no simdrive required). Work-list for the recording
-> pass that runs once simdrive licensing is restored. Source of truth:
+> pass. Source of truth:
 > `.simdrive/regression-areas.json` (manifest journeys) vs
 > `~/.simdrive/recordings/<journey>/recording.yaml` (local recordings).
-> Snapshot @ develop `e6307c8b2`, 2026-06-12. Step-parity verdicts added 2026-06-12.
+> Snapshot @ `chore/regression-stance-3.3.0`, 2026-07-08. Recompute after any capture pass.
 
 ## Headline
-- **25** journeys referenced by the area manifest (was 24; +`audiobook-cold-load-first-open`, added 2026-06-17 with the PP-4542/#1094 fix to close the first-cold-open gap that let PP-4613 ship un-caught).
-- **1** has a local recording (replayable today): `PP-4161-streaming-html-reader`.
-- **24** are missing (require a fresh capture).
-- **0 alias re-points possible** — all 3 alias-candidates were step-parity-checked and REJECTED (see below).
+- **25** journeys referenced by the area manifest (`regression-areas.json` `area_groups`).
+- **22** have a local recording (replayable today).
+- **3** are missing (require a fresh capture): the two audiobook-staging journeys and the streaming-HTML reader journey — see the work-list below.
 
-**Effective coverage: 1/25 (4%).** Recording is the single biggest lever on regression coverage.
+**Effective coverage: 22/25 (88%).** The corpus is now near-complete; only a short, named tail remains. Recording is still the single biggest lever on the last of the regression coverage.
+
+> Recording is done for all 5 auth journeys, all 3 circulation journeys, 5 of 6 reading journeys, 3 of 5 audiobook journeys, all 4 catalog journeys, and both ui-nav journeys. The earlier "1/25 (4%)" snapshot (develop `e6307c8b2`, 2026-06-12) predated the capture pass that recorded the corpus; it is superseded by this stamp.
 
 ## Per area-group
 | Area group | Total | Present | Missing |
 |---|---|---|---|
-| `auth` | 5 | 0 | 5 |
-| `circulation` | 3 | 0 | 3 |
-| `reading` | 6 | 1 | 5 |
-| `audiobook` | 5 | 0 | 5 |
-| `catalog` | 4 | 0 | 4 |
-| `ui-nav` | 2 | 0 | 2 |
-| **TOTAL** | **25** | **1** | **24** |
+| `auth` | 5 | 5 | 0 |
+| `circulation` | 3 | 3 | 0 |
+| `reading` | 6 | 5 | 1 |
+| `audiobook` | 5 | 3 | 2 |
+| `catalog` | 4 | 4 | 0 |
+| `ui-nav` | 2 | 2 | 0 |
+| **TOTAL** | **25** | **22** | **3** |
 
-## Step-parity verdicts (alias-candidates — all REJECTED)
-The fuzzy name-match surfaced 3 manifest journeys whose flow a legacy
-`b3-*` recording *might* have covered. Each was checked by comparing the
-journey's `.simdrive/journeys/<id>.yaml` `steps:` against the recording's
-step sequence (pure spec comparison, no simdrive). **None is a genuine
-alias** — re-pointing any would leave load-bearing invariants unverified.
-All 3 stay on the MISSING list.
+## Recorded — the replayable corpus (22)
+Each has a `~/.simdrive/recordings/<journey>/recording.yaml` present today.
 
-| Journey | Checked recording | Verdict |
+| Area group | Recorded journeys |
+|---|---|
+| `auth` | `a1qa-basic-signin`, `a1qa-sign-out`, `danny-saml-signin-init`, `icarus-oidc-signin`, `library-picker-stateless` |
+| `circulation` | `palace-bookshelf-anonymous`, `book-return-from-mybooks`, `read-return-from-mybooks-roundtrip` |
+| `reading` | `reader2-back-button`, `reader2-bookmark-toggle`, `reader2-page-forward`, `reader2-settings-sheet`, `reader2-toc-navigate` |
+| `audiobook` | `audiobook-scrubber-drag`, `audiobook-skip-forward`, `audiobook-toc-seek` |
+| `catalog` | `catalog-browse-stateless`, `search-flow-stateful`, `feed-refresh-stateless`, `book-detail-stateless` |
+| `ui-nav` | `tab-bar-tour`, `settings-tour-stateless` |
+
+> The three journeys previously flagged as "alias-candidates REJECTED" —
+> `palace-bookshelf-anonymous`, `catalog-browse-stateless`, `search-flow-stateful` —
+> now each have their own freshly-captured recording, so the fuzzy `b3-*`
+> re-point question is moot. They appear in the RECORDED table above.
+
+## Missing — the capture work-list (3)
+Ordered by area-group priority. Each needs a fresh simdrive recording at
+`~/.simdrive/recordings/<journey>/recording.yaml`.
+
+### `reading` (1)
+- [ ] `PP-4161-streaming-html-reader` — streaming-HTML reader (open DRM, substitutable). Journey spec present; recording not yet captured.
+
+### `audiobook` (2)
+- [ ] `audiobook-cold-load-first-open`  (PP-4542/PP-4613): first-cold-open of a fresh-borrow LCP audiobook must not dead-end on "Audiobook Unavailable". Spec authored; staging is DETERMINISTIC (forge_streaming_state recipe = "ready", no longer PHASE2) — capture is unblocked and is the only remaining step.
+- [ ] `audiobook-download-indicator-stateful`  (stays PHASE2 — needs a live active-download %, not solved by the content-delete forge).
+
+## Journeys on disk but not yet in the area manifest
+These `.simdrive/journeys/*.yaml` specs exist but are NOT in
+`regression-areas.json` `area_groups`, so they are out of scope for the
+22/25 headline above (the area-worker replays only manifest journeys). Listed
+here so the tail is visible:
+
+| Journey | Recording present? | Note |
 |---|---|---|
-| `palace-bookshelf-anonymous` | `b3-smoke-bookshelf-catalog` | NOT-ALIAS: recording taps Palace Bookshelf then navigates Settings->About App; never asserts the anonymous Account-view no-sign-in invariants the journey exists for. |
-| `catalog-browse-stateless` | `b3-smoke-bookshelf-catalog` | NOT-ALIAS: journey is 4 catalog scroll swipes; recording has zero swipes (3 taps: Bookshelf->Settings->About App). Different surface + action type. |
-| `search-flow-stateful` | `b3-runtime-search-flow` | NOT-ALIAS: same search-input intent but recording omits the Cancel step + its "Cancel returns to unfiltered Catalog" invariant, and adds Catalog-tab + Continue steps. Partial overlap, not equivalent. |
+| `app-rating-sentiment-gate` | Yes (`app-rating-sentiment-gate-positive`) | Epic PP-4086; declarative-flow companion. |
+| `holds-reservations-empty` | Yes | Holds/reservations empty-state. |
+| `reader3-pdf-open-and-page` | Yes | PDF reader open + page. |
+| `PP-4529-print-page-navigation-voiceover` | **No** | VoiceOver print-page nav (PP-4529); recording not yet captured. |
+| `ws4-ipad-on-mac-exit-adobe-drm` | **No** | iPad-on-Mac Adobe-DRM exit crash regression (manual tier); recording not yet captured. |
 
-## Missing — the capture work-list
-Ordered by area-group priority (P0 auth/circulation first). Each needs a
-fresh simdrive recording at `~/.simdrive/recordings/<journey>/recording.yaml`.
-The 3 ex-alias-candidates (†) have a *close* b3-* recording that can seed/
-speed the re-record even though it is not a drop-in.
-
-### `auth` (5)
-- [ ] `a1qa-basic-signin`
-- [ ] `a1qa-sign-out`
-- [ ] `danny-saml-signin-init`
-- [ ] `icarus-oidc-signin`
-- [ ] `library-picker-stateless`
-
-### `circulation` (3)
-- [ ] `palace-bookshelf-anonymous` †
-- [ ] `book-return-from-mybooks`
-- [ ] `read-return-from-mybooks-roundtrip`
-
-### `reading` (5)
-- [ ] `reader2-back-button`
-- [ ] `reader2-bookmark-toggle`
-- [ ] `reader2-page-forward`
-- [ ] `reader2-settings-sheet`
-- [ ] `reader2-toc-navigate`
-
-### `audiobook` (5)
-- [ ] `audiobook-cold-load-first-open`  ← NEW 2026-06-17 (PP-4542/PP-4613): first-cold-open of a fresh-borrow LCP audiobook must not dead-end on "Audiobook Unavailable". Spec authored; staging now DETERMINISTIC (forge_streaming_state recipe = "ready", no longer PHASE2) — capture is unblocked and is the only remaining step.
-- [ ] `audiobook-download-indicator-stateful`  (stays PHASE2 — needs a live active-download %, not solved by the content-delete forge)
-- [ ] `audiobook-scrubber-drag`
-- [ ] `audiobook-skip-forward`
-- [ ] `audiobook-toc-seek`
-
-### `catalog` (4)
-- [ ] `catalog-browse-stateless` †
-- [ ] `search-flow-stateful` †
-- [ ] `feed-refresh-stateless`
-- [ ] `book-detail-stateless`
-
-### `ui-nav` (2)
-- [ ] `tab-bar-tour`
-- [ ] `settings-tour-stateless`
-
-† a close-but-not-equivalent b3-* recording exists (see verdicts above) — use as a re-record reference, not a drop-in.
+To fold any of these into the headline coverage, add its id to the right
+group in `regression-areas.json` `area_groups` and re-run this inventory.
 
 ## Notes
 - Every manifest journey already has its `.simdrive/journeys/<id>.yaml` spec
-  (enforced by `scripts/tests/test_regression_area_chaos.py`); only the
-  *recording* (the replayable HID trace) is missing.
-- The many `chaos-*` recordings in `~/.simdrive/recordings/` are the chaos
-  replay corpus (seeds for `run-chaos-pass.sh`), **not** journey recordings.
+  (enforced by `scripts/tests/test_regression_area_chaos.py`); for the 3
+  missing above, only the *recording* (the replayable HID trace) is absent.
+- The many `chaos-*` recordings in `~/.simdrive/recordings/` (plus
+  `rapid-tap-ask-me-later`, `trigger-spam-stacking`, `*.stale`, `*__diag`) are
+  the chaos replay corpus / diagnostics, **not** journey recordings, and are
+  excluded from the counts here.
 - Until a journey is recorded, `regression-area-worker.sh` SKIPS it (logged),
   so missing recordings silently shrink coverage rather than failing loudly.

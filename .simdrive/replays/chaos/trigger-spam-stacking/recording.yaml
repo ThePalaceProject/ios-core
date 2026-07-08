@@ -1,0 +1,126 @@
+name: trigger-spam-stacking
+created_at: 1783012034.0874612
+device: iPhone 16 Pro
+os_version: '26.0'
+app_bundle_id: org.thepalaceproject.palace
+app_version: '484'
+simdrive_version: 1.0.0b12
+created_by_session: V0VXzRBxuM4
+screenshot_size_pixels:
+- 1206
+- 2622
+tags:
+- chaos-trigger-spam
+- sentiment-gate
+target: simulator
+steps:
+- id: 1
+  action: tap
+  args:
+    x: 365
+    y: 2028
+    screenshot_w: 1206
+    screenshot_h: 2622
+    marks_count: 24
+  pre_screenshot: snapshots/001_pre.png
+  post_screenshot: snapshots/001_post.png
+  captured_at: 1783012041.769852
+  marks_count: 24
+- id: 2
+  action: tap
+  args:
+    x: 365
+    y: 2028
+    screenshot_w: 1206
+    screenshot_h: 2622
+    marks_count: 24
+  pre_screenshot: snapshots/002_pre.png
+  post_screenshot: snapshots/002_post.png
+  captured_at: 1783012047.835936
+  marks_count: 24
+- id: 3
+  action: tap
+  args:
+    x: 365
+    y: 2028
+    screenshot_w: 1206
+    screenshot_h: 2622
+    marks_count: 24
+  pre_screenshot: snapshots/003_pre.png
+  post_screenshot: snapshots/003_post.png
+  captured_at: 1783012056.964027
+  marks_count: 24
+- id: 4
+  action: tap
+  args:
+    x: 365
+    y: 2028
+    screenshot_w: 1206
+    screenshot_h: 2622
+    marks_count: 24
+  pre_screenshot: snapshots/004_pre.png
+  post_screenshot: snapshots/004_post.png
+  captured_at: 1783012062.453863
+  marks_count: 24
+- id: 5
+  action: tap
+  args:
+    x: 365
+    y: 2028
+    screenshot_w: 1206
+    screenshot_h: 2622
+    marks_count: 24
+  pre_screenshot: snapshots/005_pre.png
+  post_screenshot: snapshots/005_post.png
+  captured_at: 1783012069.870911
+  marks_count: 24
+- id: 6
+  action: tap
+  args:
+    x: 602
+    y: 1460
+    screenshot_w: 1206
+    screenshot_h: 2622
+    marks_count: 25
+  pre_screenshot: snapshots/006_pre.png
+  post_screenshot: snapshots/006_post.png
+  captured_at: 1783012111.747922
+  marks_count: 25
+- id: 7
+  action: tap
+  args:
+    x: 367
+    y: 2028
+    screenshot_w: 1206
+    screenshot_h: 2622
+    marks_count: 26
+  pre_screenshot: snapshots/007_pre.png
+  post_screenshot: snapshots/007_post.png
+  captured_at: 1783012133.862854
+  marks_count: 26
+requires:
+  target: simulator
+  app:
+    bundle_id: org.thepalaceproject.palace
+    version: '484'
+    version_match: minor
+  sim:
+    device: iPhone 16 Pro
+    ios_version: '26.0'
+  initial_state:
+    foreground: true
+    text_subset_required:
+    - LIBRARY SETTINGS
+    - TRIAGE BOT
+    - Anthropic API Key
+    - Ut!
+    - Settings
+    - Catalog
+    text_subset_forbidden: []
+    primary_button_label: Enter LCP Passphrase Manually
+ssim_masks:
+- x: 0
+  y: 0
+  w: 1206
+  h: 180
+  label: status_bar

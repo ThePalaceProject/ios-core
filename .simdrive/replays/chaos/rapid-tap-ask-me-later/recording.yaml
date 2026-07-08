@@ -1,0 +1,85 @@
+name: rapid-tap-ask-me-later
+created_at: 1783011883.481932
+device: iPhone 16 Pro
+os_version: '26.0'
+app_bundle_id: org.thepalaceproject.palace
+app_version: '484'
+simdrive_version: 1.0.0b12
+created_by_session: V0VXzRBxuM4
+screenshot_size_pixels:
+- 1206
+- 2622
+tags:
+- chaos-rapid-tap
+- sentiment-gate
+target: simulator
+steps:
+- id: 1
+  action: tap
+  args:
+    x: 604
+    y: 1615
+    screenshot_w: 1206
+    screenshot_h: 2622
+    stable_id: f4825f6a6a25
+    stable_id_loose: 6673fa622034
+    text: Ask me later
+    marks_count: 25
+  pre_screenshot: snapshots/001_pre.png
+  post_screenshot: snapshots/001_post.png
+  captured_at: 1783011892.3138502
+  marks_count: 25
+- id: 2
+  action: tap
+  args:
+    x: 604
+    y: 1615
+    screenshot_w: 1206
+    screenshot_h: 2622
+    marks_count: 25
+  pre_screenshot: snapshots/002_pre.png
+  post_screenshot: snapshots/002_post.png
+  captured_at: 1783011900.205755
+  marks_count: 25
+- id: 3
+  action: tap
+  args:
+    x: 604
+    y: 1615
+    screenshot_w: 1206
+    screenshot_h: 2622
+    marks_count: 25
+  pre_screenshot: snapshots/003_pre.png
+  post_screenshot: snapshots/003_post.png
+  captured_at: 1783011905.182524
+  marks_count: 25
+requires:
+  target: simulator
+  app:
+    bundle_id: org.thepalaceproject.palace
+    version: '484'
+    version_match: minor
+  sim:
+    device: iPhone 16 Pro
+    ios_version: '26.0'
+  initial_state:
+    foreground: true
+    text_subset_required:
+    - LIBRARY SETTINGS
+    - TRIAGE ROT
+    - Are you enjoying The
+    - Ti
+    - Yes, I love it!
+    - Not really
+    - Ask me later
+    - FE
+    - Catalog
+    - Settings
+    text_subset_forbidden: []
+    primary_button_label: Enter LCP Passphrase Manually
+ssim_masks:
+- x: 0
+  y: 0
+  w: 1206
+  h: 180
+  label: status_bar
