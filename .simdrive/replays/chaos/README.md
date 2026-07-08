@@ -25,12 +25,18 @@ corpus; that is a runner-provisioning decision, not a content decision.
 
 When enabled, the gate:
 1. Builds the PR candidate and installs it on a sim.
-2. Globs `.simdrive/replays/chaos/*.yaml` and, for each, sets
-   `NAME=$(basename "$yaml" .yaml)`.
-3. Runs `simdrive replay --name "$NAME" --on-drift halt --drift-threshold 0.85`.
-4. If any replay's post-state SSIM diverges from the recorded baseline, the job
-   fails and comments on the PR: *"a previously-fixed chaos-discovered bug
-   appears to have regressed."*
+2. Runs `scripts/chaos-replay.sh --udid <UDID> --threshold 0.85`, which stages
+   each `<name>/` recording into `recordings_root()` and replays it via the
+   simdrive Python API (`recorder.replay`), classifying each result with the
+   fleet worker's anti-false-pass gate (`regression_findings.classify_replay`).
+3. If any replay's post-state SSIM diverges from the recorded baseline (or a
+   replay halts on a precondition mismatch, i.e. executes 0 of its planned
+   steps), the job fails and comments on the PR: *"a previously-fixed
+   chaos-discovered bug appears to have regressed."*
+
+You can validate the corpus locally without a sim: `scripts/chaos-replay.sh
+--check` stages + validates every entry and is unit-tested by
+`scripts/tests/test_chaos_replay.sh` (wired into `tooling-checks.yml`).
 
 ## How the gate resolves a replay (IMPORTANT — read before adding entries)
 
@@ -50,13 +56,11 @@ So each corpus entry is a **pair**:
 | `<name>.yaml` | Curated metadata the gate's glob discovers: intent, `expected_invariants`, `structural_checks`, `ssim_gating`, and a `recording.path` pointer. Human-readable; this is the "why this replay exists" doc. |
 | `<name>/recording.yaml` + `<name>/snapshots/` | The replayable payload the engine actually loads (raw `simdrive.record_stop` output — steps + per-step pre/post PNGs SSIM is computed against). |
 
-To make the engine resolve `<name>` from *this* directory, the CI job must run
-with `SIMDRIVE_HOME` pointed at the repo's `.simdrive` (so
-`recordings_root()` = `<repo>/.simdrive/recordings`) **or** the runner copies /
-symlinks `.simdrive/replays/chaos/<name>/` into `$SIMDRIVE_HOME/recordings/<name>/`
-before replaying. See the "Dormant-gate concern" note at the bottom — this wiring
-is unresolved in the current workflow and must be settled when the runner is
-provisioned.
+`scripts/chaos-replay.sh` bridges this: for each top-level `<name>.yaml` it
+copies `.simdrive/replays/chaos/<name>/` into `recordings_root()/<name>/`
+(== `${SIMDRIVE_HOME:-~/.simdrive}/recordings/<name>/`) before replaying, so the
+engine resolves the staged recording. You never need to hand-set `SIMDRIVE_HOME`
+for the gate — the script does the staging.
 
 Snapshots ARE committed here (they are the SSIM reference — the gate does
 per-step visual drift, not just structural checks, so the reference PNGs must
@@ -93,21 +97,20 @@ reset-during-display, and network-loss. They sat uncurated in
 Naming convention (per the workflow header):
 `.simdrive/replays/chaos/<flow>-<descriptor>.yaml`.
 
-## Dormant-gate concern (unresolved wiring)
+## Gate wiring (resolved 2026-07-08)
 
-The workflow's `simdrive replay --name ... --on-drift halt --drift-threshold ...`
-is written as a **CLI** invocation, but simdrive 1.0.0b12 exposes `replay` only
-as an **MCP tool** (`on_drift` / `drift_threshold` args), not as a `simdrive
-replay` CLI subcommand (the CLI has `run`, `ci`, `lint-recordings`,
-`migrate-recording`, `version`, `doctor`, `demo`, `trial`, `auth`, `license`).
-AND the engine resolves `<name>` against `$SIMDRIVE_HOME/recordings/<name>`, not
-`.simdrive/replays/chaos/<name>`.
+The workflow originally invoked `simdrive replay --name ... --on-drift halt` as a
+**CLI** command. That subcommand does not exist — simdrive 1.0.0b12 exposes
+`replay` only via the Python API (`recorder.replay`) and the MCP tool; the CLI
+surface is `run` / `ci` / `lint-recordings` / `migrate-recording` / `version` /
+`doctor` / `demo` / `trial` / `auth` / `license`. It also resolved `<name>`
+against `recordings_root()`, not the in-repo corpus path.
 
-Because the whole job is gated behind `ENABLE_CHAOS_QA_RUNNER == 'true'` (unset
-today), this mismatch **cannot fire** on the seeded corpus — the job skips, it
-does not error. But before the flag is flipped, the workflow's replay step must
-be reconciled with the actual simdrive surface (invoke the MCP tool or add a
-`simdrive replay` CLI shim, and point `SIMDRIVE_HOME` at the repo `.simdrive` or
-stage the corpus recordings into the recordings root). Do not enable the runner
-until that is fixed. This is a workflow-wiring task, deliberately left untouched
-here (corpus content only).
+Both are now fixed: the gate calls `scripts/chaos-replay.sh`, which stages the
+corpus into `recordings_root()` and replays via the Python API (mirroring the
+proven path in `scripts/regression-area-worker.sh`). The corpus-validation half
+(`--check`) is unit-tested (`scripts/tests/test_chaos_replay.sh`, run by
+`tooling-checks.yml`), so the runnable seam is verified even though the full
+replay job stays dormant behind `ENABLE_CHAOS_QA_RUNNER == 'true'` (no
+self-hosted runner yet). When the runner is provisioned, flip that variable — no
+further wiring change is required.
