@@ -338,20 +338,50 @@ public final class GeneralCache<Key: Hashable & Codable & Sendable, Value: Codab
         }
     }
 
-    public static func clearCacheOnUpdate() {
-        let cacheVersionKey = "AppCacheVersionBuild"
+    /// Key under which the last-purged app version+build is stored. Computed
+    /// (not stored) because Swift forbids stored static properties on a generic
+    /// type.
+    static var cacheVersionKey: String { "AppCacheVersionBuild" }
 
+    // PUBLIC_INTENT: pre-existing public API (unchanged visibility) — called from
+    // TPPAppDelegate at launch. Flagged only because the adjacent `cacheVersionKey`
+    // static extraction shifted this line in the diff; not a new public surface.
+    public static func clearCacheOnUpdate() {
         let info = Bundle.main.infoDictionary
         let version = info?["CFBundleShortVersionString"] as? String ?? "0"
         let build   = info?["CFBundleVersion"] as? String ?? "0"
 
         let versionBuild = "\(version) (\(build))"
 
-        let defaults = UserDefaults.standard
-        let previous = defaults.string(forKey: cacheVersionKey)
-
-        if previous != versionBuild {
-            Self.clearAllCaches()
-            defaults.set(versionBuild, forKey: cacheVersionKey)
+        // The version compare + flag write stay SYNCHRONOUS on the launch path
+        // (called from `TPPAppDelegate.applicationDidFinishLaunching`). The
+        // actual Caches-dir enumeration/delete is dispatched off-main — nothing
+        // on the launch path waits for the purge to finish.
+        clearCacheOnUpdate(
+            defaults: .standard,
+            currentVersionBuild: versionBuild
+        ) {
+            DispatchQueue.global(qos: .utility).async {
+                Self.clearAllCaches()
+            }
         }
-    }}
+    }
+
+    /// Testable seam for `clearCacheOnUpdate()`. Keeps the version gate and the
+    /// flag write synchronous; invokes `purge` (which production dispatches
+    /// off-main) exactly once, and only when the stored version differs from
+    /// `currentVersionBuild`. Returns `true` when a purge was triggered.
+    @discardableResult
+    static func clearCacheOnUpdate(
+        defaults: UserDefaults,
+        currentVersionBuild: String,
+        purge: () -> Void
+    ) -> Bool {
+        let previous = defaults.string(forKey: cacheVersionKey)
+        guard previous != currentVersionBuild else { return false }
+
+        purge()
+        defaults.set(currentVersionBuild, forKey: cacheVersionKey)
+        return true
+    }
+}

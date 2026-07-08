@@ -191,6 +191,18 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
             Log.info(#file, "App hasn't been used in \(daysSinceLastLaunch) days - clearing HTTP cache")
             // Clear URLCache to prevent stale/corrupted HTTP responses from causing parsing crashes
             // in legacy OPDS code. Our memory cache is preserved for stale-while-revalidate.
+            //
+            // N1 NOTE (swarm_27c181b5): OPDS feeds are actually served from the
+            // network executor's PRIVATE URLCache (see `TPPCaching.makeCache`),
+            // NOT from `URLCache.shared`, so this wipe is effectively a no-op for
+            // feed responses. `CatalogRepository` lives in the PalaceCatalog SPM
+            // package and only holds a `CatalogAPI` whose `NetworkClient` surface
+            // (`send` only) exposes no cache-clear seam, and the package cannot
+            // reach `AppContainer.production().networkExecutor` without an
+            // inverted app-target dependency. Routing this site correctly needs a
+            // `clearCache()` on the `NetworkClient` protocol — deferred rather
+            // than introduce a bad dependency here. The privacy-critical clears
+            // (sign-out / force-reset) already route through the executor.
             URLCache.shared.removeAllCachedResponses()
         }
         if daysSinceLastLaunch >= 1 {

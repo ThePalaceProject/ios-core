@@ -17,7 +17,7 @@ import PalaceCatalog
 // MARK: - Mock Repository for Search Tests
 
 @MainActor
-final class CatalogRepositoryMock: CatalogRepositoryProtocol {
+final class CatalogRepositoryMock: @preconcurrency CatalogRepositoryProtocol {
 
     // MARK: - Configuration
 
@@ -31,18 +31,43 @@ final class CatalogRepositoryMock: CatalogRepositoryProtocol {
     var fetchSearchEntryPointsError: Error?
     var simulatedDelay: TimeInterval = 0
 
+    /// When true, `loadTopLevelCatalog(at:)` models the real repository's
+    /// stale-while-revalidate cache: a URL is fetched from the "network" only
+    /// on the FIRST load (a cache miss). Subsequent loads of the same URL are
+    /// served from the in-memory cache and do NOT increment the per-URL
+    /// network-fetch counter. `invalidateCache(for:)` evicts the URL so the
+    /// next load re-fetches. Lets the SWR / de-triple-fire tests observe the
+    /// account-switch cache behavior the production repository owns.
+    var simulatesCache = false
+
     // MARK: - Call Tracking
 
     private(set) var loadTopLevelCatalogCallCount = 0
     private(set) var searchCallCount = 0
     private(set) var searchWithDescriptorCallCount = 0
     private(set) var fetchSearchEntryPointsCallCount = 0
+    /// Number of times `invalidateCache(for:)` was called (SWR contract).
+    private(set) var invalidateCacheCallCount = 0
+    /// Last URL passed to `invalidateCache(for:)`.
+    private(set) var lastInvalidatedURL: URL?
     private(set) var lastSearchQuery: String?
     private(set) var lastSearchURL: URL?
     private(set) var lastSearchDescriptorURL: URL?
     private(set) var lastFetchSearchEntryPointsURL: URL?
     private(set) var lastLoadURL: URL?
+    /// Every URL passed to `loadTopLevelCatalog(at:)`, in order.
+    private(set) var loadHistory: [URL] = []
     private(set) var searchHistory: [(query: String, url: URL)] = []
+
+    /// Per-URL count of simulated NETWORK fetches (cache misses). Only tracked
+    /// when `simulatesCache` is true.
+    private(set) var networkFetchCountByURL: [URL: Int] = [:]
+    /// URLs currently warm in the simulated cache.
+    private var liveCacheURLs: Set<URL> = []
+
+    func networkFetchCount(for url: URL) -> Int {
+        networkFetchCountByURL[url] ?? 0
+    }
 
     /// Callback fired after each search — use with XCTestExpectation for deterministic waits
     var onSearchCalled: (() -> Void)?
@@ -52,6 +77,7 @@ final class CatalogRepositoryMock: CatalogRepositoryProtocol {
     func loadTopLevelCatalog(at url: URL) async throws -> CatalogFeed? {
         loadTopLevelCatalogCallCount += 1
         lastLoadURL = url
+        loadHistory.append(url)
 
         if simulatedDelay > 0 {
             try await Task.sleep(nanoseconds: UInt64(simulatedDelay * 1_000_000_000))
@@ -59,6 +85,12 @@ final class CatalogRepositoryMock: CatalogRepositoryProtocol {
 
         if let error = loadTopLevelCatalogError {
             throw error
+        }
+
+        if simulatesCache, !liveCacheURLs.contains(url) {
+            // Cache miss — count a network fetch and warm the cache.
+            networkFetchCountByURL[url, default: 0] += 1
+            liveCacheURLs.insert(url)
         }
 
         return loadTopLevelCatalogResult
@@ -124,11 +156,13 @@ final class CatalogRepositoryMock: CatalogRepositoryProtocol {
     // must be `nonisolated` witnesses or the conformance "crosses into main
     // actor-isolated code" (Swift 6). Both are stateless, so `nonisolated` is
     // sound and behavior is unchanged.
-    nonisolated func invalidateCache(for url: URL) {
-        // No-op for mock
+    func invalidateCache(for url: URL) {
+        invalidateCacheCallCount += 1
+        lastInvalidatedURL = url
+        liveCacheURLs.remove(url)
     }
 
-    nonisolated func cachedFeed(for url: URL) -> CatalogFeed? { nil }
+    func cachedFeed(for url: URL) -> CatalogFeed? { nil }
 
     // MARK: - Test Helpers
 
@@ -142,16 +176,22 @@ final class CatalogRepositoryMock: CatalogRepositoryProtocol {
         fetchSearchEntryPointsResult = []
         fetchSearchEntryPointsError = nil
         simulatedDelay = 0
+        simulatesCache = false
         loadTopLevelCatalogCallCount = 0
         searchCallCount = 0
         searchWithDescriptorCallCount = 0
         fetchSearchEntryPointsCallCount = 0
+        invalidateCacheCallCount = 0
+        lastInvalidatedURL = nil
         lastSearchQuery = nil
         lastSearchURL = nil
         lastSearchDescriptorURL = nil
         lastFetchSearchEntryPointsURL = nil
         lastLoadURL = nil
+        loadHistory.removeAll()
         searchHistory.removeAll()
+        networkFetchCountByURL.removeAll()
+        liveCacheURLs.removeAll()
     }
 }
 

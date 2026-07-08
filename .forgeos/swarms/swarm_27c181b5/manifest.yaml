@@ -1,0 +1,98 @@
+swarm_id: swarm_27c181b5
+task: "Startup + library-switch performance program — grouped by module and risk tier. Instrument launch (AppLaunchTracker) first, then land SWR/cache/cover/network fixes (Tier 1-2 standard) and critical-path launch-hydration/credential/first-run fixes (Tier 3) under separate SoD review."
+base_ref: origin/develop
+branch: swarm/swarm_27c181b5-scaffold
+created_at: 2026-07-08
+status: triaged
+manifest_schema: swarm-manifest-v2
+
+build_env:
+  xcode: "26.3"
+  shared_deriveddata: "Palace-eemwiwoqledwoffufynpbmkrmxjz"
+  sim_udid: "1C4E6D56-777E-42AD-9ECF-91B1C573DBB9"
+  toolkit_submodule_pin: "325a435"
+  note: "Full app build works locally; parallel builds MUST use isolated -derivedDataPath to avoid the build.db lock."
+
+landing_sequence:
+  - wave: A
+    pr: "PR1 (Tier 1 standard + instrumentation)"
+    modules: [Startup-AppLifecycle, Accounts-Startup, Covers, CatalogUI]
+  - wave: B
+    pr: "PR2 (Tier 2 standard; SoD required — SignInLogic + executor)"
+    modules: [Network]
+  - wave: C
+    pr: "PR3 (Tier 3 critical_path — three SEPARATE contracts, architect + SoD each)"
+    modules: [CP-D1-LaunchHydration, CP-D2-CredentialSnapshot, CP-D3-FirstRunDecode]
+
+modules:
+  - name: Startup-AppLifecycle
+    risk: standard
+    wave: A
+    contract_path: .forgeos/swarms/swarm_27c181b5/contracts/Startup-AppLifecycle.md
+    depends_on: []
+  - name: Accounts-Startup
+    risk: standard-sensitive
+    wave: A
+    contract_path: .forgeos/swarms/swarm_27c181b5/contracts/Accounts-Startup.md
+    depends_on: []
+    coordinate_with: [Covers]
+  - name: Covers
+    risk: standard
+    wave: A
+    contract_path: .forgeos/swarms/swarm_27c181b5/contracts/Covers.md
+    depends_on: []
+  - name: CatalogUI
+    risk: standard
+    wave: A
+    contract_path: .forgeos/swarms/swarm_27c181b5/contracts/CatalogUI.md
+    depends_on: []
+    coordinate_with: [Startup-AppLifecycle, CP-D1-LaunchHydration]
+  - name: Network
+    risk: standard
+    sod_review: required
+    wave: B
+    contract_path: .forgeos/swarms/swarm_27c181b5/contracts/Network.md
+    depends_on: [Startup-AppLifecycle]
+  - name: CP-D1-LaunchHydration
+    risk: critical_path
+    wave: C
+    architect_phase_1a: required
+    sod_review: required
+    contract_path: .forgeos/swarms/swarm_27c181b5/contracts/CP-D1-LaunchHydration.md
+    depends_on: [Accounts-Startup, CatalogUI]
+  - name: CP-D2-CredentialSnapshot
+    risk: critical_path
+    wave: C
+    architect_phase_1a: required
+    sod_review: required
+    contract_path: .forgeos/swarms/swarm_27c181b5/contracts/CP-D2-CredentialSnapshot.md
+    depends_on: [Network]
+  - name: CP-D3-FirstRunDecode
+    risk: critical_path
+    wave: C
+    architect_phase_1a: required
+    sod_review: required
+    contract_path: .forgeos/swarms/swarm_27c181b5/contracts/CP-D3-FirstRunDecode.md
+    depends_on: [CP-D1-LaunchHydration, Network]
+
+dont_touch:
+  - Palace/Reader2/
+  - Palace/Reader3/
+  - Palace/Migrations/
+  - Palace/Holds/
+  - Palace/OPDS2/Cache/OPDSFeedCache.swift
+  - ios-audiobooktoolkit/
+  - Palace/Network/TPPNetworkResponder.swift
+
+acceptance_gates:
+  - "scripts/verify-pr.sh --quick passes on each wave's merged branch"
+  - "AppLaunchTracker .didFinishLaunching/.firstFrame/.catalogLoaded wired; timeToInteractive non-nil in a launch test"
+  - "CatalogUI A1: reload(false)=0 invalidations, refresh()/reload(true)=1 via CatalogRepositoryMock.invalidateCacheCallCount; no `as? CatalogRepository` cast remains"
+  - "CatalogUI A2/A3: switchToAccount no longer posts .TPPCurrentAccountDidChange / calls viewModel.refresh() / loadAuthenticationDocument"
+  - "Covers B1: isTripped references failureThreshold; reset() has >=1 cover-path caller"
+  - "Accounts-Startup C1: registry cache read once; C4 dict carry-over"
+  - "Network N1: zero URLCache.shared.removeAllCachedResponses in routed sites; executor.clearCache() invoked"
+  - "CP-D1/D2/D3: architect Phase 1a APPROVED + SoD; state-machine round-trip + consumer tests present"
+
+architect_review:
+  status: pending

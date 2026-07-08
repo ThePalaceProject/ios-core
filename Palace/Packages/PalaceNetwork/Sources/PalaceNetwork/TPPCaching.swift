@@ -207,7 +207,8 @@ public class TPPCaching {
         config.networkServiceType = .responsiveData
         config.shouldUseExtendedBackgroundIdleMode = true
         config.httpMaximumConnectionsPerHost = 8
-        config.httpShouldUsePipelining = true
+        // N2: dropped the deprecated HTTP-pipelining flag — it is a no-op under
+        // HTTP/2 (the only protocol our CM hosts negotiate), so it bought nothing.
         config.timeoutIntervalForRequest = requestTimeout
         config.timeoutIntervalForResource = requestTimeout * 2
         config.requestCachePolicy = .useProtocolCachePolicy
@@ -237,7 +238,7 @@ public class TPPCaching {
     // Note: iPhone 4S (currently the smallest device we support on iOS 9.3) has
     // 512 MB RAM and 8 Gb disk. These sizes are automatically purged by the
     // system if needed.
-    private static let maxMemoryCapacity = 20 * 1024 * 1024 // 20 MB
+    private static let maxMemoryCapacity = 50 * 1024 * 1024 // 50 MB
     private static let maxDiskCapacity = 1024 * 1024 * 1024 // 1 GB
 
     /// RFC 1123 formatter for HTTP `Expires` headers.

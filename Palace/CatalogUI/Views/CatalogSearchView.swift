@@ -60,12 +60,10 @@ struct CatalogSearchView: View {
         onBookSelected: @escaping (TPPBook) -> Void
     ) {
 
-        let client = URLSessionNetworkClient()
-        let parser = OPDSParser()
-        let api = DefaultCatalogAPI(client: client, parser: parser, featureFlags: RemoteFeatureFlags.shared)
-        let dummyRepository = CatalogRepository(api: api)
+        // Use AppContainer's shared, cached CatalogRepository rather than a
+        // throwaway per-init instance (swarm_27c181b5 A5).
         self._viewModel = StateObject(wrappedValue: CatalogSearchViewModel(
-            repository: dummyRepository,
+            repository: AppContainer.production().catalogRepository,
             baseURL: { nil },
             bookCellModelCache: AppContainer.production().bookCellModelCache
         ))

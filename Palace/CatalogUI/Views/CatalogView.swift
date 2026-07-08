@@ -378,11 +378,11 @@ private extension CatalogView {
             settings.accountMainFeedURL = url
         }
 
+        // Setting `currentAccount` posts `.TPPCurrentAccountDidChange` (→
+        // `onReceive` → `handleAccountChange` → SWR reload) and single-flights
+        // `driveCurrentAccountAuthDocIfNeeded()`. So no manual notification
+        // post, no direct catalog refresh, and no manual auth-doc load here.
         accountsManager.currentAccount = account
-        account.loadAuthenticationDocument { _ in }
-
-        NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
-        Task { await viewModel.refresh() }
     }
 
     func addAndSwitchToAccount(_ account: Account) {

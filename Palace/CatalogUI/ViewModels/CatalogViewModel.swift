@@ -220,6 +220,10 @@ final class CatalogViewModel: ObservableObject {
         }
         self.activeEntryPointURL = url
 
+        // Launch-timing: catalog content is on screen. Records the
+        // process-start → catalog-loaded interval (time-to-interactive).
+        await AppLaunchTracker.shared.recordMilestone(.catalogLoaded)
+
         let t3 = CFAbsoluteTimeGetCurrent()
         let lanesCount = mapped.lanes.count
         let booksCount = mapped.lanes.reduce(0) { $0 + $1.books.count }
@@ -306,7 +310,11 @@ final class CatalogViewModel: ObservableObject {
   func forceRefresh() async {
     Log.info(#file, "Force refreshing catalog...")
     repository.invalidateCache(for: topLevelURLProvider() ?? URL(fileURLWithPath: "/"))
-    URLCache.shared.removeAllCachedResponses()
+    // Clear the network executor's PRIVATE URLCache (where feeds are actually
+    // served from) — not URLCache.shared, which holds only public non-feed
+    // responses. Clearing the wrong cache let an explicit pull-to-refresh still
+    // be served a stale feed (N1 split-brain, same class as sign-out/force-reset).
+    AppContainer.production().networkExecutor.clearCache()
     lastLoadedURL = nil
     loadedFeeds.removeAll()
     activeEntryPointURL = nil
@@ -314,9 +322,26 @@ final class CatalogViewModel: ObservableObject {
     await load()
   }
 
+  /// Pull-to-refresh. Invalidates the account-scoped cache so the reload is
+  /// guaranteed to hit the network, then reloads.
   func refresh() async {
+    await reload(invalidatingCache: true)
+  }
+
+  /// Shared reload path for both pull-to-refresh and library switches.
+  ///
+  /// - When `invalidatingCache == true` (pull-to-refresh) the current feed's
+  ///   cache entry is dropped via the protocol seam
+  ///   (`repository.invalidateCache(for:)`), forcing a fresh network fetch.
+  /// - When `invalidatingCache == false` (library switch / account change) the
+  ///   account-scoped cache is left intact so stale-while-revalidate can serve
+  ///   the new library's catalog instantly with a background refresh — the
+  ///   de-triple-fire win on A→B→A switches.
+  private func reload(invalidatingCache: Bool) async {
     guard let url = topLevelURLProvider() else { return }
-    (repository as? CatalogRepository)?.invalidateCache(for: url)
+    if invalidatingCache {
+      repository.invalidateCache(for: url)
+    }
     lastLoadedURL = nil
     loadedFeeds.removeAll()
     activeEntryPointURL = nil
@@ -461,9 +486,10 @@ final class CatalogViewModel: ObservableObject {
   func handleAccountChange() async {
     guard let url = topLevelURLProvider() else { return }
     if lastLoadedURL == nil || url != lastLoadedURL {
-      currentLoadTask?.cancel()
-      state = .loading
-      await refresh()
+      // Serve the new library's account-scoped cache instantly (SWR); do NOT
+      // invalidate. `reload` handles the load-task cancel + `.loading`
+      // transition.
+      await reload(invalidatingCache: false)
     }
   }
 }
