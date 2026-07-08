@@ -289,8 +289,11 @@ extension TPPSignInBusinessLogic {
         samlHelper.clearState()
         dispatch(.signOutCompleted)
 
+        // N1: clear the executor's PRIVATE URLCache — the one that actually
+        // serves authenticated feeds. Clearing `URLCache.shared` here was a
+        // no-op for feeds AND a privacy leak (signed-out authenticated
+        // responses could persist in the executor's disk cache).
         AppContainer.production().networkExecutor.clearCache()
-        URLCache.shared.removeAllCachedResponses()
 
         // Clear the IdP session before notifying the UI that sign-out is complete.
         //

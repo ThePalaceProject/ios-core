@@ -310,7 +310,11 @@ final class CatalogViewModel: ObservableObject {
   func forceRefresh() async {
     Log.info(#file, "Force refreshing catalog...")
     repository.invalidateCache(for: topLevelURLProvider() ?? URL(fileURLWithPath: "/"))
-    URLCache.shared.removeAllCachedResponses()
+    // Clear the network executor's PRIVATE URLCache (where feeds are actually
+    // served from) — not URLCache.shared, which holds only public non-feed
+    // responses. Clearing the wrong cache let an explicit pull-to-refresh still
+    // be served a stale feed (N1 split-brain, same class as sign-out/force-reset).
+    AppContainer.production().networkExecutor.clearCache()
     lastLoadedURL = nil
     loadedFeeds.removeAll()
     activeEntryPointURL = nil

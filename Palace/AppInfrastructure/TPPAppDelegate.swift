@@ -776,8 +776,8 @@ final class MemoryPressureMonitor: @unchecked Sendable {
     private func proactiveCacheCleanup(severity: CleanupSeverity) async {
         switch severity {
         case .high:
-            // Aggressive cleanup
-            URLCache.shared.removeAllCachedResponses()
+            // Aggressive cleanup — N1: clear the executor's PRIVATE URLCache
+            // (feeds live there, not in `URLCache.shared`).
             AppContainer.production().networkExecutor.clearCache()
             await MainActor.run {
                 AppContainer.production().downloadCenter.pauseAllDownloads()
@@ -785,8 +785,9 @@ final class MemoryPressureMonitor: @unchecked Sendable {
             Log.info(#file, "Performed aggressive cache cleanup due to high memory pressure")
 
         case .medium:
-            // Moderate cleanup - just network caches
-            URLCache.shared.removeAllCachedResponses()
+            // Moderate cleanup - just network caches. N1: the executor's PRIVATE
+            // URLCache is the one serving feeds, so clear it (not `URLCache.shared`).
+            AppContainer.production().networkExecutor.clearCache()
             Log.info(#file, "Performed moderate cache cleanup due to medium memory pressure")
         }
     }
@@ -800,7 +801,8 @@ final class MemoryPressureMonitor: @unchecked Sendable {
 
     @objc private func handleMemoryWarning() {
         monitorQueue.async {
-            URLCache.shared.removeAllCachedResponses()
+            // N1: clear the executor's PRIVATE URLCache (feeds live there, not
+            // in `URLCache.shared`).
             AppContainer.production().networkExecutor.clearCache()
 
             DispatchQueue.main.async {
@@ -850,8 +852,9 @@ final class MemoryPressureMonitor: @unchecked Sendable {
         let freeBytes = FileSystem.freeDiskSpaceInBytes()
         guard freeBytes < minimumFreeBytes else { return }
 
-        // Clear caches first
-        URLCache.shared.removeAllCachedResponses()
+        // Clear caches first — N1: the executor's PRIVATE URLCache serves feeds,
+        // so clear it (not `URLCache.shared`).
+        AppContainer.production().networkExecutor.clearCache()
         AppContainer.production().imageLoader.clearAll()
         GeneralCache<String, Data>.clearAllCaches()
 
