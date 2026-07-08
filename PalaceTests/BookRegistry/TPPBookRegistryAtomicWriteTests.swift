@@ -150,8 +150,18 @@ class TPPBookRegistryAtomicWriteTests: PalaceWiringTestCase {
             // Filter macOS metadata
             .filter { !$0.hasPrefix(".") }
 
-        XCTAssertEqual(contents, ["registry.json"],
-                       "Registry dir must contain only registry.json — kills mutant that leaves staging .tmp files")
+        // The canonical file must be present and the atomic rename must leave
+        // NO `.tmp` staging artifacts — that is the mutant this test kills.
+        // RegistryFileRecovery additionally persists a durable last-good
+        // `registry.json.bak` sidecar on every save (the #1212 registry-
+        // resilience INV-1 contract); the `.bak` is a deliberate backup, not a
+        // staging leftover, so it is allowed alongside the canonical file.
+        XCTAssertTrue(contents.contains("registry.json"),
+                      "Canonical registry.json must be present after save")
+        XCTAssertTrue(contents.allSatisfy { !$0.hasSuffix(".tmp") },
+                      "Registry dir must contain no .tmp staging artifacts — kills mutant that leaves staging .tmp files; got \(contents)")
+        XCTAssertTrue(Set(contents).isSubset(of: ["registry.json", "registry.json.bak"]),
+                      "Only the canonical registry.json and its last-good .bak sidecar may remain; got \(contents)")
     }
 
     /// Two back-to-back saves (write a registry, then a smaller one) must

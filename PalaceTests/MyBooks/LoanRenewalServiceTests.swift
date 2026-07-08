@@ -196,7 +196,7 @@ final class LoanRenewalServiceTests: XCTestCase {
     func testProductionFactory_foreignHost401_classifiesOk() async {
         let book = makeBook(identifier: "PF1", borrowHost: "foreign.host")
         let service = LoanRenewalService.production(
-            executor: AppContainer.production().networkExecutor, // MIGRATED-DEFERRED: swarm_47883816 — executor is unused (test injects StubPoster); production() supplies a throwaway to satisfy the factory signature
+            executor: TPPNetworkExecutor(cachingStrategy: .fallback), // throwaway: unused (test injects StubPoster); a fresh executor keeps this test off the production DI graph, so it needs no per-test teardown.
             bookRegistry: TPPBookRegistryMock(),
             poster: StubPoster(status: 401),
             hostsProvider: { ["our.host"] })

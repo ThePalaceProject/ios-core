@@ -151,7 +151,7 @@ final class TPPBookCoverRegistryTests: XCTestCase {
     /// instead of waiting for DNS timeouts.
     func testHostFailureTracker_RecordsFailureAndSkips() async {
         // Arrange
-        let tracker = HostFailureTracker(cooldownInterval: 300)
+        let tracker = HostFailureTracker(cooldownInterval: 300, failureThreshold: 1)
         let failingHost = "palace-bookshelf-downloads.dp.la"
 
         // Initially not failing
@@ -171,7 +171,7 @@ final class TPPBookCoverRegistryTests: XCTestCase {
     /// Verify that a successful request clears the failure record
     func testHostFailureTracker_SuccessClearsFailure() async {
         // Arrange
-        let tracker = HostFailureTracker(cooldownInterval: 300)
+        let tracker = HostFailureTracker(cooldownInterval: 300, failureThreshold: 1)
         let host = "example.com"
 
         await tracker.recordFailure(for: host)
@@ -190,7 +190,7 @@ final class TPPBookCoverRegistryTests: XCTestCase {
     /// Verify that the circuit breaker resets after the cooldown period
     func testHostFailureTracker_ResetsAfterCooldown() async {
         // Arrange - Use a very short cooldown for testing
-        let tracker = HostFailureTracker(cooldownInterval: 0.1) // 100ms
+        let tracker = HostFailureTracker(cooldownInterval: 0.1, failureThreshold: 1) // 100ms
         let host = "expired-failure.example.com"
 
         await tracker.recordFailure(for: host)
@@ -219,7 +219,7 @@ final class TPPBookCoverRegistryTests: XCTestCase {
 
     /// Verify that different hosts are tracked independently
     func testHostFailureTracker_TracksHostsIndependently() async {
-        let tracker = HostFailureTracker()
+        let tracker = HostFailureTracker(failureThreshold: 1)
         let failingHost = "dead-host.example.com"
         let healthyHost = "healthy-host.example.com"
 

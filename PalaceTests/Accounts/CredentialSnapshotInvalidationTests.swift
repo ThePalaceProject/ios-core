@@ -57,7 +57,7 @@ final class CredentialSnapshotInvalidationTests: PalaceWiringTestCase {
         // AccountsManagerStateMachineWiringTests' single-flight count). The fresh
         // managers themselves are cancelled by the base class via
         // makeFreshAccountsManager tracking.
-        AppContainer.production().accountsManager.cancelAndDrainBackgroundWork()
+        AppContainer.production().accountsManager.cancelAndDrainBackgroundWork() // MIGRATED-DEFERRED: swarm_47883816 — draining the production singleton's in-flight background/auth-doc work in tearDown is the hermeticity contract; makeTestAppContainer() would resolve a fresh graph and leave the leaked production work running.
         AccountStateStore.shared._resetAllForTesting()
         try super.tearDownWithError()
     }

@@ -1,3 +1,9 @@
+---
+name: Wave C intent record — D1 launch snapshot, D2 credential caching, D3 first-run decode
+created: 2026-07-08
+author: swarm_27c181b5-waveC
+---
+
 # Intent: Wave C — cold-launch hydration, credential caching, first-run decode (swarm_27c181b5, CRITICAL PATH)
 
 ## Claims

@@ -241,7 +241,7 @@ final class AccountsManagerLaunchSnapshotTests: PalaceWiringTestCase {
         // the background dispatch `init` fires — calls to fill `accountSets`).
         let exp = expectation(description: "full list materializes into accountSets")
         manager.loadAccountSetsAndAuthDoc(fromCatalogData: feedData, key: hash) { _ in exp.fulfill() }
-        wait(for: [exp], timeout: 15.0)
+        wait(for: [exp], timeout: 15.0) // FLAKE-003-OK: integration-scoped — awaits the full ~1142-account off-main decode+materialize through loadAccountSetsAndAuthDoc; 15s is CI-load headroom for the real decode, not a hidden sleep.
         drainMainQueue()
 
         XCTAssertTrue(manager.accountsHaveLoaded,
@@ -296,14 +296,28 @@ final class AccountsManagerLaunchSnapshotTests: PalaceWiringTestCase {
             return
         }
 
-        // CP-D1 production guard: A's cancelled auth-doc fetch completion fires
-        // ASYNC after the eviction. It must NOT clobber the eviction marker with
-        // .detailsFailed (which would make the switch-back below hit the
-        // "don't redrive" arm and strand awaitReady() consumers). Give the
-        // cancellation completion a window to fire, then assert the marker held.
-        let evictionSettle = expectation(description: "cancelled-fetch completion window")
-        DispatchQueue.global().asyncAfter(deadline: .now() + 0.5) { evictionSettle.fulfill() } // FLAKE-OK: async cancel-completion settle window
-        wait(for: [evictionSettle], timeout: 2.0)
+        // CP-D1 production guard (prove-a-negative): A's cancelled auth-doc fetch
+        // completion fires ASYNC with success==false and must NOT clobber the
+        // eviction marker with .detailsFailed (which would make the switch-back
+        // below hit the "don't redrive" arm and strand awaitReady() consumers).
+        // Observe A's state stream across a bounded settle window via an INVERTED
+        // expectation — any drift OFF .detailsEvicted(.libraryDeselected) fulfills
+        // it (→ FAIL); if the guard holds the marker stays put and the inverted
+        // expectation passes. This is the XCTest-sanctioned negative-wait primitive
+        // (replaces a fixed asyncAfter sleep, FLAKE-002) and catches the clobber
+        // deterministically regardless of subscribe-vs-completion ordering
+        // (stateStream emits the current value on subscribe).
+        let noClobber = expectation(description: "cancelled fetch must not clobber A's eviction marker")
+        noClobber.isInverted = true
+        let clobberObserver = Task {
+            for await state in AccountStateStore.shared.stateStream(for: aUUID) {
+                if case .detailsEvicted(.libraryDeselected) = state { continue }
+                noClobber.fulfill()
+                break
+            }
+        }
+        wait(for: [noClobber], timeout: 1.0)
+        clobberObserver.cancel()
         drainMainQueue()
         switch AccountStateStore.shared.state(for: aUUID) {
         case .detailsEvicted(.libraryDeselected):
@@ -436,7 +450,7 @@ final class AccountsManagerLaunchSnapshotTests: PalaceWiringTestCase {
         // Materialize the full list through the production seam.
         let exp = expectation(description: "full list materializes")
         manager.loadAccountSetsAndAuthDoc(fromCatalogData: feedData, key: hash) { _ in exp.fulfill() }
-        wait(for: [exp], timeout: 15.0)
+        wait(for: [exp], timeout: 15.0) // FLAKE-003-OK: integration-scoped — awaits the full ~1142-account off-main decode+materialize through loadAccountSetsAndAuthDoc; 15s is CI-load headroom for the real decode, not a hidden sleep.
         drainMainQueue()
 
         // (1) The current account must be the SAME instance the slim drive
