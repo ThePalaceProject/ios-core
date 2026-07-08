@@ -479,15 +479,26 @@ def test_audiobook_content_files_empty_when_no_support_dir(tmp_path):
     assert st.audiobook_content_files_under(tmp_path) == []
 
 
-def test_cold_load_journey_is_ready_and_forges():
-    # Promoted out of PHASE2: it now has a staging recipe whose last step is the forge.
+def test_cold_load_journey_stages_a_real_in_flight_download():
+    # Post-PP-4542 the cold-load recipe stages a GENUINE in-flight download (open
+    # DURING download), not the retired forge_streaming_state delete-premise — the
+    # 180s file-poll can only time out on a deleted-with-no-transfer file.
     assert st.staging_status("audiobook-cold-load-first-open") == "ready"
     assert "audiobook-cold-load-first-open" not in st.PHASE2_JOURNEYS
     recipe = st.STAGING_RECIPES["audiobook-cold-load-first-open"]
-    assert ("forge_streaming_state",) in recipe, "cold-load recipe must forge the streaming state"
-    # The forge runs AFTER sign-in (the audiobook must be present/downloaded first).
     prims = [step[0] for step in recipe]
-    assert prims.index("sign_in") < prims.index("forge_streaming_state")
+    assert "reborrow_audiobook_streaming" in prims, \
+        "cold-load recipe must leave a real LCP audiobook mid-download"
+    # The retired forge must NOT be wired into the recipe (its state can't reproduce
+    # the regression anymore — see forge_streaming_state docstring).
+    assert "forge_streaming_state" not in prims, \
+        "forge_streaming_state is superseded — remove it from the recipe"
+    # Re-borrow runs AFTER sign-in (must be authenticated to borrow) and BEFORE the
+    # My Books navigation the journey opens from.
+    assert prims.index("sign_in") < prims.index("reborrow_audiobook_streaming")
+    assert prims.index("reborrow_audiobook_streaming") < prims.index("goto")
+    # The primitive is registered/callable.
+    assert "reborrow_audiobook_streaming" in st.PRIMITIVES
 
 
 def test_download_indicator_stays_phase2():
