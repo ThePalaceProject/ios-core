@@ -3,6 +3,7 @@ import Combine
 import os
 import PalaceAuth
 import PalaceNetwork
+import PalaceCatalog // swarm_27c181b5 A5: shared CatalogRepository / DefaultCatalogAPI accessor
 
 // Swift 6 `complete` — `@unchecked Sendable` invariant: every stored member is
 // an immutable `let` established once at the composition root and only read
@@ -374,6 +375,46 @@ struct AppContainer: @unchecked Sendable {
         AppContainer._ratingPromptPresenter = presenter
         return presenter
     }
+
+    // MARK: - Shared Catalog Repository / API (swarm_27c181b5 A5)
+    //
+    // ONE process-wide `DefaultCatalogAPI` + `CatalogRepository`, resolved
+    // lazily and cached statically — same lazy+cached shape as the presenters
+    // above. Before this, `CatalogLaneMoreView.searchSection`,
+    // `CatalogSearchView`, and `CatalogLaneMoreViewModel` each built a fresh
+    // `CatalogRepository(api: DefaultCatalogAPI(...))` on every body/init,
+    // giving each render its own throwaway in-memory cache and defeating the
+    // account-scoped stale-while-revalidate cache. Sharing one instance keeps
+    // the cache warm across catalog navigation. The repository is account-UUID
+    // scoped (mirrors `AppTabHostView`'s main catalog repository) so library
+    // A's catalog can never be served to library B.
+
+    @MainActor
+    var catalogAPI: DefaultCatalogAPI {
+        if let cached = AppContainer._catalogAPI { return cached }
+        let api = DefaultCatalogAPI(
+            client: URLSessionNetworkClient(),
+            parser: OPDSParser(),
+            featureFlags: RemoteFeatureFlags.shared
+        )
+        AppContainer._catalogAPI = api
+        return api
+    }
+
+    @MainActor
+    var catalogRepository: CatalogRepositoryProtocol {
+        if let cached = AppContainer._catalogRepository { return cached }
+        let accountsManager = self.accountsManager
+        let repository = CatalogRepository(
+            api: catalogAPI,
+            accountID: { [weak accountsManager] in accountsManager?.currentAccount?.uuid }
+        )
+        AppContainer._catalogRepository = repository
+        return repository
+    }
+
+    @MainActor private static var _catalogAPI: DefaultCatalogAPI?
+    @MainActor private static var _catalogRepository: CatalogRepositoryProtocol?
 
     @MainActor private static var _bookCellModelCache: BookCellModelCache?
     @MainActor private static var _samplePreviewManager: SamplePreviewManager?

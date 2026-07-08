@@ -583,6 +583,10 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
                 // Evict decoded cover images — the new library has different covers.
                 // Keeps compressed JPEG cache on disk for fast re-decode if user switches back.
                 ImageCache.shared.evictDecodedImages()
+                // Reset the cover-fetch circuit breaker: a host that tripped while
+                // the prior library was active must not keep cover fetches
+                // suppressed for the newly selected library.
+                TPPBookCoverRegistry.shared.resetHostFailures()
             }
 
             self.currentAccount?.hasUpdatedToken = false
@@ -1167,9 +1171,20 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
         return try? JSONDecoder().decode(CatalogCacheMetadata.self, from: data)
     }
 
-    /// Returns true if cached data exists and is not expired (can be stale but usable)
+    /// Returns true if cached data exists and is not expired (can be stale but usable).
+    ///
+    /// Existence is probed with `FileManager.fileExists` — NOT a full
+    /// `Data(contentsOf:)` — so this check never reads the ~2.4MB catalog blob
+    /// off disk. The single authoritative byte read happens exactly once per
+    /// launch at the caller (`preloadAccountsFromDiskCacheSync` and the
+    /// `loadCatalogs` stale-while-revalidate branch), which pair this gate with
+    /// one `readCachedAccountsCatalogData` and thread those bytes into the
+    /// decode. The prior implementation read the entire file here purely to
+    /// test existence, then the caller read the same file again — two full
+    /// reads of the same 2.4MB blob per launch.
     private func hasCachedCatalogData(hash: String) -> Bool {
-        guard readCachedAccountsCatalogData(hash: hash) != nil else { return false }
+        guard let url = accountsCatalogUrl(hash: hash),
+              FileManager.default.fileExists(atPath: url.path) else { return false }
         guard let metadata = readCacheMetadata(hash: hash) else {
             // Data exists but no metadata - treat as usable but stale
             return false
@@ -1367,6 +1382,15 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
             let feed = try OPDS2CatalogsFeed.fromData(data)
             let hadAccount = self.currentAccount != nil
             let oldAccounts = self.accounts(hash)
+            // Index old accounts by uuid ONCE so the carry-over loop below is a
+            // dict lookup per new account instead of an O(n²) linear scan over
+            // the ~1142-account registry snapshot (precedent: `accountByUUID`).
+            // First-write-wins mirrors the prior `oldAccounts.first(where:)`
+            // semantics exactly for the (rare) duplicate-uuid case.
+            let oldAccountsByUUID = Dictionary(
+                oldAccounts.map { ($0.uuid, $0) },
+                uniquingKeysWith: { first, _ in first }
+            )
             let newAccounts = feed.catalogs.map { Account(publication: $0, imageCache: ImageCache.shared) }
 
             // Carry over authenticationDocument (and thus details) from old
@@ -1374,7 +1398,7 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
             // the user is actively using the app. Also invalidate logo cache
             // entries when the thumbnail URL has changed.
             for newAccount in newAccounts {
-                if let old = oldAccounts.first(where: { $0.uuid == newAccount.uuid }) {
+                if let old = oldAccountsByUUID[newAccount.uuid] {
                     if let authDoc = old.authenticationDocument {
                         newAccount.authenticationDocument = authDoc
                     }

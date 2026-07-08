@@ -115,6 +115,14 @@ public class ImageLoader: ImageLoading {
             let capturedBook = book
             await MainActor.run {
                 if let finalImage {
+                    // Two DISTINCT cache references, not a duplicate write: `cache`
+                    // is this loader's injected `ImageCacheType` (what `coverImage(for:)`
+                    // reads), and `capturedBook?.imageCache` is the book's own cache
+                    // (what `TPPBook.fetchCoverImage`'s sync check reads). They are the
+                    // same object ONLY when both were built with `ImageCache.shared`
+                    // (the production convention) — the two injection points are
+                    // independent (AppContainer vs. TPPBook.init), so identity is not
+                    // structurally guaranteed and neither set is safely removable.
                     cache.set(finalImage, for: coverKey)
                     capturedBook?.imageCache.set(finalImage, for: coverKey)
                 }
@@ -146,6 +154,10 @@ public class ImageLoader: ImageLoading {
             let capturedBook = book
             await MainActor.run {
                 if let finalImage {
+                    // Distinct cache references (see `coverImage(for:completion:)`):
+                    // loader-injected `cache` vs. the book's own `imageCache`.
+                    // Identical only under the `ImageCache.shared` convention; the
+                    // independent injection points mean neither set is safely removable.
                     cache.set(finalImage, for: thumbnailKey)
                     capturedBook?.imageCache.set(finalImage, for: thumbnailKey)
                 }

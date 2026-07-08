@@ -64,16 +64,30 @@ public final class PlaybackBootstrapper {
     /// tests inject a mock and lets the production closure resolve through
     /// `AppContainer.production().audiobookSession` lazily.
     private let audiobookSessionProvider: () -> AudiobookSessionManaging
+    /// Dispatches the deferred audio-session configuration off the synchronous
+    /// launch path (see `ensureInitialized()`). Production hops to a background
+    /// queue; tests inject an inline/capturing dispatcher to observe the
+    /// deferral deterministically. Injecting this does NOT change the CarPlay
+    /// re-run-on-playback paths, which call `configureAudioSession()` directly.
+    private let launchAudioSessionDispatcher: (@escaping @Sendable () -> Void) -> Void
 
     // MARK: - Initialization
 
-    /// Designated init — every dependency is explicit.
+    /// Designated init — every dependency is explicit. The
+    /// `launchAudioSessionDispatcher` default dispatches to a background utility
+    /// queue so cold launch isn't charged the `setCategory` cost; it's a
+    /// per-call default-argument literal (not a shared global) so the param type
+    /// can stay non-`@Sendable` and let tests inject a capturing dispatcher.
     private init(
         bookRegistry: TPPBookRegistryProvider,
-        audiobookSessionProvider: @escaping () -> AudiobookSessionManaging
+        audiobookSessionProvider: @escaping () -> AudiobookSessionManaging,
+        launchAudioSessionDispatcher: @escaping (@escaping @Sendable () -> Void) -> Void = { work in
+            DispatchQueue.global(qos: .utility).async(execute: work)
+        }
     ) {
         self.bookRegistry = bookRegistry
         self.audiobookSessionProvider = audiobookSessionProvider
+        self.launchAudioSessionDispatcher = launchAudioSessionDispatcher
         Log.info(#file, "🚀 PlaybackBootstrapper created - app launch context")
 
         // Log the launch context for debugging cold start issues
@@ -87,11 +101,15 @@ public final class PlaybackBootstrapper {
     /// audiobook session manager.
     convenience init(
         appContainer: AppContainer,
-        audiobookSessionProvider: @escaping () -> AudiobookSessionManaging
+        audiobookSessionProvider: @escaping () -> AudiobookSessionManaging,
+        launchAudioSessionDispatcher: @escaping (@escaping @Sendable () -> Void) -> Void = { work in
+            DispatchQueue.global(qos: .utility).async(execute: work)
+        }
     ) {
         self.init(
             bookRegistry: appContainer.bookRegistry,
-            audiobookSessionProvider: audiobookSessionProvider
+            audiobookSessionProvider: audiobookSessionProvider,
+            launchAudioSessionDispatcher: launchAudioSessionDispatcher
         )
     }
 
@@ -153,11 +171,19 @@ public final class PlaybackBootstrapper {
         let startTime = CFAbsoluteTimeGetCurrent()
         Log.debug(#file, "🚀 PlaybackBootstrapper initializing audio infrastructure")
 
-        // 1. Configure audio session for playback
-        configureAudioSession()
-
-        // 2. Set up remote command handlers
+        // 1. Set up remote command handlers SYNCHRONOUSLY. CarPlay can cold-start
+        //    the app with no UI, so MPRemoteCommandCenter handlers must be
+        //    registered before the first transport command can arrive.
         setupRemoteCommands()
+
+        // 2. Defer AVAudioSession category configuration off the synchronous launch
+        //    path. This early — before any scene connects — `setCategory` routinely
+        //    fails OSStatus -50 and is re-run later on scene-connect / first play
+        //    (see `ensureInitializedForCarPlay` and `ensureAudioSessionActiveForPlayback`),
+        //    so running it inline only charges cold launch the main-thread cost.
+        launchAudioSessionDispatcher { [weak self] in
+            self?.configureAudioSession()
+        }
 
         // 3. Ensure AudiobookSessionManager exists so it can receive open
         //    requests from either phone UI or CarPlay bridge. Resolving the
@@ -229,7 +255,12 @@ public final class PlaybackBootstrapper {
 
     // MARK: - Audio Session
 
-    private func configureAudioSession() {
+    // `nonisolated`: touches only the thread-safe `AVAudioSession.sharedInstance()`
+    // and `Log` — no `@MainActor` `self` state — so `ensureInitialized()` can
+    // dispatch it off-main via `launchAudioSessionDispatcher`, while the
+    // synchronous re-run callers (`ensureAudioSessionActiveForPlayback`,
+    // `ensureInitializedForCarPlay`) still invoke it directly. Body unchanged.
+    nonisolated private func configureAudioSession() {
         let session = AVAudioSession.sharedInstance()
 
         do {

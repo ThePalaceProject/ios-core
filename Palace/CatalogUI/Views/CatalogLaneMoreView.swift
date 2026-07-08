@@ -31,7 +31,8 @@ struct CatalogLaneMoreView: View {
             title: title,
             url: url,
             bookRegistry: appContainer.bookRegistry,
-            bookCellModelCache: appContainer.bookCellModelCache
+            bookCellModelCache: appContainer.bookCellModelCache,
+            api: appContainer.catalogAPI
         ))
     }
 
@@ -256,13 +257,7 @@ struct CatalogLaneMoreView: View {
     @ViewBuilder
     private var searchSection: some View {
         CatalogSearchView(
-            repository: CatalogRepository(
-                api: DefaultCatalogAPI(
-                    client: URLSessionNetworkClient(),
-                    parser: OPDSParser(),
-                    featureFlags: RemoteFeatureFlags.shared
-                )
-            ),
+            repository: appContainer.catalogRepository,
             baseURL: { viewModel.url },
             books: viewModel.allBooks,
             onBookSelected: presentBookDetail

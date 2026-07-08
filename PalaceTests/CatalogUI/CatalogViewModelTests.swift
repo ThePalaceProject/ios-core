@@ -380,6 +380,137 @@ final class CatalogViewModelStateMachineTests: XCTestCase {
         _ = await synthetic.value
         XCTAssertTrue(synthetic.isCancelled, "Prior prefetch must be cancelled on reload")
     }
+
+    // MARK: - Library-switch SWR + de-triple-fire (swarm_27c181b5 A1)
+
+    /// A library switch must serve the new library's account-scoped cache
+    /// instantly (stale-while-revalidate). It must NOT invalidate — invalidating
+    /// on every switch is exactly the triple-fire the SWR change removes.
+    func testHandleAccountChange_servesCache_doesNotInvalidate() async {
+        mockRepository.loadTopLevelCatalogResult = Self.makeGroupedCatalogFeed()
+        let vm = createViewModel() // fresh VM: lastLoadedURL == nil so the switch reloads
+        await vm.handleAccountChange()
+        await waitUntilLoaded(vm, at: testURL)
+
+        XCTAssertEqual(mockRepository.invalidateCacheCallCount, 0,
+                       "handleAccountChange must serve the account-scoped cache (SWR) without invalidating")
+        guard case .loaded = vm.state else {
+            return XCTFail("Expected .loaded after account change, got \(vm.state)")
+        }
+    }
+
+    /// Pull-to-refresh is the ONE path that invalidates: it drops the current
+    /// URL's cache entry exactly once so the reload is guaranteed to hit the
+    /// network.
+    func testRefresh_pullToRefresh_invalidatesOnce() async {
+        mockRepository.loadTopLevelCatalogResult = Self.makeGroupedCatalogFeed()
+        let vm = createViewModel()
+        await vm.refresh()
+        await waitUntilLoaded(vm, at: testURL)
+
+        XCTAssertEqual(mockRepository.invalidateCacheCallCount, 1,
+                       "pull-to-refresh must invalidate the cache exactly once")
+        XCTAssertEqual(mockRepository.lastInvalidatedURL, testURL,
+                       "pull-to-refresh must invalidate the current top-level URL")
+    }
+
+    /// A → B → A library switch must not re-fetch A on the way back: because a
+    /// switch never invalidates, A's cache stays warm and is served instantly.
+    /// Drives all three legs through the production seam (`load` +
+    /// `handleAccountChange`) and asserts A's network-fetch count does not grow
+    /// on return — the concrete de-triple-fire win.
+    func testSwitchBackAndForth_ABA_servesCacheNotThreeFetches() async {
+        let urlA = URL(string: "https://library-a.example.com/catalog")!
+        let urlB = URL(string: "https://library-b.example.com/catalog")!
+        mockRepository.simulatesCache = true
+        mockRepository.loadTopLevelCatalogResult = Self.makeGroupedCatalogFeed()
+
+        var currentURL = urlA
+        let vm = CatalogViewModel(
+            repository: mockRepository,
+            topLevelURLProvider: { currentURL },
+            bookRegistry: AppContainer.production().bookRegistry,
+            imageCache: ImageCache.shared,
+            reachability: MockReachability(initiallyConnected: true)
+        )
+
+        // Leg 1 — load library A (cache miss → 1 network fetch for A).
+        await vm.load()
+        await waitUntilLoaded(vm, at: urlA)
+        XCTAssertEqual(mockRepository.networkFetchCount(for: urlA), 1)
+
+        // Leg 2 — switch A → B (cache miss → 1 network fetch for B).
+        currentURL = urlB
+        await vm.handleAccountChange()
+        await waitUntilLoaded(vm, at: urlB)
+        XCTAssertEqual(mockRepository.networkFetchCount(for: urlB), 1)
+
+        // Leg 3 — switch B → A. A was never invalidated, so it is served from
+        // the warm cache: A's network-fetch count must stay at 1.
+        currentURL = urlA
+        await vm.handleAccountChange()
+        await waitUntilLoaded(vm, at: urlA)
+
+        XCTAssertEqual(mockRepository.networkFetchCount(for: urlA), 1,
+                       "Returning to library A must serve the warm cache, not trigger a second fetch")
+        XCTAssertEqual(mockRepository.invalidateCacheCallCount, 0,
+                       "No library switch may invalidate the account-scoped cache (SWR)")
+    }
+
+    // MARK: - SWR test helpers
+
+    /// Poll until the view model reaches `.loaded` for `url`. `load()` spawns
+    /// `currentLoadTask` without awaiting it, so the `@Published` transition
+    /// lands asynchronously; `activeEntryPointURL` is set to the loaded URL on
+    /// the success path, giving a per-leg completion signal for the A→B→A drive.
+    private func waitUntilLoaded(
+        _ vm: CatalogViewModel,
+        at url: URL,
+        timeout: TimeInterval = 5.0,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if case .loaded = vm.state, vm.activeEntryPointURL == url { return }
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+        XCTFail("Timed out waiting for .loaded at \(url); state=\(vm.state), active=\(String(describing: vm.activeEntryPointURL))",
+                file: file, line: line)
+    }
+
+    /// Minimal real OPDS 2 grouped `CatalogFeed` (one lane, one book) so
+    /// `load()` maps to `.loaded` and exercises the real success path rather
+    /// than an error/offline branch.
+    private static func makeGroupedCatalogFeed(title: String = "Library") -> CatalogFeed {
+        let publication = OPDS2Publication(
+            links: [
+                OPDS2Link(
+                    href: "https://example.com/borrow/0",
+                    type: "application/epub+zip",
+                    rel: "http://opds-spec.org/acquisition/borrow"
+                )
+            ],
+            metadata: OPDS2Publication.Metadata(
+                updated: Date(),
+                description: nil,
+                id: "pub-0",
+                title: "Book 0"
+            ),
+            images: nil
+        )
+        let group = OPDS2Group(
+            metadata: OPDS2GroupMetadata(title: "Group 0"),
+            links: [OPDS2Link(href: "https://example.com/group/0", rel: "subsection")],
+            publications: [publication]
+        )
+        let opds2 = OPDS2Feed(
+            metadata: OPDS2FeedMetadata(title: title),
+            links: [],
+            groups: [group]
+        )
+        return CatalogFeed(opds2Feed: opds2)
+    }
 }
 
 /// Test-only observer for prefetch-cancellation assertions.

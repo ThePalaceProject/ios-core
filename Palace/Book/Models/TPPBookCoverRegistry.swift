@@ -2,6 +2,7 @@ import Foundation
 import UIKit
 import ImageIO
 import PalaceLogging
+import PalaceNetwork
 
 // MARK: - Host Failure Tracker (Circuit Breaker)
 
@@ -23,12 +24,17 @@ actor HostFailureTracker {
     private struct HostRecord {
         var consecutiveFailures: Int = 0
         var lastFailureDate: Date = Date()
-        var isTripped: Bool { consecutiveFailures >= 1 }
+        /// Copied from the enclosing actor's `failureThreshold` at record
+        /// creation so `isTripped` honors the configured threshold instead of
+        /// tripping on the very first failure (which blacklisted a whole cover
+        /// CDN for the cooldown window after one Wi-Fi↔cellular blip).
+        let failureThreshold: Int
+        var isTripped: Bool { consecutiveFailures >= failureThreshold }
     }
 
     private var records: [String: HostRecord] = [:]
 
-    init(cooldownInterval: TimeInterval = 300, failureThreshold: Int = 1) {
+    init(cooldownInterval: TimeInterval = 300, failureThreshold: Int = 3) {
         self.cooldownInterval = cooldownInterval
         self.failureThreshold = failureThreshold
     }
@@ -50,7 +56,7 @@ actor HostFailureTracker {
     /// the host is marked as failing and requests to it will be skipped.
     func recordFailure(for host: String?) {
         guard let host else { return }
-        var record = records[host] ?? HostRecord()
+        var record = records[host] ?? HostRecord(failureThreshold: failureThreshold)
         record.consecutiveFailures += 1
         record.lastFailureDate = Date()
         records[host] = record
@@ -110,6 +116,18 @@ actor TPPBookCoverRegistry {
     /// Tracks hosts that are down to skip requests immediately instead of waiting for timeouts
     let hostFailureTracker: HostFailureTracker
 
+    /// Retained so the observer is torn down in `deinit`. A Wi-Fi↔cellular
+    /// handoff briefly fails in-flight image requests on the old interface; on
+    /// any reachability change we clear the circuit breaker so the covers that a
+    /// transient blip tripped are retried on the new interface instead of
+    /// staying blacklisted for the full cooldown window.
+    // `nonisolated(unsafe)`: the token is written once in `init` and read once in
+    // the actor's `nonisolated deinit` to unregister the observer. Swift 6 forbids
+    // touching a non-Sendable stored property from a nonisolated deinit, but deinit
+    // runs only when no other reference to the actor exists, so this single teardown
+    // read races nothing.
+    nonisolated(unsafe) private var reachabilityObserverToken: NSObjectProtocol?
+
     /// Dedicated URLSession with short timeouts for image fetches.
     /// Using URLSession.shared's 60s default timeout is far too slow when a host is down —
     /// a swimlane with 20 books would waste 40 minutes on doomed requests.
@@ -145,6 +163,35 @@ actor TPPBookCoverRegistry {
             maxConcurrentFetches = 8
             maxDecodeDimension = 1024
         }
+
+        // Reset the host circuit breaker on any reachability change. Capturing
+        // only the (Sendable) tracker keeps this `@Sendable` observer closure off
+        // `self`, so it is sound to install from the actor's initializer.
+        let tracker = hostFailureTracker
+        reachabilityObserverToken = NotificationCenter.default.addObserver(
+            forName: .TPPReachabilityChanged,
+            object: nil,
+            queue: nil
+        ) { _ in
+            Task { await tracker.reset() }
+        }
+    }
+
+    deinit {
+        if let token = reachabilityObserverToken {
+            NotificationCenter.default.removeObserver(token)
+        }
+    }
+
+    /// Clears the host circuit breaker (fire-and-forget). Call on an account
+    /// switch so a host that tripped under the prior library does not keep
+    /// suppressing cover fetches for the newly selected library. `nonisolated`
+    /// + a detached reset lets synchronous main-actor callers (the account
+    /// switch path) invoke it without `await`; capturing only the Sendable
+    /// tracker keeps this off `self`.
+    nonisolated func resetHostFailures() {
+        let tracker = hostFailureTracker
+        Task { await tracker.reset() }
     }
 
     // MARK: - Concurrency Throttling
@@ -202,7 +249,19 @@ actor TPPBookCoverRegistry {
 
         // No network image — fall back directly to a size-aware placeholder so TenPrint
         // renders at the display size rather than the fixed 80×120 thumbnail size.
-        guard let url = book.imageURL else { return await coverImage(for: book, displayHeight: displayPoints) }
+        //
+        // For small display sizes (catalog cells ~150pt) prefer the thumbnail
+        // URL: prefetch (CatalogViewModel.prefetchThumbnails → thumbnailImage)
+        // fetches `imageThumbnailURL`, and `sourceData(for:)` dedups by URL, so
+        // sharing the URL lets the cell fetch coalesce onto the prefetch task
+        // instead of pulling the full-res `imageURL` a second time.
+        guard let url = Self.coverSourceURL(
+            imageURL: book.imageURL,
+            thumbnailURL: book.imageThumbnailURL,
+            displayPoints: displayPoints
+        ) else {
+            return await coverImage(for: book, displayHeight: displayPoints)
+        }
 
         guard let data = await sourceData(for: url) else {
             return await coverImage(for: book, displayHeight: displayPoints)
@@ -470,6 +529,29 @@ actor TPPBookCoverRegistry {
 
     private func cacheKey(for book: TPPBook, isCover: Bool) -> NSString {
         NSString(string: "\(book.identifier)_\(isCover ? "cover" : "thumbnail")")
+    }
+
+    /// The maximum display size (points) treated as "small" — a catalog cell.
+    /// Below this we prefer the thumbnail source so the cell fetch shares a
+    /// dedup key with prefetch.
+    static let smallDisplayThreshold: CGFloat = 200
+
+    /// Selects which source URL to fetch for a cover shown at `displayPoints`.
+    ///
+    /// Small displays (catalog cells) prefer `thumbnailURL` so the decode shares
+    /// a `sourceData(for:)` dedup key with prefetch (which fetches
+    /// `imageThumbnailURL`) — one download per book instead of two after a
+    /// Wi-Fi↔cellular switch. Larger displays keep the full-resolution
+    /// `imageURL`. Falls back to `imageURL` when no thumbnail exists.
+    nonisolated static func coverSourceURL(
+        imageURL: URL?,
+        thumbnailURL: URL?,
+        displayPoints: CGFloat
+    ) -> URL? {
+        if displayPoints <= smallDisplayThreshold, let thumbnailURL {
+            return thumbnailURL
+        }
+        return imageURL
     }
 
     // MARK: - Safe URL-based Fetching (for bridge to prevent book deallocation crashes)

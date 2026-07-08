@@ -81,11 +81,11 @@ class CatalogLaneMoreViewModel: ObservableObject {
     self.url = url
     self.bookRegistry = bookRegistry
     self.bookCellModelCache = bookCellModelCache
-    self.api = api ?? DefaultCatalogAPI(
-      client: URLSessionNetworkClient(),
-      parser: OPDSParser(),
-      featureFlags: RemoteFeatureFlags.shared
-    )
+    // Fall back to AppContainer's shared, cached DefaultCatalogAPI instead of
+    // building a throwaway per-init (swarm_27c181b5 A5). Production callers
+    // (CatalogLaneMoreView) inject `appContainer.catalogAPI` explicitly; this
+    // default keeps preview/convenience call sites on the same shared instance.
+    self.api = api ?? AppContainer.production().catalogAPI
     
     setupObservers()
   }

@@ -56,6 +56,13 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         newWindow.rootViewController = hostingController
         newWindow.makeKeyAndVisible()
 
+        // Instrument first-frame timing (AppLaunchTracker). The window is now
+        // key + visible, so the initial frame is committed; paired with
+        // `processStart` (recorded in TPPAppDelegate) this yields timeToFirstFrame.
+        Task {
+            await AppLaunchTracker.shared.recordMilestone(.firstFrame)
+        }
+
         window = newWindow
 
         // Also set on AppDelegate for backward compatibility

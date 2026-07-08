@@ -37,6 +37,16 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     // MARK: - Application Lifecycle
 
     func applicationDidFinishLaunching(_ application: UIApplication) {
+        // Instrument cold-launch timing (AppLaunchTracker). `processStart` is
+        // captured as early as possible so `timeToFirstFrame` / `timeToInteractive`
+        // compute non-nil once `.firstFrame` (SceneDelegate) and `.catalogLoaded`
+        // (CatalogViewModel) land. Both are recorded in a single Task so their
+        // actor-serialized timestamps stay ordered (processStart ≤ didFinishLaunching).
+        Task {
+            await AppLaunchTracker.shared.recordMilestone(.processStart)
+            await AppLaunchTracker.shared.recordMilestone(.didFinishLaunching)
+        }
+
         // Register Crashlytics forwarder before any Log call fires.
         // PalaceLogging is Firebase-free; the host app supplies the bridge.
         Log.crashlyticsBridge = FirebaseCrashlyticsBridge()
