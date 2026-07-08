@@ -1,0 +1,983 @@
+# 🧪 Palace iOS Unit Test Results
+
+**Generated:** 2026-07-08 18:11:18 UTC
+**Commit:** `59fc02e50827`
+**Branch:** `swarm/swarm_27c181b5-scaffold`
+
+## Summary
+
+### ❌ 14 TESTS FAILED
+
+| Metric | Value |
+|--------|-------|
+| **Total Tests** | 7714 |
+| **Passed** | 7582 ✓ |
+| **Failed** | 14 ✗ |
+| **Skipped** | 118 ⊘ |
+| **Duration** | 8m 2s |
+| **Pass Rate** | 98.3% |
+
+## Tests by Class
+
+| Status | Class | Tests | Passed | Failed | Duration |
+|--------|-------|-------|--------|--------|----------|
+| ✅ | AccessLintComplianceTests | 11 | 11 | 0 | 16ms |
+| ✅ | AccessibilityAnnouncementCenterTests | 20 | 20 | 0 | 1.55s |
+| ✅ | AccessibilityLabelTests | 9 | 9 | 0 | 52ms |
+| ✅ | AccessibilityPreferencesTests | 26 | 26 | 0 | 291ms |
+| ✅ | AccessibilityServiceTests | 11 | 11 | 0 | 153ms |
+| ✅ | AccountAuthDocCarryoverTests | 5 | 5 | 0 | 288ms |
+| ✅ | AccountAuthSurfaceHostsTests | 7 | 7 | 0 | 23ms |
+| ✅ | AccountAwareNetworkTests | 10 | 10 | 0 | 2.25s |
+| ✅ | AccountDetailCredentialStateTests | 7 | 0 | 0 | 205ms |
+| ✅ | AccountDetailPINVisibilityTests | 25 | 0 | 0 | 180ms |
+| ✅ | AccountDetailSignOutConfirmationTests | 2 | 0 | 0 | 6ms |
+| ✅ | AccountDetailViewModelGapTests | 1 | 1 | 0 | 35ms |
+| ✅ | AccountDetailViewModelLeakTests | 1 | 1 | 0 | 57ms |
+| ✅ | AccountDetailViewModelTests | 19 | 0 | 0 | 341ms |
+| ✅ | AccountDetailsAuthenticationIsBrowserBasedTests | 10 | 10 | 0 | 241ms |
+| ✅ | AccountDetailsNeedsAuthAggregateTests | 10 | 10 | 0 | 10ms |
+| ✅ | AccountDetailsURLTests | 17 | 17 | 0 | 225ms |
+| ✅ | AccountModelGapTests | 9 | 9 | 0 | 228ms |
+| ✅ | AccountModelTests | 20 | 20 | 0 | 58ms |
+| ✅ | AccountProfileDocumentTests | 3 | 3 | 0 | 17ms |
+| ✅ | AccountStateMachineTests | 10 | 10 | 0 | 102ms |
+| ✅ | AccountSwitchCleanupTests | 8 | 8 | 0 | 99ms |
+| ✅ | AccountSwitchIntegrationTests | 8 | 8 | 0 | 118ms |
+| ✅ | AccountSwitchLifecycleTests | 9 | 0 | 0 | 242ms |
+| ✅ | AccountsManagerAccountIndexTests | 7 | 7 | 0 | 73ms |
+| ✅ | AccountsManagerCacheReadTests | 4 | 4 | 0 | 317ms |
+| ✅ | AccountsManagerCacheTests | 16 | 16 | 0 | 88ms |
+| ✅ | AccountsManagerCancellationTests | 5 | 5 | 0 | 556ms |
+| ✅ | AccountsManagerGapTests | 3 | 3 | 0 | 2ms |
+| ✅ | AccountsManagerHelpersTests | 12 | 12 | 0 | 23ms |
+| ✅ | AccountsManagerIsolationLintTests | 2 | 2 | 0 | 623ms |
+| ❌ | AccountsManagerStateMachineWiringTests | 14 | 13 | **1** | 3.35s |
+| ✅ | AccountsManagerTests | 51 | 50 | 0 | 8.26s |
+| ✅ | ActiveSessionsViewModelTests | 12 | 12 | 0 | 849ms |
+| ✅ | AdobeActivationTests | 6 | 6 | 0 | 65ms |
+| ✅ | AdobeCertificateGapTests | 7 | 7 | 0 | 30ms |
+| ✅ | AdobeDRMCharacterizationTests | 21 | 21 | 0 | 40ms |
+| ✅ | AdobeDRMErrorGapTests | 3 | 3 | 0 | 8ms |
+| ✅ | AdobeDRMHandlerTests | 12 | 12 | 0 | 116ms |
+| ✅ | AdobeDRMServiceGapTests | 2 | 2 | 0 | 5ms |
+| ✅ | AlertModelCoverageTests | 6 | 6 | 0 | 34ms |
+| ✅ | AlertModelRetryTests | 7 | 7 | 0 | 117ms |
+| ✅ | AlertModelTests | 2 | 2 | 0 | 36ms |
+| ✅ | AlertUtilsTests | 20 | 20 | 0 | 287ms |
+| ✅ | AnnotationContractTests | 3 | 3 | 0 | 26ms |
+| ✅ | AnnotationDeviceIDTests | 2 | 2 | 0 | 2ms |
+| ✅ | AnnotationPostResponseContractTests | 1 | 1 | 0 | 2ms |
+| ✅ | AnnouncementChainTests | 5 | 5 | 0 | 94ms |
+| ✅ | AnnouncementTests | 3 | 3 | 0 | 41ms |
+| ✅ | AnonymousBorrowBaselineFixtureTests | 13 | 13 | 0 | 26ms |
+| ✅ | AnonymousBorrowCandidateFixtureTests | 6 | 6 | 0 | 197ms |
+| ✅ | AnonymousBorrowDeltaTests | 2 | 2 | 0 | 15ms |
+| ✅ | AppContainerAudiobookFactoryTests | 3 | 3 | 0 | 18ms |
+| ✅ | AppContainerAuthCoordinatorRegistrationTests | 3 | 3 | 0 | 8ms |
+| ✅ | AppContainerImageLoaderInjectionTests | 4 | 4 | 0 | 65ms |
+| ✅ | AppContainerIsolationLintTests | 5 | 5 | 0 | 675ms |
+| ✅ | AppContainerResetTests | 5 | 5 | 0 | 44ms |
+| ✅ | AppContainerTests | 4 | 4 | 0 | 3ms |
+| ✅ | AppContainerWithSignInModalSheetPresenterTests | 2 | 2 | 0 | 2ms |
+| ✅ | AppHealthViewModelTests | 8 | 8 | 0 | 1.33s |
+| ✅ | AppLaunchTrackerExtendedTests | 16 | 16 | 0 | 502ms |
+| ✅ | AppLaunchTrackerTests | 10 | 10 | 0 | 1.03s |
+| ✅ | AppLaunchTrackerWiringTests | 2 | 2 | 0 | 64ms |
+| ✅ | AppRatingServiceOverrideTests | 3 | 3 | 0 | 11ms |
+| ✅ | AppRatingServiceTests | 9 | 9 | 0 | 116ms |
+| ✅ | AppRouteTests | 5 | 5 | 0 | 64ms |
+| ✅ | AppTabHostMiniPlayerIntegrationTests | 6 | 6 | 0 | 171ms |
+| ✅ | AppTabHostViewBadgeCountTests | 10 | 10 | 0 | 72ms |
+| ✅ | AppTabRouterCoverageTests | 4 | 4 | 0 | 3ms |
+| ✅ | AppTabRouterGapTests | 3 | 3 | 0 | 3ms |
+| ✅ | ArrayExtensionsTests | 6 | 6 | 0 | 9ms |
+| ✅ | AudioBookmarkGapTests | 6 | 6 | 0 | 26ms |
+| ✅ | AudioEngineWrapperTests | 8 | 8 | 0 | 194ms |
+| ✅ | AudioInterruptionLogicTests | 6 | 6 | 0 | 4ms |
+| ✅ | AudioSessionActivatorTests | 8 | 8 | 0 | 28ms |
+| ✅ | AudiobookAccessibilityTests | 7 | 7 | 0 | 32ms |
+| ✅ | AudiobookBackgroundAudioTests | 2 | 2 | 0 | 54ms |
+| ✅ | AudiobookBookmarkBusinessLogicConcurrencyTests | 3 | 3 | 0 | 97ms |
+| ✅ | AudiobookBookmarkBusinessLogicPositionWriteTests | 6 | 6 | 0 | 242ms |
+| ✅ | AudiobookBookmarkBusinessLogicTests | 21 | 21 | 0 | 3.65s |
+| ✅ | AudiobookChapterTOCNormalizationTests | 6 | 6 | 0 | 37ms |
+| ✅ | AudiobookColdLoadRecoveryTests | 4 | 4 | 0 | 11ms |
+| ✅ | AudiobookCrossVendorSmokeTests | 4 | 4 | 0 | 35ms |
+| ✅ | AudiobookDataManagerEmptyQueueTests | 1 | 1 | 0 | 12ms |
+| ✅ | AudiobookDataManagerErrorHandlingTests | 5 | 5 | 0 | 10.25s |
+| ✅ | AudiobookDataManagerModelsTests | 20 | 20 | 0 | 98ms |
+| ✅ | AudiobookDataManagerNetworkSyncTests | 5 | 5 | 0 | 5.06s |
+| ✅ | AudiobookDataManagerSaveTests | 4 | 4 | 0 | 21ms |
+| ✅ | AudiobookDataManagerStoreRecoveryTests | 5 | 5 | 0 | 2.05s |
+| ✅ | AudiobookFileLoggerTests | 14 | 14 | 0 | 365ms |
+| ✅ | AudiobookFirstOpenHangTests | 11 | 11 | 0 | 1.10s |
+| ✅ | AudiobookFullPlayerCoverContainerTests | 12 | 12 | 0 | 196ms |
+| ✅ | AudiobookLoadFailureSAMLReauthTests | 10 | 10 | 0 | 359ms |
+| ✅ | AudiobookLoaderDispatchTests | 7 | 7 | 0 | 252ms |
+| ✅ | AudiobookLoaderFinalizeBuildTests | 9 | 9 | 0 | 185ms |
+| ✅ | AudiobookLoaderOPDSShapeMatrixTests | 8 | 0 | 0 | 80ms |
+| ✅ | AudiobookLoaderPredicateTests | 11 | 11 | 0 | 24ms |
+| ✅ | AudiobookLoaderTests | 2 | 2 | 0 | 27ms |
+| ✅ | AudiobookMiniPlayerViewTests | 13 | 13 | 0 | 140ms |
+| ✅ | AudiobookNetworkValidationTests | 3 | 3 | 0 | 3ms |
+| ✅ | AudiobookOpenStateRaceTests | 3 | 3 | 0 | 264ms |
+| ✅ | AudiobookPhoneAlertContentTests | 3 | 3 | 0 | 35ms |
+| ✅ | AudiobookPlaybackStateTests | 3 | 3 | 0 | 42ms |
+| ✅ | AudiobookPlaybackTests | 26 | 26 | 0 | 127ms |
+| ✅ | AudiobookPlaytimesLifecycleTests | 6 | 6 | 0 | 735ms |
+| ✅ | AudiobookPositionAdapterContractTests | 3 | 3 | 0 | 71ms |
+| ✅ | AudiobookPositionPolicyValidatorTests | 14 | 14 | 0 | 152ms |
+| ✅ | AudiobookPositionRestoreTests | 18 | 18 | 0 | 378ms |
+| ✅ | AudiobookSAMLReauthTests | 6 | 6 | 0 | 109ms |
+| ✅ | AudiobookSessionErrorDescriptionTests | 4 | 4 | 0 | 46ms |
+| ✅ | AudiobookSessionErrorExtTests | 4 | 4 | 0 | 125ms |
+| ✅ | AudiobookSessionErrorTests | 2 | 2 | 0 | 1ms |
+| ✅ | AudiobookSessionManagerErrorMappingTests | 6 | 6 | 0 | 13ms |
+| ✅ | AudiobookSessionManagerFlagGatePresentationTests | 4 | 4 | 0 | 158ms |
+| ✅ | AudiobookSessionManagerPresenterMigrationTests | 8 | 8 | 0 | 193ms |
+| ✅ | AudiobookSessionManagerShutdownTests | 8 | 8 | 0 | 245ms |
+| ✅ | AudiobookSessionPresenterTests | 16 | 16 | 0 | 805ms |
+| ✅ | AudiobookSessionStateTests | 6 | 6 | 0 | 29ms |
+| ❌ | AudiobookSessionStateTransitionTests | 22 | 20 | **2** | 5.12s |
+| ✅ | AudiobookSleepTimerIntegrationTests | 5 | 5 | 0 | 126ms |
+| ✅ | AudiobookStorageLocationTests | 3 | 3 | 0 | 6ms |
+| ✅ | AudiobookTOCTests | 18 | 18 | 0 | 97ms |
+| ✅ | AudiobookTimeEntryTests | 6 | 6 | 0 | 12ms |
+| ✅ | AudiobookTimeTrackerEdgeTests | 8 | 8 | 0 | 46ms |
+| ✅ | AudiobookTimeTrackerLifecycleTests | 5 | 5 | 0 | 1.16s |
+| ✅ | AudiobookTimeTrackerTests | 9 | 9 | 0 | 98ms |
+| ✅ | AudiobookTrackCompletionTests | 2 | 2 | 0 | 76ms |
+| ✅ | AudiobookTypeRoutingTests | 5 | 5 | 0 | 12ms |
+| ✅ | AudiobookVendorAdapterTests | 5 | 5 | 0 | 42ms |
+| ✅ | AudiobookmarkTests | 4 | 4 | 0 | 11ms |
+| ✅ | AuthCoordinatorTelemetryTests | 5 | 5 | 0 | 74ms |
+| ✅ | AuthDecisionEventEmissionTests | 7 | 7 | 0 | 37ms |
+| ✅ | AuthDocumentContractTests | 2 | 2 | 0 | 5ms |
+| ✅ | AuthDocumentVariantsContractTests | 5 | 5 | 0 | 36ms |
+| ✅ | AuthErrorCategoryTests | 12 | 12 | 0 | 545ms |
+| ✅ | AuthErrorProblemDocSeamTests | 6 | 6 | 0 | 45ms |
+| ✅ | AuthFlowSecurityTests | 3 | 0 | 0 | 90ms |
+| ✅ | AuthReducerTests | 21 | 21 | 0 | 18ms |
+| ✅ | AuthTypeTests | 7 | 7 | 0 | 24ms |
+| ✅ | AuthenticationTests | 16 | 16 | 0 | 24ms |
+| ✅ | BackgroundDownloadHandlerTests | 28 | 28 | 0 | 230ms |
+| ✅ | BackgroundListenerTests | 2 | 2 | 0 | 11ms |
+| ✅ | BackgroundSessionRoutingTests | 6 | 6 | 0 | 26ms |
+| ✅ | BackupExclusionMigrationTests | 3 | 3 | 0 | 6ms |
+| ✅ | BadgeDefinitionTests | 33 | 33 | 0 | 94ms |
+| ✅ | BadgeServiceTests | 16 | 16 | 0 | 211ms |
+| ✅ | BadgeUnlockPhaseTests | 4 | 4 | 0 | 36ms |
+| ✅ | BadgesViewModelTests | 14 | 14 | 0 | 120ms |
+| ✅ | BasicAuthEmptyCredentialTests | 4 | 4 | 0 | 20ms |
+| ✅ | BearerTokenAdapterTests | 5 | 4 | 0 | 115ms |
+| ✅ | BearerTokenFulfillFlowTests | 4 | 4 | 0 | 41ms |
+| ✅ | BearerTokenRefreshTests | 4 | 4 | 0 | 20ms |
+| ✅ | BearerTokenResponseDetectionTests | 7 | 7 | 0 | 16ms |
+| ✅ | BeginningPositionPolicyTests | 8 | 8 | 0 | 499ms |
+| ✅ | BookAvailabilityFormatterTests | 18 | 18 | 0 | 99ms |
+| ✅ | BookButtonMapperHoldReadyTests | 10 | 10 | 0 | 257ms |
+| ✅ | BookButtonMapperTests | 21 | 21 | 0 | 583ms |
+| ✅ | BookButtonMapperViewModelTests | 18 | 18 | 0 | 20ms |
+| ✅ | BookButtonStateTests | 8 | 8 | 0 | 40ms |
+| ✅ | BookButtonTypeMetaTests | 4 | 4 | 0 | 29ms |
+| ✅ | BookButtonTypeTests | 13 | 13 | 0 | 48ms |
+| ✅ | BookCellModelActionTests | 18 | 18 | 0 | 673ms |
+| ✅ | BookCellModelCacheInvalidationTests | 8 | 8 | 0 | 47ms |
+| ✅ | BookCellModelCachePrefetchSafetyTests | 9 | 9 | 0 | 243ms |
+| ✅ | BookCellModelCacheTests | 22 | 22 | 0 | 9.93s |
+| ✅ | BookCellModelComputedPropertyTests | 19 | 19 | 0 | 153ms |
+| ✅ | BookCellModelOfflineTests | 9 | 9 | 0 | 505ms |
+| ✅ | BookCellModelRegistryBindingTests | 4 | 4 | 0 | 931ms |
+| ✅ | BookCellModelStateTests | 16 | 16 | 0 | 296ms |
+| ✅ | BookCellModelStreamingHTMLTests | 2 | 2 | 0 | 70ms |
+| ✅ | BookCellStateComprehensiveTests | 14 | 14 | 0 | 10ms |
+| ✅ | BookContentResetServiceTests | 2 | 2 | 0 | 5ms |
+| ✅ | BookDetailMetadataHydrationTests | 6 | 6 | 0 | 78ms |
+| ✅ | BookDetailViewModelTests | 87 | 87 | 0 | 1.27s |
+| ✅ | BookFileManagerSideloadResolutionTests | 4 | 4 | 0 | 66ms |
+| ✅ | BookFileManagerTests | 8 | 8 | 0 | 50ms |
+| ✅ | BookListViewAccessibilityTests | 9 | 9 | 0 | 42ms |
+| ✅ | BookPreviewTests | 4 | 4 | 0 | 18ms |
+| ✅ | BookRegistryStoreTests | 26 | 26 | 0 | 910ms |
+| ✅ | BookRegistrySyncReadinessTests | 3 | 2 | 0 | 545ms |
+| ✅ | BookRegistrySyncReentrancyTests | 4 | 4 | 0 | 178ms |
+| ✅ | BookRegistrySyncSideloadExemptionTests | 2 | 0 | 0 | 62ms |
+| ✅ | BookRegistrySyncTests | 35 | 30 | 0 | 1.36s |
+| ✅ | BookReturnCleverReauthTests | 1 | 1 | 0 | 30ms |
+| ✅ | BookReturnServiceAuthCoordinatorTests | 3 | 3 | 0 | 438ms |
+| ✅ | BookReturnServiceContractTests | 6 | 6 | 0 | 185ms |
+| ✅ | BookReturnServiceTests | 16 | 16 | 0 | 692ms |
+| ✅ | BookSignInRedirectHandlerTests | 8 | 8 | 0 | 189ms |
+| ✅ | BookStateIntegrationTests | 8 | 8 | 0 | 84ms |
+| ✅ | BookmarkBusinessLogicExtendedTests | 6 | 6 | 0 | 340ms |
+| ✅ | BookmarkDeletionLogTests | 3 | 3 | 0 | 98ms |
+| ✅ | BookmarkDeviceIdMatchingTests | 3 | 3 | 0 | 102ms |
+| ✅ | BookmarkExistenceTests | 4 | 4 | 0 | 233ms |
+| ✅ | BookmarkManagerTests | 24 | 24 | 0 | 1.00s |
+| ✅ | BookmarkSortingTests | 1 | 1 | 0 | 50ms |
+| ✅ | BookmarkSyncTests | 3 | 3 | 0 | 194ms |
+| ✅ | BorrowAndDownloadIntegrationTests | 7 | 7 | 0 | 342ms |
+| ✅ | BorrowErrorMessageTests | 13 | 13 | 0 | 163ms |
+| ✅ | BorrowErrorPresenterTests | 6 | 6 | 0 | 558ms |
+| ✅ | BorrowOperationAuthCoordinatorTests | 6 | 6 | 0 | 4.29s |
+| ✅ | BorrowOperationCleverReauthTests | 2 | 2 | 0 | 360ms |
+| ✅ | BorrowOperationContractTests | 6 | 6 | 0 | 460ms |
+| ✅ | BorrowOperationStreamingHTMLTests | 3 | 3 | 0 | 376ms |
+| ✅ | BorrowOperationTests | 13 | 13 | 0 | 1.69s |
+| ✅ | BorrowOperationTimeoutTests | 3 | 3 | 0 | 173ms |
+| ✅ | BorrowReducerContractTests | 2 | 2 | 0 | 13ms |
+| ✅ | BorrowReducerTests | 21 | 21 | 0 | 87ms |
+| ✅ | BundledRegistrySnapshotTests | 5 | 5 | 0 | 738ms |
+| ✅ | ButtonStateTests | 16 | 16 | 0 | 72ms |
+| ✅ | ButtonStyleTypeTests | 2 | 2 | 0 | 2ms |
+| ✅ | C64ConversionTests | 6 | 6 | 0 | 6ms |
+| ✅ | CarPlayAudiobookBridgePresenterMigrationTests | 2 | 2 | 0 | 10ms |
+| ✅ | CarPlayAuthHelperReadinessTests | 3 | 3 | 0 | 375ms |
+| ✅ | CarPlayChapterListTests | 3 | 3 | 0 | 29ms |
+| ✅ | CarPlayIntegrationTests | 2 | 2 | 0 | 15ms |
+| ✅ | CarPlayLibraryRefreshTests | 3 | 3 | 0 | 760ms |
+| ✅ | CarPlayNowPlayingTemplateTests | 4 | 4 | 0 | 581ms |
+| ✅ | CarPlayOpenAppAlertTests | 6 | 6 | 0 | 266ms |
+| ✅ | CarPlayPlaybackErrorTests | 8 | 8 | 0 | 50ms |
+| ✅ | CarPlayTests | 12 | 12 | 0 | 195ms |
+| ✅ | CarPlayTimeTrackingTests | 3 | 3 | 0 | 95ms |
+| ✅ | CatalogAPIDedupeTests | 3 | 3 | 0 | 428ms |
+| ✅ | CatalogAPIEntryPointTests | 1 | 1 | 0 | 2ms |
+| ✅ | CatalogAccessibilityTests | 8 | 8 | 0 | 37ms |
+| ✅ | CatalogCacheKeyAndIsolationTests | 12 | 12 | 0 | 318ms |
+| ✅ | CatalogCacheMetadataExactBoundaryTests | 4 | 4 | 0 | 3ms |
+| ✅ | CatalogCacheMetadataTests | 21 | 21 | 0 | 49ms |
+| ✅ | CatalogFeedModelTests | 4 | 4 | 0 | 9ms |
+| ✅ | CatalogFilterGroupModelTests | 17 | 17 | 0 | 219ms |
+| ✅ | CatalogFilterModelTests | 17 | 17 | 0 | 34ms |
+| ✅ | CatalogFilterServiceTests | 29 | 29 | 0 | 570ms |
+| ✅ | CatalogFilterTests | 1 | 1 | 0 | 1ms |
+| ✅ | CatalogLaneAssemblyTests | 7 | 7 | 0 | 12ms |
+| ✅ | CatalogLaneModelStructTests | 18 | 18 | 0 | 562ms |
+| ✅ | CatalogLaneModelTests | 1 | 1 | 0 | 3ms |
+| ✅ | CatalogLaneMoreFilterStateTests | 8 | 8 | 0 | 128ms |
+| ✅ | CatalogLaneMoreViewModelTests | 43 | 43 | 0 | 216ms |
+| ✅ | CatalogLaneRowViewAccessibilityTests | 11 | 11 | 0 | 43ms |
+| ✅ | CatalogLaneSortingTests | 5 | 5 | 0 | 41ms |
+| ✅ | CatalogLoadIntegrationTests | 6 | 6 | 0 | 80ms |
+| ✅ | CatalogOPDS2NegotiationTests | 12 | 12 | 0 | 466ms |
+| ✅ | CatalogPreloaderTests | 6 | 6 | 0 | 37ms |
+| ✅ | CatalogProblemDocumentTests | 6 | 6 | 0 | 19ms |
+| ✅ | CatalogRepositoryCoreTests | 9 | 9 | 0 | 295ms |
+| ✅ | CatalogRepositoryStaleWhileRevalidateTests | 12 | 12 | 0 | 529ms |
+| ✅ | CatalogRepositoryTests | 19 | 19 | 0 | 203ms |
+| ✅ | CatalogSearchViewModelRegistryUpdateTests | 5 | 5 | 0 | 104ms |
+| ✅ | CatalogSearchViewModelTests | 67 | 67 | 0 | 7.21s |
+| ✅ | CatalogSelectorsTests | 2 | 2 | 0 | 2ms |
+| ✅ | CatalogSortServiceTests | 14 | 14 | 0 | 357ms |
+| ✅ | CatalogStateTests | 7 | 7 | 0 | 150ms |
+| ✅ | CatalogViewContinueRowsIntegrationTests | 3 | 3 | 0 | 194ms |
+| ✅ | CatalogViewModelStateMachineTests | 19 | 19 | 0 | 683ms |
+| ✅ | ChaosFaultInjectionTests | 5 | 5 | 0 | 49ms |
+| ✅ | ChapterChangeDetectorTests | 5 | 5 | 0 | 31ms |
+| ✅ | ChapterTOCNormalizerTests | 7 | 7 | 0 | 17ms |
+| ✅ | CirculationAnalyticsTests | 4 | 4 | 0 | 28ms |
+| ✅ | ColdStartResumeIntegrationTests | 10 | 10 | 0 | 932ms |
+| ✅ | ColorExtensionTests | 5 | 5 | 0 | 253ms |
+| ✅ | ConcurrentBookStateTests | 3 | 3 | 0 | 13ms |
+| ✅ | ConcurrentDownloadStateTests | 3 | 3 | 0 | 17ms |
+| ✅ | ConcurrentTokenRefreshTests | 2 | 2 | 0 | 18ms |
+| ✅ | ContinueRowSectionTests | 6 | 6 | 0 | 90ms |
+| ✅ | ContinuousPlaybackTrackingTests | 3 | 3 | 0 | 473ms |
+| ✅ | CookiePersistenceTests | 10 | 10 | 0 | 397ms |
+| ✅ | CrawlStateTests | 16 | 16 | 0 | 51ms |
+| ✅ | CrawlableFeedAnalysisTests | 17 | 17 | 0 | 63ms |
+| ✅ | CrawlerFallbackTests | 12 | 12 | 0 | 107ms |
+| ✅ | CredentialEdgeCaseTests | 6 | 6 | 0 | 125ms |
+| ✅ | CredentialPrivacyTests | 4 | 4 | 0 | 62ms |
+| ✅ | CredentialPromptCoordinatorTests | 4 | 4 | 0 | 356ms |
+| ✅ | CrossDeviceBookmarkSyncTests | 12 | 12 | 0 | 230ms |
+| ✅ | CrossDeviceSyncE2ETests | 5 | 5 | 0 | 284ms |
+| ✅ | CrossDomain401Tests | 8 | 8 | 0 | 7ms |
+| ✅ | CrossFormatMappingTests | 14 | 14 | 0 | 58ms |
+| ✅ | DPLAErrorTests | 3 | 3 | 0 | 41ms |
+| ✅ | DRMAdversarialTests | 4 | 1 | 0 | 47ms |
+| ✅ | DRMFulfilledPublicationTests | 6 | 6 | 0 | 109ms |
+| ✅ | DataBase64Tests | 3 | 3 | 0 | 3ms |
+| ✅ | DataReceptionComparisonTests | 2 | 2 | 0 | 17ms |
+| ✅ | DateExtensionTests | 9 | 9 | 0 | 19ms |
+| ✅ | DateFormattingTests | 4 | 4 | 0 | 70ms |
+| ✅ | Date_NYPLAdditionsTests | 7 | 7 | 0 | 367ms |
+| ✅ | DebugSettingsTests | 31 | 31 | 0 | 74ms |
+| ✅ | DefaultCatalogAPITests | 31 | 31 | 0 | 1.30s |
+| ✅ | DefaultRecentlyReadingServiceTests | 12 | 12 | 0 | 21ms |
+| ✅ | DeriveInitialStateTests | 4 | 4 | 0 | 20ms |
+| ✅ | DeveloperSettingsTierTests | 4 | 4 | 0 | 14ms |
+| ✅ | DeviceLogCollectorGapTests | 2 | 2 | 0 | 11.57s |
+| ✅ | DeviceLogCollectorTests | 9 | 9 | 0 | 13.71s |
+| ✅ | DeviceOrientationTests | 7 | 7 | 0 | 48ms |
+| ✅ | DeviceSpecificErrorMonitorTests | 11 | 11 | 0 | 64ms |
+| ✅ | DictionaryExtensionsTests | 5 | 5 | 0 | 7ms |
+| ✅ | DiskBudgetManagerTests | 7 | 7 | 0 | 13ms |
+| ✅ | DiskBudgetTests | 2 | 2 | 0 | 6ms |
+| ✅ | DownloadAlertPresenterTests | 8 | 8 | 0 | 695ms |
+| ✅ | DownloadAnnouncementServiceTests | 12 | 12 | 0 | 601ms |
+| ✅ | DownloadAuthRetryHandlerAuthCoordinatorTests | 6 | 6 | 0 | 2.86s |
+| ✅ | DownloadAuthRetryHandlerTaskLifecycleTests | 4 | 4 | 0 | 422ms |
+| ✅ | DownloadAuthRetryHandlerTests | 17 | 17 | 0 | 1.85s |
+| ✅ | DownloadCancellationHandlerTests | 5 | 5 | 0 | 282ms |
+| ✅ | DownloadCompleteMomentTests | 6 | 6 | 0 | 58ms |
+| ✅ | DownloadCompletionParserTests | 9 | 9 | 0 | 127ms |
+| ✅ | DownloadCoordinatorIntegrationTests | 10 | 10 | 0 | 223ms |
+| ✅ | DownloadCoordinatorTests | 11 | 11 | 0 | 79ms |
+| ✅ | DownloadDiskSpaceTests | 2 | 2 | 0 | 23ms |
+| ✅ | DownloadErrorInfoTests | 3 | 3 | 0 | 2ms |
+| ✅ | DownloadErrorRecoveryPolicyTests | 11 | 11 | 0 | 89ms |
+| ✅ | DownloadErrorRecoveryTests | 3 | 3 | 0 | 10ms |
+| ✅ | DownloadFreeSpaceExhaustionTests | 11 | 11 | 0 | 69ms |
+| ✅ | DownloadInfoTests | 5 | 5 | 0 | 3ms |
+| ✅ | DownloadIntegrityTests | 10 | 10 | 0 | 92ms |
+| ✅ | DownloadOnlyOnWiFiTests | 10 | 10 | 0 | 100ms |
+| ✅ | DownloadPersistenceStoreTests | 5 | 5 | 0 | 164ms |
+| ✅ | DownloadProgressPublisherCoreTests | 19 | 19 | 0 | 732ms |
+| ✅ | DownloadProgressPublisherTests | 2 | 2 | 0 | 45ms |
+| ✅ | DownloadQueueIntegrationTests | 3 | 3 | 0 | 63ms |
+| ✅ | DownloadQueueOrchestratorTests | 9 | 9 | 0 | 161ms |
+| ✅ | DownloadRMSDKHandoffTests | 1 | 1 | 0 | 17ms |
+| ✅ | DownloadReconciliationLaunchOrderContractTests | 2 | 2 | 0 | 64ms |
+| ✅ | DownloadReconciliationTests | 17 | 17 | 0 | 292ms |
+| ✅ | DownloadRedirectTests | 7 | 7 | 0 | 8ms |
+| ✅ | DownloadResumeAfterKillTests | 7 | 7 | 0 | 270ms |
+| ✅ | DownloadSlotManagementTests | 5 | 5 | 0 | 16ms |
+| ✅ | DownloadStartCoordinatorContractTests | 5 | 5 | 0 | 347ms |
+| ✅ | DownloadStartCoordinatorTests | 9 | 9 | 0 | 794ms |
+| ✅ | DownloadStartDispatcherTests | 26 | 26 | 0 | 179ms |
+| ✅ | DownloadStateMachineIntegrationTests | 15 | 15 | 0 | 63ms |
+| ✅ | DownloadStateMachineTests | 5 | 5 | 0 | 30ms |
+| ✅ | DownloadStateManagerTests | 16 | 16 | 0 | 157ms |
+| ❌ | DownloadTaskLifecycleServiceTests | 9 | 8 | **1** | 343ms |
+| ✅ | DownloadTaskPersistenceTests | 14 | 14 | 0 | 53ms |
+| ✅ | DownloadThrottlingServiceTests | 10 | 10 | 0 | 994ms |
+| ✅ | DownloadTransferRetryTests | 6 | 6 | 0 | 2.10s |
+| ✅ | DownloadWatchdogTests | 3 | 3 | 0 | 10ms |
+| ✅ | EPUBKeyCommandsPP4289Tests | 4 | 4 | 0 | 25ms |
+| ✅ | EPUBModuleTests | 4 | 4 | 0 | 23ms |
+| ✅ | EPUBPositionTests | 10 | 10 | 0 | 208ms |
+| ✅ | EPUBSearchViewModelTests | 18 | 18 | 0 | 103ms |
+| ✅ | EPUBToolbarToggleTests | 11 | 11 | 0 | 36ms |
+| ✅ | EmailAddressTests | 16 | 16 | 0 | 115ms |
+| ✅ | EpubSampleFactoryTests | 5 | 5 | 0 | 73ms |
+| ✅ | ErrorActivityTrackerTests | 12 | 12 | 0 | 144ms |
+| ✅ | ErrorDetailTests | 12 | 12 | 0 | 58ms |
+| ✅ | ErrorDetailViewControllerGapTests | 3 | 3 | 0 | 67ms |
+| ✅ | ErrorDetailViewControllerTests | 14 | 14 | 0 | 155ms |
+| ✅ | ErrorLogExporterTests | 5 | 5 | 0 | 47ms |
+| ✅ | ExecutorNetworkHermeticityTests | 1 | 1 | 0 | 58ms |
+| ✅ | ExpiredLoanStringsTests | 5 | 5 | 0 | 31ms |
+| ✅ | FacetEnumTests | 3 | 3 | 0 | 32ms |
+| ✅ | FacetToolbarAccessibilityTests | 5 | 5 | 0 | 13ms |
+| ✅ | FacetViewModelLogoDelegateTests | 4 | 4 | 0 | 31ms |
+| ✅ | FacetViewModelTests | 18 | 18 | 0 | 78ms |
+| ✅ | FetchManifestWithBearerTokenLCPSafetyTests | 1 | 1 | 0 | 46ms |
+| ✅ | FetchManifestWithBearerTokenTests | 9 | 9 | 0 | 131ms |
+| ✅ | FetchOpenAccessManifestLCPSafetyTests | 4 | 4 | 0 | 7ms |
+| ✅ | FileURLGenerationTests | 3 | 3 | 0 | 77ms |
+| ✅ | FindawayChapterStatusGuardTests | 1 | 1 | 0 | 2ms |
+| ✅ | FindawaySavedVsPlayedTests | 1 | 1 | 0 | 106ms |
+| ✅ | FloatTPPAdditionsTests | 5 | 5 | 0 | 10ms |
+| ✅ | FocusIndicationTests | 7 | 7 | 0 | 71ms |
+| ✅ | FontManagerTests | 17 | 17 | 0 | 87ms |
+| ✅ | ForceResetTests | 6 | 6 | 0 | 117ms |
+| ✅ | GeneralCacheClearOnUpdateTests | 3 | 3 | 0 | 50ms |
+| ✅ | GeneralCacheTests | 20 | 20 | 0 | 2.50s |
+| ✅ | GroupEnumTests | 1 | 1 | 0 | 11ms |
+| ✅ | HTMLTextViewTests | 70 | 70 | 0 | 9.64s |
+| ✅ | HoldNotificationClassificationTests | 2 | 2 | 0 | 5ms |
+| ✅ | HoldsBadgeCountTests | 9 | 9 | 0 | 52ms |
+| ✅ | HoldsBookViewModelTests | 8 | 8 | 0 | 440ms |
+| ✅ | HoldsReducerTests | 11 | 11 | 0 | 120ms |
+| ✅ | HoldsSyncFailureTests | 12 | 12 | 0 | 460ms |
+| ✅ | HoldsViewModelTests | 23 | 23 | 0 | 1.12s |
+| ✅ | HostFailureTrackerTests | 2 | 2 | 0 | 4ms |
+| ✅ | ImageCacheContinuationTests | 1 | 1 | 0 | 214ms |
+| ✅ | ImageCacheTypeTests | 1 | 1 | 0 | 39ms |
+| ✅ | ImageCoverKeyUnificationTests | 2 | 2 | 0 | 11ms |
+| ✅ | ImageLoaderTests | 11 | 11 | 0 | 50ms |
+| ✅ | InflightFeedFetchesTimeoutTests | 4 | 4 | 0 | 10.25s |
+| ✅ | IntExtensionsTests | 4 | 4 | 0 | 18ms |
+| ✅ | IsReaderActiveTrackingModifierTests | 4 | 4 | 0 | 66ms |
+| ✅ | KeyboardNavigationFKATests | 11 | 11 | 0 | 117ms |
+| ✅ | KeyboardNavigationHandlerTests | 16 | 16 | 0 | 105ms |
+| ✅ | KeyboardVoiceOverTests | 5 | 5 | 0 | 94ms |
+| ✅ | LCPAcquisitionPredicateTests | 4 | 4 | 0 | 9ms |
+| ✅ | LCPAdapterTests | 8 | 8 | 0 | 68ms |
+| ✅ | LCPAudiobookURLSchemeTests | 4 | 4 | 0 | 36ms |
+| ✅ | LCPAudiobooksTests | 21 | 21 | 0 | 108ms |
+| ✅ | LCPBotanCRLGuardTests | 5 | 5 | 0 | 18ms |
+| ✅ | LCPCharacterizationTests | 31 | 31 | 0 | 281ms |
+| ✅ | LCPClientTests | 8 | 8 | 0 | 36ms |
+| ✅ | LCPFulfillmentHandlerTests | 8 | 8 | 0 | 756ms |
+| ✅ | LCPKeychainMigrationTests | 3 | 3 | 0 | 18ms |
+| ✅ | LCPLibraryServiceTests | 20 | 20 | 0 | 198ms |
+| ✅ | LCPLicenseDocumentDetectionTests | 5 | 5 | 0 | 7ms |
+| ✅ | LCPLicenseFilePathTests | 3 | 3 | 0 | 5ms |
+| ✅ | LCPOrphanedDownloadRegistryTests | 4 | 4 | 0 | 47ms |
+| ✅ | LCPPDFAcquisitionPredicateTests | 5 | 5 | 0 | 4ms |
+| ✅ | LCPPDFDiskExtractTests | 5 | 5 | 0 | 208ms |
+| ✅ | LCPPDFOpenProgressTests | 13 | 13 | 0 | 59ms |
+| ✅ | LCPPassphraseReadinessTests | 2 | 2 | 0 | 31ms |
+| ✅ | LCPSessionIdentifierTests | 3 | 3 | 0 | 9ms |
+| ✅ | LegacySAMLProblemDocumentPropagationTests | 7 | 7 | 0 | 307ms |
+| ✅ | LibrariesSectionViewModelTests | 11 | 11 | 0 | 236ms |
+| ✅ | LibraryCatalogMergerTests | 9 | 9 | 0 | 85ms |
+| ✅ | LibraryRegistryCrawlerTests | 14 | 14 | 0 | 168ms |
+| ✅ | LicensesServiceTests | 4 | 4 | 0 | 25ms |
+| ✅ | LiveCrawlableParsingTest | 4 | 0 | 0 | 12ms |
+| ✅ | LoanEvictionPolicyTests | 13 | 13 | 0 | 76ms |
+| ✅ | LoanRenewalServiceTests | 9 | 9 | 0 | 30ms |
+| ✅ | LocalBookContentServiceTests | 7 | 7 | 0 | 34ms |
+| ✅ | LocalFileAdapterTests | 6 | 5 | 0 | 153ms |
+| ✅ | LogTests | 13 | 13 | 0 | 322ms |
+| ✅ | LoginKeyboardTests | 8 | 8 | 0 | 9ms |
+| ✅ | MainActorHelpersTests | 22 | 22 | 0 | 742ms |
+| ✅ | MappedCatalogBridgeTests | 3 | 3 | 0 | 23ms |
+| ✅ | MappedCatalogModelTests | 11 | 11 | 0 | 258ms |
+| ✅ | MockBackendExpiredCredentialsTests | 3 | 3 | 0 | 23ms |
+| ✅ | MockBackendHoldsTests | 3 | 3 | 0 | 51ms |
+| ✅ | MockBackendIntegrationTests | 4 | 4 | 0 | 185ms |
+| ✅ | MockBackendLoanLimitTests | 2 | 2 | 0 | 13ms |
+| ✅ | MockBackendRouteMatchingTests | 4 | 4 | 0 | 6ms |
+| ✅ | MockBackendServerDownTests | 1 | 1 | 0 | 78ms |
+| ✅ | MockIsolationLintTests | 5 | 5 | 0 | 1.66s |
+| ✅ | MultiLibraryTokenIsolationTests | 14 | 14 | 0 | 1.10s |
+| ✅ | MyBooksDownloadCenterAccountIdThreadingTests | 6 | 6 | 0 | 42ms |
+| ✅ | MyBooksDownloadCenterAdeptGapTests | 3 | 3 | 0 | 13ms |
+| ✅ | MyBooksDownloadCenterConcurrencyTests | 21 | 21 | 0 | 535ms |
+| ✅ | MyBooksDownloadCenterEvictionTests | 7 | 7 | 0 | 49ms |
+| ✅ | MyBooksDownloadCenterOfflineTests | 8 | 8 | 0 | 729ms |
+| ✅ | MyBooksDownloadSessionInvalidationTests | 3 | 3 | 0 | 10ms |
+| ✅ | MyBooksSimplifiedBearerTokenTests | 17 | 17 | 0 | 98ms |
+| ✅ | MyBooksViewModelBooksPublisherTests | 3 | 3 | 0 | 70ms |
+| ✅ | MyBooksViewModelConcurrencyTests | 4 | 4 | 0 | 25ms |
+| ✅ | MyBooksViewModelDownloadStateTests | 3 | 3 | 0 | 28ms |
+| ✅ | MyBooksViewModelEmptyArrayTests | 3 | 3 | 0 | 10ms |
+| ✅ | MyBooksViewModelEmptyStateTests | 4 | 4 | 0 | 66ms |
+| ✅ | MyBooksViewModelExtendedTests | 15 | 15 | 0 | 262ms |
+| ✅ | MyBooksViewModelFacetIntegrationTests | 4 | 4 | 0 | 18ms |
+| ✅ | MyBooksViewModelFacetPublisherTests | 5 | 5 | 0 | 257ms |
+| ✅ | MyBooksViewModelFilterSortInteractionTests | 2 | 2 | 0 | 23ms |
+| ✅ | MyBooksViewModelFilterTests | 9 | 9 | 0 | 49ms |
+| ✅ | MyBooksViewModelGuardConditionsTests | 2 | 2 | 0 | 85ms |
+| ✅ | MyBooksViewModelLargeDatasetTests | 2 | 2 | 0 | 332ms |
+| ✅ | MyBooksViewModelLoadAccountTests | 2 | 2 | 0 | 162ms |
+| ✅ | MyBooksViewModelLoginStateTests | 4 | 4 | 0 | 352ms |
+| ✅ | MyBooksViewModelMultipleAuthorSortingTests | 3 | 3 | 0 | 10ms |
+| ✅ | MyBooksViewModelNotificationTests | 4 | 4 | 0 | 328ms |
+| ✅ | MyBooksViewModelOfflineFilteringTests | 3 | 3 | 0 | 33ms |
+| ✅ | MyBooksViewModelPublisherTests | 7 | 7 | 0 | 73ms |
+| ✅ | MyBooksViewModelSearchEdgeCaseTests | 6 | 6 | 0 | 55ms |
+| ✅ | MyBooksViewModelSearchQueryTests | 3 | 3 | 0 | 33ms |
+| ✅ | MyBooksViewModelSortPersistenceTests | 3 | 3 | 0 | 2.01s |
+| ✅ | MyBooksViewModelSortingIntegrationTests | 5 | 5 | 0 | 27ms |
+| ✅ | MyBooksViewModelSortingTests | 6 | 6 | 0 | 28ms |
+| ✅ | MyBooksViewModelStateTransitionTests | 3 | 3 | 0 | 463ms |
+| ✅ | MyBooksViewModelUIBindingTests | 3 | 3 | 0 | 17ms |
+| ✅ | NSErrorAdditionsTests | 7 | 7 | 0 | 5ms |
+| ✅ | NSNotificationTPPTests | 3 | 3 | 0 | 14ms |
+| ✅ | NavigationCoordinatorTests | 17 | 17 | 0 | 124ms |
+| ✅ | NavigationFreezePreventionTests | 5 | 5 | 0 | 51ms |
+| ✅ | NetworkCacheClearRoutingTests | 3 | 3 | 0 | 109ms |
+| ✅ | NetworkExecutorCredentialGuardTests | 8 | 8 | 0 | 55ms |
+| ✅ | NetworkExecutorResponseRegressionTests | 4 | 4 | 0 | 81ms |
+| ✅ | NetworkExecutorTaskTypeTests | 3 | 3 | 0 | 29ms |
+| ✅ | NetworkOfflineDetectionTests | 3 | 3 | 0 | 4ms |
+| ✅ | NetworkQueueTests | 11 | 11 | 0 | 130ms |
+| ✅ | NetworkRequestQueueTests | 2 | 2 | 0 | 10.12s |
+| ✅ | NetworkRetryLogicTests | 7 | 7 | 0 | 38ms |
+| ✅ | NetworkTimeoutTests | 2 | 2 | 0 | 2ms |
+| ✅ | NotificationEventTypeContractTests | 7 | 7 | 0 | 110ms |
+| ✅ | NotificationPayloadContractTests | 10 | 10 | 0 | 18ms |
+| ✅ | NotificationServiceStateMachineTests | 9 | 9 | 0 | 463ms |
+| ✅ | NotificationServiceTests | 16 | 16 | 0 | 37ms |
+| ✅ | NotificationServiceTokenTests | 13 | 13 | 0 | 127ms |
+| ✅ | NotificationSyncThrottleTests | 5 | 5 | 0 | 4ms |
+| ✅ | NotificationTokenDataTests | 4 | 4 | 0 | 54ms |
+| ✅ | NotificationTokenRegistrationTests | 10 | 10 | 0 | 13ms |
+| ✅ | NowPlayingCoordinatorBackgroundTests | 6 | 6 | 0 | 1.86s |
+| ✅ | NowPlayingCoordinatorTests | 19 | 19 | 0 | 548ms |
+| ✅ | OAuthSAMLRedirectRegressionTests | 4 | 4 | 0 | 190ms |
+| ✅ | OIDCAuthDocumentParsingTests | 4 | 4 | 0 | 152ms |
+| ✅ | OIDCAuthTypeTests | 5 | 5 | 0 | 13ms |
+| ✅ | OIDCAuthenticationPropertyTests | 8 | 8 | 0 | 6.72s |
+| ✅ | OIDCCallbackEdgeCaseTests | 9 | 9 | 0 | 607ms |
+| ✅ | OIDCCallbackHandlingTests | 5 | 5 | 0 | 533ms |
+| ✅ | OIDCCallbackSchemeTests | 3 | 3 | 0 | 34ms |
+| ✅ | OIDCIsolationRegressionTests | 6 | 6 | 0 | 502ms |
+| ✅ | OIDCLoginRoutingTests | 3 | 3 | 0 | 268ms |
+| ✅ | OIDCMakeRequestTests | 3 | 3 | 0 | 536ms |
+| ✅ | OIDCNSCodingTests | 1 | 1 | 0 | 187ms |
+| ✅ | OIDCNetworkLayer401Tests | 5 | 5 | 0 | 259ms |
+| ✅ | OIDCReauthOnExpiredTokenTests | 5 | 5 | 0 | 147ms |
+| ✅ | OIDCRedirectURIConstructionTests | 6 | 6 | 0 | 295ms |
+| ✅ | OIDCRegressionTests | 9 | 9 | 0 | 223ms |
+| ✅ | OIDCSelectedAuthenticationTests | 2 | 2 | 0 | 97ms |
+| ✅ | OIDCSignOutRegressionTests | 6 | 6 | 0 | 323ms |
+| ✅ | OIDCTokenRefreshRegressionTests | 6 | 6 | 0 | 164ms |
+| ✅ | OIDCUpdateUserAccountTests | 5 | 5 | 0 | 130ms |
+| ✅ | OIDCViewModelRegressionTests | 1 | 1 | 0 | 21ms |
+| ✅ | OIDCViewModelSignInTests | 2 | 2 | 0 | 46ms |
+| ✅ | OPDS1BorrowEntryContractTests | 4 | 4 | 0 | 9ms |
+| ✅ | OPDS1CatalogGroupedContractTests | 3 | 3 | 0 | 9ms |
+| ✅ | OPDS1HoldEntriesContractTests | 4 | 4 | 0 | 9ms |
+| ✅ | OPDS1LoansFeedContractTests | 6 | 6 | 0 | 41ms |
+| ✅ | OPDS1ParsingTests | 34 | 34 | 0 | 776ms |
+| ✅ | OPDS1RevokeResponseContractTests | 2 | 2 | 0 | 25ms |
+| ✅ | OPDS2AuthenticationDocumentTests | 18 | 18 | 0 | 46ms |
+| ✅ | OPDS2AvailabilityTests | 4 | 4 | 0 | 3ms |
+| ✅ | OPDS2BookBridgeTests | 44 | 44 | 0 | 240ms |
+| ✅ | OPDS2BorrowResponseContractTests | 3 | 3 | 0 | 39ms |
+| ✅ | OPDS2CatalogWiringTests | 21 | 21 | 0 | 226ms |
+| ✅ | OPDS2CatalogsFeedTests | 3 | 3 | 0 | 81ms |
+| ✅ | OPDS2ContributorTests | 2 | 2 | 0 | 46ms |
+| ✅ | OPDS2EmptyFeedContractTests | 1 | 1 | 0 | 4ms |
+| ✅ | OPDS2FeedContractTests | 4 | 4 | 0 | 52ms |
+| ✅ | OPDS2FeedParsingTests | 11 | 11 | 0 | 235ms |
+| ✅ | OPDS2FeedTests | 14 | 14 | 0 | 79ms |
+| ✅ | OPDS2FullMetadataTests | 4 | 4 | 0 | 12ms |
+| ✅ | OPDS2FullPublicationTests | 13 | 13 | 0 | 71ms |
+| ✅ | OPDS2IntegrationTests | 18 | 18 | 0 | 555ms |
+| ✅ | OPDS2LinkArrayTests | 5 | 5 | 0 | 26ms |
+| ✅ | OPDS2LinkComputedPropertyTests | 20 | 20 | 0 | 169ms |
+| ✅ | OPDS2LinkRelTests | 1 | 1 | 0 | <1ms |
+| ✅ | OPDS2LinkTests | 2 | 2 | 0 | 38ms |
+| ✅ | OPDS2ParsingTests | 38 | 38 | 0 | 187ms |
+| ✅ | OPDS2PublicationExtendedTests | 53 | 53 | 0 | 423ms |
+| ✅ | OPDS2PublicationImageTests | 6 | 6 | 0 | 15ms |
+| ✅ | OPDS2PublicationNarratorTests | 3 | 3 | 0 | 21ms |
+| ✅ | OPDS2PublicationTests | 2 | 2 | 0 | 46ms |
+| ✅ | OPDS2SamlIDPTests | 6 | 6 | 0 | 6ms |
+| ✅ | OPDS2SearchResultsContractTests | 3 | 3 | 0 | 21ms |
+| ✅ | OPDS2SubjectTests | 2 | 2 | 0 | 8ms |
+| ✅ | OPDS2SupportingTypesTests | 5 | 5 | 0 | 273ms |
+| ✅ | OPDSAcquisitionPathExpandedTests | 15 | 15 | 0 | 353ms |
+| ✅ | OPDSFeedCacheTests | 14 | 14 | 0 | 57ms |
+| ✅ | OPDSFeedMigrationTests | 11 | 11 | 0 | 479ms |
+| ✅ | OPDSFeedParsingTests | 2 | 2 | 0 | 254ms |
+| ✅ | OPDSFeedServiceStateMachineTests | 3 | 3 | 0 | 249ms |
+| ✅ | OPDSFeedServiceTests | 2 | 2 | 0 | 6ms |
+| ✅ | OPDSFormatTests | 13 | 13 | 0 | 23ms |
+| ✅ | OPDSParserCoreTests | 4 | 4 | 0 | 14ms |
+| ✅ | OPDSParserTests | 4 | 4 | 0 | 9ms |
+| ✅ | OPDSParsingTests | 57 | 57 | 0 | 942ms |
+| ✅ | OfflineActionTests | 29 | 29 | 0 | 67ms |
+| ✅ | OfflineQueueCoordinatorTests | 11 | 11 | 0 | 68ms |
+| ✅ | OfflineQueueServiceExtendedTests | 13 | 13 | 0 | 5.21s |
+| ✅ | OfflineQueueServiceTests | 17 | 17 | 0 | 6.89s |
+| ✅ | OpenAccessAdapterTests | 13 | 13 | 0 | 78ms |
+| ✅ | OverdriveDeferredFulfillmentTests | 6 | 6 | 0 | 15ms |
+| ✅ | OverdriveDownloadHandlerTests | 9 | 9 | 0 | 194ms |
+| ✅ | OverdriveFulfillmentTests | 14 | 13 | 0 | 281ms |
+| ✅ | PDFExtensionsTests | 20 | 20 | 0 | 47ms |
+| ✅ | PDFKitThumbnailProviderTests | 5 | 5 | 0 | 90ms |
+| ✅ | PDFReaderTests | 12 | 12 | 0 | 29ms |
+| ✅ | PDFSearchEmptyStateTests | 4 | 4 | 0 | 3ms |
+| ✅ | PP3596RegressionTests | 3 | 3 | 0 | 42ms |
+| ❌ | Palace | 2 | 1 | **1** | <1ms |
+| ✅ | PalaceCheckPropertyTests | 8 | 8 | 0 | 215ms |
+| ✅ | PalaceErrorCategoryTests | 20 | 20 | 0 | 31ms |
+| ✅ | PalaceErrorExtendedTests | 23 | 23 | 0 | 225ms |
+| ✅ | PalaceErrorTests | 11 | 11 | 0 | 60ms |
+| ✅ | PalaceHapticTests | 4 | 4 | 0 | 22ms |
+| ✅ | PalaceMotionTests | 11 | 11 | 0 | 58ms |
+| ✅ | PalacePDFViewTests | 12 | 12 | 0 | 59ms |
+| ✅ | PalacePressableButtonStyleTests | 6 | 6 | 0 | 4ms |
+| ✅ | PalaceTestSetupObservationTests | 4 | 4 | 0 | 52ms |
+| ✅ | PalaceWiringTestCaseTests | 4 | 4 | 0 | 14ms |
+| ✅ | ParserFuzzTests | 4 | 4 | 0 | 11.81s |
+| ✅ | PatronProfileContractTests | 4 | 4 | 0 | 30ms |
+| ✅ | PerformanceMonitorTests | 14 | 14 | 0 | 719ms |
+| ✅ | PerformanceReportTests | 14 | 14 | 0 | 57ms |
+| ✅ | PersistentLoggerTests | 9 | 9 | 0 | 586ms |
+| ✅ | PlaybackBootstrapperAudioSessionTests | 2 | 2 | 0 | 70ms |
+| ✅ | PlaybackBootstrapperTests | 8 | 8 | 0 | 3.40s |
+| ✅ | PlaybackFailureRecordTests | 5 | 5 | 0 | 9ms |
+| ✅ | PlaybackOpenPolicyTests | 7 | 7 | 0 | 97ms |
+| ✅ | PlaybackRateTests | 18 | 18 | 0 | 26ms |
+| ✅ | PlaybackTrackingRegressionTests | 5 | 5 | 0 | 94ms |
+| ✅ | PositionPersistenceLogicTests | 6 | 6 | 0 | 6ms |
+| ✅ | PositionPersistenceTests | 2 | 2 | 0 | 5ms |
+| ✅ | PositionSyncServiceTests | 13 | 13 | 0 | 186ms |
+| ✅ | PositionSyncTests | 5 | 5 | 0 | 6ms |
+| ✅ | PositionWriterContractTests | 6 | 6 | 0 | 41ms |
+| ✅ | PostUpdateMigrationTests | 5 | 5 | 0 | 28ms |
+| ✅ | ProblemDocumentContractTests | 4 | 4 | 0 | 33ms |
+| ✅ | ProblemDocumentLoanExpiryTests | 5 | 5 | 0 | 44ms |
+| ✅ | ProblemDocumentTests | 12 | 12 | 0 | 13ms |
+| ✅ | ProblemReportEmailTests | 8 | 8 | 0 | 31ms |
+| ✅ | RatingCardMotionGateTests | 5 | 5 | 0 | 9ms |
+| ✅ | RatingEligibilityPolicyTests | 17 | 17 | 0 | 160ms |
+| ✅ | RatingEngagementTrackerTests | 9 | 9 | 0 | 203ms |
+| ✅ | RatingFeedbackPresenterTests | 3 | 3 | 0 | 17ms |
+| ✅ | RatingPromptPresenterTests | 15 | 15 | 0 | 191ms |
+| ✅ | ReachabilityTests | 10 | 10 | 0 | 54ms |
+| ✅ | Reader2BookmarkContractTests | 3 | 3 | 0 | 17ms |
+| ✅ | Reader2PositionAdapterContractTests | 4 | 3 | 0 | 294ms |
+| ✅ | Reader2PositionResumeContractTests | 3 | 3 | 0 | 143ms |
+| ✅ | ReaderAccessibilityTests | 7 | 7 | 0 | 158ms |
+| ✅ | ReaderChromeToggleFadeTests | 3 | 3 | 0 | 39ms |
+| ✅ | ReaderEditingActionsTests | 5 | 5 | 0 | 40ms |
+| ✅ | ReaderErrorTests | 5 | 5 | 0 | 5ms |
+| ✅ | ReaderNavBarVoiceOverTests | 2 | 2 | 0 | 6ms |
+| ✅ | ReaderServiceSyncTests | 3 | 3 | 0 | 16ms |
+| ✅ | ReaderThemeTests | 24 | 24 | 0 | 129ms |
+| ✅ | ReadingPositionTests | 22 | 22 | 0 | 101ms |
+| ✅ | ReadingSessionTrackerTests | 13 | 13 | 0 | 188ms |
+| ✅ | ReadingStatsServiceTests | 12 | 12 | 0 | 52ms |
+| ✅ | ReadingStatsStoreTests | 9 | 9 | 0 | 82ms |
+| ✅ | RedirectHandlingIntegrationTests | 4 | 4 | 0 | 16ms |
+| ✅ | RedirectPolicyTests | 9 | 9 | 0 | 21ms |
+| ✅ | RegistryFileRecoveryTests | 21 | 21 | 0 | 523ms |
+| ✅ | RemoteFeatureFlagsGapTests | 4 | 4 | 0 | 276ms |
+| ✅ | RemoteFeatureFlagsSideLoadingTests | 5 | 5 | 0 | 14ms |
+| ✅ | RemoteFeatureFlagsTests | 11 | 11 | 0 | 258ms |
+| ✅ | ResourcePropertiesLengthTests | 3 | 3 | 0 | 41ms |
+| ✅ | RetryClassificationTests | 17 | 17 | 0 | 44ms |
+| ✅ | ReturnFlowTests | 1 | 1 | 0 | 2ms |
+| ✅ | RightsManagementDetectionTests | 5 | 5 | 0 | 37ms |
+| ✅ | RightsManagementDispatcherTests | 10 | 10 | 0 | 401ms |
+| ✅ | RuntimeQuiescenceGateTests | 11 | 10 | 0 | 1.37s |
+| ✅ | RuntimeQuiescenceLintTests | 5 | 5 | 0 | 928ms |
+| ✅ | SAMLCookieSyncTests | 5 | 5 | 0 | 78ms |
+| ✅ | SAMLLogoutCallbackDetectionTests | 4 | 4 | 0 | 7ms |
+| ✅ | SAMLLogoutLinkParsingTests | 5 | 5 | 0 | 247ms |
+| ✅ | SAMLLogoutURLTests | 4 | 4 | 0 | 12ms |
+| ✅ | SAMLPlusBiblioBoardExpirationTests | 8 | 8 | 0 | 218ms |
+| ✅ | SEMigrationsTests | 6 | 6 | 0 | 128ms |
+| ✅ | SafeDictionaryTests | 21 | 21 | 0 | 66ms |
+| ✅ | SamplePlayerErrorTests | 5 | 5 | 0 | 25ms |
+| ✅ | SampleTypeTests | 8 | 8 | 0 | 29ms |
+| ✅ | SceneDelegateTests | 1 | 1 | 0 | <1ms |
+| ✅ | ScopedResetTests | 9 | 9 | 0 | 61ms |
+| ✅ | SearchAccessibilityTests | 11 | 11 | 0 | 58ms |
+| ✅ | SearchFlowIntegrationTests | 8 | 8 | 0 | 695ms |
+| ✅ | SettingsViewModelComputedPropertyTests | 6 | 6 | 0 | 2.83s |
+| ✅ | SettingsViewModelEdgeCaseTests | 7 | 7 | 0 | 111ms |
+| ✅ | SettingsViewModelGapTests | 1 | 1 | 0 | 4ms |
+| ✅ | SettingsViewModelSyncTests | 14 | 14 | 0 | 156ms |
+| ✅ | SettingsViewModelTests | 33 | 33 | 0 | 421ms |
+| ✅ | SideloadImportContractTests | 1 | 1 | 0 | 164ms |
+| ✅ | SideloadedBookManagerTests | 17 | 17 | 0 | 155ms |
+| ✅ | SideloadedBookRegistryTests | 14 | 14 | 0 | 107ms |
+| ✅ | SideloadedLaneBridgeTests | 6 | 6 | 0 | 18ms |
+| ✅ | SideloadedLaneViewModelTests | 7 | 7 | 0 | 16.73s |
+| ✅ | SignInFormPresentationTests | 3 | 3 | 0 | 3ms |
+| ✅ | SignInModalLifecycleTests | 9 | 9 | 0 | 552ms |
+| ✅ | SignInModalPredicateTests | 3 | 3 | 0 | 3ms |
+| ✅ | SignInModalSAMLOIDCTests | 6 | 6 | 0 | 18ms |
+| ✅ | SignInOAuthErrorPropagationTests | 8 | 8 | 0 | 620ms |
+| ✅ | SignInToReadFlowIntegrationTests | 5 | 5 | 0 | 469ms |
+| ✅ | SignInWebSheetIntegrationTests | 3 | 3 | 0 | 3.80s |
+| ✅ | SignInWebSheetViewModelTests | 31 | 31 | 0 | 416ms |
+| ✅ | SignOutCacheClearingTests | 3 | 3 | 0 | 8ms |
+| ✅ | SingletonResetRegistryTests | 5 | 5 | 0 | 26ms |
+| ✅ | SkeletonTests | 22 | 22 | 0 | 42ms |
+| ✅ | StatsViewModelTests | 10 | 10 | 0 | 348ms |
+| ✅ | StatusAnnouncementTests | 22 | 22 | 0 | 296ms |
+| ✅ | StopPositionSaveTests | 2 | 2 | 0 | 8ms |
+| ✅ | StoreTests | 5 | 5 | 0 | 19ms |
+| ✅ | StreamingReaderPresentationContractTests | 1 | 1 | 0 | 7ms |
+| ✅ | StreamingReaderProgressStoreTests | 7 | 7 | 0 | 57ms |
+| ✅ | StreamingReaderViewControllerScrollRestoreTests | 12 | 12 | 0 | 1.57s |
+| ✅ | StreamingReaderViewModelTests | 9 | 9 | 0 | 39ms |
+| ✅ | StringExtensionTests | 8 | 8 | 0 | 39ms |
+| ✅ | StringExtensionsTests | 3 | 3 | 0 | 5ms |
+| ✅ | StringHTMLEntitiesTests | 7 | 7 | 0 | 69ms |
+| ✅ | StringNYPLAdditionsTests | 4 | 4 | 0 | 7ms |
+| ✅ | String_NYPLAdditionsTests | 4 | 4 | 0 | 23ms |
+| ✅ | SupportSectionDecisionTests | 5 | 5 | 0 | 8ms |
+| ✅ | SyncConflictResolutionTests | 3 | 3 | 0 | 7ms |
+| ✅ | SyncDeletionGuardTests | 5 | 5 | 0 | 32ms |
+| ✅ | SyncDeletionRatioTests | 6 | 6 | 0 | 26ms |
+| ✅ | SyncPermissionTests | 5 | 5 | 0 | 101ms |
+| ✅ | TPPAccountAuthStateEnumTests | 5 | 5 | 0 | 23ms |
+| ✅ | TPPAccountListDataSourceTests | 3 | 3 | 0 | 11ms |
+| ✅ | TPPAdobeActivationSkipTests | 6 | 6 | 0 | 178ms |
+| ✅ | TPPAgeCheckCompletionTests | 5 | 5 | 0 | 187ms |
+| ✅ | TPPAgeCheckIsValidTests | 5 | 5 | 0 | 5ms |
+| ✅ | TPPAgeCheckStateMachineTests | 4 | 4 | 0 | 302ms |
+| ✅ | TPPAgeCheckTests | 6 | 6 | 0 | 1.18s |
+| ✅ | TPPAgeCheckVerifyDecisionTests | 5 | 5 | 0 | 162ms |
+| ✅ | TPPAlertUtilsTests | 45 | 45 | 0 | 895ms |
+| ✅ | TPPAnnotationsHermeticTests | 15 | 15 | 0 | 53ms |
+| ✅ | TPPAnnotationsOverrideTests | 4 | 4 | 0 | 132ms |
+| ✅ | TPPAnnotationsTests | 29 | 29 | 0 | 3.94s |
+| ✅ | TPPAnnouncementManagerTests | 3 | 3 | 0 | 19ms |
+| ✅ | TPPAuthDocumentContractTests | 3 | 3 | 0 | 13ms |
+| ✅ | TPPBackgroundExecutorTests | 3 | 3 | 0 | 27ms |
+| ✅ | TPPBadgeImageGapTests | 2 | 2 | 0 | 10ms |
+| ✅ | TPPBaseReaderViewControllerInitialLocationTests | 10 | 10 | 0 | 138ms |
+| ✅ | TPPBasicAuthTests | 11 | 11 | 0 | 58ms |
+| ✅ | TPPBookAccessibilityLabelTests | 8 | 8 | 0 | 22ms |
+| ✅ | TPPBookAuthorCoverageTests | 3 | 3 | 0 | 3ms |
+| ✅ | TPPBookAuthorTests | 6 | 6 | 0 | 5ms |
+| ✅ | TPPBookBearerTokenTests | 9 | 8 | 0 | 126ms |
+| ✅ | TPPBookButtonsStateTests | 7 | 7 | 0 | 73ms |
+| ✅ | TPPBookContentMetadataFilesHelperTests | 9 | 9 | 0 | 36ms |
+| ✅ | TPPBookContentTypeConverterStreamingHTMLTests | 2 | 2 | 0 | 3ms |
+| ✅ | TPPBookContentTypeConverterTests | 4 | 4 | 0 | 13ms |
+| ✅ | TPPBookContentTypeExtendedTests | 4 | 4 | 0 | 75ms |
+| ✅ | TPPBookContentTypeTests | 14 | 14 | 0 | 31ms |
+| ❌ | TPPBookCoverRegistryTests | 14 | 10 | **4** | 423ms |
+| ✅ | TPPBookCreationTests | 7 | 7 | 0 | 34ms |
+| ✅ | TPPBookExtensionsTests | 21 | 21 | 0 | 502ms |
+| ✅ | TPPBookIsDRMProtectedTests | 9 | 9 | 0 | 18ms |
+| ✅ | TPPBookLocationCoverageTests | 7 | 7 | 0 | 632ms |
+| ✅ | TPPBookLocationEdgeCaseTests | 27 | 27 | 0 | 57ms |
+| ✅ | TPPBookLocationKeyTests | 3 | 3 | 0 | 38ms |
+| ✅ | TPPBookLocationTests | 11 | 11 | 0 | 34ms |
+| ✅ | TPPBookModelGapTests | 4 | 4 | 0 | 13ms |
+| ✅ | TPPBookRegistryAsyncReadinessTests | 3 | 3 | 0 | 166ms |
+| ❌ | TPPBookRegistryAtomicWriteTests | 10 | 6 | **4** | 2.65s |
+| ✅ | TPPBookRegistryBookRetrievalTests | 7 | 7 | 0 | 133ms |
+| ✅ | TPPBookRegistryBookmarkTests | 7 | 7 | 0 | 4.10s |
+| ✅ | TPPBookRegistryCorruptedDataTests | 5 | 5 | 0 | 196ms |
+| ✅ | TPPBookRegistryDataTests | 4 | 4 | 0 | 5ms |
+| ✅ | TPPBookRegistryDependencyTests | 4 | 4 | 0 | 135ms |
+| ✅ | TPPBookRegistryFulfillmentIdTests | 4 | 4 | 0 | 20ms |
+| ✅ | TPPBookRegistryLargeCorpusTests | 5 | 5 | 0 | 51.64s |
+| ✅ | TPPBookRegistryLoadReentrancyTests | 2 | 2 | 0 | 10ms |
+| ✅ | TPPBookRegistryLocationTests | 4 | 4 | 0 | 20ms |
+| ✅ | TPPBookRegistryMigrationTests | 16 | 16 | 0 | 3.61s |
+| ✅ | TPPBookRegistryPersistenceTests | 10 | 10 | 0 | 17.90s |
+| ✅ | TPPBookRegistryProcessingTests | 2 | 2 | 0 | 24ms |
+| ✅ | TPPBookRegistryPublisherTests | 6 | 6 | 0 | 201ms |
+| ✅ | TPPBookRegistryRecordPersistenceTests | 3 | 3 | 0 | 26ms |
+| ✅ | TPPBookRegistryRecordTests | 10 | 10 | 0 | 12ms |
+| ✅ | TPPBookRegistryStateConcurrencyTests | 2 | 2 | 0 | 158ms |
+| ✅ | TPPBookRegistryStateManagementTests | 11 | 11 | 0 | 192ms |
+| ✅ | TPPBookRegistryThreadSafetyTests | 3 | 3 | 0 | 116ms |
+| ✅ | TPPBookRegistryUpdateAndRemoveTests | 1 | 1 | 0 | 1.49s |
+| ✅ | TPPBookRequiresAdobeDRMTests | 6 | 6 | 0 | 4ms |
+| ✅ | TPPBookSerializationTests | 13 | 13 | 0 | 40ms |
+| ✅ | TPPBookStateInitializationTests | 4 | 4 | 0 | 36ms |
+| ✅ | TPPBookStateTests | 4 | 4 | 0 | 33ms |
+| ✅ | TPPBookTests | 98 | 98 | 0 | 471ms |
+| ✅ | TPPBookmarkDeletionLogTests | 11 | 11 | 0 | 58ms |
+| ✅ | TPPBookmarkFactoryInitTests | 2 | 2 | 0 | 23ms |
+| ✅ | TPPBookmarkFactoryServerAnnotationEdgeCaseTests | 5 | 5 | 0 | 41ms |
+| ✅ | TPPBookmarkFactoryTests | 15 | 15 | 0 | 352ms |
+| ✅ | TPPBookmarkR3ConversionTests | 5 | 5 | 0 | 39ms |
+| ✅ | TPPBookmarkR3LocationTests | 13 | 13 | 0 | 70ms |
+| ✅ | TPPBookmarkSpecTests | 1 | 1 | 0 | 4ms |
+| ✅ | TPPCachingTests | 3 | 3 | 0 | 8ms |
+| ✅ | TPPCapturedCredentialsTests | 5 | 5 | 0 | 169ms |
+| ✅ | TPPConfigurationCustomRegistryTests | 16 | 16 | 0 | 54ms |
+| ✅ | TPPConfigurationTests | 22 | 22 | 0 | 214ms |
+| ✅ | TPPContentTypeTests | 9 | 9 | 0 | 150ms |
+| ✅ | TPPCredentialConcurrencyTests | 3 | 3 | 0 | 6ms |
+| ✅ | TPPCredentialIsolationE2ETests | 5 | 0 | 0 | 271ms |
+| ✅ | TPPCredentialPersistenceTests | 6 | 6 | 0 | 461ms |
+| ✅ | TPPCredentialSnapshotCoherenceTests | 3 | 0 | 0 | 154ms |
+| ✅ | TPPCredentialSnapshotTests | 8 | 8 | 0 | 49ms |
+| ✅ | TPPCredentialsCoverageTests | 9 | 9 | 0 | 63ms |
+| ✅ | TPPCredentialsTests | 26 | 26 | 0 | 70ms |
+| ✅ | TPPCrossLibrarySignOutTests | 6 | 6 | 0 | 261ms |
+| ✅ | TPPDRMFailureCredentialPreservationTests | 4 | 4 | 0 | 375ms |
+| ✅ | TPPErrorLoggerTests | 27 | 27 | 0 | 76ms |
+| ✅ | TPPIdleSignOutRegressionTests | 13 | 13 | 0 | 1.44s |
+| ✅ | TPPJWKConversionTest | 1 | 1 | 0 | 24ms |
+| ✅ | TPPKeychainManagerTests | 5 | 5 | 0 | 80ms |
+| ✅ | TPPLastReadPositionPosterTests | 13 | 13 | 0 | 353ms |
+| ✅ | TPPLastReadPositionSynchronizerIntegrationTests | 5 | 5 | 0 | 11ms |
+| ✅ | TPPLastReadPositionSynchronizerTests | 23 | 23 | 0 | 150ms |
+| ✅ | TPPLastReadPositionSynchronizer_BehaviorDocumentationTests | 5 | 5 | 0 | 14ms |
+| ✅ | TPPLastReadPositionSynchronizer_BookLocationTests | 9 | 9 | 0 | 13ms |
+| ✅ | TPPLastReadPositionSynchronizer_ConcurrencyTests | 3 | 3 | 0 | 25ms |
+| ✅ | TPPLastReadPositionSynchronizer_ReadiumBookmarkTests | 9 | 9 | 0 | 59ms |
+| ✅ | TPPLastReadPositionSynchronizer_SyncLogicTests | 10 | 10 | 0 | 19ms |
+| ✅ | TPPLastReadPositionSynchronizer_WriterDelegationTests | 4 | 4 | 0 | 66ms |
+| ✅ | TPPLoginNoActivationTests | 3 | 3 | 0 | 96ms |
+| ✅ | TPPMainThreadCheckerTests | 4 | 4 | 0 | 100ms |
+| ✅ | TPPMigrationManagerTests | 15 | 15 | 0 | 39ms |
+| ✅ | TPPNetworkExecutorAPITests | 14 | 14 | 0 | 63ms |
+| ✅ | TPPNetworkExecutorStubbedTests | 17 | 17 | 0 | 296ms |
+| ✅ | TPPNetworkExecutorTests | 3 | 3 | 0 | 25ms |
+| ✅ | TPPNetworkResponderAuthCoordinatorTests | 5 | 5 | 0 | 18ms |
+| ✅ | TPPNetworkResponderTests | 12 | 12 | 0 | 52ms |
+| ✅ | TPPOPDSAcquisitionPathTests | 5 | 5 | 0 | 12ms |
+| ✅ | TPPOPDSEntryTests | 5 | 5 | 0 | 51ms |
+| ✅ | TPPOPDSFeedTests | 3 | 3 | 0 | 67ms |
+| ✅ | TPPOPDSGroupSwiftTests | 3 | 3 | 0 | 4ms |
+| ✅ | TPPOPDSLinkTests | 7 | 7 | 0 | 292ms |
+| ✅ | TPPOpenSearchDescriptionExpandedTests | 10 | 10 | 0 | 26ms |
+| ✅ | TPPOpenSearchDescriptionTests | 1 | 1 | 0 | 38ms |
+| ✅ | TPPPDFDocumentMetadataTests | 15 | 15 | 0 | 76ms |
+| ✅ | TPPPDFDocumentTests | 8 | 8 | 0 | 15ms |
+| ✅ | TPPPDFLocationCoverageTests | 7 | 7 | 0 | 31ms |
+| ✅ | TPPPDFLocationTests | 10 | 10 | 0 | 96ms |
+| ✅ | TPPPDFPageBookmarkTests | 9 | 9 | 0 | 14ms |
+| ✅ | TPPPDFPageTests | 5 | 5 | 0 | 40ms |
+| ✅ | TPPPDFReaderModeTests | 6 | 6 | 0 | 12ms |
+| ✅ | TPPPDFReaderSearchBindingTests | 3 | 3 | 0 | 18ms |
+| ✅ | TPPPerAccountIsolationTests | 8 | 0 | 0 | 433ms |
+| ✅ | TPPPreferredAuthSelectionTests | 8 | 8 | 0 | 411ms |
+| ✅ | TPPProblemDocumentCacheManagerTests | 12 | 12 | 0 | 285ms |
+| ✅ | TPPProblemDocumentTests | 21 | 21 | 0 | 771ms |
+| ✅ | TPPReaderAppearanceTests | 4 | 4 | 0 | 15ms |
+| ✅ | TPPReaderBlockNavigationTests | 12 | 12 | 0 | 83ms |
+| ✅ | TPPReaderBookmarksBusinessLogicTests | 12 | 12 | 0 | 482ms |
+| ✅ | TPPReaderBookmarksReadinessTests | 2 | 2 | 0 | 59ms |
+| ✅ | TPPReaderFontTests | 4 | 4 | 0 | 16ms |
+| ✅ | TPPReaderFootnoteAccessibilityTests | 16 | 16 | 0 | 15ms |
+| ✅ | TPPReaderPageListBusinessLogicTests | 27 | 27 | 0 | 92ms |
+| ✅ | TPPReaderPositionReportTests | 10 | 10 | 0 | 100ms |
+| ✅ | TPPReaderPreferencesLoadTests | 3 | 3 | 0 | 13ms |
+| ✅ | TPPReaderSettingsTests | 28 | 28 | 0 | 424ms |
+| ✅ | TPPReaderTOCBusinessLogicTests | 15 | 15 | 0 | 3.14s |
+| ✅ | TPPReaderTOCFlattenTests | 2 | 2 | 0 | 1.08s |
+| ✅ | TPPReadiumBookmarkLocationMatchingTests | 5 | 5 | 0 | 93ms |
+| ✅ | TPPReadiumBookmarkTests | 23 | 23 | 0 | 245ms |
+| ✅ | TPPReauthenticatorMockTests | 2 | 2 | 0 | 1ms |
+| ✅ | TPPReauthenticatorTests | 4 | 4 | 0 | 8ms |
+| ✅ | TPPReturnPromptHelperTests | 5 | 5 | 0 | 11ms |
+| ✅ | TPPSAMLCookieExpirationTests | 7 | 7 | 0 | 608ms |
+| ✅ | TPPSAMLFlowTests | 10 | 10 | 0 | 10ms |
+| ✅ | TPPSAMLReauthFlowTests | 2 | 2 | 0 | 130ms |
+| ✅ | TPPSAMLRegressionTests | 4 | 4 | 0 | 1.07s |
+| ✅ | TPPSAMLSignInTests | 26 | 26 | 0 | 886ms |
+| ✅ | TPPSAMLStateIsolationTests | 4 | 4 | 0 | 206ms |
+| ✅ | TPPSAMLStateMachineTests | 6 | 6 | 0 | 187ms |
+| ✅ | TPPSettingsTests | 6 | 6 | 0 | 37.30s |
+| ✅ | TPPSignInAdobeSkipTests | 14 | 14 | 0 | 994ms |
+| ✅ | TPPSignInAuthStateTransitionTests | 3 | 3 | 0 | 179ms |
+| ✅ | TPPSignInBusinessLogicExtendedTests | 58 | 58 | 0 | 2.28s |
+| ✅ | TPPSignInBusinessLogicOAuthTests | 11 | 11 | 0 | 464ms |
+| ✅ | TPPSignInBusinessLogicSignOutTests | 11 | 11 | 0 | 560ms |
+| ✅ | TPPSignInBusinessLogicStateMachineTests | 10 | 10 | 0 | 3.16s |
+| ✅ | TPPSignInBusinessLogicTests | 18 | 18 | 0 | 659ms |
+| ✅ | TPPSignInBusinessLogicTokenFlowTests | 3 | 3 | 0 | 108ms |
+| ✅ | TPPSignInBusinessLogicValidationCallbackOrderTests | 2 | 2 | 0 | 447ms |
+| ✅ | TPPSignInErrorHandlingTests | 2 | 2 | 0 | 70ms |
+| ✅ | TPPSignInProfileDocEdgeCaseTests | 3 | 3 | 0 | 133ms |
+| ✅ | TPPSignedInStateProviderTests | 3 | 3 | 0 | 5ms |
+| ✅ | TPPUserAccountAuthStateTests | 6 | 6 | 0 | 11ms |
+| ✅ | TPPUserAccountConcurrencyTests | 1 | 1 | 0 | 2ms |
+| ✅ | TPPUserAccountGapTests | 4 | 4 | 0 | 13ms |
+| ✅ | TPPUserAccountIsolationLintTests | 3 | 3 | 0 | 724ms |
+| ✅ | TPPUserAccountTestFactoryTests | 7 | 0 | 0 | 198ms |
+| ✅ | TPPUserFriendlyErrorTests | 11 | 11 | 0 | 8ms |
+| ✅ | TPPUserNotificationsTests | 10 | 10 | 0 | 110ms |
+| ✅ | TPPXMLSwiftTests | 16 | 16 | 0 | 93ms |
+| ✅ | TPPXMLTests | 3 | 3 | 0 | 6ms |
+| ❌ | TearDownRequiredLintTests | 5 | 4 | **1** | 1.23s |
+| ✅ | TestAppContainerFactoryTests | 5 | 5 | 0 | 231ms |
+| ✅ | TimeEntryTests | 3 | 3 | 0 | 3ms |
+| ✅ | TokenRefreshAndRetryQueueTests | 9 | 9 | 0 | 4.52s |
+| ✅ | TokenRefreshIntegrationTests | 2 | 2 | 0 | 29ms |
+| ✅ | TokenRefreshInterceptorAuthCoordinatorTests | 8 | 8 | 0 | 4.29s |
+| ✅ | TokenRefreshInterceptorTests | 24 | 24 | 0 | 6.73s |
+| ✅ | TokenRefreshOnForegroundTests | 10 | 10 | 0 | 3.75s |
+| ✅ | TokenRefreshTests | 25 | 25 | 0 | 161ms |
+| ✅ | TokenRefreshWatchdogTests | 5 | 5 | 0 | 243ms |
+| ✅ | TokenRequestCredentialGuardTests | 13 | 13 | 0 | 202ms |
+| ✅ | TokenRequestTests | 11 | 11 | 0 | 231ms |
+| ✅ | TokenResponseTests | 21 | 21 | 0 | 296ms |
+| ✅ | TriageBotKeyAdminTests | 4 | 4 | 0 | 27ms |
+| ✅ | TypographyPresetTests | 21 | 21 | 0 | 73ms |
+| ✅ | TypographyServiceTests | 31 | 31 | 0 | 1.13s |
+| ✅ | TypographySettingsViewModelTests | 27 | 27 | 0 | 482ms |
+| ✅ | UIAlertCACommitGuardTests | 9 | 9 | 0 | 507ms |
+| ✅ | UIColor_NYPLAdditionsTests | 1 | 1 | 0 | 3ms |
+| ✅ | URLBackupExclusionTests | 3 | 3 | 0 | 16ms |
+| ✅ | URLExtensionTests | 16 | 16 | 0 | 453ms |
+| ✅ | URLExtensionsTests | 11 | 11 | 0 | 27ms |
+| ✅ | URLRequestExtensionsCoverageTests | 3 | 3 | 0 | 4ms |
+| ✅ | URLRequestExtensionsTests | 11 | 11 | 0 | 33ms |
+| ✅ | URLRequestNYPLAdditionsTests | 11 | 11 | 0 | 83ms |
+| ✅ | URLRequest_NYPLTests | 1 | 1 | 0 | <1ms |
+| ✅ | URLResponseAuthenticationTests | 10 | 10 | 0 | 31ms |
+| ✅ | URLResponseNYPLTests | 14 | 14 | 0 | 32ms |
+| ✅ | URLSessionCredentialStorageTests | 3 | 3 | 0 | 4ms |
+| ✅ | URLSessionStubbingResetTests | 2 | 2 | 0 | 4ms |
+| ✅ | URLTypeTests | 2 | 2 | 0 | 4ms |
+| ✅ | URLValidationTests | 5 | 5 | 0 | 5ms |
+| ✅ | UnifiedOPDSServiceStateMachineTests | 2 | 2 | 0 | 189ms |
+| ✅ | UserAccountPublisherAuthStateTests | 5 | 5 | 0 | 12ms |
+| ✅ | UserAccountPublisherTests | 14 | 14 | 0 | 890ms |
+| ✅ | UserAccountValidationTests | 11 | 11 | 0 | 400ms |
+| ✅ | UserDefaultsIsolationLintTests | 2 | 2 | 0 | 593ms |
+| ✅ | UserProfileDocumentTests | 7 | 7 | 0 | 21ms |
+| ✅ | UserRetryTrackerTests | 10 | 10 | 0 | 104ms |
+| ✅ | XCTestCase_testUserDefaultsTests | 3 | 3 | 0 | 14ms |
+| ✅ | iPadOnMacRMSDKGuardTests | 7 | 7 | 0 | 20ms |
+
+## Failed Tests
+
+### ❌ Palace.PalaceTests
+
+- **Duration:** <1ms
+
+### ❌ TPPBookRegistryAtomicWriteTests.testSaveSync_LeavesNoStagingArtifactsInRegistryDir
+
+- **Duration:** 497ms
+
+### ❌ TPPBookRegistryAtomicWriteTests.First Run
+
+- **Duration:** 1.40s
+
+### ❌ TPPBookRegistryAtomicWriteTests.Retry 1
+
+- **Duration:** 20ms
+
+### ❌ TPPBookRegistryAtomicWriteTests.Retry 2
+
+- **Duration:** 68ms
+
+### ❌ TearDownRequiredLintTests.testTearDownRequired_runsAgainstPalaceTestsTree
+
+- **Duration:** 1.22s
+
+### ❌ AccountsManagerStateMachineWiringTests.testStartDownload_endToEnd_capturedAccountIdReachesAuthorizationHeader
+
+- **Duration:** <1ms
+
+### ❌ TPPBookCoverRegistryTests.testHostFailureTracker_SuccessClearsFailure
+
+- **Duration:** 11ms
+
+### ❌ TPPBookCoverRegistryTests.testHostFailureTracker_TracksHostsIndependently
+
+- **Duration:** 5ms
+
+### ❌ TPPBookCoverRegistryTests.testHostFailureTracker_RecordsFailureAndSkips
+
+- **Duration:** 3ms
+
+### ❌ TPPBookCoverRegistryTests.testHostFailureTracker_ResetsAfterCooldown
+
+- **Duration:** 207ms
+
+### ❌ DownloadTaskLifecycleServiceTests.testRegisterStartedTask_resumesTheTask
+
+- **Duration:** <1ms
+
+### ❌ AudiobookSessionStateTransitionTests.testPlayingState_isActive_andHasBookId
+
+- **Duration:** <1ms
+
+### ❌ AudiobookSessionStateTransitionTests.testSessionManager_updateCoverImage_nil_clearsImage
+
+- **Duration:** <1ms
+
+---
+
+## 📦 Artifacts
+
+| Artifact | Description |
+|----------|-------------|
+| **test-results** | Full `.xcresult` bundle - open in Xcode for detailed analysis |
+| **test-report** | This Markdown report |
+| **test-data** | JSON data file for custom tooling |
+
+### How to View in Xcode
+
+1. Download the **test-results** artifact
+2. Unzip the downloaded file
+3. Double-click the `.xcresult` bundle to open in Xcode
+4. Navigate to failed tests to see stack traces and failure details
