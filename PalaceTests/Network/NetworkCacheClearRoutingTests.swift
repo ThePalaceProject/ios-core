@@ -70,8 +70,8 @@ final class NetworkCacheClearRoutingTests: XCTestCase {
         let url = try XCTUnwrap(URL(string: "https://feeds.example.org/catalog"))
 
         let request = seedResponse(into: cache, url: url, body: "authenticated-feed")
-        XCTAssertNotNil(cache.cachedResponse(for: request),
-                        "Precondition: the response must be cached before clearCache()")
+        _ = try XCTUnwrap(cache.cachedResponse(for: request),
+                          "Precondition: the response must be cached before clearCache()")
 
         executor.clearCache()
 
@@ -95,7 +95,7 @@ final class NetworkCacheClearRoutingTests: XCTestCase {
                        "The executor's private URLCache must not be URLCache.shared")
 
         let request = seedResponse(into: privateCache, url: url, body: "feed-body")
-        XCTAssertNotNil(privateCache.cachedResponse(for: request))
+        _ = try XCTUnwrap(privateCache.cachedResponse(for: request))
 
         // OLD behavior: clearing the shared cache.
         URLCache.shared.removeAllCachedResponses()

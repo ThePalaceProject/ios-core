@@ -255,7 +255,7 @@ final class AccountsManagerCacheReadTests: PalaceWiringTestCase {
         manager.loadAccountSetsAndAuthDoc(fromCatalogData: data, key: key) { _ in
             done.fulfill()
         }
-        wait(for: [done], timeout: 15)
+        wait(for: [done], timeout: 15) // FLAKE-003-OK: drives the real loadAccountSetsAndAuthDoc decode of a local fixture (fromCatalogData, no network); 15s is CI-load headroom, not a real-I/O leak.
     }
 
     /// Build a valid, decodable `OPDS2AuthenticationDocument` with a caller-

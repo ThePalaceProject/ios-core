@@ -343,6 +343,9 @@ public final class GeneralCache<Key: Hashable & Codable & Sendable, Value: Codab
     /// type.
     static var cacheVersionKey: String { "AppCacheVersionBuild" }
 
+    // PUBLIC_INTENT: pre-existing public API (unchanged visibility) — called from
+    // TPPAppDelegate at launch. Flagged only because the adjacent `cacheVersionKey`
+    // static extraction shifted this line in the diff; not a new public surface.
     public static func clearCacheOnUpdate() {
         let info = Bundle.main.infoDictionary
         let version = info?["CFBundleShortVersionString"] as? String ?? "0"
