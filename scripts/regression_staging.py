@@ -875,17 +875,28 @@ def _app_data_container(udid: str) -> Path:
 
 
 def forge_streaming_state(d: Driver) -> None:
-    """Deterministically forge the "license landed but .lcpa content NOT local"
-    state for every downloaded LCP audiobook: delete each .lcpa CONTENT file while
-    leaving its .lcpl license sibling (and the registry's `.downloadSuccessful`
-    marker) intact. Opening such a book then routes through the LCP STREAMING path
-    — the exact PP-4613 cold-load regression surface — with ZERO dependence on
-    catching the live ~1.5s download window (the reason this journey was PHASE2).
+    """SUPERSEDED (2026-07-08) — no longer used by the cold-load recipe. Kept only
+    as a documented lesson; do NOT wire into a recipe.
 
-    The .lcpl sibling is preserved so LCPAdapter's tier-2 fallback opens via
-    streaming (not a license re-download). Raises StagingError if no .lcpa is
-    present — nothing downloaded to forge, so the recipe gates honestly rather than
-    recording against a fully-local book that wouldn't exercise the regression."""
+    Original premise: delete each downloaded `.lcpa` CONTENT file (keeping its
+    `.lcpl` license + registry `.downloadSuccessful`) so the next open routes
+    through the LCP *streaming* path — the Readium-3.9.0 "Audiobook Unavailable"
+    surface — without racing the live download.
+
+    Why it's retired: the PP-4542 fix (#1094) REPLACED that streaming path. A
+    fresh-borrow LCP audiobook whose `.lcpa` isn't local now goes through the
+    download-gate (`AudiobookSessionManager.awaitAudiobookContentLocal`), which is
+    a bounded (180s) *poll of the file* — "the download is already in flight … this
+    is a wait, not a trigger." Deleting a COMPLETED `.lcpa` leaves NO active
+    transfer, so the poll can only ever TIME OUT → "Audiobook Unavailable" after
+    3 minutes — an artifact of an impossible state, not the real cold-load path.
+    The correct stage is a GENUINE in-flight download (see
+    `reborrow_audiobook_streaming`). The fixture assumption also drifted: the A1QA
+    standing "Animal Farm" is now a BiblioBoard bearer-token audiobook (zero
+    `.lcpa`), so this raised `StagingError` and could not even reach its
+    precondition.
+
+    Raises StagingError if no .lcpa is present."""
     container = _app_data_container(d.udid)
     lcpas = audiobook_content_files_under(container)
     if not lcpas:
@@ -896,6 +907,51 @@ def forge_streaming_state(d: Driver) -> None:
         f.unlink()
     print(f"[staging] forge_streaming_state: deleted {len(lcpas)} .lcpa content "
           f"file(s) (kept .lcpl) → next open streams (PP-4613 path)")
+
+
+# A LARGE, RETURNABLE LCP audiobook from the A1QA "Audible Titles" lane. Size is a
+# FEATURE: the download window must comfortably outlast the journey's open so
+# "tap Listen while still downloading" is reliable (small audiobooks race the
+# ~1.5s window — the original PHASE2 flake). Swap this if the A1QA feed changes;
+# it MUST be a true LCP audiobook (fulfills as "Listen", downloads a `.lcpa`) and
+# returnable (so the recipe can reset + re-borrow to force a fresh in-flight
+# download each run). Verified live 2026-07-08: ~778 MB `.lcpa`.
+_COLD_LOAD_LCP_AUDIOBOOK = "Carl's Doomsday Scenario"
+
+
+def reborrow_audiobook_streaming(d: Driver, title: str = _COLD_LOAD_LCP_AUDIOBOOK) -> None:
+    """Leave `title` MID-DOWNLOAD in My Books so the journey's next 'Listen' tap
+    exercises the REAL cold-open-during-download path (PP-4613 / the PP-4542
+    await-gate) — the correct replacement for the retired forge_streaming_state.
+
+    Flow: reach detail via search → if already borrowed, Return first (so the
+    re-borrow triggers a FRESH download, not an instant open from a complete local
+    cache) → Borrow → return IMMEDIATELY without waiting for completion. The book
+    is large by design, so the `.lcpa` is still downloading when the journey opens
+    it: the await-gate polls the genuine in-flight transfer, content lands, playback
+    starts (fixed) or the 'Audiobook Unavailable' alert fires (regressed). A live
+    download also renders real 'Downloading… %' UI, which the journey's
+    required_text_any asserts as forward progress.
+
+    Idempotent: the Return→re-Borrow reset makes each run start a fresh download.
+    Raises StagingError if the book offers no Borrow/Get affordance."""
+    _open_book_detail(d, title)
+    # Reset a prior run's completed/partial download so the re-borrow re-downloads.
+    if d.find("Return"):
+        d.tap_text("Return")
+        tap_dialog_button(d, "Return", "Cancel")
+        time.sleep(2.5)
+        _open_book_detail(d, title)
+    if d.find("Borrow"):
+        d.tap_text("Borrow")
+    elif d.find("Get"):
+        d.tap_text("Get")
+    else:
+        raise StagingError(
+            f"reborrow_audiobook_streaming: no Borrow/Get on '{title}' detail — "
+            f"is it still in the A1QA Audible lane? (update _COLD_LOAD_LCP_AUDIOBOOK)")
+    # Do NOT poll for 'Listen'/completion — leaving it in flight IS the point.
+    time.sleep(2.5)   # let the loan register + the download kick off
 
 
 PRIMITIVES = {
@@ -912,7 +968,8 @@ PRIMITIVES = {
     "search_present_title": lambda d, *a: search_present_title(d),
     "return_book": lambda d, *a: return_book(d, *(a or (None,))),
     "goto": lambda d, screen: navigate_to(d, screen),
-    "forge_streaming_state": lambda d, *a: forge_streaming_state(d),
+    "forge_streaming_state": lambda d, *a: forge_streaming_state(d),  # SUPERSEDED — kept for the lesson; no recipe wires it
+    "reborrow_audiobook_streaming": lambda d, *a: reborrow_audiobook_streaming(d, *(a or (_COLD_LOAD_LCP_AUDIOBOOK,))),
 }
 
 
@@ -1040,18 +1097,22 @@ STAGING_RECIPES: dict[str, list[tuple]] = {
         ("sign_in", "a1qa"), ("goto", "my_books"), ("dismiss_save_password",),
     ],
 
-    # --- audiobook COLD-LOAD (PP-4613, deterministic forge) ---
-    # Open a "downloaded" LCP audiobook whose .lcpa content is NOT local → forces
-    # the LCP streaming path (the Readium-3.9.0 "Audiobook Unavailable" regression).
-    # forge_streaming_state deletes the standing fixture's .lcpa (keeping the .lcpl
-    # license + registry .downloadSuccessful), so opening streams — deterministically,
-    # without racing the ~1.5s live download. The .lcpa is a local cache artifact, not
-    # the loan, so this does NOT mutate/return the read-only A1QA standing fixture; a
-    # re-download (or fixture re-provision) restores it.
+    # --- audiobook COLD-LOAD (PP-4613, real in-flight download) ---
+    # Leave a LARGE LCP audiobook MID-DOWNLOAD, then the journey opens it before the
+    # `.lcpa` content lands — the real cold-open-during-download path the PP-4542
+    # download-gate handles (hold `.loading`, poll the in-flight transfer, open from
+    # the local package when it lands; regressed = "Audiobook Unavailable").
+    # Supersedes the old forge_streaming_state delete-premise: PP-4542 replaced the
+    # LCP streaming path with a 180s file-poll of an ALREADY-in-flight download, so
+    # deleting a COMPLETED `.lcpa` (no active transfer) can only time out — it no
+    # longer reproduces the regression. A large title keeps the download window wide
+    # enough that the open reliably lands mid-transfer. `reborrow_audiobook_streaming`
+    # returns-then-re-borrows, so it re-downloads a FRESH copy each run (idempotent);
+    # the Audible-lane title is a returnable loan, not the read-only standing fixture.
     "audiobook-cold-load-first-open": [
         ("dismiss_first_launch",), ("add_library", "A1QA Test Library"),
-        ("sign_in", "a1qa"), ("goto", "my_books"), ("dismiss_save_password",),
-        ("forge_streaming_state",),
+        ("sign_in", "a1qa"), ("dismiss_save_password",),
+        ("reborrow_audiobook_streaming",), ("goto", "my_books"),
     ],
 }
 
