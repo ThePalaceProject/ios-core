@@ -154,7 +154,10 @@ private extension CatalogSearchView {
                         BookRowSkeletonView()
                     }
                 }
-                .padding()
+                // Match `BookListView`'s insets (the loaded results container)
+                // so rows don't shift horizontally when the search completes.
+                .padding(.horizontal, 12)
+                .padding(.vertical, 12)
                 .id("search-results-top")
             } else if viewModel.shouldShowNoResultsState {
                 // BUG-003: When a completed search returns zero results, render

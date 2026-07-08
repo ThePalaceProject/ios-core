@@ -30,20 +30,25 @@ struct AccountDetailSkeletonView: View {
         .accessibilityHidden(true)
     }
 
+    // Traces `AccountDetailView.accountHeaderSection` 1:1:
+    //   * `HStack(spacing: 12)` (Layout.logoSpacingList)
+    //   * 50×50 logo (Layout.logoSizeList) — a rounded square, since the real
+    //     logo is `Image.scaledToFit().frame(50×50)`, not a circular avatar.
+    //   * ONE headline line (`Text(libraryName).palaceFont(.headline)`) — the
+    //     real header has no subtitle, so there is no second line.
+    //   * `.listRowInsets(top: 8, leading: 25, bottom: 8, trailing: 25)` =
+    //     (verticalPaddingSmall, horizontalPadding) so the logo/text land at the
+    //     real header's x/y, and `.listRowBackground(.clear)`.
     private var headerSkeleton: some View {
         HStack(spacing: 12) {
-            SkeletonCircle(size: 50)
+            SkeletonBox(width: 50, height: 50, cornerRadius: PalaceRadius.card)
 
-            VStack(alignment: .leading, spacing: 8) {
-                SkeletonBox(width: 150, height: 20, cornerRadius: 4)
-                SkeletonBox(width: 90, height: 12, cornerRadius: 4)
-            }
+            SkeletonBox(width: 150, height: 20, cornerRadius: 4)
 
             Spacer()
         }
-        .padding(.vertical, 8)
         .listRowBackground(Color.clear)
-        .listRowInsets(EdgeInsets())
+        .listRowInsets(EdgeInsets(top: 8, leading: 25, bottom: 8, trailing: 25))
     }
 
     private var fieldSkeleton: some View {
