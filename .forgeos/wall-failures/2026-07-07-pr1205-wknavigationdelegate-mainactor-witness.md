@@ -7,10 +7,10 @@ changeset_id: ""
 wall: hook
 walls: [hook, reviewer]
 severity: high
-wall_status: proposed
-applied_in: ""
+wall_status: applied
+applied_in: "#1209"
 detector_script: "scripts/check-objc-witness-nearly-matches.sh"
-detector_status: queued
+detector_status: built
 no-detector: ""
 name: wall-failures-2026-07-07-pr1205-wknavigationdelegate-mainactor-witness
 type: evolving
@@ -48,12 +48,12 @@ It looked correct because: (a) it compiled (optional requirement, warning not er
 - **reviewer** (Phase B): the reviewer who approved marking the delegate methods `nonisolated` did not flag that a future SDK annotating the protocol `@MainActor` would silently de-register the witness. Reasonable to miss — the SDK change was in the future — which is exactly why the structural (compiler-signal) gate matters more than reviewer vigilance here.
 - **TDD/mutation**: N/A — the behavior *was* covered by `SignInWebSheetIntegrationTests`; that wall worked, but only fired when the SDK bumped, and only as a timeout (easy to dismiss as a flake — which it initially was).
 
-## Proposed permanent fix
+## Permanent fix (APPLIED in #1209)
 
 **Gate on the compiler's own signal.** Add a CI/tooling check that fails when the build log contains `nearly matches optional requirement` for any `@objc` protocol method (`WKNavigationDelegate`, `WKUIDelegate`, `UICollectionViewDelegate`, `CPTemplateApplicationSceneDelegate`, etc.). This catches the entire class — any optional `@objc` witness whose signature/isolation drifts from the SDK requirement — not just this instance.
 
-- `scripts/check-objc-witness-nearly-matches.sh <build-log>` — greps for `nearly matches optional requirement`, prints the offending file:line + the `candidate has non-matching type` note, exits non-zero. Wire into `scripts/xcode-test-optimized.sh` / `verify-pr.sh` post-build.
-- pytest in `scripts/tests/` with a fixture build log containing a nearly-matches warning (blocks) and one without (clean-path passes), per green-board contract #4.
+- `scripts/check-objc-witness-nearly-matches.sh <build-log>` — fires ONLY when the candidate method name equals the requirement name (true witness drift), ignoring benign different-name nearly-matches (e.g. CarPlay `didDisconnect`≈`didSelect`). Wired into `.github/workflows/unit-testing.yml`: the test step tees to `build-output.log` and a blocking `if: always()` step scans it. Dry-run on the current tree is clean (skips the 4 benign CarPlay warnings).
+- `scripts/tests/test_check_objc_witness_nearly_matches.sh` — block path, benign different-name pass path, clean pass, and allowlist (5/5). Run under `.github/workflows/tooling-checks.yml`.
 - CLAUDE.md note under the Swift 6 section: *"`nearly matches optional requirement` on an `@objc` delegate is never benign — it means the method is not the witness and the delegate callback will be silently skipped. Match the SDK's isolation exactly (`@MainActor` method + `@escaping @MainActor` handler for `WK_SWIFT_UI_ACTOR` protocols)."*
 
 Note: this is broader than Swift 6 — the same class of bug can appear any time an SDK changes an `@objc` optional requirement's signature. The gate is toolchain-durable.

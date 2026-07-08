@@ -78,3 +78,14 @@ jobs:
           else
             echo "No hook fixture test — skipping."
           fi
+
+      # 4. @objc-witness-drift detector (bash test — not collected by pytest).
+      #    Proves the same-name-drift block path, the benign different-name
+      #    pass path, and the allowlist. Guards the Unit-Tests workflow gate.
+      - name: objc-witness-drift detector test
+        run: |
+          if [ -f scripts/tests/test_check_objc_witness_nearly_matches.sh ]; then
+            bash scripts/tests/test_check_objc_witness_nearly_matches.sh
+          else
+            echo "No objc-witness detector test — skipping."
+          fi
