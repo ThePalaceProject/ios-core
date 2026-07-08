@@ -177,4 +177,25 @@ final class AudiobookSessionErrorTests: XCTestCase {
         // Unknown with different message
         XCTAssertNotEqual(AudiobookSessionError.unknown("a"), AudiobookSessionError.unknown("b"))
     }
+
+    // MARK: - Remote-command gate (Swift 6 off-main crash fix)
+
+    /// `PlaybackBootstrapper.remoteCommandStatus(hasActiveManager:)` is the pure,
+    /// `nonisolated` gate that all six `MPRemoteCommand` handlers now return
+    /// through after the Swift 6 off-main crash fix. Pinning BOTH branches kills
+    /// the gate-inversion mutant on the changed lines — a swapped pair of
+    /// statuses, or a `!hasActiveManager`, fails here. This is the mutation-
+    /// killing coverage that MPRemoteCommand's lack of a public
+    /// invoke-handler-and-read-status API otherwise blocks, achieved without a
+    /// bound-manager fixture by testing the extracted pure gate directly.
+    func testRemoteCommandStatus_gatesOnActiveManager() {
+        XCTAssertEqual(
+            PlaybackBootstrapper.remoteCommandStatus(hasActiveManager: true).rawValue,
+            MPRemoteCommandHandlerStatus.success.rawValue,
+            "With an active manager the command is acknowledged (.success) so the toolkit performs the transport action")
+        XCTAssertEqual(
+            PlaybackBootstrapper.remoteCommandStatus(hasActiveManager: false).rawValue,
+            MPRemoteCommandHandlerStatus.noActionableNowPlayingItem.rawValue,
+            "With no manager there is nothing to act on — .noActionableNowPlayingItem keeps the lock screen from presenting a dead control")
+    }
 }
