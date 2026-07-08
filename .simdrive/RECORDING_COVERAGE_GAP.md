@@ -50,8 +50,8 @@ Ordered by area-group priority. Each needs a fresh simdrive recording at
 - [ ] `PP-4161-streaming-html-reader` — streaming-HTML reader (open DRM, substitutable). Journey spec present; recording not yet captured.
 
 ### `audiobook` (2)
-- [ ] `audiobook-cold-load-first-open`  (PP-4542/PP-4613): first-cold-open of a fresh-borrow LCP audiobook must not dead-end on "Audiobook Unavailable". Spec authored; staging is DETERMINISTIC (forge_streaming_state recipe = "ready", no longer PHASE2) — capture is unblocked and is the only remaining step.
-- [ ] `audiobook-download-indicator-stateful`  (stays PHASE2 — needs a live active-download %, not solved by the content-delete forge).
+- [ ] `audiobook-cold-load-first-open`  (PP-4542/PP-4613): first-cold-open of a fresh-borrow LCP audiobook must not dead-end on "Audiobook Unavailable". Spec authored; staging recipe is CORRECT (`reborrow_audiobook_streaming` — return + re-borrow a large LCP audiobook, "Dungeon Crawler Carl", and open it mid-download; supersedes the retired `forge_streaming_state`, whose delete-a-completed-`.lcpa` premise no longer reproduces the regression post-#1094). **Capture is BLOCKED on a per-sim network throttle**, NOT unblocked: on an un-throttled sim the ~715 MB `.lcpa` downloads in ~6–13s, too fast to reliably catch the open mid-download via UI-timed taps (+ a SpringBoard tap-race). Needs a download-window widener (host-level NLC or a per-sim shaper) before the recording can be captured.
+- [ ] `audiobook-download-indicator-stateful`  (stays PHASE2 — asserts the live "Downloading… %" indicator; the `reborrow_audiobook_streaming` mid-download stage now produces a real active transfer, so it's a promotion candidate, but it hits the SAME throttle blocker as cold-load: the % window is too brief to catch reliably un-throttled).
 
 ## Journeys on disk but not yet in the area manifest
 These `.simdrive/journeys/*.yaml` specs exist but are NOT in
