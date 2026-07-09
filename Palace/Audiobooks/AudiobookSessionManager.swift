@@ -906,6 +906,41 @@ public final class AudiobookSessionManager: ObservableObject {
         return newRate
     }
 
+    /// Current playback rate (read) — reflects the toolkit `player.playbackRate`,
+    /// fixing the hard-coded "1.0×" label the morphing player showed when a
+    /// session was restored at a persisted non-1.0 rate.
+    public var currentPlaybackRate: PlaybackRate {
+        manager?.audiobook.player.playbackRate ?? .normalTime
+    }
+
+    /// Sets an explicit playback rate (for the speed slider). Mirrors
+    /// `cyclePlaybackRate`'s now-playing update so the lock screen stays in sync.
+    public func setPlaybackRate(_ rate: PlaybackRate) {
+        guard let player = manager?.audiobook.player else { return }
+        player.playbackRate = rate
+        nowPlayingCoordinator?.updatePlaybackRate(rate)
+        Log.debug(#file, "Playback rate set to: \(PlaybackRate.convert(rate: rate))x")
+    }
+
+    /// True once the toolkit player has buffered/loaded — gates the loading
+    /// overlay. Not `@Published`; the view re-reads it on `isPlaying`/position
+    /// ticks. (`UnifiedPositionSystem.isLoaded` is `@Published` upstream, so a
+    /// crisp presenter mirror is a follow-up if the tick cadence proves too coarse.)
+    public var isLoaded: Bool {
+        manager?.audiobook.player.isLoaded ?? false
+    }
+
+    /// Whether a sleep timer is currently counting down (drives the active-chip
+    /// display). Reads the toolkit's public `SleepTimer`.
+    public var sleepTimerIsActive: Bool {
+        (manager as? DefaultAudiobookManager)?.sleepTimer.isActive ?? false
+    }
+
+    /// Seconds left on the active sleep timer (0 when inactive).
+    public var sleepTimerRemaining: TimeInterval {
+        (manager as? DefaultAudiobookManager)?.sleepTimer.timeRemaining ?? 0
+    }
+
     /// Stops playback and clears current session, atomically releasing the
     /// DRM decryptor alongside the manager/audiobook/playbackModel. This is
     /// the only place the previous LCP Publication's file handles are dropped.

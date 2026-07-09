@@ -109,6 +109,25 @@ protocol AudiobookSessionManaging: AnyObject {
     /// production manager routes to the toolkit's `DefaultAudiobookManager.sleepTimer`.
     func setSleepTimer(_ trigger: SleepTimerTriggerAt)
 
+    /// Current playback rate (read). Fixes the morphing player's hard-coded
+    /// "1.0×" label for sessions restored at a persisted rate. Default
+    /// `.normalTime` for lightweight test doubles.
+    var currentPlaybackRate: PlaybackRate { get }
+
+    /// Sets an explicit playback rate (drives the speed slider). Default no-op;
+    /// the production manager routes to the toolkit `player.playbackRate`.
+    func setPlaybackRate(_ rate: PlaybackRate)
+
+    /// True once the toolkit player has buffered — gates the loading overlay.
+    /// Default `true` so test doubles read as loaded (no spurious spinner).
+    var isLoaded: Bool { get }
+
+    /// Whether a sleep timer is currently counting down. Default `false`.
+    var sleepTimerIsActive: Bool { get }
+
+    /// Seconds left on the active sleep timer (0 when inactive). Default `0`.
+    var sleepTimerRemaining: TimeInterval { get }
+
     /// Stops playback and clears the current session.
     func stopPlayback(dismissPhoneUI: Bool, persistFinalPosition: Bool) async
 
@@ -141,6 +160,14 @@ extension AudiobookSessionManaging {
     /// Default no-op so lightweight test doubles need not implement the sleep
     /// timer. The production `AudiobookSessionManager` overrides this.
     func setSleepTimer(_ trigger: SleepTimerTriggerAt) {}
+
+    // Defaults for the parity accessors so existing test doubles/mocks keep
+    // compiling; the production `AudiobookSessionManager` overrides each.
+    var currentPlaybackRate: PlaybackRate { .normalTime }
+    func setPlaybackRate(_ rate: PlaybackRate) {}
+    var isLoaded: Bool { true }
+    var sleepTimerIsActive: Bool { false }
+    var sleepTimerRemaining: TimeInterval { 0 }
 }
 
 // MARK: - AudiobookSessionManager Conformance
