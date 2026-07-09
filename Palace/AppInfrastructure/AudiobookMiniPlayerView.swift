@@ -56,13 +56,6 @@ struct AudiobookMiniPlayerView: View {
     /// cache. Production wires this to `appContainer.audiobookSession`.
     let audiobookSession: AudiobookSessionManaging
 
-    /// Guards against a rapid double-tap on `✕` enqueuing two teardowns: the
-    /// button stays mounted until `hasActiveSession` flips false (after the
-    /// async `stopPlayback` completes), so without this a second tap in that
-    /// window would fire a second `stopPlayback`. `stopPlayback` is idempotent,
-    /// but one teardown is the correct contract.
-    @State private var isDismissing = false
-
     @ViewBuilder
     var body: some View {
         // SwiftUI.Group + explicit else: Xcode 26's type-checker otherwise
@@ -384,21 +377,23 @@ struct AudiobookMiniPlayerView: View {
     ///   1. Optimistically clear the presenter NOW — `hasActiveSession` flips
     ///      false synchronously, so the bar/pill drop on this frame. This is what
     ///      makes the control feel reliable; the prior version only hid the bar
-    ///      after the async `stopPlayback` finished, so any delay (or a nil
-    ///      `currentBook` skipping the manager's own clear) left the bar sitting
-    ///      there with `isDismissing` stuck `true` — the "✕ does nothing" bug.
-    ///   2. Run the real teardown (save position, tear down the toolkit player)
-    ///      on a `Task`. `stopPlayback` re-clears the presenter idempotently.
-    /// Animated with `PalaceMotion.standard` (reduce-motion aware) so the drop
-    /// matches the drawer's motion.
+    /// Fires the hard dismiss. Deliberately guard-free and single-purpose: every
+    /// tap runs the real teardown.
+    ///
+    /// The earlier `isDismissing` guard + optimistic `clearActiveSession()` was
+    /// WORSE, not better (sim-verified 0/5 on a live bar): `hasActiveSession` is
+    /// re-derived from the playback-state publisher, so an optimistic clear is
+    /// overwritten by the next ~2s playback tick — the bar reappears while the
+    /// guard stays `true`, dead-locking the ✕ so no retry can fire. `stopPlayback`
+    /// is idempotent (and clears the presenter unconditionally on the flag-ON
+    /// path), and it reaches `.idle` — which STABLY clears `hasActiveSession`
+    /// because playback actually stopped. So the correct primitive is: no guard,
+    /// no optimistic race — drive the teardown on every tap. A stray double-tap
+    /// fires a harmless second idempotent `stopPlayback`.
+    ///
+    /// NOTE: a fuller dismiss/pill rework rides with the single-view "resize
+    /// overlay" morph follow-up; this is the minimal reliable form for now.
     private func dismiss() {
-        guard !isDismissing else { return }
-        isDismissing = true
-        if UIAccessibility.isReduceMotionEnabled {
-            presenter.clearActiveSession()
-        } else {
-            withAnimation(PalaceMotion.standard) { presenter.clearActiveSession() }
-        }
         Task { await performDismiss() }
     }
 
