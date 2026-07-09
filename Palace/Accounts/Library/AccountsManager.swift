@@ -604,7 +604,25 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
             // (audiobook open, token refresh, bookmark sync, CarPlay auth)
             // resolve without waiting on the full off-main materialization.
             // `currentAccount` resolves via `account(_:)`'s slim fallback.
-            driveCurrentAccountAuthDocIfNeeded()
+            //
+            // DEFERRED off this synchronous stack (was a direct call). This path
+            // is reached from `AccountsManager.init` → `preloadAccountsFromDiskCacheSync`,
+            // and on cold launch `AccountsManager()` is constructed INSIDE
+            // `AppContainer._buildCachedAppContainer()`, which runs under
+            // `AppContainer._cachedLock.withLock`. The drive transitively calls
+            // `AppContainer.production()` again (`Account.fetchAuthenticationDocument`
+            // → `.networkExecutor`), and re-entering the non-recursive
+            // `OSAllocatedUnfairLock` on the same thread traps (`EXC_BREAKPOINT`)
+            // — it crashed launch for every signed-in user (a logged-out sim has
+            // no current account to drive, which is why it didn't reproduce there).
+            // Hopping to the next main-runloop turn lets the container finish
+            // building and release the lock first, so the re-entrant
+            // `production()` returns the now-cached graph. The drive is an async
+            // fire-and-forget network fetch, so a one-turn defer is behaviorally
+            // inert for `awaitReady()` consumers (all of which run well after launch).
+            DispatchQueue.main.async { [weak self] in
+                self?.driveCurrentAccountAuthDocIfNeeded()
+            }
             Log.info(#file, "CP-D1: slim launch snapshot hydrated \(accounts.count) accounts (hash=\(hash))")
             return true
         } catch {
