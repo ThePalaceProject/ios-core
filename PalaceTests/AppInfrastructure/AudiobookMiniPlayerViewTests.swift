@@ -78,37 +78,53 @@ final class AudiobookMiniPlayerViewTests: XCTestCase {
         // axis is exercised in its own row set at the bottom.
 
         // Row 1: session active + no reader + not collapsed → SHOW (happy path).
-        XCTAssertTrue(AudiobookMiniPlayerView.shouldShowChrome(hasActiveSession: true, isReaderActive: false, isCollapsed: false),
+        XCTAssertTrue(AudiobookMiniPlayerView.shouldShowChrome(hasActiveSession: true, isReaderActive: false, isCollapsed: false, isPlayerExpanded: false),
                       "Row 1: active session + no reader + not collapsed → must SHOW chrome (the happy path)")
 
         // Row 2: session active + reader active → HIDE (§7.3 Option α
         // — the load-bearing reader suppression).
-        XCTAssertFalse(AudiobookMiniPlayerView.shouldShowChrome(hasActiveSession: true, isReaderActive: true, isCollapsed: false),
+        XCTAssertFalse(AudiobookMiniPlayerView.shouldShowChrome(hasActiveSession: true, isReaderActive: true, isCollapsed: false, isPlayerExpanded: false),
                        "Row 2: active session + reader active → must HIDE chrome (§7.3 Option α reader suppression). A mutation dropping the `!` on isReaderActive would flip this true.")
 
         // Row 3: no session + no reader → HIDE. KEY ROW for &&→|| mutation:
         // with &&, `false && true == false`; with ||, `false || true == true`.
         // This row is the one that distinguishes && from ||.
-        XCTAssertFalse(AudiobookMiniPlayerView.shouldShowChrome(hasActiveSession: false, isReaderActive: false, isCollapsed: false),
+        XCTAssertFalse(AudiobookMiniPlayerView.shouldShowChrome(hasActiveSession: false, isReaderActive: false, isCollapsed: false, isPlayerExpanded: false),
                        "Row 3: no session + no reader → must HIDE chrome. KEY ROW: distinguishes `&&` from `||` — with `||` this would flip true (no session SHOULD never show chrome).")
 
         // Row 4: no session + reader active → HIDE.
-        XCTAssertFalse(AudiobookMiniPlayerView.shouldShowChrome(hasActiveSession: false, isReaderActive: true, isCollapsed: false),
+        XCTAssertFalse(AudiobookMiniPlayerView.shouldShowChrome(hasActiveSession: false, isReaderActive: true, isCollapsed: false, isPlayerExpanded: false),
                        "Row 4: no session + reader active → must HIDE chrome.")
 
         // Row 5: session active + no reader BUT collapsed → HIDE the full
         // bar (the pill is shown instead by AudiobookCollapsedPillView).
         // KEY ROW for the new `!isCollapsed` term: dropping it flips this true
         // and both the bar AND the pill would render at once.
-        XCTAssertFalse(AudiobookMiniPlayerView.shouldShowChrome(hasActiveSession: true, isReaderActive: false, isCollapsed: true),
+        XCTAssertFalse(AudiobookMiniPlayerView.shouldShowChrome(hasActiveSession: true, isReaderActive: false, isCollapsed: true, isPlayerExpanded: false),
                        "Row 5: active session + collapsed → must HIDE the full bar (pill takes over). Dropping `!isCollapsed` renders bar + pill simultaneously.")
 
         // Row 6: collapsed complements the pill's predicate — the bar and the
         // pill are never both visible for the same (active, not-in-reader) state.
         XCTAssertNotEqual(
-            AudiobookMiniPlayerView.shouldShowChrome(hasActiveSession: true, isReaderActive: false, isCollapsed: true),
-            AudiobookMiniPlayerView.shouldShowChrome(hasActiveSession: true, isReaderActive: false, isCollapsed: false),
+            AudiobookMiniPlayerView.shouldShowChrome(hasActiveSession: true, isReaderActive: false, isCollapsed: true, isPlayerExpanded: false),
+            AudiobookMiniPlayerView.shouldShowChrome(hasActiveSession: true, isReaderActive: false, isCollapsed: false, isPlayerExpanded: false),
             "Bar visibility must flip with the collapsed axis — pins the bar/pill mutual exclusivity")
+    }
+
+    /// KEY ROW for the new `!isPlayerExpanded` term (the no-flash-on-open fix):
+    /// when the full player is expanded, the mini-bar must HIDE — even though the
+    /// session is active and not in a reader and not collapsed. On a fresh open
+    /// `isPlayerExpanded` is set true synchronously, so this gate is what stops
+    /// the bar rendering (flashing) at the bottom before the full player covers
+    /// it. Dropping the term flips this true and reintroduces the flash.
+    func testShouldShowChrome_hiddenWhilePlayerExpanded_killsFlashOnOpen() {
+        XCTAssertFalse(
+            AudiobookMiniPlayerView.shouldShowChrome(hasActiveSession: true, isReaderActive: false, isCollapsed: false, isPlayerExpanded: true),
+            "Full player expanded → mini-bar must HIDE (no flash on open). Dropping `!isPlayerExpanded` renders the bar under/over the opening full player.")
+        // And it flips back visible the instant the player is minimized.
+        XCTAssertTrue(
+            AudiobookMiniPlayerView.shouldShowChrome(hasActiveSession: true, isReaderActive: false, isCollapsed: false, isPlayerExpanded: false),
+            "Minimized (isPlayerExpanded false) + active + not-reader + not-collapsed → mini-bar visible")
     }
 
     // MARK: - Collapse gesture (swipe-down → pill)
@@ -282,7 +298,7 @@ final class AudiobookMiniPlayerViewTests: XCTestCase {
             AudiobookMiniPlayerView.shouldShowChrome(
                 hasActiveSession: spyPresenter.hasActiveSession,
                 isReaderActive: spyPresenter.isReaderActive,
-                isCollapsed: spyPresenter.isCollapsed),
+                isCollapsed: spyPresenter.isCollapsed, isPlayerExpanded: spyPresenter.isPlayerExpanded),
             "Visibility predicate must be false when hasActiveSession is false")
         _ = body
     }
@@ -301,7 +317,7 @@ final class AudiobookMiniPlayerViewTests: XCTestCase {
             AudiobookMiniPlayerView.shouldShowChrome(
                 hasActiveSession: spyPresenter.hasActiveSession,
                 isReaderActive: spyPresenter.isReaderActive,
-                isCollapsed: spyPresenter.isCollapsed),
+                isCollapsed: spyPresenter.isCollapsed, isPlayerExpanded: spyPresenter.isPlayerExpanded),
             "Reader-suppression predicate (§7.3 Option α): when isReaderActive == true, mini-player must hide regardless of hasActiveSession")
     }
 
@@ -319,7 +335,7 @@ final class AudiobookMiniPlayerViewTests: XCTestCase {
             AudiobookMiniPlayerView.shouldShowChrome(
                 hasActiveSession: spyPresenter.hasActiveSession,
                 isReaderActive: spyPresenter.isReaderActive,
-                isCollapsed: spyPresenter.isCollapsed),
+                isCollapsed: spyPresenter.isCollapsed, isPlayerExpanded: spyPresenter.isPlayerExpanded),
             "Happy path: active session + non-reader tab + not collapsed → mini-player must be visible")
     }
 

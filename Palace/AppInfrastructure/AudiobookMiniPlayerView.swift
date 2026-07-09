@@ -71,7 +71,8 @@ struct AudiobookMiniPlayerView: View {
         SwiftUI.Group {
             if Self.shouldShowChrome(hasActiveSession: presenter.hasActiveSession,
                                      isReaderActive: presenter.isReaderActive,
-                                     isCollapsed: presenter.isCollapsed) {
+                                     isCollapsed: presenter.isCollapsed,
+                                     isPlayerExpanded: presenter.isPlayerExpanded) {
                 miniPlayerChrome
                     // Slide in/out from the bottom (paired with a fade) instead
                     // of popping when a session starts/ends or a reader opens.
@@ -83,7 +84,8 @@ struct AudiobookMiniPlayerView: View {
         .accessibleAnimation(PalaceMotion.standard,
                              value: Self.shouldShowChrome(hasActiveSession: presenter.hasActiveSession,
                                                           isReaderActive: presenter.isReaderActive,
-                                                          isCollapsed: presenter.isCollapsed))
+                                                          isCollapsed: presenter.isCollapsed,
+                                                          isPlayerExpanded: presenter.isPlayerExpanded))
     }
 
     /// Pure decision predicate extracted for unit testability —
@@ -95,8 +97,17 @@ struct AudiobookMiniPlayerView: View {
     /// hands off to `AudiobookCollapsedPillView` — see that view's
     /// `shouldShow` predicate, which is the exact complement on the
     /// collapsed axis).
-    static func shouldShowChrome(hasActiveSession: Bool, isReaderActive: Bool, isCollapsed: Bool) -> Bool {
-        return hasActiveSession && !isReaderActive && !isCollapsed
+    ///
+    /// `!isPlayerExpanded` is what keeps the mini-bar from FLASHING on open. A
+    /// fresh open sets `presenter.isPlayerExpanded = true` (`presentOnFirstOpen`)
+    /// so the full player slides up immediately — but `hasActiveSession` flips
+    /// true on a separate publisher tick, and without this guard the mini-bar
+    /// rendered at the bottom for those frames before the full player covered it
+    /// ("mini-player shown first, then the full screen"). Gating on
+    /// `!isPlayerExpanded` means the bar never renders while the full player is
+    /// up; it appears only after the user minimizes (`isPlayerExpanded → false`).
+    static func shouldShowChrome(hasActiveSession: Bool, isReaderActive: Bool, isCollapsed: Bool, isPlayerExpanded: Bool) -> Bool {
+        return hasActiveSession && !isReaderActive && !isCollapsed && !isPlayerExpanded
     }
 
     // MARK: - Chrome

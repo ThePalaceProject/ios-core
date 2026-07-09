@@ -67,12 +67,12 @@ final class AudiobookCollapsedPillViewTests: XCTestCase {
     /// not-in-reader state — exactly one is visible, toggled by `isCollapsed`.
     func testPillAndBar_areMutuallyExclusive_onCollapsedAxis() {
         let collapsed = true
-        let barWhenCollapsed = AudiobookMiniPlayerView.shouldShowChrome(hasActiveSession: true, isReaderActive: false, isCollapsed: collapsed)
+        let barWhenCollapsed = AudiobookMiniPlayerView.shouldShowChrome(hasActiveSession: true, isReaderActive: false, isCollapsed: collapsed, isPlayerExpanded: false)
         let pillWhenCollapsed = AudiobookCollapsedPillView.shouldShow(hasActiveSession: true, isReaderActive: false, isCollapsed: collapsed)
         XCTAssertNotEqual(barWhenCollapsed, pillWhenCollapsed,
                           "When collapsed: pill shows, bar hides — never both")
 
-        let barWhenExpanded = AudiobookMiniPlayerView.shouldShowChrome(hasActiveSession: true, isReaderActive: false, isCollapsed: false)
+        let barWhenExpanded = AudiobookMiniPlayerView.shouldShowChrome(hasActiveSession: true, isReaderActive: false, isCollapsed: false, isPlayerExpanded: false)
         let pillWhenExpanded = AudiobookCollapsedPillView.shouldShow(hasActiveSession: true, isReaderActive: false, isCollapsed: false)
         XCTAssertNotEqual(barWhenExpanded, pillWhenExpanded,
                           "When not collapsed: bar shows, pill hides — never both")
