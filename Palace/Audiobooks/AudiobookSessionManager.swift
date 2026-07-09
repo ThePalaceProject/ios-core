@@ -324,6 +324,7 @@ public final class AudiobookSessionManager: ObservableObject {
         // directly via AudiobookLoader; no pub/sub handoff is needed.
         subscribeToPhoneSideErrorAlerts()
         subscribeToBookReturn()
+        subscribeToAppLifecyclePositionPersistence()
     }
 
     /// AppContainer-friendly initializer. Used by future call sites that
@@ -398,6 +399,70 @@ public final class AudiobookSessionManager: ObservableObject {
                 self?.handleRegistryStateChange(identifier: identifier, state: state)
             }
             .store(in: &lifecycleCancellables)
+    }
+
+    /// Best-effort position persistence on app background / termination.
+    ///
+    /// This replaces the hidden toolkit "keeper" — an `opacity(0)`,
+    /// `allowsHitTesting(false)` `AudiobookPlayerView` that used to be mounted
+    /// only so its `setupBackgroundStateHandling()` observers would fire
+    /// `playbackModel.persistLocation()` on `didEnterBackground` /
+    /// `willTerminate`. With the custom `AudiobookMorphingPlayerView` now the
+    /// only visible player, that keeper was deleted; the lifecycle persist it
+    /// provided moves here, to the object that actually owns playback.
+    ///
+    /// Semantics mirror the toolkit exactly: on background and on terminate,
+    /// force-save the live position via `playbackModel.persistLocation()`
+    /// (which bypasses the throttled autosave suppression window). No-op when
+    /// no session is bound. Registered once for the manager's lifetime; the
+    /// subscriptions live in `lifecycleCancellables`, so they are torn down
+    /// automatically when the manager deallocates (there is no separate deinit
+    /// to maintain).
+    private func subscribeToAppLifecyclePositionPersistence() {
+        let lifecycleNotifications = [
+            UIApplication.didEnterBackgroundNotification,
+            UIApplication.willTerminateNotification
+        ]
+        for name in lifecycleNotifications {
+            NotificationCenter.default
+                .publisher(for: name)
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] _ in
+                    self?.persistActivePositionForLifecycleEvent()
+                }
+                .store(in: &lifecycleCancellables)
+        }
+    }
+
+    /// Force-persists the current playback position IF a session is active.
+    /// Called from the background / terminate observers wired in
+    /// `subscribeToAppLifecyclePositionPersistence`. Best-effort and
+    /// non-destructive: when no session is bound it is a pure no-op, so a
+    /// background/terminate during a cold launch (nothing playing) never
+    /// writes a stale position.
+    func persistActivePositionForLifecycleEvent() {
+        guard Self.shouldPersistLifecyclePosition(
+            hasManager: manager != nil,
+            hasBook: currentBook != nil,
+            hasModel: playbackModel != nil
+        ) else { return }
+        // `persistLocation()` force-saves the model's current location,
+        // bypassing the autosave suppression window — identical to the path
+        // the deleted toolkit keeper invoked on background/terminate.
+        playbackModel?.persistLocation()
+    }
+
+    /// Pure guard for `persistActivePositionForLifecycleEvent`: only persist
+    /// when there is a fully-bound active session (manager + book + model).
+    /// `nonisolated static` so the decision is unit-testable without a live
+    /// toolkit session (mirrors `shouldStopPlaybackOnRegistryChange` /
+    /// `networkValidationError`).
+    nonisolated static func shouldPersistLifecyclePosition(
+        hasManager: Bool,
+        hasBook: Bool,
+        hasModel: Bool
+    ) -> Bool {
+        hasManager && hasBook && hasModel
     }
 
     private func handleRegistryStateChange(identifier: String, state: TPPBookState) {

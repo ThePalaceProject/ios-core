@@ -164,42 +164,34 @@ struct AppTabHostView: View {
     /// "collapsed" state is now just the mini SIZE, which also removes the
     /// pill's tap-through bug).
     ///
-    /// The toolkit `AudiobookPlayerView` (inside `AudiobookFullPlayerCoverContainer`)
-    /// stays MOUNTED at both sizes — it is opacity-crossfaded with the compact
-    /// bar, never removed — so playback never unloads (the reason the old design
-    /// kept it mounted in a persistent overlay). Only `stopPlayback` (the ✕)
-    /// tears it down. In a reader the whole card slides off-screen via `offset`
-    /// WITHOUT unmounting, so audio keeps playing with no chrome.
+    /// The custom `AudiobookMorphingPlayerView` is the ONLY player surface now —
+    /// it reflows as one view (matchedGeometry cover) between full and mini
+    /// instead of crossfading the toolkit player with a separate bar. Playback
+    /// is owned by `AudiobookSessionManager`'s `AudiobookManager` and its
+    /// model-owned throttled autosave, both independent of any mounted view, so
+    /// the card can slide off-screen (reader) or minimize WITHOUT unloading
+    /// audio. Only `stopPlayback` (the ✕) tears the session down.
     ///
-    /// The existing drags already drive `isPlayerExpanded` — the mini bar's
-    /// drawer-drag-up expands, and `AudiobookFullPlayerCoverContainer`'s
-    /// swipe-down minimizes — so this overlay only translates that flag into a
-    /// height / corner-radius / opacity morph.
+    /// The former hidden toolkit "keeper" — an `opacity(0)`,
+    /// `allowsHitTesting(false)` `AudiobookFullPlayerCoverContainer` mounted
+    /// here solely so the toolkit `AudiobookPlayerView`'s
+    /// `setupBackgroundStateHandling()` observers would persist position on
+    /// background/terminate — has been removed. That lifecycle persist now
+    /// lives in `AudiobookSessionManager.subscribeToAppLifecyclePositionPersistence()`,
+    /// the object that actually owns playback.
+    ///
+    /// The existing drags already drive `isPlayerExpanded` (the mini bar's
+    /// drawer-drag-up expands; the full player's swipe-down minimizes) so this
+    /// overlay only translates that flag into a height / corner-radius / opacity
+    /// morph inside `AudiobookMorphingPlayerView`.
     @ViewBuilder
     private var resizingPlayerOverlay: some View {
         if inAppPlaybackNavEnabled, audiobookSessionPresenter.playbackModel != nil {
-            ZStack {
-                // Hidden toolkit keeper: the toolkit `AudiobookPlayerView` (inside
-                // `AudiobookFullPlayerCoverContainer`) stays MOUNTED but invisible
-                // and non-interactive, so its playback wiring never tears down
-                // (its `onDisappear` fires `stop()`/`unload()`). The CUSTOM
-                // `AudiobookMorphingPlayerView` is the visible UI now — it reflows
-                // as one view (matchedGeometry cover) between full and mini instead
-                // of crossfading the toolkit player with a separate bar. If device
-                // testing confirms playback survives without it, this keeper can be
-                // removed; kept as the safe default.
-                AudiobookFullPlayerCoverContainer(presenter: audiobookSessionPresenter)
-                    .frame(width: 1, height: 1)
-                    .opacity(0)
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
-
-                AudiobookMorphingPlayerView(
-                    presenter: audiobookSessionPresenter,
-                    progress: audiobookSessionPresenter.progress,
-                    audiobookSession: appContainer.audiobookSession
-                )
-            }
+            AudiobookMorphingPlayerView(
+                presenter: audiobookSessionPresenter,
+                progress: audiobookSessionPresenter.progress,
+                audiobookSession: appContainer.audiobookSession
+            )
         }
     }
 

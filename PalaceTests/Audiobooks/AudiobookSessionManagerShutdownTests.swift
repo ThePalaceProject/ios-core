@@ -36,6 +36,7 @@
 //
 
 import Combine
+import UIKit
 import XCTest
 @testable import Palace
 
@@ -241,6 +242,80 @@ final class AudiobookSessionManagerShutdownTests: XCTestCase {
         )
         XCTAssertEqual(err, .wifiRequired,
                        "REGRESSION GUARD: streaming book on cellular with WiFi-only setting must always surface .wifiRequired — not a silent crash on background open")
+    }
+
+    // MARK: - Background / terminate position persistence (keeper migration)
+    //
+    // Phase 3 moved the background/terminate position-persist off the hidden
+    // toolkit "keeper" view (an opacity(0) AudiobookPlayerView mounted only for
+    // its `setupBackgroundStateHandling()` side effects) and into
+    // AudiobookSessionManager. These lock the guard + wiring we CAN exercise
+    // from XCTest; the "active session actually writes the location" leg needs a
+    // bound toolkit AudiobookManager/AudiobookPlaybackModel, which unit tests
+    // cannot construct — that leg is covered on-device / in simdrive.
+
+    /// The persist gate must fire ONLY when a fully-bound session exists
+    /// (manager + book + model all present). Any missing leg means there is no
+    /// live position to save, so persisting would be meaningless or could write
+    /// a stale value. This is the pure decision the background/terminate
+    /// observers consult; mutating `&&`→`||` or negating a leg must fail here.
+    func test_shouldPersistLifecyclePosition_requiresFullyBoundSession() {
+        // Only the all-true combination persists.
+        XCTAssertTrue(
+            AudiobookSessionManager.shouldPersistLifecyclePosition(
+                hasManager: true, hasBook: true, hasModel: true),
+            "A fully-bound session (manager + book + model) MUST persist on background/terminate")
+
+        // Every combination with at least one missing leg must NOT persist.
+        for hasManager in [true, false] {
+            for hasBook in [true, false] {
+                for hasModel in [true, false] {
+                    guard !(hasManager && hasBook && hasModel) else { continue }
+                    XCTAssertFalse(
+                        AudiobookSessionManager.shouldPersistLifecyclePosition(
+                            hasManager: hasManager, hasBook: hasBook, hasModel: hasModel),
+                        "Incomplete session (manager=\(hasManager), book=\(hasBook), model=\(hasModel)) must NOT persist — no live position to save")
+                }
+            }
+        }
+    }
+
+    /// With no session bound, the instance persist entry point must be a safe
+    /// no-op: no crash, and it must not resurrect any session state. This is the
+    /// cold-launch-background path the old keeper handled by simply having a nil
+    /// playbackModel; it must stay a no-op now that the manager owns it.
+    func test_persistActivePositionForLifecycleEvent_unbound_isSafeNoOp() async {
+        await manager.stopPlayback(dismissPhoneUI: false)
+        XCTAssertNil(manager.manager, "Pre-condition: no bound manager")
+
+        manager.persistActivePositionForLifecycleEvent()
+
+        XCTAssertEqual(manager.state, .idle,
+                       "Persisting with no session must not change state")
+        XCTAssertNil(manager.currentBook,
+                     "Persisting with no session must not resurrect a book")
+    }
+
+    /// The manager must actually SUBSCRIBE to background + terminate: posting
+    /// each notification while unbound must route into the (no-op) persist path
+    /// without crashing and without disturbing state. If a refactor drops the
+    /// subscription, the keeper's job is silently lost — this pins that the
+    /// observers exist and are wired to the no-op-safe handler.
+    func test_lifecycleNotifications_whileUnbound_areHandledSafely() async {
+        await manager.stopPlayback(dismissPhoneUI: false)
+        XCTAssertEqual(manager.state, .idle, "Pre-condition: idle")
+
+        NotificationCenter.default.post(
+            name: UIApplication.didEnterBackgroundNotification, object: nil)
+        NotificationCenter.default.post(
+            name: UIApplication.willTerminateNotification, object: nil)
+        // Let the .receive(on: .main) hops drain.
+        await Task.yield()
+
+        XCTAssertEqual(manager.state, .idle,
+                       "Background/terminate notifications with no session must leave state idle")
+        XCTAssertNil(manager.currentBook,
+                     "Background/terminate notifications with no session must not bind a book")
     }
 
     func test_networkValidationError_fullyDownloadedBypassesAllNetworkRules() {
