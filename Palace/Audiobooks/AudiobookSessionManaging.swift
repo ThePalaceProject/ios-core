@@ -128,6 +128,33 @@ protocol AudiobookSessionManaging: AnyObject {
     /// Seconds left on the active sleep timer (0 when inactive). Default `0`.
     var sleepTimerRemaining: TimeInterval { get }
 
+    /// Overall download progress (0…1) for the current audiobook's tracks.
+    /// Drives the player's download bar. Default `0` for lightweight test doubles.
+    var overallDownloadProgress: Float { get }
+
+    /// Whether the current audiobook is still downloading / decrypting tracks in
+    /// the background (progress < 1). Drives the download-bar visibility.
+    /// Default `false`.
+    var isDownloading: Bool { get }
+
+    /// Chapter-relative playhead offset (seconds from the start of the current
+    /// chapter) — the raw value behind the player's elapsed timecode. Default `0`.
+    var chapterOffset: TimeInterval { get }
+
+    /// Seconds remaining in the current chapter — the raw value behind the
+    /// player's chapter time-left timecode. Default `0`.
+    var chapterTimeLeft: TimeInterval { get }
+
+    /// Latest transient toast message from the toolkit (bookmark-added or a
+    /// playback error), or `nil` when there is none. Default `nil`.
+    var toastMessage: String? { get }
+
+    /// Adds a bookmark at the current playback position. `completion` receives a
+    /// non-nil `Error` on failure, `nil` on success. Default reports success so
+    /// lightweight test doubles need not implement it; the production manager
+    /// routes to the toolkit `AudiobookPlaybackModel.addBookmark(completion:)`.
+    func addBookmark(completion: @escaping (Error?) -> Void)
+
     /// Stops playback and clears the current session.
     func stopPlayback(dismissPhoneUI: Bool, persistFinalPosition: Bool) async
 
@@ -168,6 +195,12 @@ extension AudiobookSessionManaging {
     var isLoaded: Bool { true }
     var sleepTimerIsActive: Bool { false }
     var sleepTimerRemaining: TimeInterval { 0 }
+    var overallDownloadProgress: Float { 0 }
+    var isDownloading: Bool { false }
+    var chapterOffset: TimeInterval { 0 }
+    var chapterTimeLeft: TimeInterval { 0 }
+    var toastMessage: String? { nil }
+    func addBookmark(completion: @escaping (Error?) -> Void) { completion(nil) }
 }
 
 // MARK: - AudiobookSessionManager Conformance

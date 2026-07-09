@@ -111,6 +111,21 @@ class AudiobookSessionPresenter: ObservableObject {
     /// (all tabs) on every tick and froze the UI.
     let progress = AudiobookPlaybackProgress()
 
+    /// Overall download progress (0…1) for the current audiobook, mirrored from
+    /// the toolkit playback model's `$overallDownloadProgress`. Drives the
+    /// custom player's download bar. Reset to 0 on `clearActiveSession()`.
+    @Published private(set) var overallDownloadProgress: Float = 0
+
+    /// Whether the current audiobook is still downloading / decrypting tracks,
+    /// mirrored from the toolkit playback model's `$isDownloading`. Gates the
+    /// download-bar visibility. Reset to false on `clearActiveSession()`.
+    @Published private(set) var isDownloading: Bool = false
+
+    /// Latest transient toast (bookmark-added / playback error), mirrored from
+    /// the toolkit playback model's `$toastMessage` (empty string normalized to
+    /// `nil`). Reset to nil on `clearActiveSession()`.
+    @Published private(set) var toastMessage: String?
+
     /// The playback model for the active session, mirrored from the session
     /// manager. The mini-player + full-player views observe this for chrome
     /// updates (title, cover, play/pause). Cleared on stopPlayback by the
@@ -248,6 +263,11 @@ class AudiobookSessionPresenter: ObservableObject {
         coverImage = nil
         progress.currentLocation = nil
         progress.playbackProgress = 0
+        progress.chapterOffset = 0
+        progress.chapterTimeLeft = 0
+        overallDownloadProgress = 0
+        isDownloading = false
+        toastMessage = nil
         playbackModelCancellables.removeAll()
     }
 
@@ -291,7 +311,15 @@ class AudiobookSessionPresenter: ObservableObject {
         // `AudiobookSessionManager.updateCoverImage(_:)`).
         self.coverImage = sessionManager.coverImage
 
+        // Snapshot the download/toast mirrors at bind time so the custom
+        // player's download bar reflects any progress already made before the
+        // first publisher tick; the subscriptions below keep them live.
+        self.overallDownloadProgress = model.overallDownloadProgress
+        self.isDownloading = model.isDownloading
+        self.toastMessage = model.toastMessage.isEmpty ? nil : model.toastMessage
+
         subscribeToPlaybackModelCurrentLocation(model)
+        subscribeToPlaybackModelDownloadAndToast(model)
     }
 
     /// Updates the presenter's mirrored cover image. Called from
@@ -397,11 +425,40 @@ class AudiobookSessionPresenter: ObservableObject {
     private func subscribeToPlaybackModelCurrentLocation(_ model: AudiobookPlaybackModel) {
         model.$currentLocation
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] position in
+            .sink { [weak self, weak model] position in
                 guard let self = self else { return }
                 self.progress.currentLocation = position
                 self.progress.playbackProgress = Self.normalizedProgress(for: position)
+                // The chapter-relative offsets are computed off `currentLocation`
+                // in the toolkit, so recompute the mirrors on the same tick.
+                if let model = model {
+                    self.progress.chapterOffset = model.chapterPlayheadOffset
+                    self.progress.chapterTimeLeft = model.chapterTimeLeft
+                }
             }
+            .store(in: &playbackModelCancellables)
+    }
+
+    /// Mirrors the toolkit playback model's `$overallDownloadProgress`,
+    /// `$isDownloading`, and `$toastMessage` into the presenter's published
+    /// fields so the custom player's download bar + toast read off a single
+    /// object. Stored in `playbackModelCancellables` (NOT `cancellables`) so
+    /// `adoptPlaybackModel(_:)` re-subscribes cleanly on an audiobook switch —
+    /// same lifetime rules as the `$currentLocation` sink above.
+    private func subscribeToPlaybackModelDownloadAndToast(_ model: AudiobookPlaybackModel) {
+        model.$overallDownloadProgress
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] value in self?.overallDownloadProgress = value }
+            .store(in: &playbackModelCancellables)
+
+        model.$isDownloading
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] value in self?.isDownloading = value }
+            .store(in: &playbackModelCancellables)
+
+        model.$toastMessage
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] value in self?.toastMessage = value.isEmpty ? nil : value }
             .store(in: &playbackModelCancellables)
     }
 
@@ -451,4 +508,12 @@ class AudiobookSessionPresenter: ObservableObject {
 final class AudiobookPlaybackProgress: ObservableObject {
     @Published var currentLocation: TrackPosition?
     @Published var playbackProgress: Double = 0
+
+    /// Chapter-relative playhead offset (seconds into the current chapter) and
+    /// chapter time-left. Live on the high-frequency progress object (not the
+    /// presenter) so per-tick updates re-render only the scrubber/time leaves,
+    /// never the root `AppTabHostView`. Mirrored from the toolkit playback
+    /// model's `chapterPlayheadOffset` / `chapterTimeLeft` on each position tick.
+    @Published var chapterOffset: TimeInterval = 0
+    @Published var chapterTimeLeft: TimeInterval = 0
 }

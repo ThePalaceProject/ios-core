@@ -941,6 +941,54 @@ public final class AudiobookSessionManager: ObservableObject {
         (manager as? DefaultAudiobookManager)?.sleepTimer.timeRemaining ?? 0
     }
 
+    /// Overall download progress (0…1) for the current audiobook's tracks —
+    /// reads the toolkit playback model's published `overallDownloadProgress`.
+    /// Drives the download bar in the in-app custom player.
+    public var overallDownloadProgress: Float {
+        playbackModel?.overallDownloadProgress ?? 0
+    }
+
+    /// Whether tracks are still downloading / decrypting in the background
+    /// (progress < 1). Reads the toolkit playback model's `isDownloading`.
+    public var isDownloading: Bool {
+        playbackModel?.isDownloading ?? false
+    }
+
+    /// Chapter-relative playhead offset (seconds into the current chapter) —
+    /// the raw value behind the toolkit player's elapsed timecode.
+    public var chapterOffset: TimeInterval {
+        playbackModel?.chapterPlayheadOffset ?? 0
+    }
+
+    /// Seconds remaining in the current chapter — the raw value behind the
+    /// toolkit player's chapter time-left timecode.
+    public var chapterTimeLeft: TimeInterval {
+        playbackModel?.chapterTimeLeft ?? 0
+    }
+
+    /// Latest transient toast (bookmark-added / playback error), or `nil` when
+    /// the toolkit's message is empty. The toolkit uses an empty string as its
+    /// "no message" sentinel; we normalize that to `nil` for the Palace surface.
+    public var toastMessage: String? {
+        let message = playbackModel?.toastMessage
+        return (message?.isEmpty ?? true) ? nil : message
+    }
+
+    /// Adds a bookmark at the current playback position via the toolkit
+    /// playback model. Reports `nil` on success, a non-nil `Error` on failure
+    /// (including "no active session" when nothing is loaded).
+    public func addBookmark(completion: @escaping (Error?) -> Void) {
+        guard let playbackModel else {
+            completion(NSError(
+                domain: "AudiobookSessionManager",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey: "No active audiobook session to bookmark."]
+            ))
+            return
+        }
+        playbackModel.addBookmark(completion: completion)
+    }
+
     /// Stops playback and clears current session, atomically releasing the
     /// DRM decryptor alongside the manager/audiobook/playbackModel. This is
     /// the only place the previous LCP Publication's file handles are dropped.

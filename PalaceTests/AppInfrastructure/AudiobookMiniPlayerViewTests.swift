@@ -162,20 +162,30 @@ final class AudiobookMiniPlayerViewTests: XCTestCase {
                        "Diagonal drag beyond drift limit → must NOT collapse (kills `&&` → true / dropped drift guard)")
     }
 
-    /// The swipe-down handler drives `presenter.collapse()` exactly once when
-    /// the drag clears the threshold — and does NOT tear the session down
-    /// (collapse keeps playing; only `✕` stops).
-    func testMiniPlayer_swipeDownPastThreshold_collapsesWithoutStoppingPlayback() {
+    /// Resize-overlay morph reality: the floating pill is GONE, so
+    /// `presenter.collapse()` is a deliberate no-op (see
+    /// `AudiobookSessionPresenter.collapse()`). A qualifying swipe-down on the
+    /// mini bar therefore must NOT hide the bar (the collapsed axis stays
+    /// false, so the bar keeps rendering) and must NOT stop playback (only the
+    /// `✕` hard-dismiss tears the session down). This pins the current
+    /// contract: down-on-mini is inert; expand is via up/tap, dismiss is via ✕.
+    func testMiniPlayer_swipeDownPastThreshold_doesNotHideBarOrStopPlayback() {
         let sut = makeSUT()
-        XCTAssertEqual(spyPresenter.collapseCallCount, 0, "PRECONDITION: not collapsed yet")
+        XCTAssertFalse(spyPresenter.isCollapsed, "PRECONDITION: bar is not collapsed/hidden")
+        XCTAssertEqual(spySession.stopPlaybackCallCount, 0, "PRECONDITION: playback not stopped")
 
+        // Drive a swipe-down that clears the collapse threshold with no drift.
         sut.handleCollapseDragEnd(translation: CGSize(width: 0, height: AudiobookMiniPlayerView.collapseSwipeDownThreshold + 20))
 
-        XCTAssertEqual(spyPresenter.collapseCallCount, 1,
-                       "A qualifying swipe-down must call presenter.collapse() exactly once")
-        XCTAssertTrue(spyPresenter.isCollapsed, "Presenter must be in the collapsed state after the swipe")
+        // The morph removed the pill: collapse() is a no-op, so the bar stays
+        // visible (isCollapsed never flips true). A regression that re-wires
+        // swipe-down to actually hide the bar would fail here.
+        XCTAssertFalse(spyPresenter.isCollapsed,
+                       "Swipe-down on the mini bar must NOT hide it — the pill is gone, so collapse() is inert")
+        // And swipe-down must NEVER stop playback — that path belongs solely to
+        // the ✕ hard dismiss. Kills a mutation that wires swipe-down to teardown.
         XCTAssertEqual(spySession.stopPlaybackCallCount, 0,
-                       "Collapse must NOT stop playback — kills a mutation that wires swipe-down to the hard dismiss")
+                       "Swipe-down must NOT stop playback — only the ✕ dismiss tears the session down")
     }
 
     /// A sub-threshold drag is a no-op (does not collapse).
