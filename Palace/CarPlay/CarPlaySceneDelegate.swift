@@ -202,8 +202,17 @@ final class CarPlaySceneDelegate: UIResponder, @preconcurrency CPTemplateApplica
             }
             .store(in: &cancellables)
 
-        // Subscribe to account changes to update library name
+        // Subscribe to account changes to update library name.
+        // `.receive(on: DispatchQueue.main)` guards the same Swift 6 bug class as
+        // the AccountDetailViewModel fix: this closure is `@MainActor`-isolated
+        // (calls `templateManager` on the main actor), and NotificationCenter
+        // delivers synchronously on the posting thread. Every current
+        // `.TPPCurrentAccountDidChange` poster is on main, so this is defensive —
+        // but it was the lone bare sink here (the two registry sinks above hop
+        // via `.debounce(scheduler: DispatchQueue.main)`), so a future off-main
+        // poster would trap. Match the siblings.
         NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 Log.info(#file, "🚗 Account changed - updating CarPlay library name and refreshing")
                 self?.templateManager?.updateLibraryName()

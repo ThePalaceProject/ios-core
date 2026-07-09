@@ -64,6 +64,16 @@ public final class PlaybackBootstrapper {
     /// tests inject a mock and lets the production closure resolve through
     /// `AppContainer.production().audiobookSession` lazily.
     private let audiobookSessionProvider: () -> AudiobookSessionManaging
+    /// Off-main-safe read of "is an audiobook manager currently bound," used by
+    /// the `@Sendable` remote-command handlers (which run on MediaRemote's
+    /// BACKGROUND queue and therefore MUST NOT touch `@MainActor` state — that is
+    /// the #1218 / #1199 crash class). Kept SEPARATE from
+    /// `audiobookSessionProvider` (whose production closure reads the `@MainActor`
+    /// `AppContainer.audiobookSession` and is thus main-only): this source reads
+    /// the `nonisolated` `AudiobookSessionManager.hasActiveManagerSnapshot`
+    /// mirror instead. `@Sendable` so it can be captured by the off-main handlers;
+    /// tests inject a controllable `Bool` for deterministic gating.
+    private let hasActiveManagerSnapshot: @Sendable () -> Bool
     /// Dispatches the deferred audio-session configuration off the synchronous
     /// launch path (see `ensureInitialized()`). Production hops to a background
     /// queue; tests inject an inline/capturing dispatcher to observe the
@@ -81,12 +91,14 @@ public final class PlaybackBootstrapper {
     private init(
         bookRegistry: TPPBookRegistryProvider,
         audiobookSessionProvider: @escaping () -> AudiobookSessionManaging,
+        hasActiveManagerSnapshot: @escaping @Sendable () -> Bool = { AudiobookSessionManager.hasActiveManagerSnapshot },
         launchAudioSessionDispatcher: @escaping (@escaping @Sendable () -> Void) -> Void = { work in
             DispatchQueue.global(qos: .utility).async(execute: work)
         }
     ) {
         self.bookRegistry = bookRegistry
         self.audiobookSessionProvider = audiobookSessionProvider
+        self.hasActiveManagerSnapshot = hasActiveManagerSnapshot
         self.launchAudioSessionDispatcher = launchAudioSessionDispatcher
         Log.info(#file, "🚀 PlaybackBootstrapper created - app launch context")
 
@@ -102,6 +114,7 @@ public final class PlaybackBootstrapper {
     convenience init(
         appContainer: AppContainer,
         audiobookSessionProvider: @escaping () -> AudiobookSessionManaging,
+        hasActiveManagerSnapshot: @escaping @Sendable () -> Bool = { AudiobookSessionManager.hasActiveManagerSnapshot },
         launchAudioSessionDispatcher: @escaping (@escaping @Sendable () -> Void) -> Void = { work in
             DispatchQueue.global(qos: .utility).async(execute: work)
         }
@@ -109,6 +122,7 @@ public final class PlaybackBootstrapper {
         self.init(
             bookRegistry: appContainer.bookRegistry,
             audiobookSessionProvider: audiobookSessionProvider,
+            hasActiveManagerSnapshot: hasActiveManagerSnapshot,
             launchAudioSessionDispatcher: launchAudioSessionDispatcher
         )
     }
@@ -355,28 +369,28 @@ public final class PlaybackBootstrapper {
 
     private func addCommandTargets() {
         // Play command
-        let playTarget = commandCenter.playCommand.addTarget { [weak self] _ in
+        let playTarget = commandCenter.playCommand.addTarget { @Sendable [weak self] _ in
             Log.debug(#file, "🎮 ▶️ PLAY command received")
             return self?.handlePlay() ?? .noActionableNowPlayingItem
         }
         commandTargets.append(playTarget)
 
         // Pause command
-        let pauseTarget = commandCenter.pauseCommand.addTarget { [weak self] _ in
+        let pauseTarget = commandCenter.pauseCommand.addTarget { @Sendable [weak self] _ in
             Log.debug(#file, "🎮 ⏸️ PAUSE command received")
             return self?.handlePause() ?? .noActionableNowPlayingItem
         }
         commandTargets.append(pauseTarget)
 
         // Toggle play/pause (headphone button, steering wheel)
-        let toggleTarget = commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in
+        let toggleTarget = commandCenter.togglePlayPauseCommand.addTarget { @Sendable [weak self] _ in
             Log.debug(#file, "🎮 ⏯️ TOGGLE command received")
             return self?.handleTogglePlayPause() ?? .noActionableNowPlayingItem
         }
         commandTargets.append(toggleTarget)
 
         // Skip forward (30 seconds)
-        let skipForwardTarget = commandCenter.skipForwardCommand.addTarget { [weak self] event in
+        let skipForwardTarget = commandCenter.skipForwardCommand.addTarget { @Sendable [weak self] event in
             guard let skipEvent = event as? MPSkipIntervalCommandEvent else {
                 Log.error(#file, "🎮 skipForward event cast failed")
                 return .commandFailed
@@ -387,7 +401,7 @@ public final class PlaybackBootstrapper {
         commandTargets.append(skipForwardTarget)
 
         // Skip backward (30 seconds)
-        let skipBackwardTarget = commandCenter.skipBackwardCommand.addTarget { [weak self] event in
+        let skipBackwardTarget = commandCenter.skipBackwardCommand.addTarget { @Sendable [weak self] event in
             guard let skipEvent = event as? MPSkipIntervalCommandEvent else {
                 Log.error(#file, "🎮 skipBackward event cast failed")
                 return .commandFailed
@@ -398,7 +412,7 @@ public final class PlaybackBootstrapper {
         commandTargets.append(skipBackwardTarget)
 
         // Change playback rate
-        let rateTarget = commandCenter.changePlaybackRateCommand.addTarget { [weak self] event in
+        let rateTarget = commandCenter.changePlaybackRateCommand.addTarget { @Sendable [weak self] event in
             guard let rateEvent = event as? MPChangePlaybackRateCommandEvent else {
                 Log.error(#file, "🎮 changePlaybackRate event cast failed")
                 return .commandFailed
@@ -433,90 +447,71 @@ public final class PlaybackBootstrapper {
     /// The session manager's `hasActiveManager` flag is false until a book is
     /// opened; opening the book binds the manager directly on the session.
 
-    private func handlePlay() -> MPRemoteCommandHandlerStatus {
-        let hasManager = audiobookSessionProvider().hasActiveManager
+    /// The gate shared by all six remote-command handlers. When a manager is
+    /// bound the toolkit's `MediaControlPublisher` performs the actual transport
+    /// action, so we return `.success` to acknowledge the command; with no
+    /// manager there is nothing to act on, so `.noActionableNowPlayingItem`
+    /// (which keeps the lock screen from presenting a dead control before a book
+    /// is opened). Extracted as a `nonisolated static` PURE function so the gate
+    /// is unit-testable directly — MPRemoteCommand exposes no public
+    /// invoke-handler-and-read-status API, so this is the seam that lets a test
+    /// kill the gate-inversion mutant without an MPRemoteCommand invocation or a
+    /// bound-manager fixture. `internal` for `@testable` access.
+    nonisolated static func remoteCommandStatus(hasActiveManager: Bool) -> MPRemoteCommandHandlerStatus {
+        hasActiveManager ? .success : .noActionableNowPlayingItem
+    }
+
+    nonisolated private func handlePlay() -> MPRemoteCommandHandlerStatus {
+        // Off-main-safe: reads the nonisolated snapshot, NOT the @MainActor
+        // `audiobookSessionProvider().hasActiveManager` (which would trip
+        // dispatch_assert_queue when this handler runs on MediaRemote's queue).
+        let hasManager = hasActiveManagerSnapshot()
         Log.debug(#file, "🎮 handlePlay - manager: \(hasManager)")
-
-        // When AudiobookManager is active, the toolkit's MediaControlPublisher handles
-        // play/pause commands. We return .success to indicate we handled it (preventing error)
-        // but don't actually play - the toolkit does the actual play.
-        if hasManager {
-            return .success
-        }
-
-        Log.debug(#file, "🎮 Play command received but no active manager")
-        return .noActionableNowPlayingItem
+        return Self.remoteCommandStatus(hasActiveManager: hasManager)
     }
 
-    private func handlePause() -> MPRemoteCommandHandlerStatus {
-        let hasManager = audiobookSessionProvider().hasActiveManager
+    nonisolated private func handlePause() -> MPRemoteCommandHandlerStatus {
+        // Off-main-safe: reads the nonisolated snapshot, NOT the @MainActor
+        // `audiobookSessionProvider().hasActiveManager` (which would trip
+        // dispatch_assert_queue when this handler runs on MediaRemote's queue).
+        let hasManager = hasActiveManagerSnapshot()
         Log.debug(#file, "🎮 handlePause - manager: \(hasManager)")
-
-        // When AudiobookManager is active, the toolkit's MediaControlPublisher handles
-        // play/pause commands. We return .success but defer actual action to toolkit.
-        if hasManager {
-            return .success
-        }
-
-        Log.debug(#file, "🎮 Pause command received but no active manager")
-        return .noActionableNowPlayingItem
+        return Self.remoteCommandStatus(hasActiveManager: hasManager)
     }
 
-    private func handleTogglePlayPause() -> MPRemoteCommandHandlerStatus {
-        let hasManager = audiobookSessionProvider().hasActiveManager
+    nonisolated private func handleTogglePlayPause() -> MPRemoteCommandHandlerStatus {
+        // Off-main-safe: reads the nonisolated snapshot, NOT the @MainActor
+        // `audiobookSessionProvider().hasActiveManager` (which would trip
+        // dispatch_assert_queue when this handler runs on MediaRemote's queue).
+        let hasManager = hasActiveManagerSnapshot()
         Log.debug(#file, "🎮 handleTogglePlayPause - manager: \(hasManager)")
-
-        // When AudiobookManager is active, the toolkit's MediaControlPublisher handles
-        // play/pause commands. We return .success but defer actual action to toolkit.
-        if hasManager {
-            return .success
-        }
-
-        Log.debug(#file, "🎮 TogglePlayPause command received but no active manager")
-        return .noActionableNowPlayingItem
+        return Self.remoteCommandStatus(hasActiveManager: hasManager)
     }
 
-    private func handleSkipForward(interval: TimeInterval) -> MPRemoteCommandHandlerStatus {
-        let hasManager = audiobookSessionProvider().hasActiveManager
+    nonisolated private func handleSkipForward(interval: TimeInterval) -> MPRemoteCommandHandlerStatus {
+        // Off-main-safe: reads the nonisolated snapshot, NOT the @MainActor
+        // `audiobookSessionProvider().hasActiveManager` (which would trip
+        // dispatch_assert_queue when this handler runs on MediaRemote's queue).
+        let hasManager = hasActiveManagerSnapshot()
         Log.debug(#file, "🎮 handleSkipForward(\(interval)s) - manager: \(hasManager)")
-
-        // When AudiobookManager is active, the toolkit's MediaControlPublisher handles
-        // skip commands. We return .success to indicate we handled it (preventing error)
-        // but don't actually skip - the toolkit does the actual skip.
-        if hasManager {
-            return .success
-        }
-
-        Log.debug(#file, "🎮 SkipForward command received but no active manager")
-        return .noActionableNowPlayingItem
+        return Self.remoteCommandStatus(hasActiveManager: hasManager)
     }
 
-    private func handleSkipBackward(interval: TimeInterval) -> MPRemoteCommandHandlerStatus {
-        let hasManager = audiobookSessionProvider().hasActiveManager
+    nonisolated private func handleSkipBackward(interval: TimeInterval) -> MPRemoteCommandHandlerStatus {
+        // Off-main-safe: reads the nonisolated snapshot, NOT the @MainActor
+        // `audiobookSessionProvider().hasActiveManager` (which would trip
+        // dispatch_assert_queue when this handler runs on MediaRemote's queue).
+        let hasManager = hasActiveManagerSnapshot()
         Log.debug(#file, "🎮 handleSkipBackward(\(interval)s) - manager: \(hasManager)")
-
-        // When AudiobookManager is active, the toolkit's MediaControlPublisher handles
-        // skip commands. We return .success to indicate we handled it (preventing error)
-        // but don't actually skip - the toolkit does the actual skip.
-        if hasManager {
-            return .success
-        }
-
-        Log.debug(#file, "🎮 SkipBackward command received but no active manager")
-        return .noActionableNowPlayingItem
+        return Self.remoteCommandStatus(hasActiveManager: hasManager)
     }
 
-    private func handleChangePlaybackRate(rate: Float) -> MPRemoteCommandHandlerStatus {
-        let hasManager = audiobookSessionProvider().hasActiveManager
+    nonisolated private func handleChangePlaybackRate(rate: Float) -> MPRemoteCommandHandlerStatus {
+        // Off-main-safe: reads the nonisolated snapshot, NOT the @MainActor
+        // `audiobookSessionProvider().hasActiveManager` (which would trip
+        // dispatch_assert_queue when this handler runs on MediaRemote's queue).
+        let hasManager = hasActiveManagerSnapshot()
         Log.debug(#file, "🎮 handleChangePlaybackRate(\(rate)x) - manager: \(hasManager)")
-
-        // When AudiobookManager is active, the toolkit's MediaControlPublisher handles
-        // playback rate commands. We return .success but defer actual action to toolkit.
-        if hasManager {
-            return .success
-        }
-
-        Log.debug(#file, "🎮 ChangePlaybackRate command received but no active manager")
-        return .noActionableNowPlayingItem
+        return Self.remoteCommandStatus(hasActiveManager: hasManager)
     }
 }

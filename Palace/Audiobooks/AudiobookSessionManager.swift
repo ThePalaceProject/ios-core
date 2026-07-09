@@ -12,6 +12,7 @@
 import Combine
 import Foundation
 import MediaPlayer
+import os
 import PalaceAudiobookToolkit
 import PalaceLogging
 import PalaceNetwork
@@ -116,7 +117,9 @@ public final class AudiobookSessionManager: ObservableObject {
     // MARK: - Internal State
 
     private(set) var audiobook: Audiobook?
-    private(set) var manager: AudiobookManager?
+    private(set) var manager: AudiobookManager? {
+        didSet { Self._hasActiveManagerMirror.withLock { $0 = (manager != nil) } }
+    }
     private(set) var playbackModel: AudiobookPlaybackModel?
     private(set) var nowPlayingCoordinator: NowPlayingCoordinator?
 
@@ -124,6 +127,31 @@ public final class AudiobookSessionManager: ObservableObject {
     /// an `AudiobookManager` is bound without leaking the toolkit type
     /// through the protocol.
     public var hasActiveManager: Bool { manager != nil }
+
+    /// Off-main-safe mirror of `hasActiveManager` (`manager != nil`).
+    ///
+    /// The remote-command handlers in `PlaybackBootstrapper` are invoked by
+    /// MediaRemote / CarPlay / the lock screen on a BACKGROUND daemon queue.
+    /// Under the Swift 6 language mode (#1199) those closures inherit
+    /// `@MainActor` isolation from their enclosing type, so a synchronous read
+    /// of the `@MainActor` `hasActiveManager` off-main trips
+    /// `dispatch_assert_queue_fail` — the same crash class as the #1218
+    /// Now-Playing artwork crash. This lock-guarded snapshot is the off-main
+    /// read path: written only on the main actor (via `manager`'s `didSet` at
+    /// the two bind/unbind seams — the ONLY writers of `manager`), read
+    /// atomically from any thread. A `static` mirror is correct because
+    /// `AudiobookSessionManager` is the single per-session owner (see the
+    /// "Singleton manager" contract below); if concurrent managers were ever
+    /// possible this would move to an instance `nonisolated let`.
+    private static let _hasActiveManagerMirror =
+        OSAllocatedUnfairLock<Bool>(initialState: false)
+
+    /// Off-main-safe read of "is a manager currently bound." Reflects the last
+    /// main-actor `bind`/`stopPlayback` transition; the write window is a single
+    /// main-actor hop, so any staleness is sub-frame and self-correcting.
+    nonisolated static var hasActiveManagerSnapshot: Bool {
+        _hasActiveManagerMirror.withLock { $0 }
+    }
 
     /// DRM decryptor tied to the currently loaded audiobook. Owned atomically
     /// alongside manager/audiobook/playbackModel so stopPlayback can release
