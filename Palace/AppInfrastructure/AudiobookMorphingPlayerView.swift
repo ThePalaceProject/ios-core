@@ -25,6 +25,7 @@
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
 
+import AVKit
 import PalaceAudiobookToolkit
 import SwiftUI
 import UIKit
@@ -42,6 +43,14 @@ struct AudiobookMorphingPlayerView: View {
 
     /// Current playback-rate label (e.g. "1.0×"), refreshed when the chip cycles.
     @State private var rateLabel: String = ""
+
+    /// Presents the toolkit's Chapters + Bookmarks list (`AudiobookNavigationView`).
+    @State private var showChaptersBookmarks = false
+
+    /// Live scrubber position + whether the user is dragging it. While dragging,
+    /// the bar tracks the finger (not playback); on release it seeks.
+    @State private var scrubValue: Double = 0
+    @State private var isScrubbing = false
 
     // MARK: - Layout constants
 
@@ -90,24 +99,31 @@ struct AudiobookMorphingPlayerView: View {
         // real bottom inset from the window (the GeometryReader ignores safe area
         // for the full-bleed expanded state, so its inset is 0).
         .padding(.bottom, expanded ? 0 : bottomSafeInset + Self.tabBarHeight + Self.miniMargin)
-        .contentShape(Rectangle())
+        // No `.contentShape` on the padded frame: when minimized, the bottom
+        // padding sits OVER the tab bar, and a rectangular content-shape there
+        // swallowed the tab bar's taps. The mini bar's own `Color` fill (the
+        // `miniBarHeight` card) is the only hit region; the padding + the empty
+        // area above pass touches through to the tabs.
     }
 
     // MARK: - Full layout
 
     private var fullContent: some View {
         VStack(spacing: 0) {
-            grabber
-                .padding(.top, topSafeInset + 4)
+            topControls
+
+            titleAuthorFull
+                .padding(.top, 8)
+                .padding(.horizontal, 24)
+
+            seekBar
+                .padding(.horizontal, 24)
+                .padding(.top, 14)
 
             chapterLabel
-                .padding(.top, 4)
+                .padding(.top, 6)
 
-            fullScrubber
-                .padding(.horizontal, 24)
-                .padding(.top, 8)
-
-            Spacer(minLength: 12)
+            Spacer(minLength: 16)
 
             coverImageOrPlaceholder
                 .frame(maxWidth: 320)
@@ -116,32 +132,63 @@ struct AudiobookMorphingPlayerView: View {
                 .shadow(color: .black.opacity(0.25), radius: 12, y: 6)
                 .matchedGeometryEffect(id: Self.coverMatchID, in: morphNamespace)
                 .padding(.horizontal, 40)
+                // Pull the cover DOWN to minimize (a large, safe drag zone).
+                .contentShape(Rectangle())
+                .gesture(minimizeDrag)
 
-            titleAuthorFull
-                .padding(.top, 20)
-                .padding(.horizontal, 24)
-
-            Spacer(minLength: 12)
+            Spacer(minLength: 16)
 
             transportRow
                 .padding(.top, 8)
 
-            secondaryRow
-                .padding(.top, 20)
+            bottomControls
+                .padding(.top, 22)
                 .padding(.bottom, bottomSafeInset + 16)
         }
         .frame(maxWidth: .infinity)
-        // Pull DOWN anywhere on the full player to minimize (the detent feel);
-        // there is no prominent dismiss up here — Stop lives as a small control.
-        .contentShape(Rectangle())
-        .gesture(minimizeDrag)
+        // Pull DOWN on the grabber or the cover to minimize — the drag lives on
+        // those two zones only (see `grabber` + the cover below), NOT the whole
+        // player. A container drag over the seek Slider and the transport/bottom
+        // buttons stole/propagated their taps (scrub jitter; the speed chip
+        // "dismissing" the player). Keeping the drag off the controls fixes that.
+        .fullScreenCover(isPresented: $showChaptersBookmarks) {
+            if let model = presenter.playbackModel {
+                NavigationStack { AudiobookNavigationView(model: model) }
+            }
+        }
         .accessibilityElement(children: .contain)
+    }
+
+    /// Top row: a centered grab handle (pull DOWN to minimize) + a trailing
+    /// Chapters/Bookmarks (Table-of-Contents) button, mirroring the original
+    /// player's top-trailing TOC control. No chevron-down (per design).
+    private var topControls: some View {
+        ZStack {
+            grabber
+            HStack {
+                Spacer()
+                Button { showChaptersBookmarks = true } label: {
+                    Image(systemName: "list.bullet")
+                        .font(.system(size: 18, weight: .medium))
+                        .frame(width: 44, height: 44)
+                }
+                .buttonStyle(.plain)
+                .tint(.primary)
+                .accessibilityLabel(Strings.Generic.tableOfContents)
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.top, topSafeInset + 8)
     }
 
     private var grabber: some View {
         Capsule()
             .fill(Color.secondary.opacity(0.4))
             .frame(width: 40, height: 5)
+            // Wider invisible hit zone so the pull-down is easy to grab.
+            .frame(width: 140, height: 28)
+            .contentShape(Rectangle())
+            .gesture(minimizeDrag)
             .accessibilityHidden(true)
     }
 
@@ -154,18 +201,27 @@ struct AudiobookMorphingPlayerView: View {
             .accessibilityHidden(true)
     }
 
-    private var fullScrubber: some View {
+    /// Scrubbable seek bar. While the user drags, `scrubValue` tracks the finger
+    /// and playback ticks are ignored; on release it seeks via
+    /// `audiobookSession.seek(to:)` (toolkit `seekWithSlider`).
+    private var seekBar: some View {
         VStack(spacing: 4) {
-            ProgressView(value: clampedProgress, total: 1.0)
-                .progressViewStyle(.linear)
-                .tint(.accentColor)
+            Slider(value: $scrubValue, in: 0...1) { editing in
+                isScrubbing = editing
+                if !editing { audiobookSession.seek(to: scrubValue) }
+            }
+            .tint(.accentColor)
             HStack {
                 Text(elapsedString).font(.caption2).foregroundStyle(.secondary)
                 Spacer()
                 Text(remainingString).font(.caption2).foregroundStyle(.secondary)
             }
         }
-        .accessibilityHidden(true)
+        .onAppear { scrubValue = clampedProgress }
+        .onChange(of: clampedProgress) { _, newValue in
+            if !isScrubbing { scrubValue = newValue }
+        }
+        .accessibilityLabel("Seek")
     }
 
     private var titleAuthorFull: some View {
@@ -180,6 +236,13 @@ struct AudiobookMorphingPlayerView: View {
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .lineLimit(1)
+            }
+            let remaining = wholeBookRemainingString
+            if !remaining.isEmpty {
+                Text(remaining)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 2)
             }
         }
     }
@@ -205,9 +268,12 @@ struct AudiobookMorphingPlayerView: View {
         }
     }
 
-    private var secondaryRow: some View {
-        HStack {
-            // Playback-rate chip
+    /// Bottom control row, mirroring the original player: playback-speed chip,
+    /// AirPlay route picker, and a Bookmarks button (opens the same
+    /// Chapters/Bookmarks list). (Sleep timer needs a public toolkit hook — a
+    /// follow-up like `seek(to:)` — so it is deferred.)
+    private var bottomControls: some View {
+        HStack(spacing: 0) {
             Button(action: cycleRate) {
                 Text(rateLabel.isEmpty ? currentRateLabel : rateLabel)
                     .font(.subheadline).fontWeight(.medium)
@@ -220,14 +286,18 @@ struct AudiobookMorphingPlayerView: View {
 
             Spacer()
 
-            // Small, secondary Stop — de-emphasized vs. pull-down-to-minimize.
-            Button(action: stop) {
-                Text(Strings.Generic.stopAudiobook)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+            AirPlayRoutePicker()
+                .frame(width: 44, height: 44)
+                .accessibilityLabel("AirPlay")
+
+            Button { showChaptersBookmarks = true } label: {
+                Image(systemName: "bookmark")
+                    .font(.system(size: 18, weight: .medium))
+                    .frame(width: 44, height: 44)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(Strings.Generic.stopAudiobook)
+            .tint(.primary)
+            .accessibilityLabel("Bookmarks")
         }
         .padding(.horizontal, 28)
     }
@@ -268,16 +338,32 @@ struct AudiobookMorphingPlayerView: View {
                 .contentShape(Rectangle())
                 .onTapGesture { expand() }
 
-                Spacer(minLength: 4)
+                Spacer(minLength: 2)
+
+                Button(action: { audiobookSession.skipBack() }) {
+                    Image(systemName: "gobackward.30")
+                        .font(.system(size: 18, weight: .regular))
+                        .frame(width: 40, height: 44)
+                }
+                .buttonStyle(.plain).tint(.primary)
+                .accessibilityLabel(Strings.Generic.skipBack30)
 
                 Button(action: { audiobookSession.togglePlayPause() }) {
                     Image(systemName: presenter.isPlaying ? "pause.fill" : "play.fill")
                         .resizable().aspectRatio(contentMode: .fit)
-                        .padding(12).frame(width: 44, height: 44)
+                        .padding(10).frame(width: 42, height: 42)
                         .contentTransition(.symbolEffect(.replace))
                 }
                 .buttonStyle(.plain).tint(.accentColor)
                 .accessibilityLabel(presenter.isPlaying ? Strings.Generic.pauseAudiobook : Strings.Generic.playAudiobook)
+
+                Button(action: { audiobookSession.skipForward() }) {
+                    Image(systemName: "goforward.30")
+                        .font(.system(size: 18, weight: .regular))
+                        .frame(width: 40, height: 44)
+                }
+                .buttonStyle(.plain).tint(.primary)
+                .accessibilityLabel(Strings.Generic.skipForward30)
 
                 Button(action: stop) {
                     Image(systemName: "xmark.circle.fill")
@@ -416,4 +502,29 @@ struct AudiobookMorphingPlayerView: View {
             .first { $0.isKeyWindow }?
             .safeAreaInsets ?? .zero
     }
+
+    /// Whole-book remaining, phrased like the original ("18 hr 06 min remaining").
+    private var wholeBookRemainingString: String {
+        guard let position = progress.currentLocation else { return "" }
+        let total = position.tracks.totalDuration
+        let elapsed = total * clampedProgress
+        let remaining = max(0, total - elapsed)
+        let hrs = Int(remaining) / 3600
+        let mins = (Int(remaining) % 3600) / 60
+        if hrs > 0 { return String(format: "%d hr %02d min remaining", hrs, mins) }
+        return String(format: "%d min remaining", mins)
+    }
+}
+
+/// SwiftUI wrapper for the system AirPlay/route picker, matching the original
+/// player's cast control.
+private struct AirPlayRoutePicker: UIViewRepresentable {
+    func makeUIView(context: Context) -> AVRoutePickerView {
+        let v = AVRoutePickerView()
+        v.prioritizesVideoDevices = false
+        v.tintColor = .label
+        v.backgroundColor = .clear
+        return v
+    }
+    func updateUIView(_ uiView: AVRoutePickerView, context: Context) {}
 }

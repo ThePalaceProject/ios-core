@@ -98,6 +98,12 @@ protocol AudiobookSessionManaging: AnyObject {
     /// Cycles through available playback rates and returns the new rate.
     func cyclePlaybackRate() -> PlaybackRate
 
+    /// Seeks to a fractional position (0…1) of the whole audiobook. Drives the
+    /// full player's scrubber. Default no-op so lightweight test doubles need not
+    /// implement it; the production manager routes to the toolkit's
+    /// `DefaultAudiobookManager.seekWithSlider`.
+    func seek(to fraction: Double)
+
     /// Stops playback and clears the current session.
     func stopPlayback(dismissPhoneUI: Bool, persistFinalPosition: Bool) async
 
@@ -118,6 +124,14 @@ protocol AudiobookSessionManaging: AnyObject {
     /// Polish-phase addition (in-app-nav-polish-2026-06-01) for the
     /// "playback freezes when backgrounded" user-reported regression.
     func recoverPlaybackForForegroundEntry()
+}
+
+// MARK: - Default implementations
+
+extension AudiobookSessionManaging {
+    /// Default no-op so lightweight test doubles need not implement seeking.
+    /// The production `AudiobookSessionManager` overrides this.
+    func seek(to fraction: Double) {}
 }
 
 // MARK: - AudiobookSessionManager Conformance

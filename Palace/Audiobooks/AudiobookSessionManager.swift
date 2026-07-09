@@ -863,6 +863,17 @@ public final class AudiobookSessionManager: ObservableObject {
         Log.debug(#file, "Skipping forward \(Self.defaultSkipInterval)s")
     }
 
+    /// Seeks to a fractional position (0…1) of the whole audiobook via the
+    /// toolkit's public `DefaultAudiobookManager.seekWithSlider`. Drives the full
+    /// player's scrubber drag. Clamped to [0, 1]; no-ops if no active manager.
+    public func seek(to fraction: Double) {
+        guard let modernManager = manager as? DefaultAudiobookManager else {
+            Log.warn(#file, "Cannot seek — no DefaultAudiobookManager")
+            return
+        }
+        modernManager.seekWithSlider(value: min(max(fraction, 0), 1)) { _ in }
+    }
+
     /// Cycles through playback rates. Driven by CarPlay / remote-control
     /// "change playback rate" commands — the now-playing screen UI uses the
     /// speed bottom sheet instead of cycling.
