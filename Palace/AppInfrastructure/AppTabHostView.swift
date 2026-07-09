@@ -178,40 +178,28 @@ struct AppTabHostView: View {
     @ViewBuilder
     private var resizingPlayerOverlay: some View {
         if inAppPlaybackNavEnabled, audiobookSessionPresenter.playbackModel != nil {
-            let expanded = audiobookSessionPresenter.isPlayerExpanded
-            let hidden = audiobookSessionPresenter.isReaderActive
-            let reduceMotion = UIAccessibility.isReduceMotionEnabled
-            GeometryReader { geo in
-                let fullHeight = geo.size.height
-                // Real window bottom inset (home indicator) — NOT geo's, which is
-                // 0 under `.ignoresSafeArea()` and let the card overlap the tab bar.
-                let miniInset = bottomSafeInset + Self.tabBarHeight + Self.miniMargin
-                ZStack(alignment: .top) {
-                    // FULL player (toolkit) — always mounted; fades out at mini.
-                    AudiobookFullPlayerCoverContainer(presenter: audiobookSessionPresenter)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .opacity(expanded ? 1 : 0)
-                        .allowsHitTesting(expanded)
-                    // COMPACT bar — self-gates on `!isPlayerExpanded`, so it is
-                    // present only at the mini size; fades in as the card shrinks.
-                    AudiobookMiniPlayerView(
-                        presenter: audiobookSessionPresenter,
-                        progress: audiobookSessionPresenter.progress,
-                        audiobookSession: appContainer.audiobookSession
-                    )
-                    .allowsHitTesting(!expanded)
-                }
-                .frame(height: expanded ? fullHeight : Self.miniBarHeight, alignment: .top)
-                .background(Color(.systemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: expanded ? 0 : 16, style: .continuous))
-                .shadow(color: .black.opacity(expanded ? 0 : 0.18), radius: expanded ? 0 : 10, y: -2)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                .padding(.bottom, expanded ? 0 : miniInset)
-                .offset(y: hidden ? fullHeight : 0)
-                .animation(reduceMotion ? nil : PalaceMotion.emphasized, value: expanded)
-                .animation(reduceMotion ? nil : PalaceMotion.standard, value: hidden)
+            ZStack {
+                // Hidden toolkit keeper: the toolkit `AudiobookPlayerView` (inside
+                // `AudiobookFullPlayerCoverContainer`) stays MOUNTED but invisible
+                // and non-interactive, so its playback wiring never tears down
+                // (its `onDisappear` fires `stop()`/`unload()`). The CUSTOM
+                // `AudiobookMorphingPlayerView` is the visible UI now — it reflows
+                // as one view (matchedGeometry cover) between full and mini instead
+                // of crossfading the toolkit player with a separate bar. If device
+                // testing confirms playback survives without it, this keeper can be
+                // removed; kept as the safe default.
+                AudiobookFullPlayerCoverContainer(presenter: audiobookSessionPresenter)
+                    .frame(width: 1, height: 1)
+                    .opacity(0)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+
+                AudiobookMorphingPlayerView(
+                    presenter: audiobookSessionPresenter,
+                    progress: audiobookSessionPresenter.progress,
+                    audiobookSession: appContainer.audiobookSession
+                )
             }
-            .ignoresSafeArea()
         }
     }
 
