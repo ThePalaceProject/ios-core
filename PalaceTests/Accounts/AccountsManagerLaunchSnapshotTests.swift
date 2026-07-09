@@ -412,6 +412,73 @@ final class AccountsManagerLaunchSnapshotTests: PalaceWiringTestCase {
         }
     }
 
+    // MARK: - Regression (PR #1226): launch-time drive must be deferred off the sync stack
+
+    /// Regression for the cold-launch re-entrancy crash (PR #1226). At cold launch
+    /// `AccountsManager()` is built INSIDE `AppContainer._buildCachedAppContainer()`,
+    /// which runs under `AppContainer._cachedLock` (a non-recursive
+    /// `OSAllocatedUnfairLock`). `hydrateSlimLaunchSnapshot` used to drive the
+    /// current account's auth-doc SYNCHRONOUSLY on that stack — and the drive calls
+    /// `AppContainer.production()` again (`Account.fetchAuthenticationDocument`),
+    /// re-entering the held lock → `_os_unfair_lock_recursive_abort` /
+    /// `EXC_BREAKPOINT`. It crashed launch for every SIGNED-IN user (a logged-out
+    /// sim has no current account to drive, so it never reproduced there — which is
+    /// how it shipped).
+    ///
+    /// The fix defers the drive one main-runloop turn. This test pins that at the
+    /// seam we can unit-test: immediately after the SYNCHRONOUS preload returns, the
+    /// current account must NOT yet be driving (the deferred block hasn't run on this
+    /// runloop turn); it must begin driving only AFTER the runloop turns. A revert to
+    /// an inline drive flips the first assertion — the same change that reintroduces
+    /// the re-entrant launch crash — and fails here.
+    func testColdLaunch_authDocDrive_isDeferredOffSyncPreloadStack_notInline() throws {
+        let catalogs = try loadFeedCatalogs()
+        let aUUID = catalogs[0].metadata.id
+
+        let defaults = testUserDefaults()
+        defaults.set(aUUID, forKey: currentAccountIdentifierKey)
+        let manager = makeFreshAccountsManager(defaults: defaults)
+
+        let hash = activeHash()
+        try seedFullCache(hash: hash, data: feedData)
+        try seedSlimSnapshot(hash: hash, keepUUIDs: [aUUID])
+        defer { tearDownCaches(hash: hash) }
+
+        #if DEBUG
+        AccountStateStore.shared._resetAllForTesting()
+        #endif
+
+        // Synchronous preload — same runloop turn as the (deferred) drive schedule.
+        manager.preloadAccountsFromDiskCacheSync()
+
+        // The deferred drive has NOT run yet (we haven't yielded the runloop). If it
+        // were inline — the re-entrancy regression — the account would already be
+        // `.detailsLoading`.
+        switch AccountStateStore.shared.state(for: aUUID) {
+        case .detailsLoading, .detailsLoaded, .detailsFailed:
+            XCTFail("Auth-doc drive ran SYNCHRONOUSLY inside preloadAccountsFromDiskCacheSync — at cold launch this re-enters AppContainer.production() under the held _cachedLock and aborts (PR #1226). It must be deferred off this stack. Observed \(label(AccountStateStore.shared.state(for: aUUID)))")
+        default:
+            break // .notLoaded / .basicInfoLoaded — deferred, correct.
+        }
+
+        // After the runloop turns, the deferred drive fires — the launch-readiness
+        // contract (awaitReady() consumers resolve) is preserved.
+        awaitCondition(timeout: 6.0) {
+            switch AccountStateStore.shared.state(for: aUUID) {
+            case .detailsLoading, .detailsLoaded, .detailsFailed:
+                return true
+            default:
+                return false
+            }
+        }
+        switch AccountStateStore.shared.state(for: aUUID) {
+        case .detailsLoading, .detailsLoaded, .detailsFailed:
+            break
+        default:
+            XCTFail("Deferred drive must still fire on the next runloop turn; observed \(label(AccountStateStore.shared.state(for: aUUID)))")
+        }
+    }
+
     // MARK: - Finding 4: slim→full instance reuse (no auth-doc split-brain)
 
     /// Contract (architect Finding 4): `details`/`authenticationDocument` are
