@@ -926,8 +926,18 @@ public final class AudiobookSessionManager: ObservableObject {
         #endif
         decryptor = nil
 
-        if dismissPhoneUI, let bookId = bookId {
-            dismissPlayerOnPhone(bookId: bookId)
+        if dismissPhoneUI {
+            if let bookId = bookId {
+                dismissPlayerOnPhone(bookId: bookId)
+            } else if inAppPlaybackNavEnabledProvider() {
+                // Flag-ON dismiss only needs the presenter cleared — it does not
+                // use `bookId` (see `dismissPlayerOnPhone`). Gating the WHOLE
+                // dismiss behind `let bookId` meant a nil `currentBook` at
+                // teardown time (transient / already-cleared states) left the
+                // mini-bar + pill on screen, so the ✕ appeared to do nothing.
+                // Clear the presenter unconditionally on the flag-ON path.
+                audiobookSessionPresenterProvider().clearActiveSession()
+            }
         }
 
         manager = nil

@@ -101,35 +101,56 @@ struct AudiobookMiniPlayerView: View {
 
     // MARK: - Chrome
 
+    /// The drawer grab handle — the standard iOS "this is draggable" affordance,
+    /// centered at the top of the bar. It makes both directions discoverable:
+    /// pull UP to open the full player, pull DOWN to collapse to the pill. A bare
+    /// tap-to-open (the prior behavior) gave no hint the bar was interactive; the
+    /// handle + the drawer drag fix that. Also independently tappable/draggable.
+    private var grabber: some View {
+        Capsule()
+            .fill(Color.secondary.opacity(0.4))
+            .frame(width: 36, height: 5)
+            .frame(maxWidth: .infinity)
+            .padding(.top, 6)
+            .padding(.bottom, 2)
+            .contentShape(Rectangle())
+            .onTapGesture { expandWithMotionPreference() }
+            .gesture(drawerDrag)
+            .accessibilityHidden(true)
+    }
+
     private var miniPlayerChrome: some View {
         VStack(spacing: 0) {
+            grabber
             HStack(spacing: 12) {
-                coverImage
-                    .accessibilityHidden(true)
-                    .contentShape(Rectangle())
-                    .onTapGesture { expandWithMotionPreference() }
-                titleAndTimeStack
-                    .accessibilityHidden(true)
-                    .contentShape(Rectangle())
-                    .onTapGesture { expandWithMotionPreference() }
-                Spacer(minLength: 4)
+                // The drawer zone: cover + title. Tap OR pull it — up expands to
+                // the full player, down collapses to the pill. The drawer drag
+                // lives HERE (and on the grabber), deliberately NOT over the
+                // transport/dismiss buttons: a container `DragGesture` spanning
+                // the buttons intermittently swallowed their taps (the root of
+                // the "✕ sometimes does nothing" bug). Buttons now own their taps.
+                HStack(spacing: 12) {
+                    coverImage
+                    titleAndTimeStack
+                    Spacer(minLength: 4)
+                }
+                .contentShape(Rectangle())
+                .onTapGesture { expandWithMotionPreference() }
+                .gesture(drawerDrag)
+                .accessibilityHidden(true)
+
                 skipBackButton
                 playPauseButton
                 skipForwardButton
                 dismissButton
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.top, 2)
+            .padding(.bottom, 8)
             scrubber
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.ultraThinMaterial)
-        // Swipe the bar DOWN to collapse it to the compact floating pill
-        // (playback keeps running). Paired with the visible `✕` button that
-        // performs the hard dismiss — same discoverability lesson the full
-        // player learned (a gesture alone wasn't discoverable, so we ship
-        // both a gesture AND a visible control).
-        .gesture(swipeDownToCollapse)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityHint(Strings.Generic.expandPlayerHint)
@@ -146,7 +167,7 @@ struct AudiobookMiniPlayerView: View {
         if UIAccessibility.isReduceMotionEnabled {
             presenter.expand()
         } else {
-            withAnimation(.easeInOut) { presenter.expand() }
+            withAnimation(PalaceMotion.standard) { presenter.expand() }
         }
         if UIAccessibility.isVoiceOverRunning {
             UIAccessibility.post(notification: .layoutChanged, argument: nil)
@@ -243,44 +264,84 @@ struct AudiobookMiniPlayerView: View {
         .accessibilityLabel(Strings.Generic.skipForward30)
     }
 
-    /// The `✕` hard-dismiss control. Unlike the swipe-down collapse (which
-    /// only tucks the bar into the pill and keeps audio playing), this ENDS
-    /// the session: `stopPlayback(dismissPhoneUI: true, persistFinalPosition:
-    /// true)` saves the final position, tears down the toolkit player, and —
-    /// via `dismissPlayerOnPhone` → `clearActiveSession()` — drops both the
-    /// mini-bar and the pill. Re-opening the book resumes from the saved
-    /// position. Rendered with a secondary tint + smaller glyph so it reads
-    /// as the low-frequency destructive action, not a transport control.
+    /// The hard-dismiss control. Unlike the drawer collapse (which tucks the bar
+    /// into the pill and keeps audio playing), this ENDS the session:
+    /// `stopPlayback(dismissPhoneUI: true, persistFinalPosition: true)` saves the
+    /// final position, tears down the toolkit player, and drops both the mini-bar
+    /// and the pill. Re-opening the book resumes from the saved position.
+    ///
+    /// Rendered as a filled circular "close" chip (SF `xmark.circle.fill`) rather
+    /// than a bare glyph: the circle reads unambiguously as a distinct close
+    /// affordance — set apart from the transport glyphs beside it — instead of a
+    /// fourth, cryptic transport control. 44pt hit target.
     private var dismissButton: some View {
         Button(action: dismiss) {
-            Image(systemName: "xmark")
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .padding(14)
+            Image(systemName: "xmark.circle.fill")
+                .font(.system(size: 22))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(.secondary)
                 .frame(width: 44, height: 44)
+                .contentShape(Circle())
         }
         .buttonStyle(.plain)
-        .tint(.secondary)
         .accessibilityLabel(Strings.Generic.stopAudiobook)
     }
 
-    /// Swipe DOWN on the bar → collapse to the pill. Mirrors the full
-    /// player's `swipeDownToMinimize` shape (drag with a directional +
-    /// horizontal-drift threshold) but drives `presenter.collapse()` instead
-    /// of `minimize()`. Threshold is smaller than the full player's 100pt
-    /// because the mini-bar is only ~60pt tall — a 100pt swipe would overshoot
-    /// the bar entirely before registering.
-    private var swipeDownToCollapse: some Gesture {
+    /// The unified drawer gesture: a vertical drag that resolves like a bottom
+    /// drawer — pull UP past the threshold to open the full player, pull DOWN to
+    /// collapse to the pill, small drags snap back. Attached to the grabber +
+    /// cover/title zone only (never the transport/dismiss buttons, so their taps
+    /// stay reliable). Replaces the prior down-only `swipeDownToCollapse` and the
+    /// tap-only expand: the bar now reads and behaves as a draggable drawer.
+    private var drawerDrag: some Gesture {
         DragGesture(minimumDistance: 10, coordinateSpace: .local)
             .onEnded { value in
-                handleCollapseDragEnd(translation: value.translation)
+                handleDrawerDragEnd(translation: value.translation)
             }
     }
+
+    /// Test-visible drawer drag-end handler — takes a raw `CGSize` so unit tests
+    /// can drive the up/down boundaries without a real `DragGesture`. Both
+    /// transitions honor reduce-motion and animate with `PalaceMotion.standard`
+    /// (the app's motion system), matching the full player.
+    func handleDrawerDragEnd(translation: CGSize) {
+        switch Self.drawerAction(translation: translation) {
+        case .expand:
+            expandWithMotionPreference()
+        case .collapse:
+            if UIAccessibility.isReduceMotionEnabled {
+                presenter.collapse()
+            } else {
+                withAnimation(PalaceMotion.standard) { presenter.collapse() }
+            }
+        case .none:
+            break
+        }
+    }
+
+    /// Which way a drawer drag resolves.
+    enum DrawerAction: Equatable { case expand, collapse, none }
+
+    /// Pure drawer decision: an UP drag past `expandSwipeUpThreshold` expands, a
+    /// DOWN drag past `collapseSwipeDownThreshold` collapses, both gated on
+    /// limited horizontal drift; anything else snaps back. Extracted `static` so
+    /// the thresholds / comparisons are mutation-testable without a SwiftUI host.
+    static func drawerAction(translation: CGSize) -> DrawerAction {
+        guard abs(translation.width) < collapseSwipeMaxHorizontalDrift else { return .none }
+        if translation.height <= -expandSwipeUpThreshold { return .expand }
+        if translation.height >= collapseSwipeDownThreshold { return .collapse }
+        return .none
+    }
+
+    /// Upward-drag threshold (points) past which the drawer opens the full
+    /// player. Symmetric with `collapseSwipeDownThreshold`.
+    static let expandSwipeUpThreshold: CGFloat = 44
 
     /// Test-visible drag-end handler — takes a raw `CGSize` so unit tests can
     /// drive the boundary without spinning up a real `DragGesture`. Collapses
     /// (honoring reduce-motion) iff the drag clears the pure `shouldCollapse`
-    /// threshold.
+    /// threshold. Retained for the collapse-path tests; `handleDrawerDragEnd` is
+    /// the production entry point (it also handles the expand direction).
     func handleCollapseDragEnd(translation: CGSize) {
         guard Self.shouldCollapse(translation: translation) else { return }
         if UIAccessibility.isReduceMotionEnabled {
@@ -307,13 +368,26 @@ struct AudiobookMiniPlayerView: View {
             && abs(translation.width) < collapseSwipeMaxHorizontalDrift
     }
 
-    /// Fires the hard dismiss. `stopPlayback` is `async`, so we hop onto a
-    /// `Task` (the `@MainActor` context is preserved). The manager's
-    /// teardown clears the presenter, so no explicit UI mutation is needed
-    /// here — the bar/pill drop when `hasActiveSession` flips false.
+    /// Fires the hard dismiss. Two-part so the tap ALWAYS has an instant visible
+    /// effect regardless of how long the async teardown takes:
+    ///   1. Optimistically clear the presenter NOW — `hasActiveSession` flips
+    ///      false synchronously, so the bar/pill drop on this frame. This is what
+    ///      makes the control feel reliable; the prior version only hid the bar
+    ///      after the async `stopPlayback` finished, so any delay (or a nil
+    ///      `currentBook` skipping the manager's own clear) left the bar sitting
+    ///      there with `isDismissing` stuck `true` — the "✕ does nothing" bug.
+    ///   2. Run the real teardown (save position, tear down the toolkit player)
+    ///      on a `Task`. `stopPlayback` re-clears the presenter idempotently.
+    /// Animated with `PalaceMotion.standard` (reduce-motion aware) so the drop
+    /// matches the drawer's motion.
     private func dismiss() {
         guard !isDismissing else { return }
         isDismissing = true
+        if UIAccessibility.isReduceMotionEnabled {
+            presenter.clearActiveSession()
+        } else {
+            withAnimation(PalaceMotion.standard) { presenter.clearActiveSession() }
+        }
         Task { await performDismiss() }
     }
 

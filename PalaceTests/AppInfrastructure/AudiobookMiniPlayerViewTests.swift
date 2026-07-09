@@ -170,6 +170,70 @@ final class AudiobookMiniPlayerViewTests: XCTestCase {
                        "A drag under the threshold must not collapse the bar")
     }
 
+    // MARK: - Drawer (pull UP → expand, pull DOWN → collapse)
+
+    /// Truth table for `drawerAction(translation:)` — the pure drawer decision
+    /// that resolves a vertical drag to expand / collapse / none. Extracted so
+    /// the thresholds + comparisons are mutation-testable without a SwiftUI host.
+    func testDrawerAction_truthTable_killsThresholdMutations() {
+        let up = AudiobookMiniPlayerView.expandSwipeUpThreshold
+        let down = AudiobookMiniPlayerView.collapseSwipeDownThreshold
+        let drift = AudiobookMiniPlayerView.collapseSwipeMaxHorizontalDrift
+        typealias V = AudiobookMiniPlayerView
+
+        // Pull UP past threshold → expand.
+        XCTAssertEqual(V.drawerAction(translation: CGSize(width: 0, height: -(up + 1))), .expand,
+                       "Upward drag past threshold → expand")
+        // Pull DOWN past threshold → collapse.
+        XCTAssertEqual(V.drawerAction(translation: CGSize(width: 0, height: down + 1)), .collapse,
+                       "Downward drag past threshold → collapse")
+        // EXACTLY at each threshold → none (kills `<=` → `<` and `>=` → `>`).
+        XCTAssertEqual(V.drawerAction(translation: CGSize(width: 0, height: -up)), .expand,
+                       "EXACTLY at the up threshold → expand (kills `<=` → `<`)")
+        XCTAssertEqual(V.drawerAction(translation: CGSize(width: 0, height: down)), .collapse,
+                       "EXACTLY at the down threshold → collapse (kills `>=` → `>`)")
+        // Just inside either threshold → none.
+        XCTAssertEqual(V.drawerAction(translation: CGSize(width: 0, height: -(up - 1))), .none,
+                       "Small up drag → none")
+        XCTAssertEqual(V.drawerAction(translation: CGSize(width: 0, height: down - 1)), .none,
+                       "Small down drag → none")
+        // Too much horizontal drift → none in BOTH directions (kills dropping the
+        // drift guard — a diagonal scroll must not fire the drawer either way).
+        XCTAssertEqual(V.drawerAction(translation: CGSize(width: drift, height: -(up + 1))), .none,
+                       "Up drag at the drift limit → none (kills `<` → `<=` on drift)")
+        XCTAssertEqual(V.drawerAction(translation: CGSize(width: drift + 1, height: down + 1)), .none,
+                       "Down drag beyond drift limit → none")
+    }
+
+    /// Pull UP past threshold → expand the full player exactly once, WITHOUT
+    /// collapsing or stopping playback (kills a mutation that swaps the direction).
+    func testMiniPlayer_drawerPullUp_expandsOnce_doesNotCollapseOrStop() {
+        let sut = makeSUT()
+        sut.handleDrawerDragEnd(translation: CGSize(width: 0, height: -(AudiobookMiniPlayerView.expandSwipeUpThreshold + 20)))
+        XCTAssertEqual(spyPresenter.expandCallCount, 1, "Pull-up past threshold must expand exactly once")
+        XCTAssertEqual(spyPresenter.collapseCallCount, 0, "Pull-up must NOT collapse")
+        XCTAssertEqual(spySession.stopPlaybackCallCount, 0, "Pull-up must NOT stop playback")
+    }
+
+    /// Pull DOWN past threshold → collapse exactly once, WITHOUT expanding or
+    /// stopping playback (the drawer's down direction, now via the unified handler).
+    func testMiniPlayer_drawerPullDown_collapsesOnce_doesNotExpandOrStop() {
+        let sut = makeSUT()
+        sut.handleDrawerDragEnd(translation: CGSize(width: 0, height: AudiobookMiniPlayerView.collapseSwipeDownThreshold + 20))
+        XCTAssertEqual(spyPresenter.collapseCallCount, 1, "Pull-down past threshold must collapse exactly once")
+        XCTAssertEqual(spyPresenter.expandCallCount, 0, "Pull-down must NOT expand")
+        XCTAssertEqual(spySession.stopPlaybackCallCount, 0, "Pull-down must NOT stop playback")
+    }
+
+    /// A small vertical drag through the unified handler is inert (neither direction).
+    func testMiniPlayer_drawerSmallDrag_isNoOp() {
+        let sut = makeSUT()
+        sut.handleDrawerDragEnd(translation: CGSize(width: 0, height: -(AudiobookMiniPlayerView.expandSwipeUpThreshold - 5)))
+        sut.handleDrawerDragEnd(translation: CGSize(width: 0, height: AudiobookMiniPlayerView.collapseSwipeDownThreshold - 5))
+        XCTAssertEqual(spyPresenter.expandCallCount, 0, "Sub-threshold up drag must not expand")
+        XCTAssertEqual(spyPresenter.collapseCallCount, 0, "Sub-threshold down drag must not collapse")
+    }
+
     // MARK: - Hard dismiss (✕ → stopPlayback)
 
     /// The `✕` button routes through `audiobookSession.stopPlayback` with the
