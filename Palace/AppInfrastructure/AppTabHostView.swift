@@ -141,6 +141,20 @@ struct AppTabHostView: View {
     /// The device's variable home-indicator inset is added on top at runtime.
     private static let tabBarHeight: CGFloat = 49
 
+    /// The live bottom safe-area inset (home indicator). Read from the key window
+    /// rather than the overlay's `GeometryReader`, because the overlay
+    /// `.ignoresSafeArea()`s (so the full player can go edge-to-edge) and inside
+    /// that the GR reports a bottom inset of 0 — which put the minimized card
+    /// UNDER the tab bar (it overlapped the icons). This reads the real inset so
+    /// the mini card floats clear of the tab bar + home indicator.
+    private var bottomSafeInset: CGFloat {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap { $0.windows }
+            .first { $0.isKeyWindow }?
+            .safeAreaInsets.bottom ?? 0
+    }
+
     /// The single "resize overlay" — the full player and the mini bar are ONE
     /// bottom-anchored card that RESIZES between full-screen (`isPlayerExpanded`)
     /// and a compact `miniBarHeight` bar (minimized), so it reads as one view
@@ -169,7 +183,9 @@ struct AppTabHostView: View {
             let reduceMotion = UIAccessibility.isReduceMotionEnabled
             GeometryReader { geo in
                 let fullHeight = geo.size.height
-                let miniInset = geo.safeAreaInsets.bottom + Self.tabBarHeight + Self.miniMargin
+                // Real window bottom inset (home indicator) — NOT geo's, which is
+                // 0 under `.ignoresSafeArea()` and let the card overlap the tab bar.
+                let miniInset = bottomSafeInset + Self.tabBarHeight + Self.miniMargin
                 ZStack(alignment: .top) {
                     // FULL player (toolkit) — always mounted; fades out at mini.
                     AudiobookFullPlayerCoverContainer(presenter: audiobookSessionPresenter)

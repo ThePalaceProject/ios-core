@@ -209,12 +209,14 @@ class AudiobookSessionPresenter: ObservableObject {
         isCollapsed = false
     }
 
-    /// Swipe-down-on-mini-bar entry point. Collapses the full mini-bar to
-    /// the compact floating pill (`AudiobookCollapsedPillView`). Playback
-    /// keeps running — this is strictly a chrome change, distinct from the
-    /// `✕` dismiss which calls `stopPlayback`. Idempotent.
+    /// No-op in the resize-overlay morph: the floating pill is GONE — the mini
+    /// bar is already the smallest chrome state, so there is nothing further to
+    /// collapse into. Left as a no-op (rather than deleted) so the mini bar's
+    /// existing swipe-down gesture routes here harmlessly instead of hiding the
+    /// bar into an empty card. Down-on-mini does nothing; expand is via up/tap,
+    /// dismiss is via the ✕.
     func collapse() {
-        isCollapsed = true
+        // intentionally empty — no pill in the morph
     }
 
     /// Tap-on-pill entry point. Restores the full mini-bar from the compact
