@@ -120,9 +120,6 @@ struct AudiobookMorphingPlayerView: View {
                 .padding(.horizontal, 24)
                 .padding(.top, 14)
 
-            chapterLabel
-                .padding(.top, 6)
-
             Spacer(minLength: 16)
 
             coverImageOrPlaceholder
@@ -192,13 +189,17 @@ struct AudiobookMorphingPlayerView: View {
             .accessibilityHidden(true)
     }
 
-    private var chapterLabel: some View {
-        Text(audiobookSession.currentChapter?.title ?? presenter.currentBook?.title ?? "")
-            .font(.headline)
-            .lineLimit(1)
-            .truncationMode(.tail)
-            .padding(.horizontal, 24)
-            .accessibilityHidden(true)
+    /// Menu titles for the sleep-timer triggers (mirrors the toolkit's own
+    /// titles; the toolkit's `sleepTimerTitle` uses module-internal `DisplayStrings`).
+    static func sleepTimerTitle(_ trigger: SleepTimerTriggerAt) -> String {
+        switch trigger {
+        case .never: return "Off"
+        case .fifteenMinutes: return "15 minutes"
+        case .thirtyMinutes: return "30 minutes"
+        case .oneHour: return "1 hour"
+        case .endOfChapter: return "End of chapter"
+        @unknown default: return "Off"
+        }
     }
 
     /// Scrubbable seek bar. While the user drags, `scrubValue` tracks the finger
@@ -211,10 +212,18 @@ struct AudiobookMorphingPlayerView: View {
                 if !editing { audiobookSession.seek(to: scrubValue) }
             }
             .tint(.accentColor)
-            HStack {
-                Text(elapsedString).font(.caption2).foregroundStyle(.secondary)
-                Spacer()
-                Text(remainingString).font(.caption2).foregroundStyle(.secondary)
+            // Single row under the bar, matching the original: elapsed · chapter
+            // name (center, emphasized) · remaining.
+            HStack(spacing: 8) {
+                Text(elapsedString)
+                    .font(.caption2).foregroundStyle(.secondary).monospacedDigit()
+                Spacer(minLength: 8)
+                Text(audiobookSession.currentChapter?.title ?? presenter.currentBook?.title ?? "")
+                    .font(.subheadline).fontWeight(.semibold)
+                    .lineLimit(1).truncationMode(.tail)
+                Spacer(minLength: 8)
+                Text(remainingString)
+                    .font(.caption2).foregroundStyle(.secondary).monospacedDigit()
             }
         }
         .onAppear { scrubValue = clampedProgress }
@@ -253,14 +262,18 @@ struct AudiobookMorphingPlayerView: View {
                 audiobookSession.skipBack()
             }
             Button(action: { audiobookSession.togglePlayPause() }) {
-                Image(systemName: presenter.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: 72, height: 72)
-                    .contentTransition(.symbolEffect(.replace))
+                // Dark circle + light glyph, matching the original (not a white
+                // filled symbol).
+                ZStack {
+                    Circle().fill(Color(.systemGray5))
+                    Image(systemName: presenter.isPlaying ? "pause.fill" : "play.fill")
+                        .font(.system(size: 28, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .contentTransition(.symbolEffect(.replace))
+                }
+                .frame(width: 72, height: 72)
             }
             .buttonStyle(.plain)
-            .tint(.accentColor)
             .accessibilityLabel(presenter.isPlaying ? Strings.Generic.pauseAudiobook : Strings.Generic.playAudiobook)
             transportButton("goforward.30", label: Strings.Generic.skipForward30, size: 32) {
                 audiobookSession.skipForward()
@@ -268,10 +281,9 @@ struct AudiobookMorphingPlayerView: View {
         }
     }
 
-    /// Bottom control row, mirroring the original player: playback-speed chip,
-    /// AirPlay route picker, and a Bookmarks button (opens the same
-    /// Chapters/Bookmarks list). (Sleep timer needs a public toolkit hook — a
-    /// follow-up like `seek(to:)` — so it is deferred.)
+    /// Bottom control row, mirroring the original player: playback-speed chip ·
+    /// AirPlay route picker · sleep-timer menu · Bookmarks button (opens the same
+    /// Chapters/Bookmarks list).
     private var bottomControls: some View {
         HStack(spacing: 0) {
             Button(action: cycleRate) {
@@ -289,6 +301,20 @@ struct AudiobookMorphingPlayerView: View {
             AirPlayRoutePicker()
                 .frame(width: 44, height: 44)
                 .accessibilityLabel("AirPlay")
+
+            Menu {
+                ForEach(SleepTimerTriggerAt.allCases, id: \.self) { trigger in
+                    Button(Self.sleepTimerTitle(trigger)) {
+                        audiobookSession.setSleepTimer(trigger)
+                    }
+                }
+            } label: {
+                Image(systemName: "moon")
+                    .font(.system(size: 18, weight: .medium))
+                    .frame(width: 44, height: 44)
+            }
+            .tint(.primary)
+            .accessibilityLabel("Sleep timer")
 
             Button { showChaptersBookmarks = true } label: {
                 Image(systemName: "bookmark")

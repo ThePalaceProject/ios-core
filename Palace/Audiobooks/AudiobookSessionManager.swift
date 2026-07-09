@@ -874,6 +874,17 @@ public final class AudiobookSessionManager: ObservableObject {
         modernManager.seekWithSlider(value: min(max(fraction, 0), 1)) { _ in }
     }
 
+    /// Sets (or clears) the sleep timer via the toolkit's public
+    /// `DefaultAudiobookManager.sleepTimer`. Drives the full player's sleep-timer
+    /// menu. No-ops if no active manager.
+    public func setSleepTimer(_ trigger: SleepTimerTriggerAt) {
+        guard let modernManager = manager as? DefaultAudiobookManager else {
+            Log.warn(#file, "Cannot set sleep timer — no DefaultAudiobookManager")
+            return
+        }
+        modernManager.sleepTimer.setTimerTo(trigger: trigger)
+    }
+
     /// Cycles through playback rates. Driven by CarPlay / remote-control
     /// "change playback rate" commands — the now-playing screen UI uses the
     /// speed bottom sheet instead of cycling.

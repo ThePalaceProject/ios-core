@@ -104,6 +104,11 @@ protocol AudiobookSessionManaging: AnyObject {
     /// `DefaultAudiobookManager.seekWithSlider`.
     func seek(to fraction: Double)
 
+    /// Sets (or clears) the sleep timer. Drives the full player's sleep-timer
+    /// menu. Default no-op so lightweight test doubles need not implement it; the
+    /// production manager routes to the toolkit's `DefaultAudiobookManager.sleepTimer`.
+    func setSleepTimer(_ trigger: SleepTimerTriggerAt)
+
     /// Stops playback and clears the current session.
     func stopPlayback(dismissPhoneUI: Bool, persistFinalPosition: Bool) async
 
@@ -132,6 +137,10 @@ extension AudiobookSessionManaging {
     /// Default no-op so lightweight test doubles need not implement seeking.
     /// The production `AudiobookSessionManager` overrides this.
     func seek(to fraction: Double) {}
+
+    /// Default no-op so lightweight test doubles need not implement the sleep
+    /// timer. The production `AudiobookSessionManager` overrides this.
+    func setSleepTimer(_ trigger: SleepTimerTriggerAt) {}
 }
 
 // MARK: - AudiobookSessionManager Conformance
