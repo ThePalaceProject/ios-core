@@ -118,7 +118,17 @@ public final class AudiobookSessionManager: ObservableObject {
 
     private(set) var audiobook: Audiobook?
     private(set) var manager: AudiobookManager? {
-        didSet { Self._hasActiveManagerMirror.withLock { $0 = (manager != nil) } }
+        didSet {
+            // Compute the Bool on the (main) actor BEFORE entering the
+            // `@Sendable` `withLock` closure. Referencing the `@MainActor`
+            // `manager` property from INSIDE that closure does not compile under
+            // Swift 6 ("main actor-isolated property 'manager' can not be
+            // referenced from a Sendable closure") — this broke the develop build
+            // after #1222 merged. The Bool snapshot is Sendable, so hoisting it
+            // out fixes it with identical behavior.
+            let isActive = (manager != nil)
+            Self._hasActiveManagerMirror.withLock { $0 = isActive }
+        }
     }
     private(set) var playbackModel: AudiobookPlaybackModel?
     private(set) var nowPlayingCoordinator: NowPlayingCoordinator?
@@ -143,7 +153,14 @@ public final class AudiobookSessionManager: ObservableObject {
     /// `AudiobookSessionManager` is the single per-session owner (see the
     /// "Singleton manager" contract below); if concurrent managers were ever
     /// possible this would move to an instance `nonisolated let`.
-    private static let _hasActiveManagerMirror =
+    // `nonisolated`: the class is `@MainActor`, so an un-annotated `static let`
+    // is main-actor-isolated and CANNOT be read from the `nonisolated`
+    // `hasActiveManagerSnapshot` below ("main actor-isolated static property
+    // '_hasActiveManagerMirror' can not be referenced from a nonisolated
+    // context") — the second half of the develop build break from #1222.
+    // `OSAllocatedUnfairLock` is `Sendable`, so a `nonisolated static let` is
+    // safe and is exactly the off-main read path this mirror exists to provide.
+    nonisolated private static let _hasActiveManagerMirror =
         OSAllocatedUnfairLock<Bool>(initialState: false)
 
     /// Off-main-safe read of "is a manager currently bound." Reflects the last
@@ -1310,8 +1327,21 @@ public final class AudiobookSessionManager: ObservableObject {
         let box: SendableTrackPositionBox = await withCheckedContinuation { (cont: CheckedContinuation<SendableTrackPositionBox, Never>) in
             let once = PositionResolveOnce()
             concreteRegistry.syncLocation(for: book) { (remoteBookmark: AudioBookmark?) in
-                let position = remoteBookmark.flatMap {
-                    TrackPosition(audioBookmark: $0, toc: toc.toc, tracks: toc.tracks)
+                // Build the position INLINE, not via `.flatMap { … }`. The
+                // syncLocation completion is `@Sendable` (non-isolated) and fires
+                // on a BACKGROUND queue (TPPBookRegistry's detached sync Task).
+                // A `.flatMap` transform closure, however, is NOT `@Sendable`, so
+                // it inherited this `@MainActor` method's isolation — and invoking
+                // that main-actor closure off-main tripped `dispatch_assert_queue_fail`
+                // (EXC_BREAKPOINT on every audiobook open with a remote bookmark;
+                // Crashlytics 6e05efb…, fresh in 3.3.0). Inline `if let` runs
+                // directly in the non-isolated completion closure — no nested
+                // closure, no inherited isolation.
+                let position: TrackPosition?
+                if let remoteBookmark {
+                    position = TrackPosition(audioBookmark: remoteBookmark, toc: toc.toc, tracks: toc.tracks)
+                } else {
+                    position = nil
                 }
                 let boxed = SendableTrackPositionBox(position)
                 once.fire { cont.resume(returning: boxed) }
@@ -2270,7 +2300,7 @@ public final class AudiobookSessionManager: ObservableObject {
 private final class PositionResolveOnce: @unchecked Sendable {
     private let lock = NSLock()
     private var fired = false
-    func fire(_ block: () -> Void) {
+    func fire(_ block: @Sendable () -> Void) {
         lock.lock()
         if fired {
             lock.unlock()

@@ -525,17 +525,28 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
                                            password: password,
                                            tokenURL: tokenURL,
                                            accountId: libraryAccountID) { [weak self] result in
-            defer {
-                completion?()
-            }
-
-            switch result {
-            case .success(let tokenResponse):
-                self?.dispatch(.bearerTokenReceived(token: tokenResponse.accessToken,
-                                                   expiration: tokenResponse.expirationDate))
-                self?.validateCredentials()
-            case .failure(let error):
-                self?.handleNetworkError(error as NSError, loggingContext: ["Context": self?.uiContext as Any])
+            // `executeTokenRefresh` invokes this completion on a BACKGROUND queue
+            // (its `Result<…> -> Void` param is neither `@Sendable` nor
+            // `@MainActor`). Everything below touches `@MainActor` state — the
+            // whole type is `@MainActor`, and `validateCredentials()` /
+            // `handleNetworkError()` read `uiContext` → the `@objc @MainActor`
+            // `AccountDetailViewModel.context` getter. Running that off-main traps
+            // under Swift 6 (`dispatch_assert_queue_fail`) and crashed **Sign In**
+            // (Crashlytics, 3.3.0, 2/2 repro). Hop to the main actor first.
+            // `nonisolated(unsafe)` keeps the non-Sendable `Result` (its `Error`
+            // is a non-Sendable existential) from tripping the region check as it
+            // crosses into the task — the value is only read, on main.
+            nonisolated(unsafe) let outcome = result
+            Task { @MainActor in
+                defer { completion?() }
+                switch outcome {
+                case .success(let tokenResponse):
+                    self?.dispatch(.bearerTokenReceived(token: tokenResponse.accessToken,
+                                                        expiration: tokenResponse.expirationDate))
+                    self?.validateCredentials()
+                case .failure(let error):
+                    self?.handleNetworkError(error as NSError, loggingContext: ["Context": self?.uiContext as Any])
+                }
             }
         }
     }
