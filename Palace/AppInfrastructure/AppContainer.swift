@@ -601,6 +601,13 @@ struct AppContainer: @unchecked Sendable {
         // motivated killing TPPBookRegistry.shared in Phase 6.6). We hand
         // both into AppContainer.init — and into every collaborator built
         // here — explicitly so no default arg ever fires.
+        // CP-D1 LaunchHydration: `AccountsManager.init` no longer eagerly
+        // decodes+maps the full ~1142-account registry on this (launch) thread.
+        // It hydrates only a SLIM snapshot (current + settings accounts, a few
+        // ms) synchronously; the full list materializes OFF-MAIN via the
+        // background `loadCatalogs` the initializer dispatches. Do NOT reintroduce
+        // a synchronous full-account preload here — `production()` must return
+        // without paying the ~207ms (fast sim) / ~0.3-0.6s (device) full decode.
         let accountsManager = AccountsManager()
         // Single image-loading umbrella composed of the existing disk+memory
         // ImageCache and the TPPBookCoverRegistry actor — replaces three
