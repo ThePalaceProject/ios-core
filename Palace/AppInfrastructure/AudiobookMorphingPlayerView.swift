@@ -41,16 +41,34 @@ struct AudiobookMorphingPlayerView: View {
     /// that morphs between the full and mini layouts.
     @Namespace private var morphNamespace
 
-    /// Current playback-rate label (e.g. "1.0×"), refreshed when the chip cycles.
-    @State private var rateLabel: String = ""
+    /// Current playback rate, seeded from the session on expand so the speed
+    /// chip shows the real persisted rate (not a hardcoded "1.0×") and the
+    /// speed sheet opens at the correct value.
+    @State private var currentRate: PlaybackRate = .normalTime
 
     /// Presents the toolkit's Chapters + Bookmarks list (`AudiobookNavigationView`).
     @State private var showChaptersBookmarks = false
+
+    /// Presents the ported stepped speed picker (`PlaybackSpeedSheet`).
+    @State private var showSpeedSheet = false
 
     /// Live scrubber position + whether the user is dragging it. While dragging,
     /// the bar tracks the finger (not playback); on release it seeks.
     @State private var scrubValue: Double = 0
     @State private var isScrubbing = false
+
+    /// Loading-timeout state: while `!isLoaded`, a 30s timer arms; on expiry we
+    /// flip to the error+retry overlay (mirrors toolkit `loadingTimedOut`).
+    @State private var loadingTimedOut = false
+
+    /// Transient toast (bookmark-added / playback error), mirroring the toolkit's
+    /// `bookmarkAddedToastView` + `showToast` delay behavior.
+    @State private var toastText = ""
+    @State private var showToast = false
+
+    /// VoiceOver focus target — moved to the title when the full player expands
+    /// (mirrors toolkit `isTitleFocused`).
+    @AccessibilityFocusState private var isTitleFocused: Bool
 
     // MARK: - Layout constants
 
@@ -66,8 +84,9 @@ struct AudiobookMorphingPlayerView: View {
             let expanded = presenter.isPlayerExpanded
             let hidden = presenter.isReaderActive
             let reduceMotion = UIAccessibility.isReduceMotionEnabled
+            let landscape = Self.isLandscapePhone(size: geo.size)
 
-            card(expanded: expanded, screenHeight: geo.size.height)
+            card(expanded: expanded, screenHeight: geo.size.height, landscape: landscape)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                 // Reader: slide the whole card off-screen WITHOUT unmounting, so
                 // audio keeps playing with no chrome.
@@ -81,11 +100,11 @@ struct AudiobookMorphingPlayerView: View {
     /// The single morphing card: full-screen when expanded, a rounded mini bar
     /// floating above the tab bar when minimized.
     @ViewBuilder
-    private func card(expanded: Bool, screenHeight: CGFloat) -> some View {
+    private func card(expanded: Bool, screenHeight: CGFloat, landscape: Bool) -> some View {
         ZStack(alignment: .top) {
             Color(.systemBackground)
             if expanded {
-                fullContent
+                fullContent(landscape: landscape)
             } else {
                 miniContent
             }
@@ -108,7 +127,58 @@ struct AudiobookMorphingPlayerView: View {
 
     // MARK: - Full layout
 
-    private var fullContent: some View {
+    @ViewBuilder
+    private func fullContentLayout(landscape: Bool) -> some View {
+        if landscape {
+            fullContentLandscape
+        } else {
+            fullContentPortrait
+        }
+    }
+
+    @ViewBuilder
+    private func fullContent(landscape: Bool) -> some View {
+        fullContentLayout(landscape: landscape)
+        // Pull DOWN on the grabber or the cover to minimize — the drag lives on
+        // those two zones only (see `grabber` + the cover below), NOT the whole
+        // player. A container drag over the seek Slider and the transport/bottom
+        // buttons stole/propagated their taps (scrub jitter; the speed chip
+        // "dismissing" the player). Keeping the drag off the controls fixes that.
+        .fullScreenCover(isPresented: $showChaptersBookmarks) {
+            if let model = presenter.playbackModel {
+                NavigationStack { AudiobookNavigationView(model: model) }
+            }
+        }
+        // Ported stepped speed picker (0.5×–3.0× with ± steppers + presets).
+        .sheet(isPresented: $showSpeedSheet) {
+            PlaybackSpeedSheet(playbackRate: speedBinding)
+                .presentationDetents([.height(280)])
+                .presentationDragIndicator(.hidden)
+        }
+        // Loading spinner → 30s timeout → error+retry, over the whole player.
+        .overlay { loadingOverlay }
+        // Transient bookmark-added / playback-error toast.
+        .overlay(alignment: .bottom) { toastOverlay }
+        .accessibilityElement(children: .contain)
+        .onAppear {
+            currentRate = audiobookSession.currentPlaybackRate
+            // Announce the screen transition + move VoiceOver focus to the title
+            // (mirrors toolkit AudiobookPlayerView.onAppear).
+            NotificationCenter.default.post(
+                name: Notification.Name("TPPAccessibilityScreenTransition"),
+                object: nil
+            )
+            UIAccessibility.post(notification: .layoutChanged, argument: nil)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                isTitleFocused = true
+            }
+        }
+        .onChange(of: presenter.toastMessage) { _, newValue in
+            if let msg = newValue, !msg.isEmpty { presentToast(msg) }
+        }
+    }
+
+    private var fullContentPortrait: some View {
         VStack(spacing: 0) {
             topControls
 
@@ -122,16 +192,13 @@ struct AudiobookMorphingPlayerView: View {
 
             Spacer(minLength: 16)
 
-            coverImageOrPlaceholder
+            coverArt
                 .frame(maxWidth: 320)
-                .aspectRatio(1, contentMode: .fit)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .shadow(color: .black.opacity(0.25), radius: 12, y: 6)
-                .matchedGeometryEffect(id: Self.coverMatchID, in: morphNamespace)
                 .padding(.horizontal, 40)
-                // Pull the cover DOWN to minimize (a large, safe drag zone).
-                .contentShape(Rectangle())
-                .gesture(minimizeDrag)
+
+            downloadBar
+                .padding(.horizontal, 24)
+                .padding(.top, 12)
 
             Spacer(minLength: 16)
 
@@ -143,17 +210,61 @@ struct AudiobookMorphingPlayerView: View {
                 .padding(.bottom, bottomSafeInset + 16)
         }
         .frame(maxWidth: .infinity)
-        // Pull DOWN on the grabber or the cover to minimize — the drag lives on
-        // those two zones only (see `grabber` + the cover below), NOT the whole
-        // player. A container drag over the seek Slider and the transport/bottom
-        // buttons stole/propagated their taps (scrub jitter; the speed chip
-        // "dismissing" the player). Keeping the drag off the controls fixes that.
-        .fullScreenCover(isPresented: $showChaptersBookmarks) {
-            if let model = presenter.playbackModel {
-                NavigationStack { AudiobookNavigationView(model: model) }
+    }
+
+    /// iPhone-landscape branch: cover on the left, title/controls on the right,
+    /// bottom-control panel spanning underneath (mirrors toolkit `landscapeLayout`).
+    private var fullContentLandscape: some View {
+        VStack(spacing: 0) {
+            topControls
+
+            HStack(spacing: 20) {
+                VStack(spacing: 8) {
+                    coverArt
+                        .frame(maxHeight: .infinity)
+                    downloadBar
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.leading, 20)
+
+                VStack(spacing: 8) {
+                    titleAuthorFull
+                    seekBar
+                    Spacer(minLength: 8)
+                    transportRow
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.trailing, 20)
             }
+            .padding(.top, 4)
+
+            bottomControls
+                .padding(.top, 8)
+                .padding(.bottom, bottomSafeInset + 12)
         }
-        .accessibilityElement(children: .contain)
+        .frame(maxWidth: .infinity)
+    }
+
+    /// Shared cover art lockup used by both orientations: matchedGeometry morph
+    /// target, a subtle play/pause scale pulse, and the pull-down-to-minimize
+    /// drag zone.
+    private var coverArt: some View {
+        coverImageOrPlaceholder
+            .aspectRatio(1, contentMode: .fit)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .shadow(color: .black.opacity(0.25), radius: 12, y: 6)
+            .matchedGeometryEffect(id: Self.coverMatchID, in: morphNamespace)
+            // Cosmetic pulse: shrink slightly while paused (toolkit parity).
+            .scaleEffect(presenter.isPlaying ? 1.0 : 0.94)
+            .animation(
+                UIAccessibility.isReduceMotionEnabled ? nil
+                    : .spring(response: 0.35, dampingFraction: 0.7),
+                value: presenter.isPlaying
+            )
+            // Pull the cover DOWN to minimize (a large, safe drag zone).
+            .contentShape(Rectangle())
+            .gesture(minimizeDrag)
+            .accessibilityLabel(Strings.Generic.bookCover)
     }
 
     /// Top row: a centered grab handle (pull DOWN to minimize) + a trailing
@@ -189,19 +300,6 @@ struct AudiobookMorphingPlayerView: View {
             .accessibilityHidden(true)
     }
 
-    /// Menu titles for the sleep-timer triggers (mirrors the toolkit's own
-    /// titles; the toolkit's `sleepTimerTitle` uses module-internal `DisplayStrings`).
-    static func sleepTimerTitle(_ trigger: SleepTimerTriggerAt) -> String {
-        switch trigger {
-        case .never: return "Off"
-        case .fifteenMinutes: return "15 minutes"
-        case .thirtyMinutes: return "30 minutes"
-        case .oneHour: return "1 hour"
-        case .endOfChapter: return "End of chapter"
-        @unknown default: return "Off"
-        }
-    }
-
     /// Scrubbable seek bar. While the user drags, `scrubValue` tracks the finger
     /// and playback ticks are ignored; on release it seeks via
     /// `audiobookSession.seek(to:)` (toolkit `seekWithSlider`).
@@ -209,28 +307,35 @@ struct AudiobookMorphingPlayerView: View {
         VStack(spacing: 4) {
             Slider(value: $scrubValue, in: 0...1) { editing in
                 isScrubbing = editing
-                if !editing { audiobookSession.seek(to: scrubValue) }
+                if !editing {
+                    audiobookSession.seek(to: scrubValue)
+                    // Seek-commit haptic (toolkit parity).
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                }
             }
             .tint(.accentColor)
-            // Single row under the bar, matching the original: elapsed · chapter
-            // name (center, emphasized) · remaining.
+            .accessibilityLabel(Strings.Generic.playbackPosition)
+            .accessibilityValue(seekAccessibilityValue)
+            // Row under the bar: chapter elapsed · chapter name · chapter time-left
+            // (mirrors toolkit `playheadOffsetText` / `chapterTitle` / `timeLeftText`).
             HStack(spacing: 8) {
-                Text(elapsedString)
+                Text(chapterElapsedString)
                     .font(.caption2).foregroundStyle(.secondary).monospacedDigit()
+                    .accessibilityLabel(Strings.Generic.timeElapsedLabel(chapterElapsedString))
                 Spacer(minLength: 8)
                 Text(audiobookSession.currentChapter?.title ?? presenter.currentBook?.title ?? "")
                     .font(.subheadline).fontWeight(.semibold)
                     .lineLimit(1).truncationMode(.tail)
                 Spacer(minLength: 8)
-                Text(remainingString)
+                Text(chapterRemainingString)
                     .font(.caption2).foregroundStyle(.secondary).monospacedDigit()
+                    .accessibilityLabel(Strings.Generic.timeRemainingLabel(chapterRemainingString))
             }
         }
         .onAppear { scrubValue = clampedProgress }
         .onChange(of: clampedProgress) { _, newValue in
             if !isScrubbing { scrubValue = newValue }
         }
-        .accessibilityLabel("Seek")
     }
 
     private var titleAuthorFull: some View {
@@ -239,6 +344,7 @@ struct AudiobookMorphingPlayerView: View {
                 .font(.title3).fontWeight(.semibold)
                 .multilineTextAlignment(.center)
                 .lineLimit(2)
+                .accessibilityFocused($isTitleFocused)
             if let authors = presenter.currentBook?.authors, !authors.isEmpty {
                 Text(authors)
                     .font(.subheadline)
@@ -286,50 +392,178 @@ struct AudiobookMorphingPlayerView: View {
     /// Chapters/Bookmarks list).
     private var bottomControls: some View {
         HStack(spacing: 0) {
-            Button(action: cycleRate) {
-                Text(rateLabel.isEmpty ? currentRateLabel : rateLabel)
+            // Speed chip → opens the stepped speed sheet (no longer cycle-only).
+            Button { showSpeedSheet = true } label: {
+                Text(currentRate.displayLabel)
                     .font(.subheadline).fontWeight(.medium)
                     .frame(minWidth: 52)
                     .padding(.vertical, 6).padding(.horizontal, 12)
                     .background(Capsule().fill(Color.secondary.opacity(0.15)))
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Playback speed")
+            .accessibilityLabel(Strings.Generic.playbackSpeedValue(currentRate.displayLabel))
 
             Spacer()
 
             AirPlayRoutePicker()
                 .frame(width: 44, height: 44)
-                .accessibilityLabel("AirPlay")
+                .accessibilityLabel(Strings.Generic.airplay)
 
             Menu {
                 ForEach(SleepTimerTriggerAt.allCases, id: \.self) { trigger in
-                    Button(Self.sleepTimerTitle(trigger)) {
+                    Button(trigger.displayTitle) {
                         audiobookSession.setSleepTimer(trigger)
                     }
                 }
             } label: {
-                Image(systemName: "moon")
-                    .font(.system(size: 18, weight: .medium))
-                    .frame(width: 44, height: 44)
+                HStack(spacing: 4) {
+                    Image(systemName: audiobookSession.sleepTimerIsActive ? "moon.fill" : "moon")
+                        .font(.system(size: 18, weight: .medium))
+                    if audiobookSession.sleepTimerIsActive {
+                        Text(AudiobookMiniPlayerView.formatTime(audiobookSession.sleepTimerRemaining))
+                            .font(.caption).monospacedDigit()
+                            .lineLimit(1).minimumScaleFactor(0.6)
+                    }
+                }
+                .frame(minWidth: 44, minHeight: 44)
             }
             .tint(.primary)
-            .accessibilityLabel("Sleep timer")
+            .accessibilityLabel(Strings.Generic.sleepTimer)
 
-            Button { showChaptersBookmarks = true } label: {
+            // Bottom bookmark control ADDS a bookmark (TOC/list stays reachable
+            // via the top-trailing list button).
+            Button { addBookmarkFromControl() } label: {
                 Image(systemName: "bookmark")
                     .font(.system(size: 18, weight: .medium))
                     .frame(width: 44, height: 44)
             }
             .buttonStyle(.plain)
             .tint(.primary)
-            .accessibilityLabel("Bookmarks")
+            .accessibilityLabel(Strings.Generic.addBookmark)
         }
         .padding(.horizontal, 28)
     }
 
+    // MARK: - Download bar (toolkit `downloadProgressView` parity)
+
+    @ViewBuilder
+    private var downloadBar: some View {
+        if presenter.isDownloading {
+            VStack(spacing: 6) {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrow.down.circle.fill")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(Color.primary.opacity(0.15)).frame(height: 4)
+                            Capsule().fill(Color.accentColor)
+                                .frame(width: max(4, geo.size.width * CGFloat(presenter.overallDownloadProgress)), height: 4)
+                                .animation(.easeInOut(duration: 0.3), value: presenter.overallDownloadProgress)
+                        }
+                        .frame(maxHeight: .infinity)
+                    }
+                    .frame(height: 4)
+                    Text("\(Int(presenter.overallDownloadProgress * 100))%")
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 34, alignment: .trailing)
+                        .monospacedDigit()
+                }
+                Text(Strings.Generic.audiobookDownloading)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+            .transition(.opacity)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(Strings.Generic.audiobookDownloading), \(Int(presenter.overallDownloadProgress * 100))%")
+        }
+    }
+
+    // MARK: - Loading overlay (toolkit `LoadingView` / `LoadingErrorView` parity)
+
+    @ViewBuilder
+    private var loadingOverlay: some View {
+        if !audiobookSession.isLoaded {
+            if loadingTimedOut {
+                ZStack {
+                    Color.black.opacity(0.5).ignoresSafeArea()
+                    VStack(spacing: 16) {
+                        Image(systemName: "exclamationmark.triangle")
+                            .font(.system(size: 40)).foregroundStyle(.yellow)
+                        Text(Strings.Generic.audiobookLoadErrorTitle)
+                            .foregroundStyle(.white).font(.headline)
+                        Text(Strings.Generic.audiobookLoadErrorMessage)
+                            .foregroundStyle(.white).multilineTextAlignment(.center)
+                            .padding(.horizontal, 32)
+                        Button {
+                            loadingTimedOut = false
+                            audiobookSession.play()
+                        } label: {
+                            Text(Strings.Generic.audiobookRetry)
+                                .fontWeight(.semibold).foregroundStyle(.black)
+                                .padding(.horizontal, 32).padding(.vertical, 10)
+                                .background(Color.white).cornerRadius(8)
+                        }
+                    }
+                }
+                .accessibilityElement(children: .contain)
+            } else {
+                ZStack {
+                    Color.black.opacity(0.5).ignoresSafeArea()
+                    VStack {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            .scaleEffect(2)
+                        Text(Strings.Generic.audiobookLoading)
+                            .foregroundStyle(.white).padding(.top, 8)
+                    }
+                }
+                .onAppear {
+                    // Arm the 30s timeout; reset on (re)appear (mirrors toolkit).
+                    loadingTimedOut = false
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 30) {
+                        if !audiobookSession.isLoaded {
+                            loadingTimedOut = true
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Toast overlay (toolkit `bookmarkAddedToastView` parity)
+
+    @ViewBuilder
+    private var toastOverlay: some View {
+        if showToast {
+            HStack(spacing: 10) {
+                Image(systemName: toastText.localizedCaseInsensitiveContains("error")
+                        || toastText == Strings.Generic.bookmarkAddFailed
+                      ? "exclamationmark.circle.fill" : "bookmark.fill")
+                    .font(.system(size: 16, weight: .semibold))
+                Text(toastText)
+                    .font(.system(size: 14, weight: .medium))
+                    .lineLimit(2).multilineTextAlignment(.leading)
+            }
+            .padding(.horizontal, 16).padding(.vertical, 14)
+            .background(
+                RoundedRectangle(cornerRadius: 16).fill(.ultraThinMaterial)
+            )
+            .shadow(color: .black.opacity(0.3), radius: 16, y: 4)
+            .padding(.horizontal, 20)
+            .padding(.bottom, bottomSafeInset + 110)
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+            .accessibilityAddTraits(.isStaticText)
+        }
+    }
+
     private func transportButton(_ system: String, label: String, size: CGFloat, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
+        Button(action: {
+            // Skip-button haptic (toolkit parity).
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            action()
+        }) {
             Image(systemName: system)
                 .resizable().aspectRatio(contentMode: .fit)
                 .frame(width: size, height: size)
@@ -482,9 +716,49 @@ struct AudiobookMorphingPlayerView: View {
         Task { await audiobookSession.stopPlayback(dismissPhoneUI: true, persistFinalPosition: true) }
     }
 
-    private func cycleRate() {
-        let newRate = audiobookSession.cyclePlaybackRate()
-        rateLabel = Self.label(for: newRate)
+    /// Two-way binding driving the ported speed sheet: writes both the local
+    /// chip state (immediate label update) and the session's playback rate,
+    /// posting a VoiceOver announcement as the rate changes.
+    private var speedBinding: Binding<PlaybackRate> {
+        Binding(
+            get: { currentRate },
+            set: { newRate in
+                guard newRate != currentRate else { return }
+                currentRate = newRate
+                audiobookSession.setPlaybackRate(newRate)
+                UIAccessibility.post(
+                    notification: .announcement,
+                    argument: Strings.Generic.playbackSpeedValue(newRate.displayLabel)
+                )
+            }
+        )
+    }
+
+    /// Adds a bookmark at the current position and surfaces a toast for the
+    /// success / failure outcome (toolkit `addBookmark` + `showToast` parity).
+    private func addBookmarkFromControl() {
+        audiobookSession.addBookmark { error in
+            DispatchQueue.main.async {
+                presentToast(error == nil
+                    ? Strings.Generic.bookmarkAdded
+                    : (error?.localizedDescription.isEmpty == false
+                        ? error!.localizedDescription
+                        : Strings.Generic.bookmarkAddFailed))
+            }
+        }
+    }
+
+    private func presentToast(_ text: String) {
+        toastText = text
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) { showToast = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+            withAnimation(.easeInOut(duration: 0.25)) { showToast = false }
+        }
+    }
+
+    /// iPhone in a landscape aspect. iPad keeps the portrait lockup.
+    static func isLandscapePhone(size: CGSize) -> Bool {
+        UIDevice.current.userInterfaceIdiom == .phone && size.width > size.height
     }
 
     // MARK: - Derived
@@ -493,27 +767,21 @@ struct AudiobookMorphingPlayerView: View {
         progress.playbackProgress.isFinite ? min(max(progress.playbackProgress, 0), 1) : 0
     }
 
-    private var elapsedString: String {
-        guard let position = progress.currentLocation else { return "--:--" }
-        return AudiobookMiniPlayerView.formatTime(position.durationToSelf())
+    /// Chapter-relative elapsed timecode (seconds from the start of the current
+    /// chapter) — mirrors toolkit `playheadOffsetText`.
+    private var chapterElapsedString: String {
+        AudiobookMiniPlayerView.formatTime(progress.chapterOffset)
     }
 
-    private var remainingString: String {
-        guard let position = progress.currentLocation else { return "--:--" }
-        let remaining = position.tracks.totalDuration - position.durationToSelf()
-        return "-" + AudiobookMiniPlayerView.formatTime(max(0, remaining))
+    /// Chapter-relative time-left timecode — mirrors toolkit `timeLeftText`.
+    private var chapterRemainingString: String {
+        "-" + AudiobookMiniPlayerView.formatTime(max(0, progress.chapterTimeLeft))
     }
 
-    private var currentRateLabel: String {
-        // Best-effort initial label; the chip updates it on first cycle.
-        "1.0×"
-    }
-
-    static func label(for rate: PlaybackRate) -> String {
-        let value = Double(PlaybackRate.convert(rate: rate))
-        // Trim trailing zero on whole/half values → "1×", "1.5×", "0.75×".
-        let str = String(format: "%g", value)
-        return str + "×"
+    /// Spoken value for the seek slider: percent through the book plus the
+    /// chapter elapsed timecode.
+    private var seekAccessibilityValue: String {
+        "\(Int(clampedProgress * 100))%, \(chapterElapsedString)"
     }
 
     // MARK: - Safe-area insets (window, since the overlay ignores safe area)
@@ -553,4 +821,127 @@ private struct AirPlayRoutePicker: UIViewRepresentable {
         return v
     }
     func updateUIView(_ uiView: AVRoutePickerView, context: Context) {}
+}
+
+// MARK: - PlaybackSpeedSheet
+
+/// Stepped playback-speed picker ported into the app from the toolkit's
+/// internal `SpeedSliderSheet` (0.5×–3.0× slider + ± steppers + preset chips).
+/// The toolkit view is module-internal, so its behavior is re-implemented here
+/// against the public `PlaybackRate` API (`presets`, `nearest`, `convert`,
+/// `displayLabel`).
+@MainActor
+private struct PlaybackSpeedSheet: View {
+    @Binding var playbackRate: PlaybackRate
+
+    @State private var sliderValue: Double = 1.0
+
+    private let step: Double = 0.05
+    private let minRate: Double = 0.5
+    private let maxRate: Double = 3.0
+
+    private var speedLabel: String {
+        PlaybackRate.nearest(to: Float(sliderValue)).displayLabel
+    }
+    private var atMinimum: Bool { sliderValue <= minRate }
+    private var atMaximum: Bool { sliderValue >= maxRate }
+
+    var body: some View {
+        VStack(spacing: 28) {
+            headerRow
+            sliderRow
+            presetChips
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 24)
+        .padding(.bottom, 36)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(Strings.Generic.playbackSpeed)
+        .onAppear { sliderValue = Double(PlaybackRate.convert(rate: playbackRate)) }
+        .onChange(of: sliderValue) { _, newValue in
+            let nearest = PlaybackRate.nearest(to: Float(newValue))
+            if nearest != playbackRate {
+                playbackRate = nearest
+                UISelectionFeedbackGenerator().selectionChanged()
+            }
+        }
+    }
+
+    private var headerRow: some View {
+        HStack {
+            Text(Strings.Generic.playbackSpeed)
+                .font(.headline)
+            Spacer()
+            Text(speedLabel)
+                .font(.system(size: 22, weight: .semibold, design: .rounded))
+                .monospacedDigit()
+                .contentTransition(.numericText())
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Strings.Generic.playbackSpeedValue(speedLabel))
+    }
+
+    private var sliderRow: some View {
+        HStack(spacing: 16) {
+            stepButton(systemName: "minus", label: Strings.Generic.decreaseSpeed, isDisabled: atMinimum, action: stepDown)
+            Slider(value: $sliderValue, in: minRate...maxRate, step: step)
+                .tint(.accentColor)
+                .accessibilityLabel(Strings.Generic.playbackSpeed)
+                .accessibilityValue(speedLabel)
+            stepButton(systemName: "plus", label: Strings.Generic.increaseSpeed, isDisabled: atMaximum, action: stepUp)
+        }
+    }
+
+    private func stepButton(systemName: String, label: String, isDisabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 16, weight: .semibold))
+                .frame(width: 40, height: 40)
+                .background(Circle().fill(Color.secondary.opacity(isDisabled ? 0.05 : 0.15)))
+        }
+        .buttonStyle(.plain)
+        .disabled(isDisabled)
+        .accessibilityLabel(label)
+    }
+
+    private var presetChips: some View {
+        HStack(spacing: 8) {
+            ForEach(PlaybackRate.presets, id: \.rawValue) { preset in
+                presetChip(for: preset)
+            }
+        }
+        .accessibilityLabel(Strings.Generic.playbackSpeed)
+    }
+
+    private func presetChip(for preset: PlaybackRate) -> some View {
+        let multiplier = PlaybackRate.convert(rate: preset)
+        let isSelected = abs(sliderValue - Double(multiplier)) < 0.001
+        return Button {
+            withAnimation(.easeOut(duration: 0.1)) { sliderValue = Double(multiplier) }
+        } label: {
+            Text(preset.displayLabel)
+                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                .foregroundStyle(isSelected ? Color(.systemBackground) : Color.primary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .background(
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(isSelected ? Color.primary : Color.secondary.opacity(0.12))
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(preset.displayLabel)
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+    }
+
+    private func stepDown() {
+        withAnimation(.easeOut(duration: 0.1)) {
+            sliderValue = max(minRate, ((sliderValue - step) * 100).rounded() / 100)
+        }
+    }
+    private func stepUp() {
+        withAnimation(.easeOut(duration: 0.1)) {
+            sliderValue = min(maxRate, ((sliderValue + step) * 100).rounded() / 100)
+        }
+    }
 }
