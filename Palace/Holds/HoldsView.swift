@@ -151,7 +151,10 @@ struct HoldsView: View {
     /// Empty state shown when the patron has no reserved or held books.
     private var emptyView: some View {
         ContentUnavailableView {
-            Label(DisplayStrings.emptyTitle, systemImage: "clock")
+            // Icon intentionally removed for now (was `systemImage: "clock"`,
+            // added in #1203/PP-4747). Copy unchanged — a plain title `Text`
+            // renders the same words without the SF Symbol above them.
+            Text(DisplayStrings.emptyTitle)
         } description: {
             Text(DisplayStrings.emptyMessage)
         }

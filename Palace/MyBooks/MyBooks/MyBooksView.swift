@@ -256,7 +256,10 @@ struct MyBooksView: View {
 
     private var emptyView: some View {
         ContentUnavailableView {
-            Label(DisplayStrings.emptyViewTitle, systemImage: "books.vertical")
+            // Icon intentionally removed for now (was `systemImage: "books.vertical"`,
+            // added in #1203/PP-4747). Copy unchanged — a plain title `Text`
+            // renders the same words without the SF Symbol above them.
+            Text(DisplayStrings.emptyViewTitle)
         } description: {
             Text(DisplayStrings.emptyViewMessage)
         } actions: {
