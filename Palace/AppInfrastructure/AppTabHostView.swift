@@ -122,128 +122,80 @@ struct AppTabHostView: View {
     // All 4 inset instances observe the same presenter, so the mini-player
     // chrome renders consistently across tabs and reflects the single
     // source of truth.
-    @ViewBuilder
-    private func miniPlayerInset() -> some View {
-        // Feature-flagged (in_app_playback_nav_enabled): hides the
-        // persistent mini-player chrome above the tab bar when off.
-        // The presenter + AppContainer wiring stay in place so the
-        // flag flip is instant; only the inset rendering is gated.
-        // Returning EmptyView from a `safeAreaInset(.bottom)` builder
-        // collapses the inset to zero height, which restores the
-        // pre-feature tab-bar layout.
-        if inAppPlaybackNavEnabled {
-            AudiobookMiniPlayerView(
-                presenter: appContainer.audiobookSessionPresenter,
-                progress: appContainer.audiobookSessionPresenter.progress,
-                audiobookSession: appContainer.audiobookSession
-            )
-        }
-    }
-
     var body: some View {
         ZStack(alignment: .bottom) {
             tabViewContent
-            persistentFullPlayerOverlay
-            collapsedPillOverlay
+            resizingPlayerOverlay
             SentimentGateView(presenter: ratingPromptPresenter)
         }
     }
 
-    /// The compact floating pill shown when the user has collapsed the
-    /// mini-bar (`presenter.isCollapsed == true`). Mounted as a bottom-
-    /// trailing overlay at the ZStack root — NOT a `.safeAreaInset` like the
-    /// mini-bar — so it floats over content without reserving full-width
-    /// height or pushing the tab content up. Pinned above the tab bar via
-    /// `pillBottomInset`. Gated behind the same feature flag as the mini-bar
-    /// so the flag flip removes all three player surfaces together.
+    /// Compact mini-bar height (points, excluding the safe-area/tab-bar inset
+    /// added below it when minimized). The overlay height interpolates between
+    /// this and full-screen.
+    private static let miniBarHeight: CGFloat = 74
+    /// Breathing room between the minimized card and the tab bar.
+    private static let miniMargin: CGFloat = 8
+
+    /// Standard `UITabBar` height (points) the minimized card floats above.
+    /// The device's variable home-indicator inset is added on top at runtime.
+    private static let tabBarHeight: CGFloat = 49
+
+    /// The single "resize overlay" — the full player and the mini bar are ONE
+    /// bottom-anchored card that RESIZES between full-screen (`isPlayerExpanded`)
+    /// and a compact `miniBarHeight` bar (minimized), so it reads as one view
+    /// pulled down into a smaller one rather than two views swapping. Replaces
+    /// the former `persistentFullPlayerOverlay` (offset slide) + the mini-bar
+    /// `safeAreaInset` + the `collapsedPillOverlay` (the pill is gone — the
+    /// "collapsed" state is now just the mini SIZE, which also removes the
+    /// pill's tap-through bug).
+    ///
+    /// The toolkit `AudiobookPlayerView` (inside `AudiobookFullPlayerCoverContainer`)
+    /// stays MOUNTED at both sizes — it is opacity-crossfaded with the compact
+    /// bar, never removed — so playback never unloads (the reason the old design
+    /// kept it mounted in a persistent overlay). Only `stopPlayback` (the ✕)
+    /// tears it down. In a reader the whole card slides off-screen via `offset`
+    /// WITHOUT unmounting, so audio keeps playing with no chrome.
+    ///
+    /// The existing drags already drive `isPlayerExpanded` — the mini bar's
+    /// drawer-drag-up expands, and `AudiobookFullPlayerCoverContainer`'s
+    /// swipe-down minimizes — so this overlay only translates that flag into a
+    /// height / corner-radius / opacity morph.
     @ViewBuilder
-    private var collapsedPillOverlay: some View {
-        if inAppPlaybackNavEnabled,
-           AudiobookCollapsedPillView.shouldShow(
-               hasActiveSession: audiobookSessionPresenter.hasActiveSession,
-               isReaderActive: audiobookSessionPresenter.isReaderActive,
-               isCollapsed: audiobookSessionPresenter.isCollapsed) {
-            // GeometryReader so the bottom inset is DERIVED from the device's
-            // real bottom safe-area inset (home indicator) rather than a magic
-            // constant — a hardcoded value floats too high on non-notched
-            // devices (iPhone SE: no home indicator) and can clip the tab bar
-            // on others. `ignoresSafeArea()` lets the reader report the true
-            // insets; our explicit padding then positions the pill.
+    private var resizingPlayerOverlay: some View {
+        if inAppPlaybackNavEnabled, audiobookSessionPresenter.playbackModel != nil {
+            let expanded = audiobookSessionPresenter.isPlayerExpanded
+            let hidden = audiobookSessionPresenter.isReaderActive
+            let reduceMotion = UIAccessibility.isReduceMotionEnabled
             GeometryReader { geo in
-                AudiobookCollapsedPillView(
-                    presenter: audiobookSessionPresenter,
-                    audiobookSession: appContainer.audiobookSession
-                )
-                .padding(.trailing, 16)
-                .padding(.bottom, geo.safeAreaInsets.bottom + Self.tabBarHeight + Self.pillMargin)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                let fullHeight = geo.size.height
+                let miniInset = geo.safeAreaInsets.bottom + Self.tabBarHeight + Self.miniMargin
+                ZStack(alignment: .top) {
+                    // FULL player (toolkit) — always mounted; fades out at mini.
+                    AudiobookFullPlayerCoverContainer(presenter: audiobookSessionPresenter)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .opacity(expanded ? 1 : 0)
+                        .allowsHitTesting(expanded)
+                    // COMPACT bar — self-gates on `!isPlayerExpanded`, so it is
+                    // present only at the mini size; fades in as the card shrinks.
+                    AudiobookMiniPlayerView(
+                        presenter: audiobookSessionPresenter,
+                        progress: audiobookSessionPresenter.progress,
+                        audiobookSession: appContainer.audiobookSession
+                    )
+                    .allowsHitTesting(!expanded)
+                }
+                .frame(height: expanded ? fullHeight : Self.miniBarHeight, alignment: .top)
+                .background(Color(.systemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: expanded ? 0 : 16, style: .continuous))
+                .shadow(color: .black.opacity(expanded ? 0 : 0.18), radius: expanded ? 0 : 10, y: -2)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                .padding(.bottom, expanded ? 0 : miniInset)
+                .offset(y: hidden ? fullHeight : 0)
+                .animation(reduceMotion ? nil : PalaceMotion.emphasized, value: expanded)
+                .animation(reduceMotion ? nil : PalaceMotion.standard, value: hidden)
             }
             .ignoresSafeArea()
-            // Scale + fade in from the corner (paired with the mini-bar's
-            // slide-out) rather than popping.
-            .transition(.scale(scale: 0.6, anchor: .bottomTrailing).combined(with: .opacity))
-            .accessibleAnimation(PalaceMotion.standard, value: audiobookSessionPresenter.isCollapsed)
-        }
-    }
-
-    /// Standard `UITabBar` height (points) the floating pill must clear. The
-    /// device's variable home-indicator inset is added on top at runtime via
-    /// `GeometryReader.safeAreaInsets.bottom`, so only the fixed tab-bar height
-    /// lives here. NOTE: the exact resting position is a best-effort default —
-    /// it has NOT yet been visually confirmed on-device (the live simdrive pass
-    /// is deferred; see the PR's "Not done"). Refine after that pass if needed.
-    private static let tabBarHeight: CGFloat = 49
-    /// Breathing room between the pill and the tab bar.
-    private static let pillMargin: CGFloat = 12
-
-    /// Persistent full-player overlay — keeps the toolkit's
-    /// `AudiobookPlayerView` mounted across minimize/expand cycles so its
-    /// `onDisappear` (which calls the DESTRUCTIVE `playbackModel.stop()`
-    /// → `audiobookManager.unload()`) never fires. The view is animated
-    /// off-screen (`offset(y:)`) when minimized rather than removed from
-    /// the hierarchy.
-    ///
-    /// User-reported bug this fixes: "playback doesn't play when
-    /// audiobook is minimized; gets stuck loading when opened from the
-    /// minimized playback." Caused by the toolkit unloading the player
-    /// on view-disappear, so re-expand had no buffered audio and
-    /// `player.isLoaded == false` → toolkit's `LoadingView` shown
-    /// forever (with 30s timeout → `LoadingErrorView`).
-    @ViewBuilder
-    private var persistentFullPlayerOverlay: some View {
-        if inAppPlaybackNavEnabled, audiobookSessionPresenter.playbackModel != nil {
-            // Use UIScreen.main.bounds for the full-screen size — the
-            // GeometryReader approach was constrained to the TabView's
-            // available area (which excludes the system tab bar +
-            // mini-player safeAreaInset), so the overlay didn't fully
-            // cover the chrome below.
-            //
-            // Background extends edge-to-edge (`.ignoresSafeArea()` on
-            // the Color), but the CONTENT respects safe area so the
-            // chevron-down Done button doesn't render behind the status
-            // bar. Without this split, the button's `.padding(.top, 12)`
-            // resolves to ~12pt from screen-top — clipped under the
-            // notch — and the user can't tap it.
-            let screenHeight = UIScreen.main.bounds.height
-            AudiobookFullPlayerCoverContainer(
-                presenter: audiobookSessionPresenter
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color(.systemBackground).ignoresSafeArea())
-            // Content respects TOP safe area (chevron-down Done button
-            // sits below status bar). Content extends through BOTTOM
-            // safe area so the tab bar doesn't peek behind the player
-            // when expanded.
-            .ignoresSafeArea(edges: .bottom)
-            .offset(y: audiobookSessionPresenter.isPlayerExpanded ? 0 : screenHeight)
-            // Spring (PalaceMotion.emphasized) instead of the old easeInOut(0.3)
-            // so minimize/expand feels responsive. Same offset architecture —
-            // only the animation curve changed. Reduce-motion still gets nil.
-            .animation(
-                UIAccessibility.isReduceMotionEnabled ? nil : PalaceMotion.emphasized,
-                value: audiobookSessionPresenter.isPlayerExpanded
-            )
-            .allowsHitTesting(audiobookSessionPresenter.isPlayerExpanded)
         }
     }
 
@@ -255,7 +207,6 @@ struct AppTabHostView: View {
                 appContainer: appContainer
             ))
                 .environmentObject(router)
-                .safeAreaInset(edge: .bottom, content: miniPlayerInset)
                 .tabItem {
                     VStack {
                         Image("Catalog").renderingMode(.template)
@@ -266,7 +217,6 @@ struct AppTabHostView: View {
                 .accessibilityIdentifier(AccessibilityID.TabBar.catalogTab)
 
             NavigationHostView(rootView: MyBooksView(model: myBooksViewModel, appContainer: appContainer))
-                .safeAreaInset(edge: .bottom, content: miniPlayerInset)
                 .tabItem {
                     VStack {
                         Image("MyBooks").renderingMode(.template)
@@ -277,7 +227,6 @@ struct AppTabHostView: View {
                 .accessibilityIdentifier(AccessibilityID.TabBar.myBooksTab)
 
             NavigationHostView(rootView: HoldsView(appContainer: appContainer))
-                .safeAreaInset(edge: .bottom, content: miniPlayerInset)
                 .tabItem {
                     VStack {
                         Image("Holds").renderingMode(.template)
@@ -289,7 +238,6 @@ struct AppTabHostView: View {
                 .accessibilityIdentifier(AccessibilityID.TabBar.holdsTab)
 
             NavigationHostView(rootView: TPPSettingsView())
-                .safeAreaInset(edge: .bottom, content: miniPlayerInset)
                 .tabItem { Label(Strings.Settings.settings, systemImage: "gearshape") }
                 .tag(AppTab.settings)
                 .accessibilityIdentifier(AccessibilityID.TabBar.settingsTab)
