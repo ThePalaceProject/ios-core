@@ -1327,8 +1327,21 @@ public final class AudiobookSessionManager: ObservableObject {
         let box: SendableTrackPositionBox = await withCheckedContinuation { (cont: CheckedContinuation<SendableTrackPositionBox, Never>) in
             let once = PositionResolveOnce()
             concreteRegistry.syncLocation(for: book) { (remoteBookmark: AudioBookmark?) in
-                let position = remoteBookmark.flatMap {
-                    TrackPosition(audioBookmark: $0, toc: toc.toc, tracks: toc.tracks)
+                // Build the position INLINE, not via `.flatMap { … }`. The
+                // syncLocation completion is `@Sendable` (non-isolated) and fires
+                // on a BACKGROUND queue (TPPBookRegistry's detached sync Task).
+                // A `.flatMap` transform closure, however, is NOT `@Sendable`, so
+                // it inherited this `@MainActor` method's isolation — and invoking
+                // that main-actor closure off-main tripped `dispatch_assert_queue_fail`
+                // (EXC_BREAKPOINT on every audiobook open with a remote bookmark;
+                // Crashlytics 6e05efb…, fresh in 3.3.0). Inline `if let` runs
+                // directly in the non-isolated completion closure — no nested
+                // closure, no inherited isolation.
+                let position: TrackPosition?
+                if let remoteBookmark {
+                    position = TrackPosition(audioBookmark: remoteBookmark, toc: toc.toc, tracks: toc.tracks)
+                } else {
+                    position = nil
                 }
                 let boxed = SendableTrackPositionBox(position)
                 once.fire { cont.resume(returning: boxed) }
@@ -2287,7 +2300,7 @@ public final class AudiobookSessionManager: ObservableObject {
 private final class PositionResolveOnce: @unchecked Sendable {
     private let lock = NSLock()
     private var fired = false
-    func fire(_ block: () -> Void) {
+    func fire(_ block: @Sendable () -> Void) {
         lock.lock()
         if fired {
             lock.unlock()
