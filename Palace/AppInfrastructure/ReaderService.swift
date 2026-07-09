@@ -403,7 +403,14 @@ final class ReaderService {
             preferredStyle: .alert
         )
         alert.addAction(UIAlertAction(title: NSLocalizedString("OK", comment: ""), style: .default))
-        top.present(alert, animated: true)
+        // Route through the coordinator-waiting guarded presenter instead of a raw
+        // present() on `top`: this fires from an async open-completion during a
+        // reader push, exactly when presenting raw hits the fe741015 CA-commit
+        // race (a deferred throw the synchronous ObjC catcher cannot trap).
+        TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert,
+                                                     viewController: top,
+                                                     animated: true,
+                                                     completion: nil)
         TPPErrorLogger.logError(
             withCode: .lcpDRMFulfillmentFail,
             summary: "LCP PDF open aborted due to runaway decrypt",

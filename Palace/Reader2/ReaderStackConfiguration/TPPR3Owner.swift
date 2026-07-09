@@ -52,7 +52,13 @@ extension TPPR3Owner: ModuleDelegate {
             let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
             let dismissButton = UIAlertAction(title: Strings.Generic.ok, style: .cancel)
             alert.addAction(dismissButton)
-            viewController.present(alert, animated: true)
+            // Route through the coordinator-waiting guarded presenter rather than a
+            // raw present() on the passed VC, which can be mid-transition during
+            // reader init — the fe741015 CA-commit race.
+            TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert,
+                                                         viewController: viewController,
+                                                         animated: true,
+                                                         completion: nil)
         }
     }
 
