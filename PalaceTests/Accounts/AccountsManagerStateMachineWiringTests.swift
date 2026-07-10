@@ -560,6 +560,54 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
         }
     }
 
+    // MARK: - Test 3b: torn-down manager's entry guard suppresses the auth-doc write
+
+    /// Deterministic regression guard for the auth-doc late-write pollution fix.
+    /// Once a manager has been explicitly torn down (`cancelBackgroundWork()`,
+    /// which flips the DEBUG-only `_explicitCancelCalled` synchronously),
+    /// `fetchAuthDocumentWithStateMachine` MUST be an inert no-op: it must NOT
+    /// write the synchronous `.detailsLoading` (nor fire the network fetch), so a
+    /// late/deferred `driveCurrentAccountAuthDocIfNeeded` cannot dirty
+    /// `AccountStateStore.shared` after the NEXT test's reset — the root cause of
+    /// the order-dependent flakes in this suite and AccountsManagerLaunchSnapshotTests.
+    ///
+    /// The entry guard's suppression is synchronous, so this test needs no async,
+    /// no network, and no fixture path — a near-clone of Test 3 (above) plus the
+    /// teardown call. Mutation check: negating the entry guard (`if
+    /// _explicitCancelCalled` → `if false`) lets `.detailsLoading` land and
+    /// reddens this test; the order-dependent pollution tests would not reliably
+    /// catch that mutation.
+    func testFetchAuthDoc_afterCancelBackgroundWork_isInertNoOp_leavesStateNotLoaded() throws {
+        // Unique id → a fresh account whose UUID has no prior entry in the shared
+        // store, so the precondition below is deterministic regardless of order.
+        let metadata = OPDS2Publication.Metadata(
+            updated: Date(),
+            description: "entry-guard regression",
+            id: "urn:uuid:wiring-test-entryguard-\(UUID().uuidString)",
+            title: "Entry-Guard Library"
+        )
+        let pub = OPDS2Publication(links: [], metadata: metadata, images: nil)
+        let account = Account(publication: pub, imageCache: MockImageCache())
+
+        guard case .notLoaded = AccountStateStore.shared.state(for: account.uuid) else {
+            return XCTFail("Precondition: a fresh unique account must start at .notLoaded, got \(label(AccountStateStore.shared.state(for: account.uuid)))")
+        }
+
+        let manager = makeFreshAccountsManager()
+        // Tear the manager down — flips `_explicitCancelCalled` synchronously.
+        manager.cancelBackgroundWork()
+
+        var completionValue: Bool?
+        // Entry guard fires SYNCHRONOUSLY: completion(false), no state write.
+        manager.fetchAuthDocumentWithStateMachine(for: account) { completionValue = $0 }
+
+        XCTAssertEqual(completionValue, false,
+                       "A torn-down manager's fetch must complete(false) via the DEBUG entry guard")
+        guard case .notLoaded = AccountStateStore.shared.state(for: account.uuid) else {
+            return XCTFail("Entry guard must suppress the synchronous .detailsLoading write on a torn-down manager — a late/deferred drive would otherwise pollute the next test. Got \(label(AccountStateStore.shared.state(for: account.uuid)))")
+        }
+    }
+
     // MARK: - Test 4: Single-flight per-UUID auth doc fetch
 
     /// Contract: when two concurrent `fetchAuthDocumentWithStateMachine`

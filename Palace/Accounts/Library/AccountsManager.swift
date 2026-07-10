@@ -1595,6 +1595,24 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
         for account: Account,
         completion: @escaping (Bool) -> Void
     ) {
+        #if DEBUG
+        // Test-isolation (entry guard): once this manager was explicitly torn
+        // down (`cancelBackgroundWork()` in `AppContainer._resetForTesting()`),
+        // it must not drive any auth-doc state — neither the synchronous
+        // `.detailsLoading` below nor the async terminal write. Otherwise a
+        // late/deferred drive (`driveCurrentAccountAuthDocIfNeeded` dispatched
+        // via `DispatchQueue.main.async`) fires on a later runloop turn, after
+        // the next test's `AccountStateStore` reset, keyed by a fixture-shared
+        // library UUID, and pollutes whichever Accounts test runs next (the
+        // order-dependent flakes in AccountsManagerLaunchSnapshotTests /
+        // AccountsManagerStateMachineWiringTests). Production is UNAFFECTED:
+        // `_explicitCancelCalled` and `cancelBackgroundWork()` are `#if DEBUG`
+        // test-only (the latter is reachable only from `_resetForTesting()`).
+        if _explicitCancelCalled {
+            completion(false)
+            return
+        }
+        #endif
         inflightAuthDocLock.lock()
         let alreadyInflight = inflightAuthDocFetches.contains(account.uuid)
         if !alreadyInflight {
@@ -1620,6 +1638,18 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
             self.inflightAuthDocLock.lock()
             self.inflightAuthDocFetches.remove(account.uuid)
             self.inflightAuthDocLock.unlock()
+
+            #if DEBUG
+            // Test-isolation (completion guard): companion to the entry guard —
+            // an auth-doc fetch that was already IN FLIGHT when this manager was
+            // torn down must not land its terminal `_setState` after the test
+            // boundary. Suppress the write; still balance the caller's completion.
+            // (DEBUG-only — see entry guard; production is unaffected.)
+            if self._explicitCancelCalled {
+                completion(success)
+                return
+            }
+            #endif
 
             // A fetch that was SUPERSEDED by a library switch must not overwrite
             // the eviction marker the `currentAccount` setter wrote. Sequence
