@@ -265,6 +265,7 @@ class AudiobookSessionPresenter: ObservableObject {
         progress.playbackProgress = 0
         progress.chapterOffset = 0
         progress.chapterTimeLeft = 0
+        progress.chapterProgress = 0
         overallDownloadProgress = 0
         isDownloading = false
         toastMessage = nil
@@ -455,6 +456,16 @@ class AudiobookSessionPresenter: ObservableObject {
                 if let model = model {
                     self.progress.chapterOffset = model.chapterPlayheadOffset
                     self.progress.chapterTimeLeft = model.chapterTimeLeft
+                    // CHAPTER-relative scrubber progress. The toolkit slider is
+                    // chapter-scoped: seekWithSlider seeks chapterStart + value *
+                    // chapterDuration. `playbackProgress` above is BOOK-relative
+                    // (for the "N min remaining" text), so the scrubber reads this
+                    // separate chapter value or thumb-position and seek-scale
+                    // disagree (the "seek won't settle" bug).
+                    self.progress.chapterProgress = Self.chapterProgress(
+                        offset: model.chapterPlayheadOffset,
+                        timeLeft: model.chapterTimeLeft
+                    )
                 }
             }
             .store(in: &playbackModelCancellables)
@@ -536,6 +547,17 @@ class AudiobookSessionPresenter: ObservableObject {
         // pre-load 0.0) don't drive the scrubber out of bounds.
         return min(max(progress, 0), 1)
     }
+
+    /// CHAPTER-relative scrubber progress (0…1 within the current chapter),
+    /// mirroring the toolkit's `AudiobookPlaybackModel.playbackProgress`
+    /// (`chapterOffset / chapterDuration`, `chapterDuration = offset + timeLeft`).
+    /// Pure + static so the `> 0` guard and [0,1] clamp are unit-testable
+    /// without a live `AudiobookPlaybackModel`.
+    static func chapterProgress(offset: TimeInterval, timeLeft: TimeInterval) -> Double {
+        let duration = offset + timeLeft
+        guard duration > 0 else { return 0 }
+        return min(max(offset / duration, 0), 1)
+    }
 }
 
 /// High-frequency playback position/progress, deliberately split out of
@@ -553,4 +575,11 @@ final class AudiobookPlaybackProgress: ObservableObject {
     /// model's `chapterPlayheadOffset` / `chapterTimeLeft` on each position tick.
     @Published var chapterOffset: TimeInterval = 0
     @Published var chapterTimeLeft: TimeInterval = 0
+
+    /// CHAPTER-relative scrubber progress (0…1 within the current chapter),
+    /// mirrors the toolkit's `AudiobookPlaybackModel.playbackProgress`
+    /// (`chapterOffset / chapterDuration`). This — NOT book-relative
+    /// `playbackProgress` — is what the seek slider binds to so its thumb
+    /// matches `seekWithSlider`'s chapter-scoped seek.
+    @Published var chapterProgress: Double = 0
 }

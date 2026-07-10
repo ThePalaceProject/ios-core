@@ -787,6 +787,13 @@ public final class AudiobookSessionManager: ObservableObject {
         }
 
         manager.play()
+        // Set the authoritative stored `isPlaying` SYNCHRONOUSLY on the user's
+        // intent — the toolkit's own `.playbackBegan` echo (which also sets this)
+        // lags by a buffer/decode. Without this, `isPlaying` stayed false until
+        // that echo, and any reader of it in the gap (the presenter's
+        // `$currentLocation` self-heal) would flip the transport glyph back to
+        // "play" for a frame — the pause⇄play flicker on first tap.
+        isPlaying = true
         nowPlayingCoordinator?.setPlaybackState(playing: true)
         publishPlaybackStateChange(isPlaying: true)
     }
@@ -799,6 +806,10 @@ public final class AudiobookSessionManager: ObservableObject {
         }
 
         manager.pause()
+        // Mirror of `play()`: set the authoritative `isPlaying` synchronously on
+        // the user's intent so no observer sees a stale `true` before the
+        // toolkit's `.playbackStopped` echo arrives.
+        isPlaying = false
         nowPlayingCoordinator?.setPlaybackState(playing: false)
         publishPlaybackStateChange(isPlaying: false)
     }

@@ -399,8 +399,17 @@ struct AudiobookMorphingPlayerView: View {
             // while dragging; the seek commits via `onChange` on release.
             PalaceSeekSliderView(
                 value: Binding(
-                    get: { clampedProgress },
-                    set: { progress.playbackProgress = $0 }
+                    // CHAPTER-relative — the scrubber is chapter-scoped to match
+                    // `seekWithSlider`, which seeks `chapterStart + value *
+                    // chapterDuration`. Reading the book-relative `playbackProgress`
+                    // here made the thumb sit at book-% while the seek treated the
+                    // drop as chapter-%, so the playhead jumped and the thumb never
+                    // settled. The `set` is a no-op: the seek commits via `onChange`
+                    // and the visual hold lives inside the slider — writing here
+                    // would corrupt the book-relative progress the "N min remaining"
+                    // text depends on.
+                    get: { chapterProgressClamped },
+                    set: { _ in }
                 ),
                 onChange: { audiobookSession.seek(to: $0) }
             )
@@ -961,8 +970,16 @@ struct AudiobookMorphingPlayerView: View {
 
     // MARK: - Derived
 
+    /// Book-relative progress (0…1 across the whole book) — drives the mini
+    /// player's overall progress bar. NOT the scrubber (see `chapterProgressClamped`).
     private var clampedProgress: Double {
         progress.playbackProgress.isFinite ? min(max(progress.playbackProgress, 0), 1) : 0
+    }
+
+    /// Chapter-relative progress (0…1 within the current chapter) — drives the
+    /// seek scrubber so its thumb position matches `seekWithSlider`'s chapter scale.
+    private var chapterProgressClamped: Double {
+        progress.chapterProgress.isFinite ? min(max(progress.chapterProgress, 0), 1) : 0
     }
 
     /// Chapter-relative elapsed timecode (seconds from the start of the current
@@ -976,10 +993,10 @@ struct AudiobookMorphingPlayerView: View {
         "-" + AudiobookMiniPlayerView.formatTime(max(0, progress.chapterTimeLeft))
     }
 
-    /// Spoken value for the seek slider: percent through the book plus the
-    /// chapter elapsed timecode.
+    /// Spoken value for the seek slider: percent through the current chapter
+    /// (the scrubber is chapter-scoped) plus the chapter elapsed timecode.
     private var seekAccessibilityValue: String {
-        "\(Int(clampedProgress * 100))%, \(chapterElapsedString)"
+        "\(Int(chapterProgressClamped * 100))%, \(chapterElapsedString)"
     }
 
     // MARK: - Safe-area insets (window, since the overlay ignores safe area)
@@ -998,9 +1015,12 @@ struct AudiobookMorphingPlayerView: View {
     /// Whole-book remaining, phrased like the original ("18 hr 06 min remaining").
     private var wholeBookRemainingString: String {
         guard let position = progress.currentLocation else { return "" }
+        // Book-relative remaining straight from the playhead — NOT derived from a
+        // progress fraction. `durationToSelf()` is the book-elapsed time; deriving
+        // `total * scrubberFraction` would leap whenever the (chapter-scoped)
+        // scrubber moved. This reads the true book position independently.
         let total = position.tracks.totalDuration
-        let elapsed = total * clampedProgress
-        let remaining = max(0, total - elapsed)
+        let remaining = max(0, total - position.durationToSelf())
         let hrs = Int(remaining) / 3600
         let mins = (Int(remaining) % 3600) / 60
         if hrs > 0 { return String(format: "%d hr %02d min remaining", hrs, mins) }

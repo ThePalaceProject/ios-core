@@ -622,4 +622,35 @@ final class AudiobookSessionPresenterTests: XCTestCase {
         XCTAssertFalse(presenter.isPlaying,
                        "When sessionManager.isPlaying is false the self-heal must NOT flip the glyph to playing — the reconcile mirrors the authoritative manager flag, it does not fabricate a playing state.")
     }
+
+    // MARK: - chapterProgress (chapter-relative scrubber value)
+
+    /// Mid-chapter: offset 30s into a 120s chapter (30 elapsed + 90 left) is
+    /// exactly 0.25. Pins `offset / (offset + timeLeft)`. A mutant that swaps
+    /// the numerator/denominator, or reads book-relative progress instead,
+    /// fails this exact value.
+    func testChapterProgress_midChapter_isOffsetOverDuration() {
+        let value = AudiobookSessionPresenter.chapterProgress(offset: 30, timeLeft: 90)
+        XCTAssertEqual(value, 0.25, accuracy: 0.0001,
+                       "chapterProgress must be offset / (offset + timeLeft): 30 / 120 = 0.25")
+    }
+
+    /// Zero chapter duration (offset 0, timeLeft 0 → duration 0) must return 0,
+    /// NOT NaN. Pins the `duration > 0` guard: a mutant relaxing it to `>= 0`
+    /// (or dropping it) divides 0/0 → NaN and fails this assertion.
+    func testChapterProgress_zeroDuration_returnsZeroNotNaN() {
+        let value = AudiobookSessionPresenter.chapterProgress(offset: 0, timeLeft: 0)
+        XCTAssertFalse(value.isNaN, "Zero-duration chapter must not yield NaN")
+        XCTAssertEqual(value, 0, accuracy: 0.0001,
+                       "Zero-duration chapter progress must be 0 (guard returns early)")
+    }
+
+    /// Past chapter end: offset 200 with timeLeft -50 (duration 150) computes a
+    /// raw ratio of 200/150 ≈ 1.33 which must clamp to 1.0. Pins the upper
+    /// `min(_, 1)` clamp; a mutant dropping it lets the thumb run past the end.
+    func testChapterProgress_clampsPastChapterEnd() {
+        let value = AudiobookSessionPresenter.chapterProgress(offset: 200, timeLeft: -50)
+        XCTAssertEqual(value, 1.0, accuracy: 0.0001,
+                       "Progress past the chapter end must clamp to 1.0, not exceed it")
+    }
 }
