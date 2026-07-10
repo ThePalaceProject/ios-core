@@ -250,4 +250,54 @@ final class ImageLoaderTests: XCTestCase {
         let maxSide = max(result!.size.width, result!.size.height)
         XCTAssertLessThanOrEqual(maxSide, 64, "downsampled side must not exceed maxDimension")
     }
+
+    // MARK: - PP-4772 / 077218fc — non-finite display dimensions must not trap
+
+    /// The sanitizer that guards every `Int(displayDimension)` conversion in the
+    /// cover pipeline. Keeps finite positive values; rejects the NaN / infinite /
+    /// non-positive sizes a view can report mid-layout (the EXC_BREAKPOINT source).
+    func testFinitePositiveDimension_keepsFinitePositive_rejectsEverythingElse() {
+        XCTAssertEqual(CGFloat(120).finitePositiveDimension, 120)
+        XCTAssertEqual(CGFloat(0.5).finitePositiveDimension, 0.5)
+        XCTAssertNil(CGFloat.nan.finitePositiveDimension)
+        XCTAssertNil(CGFloat.infinity.finitePositiveDimension)
+        XCTAssertNil((-CGFloat.infinity).finitePositiveDimension)
+        XCTAssertNil(CGFloat(0).finitePositiveDimension)
+        XCTAssertNil(CGFloat(-5).finitePositiveDimension)
+    }
+
+    /// Regression for Crashlytics 077218fc: `ImageLoader.coverImage(for:displayPoints:)`
+    /// computed `Int(min(displayPoints * scale * 1.5, 1200))` for its cache key. When a
+    /// view reported a NaN / infinite / non-positive height, that `Int(_:)` conversion
+    /// trapped with EXC_BREAKPOINT. The loader must instead fall back to the unsized
+    /// cover. Pre-loading the unsized cover key makes the fallback deterministic (no
+    /// network, no TenPrint).
+    func testCoverImage_displayPoints_nonFinite_fallsBackToUnsizedCover_withoutTrapping() async {
+        let book = makeBook()
+        let sentinel = makeImage(width: 10, height: 10)
+        cache.set(sentinel, for: "\(book.identifier)_cover", expiresIn: nil)
+
+        for bad: CGFloat in [.nan, .infinity, -.infinity, 0, -5] {
+            // Pre-fix, the next line traps before returning.
+            let result = await loader.coverImage(for: book, displayPoints: bad)
+            XCTAssertEqual(result?.pngData(), sentinel.pngData(),
+                           "displayPoints=\(bad) must fall back to the unsized cover, not trap")
+        }
+    }
+
+    /// Same regression one layer down, at the registry seam the loader composes.
+    /// `TPPBookCoverRegistry.coverImage(for:displayPoints:)` had the identical
+    /// unguarded `Int(neededPixels)` conversion.
+    func testRegistryCoverImage_displayPoints_nonFinite_fallsBackToUnsizedCover_withoutTrapping() async {
+        let registry = TPPBookCoverRegistry(imageCache: cache)
+        let book = makeBook(imageURL: URL(string: "https://example.com/cover.jpg")!)
+        let sentinel = makeImage(width: 10, height: 10)
+        cache.set(sentinel, for: "\(book.identifier)_cover", expiresIn: nil)
+
+        for bad: CGFloat in [.nan, .infinity, 0, -5] {
+            let result = await registry.coverImage(for: book, displayPoints: bad)
+            XCTAssertEqual(result?.pngData(), sentinel.pngData(),
+                           "registry displayPoints=\(bad) must fall back to the unsized cover, not trap")
+        }
+    }
 }
