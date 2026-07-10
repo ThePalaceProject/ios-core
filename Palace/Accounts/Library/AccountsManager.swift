@@ -2035,7 +2035,43 @@ extension AccountsManager {
 
         cancelBackgroundWork() // requests cancellation, nils handles, clears list
 
-        guard !tasksToDrain.isEmpty else { return }
+        if tasksToDrain.isEmpty {
+            // No tracked Tasks, but init may have enqueued a DispatchQueue.main.async
+            // auth-doc drive (see `preloadAccountsFromDiskCacheSync`'s deferred
+            // `driveCurrentAccountAuthDocIfNeeded()` hop) that is NOT a Task and
+            // therefore CANNOT be cancelled by `cancelBackgroundWork()`. If it
+            // escapes this boundary it fires on a LATER runloop turn — after the
+            // next test's `_resetForTesting()` store reset — and writes a
+            // fixture-shared library UUID's `.detailsLoading`/`.detailsFailed`
+            // into the next test (the order-dependent Accounts-suite flakes).
+            // Pump the main run loop briefly so any such pending main-hop fires
+            // NOW, inside the boundary: for THIS torn-down manager the
+            // `_explicitCancelCalled` entry guard in
+            // `fetchAuthDocumentWithStateMachine` makes its own drive inert; for a
+            // foreign, never-torn-down manager's pending hop (e.g. an
+            // `AppContainer.production()` manager built by a Catalog test) the
+            // write lands here and is then wiped by the boundary's own store
+            // reset — either way nothing leaks past `_resetForTesting()`.
+            //
+            // CRITICAL invariant (see the drain-must-pump note above): PUMP the
+            // run loop, never BLOCK main — the crawl-drain deadlock reason applies
+            // equally here. A single `RunLoop.run(mode:before:)` can return BEFORE
+            // libdispatch services a lone pending main-queue block (it exits early
+            // when no traditional run-loop source is ready), so — exactly like the
+            // Task-drain loop below — we pump in a BOUNDED loop. We enqueue a
+            // sentinel AFTER any pending hop (the main queue is FIFO) and spin
+            // until it drains: once the sentinel runs, every earlier main-hop has
+            // already fired. Bounded by a 50ms ceiling so a wedged main queue can
+            // never hang the boundary; the common case exits in well under 1ms.
+            let sentinel = DispatchGroup()
+            sentinel.enter()
+            DispatchQueue.main.async { sentinel.leave() }
+            let pumpDeadline = Date().addingTimeInterval(0.05)
+            while sentinel.wait(timeout: .now()) == .timedOut && Date() < pumpDeadline {
+                RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.01))
+            }
+            return
+        }
 
         // Await all (now-cancelled) tasks while pumping the run loop, so any
         // barrier the crawl holds is released and its main-actor hops complete

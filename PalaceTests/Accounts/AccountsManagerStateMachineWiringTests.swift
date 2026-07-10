@@ -608,6 +608,110 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
         }
     }
 
+    // MARK: - Test 3c: boundary drain flushes the deferred auth-doc main-hop
+
+    /// Regression guard for GAP 1 (the un-cancellable `DispatchQueue.main.async`
+    /// auth-doc drive `preloadAccountsFromDiskCacheSync` enqueues at init). That
+    /// hop is NOT a `Task`, so `cancelBackgroundWork()` cannot cancel it; if it
+    /// escapes the test boundary it fires on a LATER runloop turn — AFTER the next
+    /// test's `_resetForTesting()` store reset — and writes a fixture-shared
+    /// library UUID's `.detailsLoading` into whichever Accounts test runs next
+    /// (the order-dependent suite flakes).
+    ///
+    /// GAP 1 makes `cancelAndDrainBackgroundWork()` PUMP the run loop at the
+    /// empty-task boundary so any such pending main-hop fires INSIDE the boundary
+    /// (before the store reset) and is wiped, instead of leaking past it.
+    ///
+    /// Why this models the FOREIGN-manager leak (and why a single-manager test
+    /// has no teeth): `cancelAndDrainBackgroundWork()` calls `cancelBackgroundWork()`
+    /// which flips `_explicitCancelCalled = true`, so a manager's OWN deferred
+    /// drive is already made inert by the #1232 entry guard regardless of the
+    /// pump. The residual leak is a NEVER-torn-down manager's pending hop — e.g.
+    /// the `AppContainer.production()` manager a Catalog test builds and never
+    /// tears down, whose `_explicitCancelCalled` stays false. We model that hop by
+    /// its terminal store-write effect: a `DispatchQueue.main.async` (NOT a Task)
+    /// performing the drive's synchronous `Account._setState(.detailsLoading)` —
+    /// the exact seam `fetchAuthDocumentWithStateMachine` writes through — while
+    /// the boundary drain runs on a SEPARATE fresh manager, mirroring production
+    /// where the boundary reset drains the current manager while the leaked hop
+    /// belongs to a prior one. The async network tail is deliberately omitted so
+    /// the boundary-ORDERING assertion (write-before-reset vs after) is
+    /// deterministic.
+    ///
+    /// Mutation proof (verified before/after): reverting GAP 1 (restoring
+    /// `guard !tasksToDrain.isEmpty else { return }`) makes the hop escape the
+    /// boundary — it fires after the reset and leaks `.detailsLoading`, reddening
+    /// the final assertion.
+    func testBoundaryDrain_flushesDeferredAuthDocMainHop_insideTheBoundary() throws {
+        // Unique UUID → deterministic regardless of suite order.
+        let metadata = OPDS2Publication.Metadata(
+            updated: Date(),
+            description: "gap1 boundary-drain regression",
+            id: "urn:uuid:pollfix-boundary-\(UUID().uuidString)",
+            title: "Boundary-Drain Library"
+        )
+        let pub = OPDS2Publication(links: [], metadata: metadata, images: nil)
+        let leakedAccount = Account(publication: pub, imageCache: MockImageCache())
+        let u = leakedAccount.uuid
+
+        #if DEBUG
+        AccountStateStore.shared._resetAllForTesting()
+        #endif
+        guard case .notLoaded = AccountStateStore.shared.state(for: u) else {
+            return XCTFail("Precondition: a fresh unique account must start at .notLoaded, got \(label(AccountStateStore.shared.state(for: u)))")
+        }
+
+        // Reproduce init's un-cancellable main-hop: a DispatchQueue.main.async
+        // (NOT a Task, so `cancelBackgroundWork()` cannot cancel it) performing
+        // the deferred auth-doc drive's synchronous store write. Never torn down,
+        // so no `_explicitCancelCalled` guard suppresses it — only the boundary
+        // drain's PUMP can service it. We assert on the drive's synchronous
+        // `.detailsLoading` write (the exact seam `fetchAuthDocumentWithStateMachine`
+        // uses); the async network tail is omitted so the boundary-ordering
+        // assertion is deterministic.
+        DispatchQueue.main.async {
+            leakedAccount._setState(.detailsLoading)
+        }
+
+        // The pending hop has NOT run yet — we are still on the same synchronous
+        // main-thread stack that enqueued it.
+        guard case .notLoaded = AccountStateStore.shared.state(for: u) else {
+            return XCTFail("Precondition: the deferred hop must not have fired before the boundary drain; got \(label(AccountStateStore.shared.state(for: u)))")
+        }
+
+        // GAP 1: `cancelAndDrainBackgroundWork()` (invoked at every real test
+        // boundary from `AppContainer._resetForTesting()`) must PUMP the run loop
+        // so the pending main-hop fires INSIDE the boundary. A fresh, task-less
+        // manager exercises exactly the empty-`tasksToDrain` branch that carries
+        // the pump.
+        let boundaryManager = makeFreshAccountsManager()
+        boundaryManager.cancelAndDrainBackgroundWork()
+
+        // The load-bearing assertion. WITH GAP 1: the pump serviced the pending
+        // hop, so its `.detailsLoading` write has already landed by the time the
+        // drain returns — the hop is flushed INSIDE the boundary, where the
+        // boundary's own store reset then wipes it, instead of leaking onto a
+        // later runloop turn in the NEXT test.
+        //
+        // Mutation proof (verified before/after): reverting GAP 1 (restoring
+        // `guard !tasksToDrain.isEmpty else { return }`) makes the drain return
+        // WITHOUT pumping — the hop is still queued, so `u` is still `.notLoaded`
+        // here and this assertion reddens. That is the teeth: a single-manager
+        // test cannot show this because `cancelBackgroundWork()` flips
+        // `_explicitCancelCalled`, making a manager's OWN drive inert regardless
+        // of the pump; the residual leak (and the pump's value) is flushing a
+        // FOREIGN never-torn-down manager's pending hop, which this models.
+        guard case .detailsLoading = AccountStateStore.shared.state(for: u) else {
+            return XCTFail("GAP 1: the boundary drain must PUMP the run loop so the deferred auth-doc main-hop fires inside the boundary (expected .detailsLoading here); got \(label(AccountStateStore.shared.state(for: u))) — the hop leaked past the drain onto a later runloop turn (the next-test pollution).")
+        }
+
+        // Housekeeping: `u` is a unique UUID (cannot collide with any fixture),
+        // but reset it explicitly so nothing bleeds. (`_resetAllForTesting` does
+        // not clean subjects created this late in the method — a documented quirk
+        // of that DEBUG helper — so use the direct per-UUID reset.)
+        AccountStateStore.shared.reset(for: u)
+    }
+
     // MARK: - Test 4: Single-flight per-UUID auth doc fetch
 
     /// Contract: when two concurrent `fetchAuthDocumentWithStateMachine`

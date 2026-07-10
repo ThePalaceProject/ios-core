@@ -267,4 +267,128 @@ final class AccountsManagerIsolationLintTests: XCTestCase {
             "Detector must NOT flag declarations, comments, seam calls, or string literals — got hits at \(negativeHits)"
         )
     }
+
+    // MARK: - 3. GAP 2 — construction sites must live in a wiring-base class
+
+    /// Files (with reason) exempt from the "class extends `PalaceWiringTestCase`"
+    /// requirement below. These are the SEAMS that legitimately construct
+    /// `AccountsManager` directly and already pin
+    /// `deferInitialLoadCatalogsForTesting = true` + a `cancelBackgroundWork()`
+    /// teardown, OR carry the constructor substring only inside fixture strings
+    /// for their own scanners. Any NEW entry must be paired with a wall-failure
+    /// note (same rule as the bare-construction whitelist above).
+    private static let wiringBaseAllowlistSuffixes: [String] = [
+        // The seam itself — `makeFreshAccountsManager()` builds the manager here.
+        "Support/PalaceWiringTestCase.swift",
+        // Module A's factory seam — defers loadCatalogs the same way.
+        "Support/TestAppContainerFactory.swift",
+        "Support/TestAppContainerFactoryTests.swift",
+        // Fixture-carrier: the constructor substring appears only inside the
+        // detector's own synthetic-source `"""..."""` fixtures.
+        "MetaTests/TearDownRequiredLintTests.swift",
+        // SUT's own unit test. It constructs `AccountsManager(defaults:)` to
+        // exercise the class under test; every site pins
+        // `deferInitialLoadCatalogsForTesting = true` + `defer {
+        // manager.cancelBackgroundWork() }`, so it does not leak background
+        // work. It carries a bespoke setUp/tearDown lifecycle, so migrating it
+        // to `PalaceWiringTestCase` is higher-risk than the manual seam.
+        // TODO(PP-pollfix): evaluate migrating `AccountsManagerTests` +
+        // `AccountAuthDocCarryoverTests` onto `PalaceWiringTestCase` once the
+        // manual-lifecycle assertions are reconciled with the base's drain.
+        "Accounts/AccountsManagerTests.swift",
+    ]
+
+    private func isWiringBaseAllowlisted(_ url: URL) -> Bool {
+        let path = url.path
+        return Self.wiringBaseAllowlistSuffixes.contains { path.hasSuffix($0) }
+    }
+
+    /// True iff `source` declares (or a class in it extends) the wiring base.
+    /// Substring match is sufficient: a test file that constructs
+    /// `AccountsManager` and legitimately inherits the tearDown guarantees will
+    /// contain `: PalaceWiringTestCase` in its class declaration.
+    static func declaresWiringBase(in source: String) -> Bool {
+        source.contains(": PalaceWiringTestCase")
+    }
+
+    /// GAP 2 regression lint: any PalaceTests file that CONSTRUCTS
+    /// `AccountsManager(` must either (a) be a class extending
+    /// `PalaceWiringTestCase` — so `cancelBackgroundWork()` + Combine-bag drain
+    /// + disk-cache purge fire on tearDown and the deferred auth-doc main-hop is
+    /// flushed at the boundary — or (b) be on the explicit
+    /// `wiringBaseAllowlistSuffixes` seam list above. This is the class-base
+    /// complement to `testNoBareAccountsManagerOutsideWhitelist` (which forbids
+    /// *bare* constructions): it pins the positive requirement that the
+    /// construction lives where the isolation guarantees exist.
+    func testAccountsManagerConstructionSites_extendWiringBase_orAllowlisted() throws {
+        let files = try allTestFiles()
+        XCTAssertFalse(files.isEmpty, "No PalaceTests files discovered at \(Self.palaceTestsRoot.path)")
+
+        var violations: [(file: String, lines: [Int])] = []
+        for url in files {
+            if isInMocksDirectory(url) { continue }
+            // Skip THIS file — its `AccountsManager(` mentions are detector
+            // literals / synthetic-violator fixtures, not real constructions.
+            if url.path.hasSuffix("MetaTests/AccountsManagerIsolationLintTests.swift") { continue }
+            guard let src = contents(of: url) else {
+                XCTFail("Could not read \(url.lastPathComponent)")
+                continue
+            }
+            let hits = Self.scanForBareConstructions(in: src)
+            guard !hits.isEmpty else { continue }
+            if isWiringBaseAllowlisted(url) { continue }
+            if Self.declaresWiringBase(in: src) { continue }
+            let rel = String(url.path.dropFirst(Self.palaceTestsRoot.path.count + 1))
+            violations.append((file: rel, lines: hits))
+        }
+
+        if !violations.isEmpty {
+            let rendered = violations
+                .map { "\($0.file):\($0.lines.map(String.init).joined(separator: ","))" }
+                .sorted()
+                .joined(separator: "\n  ")
+            XCTFail("""
+            `AccountsManager(` constructed in PalaceTests/ files whose class does NOT extend \
+            `PalaceWiringTestCase` and which are NOT on the seam allowlist. Move the test onto \
+            `PalaceWiringTestCase` (so the tearDown cancel + boundary main-hop flush fire), or \
+            add the file to `wiringBaseAllowlistSuffixes` with a reason + wall-failure note. \
+            Violations:
+              \(rendered)
+            """)
+        }
+    }
+
+    /// Teeth for the class-base detector: a synthetic construction site with NO
+    /// wiring base must be flagged; the same content WITH the base must not.
+    func testWiringBaseLint_syntheticViolator() {
+        let withoutBase = """
+        final class RogueAccountsTests: XCTestCase {
+            func testThing() {
+                let m = AccountsManager()
+                _ = m
+            }
+        }
+        """
+        XCTAssertFalse(
+            Self.scanForBareConstructions(in: withoutBase).isEmpty,
+            "Precondition: the synthetic rogue must contain a real construction"
+        )
+        XCTAssertFalse(
+            Self.declaresWiringBase(in: withoutBase),
+            "A plain-XCTestCase construction site must be detected as lacking the wiring base"
+        )
+
+        let withBase = """
+        final class ProperAccountsTests: PalaceWiringTestCase {
+            func testThing() {
+                let m = AccountsManager()
+                _ = m
+            }
+        }
+        """
+        XCTAssertTrue(
+            Self.declaresWiringBase(in: withBase),
+            "A `: PalaceWiringTestCase` construction site must be recognised as wiring-based"
+        )
+    }
 }
