@@ -80,21 +80,27 @@ final class AudiobookCollapsedPillViewTests: XCTestCase {
 
     // MARK: - Restore wiring
 
-    /// Tapping the pill's cover restores the full mini-bar via
-    /// `presenter.restoreFromCollapsed()` — and does NOT stop playback.
-    func testPill_restore_callsRestoreFromCollapsed_withoutStoppingPlayback() {
+    /// In the morphing player the collapsed-pill concept was REMOVED, so
+    /// `collapse()` / `restoreFromCollapsed()` are inert no-ops: `isCollapsed`
+    /// never flips true. What still matters — and what this pins — is that the
+    /// restore seam the pill cover tap routes to is still callable and does NOT
+    /// stop playback (a regression wiring restore to `stopPlayback` would kill
+    /// audio on a tap).
+    func testPill_restoreFromCollapsed_isInert_andDoesNotStopPlayback() {
         spyPresenter.collapse()
-        XCTAssertTrue(spyPresenter.isCollapsed, "PRECONDITION: collapsed")
+        XCTAssertFalse(spyPresenter.isCollapsed,
+                       "collapse() is inert in the morphing player — the pill was removed, isCollapsed never flips true")
         let restoresBefore = spyPresenter.restoreFromCollapsedCallCount
 
-        // Drive the production seam the cover's tap gesture invokes.
+        // Drive the seam the pill cover's tap gesture invokes.
         spyPresenter.restoreFromCollapsed()
 
         XCTAssertEqual(spyPresenter.restoreFromCollapsedCallCount, restoresBefore + 1,
-                       "Tapping the pill must call restoreFromCollapsed() to bring the full bar back")
-        XCTAssertFalse(spyPresenter.isCollapsed, "Presenter must leave the collapsed state after restore")
+                       "restoreFromCollapsed() must still be callable (routed from the pill cover tap)")
+        XCTAssertFalse(spyPresenter.isCollapsed,
+                       "restoreFromCollapsed() leaves isCollapsed false (inert — pill removed)")
         XCTAssertEqual(spySession.stopPlaybackCallCount, 0,
-                       "Restoring must NOT stop playback — the pill keeps audio running")
+                       "Restoring must NEVER stop playback — collapse/restore are chrome-only, audio keeps running")
     }
 
     // MARK: - Play/pause wiring

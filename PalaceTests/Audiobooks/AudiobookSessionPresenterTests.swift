@@ -313,49 +313,58 @@ final class AudiobookSessionPresenterTests: XCTestCase {
                       "Transition 3 (expand again): re-entry must work — collapsed → expanded after a minimize must drive published value back to true. This is the production seam round-trip per CLAUDE.md.")
     }
 
-    // MARK: - Collapse ⇄ restore (mini-bar ⇄ pill axis)
+    // MARK: - Collapse / restore inert in the morphing player (pill removed)
 
-    /// `collapse()` flips `isCollapsed` true AND emits to subscribers (the
-    /// pill overlay + mini-bar bind to it). `restoreFromCollapsed()` flips it
-    /// back. Drives the full round-trip via the production seams per the
-    /// CLAUDE.md state-machine wiring rule (write → reset → re-enter).
-    func testPresenter_collapse_restore_collapseAgain_drivesIsCollapsed_acrossThreeTransitions() {
+    /// The morphing player REMOVED the collapsed-pill concept: `collapse()` and
+    /// `restoreFromCollapsed()` are now inert no-ops (see
+    /// `AudiobookSessionPresenter.collapse()`), so `isCollapsed` never flips
+    /// true. This pins the current reality — the mini-bar's swipe-down routes
+    /// to `collapse()` harmlessly: it must NOT hide the bar into a pill AND
+    /// must NOT tear the session down (collapsing was never a teardown).
+    ///
+    /// Replaces the former pill round-trip / cross-axis tests
+    /// (`..._drivesIsCollapsed_acrossThreeTransitions`,
+    /// `testPresenter_expand_clearsCollapsedState`,
+    /// `testPresenter_clearActiveSession_resetsCollapsedState`) whose premise
+    /// (collapse() sets isCollapsed true) is dead. The non-pill behavior those
+    /// pinned — expand()→isPlayerExpanded, clearActiveSession() teardown — is
+    /// still covered by `testExpand_setsIsPlayerExpandedTrue` and
+    /// `testPresenter_clearActiveSession_clearsPolishPhaseFields`.
+    func testPresenter_collapse_and_restore_areInertNoOps_isCollapsedStaysFalse() {
         let presenter = AudiobookSessionPresenter(sessionManager: spySession)
-        XCTAssertFalse(presenter.isCollapsed, "PRECONDITION: must start un-collapsed (full bar)")
+        // Drive an active, expanded session so we prove collapse() leaves the
+        // session (and the full-player axis) untouched, not just the dead axis.
+        spySession.playbackStatePublisher.send(.playing(bookId: "book-1"))
+        spinRunLoopForPublisherDelivery()
+        presenter.expand()
+        XCTAssertTrue(presenter.hasActiveSession, "PRECONDITION: active session")
+        XCTAssertTrue(presenter.isPlayerExpanded, "PRECONDITION: full player expanded")
+        XCTAssertFalse(presenter.isCollapsed, "PRECONDITION: never collapsed (pill removed)")
 
         var observed: [Bool] = []
         let cancellable = presenter.$isCollapsed.sink { observed.append($0) }
         defer { cancellable.cancel() }
 
-        // Transition 1: bar → pill
+        // collapse() is a no-op: isCollapsed must NOT flip true, and the
+        // session must stay active (collapsing is not a teardown).
         presenter.collapse()
-        XCTAssertTrue(presenter.isCollapsed, "Transition 1 (collapse): full bar → pill must set isCollapsed true")
-
-        // Transition 2: pill → bar
-        presenter.restoreFromCollapsed()
-        XCTAssertFalse(presenter.isCollapsed, "Transition 2 (restore): pill → full bar must set isCollapsed false")
-
-        // Transition 3: bar → pill again (re-entry — proves the round-trip)
-        presenter.collapse()
-        XCTAssertTrue(presenter.isCollapsed, "Transition 3 (collapse again): re-entry after restore must set isCollapsed true again — a latch would fail here")
-
-        XCTAssertEqual(observed, [false, true, false, true],
-                       "@Published subscriber must observe initial → true → false → true; a plain (non-@Published) var would not emit and the pill/bar swap wouldn't react")
-    }
-
-    /// `expand()` must clear a prior collapse — expanding to the full player
-    /// always supersedes the pill so the user never lands back on a stale pill
-    /// after a minimize. Drives the cross-axis interaction via production seams.
-    func testPresenter_expand_clearsCollapsedState() {
-        let presenter = AudiobookSessionPresenter(sessionManager: spySession)
-        presenter.collapse()
-        XCTAssertTrue(presenter.isCollapsed, "PRECONDITION: collapsed to pill")
-
-        presenter.expand()
-
         XCTAssertFalse(presenter.isCollapsed,
-                       "expand() must reset isCollapsed — the full player supersedes the pill; a mutation dropping this line leaves the pill latched")
-        XCTAssertTrue(presenter.isPlayerExpanded, "expand() must still drive the full-player axis")
+                       "collapse() is inert in the morphing player — isCollapsed must stay false")
+        XCTAssertTrue(presenter.hasActiveSession,
+                      "collapse() must not tear down the session — audio keeps running")
+        XCTAssertTrue(presenter.isPlayerExpanded,
+                      "collapse() must not touch the full-player axis")
+
+        // restoreFromCollapsed() is likewise inert — keeps isCollapsed false.
+        presenter.restoreFromCollapsed()
+        XCTAssertFalse(presenter.isCollapsed,
+                       "restoreFromCollapsed() must keep isCollapsed false (pill removed)")
+
+        // Across the whole sequence isCollapsed never emits true — the pill
+        // axis is dead. A regression that re-wired collapse() to set true
+        // (restoring the old pill) would put `true` into this stream.
+        XCTAssertFalse(observed.contains(true),
+                       "isCollapsed must never emit true — the collapsed-pill concept was removed in the morphing player")
     }
 
     /// `minimize()` (full player → mini-bar) must land on the FULL bar, not a
@@ -375,18 +384,11 @@ final class AudiobookSessionPresenterTests: XCTestCase {
         XCTAssertFalse(presenter.isPlayerExpanded, "minimize() must still collapse the full player")
     }
 
-    /// A hard dismiss (`clearActiveSession()`) must also reset `isCollapsed`
-    /// so the next session starts from the full bar, not a stale pill.
-    func testPresenter_clearActiveSession_resetsCollapsedState() {
-        let presenter = AudiobookSessionPresenter(sessionManager: spySession)
-        presenter.collapse()
-        XCTAssertTrue(presenter.isCollapsed, "PRECONDITION: collapsed to pill")
-
-        presenter.clearActiveSession()
-
-        XCTAssertFalse(presenter.isCollapsed,
-                       "clearActiveSession() must reset isCollapsed — a re-opened session must not inherit the previous session's pill state")
-    }
+    // `testPresenter_clearActiveSession_resetsCollapsedState` was removed: the
+    // collapsed-pill concept is gone (collapse() is inert, isCollapsed never
+    // flips true), so "reset the pill on hard dismiss" no longer has a
+    // reachable state to reset. clearActiveSession()'s real teardown surface is
+    // covered by `testPresenter_clearActiveSession_clearsPolishPhaseFields`.
 
     // MARK: - Polish-phase: isPlaying derivation (Bug 2)
 
