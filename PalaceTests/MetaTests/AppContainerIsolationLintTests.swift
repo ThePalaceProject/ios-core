@@ -279,6 +279,42 @@ final class AppContainerIsolationLintTests: XCTestCase {
   /// reference. Exempt:
   ///   - lines whose first non-whitespace is `//` or `///` (comments)
   ///   - lines carrying the `// MIGRATED-DEFERRED:` per-line marker
+  /// The banned pattern. Defined once so the detector and self-tests agree.
+  static let bannedProductionToken = "AppContainer.production()"
+
+  /// True iff `line` contains `bannedProductionToken` OUTSIDE any double-quoted
+  /// string literal. A mention *inside* a string — e.g. an `XCTFail` /
+  /// assertion message that describes the banned pattern — is documentation,
+  /// not a production() read, and must not trip the lint (same reasoning as the
+  /// comment-line skip). Escaped quotes (`\"`) are handled; a `\(...)`
+  /// interpolation is treated as still-inside-string, so a (vanishingly rare)
+  /// real call placed inside an interpolation would be missed — an acceptable
+  /// false-negative versus the deterministic false-positive this closes
+  /// (AccountsManagerLaunchSnapshotTests's re-entrancy-guard XCTFail message
+  /// named the pattern in prose and reddened the lint on every run).
+  static func hasNonStringProductionReference(_ line: String) -> Bool {
+    let chars = Array(line)
+    let token = Array(bannedProductionToken)
+    var inString = false
+    var i = 0
+    while i < chars.count {
+      if inString {
+        if chars[i] == "\\" { i += 2; continue }   // skip escaped char (incl. \" and \()
+        if chars[i] == "\"" { inString = false }
+        i += 1
+        continue
+      }
+      if chars[i] == "\"" { inString = true; i += 1; continue }
+      if chars[i] == token.first,
+         i + token.count <= chars.count,
+         Array(chars[i ..< i + token.count]) == token {
+        return true
+      }
+      i += 1
+    }
+    return false
+  }
+
   private func violations(in source: String) -> [(Int, String)] {
     var out: [(Int, String)] = []
     for (i, line) in source.split(separator: "\n", omittingEmptySubsequences: false).enumerated() {
@@ -292,7 +328,10 @@ final class AppContainerIsolationLintTests: XCTestCase {
       if lineStr.contains(Self.perLineExemptionMarker) {
         continue
       }
-      guard lineStr.contains("AppContainer.production()") else { continue }
+      // Only a REAL (non-string-literal) reference is a violation. A mention
+      // inside an assertion/XCTFail message is documentation — same as a
+      // comment — and previously produced a deterministic false positive.
+      guard Self.hasNonStringProductionReference(lineStr) else { continue }
       out.append((i + 1, lineStr))
     }
     return out
@@ -416,5 +455,40 @@ final class AppContainerIsolationLintTests: XCTestCase {
     // be reachable.
     XCTAssertLessThan(Self.deferredFiles.count, 200,
                       "Deferred list is unexpectedly large — verify the file was not corrupted")
+  }
+
+  /// String-literal self-test — the false positive this detector fix closes.
+  /// An `AppContainer.production()` mention inside a string literal (e.g. an
+  /// `XCTFail` / assertion message that *describes* the banned pattern) MUST
+  /// NOT trigger the lint. This is the exact deterministic failure
+  /// `AccountsManagerLaunchSnapshotTests` produced: its re-entrancy-guard
+  /// XCTFail message names `AppContainer.production()` with no real call, yet
+  /// reddened `testNoAppContainerProductionOutsideWhitelist` on every run
+  /// (masked only by the unit-test workflow's `continue-on-error`).
+  func testLintIgnoresStringLiteralMentions() {
+    let syntheticWithStringMention = """
+    func sut() {
+        XCTFail("re-enters AppContainer.production() under the held lock (PR #1226)")
+        assert(condition, "AppContainer.production() must not be reached here")
+    }
+    """
+    let vios = violations(in: syntheticWithStringMention)
+    XCTAssertEqual(vios.count, 0,
+                   "`AppContainer.production()` inside a string literal (assertion message) must NOT trigger the lint")
+  }
+
+  /// Boundary self-test: the string-literal skip must NOT blind the detector to
+  /// a REAL call that shares a line with a string mention — otherwise the fix
+  /// would open a hole where wrapping a call site in a same-line log message
+  /// evades the lint.
+  func testLintFlagsRealCallEvenWhenSameLineAlsoMentionsInString() {
+    let mixed = """
+    func sut() {
+        let x = AppContainer.production().bookRegistry; log("touched AppContainer.production()")
+    }
+    """
+    let vios = violations(in: mixed)
+    XCTAssertEqual(vios.count, 1,
+                   "A real `AppContainer.production()` call must still be flagged even when the same line also mentions it inside a string")
   }
 }
