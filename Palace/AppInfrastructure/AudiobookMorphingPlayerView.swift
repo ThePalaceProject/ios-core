@@ -17,10 +17,12 @@
 //  morph. The toolkit view is kept mounted-but-hidden elsewhere
 //  (`AppTabHostView`) purely to preserve playback wiring.
 //
-//  Scope (first cut): cover, title/author, chapter label, a DISPLAY-ONLY
-//  progress scrubber (no seek — the protocol exposes none, same as the old mini
-//  bar), 30s skips, play/pause, a playback-rate chip, and a small Stop. Sleep
-//  timer / bookmarks / arbitrary seek are deferred (no protocol surface yet).
+//  Scope: cover, title/author, chapter label, a chapter-scoped seek slider
+//  (bound to the presenter's `chapterProgress`, driving `AudiobookSessionManaging.
+//  seek(to:)`), 30s skips, play/pause, a playback-rate chip, a sleep-timer chip,
+//  a bookmark button, and a small Stop. These all route through the
+//  `AudiobookSessionManaging` surface — seek, sleep timer, and bookmarks are
+//  implemented here, no longer deferred.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //

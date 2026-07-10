@@ -579,6 +579,37 @@ final class AudiobookSessionPresenterTests: XCTestCase {
         XCTAssertEqual(presenter.progress.playbackProgress, 0,
                        "clearActiveSession must reset playbackProgress to 0 so the scrubber doesn't briefly show the prior book's progress")
     }
+
+    /// CONCERN coverage (qa_test SoD review of PR #1230): `clearActiveSession()`
+    /// must reset the chapter-scoped progress mirrors (`chapterOffset`,
+    /// `chapterTimeLeft`, `chapterProgress`) — the seek slider binds to
+    /// `chapterProgress`, so a stale non-zero value would leave the next
+    /// session's scrubber thumb parked mid-chapter before the first tick.
+    ///
+    /// These three fields are publicly settable `@Published` values on the
+    /// high-frequency `AudiobookPlaybackProgress` object, so the test pre-seeds
+    /// them directly (they are NOT `private(set)` toolkit-driven mirrors).
+    ///
+    /// Mutates: dropping any of the three `progress.chapter* = 0` lines from
+    /// `clearActiveSession()` leaves that field non-zero and fails here.
+    func testClearActiveSession_resetsChapterProgressFields() {
+        let presenter = AudiobookSessionPresenter(sessionManager: spySession)
+        presenter.progress.chapterOffset = 42
+        presenter.progress.chapterTimeLeft = 30
+        presenter.progress.chapterProgress = 0.5
+        XCTAssertEqual(presenter.progress.chapterOffset, 42, "PRECONDITION: chapterOffset seeded")
+        XCTAssertEqual(presenter.progress.chapterTimeLeft, 30, "PRECONDITION: chapterTimeLeft seeded")
+        XCTAssertEqual(presenter.progress.chapterProgress, 0.5, accuracy: 0.0001, "PRECONDITION: chapterProgress seeded")
+
+        presenter.clearActiveSession()
+
+        XCTAssertEqual(presenter.progress.chapterOffset, 0,
+                       "clearActiveSession must reset chapterOffset to 0 so the next session's chapter time-elapsed label doesn't show the prior book's offset")
+        XCTAssertEqual(presenter.progress.chapterTimeLeft, 0,
+                       "clearActiveSession must reset chapterTimeLeft to 0 so the next session's time-remaining label starts fresh")
+        XCTAssertEqual(presenter.progress.chapterProgress, 0, accuracy: 0.0001,
+                       "clearActiveSession must reset chapterProgress to 0 so the seek slider thumb doesn't start parked mid-chapter for the next book")
+    }
     // MARK: - Polish-phase: transport-glyph self-heal (Bug 2, $currentLocation tick)
 
     /// PRE: fresh presenter (`isPlaying == false`); the toolkit has advanced
@@ -652,5 +683,18 @@ final class AudiobookSessionPresenterTests: XCTestCase {
         let value = AudiobookSessionPresenter.chapterProgress(offset: 200, timeLeft: -50)
         XCTAssertEqual(value, 1.0, accuracy: 0.0001,
                        "Progress past the chapter end must clamp to 1.0, not exceed it")
+    }
+
+    /// NIT coverage (qa_test SoD review of PR #1230): a negative offset (offset
+    /// -30 into a 60s chapter → raw ratio -0.5) must clamp to 0 via the lower
+    /// `max(_, 0)` bound, never a negative thumb position. Pins the LOWER clamp
+    /// specifically (the existing tests pin the upper `min(_, 1)` and the
+    /// zero-duration guard).
+    ///
+    /// Mutates: dropping the `max(offset / duration, 0)` lower clamp lets the
+    /// value go negative (-0.5) and fails this assertion.
+    func testChapterProgress_negativeOffset_clampsToZero() {
+        XCTAssertEqual(AudiobookSessionPresenter.chapterProgress(offset: -30, timeLeft: 90), 0, accuracy: 0.0001,
+                       "A negative chapter offset must clamp to 0, not produce a negative scrubber position")
     }
 }

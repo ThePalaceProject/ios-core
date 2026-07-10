@@ -939,9 +939,11 @@ public final class AudiobookSessionManager: ObservableObject {
         Log.debug(#file, "Skipping forward \(Self.defaultSkipInterval)s")
     }
 
-    /// Seeks to a fractional position (0…1) of the whole audiobook via the
-    /// toolkit's public `DefaultAudiobookManager.seekWithSlider`. Drives the full
-    /// player's scrubber drag. Clamped to [0, 1]; no-ops if no active manager.
+    /// Seeks to a fractional position (0…1) within the CURRENT CHAPTER via the
+    /// toolkit's public `DefaultAudiobookManager.seekWithSlider` (which maps the
+    /// fraction to `offsetWithinChapter = value * chapterDuration`) — NOT a
+    /// fraction of the whole audiobook. Drives the full player's chapter-scoped
+    /// scrubber drag. Clamped to [0, 1]; no-ops if no active manager.
     public func seek(to fraction: Double) {
         guard let modernManager = manager as? DefaultAudiobookManager else {
             Log.warn(#file, "Cannot seek — no DefaultAudiobookManager")
