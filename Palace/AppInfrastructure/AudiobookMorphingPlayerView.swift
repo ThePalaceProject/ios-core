@@ -452,6 +452,7 @@ struct AudiobookMorphingPlayerView: View {
                 Text(remaining)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .monospacedDigit()
                     .padding(.top, 2)
             }
         }
@@ -502,6 +503,7 @@ struct AudiobookMorphingPlayerView: View {
             Button { showSpeedSheet = true } label: {
                 Text(currentRate.displayLabel)
                     .font(.system(size: metrics.fontSize, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
                     .padding(.horizontal, metrics.chipPadH + 2)
                     .frame(height: metrics.chipHeight)
                     .background(chipBg)

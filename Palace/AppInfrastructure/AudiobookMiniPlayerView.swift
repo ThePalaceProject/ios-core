@@ -217,6 +217,7 @@ struct AudiobookMiniPlayerView: View {
             Text(timeLabel)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
+                .monospacedDigit()
                 .lineLimit(1)
                 .truncationMode(.tail)
         }
