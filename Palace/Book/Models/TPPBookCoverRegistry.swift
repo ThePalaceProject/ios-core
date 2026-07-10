@@ -4,6 +4,24 @@ import ImageIO
 import PalaceLogging
 import PalaceNetwork
 
+// MARK: - Display-dimension sanitizing
+
+extension CGFloat {
+    /// The value when it is a finite, strictly-positive display dimension; otherwise `nil`.
+    ///
+    /// A view can report a `NaN`, infinite, or non-positive size while it is still
+    /// laying out. Feeding such a value into `Int(_:)` traps with `EXC_BREAKPOINT`
+    /// ("… not representable in Int"), and into a `CGSize` / CoreGraphics renderer
+    /// produces an invalid-context crash. The cover pipeline converted a raw display
+    /// height straight into an `Int` cache key and a decode dimension without this
+    /// guard — the source of PP-4772 / Crashlytics `077218fc` (`fetchCoverImage`
+    /// `EXC_BREAKPOINT`). Callers use this to fall back to the unsized cover path
+    /// instead of trapping.
+    var finitePositiveDimension: CGFloat? {
+        (isFinite && self > 0) ? self : nil
+    }
+}
+
 // MARK: - Host Failure Tracker (Circuit Breaker)
 
 /// Tracks hosts that are consistently failing (e.g., DNS resolution errors) and allows
@@ -241,6 +259,12 @@ actor TPPBookCoverRegistry {
     /// and clamps to a sensible max. Use this instead of `coverImage(for:)` when you know
     /// the display size ahead of time so you don't over- or under-fetch.
     func coverImage(for book: TPPBook, displayPoints: CGFloat) async -> UIImage? {
+        // A non-finite / non-positive display size (a view mid-layout) would trap at
+        // `Int(neededPixels)` below and in the downstream TenPrint size math. Drop to
+        // the unsized cover path instead. PP-4772 / 077218fc.
+        guard let displayPoints = displayPoints.finitePositiveDimension else {
+            return await coverImage(for: book)
+        }
         let scale = await MainActor.run { UIScreen.main.scale }
         let neededPixels = min(displayPoints * scale * 1.5, 1200) // 1.5× for sharp rendering
         let key = "\(book.identifier)_\(Int(neededPixels))px"
@@ -463,7 +487,11 @@ actor TPPBookCoverRegistry {
     ///   - maxDimension: Maximum width or height for the decoded image
     /// - Returns: A decoded UIImage at the target size, or nil if decoding fails
     nonisolated static func downsampleImage(data: Data, maxDimension: CGFloat) -> UIImage? {
-        autoreleasepool {
+        // A non-finite / non-positive max dimension yields a bogus
+        // `kCGImageSourceThumbnailMaxPixelSize` and can propagate into `Int`
+        // conversions upstream; treat it as an unusable request. PP-4772.
+        guard let maxDimension = maxDimension.finitePositiveDimension else { return nil }
+        return autoreleasepool {
             let options: [CFString: Any] = [
                 kCGImageSourceShouldCache: false  // Don't cache the full-size image
             ]

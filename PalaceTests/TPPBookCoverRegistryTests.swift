@@ -271,6 +271,25 @@ final class TPPBookCoverRegistryTests: XCTestCase {
                        "Image fetches should fail immediately without connectivity, not wait")
     }
 
+    // MARK: - PP-4772 / 077218fc — non-finite decode dimension
+
+    /// The shared decode chokepoint must reject a NaN / infinite / non-positive
+    /// `maxDimension` (which would otherwise feed a bogus
+    /// `kCGImageSourceThumbnailMaxPixelSize` and propagate into upstream `Int(_:)`
+    /// conversions) while still decoding a valid dimension.
+    func testDownsampleImage_nonFiniteMaxDimension_returnsNil() {
+        let jpeg = createTestJPEGData(size: CGSize(width: 400, height: 600))
+
+        XCTAssertNil(TPPBookCoverRegistry.downsampleImage(data: jpeg, maxDimension: .nan))
+        XCTAssertNil(TPPBookCoverRegistry.downsampleImage(data: jpeg, maxDimension: .infinity))
+        XCTAssertNil(TPPBookCoverRegistry.downsampleImage(data: jpeg, maxDimension: 0))
+        XCTAssertNil(TPPBookCoverRegistry.downsampleImage(data: jpeg, maxDimension: -10))
+
+        // Positive control: a valid dimension still decodes, so the guard is not
+        // over-rejecting.
+        XCTAssertNotNil(TPPBookCoverRegistry.downsampleImage(data: jpeg, maxDimension: 256))
+    }
+
     // MARK: - Helpers
 
     /// Creates JPEG data for a solid-color test image at the specified size

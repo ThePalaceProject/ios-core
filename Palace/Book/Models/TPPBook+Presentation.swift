@@ -40,6 +40,11 @@ extension TPPBook {
     /// than the conservative device memory-tier cap, so the image is always sharp at its
     /// actual display size without wasting memory decoding more than needed.
     func fetchCoverImage(forDisplayHeight displayHeight: CGFloat?) {
+        // A view can hand back a NaN / infinite / non-positive height while it is
+        // still laying out; `Int($0)` in the size key below would trap
+        // (EXC_BREAKPOINT). Treat an unusable height as "no size" and take the
+        // unsized path. PP-4772 / Crashlytics 077218fc.
+        let displayHeight = displayHeight?.finitePositiveDimension
         let sizeKey: String? = displayHeight.map { "\(identifier)_\(Int($0))pt" }
         let lookupKeys: [String] = if let sizeKey { [sizeKey, identifier] } else { [identifier] }
 
