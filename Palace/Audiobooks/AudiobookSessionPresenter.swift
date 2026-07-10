@@ -347,16 +347,14 @@ class AudiobookSessionPresenter: ObservableObject {
     ///   tapping resumes), playing renders pause, idle / error don't show
     ///   the mini-player at all.
     private func subscribeToSessionState() {
+        // `hasActiveSession` + the terminal-`.error` teardown stay on the
+        // deferred main hop (unchanged behavior — these can be driven by
+        // manager sinks and the teardown mutates many `@Published` fields).
         sessionManager.playbackStatePublisher
             .receive(on: DispatchQueue.main)
             .sink { [weak self] state in
                 guard let self = self else { return }
                 self.hasActiveSession = state.isActive
-                if case .playing = state {
-                    self.isPlaying = true
-                } else {
-                    self.isPlaying = false
-                }
                 // A failed open leaves the session in a terminal `.error`
                 // state. Tear down the view-facing session so neither the
                 // mini-player nor the full-player overlay lingers with no
@@ -365,6 +363,27 @@ class AudiobookSessionPresenter: ObservableObject {
                 if case .error = state {
                     self.clearActiveSession()
                 }
+            }
+            .store(in: &cancellables)
+
+        // `isPlaying` is driven SYNCHRONOUSLY (no `receive(on:)` async hop) so
+        // the transport play/pause glyph flips on the SAME main-runloop tick the
+        // manager publishes the state — eliminating the one-frame lag a user
+        // saw between tapping play/pause and the glyph updating.
+        //
+        // Safe without the hop because `AudiobookSessionManager` is `@MainActor`:
+        // every `playbackStatePublisher.send(...)` already runs on the main
+        // thread (whether from a user-initiated `play()`/`pause()` or from a
+        // toolkit-driven `.playbackBegan`/`.playbackStopped` in
+        // `handleManagerState`), so this mirror stays main-isolated. A change-
+        // guard means we only republish when the bool actually flips, so we
+        // don't re-render the root `AppTabHostView` on same-value events.
+        sessionManager.playbackStatePublisher
+            .sink { [weak self] state in
+                guard let self = self else { return }
+                let playing: Bool
+                if case .playing = state { playing = true } else { playing = false }
+                if self.isPlaying != playing { self.isPlaying = playing }
             }
             .store(in: &cancellables)
     }

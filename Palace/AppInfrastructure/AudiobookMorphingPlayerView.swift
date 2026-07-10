@@ -52,10 +52,19 @@ struct AudiobookMorphingPlayerView: View {
     /// Presents the ported stepped speed picker (`PlaybackSpeedSheet`).
     @State private var showSpeedSheet = false
 
-    /// Live scrubber position + whether the user is dragging it. While dragging,
-    /// the bar tracks the finger (not playback); on release it seeks.
-    @State private var scrubValue: Double = 0
-    @State private var isScrubbing = false
+    /// Live vertical translation of the whole card while the user pulls DOWN on
+    /// the grabber/cover to minimize. During the drag the card tracks the finger
+    /// (revealing the tab content behind it); on release it either animates to
+    /// minimized (past threshold / flung down) or springs back to expanded.
+    /// Reset to 0 on every release. Only applied while expanded.
+    @State private var dragTranslation: CGFloat = 0
+
+    /// Drives the first-open slide/fade-in. Starts `false` so a freshly-mounted
+    /// card renders off-screen + transparent, then animates up on `.onAppear`
+    /// for a clean appear (fixes the choppy pop-in on a cold open). Persists
+    /// `true` for the view's lifetime, so subsequent expand/mini cycles use the
+    /// matchedGeometry morph, not this appear animation.
+    @State private var hasAppeared = false
 
     /// Loading-timeout state: while `!isLoaded`, a 30s timer arms; on expiry we
     /// flip to the error+retry overlay (mirrors toolkit `loadingTimedOut`).
@@ -88,13 +97,34 @@ struct AudiobookMorphingPlayerView: View {
 
             card(expanded: expanded, screenHeight: geo.size.height, landscape: landscape)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                // Reader: slide the whole card off-screen WITHOUT unmounting, so
-                // audio keeps playing with no chrome.
-                .offset(y: hidden ? geo.size.height + 200 : 0)
+                // Reader hide + first-open slide-in + interactive pull-down are
+                // all folded into a single vertical offset (see `cardOffsetY`).
+                .offset(y: cardOffsetY(expanded: expanded, hidden: hidden, screenHeight: geo.size.height))
+                // Fade the card in on first mount together with the slide-up.
+                .opacity(hasAppeared ? 1 : 0)
                 .animation(reduceMotion ? nil : PalaceMotion.emphasized, value: expanded)
                 .animation(reduceMotion ? nil : PalaceMotion.standard, value: hidden)
+                .onAppear {
+                    guard !hasAppeared else { return }
+                    if reduceMotion {
+                        hasAppeared = true
+                    } else {
+                        withAnimation(PalaceMotion.emphasized) { hasAppeared = true }
+                    }
+                }
         }
         .ignoresSafeArea()
+    }
+
+    /// Total vertical offset of the card, composing three independent effects:
+    ///   - reader hide: slide fully off-screen (audio keeps playing, no unmount),
+    ///   - first-open appear: start one screen below and slide up on `.onAppear`,
+    ///   - interactive pull-down: follow the finger while dragging (expanded only).
+    private func cardOffsetY(expanded: Bool, hidden: Bool, screenHeight: CGFloat) -> CGFloat {
+        let readerOffset: CGFloat = hidden ? screenHeight + 200 : 0
+        let appearOffset: CGFloat = hasAppeared ? 0 : screenHeight
+        let dragOffset: CGFloat = expanded ? dragTranslation : 0
+        return readerOffset + appearOffset + dragOffset
     }
 
     /// The single morphing card: full-screen when expanded, a rounded mini bar
@@ -300,20 +330,23 @@ struct AudiobookMorphingPlayerView: View {
             .accessibilityHidden(true)
     }
 
-    /// Scrubbable seek bar. While the user drags, `scrubValue` tracks the finger
-    /// and playback ticks are ignored; on release it seeks via
-    /// `audiobookSession.seek(to:)` (toolkit `seekWithSlider`).
+    /// Scrubbable seek bar built on the ported `PalaceSeekSliderView`. The
+    /// slider owns its drag state internally (thumb-grow + finger tracking);
+    /// while idle it displays live playback progress, and on release it seeks
+    /// via `audiobookSession.seek(to:)` (toolkit `seekWithSlider`).
     private var seekBar: some View {
         VStack(spacing: 4) {
-            Slider(value: $scrubValue, in: 0...1) { editing in
-                isScrubbing = editing
-                if !editing {
-                    audiobookSession.seek(to: scrubValue)
-                    // Seek-commit haptic (toolkit parity).
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                }
-            }
-            .tint(.accentColor)
+            // The ported toolkit scrubber (`PalaceSeekSliderView`): thumb-grow +
+            // track-grow on touch, continuous drag-to-seek. `value` reflects
+            // playback when idle (display-only fallback) and tracks the finger
+            // while dragging; the seek commits via `onChange` on release.
+            PalaceSeekSliderView(
+                value: Binding(
+                    get: { clampedProgress },
+                    set: { progress.playbackProgress = $0 }
+                ),
+                onChange: { audiobookSession.seek(to: $0) }
+            )
             .accessibilityLabel(Strings.Generic.playbackPosition)
             .accessibilityValue(seekAccessibilityValue)
             // Row under the bar: chapter elapsed · chapter name · chapter time-left
@@ -331,10 +364,6 @@ struct AudiobookMorphingPlayerView: View {
                     .font(.caption2).foregroundStyle(.secondary).monospacedDigit()
                     .accessibilityLabel(Strings.Generic.timeRemainingLabel(chapterRemainingString))
             }
-        }
-        .onAppear { scrubValue = clampedProgress }
-        .onChange(of: clampedProgress) { _, newValue in
-            if !isScrubbing { scrubValue = newValue }
         }
     }
 
@@ -670,15 +699,53 @@ struct AudiobookMorphingPlayerView: View {
 
     // MARK: - Gestures
 
-    /// Pull DOWN on the full player past the threshold → minimize.
+    /// Pull DOWN on the full player to minimize — now INTERACTIVE: the card
+    /// tracks the finger during the drag (revealing the tab content behind it)
+    /// and, on release, either animates to minimized (past threshold OR flung
+    /// down with enough predicted velocity) or springs back to expanded.
+    /// Upward drags are rubber-banded (resisted + clamped). The gesture lives
+    /// only on the grabber + cover, so the transport/seek/bottom controls keep
+    /// their own taps (the Phase-2 gesture fixes).
     private var minimizeDrag: some Gesture {
         DragGesture(minimumDistance: 12, coordinateSpace: .local)
-            .onEnded { value in
-                if value.translation.height > 80,
-                   abs(value.translation.width) < 80 {
-                    minimize()
-                }
+            .onChanged { value in
+                // Ignore predominantly-horizontal drags so a sideways swipe
+                // over the cover doesn't drag the card.
+                guard abs(value.translation.width) < abs(value.translation.height) else { return }
+                let h = value.translation.height
+                dragTranslation = h >= 0 ? h : Self.rubberBand(h)
             }
+            .onEnded { value in
+                let horizontalOK = abs(value.translation.width) < 80
+                let pastThreshold = value.translation.height > 80
+                let flungDown = value.predictedEndTranslation.height > 200
+                settleDrag(minimize: horizontalOK && (pastThreshold || flungDown))
+            }
+    }
+
+    /// Resistance curve for an upward (negative) pull on the full player: the
+    /// card should barely move up (it can only go DOWN to minimize), so apply
+    /// diminishing returns and clamp. Static + pure so it's unit-testable.
+    static func rubberBand(_ offset: CGFloat) -> CGFloat {
+        max(offset * 0.3, -60)
+    }
+
+    /// Finishes an interactive pull-down: on `minimize == true` animate the
+    /// morph to the mini bar; otherwise spring the card back to expanded. Both
+    /// reset `dragTranslation` to 0 inside the SAME animation transaction so the
+    /// offset and the morph move together (no jump). Reduce-motion → no animation.
+    private func settleDrag(minimize shouldMinimize: Bool) {
+        let apply = {
+            if shouldMinimize { presenter.minimize() }
+            dragTranslation = 0
+        }
+        if UIAccessibility.isReduceMotionEnabled {
+            apply()
+        } else {
+            withAnimation(shouldMinimize ? PalaceMotion.emphasized : PalaceMotion.standard) {
+                apply()
+            }
+        }
     }
 
     /// Pull UP on the mini bar past the threshold → expand.
@@ -696,10 +763,6 @@ struct AudiobookMorphingPlayerView: View {
 
     private func expand() {
         setExpanded(true)
-    }
-
-    private func minimize() {
-        setExpanded(false)
     }
 
     private func setExpanded(_ value: Bool) {
@@ -821,6 +884,105 @@ private struct AirPlayRoutePicker: UIViewRepresentable {
         return v
     }
     func updateUIView(_ uiView: AVRoutePickerView, context: Context) {}
+}
+
+// MARK: - PalaceSeekSliderView
+
+/// The audiobook seek scrubber, ported verbatim from the toolkit's
+/// `PlaybackSliderView` (`AudiobookPlayerView.swift`): a thin rounded track that
+/// grows on touch, with a circular thumb that scales up while dragging. It is
+/// ADAPTIVE-colored (`Color(.systemGray4)` track, `Color(.label)` fill + thumb),
+/// so it renders correctly in both light and dark appearance.
+///
+/// Behavior: `value` reflects live playback when idle (display-only fallback);
+/// on touch the thumb/track grow (`withAnimation(.easeOut)`), a
+/// `DragGesture(minimumDistance: 0)` continuously tracks the finger via a
+/// `tempValue`, and on release the position is committed once through `onChange`
+/// (plus a light seek-commit haptic). The caller supplies `accessibilityLabel`
+/// / `accessibilityValue` at the call site.
+@MainActor
+struct PalaceSeekSliderView: View {
+    @Binding var value: Double
+    var onChange: (_ value: Double) -> Void
+
+    @State private var tempValue: Double?
+    @State private var isDragging: Bool = false
+    @State private var isCommitting: Bool = false
+
+    private let trackRest: CGFloat = 4
+    private let trackActive: CGFloat = 6
+    private let thumbRest: CGFloat = 8
+    private let thumbActive: CGFloat = 14
+    private let hitHeight: CGFloat = 44
+
+    private var currentTrackHeight: CGFloat { isDragging ? trackActive : trackRest }
+    private var currentThumbSize: CGFloat { isDragging ? thumbActive : thumbRest }
+
+    var body: some View {
+        GeometryReader { geometry in
+            let width = geometry.size.width
+
+            ZStack(alignment: .leading) {
+                // Background track
+                Capsule()
+                    .fill(Color(.systemGray4))
+                    .frame(height: currentTrackHeight)
+
+                // Progress fill
+                Capsule()
+                    .fill(Color(.label))
+                    .frame(
+                        width: max(currentTrackHeight, progressWidth(in: width)),
+                        height: currentTrackHeight
+                    )
+
+                // Thumb
+                Circle()
+                    .fill(Color(.label))
+                    .frame(width: currentThumbSize, height: currentThumbSize)
+                    .offset(x: thumbOffset(in: width))
+            }
+            .frame(maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { gesture in
+                        if !isDragging {
+                            withAnimation(.easeOut(duration: 0.15)) { isDragging = true }
+                        }
+                        let newValue = max(0, min(1, Double(gesture.location.x / width)))
+                        tempValue = newValue
+                    }
+                    .onEnded { _ in
+                        withAnimation(.easeOut(duration: 0.2)) { isDragging = false }
+                        if let finalValue = tempValue {
+                            isCommitting = true
+                            value = finalValue
+                            // Subtle completion haptic on seek commit (toolkit parity).
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            onChange(finalValue)
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                tempValue = nil
+                                isCommitting = false
+                            }
+                        }
+                    }
+            )
+        }
+        .frame(height: hitHeight)
+    }
+
+    private var displayValue: Double {
+        tempValue ?? value
+    }
+
+    private func progressWidth(in totalWidth: CGFloat) -> CGFloat {
+        CGFloat(displayValue) * totalWidth
+    }
+
+    private func thumbOffset(in totalWidth: CGFloat) -> CGFloat {
+        CGFloat(displayValue) * (totalWidth - currentThumbSize)
+    }
 }
 
 // MARK: - PlaybackSpeedSheet
