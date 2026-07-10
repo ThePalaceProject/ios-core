@@ -79,6 +79,51 @@ struct AudiobookMorphingPlayerView: View {
     /// (mirrors toolkit `isTitleFocused`).
     @AccessibilityFocusState private var isTitleFocused: Bool
 
+    // MARK: - Adaptive control metrics
+
+    /// Adaptive sizing for the transport row + bottom control chips, ported
+    /// verbatim from the toolkit `AudiobookPlayerView` (`controlPanelView`
+    /// ~L500-506 + `playbackControlsView` ~L472/491). Three tiers keyed off
+    /// `isNarrowScreen` (`width < 370`, SE/Mini) and iPhone-landscape. Pure
+    /// value type so the tier math is unit-testable without a SwiftUI host.
+    struct ControlMetrics: Equatable {
+        let landscape: Bool
+        let narrow: Bool
+        let chipHeight: CGFloat
+        let fontSize: CGFloat
+        let iconSize: CGFloat
+        let chipPadH: CGFloat
+        let outerPadH: CGFloat
+        let chipSpacing: CGFloat
+        let transportSpacing: CGFloat
+        let transportHeight: CGFloat
+        let playButton: CGFloat
+        let playGlyph: CGFloat
+        let skipGlyph: CGFloat
+
+        init(width: CGFloat, landscape: Bool) {
+            let narrow = width < 370
+            self.landscape = landscape
+            self.narrow = narrow
+            // controlPanelView tiers (toolkit): standard 40/15/19/14/20/12,
+            // narrow 34/12/15/10/12/6, landscape 34/13/16/12/16/8.
+            chipHeight  = landscape ? 34 : (narrow ? 34 : 40)
+            fontSize    = landscape ? 13 : (narrow ? 12 : 15)
+            iconSize    = landscape ? 16 : (narrow ? 15 : 19)
+            chipPadH    = landscape ? 12 : (narrow ? 10 : 14)
+            outerPadH   = landscape ? 16 : (narrow ? 12 : 20)
+            chipSpacing = landscape ? 8  : (narrow ? 6  : 12)
+            // playbackControlsView (toolkit): HStack spacing 40 / landscape 25,
+            // frame height 72 / landscape 56. Play glyph + skip glyph scaled to
+            // fit the row (compact-width equivalents of the toolkit sizes).
+            transportSpacing = landscape ? 25 : 40
+            transportHeight  = landscape ? 56 : 72
+            playButton = landscape ? 56 : 72
+            playGlyph  = landscape ? 34 : 44
+            skipGlyph  = landscape ? 28 : 34
+        }
+    }
+
     // MARK: - Layout constants
 
     private static let miniBarHeight: CGFloat = 74
@@ -95,22 +140,28 @@ struct AudiobookMorphingPlayerView: View {
             let reduceMotion = UIAccessibility.isReduceMotionEnabled
             let landscape = Self.isLandscapePhone(size: geo.size)
 
-            card(expanded: expanded, screenHeight: geo.size.height, landscape: landscape)
+            card(expanded: expanded, size: geo.size, landscape: landscape)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                 // Reader hide + first-open slide-in + interactive pull-down are
                 // all folded into a single vertical offset (see `cardOffsetY`).
                 .offset(y: cardOffsetY(expanded: expanded, hidden: hidden, screenHeight: geo.size.height))
                 // Fade the card in on first mount together with the slide-up.
                 .opacity(hasAppeared ? 1 : 0)
-                .animation(reduceMotion ? nil : PalaceMotion.emphasized, value: expanded)
-                .animation(reduceMotion ? nil : PalaceMotion.standard, value: hidden)
+                // The morph (expand ⇄ mini), first-open, and reader-hide ALL ride
+                // the one player-morph spring so the cover matchedGeometry, the
+                // controls, and the card corner-radius settle on the same curve.
+                // No `.animation` is keyed to `dragTranslation` — the interactive
+                // pull-down therefore tracks the finger 1:1 (its settle is driven
+                // explicitly in `settleDrag`), which is the zero-latency path.
+                .animation(reduceMotion ? nil : PalaceMotion.playerMorph, value: expanded)
+                .animation(reduceMotion ? nil : PalaceMotion.playerMorph, value: hidden)
+                .animation(reduceMotion ? nil : PalaceMotion.playerMorph, value: hasAppeared)
                 .onAppear {
+                    // The `.animation(value: hasAppeared)` above drives the slide+
+                    // fade on the same spring family (gated for reduce motion), so
+                    // just flip the flag — no separate `withAnimation` transaction.
                     guard !hasAppeared else { return }
-                    if reduceMotion {
-                        hasAppeared = true
-                    } else {
-                        withAnimation(PalaceMotion.emphasized) { hasAppeared = true }
-                    }
+                    hasAppeared = true
                 }
         }
         .ignoresSafeArea()
@@ -130,16 +181,16 @@ struct AudiobookMorphingPlayerView: View {
     /// The single morphing card: full-screen when expanded, a rounded mini bar
     /// floating above the tab bar when minimized.
     @ViewBuilder
-    private func card(expanded: Bool, screenHeight: CGFloat, landscape: Bool) -> some View {
+    private func card(expanded: Bool, size: CGSize, landscape: Bool) -> some View {
         ZStack(alignment: .top) {
             Color(.systemBackground)
             if expanded {
-                fullContent(landscape: landscape)
+                fullContent(size: size, landscape: landscape)
             } else {
                 miniContent
             }
         }
-        .frame(height: expanded ? screenHeight : Self.miniBarHeight)
+        .frame(height: expanded ? size.height : Self.miniBarHeight)
         .clipShape(RoundedRectangle(cornerRadius: expanded ? 0 : 16, style: .continuous))
         .shadow(color: .black.opacity(expanded ? 0 : 0.18),
                 radius: expanded ? 0 : 10, y: -2)
@@ -158,17 +209,18 @@ struct AudiobookMorphingPlayerView: View {
     // MARK: - Full layout
 
     @ViewBuilder
-    private func fullContentLayout(landscape: Bool) -> some View {
-        if landscape {
-            fullContentLandscape
+    private func fullContentLayout(metrics: ControlMetrics) -> some View {
+        if metrics.landscape {
+            fullContentLandscape(metrics: metrics)
         } else {
-            fullContentPortrait
+            fullContentPortrait(metrics: metrics)
         }
     }
 
     @ViewBuilder
-    private func fullContent(landscape: Bool) -> some View {
-        fullContentLayout(landscape: landscape)
+    private func fullContent(size: CGSize, landscape: Bool) -> some View {
+        let metrics = ControlMetrics(width: size.width, landscape: landscape)
+        fullContentLayout(metrics: metrics)
         // Pull DOWN on the grabber or the cover to minimize — the drag lives on
         // those two zones only (see `grabber` + the cover below), NOT the whole
         // player. A container drag over the seek Slider and the transport/bottom
@@ -206,9 +258,14 @@ struct AudiobookMorphingPlayerView: View {
         .onChange(of: presenter.toastMessage) { _, newValue in
             if let msg = newValue, !msg.isEmpty { presentToast(msg) }
         }
+        // Match the toolkit player (AudiobookPlayerView ~L118): the full player
+        // commits to a dark visual design so the `Color.white.opacity(0.10)` chips
+        // and white-opacity foreground read correctly. Applied ONLY to the full
+        // content — the mini bar (rendered when minimized) keeps the app scheme.
+        .preferredColorScheme(.dark)
     }
 
-    private var fullContentPortrait: some View {
+    private func fullContentPortrait(metrics: ControlMetrics) -> some View {
         VStack(spacing: 0) {
             topControls
 
@@ -232,10 +289,10 @@ struct AudiobookMorphingPlayerView: View {
 
             Spacer(minLength: 16)
 
-            transportRow
+            transportRow(metrics: metrics)
                 .padding(.top, 8)
 
-            bottomControls
+            bottomControls(metrics: metrics)
                 .padding(.top, 22)
                 .padding(.bottom, bottomSafeInset + 16)
         }
@@ -244,7 +301,7 @@ struct AudiobookMorphingPlayerView: View {
 
     /// iPhone-landscape branch: cover on the left, title/controls on the right,
     /// bottom-control panel spanning underneath (mirrors toolkit `landscapeLayout`).
-    private var fullContentLandscape: some View {
+    private func fullContentLandscape(metrics: ControlMetrics) -> some View {
         VStack(spacing: 0) {
             topControls
 
@@ -261,14 +318,14 @@ struct AudiobookMorphingPlayerView: View {
                     titleAuthorFull
                     seekBar
                     Spacer(minLength: 8)
-                    transportRow
+                    transportRow(metrics: metrics)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.trailing, 20)
             }
             .padding(.top, 4)
 
-            bottomControls
+            bottomControls(metrics: metrics)
                 .padding(.top, 8)
                 .padding(.bottom, bottomSafeInset + 12)
         }
@@ -391,53 +448,74 @@ struct AudiobookMorphingPlayerView: View {
         }
     }
 
-    private var transportRow: some View {
-        HStack(spacing: 36) {
-            transportButton("gobackward.30", label: Strings.Generic.skipBack30, size: 32) {
+    /// Transport row, mirroring the toolkit `playbackControlsView`
+    /// (`AudiobookPlayerView.swift` ~L471-491): skip-back · play/pause · skip-
+    /// forward on an `HStack(spacing: 40)` (landscape 25), fixed `.frame(height: 72)`
+    /// (landscape 56). The play button matches the toolkit `playButton` — a
+    /// `Color.white.opacity(0.12)` circle with a white glyph (correct on the
+    /// forced-dark canvas).
+    private func transportRow(metrics: ControlMetrics) -> some View {
+        HStack(spacing: metrics.transportSpacing) {
+            transportButton("gobackward.30", label: Strings.Generic.skipBack30, size: metrics.skipGlyph) {
                 audiobookSession.skipBack()
             }
             Button(action: { audiobookSession.togglePlayPause() }) {
-                // Dark circle + light glyph, matching the original (not a white
-                // filled symbol).
                 ZStack {
-                    Circle().fill(Color(.systemGray5))
+                    Circle().fill(Color.white.opacity(0.12))
                     Image(systemName: presenter.isPlaying ? "pause.fill" : "play.fill")
-                        .font(.system(size: 28, weight: .semibold))
-                        .foregroundStyle(.primary)
+                        .font(.system(size: metrics.playGlyph))
+                        .foregroundStyle(.white)
                         .contentTransition(.symbolEffect(.replace))
                 }
-                .frame(width: 72, height: 72)
+                .frame(width: metrics.playButton, height: metrics.playButton)
             }
             .buttonStyle(.plain)
             .accessibilityLabel(presenter.isPlaying ? Strings.Generic.pauseAudiobook : Strings.Generic.playAudiobook)
-            transportButton("goforward.30", label: Strings.Generic.skipForward30, size: 32) {
+            transportButton("goforward.30", label: Strings.Generic.skipForward30, size: metrics.skipGlyph) {
                 audiobookSession.skipForward()
             }
         }
+        .frame(height: metrics.transportHeight)
     }
 
-    /// Bottom control row, mirroring the original player: playback-speed chip ·
-    /// AirPlay route picker · sleep-timer menu · Bookmarks button (opens the same
-    /// Chapters/Bookmarks list).
-    private var bottomControls: some View {
-        HStack(spacing: 0) {
-            // Speed chip → opens the stepped speed sheet (no longer cycle-only).
+    /// Bottom control row, mirroring the toolkit `controlPanelView`
+    /// (`AudiobookPlayerView.swift` ~L498-596): four capsule chips — SPEED ·
+    /// AirPlay · SLEEP · BOOKMARK — on an `HStack(spacing: chipSpacing)` with a
+    /// `Spacer(minLength: 0)` BETWEEN EACH (even distribution). Adaptive sizing
+    /// (`chipHeight`/`fontSize`/`iconSize`/`chipPadH`/`outerPadH`/`chipSpacing`)
+    /// comes straight from the toolkit. Chips use `Color.white.opacity(0.10)` on
+    /// the forced-dark canvas with `.foregroundColor(.white.opacity(0.9))`.
+    private func bottomControls(metrics: ControlMetrics) -> some View {
+        let chipBg = Color.white.opacity(0.10)
+
+        return HStack(spacing: metrics.chipSpacing) {
+            // Speed → opens the stepped speed sheet.
             Button { showSpeedSheet = true } label: {
                 Text(currentRate.displayLabel)
-                    .font(.subheadline).fontWeight(.medium)
-                    .frame(minWidth: 52)
-                    .padding(.vertical, 6).padding(.horizontal, 12)
-                    .background(Capsule().fill(Color.secondary.opacity(0.15)))
+                    .font(.system(size: metrics.fontSize, weight: .semibold, design: .rounded))
+                    .padding(.horizontal, metrics.chipPadH + 2)
+                    .frame(height: metrics.chipHeight)
+                    .background(chipBg)
+                    .clipShape(Capsule())
+                    .contentShape(Capsule())
             }
             .buttonStyle(.plain)
             .accessibilityLabel(Strings.Generic.playbackSpeedValue(currentRate.displayLabel))
 
-            Spacer()
+            Spacer(minLength: 0)
 
+            // AirPlay route picker.
             AirPlayRoutePicker()
-                .frame(width: 44, height: 44)
+                .frame(width: 30, height: 30)
+                .frame(height: metrics.chipHeight)
+                .padding(.horizontal, metrics.chipPadH)
+                .background(chipBg)
+                .clipShape(Capsule())
                 .accessibilityLabel(Strings.Generic.airplay)
 
+            Spacer(minLength: 0)
+
+            // Sleep timer → moon.fill + countdown when active.
             Menu {
                 ForEach(SleepTimerTriggerAt.allCases, id: \.self) { trigger in
                     Button(trigger.displayTitle) {
@@ -445,32 +523,41 @@ struct AudiobookMorphingPlayerView: View {
                     }
                 }
             } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: audiobookSession.sleepTimerIsActive ? "moon.fill" : "moon")
-                        .font(.system(size: 18, weight: .medium))
+                HStack(spacing: metrics.narrow ? 4 : 6) {
+                    Image(systemName: "moon.fill")
+                        .font(.system(size: metrics.iconSize - 2))
                     if audiobookSession.sleepTimerIsActive {
                         Text(AudiobookMiniPlayerView.formatTime(audiobookSession.sleepTimerRemaining))
-                            .font(.caption).monospacedDigit()
+                            .font(.system(size: metrics.fontSize - 1, weight: .medium, design: .monospaced))
                             .lineLimit(1).minimumScaleFactor(0.6)
                     }
                 }
-                .frame(minWidth: 44, minHeight: 44)
+                .padding(.horizontal, metrics.chipPadH)
+                .frame(height: metrics.chipHeight)
+                .background(chipBg)
+                .clipShape(Capsule())
+                .contentShape(Capsule())
             }
-            .tint(.primary)
             .accessibilityLabel(Strings.Generic.sleepTimer)
 
-            // Bottom bookmark control ADDS a bookmark (TOC/list stays reachable
-            // via the top-trailing list button).
+            Spacer(minLength: 0)
+
+            // Bookmark ADDS a bookmark (TOC/list stays reachable via the
+            // top-trailing list button).
             Button { addBookmarkFromControl() } label: {
                 Image(systemName: "bookmark")
-                    .font(.system(size: 18, weight: .medium))
-                    .frame(width: 44, height: 44)
+                    .font(.system(size: metrics.iconSize))
+                    .padding(.horizontal, metrics.chipPadH)
+                    .frame(height: metrics.chipHeight)
+                    .background(chipBg)
+                    .clipShape(Capsule())
+                    .contentShape(Capsule())
             }
             .buttonStyle(.plain)
-            .tint(.primary)
             .accessibilityLabel(Strings.Generic.addBookmark)
         }
-        .padding(.horizontal, 28)
+        .foregroundColor(.white.opacity(0.9))
+        .padding(.horizontal, metrics.outerPadH)
     }
 
     // MARK: - Download bar (toolkit `downloadProgressView` parity)
@@ -567,8 +654,7 @@ struct AudiobookMorphingPlayerView: View {
     private var toastOverlay: some View {
         if showToast {
             HStack(spacing: 10) {
-                Image(systemName: toastText.localizedCaseInsensitiveContains("error")
-                        || toastText == Strings.Generic.bookmarkAddFailed
+                Image(systemName: Self.toastIsError(toastText)
                       ? "exclamationmark.circle.fill" : "bookmark.fill")
                     .font(.system(size: 16, weight: .semibold))
                 Text(toastText)
@@ -599,7 +685,9 @@ struct AudiobookMorphingPlayerView: View {
                 .frame(width: 44, height: 44)
         }
         .buttonStyle(.plain)
-        .tint(.accentColor)
+        // White glyph to match the toolkit skip controls (`.foregroundColor(.primary)`
+        // on the forced-dark canvas).
+        .tint(.white)
         .accessibilityLabel(label)
     }
 
@@ -724,10 +812,17 @@ struct AudiobookMorphingPlayerView: View {
     }
 
     /// Resistance curve for an upward (negative) pull on the full player: the
-    /// card should barely move up (it can only go DOWN to minimize), so apply
-    /// diminishing returns and clamp. Static + pure so it's unit-testable.
+    /// card can only go DOWN to minimize, so an upward drag is rubber-banded. Uses
+    /// the iOS scroll-bounce formula `(1 - 1/(x/d + 1)) · limit` — natural
+    /// diminishing resistance that asymptotes toward `-limit` instead of the old
+    /// hard linear clamp, so the top edge feels elastic rather than stuck. Static +
+    /// pure so it's unit-testable. `offset` is expected ≤ 0 (an upward drag).
     static func rubberBand(_ offset: CGFloat) -> CGFloat {
-        max(offset * 0.3, -60)
+        guard offset < 0 else { return offset }
+        let limit: CGFloat = 72
+        let dim: CGFloat = 200
+        let magnitude = -offset
+        return -(1 - 1 / (magnitude / dim + 1)) * limit
     }
 
     /// Finishes an interactive pull-down: on `minimize == true` animate the
@@ -742,7 +837,11 @@ struct AudiobookMorphingPlayerView: View {
         if UIAccessibility.isReduceMotionEnabled {
             apply()
         } else {
-            withAnimation(shouldMinimize ? PalaceMotion.emphasized : PalaceMotion.standard) {
+            // Minimize rides the player-morph spring so the offset return and the
+            // cover matchedGeometry settle on ONE coherent curve. A spring-back
+            // (released below threshold) uses the interruptible interactive spring
+            // so re-grabbing the card mid-settle blends cleanly.
+            withAnimation(shouldMinimize ? PalaceMotion.playerMorph : PalaceMotion.interactive) {
                 apply()
             }
         }
@@ -769,7 +868,7 @@ struct AudiobookMorphingPlayerView: View {
         if UIAccessibility.isReduceMotionEnabled {
             value ? presenter.expand() : presenter.minimize()
         } else {
-            withAnimation(PalaceMotion.emphasized) {
+            withAnimation(PalaceMotion.playerMorph) {
                 value ? presenter.expand() : presenter.minimize()
             }
         }
@@ -802,13 +901,42 @@ struct AudiobookMorphingPlayerView: View {
     private func addBookmarkFromControl() {
         audiobookSession.addBookmark { error in
             DispatchQueue.main.async {
-                presentToast(error == nil
-                    ? Strings.Generic.bookmarkAdded
-                    : (error?.localizedDescription.isEmpty == false
-                        ? error!.localizedDescription
-                        : Strings.Generic.bookmarkAddFailed))
+                if let error {
+                    presentToast(Self.bookmarkErrorMessage(for: error))
+                } else {
+                    presentToast(Strings.Generic.bookmarkAdded)
+                }
             }
         }
+    }
+
+    /// Maps a bookmark-add failure to an app-side localized toast string. The
+    /// toolkit's `BookmarkError` is public but its `localizedDescription` is
+    /// module-internal (unreachable here), so the raw `Error.localizedDescription`
+    /// would surface the useless "operation couldn't be completed" text. Match
+    /// the two known cases to faithful app-side copy; anything else falls back to
+    /// the generic add-failed string. Static + pure so it's unit-testable.
+    static func bookmarkErrorMessage(for error: Error) -> String {
+        switch error {
+        case BookmarkError.bookmarkAlreadyExists:
+            return Strings.Generic.bookmarkAlreadyExists
+        case BookmarkError.bookmarkFailedToSave:
+            return Strings.Generic.bookmarkFailedToSave
+        default:
+            return Strings.Generic.bookmarkAddFailed
+        }
+    }
+
+    /// Whether a toast string represents a failure (error icon) vs. a success
+    /// (bookmark icon). Success is only the bookmark-added string; every failure
+    /// copy — the generic add-failed plus the two mapped `BookmarkError` cases —
+    /// shows the error glyph. Static + pure so it's unit-testable.
+    static func toastIsError(_ text: String) -> Bool {
+        text != Strings.Generic.bookmarkAdded
+            && (text.localizedCaseInsensitiveContains("error")
+                || text == Strings.Generic.bookmarkAddFailed
+                || text == Strings.Generic.bookmarkAlreadyExists
+                || text == Strings.Generic.bookmarkFailedToSave)
     }
 
     private func presentToast(_ text: String) {

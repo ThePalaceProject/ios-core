@@ -216,6 +216,8 @@ struct Strings {
         static let addBookmark = NSLocalizedString("Add bookmark", comment: "VoiceOver: Label for the audiobook add-bookmark control")
         static let bookmarkAdded = NSLocalizedString("Bookmark added", comment: "Toast shown after successfully adding an audiobook bookmark")
         static let bookmarkAddFailed = NSLocalizedString("Could not add bookmark", comment: "Toast shown when adding an audiobook bookmark fails")
+        static let bookmarkAlreadyExists = NSLocalizedString("A bookmark has already been saved at this location.", comment: "Toast shown when a bookmark already exists at the current audiobook position")
+        static let bookmarkFailedToSave = NSLocalizedString("The bookmark couldn't be saved.", comment: "Toast shown when saving an audiobook bookmark fails to persist")
         static let playbackPosition = NSLocalizedString("Playback position", comment: "VoiceOver: Label for the audiobook seek slider")
         static let decreaseSpeed = NSLocalizedString("Decrease speed", comment: "VoiceOver: Label for the audiobook speed decrease stepper")
         static let increaseSpeed = NSLocalizedString("Increase speed", comment: "VoiceOver: Label for the audiobook speed increase stepper")

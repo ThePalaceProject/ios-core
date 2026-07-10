@@ -22,6 +22,20 @@ enum PalaceMotion {
     /// Emphasized / interactive feedback (button press, selection). Snappier.
     static let emphasized: Animation = .snappy
 
+    /// The audiobook player morph (expand ⇄ mini) + first-open settle. One
+    /// smooth, slightly-eased spring shared by the cover `matchedGeometryEffect`,
+    /// the controls, and the card corner-radius so every element settles on the
+    /// SAME curve (no element lagging another, no overshoot jank). Response 0.42 /
+    /// damping 0.9 = a premium, Libby/Audible-class settle. Springs retarget in
+    /// flight, so this is interruptible if the user re-grabs mid-animation.
+    static let playerMorph: Animation = .spring(response: 0.42, dampingFraction: 0.9)
+
+    /// Gesture-release settle for the interactive pull-down (spring-BACK when the
+    /// drag is released below the dismiss threshold). `interactiveSpring` blends
+    /// cleanly with a re-grab, so grabbing the card again mid-settle feels fluid
+    /// rather than fighting an in-flight animation.
+    static let interactive: Animation = .interactiveSpring(response: 0.35, dampingFraction: 0.86, blendDuration: 0.25)
+
     /// Gentle, slightly longer fade — cover cross-fades, skeleton hand-offs.
     static let gentle: Animation = .smooth(duration: 0.4)
 
