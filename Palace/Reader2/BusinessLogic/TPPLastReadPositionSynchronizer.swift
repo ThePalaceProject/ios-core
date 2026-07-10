@@ -183,26 +183,18 @@ final class TPPLastReadPositionSynchronizer: @unchecked Sendable {
                 alert.addAction(stayAction)
                 alert.addAction(moveAction)
 
-                // Present *after* any in-flight transition settles. This prompt
-                // fires during launch/book-open, exactly when a push/modal
-                // transition can still be animating; presenting into it is the
-                // fe741015 CA-commit race. Wait on the transition coordinator
-                // (re-walking to the settled topmost) instead of presenting raw.
-                // The continuation is resumed only by the alert's actions, so the
-                // alert must always be presented — never dropped.
-                if let coordinator = topVC.transitionCoordinator {
-                    coordinator.animate(alongsideTransition: nil) { _ in
-                        DispatchQueue.main.async {
-                            var settledTop = rootVC
-                            while let presented = settledTop.presentedViewController {
-                                settledTop = presented
-                            }
-                            settledTop.present(alert, animated: true)
-                        }
-                    }
-                } else {
-                    topVC.present(alert, animated: true)
-                }
+                // Present through the coordinator-waiting primitive so the prompt
+                // is never presented into an in-flight push/modal transition — the
+                // fe741015 CA-commit race. `safelyPresent` re-walks to the settled
+                // topmost and waits on the transition coordinator, recursing until
+                // the presenter is settled rather than dropping on contention, so
+                // the continuation — resumed only by the alert's actions — resumes
+                // on every path where a presenter still exists. (The one non-
+                // resuming path is the app root being torn down mid-transition,
+                // which the earlier raw present would have crashed on outright.)
+                // Replaces a hand-rolled coordinator-wait whose `else`
+                // (nil-coordinator) branch still presented raw.
+                TPPPresentationUtils.safelyPresent(alert, animated: true)
             }
         }
     }
