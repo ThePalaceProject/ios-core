@@ -579,5 +579,47 @@ final class AudiobookSessionPresenterTests: XCTestCase {
         XCTAssertEqual(presenter.progress.playbackProgress, 0,
                        "clearActiveSession must reset playbackProgress to 0 so the scrubber doesn't briefly show the prior book's progress")
     }
-}
+    // MARK: - Polish-phase: transport-glyph self-heal (Bug 2, $currentLocation tick)
 
+    /// PRE: fresh presenter (`isPlaying == false`); the toolkit has advanced
+    /// the playhead so `sessionManager.isPlaying == true` WITHOUT re-emitting a
+    /// `.playing` state event (chapter/track rollover, buffer resume after a
+    /// seek). This is the exact stale-glyph race the self-heal fixes.
+    /// EXPECTED: reconciling from the advancing `$currentLocation` tick flips
+    /// the presenter's `isPlaying` (the play/pause glyph) true within one frame.
+    /// Mutates: flipping the change-guard comparison `!=` to `==` skips the
+    /// re-snap, leaving the glyph latched on "play" while audio is audible —
+    /// this assertion then fails, killing that mutant.
+    func testPresenter_playheadAdvancesWhileManagerIsPlaying_reconcileSelfHealsPlayGlyph() {
+        let presenter = AudiobookSessionPresenter(sessionManager: spySession)
+        XCTAssertFalse(presenter.isPlaying,
+                       "PRECONDITION: glyph starts on play (isPlaying == false)")
+
+        // The toolkit is playing audio but never re-emitted `.playing`.
+        spySession.isPlaying = true
+
+        // Advancing `$currentLocation` tick runs the self-heal.
+        presenter.reconcileTransportGlyphFromSessionManager()
+
+        XCTAssertTrue(presenter.isPlaying,
+                      "An advancing playhead with sessionManager.isPlaying == true MUST self-heal the presenter's glyph to playing even without a discrete .playing event. A regression that drops or inverts the re-snap leaves the pause glyph missing while audio plays.")
+    }
+
+    /// PRE: fresh presenter (`isPlaying == false`); `sessionManager.isPlaying`
+    /// is ALSO false (genuinely paused / not advancing).
+    /// EXPECTED: reconciling does NOT flip the glyph to playing — the guard is
+    /// authoritative-driven, not unconditional, so a paused player keeps the
+    /// play glyph.
+    /// Mutates: replacing the assignment source with a literal `true` (or
+    /// dropping the guard so it always re-snaps to a stale value) would flip
+    /// this false → true and fail here.
+    func testPresenter_managerNotPlaying_reconcileLeavesGlyphOnPlay() {
+        let presenter = AudiobookSessionPresenter(sessionManager: spySession)
+        spySession.isPlaying = false
+
+        presenter.reconcileTransportGlyphFromSessionManager()
+
+        XCTAssertFalse(presenter.isPlaying,
+                       "When sessionManager.isPlaying is false the self-heal must NOT flip the glyph to playing — the reconcile mirrors the authoritative manager flag, it does not fabricate a playing state.")
+    }
+}

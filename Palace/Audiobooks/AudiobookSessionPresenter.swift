@@ -448,6 +448,8 @@ class AudiobookSessionPresenter: ObservableObject {
                 guard let self = self else { return }
                 self.progress.currentLocation = position
                 self.progress.playbackProgress = Self.normalizedProgress(for: position)
+                // Self-heal the transport play/pause glyph on each advancing tick.
+                self.reconcileTransportGlyphFromSessionManager()
                 // The chapter-relative offsets are computed off `currentLocation`
                 // in the toolkit, so recompute the mirrors on the same tick.
                 if let model = model {
@@ -456,6 +458,22 @@ class AudiobookSessionPresenter: ObservableObject {
                 }
             }
             .store(in: &playbackModelCancellables)
+    }
+
+    /// Self-heal the transport play/pause glyph from the authoritative
+    /// `sessionManager.isPlaying`. The discrete `playbackStatePublisher` sink
+    /// (`subscribeToSessionState`) is the primary `isPlaying` driver, but the
+    /// toolkit can advance the playhead without re-emitting `.playing`
+    /// (chapter/track rollover, buffer resume after a seek), leaving the glyph
+    /// stuck on "play" while audio is audible. Called from the advancing
+    /// `$currentLocation` tick — which only fires while the player is genuinely
+    /// advancing — so re-snapping here corrects a stale glyph within one frame.
+    /// Change-guarded → no extra root renders, and no flapping when paused (the
+    /// location simply stops ticking, so this stops being called).
+    func reconcileTransportGlyphFromSessionManager() {
+        if isPlaying != sessionManager.isPlaying {
+            isPlaying = sessionManager.isPlaying
+        }
     }
 
     /// Mirrors the toolkit playback model's `$overallDownloadProgress`,

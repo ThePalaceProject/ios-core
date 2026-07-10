@@ -1089,13 +1089,38 @@ struct PalaceSeekSliderView: View {
                             // Subtle completion haptic on seek commit (toolkit parity).
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
                             onChange(finalValue)
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                tempValue = nil
-                                isCommitting = false
+                            // HOLD the committed thumb position until the LIVE
+                            // playback value converges to the seek target (see
+                            // `.onChange(of: value)` below). Unlike the toolkit —
+                            // whose binding is not a high-frequency player mirror —
+                            // our `value` reads `progress.playbackProgress`, which
+                            // the player republishes every tick. A fixed 0.1s clear
+                            // let a STALE pre-seek tick overwrite the optimistic
+                            // `value = finalValue` before the async seek landed, so
+                            // the thumb snapped back to the old position while time
+                            // moved forward. We instead keep `tempValue` until the
+                            // seek propagates, with a safety timeout so a failed /
+                            // silent seek can never wedge the thumb.
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                                if isCommitting {
+                                    tempValue = nil
+                                    isCommitting = false
+                                }
                             }
                         }
                     }
             )
+            // Release the committed-position hold once live playback progress
+            // has caught up to the seek target (the async seek has landed and
+            // the player is now republishing from the new position). Guarded on
+            // `isCommitting` so idle ticks never touch `tempValue`.
+            .onChange(of: value) { newValue in
+                guard isCommitting, let target = tempValue else { return }
+                if abs(newValue - target) <= 0.01 {
+                    tempValue = nil
+                    isCommitting = false
+                }
+            }
         }
         .frame(height: hitHeight)
     }
