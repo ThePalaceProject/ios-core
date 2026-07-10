@@ -795,7 +795,14 @@ struct AudiobookMorphingPlayerView: View {
     /// only on the grabber + cover, so the transport/seek/bottom controls keep
     /// their own taps (the Phase-2 gesture fixes).
     private var minimizeDrag: some Gesture {
-        DragGesture(minimumDistance: 12, coordinateSpace: .local)
+        // GLOBAL coordinate space, not local: this gesture lives on the cover,
+        // which is INSIDE the card that `cardOffsetY` moves by `dragTranslation`.
+        // In `.local`, each translation sample is measured against a frame that is
+        // itself being pushed down by the offset we just applied — a feedback loop
+        // that oscillates the card (the "jittery pull-down"). A fixed screen frame
+        // makes `translation.height` the true finger delta, so the offset tracks
+        // the finger 1:1 with no self-interference.
+        DragGesture(minimumDistance: 12, coordinateSpace: .global)
             .onChanged { value in
                 // Ignore predominantly-horizontal drags so a sideways swipe
                 // over the cover doesn't drag the card.
