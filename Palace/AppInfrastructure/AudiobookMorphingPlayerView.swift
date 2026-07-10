@@ -417,18 +417,25 @@ struct AudiobookMorphingPlayerView: View {
             .accessibilityValue(seekAccessibilityValue)
             // Row under the bar: chapter elapsed · chapter name · chapter time-left
             // (mirrors toolkit `playheadOffsetText` / `chapterTitle` / `timeLeftText`).
-            HStack(spacing: 8) {
-                Text(chapterElapsedString)
-                    .font(.caption2).foregroundStyle(.secondary).monospacedDigit()
-                    .accessibilityLabel(Strings.Generic.timeElapsedLabel(chapterElapsedString))
-                Spacer(minLength: 8)
+            // The title is centered in the FULL row width via a ZStack so it stays
+            // fixed as the flanking timecodes change character-width (even
+            // monospaced, "9:59" → "10:00" adds a digit). The times pin to the
+            // edges; the title (subheadline) defines the row height as before, and
+            // its horizontal padding keeps it clear of the times.
+            ZStack {
                 Text(audiobookSession.currentChapter?.title ?? presenter.currentBook?.title ?? "")
                     .font(.subheadline).fontWeight(.semibold)
                     .lineLimit(1).truncationMode(.tail)
-                Spacer(minLength: 8)
-                Text(chapterRemainingString)
-                    .font(.caption2).foregroundStyle(.secondary).monospacedDigit()
-                    .accessibilityLabel(Strings.Generic.timeRemainingLabel(chapterRemainingString))
+                    .padding(.horizontal, 64)
+                HStack(spacing: 8) {
+                    Text(chapterElapsedString)
+                        .font(.caption2).foregroundStyle(.secondary).monospacedDigit()
+                        .accessibilityLabel(Strings.Generic.timeElapsedLabel(chapterElapsedString))
+                    Spacer(minLength: 8)
+                    Text(chapterRemainingString)
+                        .font(.caption2).foregroundStyle(.secondary).monospacedDigit()
+                        .accessibilityLabel(Strings.Generic.timeRemainingLabel(chapterRemainingString))
+                }
             }
         }
     }
