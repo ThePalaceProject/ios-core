@@ -152,4 +152,31 @@ final class AudiobookMorphingPlayerViewTests: XCTestCase {
         XCTAssertLessThan(V.rubberBand(-400), V.rubberBand(-100),
                           "Deeper upward pull must resist further (monotonic resistance)")
     }
+
+    // MARK: - Timecode formatter (relocated when the dead mini-player view was removed)
+
+    /// Pure `TimeInterval` -> "MM:SS" / "H:MM:SS" formatter, relocated onto the
+    /// morphing player when the dead mini-player view was removed. Pins the
+    /// format so a regression that changes the separator, drops the leading-zero
+    /// pad, or removes the non-finite/negative guard fails here.
+    func testFormatTime_returnsExpectedTimecodes() {
+        XCTAssertEqual(V.formatTime(0), "0:00",
+                       "Zero seconds must format as 0:00 (preserves leading zero on seconds)")
+        XCTAssertEqual(V.formatTime(59), "0:59",
+                       "59 seconds must format as 0:59")
+        XCTAssertEqual(V.formatTime(60), "1:00",
+                       "60 seconds must format as 1:00 - minute rollover")
+        XCTAssertEqual(V.formatTime(125), "2:05",
+                       "125 seconds must format as 2:05")
+        XCTAssertEqual(V.formatTime(3600), "1:00:00",
+                       "1 hour must format as 1:00:00 - hour rollover adds the H field")
+        XCTAssertEqual(V.formatTime(3725), "1:02:05",
+                       "1h 2m 5s must format as 1:02:05 - leading-zero pad on M field when hours present")
+        XCTAssertEqual(V.formatTime(-1), "--:--",
+                       "Negative inputs must format as --:-- (guard against malformed positions)")
+        XCTAssertEqual(V.formatTime(.nan), "--:--",
+                       "NaN must format as --:-- (guard against /0 in playbackProgress upstream)")
+        XCTAssertEqual(V.formatTime(.infinity), "--:--",
+                       "Infinity must format as --:-- (defensive against toolkit edge cases)")
+    }
 }

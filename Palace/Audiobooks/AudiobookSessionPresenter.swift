@@ -90,8 +90,8 @@ class AudiobookSessionPresenter: ObservableObject {
     /// sink that drives `hasActiveSession` so a single publisher event
     /// updates both fields atomically.
     ///
-    /// Polish-phase addition — replaces the closure-injected
-    /// `isPlayingProvider` parameter on `AudiobookMiniPlayerView`.
+    /// Read directly by the audiobook player view — replaced the
+    /// closure-injected `isPlayingProvider` an earlier player view took.
     @Published private(set) var isPlaying: Bool = false
 
     /// Cover image for the current session, mirrored from the session
@@ -100,8 +100,8 @@ class AudiobookSessionPresenter: ObservableObject {
     /// `adoptCoverImage(_:)` (called from
     /// `AudiobookSessionManager.updateCoverImage(_:)`).
     ///
-    /// Polish-phase addition — replaces the closure-injected
-    /// `coverImageProvider` parameter on `AudiobookMiniPlayerView`.
+    /// Read directly by the audiobook player view — replaced the
+    /// closure-injected `coverImageProvider` an earlier player view took.
     @Published private(set) var coverImage: UIImage?
 
     /// High-frequency playback position/progress lives on a SEPARATE
@@ -150,19 +150,12 @@ class AudiobookSessionPresenter: ObservableObject {
     /// can drive it directly.
     @Published var isReaderActive: Bool = false
 
-    /// True when the user has collapsed the mini-player down to the compact
-    /// floating pill (`AudiobookCollapsedPillView`). This is a SEPARATE axis
-    /// from `isPlayerExpanded`:
-    ///   - `isPlayerExpanded` is the full-player ⇄ mini-bar axis.
-    ///   - `isCollapsed` is the mini-bar ⇄ pill axis.
-    /// When `isCollapsed == true`, `AppTabHostView` renders the pill instead
-    /// of the full mini-bar; **playback keeps running** — collapsing is
-    /// strictly a chrome change, unlike the `✕` dismiss which tears the
-    /// session down via `stopPlayback`. Only reachable from the mini-bar
-    /// (swipe-down → `collapse()`); tapping the pill restores it
-    /// (`restoreFromCollapsed()`). Reset to false on every path that shows
-    /// the full chrome (`expand()`, `minimize()`, `presentOnFirstOpen()`,
-    /// `clearActiveSession()`) so the pill state is never stale.
+    /// Legacy mini-bar ⇄ pill collapse axis. The floating pill view was
+    /// removed once the morphing player became the sole audiobook surface,
+    /// so `collapse()` is now a no-op and this stays false; the property is
+    /// retained only for the presenter's existing reset paths (`expand()`,
+    /// `minimize()`, `presentOnFirstOpen()`, `clearActiveSession()`).
+    /// Distinct from `isPlayerExpanded` (the full-player axis).
     @Published var isCollapsed: Bool = false
 
     // MARK: - Private state
