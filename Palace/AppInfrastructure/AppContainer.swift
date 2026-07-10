@@ -780,6 +780,19 @@ struct AppContainer: @unchecked Sendable {
         // the fresh graph through it — same reassign semantics as the old
         // `_cached = ...`, now race-safe under `complete`.
         _cachedValue().accountsManager.cancelAndDrainBackgroundWork()
+        // Global drain: the per-manager drain above only touches the CURRENT
+        // cached manager. A foreign AccountsManager built by an earlier test
+        // (e.g. an `AppContainer.production()` manager a Catalog/Borrow test
+        // never tore down) keeps a leaked `loadCatalogs` crawl / deferred
+        // auth-doc main-hop that late-writes `AccountStateStore.shared` and
+        // pollutes later async victims. Drain ALL live instances here — BEFORE
+        // the `AccountStateStore.shared._resetAllForTesting()` resetter (which
+        // is registered AFTER this `AppContainer._resetForTesting` resetter in
+        // `PalaceTestSetup.registerBuiltInResetters`, so it runs strictly after
+        // this whole function) so any flushed late write is then wiped. This is
+        // the shared mechanism behind BOTH pollution clusters. Idempotent, so
+        // re-draining the current manager captured above is harmless.
+        AccountsManager._drainAllLiveInstancesForTesting()
         let rebuilt = Self._buildCachedAppContainer()
         _cachedLock.withLock { $0 = rebuilt }
         // Reset the process-wide audiobook session/presenter statics — the only

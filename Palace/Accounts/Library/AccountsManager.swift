@@ -477,6 +477,17 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
             object: nil
         )
 
+        #if DEBUG
+        // Register in the process-wide weak live-instance registry so the global
+        // test-boundary drain (`_drainAllLiveInstancesForTesting`) can cancel +
+        // drain background work on THIS instance even when the constructing test
+        // never tears it down (the foreign-polluter case). Placed after
+        // `super.init()` — before any early `return` below — so EVERY constructed
+        // instance is caught regardless of the `deferInitialLoadCatalogsForTesting`
+        // branch. The registry is weak, so this never extends lifetime.
+        Self._registerLiveInstanceForTesting(self)
+        #endif
+
         // Synchronously pre-populate accountSets from the on-disk cache before
         // returning. Without this, AppContainer.production() returns while
         // loadCatalogs() is still running on a background queue, so any UI
@@ -1950,7 +1961,48 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
 }
 
 #if DEBUG
+/// Lock-backed weak-registry holder so `AccountsManager`'s process-wide live
+/// instance set is concurrency-safe global state WITHOUT `nonisolated(unsafe)`
+/// — mirrors the `AccountsManagerBoolFlag` house pattern above.
+/// `@unchecked Sendable` invariant: the only mutable state is `table`, mutated
+/// (`add`) and snapshotted (`snapshot`) exclusively under `lock` (an immutable
+/// `NSLock`); `NSHashTable.weakObjects()` holds WEAK refs to `AccountsManager`
+/// (itself `Sendable`), so registration never extends any instance's lifetime.
+/// DEBUG-only: the whole registry compiles out of release.
+private final class AccountsManagerLiveRegistry: @unchecked Sendable {
+    private let lock = NSLock()
+    private let table = NSHashTable<AccountsManager>.weakObjects()
+    func add(_ m: AccountsManager) {
+        lock.lock(); defer { lock.unlock() }
+        table.add(m)
+    }
+    /// Snapshot under the lock; callers drain OUTSIDE the lock (the drain pumps
+    /// the run loop and must not hold a lock).
+    func snapshot() -> [AccountsManager] {
+        lock.lock(); defer { lock.unlock() }
+        return table.allObjects
+    }
+}
+
 extension AccountsManager {
+    /// Process-wide weak registry of every live AccountsManager, so a global
+    /// test-boundary drain can cancel background work on instances a test never
+    /// tore down (the foreign-polluter case). Weak so it never extends lifetime.
+    private static let _liveInstancesForTesting = AccountsManagerLiveRegistry()
+
+    static func _registerLiveInstanceForTesting(_ m: AccountsManager) {
+        _liveInstancesForTesting.add(m)
+    }
+
+    /// Drain + cancel background work on ALL live instances. Called at each test
+    /// boundary BEFORE AccountStateStore._resetAllForTesting so any flushed late
+    /// write is then wiped. Snapshot under lock (inside the holder); drain
+    /// outside the lock (the drain pumps the run loop and must not hold a lock).
+    static func _drainAllLiveInstancesForTesting() {
+        let snapshot = _liveInstancesForTesting.snapshot()
+        for m in snapshot { m.cancelAndDrainBackgroundWork() }
+    }
+
     /// Test-only seam: populate an accountSets bucket without going through
     /// OPDS2 parsing. Routes through `performWrite` so concurrent-access
     /// invariants are preserved. Used by mutation-killing tests for

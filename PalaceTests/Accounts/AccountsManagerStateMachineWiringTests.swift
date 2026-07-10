@@ -712,6 +712,141 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
         AccountStateStore.shared.reset(for: u)
     }
 
+    /// Regression guard for the SECOND pollution cluster (Borrow* +
+    /// `testPreload_drivesEachLoadedAccount_toBasicInfoLoaded`): a FOREIGN
+    /// `AccountsManager` built by an earlier test and NEVER torn down by the
+    /// production boundary leaks a deferred auth-doc main-hop that late-writes
+    /// `AccountStateStore.shared`, starving the pool and polluting later async
+    /// victims. The production boundary (`AppContainer._resetForTesting`) only
+    /// EXPLICITLY drains the CURRENT cached manager; a foreign one is invisible
+    /// to that explicit path. The FIX is the process-wide
+    /// `AccountsManager._drainAllLiveInstancesForTesting()` — it discovers every
+    /// live manager through the weak live-instance registry each manager joins at
+    /// `init`, and the boundary invokes it BEFORE the
+    /// `AccountStateStore._resetAllForTesting()` resetter.
+    ///
+    /// This test drives that GLOBAL boundary path. The load-bearing distinction
+    /// from the sibling `testBoundaryDrain_...` test (which calls
+    /// `cancelAndDrainBackgroundWork()` DIRECTLY on a manager it holds) is that
+    /// here the test NEVER calls drain on the manager directly — it calls only
+    /// the static `_drainAllLiveInstancesForTesting()`, which must find the
+    /// manager via the WEAK REGISTRY (the new `init`-time registration) and drain
+    /// it. That drain PUMPS the run loop (empty-task branch, since
+    /// `deferInitialLoadCatalogsForTesting` is true), servicing the leaked hop
+    /// INSIDE the boundary; the follow-on store reset then wipes it — leaving the
+    /// next test a clean store.
+    ///
+    /// The live manager is built via the `makeFreshAccountsManager()` seam (so
+    /// the isolation-lint's `cancelBackgroundWork()`/bag-drain teardown fires and
+    /// the base's array keeps it alive for the whole method) — but the boundary's
+    /// production path does NOT walk that array; the ONLY way
+    /// `_drainAllLiveInstancesForTesting()` reaches it is the weak registry. If
+    /// the `init`-time registration were removed OR the drain-all loop were made
+    /// a no-op, the registry yields no drainable manager, nothing pumps, and the
+    /// leaked hop escapes forward (proved by the teeth below).
+    ///
+    /// Teeth (verified before/after): SKIP the
+    /// `_drainAllLiveInstancesForTesting()` call and the leaked hop is never
+    /// pumped inside the boundary; the store reset runs while the hop is still
+    /// queued, then the "next test" runloop pump fires it and `.detailsLoading`
+    /// leaks forward — the final `.notLoaded` assertion reddens. Restoring the
+    /// call flushes-then-wipes it and the assertion passes.
+    func testGlobalBoundaryDrain_flushesForeignUntornDownManager_leavesStoreClean() throws {
+        // A unique account U → deterministic regardless of suite order.
+        let metadata = OPDS2Publication.Metadata(
+            updated: Date(),
+            description: "global-drain foreign-polluter regression",
+            id: "urn:uuid:pollfix-global-\(UUID().uuidString)",
+            title: "Global-Drain Foreign Library"
+        )
+        let pub = OPDS2Publication(links: [], metadata: metadata, images: nil)
+        let leakedAccount = Account(publication: pub, imageCache: MockImageCache())
+        let u = leakedAccount.uuid
+
+        #if DEBUG
+        AccountStateStore.shared._resetAllForTesting()
+        #endif
+        // Reading `state(for:)` here CREATES U's subject NOW, so the boundary's
+        // `_resetAllForTesting()` snapshot below will include and wipe it (that
+        // helper only iterates subjects that exist at call time — a documented
+        // quirk; see the sibling test).
+        guard case .notLoaded = AccountStateStore.shared.state(for: u) else {
+            return XCTFail("Precondition: a fresh unique account must start at .notLoaded, got \(label(AccountStateStore.shared.state(for: u)))")
+        }
+
+        // A LIVE manager that the global drain must discover via the process-wide
+        // weak registry (joined at `init`). Built through the seam so it is
+        // lint-clean AND retained by the base's teardown array for the whole
+        // method; crucially the PRODUCTION boundary does NOT walk that array — it
+        // reaches this manager ONLY through `_drainAllLiveInstancesForTesting()`'s
+        // weak-registry scan, exactly as it would reach a foreign, never-directly-
+        // drained manager. Its `deferInitialLoadCatalogsForTesting` is pinned true
+        // by the seam, so its own drain takes the empty-task PUMP branch.
+        let liveManager = makeFreshAccountsManager()
+        XCTAssertNotNil(liveManager, "Live registered manager must construct")
+
+        // The leaked pending write a foreign manager's deferred auth-doc hop would
+        // make late: a `DispatchQueue.main.async` (NOT a Task — so
+        // `cancelBackgroundWork()` cannot cancel it) performing the drive's
+        // synchronous `.detailsLoading` store write — the exact seam
+        // `fetchAuthDocumentWithStateMachine` / the `init` :623 hop writes through.
+        // It is independent of any manager (it captures the Account, not the
+        // manager), which is why only a run-loop PUMP — not a per-manager cancel —
+        // can flush it.
+        DispatchQueue.main.async {
+            leakedAccount._setState(.detailsLoading)
+        }
+
+        // Not yet run — still on the synchronous stack that enqueued it.
+        guard case .notLoaded = AccountStateStore.shared.state(for: u) else {
+            return XCTFail("Precondition: the deferred hop must not have fired before the boundary; got \(label(AccountStateStore.shared.state(for: u)))")
+        }
+
+        // Invoke the GLOBAL boundary path. This is the load-bearing step: the
+        // test NEVER calls drain on `liveManager` directly — the static must find
+        // it via the WEAK REGISTRY (populated by the new `init`-time
+        // registration) and PUMP the run loop, flushing the leaked hop INSIDE the
+        // boundary. Mirrors `AppContainer._resetForTesting`, which invokes this
+        // static right before the `AccountStateStore` resetter.
+        AccountsManager._drainAllLiveInstancesForTesting()
+
+        // PRIMARY TEETH: the leaked hop has now fired INSIDE the boundary — the
+        // global drain reached the registered manager and pumped. If the
+        // `init`-time registration were removed (empty registry) OR the drain-all
+        // loop were made a no-op, nothing would pump here and U would still be
+        // `.notLoaded` — reddening this assertion. This is precisely what a
+        // per-manager-only drain CANNOT achieve for a manager the caller does not
+        // hold a reference to: only the registry-backed global drain reaches it.
+        guard case .detailsLoading = AccountStateStore.shared.state(for: u) else {
+            return XCTFail("Global drain must reach the registered manager via the weak registry and PUMP the run loop so the leaked auth-doc hop fires INSIDE the boundary (expected .detailsLoading); got \(label(AccountStateStore.shared.state(for: u))) — the drain did not flush it (registration missing or drain-all is a no-op).")
+        }
+
+        // Model the boundary's follow-on store reset that wipes the just-flushed
+        // write. We use the direct per-UUID `reset(for:)` — the same seam the
+        // sibling `testBoundaryDrain_...` test uses for housekeeping — because
+        // `_resetAllForTesting()`'s snapshot does not clean a subject created this
+        // late in the method (a documented quirk of that DEBUG helper). At the
+        // REAL boundary the fixture UUID was seeded early, so its own
+        // `_resetAllForTesting()` wipes it there; here `reset(for:)` reproduces
+        // that terminal effect deterministically.
+        #if DEBUG
+        AccountStateStore.shared._resetAllForTesting()
+        #endif
+        AccountStateStore.shared.reset(for: u)
+
+        // Simulate the NEXT test: pump the run loop several turns. Because the hop
+        // already fired-and-was-wiped inside the boundary, nothing pending remains
+        // and U stays clean — it did NOT leak forward.
+        for _ in 0..<5 {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.01))
+        }
+
+        // The leaked hop did not survive into the simulated next test.
+        guard case .notLoaded = AccountStateStore.shared.state(for: u) else {
+            return XCTFail("After the global drain flushed the hop inside the boundary and the store reset wiped it, U must be .notLoaded for the next test; got \(label(AccountStateStore.shared.state(for: u))) — a write leaked forward (the second pollution cluster).")
+        }
+    }
+
     // MARK: - Test 4: Single-flight per-UUID auth doc fetch
 
     /// Contract: when two concurrent `fetchAuthDocumentWithStateMachine`
