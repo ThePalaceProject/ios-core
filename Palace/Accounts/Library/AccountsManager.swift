@@ -1328,6 +1328,19 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
     private func fallbackFetchFromNetwork(targetUrl: URL, hash: String) {
         networkExecutor.GET(targetUrl, useTokenIfAvailable: false) { [weak self] result in
             guard let self = self else { return }
+            #if DEBUG
+            // Test-pollution guard: a completion for a manager the test-boundary
+            // drain already cancelled must not late-write AccountStateStore.shared
+            // into a subsequent test. This network completion is untracked (not a
+            // `_trackCrawlTask` Task, so the drain's cooperative-cancellation
+            // observation misses it) — without this guard its `cacheAccountsCatalogData`
+            // / `loadAccountSetsAndAuthDoc` writes can land on a later runloop turn,
+            // after the next test's AccountStateStore reset, keyed by a fixture-shared
+            // library UUID. Mirrors the `fetchAuthDocumentWithStateMachine` guards.
+            // Production is UNAFFECTED: `_explicitCancelCalled` is `#if DEBUG` and set
+            // only by `cancelBackgroundWork()` (reachable only from `_resetForTesting()`).
+            if self._explicitCancelCalled { return }
+            #endif
             switch result {
             case .success(let data, _):
                 self.cacheAccountsCatalogData(data, hash: hash)
@@ -1412,6 +1425,19 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
     private func fallbackDirectRefresh(targetUrl: URL, hash: String) {
         networkExecutor.GET(targetUrl, useTokenIfAvailable: false) { [weak self] result in
             guard let self = self else { return }
+            #if DEBUG
+            // Test-pollution guard: a completion for a manager the test-boundary
+            // drain already cancelled must not late-write AccountStateStore.shared
+            // into a subsequent test. This network completion is untracked (not a
+            // `_trackCrawlTask` Task, so the drain's cooperative-cancellation
+            // observation misses it) — without this guard its `cacheAccountsCatalogData`
+            // / `loadAccountSetsAndAuthDoc` writes can land on a later runloop turn,
+            // after the next test's AccountStateStore reset, keyed by a fixture-shared
+            // library UUID. Mirrors the `fetchAuthDocumentWithStateMachine` guards.
+            // Production is UNAFFECTED: `_explicitCancelCalled` is `#if DEBUG` and set
+            // only by `cancelBackgroundWork()` (reachable only from `_resetForTesting()`).
+            if self._explicitCancelCalled { return }
+            #endif
             switch result {
             case .success(let data, _):
                 Log.info(#file, "Fallback direct refresh successful for hash \(hash)")
