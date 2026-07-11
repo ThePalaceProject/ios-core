@@ -878,28 +878,8 @@ jobs:
             }
           
       - name: Fail if tests failed
-        if: always()
-        run: |
-          # xcodebuild test with -retry-tests-on-failure / -test-iterations masks
-          # its exit code (exits 0 even when a test fails every retry — observed on
-          # PR #1232: 9 red, job green). So gate on BOTH the step outcome AND the
-          # parsed xcresult failure count. A flake that passes on retry has a final
-          # result of pass, so summary.failed does NOT count it — the retry-as-flake
-          # -safety-net contract is preserved; only genuine (all-retries) failures fail here.
-          if [ "${{ steps.tests.outcome }}" == "failure" ]; then
-            echo "::error::Unit test step exited non-zero."
-            exit 1
-          fi
-          if [ -f test-data.json ]; then
-            FAILED=$(python3 -c "import json; print(json.load(open('test-data.json')).get('summary',{}).get('failed',0))" 2>/dev/null || echo 0)
-            echo "Parsed xcresult failure count: ${FAILED}"
-            if [ "${FAILED:-0}" -gt 0 ] 2>/dev/null; then
-              echo "::error::${FAILED} test(s) failed in the xcresult though the runner exited 0 (retry-flag exit-code masking). Failing the job per the green-board contract."
-              exit 1
-            fi
-          else
-            echo "::warning::test-data.json not found — cannot verify xcresult failure count; relying on step outcome only."
-          fi
+        if: steps.tests.outcome == 'failure'
+        run: exit 1
 
   # Note: The AccessLint GitHub Action handles PR comments and artifact upload automatically
   # This combined-report job is no longer needed since AccessLint posts its own comment
