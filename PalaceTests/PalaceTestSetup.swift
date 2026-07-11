@@ -156,6 +156,38 @@ class PalaceTestSetup: NSObject {
         registry.register("ImageCache._resetForTesting") {
             ImageCache.shared._resetForTesting()
         }
+
+        // Clear the process-global MockBackend config after every test.
+        // `MockBackendTestHelper.activate(...)` sets these statics in setUp
+        // and clears them in the test's own tearDown; a test that aborts
+        // before tearDown leaks an `activeScenario`, and `canInit(with:)`
+        // (gated on `activeScenario != nil`) then intercepts EVERY later
+        // request — serving fixtures / canned 401s and corrupting
+        // network-dependent tests. This is the un-reset twin of the
+        // registered `HTTPStubURLProtocol.removeAllHandlers`. Pure,
+        // synchronous clear (no `MockBackendService.shared.deactivate()`,
+        // which would recreate the session on the MainActor).
+        //
+        // NOT `#if DEBUG`-gated: the PalaceTests target does not define
+        // DEBUG (its compilation conditions are "LCP FEATURE_OVERDRIVE").
+        // The protocol's `#if DEBUG` gate is on the *Palace* module, which
+        // the test bundle links via `@testable import Palace` after Palace
+        // is built in Debug — so these statics are always visible here.
+        // `MockBackendTestHelper` already references them unconditionally.
+        registry.register("MockBackendURLProtocol._resetForTesting") {
+            MockBackendURLProtocol.activeScenario = nil
+            MockBackendURLProtocol.scopedHost = nil
+            MockBackendURLProtocol.fixtureDirectoryPath = nil
+            MockBackendURLProtocol.fixtureBundle = .main
+        }
+
+        // Clear the process-global Chaos fault plan after every test. A
+        // ChaosURLProtocol test that aborts before tearDown leaves a leaked
+        // `_plan`, which then faults later requests. `reset()` is a fast,
+        // synchronous clear that also invalidates any leaked chaos sessions.
+        registry.register("ChaosURLProtocol.reset") {
+            ChaosURLProtocol.reset()
+        }
     }
 }
 
