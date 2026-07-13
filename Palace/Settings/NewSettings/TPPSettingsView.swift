@@ -111,6 +111,7 @@ struct TPPSettingsView: View {
             librariesSection
             downloadsSection
             supportSection
+            advancedSection
             sideLoadingSection
             infoSection
             developerSettingsSection
@@ -424,15 +425,32 @@ struct TPPSettingsView: View {
             .accessibilityIdentifier(AccessibilityID.Settings.softwareLicensesButton)
     }
 
+    /// PP-4788: always-visible Advanced menu (no gesture required) hosting the
+    /// patron-facing support functions — Send Error Logs + Data & Reset — that
+    /// previously lived only in the gesture-gated Testing menu. Support can now
+    /// direct patrons here without walking them through the hidden long-press.
+    @ViewBuilder private var advancedSection: some View {
+        Section {
+            row(title: DisplayStrings.advanced, index: 7, selection: self.$selectedView,
+                destination: AppAdvancedSettingsView()
+                    .navigationBarTitle(Text(DisplayStrings.advanced))
+                    .anyView())
+                .accessibilityIdentifier(AccessibilityID.Settings.advancedButton)
+        }
+    }
+
     @ViewBuilder private var developerSettingsSection: some View {
         if AppContainer.production().settings.customMainFeedURL == nil && showDeveloperSettings {
             Section(header: Text(DisplayStrings.developerSettings).accessibilityHidden(true), footer: versionInfo) {
-                let viewController = TPPDeveloperSettingsTableViewController()
-
-                let wrapper = UIViewControllerWrapper(viewController, updater: { _ in })
-                    .navigationBarTitle(Text(DisplayStrings.developerSettings))
-
-                row(title: DisplayStrings.developerSettings, index: 6, selection: self.$selectedView, destination: wrapper.anyView())
+                // PP-4788: the Testing screen is now SwiftUI (DeveloperSettingsView),
+                // replacing TPPDeveloperSettingsTableViewController. Still gated on the
+                // version-number long-press unlock (showDeveloperSettings) — unchanged.
+                // Engineering-tier sections only; the patron-facing Send Error Logs +
+                // Data & Reset now live in the always-visible Advanced menu below.
+                row(title: DisplayStrings.developerSettings, index: 6, selection: self.$selectedView,
+                    destination: DeveloperSettingsView()
+                        .navigationBarTitle(Text(DisplayStrings.developerSettings))
+                        .anyView())
             }
         }
     }
