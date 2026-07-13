@@ -16,6 +16,7 @@ import Foundation
 import SwiftUI
 import MessageUI
 import WebKit
+import PalaceCatalog
 
 /// Owns all Testing / Advanced screen state and actions. The two SwiftUI
 /// screens (`DeveloperSettingsView`, `AppAdvancedSettingsView`) share this one
@@ -422,7 +423,7 @@ final class DeveloperSettingsViewModel: ObservableObject {
                     let nav = UINavigationController(rootViewController: previewVC)
                     nav.modalPresentationStyle = .fullScreen
                     previewVC.navigationItem.leftBarButtonItem = UIBarButtonItem(
-                        barButtonSystemItem: .done,
+                        systemItem: .done,
                         primaryAction: UIAction { [weak nav] _ in nav?.dismiss(animated: true) }
                     )
                     presenter.present(nav, animated: true)
