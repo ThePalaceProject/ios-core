@@ -12,7 +12,7 @@ jobs:
     runs-on: macOS-latest
     steps:
       - name: Checkout main repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v7
         with:
           token: ${{ secrets.IOS_DEV_CI_PAT }}
       - name: Check Build Number
