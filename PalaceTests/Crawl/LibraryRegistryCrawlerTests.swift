@@ -31,6 +31,88 @@ private final class MockCrawlerDelegate: LibraryRegistryCrawlerDelegate {
     }
 }
 
+// MARK: - Gated Fetcher (deterministic cancellation harness)
+
+/// Actor gate that lets a test suspend the crawl inside its FIRST fetch,
+/// cancel the surrounding Task, and only THEN release the fetch — so the
+/// crawl resumes into a cancelled Task deterministically (no wall-clock races).
+private actor FetchGate {
+    private var startedCont: CheckedContinuation<Void, Never>?
+    private var started = false
+    private var releaseCont: CheckedContinuation<Void, Never>?
+    private var released = false
+
+    func waitUntilStarted() async {
+        if started { return }
+        await withCheckedContinuation { startedCont = $0 }
+    }
+
+    func markStarted() {
+        started = true
+        startedCont?.resume()
+        startedCont = nil
+    }
+
+    func waitForRelease() async {
+        if released { return }
+        await withCheckedContinuation { releaseCont = $0 }
+    }
+
+    func release() {
+        released = true
+        releaseCont?.resume()
+        releaseCont = nil
+    }
+}
+
+/// Fetcher whose FIRST `fetchData` suspends on `gate` (signals started, then
+/// awaits release). The gate uses a plain (non-cancellation-aware) continuation
+/// so the crawl only stops if the crawler itself observes `Task.isCancelled` —
+/// which is exactly the production behavior under test.
+private final class GatedCrawlerFetcher: CrawlerNetworkFetching, @unchecked Sendable {
+    var responses: [URL: Data] = [:]
+    let gate = FetchGate()
+    private let lock = NSLock()
+    private var _fetchedURLs: [URL] = []
+    private var firstCall = true
+
+    var fetchedURLs: [URL] {
+        lock.lock(); defer { lock.unlock() }
+        return _fetchedURLs
+    }
+
+    func fetchData(from url: URL) async throws -> (Data, HTTPURLResponse?) {
+        lock.lock()
+        _fetchedURLs.append(url)
+        let isFirst = firstCall
+        firstCall = false
+        lock.unlock()
+
+        if isFirst {
+            await gate.markStarted()
+            await gate.waitForRelease()
+        }
+
+        guard let data = responses[url] else { throw URLError(.fileDoesNotExist) }
+        return (data, nil)
+    }
+}
+
+/// Carries the non-Sendable crawler across the `Task {}` boundary. The crawler
+/// is confined to the single crawl Task; the test never touches it concurrently.
+private struct CrawlerBox: @unchecked Sendable {
+    let crawler: LibraryRegistryCrawler
+}
+
+/// Sendable summary of a crawl result so the crawl `Task` can return across the
+/// isolation boundary under `-strict-concurrency=complete`.
+private enum CrawlOutcome: Sendable, Equatable {
+    case cancelledFailure
+    case otherFailure(String)
+    case success
+    case noChanges
+}
+
 // MARK: - Tests
 
 final class LibraryRegistryCrawlerTests: XCTestCase {
@@ -676,5 +758,75 @@ final class LibraryRegistryCrawlerTests: XCTestCase {
         XCTAssertTrue(ids.contains("lib-new"))
         XCTAssertTrue(ids.contains("lib-existing"),
                       "Early-stopped incremental walk must preserve existing entries (no deletion reconciliation)")
+    }
+
+    // MARK: - Cancellation responsiveness (WS0-DRAIN timeout fix)
+
+    /// Regression for the CI `[WS0-DRAIN] cancelAndDrainBackgroundWork TIMED OUT
+    /// after 3010ms ... crawl did not observe cancellation`: a cancelled crawl
+    /// Task must short-circuit to a `CancellationError`-mapped `.failure`
+    /// PROMPTLY and must NOT keep paginating. Deterministic — the gated fetcher
+    /// suspends the crawl inside its first fetch, we cancel, then release, so the
+    /// crawl resumes into an already-cancelled Task with no wall-clock race.
+    func testCrawl_WhenTaskCancelledDuringFetch_StopsPromptlyWithFailure_AndDoesNotPaginate() async throws {
+        let baseURL = URL(string: "https://registry.example.com/libraries")!
+        let crawlableURL = URL(string: "https://registry.example.com/libraries/crawlable")!
+        let page2URL = URL(string: "https://registry.example.com/libraries/crawlable?offset=1")!
+
+        let gated = GatedCrawlerFetcher()
+        // Page 1 carries a rel=next → absent cancellation the crawl WOULD fetch
+        // page 2 (the "teeth": without the checks this test fails as `.success`
+        // with fetchedURLs.count == 2).
+        gated.responses[crawlableURL] = makeFeedJSON(
+            publications: [makePublicationJSON(id: "lib-1")],
+            nextURL: page2URL.absoluteString
+        )
+        gated.responses[page2URL] = makeFeedJSON(
+            publications: [makePublicationJSON(id: "lib-2")]
+        )
+
+        let crawler = LibraryRegistryCrawler(
+            fetcher: gated,
+            hash: "test_hash",
+            stateDirectory: tempDir,
+            currentAppVersion: "3.2.0"
+        )
+        let box = CrawlerBox(crawler: crawler)
+        let meta = makeCatalogMetadata()
+
+        let crawlTask = Task { () -> CrawlOutcome in
+            let result = await box.crawler.crawl(
+                baseURL: baseURL,
+                existingPublications: [],
+                feedMetadata: meta
+            )
+            switch result {
+            case .failure(let error):
+                return (error is CancellationError) ? .cancelledFailure : .otherFailure("\(error)")
+            case .success:
+                return .success
+            case .noChanges:
+                return .noChanges
+            }
+        }
+
+        // Suspend inside the first fetch, cancel, THEN release the fetch so the
+        // crawl resumes into a cancelled Task.
+        await gated.gate.waitUntilStarted()
+        crawlTask.cancel()
+        await gated.gate.release()
+
+        let start = Date()
+        let outcome = await crawlTask.value
+        let elapsed = Date().timeIntervalSince(start)
+
+        XCTAssertEqual(outcome, .cancelledFailure,
+                       "Cancelled crawl must resolve to a CancellationError-mapped .failure, got \(outcome)")
+        XCTAssertEqual(gated.fetchedURLs.count, 1,
+                       "Cancelled crawl must NOT paginate — only the first page should have been requested")
+        XCTAssertEqual(gated.fetchedURLs, [crawlableURL],
+                       "The only fetch should be the initial crawlable URL")
+        XCTAssertLessThan(elapsed, 2.0,
+                          "Cancelled crawl must resolve promptly, well under the 3s WS0-DRAIN timeout")
     }
 }

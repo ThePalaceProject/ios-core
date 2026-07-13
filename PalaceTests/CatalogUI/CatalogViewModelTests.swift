@@ -140,20 +140,32 @@ final class MappedCatalogBridgeTests: XCTestCase {
 // MARK: - CatalogViewModel State Machine Tests
 
 @MainActor
-final class CatalogViewModelStateMachineTests: XCTestCase {
+final class CatalogViewModelStateMachineTests: PalaceTestCase {
 
     private var mockRepository: CatalogRepositoryMock!
+    // Isolated mock registry — replaces `AppContainer.production().bookRegistry`,
+    // which built the whole production graph (incl. a live `AccountsManager`
+    // whose init enqueues the un-cancellable auth-doc main-hop that polluted
+    // later Accounts tests). GAP 3 of the test-pollution root-fix.
+    private var bookRegistry: TPPBookRegistryMock!
     private var cancellables: Set<AnyCancellable>!
     private let testURL = URL(string: "https://example.com/catalog")!
 
+    // NOTE: sync `setUp()`/`tearDown()` (not the `WithError` variants) because
+    // `CatalogRepositoryMock` + `TPPBookRegistryMock` inits are `@MainActor` and
+    // the sync hooks are main-actor-isolated. `PalaceTestCase`'s inherited
+    // `setUpWithError`/`tearDownWithError` still run automatically (XCTest invokes
+    // both), so the runtime-quiescence floor is active without us overriding it.
     override func setUp() {
         super.setUp()
         mockRepository = CatalogRepositoryMock()
+        bookRegistry = TPPBookRegistryMock()
         cancellables = []
     }
 
     override func tearDown() {
         mockRepository = nil
+        bookRegistry = nil
         cancellables = nil
         super.tearDown()
     }
@@ -165,7 +177,7 @@ final class CatalogViewModelStateMachineTests: XCTestCase {
         CatalogViewModel(
             repository: mockRepository,
             topLevelURLProvider: { [testURL] in testURL },
-            bookRegistry: AppContainer.production().bookRegistry,
+            bookRegistry: bookRegistry,
             imageCache: ImageCache.shared,
             reachability: reachability
         )
@@ -181,7 +193,7 @@ final class CatalogViewModelStateMachineTests: XCTestCase {
         let vm = CatalogViewModel(
             repository: mockRepository,
             topLevelURLProvider: { nil },
-            bookRegistry: AppContainer.production().bookRegistry,
+            bookRegistry: bookRegistry,
             imageCache: ImageCache.shared
         )
         await vm.load()
@@ -429,7 +441,7 @@ final class CatalogViewModelStateMachineTests: XCTestCase {
         let vm = CatalogViewModel(
             repository: mockRepository,
             topLevelURLProvider: { currentURL },
-            bookRegistry: AppContainer.production().bookRegistry,
+            bookRegistry: bookRegistry,
             imageCache: ImageCache.shared,
             reachability: MockReachability(initiallyConnected: true)
         )

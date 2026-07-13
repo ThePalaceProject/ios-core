@@ -477,6 +477,17 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
             object: nil
         )
 
+        #if DEBUG
+        // Register in the process-wide weak live-instance registry so the global
+        // test-boundary drain (`_drainAllLiveInstancesForTesting`) can cancel +
+        // drain background work on THIS instance even when the constructing test
+        // never tears it down (the foreign-polluter case). Placed after
+        // `super.init()` — before any early `return` below — so EVERY constructed
+        // instance is caught regardless of the `deferInitialLoadCatalogsForTesting`
+        // branch. The registry is weak, so this never extends lifetime.
+        Self._registerLiveInstanceForTesting(self)
+        #endif
+
         // Synchronously pre-populate accountSets from the on-disk cache before
         // returning. Without this, AppContainer.production() returns while
         // loadCatalogs() is still running on a background queue, so any UI
@@ -1317,6 +1328,19 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
     private func fallbackFetchFromNetwork(targetUrl: URL, hash: String) {
         networkExecutor.GET(targetUrl, useTokenIfAvailable: false) { [weak self] result in
             guard let self = self else { return }
+            #if DEBUG
+            // Test-pollution guard: a completion for a manager the test-boundary
+            // drain already cancelled must not late-write AccountStateStore.shared
+            // into a subsequent test. This network completion is untracked (not a
+            // `_trackCrawlTask` Task, so the drain's cooperative-cancellation
+            // observation misses it) — without this guard its `cacheAccountsCatalogData`
+            // / `loadAccountSetsAndAuthDoc` writes can land on a later runloop turn,
+            // after the next test's AccountStateStore reset, keyed by a fixture-shared
+            // library UUID. Mirrors the `fetchAuthDocumentWithStateMachine` guards.
+            // Production is UNAFFECTED: `_explicitCancelCalled` is `#if DEBUG` and set
+            // only by `cancelBackgroundWork()` (reachable only from `_resetForTesting()`).
+            if self._explicitCancelCalled { return }
+            #endif
             switch result {
             case .success(let data, _):
                 self.cacheAccountsCatalogData(data, hash: hash)
@@ -1401,6 +1425,19 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
     private func fallbackDirectRefresh(targetUrl: URL, hash: String) {
         networkExecutor.GET(targetUrl, useTokenIfAvailable: false) { [weak self] result in
             guard let self = self else { return }
+            #if DEBUG
+            // Test-pollution guard: a completion for a manager the test-boundary
+            // drain already cancelled must not late-write AccountStateStore.shared
+            // into a subsequent test. This network completion is untracked (not a
+            // `_trackCrawlTask` Task, so the drain's cooperative-cancellation
+            // observation misses it) — without this guard its `cacheAccountsCatalogData`
+            // / `loadAccountSetsAndAuthDoc` writes can land on a later runloop turn,
+            // after the next test's AccountStateStore reset, keyed by a fixture-shared
+            // library UUID. Mirrors the `fetchAuthDocumentWithStateMachine` guards.
+            // Production is UNAFFECTED: `_explicitCancelCalled` is `#if DEBUG` and set
+            // only by `cancelBackgroundWork()` (reachable only from `_resetForTesting()`).
+            if self._explicitCancelCalled { return }
+            #endif
             switch result {
             case .success(let data, _):
                 Log.info(#file, "Fallback direct refresh successful for hash \(hash)")
@@ -1595,6 +1632,24 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
         for account: Account,
         completion: @escaping (Bool) -> Void
     ) {
+        #if DEBUG
+        // Test-isolation (entry guard): once this manager was explicitly torn
+        // down (`cancelBackgroundWork()` in `AppContainer._resetForTesting()`),
+        // it must not drive any auth-doc state — neither the synchronous
+        // `.detailsLoading` below nor the async terminal write. Otherwise a
+        // late/deferred drive (`driveCurrentAccountAuthDocIfNeeded` dispatched
+        // via `DispatchQueue.main.async`) fires on a later runloop turn, after
+        // the next test's `AccountStateStore` reset, keyed by a fixture-shared
+        // library UUID, and pollutes whichever Accounts test runs next (the
+        // order-dependent flakes in AccountsManagerLaunchSnapshotTests /
+        // AccountsManagerStateMachineWiringTests). Production is UNAFFECTED:
+        // `_explicitCancelCalled` and `cancelBackgroundWork()` are `#if DEBUG`
+        // test-only (the latter is reachable only from `_resetForTesting()`).
+        if _explicitCancelCalled {
+            completion(false)
+            return
+        }
+        #endif
         inflightAuthDocLock.lock()
         let alreadyInflight = inflightAuthDocFetches.contains(account.uuid)
         if !alreadyInflight {
@@ -1620,6 +1675,18 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
             self.inflightAuthDocLock.lock()
             self.inflightAuthDocFetches.remove(account.uuid)
             self.inflightAuthDocLock.unlock()
+
+            #if DEBUG
+            // Test-isolation (completion guard): companion to the entry guard —
+            // an auth-doc fetch that was already IN FLIGHT when this manager was
+            // torn down must not land its terminal `_setState` after the test
+            // boundary. Suppress the write; still balance the caller's completion.
+            // (DEBUG-only — see entry guard; production is unaffected.)
+            if self._explicitCancelCalled {
+                completion(success)
+                return
+            }
+            #endif
 
             // A fetch that was SUPERSEDED by a library switch must not overwrite
             // the eviction marker the `currentAccount` setter wrote. Sequence
@@ -1920,7 +1987,48 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
 }
 
 #if DEBUG
+/// Lock-backed weak-registry holder so `AccountsManager`'s process-wide live
+/// instance set is concurrency-safe global state WITHOUT `nonisolated(unsafe)`
+/// — mirrors the `AccountsManagerBoolFlag` house pattern above.
+/// `@unchecked Sendable` invariant: the only mutable state is `table`, mutated
+/// (`add`) and snapshotted (`snapshot`) exclusively under `lock` (an immutable
+/// `NSLock`); `NSHashTable.weakObjects()` holds WEAK refs to `AccountsManager`
+/// (itself `Sendable`), so registration never extends any instance's lifetime.
+/// DEBUG-only: the whole registry compiles out of release.
+private final class AccountsManagerLiveRegistry: @unchecked Sendable {
+    private let lock = NSLock()
+    private let table = NSHashTable<AccountsManager>.weakObjects()
+    func add(_ m: AccountsManager) {
+        lock.lock(); defer { lock.unlock() }
+        table.add(m)
+    }
+    /// Snapshot under the lock; callers drain OUTSIDE the lock (the drain pumps
+    /// the run loop and must not hold a lock).
+    func snapshot() -> [AccountsManager] {
+        lock.lock(); defer { lock.unlock() }
+        return table.allObjects
+    }
+}
+
 extension AccountsManager {
+    /// Process-wide weak registry of every live AccountsManager, so a global
+    /// test-boundary drain can cancel background work on instances a test never
+    /// tore down (the foreign-polluter case). Weak so it never extends lifetime.
+    private static let _liveInstancesForTesting = AccountsManagerLiveRegistry()
+
+    static func _registerLiveInstanceForTesting(_ m: AccountsManager) {
+        _liveInstancesForTesting.add(m)
+    }
+
+    /// Drain + cancel background work on ALL live instances. Called at each test
+    /// boundary BEFORE AccountStateStore._resetAllForTesting so any flushed late
+    /// write is then wiped. Snapshot under lock (inside the holder); drain
+    /// outside the lock (the drain pumps the run loop and must not hold a lock).
+    static func _drainAllLiveInstancesForTesting() {
+        let snapshot = _liveInstancesForTesting.snapshot()
+        for m in snapshot { m.cancelAndDrainBackgroundWork() }
+    }
+
     /// Test-only seam: populate an accountSets bucket without going through
     /// OPDS2 parsing. Routes through `performWrite` so concurrent-access
     /// invariants are preserved. Used by mutation-killing tests for
@@ -2005,7 +2113,43 @@ extension AccountsManager {
 
         cancelBackgroundWork() // requests cancellation, nils handles, clears list
 
-        guard !tasksToDrain.isEmpty else { return }
+        if tasksToDrain.isEmpty {
+            // No tracked Tasks, but init may have enqueued a DispatchQueue.main.async
+            // auth-doc drive (see `preloadAccountsFromDiskCacheSync`'s deferred
+            // `driveCurrentAccountAuthDocIfNeeded()` hop) that is NOT a Task and
+            // therefore CANNOT be cancelled by `cancelBackgroundWork()`. If it
+            // escapes this boundary it fires on a LATER runloop turn — after the
+            // next test's `_resetForTesting()` store reset — and writes a
+            // fixture-shared library UUID's `.detailsLoading`/`.detailsFailed`
+            // into the next test (the order-dependent Accounts-suite flakes).
+            // Pump the main run loop briefly so any such pending main-hop fires
+            // NOW, inside the boundary: for THIS torn-down manager the
+            // `_explicitCancelCalled` entry guard in
+            // `fetchAuthDocumentWithStateMachine` makes its own drive inert; for a
+            // foreign, never-torn-down manager's pending hop (e.g. an
+            // `AppContainer.production()` manager built by a Catalog test) the
+            // write lands here and is then wiped by the boundary's own store
+            // reset — either way nothing leaks past `_resetForTesting()`.
+            //
+            // CRITICAL invariant (see the drain-must-pump note above): PUMP the
+            // run loop, never BLOCK main — the crawl-drain deadlock reason applies
+            // equally here. A single `RunLoop.run(mode:before:)` can return BEFORE
+            // libdispatch services a lone pending main-queue block (it exits early
+            // when no traditional run-loop source is ready), so — exactly like the
+            // Task-drain loop below — we pump in a BOUNDED loop. We enqueue a
+            // sentinel AFTER any pending hop (the main queue is FIFO) and spin
+            // until it drains: once the sentinel runs, every earlier main-hop has
+            // already fired. Bounded by a 50ms ceiling so a wedged main queue can
+            // never hang the boundary; the common case exits in well under 1ms.
+            let sentinel = DispatchGroup()
+            sentinel.enter()
+            DispatchQueue.main.async { sentinel.leave() }
+            let pumpDeadline = Date().addingTimeInterval(0.05)
+            while sentinel.wait(timeout: .now()) == .timedOut && Date() < pumpDeadline {
+                RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.01))
+            }
+            return
+        }
 
         // Await all (now-cancelled) tasks while pumping the run loop, so any
         // barrier the crawl holds is released and its main-actor hops complete

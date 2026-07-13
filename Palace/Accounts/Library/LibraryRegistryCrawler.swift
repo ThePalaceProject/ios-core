@@ -129,6 +129,13 @@ final class LibraryRegistryCrawler {
             // Fetch first page — registry uses OPDS2CatalogsFeed format
             // (items under "catalogs" key, not "publications")
             let (firstPageData, firstResponse) = try await fetcher.fetchData(from: startURL)
+            // Cooperative cancellation: if this crawl's Task was cancelled while
+            // the fetch was in flight, short-circuit to a CancellationError-mapped
+            // .failure now instead of continuing to paginate. Only ever true under
+            // the DEBUG/XCTest test-boundary drain (`cancelBackgroundWork()`);
+            // production runs on a GCD queue with no surrounding Task, so
+            // `Task.isCancelled` is always false and this never throws.
+            try Task.checkCancellation()
             let firstPage = try OPDS2CatalogsFeed.fromData(firstPageData)
 
             // Extract server cache policy for future TTL tuning
@@ -167,6 +174,10 @@ final class LibraryRegistryCrawler {
             var reachedEnd = false
 
             while true {
+                // Cooperative cancellation checkpoint at the top of every page
+                // iteration so a cancelled crawl stops promptly rather than
+                // walking to end-of-feed. Test-only in effect (see note above).
+                try Task.checkCancellation()
                 pageCount += 1
                 let catalogs = currentPage.catalogs
                 rawCatalogs.append(contentsOf: catalogs)
@@ -218,6 +229,7 @@ final class LibraryRegistryCrawler {
                 }
 
                 let (nextData, _) = try await fetcher.fetchData(from: nextURL)
+                try Task.checkCancellation()
                 currentPage = try OPDS2CatalogsFeed.fromData(nextData)
             }
 
@@ -361,7 +373,12 @@ final class LibraryRegistryCrawler {
                 // Fall back to sequential pagination
                 var currentNextURL: URL? = nextURL
                 while let url = currentNextURL {
+                    // Cooperative cancellation at the top of each pagination step
+                    // and immediately after the fetch — same DEBUG/XCTest-only
+                    // effect as the crawl() checkpoints above.
+                    try Task.checkCancellation()
                     let (data, _) = try await fetcher.fetchData(from: url)
+                    try Task.checkCancellation()
                     let page = try OPDS2CatalogsFeed.fromData(data)
                     allPublications.append(contentsOf: page.catalogs)
                     currentNextURL = page.nextPageURL
