@@ -56,6 +56,12 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     private let settings: TPPSettings
     private let userAccountPublisher: UserAccountPublisher
     private let drmAuthorizerProvider: () -> TPPDRMAuthorizing?
+    /// Source of the credential snapshot read by `accountDidChange()` and init.
+    /// Defaults to the live keychain-backed path
+    /// (`accountsManager.userAccount(for:).credentialSnapshot()`); injectable so
+    /// the signed-in derivation can be exercised without keychain. Mirrors
+    /// `drmAuthorizerProvider`.
+    private let credentialSnapshotProvider: (String) -> TPPUserAccount.CredentialSnapshot
     private var cancellables = Set<AnyCancellable>()
     var forceEditability = false
 
@@ -127,7 +133,8 @@ class AccountDetailViewModel: NSObject, ObservableObject {
         downloadCenter: MyBooksDownloadCenter,
         settings: TPPSettings,
         userAccountPublisher: UserAccountPublisher,
-        drmAuthorizerProvider: @escaping () -> TPPDRMAuthorizing?
+        drmAuthorizerProvider: @escaping () -> TPPDRMAuthorizing?,
+        credentialSnapshotProvider: ((String) -> TPPUserAccount.CredentialSnapshot)? = nil
     ) {
         self.libraryAccountID = libraryAccountID
         self.accountsManager = accountsManager
@@ -136,6 +143,9 @@ class AccountDetailViewModel: NSObject, ObservableObject {
         self.settings = settings
         self.userAccountPublisher = userAccountPublisher
         self.drmAuthorizerProvider = drmAuthorizerProvider
+        self.credentialSnapshotProvider = credentialSnapshotProvider ?? { [accountsManager] id in
+            accountsManager.userAccount(for: id).credentialSnapshot()
+        }
         self.businessLogic = TPPSignInBusinessLogic(
             libraryAccountID: libraryAccountID,
             libraryAccountsProvider: accountsManager,
@@ -147,7 +157,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
             drmAuthorizer: nil
         )
 
-        let snapshot = accountsManager.userAccount(for: libraryAccountID).credentialSnapshot()
+        let snapshot = self.credentialSnapshotProvider(libraryAccountID)
         self.isSignedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
 
         super.init()
@@ -568,7 +578,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     }
 
     private func accountDidChange() {
-        let snapshot = accountsManager.userAccount(for: libraryAccountID).credentialSnapshot()
+        let snapshot = credentialSnapshotProvider(libraryAccountID)
 
         let newSignedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
 
@@ -599,7 +609,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     func refreshSignInState() {
         let wasSignedIn = isSignedIn
 
-        let snapshot = accountsManager.userAccount(for: libraryAccountID).credentialSnapshot()
+        let snapshot = credentialSnapshotProvider(libraryAccountID)
         isSignedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
 
         if wasSignedIn != isSignedIn {
