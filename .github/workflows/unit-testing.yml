@@ -550,7 +550,7 @@ jobs:
           
       - name: Upload Test Report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-report
           path: test-report/
@@ -559,7 +559,7 @@ jobs:
           
       - name: Upload Test Data JSON
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-data
           path: |
@@ -570,7 +570,7 @@ jobs:
           
       - name: Upload Snapshot Failures
         if: steps.snapshots.outputs.found == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: snapshot-failures
           path: snapshot-failures/
@@ -579,7 +579,7 @@ jobs:
           
       - name: Upload Test Results
         if: steps.find_results.outputs.found == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-results
           path: ${{ steps.find_results.outputs.path }}
