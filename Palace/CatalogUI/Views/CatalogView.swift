@@ -156,6 +156,15 @@ private extension CatalogView {
 
     @ViewBuilder
     private var catalogStateView: some View {
+        // Debug skeleton verification (PP-4797): force the initial-load skeleton
+        // regardless of the feed state machine so it can be inspected on the sim
+        // in both appearances. No-op in release (DebugSettings.forceSkeletons is
+        // a compile-time `false`).
+        if DebugSettings.forceSkeletons {
+            skeletonList
+                .accessibilityIdentifier(AccessibilityID.Catalog.loadingIndicator)
+                .transition(.opacity)
+        } else {
         switch viewModel.state {
         case .loading:
             skeletonList
@@ -201,6 +210,7 @@ private extension CatalogView {
                 },
                 onRefresh: { await viewModel.refresh() }
             )
+        }
         }
     }
 

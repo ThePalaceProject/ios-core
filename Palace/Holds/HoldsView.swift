@@ -119,7 +119,7 @@ struct HoldsView: View {
     @ViewBuilder
     private var content: some View {
         GeometryReader { geometry in
-            if model.isLoading {
+            if model.isLoading || DebugSettings.forceSkeletons {
                 BookListSkeletonView(rows: 10)
                     .accessibilityIdentifier(AccessibilityID.Holds.loadingIndicator)
             } else if model.visibleBooks.isEmpty {

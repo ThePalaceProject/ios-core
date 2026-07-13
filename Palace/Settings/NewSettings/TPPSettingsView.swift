@@ -113,7 +113,7 @@ struct TPPSettingsView: View {
             // skeleton for the MY LIBRARIES section instead of a blank list
             // that pops in. Cross-fades to the real section via the shared
             // gentle motion (Reduce Motion drops the animation).
-            if librariesVM.isLoading {
+            if librariesVM.isLoading || DebugSettings.forceSkeletons {
                 SettingsLibrariesSkeletonView()
                     .transition(.opacity)
             } else {

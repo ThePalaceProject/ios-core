@@ -24,6 +24,34 @@ final class DebugSettings: @unchecked Sendable {
 
     private let defaults = UserDefaults.standard
 
+    // MARK: - Skeleton Verification (QA / dev only)
+
+    /// Forces every first-load skeleton gate ON so the transient loading
+    /// placeholders — normally visible for only a few hundred ms during
+    /// hydration — can be inspected on the simulator in both light and dark
+    /// appearance. Set via a launch argument (`-PalaceForceSkeletons YES`) or
+    ///
+    ///     xcrun simctl spawn <udid> defaults write \
+    ///       org.thepalaceproject.palace PalaceForceSkeletons -bool true
+    ///
+    /// then relaunch. DEBUG-only: the release build returns the constant `false`
+    /// so production render paths are byte-identical (no UserDefaults read, and
+    /// the `#if DEBUG` lives here — call sites stay clean).
+    static var forceSkeletons: Bool {
+        forceSkeletons(in: .standard)
+    }
+
+    /// Testable seam — reads the override from an injectable defaults store so
+    /// the flag can be exercised without touching `UserDefaults.standard`. In
+    /// release the override is ignored and this is a compile-time `false`.
+    static func forceSkeletons(in defaults: UserDefaults) -> Bool {
+        #if DEBUG
+        return defaults.bool(forKey: "PalaceForceSkeletons")
+        #else
+        return false
+        #endif
+    }
+
     // MARK: - Keys
 
     private enum Keys {

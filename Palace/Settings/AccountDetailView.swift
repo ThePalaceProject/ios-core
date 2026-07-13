@@ -62,7 +62,7 @@ struct AccountDetailView: View {
 
     @ViewBuilder
     private var contentView: some View {
-        if viewModel.isLoadingAuth {
+        if viewModel.isLoadingAuth || DebugSettings.forceSkeletons {
             AccountDetailSkeletonView()
         } else {
             mainContent
