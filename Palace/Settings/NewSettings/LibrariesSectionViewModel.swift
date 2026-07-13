@@ -22,6 +22,14 @@ protocol LibrariesSectionEnvironment {
     func lookupAccount(_ uuid: String) -> Account?
     func persistAccountIds(_ ids: [String])
     func deleteToken(for account: Account)
+    /// Whether the full library catalog has materialized. During the brief
+    /// launch-hydration window (`false`) the persisted-account lookup can
+    /// resolve to an empty list even though the user HAS configured libraries
+    /// — the full `AccountsManager` account set simply hasn't loaded yet. The
+    /// view model uses this to distinguish "genuinely no libraries" from
+    /// "libraries not loaded yet" so the Settings screen shows a skeleton
+    /// during hydration instead of a blank list that then pops in.
+    func accountsHaveLoaded() -> Bool
     /// Switches the active library to `account`. Mirrors
     /// `MyBooksViewModel.updateFeed` — adds to the persisted accounts list,
     /// updates the main-feed URL, assigns `accountsManager.currentAccount`,
@@ -39,6 +47,13 @@ final class LibrariesSectionViewModel: ObservableObject {
     @Published private(set) var accounts: [Account] = []
     @Published private(set) var currentAccountUUID: String?
     @Published private(set) var isSwitching: Bool = false
+    /// True while the library list is in the launch-hydration window: no
+    /// accounts have resolved yet AND the full catalog hasn't finished
+    /// loading. Drives the Settings skeleton so the MY LIBRARIES section shows
+    /// placeholder rows instead of a blank list that pops in when hydration
+    /// completes. Once a library resolves (or the catalog reports loaded) this
+    /// flips false and stays false.
+    @Published private(set) var isLoading: Bool = false
     @Published var showAddLibrarySheet: Bool = false
 
     /// Upper bound on how long the loading overlay parks the user — picked
@@ -98,11 +113,28 @@ final class LibrariesSectionViewModel: ObservableObject {
 
         accounts = (current.map { [$0] } ?? []) + others
         currentAccountUUID = currentUUID
+        isLoading = LibrariesSectionViewModel.shouldShowSkeleton(
+            resolvedAccountCount: resolved.count,
+            accountsHaveLoaded: environment.accountsHaveLoaded()
+        )
 
         let resolvedIds = resolved.map { $0.uuid }
         if resolvedIds.count != persisted.count {
             environment.persistAccountIds(resolvedIds)
         }
+    }
+
+    /// Pure decision: show the MY LIBRARIES skeleton only during the
+    /// launch-hydration window — when NO library has resolved yet AND the full
+    /// catalog is still loading. Once any account resolves, or the catalog
+    /// reports loaded (even with zero libraries — a genuinely empty
+    /// configuration), the real (possibly empty) section shows instead of a
+    /// perpetual skeleton.
+    ///
+    /// Kept static + primitive-typed so it is unit-testable without the view,
+    /// the environment, or a SwiftUI host.
+    static func shouldShowSkeleton(resolvedAccountCount: Int, accountsHaveLoaded: Bool) -> Bool {
+        resolvedAccountCount == 0 && !accountsHaveLoaded
     }
 
     /// Sets `account` as the active library. No-ops when it already is.
@@ -200,6 +232,10 @@ struct ProductionLibrariesSectionEnvironment: LibrariesSectionEnvironment {
 
     func deleteToken(for account: Account) {
         tokenDeleter(account)
+    }
+
+    func accountsHaveLoaded() -> Bool {
+        accountsManager.accountsHaveLoaded
     }
 
     func switchToAccount(_ account: Account, completion: @escaping () -> Void) {

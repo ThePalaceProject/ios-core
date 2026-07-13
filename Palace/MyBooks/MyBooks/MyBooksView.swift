@@ -28,7 +28,7 @@ struct MyBooksView: View {
 
     var body: some View {
         ZStack {
-            if model.isLoading {
+            if model.isLoading || DebugSettings.forceSkeletons {
                 BookListSkeletonView(rows: 10)
                     .transition(.opacity)
             } else {

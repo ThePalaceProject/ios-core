@@ -108,7 +108,18 @@ struct TPPSettingsView: View {
 
     @ViewBuilder private var listView: some View {
         List {
-            librariesSection
+            // During the launch-hydration window the persisted-account lookup
+            // can resolve empty before the full catalog materializes; show a
+            // skeleton for the MY LIBRARIES section instead of a blank list
+            // that pops in. Cross-fades to the real section via the shared
+            // gentle motion (Reduce Motion drops the animation).
+            if librariesVM.isLoading || DebugSettings.forceSkeletons {
+                SettingsLibrariesSkeletonView()
+                    .transition(.opacity)
+            } else {
+                librariesSection
+                    .transition(.opacity)
+            }
             downloadsSection
             supportSection
             advancedSection
@@ -118,6 +129,7 @@ struct TPPSettingsView: View {
         }
         .navigationBarTitle(DisplayStrings.settings)
         .listStyle(GroupedListStyle())
+        .accessibleAnimation(PalaceMotion.gentle, value: librariesVM.isLoading)
         .onAppear {
             librariesVM.refresh()
         }
