@@ -32,7 +32,7 @@ jobs:
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
           
       - name: Cache Swift packages
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             .build
@@ -43,7 +43,7 @@ jobs:
             ${{ runner.os }}-spm-
             
       - name: Cache Xcode DerivedData
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/Library/Developer/Xcode/DerivedData
           # Key on the branch name + run number so each run has a unique key
@@ -58,7 +58,7 @@ jobs:
             ${{ runner.os }}-deriveddata-
             
       - name: Cache Test History
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .test-history
           key: test-history-${{ github.head_ref || github.ref_name }}-${{ github.run_number }}

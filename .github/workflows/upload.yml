@@ -95,7 +95,7 @@ jobs:
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
 
       - name: Cache Swift Package Manager
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/Library/Caches/org.swift.swiftpm
@@ -106,7 +106,7 @@ jobs:
             spm-${{ runner.os }}-macos-26-
 
       - name: Cache DerivedData
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/Library/Developer/Xcode/DerivedData
           key: deriveddata-upload-${{ runner.os }}-macos-26-${{ hashFiles('**/*.swift', '**/*.m', '**/*.h', '**/project.pbxproj') }}
