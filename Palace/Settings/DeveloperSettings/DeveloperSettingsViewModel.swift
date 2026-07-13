@@ -158,8 +158,8 @@ final class DeveloperSettingsViewModel: ObservableObject {
     /// Engineering tools render in DEBUG, simulator, and TestFlight, but are
     /// hidden from production App Store users. Pure, testable core — identical
     /// to `TPPDeveloperSettingsTableViewController.shouldShowEngineeringTools`.
-    static func shouldShowEngineeringTools(receiptURL: URL?,
-                                           fileExists: (String) -> Bool) -> Bool {
+    nonisolated static func shouldShowEngineeringTools(receiptURL: URL?,
+                                                       fileExists: (String) -> Bool) -> Bool {
         guard let receiptURL else { return true }
         if receiptURL.lastPathComponent == "sandboxReceipt" { return true }
         let isProductionAppStore = receiptURL.lastPathComponent == "receipt"
