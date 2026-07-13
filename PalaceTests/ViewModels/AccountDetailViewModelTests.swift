@@ -1169,3 +1169,197 @@ final class AccountDetailSignOutConfirmationTests: XCTestCase {
                        "Cancel action title must be the localized Cancel string")
     }
 }
+
+// MARK: - Signed-in derivation + off-main observer safety
+
+/// Mutable holder so a test can change the credential snapshot the view model
+/// reads BETWEEN steps (the injected `credentialSnapshotProvider` closure reads
+/// `snapshot` each time `accountDidChange()` runs). Touched only on the main
+/// actor, matching the view model's isolation.
+private final class SnapshotBox {
+    var snapshot: TPPUserAccount.CredentialSnapshot
+    init(_ snapshot: TPPUserAccount.CredentialSnapshot) { self.snapshot = snapshot }
+}
+
+/// Covers the two gaps #1222 left open:
+///  1. Regression-locks the off-main fix: every test posts
+///     `.TPPUserAccountDidChange` from a BACKGROUND queue — the production path
+///     (token-refresh → `TPPUserAccount.notifyAccountDidChange` posts off-main).
+///     `setupObservers()`'s `@MainActor` sink must hop to main via
+///     `.receive(on: RunLoop.main)`; remove that hop and the sink is entered
+///     off-main → Swift 6 `dispatch_assert_queue` trap → these tests die.
+///  2. Makes `accountDidChange()`'s signed-in derivation
+///     (`hasCredentials && authState != .loggedOut`, barcode/pin population)
+///     mutation-testable by injecting the credential snapshot instead of reading
+///     the keychain.
+@MainActor
+final class AccountDetailViewModelSignedInDerivationTests: XCTestCase {
+
+    private var cancellables: Set<AnyCancellable> = []
+
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        // Constructing the view model still spins up the real business-logic /
+        // network graph via `.production()`, which can round-trip TPPKeychain.
+        // Skip on CI hosts where SecItem returns -34018 (no entitlement) — same
+        // gate the sibling classes use. The injected snapshot means these tests
+        // are deterministic wherever they DO run (notably local mutation runs,
+        // which are where kill-rate is measured — mutation is local-only).
+        try KeychainAvailability.skipIfUnavailable()
+    }
+
+    override func tearDown() {
+        cancellables.removeAll()
+        super.tearDown()
+    }
+
+    // MARK: Helpers
+
+    private func makeSnapshot(
+        hasCredentials: Bool,
+        authState: TPPAccountAuthState,
+        barcode: String? = nil,
+        pin: String? = nil
+    ) -> TPPUserAccount.CredentialSnapshot {
+        TPPUserAccount.CredentialSnapshot(
+            hasCredentials: hasCredentials,
+            hasAuthToken: false,
+            authState: authState,
+            barcode: barcode,
+            pin: pin,
+            authToken: nil,
+            authDefinition: nil,
+            cookies: nil
+        )
+    }
+
+    private func makeViewModel(box: SnapshotBox) throws -> AccountDetailViewModel {
+        let container = AppContainer.production()
+        guard let libraryID = container.accountsManager.currentAccountId else {
+            throw XCTSkip("No current account available for testing")
+        }
+        return AccountDetailViewModel(
+            libraryAccountID: libraryID,
+            accountsManager: container.accountsManager,
+            bookRegistry: container.bookRegistry,
+            downloadCenter: container.downloadCenter,
+            settings: container.settings,
+            userAccountPublisher: container.userAccountPublisher,
+            drmAuthorizerProvider: container.drmAuthorizerProvider,
+            credentialSnapshotProvider: { _ in box.snapshot }
+        )
+    }
+
+    /// Let the init-time `loadInitialData()` / `accountDidChange()` work settle so
+    /// the subsequent `dropFirst()` observation only sees OUR triggered change.
+    private func settle() async {
+        for _ in 0..<3 { await Task.yield() }
+        try? await Task.sleep(nanoseconds: 50_000_000)
+    }
+
+    /// Posts `.TPPUserAccountDidChange` from a background queue (production shape)
+    /// and waits for `isSignedIn` to reach `expected`. If `setupObservers()` were
+    /// to lose its main-actor hop, entering the `@MainActor` sink off-main would
+    /// trap here rather than fulfill.
+    private func postAccountChangeOffMainAndAwaitSignedIn(
+        _ vm: AccountDetailViewModel,
+        expected: Bool
+    ) async {
+        let reached = expectation(description: "isSignedIn == \(expected)")
+        vm.$isSignedIn
+            .dropFirst()
+            .sink { if $0 == expected { reached.fulfill() } }
+            .store(in: &cancellables)
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            NotificationCenter.default.post(name: .TPPUserAccountDidChange, object: nil)
+        }
+        await fulfillment(of: [reached], timeout: 3.0)
+    }
+
+    // MARK: Tests
+
+    func testOffMainAccountChange_withValidCredentials_signsInAndPopulatesBarcodeAndPin() async throws {
+        let box = SnapshotBox(makeSnapshot(hasCredentials: false, authState: .loggedOut))
+        let vm = try makeViewModel(box: box)
+        await settle()
+        XCTAssertFalse(vm.isSignedIn, "precondition: starts signed out")
+
+        box.snapshot = makeSnapshot(hasCredentials: true, authState: .loggedIn,
+                                    barcode: "BC-42", pin: "1111")
+        await postAccountChangeOffMainAndAwaitSignedIn(vm, expected: true)
+
+        XCTAssertTrue(vm.isSignedIn,
+                      "credentials present + authState != loggedOut must be signed-in")
+        XCTAssertEqual(vm.usernameText, "BC-42", "barcode from the snapshot must populate usernameText")
+        XCTAssertEqual(vm.pinText, "1111", "pin from the snapshot must populate pinText")
+    }
+
+    func testOffMainAccountChange_credentialsPresentButLoggedOut_isNotSignedInAndClearsFields() async throws {
+        let box = SnapshotBox(makeSnapshot(hasCredentials: true, authState: .loggedIn,
+                                           barcode: "OLD", pin: "OLD"))
+        let vm = try makeViewModel(box: box)
+        await settle()
+        XCTAssertTrue(vm.isSignedIn, "precondition: starts signed in")
+
+        // hasCredentials stays true, but authState becomes loggedOut. This pins
+        // the `authState != .loggedOut` half of the derivation: flip `!=` to `==`
+        // and this book would read as signed-in → assertion fails → mutant killed.
+        box.snapshot = makeSnapshot(hasCredentials: true, authState: .loggedOut)
+        await postAccountChangeOffMainAndAwaitSignedIn(vm, expected: false)
+
+        XCTAssertFalse(vm.isSignedIn,
+                       "loggedOut must not be signed-in even when credentials are still present")
+        XCTAssertEqual(vm.usernameText, "", "signed-out state must clear usernameText")
+        XCTAssertEqual(vm.pinText, "", "signed-out state must clear pinText")
+    }
+
+    func testOffMainAccountChange_noCredentials_isNotSignedIn() async throws {
+        let box = SnapshotBox(makeSnapshot(hasCredentials: true, authState: .loggedIn,
+                                           barcode: "X", pin: "Y"))
+        let vm = try makeViewModel(box: box)
+        await settle()
+        XCTAssertTrue(vm.isSignedIn, "precondition: starts signed in")
+
+        // Pins the `hasCredentials &&` half: no credentials → signed-out
+        // regardless of authState. Flip `&&` to `||` and loggedIn alone would
+        // read as signed-in → assertion fails → mutant killed.
+        box.snapshot = makeSnapshot(hasCredentials: false, authState: .loggedIn)
+        await postAccountChangeOffMainAndAwaitSignedIn(vm, expected: false)
+
+        XCTAssertFalse(vm.isSignedIn, "no credentials must never be signed-in")
+    }
+
+    func testOffMainAccountChange_credentialsStale_remainsSignedIn() async throws {
+        let box = SnapshotBox(makeSnapshot(hasCredentials: false, authState: .loggedOut))
+        let vm = try makeViewModel(box: box)
+        await settle()
+
+        // credentialsStale is "has credentials, session expired" — NOT loggedOut,
+        // so the account still reads as signed-in (token refreshes in background).
+        // Pins the boundary that only `.loggedOut` is signed-out.
+        box.snapshot = makeSnapshot(hasCredentials: true, authState: .credentialsStale,
+                                    barcode: "S", pin: "P")
+        await postAccountChangeOffMainAndAwaitSignedIn(vm, expected: true)
+
+        XCTAssertTrue(vm.isSignedIn,
+                      "credentialsStale (has creds, not loggedOut) must remain signed-in")
+    }
+
+    func testOffMainAccountChange_signedInWithNilBarcodeAndPin_fieldsFallThroughToEmpty() async throws {
+        let box = SnapshotBox(makeSnapshot(hasCredentials: false, authState: .loggedOut))
+        let vm = try makeViewModel(box: box)
+        await settle()
+
+        // Signed-in but the snapshot carries nil barcode/pin (token-only auth).
+        // Pins the `snapshot.barcode ?? ""` / `snapshot.pin ?? ""` fallthrough:
+        // mutate either default (e.g. `?? "x"`) and these fields would no longer
+        // be empty → assertion fails → mutant killed.
+        box.snapshot = makeSnapshot(hasCredentials: true, authState: .loggedIn, barcode: nil, pin: nil)
+        await postAccountChangeOffMainAndAwaitSignedIn(vm, expected: true)
+
+        XCTAssertTrue(vm.isSignedIn)
+        XCTAssertEqual(vm.usernameText, "", "nil barcode must fall through to empty string")
+        XCTAssertEqual(vm.pinText, "", "nil pin must fall through to empty string")
+    }
+}
