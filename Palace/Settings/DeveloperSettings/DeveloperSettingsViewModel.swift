@@ -238,10 +238,21 @@ final class DeveloperSettingsViewModel: ObservableObject {
     /// Clears all app-rating engagement state, then confirms. Verbatim from the
     /// `.featureFlags` row-3 tap handler.
     func resetRatingState(from presenter: UIViewController) {
-        AppContainer.production().appRatingService.resetEngagementState()
-        let confirm = TPPAlertUtils.alert(title: "Rating State Reset",
-                                          message: "All app-rating engagement signals have been cleared.")
-        TPPAlertUtils.presentFromViewControllerOrNil(alertController: confirm, viewController: presenter, animated: true, completion: nil)
+        // PP-4788: destructive action → confirm before acting (all destructive
+        // actions prompt, even engineering-only ones).
+        let alert = UIAlertController(
+            title: "Reset Rating State?",
+            message: "Clears all app-rating engagement signals on this device (prompt-eligibility counters and history).",
+            preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "Reset", style: .destructive) { [weak presenter] _ in
+            AppContainer.production().appRatingService.resetEngagementState()
+            guard let presenter else { return }
+            let done = TPPAlertUtils.alert(title: "Rating State Reset",
+                                           message: "All app-rating engagement signals have been cleared.")
+            TPPAlertUtils.presentFromViewControllerOrNil(alertController: done, viewController: presenter, animated: true, completion: nil)
+        })
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        presenter.present(alert, animated: true, completion: nil)
     }
 
     // MARK: - Library Registry Debugging actions
