@@ -292,7 +292,9 @@ Per `.forgeos/wall-failures/` (lessons from PR #1018 reviewer-blocked findings +
 
 11. **Test-pairing check (superpartner spectrum)** — for ANY commit, run `python3 scripts/check-superpartner-spectrum.py --quiet`. Flags new functions, enum cases, and state changes that have no matching test in the diff. Add a test that references the item, or mark it intentional with `// no-superpartner: <reason>`. Warn-only for now (promotion path in `docs/architecture/superpartner-spectrum.md`); high-severity findings are on critical paths and should be cleared, not ignored. This is the fast "is there a test at all?" floor — mutation testing (`palace_mutate.py`, check #5) remains the proof that the test catches bugs. Paste exit code.
 
-If you cannot produce evidence for all 11 checks applicable to your change, do NOT report READY. Either complete the missing check OR explicitly STOP with a scope-deferral proposal (below) so the user can decide.
+12. **simdrive AC-verification (UI stories — MANDATORY when the ACs are visual)** — for any story whose acceptance criteria describe something a patron *sees or taps* (a new/changed screen, row, dialog, sheet, button, state, copy, or navigation), the ACs are NOT verified until they are verified **on a sim**. Unit tests prove the decision logic; they do not prove the pixels. Build the branch, install on a booted sim, and drive the changed surface with simdrive to **each** state the ACs describe — the new state **and** the unchanged (no-regression) states — reading the rendered screenshots (not just OCR) in BOTH light and dark; for accessibility ACs, confirm the trait/label (e.g. `.isLink` present/absent, VoiceOver static-text vs button) via the a11y tree. Paste the observation (screenshot refs + per-AC pass/fail) on the PR and ticket. If an AC state needs data a live catalog won't reliably produce (e.g. PP-4775's "series name but no series URL"), add a controlled fixture / debug toggle so the state is reachable — an un-reachable state is an un-verifiable AC, which is a DoD gap, not a pass. Pure-logic / infra / non-visual changes are exempt. Full protocol: the simdrive section's "simdrive AC-verification for UI stories" standing practice.
+
+If you cannot produce evidence for all 12 checks applicable to your change, do NOT report READY. Either complete the missing check OR explicitly STOP with a scope-deferral proposal (below) so the user can decide.
 
 ## Scope-deferral protocol — STOP, do not partial-ship
 
@@ -445,6 +447,39 @@ entry, add a substring to `.forgeos/committed-signing-allowlist.txt` with a reas
 **Why:** simdrive uses real CoreSimulator HID input + a vision-first OCR loop; it sees pixels, not the XCTest accessibility tree. This unblocks Reader2 (Readium 3.x WKWebView is invisible to XCTest), iOS-26 UITextField focus, OAuth/SAML out-of-process Safari sheets, and OS-level alerts — all places SpecterQA failed silently or required workarounds.
 
 **MCP server:** `simdrive` (Python pkg). Surface: `session_start`, `session_end`, `session_status`, `observe`, `tap`, `swipe`, `type_text`, `press_key`, `record_start`, `record_stop`, `replay`, `logs`.
+
+### simdrive AC-verification for UI stories — MANDATORY, automatic
+
+Distinct from the *chaos* pass below (which hunts for NEW bugs), every
+**user-facing UI story** — one whose acceptance criteria describe something a
+patron sees or taps — gets a **simdrive AC-verification pass before the PR is
+marked done**. Not optional, not size-gated: if the ACs are visual, the proof
+must be visual, on a sim. This is DoD check #12. Unit tests prove the decision
+logic; simdrive proves the pixels the patron actually gets.
+
+The pass:
+1. Build the branch, install on a booted sim.
+2. Drive the changed surface with simdrive to **each** state the ACs describe —
+   the new state AND the unchanged (no-regression) states.
+3. **Read the rendered screenshots** (not just OCR marks) in BOTH light and dark
+   appearance; for accessibility ACs, confirm the trait/label (`.isLink`,
+   VoiceOver static-text vs button, etc.) via the a11y tree.
+4. Record the observation — screenshot refs + a per-AC pass/fail line — on the
+   PR and the ticket.
+
+**Fixture requirement.** If an AC state depends on data a live catalog won't
+reliably produce (e.g. PP-4775's "series name present but no series URL" →
+plain-text state), add a controlled fixture / debug toggle so the state is
+reachable deterministically, and record it under `.simdrive/fixtures/flows/`.
+An AC state you cannot reach on the sim is an AC you cannot verify — treat it as
+a DoD gap, not a pass.
+
+**Build note.** The shared checkout's `ios-audiobooktoolkit` submodule can drift
+to a non-`develop` commit (a persistent `M ios-audiobooktoolkit` dirty pointer).
+Run `git submodule update --init ios-audiobooktoolkit` to sync it to the
+branch-pinned commit BEFORE building, or the app fails to compile against
+`AudiobookPlaybackModel` / `AudiobookSessionPresenter` with spurious
+"inaccessible / no member" errors that have nothing to do with your change.
 
 ### Local chaos pass for risk-bearing UI changes — standing practice
 
