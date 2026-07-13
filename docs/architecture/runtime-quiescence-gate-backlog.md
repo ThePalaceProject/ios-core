@@ -128,3 +128,130 @@ property made explicit.
 
 ## Sequencing
 Per Chairman: ship M0 (defer-flag gate + iters-3-green) first. Then this backlog, top-down: Deliverable A (pool-responsiveness probe — the durable structural win that turns silent hangs into attributed failures), then Deliverable B per victim as needed, alongside the keychain-hermetic (w-lane) and alert-hermetic (w-mutex) class fixes. All build ON the shipped `RuntimeQuiescenceAuditor` / `PalaceTestCase` substrate — one hierarchy, one auditor, N invariants.
+
+---
+
+## Deliverable A — IMPLEMENTATION STATUS (WI-5, 2026-07-13)
+
+**Status: AUTHORED, NOT VALIDATED.** The change was written in the
+`audiobook-dismiss` worktree, which cannot build the app (missing Carthage
+binaries + uninitialized submodule per the "fresh worktree lacks frameworks"
+memory), so the Palace suite was NOT run. Compile-correctness was established by
+inspection only. The validation commands the maintainer must run on a build
+machine are below.
+
+### What was already present (prior WS-0 waves), reused verbatim
+- `RuntimeQuiescenceAuditor.poolResponsivenessViolations(probeCompleted:)` — the
+  PURE detector (`false` → one violation naming the cooperative pool + the
+  remediation; `true` → empty).
+- `PalaceSingletonResetObserver.measureCooperativePoolProbe(budget:)` — the LIVE
+  probe (schedules a `.high` detached `Task`, waits for it on the MAIN thread via
+  `XCTWaiter().wait` so a free pool thread can still run it; returns
+  `(completed, latencyMs)`).
+- The process-wide WARN-only `[WS0-POOL-DIAG]` breadcrumb in the observer's
+  `testCaseDidFinish` (covers every test; never fails).
+- Probe self-tests in `RuntimeQuiescenceGateTests` (pure both-directions; clean
+  pool completes fast; saturated pool RED-first with full drain-on-teardown).
+
+### What this WI added — the missing GATE layer (turns the probe into attribution)
+- **`PalaceTestCase.assertRuntimeResponsive(budget:probe:file:line:)`** — the
+  opt-in per-test HARD gate. Runs the sleep-free `drainMainQueue`, then the
+  cooperative-pool probe, then routes the result through the pure detector and
+  `XCTFail`s each violation *inside the finishing test's own tearDown* — so a
+  silent downstream hang becomes an attributed upstream failure. `budget`
+  defaults to 5s (a hung pool is indefinite; legit background work finishes
+  <1s). Takes an injectable `probe` seam for the self-test. `@discardableResult`
+  returns the violations so tests can assert message shape.
+- **`PalaceTestCase.assertRuntimeResponsiveAsync(...)`** — `@MainActor async`
+  sibling for async test bodies / async teardown (the sync main-blocking wait
+  deadlocks under `@MainActor async`). Uses a detached probe + a bounded poll
+  whose `Task.sleep` resumes on MAIN (so the poll can't be starved by the pool it
+  measures) via a lock-guarded `PoolProbeFlag`.
+- **`PalaceTestCase.enforcesPoolResponsiveness: Bool { false }`** — the opt-in
+  switch. `tearDownWithError` runs the hard gate ONLY when a subclass overrides
+  this to `true`. **Off-by-default** on purpose: the wall-clock probe is not
+  promoted to a suite-wide hard gate before a zero-false-positive audit (the
+  "start warn-only, then promote" discipline the ADR mandates). No existing class
+  was flipped to `true` — the suite behaviour is unchanged; only the mechanism +
+  its unit coverage were added.
+- **`PalaceTests/MetaTests/PoolResponsivenessProbeTests.swift`** — dedicated
+  self-tests of the GATE layer, both directions via the injected stub
+  (saturated stub → attributed failure asserted under `XCTExpectFailure`; healthy
+  stub → no failure), plus a real-default-probe-on-clean-pool test (kills the
+  constant-`false` mutation the stub tests can't), an async clean-pool test, and
+  an off-by-default invariant test (kills a base-default flip to `true`).
+  Registered into the `PalaceTests` target via `scripts/pbxproj_add_swift.rb`.
+
+### Probe mechanism (precise)
+- **Resource probed:** the Swift cooperative thread pool (global concurrent
+  executor) + the main dispatch queue.
+- **Deadline:** `budget`, default **5.0 s** (drain and probe share it).
+- **Assertion:** (1) `DispatchQueue.main` flushes a FIFO no-op within budget;
+  (2) a `.high`-priority detached `Task` gets scheduled and runs within budget
+  while the *main* thread blocks on it (sync path) or suspends awaiting it (async
+  path). A timeout on (2) ⇒ the pool is saturated by leaked blocking/un-drained
+  Tasks ⇒ one `Violation` ⇒ `XCTFail` in the finishing test's tearDown.
+- **Attribution:** because the `XCTFail` is raised in `tearDownWithError` of the
+  *finishing* test (not from a global observer, which is empirically inert, and
+  not from a trailing "final" class, which randomized order defeats), the red
+  lands on the test whose boundary FIRST saw the pool saturated. Under gradual
+  accumulation that narrows the suspect window (often the last big leaker); pair
+  with Deliverable B to name the exact culprit.
+
+### Validation commands the MAINTAINER must run (on a build machine)
+```bash
+# 0. From a checkout that CAN build (frameworks present), land these 3 files:
+#    PalaceTests/Support/PalaceTestCase.swift
+#    PalaceTests/MetaTests/PoolResponsivenessProbeTests.swift
+#    Palace.xcodeproj/project.pbxproj   (PalaceTests target membership)
+
+# 1. Build both targets (DRM + noDRM) — compile-correctness of the new seam:
+xcodebuild -project Palace.xcodeproj -scheme Palace \
+  -destination 'platform=iOS Simulator,name=iPhone 16 Pro' build
+xcodebuild -project Palace.xcodeproj -scheme Palace-noDRM \
+  -destination 'platform=iOS Simulator,name=iPhone 16 Pro' build
+
+# 2. Spot-check the new gate's own unit tests (fast RED->GREEN proof):
+xcodebuild -project Palace.xcodeproj -scheme Palace \
+  -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
+  -only-testing:PalaceTests/PoolResponsivenessProbeTests \
+  -only-testing:PalaceTests/RuntimeQuiescenceGateTests test
+#    Expect: PoolResponsivenessProbeTests green (the saturated-stub case records
+#    an EXPECTED failure via XCTExpectFailure — that is a PASS, not a red).
+
+# 3. FULL CI-parity suite (this is the real validation — never a -only-testing subset):
+scripts/xcode-test-optimized.sh
+#    Confirm it ends '** TEST SUCCEEDED **' with NO 'exceeded execution time
+#    allowance' / 'Restarting after ... test timeout' lines. Because the gate is
+#    OFF by default, this run must stay GREEN and identical to pre-change
+#    behaviour — the mechanism is inert until a class opts in.
+
+# 4. (Optional) Prove attribution end-to-end: temporarily add
+#    `override var enforcesPoolResponsiveness: Bool { true }` to a class that
+#    leaks a blocking Task in a predecessor, run the full suite at iters-1, and
+#    confirm the red lands in THAT class's tearDown with the
+#    'cooperative pool at rest' message — instead of a silent 120s hang in a
+#    random async victim. Revert the override before shipping.
+```
+
+### Honesty statement
+**AUTHORED — NOT VALIDATED (worktree can't build).** No `xcodebuild` was run; the
+Palace suite was not executed. Compile-correctness rests on inspection
+(imports, `@MainActor`/isolation, `XCTest` overrides, the injectable-probe seam,
+Sendable capture of the lock-guarded flag). The RED→GREEN wiring proof for the
+gate is encoded in `PoolResponsivenessProbeTests` but has NOT been observed
+green — step 2/3 above is where that becomes evidence.
+
+### What remains for the invest track
+- **Validate this deliverable** (steps 1–3 above) before relying on it.
+- **Deliverable B — seed-replay bisection** (this doc, above): the ordered-prefix
+  `--bisect` reproduction that NAMES an accumulation leaker. `assertRuntimeResponsive`
+  narrows the window; Deliverable B closes it. Not started.
+- **Promotion path:** once an FP audit confirms zero false positives, opt more
+  critical-path async classes into `enforcesPoolResponsiveness = true`, then
+  consider flipping the base default (guarded by the off-by-default unit test,
+  which will then need inverting).
+- **Revive the parked greenboard-enforcement-deferred gate** at tag
+  `greenboard-enforcement-deferred` / commit `041ef99b0` — the systemic
+  test-pollution enforcement that was deferred (see the `test-pollution-systemic`
+  handoff memo) is the umbrella this probe feeds into.
