@@ -17,6 +17,30 @@ struct BookLane {
 
 @MainActor
 final class BookDetailViewModel: ObservableObject {
+
+    // MARK: - Series row display (PP-4775)
+
+    /// Three-way decision for the Book Detail SERIES row, derived purely from a
+    /// book's series metadata.
+    /// - `.link`: series name + a series-search URL (other books in the catalog)
+    ///   → tappable NavigationLink (the PP-4463 behavior).
+    /// - `.plainText`: series name known but NO series-search URL (no other books
+    ///   in the catalog) → static, non-tappable text (PP-4775).
+    /// - `.hidden`: no series name → no row.
+    enum SeriesRowDisplay: Equatable {
+        case hidden
+        case plainText(name: String)
+        case link(name: String, url: URL)
+    }
+
+    /// Pure mapping from series metadata to the row's display state. `nonisolated`
+    /// + `static` so it is unit-testable without the `@MainActor` view-model graph.
+    nonisolated static func seriesRowDisplay(name: String?, url: URL?) -> SeriesRowDisplay {
+        guard let name, !name.isEmpty else { return .hidden }
+        if let url { return .link(name: name, url: url) }
+        return .plainText(name: name)
+    }
+
     // MARK: - Constants
     private let kTimerInterval: TimeInterval = 3.0
 

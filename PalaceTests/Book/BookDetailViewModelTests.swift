@@ -1642,4 +1642,35 @@ final class BookDetailViewModelTests: XCTestCase {
                        "downloadFailed state and locked the user out).")
     }
 
+    // MARK: - PP-4775: series row display decision
+
+    func testSeriesRowDisplay_nameAndURL_isLink() {
+        let url = URL(string: "https://example.com/series/dune")!
+        XCTAssertEqual(
+            BookDetailViewModel.seriesRowDisplay(name: "Dune", url: url),
+            .link(name: "Dune", url: url),
+            "A series name WITH a series-search URL (other books in the catalog) must render as a link")
+    }
+
+    func testSeriesRowDisplay_nameWithoutURL_isPlainText() {
+        XCTAssertEqual(
+            BookDetailViewModel.seriesRowDisplay(name: "Dune", url: nil),
+            .plainText(name: "Dune"),
+            "A series name with NO series URL (no other books in the catalog) must render as plain text, not a link")
+    }
+
+    func testSeriesRowDisplay_nilName_isHidden() {
+        XCTAssertEqual(
+            BookDetailViewModel.seriesRowDisplay(name: nil, url: URL(string: "https://example.com/s")!),
+            .hidden,
+            "No series name must render no row, even when a series URL is present")
+    }
+
+    func testSeriesRowDisplay_emptyName_isHidden() {
+        XCTAssertEqual(
+            BookDetailViewModel.seriesRowDisplay(name: "", url: nil),
+            .hidden,
+            "An empty series name must render no row")
+    }
+
 }

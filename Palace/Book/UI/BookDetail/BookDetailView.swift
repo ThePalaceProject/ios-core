@@ -631,16 +631,22 @@ struct BookDetailView: View {
             .lineLimit(1)
     }
 
-    /// PP-4463: SERIES information row. Renders only when the book carries
-    /// both a series name and series URL (AC #2). The series name is wrapped
-    /// in a NavigationLink whose destination matches the existing series-lane
-    /// "More" affordance at the bottom of the screen — `CatalogLaneMoreView`
-    /// keyed on `book.seriesURL` — so the row is an alternate path to the
-    /// same list, not a new navigation paradigm (AC #4).
+    /// PP-4463 / PP-4775: SERIES information row. Three states, decided purely by
+    /// `BookDetailViewModel.seriesRowDisplay`:
+    ///   - `.link` — series name + a series-search URL (other books in the
+    ///     catalog): the name is a `NavigationLink` to `CatalogLaneMoreView`
+    ///     keyed on `book.seriesURL`, an alternate path to the same series lane.
+    ///   - `.plainText` — series name known but NO series URL (no other books in
+    ///     the catalog, PP-4775): the name is shown as static, non-tappable text
+    ///     with no `.isLink` trait, so VoiceOver reads it as plain text (AC #4).
+    ///   - `.hidden` — no series name: no row.
     @ViewBuilder
     private func seriesRow(book: TPPBook) -> some View {
-        if let seriesName = book.seriesName, !seriesName.isEmpty,
-           let seriesURL = book.seriesURL {
+        switch BookDetailViewModel.seriesRowDisplay(name: book.seriesName, url: book.seriesURL) {
+        case .hidden:
+            EmptyView()
+
+        case let .link(seriesName, seriesURL):
             HStack(alignment: .top, spacing: 10) {
                 infoLabel(label: DisplayStrings.series.uppercased())
                     .frame(minWidth: 100, alignment: .leading)
@@ -659,6 +665,26 @@ struct BookDetailView: View {
             .accessibilityElement(children: .combine)
             .accessibilityLabel("\(DisplayStrings.series): \(seriesName)")
             .accessibilityAddTraits(.isLink)
+            .accessibilityIdentifier(AccessibilityID.BookDetail.seriesLabel)
+
+        case let .plainText(seriesName):
+            HStack(alignment: .top, spacing: 10) {
+                infoLabel(label: DisplayStrings.series.uppercased())
+                    .frame(minWidth: 100, alignment: .leading)
+                    .fixedSize(horizontal: true, vertical: false)
+                // No NavigationLink, no underline, and no `.isLink` trait below —
+                // when the catalog has no other books in the series the name is
+                // informational only (PP-4775 AC #1 / #4).
+                Text(seriesName)
+                    .font(.subheadline)
+                    .lineLimit(nil)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .foregroundStyle(.primary)
+                    .accessibilityIdentifier(AccessibilityID.BookDetail.seriesPlainText)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(DisplayStrings.series): \(seriesName)")
             .accessibilityIdentifier(AccessibilityID.BookDetail.seriesLabel)
         }
     }

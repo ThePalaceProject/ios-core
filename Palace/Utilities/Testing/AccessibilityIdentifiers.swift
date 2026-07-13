@@ -147,6 +147,10 @@ public enum AccessibilityID {
         public static let distributorLabel = "bookDetail.distributorLabel"
         public static let seriesLabel = "bookDetail.seriesLabel"
         public static let seriesLink = "bookDetail.seriesLink"
+        /// PP-4775: series row rendered as static (non-tappable) text when the
+        /// catalog has no other books in the series. Distinct from `seriesLink`
+        /// so QA / simdrive can assert the non-link state.
+        public static let seriesPlainText = "bookDetail.seriesPlainText"
         public static let relatedBooksSection = "bookDetail.relatedBooksSection"
     }
 
