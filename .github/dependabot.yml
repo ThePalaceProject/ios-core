@@ -1,0 +1,26 @@
+# Dependabot configuration.
+#
+# NOTE: This file is read from the repository's DEFAULT branch (main), but we
+# route the update PRs to `develop` — the integration branch — because `main`
+# is release-only (see the release-merge policy in CLAUDE.md). This keeps
+# dependency + security bumps flowing through the normal develop → release path
+# instead of landing directly on the protected release branch.
+version: 2
+updates:
+  - package-ecosystem: "bundler" # the Gemfile (fastlane + its transitive deps: faraday, excon, addressable, …)
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    target-branch: "develop"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore(deps)"
+
+  - package-ecosystem: "github-actions" # the CI workflows under .github/workflows/
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    target-branch: "develop"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(ci)"
