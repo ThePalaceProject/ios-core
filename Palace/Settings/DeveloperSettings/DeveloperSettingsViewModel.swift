@@ -289,10 +289,23 @@ final class DeveloperSettingsViewModel: ObservableObject {
     /// Clears the cache + image cache and confirms. Verbatim from the
     /// `.dataManagement` row-0 tap handler.
     func clearCachedData(from presenter: UIViewController) {
-        accountsManager.clearCache()
-        ImageCache.shared.clear()
-        let alert = TPPAlertUtils.alert(title: "Data Management", message: "Cache Cleared")
-        presenter.present(alert, animated: true, completion: nil)
+        // PP-4788: Clear Cached Data is now patron-reachable via the always-visible
+        // Advanced menu, so it must confirm before acting — no destructive action
+        // fires on a single accidental tap.
+        let confirm = UIAlertController(
+            title: "Clear Cached Data?",
+            message: "Clears cached catalog data and cover images on this device. Your libraries, downloads, and saved logins are not affected.",
+            preferredStyle: .alert)
+        confirm.addAction(UIAlertAction(title: "Clear", style: .destructive) { [weak self, weak presenter] _ in
+            guard let self else { return }
+            self.accountsManager.clearCache()
+            ImageCache.shared.clear()
+            guard let presenter else { return }
+            let done = TPPAlertUtils.alert(title: "Data Management", message: "Cache Cleared")
+            presenter.present(done, animated: true, completion: nil)
+        })
+        confirm.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        presenter.present(confirm, animated: true, completion: nil)
     }
 
     /// "Reset This Library" confirmation → `performScopedReset`. Verbatim from
