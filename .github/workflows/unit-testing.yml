@@ -26,7 +26,7 @@ jobs:
         run: xcodebuild -version
         
       - name: Checkout main repo and submodules
-        uses: actions/checkout@v3
+        uses: actions/checkout@v7
         with:
           submodules: true
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
@@ -68,7 +68,7 @@ jobs:
             test-history-
             
       - name: Checkout Certificates
-        uses: actions/checkout@v3
+        uses: actions/checkout@v7
         with:
           repository: ThePalaceProject/mobile-certificates
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}

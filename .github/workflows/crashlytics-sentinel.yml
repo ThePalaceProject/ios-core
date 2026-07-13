@@ -42,7 +42,7 @@ jobs:
       new_entries: ${{ steps.run.outputs.new_entries }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -139,7 +139,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && inputs.refresh_baseline == true
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Python
         uses: actions/setup-python@v5
