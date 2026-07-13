@@ -324,6 +324,7 @@ public final class AudiobookSessionManager: ObservableObject {
         // directly via AudiobookLoader; no pub/sub handoff is needed.
         subscribeToPhoneSideErrorAlerts()
         subscribeToBookReturn()
+        subscribeToAppLifecyclePositionPersistence()
     }
 
     /// AppContainer-friendly initializer. Used by future call sites that
@@ -398,6 +399,70 @@ public final class AudiobookSessionManager: ObservableObject {
                 self?.handleRegistryStateChange(identifier: identifier, state: state)
             }
             .store(in: &lifecycleCancellables)
+    }
+
+    /// Best-effort position persistence on app background / termination.
+    ///
+    /// This replaces the hidden toolkit "keeper" — an `opacity(0)`,
+    /// `allowsHitTesting(false)` `AudiobookPlayerView` that used to be mounted
+    /// only so its `setupBackgroundStateHandling()` observers would fire
+    /// `playbackModel.persistLocation()` on `didEnterBackground` /
+    /// `willTerminate`. With the custom `AudiobookMorphingPlayerView` now the
+    /// only visible player, that keeper was deleted; the lifecycle persist it
+    /// provided moves here, to the object that actually owns playback.
+    ///
+    /// Semantics mirror the toolkit exactly: on background and on terminate,
+    /// force-save the live position via `playbackModel.persistLocation()`
+    /// (which bypasses the throttled autosave suppression window). No-op when
+    /// no session is bound. Registered once for the manager's lifetime; the
+    /// subscriptions live in `lifecycleCancellables`, so they are torn down
+    /// automatically when the manager deallocates (there is no separate deinit
+    /// to maintain).
+    private func subscribeToAppLifecyclePositionPersistence() {
+        let lifecycleNotifications = [
+            UIApplication.didEnterBackgroundNotification,
+            UIApplication.willTerminateNotification
+        ]
+        for name in lifecycleNotifications {
+            NotificationCenter.default
+                .publisher(for: name)
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] _ in
+                    self?.persistActivePositionForLifecycleEvent()
+                }
+                .store(in: &lifecycleCancellables)
+        }
+    }
+
+    /// Force-persists the current playback position IF a session is active.
+    /// Called from the background / terminate observers wired in
+    /// `subscribeToAppLifecyclePositionPersistence`. Best-effort and
+    /// non-destructive: when no session is bound it is a pure no-op, so a
+    /// background/terminate during a cold launch (nothing playing) never
+    /// writes a stale position.
+    func persistActivePositionForLifecycleEvent() {
+        guard Self.shouldPersistLifecyclePosition(
+            hasManager: manager != nil,
+            hasBook: currentBook != nil,
+            hasModel: playbackModel != nil
+        ) else { return }
+        // `persistLocation()` force-saves the model's current location,
+        // bypassing the autosave suppression window — identical to the path
+        // the deleted toolkit keeper invoked on background/terminate.
+        playbackModel?.persistLocation()
+    }
+
+    /// Pure guard for `persistActivePositionForLifecycleEvent`: only persist
+    /// when there is a fully-bound active session (manager + book + model).
+    /// `nonisolated static` so the decision is unit-testable without a live
+    /// toolkit session (mirrors `shouldStopPlaybackOnRegistryChange` /
+    /// `networkValidationError`).
+    nonisolated static func shouldPersistLifecyclePosition(
+        hasManager: Bool,
+        hasBook: Bool,
+        hasModel: Bool
+    ) -> Bool {
+        hasManager && hasBook && hasModel
     }
 
     private func handleRegistryStateChange(identifier: String, state: TPPBookState) {
@@ -722,6 +787,13 @@ public final class AudiobookSessionManager: ObservableObject {
         }
 
         manager.play()
+        // Set the authoritative stored `isPlaying` SYNCHRONOUSLY on the user's
+        // intent — the toolkit's own `.playbackBegan` echo (which also sets this)
+        // lags by a buffer/decode. Without this, `isPlaying` stayed false until
+        // that echo, and any reader of it in the gap (the presenter's
+        // `$currentLocation` self-heal) would flip the transport glyph back to
+        // "play" for a frame — the pause⇄play flicker on first tap.
+        isPlaying = true
         nowPlayingCoordinator?.setPlaybackState(playing: true)
         publishPlaybackStateChange(isPlaying: true)
     }
@@ -734,6 +806,10 @@ public final class AudiobookSessionManager: ObservableObject {
         }
 
         manager.pause()
+        // Mirror of `play()`: set the authoritative `isPlaying` synchronously on
+        // the user's intent so no observer sees a stale `true` before the
+        // toolkit's `.playbackStopped` echo arrives.
+        isPlaying = false
         nowPlayingCoordinator?.setPlaybackState(playing: false)
         publishPlaybackStateChange(isPlaying: false)
     }
@@ -863,6 +939,30 @@ public final class AudiobookSessionManager: ObservableObject {
         Log.debug(#file, "Skipping forward \(Self.defaultSkipInterval)s")
     }
 
+    /// Seeks to a fractional position (0…1) within the CURRENT CHAPTER via the
+    /// toolkit's public `DefaultAudiobookManager.seekWithSlider` (which maps the
+    /// fraction to `offsetWithinChapter = value * chapterDuration`) — NOT a
+    /// fraction of the whole audiobook. Drives the full player's chapter-scoped
+    /// scrubber drag. Clamped to [0, 1]; no-ops if no active manager.
+    public func seek(to fraction: Double) {
+        guard let modernManager = manager as? DefaultAudiobookManager else {
+            Log.warn(#file, "Cannot seek — no DefaultAudiobookManager")
+            return
+        }
+        modernManager.seekWithSlider(value: min(max(fraction, 0), 1)) { _ in }
+    }
+
+    /// Sets (or clears) the sleep timer via the toolkit's public
+    /// `DefaultAudiobookManager.sleepTimer`. Drives the full player's sleep-timer
+    /// menu. No-ops if no active manager.
+    public func setSleepTimer(_ trigger: SleepTimerTriggerAt) {
+        guard let modernManager = manager as? DefaultAudiobookManager else {
+            Log.warn(#file, "Cannot set sleep timer — no DefaultAudiobookManager")
+            return
+        }
+        modernManager.sleepTimer.setTimerTo(trigger: trigger)
+    }
+
     /// Cycles through playback rates. Driven by CarPlay / remote-control
     /// "change playback rate" commands — the now-playing screen UI uses the
     /// speed bottom sheet instead of cycling.
@@ -882,6 +982,89 @@ public final class AudiobookSessionManager: ObservableObject {
 
         Log.debug(#file, "Playback rate changed to: \(PlaybackRate.convert(rate: newRate))x")
         return newRate
+    }
+
+    /// Current playback rate (read) — reflects the toolkit `player.playbackRate`,
+    /// fixing the hard-coded "1.0×" label the morphing player showed when a
+    /// session was restored at a persisted non-1.0 rate.
+    public var currentPlaybackRate: PlaybackRate {
+        manager?.audiobook.player.playbackRate ?? .normalTime
+    }
+
+    /// Sets an explicit playback rate (for the speed slider). Mirrors
+    /// `cyclePlaybackRate`'s now-playing update so the lock screen stays in sync.
+    public func setPlaybackRate(_ rate: PlaybackRate) {
+        guard let player = manager?.audiobook.player else { return }
+        player.playbackRate = rate
+        nowPlayingCoordinator?.updatePlaybackRate(rate)
+        Log.debug(#file, "Playback rate set to: \(PlaybackRate.convert(rate: rate))x")
+    }
+
+    /// True once the toolkit player has buffered/loaded — gates the loading
+    /// overlay. Not `@Published`; the view re-reads it on `isPlaying`/position
+    /// ticks. (`UnifiedPositionSystem.isLoaded` is `@Published` upstream, so a
+    /// crisp presenter mirror is a follow-up if the tick cadence proves too coarse.)
+    public var isLoaded: Bool {
+        manager?.audiobook.player.isLoaded ?? false
+    }
+
+    /// Whether a sleep timer is currently counting down (drives the active-chip
+    /// display). Reads the toolkit's public `SleepTimer`.
+    public var sleepTimerIsActive: Bool {
+        (manager as? DefaultAudiobookManager)?.sleepTimer.isActive ?? false
+    }
+
+    /// Seconds left on the active sleep timer (0 when inactive).
+    public var sleepTimerRemaining: TimeInterval {
+        (manager as? DefaultAudiobookManager)?.sleepTimer.timeRemaining ?? 0
+    }
+
+    /// Overall download progress (0…1) for the current audiobook's tracks —
+    /// reads the toolkit playback model's published `overallDownloadProgress`.
+    /// Drives the download bar in the in-app custom player.
+    public var overallDownloadProgress: Float {
+        playbackModel?.overallDownloadProgress ?? 0
+    }
+
+    /// Whether tracks are still downloading / decrypting in the background
+    /// (progress < 1). Reads the toolkit playback model's `isDownloading`.
+    public var isDownloading: Bool {
+        playbackModel?.isDownloading ?? false
+    }
+
+    /// Chapter-relative playhead offset (seconds into the current chapter) —
+    /// the raw value behind the toolkit player's elapsed timecode.
+    public var chapterOffset: TimeInterval {
+        playbackModel?.chapterPlayheadOffset ?? 0
+    }
+
+    /// Seconds remaining in the current chapter — the raw value behind the
+    /// toolkit player's chapter time-left timecode.
+    public var chapterTimeLeft: TimeInterval {
+        playbackModel?.chapterTimeLeft ?? 0
+    }
+
+    /// Latest transient toast (bookmark-added / playback error), or `nil` when
+    /// the toolkit's message is empty. The toolkit uses an empty string as its
+    /// "no message" sentinel; we normalize that to `nil` for the Palace surface.
+    public var toastMessage: String? {
+        let message = playbackModel?.toastMessage
+        return (message?.isEmpty ?? true) ? nil : message
+    }
+
+    /// Adds a bookmark at the current playback position via the toolkit
+    /// playback model. Reports `nil` on success, a non-nil `Error` on failure
+    /// (including "no active session" when nothing is loaded).
+    public func addBookmark(completion: @escaping (Error?) -> Void) {
+        guard let playbackModel else {
+            completion(NSError(
+                domain: "AudiobookSessionManager",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey: "No active audiobook session to bookmark."]
+            ))
+            return
+        }
+        playbackModel.addBookmark(completion: completion)
     }
 
     /// Stops playback and clears current session, atomically releasing the
@@ -926,8 +1109,18 @@ public final class AudiobookSessionManager: ObservableObject {
         #endif
         decryptor = nil
 
-        if dismissPhoneUI, let bookId = bookId {
-            dismissPlayerOnPhone(bookId: bookId)
+        if dismissPhoneUI {
+            if let bookId = bookId {
+                dismissPlayerOnPhone(bookId: bookId)
+            } else if inAppPlaybackNavEnabledProvider() {
+                // Flag-ON dismiss only needs the presenter cleared — it does not
+                // use `bookId` (see `dismissPlayerOnPhone`). Gating the WHOLE
+                // dismiss behind `let bookId` meant a nil `currentBook` at
+                // teardown time (transient / already-cleared states) left the
+                // mini-bar + pill on screen, so the ✕ appeared to do nothing.
+                // Clear the presenter unconditionally on the flag-ON path.
+                audiobookSessionPresenterProvider().clearActiveSession()
+            }
         }
 
         manager = nil

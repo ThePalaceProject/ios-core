@@ -90,8 +90,8 @@ class AudiobookSessionPresenter: ObservableObject {
     /// sink that drives `hasActiveSession` so a single publisher event
     /// updates both fields atomically.
     ///
-    /// Polish-phase addition — replaces the closure-injected
-    /// `isPlayingProvider` parameter on `AudiobookMiniPlayerView`.
+    /// Read directly by the audiobook player view — replaced the
+    /// closure-injected `isPlayingProvider` an earlier player view took.
     @Published private(set) var isPlaying: Bool = false
 
     /// Cover image for the current session, mirrored from the session
@@ -100,8 +100,8 @@ class AudiobookSessionPresenter: ObservableObject {
     /// `adoptCoverImage(_:)` (called from
     /// `AudiobookSessionManager.updateCoverImage(_:)`).
     ///
-    /// Polish-phase addition — replaces the closure-injected
-    /// `coverImageProvider` parameter on `AudiobookMiniPlayerView`.
+    /// Read directly by the audiobook player view — replaced the
+    /// closure-injected `coverImageProvider` an earlier player view took.
     @Published private(set) var coverImage: UIImage?
 
     /// High-frequency playback position/progress lives on a SEPARATE
@@ -110,6 +110,21 @@ class AudiobookSessionPresenter: ObservableObject {
     /// Observing these on the presenter re-rendered the root `AppTabHostView`
     /// (all tabs) on every tick and froze the UI.
     let progress = AudiobookPlaybackProgress()
+
+    /// Overall download progress (0…1) for the current audiobook, mirrored from
+    /// the toolkit playback model's `$overallDownloadProgress`. Drives the
+    /// custom player's download bar. Reset to 0 on `clearActiveSession()`.
+    @Published private(set) var overallDownloadProgress: Float = 0
+
+    /// Whether the current audiobook is still downloading / decrypting tracks,
+    /// mirrored from the toolkit playback model's `$isDownloading`. Gates the
+    /// download-bar visibility. Reset to false on `clearActiveSession()`.
+    @Published private(set) var isDownloading: Bool = false
+
+    /// Latest transient toast (bookmark-added / playback error), mirrored from
+    /// the toolkit playback model's `$toastMessage` (empty string normalized to
+    /// `nil`). Reset to nil on `clearActiveSession()`.
+    @Published private(set) var toastMessage: String?
 
     /// The playback model for the active session, mirrored from the session
     /// manager. The mini-player + full-player views observe this for chrome
@@ -135,19 +150,12 @@ class AudiobookSessionPresenter: ObservableObject {
     /// can drive it directly.
     @Published var isReaderActive: Bool = false
 
-    /// True when the user has collapsed the mini-player down to the compact
-    /// floating pill (`AudiobookCollapsedPillView`). This is a SEPARATE axis
-    /// from `isPlayerExpanded`:
-    ///   - `isPlayerExpanded` is the full-player ⇄ mini-bar axis.
-    ///   - `isCollapsed` is the mini-bar ⇄ pill axis.
-    /// When `isCollapsed == true`, `AppTabHostView` renders the pill instead
-    /// of the full mini-bar; **playback keeps running** — collapsing is
-    /// strictly a chrome change, unlike the `✕` dismiss which tears the
-    /// session down via `stopPlayback`. Only reachable from the mini-bar
-    /// (swipe-down → `collapse()`); tapping the pill restores it
-    /// (`restoreFromCollapsed()`). Reset to false on every path that shows
-    /// the full chrome (`expand()`, `minimize()`, `presentOnFirstOpen()`,
-    /// `clearActiveSession()`) so the pill state is never stale.
+    /// Legacy mini-bar ⇄ pill collapse axis. The floating pill view was
+    /// removed once the morphing player became the sole audiobook surface,
+    /// so `collapse()` is now a no-op and this stays false; the property is
+    /// retained only for the presenter's existing reset paths (`expand()`,
+    /// `minimize()`, `presentOnFirstOpen()`, `clearActiveSession()`).
+    /// Distinct from `isPlayerExpanded` (the full-player axis).
     @Published var isCollapsed: Bool = false
 
     // MARK: - Private state
@@ -209,12 +217,14 @@ class AudiobookSessionPresenter: ObservableObject {
         isCollapsed = false
     }
 
-    /// Swipe-down-on-mini-bar entry point. Collapses the full mini-bar to
-    /// the compact floating pill (`AudiobookCollapsedPillView`). Playback
-    /// keeps running — this is strictly a chrome change, distinct from the
-    /// `✕` dismiss which calls `stopPlayback`. Idempotent.
+    /// No-op in the resize-overlay morph: the floating pill is GONE — the mini
+    /// bar is already the smallest chrome state, so there is nothing further to
+    /// collapse into. Left as a no-op (rather than deleted) so the mini bar's
+    /// existing swipe-down gesture routes here harmlessly instead of hiding the
+    /// bar into an empty card. Down-on-mini does nothing; expand is via up/tap,
+    /// dismiss is via the ✕.
     func collapse() {
-        isCollapsed = true
+        // intentionally empty — no pill in the morph
     }
 
     /// Tap-on-pill entry point. Restores the full mini-bar from the compact
@@ -246,6 +256,12 @@ class AudiobookSessionPresenter: ObservableObject {
         coverImage = nil
         progress.currentLocation = nil
         progress.playbackProgress = 0
+        progress.chapterOffset = 0
+        progress.chapterTimeLeft = 0
+        progress.chapterProgress = 0
+        overallDownloadProgress = 0
+        isDownloading = false
+        toastMessage = nil
         playbackModelCancellables.removeAll()
     }
 
@@ -289,7 +305,15 @@ class AudiobookSessionPresenter: ObservableObject {
         // `AudiobookSessionManager.updateCoverImage(_:)`).
         self.coverImage = sessionManager.coverImage
 
+        // Snapshot the download/toast mirrors at bind time so the custom
+        // player's download bar reflects any progress already made before the
+        // first publisher tick; the subscriptions below keep them live.
+        self.overallDownloadProgress = model.overallDownloadProgress
+        self.isDownloading = model.isDownloading
+        self.toastMessage = model.toastMessage.isEmpty ? nil : model.toastMessage
+
         subscribeToPlaybackModelCurrentLocation(model)
+        subscribeToPlaybackModelDownloadAndToast(model)
     }
 
     /// Updates the presenter's mirrored cover image. Called from
@@ -317,16 +341,14 @@ class AudiobookSessionPresenter: ObservableObject {
     ///   tapping resumes), playing renders pause, idle / error don't show
     ///   the mini-player at all.
     private func subscribeToSessionState() {
+        // `hasActiveSession` + the terminal-`.error` teardown stay on the
+        // deferred main hop (unchanged behavior — these can be driven by
+        // manager sinks and the teardown mutates many `@Published` fields).
         sessionManager.playbackStatePublisher
             .receive(on: DispatchQueue.main)
             .sink { [weak self] state in
                 guard let self = self else { return }
                 self.hasActiveSession = state.isActive
-                if case .playing = state {
-                    self.isPlaying = true
-                } else {
-                    self.isPlaying = false
-                }
                 // A failed open leaves the session in a terminal `.error`
                 // state. Tear down the view-facing session so neither the
                 // mini-player nor the full-player overlay lingers with no
@@ -335,6 +357,27 @@ class AudiobookSessionPresenter: ObservableObject {
                 if case .error = state {
                     self.clearActiveSession()
                 }
+            }
+            .store(in: &cancellables)
+
+        // `isPlaying` is driven SYNCHRONOUSLY (no `receive(on:)` async hop) so
+        // the transport play/pause glyph flips on the SAME main-runloop tick the
+        // manager publishes the state — eliminating the one-frame lag a user
+        // saw between tapping play/pause and the glyph updating.
+        //
+        // Safe without the hop because `AudiobookSessionManager` is `@MainActor`:
+        // every `playbackStatePublisher.send(...)` already runs on the main
+        // thread (whether from a user-initiated `play()`/`pause()` or from a
+        // toolkit-driven `.playbackBegan`/`.playbackStopped` in
+        // `handleManagerState`), so this mirror stays main-isolated. A change-
+        // guard means we only republish when the bool actually flips, so we
+        // don't re-render the root `AppTabHostView` on same-value events.
+        sessionManager.playbackStatePublisher
+            .sink { [weak self] state in
+                guard let self = self else { return }
+                let playing: Bool
+                if case .playing = state { playing = true } else { playing = false }
+                if self.isPlaying != playing { self.isPlaying = playing }
             }
             .store(in: &cancellables)
     }
@@ -395,11 +438,68 @@ class AudiobookSessionPresenter: ObservableObject {
     private func subscribeToPlaybackModelCurrentLocation(_ model: AudiobookPlaybackModel) {
         model.$currentLocation
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] position in
+            .sink { [weak self, weak model] position in
                 guard let self = self else { return }
                 self.progress.currentLocation = position
                 self.progress.playbackProgress = Self.normalizedProgress(for: position)
+                // Self-heal the transport play/pause glyph on each advancing tick.
+                self.reconcileTransportGlyphFromSessionManager()
+                // The chapter-relative offsets are computed off `currentLocation`
+                // in the toolkit, so recompute the mirrors on the same tick.
+                if let model = model {
+                    self.progress.chapterOffset = model.chapterPlayheadOffset
+                    self.progress.chapterTimeLeft = model.chapterTimeLeft
+                    // CHAPTER-relative scrubber progress. The toolkit slider is
+                    // chapter-scoped: seekWithSlider seeks chapterStart + value *
+                    // chapterDuration. `playbackProgress` above is BOOK-relative
+                    // (for the "N min remaining" text), so the scrubber reads this
+                    // separate chapter value or thumb-position and seek-scale
+                    // disagree (the "seek won't settle" bug).
+                    self.progress.chapterProgress = Self.chapterProgress(
+                        offset: model.chapterPlayheadOffset,
+                        timeLeft: model.chapterTimeLeft
+                    )
+                }
             }
+            .store(in: &playbackModelCancellables)
+    }
+
+    /// Self-heal the transport play/pause glyph from the authoritative
+    /// `sessionManager.isPlaying`. The discrete `playbackStatePublisher` sink
+    /// (`subscribeToSessionState`) is the primary `isPlaying` driver, but the
+    /// toolkit can advance the playhead without re-emitting `.playing`
+    /// (chapter/track rollover, buffer resume after a seek), leaving the glyph
+    /// stuck on "play" while audio is audible. Called from the advancing
+    /// `$currentLocation` tick — which only fires while the player is genuinely
+    /// advancing — so re-snapping here corrects a stale glyph within one frame.
+    /// Change-guarded → no extra root renders, and no flapping when paused (the
+    /// location simply stops ticking, so this stops being called).
+    func reconcileTransportGlyphFromSessionManager() {
+        if isPlaying != sessionManager.isPlaying {
+            isPlaying = sessionManager.isPlaying
+        }
+    }
+
+    /// Mirrors the toolkit playback model's `$overallDownloadProgress`,
+    /// `$isDownloading`, and `$toastMessage` into the presenter's published
+    /// fields so the custom player's download bar + toast read off a single
+    /// object. Stored in `playbackModelCancellables` (NOT `cancellables`) so
+    /// `adoptPlaybackModel(_:)` re-subscribes cleanly on an audiobook switch —
+    /// same lifetime rules as the `$currentLocation` sink above.
+    private func subscribeToPlaybackModelDownloadAndToast(_ model: AudiobookPlaybackModel) {
+        model.$overallDownloadProgress
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] value in self?.overallDownloadProgress = value }
+            .store(in: &playbackModelCancellables)
+
+        model.$isDownloading
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] value in self?.isDownloading = value }
+            .store(in: &playbackModelCancellables)
+
+        model.$toastMessage
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] value in self?.toastMessage = value.isEmpty ? nil : value }
             .store(in: &playbackModelCancellables)
     }
 
@@ -440,6 +540,17 @@ class AudiobookSessionPresenter: ObservableObject {
         // pre-load 0.0) don't drive the scrubber out of bounds.
         return min(max(progress, 0), 1)
     }
+
+    /// CHAPTER-relative scrubber progress (0…1 within the current chapter),
+    /// mirroring the toolkit's `AudiobookPlaybackModel.playbackProgress`
+    /// (`chapterOffset / chapterDuration`, `chapterDuration = offset + timeLeft`).
+    /// Pure + static so the `> 0` guard and [0,1] clamp are unit-testable
+    /// without a live `AudiobookPlaybackModel`.
+    static func chapterProgress(offset: TimeInterval, timeLeft: TimeInterval) -> Double {
+        let duration = offset + timeLeft
+        guard duration > 0 else { return 0 }
+        return min(max(offset / duration, 0), 1)
+    }
 }
 
 /// High-frequency playback position/progress, deliberately split out of
@@ -449,4 +560,19 @@ class AudiobookSessionPresenter: ObservableObject {
 final class AudiobookPlaybackProgress: ObservableObject {
     @Published var currentLocation: TrackPosition?
     @Published var playbackProgress: Double = 0
+
+    /// Chapter-relative playhead offset (seconds into the current chapter) and
+    /// chapter time-left. Live on the high-frequency progress object (not the
+    /// presenter) so per-tick updates re-render only the scrubber/time leaves,
+    /// never the root `AppTabHostView`. Mirrored from the toolkit playback
+    /// model's `chapterPlayheadOffset` / `chapterTimeLeft` on each position tick.
+    @Published var chapterOffset: TimeInterval = 0
+    @Published var chapterTimeLeft: TimeInterval = 0
+
+    /// CHAPTER-relative scrubber progress (0…1 within the current chapter),
+    /// mirrors the toolkit's `AudiobookPlaybackModel.playbackProgress`
+    /// (`chapterOffset / chapterDuration`). This — NOT book-relative
+    /// `playbackProgress` — is what the seek slider binds to so its thumb
+    /// matches `seekWithSlider`'s chapter-scoped seek.
+    @Published var chapterProgress: Double = 0
 }

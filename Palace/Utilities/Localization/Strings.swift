@@ -203,6 +203,33 @@ struct Strings {
             "Shows the full audiobook player controls",
             comment: "VoiceOver hint announced for the collapsed audiobook pill explaining that tapping restores the full mini-player"
         )
+        // Accessibility - Audiobook full player (parity with toolkit AudiobookPlayerView)
+        static let bookCover = NSLocalizedString("Book cover", comment: "VoiceOver: Accessibility label for the audiobook cover art")
+        static let audiobookLoading = NSLocalizedString("Loading…", comment: "Shown over the audiobook player while the track buffers")
+        static let audiobookLoadErrorTitle = NSLocalizedString("A problem has occurred.", comment: "Title shown when the audiobook fails to load within the timeout")
+        static let audiobookLoadErrorMessage = NSLocalizedString("Please try again.", comment: "Message shown when the audiobook fails to load, prompting a retry")
+        static let audiobookRetry = NSLocalizedString("Retry", comment: "Button to retry loading an audiobook that timed out")
+        static let audiobookDownloading = NSLocalizedString("Downloading", comment: "Label under the audiobook download progress bar")
+        static let playbackSpeed = NSLocalizedString("Playback speed", comment: "VoiceOver: Label for the audiobook playback-speed control")
+        static let sleepTimer = NSLocalizedString("Sleep timer", comment: "VoiceOver: Label for the audiobook sleep-timer control")
+        static let airplay = NSLocalizedString("AirPlay", comment: "VoiceOver: Label for the audiobook AirPlay route picker")
+        static let addBookmark = NSLocalizedString("Add bookmark", comment: "VoiceOver: Label for the audiobook add-bookmark control")
+        static let bookmarkAdded = NSLocalizedString("Bookmark added", comment: "Toast shown after successfully adding an audiobook bookmark")
+        static let bookmarkAddFailed = NSLocalizedString("Could not add bookmark", comment: "Toast shown when adding an audiobook bookmark fails")
+        static let bookmarkAlreadyExists = NSLocalizedString("A bookmark has already been saved at this location.", comment: "Toast shown when a bookmark already exists at the current audiobook position")
+        static let bookmarkFailedToSave = NSLocalizedString("The bookmark couldn't be saved.", comment: "Toast shown when saving an audiobook bookmark fails to persist")
+        static let playbackPosition = NSLocalizedString("Playback position", comment: "VoiceOver: Label for the audiobook seek slider")
+        static let decreaseSpeed = NSLocalizedString("Decrease speed", comment: "VoiceOver: Label for the audiobook speed decrease stepper")
+        static let increaseSpeed = NSLocalizedString("Increase speed", comment: "VoiceOver: Label for the audiobook speed increase stepper")
+        static func timeElapsedLabel(_ time: String) -> String {
+            String(format: NSLocalizedString("Time elapsed: %@", comment: "VoiceOver: audiobook chapter elapsed time, %@ is a spoken duration"), time)
+        }
+        static func timeRemainingLabel(_ time: String) -> String {
+            String(format: NSLocalizedString("Time remaining: %@", comment: "VoiceOver: audiobook chapter remaining time, %@ is a spoken duration"), time)
+        }
+        static func playbackSpeedValue(_ label: String) -> String {
+            String(format: NSLocalizedString("Playback speed: %@", comment: "VoiceOver: current audiobook playback speed value, %@ is a rate like 1.5x"), label)
+        }
 
         // Accessibility - EPUB Reader (Full Keyboard Access)
         static let bookReader = NSLocalizedString("Book reader", comment: "VoiceOver: Accessibility label for the book reading area")

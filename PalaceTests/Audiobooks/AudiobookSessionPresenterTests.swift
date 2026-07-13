@@ -313,49 +313,58 @@ final class AudiobookSessionPresenterTests: XCTestCase {
                       "Transition 3 (expand again): re-entry must work — collapsed → expanded after a minimize must drive published value back to true. This is the production seam round-trip per CLAUDE.md.")
     }
 
-    // MARK: - Collapse ⇄ restore (mini-bar ⇄ pill axis)
+    // MARK: - Collapse / restore inert in the morphing player (pill removed)
 
-    /// `collapse()` flips `isCollapsed` true AND emits to subscribers (the
-    /// pill overlay + mini-bar bind to it). `restoreFromCollapsed()` flips it
-    /// back. Drives the full round-trip via the production seams per the
-    /// CLAUDE.md state-machine wiring rule (write → reset → re-enter).
-    func testPresenter_collapse_restore_collapseAgain_drivesIsCollapsed_acrossThreeTransitions() {
+    /// The morphing player REMOVED the collapsed-pill concept: `collapse()` and
+    /// `restoreFromCollapsed()` are now inert no-ops (see
+    /// `AudiobookSessionPresenter.collapse()`), so `isCollapsed` never flips
+    /// true. This pins the current reality — the mini-bar's swipe-down routes
+    /// to `collapse()` harmlessly: it must NOT hide the bar into a pill AND
+    /// must NOT tear the session down (collapsing was never a teardown).
+    ///
+    /// Replaces the former pill round-trip / cross-axis tests
+    /// (`..._drivesIsCollapsed_acrossThreeTransitions`,
+    /// `testPresenter_expand_clearsCollapsedState`,
+    /// `testPresenter_clearActiveSession_resetsCollapsedState`) whose premise
+    /// (collapse() sets isCollapsed true) is dead. The non-pill behavior those
+    /// pinned — expand()→isPlayerExpanded, clearActiveSession() teardown — is
+    /// still covered by `testExpand_setsIsPlayerExpandedTrue` and
+    /// `testPresenter_clearActiveSession_clearsPolishPhaseFields`.
+    func testPresenter_collapse_and_restore_areInertNoOps_isCollapsedStaysFalse() {
         let presenter = AudiobookSessionPresenter(sessionManager: spySession)
-        XCTAssertFalse(presenter.isCollapsed, "PRECONDITION: must start un-collapsed (full bar)")
+        // Drive an active, expanded session so we prove collapse() leaves the
+        // session (and the full-player axis) untouched, not just the dead axis.
+        spySession.playbackStatePublisher.send(.playing(bookId: "book-1"))
+        spinRunLoopForPublisherDelivery()
+        presenter.expand()
+        XCTAssertTrue(presenter.hasActiveSession, "PRECONDITION: active session")
+        XCTAssertTrue(presenter.isPlayerExpanded, "PRECONDITION: full player expanded")
+        XCTAssertFalse(presenter.isCollapsed, "PRECONDITION: never collapsed (pill removed)")
 
         var observed: [Bool] = []
         let cancellable = presenter.$isCollapsed.sink { observed.append($0) }
         defer { cancellable.cancel() }
 
-        // Transition 1: bar → pill
+        // collapse() is a no-op: isCollapsed must NOT flip true, and the
+        // session must stay active (collapsing is not a teardown).
         presenter.collapse()
-        XCTAssertTrue(presenter.isCollapsed, "Transition 1 (collapse): full bar → pill must set isCollapsed true")
-
-        // Transition 2: pill → bar
-        presenter.restoreFromCollapsed()
-        XCTAssertFalse(presenter.isCollapsed, "Transition 2 (restore): pill → full bar must set isCollapsed false")
-
-        // Transition 3: bar → pill again (re-entry — proves the round-trip)
-        presenter.collapse()
-        XCTAssertTrue(presenter.isCollapsed, "Transition 3 (collapse again): re-entry after restore must set isCollapsed true again — a latch would fail here")
-
-        XCTAssertEqual(observed, [false, true, false, true],
-                       "@Published subscriber must observe initial → true → false → true; a plain (non-@Published) var would not emit and the pill/bar swap wouldn't react")
-    }
-
-    /// `expand()` must clear a prior collapse — expanding to the full player
-    /// always supersedes the pill so the user never lands back on a stale pill
-    /// after a minimize. Drives the cross-axis interaction via production seams.
-    func testPresenter_expand_clearsCollapsedState() {
-        let presenter = AudiobookSessionPresenter(sessionManager: spySession)
-        presenter.collapse()
-        XCTAssertTrue(presenter.isCollapsed, "PRECONDITION: collapsed to pill")
-
-        presenter.expand()
-
         XCTAssertFalse(presenter.isCollapsed,
-                       "expand() must reset isCollapsed — the full player supersedes the pill; a mutation dropping this line leaves the pill latched")
-        XCTAssertTrue(presenter.isPlayerExpanded, "expand() must still drive the full-player axis")
+                       "collapse() is inert in the morphing player — isCollapsed must stay false")
+        XCTAssertTrue(presenter.hasActiveSession,
+                      "collapse() must not tear down the session — audio keeps running")
+        XCTAssertTrue(presenter.isPlayerExpanded,
+                      "collapse() must not touch the full-player axis")
+
+        // restoreFromCollapsed() is likewise inert — keeps isCollapsed false.
+        presenter.restoreFromCollapsed()
+        XCTAssertFalse(presenter.isCollapsed,
+                       "restoreFromCollapsed() must keep isCollapsed false (pill removed)")
+
+        // Across the whole sequence isCollapsed never emits true — the pill
+        // axis is dead. A regression that re-wired collapse() to set true
+        // (restoring the old pill) would put `true` into this stream.
+        XCTAssertFalse(observed.contains(true),
+                       "isCollapsed must never emit true — the collapsed-pill concept was removed in the morphing player")
     }
 
     /// `minimize()` (full player → mini-bar) must land on the FULL bar, not a
@@ -375,18 +384,11 @@ final class AudiobookSessionPresenterTests: XCTestCase {
         XCTAssertFalse(presenter.isPlayerExpanded, "minimize() must still collapse the full player")
     }
 
-    /// A hard dismiss (`clearActiveSession()`) must also reset `isCollapsed`
-    /// so the next session starts from the full bar, not a stale pill.
-    func testPresenter_clearActiveSession_resetsCollapsedState() {
-        let presenter = AudiobookSessionPresenter(sessionManager: spySession)
-        presenter.collapse()
-        XCTAssertTrue(presenter.isCollapsed, "PRECONDITION: collapsed to pill")
-
-        presenter.clearActiveSession()
-
-        XCTAssertFalse(presenter.isCollapsed,
-                       "clearActiveSession() must reset isCollapsed — a re-opened session must not inherit the previous session's pill state")
-    }
+    // `testPresenter_clearActiveSession_resetsCollapsedState` was removed: the
+    // collapsed-pill concept is gone (collapse() is inert, isCollapsed never
+    // flips true), so "reset the pill on hard dismiss" no longer has a
+    // reachable state to reset. clearActiveSession()'s real teardown surface is
+    // covered by `testPresenter_clearActiveSession_clearsPolishPhaseFields`.
 
     // MARK: - Polish-phase: isPlaying derivation (Bug 2)
 
@@ -577,5 +579,122 @@ final class AudiobookSessionPresenterTests: XCTestCase {
         XCTAssertEqual(presenter.progress.playbackProgress, 0,
                        "clearActiveSession must reset playbackProgress to 0 so the scrubber doesn't briefly show the prior book's progress")
     }
-}
 
+    /// CONCERN coverage (qa_test SoD review of PR #1230): `clearActiveSession()`
+    /// must reset the chapter-scoped progress mirrors (`chapterOffset`,
+    /// `chapterTimeLeft`, `chapterProgress`) — the seek slider binds to
+    /// `chapterProgress`, so a stale non-zero value would leave the next
+    /// session's scrubber thumb parked mid-chapter before the first tick.
+    ///
+    /// These three fields are publicly settable `@Published` values on the
+    /// high-frequency `AudiobookPlaybackProgress` object, so the test pre-seeds
+    /// them directly (they are NOT `private(set)` toolkit-driven mirrors).
+    ///
+    /// Mutates: dropping any of the three `progress.chapter* = 0` lines from
+    /// `clearActiveSession()` leaves that field non-zero and fails here.
+    func testClearActiveSession_resetsChapterProgressFields() {
+        let presenter = AudiobookSessionPresenter(sessionManager: spySession)
+        presenter.progress.chapterOffset = 42
+        presenter.progress.chapterTimeLeft = 30
+        presenter.progress.chapterProgress = 0.5
+        XCTAssertEqual(presenter.progress.chapterOffset, 42, "PRECONDITION: chapterOffset seeded")
+        XCTAssertEqual(presenter.progress.chapterTimeLeft, 30, "PRECONDITION: chapterTimeLeft seeded")
+        XCTAssertEqual(presenter.progress.chapterProgress, 0.5, accuracy: 0.0001, "PRECONDITION: chapterProgress seeded")
+
+        presenter.clearActiveSession()
+
+        XCTAssertEqual(presenter.progress.chapterOffset, 0,
+                       "clearActiveSession must reset chapterOffset to 0 so the next session's chapter time-elapsed label doesn't show the prior book's offset")
+        XCTAssertEqual(presenter.progress.chapterTimeLeft, 0,
+                       "clearActiveSession must reset chapterTimeLeft to 0 so the next session's time-remaining label starts fresh")
+        XCTAssertEqual(presenter.progress.chapterProgress, 0, accuracy: 0.0001,
+                       "clearActiveSession must reset chapterProgress to 0 so the seek slider thumb doesn't start parked mid-chapter for the next book")
+    }
+    // MARK: - Polish-phase: transport-glyph self-heal (Bug 2, $currentLocation tick)
+
+    /// PRE: fresh presenter (`isPlaying == false`); the toolkit has advanced
+    /// the playhead so `sessionManager.isPlaying == true` WITHOUT re-emitting a
+    /// `.playing` state event (chapter/track rollover, buffer resume after a
+    /// seek). This is the exact stale-glyph race the self-heal fixes.
+    /// EXPECTED: reconciling from the advancing `$currentLocation` tick flips
+    /// the presenter's `isPlaying` (the play/pause glyph) true within one frame.
+    /// Mutates: flipping the change-guard comparison `!=` to `==` skips the
+    /// re-snap, leaving the glyph latched on "play" while audio is audible —
+    /// this assertion then fails, killing that mutant.
+    func testPresenter_playheadAdvancesWhileManagerIsPlaying_reconcileSelfHealsPlayGlyph() {
+        let presenter = AudiobookSessionPresenter(sessionManager: spySession)
+        XCTAssertFalse(presenter.isPlaying,
+                       "PRECONDITION: glyph starts on play (isPlaying == false)")
+
+        // The toolkit is playing audio but never re-emitted `.playing`.
+        spySession.isPlaying = true
+
+        // Advancing `$currentLocation` tick runs the self-heal.
+        presenter.reconcileTransportGlyphFromSessionManager()
+
+        XCTAssertTrue(presenter.isPlaying,
+                      "An advancing playhead with sessionManager.isPlaying == true MUST self-heal the presenter's glyph to playing even without a discrete .playing event. A regression that drops or inverts the re-snap leaves the pause glyph missing while audio plays.")
+    }
+
+    /// PRE: fresh presenter (`isPlaying == false`); `sessionManager.isPlaying`
+    /// is ALSO false (genuinely paused / not advancing).
+    /// EXPECTED: reconciling does NOT flip the glyph to playing — the guard is
+    /// authoritative-driven, not unconditional, so a paused player keeps the
+    /// play glyph.
+    /// Mutates: replacing the assignment source with a literal `true` (or
+    /// dropping the guard so it always re-snaps to a stale value) would flip
+    /// this false → true and fail here.
+    func testPresenter_managerNotPlaying_reconcileLeavesGlyphOnPlay() {
+        let presenter = AudiobookSessionPresenter(sessionManager: spySession)
+        spySession.isPlaying = false
+
+        presenter.reconcileTransportGlyphFromSessionManager()
+
+        XCTAssertFalse(presenter.isPlaying,
+                       "When sessionManager.isPlaying is false the self-heal must NOT flip the glyph to playing — the reconcile mirrors the authoritative manager flag, it does not fabricate a playing state.")
+    }
+
+    // MARK: - chapterProgress (chapter-relative scrubber value)
+
+    /// Mid-chapter: offset 30s into a 120s chapter (30 elapsed + 90 left) is
+    /// exactly 0.25. Pins `offset / (offset + timeLeft)`. A mutant that swaps
+    /// the numerator/denominator, or reads book-relative progress instead,
+    /// fails this exact value.
+    func testChapterProgress_midChapter_isOffsetOverDuration() {
+        let value = AudiobookSessionPresenter.chapterProgress(offset: 30, timeLeft: 90)
+        XCTAssertEqual(value, 0.25, accuracy: 0.0001,
+                       "chapterProgress must be offset / (offset + timeLeft): 30 / 120 = 0.25")
+    }
+
+    /// Zero chapter duration (offset 0, timeLeft 0 → duration 0) must return 0,
+    /// NOT NaN. Pins the `duration > 0` guard: a mutant relaxing it to `>= 0`
+    /// (or dropping it) divides 0/0 → NaN and fails this assertion.
+    func testChapterProgress_zeroDuration_returnsZeroNotNaN() {
+        let value = AudiobookSessionPresenter.chapterProgress(offset: 0, timeLeft: 0)
+        XCTAssertFalse(value.isNaN, "Zero-duration chapter must not yield NaN")
+        XCTAssertEqual(value, 0, accuracy: 0.0001,
+                       "Zero-duration chapter progress must be 0 (guard returns early)")
+    }
+
+    /// Past chapter end: offset 200 with timeLeft -50 (duration 150) computes a
+    /// raw ratio of 200/150 ≈ 1.33 which must clamp to 1.0. Pins the upper
+    /// `min(_, 1)` clamp; a mutant dropping it lets the thumb run past the end.
+    func testChapterProgress_clampsPastChapterEnd() {
+        let value = AudiobookSessionPresenter.chapterProgress(offset: 200, timeLeft: -50)
+        XCTAssertEqual(value, 1.0, accuracy: 0.0001,
+                       "Progress past the chapter end must clamp to 1.0, not exceed it")
+    }
+
+    /// NIT coverage (qa_test SoD review of PR #1230): a negative offset (offset
+    /// -30 into a 60s chapter → raw ratio -0.5) must clamp to 0 via the lower
+    /// `max(_, 0)` bound, never a negative thumb position. Pins the LOWER clamp
+    /// specifically (the existing tests pin the upper `min(_, 1)` and the
+    /// zero-duration guard).
+    ///
+    /// Mutates: dropping the `max(offset / duration, 0)` lower clamp lets the
+    /// value go negative (-0.5) and fails this assertion.
+    func testChapterProgress_negativeOffset_clampsToZero() {
+        XCTAssertEqual(AudiobookSessionPresenter.chapterProgress(offset: -30, timeLeft: 90), 0, accuracy: 0.0001,
+                       "A negative chapter offset must clamp to 0, not produce a negative scrubber position")
+    }
+}

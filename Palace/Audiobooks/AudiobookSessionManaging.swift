@@ -98,6 +98,63 @@ protocol AudiobookSessionManaging: AnyObject {
     /// Cycles through available playback rates and returns the new rate.
     func cyclePlaybackRate() -> PlaybackRate
 
+    /// Seeks to a fractional position (0…1) of the whole audiobook. Drives the
+    /// full player's scrubber. Default no-op so lightweight test doubles need not
+    /// implement it; the production manager routes to the toolkit's
+    /// `DefaultAudiobookManager.seekWithSlider`.
+    func seek(to fraction: Double)
+
+    /// Sets (or clears) the sleep timer. Drives the full player's sleep-timer
+    /// menu. Default no-op so lightweight test doubles need not implement it; the
+    /// production manager routes to the toolkit's `DefaultAudiobookManager.sleepTimer`.
+    func setSleepTimer(_ trigger: SleepTimerTriggerAt)
+
+    /// Current playback rate (read). Fixes the morphing player's hard-coded
+    /// "1.0×" label for sessions restored at a persisted rate. Default
+    /// `.normalTime` for lightweight test doubles.
+    var currentPlaybackRate: PlaybackRate { get }
+
+    /// Sets an explicit playback rate (drives the speed slider). Default no-op;
+    /// the production manager routes to the toolkit `player.playbackRate`.
+    func setPlaybackRate(_ rate: PlaybackRate)
+
+    /// True once the toolkit player has buffered — gates the loading overlay.
+    /// Default `true` so test doubles read as loaded (no spurious spinner).
+    var isLoaded: Bool { get }
+
+    /// Whether a sleep timer is currently counting down. Default `false`.
+    var sleepTimerIsActive: Bool { get }
+
+    /// Seconds left on the active sleep timer (0 when inactive). Default `0`.
+    var sleepTimerRemaining: TimeInterval { get }
+
+    /// Overall download progress (0…1) for the current audiobook's tracks.
+    /// Drives the player's download bar. Default `0` for lightweight test doubles.
+    var overallDownloadProgress: Float { get }
+
+    /// Whether the current audiobook is still downloading / decrypting tracks in
+    /// the background (progress < 1). Drives the download-bar visibility.
+    /// Default `false`.
+    var isDownloading: Bool { get }
+
+    /// Chapter-relative playhead offset (seconds from the start of the current
+    /// chapter) — the raw value behind the player's elapsed timecode. Default `0`.
+    var chapterOffset: TimeInterval { get }
+
+    /// Seconds remaining in the current chapter — the raw value behind the
+    /// player's chapter time-left timecode. Default `0`.
+    var chapterTimeLeft: TimeInterval { get }
+
+    /// Latest transient toast message from the toolkit (bookmark-added or a
+    /// playback error), or `nil` when there is none. Default `nil`.
+    var toastMessage: String? { get }
+
+    /// Adds a bookmark at the current playback position. `completion` receives a
+    /// non-nil `Error` on failure, `nil` on success. Default reports success so
+    /// lightweight test doubles need not implement it; the production manager
+    /// routes to the toolkit `AudiobookPlaybackModel.addBookmark(completion:)`.
+    func addBookmark(completion: @escaping (Error?) -> Void)
+
     /// Stops playback and clears the current session.
     func stopPlayback(dismissPhoneUI: Bool, persistFinalPosition: Bool) async
 
@@ -118,6 +175,32 @@ protocol AudiobookSessionManaging: AnyObject {
     /// Polish-phase addition (in-app-nav-polish-2026-06-01) for the
     /// "playback freezes when backgrounded" user-reported regression.
     func recoverPlaybackForForegroundEntry()
+}
+
+// MARK: - Default implementations
+
+extension AudiobookSessionManaging {
+    /// Default no-op so lightweight test doubles need not implement seeking.
+    /// The production `AudiobookSessionManager` overrides this.
+    func seek(to fraction: Double) {}
+
+    /// Default no-op so lightweight test doubles need not implement the sleep
+    /// timer. The production `AudiobookSessionManager` overrides this.
+    func setSleepTimer(_ trigger: SleepTimerTriggerAt) {}
+
+    // Defaults for the parity accessors so existing test doubles/mocks keep
+    // compiling; the production `AudiobookSessionManager` overrides each.
+    var currentPlaybackRate: PlaybackRate { .normalTime }
+    func setPlaybackRate(_ rate: PlaybackRate) {}
+    var isLoaded: Bool { true }
+    var sleepTimerIsActive: Bool { false }
+    var sleepTimerRemaining: TimeInterval { 0 }
+    var overallDownloadProgress: Float { 0 }
+    var isDownloading: Bool { false }
+    var chapterOffset: TimeInterval { 0 }
+    var chapterTimeLeft: TimeInterval { 0 }
+    var toastMessage: String? { nil }
+    func addBookmark(completion: @escaping (Error?) -> Void) { completion(nil) }
 }
 
 // MARK: - AudiobookSessionManager Conformance
