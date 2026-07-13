@@ -27,20 +27,31 @@ struct DeveloperSettingsView: View {
 
     var body: some View {
         List {
-            librarySettingsSection
-            triageBotSection
-            featureFlagsSection
-            libraryRegistryDebuggingSection
-            developerToolsSection
-            pushNotificationTestingSection
-            #if DEBUG
-            badgeTestingSection
-            #endif
-            errorSimulationSection
-            #if DEBUG
-            mockBackendSection
-            resetAccountTestingSection
-            #endif
+            // Engineering-tier runtime gate — MUST match the retired UIKit VC's
+            // `visibleSections` filter (audience == .support || showEngineeringTools).
+            // On a production App Store build (showEngineeringTools == false) these
+            // sections are hidden, so a patron who trips the version long-press does
+            // NOT see production-behavior-changing feature-flag toggles. The patron
+            // functions (Send Error Logs, Data & Reset) live in the always-visible
+            // Advanced menu, so nothing patron-facing is lost — the Testing screen
+            // is simply empty on production. On DEBUG / simulator / TestFlight
+            // (showEngineeringTools == true) all sections render.
+            if viewModel.showEngineeringTools {
+                librarySettingsSection
+                triageBotSection
+                featureFlagsSection
+                libraryRegistryDebuggingSection
+                developerToolsSection
+                pushNotificationTestingSection
+                #if DEBUG
+                badgeTestingSection
+                #endif
+                errorSimulationSection
+                #if DEBUG
+                mockBackendSection
+                resetAccountTestingSection
+                #endif
+            }
         }
         .listStyle(GroupedListStyle())
         .navigationBarTitle(DisplayStrings.developerSettingsTitle)

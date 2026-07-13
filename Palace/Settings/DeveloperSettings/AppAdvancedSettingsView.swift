@@ -14,8 +14,9 @@
 //  the row builders + action code with `DeveloperSettingsView` via the common
 //  `DeveloperSettingsViewModel`, so there is no duplicated action logic.
 //
-//  NOTE: this view is intentionally NOT yet wired into `TPPSettingsView` — that
-//  integration step is deferred for review (per the PP-4788 draft handoff).
+//  Wired into `TPPSettingsView` as the always-visible "Advanced" section (no
+//  gesture required), so support can direct patrons to Send Error Logs / Data &
+//  Reset without the hidden version long-press.
 //
 
 import SwiftUI
