@@ -31,6 +31,7 @@ struct DeveloperSettingsView: View {
             triageBotSection
             featureFlagsSection
             libraryRegistryDebuggingSection
+            developerToolsSection
             pushNotificationTestingSection
             #if DEBUG
             badgeTestingSection
@@ -75,6 +76,20 @@ struct DeveloperSettingsView: View {
                 value: viewModel.anthropicKeyStatus
             ) {
                 present { viewModel.presentAnthropicKeyEntry(from: $0) }
+            }
+        }
+    }
+
+    // MARK: - Developer Tools (engineering)
+
+    /// Engineering-tier Developer Tools. Only "Email Audiobook Logs" remains here;
+    /// the patron-facing "Send Error Logs" moved to the always-visible Advanced
+    /// screen (PP-4788). Preserves the original DEVELOPER TOOLS section so the
+    /// audiobook-logs export isn't lost in the migration.
+    @ViewBuilder private var developerToolsSection: some View {
+        Section(header: Text("Developer Tools")) {
+            DevDisclosureValueRow(title: "Email Audiobook Logs", value: "") {
+                present { viewModel.emailAudiobookLogs(from: $0) }
             }
         }
     }
