@@ -29,7 +29,7 @@ struct AppTabHostView: View {
     /// → expand → fullScreenCover presents). Without this `@ObservedObject`,
     /// the `fullScreenCover(isPresented:)` Binding never sees the change
     /// because the binding's `get` closure reads a value SwiftUI is not
-    /// tracking — only the inner `AudiobookMiniPlayerView` (which has its
+    /// tracking — only the mounted audiobook player view (which has its
     /// own `@ObservedObject`) re-renders when the presenter publishes.
     @ObservedObject private var audiobookSessionPresenter: AudiobookSessionPresenter
 
@@ -173,8 +173,8 @@ struct AppTabHostView: View {
     /// audio. Only `stopPlayback` (the ✕) tears the session down.
     ///
     /// The former hidden toolkit "keeper" — an `opacity(0)`,
-    /// `allowsHitTesting(false)` `AudiobookFullPlayerCoverContainer` mounted
-    /// here solely so the toolkit `AudiobookPlayerView`'s
+    /// `allowsHitTesting(false)` container wrapping the toolkit
+    /// `AudiobookPlayerView`, mounted here solely so its
     /// `setupBackgroundStateHandling()` observers would persist position on
     /// background/terminate — has been removed. That lifecycle persist now
     /// lives in `AudiobookSessionManager.subscribeToAppLifecyclePositionPersistence()`,

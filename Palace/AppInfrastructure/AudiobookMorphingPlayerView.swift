@@ -547,7 +547,7 @@ struct AudiobookMorphingPlayerView: View {
                     Image(systemName: "moon.fill")
                         .font(.system(size: metrics.iconSize - 2))
                     if audiobookSession.sleepTimerIsActive {
-                        Text(AudiobookMiniPlayerView.formatTime(audiobookSession.sleepTimerRemaining))
+                        Text(Self.formatTime(audiobookSession.sleepTimerRemaining))
                             .font(.system(size: metrics.fontSize - 1, weight: .medium, design: .monospaced))
                             .lineLimit(1).minimumScaleFactor(0.6)
                     }
@@ -979,6 +979,21 @@ struct AudiobookMorphingPlayerView: View {
         UIDevice.current.userInterfaceIdiom == .phone && size.width > size.height
     }
 
+    /// Pure `TimeInterval` -> "MM:SS" / "H:MM:SS" formatter. Negative or
+    /// non-finite inputs render "--:--". `static` so the tests can pin the
+    /// format without spinning up the view body.
+    internal static func formatTime(_ interval: TimeInterval) -> String {
+        guard interval.isFinite, interval >= 0 else { return "--:--" }
+        let totalSeconds = Int(interval)
+        let hours = totalSeconds / 3600
+        let minutes = (totalSeconds % 3600) / 60
+        let seconds = totalSeconds % 60
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d", hours, minutes, seconds)
+        }
+        return String(format: "%d:%02d", minutes, seconds)
+    }
+
     // MARK: - Derived
 
     /// Book-relative progress (0…1 across the whole book) — drives the mini
@@ -996,12 +1011,12 @@ struct AudiobookMorphingPlayerView: View {
     /// Chapter-relative elapsed timecode (seconds from the start of the current
     /// chapter) — mirrors toolkit `playheadOffsetText`.
     private var chapterElapsedString: String {
-        AudiobookMiniPlayerView.formatTime(progress.chapterOffset)
+        Self.formatTime(progress.chapterOffset)
     }
 
     /// Chapter-relative time-left timecode — mirrors toolkit `timeLeftText`.
     private var chapterRemainingString: String {
-        "-" + AudiobookMiniPlayerView.formatTime(max(0, progress.chapterTimeLeft))
+        "-" + Self.formatTime(max(0, progress.chapterTimeLeft))
     }
 
     /// Spoken value for the seek slider: percent through the current chapter
