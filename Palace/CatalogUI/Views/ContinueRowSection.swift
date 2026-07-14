@@ -128,7 +128,11 @@ private struct ContinueSingleItemRow: View {
                         Text(typeLabel)
                             .font(.caption)
                     }
-                    .foregroundStyle(Color.accentColor)
+                    // Content-type indicator (play/pause glyph + "Audiobook"/
+                    // "Ebook") is metadata, not an accent affordance — style it as
+                    // muted secondary text (grouped with the author line above) so
+                    // it doesn't pick up the ambient tint and render blue.
+                    .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
