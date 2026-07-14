@@ -39,6 +39,14 @@ struct AudiobookMorphingPlayerView: View {
     @ObservedObject var progress: AudiobookPlaybackProgress
     let audiobookSession: AudiobookSessionManaging
 
+    /// The bottom inset (safe area + LIVE tab-bar height + margin) the host
+    /// measures and injects so the minimized card stays glued to the ACTUAL
+    /// tab bar — including under the iOS 26 minimize-on-scroll behavior where
+    /// the bar height is dynamic. `nil` means the host hasn't measured yet;
+    /// we then fall back to the window-safe-area + default-height math, which
+    /// is exactly the historical hardcoded behavior. See `TabBarModernization`.
+    @Environment(\.miniPlayerTabBarInset) private var injectedTabBarInset
+
     /// Namespace for the cover's `matchedGeometryEffect` — the single element
     /// that morphs between the full and mini layouts.
     @Namespace private var morphNamespace
@@ -129,8 +137,12 @@ struct AudiobookMorphingPlayerView: View {
     // MARK: - Layout constants
 
     private static let miniBarHeight: CGFloat = 74
+    /// Horizontal inset of the minimized card from the screen edges.
     private static let miniMargin: CGFloat = 8
-    private static let tabBarHeight: CGFloat = 49
+    // The tab-bar-height component of the mini card's BOTTOM inset now comes
+    // from the host's live measurement via `\.miniPlayerTabBarInset` (see
+    // `minimizedBottomInset`) rather than a hardcoded 49pt — required so the
+    // card tracks the tab bar under the iOS 26 dynamic-height minimize behavior.
     private static let coverMatchID = "audiobookCover"
 
     // MARK: - Body
@@ -197,10 +209,14 @@ struct AudiobookMorphingPlayerView: View {
         .shadow(color: .black.opacity(expanded ? 0 : 0.18),
                 radius: expanded ? 0 : 10, y: -2)
         .padding(.horizontal, expanded ? 0 : Self.miniMargin)
-        // Float the mini card clear of the tab bar + home indicator. Read the
-        // real bottom inset from the window (the GeometryReader ignores safe area
-        // for the full-bleed expanded state, so its inset is 0).
-        .padding(.bottom, expanded ? 0 : bottomSafeInset + Self.tabBarHeight + Self.miniMargin)
+        // Float the mini card clear of the tab bar + home indicator. Prefer the
+        // host-measured inset (LIVE tab-bar height, injected via
+        // `\.miniPlayerTabBarInset`) so the card tracks the ACTUAL bar — even
+        // under the iOS 26 minimize-on-scroll behavior. When unmeasured, fall
+        // back to the window safe-area + default height math (the historical
+        // hardcoded behavior). The GeometryReader ignores safe area for the
+        // full-bleed expanded state, so its inset is 0 — hence the window read.
+        .padding(.bottom, expanded ? 0 : minimizedBottomInset)
         // No `.contentShape` on the padded frame: when minimized, the bottom
         // padding sits OVER the tab bar, and a rectangular content-shape there
         // swallowed the tab bar's taps. The mini bar's own `Color` fill (the
@@ -1088,6 +1104,21 @@ struct AudiobookMorphingPlayerView: View {
 
     private var topSafeInset: CGFloat { Self.keyWindowInsets.top }
     private var bottomSafeInset: CGFloat { Self.keyWindowInsets.bottom }
+
+    /// Bottom padding for the minimized card so it floats above the tab bar.
+    /// Prefers the host-measured inset (LIVE tab-bar height); when the host
+    /// hasn't measured yet, falls back to the window safe-area + default
+    /// tab-bar-height math — the historical hardcoded value, so the card is
+    /// never worse-positioned than before.
+    private var minimizedBottomInset: CGFloat {
+        if let injectedTabBarInset {
+            return injectedTabBarInset
+        }
+        return TabBarModern.miniPlayerBottomInset(
+            safeAreaBottom: bottomSafeInset,
+            tabBarHeight: TabBarModern.defaultTabBarHeight
+        )
+    }
 
     private static var keyWindowInsets: UIEdgeInsets {
         UIApplication.shared.connectedScenes
