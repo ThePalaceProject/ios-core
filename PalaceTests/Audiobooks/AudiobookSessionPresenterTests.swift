@@ -188,6 +188,70 @@ final class AudiobookSessionPresenterTests: XCTestCase {
                      "Errored session must drop the current book so no chrome lingers after a failed open")
     }
 
+    // MARK: - Instant-present loading shell (present before the loader runs)
+
+    /// The manager calls `presentLoadingShell(for:coverImage:)` the instant a
+    /// fresh open begins — BEFORE the loader chain runs — so the player slides
+    /// up immediately with a cover + skeleton. This pins that the shell adopts
+    /// the book identity + cover and expands, WITHOUT any playback model yet
+    /// (the loader binds that later). Mutates: dropping any of the three writes
+    /// in `presentLoadingShell` fails a corresponding assertion.
+    func testPresentLoadingShell_adoptsBookAndCoverAndExpands_withNoPlaybackModelYet() {
+        let presenter = AudiobookSessionPresenter(sessionManager: spySession)
+        let book = TPPBookMocker.mockBook(title: "Instant Open", authors: "Author")
+        let cover = UIImage()
+        XCTAssertFalse(presenter.isPlayerExpanded, "PRECONDITION: collapsed")
+        XCTAssertNil(presenter.currentBook, "PRECONDITION: no book")
+        XCTAssertNil(presenter.playbackModel, "PRECONDITION: no model")
+
+        presenter.presentLoadingShell(for: book, coverImage: cover)
+
+        XCTAssertEqual(presenter.currentBook?.identifier, book.identifier,
+                       "shell must adopt the book so the root mount gate + title/author chrome have a source")
+        XCTAssertTrue(presenter.coverImage === cover,
+                      "shell must adopt the low-res cover so it shows the instant the skeleton clears")
+        XCTAssertTrue(presenter.isPlayerExpanded,
+                      "shell must expand so the morphing player slides up on tap, not after load")
+        XCTAssertNil(presenter.playbackModel,
+                     "shell must present BEFORE the loader binds a playback model — this is the whole point of instant-present")
+    }
+
+    /// A coverless book must clear the mirror (placeholder), not inherit a stale
+    /// cover. Mutates: `adoptCoverImage(coverImage)` → skipping the write leaves
+    /// a prior cover in place; this test would then see the stale image.
+    func testPresentLoadingShell_withNilCover_clearsCoverForPlaceholder() {
+        let presenter = AudiobookSessionPresenter(sessionManager: spySession)
+        presenter.adoptCoverImage(UIImage())  // stale cover from a prior session
+        let book = TPPBookMocker.mockBook(title: "No Cover", authors: "Author")
+
+        presenter.presentLoadingShell(for: book, coverImage: nil)
+
+        XCTAssertNil(presenter.coverImage,
+                     "a coverless open must show the placeholder, not a stale cover from a previous session")
+    }
+
+    /// Round-trip through the production seam: present the shell via
+    /// `presentLoadingShell`, then a failed load publishes `.error` — the shell
+    /// must tear down completely so it never lingers with no book actually
+    /// loaded. Mutates: removing the `.error` teardown leaves the shell up.
+    func testPresentLoadingShell_thenErrorState_tearsDownShell() {
+        let presenter = AudiobookSessionPresenter(sessionManager: spySession)
+        let book = TPPBookMocker.mockBook(title: "Fails To Load", authors: "Author")
+
+        presenter.presentLoadingShell(for: book, coverImage: UIImage())
+        XCTAssertTrue(presenter.isPlayerExpanded, "PRECONDITION: shell up")
+        XCTAssertNotNil(presenter.currentBook, "PRECONDITION: book adopted")
+
+        spySession.state = .error(bookId: book.identifier, message: "boom")
+        spySession.playbackStatePublisher.send(.error(bookId: book.identifier, message: "boom"))
+        spinRunLoopForPublisherDelivery()  // the .error teardown sink hops via receive(on: .main)
+
+        XCTAssertFalse(presenter.isPlayerExpanded,
+                       "a failed open must collapse the shell — no phantom loading player")
+        XCTAssertNil(presenter.currentBook,
+                     "a failed open must drop the book so the root overlay unmounts")
+    }
+
     // MARK: - First-open expand (§7.4 / F-011)
 
     /// PRE: presenter has `isPlayerExpanded == false`.

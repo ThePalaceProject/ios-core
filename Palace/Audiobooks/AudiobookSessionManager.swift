@@ -640,6 +640,21 @@ public final class AudiobookSessionManager: ObservableObject {
         hasEverStartedPlayback = false
         playbackStatePublisher.send(state)
 
+        // Present the player shell IMMEDIATELY — before the loader chain
+        // (manifest fetch / DRM / factory) runs — so the morphing player slides
+        // up the instant the patron taps Continue / Listen, showing the cover +
+        // a loading skeleton, instead of dead time until load completes. Only
+        // for a fresh user-initiated open (`startPlaying`) with in-app nav on;
+        // idempotent with the bind-time `presentOnFirstOpen()`. The loading
+        // skeleton clears once the toolkit reports `isLoaded`; a failed load
+        // publishes `.error`, which the presenter tears down.
+        if startPlaying, inAppPlaybackNavEnabledProvider() {
+            audiobookSessionPresenterProvider().presentLoadingShell(
+                for: book,
+                coverImage: book.coverImage ?? book.thumbnailImage
+            )
+        }
+
 #if LCP
         // PP-4542 (gate): a freshly-borrowed LCP audiobook is marked
         // download-successful the instant its tiny .lcpl license lands, but the

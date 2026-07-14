@@ -186,7 +186,14 @@ struct AppTabHostView: View {
     /// morph inside `AudiobookMorphingPlayerView`.
     @ViewBuilder
     private var resizingPlayerOverlay: some View {
-        if inAppPlaybackNavEnabled, audiobookSessionPresenter.playbackModel != nil {
+        // Mount on `currentBook` (set by `presentLoadingShell` the instant a
+        // fresh open begins) OR `playbackModel` (set when the loader binds), so
+        // the player slides up immediately with its loading skeleton instead of
+        // waiting for the whole load chain. Both are cleared by
+        // `clearActiveSession()` on close / error, so the overlay unmounts then.
+        if inAppPlaybackNavEnabled,
+           audiobookSessionPresenter.playbackModel != nil
+            || audiobookSessionPresenter.currentBook != nil {
             AudiobookMorphingPlayerView(
                 presenter: audiobookSessionPresenter,
                 progress: audiobookSessionPresenter.progress,

@@ -198,6 +198,28 @@ class AudiobookSessionPresenter: ObservableObject {
         isCollapsed = false
     }
 
+    /// Presents the player shell IMMEDIATELY on a fresh open — BEFORE the loader
+    /// chain (manifest fetch / DRM / factory) runs — so the morphing player
+    /// slides up the instant the patron taps Continue / Listen, showing the
+    /// book's cover + a loading skeleton, instead of dead time until load
+    /// completes. Adopts the book identity (so the root mount gate and title/
+    /// author chrome have a source) + a low-res cover, then expands.
+    ///
+    /// Idempotent with the bind-time `presentOnFirstOpen()` (both set
+    /// `isPlayerExpanded = true`); the loader's later `adoptPlaybackModel(_:)`
+    /// fills in playback state and the skeleton clears once `isLoaded`. A failed
+    /// load publishes `.error`, which `clearActiveSession()` tears down (see
+    /// `subscribeToSessionState`), so the shell never lingers without a book.
+    ///
+    /// `coverImage` is always written (even `nil`) so a coverless book shows the
+    /// placeholder rather than a stale cover from a prior session — though the
+    /// manager's pre-open `stopPlayback` has already cleared it.
+    func presentLoadingShell(for book: TPPBook, coverImage: UIImage?) {
+        adoptBook(book)
+        adoptCoverImage(coverImage)
+        presentOnFirstOpen()
+    }
+
     /// Tap-on-mini-player entry point. Sets `isPlayerExpanded = true` so
     /// the root fullScreenCover shows the full player.
     func expand() {
