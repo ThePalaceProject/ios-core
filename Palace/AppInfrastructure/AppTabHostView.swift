@@ -333,18 +333,22 @@ struct AppTabHostView: View {
             appContainer: appContainer
         ))
         .environmentObject(router)
+        .tabContentTint()
     }
 
     private var myBooksRoot: some View {
         NavigationHostView(rootView: MyBooksView(model: myBooksViewModel, appContainer: appContainer))
+            .tabContentTint()
     }
 
     private var holdsRoot: some View {
         NavigationHostView(rootView: HoldsView(appContainer: appContainer))
+            .tabContentTint()
     }
 
     private var settingsRoot: some View {
         NavigationHostView(rootView: TPPSettingsView())
+            .tabContentTint()
     }
 
     /// The one label idiom shared by both builders. Settings uses the SF Symbol
@@ -422,6 +426,12 @@ private struct TabViewChrome: ViewModifier {
             // default `Color.accentColor` here resolved to the SYSTEM blue,
             // since the app ships no AccentColor asset; a neutral tint is the
             // intended look per product.)
+            //
+            // `.tint` is hierarchical, so this would ALSO neutralize nav-bar
+            // chrome / links / controls inside each tab. That is scoped back OUT:
+            // every tab root re-establishes the content accent via
+            // `.tabContentTint()`, so ONLY the tab-bar items are monochrome while
+            // the search icon and in-content controls stay blue.
             .tint(.primary)
             // Selection haptic (iOS 17+ `.sensoryFeedback` under the hood).
             // `palaceHaptic` is preference- AND Reduce-Motion-gated, so it
@@ -583,6 +593,17 @@ fileprivate extension AppTabHostView {
             }
         }
     }
+}
+
+private extension View {
+    /// Re-establishes the app's content accent (system blue) INSIDE a tab so the
+    /// monochrome `.tint(.primary)` applied to the `TabView` (which colors the
+    /// tab-bar items) does not propagate into nav-bar chrome / links / controls.
+    /// The tab-bar items read the `TabView`-level tint; content reads this inner
+    /// one. Applied to all four tab roots so the monochrome look is bar-only —
+    /// the search icon and in-content controls stay blue, matching the app's
+    /// filled `Color.blue` CTAs.
+    func tabContentTint() -> some View { self.tint(Color.blue) }
 }
 
 extension Notification.Name {

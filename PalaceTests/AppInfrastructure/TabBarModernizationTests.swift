@@ -6,10 +6,9 @@
 //  refresh (`TabBarModern` + `TabBarHeightObserver` in
 //  `Palace/AppInfrastructure/TabBarModernization.swift`):
 //
-//    - the brand-tint fix (selected tab must be Palace blue #0090C4, NOT the
-//      SwiftUI default system blue that the missing AccentColor asset caused),
-//    - the mini-player bottom-inset math (must track the LIVE tab-bar height and
-//      clamp bogus measurements so the floating card never desyncs / flies off),
+//    - the mini-player bottom-inset math (must track the LIVE tab-bar height,
+//      not double-count the home-indicator safe area, and clamp bogus
+//      measurements so the floating card never desyncs / flies off),
 //    - the iOS 26 minimize-behavior gate (pin the bar while a mini-player is up).
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
@@ -23,9 +22,10 @@ final class TabBarModernizationTests: XCTestCase {
 
     // MARK: - Mini-player bottom inset
 
-    /// The nominal case: inset = safeArea + measured bar height + margin. Kills
-    /// the `+` → `-` mutant (would place the card below the bar) and any mutant
-    /// that drops one of the three terms.
+    /// The unmeasured fallback: with only the 49pt bar-only seed, the full
+    /// height is reconstructed as safeArea + default bar + margin. Kills the
+    /// `+` → `-` mutant (would place the card below the bar) and any mutant that
+    /// drops one of the three terms.
     func test_miniPlayerBottomInset_sumsSafeAreaBarAndMargin() {
         let inset = TabBarModern.miniPlayerBottomInset(
             safeAreaBottom: 34,
@@ -35,14 +35,24 @@ final class TabBarModernizationTests: XCTestCase {
         XCTAssertEqual(inset, 34 + 49 + 8, accuracy: 0.001)
     }
 
-    /// A DYNAMIC (minimized) bar height must flow straight through so the card
-    /// tracks the shrinking bar — proves the value is not hardcoded to 49.
-    func test_miniPlayerBottomInset_tracksDynamicBarHeight() {
-        let tall = TabBarModern.miniPlayerBottomInset(safeAreaBottom: 34, tabBarHeight: 49, margin: 8)
-        let minimized = TabBarModern.miniPlayerBottomInset(safeAreaBottom: 34, tabBarHeight: 24, margin: 8)
-        XCTAssertEqual(minimized, 34 + 24 + 8, accuracy: 0.001)
-        XCTAssertLessThan(minimized, tall,
-                          "a shorter (minimized) bar must yield a smaller inset — the card follows the bar down")
+    /// A live `UITabBar.frame.height` measurement ALREADY includes the bottom
+    /// safe-area inset (the bar draws into the home-indicator region), so it must
+    /// flow straight through as `height + margin` — NOT have the safe area added
+    /// a second time. Adding it again floated the card ~34pt too high above the
+    /// bar (the double-count bug). A taller measured bar must also yield a taller
+    /// inset so the card keeps tracking the real bar. Kills a mutant that
+    /// re-introduces the `safe +` term.
+    func test_miniPlayerBottomInset_fullFrameMeasurement_doesNotDoubleCountSafeArea() {
+        // 83 = 49pt bar + 34pt home indicator — the real measured frame height.
+        let inset = TabBarModern.miniPlayerBottomInset(safeAreaBottom: 34, tabBarHeight: 83, margin: 8)
+        XCTAssertEqual(inset, 83 + 8, accuracy: 0.001,
+                       "a full-frame measurement must pass through as height+margin, not add the 34pt safe area again")
+        XCTAssertNotEqual(inset, 34 + 83 + 8, accuracy: 0.001,
+                          "must NOT double-count the safe area — that is the too-high bug this fixes")
+
+        let taller = TabBarModern.miniPlayerBottomInset(safeAreaBottom: 34, tabBarHeight: 100, margin: 8)
+        XCTAssertGreaterThan(taller, inset,
+                             "a taller measured bar yields a taller inset — the card tracks the real bar")
     }
 
     /// A bogus (zero / non-finite) measurement must fall back to the default

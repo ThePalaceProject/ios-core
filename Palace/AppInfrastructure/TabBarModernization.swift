@@ -55,12 +55,22 @@ enum TabBarModern {
         tabBarHeight: CGFloat,
         margin: CGFloat = miniMargin
     ) -> CGFloat {
-        // Guard against a spurious non-finite / negative measurement (e.g. a
-        // window torn down mid-transition reporting garbage) so the card never
-        // flies off-screen — fall back to the known-good default height.
+        // Clamp a spurious non-finite / negative safe area (e.g. a window torn
+        // down mid-transition reporting garbage) so the card never flies off.
         let safe = safeAreaBottom.isFinite && safeAreaBottom >= 0 ? safeAreaBottom : 0
-        let bar = tabBarHeight.isFinite && tabBarHeight > 0 ? tabBarHeight : defaultTabBarHeight
-        return safe + bar + margin
+        // A LIVE `UITabBar.frame.height` already spans from the screen bottom to
+        // the bar's TOP edge — it INCLUDES the home-indicator safe area (the bar
+        // draws down into it). So the card's offset from the bottom is that full
+        // height plus a small margin; adding `safe` on top double-counts the home
+        // indicator and floats the card ~34pt too high above the bar. We treat
+        // any real measurement (strictly taller than the 49pt bar-only default)
+        // as the full offset and pass it straight through. When we have no such
+        // measurement (the unmeasured 49 seed, or a bogus 0 / non-finite value)
+        // reconstruct a plausible full height from the historical bar-only
+        // default + the live safe area.
+        let isFullFrameMeasurement = tabBarHeight.isFinite && tabBarHeight > defaultTabBarHeight
+        let fullBarHeight = isFullFrameMeasurement ? tabBarHeight : defaultTabBarHeight + safe
+        return fullBarHeight + margin
     }
 
     /// Whether the iOS 26 `.tabBarMinimizeBehavior(.onScrollDown)` enhancement
