@@ -13,7 +13,6 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
     override var usesInputObserversForTapHandling: Bool { true }
 
     var popoverUserconfigurationAnchor: UIBarButtonItem?
-    private let systemUserInterfaceStyle: UIUserInterfaceStyle
     private let searchButton: UIBarButtonItem
     private var preferences: EPUBPreferences
     private let navigationHub: NavigationCoordinatorHub
@@ -58,7 +57,6 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
          forSample: Bool = false,
          navigationHub: NavigationCoordinatorHub = AppContainer.production().navigationCoordinatorHub) throws {
 
-        self.systemUserInterfaceStyle = UITraitCollection.current.userInterfaceStyle
         self.preferences = preferences
         self.navigationHub = navigationHub
 
@@ -745,7 +743,13 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
         let appearance = TPPConfiguration.defaultAppearance()
         navigationController?.navigationBar.isTranslucent = false
         navigationController?.navigationBar.setAppearance(appearance)
-        navigationController?.navigationBar.forceUpdateAppearance(style: systemUserInterfaceStyle)
+        // Restore the window to `.unspecified` so the app FOLLOWS the system
+        // light/dark setting again. Previously this reset to a CONCRETE style
+        // (`.light`/`.dark`) captured at reader-open, which pinned the window —
+        // after opening/closing a book once, the app stopped switching when the
+        // user changed the system appearance. `.unspecified` re-enables dynamic
+        // system following.
+        navigationController?.navigationBar.forceUpdateAppearance(style: .unspecified)
         navigationController?.navigationBar.tintColor = TPPConfiguration.iconColor()
         tabBarController?.tabBar.tintColor = TPPConfiguration.iconColor()
     }
