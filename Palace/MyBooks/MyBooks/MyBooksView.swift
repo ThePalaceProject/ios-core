@@ -255,18 +255,35 @@ struct MyBooksView: View {
     }
 
     private var emptyView: some View {
-        ContentUnavailableView {
-            // Icon intentionally removed for now (was `systemImage: "books.vertical"`,
-            // added in #1203/PP-4747). Copy unchanged — a plain title `Text`
-            // renders the same words without the SF Symbol above them.
-            Text(DisplayStrings.emptyViewTitle)
-        } description: {
-            Text(DisplayStrings.emptyViewMessage)
-        } actions: {
-            Button(DisplayStrings.browseCatalog) {
-                appContainer.tabRouterHub.navigate(to: .catalog)
+        // The CTA is rendered OUTSIDE `ContentUnavailableView` (below its title +
+        // description) rather than in its `actions:` slot: that slot styles
+        // buttons as plain tinted text links, so the button read as a bare link.
+        // It uses the app's standard filled-CTA style — an explicit `Color.blue`
+        // capsule with white text (matching the catalog "Reload" button,
+        // `CatalogView.swift`) rather than `.borderedProminent`, which the app
+        // doesn't use elsewhere and which would inherit the tab bar's neutral
+        // tint. Explicit `Color.blue` keeps it brand-consistent regardless of tint.
+        VStack(spacing: 20) {
+            ContentUnavailableView {
+                // Icon intentionally removed for now (was `systemImage:
+                // "books.vertical"`, added in #1203/PP-4747). Copy unchanged — a
+                // plain title `Text` renders the same words without the SF Symbol.
+                Text(DisplayStrings.emptyViewTitle)
+            } description: {
+                Text(DisplayStrings.emptyViewMessage)
             }
-            .buttonStyle(.borderedProminent)
+            .fixedSize(horizontal: false, vertical: true)
+
+            Button {
+                appContainer.tabRouterHub.navigate(to: .catalog)
+            } label: {
+                Text(DisplayStrings.browseCatalog)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 12)
+                    .background(Color.blue)
+                    .foregroundStyle(.white)
+                    .cornerRadius(8)
+            }
         }
         .transition(.opacity)
         .accessibilityIdentifier(AccessibilityID.MyBooks.emptyStateView)
