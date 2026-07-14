@@ -243,13 +243,19 @@ struct AppTabHostView: View {
     /// The whole tab host. Picks the typed `Tab(value:role:)` builder on iOS 18+
     /// and the classic `.tabItem` + `.tag` builder below it. Both apply the same
     /// shared chrome (`tabViewChrome`) so there is no drift between the paths.
+    @ViewBuilder
     private var tabViewContent: some View {
-        Group {
-            if #available(iOS 18, *) {
-                modernTabView
-            } else {
-                legacyTabView
-            }
+        // AnyView-erase each branch: the iOS-18 `Tab(value:)` builder and the
+        // legacy `.tabItem` builder produce different opaque `some View` types,
+        // and materializing a `_ConditionalContent` of an availability-gated
+        // opaque type trips the type-checker (surfaces as a misleading
+        // `CodingKeyRepresentable` error). Erasing resolves each branch
+        // independently. The extra AnyView is inconsequential at the tab-host
+        // root (evaluated once per launch).
+        if #available(iOS 18, *) {
+            AnyView(modernTabView)
+        } else {
+            AnyView(legacyTabView)
         }
     }
 

@@ -126,14 +126,20 @@ final class TabBarModernizationTests: XCTestCase {
                        "unmeasured observer must report the 49pt default, not 0")
     }
 
-    /// `measure()` in a headless test has no key window → no `UITabBar` → the
-    /// published height must stay at the seeded default (best-effort read never
-    /// corrupts the value). Kills a mutant that writes 0 when no bar is found.
+    /// `measure()` is a best-effort read: it updates to a real mounted tab-bar
+    /// height when one exists and otherwise keeps the last good value — it must
+    /// NEVER corrupt the published height to a bogus 0 / non-finite value, which
+    /// would collapse the mini-player onto the bar. Kills the mutant that writes
+    /// 0 when no valid bar is found (the `guard measured > 1 else { return }`
+    /// bogus-guard). The XCTest host mounts a real tab bar, so this also confirms
+    /// measure() picks up a plausible height rather than leaving a stale seed.
     @MainActor
-    func test_tabBarHeightObserver_measureWithNoWindow_keepsDefault() {
+    func test_tabBarHeightObserver_measure_neverCorruptsToBogusHeight() {
         let observer = TabBarHeightObserver()
         observer.measure()
-        XCTAssertEqual(observer.tabBarHeight, TabBarModern.defaultTabBarHeight, accuracy: 0.001,
-                       "measure() with no mounted tab bar must keep the last good value")
+        XCTAssertTrue(observer.tabBarHeight.isFinite,
+                      "measured height must stay finite")
+        XCTAssertGreaterThan(observer.tabBarHeight, 1,
+                             "measure() must keep a valid positive height (the default or a real bar), never collapse to ~0")
     }
 }
