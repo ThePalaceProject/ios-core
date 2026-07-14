@@ -71,7 +71,8 @@ final class ContinueRowSectionTests: XCTestCase {
             viewModel: viewModel,
             onResumeReading: onResumeReading,
             onResumeListening: onResumeListening,
-            isExpanded: .constant(true)
+            isExpanded: .constant(true),
+            collapse: ContinueCollapseModel()
         )
         return (section, viewModel)
     }
