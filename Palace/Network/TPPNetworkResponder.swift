@@ -16,6 +16,12 @@ private struct TPPNetworkTaskInfo {
     var progressData: Data
     var startDate: Date
     var completion: ((NYPLResult<Data>) -> Void)
+    /// Set once the response's declared or accumulated size exceeds
+    /// `TPPNetworkResponder.maxResponseBodyBytes`. When true, `didReceive data:`
+    /// stops appending and `didCompleteWithError` fails the task with a clean
+    /// `responseTooLarge` error instead of surfacing the (partial / cancelled)
+    /// body. See PP-4769 (crash 898c0776).
+    var didExceedSizeLimit: Bool = false
 
     // ----------------------------------------------------------------------------
     init(completion: (@escaping (NYPLResult<Data>) -> Void)) {
@@ -68,6 +74,29 @@ class TPPNetworkResponder: NSObject, @unchecked Sendable {
     private let taskInfoQueue = DispatchQueue(
         label: "com.thepalaceproject.networkResponder.taskInfo"
     )
+
+    /// Pathological-response ceiling. Any response whose declared
+    /// (`expectedContentLength`) or accumulated body would exceed this is
+    /// refused before the whole payload is materialized into a single `Data`,
+    /// which is where iPad-under-memory-pressure crash 898c0776 (PP-4769)
+    /// OOM-trapped inside `__DataStorage.init`.
+    ///
+    /// 100 MB is deliberately far above every legitimate Palace response: OPDS
+    /// feeds and loan documents are at most a few MB, and real book/audiobook
+    /// content is fetched by `MyBooksDownloadCenter` over its own
+    /// `URLSessionDownloadDelegate` (streamed to disk) — it never flows through
+    /// this in-memory data-task path. So the cap only ever fires on a
+    /// genuinely pathological / malformed response, never on normal traffic.
+    static let defaultMaxResponseBodyBytes: Int64 = 100 * 1024 * 1024
+
+    /// Effective per-response body ceiling. Initialized to
+    /// `defaultMaxResponseBodyBytes` and never mutated on any production path
+    /// (zero production write sites repo-wide — effectively constant after
+    /// init). `internal var` rather than `let` solely so adversarial tests can
+    /// lower it to drive the oversize path deterministically without allocating
+    /// a real 100 MB body. Mirrors the `tokenRefreshWatchdogSeconds` test-seam
+    /// convention on `TPPNetworkExecutor`.
+    var maxResponseBodyBytes: Int64 = TPPNetworkResponder.defaultMaxResponseBodyBytes
 
     // ----------------------------------------------------------------------------
     /// - Parameter shouldEnableFallbackCaching: If set to `true`, the executor
@@ -194,15 +223,62 @@ extension TPPNetworkResponder: URLSessionDelegate {
 extension TPPNetworkResponder: URLSessionDataDelegate {
 
     // ----------------------------------------------------------------------------
+    /// Up-front oversize guard (PP-4769). When the server declares a
+    /// `Content-Length` (`expectedContentLength > 0`) that already exceeds
+    /// `maxResponseBodyBytes`, refuse the response BEFORE any body is buffered:
+    /// mark the task oversize and `.cancel` it. The cancellation surfaces in
+    /// `didCompleteWithError`, where the oversize flag routes to a clean
+    /// `responseTooLarge` failure. Responses with unknown length
+    /// (`expectedContentLength == NSURLSessionTransferSizeUnknown`, i.e. -1 —
+    /// chunked / streamed) fall through to `.allow` and are caught by the
+    /// running-total check in `didReceive data:` instead.
+    func urlSession(_ session: URLSession,
+                    dataTask: URLSessionDataTask,
+                    didReceive response: URLResponse,
+                    completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
+        let declared = response.expectedContentLength
+        if declared > 0, declared > self.maxResponseBodyBytes {
+            Log.warn(#file, "Refusing response for task \(dataTask.taskIdentifier): declared Content-Length \(declared) exceeds cap \(self.maxResponseBodyBytes)")
+            taskInfoQueue.sync {
+                if var info = self.taskInfo[dataTask.taskIdentifier] {
+                    info.didExceedSizeLimit = true
+                    self.taskInfo[dataTask.taskIdentifier] = info
+                }
+            }
+            completionHandler(.cancel)
+            return
+        }
+        completionHandler(.allow)
+    }
+
+    // ----------------------------------------------------------------------------
     func urlSession(_ session: URLSession,
                     dataTask: URLSessionDataTask,
                     didReceive data: Data) {
         taskInfoQueue.async { [ weak self] in
-            var info = self?.taskInfo[dataTask.taskIdentifier]
-            info?.progressData.append(data)
-            if let updated = info {
-                self?.taskInfo[dataTask.taskIdentifier] = updated
+            guard let self, var info = self.taskInfo[dataTask.taskIdentifier] else { return }
+
+            // Already over the ceiling from a prior chunk — don't keep growing
+            // the buffer while the cancel propagates.
+            guard !info.didExceedSizeLimit else { return }
+
+            // Running-total guard for chunked / unknown-length responses that
+            // slipped past the up-front `didReceive response:` check (PP-4769).
+            // If appending this chunk would cross `maxResponseBodyBytes`, mark
+            // the task oversize, cancel it, and stop appending — the accumulated
+            // partial body is discarded when `didCompleteWithError` fails the
+            // task with `responseTooLarge`.
+            let projected = Int64(info.progressData.count) + Int64(data.count)
+            if projected > self.maxResponseBodyBytes {
+                Log.warn(#file, "Refusing response for task \(dataTask.taskIdentifier): accumulated body \(projected) would exceed cap \(self.maxResponseBodyBytes)")
+                info.didExceedSizeLimit = true
+                self.taskInfo[dataTask.taskIdentifier] = info
+                dataTask.cancel()
+                return
             }
+
+            info.progressData.append(data)
+            self.taskInfo[dataTask.taskIdentifier] = info
         }
     }
 
@@ -271,6 +347,26 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
             // Only log at debug level to avoid noise in crash reporting.
             // If this becomes a real issue, the user will see failed network requests.
             Log.debug(#file, "Task \(taskID) completed but no taskInfo found - likely an internal URLSession task")
+            return
+        }
+
+        // Oversize guard (PP-4769): the response was refused by
+        // `didReceive response:` / `didReceive data:` for exceeding
+        // `maxResponseBodyBytes`. That refusal cancels the task, so `networkError`
+        // here is `NSURLErrorCancelled` — but this MUST fail with the clean,
+        // specific `responseTooLarge` error (not the generic cancelled error, and
+        // never by materializing the partial `progressData`), so callers/UI see
+        // a meaningful reason instead of an OOM crash. Checked before the generic
+        // cancelled branch below precisely because oversize-cancels look like
+        // cancellations at the URLSession layer.
+        if info.didExceedSizeLimit {
+            Log.warn(#file, "Task \(taskID) failed: response exceeded \(self.maxResponseBodyBytes)-byte cap")
+            let err = NSError(
+                domain: TPPErrorLogger.clientDomain,
+                code: TPPErrorCode.responseTooLarge.rawValue,
+                userInfo: [NSLocalizedDescriptionKey: "The server response was too large to process."]
+            )
+            info.completion(.failure(err, task.response))
             return
         }
 
