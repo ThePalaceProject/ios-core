@@ -94,12 +94,20 @@ final class TPPNetworkExecutorConcurrencyTests: XCTestCase {
     /// Fires `concurrency` concurrent GET requests through the async
     /// `GET(_:useTokenIfAvailable:)` continuation bridge — the exact shape of
     /// the crashed call site (`OPDSFeedService.fetchFeed` →
-    /// `withCheckedContinuation`). Asserts:
-    ///   • every request's completion fired,
-    ///   • none fired twice (no double-resume / double-release),
-    ///   • the data returned to each caller is the stubbed body.
-    /// A regression that over-releases the boxed completion or double-fires a
-    /// continuation would crash (EXC_BAD_ACCESS) or trip the fire ledger.
+    /// `withCheckedContinuation`). Asserts every request completes once and
+    /// returns the stubbed body.
+    ///
+    /// What this arm actually pins: NO DROP and NO CRASH. A dropped completion
+    /// leaves its continuation un-resumed → the task never finishes → the task
+    /// group hangs → the test times out. An over-release / use-after-free of the
+    /// boxed completion crashes (EXC_BAD_ACCESS). A *double*-fire at the
+    /// responder is deliberately NOT pinned here: the async bridge's
+    /// `ContinuationGuard` (`tryConsume`) absorbs the second fire before it
+    /// reaches the ledger, so `doubles.isEmpty` cannot observe it on this path.
+    /// The single-fire-under-double-fire property is proven by the raw
+    /// completion-handler path in
+    /// `testConcurrentExecuteRequest_completionHandlerPath_firesExactlyOnce`,
+    /// which has no such guard.
     func testConcurrentGET_viaContinuations_eachCompletionFiresExactlyOnce() async {
         let body = "{\"ok\":true}".data(using: .utf8)!
         HTTPStubURLProtocol.register { _ in
@@ -130,16 +138,19 @@ final class TPPNetworkExecutorConcurrencyTests: XCTestCase {
         let (unique, doubles, total) = ledger.snapshot()
         XCTAssertEqual(unique, n, "expected all \(n) requests to complete exactly once")
         XCTAssertTrue(doubles.isEmpty, "requests double-fired: \(doubles)")
-        XCTAssertEqual(total, n, "total fire count \(total) != \(n) (drop or double-fire)")
+        XCTAssertEqual(total, n, "total fire count \(total) != \(n) (dropped completion)")
     }
 
     // MARK: - Concurrent failure — error completions also fire exactly once
 
     /// Same fan-out but every request gets a 500. The failure branch of the
-    /// completion path (`.failure(err, response)`) must also fire exactly once
-    /// per request with no over-release. Mixing this with the success test
-    /// proves BOTH arms of the `NYPLResult` switch are race-clean, not just the
-    /// happy path.
+    /// completion path (`.failure(err, response)`) must also complete once per
+    /// request. Like the success arm, this pins no-drop (a lost failure hangs
+    /// the group → timeout) and no-crash on the `.failure` arm; a responder
+    /// double-fire is again absorbed by the async `ContinuationGuard` and is
+    /// pinned instead by the raw completion-handler test. Mixing this with the
+    /// success test proves BOTH arms of the `NYPLResult` switch are race-clean,
+    /// not just the happy path.
     func testConcurrentGET_serverError_eachFailureFiresExactlyOnce() async {
         HTTPStubURLProtocol.register { _ in
             .init(statusCode: 500, headers: nil, body: "boom".data(using: .utf8))

@@ -199,4 +199,41 @@ final class TPPNetworkResponderSizeLimitTests: XCTestCase {
         XCTAssertNil(gotError, "a body exactly at the cap must NOT be refused")
         XCTAssertEqual(gotData?.count, Int(testCap), "at-cap body must be delivered in full")
     }
+
+    /// A response that DECLARES a Content-Length exactly AT the cap must still
+    /// pass the up-front `didReceive response:` guard (which fires only when the
+    /// declared length STRICTLY EXCEEDS the cap). This closes the boundary that
+    /// `testResponse_exactlyAtCap_succeeds` does NOT reach: that test sends no
+    /// Content-Length header, so it only exercises the running-total branch —
+    /// leaving the declared-length branch's off-by-one (`declared > cap` →
+    /// `declared >= cap`) unpinned. Here the declared length equals the cap, so
+    /// the original allows it (success) while the `>=` mutant refuses it.
+    func testResponse_declaredContentLengthExactlyAtCap_succeeds() {
+        let declared = testCap // exactly at the cap
+        let atCap = body(ofSize: Int(testCap))
+        HTTPStubURLProtocol.register { _ in
+            .init(statusCode: 200,
+                  headers: ["Content-Length": "\(declared)"],
+                  body: atCap)
+        }
+
+        let done = expectation(description: "declared-at-cap completes")
+        var gotData: Data?
+        var gotError: Error?
+
+        executor.GET(
+            URL(string: "https://api.example.com/declared-atcap")!,
+            cachePolicy: .useProtocolCachePolicy,
+            useTokenIfAvailable: false
+        ) { data, _, error in
+            gotData = data
+            gotError = error
+            done.fulfill()
+        }
+
+        wait(for: [done], timeout: 10.0)
+
+        XCTAssertNil(gotError, "a response declaring Content-Length exactly at the cap must NOT be refused up front")
+        XCTAssertEqual(gotData?.count, Int(testCap), "declared-at-cap body must be delivered in full")
+    }
 }
