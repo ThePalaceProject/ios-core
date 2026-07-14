@@ -34,7 +34,13 @@ struct CatalogLaneRowView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             LazyHStack(spacing: 12) {
                 ForEach(books, id: \.identifier) { book in
-                    Button(action: { onSelect(book) }, label: {
+                    Button(action: {
+                        // Light tap feedback on opening a book from a catalog
+                        // lane. Preference- and Reduce-Motion-gated inside
+                        // `triggerHaptic` (mirrors the reader's tap haptic).
+                        Task { await AccessibilityService.shared.triggerHaptic(.lightImpact) }
+                        onSelect(book)
+                    }, label: {
                         BookImageView(
                             book: book,
                             width: nil,

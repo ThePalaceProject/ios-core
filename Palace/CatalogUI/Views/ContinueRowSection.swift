@@ -100,7 +100,12 @@ private struct ContinueSingleItemRow: View {
     let onTap: (TPPBook) -> Void
 
     var body: some View {
-        Button(action: { onTap(item.book) }, label: {
+        Button(action: {
+            // Light tap feedback on resuming from the Continue card. Preference-
+            // and Reduce-Motion-gated inside `triggerHaptic`.
+            Task { await AccessibilityService.shared.triggerHaptic(.lightImpact) }
+            onTap(item.book)
+        }, label: {
             HStack(alignment: .top, spacing: 12) {
                 BookImageView(
                     book: item.book,
@@ -128,11 +133,7 @@ private struct ContinueSingleItemRow: View {
                         Text(typeLabel)
                             .font(.caption)
                     }
-                    // Content-type indicator (play/pause glyph + "Audiobook"/
-                    // "Ebook") is metadata, not an accent affordance — style it as
-                    // muted secondary text (grouped with the author line above) so
-                    // it doesn't pick up the ambient tint and render blue.
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.accentColor)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
