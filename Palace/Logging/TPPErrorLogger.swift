@@ -205,6 +205,11 @@ private let nullString = "null"
     case problemDocAvailable = 912
     case malformedURL = 913
     case invalidOrNoHTTPResponse = 914
+    /// A response body exceeded `TPPNetworkResponder.maxResponseBodyBytes` and
+    /// was refused before buffering the whole payload into a single `Data`
+    /// (PP-4769, crash 898c0776 — `__DataStorage.init` OOM under memory
+    /// pressure). The task is cancelled and its completion fails cleanly.
+    case responseTooLarge = 915
 
     // DRM
     case epubDecodingError = 1000

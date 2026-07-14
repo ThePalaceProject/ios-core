@@ -1801,6 +1801,7 @@
 		F0130003ABC0DEF000000003 /* AnnouncementChainTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0130002ABC0DEF000000003 /* AnnouncementChainTests.swift */; };
 		F0130005ABC0DEF000000005 /* AccountsManagerHelpersTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0130004ABC0DEF000000005 /* AccountsManagerHelpersTests.swift */; };
 		F042F1649763CFEADC848065 /* TypographyServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD321623DBDDEC02C16FE9A9 /* TypographyServiceTests.swift */; };
+		F0484E1308E55E4B0EB6F5E7 /* TPPNetworkResponderSizeLimitTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE12F746B54CDA3922AE8C5F /* TPPNetworkResponderSizeLimitTests.swift */; };
 		F07B88C83608E0749DA9B454 /* BadgeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59814D0AE9FAF49E9A52426A /* BadgeService.swift */; };
 		F087F8BA54F5AC0415414225 /* AccessibilityService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D28F809A16EF96F2EEBC8A83 /* AccessibilityService.swift */; };
 		F0AB00212E8E600100000002 /* TPPAccessibilityAnnouncementCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0AB00222E8E600100000003 /* TPPAccessibilityAnnouncementCenter.swift */; };
@@ -2918,6 +2919,7 @@
 		BDDA22B0012345CAFEBABE02 /* BookDetailMetadataHydrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookDetailMetadataHydrationTests.swift; sourceTree = "<group>"; };
 		BE020244923A658A8CB9EE39 /* AuthFlowSecurityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthFlowSecurityTests.swift; sourceTree = "<group>"; };
 		BE0F3324CC2B636469DBEE8A /* AuthDecisionEventEmissionTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AuthDecisionEventEmissionTests.swift; sourceTree = "<group>"; };
+		BE12F746B54CDA3922AE8C5F /* TPPNetworkResponderSizeLimitTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TPPNetworkResponderSizeLimitTests.swift; sourceTree = "<group>"; };
 		BE401A7D2026050601000000 /* URL+BackupExclusion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "URL+BackupExclusion.swift"; sourceTree = "<group>"; };
 		BE402A8D2026050601000004 /* URL+BackupExclusionTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = "URL+BackupExclusionTests.swift"; sourceTree = "<group>"; };
 		BEF1F7C70AC93BF8E2F22148 /* DebugSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DebugSettings.swift; path = Debug/DebugSettings.swift; sourceTree = "<group>"; };
@@ -3680,6 +3682,7 @@
 				0CD8A9D1E84E9CA99C5DA03D /* ExecutorNetworkHermeticityTests.swift */,
 				1582EB5A4DE21F7E9F715EE0 /* NetworkCacheClearRoutingTests.swift */,
 				3248EFDDABC9F2BE1324CA2A /* TPPNetworkExecutorConcurrencyTests.swift */,
+				BE12F746B54CDA3922AE8C5F /* TPPNetworkResponderSizeLimitTests.swift */,
 			);
 			path = Network;
 			sourceTree = "<group>";
@@ -7770,6 +7773,7 @@
 				690980939C808C26D5565353 /* DeveloperSettingsViewModelTests.swift in Sources */,
 				93B119D71089105A82A3F6B9 /* DebugSettingsForceSkeletonsTests.swift in Sources */,
 				84F958504600B9812A5C9A00 /* TPPNetworkExecutorConcurrencyTests.swift in Sources */,
+				F0484E1308E55E4B0EB6F5E7 /* TPPNetworkResponderSizeLimitTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

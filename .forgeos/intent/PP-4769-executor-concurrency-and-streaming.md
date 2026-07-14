@@ -31,32 +31,55 @@ related_prs: []
   or any completion contract.
 - No `#if DEBUG` on production paths. No new production API surface.
 
-## Files in scope
-- PalaceTests/Network/TPPNetworkExecutorConcurrencyTests.swift (new)
-- Palace.xcodeproj/project.pbxproj (test-target registration only)
+## Issue #2 — bounded response-size guard (option a, per coordinator decision)
+The ticket's original Issue-#2 framing ("stream download to disk in
+`download(_:completion:)`") did not hold: that method ALREADY uses a
+`URLSessionDownloadTask` (streams to disk), has ZERO production callers, and is
+not the crash site; the real book-download path (`MyBooksDownloadCenter`) uses
+its own `URLSessionDownloadDelegate` and already streams to disk. The real
+single-giant-`Data` allocation (898c0776, `__DataStorage.init`) is the SHARED
+data-task completion path (`TPPNetworkResponder` `didReceive data:` →
+`progressData.append`).
 
-## Issue #2 — scope-deferral (NOT landed here)
-Investigation (see report) shows the ticket's Issue-#2 premise does not hold:
-- `TPPNetworkExecutor.download(_:completion:)` ALREADY uses a
-  `URLSessionDownloadTask` (streams to disk); it does NOT buffer the body into a
-  single `Data`. So "migrate download to disk streaming" is a no-op for the
-  large-`Data` allocation.
-- `download(_:completion:)` has ZERO production callers (only two tests). The
-  real book-download path, `MyBooksDownloadCenter`, stands up its own
-  `URLSession` with a `URLSessionDownloadDelegate` and never calls this method —
-  it already streams to disk.
-- The actual single-giant-`Data` allocation (the 898c0776 crash's
-  `__DataStorage.init`) is in the SHARED data-task completion path
-  (`TPPNetworkResponder` `didReceive data:` → `progressData.append` →
-  `.success(info.progressData, …)`) used by GET/PUT/POST (e.g. a large OPDS
-  feed). Migrating THAT to disk streaming changes the `(Data?, …)` completion
-  contract that every GET/PUT/POST caller depends on — a large, cross-cutting
-  refactor, not a tight critical-path fix.
-Per CLAUDE.md scope-deferral protocol, Issue #2 is STOPPED for a user decision
-rather than partial-shipped.
+Per the coordinator's decision, this lands the targeted bounded guard on that
+shared path.
+
+## Claims (Issue #2)
+- Adds `TPPNetworkResponder.maxResponseBodyBytes` (100 MB, named constant
+  `defaultMaxResponseBodyBytes`) — a per-response body ceiling.
+- Up-front guard in a new `urlSession(_:dataTask:didReceive response:
+  completionHandler:)`: a declared `Content-Length` (`expectedContentLength`)
+  over the cap `.cancel`s the response before any body is buffered.
+- Running-total guard in `urlSession(_:dataTask:didReceive data:)`: for
+  chunked/unknown-length responses, once accumulated size would exceed the cap
+  the task is cancelled and no further data is appended.
+- Oversize tasks complete with a clean `TPPErrorCode.responseTooLarge` (915)
+  NSError in `didCompleteWithError` (checked before the generic cancelled
+  branch), and the partial body is discarded.
+
+## Anti-claims (Issue #2)
+- Does NOT change the `(Data?, URLResponse?, Error?)` / `NYPLResult<Data>`
+  completion contract for any caller. Only the pathological oversize case
+  changes behavior (clean failure instead of OOM crash).
+- Does NOT change `download(_:completion:)`, `executeRequest`, the 401/token
+  refresh/retry path, or the auth-error decision.
+- `maxResponseBodyBytes` is a documented plain `internal var` (no `#if DEBUG`,
+  no new init param, no new public API surface) — test seam only, mirrors
+  `TPPNetworkExecutor.tokenRefreshWatchdogSeconds`.
+
+## Files in scope
+- PalaceTests/Network/TPPNetworkExecutorConcurrencyTests.swift (new — Issue #1)
+- PalaceTests/Network/TPPNetworkResponderSizeLimitTests.swift (new — Issue #2)
+- Palace/Network/TPPNetworkResponder.swift (Issue #2 guard)
+- Palace/Logging/TPPErrorLogger.swift (adds `responseTooLarge = 915`)
+- Palace.xcodeproj/project.pbxproj (test-target registration only)
 
 ## Reproduction
 - Issue #1: Crashlytics abfef568 — EXC_BAD_ACCESS `objc_release` at the tail of
   `executeRequest`, driven from OPDSFeedService.fetchFeed continuations under
   concurrent library-switch load. Deterministic repro: the new test's 64-way
   concurrent fan-out over the shared completion path.
+- Issue #2: Crashlytics 898c0776 — EXC_BREAKPOINT in `__DataStorage.init` under
+  iPad memory pressure buffering a giant response body. Deterministic repro:
+  `TPPNetworkResponderSizeLimitTests` lowers the cap and drives oversize
+  declared-length + accumulated-length responses to the clean-failure path.
