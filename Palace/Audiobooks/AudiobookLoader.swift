@@ -322,9 +322,12 @@ final class AudiobookLoader {
     }
 
     // F-004 EXC_BREAKPOINT (Crashlytics, 3.0.0, distributor=Overdrive,
-    // decryptor=nil, bearerToken present) enters here. Mockability seam
-    // captured in `PalaceTests/Audiobooks/AudiobookLoaderFinalizeBuildTests`.
-    private func finalizeBuild(
+    // decryptor=nil, bearerToken present) enters here. `internal` (not
+    // `private`) so `AudiobookLoaderFinalizeBuildTests` can drive the decode →
+    // factory → guard chain directly: the zero-track guard below (PP-4768)
+    // returns BEFORE the AppContainer.production() reads further down, so the
+    // failure path is exercisable without touching singletons.
+    func finalizeBuild(
         book: TPPBook,
         jsonData: Data,
         decryptor: DRMDecryptor?,
@@ -356,6 +359,24 @@ final class AudiobookLoader {
             fulfillURL: book.bearerTokenFulfillURL
         ) else {
             Log.error(#file, "  ❌ AudiobookFactory failed to create audiobook")
+            completion(.failure(.factoryFailed(manifestType: manifest.metadata?.type)))
+            return
+        }
+
+        // PP-4768 (F-004 residual): the OverDrive / open-access decode exemption
+        // (Manifest.swift, PP-4631) lets a manifest with no metadata and no
+        // readingOrder/spine pass decode when it carries a non-empty
+        // `contentlinks` — the tracks are expected to come from those links. But
+        // `Audiobook.init?` never fails on empty tracks, so if none of the
+        // content links resolve to a playable track (e.g. an unusable href in a
+        // malformed distributor response), the factory returns a NON-nil but
+        // TRACKLESS audiobook. Building a manager from it lets the toolkit player
+        // later trap on unguarded `[0]` track subscripts (EXC_BREAKPOINT,
+        // Crashlytics-attributed to finalizeBuild). Reject it here via the
+        // existing `.factoryFailed` path → "Failed to create audio player.
+        // Please try again." (the PP-3707 retry dialog); no new error case.
+        guard !audiobook.tableOfContents.allTracks.isEmpty else {
+            Log.error(#file, "  ❌ Factory produced a zero-track audiobook — rejecting to avoid a trackless player")
             completion(.failure(.factoryFailed(manifestType: manifest.metadata?.type)))
             return
         }
