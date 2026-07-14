@@ -108,6 +108,7 @@ private struct CatalogScrollCollapseModifier: ViewModifier {
     @Binding var continueExpanded: Bool
     let collapseThreshold: CGFloat
     let expandThreshold: CGFloat
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func body(content: Content) -> some View {
         if #available(iOS 18.0, *) {
@@ -115,10 +116,16 @@ private struct CatalogScrollCollapseModifier: ViewModifier {
                 // Normalize so 0 == top; grows positive as the patron scrolls in.
                 geo.contentOffset.y + geo.contentInsets.top
             } action: { _, offset in
+                // Asymmetric + Reduce-Motion-gated: collapsing snaps out of the
+                // way; expanding settles smoothly.
                 if continueExpanded, offset > collapseThreshold {
-                    withAnimation(PalaceMotion.springy) { continueExpanded = false }
+                    withAnimation(PalaceMotion.resolved(PalaceMotion.emphasized, reduceMotion: reduceMotion)) {
+                        continueExpanded = false
+                    }
                 } else if !continueExpanded, offset < expandThreshold {
-                    withAnimation(PalaceMotion.springy) { continueExpanded = true }
+                    withAnimation(PalaceMotion.resolved(PalaceMotion.springy, reduceMotion: reduceMotion)) {
+                        continueExpanded = true
+                    }
                 }
             }
         } else {

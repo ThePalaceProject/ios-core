@@ -38,12 +38,28 @@ struct ContinueRowSection: View {
     /// the patron scrolls into the catalog, expands at the top). Open at the top.
     @Binding var isExpanded: Bool
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// The card slides UP under the "Continue" header (move + fade) rather than
+    /// fading in place — with the section `.clipped()`, the header visually
+    /// swallows the card so the collapse reads as one coherent motion instead of
+    /// a fade plus an unrelated reflow of the content below. Reduce Motion falls
+    /// back to a plain cross-fade.
+    private var cardTransition: AnyTransition {
+        reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity)
+    }
+
     var body: some View {
         if let item = viewModel.mostRecent {
             VStack(alignment: .leading, spacing: 0) {
                 // Collapsible header
                 Button(action: {
-                    withAnimation(PalaceMotion.springy) { isExpanded.toggle() }
+                    // Asymmetric feel: collapsing gets out of the way snappily;
+                    // expanding settles with the smooth spring. Reduce-Motion-gated.
+                    withAnimation(PalaceMotion.resolved(
+                        isExpanded ? PalaceMotion.emphasized : PalaceMotion.springy,
+                        reduceMotion: reduceMotion
+                    )) { isExpanded.toggle() }
                 }, label: {
                     HStack {
                         Text(Strings.CatalogContinueRows.continueHeader)
@@ -78,9 +94,10 @@ struct ContinueRowSection: View {
                         }
                     )
                     .padding(.bottom, 8)
-                    .transition(.opacity)
+                    .transition(cardTransition)
                 }
             }
+            .clipped()   // card slides UNDER the header, not fading over it
         } else {
             EmptyView()
         }
