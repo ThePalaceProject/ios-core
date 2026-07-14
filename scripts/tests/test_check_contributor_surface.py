@@ -73,12 +73,21 @@ def _write_settings(tmp_path, command):
     return p
 
 
-def test_guarded_hook_passes(tmp_path):
+def test_empty_committed_settings_passes(tmp_path):
+    # {} — no hooks in the committed file; the clean, correct state
+    p = tmp_path / "settings.json"
+    p.write_text("{}")
+    assert mod.check_settings(p) == []
+
+
+def test_guarded_hook_in_committed_is_still_flagged(tmp_path):
+    # even guarded, a scripts/hooks/ ref does not belong in the committed file
     p = _write_settings(
         tmp_path,
         "[ -e scripts/hooks/pre-commit-check.sh ] || exit 0; bash scripts/hooks/pre-commit-check.sh",
     )
-    assert mod.check_settings(p) == []
+    v = mod.check_settings(p)
+    assert len(v) == 1 and "settings.local.json" in v[0]
 
 
 def test_unguarded_hook_is_flagged(tmp_path):
@@ -87,16 +96,18 @@ def test_unguarded_hook_is_flagged(tmp_path):
     assert len(v) == 1 and "scripts/hooks/" in v[0]
 
 
-def test_or_true_counts_as_guarded(tmp_path):
+def test_or_true_hook_in_committed_is_flagged(tmp_path):
+    # references scripts/hooks/ → belongs in settings.local.json regardless of guard
     p = _write_settings(
         tmp_path,
         "jq -r '.x' | grep -q y && bash scripts/hooks/gate.sh || true",
     )
-    assert mod.check_settings(p) == []
+    v = mod.check_settings(p)
+    assert len(v) == 1 and "scripts/hooks/" in v[0]
 
 
 def test_non_hooks_dir_command_is_ignored(tmp_path):
-    # a tracked, always-present script (not under scripts/hooks/) needs no guard
+    # a tracked, always-present script (not under scripts/hooks/) is fine committed
     p = _write_settings(tmp_path, "bash scripts/pre-commit-phase35-detectors.sh")
     assert mod.check_settings(p) == []
 

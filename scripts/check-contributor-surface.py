@@ -16,12 +16,15 @@ docs, or (b) hard-depend on it at runtime so a clean clone breaks.
         governance apparatus we just moved out.
 
     CHECK B — clean-clone hook safety
-        Every hook command in .claude/settings.json that invokes a script under
-        the git-ignored scripts/hooks/ directory (a per-machine symlink into the
-        private harness, ABSENT on a clean clone) must be guarded so a missing
-        script is a silent no-op. Without the guard, every Claude Code hook fires
-        "No such file or directory" on a clean clone and the tool is unusable.
-        This locks in the fix from the clean-clone-safety PR.
+        The committed .claude/settings.json must not reference the git-ignored
+        scripts/hooks/ directory at all (that's a per-machine symlink into the
+        private harness, ABSENT on a clean clone). Local-only hooks belong in
+        the git-ignored .claude/settings.local.json, which Claude Code merges
+        over the committed file — so maintainer machines keep their hooks while
+        the committed file a contributor clones carries nothing private and
+        cannot break. A reference here means either a private hook leaked into
+        the shared file, or a clean clone would fire "No such file or directory"
+        on every tool call.
 
 Exit 0 = clean. Exit 1 = violation(s) found (printed with file:line + guidance).
 
@@ -69,11 +72,9 @@ _LEAK_OK = re.compile(r"leak-ok", re.IGNORECASE)
 
 # CHECK B: a hook command that references this path prefix depends on a script
 # that is git-ignored (scripts/hooks is a symlink into the harness) and thus
-# absent on a clean clone.
+# absent on a clean clone. It must not appear in the COMMITTED settings.json at
+# all — local-only hooks belong in the git-ignored settings.local.json.
 _GITIGNORED_HOOK_PREFIX = "scripts/hooks/"
-
-# A command is considered guarded if it tolerates the script being absent.
-_GUARD_MARKERS = ("[ -e ", "[ -x ", "[ -f ", "|| exit 0", "|| true")
 
 
 def check_docs(doc_paths: list[Path]) -> list[str]:
@@ -107,7 +108,7 @@ def _iter_hook_commands(settings: dict):
 
 
 def check_settings(settings_path: Path) -> list[str]:
-    """CHECK B — clean-clone safety of hooks pointing at git-ignored scripts."""
+    """CHECK B — committed settings.json carries no git-ignored hook refs."""
     if not settings_path.exists():
         return []
     try:
@@ -117,13 +118,11 @@ def check_settings(settings_path: Path) -> list[str]:
 
     violations: list[str] = []
     for cmd in _iter_hook_commands(settings):
-        if _GITIGNORED_HOOK_PREFIX not in cmd:
-            continue
-        if not any(marker in cmd for marker in _GUARD_MARKERS):
+        if _GITIGNORED_HOOK_PREFIX in cmd:
             violations.append(
-                f"{settings_path}: unguarded hook command depends on "
-                f"git-ignored {_GITIGNORED_HOOK_PREFIX} (breaks a clean clone): "
-                f"{cmd!r}"
+                f"{settings_path}: committed settings references git-ignored "
+                f"{_GITIGNORED_HOOK_PREFIX} — move local-only hooks to "
+                f".claude/settings.local.json (git-ignored): {cmd!r}"
             )
     return violations
 
@@ -156,15 +155,16 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  - {v}", file=sys.stderr)
         print(
             "\nMove maintainer/private-tooling guidance into the git-ignored "
-            "CLAUDE.local.md, guard clean-clone-absent hooks with "
-            "`[ -e <script> ] || exit 0`, or append `<!-- leak-ok -->` to a "
-            "doc line that is intentionally safe to expose.",
+            "CLAUDE.local.md, move local-only hooks into the git-ignored "
+            ".claude/settings.local.json (keep the committed settings.json free "
+            "of scripts/hooks/ refs), or append `<!-- leak-ok -->` to a doc line "
+            "that is intentionally safe to expose.",
             file=sys.stderr,
         )
         return 1
 
-    print("Contributor-surface check passed: no private-tooling leaks, "
-          "all clean-clone-absent hooks guarded.")
+    print("Contributor-surface check passed: no private-tooling leaks in docs, "
+          "committed settings.json carries no git-ignored hook refs.")
     return 0
 
 
