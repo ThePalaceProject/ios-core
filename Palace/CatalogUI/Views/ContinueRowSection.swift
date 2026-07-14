@@ -33,27 +33,42 @@ struct ContinueRowSection: View {
     let onResumeReading: (TPPBook) -> Void
     let onResumeListening: (TPPBook) -> Void
 
-    /// Collapsible state. Defaults to OPEN on first launch (per user
-    /// feedback after the initial collapsed default — "should default
-    /// to open on first launch"). Persisted across launches via
-    /// `@AppStorage` so a user who collapses it sees it stay collapsed
-    /// next launch; a user who hasn't touched it gets the default
-    /// open experience.
-    @AppStorage("ContinueRowSection.isExpanded") private var isExpanded: Bool = true
+    /// Chevron "pin": `false` = manually pinned collapsed (ignores scroll);
+    /// `true` (default) = the scroll-scrub progress drives the collapse.
+    @Binding var isExpanded: Bool
+
+    /// Continuous scroll-scrub progress from the host (iOS 18+): 0 = expanded …
+    /// 1 = collapsed. Drives the card's height/opacity so it tracks the finger.
+    @ObservedObject var collapse: ContinueCollapseModel
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// Natural (uncollapsed) height of the card, measured behind the collapse
+    /// clamp so the clamp doesn't feed back into the measurement.
+    @State private var cardHeight: CGFloat = 0
+
+    /// Effective collapse progress: chevron-pinned forces fully collapsed (1);
+    /// otherwise the scroll scrub drives it. 0 = expanded … 1 = collapsed.
+    private var progress: CGFloat { isExpanded ? collapse.progress : 1 }
 
     var body: some View {
         if let item = viewModel.mostRecent {
             VStack(alignment: .leading, spacing: 0) {
                 // Collapsible header
                 Button(action: {
-                    withAnimation(.easeInOut(duration: 0.2)) { isExpanded.toggle() }
+                    // Asymmetric feel: collapsing gets out of the way snappily;
+                    // expanding settles with the smooth spring. Reduce-Motion-gated.
+                    withAnimation(PalaceMotion.resolved(
+                        isExpanded ? PalaceMotion.emphasized : PalaceMotion.springy,
+                        reduceMotion: reduceMotion
+                    )) { isExpanded.toggle() }
                 }, label: {
                     HStack {
                         Text(Strings.CatalogContinueRows.continueHeader)
                             .font(.title2)
                             .accessibilityAddTraits(.isHeader)
                         Spacer()
-                        Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        Image(systemName: progress < 0.5 ? "chevron.up" : "chevron.down")
                             .font(.body.weight(.semibold))
                             .foregroundStyle(.secondary)
                             .accessibilityHidden(true)
@@ -63,27 +78,39 @@ struct ContinueRowSection: View {
                     .contentShape(Rectangle())
                 })
                 .buttonStyle(.plain)
-                .accessibilityHint(isExpanded
+                .accessibilityHint(progress < 0.5
                     ? Strings.CatalogContinueRows.collapseHint
                     : Strings.CatalogContinueRows.expandHint)
 
-                // Single-item body (user feedback: "only show the last book,
-                // not the last ebook or audiobook"). Active audiobook always
-                // wins; reading falls back when no listening session active.
-                if isExpanded {
-                    ContinueSingleItemRow(
-                        item: item,
-                        onTap: { book in
-                            switch item {
-                            case .listening: onResumeListening(book)
-                            case .reading:   onResumeReading(book)
-                            }
+                // Single most-recent item (user feedback: "only show the last
+                // book"). Continuous collapse: the card's height + opacity scrub
+                // with the scroll (progress 0→1) so it tracks the finger —
+                // collapsing on scroll-in and expanding on scroll-to-top at the
+                // scroll's own speed — and slides up under the header. Natural
+                // height is measured BEHIND the clamp so the clamp can't feed back.
+                ContinueSingleItemRow(
+                    item: item,
+                    onTap: { book in
+                        switch item {
+                        case .listening: onResumeListening(book)
+                        case .reading:   onResumeReading(book)
                         }
-                    )
-                    .padding(.bottom, 8)
-                    .transition(.opacity)
-                }
+                    }
+                )
+                .fixedSize(horizontal: false, vertical: true)
+                .background(
+                    GeometryReader { geo in
+                        Color.clear
+                            .onAppear { cardHeight = geo.size.height }
+                            .onChange(of: geo.size.height) { _, newHeight in cardHeight = newHeight }
+                    }
+                )
+                .frame(height: cardHeight > 0 ? cardHeight * (1 - progress) : nil, alignment: .top)
+                .opacity(Double(1 - progress))
+                .padding(.bottom, 8 * (1 - progress))
+                .clipped()
             }
+            .clipped()
         } else {
             EmptyView()
         }

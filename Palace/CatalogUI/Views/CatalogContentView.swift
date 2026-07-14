@@ -37,6 +37,18 @@ struct CatalogContentView: View {
     @AppStorage("RemoteFeatureFlags.inAppPlaybackNavLocalOverride")
     private var inAppPlaybackNavLocalOverride: Bool = false
 
+    /// Chevron "pin": when `false` the lane is manually pinned collapsed and
+    /// ignores the scroll; when `true` (default) the scroll position drives it.
+    @State private var continueExpanded: Bool = true
+
+    /// Scroll-driven collapse progress (0 = expanded … 1 = collapsed), scrubbed
+    /// CONTINUOUSLY by the catalog scroll offset so the card tracks the finger
+    /// rather than snapping at a threshold. Held as `@State` (owned but NOT
+    /// observed) so per-frame `progress` updates re-render only
+    /// `ContinueRowSection` (which `@ObservedObject`s it), never the whole
+    /// catalog body. See `ContinueCollapseModel`.
+    @State private var continueCollapse = ContinueCollapseModel()
+
     private var inAppPlaybackNavEnabled: Bool {
         _ = inAppPlaybackNavLocalOverride  // trigger SwiftUI observation
         return RemoteFeatureFlags.shared.isInAppPlaybackNavEnabled
@@ -52,7 +64,9 @@ struct CatalogContentView: View {
                 ContinueRowSection(
                     viewModel: activeSessions,
                     onResumeReading: onResumeReading,
-                    onResumeListening: onResumeListening
+                    onResumeListening: onResumeListening,
+                    isExpanded: $continueExpanded,
+                    collapse: continueCollapse
                 )
             }
 
@@ -76,7 +90,83 @@ struct CatalogContentView: View {
                         proxy.scrollTo("catalog-content-top", anchor: .top)
                     }
                 }
+                .modifier(CatalogScrollCollapseModifier(
+                    model: continueCollapse,
+                    isExpanded: continueExpanded
+                ))
             }
+        }
+    }
+}
+
+// MARK: - Scroll-driven Continue-lane collapse
+
+/// Drives the Continue lane's collapse progress CONTINUOUSLY from the catalog
+/// scroll offset, so the card scrubs 0→1 (expanded→collapsed) exactly as fast
+/// as the patron scrolls — attached to the finger, no independent animation
+/// clock. Owned by `CatalogContentView` via `@State` (not `@StateObject`) so
+/// per-frame `progress` writes re-render only `ContinueRowSection`.
+@MainActor
+final class ContinueCollapseModel: ObservableObject {
+    /// 0 = fully expanded … 1 = fully collapsed.
+    @Published var progress: CGFloat = 0
+
+    /// Scroll offsets (points; 0 == top) across which the card scrubs 0→1. The
+    /// lower bound leaves a little dead-zone at the very top so the lane doesn't
+    /// twitch on tiny rubber-band overscroll.
+    private static let band: ClosedRange<CGFloat> = 8...104
+
+    /// Scrub toward the offset-implied target. Direct assignment while scrubbing
+    /// (tracks the finger, both directions); a spring only absorbs a big jump
+    /// (e.g. the programmatic scroll-to-top on an entry-point switch) so it never
+    /// teleports.
+    func update(forOffset offset: CGFloat, reduceMotion: Bool) {
+        let span = Self.band.upperBound - Self.band.lowerBound
+        let target = min(max((offset - Self.band.lowerBound) / span, 0), 1)
+        let delta = abs(target - progress)
+        if delta > 0.2 {
+            withAnimation(PalaceMotion.resolved(PalaceMotion.springy, reduceMotion: reduceMotion)) {
+                progress = target
+            }
+        } else if delta > 0.0005 {
+            progress = target
+        }
+    }
+
+    /// On scroll rest, settle to the nearer end so the card never parks
+    /// half-collapsed mid-band.
+    func settleIfMidBand(reduceMotion: Bool) {
+        guard (0.02...0.98).contains(progress) else { return }
+        withAnimation(PalaceMotion.resolved(PalaceMotion.springy, reduceMotion: reduceMotion)) {
+            progress = progress > 0.4 ? 1 : 0
+        }
+    }
+}
+
+/// Feeds the catalog scroll offset into `ContinueCollapseModel` (iOS 18
+/// `onScrollGeometryChange`). On iOS 17 the lane stays chevron-controlled only —
+/// this is a no-op there. `isExpanded == false` (chevron pinned collapsed)
+/// suspends scrubbing.
+private struct CatalogScrollCollapseModifier: ViewModifier {
+    let model: ContinueCollapseModel
+    let isExpanded: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content
+                .onScrollGeometryChange(for: CGFloat.self) { geo in
+                    // Normalize so 0 == top; grows positive as the patron scrolls in.
+                    geo.contentOffset.y + geo.contentInsets.top
+                } action: { _, offset in
+                    guard isExpanded else { return }   // chevron-pinned: ignore scroll
+                    model.update(forOffset: offset, reduceMotion: reduceMotion)
+                }
+                .onScrollPhaseChange { _, phase in
+                    if phase == .idle { model.settleIfMidBand(reduceMotion: reduceMotion) }
+                }
+        } else {
+            content
         }
     }
 }

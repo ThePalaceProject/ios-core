@@ -340,21 +340,17 @@ final class RemoteFeatureFlags: @unchecked Sendable {
     /// Whether the in-app playback navigation feature is enabled:
     /// Continue Reading/Listening hero rows on the Catalog top, the
     /// persistent mini-player above the tab bar, and the tap-to-resume
-    /// routing that wires both to `AudiobookSessionPresenter`. Default
-    /// OFF; gateable via the developer settings toggle (local override)
-    /// or `in_app_playback_nav_enabled` in Remote Config (broad rollout).
+    /// routing that wires both to `AudiobookSessionPresenter`.
     ///
-    /// When false, the Continue row and mini-player are not rendered;
-    /// the persistent full-player overlay still surfaces when an
-    /// audiobook is opened (so playback always has a UI). Minimize
-    /// hides the overlay; without a mini-player to re-expand from, the
-    /// user re-enters playback via My Books / Catalog the same way they
-    /// did before the feature shipped.
+    /// **GA (2026-07): now the standard experience — no longer gated on
+    /// Remote Config.** Returns `true` by default. A developer-settings
+    /// local override is still honored so QA can force the legacy player
+    /// path for comparison; absent that override, the feature is always on.
     var isInAppPlaybackNavEnabled: Bool {
         if let override = defaults.object(forKey: Self.inAppPlaybackNavLocalOverrideKey) as? Bool {
             return override
         }
-        return isFeatureEnabled(.inAppPlaybackNavEnabled)
+        return true
     }
 
     /// UserDefaults override that lets QA / a developer force side loading on

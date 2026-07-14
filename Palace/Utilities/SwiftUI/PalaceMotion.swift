@@ -39,6 +39,12 @@ enum PalaceMotion {
     /// Gentle, slightly longer fade — cover cross-fades, skeleton hand-offs.
     static let gentle: Animation = .smooth(duration: 0.4)
 
+    /// Smooth collapse/expand — the Continue lane collapsing on scroll and
+    /// expanding back at the top. A well-damped spring (no overshoot) so it
+    /// settles cleanly rather than bouncing; overshoot read as twitchy against
+    /// the scroll, especially on the expand at the top.
+    static let springy: Animation = .spring(response: 0.34, dampingFraction: 0.92)
+
     /// Repeating highlight sweep for loading skeletons. Linear + never autoreverses
     /// so the shimmer band travels in one direction and loops seamlessly.
     static let shimmer: Animation = .linear(duration: 1.3).repeatForever(autoreverses: false)
