@@ -113,3 +113,18 @@ jobs:
           else
             echo "No chaos-replay test — skipping."
           fi
+
+      # 7. Contributor-surface gate (enforced against the tree, not just its
+      #    pytest). Fails the PR if CLAUDE.md reintroduces private maintainer-only
+      #    tooling references (harness/ForgeOS/simdrive/swarm) — those belong in
+      #    the git-ignored CLAUDE.local.md — or if a .claude/settings.json hook
+      #    that points at the git-ignored scripts/hooks/ dir is unguarded (which
+      #    would make a clean clone unusable). Keeps the repo safe + clean for
+      #    outside contributors who don't have the maintainer harness installed.
+      - name: contributor-surface gate
+        run: |
+          if [ -f scripts/check-contributor-surface.py ]; then
+            python3 scripts/check-contributor-surface.py
+          else
+            echo "No contributor-surface gate — skipping."
+          fi
