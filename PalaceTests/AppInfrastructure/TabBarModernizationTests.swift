@@ -21,36 +21,6 @@ import SwiftUI
 
 final class TabBarModernizationTests: XCTestCase {
 
-    // MARK: - Brand tint (latent-bug fix)
-
-    /// The resolved tab tint MUST be the Palace brand blue #0090C4
-    /// (rgb 0, 144, 196), i.e. `TPPConfiguration.accentColor()` — NOT the
-    /// SwiftUI default system blue that `Color.accentColor` fell back to because
-    /// the app ships no AccentColor asset. Kills a regression that reverts the
-    /// tint source back to `Color.accentColor`.
-    func test_brandTint_resolvesToPalaceBrandBlue_notSystemBlue() {
-        let (r, g, b, a) = TabBarModern.brandTintRGBA
-
-        XCTAssertEqual(r, 0.0 / 255.0, accuracy: 0.001, "red channel must be 0")
-        XCTAssertEqual(g, 144.0 / 255.0, accuracy: 0.001, "green channel must be 144")
-        XCTAssertEqual(b, 196.0 / 255.0, accuracy: 0.001, "blue channel must be 196 (#0090C4)")
-        XCTAssertEqual(a, 1.0, accuracy: 0.001, "alpha must be opaque")
-    }
-
-    /// Guard against silent drift toward the iOS default system blue (#007AFF ≈
-    /// rgb 0, 122, 255). The brand blue's green (144) and blue (196) differ from
-    /// the system blue's (122 / 255), so this pins the two apart — if someone
-    /// re-points the tint at `Color.accentColor`, the green/blue channels move.
-    func test_brandTint_isDistinctFromSystemDefaultBlue() {
-        let (_, g, b, _) = TabBarModern.brandTintRGBA
-        let systemBlueGreen = 122.0 / 255.0
-        let systemBlueBlue = 255.0 / 255.0
-        XCTAssertNotEqual(g, systemBlueGreen, accuracy: 0.01,
-                          "brand green (144) must not equal system-blue green (122)")
-        XCTAssertNotEqual(b, systemBlueBlue, accuracy: 0.01,
-                          "brand blue (196) must not equal system-blue blue (255)")
-    }
-
     // MARK: - Mini-player bottom inset
 
     /// The nominal case: inset = safeArea + measured bar height + margin. Kills

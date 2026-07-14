@@ -28,27 +28,6 @@ import UIKit
 /// the values `AppTabHostView` reads, so each is independently testable.
 enum TabBarModern {
 
-    /// The selected-tab tint. Resolves to the Palace brand blue (`#0090C4`) via
-    /// `TPPConfiguration.accentColor()` rather than SwiftUI's `Color.accentColor`.
-    ///
-    /// LATENT BUG this fixes: the app ships **no** `AccentColor` asset-catalog
-    /// entry and sets no `ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME`, so
-    /// `Color.accentColor` fell back to the SwiftUI default system blue
-    /// (`#007AFF`) — the selected tab was NOT brand-colored. Sourcing the tint
-    /// from `TPPConfiguration.accentColor()` (the single brand-blue source the
-    /// rest of the app already uses, e.g. `NormalBookCell`) makes the selected
-    /// tab render brand blue in both light and dark appearance.
-    static var brandTint: Color { Color(TPPConfiguration.accentColor()) }
-
-    /// The brand tint as sRGB components, exposed for tests to assert the
-    /// resolved value is brand blue and not the system default. Reads the same
-    /// `UIColor` that `brandTint` wraps.
-    static var brandTintRGBA: (r: CGFloat, g: CGFloat, b: CGFloat, a: CGFloat) {
-        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
-        TPPConfiguration.accentColor().getRed(&r, green: &g, blue: &b, alpha: &a)
-        return (r, g, b, a)
-    }
-
     /// Default `UITabBar` height (points) used before a live measurement is
     /// available, and the value the hardcoded constant historically assumed.
     static let defaultTabBarHeight: CGFloat = 49

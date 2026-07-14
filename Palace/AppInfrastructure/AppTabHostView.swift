@@ -416,12 +416,13 @@ private struct TabViewChrome: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            // FIX (latent bug): brand-blue selected tab. `Color.accentColor`
-            // fell back to system blue because the app ships no AccentColor
-            // asset; `TabBarModern.brandTint` reads `TPPConfiguration
-            // .accentColor()` (#0090C4) so the selected tab is actually
-            // brand-colored, in both light and dark.
-            .tint(TabBarModern.brandTint)
+            // Monochrome selected tab: `.primary` (the label color) rather than
+            // a color accent, so the selected tab reads black in light / white
+            // in dark and the bar stays neutral — no blue. (For reference: the
+            // default `Color.accentColor` here resolved to the SYSTEM blue,
+            // since the app ships no AccentColor asset; a neutral tint is the
+            // intended look per product.)
+            .tint(.primary)
             // Selection haptic (iOS 17+ `.sensoryFeedback` under the hood).
             // `palaceHaptic` is preference- AND Reduce-Motion-gated, so it
             // no-ops when the patron has haptics off or Reduce Motion on.
