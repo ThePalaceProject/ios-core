@@ -363,4 +363,90 @@ final class AudiobookLoaderFinalizeBuildTests: XCTestCase {
             XCTFail(".manifestDecodingFailed pattern must match — refactor regression if it doesn't")
         }
     }
+
+    // MARK: - PP-4768: zero-track OverDrive audiobook must fail, not build a trackless player
+
+    /// F-004 residual fixture. An OverDrive manifest that hits the PP-4631 decode
+    /// exemption (formatType=overdrive + a non-empty `contentlinks`) but whose
+    /// single content link has an empty `href`: it decodes fine (Link requires
+    /// `href` present, "" satisfies that) and the exemption is satisfied, but
+    /// `URL(string: "")` is nil so `OverdriveTrack` throws and NO track is built —
+    /// yielding a NON-nil but trackless audiobook. This is the exact shape that
+    /// slips past the factory guard-let and lets the toolkit player later trap on
+    /// an unguarded `[0]` track subscript.
+    private func zeroTrackOverdriveManifestJSON(id: String) -> [String: Any] {
+        return [
+            "id": id,
+            "formatType": "audiobook-overdrive",
+            "links": [
+                "contentlinks": [
+                    ["href": ""]
+                ]
+            ]
+        ]
+    }
+
+    /// PREMISE (the reason the guard is needed): this manifest decodes, and
+    /// `AudiobookFactory.audiobook(...)` returns a NON-nil audiobook — because
+    /// `Audiobook.init?` never fails on empty tracks — yet the audiobook has
+    /// ZERO tracks. If this premise ever stops holding (e.g. the toolkit starts
+    /// rejecting trackless OverDrive manifests at decode or in the factory), this
+    /// test fails loudly and the guard below can be reconsidered.
+    func test_finalizeBuild_zeroTrackOverdrive_premise_factoryReturnsNonNilButTrackless() throws {
+        let bookId = "overdrive-zerotrack-\(UUID().uuidString)"
+        let json = zeroTrackOverdriveManifestJSON(id: bookId)
+        let jsonData = try JSONSerialization.data(withJSONObject: json, options: [])
+
+        let manifest = try Manifest.customDecoder().decode(Manifest.self, from: jsonData)
+        XCTAssertEqual(manifest.audiobookType, .overdrive,
+                       "formatType=audiobook-overdrive must classify as .overdrive")
+
+        let audiobook = AudiobookFactory.audiobook(
+            for: manifest,
+            bookIdentifier: bookId,
+            decryptor: nil,
+            token: "bearer-token-abc",   // F-004 shape: OverDrive w/ bearer token, nil decryptor
+            fulfillURL: nil
+        )
+        XCTAssertNotNil(audiobook,
+                        "PREMISE: the factory must return a NON-nil audiobook for this shape — Audiobook.init? does not fail on empty tracks, which is exactly why finalizeBuild needs its own zero-track guard")
+        XCTAssertTrue(audiobook?.tableOfContents.allTracks.isEmpty == true,
+                      "PREMISE: the OverDrive content link with an empty href must resolve to ZERO tracks (OverdriveTrack throws on URL(string: \"\") == nil)")
+    }
+
+    /// WIRING: driving `finalizeBuild` with the zero-track OverDrive manifest must
+    /// surface `.failure(.factoryFailed)` — NOT `.success` (a playable-looking but
+    /// trackless audiobook) and NOT a crash. The guard returns before the
+    /// AppContainer.production() reads further down finalizeBuild, so this failure
+    /// path is exercisable without touching singletons. Mutation kill point:
+    /// flipping the guard (`!allTracks.isEmpty` → `allTracks.isEmpty`) makes the
+    /// original zero-track input fall THROUGH the guard into the manager-build
+    /// path instead of failing here, so this assertion breaks the mutant.
+    func test_finalizeBuild_zeroTrackAudiobook_failsWithFactoryFailed_notSuccess() throws {
+        let loader = AudiobookLoader(adapters: [])
+        let bookId = "overdrive-zerotrack-\(UUID().uuidString)"
+        let book = TPPBookMocker.mockBook(identifier: bookId, title: "Trackless OverDrive")
+        let jsonData = try JSONSerialization.data(
+            withJSONObject: zeroTrackOverdriveManifestJSON(id: bookId), options: []
+        )
+
+        let done = expectation(description: "finalizeBuild completes")
+        var received: Result<LoadedAudiobook, AudiobookLoadError>?
+        loader.finalizeBuild(book: book, jsonData: jsonData, decryptor: nil) { result in
+            received = result
+            done.fulfill()
+        }
+        wait(for: [done], timeout: 2.0)
+
+        switch received {
+        case .failure(.factoryFailed):
+            break  // expected: rejected cleanly, no trackless player built
+        case .success:
+            XCTFail("A zero-track audiobook must NOT succeed — that builds a trackless player that later traps on [0] subscripts (F-004)")
+        case .failure(let other):
+            XCTFail("Expected .factoryFailed, got \(String(describing: other))")
+        case nil:
+            XCTFail("finalizeBuild never called its completion")
+        }
+    }
 }
