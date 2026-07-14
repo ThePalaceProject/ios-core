@@ -37,6 +37,17 @@ struct CatalogContentView: View {
     @AppStorage("RemoteFeatureFlags.inAppPlaybackNavLocalOverride")
     private var inAppPlaybackNavLocalOverride: Bool = false
 
+    /// The Continue lane's expanded state, driven by the chevron and (iOS 18+)
+    /// the catalog scroll position: it collapses as the patron scrolls into the
+    /// catalog and expands again at the top. Open at the top of the feed.
+    @State private var continueExpanded: Bool = true
+
+    /// Scroll distance (points) past which the Continue lane collapses, and the
+    /// smaller distance at which it expands again. The gap is hysteresis so the
+    /// lane doesn't flicker when the patron holds right at the boundary.
+    private static let continueCollapseThreshold: CGFloat = 40
+    private static let continueExpandThreshold: CGFloat = 12
+
     private var inAppPlaybackNavEnabled: Bool {
         _ = inAppPlaybackNavLocalOverride  // trigger SwiftUI observation
         return RemoteFeatureFlags.shared.isInAppPlaybackNavEnabled
@@ -52,7 +63,8 @@ struct CatalogContentView: View {
                 ContinueRowSection(
                     viewModel: activeSessions,
                     onResumeReading: onResumeReading,
-                    onResumeListening: onResumeListening
+                    onResumeListening: onResumeListening,
+                    isExpanded: $continueExpanded
                 )
             }
 
@@ -76,7 +88,41 @@ struct CatalogContentView: View {
                         proxy.scrollTo("catalog-content-top", anchor: .top)
                     }
                 }
+                .modifier(CatalogScrollCollapseModifier(
+                    continueExpanded: $continueExpanded,
+                    collapseThreshold: Self.continueCollapseThreshold,
+                    expandThreshold: Self.continueExpandThreshold
+                ))
             }
+        }
+    }
+}
+
+// MARK: - Scroll-driven Continue-lane collapse
+
+/// Collapses the Continue lane as the patron scrolls into the catalog and
+/// expands it again at the top, using the iOS 18 `onScrollGeometryChange` API
+/// (reliable, unlike preference-key offset tracking in this hierarchy). On
+/// iOS 17 the lane stays chevron-controlled only — this is a no-op there.
+private struct CatalogScrollCollapseModifier: ViewModifier {
+    @Binding var continueExpanded: Bool
+    let collapseThreshold: CGFloat
+    let expandThreshold: CGFloat
+
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content.onScrollGeometryChange(for: CGFloat.self) { geo in
+                // Normalize so 0 == top; grows positive as the patron scrolls in.
+                geo.contentOffset.y + geo.contentInsets.top
+            } action: { _, offset in
+                if continueExpanded, offset > collapseThreshold {
+                    withAnimation(PalaceMotion.springy) { continueExpanded = false }
+                } else if !continueExpanded, offset < expandThreshold {
+                    withAnimation(PalaceMotion.springy) { continueExpanded = true }
+                }
+            }
+        } else {
+            content
         }
     }
 }

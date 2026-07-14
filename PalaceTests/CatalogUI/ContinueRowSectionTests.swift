@@ -70,7 +70,8 @@ final class ContinueRowSectionTests: XCTestCase {
         let section = ContinueRowSection(
             viewModel: viewModel,
             onResumeReading: onResumeReading,
-            onResumeListening: onResumeListening
+            onResumeListening: onResumeListening,
+            isExpanded: .constant(true)
         )
         return (section, viewModel)
     }

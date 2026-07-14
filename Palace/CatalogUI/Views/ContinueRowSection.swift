@@ -33,20 +33,17 @@ struct ContinueRowSection: View {
     let onResumeReading: (TPPBook) -> Void
     let onResumeListening: (TPPBook) -> Void
 
-    /// Collapsible state. Defaults to OPEN on first launch (per user
-    /// feedback after the initial collapsed default — "should default
-    /// to open on first launch"). Persisted across launches via
-    /// `@AppStorage` so a user who collapses it sees it stay collapsed
-    /// next launch; a user who hasn't touched it gets the default
-    /// open experience.
-    @AppStorage("ContinueRowSection.isExpanded") private var isExpanded: Bool = true
+    /// Collapsible state, owned by the host (`CatalogContentView`) so it can be
+    /// driven by BOTH the chevron and the catalog scroll position (collapses as
+    /// the patron scrolls into the catalog, expands at the top). Open at the top.
+    @Binding var isExpanded: Bool
 
     var body: some View {
         if let item = viewModel.mostRecent {
             VStack(alignment: .leading, spacing: 0) {
                 // Collapsible header
                 Button(action: {
-                    withAnimation(.easeInOut(duration: 0.2)) { isExpanded.toggle() }
+                    withAnimation(PalaceMotion.springy) { isExpanded.toggle() }
                 }, label: {
                     HStack {
                         Text(Strings.CatalogContinueRows.continueHeader)
