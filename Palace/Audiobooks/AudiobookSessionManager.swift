@@ -583,7 +583,7 @@ public final class AudiobookSessionManager: ObservableObject {
     ///   instead of replaying the expired on-disk manifest. Internal (not part of
     ///   the public `AudiobookSessionManaging` surface); the public 2-param
     ///   witness above delegates here, and the in-class recovery branch calls it.
-    func openAudiobook(_ book: TPPBook, startPlaying: Bool, forceRefulfill: Bool, isColdLoadRecovery: Bool = false) async -> Result<Void, AudiobookSessionError> {
+    func openAudiobook(_ book: TPPBook, startPlaying: Bool, forceRefulfill: Bool, isColdLoadRecovery: Bool = false, isRecoveryReopen: Bool = false) async -> Result<Void, AudiobookSessionError> {
         Log.info(#file, "Opening audiobook: '\(book.title)' (id: \(book.identifier))\(forceRefulfill ? " [re-fulfill]" : "")\(isColdLoadRecovery ? " [cold-load recovery]" : "")")
         // Polish-phase (in-app-nav-polish-2026-06-01): record wall-clock
         // open time so the Continue Reading row's sort surfaces the real
@@ -605,7 +605,16 @@ public final class AudiobookSessionManager: ObservableObject {
             }
         }
 
-        if case .loading(let loadingId) = state, loadingId == book.identifier {
+        // A recovery re-open (OverDrive re-fulfill / PP-4800) deliberately re-opens
+        // a book whose `state` is still `.loading` — the `.playbackFailed` handler
+        // parks it at `.loading` (not `.error`) so the presenter shows a loading
+        // shell during recovery instead of flashing an error. Without the
+        // `!isRecoveryReopen` bypass this guard would trip on that `.loading` and
+        // silently swallow the re-open (the exact dead-end the recovery fixes),
+        // making success timing-dependent on a follow-on toolkit stop event. The
+        // bypass makes the recovery re-open deterministic; the teardown below still
+        // runs, and `loadGeneration` supersedes any concurrent load.
+        if case .loading(let loadingId) = state, loadingId == book.identifier, !isRecoveryReopen {
             Log.warn(#file, "Audiobook already loading: \(book.identifier)")
             return .failure(.alreadyLoading)
         }
@@ -2001,8 +2010,48 @@ public final class AudiobookSessionManager: ObservableObject {
     ) -> Bool {
         guard !alreadyAttempted, let book else { return false }
         guard book.distributor?.lowercased() == OverdriveDistributorKey.lowercased() else { return false }
-        guard let status = httpStatusCode(from: error) else { return false }
-        return status == 410
+        // A clean HTTP 410 (Gone) is the textbook signed-URL expiry. But the toolkit
+        // streams OverDrive tracks through AVFoundation, which collapses a 410 on a
+        // track fetch into `NSURLErrorDomain -1008` (NSURLErrorResourceUnavailable)
+        // with NO extractable httpStatusCode — so the 410-only gate never actually
+        // fired in the field (device repro: Mi historia / A1QA, 2026-07-15: expired
+        // `links.contentlinks` signed URLs → 410 → surfaced as -1008 → dead-ended to
+        // "A Problem Has Occurred"). Treat that resource-unavailable signal as the
+        // same recoverable expiry a fresh re-fulfill fixes. Still conservative: 401/
+        // 403 arrive as an httpStatusCode (!= 410) and no-network (-1009) / timeout
+        // (-1001) are NOT resource-unavailable, so all fall through to false.
+        if httpStatusCode(from: error) == 410 { return true }
+        return isResourceUnavailable(from: error)
+    }
+
+    /// True iff `error` carries an `NSURLErrorResourceUnavailable` (-1008) signal —
+    /// the AVFoundation manifestation of an expired OverDrive signed-URL 410. Checks
+    /// the top-level error (the raw shape handed to `.playbackFailed`), the flattened
+    /// `underlyingDomain`/`underlyingCode` userInfo scalars stamped by
+    /// `buildPlaybackFailureRecord`, and one level down the `NSUnderlyingError` chain.
+    /// Scoped to -1008 ONLY: -1009 (offline) and -1001 (timeout) are deliberately not
+    /// matched — re-fulfilling into those would just fail again.
+    static func isResourceUnavailable(from error: Error?) -> Bool {
+        guard let nsError = error as NSError? else { return false }
+        func matches(domain: String, code: Int) -> Bool {
+            domain == NSURLErrorDomain && code == NSURLErrorResourceUnavailable
+        }
+        if matches(domain: nsError.domain, code: nsError.code) { return true }
+        // Defensive: the flattened `underlyingDomain`/`underlyingCode` scalars are the
+        // shape `buildPlaybackFailureRecord` produces for the Crashlytics record. That
+        // record is NOT the error handed to this gate at runtime (the raw error is —
+        // caught by the top-level and nested-chain branches), so this branch is
+        // belt-and-suspenders against a future call site that passes the built record.
+        if let underlyingDomain = nsError.userInfo["underlyingDomain"] as? String,
+           let underlyingCode = nsError.userInfo["underlyingCode"] as? Int,
+           matches(domain: underlyingDomain, code: underlyingCode) {
+            return true
+        }
+        if let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError,
+           matches(domain: underlying.domain, code: underlying.code) {
+            return true
+        }
+        return false
     }
 
     /// Extracts an HTTP status code from a playback error. The toolkit's network
@@ -2091,6 +2140,81 @@ public final class AudiobookSessionManager: ObservableObject {
             TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
         }
     }
+
+#if FEATURE_OVERDRIVE
+    /// PP-4800: recovers an OverDrive audiobook whose on-disk manifest holds
+    /// expired signed URLs (surfaced as AVPlayer -1008). The audiobook loader
+    /// CANNOT re-fulfill OverDrive — its `forceRefulfill` routes to
+    /// `OpenAccessAdapter`, whose generic bearer-token second leg hits OverDrive's
+    /// `downloadlink` WITHOUT the `x-overdrive-scope`/`x-overdrive-patron-
+    /// authorization` headers → 401 (device-confirmed). Only the download path
+    /// (`OverdriveDownloadHandler.processOverdriveDownload`) runs the 302 header
+    /// dance that authorizes fresh URLs. The download center refuses a start for a
+    /// `.downloadSuccessful` book (`DownloadStartCoordinator`: "Ignoring
+    /// nonsensical download request"), so reset to `.downloadNeeded` first, trigger
+    /// the fresh fulfillment, await the registry returning to `.downloadSuccessful`
+    /// (fresh manifest on disk, bounded), then re-open from the fresh LOCAL file.
+    /// Bounded to one attempt/book/session by the caller.
+    private func recoverExpiredOverdriveByRefulfilling(_ book: TPPBook) async {
+        let id = book.identifier
+        // The download center rejects a start for an already-downloaded book, so
+        // mark it needs-download before triggering the fresh OverDrive fulfillment.
+        bookRegistry.setState(.downloadNeeded, for: id)
+        AppContainer.production().downloadCenter.startDownload(for: book, withRequest: nil)
+        let landed = await awaitDownloadSuccessful(id, timeout: 90)
+        // A newer open (user tapped a different book) supersedes this recovery.
+        guard currentBook?.identifier == id else { return }
+        if landed {
+            Log.info(#file, "OverDrive re-fulfillment landed a fresh manifest — re-opening '\(book.title)'")
+            // isRecoveryReopen bypasses openAudiobook's `.alreadyLoading` guard —
+            // `state` is still `.loading` from the anti-flash handler. forceRefulfill
+            // stays false so the re-open reads the freshly-refreshed LOCAL manifest.
+            _ = await openAudiobook(book, startPlaying: true, forceRefulfill: false, isRecoveryReopen: true)
+        } else {
+            Log.info(#file, "OverDrive re-fulfillment did not complete — surfacing unavailable for '\(book.title)'")
+            await dismissAndPresentColdLoadUnavailable()
+        }
+    }
+
+    /// Polls the registry (on the main actor) for `id` reaching a terminal
+    /// download state after a re-fulfillment: `.downloadSuccessful`/`.used` → true
+    /// (fresh manifest on disk); `.downloadFailed`/`.unregistered`/`.unsupported`
+    /// → false; otherwise keep waiting up to `timeout` seconds. Polling (vs a
+    /// Combine subscription racing a timeout) keeps the whole recovery on the main
+    /// actor with no continuation/`Sendable` hazard, and can't miss an event since
+    /// each tick reads the current state. Bails early if a newer open supersedes.
+    private func awaitDownloadSuccessful(_ id: String, timeout: TimeInterval) async -> Bool {
+        let pollNanos: UInt64 = 250_000_000
+        var waited: TimeInterval = 0
+        while waited < timeout {
+            try? await Task.sleep(nanoseconds: pollNanos)
+            waited += 0.25
+            guard currentBook?.identifier == id else { return false }
+            if let outcome = Self.overdriveRefulfillOutcome(for: bookRegistry.state(for: id)) {
+                return outcome
+            }
+        }
+        return false
+    }
+
+    /// Pure classification of a registry state during the OverDrive re-fulfill poll:
+    /// `.some(true)` = a fresh manifest landed (stop polling, re-open); `.some(false)`
+    /// = a terminal failure (stop, surface unavailable); `nil` = not yet terminal
+    /// (keep polling). Extracted so the state→outcome mapping is unit-pinned — a
+    /// future edit that adds a terminal state or flips `.downloadFailed` to "landed"
+    /// would otherwise regress the recovery silently (both SoD reviewers flagged
+    /// this seam).
+    static func overdriveRefulfillOutcome(for state: TPPBookState) -> Bool? {
+        switch state {
+        case .downloadSuccessful, .used:
+            return true
+        case .downloadFailed, .unregistered, .unsupported:
+            return false
+        default:
+            return nil
+        }
+    }
+#endif
 
     private func validateRequirements(for book: TPPBook) async -> AudiobookSessionError? {
         if !(await isUserAuthenticated()) {
@@ -2263,7 +2387,31 @@ public final class AudiobookSessionManager: ObservableObject {
 
             Log.error(#file, "Playback failed at position: \(String(describing: position))")
             isPlaying = false
-            state = .error(bookId: bookId, message: "Playback failed")
+
+            // Decide up front whether ANY recovery will be attempted. If one will,
+            // keep the player in a `.loading` (recovering) state so the presenter
+            // shows the loading shell instead of flashing an error dialog that the
+            // recovery then immediately undoes — the error-then-recover flicker
+            // patrons saw on the OverDrive expired-URL path (PP-4800). Only a truly
+            // terminal failure (no recovery applies) publishes `.error`. The
+            // predicates are pure and side-effect-free, so evaluating them here
+            // changes none of the recovery control flow below.
+            let userAccount = accountsManager.currentUserAccount
+            var willRecover = Self.shouldTriggerSAMLReauthForPlaybackFailure(
+                error: error, userAccount: userAccount, currentBook: currentBook)
+#if FEATURE_OVERDRIVE
+            willRecover = willRecover || Self.shouldTriggerOverdriveRefulfillForPlaybackFailure(
+                error: error, book: currentBook,
+                alreadyAttempted: overdriveRefulfillAttemptedBookIds.contains(bookId))
+#endif
+            willRecover = willRecover || Self.shouldAutoReopenOnColdLoadFailure(
+                hasEverStartedPlayback: hasEverStartedPlayback,
+                hasCurrentBook: currentBook != nil,
+                alreadyAttempted: coldLoadReopenAttemptedBookIds.contains(bookId))
+
+            state = willRecover
+                ? .loading(bookId: bookId)
+                : .error(bookId: bookId, message: "Playback failed")
             playbackStatePublisher.send(state)
 
             // Record a Crashlytics non-fatal so audiobook playback failures
@@ -2285,7 +2433,7 @@ public final class AudiobookSessionManager: ObservableObject {
             // the entire path) — but the IdP-specific reauth (`new
             // TPPReauthenticator()` + `markCredentialsStale()`) is
             // collapsed into a single `refreshCredentialsIfNeeded` call.
-            let userAccount = accountsManager.currentUserAccount
+            // (`userAccount` is computed once above for the willRecover check.)
             if Self.shouldTriggerSAMLReauthForPlaybackFailure(error: error, userAccount: userAccount, currentBook: currentBook),
                let book = currentBook {
                 Log.info(#file, "Playback failed with auth-required signal — dispatching through AuthCoordinator")
@@ -2312,23 +2460,29 @@ public final class AudiobookSessionManager: ObservableObject {
             }
 
 #if FEATURE_OVERDRIVE
-            // WS-3 (3.2.0 crash-triage): OverDrive streams from time-limited
-            // signed URLs and has no SAML session to re-auth — an expired URL
-            // (HTTP 410) would otherwise dead-end here as `.unknown`. Re-fulfill
-            // FRESH signed URLs (bypassing the stale on-disk manifest) and
-            // re-open. Bounded to one attempt per session so a persistent
-            // failure cannot loop on this shared handler.
+            // WS-3 (3.2.0 crash-triage / PP-4800): OverDrive streams from
+            // time-limited signed URLs and has no SAML session to re-auth — an
+            // expired URL surfaces here (as AVPlayer -1008 / HTTP 410) and would
+            // otherwise dead-end as `.unknown`. Recover by re-fulfilling FRESH
+            // signed URLs. NOTE: this must route through the DOWNLOAD path, not
+            // the audiobook loader — the loader's `forceRefulfill` sends OverDrive
+            // to `OpenAccessAdapter`, whose generic bearer-token second leg hits
+            // OverDrive's `downloadlink` WITHOUT the `x-overdrive-scope` /
+            // `x-overdrive-patron-authorization` headers → 401 (device-confirmed).
+            // Only `OverdriveDownloadHandler.processOverdriveDownload` runs the 302
+            // header dance that authorizes fresh URLs. Bounded to one attempt per
+            // session so a persistent failure cannot loop on this shared handler.
             if Self.shouldTriggerOverdriveRefulfillForPlaybackFailure(
                 error: error,
                 book: currentBook,
                 alreadyAttempted: overdriveRefulfillAttemptedBookIds.contains(bookId)
             ), let book = currentBook {
-                Log.info(#file, "OverDrive audiobook playback failed on an expired signed URL — re-fulfilling fresh URLs and re-opening")
+                Log.info(#file, "OverDrive audiobook playback failed on an expired signed URL — re-fulfilling via the download center and re-opening")
                 overdriveRefulfillAttemptedBookIds.insert(bookId)
                 Task { [weak self] in
                     guard let self else { return }
                     guard self.currentBook?.identifier == book.identifier else { return }
-                    _ = await self.openAudiobook(book, startPlaying: true, forceRefulfill: true)
+                    await self.recoverExpiredOverdriveByRefulfilling(book)
                 }
                 return
             }
