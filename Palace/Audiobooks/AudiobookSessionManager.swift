@@ -2132,6 +2132,65 @@ public final class AudiobookSessionManager: ObservableObject {
         }
     }
 
+#if FEATURE_OVERDRIVE
+    /// PP-4800: recovers an OverDrive audiobook whose on-disk manifest holds
+    /// expired signed URLs (surfaced as AVPlayer -1008). The audiobook loader
+    /// CANNOT re-fulfill OverDrive — its `forceRefulfill` routes to
+    /// `OpenAccessAdapter`, whose generic bearer-token second leg hits OverDrive's
+    /// `downloadlink` WITHOUT the `x-overdrive-scope`/`x-overdrive-patron-
+    /// authorization` headers → 401 (device-confirmed). Only the download path
+    /// (`OverdriveDownloadHandler.processOverdriveDownload`) runs the 302 header
+    /// dance that authorizes fresh URLs. The download center refuses a start for a
+    /// `.downloadSuccessful` book (`DownloadStartCoordinator`: "Ignoring
+    /// nonsensical download request"), so reset to `.downloadNeeded` first, trigger
+    /// the fresh fulfillment, await the registry returning to `.downloadSuccessful`
+    /// (fresh manifest on disk, bounded), then re-open from the fresh LOCAL file.
+    /// Bounded to one attempt/book/session by the caller.
+    private func recoverExpiredOverdriveByRefulfilling(_ book: TPPBook) async {
+        let id = book.identifier
+        // The download center rejects a start for an already-downloaded book, so
+        // mark it needs-download before triggering the fresh OverDrive fulfillment.
+        bookRegistry.setState(.downloadNeeded, for: id)
+        AppContainer.production().downloadCenter.startDownload(for: book, withRequest: nil)
+        let landed = await awaitDownloadSuccessful(id, timeout: 90)
+        // A newer open (user tapped a different book) supersedes this recovery.
+        guard currentBook?.identifier == id else { return }
+        if landed {
+            Log.info(#file, "OverDrive re-fulfillment landed a fresh manifest — re-opening '\(book.title)'")
+            _ = await openAudiobook(book, startPlaying: true)
+        } else {
+            Log.info(#file, "OverDrive re-fulfillment did not complete — surfacing unavailable for '\(book.title)'")
+            await dismissAndPresentColdLoadUnavailable()
+        }
+    }
+
+    /// Polls the registry (on the main actor) for `id` reaching a terminal
+    /// download state after a re-fulfillment: `.downloadSuccessful`/`.used` → true
+    /// (fresh manifest on disk); `.downloadFailed`/`.unregistered`/`.unsupported`
+    /// → false; otherwise keep waiting up to `timeout` seconds. Polling (vs a
+    /// Combine subscription racing a timeout) keeps the whole recovery on the main
+    /// actor with no continuation/`Sendable` hazard, and can't miss an event since
+    /// each tick reads the current state. Bails early if a newer open supersedes.
+    private func awaitDownloadSuccessful(_ id: String, timeout: TimeInterval) async -> Bool {
+        let pollNanos: UInt64 = 250_000_000
+        var waited: TimeInterval = 0
+        while waited < timeout {
+            try? await Task.sleep(nanoseconds: pollNanos)
+            waited += 0.25
+            guard currentBook?.identifier == id else { return false }
+            switch bookRegistry.state(for: id) {
+            case .downloadSuccessful, .used:
+                return true
+            case .downloadFailed, .unregistered, .unsupported:
+                return false
+            default:
+                continue
+            }
+        }
+        return false
+    }
+#endif
+
     private func validateRequirements(for book: TPPBook) async -> AudiobookSessionError? {
         if !(await isUserAuthenticated()) {
             return .notAuthenticated
@@ -2352,23 +2411,29 @@ public final class AudiobookSessionManager: ObservableObject {
             }
 
 #if FEATURE_OVERDRIVE
-            // WS-3 (3.2.0 crash-triage): OverDrive streams from time-limited
-            // signed URLs and has no SAML session to re-auth — an expired URL
-            // (HTTP 410) would otherwise dead-end here as `.unknown`. Re-fulfill
-            // FRESH signed URLs (bypassing the stale on-disk manifest) and
-            // re-open. Bounded to one attempt per session so a persistent
-            // failure cannot loop on this shared handler.
+            // WS-3 (3.2.0 crash-triage / PP-4800): OverDrive streams from
+            // time-limited signed URLs and has no SAML session to re-auth — an
+            // expired URL surfaces here (as AVPlayer -1008 / HTTP 410) and would
+            // otherwise dead-end as `.unknown`. Recover by re-fulfilling FRESH
+            // signed URLs. NOTE: this must route through the DOWNLOAD path, not
+            // the audiobook loader — the loader's `forceRefulfill` sends OverDrive
+            // to `OpenAccessAdapter`, whose generic bearer-token second leg hits
+            // OverDrive's `downloadlink` WITHOUT the `x-overdrive-scope` /
+            // `x-overdrive-patron-authorization` headers → 401 (device-confirmed).
+            // Only `OverdriveDownloadHandler.processOverdriveDownload` runs the 302
+            // header dance that authorizes fresh URLs. Bounded to one attempt per
+            // session so a persistent failure cannot loop on this shared handler.
             if Self.shouldTriggerOverdriveRefulfillForPlaybackFailure(
                 error: error,
                 book: currentBook,
                 alreadyAttempted: overdriveRefulfillAttemptedBookIds.contains(bookId)
             ), let book = currentBook {
-                Log.info(#file, "OverDrive audiobook playback failed on an expired signed URL — re-fulfilling fresh URLs and re-opening")
+                Log.info(#file, "OverDrive audiobook playback failed on an expired signed URL — re-fulfilling via the download center and re-opening")
                 overdriveRefulfillAttemptedBookIds.insert(bookId)
                 Task { [weak self] in
                     guard let self else { return }
                     guard self.currentBook?.identifier == book.identifier else { return }
-                    _ = await self.openAudiobook(book, startPlaying: true, forceRefulfill: true)
+                    await self.recoverExpiredOverdriveByRefulfilling(book)
                 }
                 return
             }
