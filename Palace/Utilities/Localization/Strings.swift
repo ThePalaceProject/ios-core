@@ -538,6 +538,13 @@ struct Strings {
         static let downloadOnlyOnWiFiDescription = NSLocalizedString("When enabled, books and audiobooks will only download over Wi-Fi. Downloads will be blocked on cellular data.", comment: "Description for Download Only on Wi-Fi setting")
         static let downloadRestrictedToWiFi = NSLocalizedString("Downloads are restricted to Wi-Fi in Settings. Connect to a Wi-Fi network or change your download settings to continue.", comment: "Alert message when download is blocked due to Wi-Fi only setting")
         static let wifiRequired = NSLocalizedString("Wi-Fi Required", comment: "Alert title when download is blocked due to Wi-Fi only setting")
+        static let playback = NSLocalizedString("Playback", comment: "Section header for audiobook playback settings")
+        static let skipForwardInterval = NSLocalizedString("Skip Forward", comment: "Label for the audiobook skip-forward interval setting")
+        static let skipBackInterval = NSLocalizedString("Skip Back", comment: "Label for the audiobook skip-back interval setting")
+        static let skipIntervalDescription = NSLocalizedString("How far the audiobook skip buttons jump. Set each direction independently; applies to all audiobooks.", comment: "Description under the audiobook skip-interval settings")
+        static func skipIntervalSeconds(_ seconds: Int) -> String {
+            String.localizedStringWithFormat(NSLocalizedString("%d seconds", comment: "Audiobook skip interval option, e.g. '30 seconds'"), seconds)
+        }
     }
 
     struct AccountDetail {

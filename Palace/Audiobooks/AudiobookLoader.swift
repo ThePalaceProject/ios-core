@@ -404,6 +404,12 @@ final class AudiobookLoader {
             playbackTrackerDelegate: timeTracker
         )
 
+        // PP-4712: apply the patron's global skip-interval choices to this
+        // manager so subsequently opened audiobooks pick up the current setting.
+        let skipSettings = AudiobookSkipIntervalSettings()
+        manager.skipForwardInterval = skipSettings.forwardTimeInterval
+        manager.skipBackInterval = skipSettings.backTimeInterval
+
         let bookmarkLogic = AudiobookBookmarkBusinessLogic(book: book)
         manager.bookmarkDelegate = bookmarkLogic
 
