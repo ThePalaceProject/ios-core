@@ -349,10 +349,13 @@ public final class PlaybackBootstrapper {
         commandCenter.playCommand.isEnabled = true
         commandCenter.pauseCommand.isEnabled = true
         commandCenter.togglePlayPauseCommand.isEnabled = true
+        // PP-4712: reflect the patron's global skip-interval choices on the
+        // lock-screen / CarPlay skip controls (default 30s each).
+        let skipSettings = AudiobookSkipIntervalSettings()
         commandCenter.skipForwardCommand.isEnabled = true
-        commandCenter.skipForwardCommand.preferredIntervals = [30]
+        commandCenter.skipForwardCommand.preferredIntervals = [NSNumber(value: skipSettings.forwardInterval)]
         commandCenter.skipBackwardCommand.isEnabled = true
-        commandCenter.skipBackwardCommand.preferredIntervals = [30]
+        commandCenter.skipBackwardCommand.preferredIntervals = [NSNumber(value: skipSettings.backInterval)]
         commandCenter.changePlaybackRateCommand.isEnabled = true
 
         // CRITICAL: Disable track navigation commands
@@ -364,7 +367,7 @@ public final class PlaybackBootstrapper {
         commandCenter.changeRepeatModeCommand.isEnabled = false
         commandCenter.changeShuffleModeCommand.isEnabled = false
 
-        Log.debug(#file, "🎮 Command settings configured (skip intervals: 30s)")
+        Log.debug(#file, "🎮 Command settings configured (skip intervals: fwd \(skipSettings.forwardInterval)s / back \(skipSettings.backInterval)s)")
     }
 
     private func addCommandTargets() {

@@ -14,6 +14,10 @@ struct TPPSettingsView: View {
 
     @AppStorage(TPPSettings.showDeveloperSettingsKey) private var showDeveloperSettings: Bool = false
     @AppStorage(TPPSettings.downloadOnlyOnWiFiKey) private var downloadOnlyOnWiFi: Bool = false
+    // PP-4712: patron-configurable audiobook skip intervals (seconds), bound to
+    // the same UserDefaults keys the player reads via AudiobookSkipIntervalSettings.
+    @AppStorage(AudiobookSkipIntervalSettings.forwardKey) private var skipForwardInterval: Int = AudiobookSkipIntervalSettings.defaultInterval
+    @AppStorage(AudiobookSkipIntervalSettings.backKey) private var skipBackInterval: Int = AudiobookSkipIntervalSettings.defaultInterval
     /// Subscribes to the dev-settings triage bot local override so the
     /// support section appears/disappears the moment the toggle flips.
     /// Effective gating still goes through
@@ -121,6 +125,7 @@ struct TPPSettingsView: View {
                     .transition(.opacity)
             }
             downloadsSection
+            playbackSection
             supportSection
             advancedSection
             sideLoadingSection
@@ -279,6 +284,30 @@ struct TPPSettingsView: View {
                     .foregroundStyle(.secondary)
             }
             .padding(.vertical, 4)
+        }
+    }
+
+    // PP-4712: audiobook skip-interval controls. Each direction is independent;
+    // the pickers only offer valid options, so no out-of-range value can be set.
+    @ViewBuilder private var playbackSection: some View {
+        Section(header: Text(DisplayStrings.playback)) {
+            Picker(DisplayStrings.skipForwardInterval, selection: $skipForwardInterval) {
+                ForEach(AudiobookSkipIntervalSettings.options, id: \.self) { seconds in
+                    Text(DisplayStrings.skipIntervalSeconds(seconds)).tag(seconds)
+                }
+            }
+            .accessibilityIdentifier("settings.skipForwardInterval")
+            .accessibilityLabel(DisplayStrings.skipForwardInterval)
+            Picker(DisplayStrings.skipBackInterval, selection: $skipBackInterval) {
+                ForEach(AudiobookSkipIntervalSettings.options, id: \.self) { seconds in
+                    Text(DisplayStrings.skipIntervalSeconds(seconds)).tag(seconds)
+                }
+            }
+            .accessibilityIdentifier("settings.skipBackInterval")
+            .accessibilityLabel(DisplayStrings.skipBackInterval)
+            Text(DisplayStrings.skipIntervalDescription)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
         }
     }
 
