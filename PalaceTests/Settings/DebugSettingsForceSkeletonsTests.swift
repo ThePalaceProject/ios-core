@@ -35,15 +35,25 @@ final class DebugSettingsForceSkeletonsTests: XCTestCase {
         XCTAssertFalse(DebugSettings.forceSkeletons(in: defaults))
     }
 
-    func testForceSkeletons_whenOverrideKeySet_isTrueInDebug() {
+    // NOTE on the DEBUG gate: `forceSkeletons` compiles in the *Palace* module,
+    // whose Debug config defines DEBUG — so the Debug-built app these tests link
+    // against DOES honor the override. The `PalaceTests` target itself does NOT
+    // define DEBUG (its compilation conditions are `LCP FEATURE_OVERDRIVE`), so a
+    // `#if DEBUG` written here would mis-evaluate and diverge from the app under
+    // test. Gate on `DebugSettings.honorsForceSkeletonsOverride` — the Palace
+    // module's own compile-time truth — so the expectation always matches reality.
+
+    func testForceSkeletons_whenOverrideKeySet_isHonoredPerBuild() {
         defaults.set(true, forKey: "PalaceForceSkeletons")
-        #if DEBUG
-        XCTAssertTrue(DebugSettings.forceSkeletons(in: defaults))
-        #else
-        // Release builds gate the override off entirely — production render
-        // paths must be byte-identical regardless of the key.
-        XCTAssertFalse(DebugSettings.forceSkeletons(in: defaults))
-        #endif
+        if DebugSettings.honorsForceSkeletonsOverride {
+            XCTAssertTrue(DebugSettings.forceSkeletons(in: defaults),
+                          "A build that honors the override must read PalaceForceSkeletons=true as true")
+        } else {
+            // Release builds gate the override off entirely — production render
+            // paths must be byte-identical regardless of the key.
+            XCTAssertFalse(DebugSettings.forceSkeletons(in: defaults),
+                           "A release build must ignore the override and return false")
+        }
     }
 
     /// Mutation guard: pins the exact override key. If the production read
@@ -52,11 +62,12 @@ final class DebugSettingsForceSkeletonsTests: XCTestCase {
         defaults.set(false, forKey: "ForceSkeletons")       // decoy #1
         defaults.set(false, forKey: "PalaceForceSkeleton")  // decoy #2 (singular)
         defaults.set(true, forKey: "PalaceForceSkeletons")  // the real key
-        #if DEBUG
-        XCTAssertTrue(DebugSettings.forceSkeletons(in: defaults))
-        #else
-        XCTAssertFalse(DebugSettings.forceSkeletons(in: defaults))
-        #endif
+        if DebugSettings.honorsForceSkeletonsOverride {
+            XCTAssertTrue(DebugSettings.forceSkeletons(in: defaults),
+                          "Must read the exact key PalaceForceSkeletons, not a decoy")
+        } else {
+            XCTAssertFalse(DebugSettings.forceSkeletons(in: defaults))
+        }
     }
 
     func testForceSkeletons_whenOverrideExplicitlyFalse_isFalse() {

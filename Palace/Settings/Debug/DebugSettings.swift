@@ -52,6 +52,24 @@ final class DebugSettings: @unchecked Sendable {
         #endif
     }
 
+    /// Whether THIS build honors the `PalaceForceSkeletons` override at all —
+    /// `true` in DEBUG (and any build that defines DEBUG, e.g. the Debug-
+    /// configured app the unit tests link against), `false` in release.
+    ///
+    /// Exposed so tests assert `forceSkeletons`' behavior against the *Palace
+    /// module's* compile-time DEBUG (the module the code-under-test lives in),
+    /// NOT the test target's — the `PalaceTests` target intentionally does not
+    /// define `DEBUG` (its `SWIFT_ACTIVE_COMPILATION_CONDITIONS` is
+    /// `LCP FEATURE_OVERDRIVE`), so a `#if DEBUG` written in a test file
+    /// mis-evaluates this gate and diverges from the built app's real behavior.
+    static var honorsForceSkeletonsOverride: Bool {
+        #if DEBUG
+        return true
+        #else
+        return false
+        #endif
+    }
+
     // MARK: - Keys
 
     private enum Keys {
