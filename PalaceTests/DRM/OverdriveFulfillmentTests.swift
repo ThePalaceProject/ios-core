@@ -463,6 +463,31 @@ final class OverdriveFulfillmentTests: XCTestCase {
         XCTAssertFalse(AudiobookSessionManager.isResourceUnavailable(from: nil))
     }
 
+    // MARK: - PP-4800: re-fulfill poll state classification (drives re-open vs unavailable)
+    //
+    // awaitDownloadSuccessful polls the registry after triggering the download-center
+    // re-fulfillment; overdriveRefulfillOutcome is the pure state→outcome mapping it
+    // uses. Pin every TPPBookState so a future edit adding a terminal state or flipping
+    // a case (e.g. .downloadFailed → "landed") can't silently break the recovery.
+
+    func testOverdriveRefulfillOutcome_landed_terminalFailure_and_keepPolling() {
+        // Fresh manifest landed → stop polling, re-open.
+        XCTAssertEqual(AudiobookSessionManager.overdriveRefulfillOutcome(for: .downloadSuccessful), true)
+        XCTAssertEqual(AudiobookSessionManager.overdriveRefulfillOutcome(for: .used), true)
+        // Terminal failure → stop polling, surface unavailable.
+        XCTAssertEqual(AudiobookSessionManager.overdriveRefulfillOutcome(for: .downloadFailed), false,
+                       ".downloadFailed must be a terminal FAILURE, not treated as landed")
+        XCTAssertEqual(AudiobookSessionManager.overdriveRefulfillOutcome(for: .unregistered), false)
+        XCTAssertEqual(AudiobookSessionManager.overdriveRefulfillOutcome(for: .unsupported), false)
+        // Not yet terminal → keep polling (nil).
+        XCTAssertNil(AudiobookSessionManager.overdriveRefulfillOutcome(for: .downloadNeeded),
+                     ".downloadNeeded is the transient reset state — must keep polling, not fail")
+        XCTAssertNil(AudiobookSessionManager.overdriveRefulfillOutcome(for: .downloading))
+        XCTAssertNil(AudiobookSessionManager.overdriveRefulfillOutcome(for: .holding))
+        XCTAssertNil(AudiobookSessionManager.overdriveRefulfillOutcome(for: .returning))
+        XCTAssertNil(AudiobookSessionManager.overdriveRefulfillOutcome(for: .SAMLStarted))
+    }
+
     // MARK: - WS-3: fresh re-fulfilled URL is CONSUMED into the built audiobook (loader-level)
     //
     // Assertions 2+3 of the recovery proof, at the loader boundary (no session

@@ -583,7 +583,7 @@ public final class AudiobookSessionManager: ObservableObject {
     ///   instead of replaying the expired on-disk manifest. Internal (not part of
     ///   the public `AudiobookSessionManaging` surface); the public 2-param
     ///   witness above delegates here, and the in-class recovery branch calls it.
-    func openAudiobook(_ book: TPPBook, startPlaying: Bool, forceRefulfill: Bool, isColdLoadRecovery: Bool = false) async -> Result<Void, AudiobookSessionError> {
+    func openAudiobook(_ book: TPPBook, startPlaying: Bool, forceRefulfill: Bool, isColdLoadRecovery: Bool = false, isRecoveryReopen: Bool = false) async -> Result<Void, AudiobookSessionError> {
         Log.info(#file, "Opening audiobook: '\(book.title)' (id: \(book.identifier))\(forceRefulfill ? " [re-fulfill]" : "")\(isColdLoadRecovery ? " [cold-load recovery]" : "")")
         // Polish-phase (in-app-nav-polish-2026-06-01): record wall-clock
         // open time so the Continue Reading row's sort surfaces the real
@@ -605,7 +605,16 @@ public final class AudiobookSessionManager: ObservableObject {
             }
         }
 
-        if case .loading(let loadingId) = state, loadingId == book.identifier {
+        // A recovery re-open (OverDrive re-fulfill / PP-4800) deliberately re-opens
+        // a book whose `state` is still `.loading` — the `.playbackFailed` handler
+        // parks it at `.loading` (not `.error`) so the presenter shows a loading
+        // shell during recovery instead of flashing an error. Without the
+        // `!isRecoveryReopen` bypass this guard would trip on that `.loading` and
+        // silently swallow the re-open (the exact dead-end the recovery fixes),
+        // making success timing-dependent on a follow-on toolkit stop event. The
+        // bypass makes the recovery re-open deterministic; the teardown below still
+        // runs, and `loadGeneration` supersedes any concurrent load.
+        if case .loading(let loadingId) = state, loadingId == book.identifier, !isRecoveryReopen {
             Log.warn(#file, "Audiobook already loading: \(book.identifier)")
             return .failure(.alreadyLoading)
         }
@@ -2157,7 +2166,10 @@ public final class AudiobookSessionManager: ObservableObject {
         guard currentBook?.identifier == id else { return }
         if landed {
             Log.info(#file, "OverDrive re-fulfillment landed a fresh manifest — re-opening '\(book.title)'")
-            _ = await openAudiobook(book, startPlaying: true)
+            // isRecoveryReopen bypasses openAudiobook's `.alreadyLoading` guard —
+            // `state` is still `.loading` from the anti-flash handler. forceRefulfill
+            // stays false so the re-open reads the freshly-refreshed LOCAL manifest.
+            _ = await openAudiobook(book, startPlaying: true, forceRefulfill: false, isRecoveryReopen: true)
         } else {
             Log.info(#file, "OverDrive re-fulfillment did not complete — surfacing unavailable for '\(book.title)'")
             await dismissAndPresentColdLoadUnavailable()
@@ -2178,16 +2190,29 @@ public final class AudiobookSessionManager: ObservableObject {
             try? await Task.sleep(nanoseconds: pollNanos)
             waited += 0.25
             guard currentBook?.identifier == id else { return false }
-            switch bookRegistry.state(for: id) {
-            case .downloadSuccessful, .used:
-                return true
-            case .downloadFailed, .unregistered, .unsupported:
-                return false
-            default:
-                continue
+            if let outcome = Self.overdriveRefulfillOutcome(for: bookRegistry.state(for: id)) {
+                return outcome
             }
         }
         return false
+    }
+
+    /// Pure classification of a registry state during the OverDrive re-fulfill poll:
+    /// `.some(true)` = a fresh manifest landed (stop polling, re-open); `.some(false)`
+    /// = a terminal failure (stop, surface unavailable); `nil` = not yet terminal
+    /// (keep polling). Extracted so the state→outcome mapping is unit-pinned — a
+    /// future edit that adds a terminal state or flips `.downloadFailed` to "landed"
+    /// would otherwise regress the recovery silently (both SoD reviewers flagged
+    /// this seam).
+    static func overdriveRefulfillOutcome(for state: TPPBookState) -> Bool? {
+        switch state {
+        case .downloadSuccessful, .used:
+            return true
+        case .downloadFailed, .unregistered, .unsupported:
+            return false
+        default:
+            return nil
+        }
     }
 #endif
 
