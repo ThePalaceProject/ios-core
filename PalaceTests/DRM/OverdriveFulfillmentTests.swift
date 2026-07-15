@@ -362,6 +362,107 @@ final class OverdriveFulfillmentTests: XCTestCase {
         XCTAssertNil(AudiobookSessionManager.httpStatusCode(from: playbackError(httpStatus: nil)))
     }
 
+    // MARK: - WS-3b: -1008 resource-unavailable is the REAL field shape of the expiry
+    //
+    // OverDrive streams tracks through AVFoundation, which collapses an expired signed-
+    // URL's HTTP 410 into `NSURLErrorDomain -1008` (NSURLErrorResourceUnavailable) with
+    // NO httpStatusCode. The 410-only gate therefore never fired in the field (device
+    // repro: Mi historia / A1QA, 2026-07-15 — expired `links.contentlinks` → 410 → -1008
+    // → "A Problem Has Occurred", and skip-across-tracks broke identically). These pin
+    // that the three real -1008 shapes now trigger the bounded re-fulfill, while the
+    // non-expiry NSURLErrors (offline, timeout) and the bound/distributor guards hold.
+
+    private func resourceUnavailableTopLevel() -> NSError {
+        NSError(domain: NSURLErrorDomain, code: NSURLErrorResourceUnavailable, userInfo: [:])
+    }
+
+    func testOverdriveRefulfill_resourceUnavailable1008_topLevel_returnsTrue() {
+        XCTAssertTrue(AudiobookSessionManager.shouldTriggerOverdriveRefulfillForPlaybackFailure(
+            error: resourceUnavailableTopLevel(), book: makeOverdriveBook(), alreadyAttempted: false),
+            "AVPlayer surfaces an expired signed-URL 410 as NSURLErrorDomain -1008 — the real field shape must re-fulfill")
+    }
+
+    func testOverdriveRefulfill_resourceUnavailable1008_flattenedScalars_returnsTrue() {
+        // The shape buildPlaybackFailureRecord produces: wrapper domain + flattened scalars.
+        let err = NSError(domain: "org.thepalaceproject.palace.audiobookPlayback", code: -1008,
+                          userInfo: ["underlyingCode": NSURLErrorResourceUnavailable, "underlyingDomain": NSURLErrorDomain])
+        XCTAssertTrue(AudiobookSessionManager.shouldTriggerOverdriveRefulfillForPlaybackFailure(
+            error: err, book: makeOverdriveBook(), alreadyAttempted: false),
+            "The flattened underlyingCode/underlyingDomain -1008 shape must also re-fulfill")
+    }
+
+    func testOverdriveRefulfill_resourceUnavailable1008_nestedUnderlying_returnsTrue() {
+        let underlying = NSError(domain: NSURLErrorDomain, code: NSURLErrorResourceUnavailable, userInfo: [:])
+        let wrapped = NSError(domain: "av", code: -11800, userInfo: [NSUnderlyingErrorKey: underlying])
+        XCTAssertTrue(AudiobookSessionManager.shouldTriggerOverdriveRefulfillForPlaybackFailure(
+            error: wrapped, book: makeOverdriveBook(), alreadyAttempted: false),
+            "A -1008 one level down the NSUnderlyingError chain must re-fulfill")
+    }
+
+    func testOverdriveRefulfill_notConnected1009_returnsFalse_offlineIsNotExpiry() {
+        let err = NSError(domain: NSURLErrorDomain, code: NSURLErrorNotConnectedToInternet, userInfo: [:])
+        XCTAssertFalse(AudiobookSessionManager.shouldTriggerOverdriveRefulfillForPlaybackFailure(
+            error: err, book: makeOverdriveBook(), alreadyAttempted: false),
+            "No network (-1009) is not a signed-URL expiry — re-fulfilling would just fail again offline")
+    }
+
+    func testOverdriveRefulfill_timedOut1001_returnsFalse_transientNotExpiry() {
+        let err = NSError(domain: NSURLErrorDomain, code: NSURLErrorTimedOut, userInfo: [:])
+        XCTAssertFalse(AudiobookSessionManager.shouldTriggerOverdriveRefulfillForPlaybackFailure(
+            error: err, book: makeOverdriveBook(), alreadyAttempted: false),
+            "A timeout (-1001) is transient, not an expiry — must NOT re-fulfill")
+    }
+
+    func testOverdriveRefulfill_resourceUnavailable1008_alreadyAttempted_returnsFalse_bounded() {
+        XCTAssertFalse(AudiobookSessionManager.shouldTriggerOverdriveRefulfillForPlaybackFailure(
+            error: resourceUnavailableTopLevel(), book: makeOverdriveBook(), alreadyAttempted: true),
+            "Bounded: a second -1008 in the same session must NOT re-fulfill again (no loop)")
+    }
+
+    func testOverdriveRefulfill_resourceUnavailable1008_notOverdrive_returnsFalse() {
+        let nonOverdrive = TPPBookMocker.mockBook(title: "Not OverDrive")
+        XCTAssertFalse(AudiobookSessionManager.shouldTriggerOverdriveRefulfillForPlaybackFailure(
+            error: resourceUnavailableTopLevel(), book: nonOverdrive, alreadyAttempted: false),
+            "Re-fulfill is OverDrive-only — a -1008 on another distributor must not enter this path")
+    }
+
+    func testIsResourceUnavailable_flattenedScalars_wrongDomain_returnsFalse() {
+        // The flattened branch must honor the same domain scoping as the others: a -1008
+        // code stamped with a NON-NSURLErrorDomain underlyingDomain is not our expiry.
+        // Guards the shared `matches` conjunction on the flattened branch specifically.
+        let wrongDomain = NSError(domain: "org.thepalaceproject.palace.audiobookPlayback", code: -1008,
+                                  userInfo: ["underlyingCode": NSURLErrorResourceUnavailable, "underlyingDomain": "not-a-url-domain"])
+        XCTAssertFalse(AudiobookSessionManager.isResourceUnavailable(from: wrongDomain),
+            "Flattened -1008 with a non-NSURLErrorDomain underlyingDomain must NOT match")
+        let wrongCode = NSError(domain: "org.thepalaceproject.palace.audiobookPlayback", code: -1001,
+                                userInfo: ["underlyingCode": NSURLErrorTimedOut, "underlyingDomain": NSURLErrorDomain])
+        XCTAssertFalse(AudiobookSessionManager.isResourceUnavailable(from: wrongCode),
+            "Flattened underlyingCode -1001 (timeout) must NOT match even on NSURLErrorDomain")
+    }
+
+    func testIsResourceUnavailable_throughBuildPlaybackFailureRecord_stillTriggers() {
+        // Couples the helper to buildPlaybackFailureRecord's actual key names: feed a raw
+        // -1008 through the record builder and assert the produced NSError still trips the
+        // gate. If buildPlaybackFailureRecord renamed underlyingCode/underlyingDomain, the
+        // recovery would silently stop matching the record shape — this catches that drift.
+        let raw = NSError(domain: NSURLErrorDomain, code: NSURLErrorResourceUnavailable, userInfo: [:])
+        let record = AudiobookSessionManager.buildPlaybackFailureRecord(error: raw, position: nil, bookId: "b")
+        XCTAssertTrue(AudiobookSessionManager.isResourceUnavailable(from: record),
+            "The NSError buildPlaybackFailureRecord produces for a -1008 must still be recognized as resource-unavailable")
+    }
+
+    func testIsResourceUnavailable_matchesMinus1008_rejectsOffline_timeout_andNil() {
+        XCTAssertTrue(AudiobookSessionManager.isResourceUnavailable(from: resourceUnavailableTopLevel()))
+        XCTAssertFalse(AudiobookSessionManager.isResourceUnavailable(
+            from: NSError(domain: NSURLErrorDomain, code: NSURLErrorNotConnectedToInternet, userInfo: [:])))
+        XCTAssertFalse(AudiobookSessionManager.isResourceUnavailable(
+            from: NSError(domain: NSURLErrorDomain, code: NSURLErrorTimedOut, userInfo: [:])))
+        XCTAssertFalse(AudiobookSessionManager.isResourceUnavailable(
+            from: NSError(domain: "test.playback", code: -1008, userInfo: [:])),
+            "-1008 must be scoped to NSURLErrorDomain, not any domain that happens to use code -1008")
+        XCTAssertFalse(AudiobookSessionManager.isResourceUnavailable(from: nil))
+    }
+
     // MARK: - WS-3: fresh re-fulfilled URL is CONSUMED into the built audiobook (loader-level)
     //
     // Assertions 2+3 of the recovery proof, at the loader boundary (no session

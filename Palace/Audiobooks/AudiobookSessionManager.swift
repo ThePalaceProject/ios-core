@@ -2001,8 +2001,48 @@ public final class AudiobookSessionManager: ObservableObject {
     ) -> Bool {
         guard !alreadyAttempted, let book else { return false }
         guard book.distributor?.lowercased() == OverdriveDistributorKey.lowercased() else { return false }
-        guard let status = httpStatusCode(from: error) else { return false }
-        return status == 410
+        // A clean HTTP 410 (Gone) is the textbook signed-URL expiry. But the toolkit
+        // streams OverDrive tracks through AVFoundation, which collapses a 410 on a
+        // track fetch into `NSURLErrorDomain -1008` (NSURLErrorResourceUnavailable)
+        // with NO extractable httpStatusCode — so the 410-only gate never actually
+        // fired in the field (device repro: Mi historia / A1QA, 2026-07-15: expired
+        // `links.contentlinks` signed URLs → 410 → surfaced as -1008 → dead-ended to
+        // "A Problem Has Occurred"). Treat that resource-unavailable signal as the
+        // same recoverable expiry a fresh re-fulfill fixes. Still conservative: 401/
+        // 403 arrive as an httpStatusCode (!= 410) and no-network (-1009) / timeout
+        // (-1001) are NOT resource-unavailable, so all fall through to false.
+        if httpStatusCode(from: error) == 410 { return true }
+        return isResourceUnavailable(from: error)
+    }
+
+    /// True iff `error` carries an `NSURLErrorResourceUnavailable` (-1008) signal —
+    /// the AVFoundation manifestation of an expired OverDrive signed-URL 410. Checks
+    /// the top-level error (the raw shape handed to `.playbackFailed`), the flattened
+    /// `underlyingDomain`/`underlyingCode` userInfo scalars stamped by
+    /// `buildPlaybackFailureRecord`, and one level down the `NSUnderlyingError` chain.
+    /// Scoped to -1008 ONLY: -1009 (offline) and -1001 (timeout) are deliberately not
+    /// matched — re-fulfilling into those would just fail again.
+    static func isResourceUnavailable(from error: Error?) -> Bool {
+        guard let nsError = error as NSError? else { return false }
+        func matches(domain: String, code: Int) -> Bool {
+            domain == NSURLErrorDomain && code == NSURLErrorResourceUnavailable
+        }
+        if matches(domain: nsError.domain, code: nsError.code) { return true }
+        // Defensive: the flattened `underlyingDomain`/`underlyingCode` scalars are the
+        // shape `buildPlaybackFailureRecord` produces for the Crashlytics record. That
+        // record is NOT the error handed to this gate at runtime (the raw error is —
+        // caught by the top-level and nested-chain branches), so this branch is
+        // belt-and-suspenders against a future call site that passes the built record.
+        if let underlyingDomain = nsError.userInfo["underlyingDomain"] as? String,
+           let underlyingCode = nsError.userInfo["underlyingCode"] as? Int,
+           matches(domain: underlyingDomain, code: underlyingCode) {
+            return true
+        }
+        if let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError,
+           matches(domain: underlying.domain, code: underlying.code) {
+            return true
+        }
+        return false
     }
 
     /// Extracts an HTTP status code from a playback error. The toolkit's network
