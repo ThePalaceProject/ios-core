@@ -2362,7 +2362,31 @@ public final class AudiobookSessionManager: ObservableObject {
 
             Log.error(#file, "Playback failed at position: \(String(describing: position))")
             isPlaying = false
-            state = .error(bookId: bookId, message: "Playback failed")
+
+            // Decide up front whether ANY recovery will be attempted. If one will,
+            // keep the player in a `.loading` (recovering) state so the presenter
+            // shows the loading shell instead of flashing an error dialog that the
+            // recovery then immediately undoes — the error-then-recover flicker
+            // patrons saw on the OverDrive expired-URL path (PP-4800). Only a truly
+            // terminal failure (no recovery applies) publishes `.error`. The
+            // predicates are pure and side-effect-free, so evaluating them here
+            // changes none of the recovery control flow below.
+            let userAccount = accountsManager.currentUserAccount
+            var willRecover = Self.shouldTriggerSAMLReauthForPlaybackFailure(
+                error: error, userAccount: userAccount, currentBook: currentBook)
+#if FEATURE_OVERDRIVE
+            willRecover = willRecover || Self.shouldTriggerOverdriveRefulfillForPlaybackFailure(
+                error: error, book: currentBook,
+                alreadyAttempted: overdriveRefulfillAttemptedBookIds.contains(bookId))
+#endif
+            willRecover = willRecover || Self.shouldAutoReopenOnColdLoadFailure(
+                hasEverStartedPlayback: hasEverStartedPlayback,
+                hasCurrentBook: currentBook != nil,
+                alreadyAttempted: coldLoadReopenAttemptedBookIds.contains(bookId))
+
+            state = willRecover
+                ? .loading(bookId: bookId)
+                : .error(bookId: bookId, message: "Playback failed")
             playbackStatePublisher.send(state)
 
             // Record a Crashlytics non-fatal so audiobook playback failures
@@ -2384,7 +2408,7 @@ public final class AudiobookSessionManager: ObservableObject {
             // the entire path) — but the IdP-specific reauth (`new
             // TPPReauthenticator()` + `markCredentialsStale()`) is
             // collapsed into a single `refreshCredentialsIfNeeded` call.
-            let userAccount = accountsManager.currentUserAccount
+            // (`userAccount` is computed once above for the willRecover check.)
             if Self.shouldTriggerSAMLReauthForPlaybackFailure(error: error, userAccount: userAccount, currentBook: currentBook),
                let book = currentBook {
                 Log.info(#file, "Playback failed with auth-required signal — dispatching through AuthCoordinator")
