@@ -53,6 +53,18 @@ final class AudiobookSkipIntervalSettingsTests: XCTestCase {
     let settings = AudiobookSkipIntervalSettings(defaults: defaults)
     settings.forwardInterval = 37 // not in the allowed option set
     XCTAssertEqual(settings.forwardInterval, 30, "an out-of-set value must not be stored; fall back to 30")
+    // Write-side guard: the invalid value must never have reached UserDefaults.
+    XCTAssertEqual(defaults.object(forKey: AudiobookSkipIntervalSettings.forwardKey) as? Int, 30,
+                   "write() must clamp an out-of-set value to 30 before persisting")
+  }
+
+  /// Read-side guard, exercised independently of write(): a raw out-of-set value
+  /// planted directly in UserDefaults (corrupt/foreign) must read back as 30.
+  /// Without this, deleting the read()-side `options.contains` check goes unnoticed.
+  func testRawInvalidValueInDefaults_readsBackAsDefault() {
+    defaults.set(37, forKey: AudiobookSkipIntervalSettings.forwardKey)
+    let settings = AudiobookSkipIntervalSettings(defaults: defaults)
+    XCTAssertEqual(settings.forwardInterval, 30, "a raw invalid value in defaults must be sanitized to 30 on read")
   }
 
   func testAllowedOptions_areTheDefinedSet() {
