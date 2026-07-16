@@ -12,21 +12,30 @@ import XCTest
 /// URLProtocol that records every request a session (or `URLSession.shared`,
 /// when registered globally) attempts to send. Used to prove the AI fallback is
 /// inert: zero recorded requests means nothing hit the network.
-final class RecordingURLProtocol: URLProtocol {
+///
+/// Recording is keyed by the **concrete subclass metatype**, not a single
+/// shared array. Two test classes each register their own subclass
+/// (``InertPathRecordingURLProtocol`` / ``GuardOrderRecordingURLProtocol``), so
+/// their request logs are fully isolated even when Xcode runs the classes in
+/// parallel. `reset()` / `recordedCount` are `class`-scoped so `self` resolves
+/// to the concrete subclass at the call site — a shared `static` array (the
+/// prior shape) let a `reset()` or a recorded request in one class bleed into
+/// the other's count under concurrent execution.
+class RecordingURLProtocol: URLProtocol {
     private static let lock = NSLock()
-    private static var _recorded: [URLRequest] = []
+    private static var recordedByClass: [ObjectIdentifier: [URLRequest]] = [:]
 
-    static func reset() {
-        lock.lock(); _recorded = []; lock.unlock()
+    class func reset() {
+        lock.lock(); recordedByClass[ObjectIdentifier(self)] = []; lock.unlock()
     }
 
-    static var recordedCount: Int {
+    class var recordedCount: Int {
         lock.lock(); defer { lock.unlock() }
-        return _recorded.count
+        return recordedByClass[ObjectIdentifier(self)]?.count ?? 0
     }
 
     override class func canInit(with request: URLRequest) -> Bool {
-        lock.lock(); _recorded.append(request); lock.unlock()
+        lock.lock(); recordedByClass[ObjectIdentifier(self), default: []].append(request); lock.unlock()
         // Handle the request so a would-be network call completes (and can't
         // leak to the real network) rather than hanging the test.
         return true
@@ -47,9 +56,17 @@ final class RecordingURLProtocol: URLProtocol {
     override func stopLoading() {}
 }
 
+/// Per-test-class recorder for ``AIFallbackInertViewModelTests`` — registered
+/// globally so it catches any stray `URLSession.shared` traffic.
+final class InertPathRecordingURLProtocol: RecordingURLProtocol {}
+
+/// Per-test-class recorder for ``ClaudeFallbackClassifierGuardOrderTests`` —
+/// wired only into that class's ephemeral session.
+final class GuardOrderRecordingURLProtocol: RecordingURLProtocol {}
+
 private func recordingSession() -> URLSession {
     let config = URLSessionConfiguration.ephemeral
-    config.protocolClasses = [RecordingURLProtocol.self]
+    config.protocolClasses = [GuardOrderRecordingURLProtocol.self]
     return URLSession(configuration: config)
 }
 
@@ -81,9 +98,9 @@ final class AIFallbackInertViewModelTests: XCTestCase {
     /// conversation (including the escalate path) must never touch the network.
     @MainActor
     func testFlagOffConversation_makesZeroNetworkRequests() async {
-        URLProtocol.registerClass(RecordingURLProtocol.self)
-        defer { URLProtocol.unregisterClass(RecordingURLProtocol.self) }
-        RecordingURLProtocol.reset()
+        URLProtocol.registerClass(InertPathRecordingURLProtocol.self)
+        defer { URLProtocol.unregisterClass(InertPathRecordingURLProtocol.self) }
+        InertPathRecordingURLProtocol.reset()
 
         // aiFallbackEnabled: false mirrors the flag-off reducer the factory builds.
         let reducer = ConversationReducer(knowledgeBase: emptyKnowledgeBase(), aiFallbackEnabled: false)
@@ -103,7 +120,7 @@ final class AIFallbackInertViewModelTests: XCTestCase {
         await Task.yield()
         await Task.yield()
 
-        XCTAssertEqual(RecordingURLProtocol.recordedCount, 0,
+        XCTAssertEqual(InertPathRecordingURLProtocol.recordedCount, 0,
                        "Flag-off conversation must make zero network requests")
     }
 }
@@ -117,7 +134,7 @@ final class ClaudeFallbackClassifierGuardOrderTests: XCTestCase {
     /// order (rate-limit → key check → network): if a refactor moved the network
     /// call above the key guard, a request would be recorded and this fails.
     func testClassify_withNoKey_throwsApiKeyMissing_beforeAnyRequest() async {
-        RecordingURLProtocol.reset()
+        GuardOrderRecordingURLProtocol.reset()
         let classifier = ClaudeFallbackClassifier(
             keyProvider: { nil },
             session: recordingSession()
@@ -137,13 +154,13 @@ final class ClaudeFallbackClassifierGuardOrderTests: XCTestCase {
             XCTFail("Unexpected error: \(error)")
         }
 
-        XCTAssertEqual(RecordingURLProtocol.recordedCount, 0,
+        XCTAssertEqual(GuardOrderRecordingURLProtocol.recordedCount, 0,
                        "Key guard must fire before any network call")
     }
 
     /// An empty-string key is treated the same as missing — still no network.
     func testClassify_withEmptyKey_throwsApiKeyMissing_beforeAnyRequest() async {
-        RecordingURLProtocol.reset()
+        GuardOrderRecordingURLProtocol.reset()
         let classifier = ClaudeFallbackClassifier(
             keyProvider: { "" },
             session: recordingSession()
@@ -163,7 +180,7 @@ final class ClaudeFallbackClassifierGuardOrderTests: XCTestCase {
             XCTFail("Unexpected error: \(error)")
         }
 
-        XCTAssertEqual(RecordingURLProtocol.recordedCount, 0,
+        XCTAssertEqual(GuardOrderRecordingURLProtocol.recordedCount, 0,
                        "Key guard must fire before any network call")
     }
 }
