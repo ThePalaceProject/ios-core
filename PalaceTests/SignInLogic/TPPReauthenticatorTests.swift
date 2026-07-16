@@ -109,12 +109,14 @@ final class TPPReauthenticatorMockTests: XCTestCase {
     }
 
     func testMockReauthenticator_callsCompletion() {
-        var completionCallCount = 0
+        // Swift 6: the completion is @Sendable, so a captured counter var can't
+        // be mutated inside it — box it.
+        let completionCallCount = LockIsolated<Int>(0)
         mockReauthenticator.authenticateIfNeeded(userAccount, usingExistingCredentials: true) {
-            completionCallCount += 1
+            completionCallCount.withValue { $0 += 1 }
         }
         // The mock must call the completion (unlike the real implementation which needs UI)
-        XCTAssertEqual(completionCallCount, 1,
+        XCTAssertEqual(completionCallCount.value, 1,
                        "Mock reauthenticator must call the completion exactly once")
         XCTAssertTrue(mockReauthenticator.authenticateIfNeededCalled,
                       "authenticateIfNeededCalled flag must be set after completion")
