@@ -98,6 +98,21 @@ public final class DefaultIosContextProvider: ContextProvider {
         )
     }
 
+    /// Cheap app/OS/device-only snapshot (PP-4809). Used when the patron turns
+    /// "Include diagnostics" OFF — no log tail, no network probe, no Palace
+    /// account fields, no barcode. Just the basics support always needs.
+    public func minimalSnapshot() -> ContextSnapshot {
+        ContextSnapshot(
+            appVersion: bundleString(forInfoKey: "CFBundleShortVersionString") ?? "unknown",
+            appBuild: bundleString(forInfoKey: kCFBundleVersionKey as String) ?? "unknown",
+            platform: "iOS",
+            osVersion: ProcessInfo.processInfo.operatingSystemVersionString,
+            deviceModel: deviceModelIdentifier(),
+            capturedAt: Date(),
+            buildChannel: detectBuildChannel()
+        )
+    }
+
     // MARK: - Bundle / device
 
     private func bundleString(forInfoKey key: String) -> String? {

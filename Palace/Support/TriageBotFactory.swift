@@ -64,11 +64,18 @@ enum TriageBotFactory {
             aiFallbackEnabled: aiEnabled
         )
 
-        let contextProvider = DefaultIosContextProvider(
+        let fullContextProvider = DefaultIosContextProvider(
             palaceFields: { @Sendable in
                 await Self.currentPalaceFields()
             },
             logSubsystem: Bundle.main.bundleIdentifier
+        )
+        // PP-4809: honor the patron's "Include diagnostics" choice (default ON).
+        // OFF returns an app/OS/device-only snapshot without the full capture.
+        let contextProvider = DiagnosticsGatingContextProvider(
+            full: fullContextProvider,
+            minimal: { fullContextProvider.minimalSnapshot() },
+            preference: UserDefaultsDiagnosticsPreference()
         )
 
         // Gateway selection:
