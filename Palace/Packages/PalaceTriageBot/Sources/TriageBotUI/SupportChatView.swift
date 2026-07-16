@@ -8,6 +8,7 @@ import TriageBotCore
 public struct SupportChatView: View {
     @ObservedObject public var viewModel: TriageBotViewModel
     @State private var didStart = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     public init(viewModel: TriageBotViewModel) {
         self.viewModel = viewModel
@@ -36,17 +37,64 @@ public struct SupportChatView: View {
                     ForEach(viewModel.state.messages) { message in
                         messageRow(message)
                             .id(message.id)
+                            // Each new turn eases in; under Reduce Motion the
+                            // row simply appears (`.identity`).
+                            .transition(reduceMotion ? .identity : .botEntrance)
+                    }
+                    if let indicator = gatheringIndicatorLabel {
+                        GatheringIndicator(label: indicator)
+                            .id(Self.gatheringIndicatorID)
+                            .transition(reduceMotion ? .identity : .botEntrance)
                     }
                 }
                 .padding(.horizontal)
                 .padding(.vertical, 12)
+                // Drive insertion/removal transitions off the two things that
+                // change the log: the message count and whether the working
+                // indicator is showing. Gated so Reduce Motion gets no animation.
+                .animation(BotUI.Motion.gated(BotUI.Motion.entrance, reduceMotion: reduceMotion),
+                           value: viewModel.state.messages.count)
+                .animation(BotUI.Motion.gated(BotUI.Motion.entrance, reduceMotion: reduceMotion),
+                           value: gatheringIndicatorLabel)
             }
             .onChange(of: viewModel.state.messages.count) { _, _ in
-                guard let last = viewModel.state.messages.last else { return }
-                withAnimation(.easeOut(duration: 0.2)) {
-                    proxy.scrollTo(last.id, anchor: .bottom)
-                }
+                scrollToLatest(proxy)
             }
+            .onChange(of: gatheringIndicatorLabel) { _, _ in
+                scrollToLatest(proxy)
+            }
+        }
+    }
+
+    private static let gatheringIndicatorID = "triagebot.gathering.indicator"
+
+    /// Non-nil while the bot is working and the log would otherwise sit on a
+    /// dead pause: the AI classifier is deliberating, or a ticket is in flight.
+    private var gatheringIndicatorLabel: String? {
+        switch viewModel.state.step {
+        case .awaitingAIClassification:
+            return "Looking into this…"
+        case .submitting:
+            return "Sending your ticket…"
+        default:
+            return nil
+        }
+    }
+
+    private func scrollToLatest(_ proxy: ScrollViewProxy) {
+        let animation = BotUI.Motion.gated(BotUI.Motion.scroll, reduceMotion: reduceMotion)
+        // When the working indicator is showing it's the bottom-most element,
+        // so anchor to it; otherwise anchor to the last message.
+        let target: AnyHashable
+        if gatheringIndicatorLabel != nil {
+            target = Self.gatheringIndicatorID
+        } else if let lastID = viewModel.state.messages.last?.id {
+            target = lastID
+        } else {
+            return
+        }
+        withAnimation(animation) {
+            proxy.scrollTo(target, anchor: .bottom)
         }
     }
 
