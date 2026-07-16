@@ -369,4 +369,168 @@ final class MyBooksDownloadCenterAccountIdThreadingTests: XCTestCase {
         XCTAssertFalse(manager.userAccountForCalls.contains("ghost-current"),
                        "instance overload with explicit accountId must NOT read currentAccountId or currentUserAccount — those are the legacy swap-window paths")
     }
+
+    // MARK: - 7. Concurrent downloads across rapid account switches → no cross-account leak
+
+    /// Test 7 — the concurrency generalization of Test 3. Test 3 pins the
+    /// capture-once invariant for a SINGLE swap window; this drives ~50
+    /// `startDownloadAsync` calls in parallel while a background task
+    /// rapidly flips the shared `ControllableAccountsManagerMock`'s
+    /// `currentAccountId` among three configured accounts (A, B, C).
+    ///
+    /// Each in-flight download captures `currentAccountId` at its own start
+    /// via `currentAccountIdProvider` (a `let` snapshot inside
+    /// `startDownloadAsync`), then threads that captured id into the REAL
+    /// `TPPNetworkExecutor.bearerAuthorized(request:accountId:)` inside the
+    /// `processWithCredentials` closure — exactly the production path. The
+    /// resulting `Authorization` header is recorded into a thread-safe audit
+    /// trail alongside the id the download captured.
+    ///
+    /// Invariant pinned (NO cross-account leak):
+    ///  1. Every request's Authorization value is a well-formed
+    ///     `Bearer <token>` for SOME configured account — never empty,
+    ///     never a torn/partial string, never a token that belongs to no
+    ///     account. A rapid flip must not produce a request that ends up
+    ///     with a mismatched or missing token.
+    ///  2. Per download, the applied token is the token for the id THAT
+    ///     download captured (capture-once holds under contention) — a
+    ///     download that captured B must carry B's token even if the current
+    ///     account was flipped to A or C before/after its bearer-auth step.
+    ///
+    /// A real cross-account leak — e.g. `bearerAuthorized` re-resolving
+    /// `currentAccountId` at request-build time instead of honoring the
+    /// captured arg, or the capture reading a torn value mid-flip — makes
+    /// some request carry a token that mismatches the id it recorded,
+    /// failing invariant #2 (and, if it resolved an un-installed id, #1).
+    func testConcurrentDownloadsAcrossRapidAccountSwitches_allUseCorrectToken() async {
+        let accountIdC = "test-library-C-uuid"
+        let tokenForA = "tokenForA"
+        let tokenForB = "tokenForB"
+        let tokenForC = "tokenForC"
+
+        // One shared manager + executor across every concurrent download —
+        // this is what makes a cross-account leak observable: all downloads
+        // resolve credentials through the SAME injected accountsManager whose
+        // current account is being flipped underneath them.
+        let manager = ControllableAccountsManagerMock()
+        installAccount(uuid: accountIdA, token: tokenForA, on: manager)
+        installAccount(uuid: accountIdB, token: tokenForB, on: manager)
+        installAccount(uuid: accountIdC, token: tokenForC, on: manager)
+        manager.mockedCurrentAccountId = accountIdA
+
+        let executor = makeExecutor(with: manager)
+
+        // Valid (capturedId → expected Authorization header) pairs. Any
+        // recorded header MUST be one of these three, and MUST match the id
+        // the download captured.
+        let expectedHeaderForId: [String: String] = [
+            accountIdA: "Bearer \(tokenForA)",
+            accountIdB: "Bearer \(tokenForB)",
+            accountIdC: "Bearer \(tokenForC)"
+        ]
+        let switchableIds = [accountIdA, accountIdB, accountIdC]
+
+        // Thread-safe audit trail: (capturedId, appliedAuthorizationHeader)
+        // per download. NSLock-guarded because the recording happens from the
+        // many concurrent `processWithCredentials` closures.
+        final class AuditTrail: @unchecked Sendable {
+            private let lock = NSLock()
+            private var entries: [(capturedId: String, header: String)] = []
+            func record(capturedId: String, header: String) {
+                lock.lock(); defer { lock.unlock() }
+                entries.append((capturedId, header))
+            }
+            var snapshot: [(capturedId: String, header: String)] {
+                lock.lock(); defer { lock.unlock() }
+                return entries
+            }
+        }
+        let audit = AuditTrail()
+
+        final class CoordinatorDelegateSpy: DownloadStartCoordinatorDelegate {
+            func borrowAsync(_ book: TPPBook, attemptDownload: Bool) async throws -> TPPBook { book }
+            func schedulePendingStartsIfPossible() {}
+        }
+
+        let downloadCount = 50
+
+        // Rapidly flip the shared manager's current account among A/B/C in the
+        // background while the downloads run, maximizing the swap-window
+        // overlap with each download's capture + bearer-auth steps.
+        let switcher = Task { @Sendable in
+            var i = 0
+            while !Task.isCancelled {
+                manager.mockedCurrentAccountId = switchableIds[i % switchableIds.count]
+                i += 1
+                await Task.yield()
+            }
+        }
+
+        await withTaskGroup(of: Void.self) { group in
+            for _ in 0..<downloadCount {
+                group.addTask {
+                    // Each download gets its own coordinator + book + registry so
+                    // the per-download state machine is independent; they all
+                    // share `manager`, `executor`, and `audit`.
+                    let delegate = CoordinatorDelegateSpy()
+                    let stateManager = DownloadStateManager()
+                    stateManager.maxConcurrentDownloads = downloadCount
+                    let registry = TPPBookRegistryMock()
+                    let userAccount = TPPUserAccountMock()
+                    let queue = DownloadQueueOrchestrator(bookRegistry: registry, stateManager: stateManager)
+
+                    let coordinator = DownloadStartCoordinator(
+                        stateManager: stateManager,
+                        bookRegistry: registry,
+                        userAccountProvider: { userAccount },
+                        // Capture reads the shared, actively-flipping current id.
+                        currentAccountIdProvider: { manager.currentAccountId },
+                        errorActivityTracker: .shared,
+                        queueOrchestrator: queue,
+                        processUnregistered: { _, _, _ in .downloadNeeded },
+                        // Production path: feed the CAPTURED id into the real
+                        // executor and record the token it actually applied.
+                        processWithCredentials: { _, _, _, capturedId in
+                            let request = URLRequest(url: URL(string: "https://example.com/loans/book")!)
+                            let authed = executor.bearerAuthorized(request: request, accountId: capturedId)
+                            let header = authed.value(forHTTPHeaderField: "Authorization") ?? ""
+                            audit.record(capturedId: capturedId, header: header)
+                        },
+                        requestCredentials: { _ in }
+                    )
+                    coordinator.delegate = delegate
+
+                    let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
+                    registry.addBook(book, state: .downloadNeeded)
+
+                    await coordinator.startDownloadAsync(for: book)
+                }
+            }
+        }
+
+        switcher.cancel()
+
+        let recorded = audit.snapshot
+
+        XCTAssertEqual(recorded.count, downloadCount,
+                       "every one of \(downloadCount) concurrent downloads must reach the bearer-auth boundary exactly once")
+
+        for (index, entry) in recorded.enumerated() {
+            // Invariant #1: the captured id is a real configured account —
+            // never the sentinel, never a torn/empty value. (The flip only
+            // ever assigns A/B/C, so a captured id outside that set would mean
+            // the snapshot read a value that never existed.)
+            guard let expected = expectedHeaderForId[entry.capturedId] else {
+                XCTFail("download #\(index) captured an unconfigured accountId '\(entry.capturedId)' — a torn/leaked read; must be one of A/B/C")
+                continue
+            }
+            // Invariant #1 (header well-formed) + #2 (matches captured id):
+            // the applied Authorization is EXACTLY the token for the id this
+            // download captured — no cross-account leak, no empty/partial header.
+            XCTAssertEqual(entry.header, expected,
+                           "download #\(index) captured '\(entry.capturedId)' but applied '\(entry.header)' — a cross-account token leak (expected '\(expected)')")
+            XCTAssertFalse(entry.header.isEmpty,
+                           "download #\(index) applied an EMPTY Authorization — a configured account must resolve a non-empty bearer token")
+        }
+    }
 }

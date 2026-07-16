@@ -224,4 +224,80 @@ final class TPPNetworkExecutorConcurrencyTests: XCTestCase {
         XCTAssertTrue(doubles.isEmpty, "completions double-fired: \(doubles)")
         XCTAssertEqual(total, n, "total completion fire count \(total) != \(n)")
     }
+
+    // MARK: - Concurrent cancellation — cancelled OR completed, always exactly once
+
+    /// Fans out ~30 concurrent requests through the raw completion-handler
+    /// `GET(_:useTokenIfAvailable:completion:)` overload — the overload that
+    /// RETURNS the `URLSessionDataTask`, which is the real per-request
+    /// cancellation entry point (the executor exposes no `cancel(request:)`;
+    /// production callers cancel by holding the returned task handle, and the
+    /// account-switch path funnels through the same `URLSessionTask.cancel()`
+    /// via `transport.cancelNonEssentialTasks()`). Roughly half the tasks are
+    /// cancelled while requests are being registered (`addCompletion`) and
+    /// delivered (`didCompleteWithError`) concurrently — the exact interleave
+    /// that produced the use-after-free.
+    ///
+    /// What this pins: EVERY task's completion arm fires EXACTLY once, whoever
+    /// wins the cancel-vs-deliver race. A `.cancel()` surfaces in the responder
+    /// as `didCompleteWithError` with `NSURLErrorCancelled`, which
+    /// `removeValue(forKey:)`s the taskInfo (single ownership) and fires one
+    /// `.failure`. If the natural response already landed first, the later
+    /// cancel event finds no taskInfo and fires nothing. So a cancelled task
+    /// resolves once (cancelled `.failure` OR success, depending on the race)
+    /// and a non-cancelled task completes once — never dropped, never doubled.
+    ///
+    /// This uses the raw completion-handler seam (NOT the async
+    /// `ContinuationGuard`-guarded bridge), so a genuine responder double-fire
+    /// would reach the ledger and FAIL here — it is not absorbed upstream. A
+    /// dropped completion leaves a task un-fulfilled → the expectation times
+    /// out → FAIL. The test therefore fails on a real drop OR a real
+    /// double-fire; it is not a tautology.
+    func testConcurrentNetworkCancellation_allTasksCancelOrComplete() {
+        let body = "payload".data(using: .utf8)!
+        HTTPStubURLProtocol.register { _ in
+            .init(statusCode: 200, headers: nil, body: body)
+        }
+
+        let ledger = FireLedger()
+        let n = 30
+        let allDone = expectation(description: "all requests resolved (cancelled or completed)")
+        allDone.expectedFulfillmentCount = n
+
+        // Fan out from a concurrent queue so registration, delivery, and
+        // cancellation all race against each other.
+        let queue = DispatchQueue(label: "pp4769.cancel.fanout", attributes: .concurrent)
+        for i in 0..<n {
+            // Cancel roughly half (the even indices) mid-flight.
+            let shouldCancel = (i % 2 == 0)
+            queue.async { [executor] in
+                let url = URL(string: "https://api.example.com/cancel/\(i)")!
+                let task = executor!.GET(url, useTokenIfAvailable: false) { _, _, _ in
+                    // Both arms — cancelled (`.failure` → error non-nil) and
+                    // completed (`.success` → data) — funnel here. We assert
+                    // fire-count, not which arm won, because the cancel-vs-
+                    // deliver race is inherently nondeterministic; the invariant
+                    // under test is EXACTLY ONCE, not WHICH outcome.
+                    ledger.record(i)
+                    allDone.fulfill()
+                }
+                if shouldCancel {
+                    // The real cancellation mechanism: cancel the returned
+                    // URLSession task. Racing this against the synchronous stub
+                    // delivery is the point — either the cancel wins (one
+                    // `.failure(NSURLErrorCancelled)`) or delivery already won
+                    // (one `.success`); the responder's `removeValue` guarantees
+                    // the loser fires nothing.
+                    task?.cancel()
+                }
+            }
+        }
+
+        wait(for: [allDone], timeout: 30.0)
+
+        let (unique, doubles, total) = ledger.snapshot()
+        XCTAssertEqual(unique, n, "expected all \(n) requests to resolve exactly once (cancelled or completed)")
+        XCTAssertTrue(doubles.isEmpty, "requests double-fired (cancel + delivery both reached completion): \(doubles)")
+        XCTAssertEqual(total, n, "total resolution count \(total) != \(n) (a cancelled or completed request was dropped)")
+    }
 }
