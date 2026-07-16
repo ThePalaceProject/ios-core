@@ -35,6 +35,33 @@ enum BotUI {
 
     static let cardCornerRadius: CGFloat = 16
 
+    // MARK: - Motion (PP-4816)
+
+    /// Motion vocabulary for the chat surface. Kept deliberately calm —
+    /// short springs with high damping so entrances settle rather than
+    /// bounce. Every consumer gates these through `gated(_:reduceMotion:)`
+    /// so a patron with Reduce Motion on gets an instant, non-animated
+    /// result (hard accessibility requirement, PP-4816).
+    enum Motion {
+        /// Message bubbles + cards easing into the log.
+        static let entrance: Animation = .spring(response: 0.34, dampingFraction: 0.9)
+        /// Include/omit field changes in the ticket preview.
+        static let fieldToggle: Animation = .easeInOut(duration: 0.22)
+        /// The "Sent" receipt seal — a touch more life on the confirming beat.
+        static let receipt: Animation = .spring(response: 0.4, dampingFraction: 0.75)
+        /// Scroll-to-latest when a new turn arrives.
+        static let scroll: Animation = .easeOut(duration: 0.2)
+        /// Per-dot cadence of the gathering-context indicator.
+        static let gathering: Animation = .easeInOut(duration: 0.6)
+
+        /// The animation, or `nil` when Reduce Motion is on. Passing `nil`
+        /// to `withAnimation`/`.animation(_:value:)` applies the state
+        /// change instantly — the correct degraded behavior.
+        static func gated(_ animation: Animation, reduceMotion: Bool) -> Animation? {
+            reduceMotion ? nil : animation
+        }
+    }
+
     // MARK: - Buttons
 
     /// Full-width primary action. White-on-systemBlue capsule; can't be
@@ -184,6 +211,71 @@ enum BotUI {
                 .buttonStyle(.plain)
                 .accessibilityLabel("This step resolved the issue")
             }
+        }
+    }
+}
+
+// MARK: - Entrance transition (PP-4816)
+
+extension AnyTransition {
+    /// Tasteful entrance for chat bubbles + cards: a small upward drift and
+    /// a gentle scale-from-just-under, paired with a fade. Removal is a plain
+    /// fade so nothing lurches when a card is replaced. Callers swap this for
+    /// `.identity` under Reduce Motion so the row simply appears.
+    static var botEntrance: AnyTransition {
+        .asymmetric(
+            insertion: .opacity.combined(with: .move(edge: .bottom))
+                .combined(with: .scale(scale: 0.98, anchor: .bottom)),
+            removal: .opacity
+        )
+    }
+}
+
+// MARK: - Gathering-context indicator (PP-4816)
+
+/// A calm "the bot is working" affordance shown in place of a dead pause
+/// while context loads, the AI classifier deliberates, or a ticket is being
+/// sent. Three monochrome dots breathe in a wave; a short label says what's
+/// happening. Under Reduce Motion the dots hold steady (no repeating
+/// animation) and the label alone carries the meaning.
+struct GatheringIndicator: View {
+    let label: String
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var animating = false
+
+    var body: some View {
+        HStack(spacing: BotUI.Spacing.small) {
+            HStack(spacing: 4) {
+                ForEach(0..<3, id: \.self) { index in
+                    Circle()
+                        .fill(Color(.secondaryLabel))
+                        .frame(width: 6, height: 6)
+                        .opacity(animating ? 1.0 : 0.3)
+                        .animation(
+                            reduceMotion
+                                ? nil
+                                : BotUI.Motion.gathering
+                                    .repeatForever(autoreverses: true)
+                                    .delay(Double(index) * 0.18),
+                            value: animating
+                        )
+                }
+            }
+            Text(label)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 9)
+        .background(BotUI.cardBackground)
+        .clipShape(Capsule())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(label)
+        .accessibilityAddTraits(.updatesFrequently)
+        .onAppear {
+            // Only start the repeating wave when motion is allowed; otherwise
+            // the dots stay put at their resting opacity.
+            if !reduceMotion { animating = true }
         }
     }
 }

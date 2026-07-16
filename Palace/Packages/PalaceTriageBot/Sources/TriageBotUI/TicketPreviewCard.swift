@@ -21,6 +21,7 @@ struct TicketPreviewCard: View {
     // re-render; edits are pushed out via .editDescription (which redacts).
     @State private var descriptionText: String = ""
     @State private var didSeed = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(alignment: .leading, spacing: BotUI.Spacing.medium) {
@@ -116,15 +117,25 @@ struct TicketPreviewCard: View {
             }
             .tint(.primary)
             if included {
-                ForEach(Array(excerpt.enumerated()), id: \.offset) { _, line in
-                    Text(line)
-                        .font(.system(.caption2, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(Array(excerpt.enumerated()), id: \.offset) { _, line in
+                        Text(line)
+                            .font(.system(.caption2, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
                 }
+                // The excerpt slides/fades in and out with the toggle so the
+                // patron sees exactly what they're adding or dropping.
+                .transition(reduceMotion
+                    ? .identity
+                    : .opacity.combined(with: .move(edge: .top)))
             }
         }
+        // Animate the show/hide off the include flag; instant under Reduce Motion.
+        .animation(BotUI.Motion.gated(BotUI.Motion.fieldToggle, reduceMotion: reduceMotion),
+                   value: included)
     }
 
     // MARK: - Rows
@@ -156,8 +167,15 @@ struct TicketPreviewCard: View {
                 .font(.caption)
                 .foregroundStyle(included ? .primary : .secondary)
                 .strikethrough(!included)
+                // Dim the omitted value slightly so "removed" reads at a glance,
+                // on top of the strikethrough.
+                .opacity(included ? 1.0 : 0.55)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
+                // The strike-through + dim animate in so the patron watches the
+                // field leave the ticket rather than having it blink away.
+                .animation(BotUI.Motion.gated(BotUI.Motion.fieldToggle, reduceMotion: reduceMotion),
+                           value: included)
             Toggle("", isOn: Binding(
                 get: { included },
                 set: { _ in onAction(.toggleField(field)) }
@@ -224,12 +242,26 @@ struct ErrorActionsCard: View {
 
 struct TicketReceiptCard: View {
     let receipt: TicketReceipt
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var confirmed = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: BotUI.Spacing.small) {
             Label("Sent", systemImage: "checkmark.seal.fill")
                 .font(.headline)
                 .foregroundStyle(.green)
+                // A single, calm settle on the confirming seal — no bounce,
+                // no repeat. Under Reduce Motion it renders at rest immediately.
+                .scaleEffect(confirmed ? 1.0 : 0.85)
+                .opacity(confirmed ? 1.0 : 0.0)
+                .animation(BotUI.Motion.gated(BotUI.Motion.receipt, reduceMotion: reduceMotion),
+                           value: confirmed)
+                .onAppear {
+                    // The card renders once at rest (confirmed == false), then
+                    // this flips it true — the `.animation(value:)` above eases
+                    // that one transition in. Under Reduce Motion it's instant.
+                    confirmed = true
+                }
             Text("Reference: \(receipt.ticketId)")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
