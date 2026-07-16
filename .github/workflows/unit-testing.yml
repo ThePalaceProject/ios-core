@@ -67,6 +67,15 @@ jobs:
             test-history-develop-
             test-history-
             
+      # Fast, DRM-free gate for the PalaceTriageBot SPM package. Runs the
+      # UIKit-free Core tests (TriageBotCore) via `swift test` before the ~40min
+      # app build+test, so a broken package reddens the board in seconds instead
+      # of blocking behind the full xcodebuild run. Targets that import UIKit
+      # (TriageBotIOS / parts of TriageBotUI) do not build under macOS
+      # `swift test` and are exercised by the app build; this step is Core-only.
+      - name: Run PalaceTriageBot package tests
+        run: swift test --package-path Palace/Packages/PalaceTriageBot
+
       - name: Checkout Certificates
         uses: actions/checkout@v7
         with:

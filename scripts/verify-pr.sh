@@ -208,6 +208,7 @@ if [ "$DOCS_ONLY" = "true" ]; then
   echo ""
   record "build" "pass" "Skipped — docs-only PR (no source files changed)"
   record "unit_tests" "pass" "Skipped — docs-only PR (no source files changed)"
+  record "triage_bot_package" "pass" "Skipped — docs-only PR (no source files changed)"
   record "test_quality" "pass" "Skipped — docs-only PR (no test files changed)"
   record "coverage_floors" "pass" "Skipped — docs-only PR (no source files changed)"
   record "mutation" "pass" "Skipped — docs-only PR (no production Swift changed)"
@@ -351,6 +352,32 @@ print('\n'.join(sorted(classes)))
 else
   record "unit_tests" "fail" "$TEST_PASS tests, $TEST_FAIL failures"
 fi
+fi
+
+# 2b. PalaceTriageBot SPM package tests
+# Fast, DRM-free gate: runs the UIKit-free Core tests (TriageBotCore) via
+# `swift test`. UIKit-importing targets (TriageBotIOS / parts of TriageBotUI)
+# do not build under macOS `swift test` and are covered by the app build, so
+# this is Core-only. Skipped in --mutation-only mode (that CI path runs the
+# app build/test separately, same as the app-level build/unit gates above).
+echo "--- PalaceTriageBot Package Tests ---"
+if [ "$MUTATION_ONLY" = "true" ]; then
+  record "triage_bot_package" "pass" "Skipped (--mutation-only)"
+elif [ ! -d "Palace/Packages/PalaceTriageBot" ]; then
+  record "triage_bot_package" "pass" "Package not present (skipped)"
+else
+  TRIAGE_OUTPUT=$(swift test --package-path Palace/Packages/PalaceTriageBot 2>&1 || true)
+  # Sum the per-bundle "Executed N tests" rollups under the "All tests" wrapper.
+  TRIAGE_ROLLUP=$(echo "$TRIAGE_OUTPUT" | grep -A1 "Test Suite 'All tests' \(passed\|failed\)")
+  TRIAGE_PASS=$(echo "$TRIAGE_ROLLUP" | grep -o 'Executed [0-9]* tests\?' | grep -o '[0-9]*' | awk '{s+=$1} END {print s+0}')
+  TRIAGE_FAIL=$(echo "$TRIAGE_ROLLUP" | grep -oE '[0-9]+ failures?' | grep -o '[0-9]*' | awk '{s+=$1} END {print s+0}')
+  if echo "$TRIAGE_OUTPUT" | grep -q "error:"; then
+    record "triage_bot_package" "fail" "swift test failed to build the package"
+  elif [ "${TRIAGE_FAIL:-0}" -eq 0 ] && [ "${TRIAGE_PASS:-0}" -gt 0 ]; then
+    record "triage_bot_package" "pass" "$TRIAGE_PASS tests, 0 failures"
+  else
+    record "triage_bot_package" "fail" "$TRIAGE_PASS tests, $TRIAGE_FAIL failures"
+  fi
 fi
 
 # 3. Test quality lint
