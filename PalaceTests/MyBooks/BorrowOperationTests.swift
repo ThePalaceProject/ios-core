@@ -26,11 +26,15 @@ final class BorrowOperationTests: XCTestCase {
     private var book: TPPBook!
 
     /// Recorders for the closure-injected seams.
-    private var fetchBookResult: Result<TPPBook, Error>!
-    private var fetchBookCalls: [(url: URL, resetCache: Bool, useToken: Bool)] = []
+    // Swift 6: `fetchBook`/`attemptOIDCReauth` are non-isolated `async` closures
+    // and cannot capture `self` (a @MainActor, non-Sendable XCTestCase) to reach
+    // these. Box them (Sendable, lock-guarded); the async closures capture the
+    // boxes, the @MainActor closures keep capturing `self`.
+    private let fetchBookResult = LockIsolated<Result<TPPBook, Error>?>(nil)
+    private let fetchBookCalls = LockIsolated<[(url: URL, resetCache: Bool, useToken: Bool)]>([])
     private var alertCalls: [(title: String, message: String, book: TPPBook, hasRetryAction: Bool)] = []
     private var signInModalCompletions: [() -> Void] = []
-    private var oidcReauthResult: Bool = false
+    private let oidcReauthResult = LockIsolated<Bool>(false)
 
     override func setUpWithError() throws {
         try super.setUpWithError()
@@ -43,11 +47,11 @@ final class BorrowOperationTests: XCTestCase {
         book = TPPBookMocker.mockBook(distributorType: .EpubZip)
         // Default: borrow returns the same book (with whatever availability
         // the test sets via book.acquisition replacement before calling).
-        fetchBookResult = .success(book)
-        fetchBookCalls = []
+        fetchBookResult.value = .success(book)
+        fetchBookCalls.value = []
         alertCalls = []
         signInModalCompletions = []
-        oidcReauthResult = false
+        oidcReauthResult.value = false
 
         operation = BorrowOperation(
             bookRegistry: bookRegistry,
@@ -57,9 +61,9 @@ final class BorrowOperationTests: XCTestCase {
             userRetryTracker: .shared,
             userAccountProvider: { [unowned self] in self.userAccount },
             adobeDRMService: AdobeDRMService.shared,
-            fetchBook: { [unowned self] url, resetCache, useToken in
-                self.fetchBookCalls.append((url, resetCache, useToken))
-                switch self.fetchBookResult! {
+            fetchBook: { url, resetCache, useToken in
+                fetchBookCalls.withValue { $0.append((url, resetCache, useToken)) }
+                switch fetchBookResult.value! {
                 case .success(let result): return result
                 case .failure(let error): throw error
                 }
@@ -70,7 +74,7 @@ final class BorrowOperationTests: XCTestCase {
             presentSignInModal: { [unowned self] completion in
                 self.signInModalCompletions.append(completion)
             },
-            attemptOIDCReauth: { [unowned self] in self.oidcReauthResult }
+            attemptOIDCReauth: { oidcReauthResult.value }
         )
         operation.delegate = spyDelegate
     }
@@ -97,7 +101,7 @@ final class BorrowOperationTests: XCTestCase {
         XCTAssertEqual(result.identifier, book.identifier)
         XCTAssertEqual(bookRegistry.state(for: book.identifier), .downloadNeeded,
                        "Successful borrow with .ready/.unlimited availability must register .downloadNeeded")
-        XCTAssertEqual(fetchBookCalls.count, 1,
+        XCTAssertEqual(fetchBookCalls.value.count, 1,
                        "Borrow must hit the fetchBook closure exactly once on the success path")
         XCTAssertEqual(spyDelegate.startDownloadCalls.count, 0,
                        "attemptDownload=false must NOT call delegate.startDownload")
@@ -125,7 +129,7 @@ final class BorrowOperationTests: XCTestCase {
         // availability, simulating CM's Loan→Hold race. Easiest path: build
         // a fresh book with the right availability.
         let raceBook = makeBookWithReservedAvailability()
-        fetchBookResult = .success(raceBook)
+        fetchBookResult.value = .success(raceBook)
 
         do {
             _ = try await operation.borrowAsync(book, attemptDownload: false)
@@ -157,7 +161,7 @@ final class BorrowOperationTests: XCTestCase {
             } else {
                 XCTFail("Expected .bookRegistry(.invalidState), got \(error)")
             }
-            XCTAssertEqual(fetchBookCalls.count, 0,
+            XCTAssertEqual(fetchBookCalls.value.count, 0,
                            "No-URL guard must short-circuit BEFORE the fetchBook closure runs")
         } catch {
             XCTFail("Expected PalaceError, got \(error)")
@@ -168,7 +172,7 @@ final class BorrowOperationTests: XCTestCase {
 
     func testBorrowAsync_genericError_presentsAlertAndRethrows() async {
         struct TestError: Error {}
-        fetchBookResult = .failure(TestError())
+        fetchBookResult.value = .failure(TestError())
 
         do {
             _ = try await operation.borrowAsync(book, attemptDownload: false)
@@ -204,7 +208,7 @@ final class BorrowOperationTests: XCTestCase {
 
         // Throw the PalaceError directly so we route through the first
         // catch block (the "no originalError NSError" path).
-        fetchBookResult = .failure(PalaceError.network(.unauthorized))
+        fetchBookResult.value = .failure(PalaceError.network(.unauthorized))
 
         do {
             _ = try await operation.borrowAsync(book, attemptDownload: false)
@@ -232,7 +236,7 @@ final class BorrowOperationTests: XCTestCase {
         userAccount._credentials = nil
         userAccount._authDefinition = SyntheticAuthDef.basicNeedsAuth
 
-        fetchBookResult = .failure(PalaceError.network(.forbidden))
+        fetchBookResult.value = .failure(PalaceError.network(.forbidden))
 
         do {
             _ = try await operation.borrowAsync(book, attemptDownload: false)
@@ -256,7 +260,7 @@ final class BorrowOperationTests: XCTestCase {
     /// Locks the boundary so the item #7 predicate broadening doesn't
     /// silently absorb every network error.
     func testBorrow_NetworkUnknownError_fallsThroughToAlert() async {
-        fetchBookResult = .failure(PalaceError.network(.unknown))
+        fetchBookResult.value = .failure(PalaceError.network(.unknown))
 
         do {
             _ = try await operation.borrowAsync(book, attemptDownload: false)
@@ -294,7 +298,7 @@ final class BorrowOperationTests: XCTestCase {
         // Use a problem-doc-typed invalidCredentials to drive isAuthError
         // through the problemDoc branch (the canonical SQ-007 trigger).
         let problemDoc = Self.makeProblemDoc(type: TPPProblemDocument.TypeInvalidCredentials)
-        fetchBookResult = .failure(NSError(
+        fetchBookResult.value = .failure(NSError(
             domain: "test", code: 401,
             userInfo: ["problemDocument": problemDoc as Any]
         ))
@@ -329,7 +333,7 @@ final class BorrowOperationTests: XCTestCase {
         userAccount._authDefinition = SyntheticAuthDef.basicNeedsAuth
 
         let problemDoc = Self.makeProblemDoc(type: TPPProblemDocument.TypeInvalidCredentials)
-        fetchBookResult = .failure(NSError(
+        fetchBookResult.value = .failure(NSError(
             domain: "test", code: 401,
             userInfo: ["problemDocument": problemDoc as Any]
         ))
@@ -361,7 +365,7 @@ final class BorrowOperationTests: XCTestCase {
         userAccount._authDefinition = SyntheticAuthDef.basicNeedsAuth
 
         let problemDoc = Self.makeProblemDoc(type: TPPProblemDocument.TypeInvalidCredentials)
-        fetchBookResult = .failure(NSError(
+        fetchBookResult.value = .failure(NSError(
             domain: "test", code: 401,
             userInfo: ["problemDocument": problemDoc as Any]
         ))
@@ -393,7 +397,7 @@ final class BorrowOperationTests: XCTestCase {
         userAccount.setAuthState(.loggedIn)
 
         let problemDoc = Self.makeProblemDoc(type: TPPProblemDocument.TypeInvalidCredentials)
-        fetchBookResult = .failure(NSError(
+        fetchBookResult.value = .failure(NSError(
             domain: "test", code: 401,
             userInfo: ["problemDocument": problemDoc as Any]
         ))
@@ -449,7 +453,7 @@ final class BorrowOperationTests: XCTestCase {
         // .unregistered registry state so SQ-007 (already-has-loan) does NOT
         // fire and suppress the path — we want the live browser-reauth branch.
         let problemDoc = Self.makeProblemDoc(type: TPPProblemDocument.TypeInvalidCredentials)
-        fetchBookResult = .failure(NSError(
+        fetchBookResult.value = .failure(NSError(
             domain: "test", code: 401,
             userInfo: ["problemDocument": problemDoc as Any]
         ))
