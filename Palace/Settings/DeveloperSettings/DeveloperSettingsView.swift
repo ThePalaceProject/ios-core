@@ -80,7 +80,7 @@ struct DeveloperSettingsView: View {
     @ViewBuilder private var triageBotSection: some View {
         Section(header: Text("Triage Bot")) {
             DevToggleRow(title: "Enabled (master)", isOn: $viewModel.triageBotEnabled)
-            DevToggleRow(title: "Ticket Submission (HelpSpot)", isOn: $viewModel.triageBotTicketSubmissionEnabled)
+            DevToggleRow(title: "Ticket Submission (Email)", isOn: $viewModel.triageBotTicketSubmissionEnabled)
             DevToggleRow(title: "AI Fallback (Claude)", isOn: $viewModel.triageBotAIFallbackEnabled)
             DevDisclosureValueRow(
                 title: "Anthropic API Key",
