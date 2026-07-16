@@ -1,0 +1,7 @@
+# SYNTHETIC — hand-authored, all values FAKE. See Fixtures/README.md.
+2026-07-16T15:10:00Z [Download] starting LCP fulfillment for loan 98765
+2026-07-16T15:10:00Z [Network] GET /fulfill Authorization: Bearer eyJhbGciOiJFUzI1NiJ9.eyJmdWxmaWxsIjoiZmFrZSJ9.FAKEdlSIG
+2026-07-16T15:10:01Z [Download] LCP passphrase retrieval client_secret=FAKE-lcp-secret-xyz789 api_key=FAKE-apikey-qwerty01
+2026-07-16T15:10:01Z [Download] Set-Cookie: authsession=FAKEauth-Zm9vYmFyMTIzNA; Secure
+2026-07-16T15:10:02Z [Download] Adobe device auth token=FAKE-adobe-token-abc123def456
+2026-07-16T15:10:02Z [Download] progress 45% for device 99998888-7777-6666-5555-444433332222

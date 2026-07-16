@@ -51,6 +51,10 @@ let package = Package(
         .testTarget(
             name: "TriageBotCoreTests",
             dependencies: ["TriageBotCore"],
+            // PP-4806: synthetic redaction corpus. Copied verbatim so the
+            // deny-list guard (RedactionCorpusTests) can enumerate the
+            // captured-payload fixtures at runtime via Bundle.module.
+            resources: [.copy("Fixtures")],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         // iOS-adapter tests. Depends on TriageBotIOS (ClaudeFallbackClassifier)
