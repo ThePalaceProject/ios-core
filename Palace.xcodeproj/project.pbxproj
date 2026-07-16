@@ -526,6 +526,7 @@
 		612FD8DA16387F71EB3CA398 /* HoldsViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8ADE8A45C4B4AAE67143A272 /* HoldsViewModelTests.swift */; };
 		61757D3F95012F8F4340FABB /* TPPAccountAuthState.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6C56509A03466E0531DBC27 /* TPPAccountAuthState.swift */; };
 		61CB94A62C37F50A20D60E44 /* AudiobookMorphingPlayerViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7510F2474FBF692B90EF902A /* AudiobookMorphingPlayerViewTests.swift */; };
+		623B25D26DCF91EAA4183E29 /* FirebaseTriageTelemetrySink.swift in Sources */ = {isa = PBXBuildFile; fileRef = C814ACEF8225153039002C2F /* FirebaseTriageTelemetrySink.swift */; };
 		624388D87B1CA40CD178FA52 /* LCPAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96D27685071B8A1E07185FD0 /* LCPAdapter.swift */; };
 		626AD1F36BC818F5E9FAC725 /* LibrariesSectionViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2D4C9FAC4974D7D0F087712 /* LibrariesSectionViewModelTests.swift */; };
 		62842E5CA00D435AAD8F227E /* NavigationCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D36A0EAF9098429CA6DCAD16 /* NavigationCoordinatorTests.swift */; };
@@ -783,6 +784,7 @@
 		75B5588EA36A739A060A657E /* Account+TPPLibraryAccountReadable.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02415B1E145D716015754AFF /* Account+TPPLibraryAccountReadable.swift */; };
 		76099E9C88874D19A8E1E4F1 /* BookCellModelCacheInvalidationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8ED6D3F5630D42CFBE6A59A3 /* BookCellModelCacheInvalidationTests.swift */; };
 		766C1BDB436AA9586293ABF7 /* ReadingStatsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB660AAD998ACFC41771539E /* ReadingStatsStore.swift */; };
+		767A5147E32D8898618AAA81 /* FirebaseTriageTelemetrySink.swift in Sources */ = {isa = PBXBuildFile; fileRef = C814ACEF8225153039002C2F /* FirebaseTriageTelemetrySink.swift */; };
 		76A3FDFF52B8F948C2C13A65 /* ReadingStatsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8F8EBC8684EF42942C688A7 /* ReadingStatsService.swift */; };
 		76C676B1C1BF8F2434C03DB9 /* AccountDetailViewModelLeakTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3ACF84E5F5C8C9579E5C61B9 /* AccountDetailViewModelLeakTests.swift */; };
 		76FD3B6DF6B2C07153FBBADE /* TPPBookDetailDownloadFailedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADDA3478B2DF503D6CBD4575 /* TPPBookDetailDownloadFailedView.swift */; };
@@ -2975,6 +2977,7 @@
 		C7A10001AAAA000000000001 /* PreviewControllerFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewControllerFactory.swift; sourceTree = "<group>"; };
 		C7A10002AAAA000000000001 /* BookAvailabilityFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookAvailabilityFormatter.swift; sourceTree = "<group>"; };
 		C7A10003AAAA000000000001 /* TPPBook+Presentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TPPBook+Presentation.swift"; sourceTree = "<group>"; };
+		C814ACEF8225153039002C2F /* FirebaseTriageTelemetrySink.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FirebaseTriageTelemetrySink.swift; sourceTree = "<group>"; };
 		C8F8EBC8684EF42942C688A7 /* ReadingStatsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingStatsService.swift; sourceTree = "<group>"; };
 		C927D5FB4DCC629EEF09DE4C /* BadgeServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BadgeServiceTests.swift; sourceTree = "<group>"; };
 		C9E38281988A9921BB4B8297 /* OPDS2IntegrationTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OPDS2IntegrationTests.swift; sourceTree = "<group>"; };
@@ -6522,6 +6525,7 @@
 				F9C1BD2745D8CAF0EC81AEE8 /* TriageBotFactory.swift */,
 				C540202A7A2D7469AEF27B82 /* TriageBotSupportView.swift */,
 				17CF4EB59391A34A6315985E /* TriageBotKeyAdmin.swift */,
+				C814ACEF8225153039002C2F /* FirebaseTriageTelemetrySink.swift */,
 			);
 			name = Support;
 			path = Support;
@@ -8374,6 +8378,7 @@
 				E6E69301AC7D67018C6D027C /* TabBarModernization.swift in Sources */,
 				4CBAE27F5514252215941C7B /* AudiobookSkipIntervalSettings.swift in Sources */,
 				F89449EAAC94D8724819F8A1 /* HelpButton.swift in Sources */,
+				767A5147E32D8898618AAA81 /* FirebaseTriageTelemetrySink.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -8944,6 +8949,7 @@
 				126F5079067F518749BEB335 /* TabBarModernization.swift in Sources */,
 				7EE86CCB66B20E8A8DBC9120 /* AudiobookSkipIntervalSettings.swift in Sources */,
 				9BA568440FF9AE4394243759 /* HelpButton.swift in Sources */,
+				623B25D26DCF91EAA4183E29 /* FirebaseTriageTelemetrySink.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

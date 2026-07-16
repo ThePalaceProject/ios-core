@@ -53,6 +53,15 @@ let package = Package(
             dependencies: ["TriageBotCore"],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
+        // iOS-adapter tests. Depends on TriageBotIOS (ClaudeFallbackClassifier)
+        // and TriageBotUI (TriageBotViewModel). Both targets are gated on
+        // `canImport(UIKit)`, so on macOS `swift test` this target compiles to an
+        // empty bundle — the real assertions run only on an iOS sim (CI).
+        .testTarget(
+            name: "TriageBotIOSTests",
+            dependencies: ["TriageBotIOS", "TriageBotUI"],
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
         .testTarget(
             name: "TriageBotUITests",
             dependencies: ["TriageBotUI"],

@@ -48,8 +48,12 @@ enum TriageBotFactory {
         // (today's behavior — no regression).
         let keyStore = AnthropicKeyStore()
         let bootstrappedKey = keyStore.bootstrapFromEnvironmentIfNeeded()
-        let aiEnabled = RemoteFeatureFlags.shared.isTriageBotAIFallbackEnabled
-            && bootstrappedKey != nil
+        // Inert-by-default invariant (flag AND key) lives in TriageBotAIWiring so
+        // it is unit-tested under `swift test`; see TriageBotAIWiringTests (PP-4810).
+        let aiEnabled = TriageBotAIWiring.aiWiring(
+            flagEnabled: RemoteFeatureFlags.shared.isTriageBotAIFallbackEnabled,
+            keyPresent: bootstrappedKey != nil
+        )
 
         let fallbackClassifier: FallbackClassifier? = aiEnabled
             ? ClaudeFallbackClassifier(keyProvider: { keyStore.read() })
@@ -87,7 +91,16 @@ enum TriageBotFactory {
             gateway = ClipboardTicketGateway()
         }
 
-        let sink = OSLogTelemetrySink(subsystem: Bundle.main.bundleIdentifier ?? "palace", category: "triagebot")
+        // Telemetry sink: OSLog for local/dev visibility, Firebase Analytics in
+        // release builds (PP-4814). Both forward only enumerable id/count/enum
+        // parameters — FirebaseTriageTelemetrySink runs TelemetryContract so no
+        // free text can reach Analytics.
+        let sink: TelemetrySink
+        #if DEBUG
+        sink = OSLogTelemetrySink(subsystem: Bundle.main.bundleIdentifier ?? "palace", category: "triagebot")
+        #else
+        sink = FirebaseTriageTelemetrySink()
+        #endif
 
         return makeViewModel(
             reducer: reducer,
