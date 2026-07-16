@@ -32,7 +32,11 @@ final class NoNetworkURLProtocol: URLProtocol {
     // and after an operation; an increment means the stub blocked it, not the
     // network. Lock-guarded: protocol instances load concurrently.
     private static let interceptionLock = NSLock()
-    private static var interceptedURLs: [String] = []
+    private static let _interceptedURLs = LockIsolated<[String]>([])
+    private static var interceptedURLs: [String] {
+        get { _interceptedURLs.value }
+        set { _interceptedURLs.value = newValue }
+    }
 
     /// Count of requests intercepted so far whose absolute URL contains
     /// `substring`. Diff before/after an operation to prove THAT operation's

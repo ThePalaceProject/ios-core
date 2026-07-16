@@ -17,10 +17,18 @@ import PalaceCatalog
 final class MockAnnotationsURLProtocol: URLProtocol {
 
     /// Handler that determines the response for a given request
-    static var requestHandler: ((URLRequest) throws -> (HTTPURLResponse, Data?))?
+    private static let _requestHandler = LockIsolated<((URLRequest) throws -> (HTTPURLResponse, Data?))?>(nil)
+    static var requestHandler: ((URLRequest) throws -> (HTTPURLResponse, Data?))? {
+        get { _requestHandler.value }
+        set { _requestHandler.value = newValue }
+    }
 
     /// Tracks all requests made during a test for verification
-    static var capturedRequests: [URLRequest] = []
+    private static let _capturedRequests = LockIsolated<[URLRequest]>([])
+    static var capturedRequests: [URLRequest] {
+        get { _capturedRequests.value }
+        set { _capturedRequests.value = newValue }
+    }
 
     /// Reset state between tests
     static func reset() {

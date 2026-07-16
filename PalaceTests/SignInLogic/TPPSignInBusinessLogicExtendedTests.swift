@@ -1154,17 +1154,27 @@ class TPPNetworkErrorMock: TPPRequestExecuting {
 
 extension TPPSignInOutBusinessLogicUIDelegateMock {
     var willSignInHandler: (() -> Void)? {
-        get { objc_getAssociatedObject(self, &AssociatedKeys.willSignIn) as? () -> Void }
-        set { objc_setAssociatedObject(self, &AssociatedKeys.willSignIn, newValue, .OBJC_ASSOCIATION_RETAIN) }
+        get { objc_getAssociatedObject(self, AssociatedKeys.willSignIn) as? () -> Void }
+        set { objc_setAssociatedObject(self, AssociatedKeys.willSignIn, newValue, .OBJC_ASSOCIATION_RETAIN) }
     }
 
     var validationErrorHandler: ((Error?, String?, String?) -> Void)? {
-        get { objc_getAssociatedObject(self, &AssociatedKeys.validationError) as? (Error?, String?, String?) -> Void }
-        set { objc_setAssociatedObject(self, &AssociatedKeys.validationError, newValue, .OBJC_ASSOCIATION_RETAIN) }
+        get { objc_getAssociatedObject(self, AssociatedKeys.validationError) as? (Error?, String?, String?) -> Void }
+        set { objc_setAssociatedObject(self, AssociatedKeys.validationError, newValue, .OBJC_ASSOCIATION_RETAIN) }
     }
 }
 
-private struct AssociatedKeys {
-    static var willSignIn = "willSignIn"
-    static var validationError = "validationError"
+private enum AssociatedKeys {
+    // Swift-6 safe associated-object keys. These are used ONLY for their
+    // stable address as objc_get/setAssociatedObject keys — the String
+    // *values* were never read. A mutable `static var` is rejected under
+    // Swift 6 as global mutable state; the LockIsolated computed-var pattern
+    // does NOT work here because `&computedVar` yields a fresh temporary
+    // pointer on every access, so set/get would use different keys and the
+    // association would silently fail (verified: read-back returns nil).
+    // A `static let` heap pointer gives each key a unique, immutable,
+    // address-stable identity — the correct safe fix. Call sites drop the
+    // `&` and pass the pointer directly.
+    static let willSignIn = UnsafeMutableRawPointer.allocate(byteCount: 1, alignment: 1)
+    static let validationError = UnsafeMutableRawPointer.allocate(byteCount: 1, alignment: 1)
 }

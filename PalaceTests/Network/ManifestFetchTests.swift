@@ -785,7 +785,7 @@ final class LCPLicenseDocumentDetectionTests: XCTestCase {
 
     /// A realistic LCP license document structure as returned by the CM
     /// for LCP audiobooks (application/vnd.readium.lcp.license.v1.0+json).
-    static let sampleLCPLicense: [String: Any] = [
+    static var sampleLCPLicense: [String: Any] { [
         "id": "urn:uuid:12345678-1234-1234-1234-123456789abc",
         "issued": "2026-03-15T10:00:00Z",
         "provider": "https://license.feedbooks.net",
@@ -833,7 +833,7 @@ final class LCPLicenseDocumentDetectionTests: XCTestCase {
             "certificate": "MIIBBase64==",
             "value": "Base64SignatureValue=="
         ]
-    ]
+    ] }
 
     func testLCPLicenseDocument_isNotDetectedAsBearerToken() {
         let token = MyBooksSimplifiedBearerToken.simplifiedBearerToken(

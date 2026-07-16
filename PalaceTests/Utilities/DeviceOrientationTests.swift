@@ -12,16 +12,18 @@ final class DeviceOrientationTests: XCTestCase {
 
     var orientation: DeviceOrientation!
 
-    @MainActor
-    override func setUp() {
+    override nonisolated func setUp() {
         super.setUp()
-        orientation = DeviceOrientation()
+        MainActor.assumeIsolated {
+            orientation = DeviceOrientation()
+        }
     }
 
-    @MainActor
-    override func tearDown() {
-        orientation?.stopTracking()
-        orientation = nil
+    override nonisolated func tearDown() {
+        MainActor.assumeIsolated {
+            orientation?.stopTracking()
+            orientation = nil
+        }
         super.tearDown()
     }
 

@@ -25,7 +25,11 @@ class PalaceTestSetup: NSObject {
     /// our retain, ARC drops the observer immediately after
     /// `addTestObserver(_:)` returns and `testCaseDidFinish(_:)` never
     /// fires. This `static var` retain is load-bearing.
-    private static var observer: PalaceSingletonResetObserver?
+    private static let _observer = LockIsolated<PalaceSingletonResetObserver?>(nil)
+    private static var observer: PalaceSingletonResetObserver? {
+        get { _observer.value }
+        set { _observer.value = newValue }
+    }
 
     override init() {
         super.init()
