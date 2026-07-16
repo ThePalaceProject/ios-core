@@ -156,6 +156,25 @@ final class LateContextBindingTests: XCTestCase {
         }
     }
 
+    // MARK: - emptyContext() placeholder invariant (guards late-bind)
+
+    func testEmptyContext_readsAsPlaceholder_andRealContextDoesNot() {
+        // Late-bind hinges on emptyContext().isPlaceholder == true. Drive the
+        // reducer to escalate a description with NO context loaded, so the draft
+        // is assembled from the REAL emptyContext() (not this file's mirror), and
+        // pin the invariant. A future edit to emptyContext() that breaks it — or
+        // an isPlaceholder that stops recognizing it — fails here.
+        let reducer = makeReducer()
+        var state = ConversationState(step: .awaitingDescription(category: .other))
+        (state, _) = reducer.reduce(state: state, action: .inputChanged("app crashes on open"))
+        let (next, _) = reducer.reduce(state: state, action: .userSubmittedDescription)
+
+        XCTAssertTrue(draft(from: next.step)?.context.isPlaceholder == true,
+                      "The reducer's real emptyContext() must read as a placeholder")
+        XCTAssertFalse(realContext().isPlaceholder,
+                       "A populated context must NOT read as a placeholder, or late-bind clobbers real data")
+    }
+
     // MARK: - The common case: context arrives before any draft exists
 
     func testLateContext_whenNotYetDrafting_justStoresContextWithoutError() {

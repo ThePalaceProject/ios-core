@@ -185,18 +185,27 @@ public struct ContextRedactor: Sendable {
             replacement: "$1=[REDACTED]"
         ),
         // PIN / passcode stated in prose without a delimiter ("my pin is 1234").
-        // `\b` on the keyword avoids "spinning"; the 3-4 digit run avoids
-        // longer identifiers.
+        // `\b` on the keyword avoids "spinning". Digit run is \d{3,8} to match
+        // the delimiter'd `pin` rule above — a prose "my pin is 12345" / "123456"
+        // must redact just like "pin: 12345" (PP-4805: the narrower \d{3,4} here
+        // leaked 5-6 digit prose PINs into the ticket).
         RedactionPattern(
             label: "pin_prose",
-            regex: #"(?i)\b(pin|passcode)\b[^\d\n]{0,10}\d{3,4}\b"#,
+            regex: #"(?i)\b(pin|passcode)\b[^\d\n]{0,10}\d{3,8}\b"#,
             replacement: "$1 [REDACTED]"
         ),
         // Standalone 10-14 digit library barcode / card number typed inline.
         // Word-boundaried so 4-digit years and 3-digit error codes survive.
+        // The negative lookahead carves out exactly a 13-digit 978/979 ISBN —
+        // patrons routinely type a book's ISBN into a reading-app report and it
+        // must not be mangled as a card number (PP-4805). Scoped tightly to
+        // `97[89]` + 10 more digits so real barcodes that merely start with 97
+        // are still redacted.
+        // follow-up: extend redaction to 15-16 digit card numbers — deferred,
+        // it risks new false positives against long non-card identifiers.
         RedactionPattern(
             label: "barcode_standalone",
-            regex: #"\b\d{10,14}\b"#,
+            regex: #"\b(?!97[89]\d{10}\b)\d{10,14}\b"#,
             replacement: "[number-redacted]"
         )
     ]

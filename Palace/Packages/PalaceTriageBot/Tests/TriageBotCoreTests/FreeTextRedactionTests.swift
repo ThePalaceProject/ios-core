@@ -34,6 +34,27 @@ final class FreeTextRedactionTests: XCTestCase {
         XCTAssertEqual(redactor.redactLine(input), input)
     }
 
+    // Fix 1 (PP-4805): the delimiter'd `pin:` rule matches \d{3,8}, but the
+    // prose rule only matched \d{3,4} — so "my pin is 12345" / "123456" shipped
+    // RAW into the ticket. Widen the prose rule to \d{3,8} to match.
+
+    func testRedactsFiveDigitPinStatedInProse() {
+        let output = redactor.redactLine("my pin is 12345")
+        XCTAssertFalse(output.contains("12345"), "A 5-digit prose PIN must be stripped")
+    }
+
+    func testRedactsSixDigitPinStatedInProse() {
+        let output = redactor.redactLine("my pin is 123456")
+        XCTAssertFalse(output.contains("123456"), "A 6-digit prose PIN must be stripped")
+    }
+
+    func testPinProse_decoy_leavesPinnedBooksCountUntouched() {
+        // "pinned" is not the word "pin"; the "3" is a book count, not a PIN.
+        // A prose rule that over-matches would nuke this legitimate report.
+        let input = "I pinned 3 books to my shelf"
+        XCTAssertEqual(redactor.redactLine(input), input)
+    }
+
     // MARK: - password: <token>
 
     func testRedactsPasswordColonToken() {
@@ -59,6 +80,25 @@ final class FreeTextRedactionTests: XCTestCase {
         // A 4-digit year and a 3-digit error code must survive.
         let input = "error 500 happened in 2026"
         XCTAssertEqual(redactor.redactLine(input), input)
+    }
+
+    // Fix 3 (PP-4805): a reading app's patrons routinely type a book's 13-digit
+    // ISBN (978/979 prefix) into a report. The standalone-barcode rule redacted
+    // it as if it were a card number. Carve out exactly a 978/979 + 10-digit ISBN
+    // — without weakening real 10-14 digit barcode redaction.
+
+    func testBarcode_decoy_preservesThirteenDigitISBN() {
+        let input978 = "can't download 9780306406157 please help"
+        XCTAssertEqual(redactor.redactLine(input978), input978, "A 978-prefixed ISBN must be preserved")
+        let input979 = "book 9791234567896 won't open"
+        XCTAssertEqual(redactor.redactLine(input979), input979, "A 979-prefixed ISBN must be preserved")
+    }
+
+    func testBarcode_fourteenDigitCardStillRedacted_alongsideISBN() {
+        // The ISBN carve-out must not weaken real barcode redaction.
+        let output = redactor.redactLine("isbn 9780306406157 but card 21234000012345 leaked")
+        XCTAssertTrue(output.contains("9780306406157"), "ISBN preserved")
+        XCTAssertFalse(output.contains("21234000012345"), "14-digit card still redacted")
     }
 
     // MARK: - generic Cookie / Set-Cookie value
