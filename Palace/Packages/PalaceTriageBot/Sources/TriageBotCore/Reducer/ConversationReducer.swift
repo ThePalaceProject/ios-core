@@ -61,10 +61,19 @@ public struct ConversationReducer: Sendable {
             ))
             next.messages.append(.init(sender: .bot, kind: .categoryChips))
             effects.append(.captureContext)
+            // PP-4808: if a ticket failed to send last session, the host has
+            // it persisted — ask it to re-offer via .restorePendingDraft.
+            effects.append(.loadPendingDraft)
             effects.append(.emitTelemetry(.init(name: "triage_chat_opened")))
 
         case .contextLoaded(let snapshot):
-            next.context = redactor.redact(snapshot)
+            let redacted = redactor.redact(snapshot)
+            next.context = redacted
+            // PP-4811: the user can race ahead to a ticket draft before the
+            // async context capture returns. If that happened, the draft holds
+            // an all-"unknown" placeholder context — bind the real one in now so
+            // no ticket ships with an empty environment.
+            lateBindContext(&next, context: redacted)
 
         case .userTappedCategory(let category):
             next.step = .awaitingDescription(category: category)
@@ -232,12 +241,15 @@ public struct ConversationReducer: Sendable {
             guard case .matched(let entryId) = next.step,
                   let entry = knowledgeBase.entry(id: entryId) else { return (next, effects) }
             let draft = TicketDraft(
-                userDescription: lastUserText(next.messages) ?? "(no description)",
+                // PP-4805: the last user message is raw free text — route it
+                // through the redactor before it can land in a ticket.
+                userDescription: redactor.redactLine(lastUserText(next.messages) ?? "(no description)"),
                 category: entry.category,
                 matchedEntryId: entryId,
                 context: next.context ?? emptyContext(),
                 helpspotTags: [entry.helpspotTag ?? "triage-bot-known-issue", "user-requested-followup"],
-                priority: .low
+                priority: .low,
+                omittedFields: initialOmittedFields(next.context)
             )
             // Route through the follow-up gate too — even when the user
             // explicitly bails on the workaround, the entry's structured
@@ -484,21 +496,119 @@ public struct ConversationReducer: Sendable {
             next.messages.append(.init(sender: .bot, kind: .categoryChips))
             effects.append(.emitTelemetry(.init(name: "triage_ticket_cancel_returned_to_chips")))
 
+        case .userToggledDraftField(let field):
+            guard case .drafting(let draft) = next.step else { return (next, effects) }
+            var omitted = draft.omittedFields
+            let nowOmitted: Bool
+            if omitted.contains(field) { omitted.remove(field); nowOmitted = false }
+            else { omitted.insert(field); nowOmitted = true }
+            let updated = draft.withOmittedFields(omitted)
+            next.step = .drafting(ticket: updated)
+            replaceTicketPreview(&next, with: updated)
+            effects.append(.emitTelemetry(.init(
+                name: "triage_draft_field_toggled",
+                parameters: ["field": field.rawValue, "omitted": String(nowOmitted)]
+            )))
+
+        case .userOmittedLogs(let omit):
+            guard case .drafting(let draft) = next.step else { return (next, effects) }
+            var omitted = draft.omittedFields
+            if omit { omitted.insert(.logs) } else { omitted.remove(.logs) }
+            let updated = draft.withOmittedFields(omitted)
+            next.step = .drafting(ticket: updated)
+            replaceTicketPreview(&next, with: updated)
+            effects.append(.emitTelemetry(.init(
+                name: "triage_draft_field_toggled",
+                parameters: ["field": "logs", "omitted": String(omit)]
+            )))
+
+        case .userEditedDescription(let text):
+            guard case .drafting(let draft) = next.step else { return (next, effects) }
+            // PP-4805: an edited description is still patron free text — redact it.
+            let updated = draft.withUserDescription(redactor.redactLine(text))
+            next.step = .drafting(ticket: updated)
+            replaceTicketPreview(&next, with: updated)
+
         case .ticketSubmitted(let receipt):
             next.step = .sent(receipt: receipt)
             next.messages.append(.init(sender: .bot, kind: .ticketReceipt(receipt)))
+            // PP-4808: submission succeeded — clear any persisted pending draft
+            // so it isn't re-offered on the next chat open.
+            effects.append(.persistPendingDraft(nil))
             effects.append(.emitTelemetry(.init(
                 name: "triage_ticket_submitted",
                 parameters: ["ticket_id": receipt.ticketId]
             )))
 
-        case .ticketSubmissionFailed(let message):
-            next.step = .error(message: message)
+        case .ticketSubmissionFailed(let failure):
+            // PP-4808: never dead-end. Pull the in-flight draft so every
+            // recovery path (retry / restore) has the exact ticket.
+            let inFlight: TicketDraft?
+            if case .submitting(let ticket) = next.step { inFlight = ticket } else { inFlight = nil }
+
+            switch failure {
+            case .userCancelled:
+                // The user backed out of the OS composer — NOT a failure.
+                // Restore the preview so they can send again or cancel for real.
+                if let draft = inFlight {
+                    next.step = .drafting(ticket: draft)
+                    next.messages.append(.init(
+                        sender: .bot,
+                        kind: .text(UserFacingErrorMessage.from(failure))
+                    ))
+                    next.messages.append(.init(sender: .bot, kind: .ticketPreview(draft)))
+                } else {
+                    // No draft to restore — fall back to fresh chips.
+                    next.step = .awaitingCategory
+                    next.messages.append(.init(
+                        sender: .bot,
+                        kind: .text("No problem — nothing was sent. Want to try a different category?")
+                    ))
+                    next.messages.append(.init(sender: .bot, kind: .categoryChips))
+                }
+                effects.append(.emitTelemetry(.init(name: "triage_ticket_submit_cancelled_by_user")))
+
+            case .transport:
+                next.step = .error(message: UserFacingErrorMessage.from(failure), failedDraft: inFlight)
+                next.messages.append(.init(
+                    sender: .bot,
+                    kind: .text(UserFacingErrorMessage.from(failure))
+                ))
+                next.messages.append(.init(sender: .bot, kind: .errorActions(draft: inFlight)))
+                // Persist so a real failure survives to the next chat open.
+                effects.append(.persistPendingDraft(inFlight))
+                effects.append(.emitTelemetry(.init(name: "triage_ticket_submit_failed")))
+            }
+
+        case .userTappedRetrySubmission:
+            guard case .error(_, let failedDraft) = next.step, let draft = failedDraft else {
+                return (next, effects)
+            }
+            next.messages.append(.init(sender: .bot, kind: .text("Trying again…")))
+            next.step = .submitting(ticket: draft)
+            effects.append(.submitTicket(draft))
+            effects.append(.emitTelemetry(.init(name: "triage_ticket_submit_retried")))
+
+        case .userTappedStartOver:
+            next.step = .awaitingCategory
             next.messages.append(.init(
                 sender: .bot,
-                kind: .text("I couldn't send the ticket — \(message). You can try again, or copy the details and email support.")
+                kind: .text("OK — let's start fresh. What's happening?")
             ))
-            effects.append(.emitTelemetry(.init(name: "triage_ticket_submit_failed")))
+            next.messages.append(.init(sender: .bot, kind: .categoryChips))
+            // Starting over abandons the failed draft — clear it.
+            effects.append(.persistPendingDraft(nil))
+            effects.append(.emitTelemetry(.init(name: "triage_ticket_start_over")))
+
+        case .restorePendingDraft(let draft):
+            // PP-4808: a ticket failed to send in a prior session; re-offer it.
+            next.step = .drafting(ticket: draft)
+            next.messages.append(.init(
+                sender: .bot,
+                kind: .text("Last time, a ticket didn't finish sending. Here it is again — tap Send to try, or start over.")
+            ))
+            next.messages.append(.init(sender: .bot, kind: .ticketPreview(draft)))
+            effects.append(.emitTelemetry(.init(name: "triage_pending_draft_restored")))
 
         case .userAnsweredFollowUp:
             // Phase 2 — disambiguation answer flow lands here. For demo we
@@ -512,6 +622,9 @@ public struct ConversationReducer: Sendable {
             }
             // Merge the answer (or skip marker) into the draft and proceed
             // to the standard drafting / preview flow.
+            // PP-4805: the follow-up answer is raw patron free text —
+            // redact it before it attaches to the draft / email body.
+            let redactedAnswer = answer.map(redactor.redactLine)
             let enriched = TicketDraft(
                 userDescription: pendingDraft.userDescription,
                 category: pendingDraft.category,
@@ -522,7 +635,8 @@ public struct ConversationReducer: Sendable {
                 ],
                 priority: pendingDraft.priority,
                 resolutionTrace: pendingDraft.resolutionTrace,
-                escalationFollowUp: EscalationFollowUpAnswer(prompt: prompt, answer: answer)
+                escalationFollowUp: EscalationFollowUpAnswer(prompt: prompt, answer: redactedAnswer),
+                omittedFields: pendingDraft.omittedFields
             )
             next.step = .drafting(ticket: enriched)
             next.inputText = ""
@@ -582,6 +696,50 @@ public struct ConversationReducer: Sendable {
         }
     }
 
+    /// Replaces the most recent `.ticketPreview` message in place so the card
+    /// re-renders with the edited draft without duplicating the row (PP-4807).
+    /// Appends one if none exists yet.
+    private func replaceTicketPreview(_ next: inout ConversationState, with draft: TicketDraft) {
+        if let idx = next.messages.lastIndex(where: { if case .ticketPreview = $0.kind { return true }; return false }) {
+            let old = next.messages[idx]
+            next.messages[idx] = ConversationMessage(id: old.id, sender: old.sender, kind: .ticketPreview(draft), timestamp: old.timestamp)
+        } else {
+            next.messages.append(.init(sender: .bot, kind: .ticketPreview(draft)))
+        }
+    }
+
+    /// PP-4811: bind a late-arriving context into a draft that was built with
+    /// the placeholder (empty) context. Only rebinds placeholder drafts so a
+    /// restored draft's real context is never clobbered. Re-applies the
+    /// barcode default-omit now that the real context may carry a barcode.
+    private func lateBindContext(_ next: inout ConversationState, context: ContextSnapshot) {
+        func rebound(_ draft: TicketDraft) -> TicketDraft? {
+            guard draft.context.isPlaceholder else { return nil }
+            let omissions = draft.omittedFields.union(initialOmittedFields(context))
+            return draft.withContext(context).withOmittedFields(omissions)
+        }
+        switch next.step {
+        case .drafting(let d):
+            if let u = rebound(d) {
+                next.step = .drafting(ticket: u)
+                replaceTicketPreview(&next, with: u)
+            }
+        case .submitting(let d):
+            if let u = rebound(d) { next.step = .submitting(ticket: u) }
+        case .awaitingEscalationFollowUp(let prompt, let d):
+            if let u = rebound(d) { next.step = .awaitingEscalationFollowUp(prompt: prompt, pendingDraft: u) }
+        default:
+            break
+        }
+    }
+
+    /// Initial omit set for a freshly-assembled draft. The library barcode is
+    /// opt-IN — captured (as a hash) but left out of the outgoing ticket by
+    /// default (PP-4807). Everything else defaults to included.
+    private func initialOmittedFields(_ context: ContextSnapshot?) -> Set<TicketField> {
+        (context?.libraryBarcode != nil) ? [.barcode] : []
+    }
+
     private func lastUserText(_ messages: [ConversationMessage]) -> String? {
         for message in messages.reversed() {
             if message.sender == .user, case .text(let text) = message.kind {
@@ -609,12 +767,14 @@ public struct ConversationReducer: Sendable {
         tagSuffix: String
     ) {
         let draft = TicketDraft(
-            userDescription: userText,
+            // PP-4805: redact patron-typed free text at draft assembly.
+            userDescription: redactor.redactLine(userText),
             category: category ?? .other,
             matchedEntryId: matchedEntryId,
             context: next.context ?? emptyContext(),
             helpspotTags: ["triage-bot-\(tagSuffix)"],
-            priority: .normal
+            priority: .normal,
+            omittedFields: initialOmittedFields(next.context)
         )
         askEscalationFollowUpOrDraft(
             state: &next,
@@ -674,13 +834,15 @@ public struct ConversationReducer: Sendable {
         tagSuffix: String
     ) {
         let draft = TicketDraft(
-            userDescription: userText,
+            // PP-4805: redact patron-typed free text at draft assembly.
+            userDescription: redactor.redactLine(userText),
             category: category,
             matchedEntryId: matchedEntryId,
             context: next.context ?? emptyContext(),
             helpspotTags: [helpspotTag, "guided-flow-\(trace.outcome.rawValue)"],
             priority: .normal,
-            resolutionTrace: trace
+            resolutionTrace: trace,
+            omittedFields: initialOmittedFields(next.context)
         )
         // Same follow-up gate as transitionToDrafting — if the entry has
         // an escalationFollowUp, ask it first; otherwise go straight to
@@ -732,6 +894,12 @@ public enum ConversationEffect: Equatable, Sendable {
     case captureContext
     case submitTicket(TicketDraft)
     case emitTelemetry(TelemetryEvent)
+    /// Persist (or, with nil, clear) the pending draft so a failed submission
+    /// survives to the next chat open. Host writes to a PendingDraftStore.
+    case persistPendingDraft(TicketDraft?)
+    /// Ask the host to load any persisted pending draft and, if present,
+    /// dispatch `.restorePendingDraft`. Emitted on `.start` (PP-4808).
+    case loadPendingDraft
     /// ViewModel hands this off to the wired FallbackClassifier
     /// (ClaudeFallbackClassifier in production). On success it dispatches
     /// `.aiFallbackResolved`, on any failure mode `.aiFallbackUnavailable`.

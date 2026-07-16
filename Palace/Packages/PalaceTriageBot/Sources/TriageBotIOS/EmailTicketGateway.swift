@@ -168,4 +168,19 @@ public enum EmailGatewayError: Error, LocalizedError {
         }
     }
 }
+
+// PP-4808: map each gateway error to a structured SubmissionFailure so the
+// reducer can restore the preview on a cancel and offer recovery on a real
+// failure. `.userCancelled` is the only non-failure; everything else is a
+// transport failure whose description rides along for "Copy details".
+extension EmailGatewayError: SubmissionFailureConvertible {
+    public var asSubmissionFailure: SubmissionFailure {
+        switch self {
+        case .userCancelled:
+            return .userCancelled
+        case .mailUnavailable, .noPresenter, .composerFailed:
+            return .transport(detail: errorDescription ?? "\(self)")
+        }
+    }
+}
 #endif

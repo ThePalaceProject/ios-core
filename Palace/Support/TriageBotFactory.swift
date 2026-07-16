@@ -64,11 +64,18 @@ enum TriageBotFactory {
             aiFallbackEnabled: aiEnabled
         )
 
-        let contextProvider = DefaultIosContextProvider(
+        let fullContextProvider = DefaultIosContextProvider(
             palaceFields: { @Sendable in
                 await Self.currentPalaceFields()
             },
             logSubsystem: Bundle.main.bundleIdentifier
+        )
+        // PP-4809: honor the patron's "Include diagnostics" choice (default ON).
+        // OFF returns an app/OS/device-only snapshot without the full capture.
+        let contextProvider = DiagnosticsGatingContextProvider(
+            full: fullContextProvider,
+            minimal: { fullContextProvider.minimalSnapshot() },
+            preference: UserDefaultsDiagnosticsPreference()
         )
 
         // Gateway selection:
@@ -125,7 +132,9 @@ enum TriageBotFactory {
                 libraryName: account?.name,
                 libraryUUID: account?.uuid,
                 distributor: nil,        // Phase 2: derive from catalog metadata
-                authType: nil            // Phase 2: derive from currentAuthentication
+                authType: nil,           // Phase 2: derive from currentAuthentication
+                // PP-4807: raw barcode — hashed by the redactor, omitted by default.
+                barcode: TPPUserAccount.sharedAccount().barcode
             )
         }
     }
@@ -153,7 +162,9 @@ private extension TriageBotFactory {
             contextProvider: contextProvider,
             ticketGateway: gateway,
             telemetry: sink,
-            fallbackClassifier: fallbackClassifier
+            fallbackClassifier: fallbackClassifier,
+            // PP-4808: persist a failed ticket so it can be re-offered next open.
+            pendingDraftStore: UserDefaultsPendingDraftStore()
         )
     }
 }

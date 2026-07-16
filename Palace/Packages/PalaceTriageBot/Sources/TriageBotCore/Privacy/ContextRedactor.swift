@@ -27,8 +27,24 @@ public struct ContextRedactor: Sendable {
             networkState: snapshot.networkState,
             freeStorageBytes: snapshot.freeStorageBytes,
             recentLogLines: snapshot.recentLogLines.map(redactLine),
-            crashlyticsFingerprints: snapshot.crashlyticsFingerprints,
-            capturedAt: snapshot.capturedAt
+            // Crash fingerprints are hashes by contract, but a stack frame or
+            // a symbol name can accidentally carry a typed secret. Map them
+            // through the same line redactor defensively (PP-4805).
+            crashlyticsFingerprints: snapshot.crashlyticsFingerprints.map(redactLine),
+            capturedAt: snapshot.capturedAt,
+            // Additive diagnostics are non-sensitive and pass through unchanged.
+            // (Previously dropped here because the ContextSnapshot init defaults
+            // them to nil — that silently stripped them from every ticket; PP-4807
+            // restores them alongside the new barcode handling.)
+            audioOutputRoute: snapshot.audioOutputRoute,
+            lowPowerModeEnabled: snapshot.lowPowerModeEnabled,
+            appUptimeSeconds: snapshot.appUptimeSeconds,
+            buildChannel: snapshot.buildChannel,
+            availableMemoryMB: snapshot.availableMemoryMB,
+            // PP-4807: the raw library barcode never lands in state — hash it
+            // immediately (like libraryUUID). Support gets a stable cluster id,
+            // never the card number. Still omitted from the ticket by default.
+            libraryBarcode: snapshot.libraryBarcode.map(hashIdentifier)
         )
     }
 
@@ -129,6 +145,68 @@ public struct ContextRedactor: Sendable {
             label: "uuid",
             regex: #"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b"#,
             replacement: "[uuid-redacted]"
+        ),
+
+        // === PP-4805: patron-typed free-text leaks =========================
+        // The HelpSpot forensic showed the real leaks are humans typing PINs /
+        // passwords / barcodes / tokens into the description, not the
+        // auto-context. These patterns run on every user-authored line the
+        // reducer assembles into a draft, as well as on captured log lines.
+
+        // Standalone JWT (header.payload[.signature]) — matches the eyJ base64url
+        // header prefix so a token pasted without a "Bearer " scheme is caught.
+        RedactionPattern(
+            label: "jwt",
+            regex: #"\beyJ[A-Za-z0-9_\-]{4,}\.[A-Za-z0-9_\-]{4,}(?:\.[A-Za-z0-9_\-]+)?"#,
+            replacement: "[jwt-redacted]"
+        ),
+        // x-api-key request header.
+        RedactionPattern(
+            label: "x_api_key",
+            regex: #"(?i)x-api-key:\s*\S+"#,
+            replacement: "x-api-key: [REDACTED]"
+        ),
+        // Key/value credentials in JSON, query-string, or form encodings.
+        // The key list is the sensitive set; the value runs to the next
+        // quote / delimiter / whitespace. "password: <token>" is covered here
+        // too. `\b` before the key keeps "tokenizer" / "pinpoint" safe.
+        RedactionPattern(
+            label: "kv_creds",
+            regex: #"(?i)"?\b(access_token|refresh_token|client_secret|api_key|apikey|password|passwd|token|pin)\b"?\s*[:=]\s*"?[^"&\s,}\]]+"#,
+            replacement: "$1=[REDACTED]"
+        ),
+        // Generic Cookie / Set-Cookie value(s). Redacts each name=value pair's
+        // value while preserving the cookie NAME (so the existing SAML-cookie
+        // expectation still holds). Anchored on the ": " / "; " that separates
+        // a header keyword or a prior pair from the next name.
+        RedactionPattern(
+            label: "cookie_value",
+            regex: #"(?i)(?<=[:;]\s)([A-Za-z0-9_.\-]+)=[^;\s]+"#,
+            replacement: "$1=[REDACTED]"
+        ),
+        // PIN / passcode stated in prose without a delimiter ("my pin is 1234").
+        // `\b` on the keyword avoids "spinning". Digit run is \d{3,8} to match
+        // the delimiter'd `pin` rule above — a prose "my pin is 12345" / "123456"
+        // must redact just like "pin: 12345" (PP-4805: the narrower \d{3,4} here
+        // leaked 5-6 digit prose PINs into the ticket).
+        RedactionPattern(
+            label: "pin_prose",
+            regex: #"(?i)\b(pin|passcode)\b[^\d\n]{0,10}\d{3,8}\b"#,
+            replacement: "$1 [REDACTED]"
+        ),
+        // Standalone 10-14 digit library barcode / card number typed inline.
+        // Word-boundaried so 4-digit years and 3-digit error codes survive.
+        // The negative lookahead carves out exactly a 13-digit 978/979 ISBN —
+        // patrons routinely type a book's ISBN into a reading-app report and it
+        // must not be mangled as a card number (PP-4805). Scoped tightly to
+        // `97[89]` + 10 more digits so real barcodes that merely start with 97
+        // are still redacted.
+        // follow-up: extend redaction to 15-16 digit card numbers — deferred,
+        // it risks new false positives against long non-card identifiers.
+        RedactionPattern(
+            label: "barcode_standalone",
+            regex: #"\b(?!97[89]\d{10}\b)\d{10,14}\b"#,
+            replacement: "[number-redacted]"
         )
     ]
 }

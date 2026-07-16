@@ -98,6 +98,26 @@ final class ContextRedactorTests: XCTestCase {
         )
     }
 
+    // Fix 2 (PP-4807): the opt-in library barcode is hashed by redact(_:) via
+    // `.map(hashIdentifier)`. Mirror the libraryUUID hashing test so that if the
+    // `.map(hashIdentifier)` is ever dropped, an opted-in RAW card number would
+    // ship — and this test catches it.
+    func testRedactSnapshot_hashesLibraryBarcode() {
+        let rawBarcode = "21234000012345"
+        let raw = ContextSnapshot(
+            appVersion: "3.3.0",
+            appBuild: "500",
+            osVersion: "26.4.2",
+            deviceModel: "iPhone17,2",
+            libraryBarcode: rawBarcode
+        )
+
+        let redacted = redactor.redact(raw)
+
+        XCTAssertNotEqual(redacted.libraryBarcode, rawBarcode, "Barcode must be hashed, never raw")
+        XCTAssertEqual(redacted.libraryBarcode?.hasPrefix("anon-"), true, "Barcode must be hash-shaped")
+    }
+
     func testRedactSnapshot_isIdempotent() {
         let raw = ContextSnapshot(
             appVersion: "3.0.3",

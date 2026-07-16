@@ -172,7 +172,7 @@ final class ResponseDeterminismTests: XCTestCase {
                     .inputChanged("novel reader issue we don't know about"),
                     .userSubmittedDescription,
                     .userConfirmedTicketSubmit,
-                    .ticketSubmissionFailed("network unavailable")
+                    .ticketSubmissionFailed(.transport(detail: "network unavailable"))
                   ]),
             .init(label: "cancel-mid-flow",
                   actions: [

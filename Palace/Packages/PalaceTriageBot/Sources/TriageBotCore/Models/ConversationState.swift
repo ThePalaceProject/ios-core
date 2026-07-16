@@ -17,6 +17,11 @@ public struct ConversationMessage: Equatable, Identifiable, Sendable {
         case guidedStep(entryId: String, stepIndex: Int)
         case ticketPreview(TicketDraft)
         case ticketReceipt(TicketReceipt)
+        /// Terminal-but-recoverable submission failure. Renders Retry / Copy
+        /// details / Start over. Carries the failed draft (nil only if the
+        /// draft was somehow lost) so Retry re-submits the exact ticket and
+        /// Copy details can reconstruct it (PP-4808).
+        case errorActions(draft: TicketDraft?)
     }
 
     public let id: UUID
@@ -67,7 +72,10 @@ public struct ConversationState: Equatable, Sendable {
         case drafting(ticket: TicketDraft)
         case submitting(ticket: TicketDraft)
         case sent(receipt: TicketReceipt)
-        case error(message: String)
+        /// A real submission failure. Carries the friendly message AND the
+        /// failed draft so the user can Retry the exact ticket, Copy its
+        /// details, or Start over — never a dead end (PP-4808).
+        case error(message: String, failedDraft: TicketDraft?)
     }
 
     public var step: Step
@@ -126,10 +134,30 @@ public enum ConversationAction: Equatable, Sendable {
     /// "just file a ticket" mid-walkthrough). Reducer records the trace
     /// with outcome=abandoned and escalates.
     case userTappedAbandonGuidedFlow
+    /// PP-4807 preview editor: toggle whether an optional field is included
+    /// in the outgoing ticket. Only valid while in `.drafting`.
+    case userToggledDraftField(TicketField)
+    /// PP-4807 preview editor: the user edited the description text before
+    /// sending. The reducer redacts it (PP-4805) and updates the preview.
+    case userEditedDescription(String)
+    /// PP-4807 preview editor: explicit include/omit for the log excerpt.
+    case userOmittedLogs(Bool)
     case userConfirmedTicketSubmit
     case userCancelledTicketSubmit
     case ticketSubmitted(TicketReceipt)
-    case ticketSubmissionFailed(String)
+    /// Submission didn't complete. Carries a structured `SubmissionFailure`
+    /// so the reducer can distinguish a user cancel (restore the preview)
+    /// from a real transport failure (offer Retry / Copy / Start over and
+    /// persist the draft). Replaces the old raw-string form (PP-4808).
+    case ticketSubmissionFailed(SubmissionFailure)
+    /// User tapped Retry on the error card — re-submit the failed draft.
+    case userTappedRetrySubmission
+    /// User tapped Start over on the error card — reset to category chips
+    /// and clear any persisted pending draft.
+    case userTappedStartOver
+    /// Host loaded a draft persisted from a prior failed session and is
+    /// re-offering it (PP-4808). Reducer restores the preview.
+    case restorePendingDraft(TicketDraft)
     case inputChanged(String)
     /// AI fallback returned a classification. Reducer routes to .matched
     /// or .drafting based on the decision.
