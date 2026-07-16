@@ -32,6 +32,11 @@ struct SignInModalView: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .navigationBarLeading) { cancelButton }
+                    // Flag-gated Help entry point (PP-4812). Hidden entirely when
+                    // the triage-bot kill-switch is off via HelpEntryPointPolicy.
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        HelpButton(entryPoint: .signIn)
+                    }
                 }
                 .toolbarBackground(.visible, for: .navigationBar)
                 .toolbarBackground(Color(UIColor.systemGroupedBackground), for: .navigationBar)

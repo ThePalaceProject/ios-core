@@ -225,6 +225,11 @@ struct BookDetailView: View {
                 })
                 .accessibilityLabel(Strings.Generic.goBack)
             }
+            // Flag-gated Help entry point (PP-4812). Vanishes with the triage-bot
+            // kill-switch via HelpEntryPointPolicy; monochrome per Palace chrome.
+            ToolbarItem(placement: .navigationBarTrailing) {
+                HelpButton(entryPoint: .bookDetail)
+            }
         }
         .toolbarBackground(.hidden, for: .navigationBar)
         .modifier(BookStateModifier(viewModel: viewModel, showHalfSheet: $viewModel.showHalfSheet))
