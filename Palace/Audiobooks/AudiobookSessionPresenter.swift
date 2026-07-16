@@ -220,6 +220,20 @@ class AudiobookSessionPresenter: ObservableObject {
         presentOnFirstOpen()
     }
 
+    /// Feeds *pre-bind* download progress into the loading shell during the
+    /// PP-4542 content-local wait — the window after `presentLoadingShell` but
+    /// before `adoptPlaybackModel`, when there is no toolkit playback model yet
+    /// to mirror `$overallDownloadProgress` from. Without this the shell shows a
+    /// static skeleton for the whole `.lcpa` download and reads as "hung" (see
+    /// fix/audiobook-first-open-hang). `fraction` is the download-center's
+    /// `downloadProgress(for:)` (0…1). Sets `isDownloading = true` so the bar is
+    /// visible. Superseded the moment `adoptPlaybackModel` re-snapshots both
+    /// mirrors at bind (`:333-334`), so this is strictly a pre-bind placeholder.
+    func showDownloadProgress(_ fraction: Float) {
+        overallDownloadProgress = max(0, min(1, fraction))
+        isDownloading = true
+    }
+
     /// Tap-on-mini-player entry point. Sets `isPlayerExpanded = true` so
     /// the root fullScreenCover shows the full player.
     func expand() {

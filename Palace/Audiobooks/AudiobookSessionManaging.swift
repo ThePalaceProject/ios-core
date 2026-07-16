@@ -65,6 +65,18 @@ protocol AudiobookSessionManaging: AnyObject {
     @discardableResult
     func openAudiobook(_ book: TPPBook, startPlaying: Bool) async -> Result<Void, AudiobookSessionError>
 
+    /// Opens an audiobook, invoking `onLoadingShellPresented` on the main actor
+    /// the moment the loading-player shell is presented — i.e. BEFORE the
+    /// PP-4542 content-download wait, not after full playback readiness. Lets a
+    /// presenting caller (BookDetail half-sheet) dismiss its transient UI as soon
+    /// as the morphing player is on screen, instead of leaving it stacked over
+    /// the loading shell for the whole `.lcpa` download (fix/audiobook-first-open-hang).
+    /// Fired at most once. A protocol-extension default forwards to the 2-arg
+    /// witness above, so existing test doubles keep conforming unchanged; the
+    /// production manager overrides it with the real hook.
+    @discardableResult
+    func openAudiobook(_ book: TPPBook, startPlaying: Bool, onLoadingShellPresented: (@MainActor () -> Void)?) async -> Result<Void, AudiobookSessionError>
+
     /// Plays the current audiobook.
     func play()
 
@@ -201,6 +213,16 @@ extension AudiobookSessionManaging {
     var chapterTimeLeft: TimeInterval { 0 }
     var toastMessage: String? { nil }
     func addBookmark(completion: @escaping (Error?) -> Void) { completion(nil) }
+
+    /// Default: forwards to the 2-arg witness, ignoring the shell-presented hook.
+    /// Lightweight test doubles that implement only `openAudiobook(_:startPlaying:)`
+    /// keep conforming; the production `AudiobookSessionManager` overrides this
+    /// with the real early-present hook. A mock that wants to exercise the hook
+    /// overrides this method directly.
+    @discardableResult
+    func openAudiobook(_ book: TPPBook, startPlaying: Bool, onLoadingShellPresented: (@MainActor () -> Void)?) async -> Result<Void, AudiobookSessionError> {
+        await openAudiobook(book, startPlaying: startPlaying)
+    }
 }
 
 // MARK: - AudiobookSessionManager Conformance

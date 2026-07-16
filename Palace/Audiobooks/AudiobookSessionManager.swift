@@ -545,6 +545,42 @@ public final class AudiobookSessionManager: ObservableObject {
         await openAudiobook(book, startPlaying: startPlaying, forceRefulfill: false)
     }
 
+    /// Protocol witness for the early-present variant — threads the
+    /// `onLoadingShellPresented` hook into the internal overload so a presenting
+    /// caller can dismiss its transient UI (BookDetail half-sheet) the moment the
+    /// loading shell appears, not after the whole download lands. See
+    /// fix/audiobook-first-open-hang.
+    public func openAudiobook(_ book: TPPBook, startPlaying: Bool, onLoadingShellPresented: (@MainActor () -> Void)?) async -> Result<Void, AudiobookSessionError> {
+        await openAudiobook(book, startPlaying: startPlaying, forceRefulfill: false, onLoadingShellPresented: onLoadingShellPresented)
+    }
+
+    /// Presents the morphing player's loading shell and fires the early
+    /// `onLoadingShellPresented` hook — but ONLY for a user-initiated open
+    /// (`startPlaying`) with in-app nav on (the two conditions under which a
+    /// shell is actually shown). Returns whether the shell was presented.
+    ///
+    /// Called once from `openAudiobook` immediately after the auth/registry/
+    /// network validation passes and BEFORE the PP-4542 content-download wait, so
+    /// the hook lets a presenting caller (BookDetail half-sheet) dismiss its
+    /// transient UI the instant the player is on screen rather than after the
+    /// whole `.lcpa` lands. Extracted (rather than inlined) so the fire-on-present
+    /// contract is deterministically unit-testable without driving the full open
+    /// path. fix/audiobook-first-open-hang.
+    @discardableResult
+    func presentLoadingShellIfEligible(
+        for book: TPPBook,
+        startPlaying: Bool,
+        onLoadingShellPresented: (@MainActor () -> Void)?
+    ) -> Bool {
+        guard startPlaying, inAppPlaybackNavEnabledProvider() else { return false }
+        audiobookSessionPresenterProvider().presentLoadingShell(
+            for: book,
+            coverImage: book.coverImage ?? book.thumbnailImage
+        )
+        onLoadingShellPresented?()
+        return true
+    }
+
     /// WS-3: per-session bound on the OverDrive expired-URL re-fulfill recovery.
     /// A book id is inserted when its recovery re-open fires and removed when the
     /// user initiates a fresh open — so a persistent failure re-fulfills at most
@@ -583,7 +619,7 @@ public final class AudiobookSessionManager: ObservableObject {
     ///   instead of replaying the expired on-disk manifest. Internal (not part of
     ///   the public `AudiobookSessionManaging` surface); the public 2-param
     ///   witness above delegates here, and the in-class recovery branch calls it.
-    func openAudiobook(_ book: TPPBook, startPlaying: Bool, forceRefulfill: Bool, isColdLoadRecovery: Bool = false, isRecoveryReopen: Bool = false) async -> Result<Void, AudiobookSessionError> {
+    func openAudiobook(_ book: TPPBook, startPlaying: Bool, forceRefulfill: Bool, isColdLoadRecovery: Bool = false, isRecoveryReopen: Bool = false, onLoadingShellPresented: (@MainActor () -> Void)? = nil) async -> Result<Void, AudiobookSessionError> {
         Log.info(#file, "Opening audiobook: '\(book.title)' (id: \(book.identifier))\(forceRefulfill ? " [re-fulfill]" : "")\(isColdLoadRecovery ? " [cold-load recovery]" : "")")
         // Polish-phase (in-app-nav-polish-2026-06-01): record wall-clock
         // open time so the Continue Reading row's sort surfaces the real
@@ -657,12 +693,18 @@ public final class AudiobookSessionManager: ObservableObject {
         // idempotent with the bind-time `presentOnFirstOpen()`. The loading
         // skeleton clears once the toolkit reports `isLoaded`; a failed load
         // publishes `.error`, which the presenter tears down.
-        if startPlaying, inAppPlaybackNavEnabledProvider() {
-            audiobookSessionPresenterProvider().presentLoadingShell(
-                for: book,
-                coverImage: book.coverImage ?? book.thumbnailImage
-            )
-        }
+        // Present the shell, then fire the early hook so the caller can dismiss
+        // its transient UI (BookDetail half-sheet) NOW — underneath the shell,
+        // present-first per the PP-4633 iPad ordering — instead of leaving it
+        // stacked over the loading skeleton for the entire PP-4542 wait below.
+        // Extracted to `presentLoadingShellIfEligible` so the fire-on-present
+        // contract is unit-testable without the auth/registry/network gauntlet
+        // above. fix/audiobook-first-open-hang.
+        presentLoadingShellIfEligible(
+            for: book,
+            startPlaying: startPlaying,
+            onLoadingShellPresented: onLoadingShellPresented
+        )
 
 #if LCP
         // PP-4542 (gate): a freshly-borrowed LCP audiobook is marked
@@ -682,7 +724,21 @@ public final class AudiobookSessionManager: ObservableObject {
            LCPAudiobooks.canOpenBook(book),
            !Self.audiobookContentIsLocal(book.identifier) {
             Log.info(#file, "LCP audiobook content still downloading — awaiting local package before opening (PP-4542 gate)")
-            let landed = await Self.awaitAudiobookContentLocal(book.identifier)
+            // Feed download-center progress into the loading shell during the
+            // wait so it shows a determinate "Downloading…" bar instead of a
+            // static skeleton that reads as hung. Only when the shell is actually
+            // on screen (in-app nav); the toolkit playback model that normally
+            // drives this bar doesn't exist until bind, which is after the wait.
+            let feedProgressToShell = startPlaying && inAppPlaybackNavEnabledProvider()
+            let bookId = book.identifier
+            var progressSink: (@MainActor @Sendable (Float) -> Void)?
+            if feedProgressToShell {
+                progressSink = { [weak self] fraction in
+                    guard let self else { return }
+                    self.audiobookSessionPresenterProvider().showDownloadProgress(fraction)
+                }
+            }
+            let landed = await Self.awaitAudiobookContentLocal(bookId, onProgress: progressSink)
             // A newer open (user tapped a different book) would have replaced
             // currentBook + the .loading state; bail if so.
             guard currentBook?.identifier == book.identifier,
@@ -2110,14 +2166,24 @@ public final class AudiobookSessionManager: ObservableObject {
     /// a stalled/failed download can't hold the loading state forever; on timeout
     /// the caller surfaces the unavailable alert (i.e. no worse than today, just
     /// after giving the in-flight download a chance to finish).
+    /// - parameter onProgress: optional per-poll sink for the in-flight
+    ///   download fraction (0…1), read from the download center. Lets the caller
+    ///   drive a determinate "Downloading…" bar in the loading shell during the
+    ///   wait instead of showing a static skeleton (fix/audiobook-first-open-hang).
+    ///   MainActor-isolated to match the presenter it typically feeds.
     static func awaitAudiobookContentLocal(
         _ bookId: String,
         timeout: TimeInterval = 180,
-        pollInterval: TimeInterval = 0.5
+        pollInterval: TimeInterval = 0.5,
+        onProgress: (@MainActor @Sendable (Float) -> Void)? = nil
     ) async -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
             if audiobookContentIsLocal(bookId) { return true }
+            if let onProgress {
+                let fraction = Float(AppContainer.production().downloadCenter.downloadProgress(for: bookId))
+                await onProgress(fraction)
+            }
             try? await Task.sleep(nanoseconds: UInt64(pollInterval * 1_000_000_000))
         }
         return audiobookContentIsLocal(bookId)

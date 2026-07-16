@@ -131,6 +131,16 @@ final class BookDetailViewModel: ObservableObject {
     private let samplePreviewManager: SamplePreviewManager
     private let readerService: ReaderService
     private let metadataHydrator: BookMetadataHydrator
+    /// Optional injected audiobook session — nil in production (BookService
+    /// resolves the DI-root session). A test injects a mock so the audiobook
+    /// open → half-sheet-dismiss wiring is drivable. fix/audiobook-first-open-hang.
+    private let injectedAudiobookSession: AudiobookSessionManaging?
+    /// Optional auth-gate override — nil in production (the read/listen path runs
+    /// the real `ensureAuthAndExecute`, which loads the auth document and may
+    /// present a sign-in modal against real singletons / UserDefaults / network).
+    /// A test injects an immediate pass-through so the dismissal wiring is driven
+    /// deterministically without touching auth. fix/audiobook-first-open-hang.
+    private let authGateOverride: ((@escaping () -> Void) -> Void)?
     private var cancellables = Set<AnyCancellable>()
 
     typealias BookMetadataHydrator = (URL) async throws -> TPPBook?
@@ -183,7 +193,9 @@ final class BookDetailViewModel: ObservableObject {
         opdsFeedService: OPDSFeedService,
         samplePreviewManager: SamplePreviewManager,
         readerService: ReaderService,
-        metadataHydrator: BookMetadataHydrator? = nil
+        metadataHydrator: BookMetadataHydrator? = nil,
+        audiobookSession: AudiobookSessionManaging? = nil,
+        authGateOverride: ((@escaping () -> Void) -> Void)? = nil
     ) {
         self.book = book
         self.registry = registry
@@ -193,6 +205,12 @@ final class BookDetailViewModel: ObservableObject {
         self.opdsFeedService = opdsFeedService
         self.samplePreviewManager = samplePreviewManager
         self.readerService = readerService
+        // Test seam (fix/audiobook-first-open-hang): lets a test drive the
+        // audiobook open path with a mock session so the half-sheet dismissal
+        // wiring is exercised. nil in production → BookService falls back to the
+        // AppContainer DI-root session.
+        self.injectedAudiobookSession = audiobookSession
+        self.authGateOverride = authGateOverride
         // Default hydrator captures the injected services instead of reading
         // .shared singletons. Tests pass a custom hydrator to short-circuit.
         self.metadataHydrator = metadataHydrator ?? { url in
@@ -678,16 +696,35 @@ final class BookDetailViewModel: ObservableObject {
             // full-screen presentation; on iPad it renders as a floating
             // form-sheet that otherwise stays on screen.
             //
-            // The dismiss MUST happen in the open completion (after the
-            // reader/player is presented), NOT on tap: on iPad, dismissing the
-            // form-sheet while the player is being presented races the two
-            // modal transitions, so the player fails to present and the screen
-            // freezes. Presenting first, then dismissing the sheet underneath,
-            // avoids the race. Mirrors the .reserve / .return cases.
-            didSelectRead(for: book) {
+            // The dismiss MUST happen AFTER the reader/player is presented, NOT on
+            // tap: on iPad, dismissing the form-sheet while the player is being
+            // presented races the two modal transitions, so the player fails to
+            // present and the screen freezes. Presenting first, then dismissing
+            // the sheet underneath, avoids the race. Mirrors .reserve / .return.
+            //
+            // fix/audiobook-first-open-hang: for AUDIOBOOKS the open completion
+            // fires only after the PP-4542 content-download wait (up to minutes on
+            // a fresh checkout), which left the half-sheet stacked over the loading
+            // shell looking hung. So dismiss EARLY via `onLoadingShellPresented` —
+            // fired the instant the morphing player's loading shell is on screen,
+            // still present-first-then-dismiss (no iPad race). The completion
+            // dismissal below STAYS as an idempotent backstop: EPUB has no shell
+            // hook, and audiobook opens that fail BEFORE presenting a shell
+            // (already-loading / validation) never fire the early hook, so the
+            // always-fired completion still clears the sheet. Both write the same
+            // value → order-independent, no stuck sheet on any path.
+            didSelectRead(for: book, completion: {
                 self.removeProcessingButton(button)
                 self.showHalfSheet = false
-            }
+            }, onLoadingShellPresented: { [weak self] in
+                // Defer the dismiss one runloop tick so the player's present
+                // (the shell hook fires in the SAME tick that sets
+                // isPlayerExpanded = true) fully commits before we dismiss the
+                // sheet underneath. Dismissing in the same tick is exactly the
+                // PP-4633 iPad present-while-dismiss modal race; the one-tick
+                // hop keeps present-first-then-dismiss ordering on iPad too.
+                DispatchQueue.main.async { self?.showHalfSheet = false }
+            })
 
         case .readStreaming:
             // PP-4161: streaming-HTML titles don't go through ensureAuthAndExecute
@@ -732,6 +769,19 @@ final class BookDetailViewModel: ObservableObject {
     // MARK: - Authentication Helper
 
     /// Ensures authentication document is loaded and handles sign-in if needed.
+    /// Routes an action through the auth gate. In production this is the real
+    /// `ensureAuthAndExecute` (auth-doc load + possible sign-in modal); a test can
+    /// inject `authGateOverride` (an immediate pass-through) so the read/listen
+    /// path is driven deterministically without touching the real accountsManager
+    /// / UserDefaults / network. fix/audiobook-first-open-hang.
+    private func runAuthGate(_ action: @escaping () -> Void) {
+        if let authGateOverride {
+            authGateOverride(action)
+        } else {
+            ensureAuthAndExecute(action)
+        }
+    }
+
     private func ensureAuthAndExecute(_ action: @escaping () -> Void) {
         let businessLogic = TPPSignInBusinessLogic(
             libraryAccountID: accountsManager.currentAccount?.uuid ?? "",
@@ -865,8 +915,8 @@ final class BookDetailViewModel: ObservableObject {
     // MARK: - Reading
 
     @MainActor
-    func didSelectRead(for book: TPPBook, completion: (() -> Void)?) {
-        ensureAuthAndExecute { [weak self] in
+    func didSelectRead(for book: TPPBook, completion: (() -> Void)?, onLoadingShellPresented: (@MainActor () -> Void)? = nil) {
+        runAuthGate { [weak self] in
             Task { @MainActor in
                 guard let self = self else { return }
                 #if FEATURE_DRM_CONNECTOR
@@ -874,7 +924,7 @@ final class BookDetailViewModel: ObservableObject {
 
                 if user.hasCredentials() {
                     if user.hasAuthToken() {
-                        self.openBook(book, completion: completion)
+                        self.openBook(book, completion: completion, onLoadingShellPresented: onLoadingShellPresented)
                         return
                     } else if AdobeCertificate.isDRMAvailable &&
                                 !AdobeDRMService.shared.isUserAuthorized(user.userID, deviceID: user.deviceID) {
@@ -882,7 +932,7 @@ final class BookDetailViewModel: ObservableObject {
                         Task {
                             do {
                                 try await AdobeDRMService.shared.ensureDeviceActivated()
-                                await MainActor.run { self.openBook(book, completion: completion) }
+                                await MainActor.run { self.openBook(book, completion: completion, onLoadingShellPresented: onLoadingShellPresented) }
                             } catch {
                                 Log.error(#file, "Adobe DRM activation failed for open: \(error.localizedDescription)")
                                 await MainActor.run { completion?() }
@@ -892,13 +942,13 @@ final class BookDetailViewModel: ObservableObject {
                     }
                 }
                 #endif
-                self.openBook(book, completion: completion)
+                self.openBook(book, completion: completion, onLoadingShellPresented: onLoadingShellPresented)
             }
         }
     }
 
     @MainActor
-    func openBook(_ book: TPPBook, completion: (() -> Void)?) {
+    func openBook(_ book: TPPBook, completion: (() -> Void)?, onLoadingShellPresented: (@MainActor () -> Void)? = nil) {
         Log.debug(#file, "🎬 [OPEN BOOK] User requested to open book: \(book.title) (ID: \(book.identifier))")
         TPPCirculationAnalytics.postEvent("open_book", withBook: book)
 
@@ -927,12 +977,12 @@ final class BookDetailViewModel: ObservableObject {
             }
         case .audiobook:
             Log.debug(#file, "  → Opening as AUDIOBOOK")
-            openAudiobook(resolvedBook) { [weak self] in
+            openAudiobook(resolvedBook, completion: { [weak self] in
                 DispatchQueue.main.async {
                     self?.processingButtons.removeAll()
                     completion?()
                 }
-            }
+            }, onLoadingShellPresented: onLoadingShellPresented)
         case .streamingHTML:
             // PP-4161: streaming-media titles use the in-app WKWebView reader
             // presented via NavigationCoordinator. Note: handleAction(.readStreaming)
@@ -960,8 +1010,8 @@ final class BookDetailViewModel: ObservableObject {
 
     // MARK: - Audiobook Opening
 
-    func openAudiobook(_ book: TPPBook, completion: (() -> Void)? = nil) {
-        BookService.open(book, onFinish: completion)
+    func openAudiobook(_ book: TPPBook, completion: (() -> Void)? = nil, onLoadingShellPresented: (@MainActor () -> Void)? = nil) {
+        BookService.open(book, audiobookSession: injectedAudiobookSession, onFinish: completion, onLoadingShellPresented: onLoadingShellPresented)
     }
 
     // MARK: - Streaming HTML Reader (PP-4161)

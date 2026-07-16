@@ -28,8 +28,14 @@ enum BookService {
     /// lock from latching permanently and silently swallowing every retry.
     private static let openLockSafetyRelease: TimeInterval = 30
 
+    /// - parameter onLoadingShellPresented: audiobook-only early hook — fired the
+    ///   moment the morphing player's loading shell is presented (before the
+    ///   PP-4542 content-download wait) so a presenting caller can dismiss its
+    ///   transient UI (BookDetail half-sheet) immediately rather than after full
+    ///   playback readiness. Nil for EPUB/PDF/streaming (they present promptly and
+    ///   rely on `onFinish`). fix/audiobook-first-open-hang.
     @MainActor
-    static func open(_ book: TPPBook, bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry, onFinish: (() -> Void)? = nil) {
+    static func open(_ book: TPPBook, bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry, audiobookSession: AudiobookSessionManaging? = nil, onFinish: (() -> Void)? = nil, onLoadingShellPresented: (@MainActor () -> Void)? = nil) {
         guard !openingBooks.contains(book.identifier) else {
             Log.warn(#file, "Book \(book.title) is already being opened, ignoring duplicate request")
             onFinish?()
@@ -40,7 +46,7 @@ enum BookService {
         scheduleOpenLockSafetyRelease(for: book.identifier)
         let resolvedBook = bookRegistry.book(forIdentifier: book.identifier) ?? book
 
-        dispatchOpen(resolvedBook, onFinish: onFinish)
+        dispatchOpen(resolvedBook, audiobookSession: audiobookSession, onFinish: onFinish, onLoadingShellPresented: onLoadingShellPresented)
     }
 
     @MainActor
@@ -58,7 +64,7 @@ enum BookService {
     }
 
     @MainActor
-    private static func dispatchOpen(_ book: TPPBook, onFinish: (() -> Void)?) {
+    private static func dispatchOpen(_ book: TPPBook, audiobookSession: AudiobookSessionManaging? = nil, onFinish: (() -> Void)?, onLoadingShellPresented: (@MainActor () -> Void)? = nil) {
         switch book.defaultBookContentType {
         case .epub:
             Task { @MainActor in
@@ -80,12 +86,17 @@ enum BookService {
             // stops the previous session (releasing its DRM decryptor) before
             // loading the new audiobook — the ordering invariant that prevents
             // a stale LCP Publication from hanging publicationOpener.open().
+            let session = audiobookSession ?? AppContainer.production().audiobookSession
             Task { @MainActor in
                 defer {
                     openingBooks.remove(book.identifier)
                     onFinish?()
                 }
-                _ = await AppContainer.production().audiobookSession.openAudiobook(book, startPlaying: true)
+                _ = await session.openAudiobook(
+                    book,
+                    startPlaying: true,
+                    onLoadingShellPresented: onLoadingShellPresented
+                )
             }
         case .streamingHTML:
             // PP-4161: streaming-HTML titles route through NavigationCoordinator

@@ -761,4 +761,55 @@ final class AudiobookSessionPresenterTests: XCTestCase {
         XCTAssertEqual(AudiobookSessionPresenter.chapterProgress(offset: -30, timeLeft: 90), 0, accuracy: 0.0001,
                        "A negative chapter offset must clamp to 0, not produce a negative scrubber position")
     }
+
+    // MARK: - fix/audiobook-first-open-hang: pre-bind download progress
+    //
+    // During the PP-4542 content-download wait the toolkit playback model that
+    // normally mirrors `$overallDownloadProgress` doesn't exist yet, so the
+    // loading shell showed a static skeleton that read as "hung." `showDownloadProgress`
+    // feeds download-center progress into the shell during that window so it shows
+    // a determinate "Downloading…" bar. Superseded by `adoptPlaybackModel` at bind.
+
+    /// EXPECTED: sets the download fraction and flips `isDownloading` true so the
+    /// shell's download bar becomes visible during the pre-bind wait.
+    /// Mutates: dropping the `isDownloading = true` assignment hides the bar and
+    /// fails this; changing the assigned fraction fails the value assertion.
+    func testShowDownloadProgress_setsProgressAndDownloadingFlag() {
+        let presenter = AudiobookSessionPresenter(sessionManager: spySession)
+        presenter.showDownloadProgress(0.42)
+        XCTAssertEqual(presenter.overallDownloadProgress, 0.42, accuracy: 0.0001,
+                       "showDownloadProgress must publish the download fraction so the shell bar is determinate")
+        XCTAssertTrue(presenter.isDownloading,
+                      "showDownloadProgress must flip isDownloading true so the shell's download bar is visible during the wait")
+    }
+
+    /// EXPECTED: fractions outside 0…1 clamp. Pins BOTH bounds of the
+    /// `max(0, min(1, fraction))` guard — a garbage download-center reading must
+    /// never drive the bar past full or negative.
+    /// Mutates: dropping the upper `min(1,_)` lets 1.7 through; dropping the lower
+    /// `max(0,_)` lets -0.3 through — each fails the respective assertion.
+    func testShowDownloadProgress_clampsOutOfRangeFractions() {
+        let presenter = AudiobookSessionPresenter(sessionManager: spySession)
+        presenter.showDownloadProgress(1.7)
+        XCTAssertEqual(presenter.overallDownloadProgress, 1.0, accuracy: 0.0001,
+                       "A fraction > 1 must clamp to 1.0 — the download bar can't exceed full")
+        presenter.showDownloadProgress(-0.3)
+        XCTAssertEqual(presenter.overallDownloadProgress, 0.0, accuracy: 0.0001,
+                       "A negative fraction must clamp to 0 — the download bar can't go negative")
+    }
+
+    /// EXPECTED: the pre-bind placeholder is torn down by `clearActiveSession`
+    /// (the stopPlayback/dismiss path), so a superseded/failed open doesn't leave
+    /// a stale "Downloading…" bar behind.
+    /// Mutates: if clearActiveSession stops resetting these mirrors, the bar
+    /// persists and this fails.
+    func testShowDownloadProgress_clearedByClearActiveSession() {
+        let presenter = AudiobookSessionPresenter(sessionManager: spySession)
+        presenter.showDownloadProgress(0.6)
+        presenter.clearActiveSession()
+        XCTAssertEqual(presenter.overallDownloadProgress, 0, accuracy: 0.0001,
+                       "clearActiveSession must reset the pre-bind download fraction so no stale bar survives teardown")
+        XCTAssertFalse(presenter.isDownloading,
+                       "clearActiveSession must clear the pre-bind isDownloading flag")
+    }
 }
