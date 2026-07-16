@@ -199,4 +199,55 @@ final class TPPKeychainStoredVariableTests: XCTestCase {
         XCTAssertTrue(final == a || final == b || final == nil,
                       "final state must be a whole written value or nil, got: \(String(describing: final))")
     }
+
+    /// 0bbbd8fe SPECIFICALLY: a background URLSession continuation reading
+    /// `TPPUserAccount.credentials` while the user signs out (`write(nil)`)
+    /// tore the `TPPCredentials` struct — the exact Crashlytics signature
+    /// (`TPPKeychainCodableVariable.read:114` EXC_BAD_ACCESS). The sibling test
+    /// above mixes only `write(a/b)` (overwrite); this one drives the
+    /// sign-out **`write(nil)`** clear concurrently with reads — the precise
+    /// race that crashed — and asserts every `read()` observes a *whole*
+    /// credential or `nil`, never a torn struct. With the read serialized
+    /// inside `transaction.perform` (#1050) the nil-clear and the read can
+    /// never interleave; a revert to the unsynchronized post-lock
+    /// `return cachedValue` tears (and crashes on retain).
+    func testRead_racingSignOutWriteNil_neverTearsCredentials() throws {
+        try KeychainAvailability.skipIfUnavailable()
+
+        struct Cred: Codable, Equatable, Hashable {
+            let token: String
+            let identifier: String
+        }
+        let key = "signout_cred_\(UUID().uuidString)"
+        let variable = TPPKeychainCodableVariable<Cred>(key: key, accountInfoQueue: testQueue)
+        defer { TPPKeychain.shared.removeObject(forKey: key) }
+
+        let signedIn = Cred(token: "TOKEN-WHOLE-VALUE", identifier: "patron-0001")
+        variable.write(signedIn)
+
+        // Interleave: sign-in writes, sign-out clears (write(nil)), cache
+        // invalidations (force a fresh keychain decode), and reads. A read may
+        // legitimately observe `nil` (after a clear) or the whole credential —
+        // but NEVER a partially-written / torn struct.
+        DispatchQueue.concurrentPerform(iterations: 6_000) { i in
+            switch i % 4 {
+            case 0:
+                variable.write(signedIn)        // sign-in
+            case 1:
+                variable.write(nil)             // sign-out — the 0bbbd8fe write
+            case 2:
+                variable.invalidateCache()      // force fresh decode under contention
+            default:
+                let got = variable.read()
+                if let got {
+                    XCTAssertEqual(got, signedIn,
+                                   "read() returned a torn credential during sign-out: \(got)")
+                }
+            }
+        }
+
+        let final = variable.read()
+        XCTAssertTrue(final == signedIn || final == nil,
+                      "final credential must be whole or cleared, got: \(String(describing: final))")
+    }
 }
