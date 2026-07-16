@@ -541,6 +541,98 @@ final class AudiobookFirstOpenHangTests: XCTestCase {
         XCTAssertEqual(spy.stopCallCount, 1, "probe.stop must run via defer even on exhaustion")
     }
 
+    // MARK: - fix/audiobook-first-open-hang: early loading-shell-presented hook
+    //
+    // BUG A: on first checkout+open of an LCP audiobook, the BookDetail
+    // download-progress half-sheet stayed presented over the loading shell for
+    // the ENTIRE PP-4542 content-download wait (~19s in the live repro), because
+    // its dismissal was chained to the FULL open completion. The fix fires
+    // `onLoadingShellPresented` the moment the morphing player's loading shell is
+    // on screen (before the wait) so the caller can dismiss its transient UI
+    // immediately, present-first-then-dismiss (no iPad race). These tests pin the
+    // production fire site (`AudiobookSessionManager` open path, after
+    // `presentLoadingShell`) and its gating.
+
+    /// Builds a session manager bound to a SPECIFIC presenter instance (captured
+    /// + reset so cross-test pollution on the shared presenter can't leak
+    /// `isPlayerExpanded`/`currentBook` into these assertions) with a fixed
+    /// in-app-nav flag. Returns both so the test can assert on the same presenter
+    /// the manager drives.
+    private func makeManagerForShellTests(inAppNavEnabled: Bool) -> (AudiobookSessionManager, AudiobookSessionPresenter) {
+        let presenter = appContainer.audiobookSessionPresenter
+        presenter.clearActiveSession()
+        let manager = AudiobookSessionManager(
+            appContainer: appContainer,
+            audiobookSessionPresenterProvider: { presenter },
+            inAppPlaybackNavEnabledProvider: { inAppNavEnabled }
+        )
+        return (manager, presenter)
+    }
+
+    /// PRE: in-app nav ON, `startPlaying: true` → the shell IS eligible.
+    /// EXPECTED: `presentLoadingShellIfEligible` presents the shell (presenter
+    /// adopts the book + expands) and fires `onLoadingShellPresented` exactly
+    /// once, returning true. This is the seam `openAudiobook` calls after
+    /// validation and BEFORE the PP-4542 wait — firing here is what lets
+    /// BookDetail dismiss the half-sheet before the download instead of after.
+    /// Deleting the `onLoadingShellPresented?()` call makes fireCount fail;
+    /// deleting the `presentLoadingShell` call makes the presenter assertions fail.
+    func testPresentLoadingShellIfEligible_presentsShellAndFiresHook_whenEligible() {
+        let (manager, presenter) = makeManagerForShellTests(inAppNavEnabled: true)
+        let book = TPPBookMocker.mockBook(distributorType: .OpenAccessAudiobook)
+        var fireCount = 0
+
+        let presented = manager.presentLoadingShellIfEligible(
+            for: book, startPlaying: true, onLoadingShellPresented: { fireCount += 1 }
+        )
+
+        XCTAssertTrue(presented, "An eligible user-initiated open with in-app nav on must present the shell")
+        XCTAssertEqual(fireCount, 1,
+                       "onLoadingShellPresented must fire exactly once when the shell is presented — this is the early half-sheet-dismiss signal")
+        XCTAssertEqual(presenter.currentBook?.identifier, book.identifier,
+                       "Presenting the shell must adopt the book so the morphing player shows its cover/title")
+        XCTAssertTrue(presenter.isPlayerExpanded,
+                      "Presenting the shell must expand the player (present-first, so the sheet dismisses underneath it — no iPad race)")
+    }
+
+    /// PRE: in-app nav OFF → not eligible (legacy pushed route, no shell).
+    /// EXPECTED: returns false, does NOT fire the hook, does NOT present a shell.
+    /// The caller relies on its always-fired final `onFinish` backstop to dismiss
+    /// its transient UI on this path — the architect-F1 stuck-sheet guard. A
+    /// mutant that drops the `inAppPlaybackNavEnabledProvider()` gate fails this.
+    func testPresentLoadingShellIfEligible_doesNotFireOrPresent_whenInAppNavOff() {
+        let (manager, presenter) = makeManagerForShellTests(inAppNavEnabled: false)
+        let book = TPPBookMocker.mockBook(distributorType: .OpenAccessAudiobook)
+        var fireCount = 0
+
+        let presented = manager.presentLoadingShellIfEligible(
+            for: book, startPlaying: true, onLoadingShellPresented: { fireCount += 1 }
+        )
+
+        XCTAssertFalse(presented, "With in-app nav off no shell is shown — the hook must not fire")
+        XCTAssertEqual(fireCount, 0, "The early hook must not fire when no shell is presented")
+        XCTAssertFalse(presenter.isPlayerExpanded,
+                       "No shell must be presented when in-app nav is off")
+    }
+
+    /// PRE: `startPlaying: false` (background/resume open) → not eligible.
+    /// EXPECTED: returns false, hook does not fire. Pins the `startPlaying` half
+    /// of the eligibility gate (a mutant dropping the `startPlaying` guard fails).
+    func testPresentLoadingShellIfEligible_doesNotFire_whenNotStartPlaying() {
+        let (manager, presenter) = makeManagerForShellTests(inAppNavEnabled: true)
+        let book = TPPBookMocker.mockBook(distributorType: .OpenAccessAudiobook)
+        var fireCount = 0
+
+        let presented = manager.presentLoadingShellIfEligible(
+            for: book, startPlaying: false, onLoadingShellPresented: { fireCount += 1 }
+        )
+
+        XCTAssertFalse(presented, "A non-user-initiated open (startPlaying: false) presents no shell")
+        XCTAssertEqual(fireCount, 0, "The early hook must not fire on a non-start-playing open")
+        XCTAssertFalse(presenter.isPlayerExpanded,
+                       "A non-start-playing open must not expand the player")
+    }
+
     // MARK: - Helpers
 
     /// Builds a TrackPosition without touching the toolkit's heavy
