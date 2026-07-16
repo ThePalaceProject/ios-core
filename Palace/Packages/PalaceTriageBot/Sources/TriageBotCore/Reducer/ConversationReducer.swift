@@ -61,6 +61,9 @@ public struct ConversationReducer: Sendable {
             ))
             next.messages.append(.init(sender: .bot, kind: .categoryChips))
             effects.append(.captureContext)
+            // PP-4808: if a ticket failed to send last session, the host has
+            // it persisted — ask it to re-offer via .restorePendingDraft.
+            effects.append(.loadPendingDraft)
             effects.append(.emitTelemetry(.init(name: "triage_chat_opened")))
 
         case .contextLoaded(let snapshot):
@@ -489,18 +492,83 @@ public struct ConversationReducer: Sendable {
         case .ticketSubmitted(let receipt):
             next.step = .sent(receipt: receipt)
             next.messages.append(.init(sender: .bot, kind: .ticketReceipt(receipt)))
+            // PP-4808: submission succeeded — clear any persisted pending draft
+            // so it isn't re-offered on the next chat open.
+            effects.append(.persistPendingDraft(nil))
             effects.append(.emitTelemetry(.init(
                 name: "triage_ticket_submitted",
                 parameters: ["ticket_id": receipt.ticketId]
             )))
 
-        case .ticketSubmissionFailed(let message):
-            next.step = .error(message: message)
+        case .ticketSubmissionFailed(let failure):
+            // PP-4808: never dead-end. Pull the in-flight draft so every
+            // recovery path (retry / restore) has the exact ticket.
+            let inFlight: TicketDraft?
+            if case .submitting(let ticket) = next.step { inFlight = ticket } else { inFlight = nil }
+
+            switch failure {
+            case .userCancelled:
+                // The user backed out of the OS composer — NOT a failure.
+                // Restore the preview so they can send again or cancel for real.
+                if let draft = inFlight {
+                    next.step = .drafting(ticket: draft)
+                    next.messages.append(.init(
+                        sender: .bot,
+                        kind: .text(UserFacingErrorMessage.from(failure))
+                    ))
+                    next.messages.append(.init(sender: .bot, kind: .ticketPreview(draft)))
+                } else {
+                    // No draft to restore — fall back to fresh chips.
+                    next.step = .awaitingCategory
+                    next.messages.append(.init(
+                        sender: .bot,
+                        kind: .text("No problem — nothing was sent. Want to try a different category?")
+                    ))
+                    next.messages.append(.init(sender: .bot, kind: .categoryChips))
+                }
+                effects.append(.emitTelemetry(.init(name: "triage_ticket_submit_cancelled_by_user")))
+
+            case .transport:
+                next.step = .error(message: UserFacingErrorMessage.from(failure), failedDraft: inFlight)
+                next.messages.append(.init(
+                    sender: .bot,
+                    kind: .text(UserFacingErrorMessage.from(failure))
+                ))
+                next.messages.append(.init(sender: .bot, kind: .errorActions(draft: inFlight)))
+                // Persist so a real failure survives to the next chat open.
+                effects.append(.persistPendingDraft(inFlight))
+                effects.append(.emitTelemetry(.init(name: "triage_ticket_submit_failed")))
+            }
+
+        case .userTappedRetrySubmission:
+            guard case .error(_, let failedDraft) = next.step, let draft = failedDraft else {
+                return (next, effects)
+            }
+            next.messages.append(.init(sender: .bot, kind: .text("Trying again…")))
+            next.step = .submitting(ticket: draft)
+            effects.append(.submitTicket(draft))
+            effects.append(.emitTelemetry(.init(name: "triage_ticket_submit_retried")))
+
+        case .userTappedStartOver:
+            next.step = .awaitingCategory
             next.messages.append(.init(
                 sender: .bot,
-                kind: .text("I couldn't send the ticket — \(message). You can try again, or copy the details and email support.")
+                kind: .text("OK — let's start fresh. What's happening?")
             ))
-            effects.append(.emitTelemetry(.init(name: "triage_ticket_submit_failed")))
+            next.messages.append(.init(sender: .bot, kind: .categoryChips))
+            // Starting over abandons the failed draft — clear it.
+            effects.append(.persistPendingDraft(nil))
+            effects.append(.emitTelemetry(.init(name: "triage_ticket_start_over")))
+
+        case .restorePendingDraft(let draft):
+            // PP-4808: a ticket failed to send in a prior session; re-offer it.
+            next.step = .drafting(ticket: draft)
+            next.messages.append(.init(
+                sender: .bot,
+                kind: .text("Last time, a ticket didn't finish sending. Here it is again — tap Send to try, or start over.")
+            ))
+            next.messages.append(.init(sender: .bot, kind: .ticketPreview(draft)))
+            effects.append(.emitTelemetry(.init(name: "triage_pending_draft_restored")))
 
         case .userAnsweredFollowUp:
             // Phase 2 — disambiguation answer flow lands here. For demo we
@@ -739,6 +807,12 @@ public enum ConversationEffect: Equatable, Sendable {
     case captureContext
     case submitTicket(TicketDraft)
     case emitTelemetry(TelemetryEvent)
+    /// Persist (or, with nil, clear) the pending draft so a failed submission
+    /// survives to the next chat open. Host writes to a PendingDraftStore.
+    case persistPendingDraft(TicketDraft?)
+    /// Ask the host to load any persisted pending draft and, if present,
+    /// dispatch `.restorePendingDraft`. Emitted on `.start` (PP-4808).
+    case loadPendingDraft
     /// ViewModel hands this off to the wired FallbackClassifier
     /// (ClaudeFallbackClassifier in production). On success it dispatches
     /// `.aiFallbackResolved`, on any failure mode `.aiFallbackUnavailable`.

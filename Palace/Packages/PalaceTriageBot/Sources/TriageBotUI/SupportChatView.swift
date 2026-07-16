@@ -82,6 +82,10 @@ public struct SupportChatView: View {
             }
         case .ticketReceipt(let receipt):
             TicketReceiptCard(receipt: receipt)
+        case .errorActions(let draft):
+            ErrorActionsCard(draft: draft) { action in
+                handleErrorAction(action)
+            }
         }
     }
 
@@ -190,6 +194,19 @@ public struct SupportChatView: View {
             viewModel.send(.userConfirmedTicketSubmit)
         case .cancel:
             viewModel.send(.userCancelledTicketSubmit)
+        }
+    }
+
+    private func handleErrorAction(_ action: ErrorActionsCard.Action) {
+        switch action {
+        case .retry:
+            viewModel.send(.userTappedRetrySubmission)
+        case .copyDetails(let draft):
+            // Let the patron email support themselves with the exact payload.
+            let details = TicketEmailComposition.body(for: draft)
+            UIPasteboard.general.string = details
+        case .startOver:
+            viewModel.send(.userTappedStartOver)
         }
     }
 }

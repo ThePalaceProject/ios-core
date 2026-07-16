@@ -221,7 +221,7 @@ final class ConversationReducerTests: XCTestCase {
         }, "Fresh category chips must be offered so user can pick a different topic")
     }
 
-    func testTicketSubmissionFailed_transitionsToError() {
+    func testTicketSubmissionFailed_transportError_carriesDraftAndDoesNotLeakRawDetail() {
         let reducer = makeReducer()
         let draft = TicketDraft(
             userDescription: "test",
@@ -229,12 +229,109 @@ final class ConversationReducerTests: XCTestCase {
             context: ContextSnapshot(appVersion: "3", appBuild: "1", osVersion: "26", deviceModel: "x")
         )
         let state = ConversationState(step: .submitting(ticket: draft))
-        let (next, _) = reducer.reduce(state: state, action: .ticketSubmissionFailed("Network unavailable"))
+        let rawDetail = "URLSession 503 backend-stacktrace-goes-here"
+        let (next, effects) = reducer.reduce(
+            state: state,
+            action: .ticketSubmissionFailed(.transport(detail: rawDetail))
+        )
 
-        guard case .error(let message) = next.step else {
+        // PP-4808: error step must carry the failed draft so Retry re-submits it…
+        guard case .error(let message, let failedDraft) = next.step else {
             return XCTFail("Expected .error, got \(next.step)")
         }
-        XCTAssertTrue(message.contains("Network unavailable"))
+        XCTAssertEqual(failedDraft, draft, "Failed draft must be preserved for Retry / Copy details")
+        // …and the raw technical detail must NOT be shown inline.
+        XCTAssertFalse(message.contains(rawDetail), "Raw transport detail must not leak into the chat message")
+        XCTAssertTrue(next.messages.contains { if case .errorActions = $0.kind { return true }; return false },
+                      "Error card with recovery actions must be rendered")
+        XCTAssertTrue(effects.contains(.persistPendingDraft(draft)),
+                      "A real failure must persist the draft for the next session")
+    }
+
+    func testTicketSubmissionFailed_userCancelled_restoresPreviewInsteadOfDeadEnd() {
+        let reducer = makeReducer()
+        let draft = TicketDraft(
+            userDescription: "test",
+            category: .reader,
+            context: ContextSnapshot(appVersion: "3", appBuild: "1", osVersion: "26", deviceModel: "x")
+        )
+        let state = ConversationState(step: .submitting(ticket: draft))
+        let (next, effects) = reducer.reduce(state: state, action: .ticketSubmissionFailed(.userCancelled))
+
+        guard case .drafting(let restored) = next.step else {
+            return XCTFail("A user cancel must restore the preview, got \(next.step)")
+        }
+        XCTAssertEqual(restored, draft)
+        XCTAssertTrue(next.messages.contains { if case .ticketPreview = $0.kind { return true }; return false },
+                      "Preview card must be re-offered on cancel")
+        XCTAssertFalse(effects.contains(.persistPendingDraft(draft)),
+                       "A cancel is not a failure — nothing to persist")
+    }
+
+    func testRetrySubmission_reSubmitsExactFailedDraft() {
+        let reducer = makeReducer()
+        let draft = TicketDraft(
+            userDescription: "retry me",
+            category: .signin,
+            context: ContextSnapshot(appVersion: "3", appBuild: "1", osVersion: "26", deviceModel: "x")
+        )
+        let state = ConversationState(step: .error(message: "nope", failedDraft: draft))
+        let (next, effects) = reducer.reduce(state: state, action: .userTappedRetrySubmission)
+
+        guard case .submitting(let resubmitted) = next.step else {
+            return XCTFail("Retry must move to .submitting, got \(next.step)")
+        }
+        XCTAssertEqual(resubmitted, draft)
+        XCTAssertTrue(effects.contains(.submitTicket(draft)), "Retry must re-emit the submit effect for the exact draft")
+    }
+
+    func testStartOver_fromError_resetsToChipsAndClearsPersistedDraft() {
+        let reducer = makeReducer()
+        let draft = TicketDraft(
+            userDescription: "x", category: .other,
+            context: ContextSnapshot(appVersion: "3", appBuild: "1", osVersion: "26", deviceModel: "x")
+        )
+        let state = ConversationState(step: .error(message: "nope", failedDraft: draft))
+        let (next, effects) = reducer.reduce(state: state, action: .userTappedStartOver)
+
+        XCTAssertEqual(next.step, .awaitingCategory)
+        XCTAssertTrue(effects.contains(.persistPendingDraft(nil)), "Start over must clear the persisted draft")
+    }
+
+    func testStart_emitsLoadPendingDraft_soAFailedDraftCanBeReoffered() {
+        let reducer = makeReducer()
+        let (_, effects) = reducer.reduce(state: ConversationState(), action: .start)
+        XCTAssertTrue(effects.contains(.loadPendingDraft),
+                      "Chat open must ask the host to re-offer any persisted pending draft")
+    }
+
+    func testRestorePendingDraft_reoffersPreview() {
+        let reducer = makeReducer()
+        let draft = TicketDraft(
+            userDescription: "unsent from last time", category: .download,
+            context: ContextSnapshot(appVersion: "3", appBuild: "1", osVersion: "26", deviceModel: "x")
+        )
+        let (next, _) = reducer.reduce(state: ConversationState(step: .welcome), action: .restorePendingDraft(draft))
+
+        guard case .drafting(let restored) = next.step else {
+            return XCTFail("Expected .drafting, got \(next.step)")
+        }
+        XCTAssertEqual(restored, draft)
+        XCTAssertTrue(next.messages.contains { if case .ticketPreview = $0.kind { return true }; return false })
+    }
+
+    func testTicketSubmitted_clearsPersistedPendingDraft() {
+        let reducer = makeReducer()
+        let draft = TicketDraft(
+            userDescription: "x", category: .other,
+            context: ContextSnapshot(appVersion: "3", appBuild: "1", osVersion: "26", deviceModel: "x")
+        )
+        let state = ConversationState(step: .submitting(ticket: draft))
+        let (_, effects) = reducer.reduce(
+            state: state,
+            action: .ticketSubmitted(TicketReceipt(ticketId: "T-1", submittedAt: Date(timeIntervalSince1970: 0)))
+        )
+        XCTAssertTrue(effects.contains(.persistPendingDraft(nil)), "A successful send must clear the persisted draft")
     }
 
     // MARK: - Redactor integration

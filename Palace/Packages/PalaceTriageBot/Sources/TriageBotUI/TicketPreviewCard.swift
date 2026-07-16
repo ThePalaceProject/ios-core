@@ -77,6 +77,59 @@ struct TicketPreviewCard: View {
     }
 }
 
+/// PP-4808: shown when a submission fails for real. Offers Retry (re-submit
+/// the exact draft), Copy details (put the composed report on the clipboard so
+/// the patron can email support themselves), and Start over. Never a dead end.
+struct ErrorActionsCard: View {
+    enum Action {
+        case retry
+        case copyDetails(TicketDraft)
+        case startOver
+    }
+
+    let draft: TicketDraft?
+    let onAction: (Action) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: BotUI.Spacing.small) {
+            Label("Couldn't send", systemImage: "exclamationmark.triangle.fill")
+                .font(.headline)
+                .foregroundStyle(.primary)
+            Text("Nothing was lost — pick one:")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+
+            VStack(spacing: BotUI.Spacing.small) {
+                if let draft {
+                    BotUI.PrimaryButton(title: "Try again", systemImage: "arrow.clockwise") {
+                        onAction(.retry)
+                    }
+                    Button {
+                        onAction(.copyDetails(draft))
+                    } label: {
+                        Label("Copy details", systemImage: "doc.on.doc")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityLabel("Copy the ticket details to email support yourself")
+                }
+                Button {
+                    onAction(.startOver)
+                } label: {
+                    Label("Start over", systemImage: "arrow.counterclockwise")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+        .padding(BotUI.Spacing.cardPadding)
+        .background(BotUI.cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: BotUI.cardCornerRadius, style: .continuous))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Ticket couldn't send — retry, copy details, or start over")
+    }
+}
+
 struct TicketReceiptCard: View {
     let receipt: TicketReceipt
 
