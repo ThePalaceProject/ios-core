@@ -82,6 +82,9 @@ struct DeveloperSettingsView: View {
             DevToggleRow(title: "Enabled (master)", isOn: $viewModel.triageBotEnabled)
             DevToggleRow(title: "Ticket Submission (Email)", isOn: $viewModel.triageBotTicketSubmissionEnabled)
             DevToggleRow(title: "AI Fallback (Claude)", isOn: $viewModel.triageBotAIFallbackEnabled)
+            #if DEBUG
+            DevToggleRow(title: "Force Submit Failure (debug)", isOn: $viewModel.triageBotForceSubmitFailure)
+            #endif
             DevDisclosureValueRow(
                 title: "Anthropic API Key",
                 value: viewModel.anthropicKeyStatus
