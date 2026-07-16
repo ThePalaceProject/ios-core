@@ -142,9 +142,8 @@ final class NetworkRetryLogicTests: XCTestCase {
         _ = try await session.data(for: request)
 
         // 4xx errors should not be retried
-        lock.lock()
-        let finalCount = requestCount
-        lock.unlock()
+        // Swift 6: NSLock.lock()/unlock() are unavailable in async contexts.
+        let finalCount = lock.withLock { requestCount }
         XCTAssertEqual(finalCount, 1)
     }
 
@@ -168,9 +167,8 @@ final class NetworkRetryLogicTests: XCTestCase {
         defer { session.invalidateAndCancel() }
         _ = try await session.data(for: request)
 
-        lock.lock()
-        let finalCount = requestCount
-        lock.unlock()
+        // Swift 6: NSLock.lock()/unlock() are unavailable in async contexts.
+        let finalCount = lock.withLock { requestCount }
         XCTAssertEqual(finalCount, 1)
     }
 
