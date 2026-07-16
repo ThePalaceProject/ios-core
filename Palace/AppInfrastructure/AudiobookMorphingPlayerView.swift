@@ -387,6 +387,14 @@ struct AudiobookMorphingPlayerView: View {
         ZStack {
             grabber
             HStack {
+                // Flag-gated Help entry point (PP-4812). Lives in the FULL
+                // player chrome only (topControls is not part of `miniContent`),
+                // and `HelpEntryPointPolicy` further gates it on the expanded
+                // state, so it never collides with the mini-player transport row.
+                HelpButton(
+                    entryPoint: .audiobookPlayer,
+                    audiobookPlayerExpanded: presenter.isPlayerExpanded
+                )
                 Spacer()
                 Button { showChaptersBookmarks = true } label: {
                     Image(systemName: "list.bullet")
