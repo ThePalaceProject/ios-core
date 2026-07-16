@@ -176,6 +176,13 @@ struct Strings {
         static let pauseAudiobook = NSLocalizedString("Pause", comment: "VoiceOver: Pause audiobook")
         static let skipBack30 = NSLocalizedString("Skip back 30 seconds", comment: "VoiceOver: Rewind audiobook 30 seconds")
         static let skipForward30 = NSLocalizedString("Skip forward 30 seconds", comment: "VoiceOver: Skip audiobook forward 30 seconds")
+        // PP-4712: dynamic skip labels reflecting the patron's configured interval.
+        static func skipBackSeconds(_ seconds: Int) -> String {
+            String.localizedStringWithFormat(NSLocalizedString("Skip back %d seconds", comment: "VoiceOver: Rewind audiobook by the configured interval"), seconds)
+        }
+        static func skipForwardSeconds(_ seconds: Int) -> String {
+            String.localizedStringWithFormat(NSLocalizedString("Skip forward %d seconds", comment: "VoiceOver: Skip audiobook forward by the configured interval"), seconds)
+        }
         static let dismissPlayer = NSLocalizedString("Dismiss player", comment: "VoiceOver: Done button on the full audiobook player, dismisses to the mini-player")
         // Accessibility - Audiobook mini-player (swarm_0b7616e7 Module D)
         static let nowPlayingLabelTitleAndAuthor = NSLocalizedString(
