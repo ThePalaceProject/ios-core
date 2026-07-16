@@ -16,7 +16,10 @@ final class OfflineQueueServiceTests: XCTestCase {
     private var service: OfflineQueueService!
     private var userDefaults: UserDefaults!
     private var cancellables: Set<AnyCancellable>!
-    private var executedActions: [OfflineAction]!
+    // Swift 6: the @Sendable executor closure appends to this from a concurrent
+    // context, so it must be a Sendable lock-guarded box rather than a captured
+    // `self` instance var. Reset per-test in setUp.
+    private let executedActions = LockIsolated<[OfflineAction]>([])
 
     override func setUp() {
         super.setUp()
@@ -24,12 +27,11 @@ final class OfflineQueueServiceTests: XCTestCase {
         userDefaults.removePersistentDomain(forName: "OfflineQueueServiceTests")
         service = OfflineQueueService(userDefaults: userDefaults)
         cancellables = Set<AnyCancellable>()
-        executedActions = []
+        executedActions.value = []
     }
 
     override func tearDown() {
         cancellables = nil
-        executedActions = nil
         userDefaults.removePersistentDomain(forName: "OfflineQueueServiceTests")
         service = nil
         userDefaults = nil
@@ -39,8 +41,8 @@ final class OfflineQueueServiceTests: XCTestCase {
     // MARK: - Helpers
 
     private func setupSuccessExecutor() async {
-        await service.setExecutor { [weak self] action in
-            self?.executedActions.append(action)
+        await service.setExecutor { action in
+            executedActions.withValue { $0.append(action) }
             return true
         }
     }
@@ -91,7 +93,7 @@ final class OfflineQueueServiceTests: XCTestCase {
         let status = await service.currentStatus()
         XCTAssertEqual(status.pendingCount, 0)
         XCTAssertEqual(status.failedCount, 0)
-        XCTAssertEqual(executedActions.count, 1)
+        XCTAssertEqual(executedActions.value.count, 1)
     }
 
     func testProcessQueueFIFOOrder() async {
@@ -106,18 +108,22 @@ final class OfflineQueueServiceTests: XCTestCase {
 
         try? await Task.sleep(nanoseconds: 200_000_000)
 
-        XCTAssertEqual(executedActions.count, 2)
-        XCTAssertEqual(executedActions[0].bookID, "book1")
-        XCTAssertEqual(executedActions[1].bookID, "book2")
+        XCTAssertEqual(executedActions.value.count, 2)
+        XCTAssertEqual(executedActions.value[0].bookID, "book1")
+        XCTAssertEqual(executedActions.value[1].bookID, "book2")
     }
 
     // MARK: - Retry
 
     func testRetryFailedAction() async {
-        var callCount = 0
+        // Swift 6: box the counter — the @Sendable executor can't mutate a
+        // captured local. withValue makes the increment-and-test atomic.
+        let callCount = LockIsolated<Int>(0)
         await service.setExecutor { _ in
-            callCount += 1
-            return callCount > 1 // Fail first, succeed second
+            callCount.withValue { count -> Bool in
+                count += 1
+                return count > 1 // Fail first, succeed second
+            }
         }
 
         let action = OfflineAction(type: .borrow, bookID: "book1", bookTitle: "Test Book", maxRetries: 3)
@@ -262,7 +268,7 @@ final class OfflineQueueServiceTests: XCTestCase {
 
         let status = await service.currentStatus()
         XCTAssertEqual(status.pendingCount, 0)
-        XCTAssertEqual(executedActions.count, 1)
+        XCTAssertEqual(executedActions.value.count, 1)
     }
 
     // MARK: - Action Properties
