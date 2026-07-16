@@ -9100,7 +9100,7 @@
 				SWIFT_OBJC_BRIDGING_HEADER = "PalaceTests/PalaceTests-Bridging-Header.h";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_SWIFT3_OBJC_INFERENCE = Default;
-				SWIFT_VERSION = 4.2;
+				SWIFT_VERSION = 6.0;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Palace.app/Palace";
 				WARNING_CFLAGS = (
 					"-Wall",
@@ -9160,7 +9160,7 @@
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "LCP FEATURE_OVERDRIVE";
 				SWIFT_OBJC_BRIDGING_HEADER = "PalaceTests/PalaceTests-Bridging-Header.h";
 				SWIFT_SWIFT3_OBJC_INFERENCE = Default;
-				SWIFT_VERSION = 4.2;
+				SWIFT_VERSION = 6.0;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Palace.app/Palace";
 				WARNING_CFLAGS = (
 					"-Wall",
