@@ -45,8 +45,20 @@ final class BorrowOperationContractTests: XCTestCase {
     /// ContractSnapshot.assert(...) check.
     private var log: CallLog!
 
+    /// Swift 6: `fetchBook` is a non-isolated `async` closure, so it cannot
+    /// capture `self` (a non-Sendable XCTestCase) to read this per-test value.
+    /// Box it behind a lock so the closure captures the box (Sendable) instead.
+    private final class ResultBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var _value: Result<TPPBook, Error>?
+        var value: Result<TPPBook, Error>? {
+            get { lock.withLock { _value } }
+            set { lock.withLock { _value = newValue } }
+        }
+    }
+
     /// Closure seams.
-    private var fetchBookResult: Result<TPPBook, Error>!
+    private let fetchBookResult = ResultBox()
 
     override func setUpWithError() throws {
         try super.setUpWithError()
@@ -60,7 +72,7 @@ final class BorrowOperationContractTests: XCTestCase {
         // Default success: the fetch returns the same book that was passed
         // in. Tests override per-scenario.
         let defaultBook = Self.makeBook(identifier: "BOOK-1", availability: .unlimited)
-        fetchBookResult = .success(defaultBook)
+        fetchBookResult.value = .success(defaultBook)
 
         // NOTE: BorrowOperation's `init` is gated by FEATURE_DRM_CONNECTOR
         // on the Palace target, which is set for production but NOT for
@@ -69,6 +81,10 @@ final class BorrowOperationContractTests: XCTestCase {
         // compiled framework PalaceTests links against carries the DRM
         // variant of `init`, so we call it unconditionally — same approach
         // as PalaceTests/MyBooks/BorrowOperationTests.swift.
+        // Capture Sendable collaborators as locals so the non-isolated async
+        // closures (fetchBook, attemptOIDCReauth) don't capture `self` (Swift 6).
+        let callLog = log!
+        let resultBox = fetchBookResult
         operation = BorrowOperation(
             bookRegistry: bookRegistry,
             downloadAnnouncementService: SilentAnnouncementService(),
@@ -77,12 +93,12 @@ final class BorrowOperationContractTests: XCTestCase {
             userRetryTracker: .shared,
             userAccountProvider: { [unowned self] in self.userAccount },
             adobeDRMService: AdobeDRMService.shared,
-            fetchBook: { [unowned self] url, resetCache, useToken in
-                self.log.record("fetchBook",
-                                args: ["url": url.lastPathComponent,
-                                       "resetCache": "\(resetCache)",
-                                       "useToken": "\(useToken)"])
-                switch self.fetchBookResult! {
+            fetchBook: { url, resetCache, useToken in
+                callLog.record("fetchBook",
+                               args: ["url": url.lastPathComponent,
+                                      "resetCache": "\(resetCache)",
+                                      "useToken": "\(useToken)"])
+                switch resultBox.value! {
                 case .success(let result): return result
                 case .failure(let error): throw error
                 }
@@ -96,8 +112,8 @@ final class BorrowOperationContractTests: XCTestCase {
             presentSignInModal: { [unowned self] _ in
                 self.log.record("presentSignInModal", args: [:])
             },
-            attemptOIDCReauth: { [unowned self] in
-                self.log.record("attemptOIDCReauth", args: [:])
+            attemptOIDCReauth: {
+                callLog.record("attemptOIDCReauth", args: [:])
                 return false
             }
         )
@@ -111,7 +127,7 @@ final class BorrowOperationContractTests: XCTestCase {
         userAccount = nil
         spyDelegate = nil
         operation = nil
-        fetchBookResult = nil
+        fetchBookResult.value = nil
         try super.tearDownWithError()
     }
 
@@ -123,7 +139,7 @@ final class BorrowOperationContractTests: XCTestCase {
     /// the condition (as PR #890 did) trips the snapshot diff.
     func test_borrowAsync_attemptDownloadTrue_onSuccessfulBorrow_callsStartDownload() async throws {
         let book = Self.makeBook(identifier: "F014-OK", availability: .unlimited)
-        fetchBookResult = .success(book)
+        fetchBookResult.value = .success(book)
 
         _ = try await operation.borrowAsync(book, attemptDownload: true)
 
@@ -136,7 +152,7 @@ final class BorrowOperationContractTests: XCTestCase {
     /// call startDownload. Pins the gate.
     func test_borrowAsync_attemptDownloadFalse_onSuccessfulBorrow_doesNotCallStartDownload() async throws {
         let book = Self.makeBook(identifier: "F014-NoDL", availability: .unlimited)
-        fetchBookResult = .success(book)
+        fetchBookResult.value = .success(book)
 
         _ = try await operation.borrowAsync(book, attemptDownload: false)
 
@@ -160,7 +176,7 @@ final class BorrowOperationContractTests: XCTestCase {
     func test_borrowAsync_authError_triggersRetryViaSilentReauth() async {
         let book = Self.makeBook(identifier: "AUTH-ERR", availability: .unlimited)
         let problemDoc = Self.makeProblemDoc(type: TPPProblemDocument.TypeInvalidCredentials)
-        fetchBookResult = .failure(NSError(
+        fetchBookResult.value = .failure(NSError(
             domain: "test", code: 401,
             userInfo: ["problemDocument": problemDoc as Any]
         ))
@@ -187,7 +203,7 @@ final class BorrowOperationContractTests: XCTestCase {
     func test_borrowAsync_holdResponse_doesNotCallStartDownload() async {
         let preBorrowBook = Self.makeBook(identifier: "HOLD-PRE", availability: .unlimited)
         let raceResponse = Self.makeBook(identifier: "HOLD-POST", availability: .reserved)
-        fetchBookResult = .success(raceResponse)
+        fetchBookResult.value = .success(raceResponse)
 
         do {
             _ = try await operation.borrowAsync(preBorrowBook, attemptDownload: true)
@@ -224,7 +240,7 @@ final class BorrowOperationContractTests: XCTestCase {
         userAccount.setAuthState(.loggedIn)
 
         let problemDoc = Self.makeProblemDoc(type: TPPProblemDocument.TypeInvalidCredentials)
-        fetchBookResult = .failure(NSError(
+        fetchBookResult.value = .failure(NSError(
             domain: "test", code: 401,
             userInfo: ["problemDocument": problemDoc as Any]
         ))
@@ -266,7 +282,7 @@ final class BorrowOperationContractTests: XCTestCase {
         )
         userAccount._authDefinition = AccountDetails.Authentication(auth: docAuth)
 
-        fetchBookResult = .failure(PalaceError.network(.unauthorized))
+        fetchBookResult.value = .failure(PalaceError.network(.unauthorized))
 
         do {
             _ = try await operation.borrowAsync(book, attemptDownload: false)
