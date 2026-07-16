@@ -66,6 +66,16 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
     export SIMCTL_CHILD_CI="${CI:-true}"
     export SIMCTL_CHILD_BUILD_CONTEXT="ci"
 
+    # Execution isolation — test-pollution fix (docs/Testing/test-pollution-investigation-handoff.md).
+    # CI previously ran serial single-process (all ~7k tests in ONE process/singleton-set), which
+    # AMPLIFIES cross-test pollution: an early polluter that aborts mid-teardown leaves a process-global
+    # (suspended queue, active mock scenario, stale registry) broken for thousands of later tests, so a
+    # different, shifting victim set fails every run (AccountsManagerLaunchSnapshot / Borrow* etc.).
+    # Parallel testing spawns simulator CLONES = SEPARATE PROCESSES: global state is per-clone, cross-shard
+    # bleed is impossible, and any leak's blast radius is bounded to one clone's subset. The local path
+    # already runs this way (workers=4) successfully; Xcode merges the clones into the single
+    # TestResults.xcresult so the downstream summary.failed gate is unchanged. Tune via CI_TEST_WORKERS if a
+    # runner has fewer cores (Xcode caps workers to available cores regardless).
     set +e
     xcodebuild test \
         -project Palace.xcodeproj \
@@ -79,7 +89,8 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
         -test-timeouts-enabled YES \
         -default-test-execution-time-allowance 120 \
         -maximum-test-execution-time-allowance 300 \
-        -parallel-testing-enabled NO \
+        -parallel-testing-enabled YES \
+        -maximum-parallel-testing-workers "${CI_TEST_WORKERS:-4}" \
         CODE_SIGNING_REQUIRED=NO \
         CODE_SIGNING_ALLOWED=NO \
         ONLY_ACTIVE_ARCH=YES \
