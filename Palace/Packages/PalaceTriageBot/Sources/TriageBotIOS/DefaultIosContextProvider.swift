@@ -198,6 +198,10 @@ public final class DefaultIosContextProvider: ContextProvider {
             let predicate = NSPredicate(format: "subsystem == %@", subsystem)
             let entries = try store.getEntries(at: since, matching: predicate)
             var lines: [String] = []
+            // Hoisted out of the per-entry loop (PP-4811): ISO8601DateFormatter
+            // is expensive to allocate and configure, and the log window can be
+            // hundreds of entries. One formatter for the whole tail.
+            let timestampFormatter = ISO8601DateFormatter()
             for entry in entries {
                 if let logEntry = entry as? OSLogEntryLog {
                     let levelTag: String
@@ -207,7 +211,7 @@ public final class DefaultIosContextProvider: ContextProvider {
                     case .debug: levelTag = "[D] "
                     default: levelTag = "[ ] "
                     }
-                    let ts = ISO8601DateFormatter().string(from: logEntry.date)
+                    let ts = timestampFormatter.string(from: logEntry.date)
                     lines.append("\(ts) \(levelTag)\(logEntry.composedMessage)")
                     if lines.count >= logMaxLines { break }
                 }

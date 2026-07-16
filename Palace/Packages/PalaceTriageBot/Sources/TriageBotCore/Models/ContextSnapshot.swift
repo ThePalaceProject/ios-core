@@ -101,4 +101,13 @@ public struct ContextSnapshot: Codable, Equatable, Sendable {
         self.availableMemoryMB = availableMemoryMB
         self.libraryBarcode = libraryBarcode
     }
+
+    /// True for the all-"unknown" placeholder the reducer synthesizes when a
+    /// draft is assembled before the real context has loaded (PP-4811). Used to
+    /// decide whether a late-arriving `.contextLoaded` should be bound into an
+    /// already-drafted ticket.
+    public var isPlaceholder: Bool {
+        appVersion == "unknown" && appBuild == "unknown"
+            && osVersion == "unknown" && deviceModel == "unknown"
+    }
 }

@@ -103,6 +103,17 @@ public struct TicketDraft: Codable, Equatable, Sendable {
         )
     }
 
+    /// A copy with a new context. Used to late-bind the real environment into a
+    /// draft that was assembled before context finished loading (PP-4811).
+    public func withContext(_ newContext: ContextSnapshot) -> TicketDraft {
+        TicketDraft(
+            userDescription: userDescription, category: category, matchedEntryId: matchedEntryId,
+            context: newContext, helpspotTags: helpspotTags, priority: priority,
+            resolutionTrace: resolutionTrace, escalationFollowUp: escalationFollowUp,
+            omittedFields: omittedFields
+        )
+    }
+
     /// A copy with an edited description. Callers redact the text first.
     public func withUserDescription(_ text: String) -> TicketDraft {
         TicketDraft(

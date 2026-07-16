@@ -67,7 +67,13 @@ public struct ConversationReducer: Sendable {
             effects.append(.emitTelemetry(.init(name: "triage_chat_opened")))
 
         case .contextLoaded(let snapshot):
-            next.context = redactor.redact(snapshot)
+            let redacted = redactor.redact(snapshot)
+            next.context = redacted
+            // PP-4811: the user can race ahead to a ticket draft before the
+            // async context capture returns. If that happened, the draft holds
+            // an all-"unknown" placeholder context — bind the real one in now so
+            // no ticket ships with an empty environment.
+            lateBindContext(&next, context: redacted)
 
         case .userTappedCategory(let category):
             next.step = .awaitingDescription(category: category)
@@ -699,6 +705,31 @@ public struct ConversationReducer: Sendable {
             next.messages[idx] = ConversationMessage(id: old.id, sender: old.sender, kind: .ticketPreview(draft), timestamp: old.timestamp)
         } else {
             next.messages.append(.init(sender: .bot, kind: .ticketPreview(draft)))
+        }
+    }
+
+    /// PP-4811: bind a late-arriving context into a draft that was built with
+    /// the placeholder (empty) context. Only rebinds placeholder drafts so a
+    /// restored draft's real context is never clobbered. Re-applies the
+    /// barcode default-omit now that the real context may carry a barcode.
+    private func lateBindContext(_ next: inout ConversationState, context: ContextSnapshot) {
+        func rebound(_ draft: TicketDraft) -> TicketDraft? {
+            guard draft.context.isPlaceholder else { return nil }
+            let omissions = draft.omittedFields.union(initialOmittedFields(context))
+            return draft.withContext(context).withOmittedFields(omissions)
+        }
+        switch next.step {
+        case .drafting(let d):
+            if let u = rebound(d) {
+                next.step = .drafting(ticket: u)
+                replaceTicketPreview(&next, with: u)
+            }
+        case .submitting(let d):
+            if let u = rebound(d) { next.step = .submitting(ticket: u) }
+        case .awaitingEscalationFollowUp(let prompt, let d):
+            if let u = rebound(d) { next.step = .awaitingEscalationFollowUp(prompt: prompt, pendingDraft: u) }
+        default:
+            break
         }
     }
 
