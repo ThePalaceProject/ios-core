@@ -592,6 +592,74 @@ final class MyBooksDownloadCenterConcurrencyTests: XCTestCase {
                        "Actor must serialize concurrent enqueues — final count must equal unique inputs (\(books.count)). Kills mutants that race on pendingQueue.append.")
     }
 
+    /// Many concurrent download lifecycles each flip the registry's
+    /// per-book processing flag on (start) then off (barrier/cleanup
+    /// completion) — exactly what BorrowOperation / BookReturnService drive
+    /// around `setProcessing(true, …)` … `setProcessing(false, …)`. The
+    /// registry's processing state is guarded by a reader/writer barrier
+    /// (`BookRegistryStore.performBarrier`) / lock (mock). This pins two
+    /// contracts under real thread contention:
+    ///   1. Liveness — no deadlock: the barrier/lock must not stall when
+    ///      writers from many threads and readers interleave (a generous
+    ///      timeout catches a hang instead of hanging the suite forever).
+    ///   2. Consistency — the final processing set is exactly right: every
+    ///      book that finished its lifecycle (true→false) must NOT be left
+    ///      stuck processing. A lost/racy write to `processingIdentifiers`
+    ///      would strand a book as "processing forever," which is the
+    ///      user-visible spinner-that-never-stops bug.
+    /// Uses `DispatchQueue.concurrentPerform` to get genuine OS-thread
+    /// parallelism into the synchronized write path (stronger than a
+    /// cooperative-pool `withTaskGroup`, which may not truly parallelize).
+    func testConcurrentSetProcessing_fromMultipleDownloads_serializes() async {
+        let books = (0..<10).map { _ in makeBook() }
+        let ids = books.map { $0.identifier }
+
+        // A distinct book that stays processing the whole time — its flag is
+        // set once and never cleared. Verifies the concurrent churn on the
+        // other 10 identifiers does NOT clobber an unrelated in-flight entry.
+        let inflight = makeBook()
+        bookRegistry.setProcessing(true, for: inflight.identifier)
+
+        // Drive ~10 concurrent "download lifecycles" from real parallel
+        // threads. Each thread flips its book on, then off — the terminal
+        // state for all 10 must be "not processing." Repeat the on/off toggle
+        // several times per thread to widen the race window on the shared set.
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            DispatchQueue.global(qos: .userInitiated).async { [bookRegistry] in
+                DispatchQueue.concurrentPerform(iterations: ids.count) { index in
+                    let id = ids[index]
+                    for _ in 0..<20 {
+                        bookRegistry?.setProcessing(true, for: id)
+                        bookRegistry?.setProcessing(false, for: id)
+                    }
+                    // Terminal write for this lifecycle: cleared (download
+                    // finished / cancelled). This is the state that must win.
+                    bookRegistry?.setProcessing(false, for: id)
+                }
+                continuation.resume()
+            }
+        }
+
+        // 1. Liveness: reaching here (the continuation resumed) already proves
+        //    no deadlock. Guard the end-state read behind the shared timeout
+        //    helper so a stalled barrier surfaces as a loud timeout, not a hang.
+        await waitForAsync(timeout: 15.0) { [bookRegistry] in
+            ids.allSatisfy { bookRegistry!.processing(forIdentifier: $0) == false }
+        }
+
+        // 2. Consistency: no lifecycle-completed book is stuck processing.
+        for id in ids {
+            XCTAssertFalse(bookRegistry.processing(forIdentifier: id),
+                           "After a true→false lifecycle from many threads, book \(id) must NOT be left processing — a lost write to processingIdentifiers strands the spinner forever")
+        }
+
+        // 3. Isolation: the concurrent churn must not have touched the
+        //    unrelated in-flight book (kills mutants that swap the per-id
+        //    remove for a removeAll / clobber the whole set on any write).
+        XCTAssertTrue(bookRegistry.processing(forIdentifier: inflight.identifier),
+                      "A book still in-flight must remain processing — concurrent set/clear on OTHER identifiers must not clear it")
+    }
+
     // MARK: - 13. Orchestrator: empty queue is no-op, never calls delegate
 
     /// Kills mutants that make `schedulePendingStartsAsync` call the

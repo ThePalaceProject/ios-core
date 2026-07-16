@@ -157,6 +157,74 @@ final class AudiobookSessionManagerShutdownTests: XCTestCase {
                           "stopPlayback from unbound state must complete in <500ms — guard against F-001 watchdog budget consumption")
     }
 
+    // MARK: - F-001: teardown serializes against off-main remote-command reads
+
+    /// Off-main remote/CarPlay/lock-screen command handlers reach the session
+    /// through the ONE `nonisolated` accessor built for that purpose —
+    /// `hasActiveManagerSnapshot` (an `OSAllocatedUnfairLock`-backed mirror of
+    /// `manager != nil`, written only on the main actor at the bind/unbind
+    /// seams). This is the exact class of read that trips
+    /// `dispatch_assert_queue_fail` if it ever synchronously touches a
+    /// `@MainActor` member off-main — the #1218 Now-Playing artwork crash.
+    ///
+    /// Here we hammer that snapshot from ~5 concurrent background tasks WHILE
+    /// the main actor runs `stopPlayback` (teardown). The off-main reads must
+    /// never trap, the main-actor teardown must complete, and the post-teardown
+    /// state must be coherent: no bound manager, `.idle`, and the off-main
+    /// snapshot converged to `false` (its writer is the `manager` `didSet` that
+    /// teardown fires). If teardown didn't serialize safely — or a refactor
+    /// made the snapshot read a `@MainActor` member off-main — this either
+    /// crashes or leaves the snapshot stuck `true`.
+    func test_concurrentRemoteCommandsAndStopPlayback_teardownSerializes() async {
+        // ~5 background readers simulating remote/CarPlay handlers firing
+        // off-main. They only touch the `nonisolated` snapshot — the single
+        // legal off-main accessor — never a `@MainActor` member. Each spins a
+        // tight read loop so reads overlap the main-actor teardown window.
+        let readerCount = 5
+        let readsPerReader = 200
+        let readers: [Task<Bool, Never>] = (0..<readerCount).map { _ in
+            Task.detached {
+                var sawAnyValueSafely = true
+                for _ in 0..<readsPerReader {
+                    // A synchronous off-main read of an isolated member would
+                    // trap here; reaching the OR proves the read returned.
+                    let snapshot = AudiobookSessionManager.hasActiveManagerSnapshot
+                    sawAnyValueSafely = sawAnyValueSafely && (snapshot || !snapshot)
+                    await Task.yield()
+                }
+                return sawAnyValueSafely
+            }
+        }
+
+        // Drive main-actor teardown concurrently with the off-main readers.
+        // Repeat so the teardown/read windows interleave many times.
+        for _ in 0..<20 {
+            await manager.stopPlayback(dismissPhoneUI: false)
+            await Task.yield()
+        }
+
+        // All readers must have completed without trapping.
+        for reader in readers {
+            let completedSafely = await reader.value
+            XCTAssertTrue(completedSafely,
+                          "Off-main remote-command reads of hasActiveManagerSnapshot must complete without an actor-isolation trap while teardown runs")
+        }
+
+        // Teardown completed and left coherent state.
+        XCTAssertEqual(manager.state, .idle,
+                       "Teardown under concurrent off-main reads must settle in .idle")
+        XCTAssertNil(manager.manager,
+                     "No manager may be bound after teardown")
+        XCTAssertFalse(manager.hasActiveManager,
+                       "hasActiveManager must be false after teardown")
+
+        // The off-main snapshot is the mirror teardown's manager-didSet writes;
+        // after the last stop it must have converged to false. This is the leg
+        // that proves the off-main read path reflects the serialized teardown.
+        XCTAssertFalse(AudiobookSessionManager.hasActiveManagerSnapshot,
+                       "Post-teardown, the off-main snapshot must reflect the unbound manager (false)")
+    }
+
     // MARK: - F-001: validate non-fatal record builder is pure & non-MainActor
 
     /// `buildPlaybackFailureRecord` is the Crashlytics NSError builder

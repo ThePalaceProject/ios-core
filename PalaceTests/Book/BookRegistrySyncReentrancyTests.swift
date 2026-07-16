@@ -184,4 +184,110 @@ final class BookRegistrySyncReentrancyTests: XCTestCase {
             "saveSync must serialize through diskWriteQueue so its 2-record snapshot lands after the in-flight 1-record async writes; an inline (unserialized) write is clobbered by a trailing async save"
         )
     }
+
+    // MARK: - Real bookmark → saveSync chain under concurrency
+
+    /// Drives the ACTUAL production reentrancy path end-to-end:
+    /// `BookmarkManager.setLocationSync` → `store.mutateRegistrySync` →
+    /// `onComplete` (runs inside the `syncQueue` barrier) → `saveSync(for:)`.
+    /// This is the exact call chain of Crashlytics 8afb1c66 — the previous
+    /// reentrancy test invoked `saveSync` through a hand-rolled `mutateRegistrySync`
+    /// onComplete; this one goes through the real `BookmarkManager` seam wired with
+    /// the same `saveSync` closure production uses (`TPPBookRegistry.init` wires
+    /// `saveSync: { sync?.saveSync(for: account) }`). ~20-way concurrent to smoke
+    /// out the barrier-reentrancy hang under contention. Fails by timeout if the
+    /// deadlock returns; asserts the location persisted to disk.
+    func testSetLocationSync_fromMultipleThreads_savesyncSucceeds() throws {
+        let (account, url) = isolatedAccount()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+
+        let book = makeBook(identifier: "setlocsync-1")
+        store.mutateRegistrySync { $0[book.identifier] = TPPBookRegistryRecord(book: book, state: .downloadSuccessful) }
+
+        // Wire the BookmarkManager exactly as TPPBookRegistry.init does: its
+        // `saveSync` closure forwards to the sync manager under test, so
+        // setLocationSync reaches the real saveSync via the onComplete barrier.
+        let bookmarkManager = BookmarkManager(
+            store: store,
+            save: { [syncManager] account in syncManager?.save(for: account) },
+            saveSync: { [syncManager] account in syncManager?.saveSync(for: account) }
+        )
+
+        let iterations = 20
+        let done = expectation(description: "all setLocationSync return")
+        done.expectedFulfillmentCount = iterations
+        DispatchQueue.concurrentPerform(iterations: iterations) { i in
+            let location = TPPBookLocation(locationString: "loc-\(i)", renderer: "test-renderer")
+            bookmarkManager.setLocationSync(location, forIdentifier: book.identifier, account: account)
+            done.fulfill()
+        }
+        wait(for: [done], timeout: 10.0)
+
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: url.path),
+            "the real setLocationSync → saveSync chain must persist the registry to disk"
+        )
+        let data = try Data(contentsOf: url)
+        let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let records = try XCTUnwrap(json[TPPBookRegistryKey.records.rawValue] as? [[String: Any]])
+        XCTAssertEqual(records.count, 1, "the one seeded book must be persisted after the concurrent location writes")
+    }
+
+    // MARK: - Concurrent load() + sync() must not deadlock and must not empty the shelf
+
+    /// Runs `load()` (which takes a `store.mutateRegistry` barrier while it reads
+    /// the on-disk registry) concurrently with `sync()` (which runs its guard /
+    /// credential checks and, on a fresh unsigned-in account, takes the safe
+    /// `currentAccount == nil` early return). The two barrier-adjacent paths race:
+    /// a sync can fire while load's barrier is active. Pre-seeds the on-disk file
+    /// so load has real records to restore — asserting the registry is REBUILT
+    /// from disk (merged, non-empty), never overwritten to empty by the race.
+    /// Fails by timeout if either path deadlocks against the store barrier.
+    func testConcurrentLoadAndSync_bothComplete() {
+        let (account, _) = isolatedAccount()
+        let url = syncManager.registryUrl(for: account)!
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+
+        // Seed the on-disk registry so load() has records to restore. Without a
+        // file on disk load() legitimately settles to an empty registry — the
+        // pre-seed is what lets us distinguish "merged/rebuilt" from
+        // "overwritten to empty by the concurrent sync".
+        let book = makeBook(identifier: "loadsync-1")
+        store.mutateRegistrySync { $0[book.identifier] = TPPBookRegistryRecord(book: book, state: .downloadSuccessful) }
+        syncManager.saveSync(for: account)
+        store.removeAll()
+
+        let loadDone = expectation(description: "load completes")
+        let syncDone = expectation(description: "sync completes")
+
+        DispatchQueue.concurrentPerform(iterations: 2) { i in
+            if i == 0 {
+                self.syncManager.load(account: account, setState: { _ in }) {
+                    loadDone.fulfill()
+                }
+            } else {
+                // sync() at currentState == .loaded runs its state guard + the
+                // `currentAccount` lookup concurrently with load's barrier — the
+                // reentrancy-adjacent surface under test. On a fresh unsigned-in
+                // account it takes the safe early return (`currentAccount == nil`)
+                // and returns SYNCHRONOUSLY without invoking `completion`, so we
+                // signal on the call returning — its returning at all (not
+                // hanging) is the deadlock check.
+                self.syncManager.sync(
+                    currentState: .loaded,
+                    setState: { _ in },
+                    completion: { _, _ in }
+                )
+                syncDone.fulfill()
+            }
+        }
+        wait(for: [loadDone, syncDone], timeout: 10.0)
+
+        // Merged/rebuilt from disk, not overwritten to empty by the concurrent sync.
+        let restored = store.readRegistry { $0[book.identifier] }
+        XCTAssertNotNil(
+            restored,
+            "load() must rebuild the seeded record from disk; the concurrent sync must not have overwritten the shelf to empty"
+        )
+    }
 }
