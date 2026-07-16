@@ -1,7 +1,19 @@
 import Foundation
 import UIKit
-import ReadiumShared
-import ReadiumStreamer
+// `@preconcurrency` on the Readium imports: `AssetRetriever` (ReadiumShared) and
+// `PublicationOpener` (ReadiumStreamer) are non-`Sendable` classes whose async
+// `retrieve(...)` / `open(...)` are `nonisolated`. `openPublication(...)` is
+// `@MainActor`, so calling those methods on the stored `assetRetriever` /
+// `publicationOpener` sends a non-Sendable value off the main actor —
+// `complete`/archive mode reports "sending 'self.assetRetriever' /
+// 'self.publicationOpener' risks causing data races". Both objects are created
+// once in `init` and never mutated; `@preconcurrency import` is the honest
+// ceiling for Readium types not yet Sendable-audited upstream — the same pattern
+// the sibling Reader2 files use (AdobeDRMContentProtection, TPPReaderTOCBusinessLogic,
+// TPPPublicationSpeechSynthesizer). No behavior change; when Readium annotates
+// these `Sendable`, drop `@preconcurrency`.
+@preconcurrency import ReadiumShared
+@preconcurrency import ReadiumStreamer
 
 /// The LibraryService makes a book ready for presentation without dealing
 /// with the specifics of how a book should be presented.
