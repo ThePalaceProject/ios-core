@@ -525,7 +525,11 @@ private enum TestAccountFactory {
 /// Thread-safe counter used by the race-guard test to track whether the
 /// post-resume commit branch and post-resume side effects fired. NSLock
 /// is sufficient — we only increment from inside a single Task body.
-private final class TestAtomicCounter {
+///
+/// `@unchecked Sendable`: the only mutable state (`_value`) is read and written
+/// exclusively under `lock`, so instances cross into the `@Sendable` Task
+/// closure safely. Swift 6 requires this to be explicit.
+private final class TestAtomicCounter: @unchecked Sendable {
     private let lock = NSLock()
     private var _value: Int = 0
 
