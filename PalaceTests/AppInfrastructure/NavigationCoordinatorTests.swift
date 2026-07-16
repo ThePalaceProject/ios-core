@@ -107,6 +107,20 @@ final class NavigationCoordinatorTests: XCTestCase {
         XCTAssertEqual(coordinator.path.count, 0, "Path should be empty after popToRoot")
     }
 
+    func testNavigationCoordinator_PopToRootUnanimated_ClearsEntirePath() {
+        // The tab-switch handler pops WITHOUT animation (so the reset doesn't
+        // race the TabView's own cross-tab transition and tear). The end state
+        // must still be a fully-cleared stack — same as the animated pop.
+        coordinator.push(.bookDetail(BookRoute(id: "book-1")))
+        coordinator.push(.bookDetail(BookRoute(id: "book-2")))
+        XCTAssertEqual(coordinator.path.count, 2)
+
+        coordinator.popToRoot(animated: false)
+
+        XCTAssertEqual(coordinator.path.count, 0,
+                       "popToRoot(animated: false) must clear the entire path, not no-op")
+    }
+
     func testNavigationCoordinator_PopToRoot_OnEmptyPath_DoesNotCrash() {
         // Arrange
         XCTAssertTrue(coordinator.path.isEmpty)

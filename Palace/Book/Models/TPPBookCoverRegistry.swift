@@ -254,6 +254,20 @@ actor TPPBookCoverRegistry {
         return await placeholder(for: book, displayHeight: displayHeight)
     }
 
+    /// Target decode dimension (in pixels) for a cover shown at `displayPoints`.
+    ///
+    /// Decodes at EXACTLY the display pixel box (1:1) — NOT oversampled. Handing
+    /// SwiftUI a bitmap larger than the box it's drawn into forces Core Animation
+    /// to minify a non-mipmapped texture on every frame; as the cell scrolls the
+    /// subpixel sample position shifts each frame, which is precisely the
+    /// shimmer/aliasing seen on cover edges during scroll. A 1:1 decode makes the
+    /// blit exact. Clamped to 1200px to bound memory on very large display sizes.
+    ///
+    /// Pure + static so the sizing math is unit-testable without a decode.
+    static func decodePixels(displayPoints: CGFloat, scale: CGFloat) -> CGFloat {
+        min(displayPoints * scale, 1200)
+    }
+
     /// Fetches a cover decoded at the minimum pixel size needed for a given display size.
     /// Pass the view's point height (or width); the method converts to pixels using screen scale
     /// and clamps to a sensible max. Use this instead of `coverImage(for:)` when you know
@@ -266,7 +280,7 @@ actor TPPBookCoverRegistry {
             return await coverImage(for: book)
         }
         let scale = await MainActor.run { UIScreen.main.scale }
-        let neededPixels = min(displayPoints * scale * 1.5, 1200) // 1.5× for sharp rendering
+        let neededPixels = Self.decodePixels(displayPoints: displayPoints, scale: scale)
         let key = "\(book.identifier)_\(Int(neededPixels))px"
 
         if let cached = await imageCache.getAsync(for: key) { return cached }

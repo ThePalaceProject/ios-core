@@ -497,7 +497,16 @@ final class CatalogViewModel: ObservableObject {
 // MARK: - Models
 
 struct CatalogLaneModel: Identifiable {
-  let id = UUID()
+  /// Content-derived identity: a lane IS its title + group href within a feed.
+  ///
+  /// Previously a fresh `UUID()` per instance, so every re-map (facet apply,
+  /// registry update, entry-point switch) minted brand-new identities and
+  /// `ForEach` tore down + rebuilt every lane — each horizontal ScrollView and
+  /// all its covers — instead of diffing in place, flashing the whole feed. The
+  /// codebase already treats `title` + `moreURL` as a lane's identity (the
+  /// `catalogLaneMore(title:url:)` route), so deriving `id` from them is stable
+  /// across re-maps and consistent with existing assumptions.
+  var id: String { "\(title)|\(moreURL?.absoluteString ?? "")" }
   let title: String
   let books: [TPPBook]
   let moreURL: URL?

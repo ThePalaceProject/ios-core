@@ -31,6 +31,14 @@ struct BookImageView: View {
             if let coverImage = book.coverImage ?? book.thumbnailImage {
                 Image(uiImage: coverImage)
                     .resizable()
+                    // High-quality resampling + edge antialiasing. Covers can
+                    // land at fractional-point frames inside a Lazy stack; without
+                    // these the GPU's default minification shimmers/jaggies the
+                    // cover edges as the cell scrolls. Paired with the 1:1 decode
+                    // in `TPPBookCoverRegistry.decodePixels`, this settles scroll
+                    // aliasing on cover art.
+                    .interpolation(.high)
+                    .antialiased(true)
                     .aspectRatio(contentMode: .fit)
                     .modifier(SettledCoverShadow(radius: coverShadowRadius))
                     .transition(.opacity)

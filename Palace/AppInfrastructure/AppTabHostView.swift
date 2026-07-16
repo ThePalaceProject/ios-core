@@ -377,14 +377,12 @@ struct AppTabHostView: View {
     /// Runs on tab selection change: pop-to-root, dismiss top VC, sync, announce.
     /// Extracted so the iOS 18+ and legacy builders share one implementation.
     func handleTabSelectionChange(to newTab: AppTab) {
-        // Respect reduce motion accessibility setting
-        if UIAccessibility.isReduceMotionEnabled {
-            appContainer.navigationCoordinatorHub.coordinator?.popToRoot()
-        } else {
-            withAnimation(.easeInOut) {
-                appContainer.navigationCoordinatorHub.coordinator?.popToRoot()
-            }
-        }
+        // Reset the stack WITHOUT animation: an animated pop-to-root here plays
+        // concurrently with SwiftUI's own cross-tab transition, and the two
+        // animations over overlapping view trees tear/flicker on rapid tab
+        // switching. Instantaneous under the tab swap reads clean. (PP — scroll/
+        // nav rendering glitches.)
+        appContainer.navigationCoordinatorHub.coordinator?.popToRoot(animated: false)
         if let appDelegate = UIApplication.shared.delegate as? TPPAppDelegate,
            let top = appDelegate.topViewController() {
             top.dismiss(animated: true)

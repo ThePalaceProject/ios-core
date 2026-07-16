@@ -184,11 +184,19 @@ final class NavigationCoordinator: ObservableObject {
         pop()
     }
 
-    func popToRoot() {
+    /// Pops the entire stack back to the root.
+    ///
+    /// `animated: false` mutates the path with NO animation — used by the
+    /// tab-switch handler. An animated path collapse there runs concurrently
+    /// with SwiftUI's own cross-tab transition; the two animations play over
+    /// overlapping view trees and tear/flicker on rapid tab switching. Under a
+    /// tab swap the reset should be instantaneous (hidden by the tab
+    /// transition), so callers on that path pass `animated: false`.
+    func popToRoot(animated: Bool = true) {
         guard !path.isEmpty else { return }
         isTopRouteAudio = false
         // Respect reduce motion accessibility setting
-        if UIAccessibility.isReduceMotionEnabled {
+        if !animated || UIAccessibility.isReduceMotionEnabled {
             path.removeLast(path.count)
         } else {
             withAnimation(.easeInOut) {
