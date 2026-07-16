@@ -138,9 +138,11 @@ enum BotUI {
         }
     }
 
-    /// Full-width destructive-tinted action. Used for "Cancel" in ticket
-    /// preview so it reads as the de-escalating choice without looking
-    /// like a primary CTA.
+    /// Full-width secondary action, neutral-tinted. Used for "Discard" in the
+    /// ticket preview so it reads as the de-escalating way out and clearly
+    /// recedes behind the primary Send CTA. Deliberately NOT red — discarding a
+    /// draft support ticket is not a destructive account action, so a
+    /// destructive color would misuse the convention and needlessly alarm.
     struct CancelButton: View {
         let title: String
         let action: () -> Void
@@ -159,14 +161,47 @@ enum BotUI {
                     .frame(maxWidth: .infinity)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 11)
-                    .foregroundStyle(Color(.systemBlue))
-                    .background(Color(.systemBlue).opacity(0.12))
+                    .foregroundStyle(Color(.secondaryLabel))
+                    .background(Color(.secondarySystemFill))
                     .clipShape(Capsule())
             }
             .buttonStyle(.plain)
             .accessibilityLabel(title)
         }
     }
+
+    // MARK: - Monochrome toggle (PP-4816)
+
+    /// Color-free, high-contrast include/omit switch for the ticket preview.
+    /// A native switch signals "on" only with a COLORED track; in the
+    /// monochrome chrome a white `.tint` track under a white knob left the
+    /// state ambiguous. This encodes on/off with no color: on → filled `label`
+    /// track + a dark knob that pops against it; off → hollow track with a
+    /// `separator` outline + a muted knob. Renders just the compact switch
+    /// (callers supply the row label); `accessibilityRepresentation` keeps
+    /// native switch semantics for VoiceOver.
+    struct MonochromeToggleStyle: ToggleStyle {
+        func makeBody(configuration: Configuration) -> some View {
+            Capsule()
+                .fill(configuration.isOn ? Color(.label) : Color(.tertiarySystemFill))
+                .frame(width: 46, height: 28)
+                .overlay(Capsule().strokeBorder(Color(.separator), lineWidth: 1))
+                .overlay(
+                    Circle()
+                        .fill(configuration.isOn ? Color(.systemBackground) : Color(.secondaryLabel))
+                        .frame(width: 22, height: 22)
+                        .offset(x: configuration.isOn ? 9 : -9)
+                )
+                .contentShape(Capsule())
+                .onTapGesture { configuration.isOn.toggle() }
+                .accessibilityRepresentation {
+                    Toggle(isOn: configuration.$isOn) { configuration.label }
+                }
+        }
+    }
+
+    /// Shared instance for the ticket-preview include/omit switches.
+    static let monochromeToggle = MonochromeToggleStyle()
 
     /// Confirming Yes/No pair for guided-step cards. Green for resolved,
     /// blue-tinted for "still broken" — never red (we're not confirming

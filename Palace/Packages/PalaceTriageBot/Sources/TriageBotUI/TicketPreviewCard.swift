@@ -82,7 +82,7 @@ struct TicketPreviewCard: View {
             }
 
             HStack(spacing: BotUI.Spacing.small) {
-                BotUI.CancelButton { onAction(.cancel) }
+                BotUI.CancelButton(title: "Discard") { onAction(.cancel) }
                 BotUI.PrimaryButton(title: "Send", systemImage: "paperplane.fill") {
                     onAction(.send)
                 }
@@ -107,15 +107,19 @@ struct TicketPreviewCard: View {
         let included = !draft.omittedFields.contains(.logs)
         let excerpt = Array(draft.context.recentLogLines.prefix(3))
         VStack(alignment: .leading, spacing: 4) {
-            Toggle(isOn: Binding(
-                get: { included },
-                set: { onAction(.omitLogs(!$0)) }
-            )) {
+            HStack(spacing: BotUI.Spacing.small) {
                 Text("Recent logs (\(draft.context.recentLogLines.count) lines · redacted)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Toggle("", isOn: Binding(
+                    get: { included },
+                    set: { onAction(.omitLogs(!$0)) }
+                ))
+                .labelsHidden()
+                .toggleStyle(BotUI.monochromeToggle)
+                .accessibilityLabel("Include recent logs in the ticket")
             }
-            .tint(.primary)
             if included {
                 VStack(alignment: .leading, spacing: 4) {
                     ForEach(Array(excerpt.enumerated()), id: \.offset) { _, line in
@@ -181,7 +185,7 @@ struct TicketPreviewCard: View {
                 set: { _ in onAction(.toggleField(field)) }
             ))
             .labelsHidden()
-            .tint(.primary)
+            .toggleStyle(BotUI.monochromeToggle)
             .accessibilityLabel("Include \(label) in the ticket")
         }
     }
