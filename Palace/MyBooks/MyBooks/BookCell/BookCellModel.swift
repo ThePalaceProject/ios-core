@@ -336,6 +336,42 @@ class BookCellModel: ObservableObject {
             .store(in: &cancellables)
     }
 
+    /// Latch for the ONE download-state revert that is provably a transient
+    /// re-read and never a real transition (fix/audiobook-first-open-flicker):
+    /// once a book has surfaced `.downloadSuccessful` (Listen), a subsequent
+    /// `.downloading` re-read is the LCP early-ready artifact (audio still
+    /// fetching after the license landed) — hold Listen instead of bouncing to
+    /// Cancel. Safe because a REAL re-download never goes
+    /// `.downloadSuccessful → .downloading` directly — eviction/re-fulfill route
+    /// through `.downloadNeeded` first (`DiskBudgetManager` LRU sets
+    /// `.downloadNeeded`; SAML login-cancel sets `.downloadNeeded`). Every other
+    /// state — incl. that real `.downloadNeeded` drop and any cancel/return/fail —
+    /// drops the latch and passes through, so the label always reflects a genuine
+    /// change (no stranded Listen on evicted content).
+    ///
+    /// Deliberately NARROW: the optimistic-`.downloading`↔`.downloadNeeded`
+    /// (#2) and throttle-forward-flip (#1) flickers are timing artifacts that a
+    /// state-only latch cannot separate from a real cancel — deferred (see
+    /// contract "Not done").
+    private var listenLatched = false
+
+    /// Holds Listen against a transient post-success `.downloading` re-read;
+    /// passes every other state through and drops the latch. Applied in the
+    /// button pipeline (`setupStableButtonState`) only — NOT in the shared
+    /// `computeButtonState`, so `validateStateConsistency()` / init stay pure.
+    private func clampListenAgainstTransientDownloading(_ state: TPPBookState) -> TPPBookState {
+        switch state {
+        case .downloadSuccessful:
+            listenLatched = true
+            return state
+        case .downloading where listenLatched:
+            return .downloadSuccessful
+        default:
+            listenLatched = false
+            return state
+        }
+    }
+
     private func computeButtonState(book: TPPBook, registryState: TPPBookState, isManagingHold: Bool, override: TPPBookState?) -> BookButtonState {
         return Self.computeButtonState(book: book, registryState: registryState, isManagingHold: isManagingHold, override: override, bookRegistry: bookRegistry)
     }
@@ -365,7 +401,12 @@ class BookCellModel: ObservableObject {
     private func setupStableButtonState() {
         Publishers.CombineLatest4($book, $registryState, $isManagingHold, $localBookStateOverride)
             .map { [weak self] book, state, isManaging, override in
-                self?.computeButtonState(book: book, registryState: state, isManagingHold: isManaging, override: override) ?? .unsupported
+                guard let self else { return .unsupported }
+                // Hold Listen against a transient post-success `.downloading`
+                // re-read (fix/audiobook-first-open-flicker); the clamp lives here
+                // (pipeline) so init / validateStateConsistency stay side-effect-free.
+                let clamped = self.clampListenAgainstTransientDownloading(state)
+                return Self.computeButtonState(book: book, registryState: clamped, isManagingHold: isManaging, override: override, bookRegistry: self.bookRegistry)
             }
             .removeDuplicates()
             // Use throttle instead of debounce - throttle emits immediately on first value,

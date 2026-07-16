@@ -418,6 +418,35 @@ final class BookDetailViewModel: ObservableObject {
             .store(in: &cancellables)
     }
 
+    /// Latch for the ONE download-state revert that is provably a transient
+    /// re-read and never a real transition (fix/audiobook-first-open-flicker):
+    /// once the book has surfaced `.downloadSuccessful` (Listen), a subsequent
+    /// `.downloading` re-read is the LCP early-ready artifact — hold Listen
+    /// instead of bouncing to Cancel. Safe because a REAL re-download never goes
+    /// `.downloadSuccessful → .downloading` directly (eviction/re-fulfill route
+    /// through `.downloadNeeded` first). Every other state drops the latch and
+    /// passes through, so the label always reflects a genuine change (no stranded
+    /// Listen on evicted content). NARROW by design: the optimistic-`.downloading`
+    /// ↔`.downloadNeeded` (#2) + throttle-forward-flip (#1) are timing artifacts a
+    /// state-only latch can't separate from a real cancel — deferred (contract).
+    private var listenLatched = false
+
+    /// Holds Listen against a transient post-success `.downloading`; passes every
+    /// other state through and drops the latch. Applied in the pipeline only, so
+    /// init / consumers of the pure `computeButtonState` are side-effect-free.
+    private func clampListenAgainstTransientDownloading(_ state: TPPBookState) -> TPPBookState {
+        switch state {
+        case .downloadSuccessful:
+            listenLatched = true
+            return state
+        case .downloading where listenLatched:
+            return .downloadSuccessful
+        default:
+            listenLatched = false
+            return state
+        }
+    }
+
     private func computeButtonState(book: TPPBook, state: TPPBookState, isManagingHold: Bool) -> BookButtonState {
         let availability = book.defaultAcquisition?.availability
         // Only count download/borrow-related processing, not return processing
@@ -436,7 +465,12 @@ final class BookDetailViewModel: ObservableObject {
         // even though the value itself isn't used in computeButtonState anymore
         Publishers.CombineLatest4($book, $bookState, $isManagingHold, $isProcessing)
             .map { [weak self] book, state, isManaging, _ in
-                self?.computeButtonState(book: book, state: state, isManagingHold: isManaging) ?? .unsupported
+                guard let self else { return .unsupported }
+                // Hold Listen against a transient post-success `.downloading`
+                // (fix/audiobook-first-open-flicker); clamp in the pipeline so the
+                // shared computeButtonState stays pure.
+                let clamped = self.clampListenAgainstTransientDownloading(state)
+                return self.computeButtonState(book: book, state: clamped, isManagingHold: isManaging)
             }
             .removeDuplicates()
             // Use throttle instead of debounce - throttle emits immediately on first value,
