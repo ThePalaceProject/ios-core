@@ -125,7 +125,9 @@ enum TriageBotFactory {
                 libraryName: account?.name,
                 libraryUUID: account?.uuid,
                 distributor: nil,        // Phase 2: derive from catalog metadata
-                authType: nil            // Phase 2: derive from currentAuthentication
+                authType: nil,           // Phase 2: derive from currentAuthentication
+                // PP-4807: raw barcode — hashed by the redactor, omitted by default.
+                barcode: TPPUserAccount.sharedAccount().barcode
             )
         }
     }
@@ -153,7 +155,9 @@ private extension TriageBotFactory {
             contextProvider: contextProvider,
             ticketGateway: gateway,
             telemetry: sink,
-            fallbackClassifier: fallbackClassifier
+            fallbackClassifier: fallbackClassifier,
+            // PP-4808: persist a failed ticket so it can be re-offered next open.
+            pendingDraftStore: UserDefaultsPendingDraftStore()
         )
     }
 }

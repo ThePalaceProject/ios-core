@@ -20,17 +20,22 @@ public final class DefaultIosContextProvider: ContextProvider {
         public let libraryUUID: String?
         public let distributor: String?
         public let authType: String?
+        /// Raw library card barcode. Hashed by ContextRedactor before it lands
+        /// in state and omitted from the ticket by default (PP-4807).
+        public let barcode: String?
 
         public init(
             libraryName: String? = nil,
             libraryUUID: String? = nil,
             distributor: String? = nil,
-            authType: String? = nil
+            authType: String? = nil,
+            barcode: String? = nil
         ) {
             self.libraryName = libraryName
             self.libraryUUID = libraryUUID
             self.distributor = distributor
             self.authType = authType
+            self.barcode = barcode
         }
     }
 
@@ -88,7 +93,8 @@ public final class DefaultIosContextProvider: ContextProvider {
             lowPowerModeEnabled: ProcessInfo.processInfo.isLowPowerModeEnabled,
             appUptimeSeconds: Int64(now.timeIntervalSince(Self.processStartTime)),
             buildChannel: detectBuildChannel(),
-            availableMemoryMB: availableMemoryMB()
+            availableMemoryMB: availableMemoryMB(),
+            libraryBarcode: fields.barcode
         )
     }
 

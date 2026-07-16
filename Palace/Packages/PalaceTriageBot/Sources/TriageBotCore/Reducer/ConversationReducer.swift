@@ -242,7 +242,8 @@ public struct ConversationReducer: Sendable {
                 matchedEntryId: entryId,
                 context: next.context ?? emptyContext(),
                 helpspotTags: [entry.helpspotTag ?? "triage-bot-known-issue", "user-requested-followup"],
-                priority: .low
+                priority: .low,
+                omittedFields: initialOmittedFields(next.context)
             )
             // Route through the follow-up gate too — even when the user
             // explicitly bails on the workaround, the entry's structured
@@ -489,6 +490,39 @@ public struct ConversationReducer: Sendable {
             next.messages.append(.init(sender: .bot, kind: .categoryChips))
             effects.append(.emitTelemetry(.init(name: "triage_ticket_cancel_returned_to_chips")))
 
+        case .userToggledDraftField(let field):
+            guard case .drafting(let draft) = next.step else { return (next, effects) }
+            var omitted = draft.omittedFields
+            let nowOmitted: Bool
+            if omitted.contains(field) { omitted.remove(field); nowOmitted = false }
+            else { omitted.insert(field); nowOmitted = true }
+            let updated = draft.withOmittedFields(omitted)
+            next.step = .drafting(ticket: updated)
+            replaceTicketPreview(&next, with: updated)
+            effects.append(.emitTelemetry(.init(
+                name: "triage_draft_field_toggled",
+                parameters: ["field": field.rawValue, "omitted": String(nowOmitted)]
+            )))
+
+        case .userOmittedLogs(let omit):
+            guard case .drafting(let draft) = next.step else { return (next, effects) }
+            var omitted = draft.omittedFields
+            if omit { omitted.insert(.logs) } else { omitted.remove(.logs) }
+            let updated = draft.withOmittedFields(omitted)
+            next.step = .drafting(ticket: updated)
+            replaceTicketPreview(&next, with: updated)
+            effects.append(.emitTelemetry(.init(
+                name: "triage_draft_field_toggled",
+                parameters: ["field": "logs", "omitted": String(omit)]
+            )))
+
+        case .userEditedDescription(let text):
+            guard case .drafting(let draft) = next.step else { return (next, effects) }
+            // PP-4805: an edited description is still patron free text — redact it.
+            let updated = draft.withUserDescription(redactor.redactLine(text))
+            next.step = .drafting(ticket: updated)
+            replaceTicketPreview(&next, with: updated)
+
         case .ticketSubmitted(let receipt):
             next.step = .sent(receipt: receipt)
             next.messages.append(.init(sender: .bot, kind: .ticketReceipt(receipt)))
@@ -595,7 +629,8 @@ public struct ConversationReducer: Sendable {
                 ],
                 priority: pendingDraft.priority,
                 resolutionTrace: pendingDraft.resolutionTrace,
-                escalationFollowUp: EscalationFollowUpAnswer(prompt: prompt, answer: redactedAnswer)
+                escalationFollowUp: EscalationFollowUpAnswer(prompt: prompt, answer: redactedAnswer),
+                omittedFields: pendingDraft.omittedFields
             )
             next.step = .drafting(ticket: enriched)
             next.inputText = ""
@@ -655,6 +690,25 @@ public struct ConversationReducer: Sendable {
         }
     }
 
+    /// Replaces the most recent `.ticketPreview` message in place so the card
+    /// re-renders with the edited draft without duplicating the row (PP-4807).
+    /// Appends one if none exists yet.
+    private func replaceTicketPreview(_ next: inout ConversationState, with draft: TicketDraft) {
+        if let idx = next.messages.lastIndex(where: { if case .ticketPreview = $0.kind { return true }; return false }) {
+            let old = next.messages[idx]
+            next.messages[idx] = ConversationMessage(id: old.id, sender: old.sender, kind: .ticketPreview(draft), timestamp: old.timestamp)
+        } else {
+            next.messages.append(.init(sender: .bot, kind: .ticketPreview(draft)))
+        }
+    }
+
+    /// Initial omit set for a freshly-assembled draft. The library barcode is
+    /// opt-IN — captured (as a hash) but left out of the outgoing ticket by
+    /// default (PP-4807). Everything else defaults to included.
+    private func initialOmittedFields(_ context: ContextSnapshot?) -> Set<TicketField> {
+        (context?.libraryBarcode != nil) ? [.barcode] : []
+    }
+
     private func lastUserText(_ messages: [ConversationMessage]) -> String? {
         for message in messages.reversed() {
             if message.sender == .user, case .text(let text) = message.kind {
@@ -688,7 +742,8 @@ public struct ConversationReducer: Sendable {
             matchedEntryId: matchedEntryId,
             context: next.context ?? emptyContext(),
             helpspotTags: ["triage-bot-\(tagSuffix)"],
-            priority: .normal
+            priority: .normal,
+            omittedFields: initialOmittedFields(next.context)
         )
         askEscalationFollowUpOrDraft(
             state: &next,
@@ -755,7 +810,8 @@ public struct ConversationReducer: Sendable {
             context: next.context ?? emptyContext(),
             helpspotTags: [helpspotTag, "guided-flow-\(trace.outcome.rawValue)"],
             priority: .normal,
-            resolutionTrace: trace
+            resolutionTrace: trace,
+            omittedFields: initialOmittedFields(next.context)
         )
         // Same follow-up gate as transitionToDrafting — if the entry has
         // an escalationFollowUp, ask it first; otherwise go straight to

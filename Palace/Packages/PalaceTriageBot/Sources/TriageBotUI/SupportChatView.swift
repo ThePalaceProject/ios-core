@@ -194,6 +194,12 @@ public struct SupportChatView: View {
             viewModel.send(.userConfirmedTicketSubmit)
         case .cancel:
             viewModel.send(.userCancelledTicketSubmit)
+        case .toggleField(let field):
+            viewModel.send(.userToggledDraftField(field))
+        case .omitLogs(let omit):
+            viewModel.send(.userOmittedLogs(omit))
+        case .editDescription(let text):
+            viewModel.send(.userEditedDescription(text))
         }
     }
 

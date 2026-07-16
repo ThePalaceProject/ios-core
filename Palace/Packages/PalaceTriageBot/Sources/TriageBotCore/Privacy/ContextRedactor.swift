@@ -31,7 +31,20 @@ public struct ContextRedactor: Sendable {
             // a symbol name can accidentally carry a typed secret. Map them
             // through the same line redactor defensively (PP-4805).
             crashlyticsFingerprints: snapshot.crashlyticsFingerprints.map(redactLine),
-            capturedAt: snapshot.capturedAt
+            capturedAt: snapshot.capturedAt,
+            // Additive diagnostics are non-sensitive and pass through unchanged.
+            // (Previously dropped here because the ContextSnapshot init defaults
+            // them to nil — that silently stripped them from every ticket; PP-4807
+            // restores them alongside the new barcode handling.)
+            audioOutputRoute: snapshot.audioOutputRoute,
+            lowPowerModeEnabled: snapshot.lowPowerModeEnabled,
+            appUptimeSeconds: snapshot.appUptimeSeconds,
+            buildChannel: snapshot.buildChannel,
+            availableMemoryMB: snapshot.availableMemoryMB,
+            // PP-4807: the raw library barcode never lands in state — hash it
+            // immediately (like libraryUUID). Support gets a stable cluster id,
+            // never the card number. Still omitted from the ticket by default.
+            libraryBarcode: snapshot.libraryBarcode.map(hashIdentifier)
         )
     }
 

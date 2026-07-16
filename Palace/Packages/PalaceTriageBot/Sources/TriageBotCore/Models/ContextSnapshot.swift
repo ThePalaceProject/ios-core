@@ -52,6 +52,12 @@ public struct ContextSnapshot: Codable, Equatable, Sendable {
     /// correlates with audiobook playback drops and reader rendering issues.
     public let availableMemoryMB: Int64?
 
+    /// The patron's library card barcode — captured for support to look up the
+    /// account, but HASHED by the redactor before it lands here and OMITTED
+    /// from the outgoing ticket by default (PP-4807). The user opts in from the
+    /// preview; even then only the hash is sent, never the raw card number.
+    public let libraryBarcode: String?
+
     public init(
         appVersion: String,
         appBuild: String,
@@ -71,7 +77,8 @@ public struct ContextSnapshot: Codable, Equatable, Sendable {
         lowPowerModeEnabled: Bool? = nil,
         appUptimeSeconds: Int64? = nil,
         buildChannel: String? = nil,
-        availableMemoryMB: Int64? = nil
+        availableMemoryMB: Int64? = nil,
+        libraryBarcode: String? = nil
     ) {
         self.appVersion = appVersion
         self.appBuild = appBuild
@@ -92,5 +99,6 @@ public struct ContextSnapshot: Codable, Equatable, Sendable {
         self.appUptimeSeconds = appUptimeSeconds
         self.buildChannel = buildChannel
         self.availableMemoryMB = availableMemoryMB
+        self.libraryBarcode = libraryBarcode
     }
 }

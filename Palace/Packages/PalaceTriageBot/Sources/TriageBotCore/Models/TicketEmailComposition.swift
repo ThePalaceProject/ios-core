@@ -25,7 +25,10 @@ public enum TicketEmailComposition {
 
     /// Email body. Short by design — the full payload is in the JSON
     /// attachment. Keeps the support inbox readable.
-    public static func body(for draft: TicketDraft) -> String {
+    public static func body(for rawDraft: TicketDraft) -> String {
+        // PP-4807: honor the patron's omit choices at the source so an omitted
+        // field never reaches the wire, not just the UI.
+        let draft = rawDraft.sanitizedForSubmission()
         var lines: [String] = []
         lines.append("Hi Palace support,")
         lines.append("")
@@ -69,6 +72,7 @@ public enum TicketEmailComposition {
         lines.append("  Device: \(ctx.deviceModel)")
         lines.append("  iOS: \(ctx.osVersion)")
         if let library = ctx.libraryName { lines.append("  Library: \(library)") }
+        if let barcode = ctx.libraryBarcode { lines.append("  Library card (hashed): \(barcode)") }
         if let dist = ctx.distributor { lines.append("  Distributor: \(dist)") }
         if let auth = ctx.authType { lines.append("  Auth: \(auth)") }
         if let net = ctx.networkState { lines.append("  Network: \(net)") }
@@ -95,7 +99,10 @@ public enum TicketEmailComposition {
     /// Builds the attachments shipped with the email. JSON carries the full
     /// payload for automation; text file carries the log tail in a form
     /// support can scan without un-zipping.
-    public static func attachments(for draft: TicketDraft) -> [Attachment] {
+    public static func attachments(for rawDraft: TicketDraft) -> [Attachment] {
+        // PP-4807: encode the sanitized draft so omitted fields are ABSENT from
+        // the JSON attachment (nil optionals are dropped by encodeIfPresent).
+        let draft = rawDraft.sanitizedForSubmission()
         var result: [Attachment] = []
 
         let encoder = JSONEncoder()

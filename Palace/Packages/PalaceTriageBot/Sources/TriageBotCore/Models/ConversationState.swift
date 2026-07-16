@@ -134,6 +134,14 @@ public enum ConversationAction: Equatable, Sendable {
     /// "just file a ticket" mid-walkthrough). Reducer records the trace
     /// with outcome=abandoned and escalates.
     case userTappedAbandonGuidedFlow
+    /// PP-4807 preview editor: toggle whether an optional field is included
+    /// in the outgoing ticket. Only valid while in `.drafting`.
+    case userToggledDraftField(TicketField)
+    /// PP-4807 preview editor: the user edited the description text before
+    /// sending. The reducer redacts it (PP-4805) and updates the preview.
+    case userEditedDescription(String)
+    /// PP-4807 preview editor: explicit include/omit for the log excerpt.
+    case userOmittedLogs(Bool)
     case userConfirmedTicketSubmit
     case userCancelledTicketSubmit
     case ticketSubmitted(TicketReceipt)
