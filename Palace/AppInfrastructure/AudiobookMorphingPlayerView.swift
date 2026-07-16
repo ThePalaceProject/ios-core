@@ -47,6 +47,13 @@ struct AudiobookMorphingPlayerView: View {
     /// is exactly the historical hardcoded behavior. See `TabBarModernization`.
     @Environment(\.miniPlayerTabBarInset) private var injectedTabBarInset
 
+    /// PP-4712: the patron's configured skip intervals, read reactively from the
+    /// same UserDefaults keys the settings screen writes — so the transport
+    /// glyphs (`gobackward.N` / `goforward.N`) and their VoiceOver labels reflect
+    /// the current value and update live when it changes in Settings.
+    @AppStorage(AudiobookSkipIntervalSettings.forwardKey) private var skipForwardInterval: Int = AudiobookSkipIntervalSettings.defaultInterval
+    @AppStorage(AudiobookSkipIntervalSettings.backKey) private var skipBackInterval: Int = AudiobookSkipIntervalSettings.defaultInterval
+
     /// Namespace for the cover's `matchedGeometryEffect` — the single element
     /// that morphs between the full and mini layouts.
     @Namespace private var morphNamespace
@@ -492,7 +499,7 @@ struct AudiobookMorphingPlayerView: View {
     /// the system appearance).
     private func transportRow(metrics: ControlMetrics) -> some View {
         HStack(spacing: metrics.transportSpacing) {
-            transportButton("gobackward.30", label: Strings.Generic.skipBack30, size: metrics.skipGlyph) {
+            transportButton("gobackward.\(skipBackInterval)", label: Strings.Generic.skipBackSeconds(skipBackInterval), size: metrics.skipGlyph) {
                 audiobookSession.skipBack()
             }
             Button(action: { audiobookSession.togglePlayPause() }) {
@@ -507,7 +514,7 @@ struct AudiobookMorphingPlayerView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(presenter.isPlaying ? Strings.Generic.pauseAudiobook : Strings.Generic.playAudiobook)
-            transportButton("goforward.30", label: Strings.Generic.skipForward30, size: metrics.skipGlyph) {
+            transportButton("goforward.\(skipForwardInterval)", label: Strings.Generic.skipForwardSeconds(skipForwardInterval), size: metrics.skipGlyph) {
                 audiobookSession.skipForward()
             }
         }
@@ -813,12 +820,12 @@ struct AudiobookMorphingPlayerView: View {
                 Spacer(minLength: 2)
 
                 Button(action: { audiobookSession.skipBack() }) {
-                    Image(systemName: "gobackward.30")
+                    Image(systemName: "gobackward.\(skipBackInterval)")
                         .font(.system(size: 18, weight: .regular))
                         .frame(width: 40, height: 44)
                 }
                 .buttonStyle(.plain).tint(.primary)
-                .accessibilityLabel(Strings.Generic.skipBack30)
+                .accessibilityLabel(Strings.Generic.skipBackSeconds(skipBackInterval))
 
                 Button(action: { audiobookSession.togglePlayPause() }) {
                     Image(systemName: presenter.isPlaying ? "pause.fill" : "play.fill")
@@ -830,12 +837,12 @@ struct AudiobookMorphingPlayerView: View {
                 .accessibilityLabel(presenter.isPlaying ? Strings.Generic.pauseAudiobook : Strings.Generic.playAudiobook)
 
                 Button(action: { audiobookSession.skipForward() }) {
-                    Image(systemName: "goforward.30")
+                    Image(systemName: "goforward.\(skipForwardInterval)")
                         .font(.system(size: 18, weight: .regular))
                         .frame(width: 40, height: 44)
                 }
                 .buttonStyle(.plain).tint(.primary)
-                .accessibilityLabel(Strings.Generic.skipForward30)
+                .accessibilityLabel(Strings.Generic.skipForwardSeconds(skipForwardInterval))
 
                 Button(action: stop) {
                     Image(systemName: "xmark.circle.fill")

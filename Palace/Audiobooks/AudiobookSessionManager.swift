@@ -944,10 +944,12 @@ public final class AudiobookSessionManager: ObservableObject {
             Log.warn(#file, "Cannot skipBack — no active manager")
             return
         }
+        // PP-4712: honor the patron's configured back interval (not a fixed 30).
+        let interval = AudiobookSkipIntervalSettings().backTimeInterval
         Task { @MainActor in
-            _ = await manager.audiobook.player.skipPlayhead(-Self.defaultSkipInterval)
+            _ = await manager.audiobook.player.skipPlayhead(-interval)
         }
-        Log.debug(#file, "Skipping back \(Self.defaultSkipInterval)s")
+        Log.debug(#file, "Skipping back \(interval)s")
     }
 
     /// Skips the playhead forward by `defaultSkipInterval` seconds. See
@@ -957,10 +959,12 @@ public final class AudiobookSessionManager: ObservableObject {
             Log.warn(#file, "Cannot skipForward — no active manager")
             return
         }
+        // PP-4712: honor the patron's configured forward interval (not a fixed 30).
+        let interval = AudiobookSkipIntervalSettings().forwardTimeInterval
         Task { @MainActor in
-            _ = await manager.audiobook.player.skipPlayhead(Self.defaultSkipInterval)
+            _ = await manager.audiobook.player.skipPlayhead(interval)
         }
-        Log.debug(#file, "Skipping forward \(Self.defaultSkipInterval)s")
+        Log.debug(#file, "Skipping forward \(interval)s")
     }
 
     /// Seeks to a fractional position (0…1) within the CURRENT CHAPTER via the
