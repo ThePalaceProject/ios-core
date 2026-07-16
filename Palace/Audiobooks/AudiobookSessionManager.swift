@@ -909,11 +909,10 @@ public final class AudiobookSessionManager: ObservableObject {
         }
 
         let chapter = currentChapters[index]
-        // Toolkit T1 migration: player.play(at:) is now `async throws`.
-        // Fire-and-forget at the sync boundary; errors are logged downstream.
-        Task { @MainActor in
-            try? await manager.audiobook.player.play(at: chapter.position)
-        }
+        // Route through the toolkit's sync wrapper (playAtPosition) so the
+        // non-Sendable Player / TrackPosition never cross an isolation boundary
+        // under the app's strict-concurrency (archive) build. Fire-and-forget.
+        (manager as? DefaultAudiobookManager)?.playAtPosition(chapter.position)
 
         Log.debug(#file, "Skipping to chapter: '\(chapter.title)'")
     }
@@ -946,9 +945,7 @@ public final class AudiobookSessionManager: ObservableObject {
         }
         // PP-4712: honor the patron's configured back interval (not a fixed 30).
         let interval = AudiobookSkipIntervalSettings().backTimeInterval
-        Task { @MainActor in
-            _ = await manager.audiobook.player.skipPlayhead(-interval)
-        }
+        (manager as? DefaultAudiobookManager)?.skipPlayhead(-interval)
         Log.debug(#file, "Skipping back \(interval)s")
     }
 
@@ -961,9 +958,7 @@ public final class AudiobookSessionManager: ObservableObject {
         }
         // PP-4712: honor the patron's configured forward interval (not a fixed 30).
         let interval = AudiobookSkipIntervalSettings().forwardTimeInterval
-        Task { @MainActor in
-            _ = await manager.audiobook.player.skipPlayhead(interval)
-        }
+        (manager as? DefaultAudiobookManager)?.skipPlayhead(interval)
         Log.debug(#file, "Skipping forward \(interval)s")
     }
 

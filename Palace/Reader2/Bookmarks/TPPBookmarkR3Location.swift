@@ -9,10 +9,19 @@
 import Foundation
 import ReadiumShared
 
-class TPPBookmarkR3Location {
-    var resourceIndex: Int
-    var locator: Locator
-    var creationDate: Date
+/// Immutable data-carrier describing a Reader-2 (Readium 3) reading position.
+///
+/// `Sendable` conformance is a genuine one, not a race-silencer: every stored
+/// property is itself `Sendable` (`Int`, Readium's `Locator` which is declared
+/// `Sendable`, and `Date`) and is `let` — never mutated after `init`. Every
+/// construction site (see `TPPReadiumBookmark+R3`, `TPPReaderBookmarksBusinessLogic`)
+/// builds a fresh instance and none mutates a property afterward. This lets the
+/// value cross the `@MainActor` → nonisolated `addBookmark(_:)` boundary in
+/// `TPPBaseReaderViewController.addBookmark(at:)` without a `sending` violation.
+final class TPPBookmarkR3Location: Sendable {
+    let resourceIndex: Int
+    let locator: Locator
+    let creationDate: Date
 
     init(resourceIndex: Int, locator: Locator, creationDate: Date = Date()) {
         self.resourceIndex = resourceIndex

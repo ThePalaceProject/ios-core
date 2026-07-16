@@ -343,12 +343,20 @@ final class BookRegistrySync: @unchecked Sendable {
         #if LCP
         if !lcpBooksNeedingBackgroundRedownload.isEmpty {
           Log.info(#file, "  Scheduling background .lcpa re-download for \(lcpBooksNeedingBackgroundRedownload.count) orphaned LCP audiobook(s)")
-          DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [accountsManager, downloadCenter] in
+          // Capture an immutable `let` snapshot in the capture list: the
+          // escaping `@Sendable` asyncAfter closure must not capture the mutable
+          // `var` (which the parse loop above mutated) — otherwise `complete`
+          // mode flags "sending 'lcpBooksNeedingBackgroundRedownload' risks
+          // causing data races". `TPPBook` elements are already Sendable, so the
+          // snapshot array is a Sendable value. Mirrors the DLNavigator
+          // "capture an immutable copy before the closure" pattern.
+          let lcpRedownloadSnapshot = lcpBooksNeedingBackgroundRedownload
+          DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [accountsManager, downloadCenter, lcpRedownloadSnapshot] in
             guard accountsManager.currentAccountId == loadedAccount else {
               Log.info(#file, "  Skipping LCP background re-download — account changed during wait")
               return
             }
-            for book in lcpBooksNeedingBackgroundRedownload {
+            for book in lcpRedownloadSnapshot {
               downloadCenter.redownloadLCPContentFile(for: book)
             }
           }
@@ -357,12 +365,15 @@ final class BookRegistrySync: @unchecked Sendable {
 
         if !orphanedBooksNeedingRedownload.isEmpty {
           Log.info(#file, "  Scheduling auto-restart for \(orphanedBooksNeedingRedownload.count) orphaned download(s)")
-          DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) { [accountsManager, downloadCenter] in
+          // Immutable `let` snapshot captured in the list — see the LCP branch
+          // above for the same `sending`-mutable-var rationale.
+          let orphanRedownloadSnapshot = orphanedBooksNeedingRedownload
+          DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) { [accountsManager, downloadCenter, orphanRedownloadSnapshot] in
             guard accountsManager.currentAccountId == loadedAccount else {
               Log.info(#file, "  Skipping orphan auto-restart — account changed during wait")
               return
             }
-            for book in orphanedBooksNeedingRedownload {
+            for book in orphanRedownloadSnapshot {
               downloadCenter.startDownload(for: book)
             }
           }
