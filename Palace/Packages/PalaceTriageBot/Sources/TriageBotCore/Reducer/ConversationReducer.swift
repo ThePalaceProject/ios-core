@@ -232,7 +232,9 @@ public struct ConversationReducer: Sendable {
             guard case .matched(let entryId) = next.step,
                   let entry = knowledgeBase.entry(id: entryId) else { return (next, effects) }
             let draft = TicketDraft(
-                userDescription: lastUserText(next.messages) ?? "(no description)",
+                // PP-4805: the last user message is raw free text — route it
+                // through the redactor before it can land in a ticket.
+                userDescription: redactor.redactLine(lastUserText(next.messages) ?? "(no description)"),
                 category: entry.category,
                 matchedEntryId: entryId,
                 context: next.context ?? emptyContext(),
@@ -512,6 +514,9 @@ public struct ConversationReducer: Sendable {
             }
             // Merge the answer (or skip marker) into the draft and proceed
             // to the standard drafting / preview flow.
+            // PP-4805: the follow-up answer is raw patron free text —
+            // redact it before it attaches to the draft / email body.
+            let redactedAnswer = answer.map(redactor.redactLine)
             let enriched = TicketDraft(
                 userDescription: pendingDraft.userDescription,
                 category: pendingDraft.category,
@@ -522,7 +527,7 @@ public struct ConversationReducer: Sendable {
                 ],
                 priority: pendingDraft.priority,
                 resolutionTrace: pendingDraft.resolutionTrace,
-                escalationFollowUp: EscalationFollowUpAnswer(prompt: prompt, answer: answer)
+                escalationFollowUp: EscalationFollowUpAnswer(prompt: prompt, answer: redactedAnswer)
             )
             next.step = .drafting(ticket: enriched)
             next.inputText = ""
@@ -609,7 +614,8 @@ public struct ConversationReducer: Sendable {
         tagSuffix: String
     ) {
         let draft = TicketDraft(
-            userDescription: userText,
+            // PP-4805: redact patron-typed free text at draft assembly.
+            userDescription: redactor.redactLine(userText),
             category: category ?? .other,
             matchedEntryId: matchedEntryId,
             context: next.context ?? emptyContext(),
@@ -674,7 +680,8 @@ public struct ConversationReducer: Sendable {
         tagSuffix: String
     ) {
         let draft = TicketDraft(
-            userDescription: userText,
+            // PP-4805: redact patron-typed free text at draft assembly.
+            userDescription: redactor.redactLine(userText),
             category: category,
             matchedEntryId: matchedEntryId,
             context: next.context ?? emptyContext(),
