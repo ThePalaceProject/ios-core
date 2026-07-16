@@ -330,6 +330,29 @@ final class RemoteFeatureFlags: @unchecked Sendable {
         #endif
     }
 
+    #if DEBUG
+    /// DEBUG-only override that forces ticket submission to fail on demand, so
+    /// QA / simdrive / the chaos run can drive the error+retry UI (AC-8/9). On
+    /// a bare simulator `MFMailComposeViewController.canSendMail()` is false and
+    /// both gateway branches fall back to the always-succeeding clipboard
+    /// gateway, so the "Couldn't send / Try again / Copy details / Start over"
+    /// card is otherwise unreachable on-screen. Never present in release builds.
+    static let triageBotForceSubmitFailureLocalOverrideKey = "RemoteFeatureFlags.triageBotForceSubmitFailureLocalOverride"
+
+    /// When true, `TriageBotFactory` injects a gateway that always throws a
+    /// `.transport` failure so the real `.error` recovery card is reachable.
+    /// Defaults OFF. Honored via the tappable developer toggle OR the
+    /// `-TriageBotForceSubmitFailure 1` launch argument (auto-mapped into
+    /// UserDefaults' NSArgumentDomain), so a headless simdrive/chaos run can
+    /// force the failure without tapping through Settings. DEBUG-only.
+    var isTriageBotForceSubmitFailureEnabled: Bool {
+        if let override = defaults.object(forKey: Self.triageBotForceSubmitFailureLocalOverrideKey) as? Bool {
+            return override
+        }
+        return defaults.bool(forKey: "TriageBotForceSubmitFailure")
+    }
+    #endif
+
     /// UserDefaults override that lets QA / a developer toggle the
     /// in-app playback nav feature without a Firebase round-trip.
     /// Settable from `TPPDeveloperSettingsTableViewController`. Falls

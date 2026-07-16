@@ -69,6 +69,15 @@ final class DeveloperSettingsViewModel: ObservableObject {
         didSet { overrideDefaults.set(triageBotAIFallbackEnabled, forKey: RemoteFeatureFlags.triageBotAIFallbackLocalOverrideKey) }
     }
 
+    #if DEBUG
+    /// DEBUG-only: force ticket submission to fail so QA / simdrive / the chaos
+    /// run can reach the error+retry card (AC-8/9). See RemoteFeatureFlags
+    /// `triageBotForceSubmitFailureLocalOverrideKey`.
+    @Published var triageBotForceSubmitFailure: Bool {
+        didSet { overrideDefaults.set(triageBotForceSubmitFailure, forKey: RemoteFeatureFlags.triageBotForceSubmitFailureLocalOverrideKey) }
+    }
+    #endif
+
     /// "Stored" / "Not set" trailing status for the Anthropic key row.
     @Published var anthropicKeyStatus: String
 
@@ -140,6 +149,9 @@ final class DeveloperSettingsViewModel: ObservableObject {
         self.triageBotEnabled = featureFlags.isTriageBotEnabled
         self.triageBotTicketSubmissionEnabled = featureFlags.isTriageBotTicketSubmissionEnabled
         self.triageBotAIFallbackEnabled = featureFlags.isTriageBotAIFallbackEnabled
+        #if DEBUG
+        self.triageBotForceSubmitFailure = featureFlags.isTriageBotForceSubmitFailureEnabled
+        #endif
         self.anthropicKeyStatus = triageBotKeyAdmin.hasStoredKey ? "Stored" : "Not set"
 
         self.inAppPlaybackNavEnabled = featureFlags.isInAppPlaybackNavEnabled

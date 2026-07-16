@@ -98,6 +98,25 @@ enum TriageBotFactory {
             gateway = ClipboardTicketGateway()
         }
 
+        // PP-4808/PP-4813: DEBUG-only failure injection. On a bare simulator
+        // canSendMail() is false, so the gateways above both resolve to the
+        // always-succeeding ClipboardTicketGateway — the error+retry UI (AC-8/9)
+        // was unreachable on-screen. When the "Force ticket submission failure"
+        // developer toggle (or `-TriageBotForceSubmitFailure 1`) is on, swap in a
+        // gateway that always throws `.transport`, landing on the real
+        // ErrorActionsCard path. Entirely inside `#if DEBUG` — release builds
+        // never see this override read or the forced gateway.
+        let effectiveGateway: TicketGateway
+        #if DEBUG
+        if RemoteFeatureFlags.shared.isTriageBotForceSubmitFailureEnabled {
+            effectiveGateway = ForcedFailureTicketGateway(mode: .transport)
+        } else {
+            effectiveGateway = gateway
+        }
+        #else
+        effectiveGateway = gateway
+        #endif
+
         // Telemetry sink: OSLog for local/dev visibility, Firebase Analytics in
         // release builds (PP-4814). Both forward only enumerable id/count/enum
         // parameters — FirebaseTriageTelemetrySink runs TelemetryContract so no
@@ -112,7 +131,7 @@ enum TriageBotFactory {
         return makeViewModel(
             reducer: reducer,
             contextProvider: contextProvider,
-            gateway: gateway,
+            gateway: effectiveGateway,
             sink: sink,
             fallbackClassifier: fallbackClassifier
         )
