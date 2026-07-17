@@ -6,6 +6,8 @@ on:
     types: [closed]
 jobs:
   create-release:
+    # Only when the PR actually merged — a closed-but-unmerged PR to main must not cut a release.
+    if: github.event.pull_request.merged == true
     runs-on: macos-26
     outputs:
       version: ${{ steps.export-version.outputs.version }}
