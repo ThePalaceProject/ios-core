@@ -27,7 +27,12 @@
    - `absent` probe: `BorrowReducer` contains no `.task` (shape-only holds).
    - `absent` probe: `Store.swift` contains no `scope(` (Not TCA holds).
    - `count`/justified probe: exactly 2 `struct Effect<...Sendable>` (Contract B).
-   - `count` probe: exactly 2 book-state owner classes (Contract D).
+   - `count` probe: exactly 2 book-state owner classes (Contract D). **The probe's
+     regex MUST be anchored** — `class TPPBookRegistry` (unanchored) false-matches
+     `class TPPBookRegistryRecord` and yields 3. Use `class (TPPBookRegistry|SideloadedBookRegistry) *:`
+     (or `TPPBookRegistry\b`). Verified: the anchored form returns 2 on the clean tree.
+     The `scripts/tests/test_arch_drift_check.py` clean-pass assertion MUST cover this
+     probe so a correct tree passes.
    - `contains` probe: `TPPBookRegistry.setState` references `canTransition`
      (Contract C enforcement present).
 2. **CREATE `scripts/arch-drift-check.py`** — reads `facts.json`, resolves each

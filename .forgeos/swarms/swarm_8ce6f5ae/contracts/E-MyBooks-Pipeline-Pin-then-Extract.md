@@ -45,18 +45,29 @@ doctrine, leaving MBDC and the collaborators as the effect-runners.
 
 ## Phase E1 — WS6 PIN EVERY BRANCH (do first; must be green before E2)
 
-### Scope
-- EXTEND `PalaceTests/Contract/BookReturnServiceContractTests.swift` with a scenario
-  per branch, including the undocumented ones:
-  - `returnBook_noRevokeURL_cleansUp_setStateThenRemove`
-  - `returnBook_overdriveRevokeParseFail_treatedAsSuccess_cleansUpLocally`
-  - confirm/add: normal `revokeURL` success, offline `OfflineAction(.return)`
-    no-local-cleanup, no-active-loan, loan-term-limit, invalid-credentials re-auth.
-- EXTEND `PalaceTests/Contract/BorrowOperationContractTests.swift` for EVERY borrow
-  branch not already snapshotted (reserved→.holding, ready→.downloadNeeded,
-  streaming-HTML skip, 30s timeout, availability-map edge cases).
-- EXTEND `PalaceTests/Contract/DownloadStartCoordinatorContractTests.swift` (or add a
-  `DownloadStartDispatcherContractTests`) for EVERY download-start dispatch branch.
+> **AMENDED per Fable Phase-1a.** The two branches the first triage called
+> "undocumented" are **ALREADY PINNED** — `withoutRevokeURL_skipsNetwork.json` and
+> `withRevokeURL_parsingErrorTreatedAsSuccess.json` exist (along with
+> `noActiveLoan_treatsAsSuccess.json`, `offlineError_enqueues_noLocalCleanup.json`,
+> `authError_triggersReauth.json`, `genericError_announcesFailure.json`). Re-pinning
+> them verifies NOTHING. E1's REAL targets are the genuinely-unpinned branches below,
+> and the ACs assert **NEW** snapshot files (not the pre-existing ones).
+
+### Scope — pin the UNPINNED branches (each produces a NEW snapshot file)
+- `PalaceTests/Contract/BorrowOperationContractTests.swift`:
+  - **borrow 30s-timeout** (withTimeout fires)
+  - **streaming-HTML `startDownload`-skip** (`isStreamingHTML` true → no startDownload)
+  - **PP-4178 loan→hold race** — availability flips loan→hold mid-borrow → THROW path
+  - **DRM `ensureDeviceActivated`** branch (device-activation hop)
+- `PalaceTests/Contract/BookReturnServiceContractTests.swift`:
+  - **DRM `returnFulfillment` / `returnLoan` FAILURE** branch (Adobe return fails)
+  - **re-auth fan-outs** (invalid-credentials → re-auth retry paths not already pinned)
+- `PalaceTests/Contract/DownloadStartCoordinatorContractTests.swift` (or NEW
+  `DownloadStartDispatcherContractTests.swift`): the **~10 unpinned
+  DownloadStartDispatcher branches** (rights-management / dispatch selection).
+- Confirm (do NOT re-record) the offline `OfflineAction(.return)` enqueue path is the
+  already-present `offlineError_enqueues_noLocalCleanup.json`; add a distinct enqueue
+  scenario only if a second offline branch is unpinned.
 - FIX `CLAUDE.md:259` to the ACTUAL pinned return order (only if it diverges).
 - Record baselines (`CONTRACT_SNAPSHOT_RECORD=1`), review `git diff` of the JSON, commit.
 
@@ -132,17 +143,28 @@ on a clean re-run (no "snapshot recorded — re-run to verify").
 
 ## Verification criteria (Phase 4.5)
 ```bash
-# --- E1: every branch pinned ---
-# AC1: the two undocumented return branches pinned by name
-grep -Eq 'noRevokeURL|revokeURL == nil|withoutRevoke' PalaceTests/Contract/BookReturnServiceContractTests.swift
-grep -Eiq 'overdrive.*(parse|success)|parseFail|opdsFeedInvalid' PalaceTests/Contract/BookReturnServiceContractTests.swift
+# --- E1: every UNPINNED branch newly pinned ---
+# NOTE: the no-revokeURL + OverDrive-parse-fail branches are ALREADY pinned
+# (withoutRevokeURL_skipsNetwork.json, withRevokeURL_parsingErrorTreatedAsSuccess.json).
+# These ACs assert the NEW branches only, so a pass proves real work was done.
 
-# AC2: return snapshots recorded (>= the branch count)
-test -d PalaceTests/Contract/__Snapshots__/BookReturnServiceContractTests
-test "$(ls PalaceTests/Contract/__Snapshots__/BookReturnServiceContractTests/*.json 2>/dev/null | wc -l | tr -d ' ')" -ge 4
+# AC1 (NEW borrow branches): timeout / streaming-HTML-skip / loan->hold race / DRM device-activate
+BR=PalaceTests/Contract/__Snapshots__/BorrowOperationContractTests
+test -f "$BR"/*imeout*.json
+test -f "$BR"/*treaming*.json || test -f "$BR"/*tartDownloadSkip*.json
+ls "$BR"/*old*ace*.json "$BR"/*PP4178*.json >/dev/null 2>&1
+ls "$BR"/*evice*ctivat*.json "$BR"/*DRM*.json >/dev/null 2>&1
 
-# AC3: download-start branches pinned (coordinator or new dispatcher test)
-test -f PalaceTests/Contract/DownloadStartCoordinatorContractTests.swift || test -f PalaceTests/Contract/DownloadStartDispatcherContractTests.swift
+# AC2 (NEW return branches): DRM returnFulfillment/returnLoan FAILURE + re-auth fan-out
+RS=PalaceTests/Contract/__Snapshots__/BookReturnServiceContractTests
+ls "$RS"/*eturn*ail*.json "$RS"/*DRM*ail*.json >/dev/null 2>&1
+# and the return snapshot count strictly GREW beyond the 6 pre-existing files
+test "$(ls "$RS"/*.json 2>/dev/null | wc -l | tr -d ' ')" -ge 7
+
+# AC3 (NEW dispatcher branches): ~10 DownloadStartDispatcher branches pinned in a NEW file
+test -f PalaceTests/Contract/DownloadStartDispatcherContractTests.swift
+DD=PalaceTests/Contract/__Snapshots__/DownloadStartDispatcherContractTests
+test "$(ls "$DD"/*.json 2>/dev/null | wc -l | tr -d ' ')" -ge 8
 
 # AC4: CLAUDE.md return-order line reconciled with pinned truth
 grep -q 'BookReturnService' CLAUDE.md

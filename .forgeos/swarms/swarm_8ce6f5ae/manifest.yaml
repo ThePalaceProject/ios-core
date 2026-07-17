@@ -100,36 +100,46 @@ modules:
     contract_path: .forgeos/swarms/swarm_8ce6f5ae/contracts/C-Registry-DualWrite.md
     depends_on: [A]
     blocking_internal_order: >-
-      enforce-before-purge: (1) wire canTransition enforcement + the Combine path;
-      (2) migrate ALL 9 observers; (3) re-point the 2 external posters; (4) DELETE
-      postStateNotification (:639) + the direct sync post (:283) LAST. Never delete a
-      post before every observer of it is migrated.
+      AMENDED (Fable block) — 5 steps: (1) CORRECT the allowedTransitions SET FIRST
+      (add .downloadSuccessful->.downloadNeeded + .used->.downloadNeeded, cite the 3
+      sources) or DEBUG builds crash on enforce; (2) CREATE AND FEED a RegistryState
+      lifecycle publisher (the existing syncStatePublisher is DEAD — syncStateSubject
+      never .send-fed); (3) ENFORCE at setState:605; (4) MIGRATE 9 observers PER THE
+      TARGET MAP; (5) DELETE both posts (:639 + :283) LAST. Never delete a post before
+      every observer of it is migrated.
     implementer_prompt: >-
-      WS3, FULL SCOPE — no split, no exceptions. (1) Enforce allowedTransitions in
-      TPPBookRegistry.setState (:605): call
-      TPPBookState.canTransition(from:previousState,to:state); on violation
-      assertionFailure in DEBUG + log/telemetry in RELEASE, but STILL apply the
-      transition (never drop state). Expand allowedTransitions (TPPBookState.swift:91)
-      to cover transitions the Contract-E snapshots exercise. (2) Migrate ALL 9
-      observers to bookStatePublisher: ActiveSessionsViewModel:135,
-      CatalogLaneMoreView:122, CatalogSearchView:112, AppTabHostView:456,
-      BookDetailView:134, HalfSheetview:227, MyBooksViewModel:338, the
-      MyBooksDownloadCenter:2076 one-shot (edit ONLY that observer block — Contract E
-      owns the rest of that file), and the registry's own self-observer
-      (TPPBookRegistry:455 -> internal Combine path). (3) Re-point the 2 external
-      posters HoldsViewModel:249 + DeveloperSettingsViewModel:741 so they stop
-      hand-posting .TPPBookRegistryStateDidChange. (4) DELETE postStateNotification
-      (:639) + its call sites (:553,:570,:586,:600,:614) + the direct sync post (:283);
-      remove the name decl in NSNotification+TPP.swift iff no consumer remains (grep
-      clean). Add PalaceTests/Contract/TPPBookRegistryMutationContractTests.swift
-      pinning setState->canTransition->publisher emission (register via
-      scripts/pbxproj_add_swift.rb). Each migrated observer gets a behavioral test it
-      reacts to a publisher emission BEFORE the post is deleted. OFF-LIMITS:
-      Sideload/** (Contract D), Store/PalaceAuth Effect (B), all of
-      MyBooksDownloadCenter EXCEPT the :2076 observer (Contract E). critical_path:
-      Phase-1a + 100% mutation + extra SoD reviewer. TWO-TIER DoD: TODAY = compile +
-      --diff-only mutation 100% on TPPBookRegistry/TPPBookState + targeted tests;
-      MONDAY = full suite + 3 SoD + arch drift.
+      WS3, FULL SCOPE — AMENDED per Fable Phase-1a block. (1) CORRECT THE SET FIRST:
+      in TPPBookState.swift:91 add .downloadSuccessful->.downloadNeeded and
+      .used->.downloadNeeded with an inline comment citing the 3 legitimate sources
+      (Reader2 ReaderService.swift:585 content-protection re-download,
+      AudiobookSessionManager.swift:2227 PP-4800 OverDrive -1008 recovery,
+      DiskBudgetManager.swift:168 LRU eviction) — do NOT edit those 3 call sites;
+      correcting the set legalizes them. (2) THEN enforce in setState:605 via
+      canTransition (assertionFailure DEBUG + log RELEASE, STILL apply — never drop).
+      (3) CREATE AND FEED a RegistryState lifecycle publisher for the :283 signal
+      (revive syncStatePublisher by .send-feeding syncStateSubject at load/sync
+      begin/end, OR add registryStatePublisher; it MUST emit on load-complete).
+      syncStatePublisher is currently DEAD. (4) MIGRATE 9 observers PER TARGET MAP:
+      per-book -> bookStatePublisher (ActiveSessionsViewModel:135, CatalogLaneMoreView:122,
+      CatalogSearchView:112, BookDetailView:134, HalfSheetview:227, MyBooksViewModel:338);
+      LIFECYCLE -> the new RegistryState publisher (registry self-observer :455 SAML
+      post-sign-in sync, MBDC:2076 launch reconciliation — these HANG on empty-registry
+      fresh sign-in if pointed at bookStatePublisher); AppTabHostView:456 badge ->
+      bookStatePublisher + a NEW holds-changed publisher fed where HoldsViewModel:249 +
+      DeveloperSettingsViewModel:741 currently hand-post. (5) DELETE postStateNotification
+      (:639) + call sites (:553,:570,:586,:600,:614) + the :283 post; remove the name
+      decl in NSNotification+TPP.swift iff unused. Add
+      PalaceTests/Contract/TPPBookRegistryMutationContractTests.swift pinning
+      setState->canTransition->publisher AND a REGRESSION GUARD that the SAML-sync (:455)
+      + launch-reconciliation (:2076) observers still fire on a fresh EMPTY-REGISTRY
+      load (the hang guard). Each migrated observer gets a behavioral test BEFORE the
+      post is deleted. Edit ONLY the :2076 observer block in MBDC (Contract E owns the
+      rest). OFF-LIMITS: the 3 transition call sites, Sideload/** (D), Store/PalaceAuth
+      Effect (B). critical_path: Phase-1a + 100% mutation + extra SoD reviewer.
+      TWO-TIER DoD: TODAY = compile + --diff-only mutation 100% on
+      TPPBookRegistry/TPPBookState + targeted tests incl. empty-registry hang guard;
+      MONDAY = full suite + 3 SoD + arch drift. Re-run Fable on THIS amended contract
+      before dispatch.
 
   - name: Sideload-SoT-Boundary
     letter: D
@@ -162,6 +172,7 @@ modules:
       - PalaceTests/Contract/BookReturnServiceContractTests.swift
       - PalaceTests/Contract/BorrowOperationContractTests.swift
       - PalaceTests/Contract/DownloadStartCoordinatorContractTests.swift
+      - PalaceTests/Contract/DownloadStartDispatcherContractTests.swift
       - PalaceTests/Contract/ReturnReducerContractTests.swift
       - PalaceTests/Contract/BorrowReducerCoreContractTests.swift
       - PalaceTests/Contract/DownloadStartReducerContractTests.swift
@@ -183,15 +194,17 @@ modules:
       WS6 then WS7, in THAT order, one implementer. CONTEXT: MyBooksDownloadCenter is
       ALREADY decomposed (a 2155-LOC delegation hub owning ~27 collaborators via
       delegate conformances at :1809-1926; prior swarms #1009/#1018/#1024/#1212 did the
-      structural extraction). E2 is NOT decomposing a god-class. E1 (do first): pin
-      EVERY branch — extend BookReturnServiceContractTests with the two undocumented
-      ones: no-revokeURL cleanup does setState(.unregistered) THEN removeBook
-      (:316->:402-403), and an OverDrive revoke whose OPDS parse fails is treated as
-      server-SUCCESS + local cleanup (:415-430); plus normal-revokeURL,
-      offline OfflineAction(.return), no-active-loan, loan-term-limit, invalid-creds.
-      Extend BorrowOperationContractTests (reserved->.holding, ready->.downloadNeeded,
-      streaming-HTML skip, 30s timeout) and DownloadStartCoordinator/Dispatcher tests
-      for every dispatch branch. CONTRACT_SNAPSHOT_RECORD=1, review JSON diff, commit.
+      structural extraction). E2 is NOT decomposing a god-class. E1 (do first) —
+      AMENDED per Fable: the no-revokeURL + OverDrive-parse-fail branches are ALREADY
+      PINNED (withoutRevokeURL_skipsNetwork.json, withRevokeURL_parsingErrorTreatedAsSuccess.json,
+      + noActiveLoan/offlineError/authError/genericError). Re-pinning them verifies
+      NOTHING. Pin the genuinely-UNPINNED branches, each a NEW snapshot file: borrow
+      30s-timeout, streaming-HTML startDownload-skip, PP-4178 loan->hold race THROW,
+      DRM ensureDeviceActivated; BookReturnService DRM returnFulfillment/returnLoan
+      FAILURE branch + re-auth fan-outs; and the ~10 unpinned DownloadStartDispatcher
+      branches in a NEW DownloadStartDispatcherContractTests.swift.
+      CONTRACT_SNAPSHOT_RECORD=1, review JSON diff, commit. ACs assert NEW files
+      (pre-existing snapshots don't count).
       Reconcile CLAUDE.md:259 with the pinned truth. GATE: all MyBooks snapshots green.
       E2 (only after E1 green): extract the DECISION CORES into pure reducers per WS1
       doctrine — Palace/MyBooks/ReturnReducer.swift (BookReturnService branches),

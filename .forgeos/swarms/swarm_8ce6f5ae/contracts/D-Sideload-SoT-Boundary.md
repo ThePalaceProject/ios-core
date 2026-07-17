@@ -73,8 +73,11 @@ interface.**
 # AC1: SideloadedBookRegistry documents its authorized-second-owner scope
 grep -Eiq 'second (book-?state )?owner|side-?loaded|scoped to' Palace/MyBooks/Sideload/SideloadedBookRegistry.swift
 
-# AC2: exactly two book-state owners exist (no third crept in)
-test "$(grep -rlE 'class (TPPBookRegistry|SideloadedBookRegistry)' Palace --include='*.swift' | wc -l | tr -d ' ')" = "2"
+# AC2: exactly two book-state owners exist (no third crept in).
+#      MUST be anchored — an unanchored 'class TPPBookRegistry' false-matches
+#      class TPPBookRegistryRecord (TPPBookRegistryRecord.swift) and returns 3.
+#      Verified: the anchored form returns exactly 2 on the clean tree.
+test "$(grep -rlE 'class (TPPBookRegistry|SideloadedBookRegistry) *:' Palace --include='*.swift' | wc -l | tr -d ' ')" = "2"
 
 # AC3: a boundary/contract test guards the seam
 grep -Rq 'SideloadedBookRegistry' PalaceTests/Contract/
