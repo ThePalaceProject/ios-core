@@ -76,12 +76,7 @@ private final class CallLogPositionWriter: PositionWriter, @unchecked Sendable {
     }
 
     func save(_ snapshot: PositionSnapshot) async throws -> ServerPositionID? {
-        let outcome: Outcome
-        let hook: (() -> Void)?
-        lock.lock()
-        outcome = _outcome
-        hook = _onSave
-        lock.unlock()
+        let (outcome, hook): (Outcome, (() -> Void)?) = lock.withLock { (_outcome, _onSave) }
 
         log.record(
             "writer.save",

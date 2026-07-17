@@ -64,10 +64,10 @@ private final class SpyPositionNetworkAdapter: PositionNetworkAdapter, @unchecke
     }
 
     func post(_ snapshot: PositionSnapshot) async throws -> ServerPositionID {
-        lock.lock()
-        _postCount += 1
-        let id = _nextServerID
-        lock.unlock()
+        let id = lock.withLock { () -> ServerPositionID in
+            _postCount += 1
+            return _nextServerID
+        }
         // Record stable-shape args only — exact timestamps would drift
         // across runs. Record bookID + format + payload-bytes-count, which
         // is enough to catch any reordering or argument swap.
@@ -84,10 +84,7 @@ private final class SpyPositionNetworkAdapter: PositionNetworkAdapter, @unchecke
     }
 
     func fetch(bookID: String) async throws -> PositionSnapshot? {
-        let result: PositionSnapshot?
-        lock.lock()
-        result = _nextFetchResult
-        lock.unlock()
+        let result: PositionSnapshot? = lock.withLock { _nextFetchResult }
         log.record(
             "network.fetch",
             args: [

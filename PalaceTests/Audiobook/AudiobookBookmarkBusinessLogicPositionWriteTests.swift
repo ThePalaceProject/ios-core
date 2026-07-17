@@ -64,11 +64,10 @@ private final class SpyPositionWriter: PositionWriter, @unchecked Sendable {
     }
 
     func save(_ snapshot: PositionSnapshot) async throws -> ServerPositionID? {
-        lock.lock()
-        _savedSnapshots.append(snapshot)
-        let result = _saveResult
-        let hook = _onSave
-        lock.unlock()
+        let (result, hook) = lock.withLock { () -> (SaveOutcome, (() -> Void)?) in
+            _savedSnapshots.append(snapshot)
+            return (_saveResult, _onSave)
+        }
 
         hook?()  // race-window injection: tests can mutate registry between SUT's local-save and post-save guard
 
@@ -83,14 +82,11 @@ private final class SpyPositionWriter: PositionWriter, @unchecked Sendable {
     }
 
     func load(for bookID: String) async throws -> PositionSnapshot? {
-        lock.lock(); defer { lock.unlock() }
-        return _loadResult
+        return lock.withLock { _loadResult }
     }
 
     func cancel(for bookID: String) async {
-        lock.lock()
-        _cancelledBookIDs.append(bookID)
-        lock.unlock()
+        lock.withLock { _cancelledBookIDs.append(bookID) }
     }
 }
 
