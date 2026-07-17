@@ -69,6 +69,19 @@ final class FreeTextRedactionTests: XCTestCase {
         XCTAssertEqual(redactor.redactLine(input), input)
     }
 
+    func testRedactsPasswordStatedInProse() {
+        // PP-4817 chaos F-002: a prose password (no ':' / '=') leaked into the
+        // ticket + the real clipboard payload. The "is|was <token>" prose form
+        // must be stripped, mirroring pin_prose.
+        let output = redactor.redactLine("hey my password is hunter2abc thanks")
+        XCTAssertFalse(output.contains("hunter2abc"), "A prose-stated password must be stripped")
+    }
+
+    func testRedactsPasswdWasStatedInProse() {
+        let output = redactor.redactLine("the passwd was Tr0ub4dor3000 yesterday")
+        XCTAssertFalse(output.contains("Tr0ub4dor3000"), "A 'passwd was <token>' prose password must be stripped")
+    }
+
     // MARK: - standalone 10-14 digit barcode / card number
 
     func testRedactsStandaloneBarcodeDigits() {
