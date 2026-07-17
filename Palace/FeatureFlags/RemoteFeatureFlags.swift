@@ -55,8 +55,13 @@ final class RemoteFeatureFlags: @unchecked Sendable {
         /// polish 2026-06-02): Continue Reading/Listening hero rows on
         /// the Catalog top, the persistent mini-player chrome above the
         /// tab bar, and the tap-to-resume routing that wires both to
-        /// `AudiobookSessionPresenter`. Default OFF — the feature is
-        /// opt-in via the developer settings toggle until broad rollout.
+        /// `AudiobookSessionPresenter`. **Default OFF — Firebase-gated.**
+        /// Production users get the legacy toolkit player until Firebase
+        /// Remote Config sets `in_app_playback_nav_enabled = true` (a global
+        /// or staged/condition-based rollout the team controls without
+        /// shipping a build). Precedence is UserDefaults local override
+        /// (dev-menu toggle / QA) > Firebase remote (default false) — see
+        /// `isInAppPlaybackNavEnabled`.
         case inAppPlaybackNavEnabled = "in_app_playback_nav_enabled"
         /// Gates every side-loading surface (swarm_495a88d9 — PP-2677 /
         /// PP-2678 / PP-2679): the Settings "Side Loading" import screen and
@@ -84,6 +89,8 @@ final class RemoteFeatureFlags: @unchecked Sendable {
             case .appRatingPromptEnabled:
                 return true
             default:
+                // Includes `.inAppPlaybackNavEnabled`: default OFF in-app —
+                // Firebase Remote Config turns it on (see isInAppPlaybackNavEnabled).
                 return false
             }
         }
@@ -365,15 +372,21 @@ final class RemoteFeatureFlags: @unchecked Sendable {
     /// persistent mini-player above the tab bar, and the tap-to-resume
     /// routing that wires both to `AudiobookSessionPresenter`.
     ///
-    /// **GA (2026-07): now the standard experience — no longer gated on
-    /// Remote Config.** Returns `true` by default. A developer-settings
-    /// local override is still honored so QA can force the legacy player
-    /// path for comparison; absent that override, the feature is always on.
+    /// **Default OFF — Firebase-gated (2026-07).** Production users get the
+    /// legacy toolkit player until Firebase Remote Config enables the
+    /// feature; this lets the team turn it on (globally or via a staged /
+    /// condition-based rollout) — and roll it back — without shipping a
+    /// build. The registered Remote Config default is `false`.
+    ///
+    /// Override precedence:
+    ///   1. UserDefaults local override (dev-menu toggle / QA) — wins so QA
+    ///      can force either player regardless of the production rollout.
+    ///   2. Firebase Remote Config (`isFeatureEnabled`, default `false`).
     var isInAppPlaybackNavEnabled: Bool {
         if let override = defaults.object(forKey: Self.inAppPlaybackNavLocalOverrideKey) as? Bool {
             return override
         }
-        return true
+        return isFeatureEnabled(.inAppPlaybackNavEnabled)
     }
 
     /// UserDefaults override that lets QA / a developer force side loading on

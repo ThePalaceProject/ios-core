@@ -169,4 +169,65 @@ final class RemoteFeatureFlagsTests: XCTestCase {
         }
         XCTAssertEqual(value, 42, "withTimeout must return the operation's result when it completes within the bound")
     }
+
+    // MARK: - In-App Playback Navigation (Firebase-gated, default OFF)
+    //
+    // The in-app playback-nav feature is OFF by default and enabled via
+    // Firebase Remote Config (the team turns it on — globally or via a staged
+    // rollout — without shipping a build). Precedence: local dev override
+    // (QA) > Firebase Remote Config (registered default false).
+
+    /// Fresh, isolated UserDefaults suite so the local-override key can't bleed
+    /// across tests or into `.standard`.
+    private func makeInAppNavFlags() -> (flags: RemoteFeatureFlags, suite: UserDefaults, name: String) {
+        let name = "test.inAppPlaybackNav.\(UUID().uuidString)"
+        let suite = UserDefaults(suiteName: name)!
+        return (RemoteFeatureFlags(defaults: suite), suite, name)
+    }
+
+    /// No local override and no Firebase server value (the unit-test state):
+    /// the feature is OFF and reflects the Remote Config flag rather than a
+    /// hardcoded constant. Reverting the getter to `return true` (the prior GA
+    /// behavior) fails the first assertion.
+    func testInAppPlaybackNav_noOverride_defaultsOff() {
+        let (flags, suite, name) = makeInAppNavFlags()
+        defer { suite.removePersistentDomain(forName: name) }
+
+        XCTAssertFalse(flags.isInAppPlaybackNavEnabled,
+                       "Absent a local override or Firebase value, in-app playback nav must default OFF (Firebase-gated)")
+        XCTAssertEqual(flags.isInAppPlaybackNavEnabled,
+                       flags.isFeatureEnabled(.inAppPlaybackNavEnabled),
+                       "Without a local override, the getter must reflect the Remote Config flag, not a constant")
+    }
+
+    /// A local override of `true` forces the feature ON regardless of the OFF
+    /// default — QA/dev can preview the in-app player before the rollout.
+    /// Kills a mutant that ignores the override and returns the (false in tests)
+    /// Remote Config value.
+    func testInAppPlaybackNav_localOverrideTrue_forcesOn() {
+        let (flags, suite, name) = makeInAppNavFlags()
+        defer { suite.removePersistentDomain(forName: name) }
+
+        suite.set(true, forKey: RemoteFeatureFlags.inAppPlaybackNavLocalOverrideKey)
+        XCTAssertTrue(flags.isInAppPlaybackNavEnabled,
+                      "A local override of true must force the feature ON")
+    }
+
+    /// A local override of `false` forces the legacy player even if Firebase
+    /// would enable the feature. Kills the prior hardcoded `return true`.
+    func testInAppPlaybackNav_localOverrideFalse_forcesOff() {
+        let (flags, suite, name) = makeInAppNavFlags()
+        defer { suite.removePersistentDomain(forName: name) }
+
+        suite.set(false, forKey: RemoteFeatureFlags.inAppPlaybackNavLocalOverrideKey)
+        XCTAssertFalse(flags.isInAppPlaybackNavEnabled,
+                       "A local override of false must force the feature OFF (legacy toolkit player)")
+    }
+
+    /// The registered production default is OFF — pins the Firebase-gated
+    /// posture so a regression to on-by-default is caught.
+    func testInAppPlaybackNav_featureFlagDefault_isOff() {
+        XCTAssertFalse(RemoteFeatureFlags.FeatureFlag.inAppPlaybackNavEnabled.defaultValue,
+                       "in-app playback nav default must be OFF — Firebase Remote Config turns it on")
+    }
 }
