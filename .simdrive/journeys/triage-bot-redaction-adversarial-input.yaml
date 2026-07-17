@@ -1,0 +1,90 @@
+scenario:
+  id: triage-bot-redaction-adversarial-input
+  name: "Triage Bot — credential-shaped free text must be redacted end-to-end"
+  description: >
+    Types a single adversarial free-text string combining a prose PIN, a
+    prose password, a 14-digit barcode, a SQL-injection fragment, RTL
+    Hebrew, emoji, and a Bearer JWT into the triage-bot composer, submits
+    it, and inspects BOTH the on-screen Ticket Preview AND the actual
+    device pasteboard payload (via the post-failure "Copy details" action)
+    to prove the ContextRedactor stripped every credential shape before
+    anything could leave the device. This is the standing regression guard
+    for the gap discovered during PP-4817 chaos QA (see finding F-002).
+  tags: [chaos, security, redaction, triage-bot, pp4805, pp4806, pp4817]
+  tier: stateful
+  blocking: true
+
+  preconditions:
+    - "Palace app cold-launched, org.thepalaceproject.palace"
+    - "Triage bot master kill-switch ON (Settings > Support shows 'Get Help')"
+    - "No Mail account configured on the sim (forces the Copy-details path
+       deterministically instead of needing the Force-Submit-Failure toggle)"
+
+  recording:
+    path: "~/.simdrive/recordings/chaos-rapid-tap-category-chip/recording.yaml"
+    note: >
+      No dedicated recording exists for this exact flow yet (it was driven
+      ad hoc during the PP-4817 chaos pass, not via record_start/stop).
+      Re-record this journey with simdrive.record_start/record_stop next
+      time it is run and update this path.
+
+  steps:
+    - id: open_help
+      description: "Catalog -> book detail -> tap toolbar Get Help"
+      tap_target: { text: "help.button.bookDetail" }
+    - id: pick_category
+      description: "Tap the 'Sign in' category chip"
+      tap_target: { text: "Sign in" }
+    - id: type_adversarial_text
+      description: "Type the combined credential-shaped adversarial string"
+      type_text: >
+        my pin is 12345 and my password is hunter2abc, card
+        49925398112345, ' OR 1=1 -- אבגד 😀😀 Bearer
+        eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJyZWFsIn0.sig123456
+    - id: submit_description
+      description: "Tap the arrow.up.circle.fill submit button"
+    - id: inspect_preview
+      description: >
+        Read the Ticket Preview 'What you said' field. Every credential
+        clause must be bracket-redacted: 'my pin [REDACTED] and my password
+        [REDACTED], card [number-redacted], ... Bearer [REDACTED]'. (The
+        password clause is redacted by the password_prose pattern added in
+        #1292 to close F-002.)
+    - id: tap_send
+      description: "Tap Send on the ticket preview (expect failure on bare sim)"
+    - id: tap_copy_details
+      description: "On the 'Couldn't send' error card, tap 'Copy details'"
+    - id: read_pasteboard
+      description: >
+        Shell out: `xcrun simctl pbpaste <udid>`. Assert the literal
+        substrings "hunter2abc" and "password is hunter2abc" are ABSENT.
+        Assert "[REDACTED]" appears for the pin, password, and Bearer/JWT
+        clauses, and "[number-redacted]" for the barcode.
+
+  expected_invariants:
+    - "Every credential SHAPE in the deny-list (pin, password, barcode,
+       bearer/JWT token) is absent from both the Ticket Preview text and
+       the real pasteboard/email payload."
+    - "SQL-injection fragment, RTL Hebrew, and emoji pass through inertly
+       (not a security concern, just must not crash rendering)."
+
+  regression_history:
+    - id: F-002
+      status: fixed
+      fixed_by: "#1292 (ContextRedactor password_prose pattern)"
+      summary: >
+        "my password is X" (prose form, no ':'/'=' delimiter) previously
+        leaked -- kv_creds required a delimiter and there was no
+        password_prose analogue to pin_prose. Discovered in PP-4817 chaos QA
+        via the raw simulator pasteboard capture (not just the UI preview).
+        This journey is the standing guard against its return.
+
+  structural_checks:
+    - after_step: inspect_preview
+      required_text: ["Ticket preview", "What you said", "[REDACTED]", "[number-redacted]"]
+      forbidden_text: ["hunter2abc"]
+      rationale: |
+        The forbidden_text assertion pins F-002's fix: "hunter2abc" (the
+        prose password value) must not appear anywhere in the preview or the
+        pasteboard payload. Regressing the password_prose pattern re-breaks
+        this.
