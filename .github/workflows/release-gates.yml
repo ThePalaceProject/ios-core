@@ -1,0 +1,132 @@
+name: Release Gates
+
+# Fires the two release-process gates from the 3.2.0 crash retro (PP-4819) on
+# every PR into `main` — i.e. every release/X.Y.Z and hotfix/X.Y.Z promotion —
+# so a release can't ship while it is missing a crash fix that already landed
+# on develop, or while a crash signature it introduced sits un-triaged on the
+# RC/TestFlight builds.
+#
+#   1. fix-reconciliation  (HARD, pure git — no external deps)
+#        diff the release branch (PR head) against origin/develop for
+#        crash/critical-path fixes that have no patch-equivalent on the release
+#        and are not waived. This is the gate that would have caught 3.2.0
+#        shipping without the saveSync-deadlock fix (#1097).
+#
+#   2. pre-ga-crash-triage (HARD on real findings, SOFT on Firebase outage)
+#        pull the release version's FATAL Crashlytics signatures and block if
+#        any signature that FIRST appeared in this release is un-triaged. A
+#        Firebase outage / missing service account emits an empty export and
+#        passes (the sentinel's "an outage must not block a release" contract);
+#        the manual maintainer triage is the backstop for that window.
+#
+# Waivers / triage ledgers (leave an audit trail for every deliberate exclusion):
+#   .forgeos/release-waivers/<release>.txt   — `<sha-or-#pr> <reason>` per line
+#   .forgeos/crash-triage/<version>.txt      — `<issue-id> <ticket-or-reason>` per line
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      release_ref:
+        description: "Release ref to check (default: current branch)"
+        required: false
+      develop_ref:
+        description: "Integration ref to reconcile against"
+        required: false
+        default: "origin/develop"
+
+concurrency:
+  group: release-gates-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fix-reconciliation:
+    name: Release fix-reconciliation (crash/critical-path)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout (full history — the gate diffs against origin/develop)
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Resolve release ref
+        id: refs
+        run: |
+          if [[ -n "${{ github.event.inputs.release_ref }}" ]]; then
+            echo "release_ref=${{ github.event.inputs.release_ref }}" >> "$GITHUB_OUTPUT"
+          elif [[ -n "${{ github.event.pull_request.head.sha }}" ]]; then
+            echo "release_ref=${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "release_ref=HEAD" >> "$GITHUB_OUTPUT"
+          fi
+          DEV="${{ github.event.inputs.develop_ref }}"
+          echo "develop_ref=${DEV:-origin/develop}" >> "$GITHUB_OUTPUT"
+
+      - name: Ensure develop is fetched
+        run: git fetch origin develop --quiet || true
+
+      - name: Run fix-reconciliation gate
+        run: |
+          python3 scripts/check-release-fix-reconciliation.py \
+            --release-ref "${{ steps.refs.outputs.release_ref }}" \
+            --develop-ref "${{ steps.refs.outputs.develop_ref }}"
+
+  pre-ga-crash-triage:
+    name: Pre-GA crash triage (new-in-release FATAL)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install Firebase REST deps
+        run: pip install pyjwt cryptography
+
+      - name: Write Firebase service account
+        # Same secret + fall-through contract as crashlytics-sentinel.yml: a
+        # missing service account warns and the export comes back empty, so the
+        # gate passes rather than blocking a release on a CI-config gap.
+        env:
+          FIREBASE_SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [[ -n "$FIREBASE_SA" ]]; then
+            mkdir -p ~/.palace
+            printf '%s' "$FIREBASE_SA" > ~/.palace/firebase-service-account.json
+            echo "Service account written."
+          else
+            echo "::warning::FIREBASE_SERVICE_ACCOUNT secret not set; crash-triage export will be empty (gate passes)."
+          fi
+
+      - name: Resolve release version from pbxproj
+        id: version
+        run: |
+          # The release version being promoted is the MARKETING_VERSION in the
+          # project. Grab the first (all Palace configs share one value).
+          VERSION=$(grep -m1 -E 'MARKETING_VERSION = [0-9]' Palace.xcodeproj/project.pbxproj \
+                    | sed -E 's/.*MARKETING_VERSION = ([0-9.]+);/\1/')
+          echo "Release version: $VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Export current FATAL Crashlytics signatures
+        run: |
+          python3 scripts/crashlytics-triage-export.py --days 90 --page-size 50 > crash-export.json
+          echo "--- export ---"; cat crash-export.json
+
+      - name: Run pre-GA crash-triage gate
+        run: |
+          python3 scripts/check-pre-ga-crash-triage.py \
+            --release-version "${{ steps.version.outputs.version }}" \
+            --issues-json crash-export.json
