@@ -194,6 +194,20 @@ public struct ContextRedactor: Sendable {
             regex: #"(?i)\b(pin|passcode)\b[^\d\n]{0,10}\d{3,8}\b"#,
             replacement: "$1 [REDACTED]"
         ),
+        // Password stated in prose without a delimiter ("my password is hunter2").
+        // The delimited "password: X" / "password=X" forms are caught by
+        // `kv_creds`; this covers the "<keyword> is|was <token>" prose form a
+        // patron naturally types in a support chat (PP-4817 chaos F-002: a prose
+        // password leaked into the ticket + real clipboard payload). Requiring an
+        // explicit "is"/"was" linker keeps benign phrases safe — "password reset",
+        // "forgot my password", "password not working" have no linker and are
+        // untouched; only "<keyword> is/was <token>" is redacted (privacy >
+        // utility, so an occasional "password is wrong" losing "wrong" is fine).
+        RedactionPattern(
+            label: "password_prose",
+            regex: #"(?i)\b(password|passwd|passphrase|pwd)\b\s+(?:is|was)\s+\S{3,}"#,
+            replacement: "$1 [REDACTED]"
+        ),
         // Standalone 10-14 digit library barcode / card number typed inline.
         // Word-boundaried so 4-digit years and 3-digit error codes survive.
         // The negative lookahead carves out exactly a 13-digit 978/979 ISBN —
