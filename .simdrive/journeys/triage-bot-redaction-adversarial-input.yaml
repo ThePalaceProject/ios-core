@@ -21,12 +21,16 @@ scenario:
        deterministically instead of needing the Force-Submit-Failure toggle)"
 
   recording:
-    path: "~/.simdrive/recordings/chaos-rapid-tap-category-chip/recording.yaml"
+    path: ".simdrive/replays/chaos/triage-bot-redaction-adversarial-input/recording.yaml"
     note: >
-      No dedicated recording exists for this exact flow yet (it was driven
-      ad hoc during the PP-4817 chaos pass, not via record_start/stop).
-      Re-record this journey with simdrive.record_start/record_stop next
-      time it is run and update this path.
+      Recorded via simdrive.record_start/record_stop during the PP-4817 QA
+      re-validation on build 3.3.0 (488, develop-equiv), 2026-07-17. The flow
+      opens Settings -> Get Help (rather than the book-detail toolbar) to reach
+      the same conversation reducer. Redaction was confirmed end-to-end that
+      run: the ticket-preview 'What you said' field AND the real device
+      pasteboard (Copy details -> `simctl pbpaste`) both showed every credential
+      shape stripped ("my password [REDACTED]", pin/card/JWT redacted). Snapshot
+      baselines live alongside for `simdrive replay` drift checking.
 
   steps:
     - id: open_help
