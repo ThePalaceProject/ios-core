@@ -99,45 +99,94 @@ final class ReaderService {
         openEPUBInternal(book, isRetry: false)
     }
 
-    /// Opens an LCP-protected PDF through the Readium pipeline:
-    /// `AssetRetriever` + `PublicationOpener` → `Publication` served by
-    /// `httpServer` → `PDFNavigatorViewController`. No temp-extract step.
+    /// PDF open entry point for every caller (BookDetail, My Books, and the
+    /// Continue-reading card). Routes on encryption:
+    ///   - LCP-protected PDFs → `openLCPPDF` (Readium publication open +
+    ///     chunked disk extract → PDFKit).
+    ///   - Plain (non-LCP) PDFs → `openPlainPDF` (PDFKit `PDFDocument(url:)`
+    ///     mmap, no publication/extract hop).
     ///
-    /// The route is pushed IMMEDIATELY so the reader view appears with
-    /// its own loading state — the publication open + TOC pre-load run
-    /// asynchronously in the background, and the reader view re-renders
-    /// when the publication lands. This is intentional: LCP open on large
-    /// Marketplace containers involves hundreds of synchronous AES decrypt
-    /// calls (visible in `TPPLCPClient.swift: Successfully decrypted ...`
-    /// logs) and can take 30-60s. Holding the user on the book detail
-    /// page during that window makes the app feel frozen.
+    /// Gating lives here rather than only in `BookService.presentPDF` so that
+    /// EVERY caller stays correct through a single seam. The Continue-reading
+    /// card called this method directly while it was LCP-only, so tapping a
+    /// plain downloaded PDF (an open-access title) drove it through the LCP
+    /// extract pipeline and failed with a spurious "unable to open" alert.
     ///
-    /// `onFinish` fires once the route has been pushed (or the open has
-    /// failed and an alert is queued). It does NOT wait for the
-    /// publication itself — callers that want to clear a button spinner
-    /// can do so as soon as the reader appears.
-    /// LCP PDF open flow — **disk-extract architecture**.
-    ///
-    /// Previously this route handed an LCP-encrypted `Publication`
-    /// directly to Readium's `PDFNavigatorViewController`, which did
-    /// random-access reads on the encrypted stream. The device log
-    /// captured 841,570 decrypts in 10s with ~9 KB retained per call
-    /// (residentMB 1.8 → 2.8 GB), guaranteed OOM on anything bigger
-    /// than a one-page PDF.
-    ///
-    /// The new path streams the decrypted PDF ONCE through Readium's
-    /// `Resource.stream(consume:)` into a temp .pdf on disk, then
-    /// renders with PDFKit (`TPPPDFReaderView`) which mmaps the file
-    /// and pages in on demand. ~25k linear decrypts for a 50MB book
-    /// instead of ~800k random-access ones, with the Readium
-    /// publication released the instant extraction completes.
-    ///
-    /// Cached extract on disk → re-opens skip the decrypt entirely.
+    /// The shared prologue — `bookOpenTracker.recordOpened` +
+    /// `stopActiveAudiobookSessionIfNeeded()` — runs for BOTH routes, matching
+    /// `openEPUB` and audiobook opens: opening a reader is a content switch, so
+    /// it records recency and stops any playing audiobook regardless of PDF
+    /// encryption. NOTE: plain PDFs opened from BookDetail/My Books previously
+    /// bypassed this method and did neither; routing them through the single
+    /// seam intentionally unifies that behavior.
     @MainActor
     func openPDF(_ book: TPPBook, onFinish: (() -> Void)? = nil) {
         // Polish-phase (in-app-nav-polish-2026-06-01) — see openEPUB.
         AppContainer.production().bookOpenTracker.recordOpened(book.identifier)
         Self.stopActiveAudiobookSessionIfNeeded()
+
+        switch Self.pdfOpenRoute(for: book) {
+        case .lcp:
+            openLCPPDF(book, onFinish: onFinish)
+        case .plain:
+            openPlainPDF(book, onFinish: onFinish)
+        }
+    }
+
+    /// Which PDF-open pipeline a book routes to. `openPDF` dispatches on this;
+    /// pulled out as a pure `nonisolated static` so the routing decision — the
+    /// exact seam the Continue-card regression turned on — is unit-testable
+    /// without the singleton-coupled open machinery.
+    enum PDFOpenRoute: Equatable { case lcp, plain }
+
+    /// Route a PDF by encryption. LCP-protected PDFs (including Marketplace
+    /// shapes where the LCP MIME is nested/sibling — see `hasLCPAcquisition`)
+    /// take the Readium extract pipeline; everything else is a plain PDFKit
+    /// open. In a non-LCP (open-source) build there is no LCP path, so every
+    /// PDF is `.plain`.
+    nonisolated static func pdfOpenRoute(for book: TPPBook) -> PDFOpenRoute {
+        #if LCP
+        return LCPPDFs.hasLCPAcquisition(book) ? .lcp : .plain
+        #else
+        return .plain
+        #endif
+    }
+
+    /// Plain (non-LCP) PDF open. `PDFDocument(url:)` mmaps the file and pages
+    /// in on demand — no up-front RAM cost for a large textbook, no
+    /// synchronous main-thread read of the whole file (PR #852). Shared by
+    /// BookDetail, My Books, and the Continue-reading card.
+    private func openPlainPDF(_ book: TPPBook, onFinish: (() -> Void)? = nil) {
+        guard let url = AppContainer.production().downloadCenter.fileUrl(for: book.identifier) else {
+            Log.error(#file, "[PDF] no on-disk file for \(book.identifier) — cannot open plain PDF")
+            onFinish?()
+            return
+        }
+        let metadata = TPPPDFDocumentMetadata(with: book)
+        let document = TPPPDFDocument(url: url)
+        if let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator {
+            coordinator.storePDF(document: document, metadata: metadata, forBookId: book.identifier)
+            coordinator.push(.pdf(BookRoute(id: book.identifier)))
+        }
+        onFinish?()
+    }
+
+    /// LCP-protected PDF open. Opens the Readium publication, extracts the
+    /// decrypted PDF to disk (chunked, off-main), then hands the on-disk file
+    /// to PDFKit. Only reached for books with an LCP acquisition. The route is
+    /// pushed immediately with a loading state; `onFinish` fires once the route
+    /// is pushed (or the open fails and an alert is queued), NOT once the
+    /// publication lands.
+    ///
+    /// Disk-extract (rather than serving the encrypted publication straight to
+    /// Readium's `PDFNavigatorViewController`) is deliberate: random-access
+    /// reads on the encrypted stream logged ~841k AES decrypts in 10s (~9 KB
+    /// retained each, residentMB 1.8 → 2.8 GB) and OOM'd on anything past a
+    /// one-page PDF. Streaming the decrypted bytes once to a temp `.pdf` then
+    /// mmapping with PDFKit is ~25k linear decrypts for a 50 MB book, and the
+    /// Readium publication is released the instant extraction completes. A
+    /// cached on-disk extract lets re-opens skip the decrypt entirely.
+    private func openLCPPDF(_ book: TPPBook, onFinish: (() -> Void)? = nil) {
         guard let presenter = topPresenter() else { onFinish?(); return }
 
         if openInFlightBookIds.contains(book.identifier) {

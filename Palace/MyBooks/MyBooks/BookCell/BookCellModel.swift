@@ -629,26 +629,16 @@ extension BookCellModel {
             readerService.openEPUB(book)
             self.isLoading = false
         case .pdf:
-            #if LCP
-            if LCPPDFs.hasLCPAcquisition(book) {
-                // LCP PDFs go through the Readium publication opener which
-                // is async + heavy (LCP key derivation + asset retrieval).
-                // Hold isLoading until the route is pushed so the cell
-                // spinner stays visible while the user waits.
-                readerService.openPDF(book) { [weak self] in
-                    self?.isLoading = false
-                }
-                return
+            // Single PDF seam: `ReaderService.openPDF` gates LCP vs plain
+            // internally (see `ReaderService.pdfOpenRoute`) so every caller —
+            // this cell, BookDetail, and the Continue-reading card — routes
+            // identically. Hold the cell spinner until the open dispatches:
+            // the completion fires synchronously for a plain PDFKit open and
+            // after the async publication open for LCP (key derivation + asset
+            // retrieval), keeping the spinner visible while the user waits.
+            readerService.openPDF(book) { [weak self] in
+                self?.isLoading = false
             }
-            #endif
-            guard let url = downloadCenter.fileUrl(for: book.identifier) else { self.isLoading = false; return }
-            let metadata = TPPPDFDocumentMetadata(with: book)
-            let document = TPPPDFDocument(url: url)
-            if let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator {
-                coordinator.storePDF(document: document, metadata: metadata, forBookId: book.identifier)
-                coordinator.push(.pdf(BookRoute(id: book.identifier)))
-            }
-            self.isLoading = false
         case .audiobook:
             openAudiobookFromCell()
         case .streamingHTML:

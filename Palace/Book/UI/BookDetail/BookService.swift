@@ -119,33 +119,19 @@ enum BookService {
     }
 
     @MainActor private static func presentPDF(_ book: TPPBook, completion: (() -> Void)? = nil) {
-        // LCP-protected PDFs go through Readium's PDFNavigator — no temp
-        // extract, pages stream on demand via the shared httpServer. Use
-        // hasLCPAcquisition (walks all acquisitions + indirect chains)
-        // rather than canOpenBook so OPDS-Catalog-wrapped LCP PDFs (where
-        // the LCP MIME is a sibling acquisition rather than the default)
-        // get routed correctly. Defer `completion?()` until the
-        // publication opens — LCP open is async (~1–3s) and the caller
-        // typically holds a loading indicator on this completion.
-        #if LCP
-        if LCPPDFs.hasLCPAcquisition(book) {
-            AppContainer.production().readerService.openPDF(book) {
-                completion?()
-            }
-            return
+        // Single PDF seam: `ReaderService.openPDF` gates LCP vs plain
+        // internally. LCP-protected PDFs stream through Readium's
+        // publication-open + disk-extract pipeline; plain (non-LCP) PDFs use
+        // PDFKit's `PDFDocument(url:)` mmap path. Routing lives in one place
+        // (ReaderService) so BookDetail, My Books, and the Continue-reading
+        // card can't drift apart — the Continue card previously bypassed this
+        // gate and failed to open plain PDFs. `completion` fires once the open
+        // has been dispatched (immediately for plain; after the async
+        // publication open for LCP — the caller typically holds a loading
+        // indicator on it).
+        AppContainer.production().readerService.openPDF(book) {
+            completion?()
         }
-        #endif
-
-        // Plain (non-LCP) PDFs keep the PDFKit path: PDFDocument(url:) mmaps
-        // the file and pages in on demand without the HTTP-server hop.
-        guard let url = AppContainer.production().downloadCenter.fileUrl(for: book.identifier) else { completion?(); return }
-        let metadata = TPPPDFDocumentMetadata(with: book)
-        let document = TPPPDFDocument(url: url)
-        if let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator {
-            coordinator.storePDF(document: document, metadata: metadata, forBookId: book.identifier)
-            coordinator.push(.pdf(BookRoute(id: book.identifier)))
-        }
-        completion?()
     }
 
     /// Shown when an audiobook open fails. Invoked by
