@@ -253,6 +253,14 @@ class AudiobookSessionPresenter: ObservableObject {
         isCollapsed = false
     }
 
+    /// Full close from the ✕ on the full player — ends the session and dismisses
+    /// BOTH the full player and the mini-bar (unlike `minimize()`, which only
+    /// hides the full player and keeps the mini-bar). Playback stops and the
+    /// final position is persisted so the patron can resume later from My Books.
+    func closePlayer() {
+        Task { await sessionManager.stopPlayback(dismissPhoneUI: true, persistFinalPosition: true) }
+    }
+
     /// No-op in the resize-overlay morph: the floating pill is GONE — the mini
     /// bar is already the smallest chrome state, so there is nothing further to
     /// collapse into. Left as a no-op (rather than deleted) so the mini bar's
