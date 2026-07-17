@@ -15,6 +15,21 @@ set -euo pipefail
 
 echo "Running optimized unit tests for Palace..."
 
+# Opt-in clean. The local paths below ran `xcodebuild clean` UNCONDITIONALLY,
+# discarding warm DerivedData and forcing a full cold rebuild (tens of minutes)
+# on every "CI-parity" local run. Off by default — set PALACE_TEST_CLEAN=1 (or
+# pass --clean) only when you actually suspect a stale-artifact / arch conflict.
+CLEAN_BUILD="${PALACE_TEST_CLEAN:-0}"
+for arg in "$@"; do
+    [ "$arg" = "--clean" ] && CLEAN_BUILD=1
+done
+maybe_clean() {
+    if [ "$CLEAN_BUILD" = "1" ]; then
+        echo "Cleaning build folder (PALACE_TEST_CLEAN / --clean set)..."
+        xcodebuild clean -project Palace.xcodeproj -scheme Palace > /dev/null 2>&1
+    fi
+}
+
 # Clean up any previous test results
 rm -rf TestResults.xcresult
 
@@ -124,8 +139,7 @@ else
 
     if [ -z "$SIMULATOR_ID" ]; then
         echo "❌ No available iPhone simulator found, trying fallback..."
-        # Clean build folder first
-        xcodebuild clean -project Palace.xcodeproj -scheme Palace > /dev/null 2>&1
+        maybe_clean
         
         # Fallback to name-based approach with common simulators
         # Updated for Xcode 26 / iOS 26 compatibility
@@ -161,8 +175,9 @@ else
         done
     else
         echo "Using iPhone simulator ID: $SIMULATOR_ID"
-        # Clean build folder to avoid architecture conflicts
-        xcodebuild clean -project Palace.xcodeproj -scheme Palace > /dev/null 2>&1
+        # Clean only when explicitly requested (arch-conflict recovery); default
+        # reuses warm DerivedData for a fast incremental local run.
+        maybe_clean
         
         xcodebuild test \
             -project Palace.xcodeproj \

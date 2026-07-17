@@ -1,5 +1,14 @@
 name: Unit Tests
-on: [ pull_request, workflow_dispatch ]
+on:
+  pull_request:
+    # Skip the full macOS build/test job for changes that cannot regress runtime
+    # behavior. scripts/** is deliberately NOT ignored — the test invocation lives
+    # there. Mirrors verify-pr.sh's docs-only fast-path.
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.simdrive/**'
+  workflow_dispatch:
 concurrency:
   group: unit-tests-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -11,6 +20,10 @@ jobs:
 
   build-and-test:
     runs-on: macos-15
+    # Cap the whole job. The test step has its own 60-min bound, but the ~15
+    # post-processing steps (xcresult parse, snapshot find, Pages deploy) are
+    # unbounded — a hang there could otherwise burn the 360-min default.
+    timeout-minutes: 90
     permissions:
       contents: write
       pull-requests: write
@@ -46,25 +59,31 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ~/Library/Developer/Xcode/DerivedData
-          # Key on the branch name + run number so each run has a unique key
-          # (always saves) but restores from the latest cache for this branch.
-          # We deliberately do NOT key on pbxproj — every file-add edit
-          # invalidated the entire cache, forcing ~50min cold rebuilds that
-          # blew the job timeout before tests could even start.
-          key: ${{ runner.os }}-deriveddata-${{ github.head_ref || github.ref_name }}-${{ github.run_number }}
+          # Key on the branch name only (NOT run_number). A run_number suffix made
+          # every run save a fresh ~1.8 GiB cache that never key-hit again, so the
+          # repo blew GitHub's 10 GiB cache cap and LRU-evicted the warm caches —
+          # producing 25-46 min cold rebuilds. Branch-only keying updates ONE cache
+          # per branch in place (actions/cache skips save on an exact key hit, so
+          # this warms once then reuses). We deliberately do NOT key on pbxproj —
+          # every file-add edit would invalidate the whole cache.
+          # Tradeoff: within a long-lived branch the cache isn't re-saved (exact
+          # hit skips save), and develop's base cache freezes at its first snapshot
+          # — a dedicated develop-push cache-warm job is the proper follow-up. Even
+          # frozen, a weeks-old DerivedData saves most recompilation vs a cold run.
+          key: ${{ runner.os }}-deriveddata-${{ github.head_ref || github.ref_name }}
           restore-keys: |
-            ${{ runner.os }}-deriveddata-${{ github.head_ref || github.ref_name }}-
-            ${{ runner.os }}-deriveddata-develop-
+            ${{ runner.os }}-deriveddata-${{ github.head_ref || github.ref_name }}
+            ${{ runner.os }}-deriveddata-develop
             ${{ runner.os }}-deriveddata-
             
       - name: Cache Test History
         uses: actions/cache@v6
         with:
           path: .test-history
-          key: test-history-${{ github.head_ref || github.ref_name }}-${{ github.run_number }}
+          key: test-history-${{ github.head_ref || github.ref_name }}
           restore-keys: |
-            test-history-${{ github.head_ref || github.ref_name }}-
-            test-history-develop-
+            test-history-${{ github.head_ref || github.ref_name }}
+            test-history-develop
             test-history-
             
       # Fast, DRM-free gate for the PalaceTriageBot SPM package. Runs the
