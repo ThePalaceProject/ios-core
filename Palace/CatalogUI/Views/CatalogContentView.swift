@@ -27,15 +27,17 @@ struct CatalogContentView: View {
     var bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry
 
     /// Subscribes to the developer-settings local override so the view
-    /// re-renders the moment the dev toggle flips. The actual gating
-    /// decision delegates to `RemoteFeatureFlags.shared
-    /// .isInAppPlaybackNavEnabled`, which combines the override (wins
-    /// when set) with the Firebase Remote Config `in_app_playback_nav_enabled`
-    /// value (fallback). Reading the @AppStorage value inside
-    /// `inAppPlaybackNavEnabled` registers the SwiftUI observation
-    /// against the same UserDefaults key the dev toggle writes to.
-    @AppStorage("RemoteFeatureFlags.inAppPlaybackNavLocalOverride")
-    private var inAppPlaybackNavLocalOverride: Bool = false
+    /// re-renders the moment the dev toggle flips. The actual gating decision
+    /// delegates to `RemoteFeatureFlags.shared.isContinuationCardsEnabled`,
+    /// which combines the override (wins when set) with the Firebase Remote
+    /// Config `continuation_cards_enabled` value (fallback). Reading the
+    /// @AppStorage value inside `continuationCardsEnabled` registers the
+    /// SwiftUI observation against the same UserDefaults key the dev toggle
+    /// writes to. NOTE: the continuation cards are gated separately from the
+    /// in-app mini-player (`inAppPlaybackNavEnabled`) so they roll out
+    /// independently.
+    @AppStorage("RemoteFeatureFlags.continuationCardsLocalOverride")
+    private var continuationCardsLocalOverride: Bool = false
 
     /// Chevron "pin": when `false` the lane is manually pinned collapsed and
     /// ignores the scroll; when `true` (default) the scroll position drives it.
@@ -49,18 +51,19 @@ struct CatalogContentView: View {
     /// catalog body. See `ContinueCollapseModel`.
     @State private var continueCollapse = ContinueCollapseModel()
 
-    private var inAppPlaybackNavEnabled: Bool {
-        _ = inAppPlaybackNavLocalOverride  // trigger SwiftUI observation
-        return RemoteFeatureFlags.shared.isInAppPlaybackNavEnabled
+    private var continuationCardsEnabled: Bool {
+        _ = continuationCardsLocalOverride  // trigger SwiftUI observation
+        return RemoteFeatureFlags.shared.isContinuationCardsEnabled
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Feature-flagged (in_app_playback_nav_enabled): hides the
+            // Feature-flagged (continuation_cards_enabled): hides the
             // Continue Reading / Continue Listening hero rows when off.
-            // The viewmodel still runs (subscriptions stay live so the
-            // flag flip is instant); only the rendering is gated.
-            if inAppPlaybackNavEnabled {
+            // Gated independently of the in-app mini-player. The viewmodel
+            // still runs (subscriptions stay live so the flag flip is
+            // instant); only the rendering is gated.
+            if continuationCardsEnabled {
                 ContinueRowSection(
                     viewModel: activeSessions,
                     onResumeReading: onResumeReading,

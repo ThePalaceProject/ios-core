@@ -68,6 +68,7 @@ final class FirebaseManager: @unchecked Sendable {
         case triageBotTicketSubmissionEnabled = "triage_bot_ticket_submission_enabled"
         case triageBotAIFallbackEnabled = "triage_bot_ai_fallback_enabled"
         case inAppPlaybackNavEnabled = "in_app_playback_nav_enabled"
+        case continuationCardsEnabled = "continuation_cards_enabled"
         case sideLoadingEnabled = "side_loading_enabled"
         // App-rating prompt (Epic PP-4086). Master switch + tunable thresholds.
         case appRatingPromptEnabled = "app_rating_prompt_enabled"
@@ -122,6 +123,7 @@ final class FirebaseManager: @unchecked Sendable {
             RemoteConfigKey.triageBotTicketSubmissionEnabled.rawValue: NSNumber(value: false),
             RemoteConfigKey.triageBotAIFallbackEnabled.rawValue: NSNumber(value: false),
             RemoteConfigKey.inAppPlaybackNavEnabled.rawValue: NSNumber(value: false),
+            RemoteConfigKey.continuationCardsEnabled.rawValue: NSNumber(value: false),
             RemoteConfigKey.sideLoadingEnabled.rawValue: NSNumber(value: false),
             RemoteConfigKey.appRatingPromptEnabled.rawValue: NSNumber(value: true),
             RemoteConfigKey.appRatingMinSessions.rawValue: NSNumber(value: RatingConfig.fallback.minSessions),

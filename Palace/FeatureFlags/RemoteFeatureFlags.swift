@@ -63,6 +63,14 @@ final class RemoteFeatureFlags: @unchecked Sendable {
         /// (dev-menu toggle / QA) > Firebase remote (default false) — see
         /// `isInAppPlaybackNavEnabled`.
         case inAppPlaybackNavEnabled = "in_app_playback_nav_enabled"
+        /// Gates ONLY the Continue Reading / Continue Listening hero rows at the
+        /// top of the Catalog (the "continuation" cards). Split out from
+        /// `inAppPlaybackNavEnabled` so the cards and the in-app player can be
+        /// rolled out independently — e.g. ship the in-app mini-player without
+        /// the continuation cards, or vice versa. **Default OFF — Firebase-gated**
+        /// (same posture as `inAppPlaybackNavEnabled`); see
+        /// `isContinuationCardsEnabled`.
+        case continuationCardsEnabled = "continuation_cards_enabled"
         /// Gates every side-loading surface (swarm_495a88d9 — PP-2677 /
         /// PP-2678 / PP-2679): the Settings "Side Loading" import screen and
         /// the catalog side-loaded lane. Test-only capability for exercising
@@ -116,6 +124,8 @@ final class RemoteFeatureFlags: @unchecked Sendable {
                 return .triageBotAIFallbackEnabled
             case .inAppPlaybackNavEnabled:
                 return .inAppPlaybackNavEnabled
+            case .continuationCardsEnabled:
+                return .continuationCardsEnabled
             case .sideLoadingEnabled:
                 return .sideLoadingEnabled
             case .appRatingPromptEnabled:
@@ -387,6 +397,27 @@ final class RemoteFeatureFlags: @unchecked Sendable {
             return override
         }
         return isFeatureEnabled(.inAppPlaybackNavEnabled)
+    }
+
+    /// UserDefaults override for the continuation cards, independent of the
+    /// in-app playback-nav override. Settable from the developer settings.
+    static let continuationCardsLocalOverrideKey = "RemoteFeatureFlags.continuationCardsLocalOverride"
+
+    /// Whether the Continue Reading / Continue Listening hero rows are shown at
+    /// the top of the Catalog. Split from `isInAppPlaybackNavEnabled` so the
+    /// continuation cards and the in-app mini-player roll out independently.
+    ///
+    /// **Default OFF — Firebase-gated.** The cards are hidden until Firebase
+    /// Remote Config sets `continuation_cards_enabled = true` (global or staged).
+    ///
+    /// Override precedence (mirrors `isInAppPlaybackNavEnabled`):
+    ///   1. UserDefaults local override (dev-menu toggle / QA) — wins.
+    ///   2. Firebase Remote Config (`isFeatureEnabled`, default `false`).
+    var isContinuationCardsEnabled: Bool {
+        if let override = defaults.object(forKey: Self.continuationCardsLocalOverrideKey) as? Bool {
+            return override
+        }
+        return isFeatureEnabled(.continuationCardsEnabled)
     }
 
     /// UserDefaults override that lets QA / a developer force side loading on

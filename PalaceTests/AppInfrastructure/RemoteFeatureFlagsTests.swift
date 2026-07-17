@@ -230,4 +230,68 @@ final class RemoteFeatureFlagsTests: XCTestCase {
         XCTAssertFalse(RemoteFeatureFlags.FeatureFlag.inAppPlaybackNavEnabled.defaultValue,
                        "in-app playback nav default must be OFF — Firebase Remote Config turns it on")
     }
+
+    // MARK: - Continuation Cards (Firebase-gated, default OFF, independent flag)
+    //
+    // The Continue Reading/Listening hero rows are gated by their OWN flag,
+    // split from in-app playback nav so the cards and the mini-player roll out
+    // independently. Same posture: default OFF, Firebase enables, local override
+    // wins.
+
+    func testContinuationCards_noOverride_defaultsOff() {
+        let (flags, suite, name) = makeInAppNavFlags()
+        defer { suite.removePersistentDomain(forName: name) }
+
+        XCTAssertFalse(flags.isContinuationCardsEnabled,
+                       "Absent a local override or Firebase value, continuation cards must default OFF")
+        XCTAssertEqual(flags.isContinuationCardsEnabled,
+                       flags.isFeatureEnabled(.continuationCardsEnabled),
+                       "Without a local override, the getter must reflect the Remote Config flag, not a constant")
+    }
+
+    func testContinuationCards_localOverrideTrue_forcesOn() {
+        let (flags, suite, name) = makeInAppNavFlags()
+        defer { suite.removePersistentDomain(forName: name) }
+
+        suite.set(true, forKey: RemoteFeatureFlags.continuationCardsLocalOverrideKey)
+        XCTAssertTrue(flags.isContinuationCardsEnabled,
+                      "A local override of true must force the continuation cards ON")
+    }
+
+    func testContinuationCards_localOverrideFalse_forcesOff() {
+        let (flags, suite, name) = makeInAppNavFlags()
+        defer { suite.removePersistentDomain(forName: name) }
+
+        suite.set(false, forKey: RemoteFeatureFlags.continuationCardsLocalOverrideKey)
+        XCTAssertFalse(flags.isContinuationCardsEnabled,
+                       "A local override of false must force the continuation cards OFF")
+    }
+
+    func testContinuationCards_featureFlagDefault_isOff() {
+        XCTAssertFalse(RemoteFeatureFlags.FeatureFlag.continuationCardsEnabled.defaultValue,
+                       "continuation cards default must be OFF — Firebase Remote Config turns it on")
+    }
+
+    /// The split's core guarantee: the two flags are independent. Forcing the
+    /// continuation cards ON while forcing in-app playback nav OFF (and vice
+    /// versa) must be honored — one does not leak into the other. A mutant that
+    /// re-pointed either getter at the wrong override key fails here.
+    func testFlags_continuationAndInAppNav_areIndependent() {
+        let (flags, suite, name) = makeInAppNavFlags()
+        defer { suite.removePersistentDomain(forName: name) }
+
+        suite.set(true, forKey: RemoteFeatureFlags.continuationCardsLocalOverrideKey)
+        suite.set(false, forKey: RemoteFeatureFlags.inAppPlaybackNavLocalOverrideKey)
+        XCTAssertTrue(flags.isContinuationCardsEnabled,
+                      "continuation ON must not be suppressed by in-app-nav OFF")
+        XCTAssertFalse(flags.isInAppPlaybackNavEnabled,
+                       "in-app-nav OFF must be honored independently of continuation ON")
+
+        suite.set(false, forKey: RemoteFeatureFlags.continuationCardsLocalOverrideKey)
+        suite.set(true, forKey: RemoteFeatureFlags.inAppPlaybackNavLocalOverrideKey)
+        XCTAssertFalse(flags.isContinuationCardsEnabled,
+                       "continuation OFF must be honored independently of in-app-nav ON")
+        XCTAssertTrue(flags.isInAppPlaybackNavEnabled,
+                      "in-app-nav ON must not be suppressed by continuation OFF")
+    }
 }

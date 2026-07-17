@@ -87,6 +87,10 @@ final class DeveloperSettingsViewModel: ObservableObject {
         didSet { overrideDefaults.set(inAppPlaybackNavEnabled, forKey: RemoteFeatureFlags.inAppPlaybackNavLocalOverrideKey) }
     }
 
+    @Published var continuationCardsEnabled: Bool {
+        didSet { overrideDefaults.set(continuationCardsEnabled, forKey: RemoteFeatureFlags.continuationCardsLocalOverrideKey) }
+    }
+
     @Published var appRatingForceEligible: Bool {
         didSet { overrideDefaults.set(appRatingForceEligible, forKey: RemoteFeatureFlags.appRatingForceEligibleLocalOverrideKey) }
     }
@@ -155,6 +159,7 @@ final class DeveloperSettingsViewModel: ObservableObject {
         self.anthropicKeyStatus = triageBotKeyAdmin.hasStoredKey ? "Stored" : "Not set"
 
         self.inAppPlaybackNavEnabled = featureFlags.isInAppPlaybackNavEnabled
+        self.continuationCardsEnabled = featureFlags.isContinuationCardsEnabled
         self.appRatingForceEligible = featureFlags.isAppRatingForceEligible
 
         self.customRegistryInput = settings.customLibraryRegistryServer ?? ""
