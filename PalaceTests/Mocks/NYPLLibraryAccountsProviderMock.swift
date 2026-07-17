@@ -11,6 +11,15 @@ import PalaceCatalog
 @testable import Palace
 
 class TPPLibraryAccountMock: NSObject, TPPLibraryAccountsProvider, @unchecked Sendable {
+
+    /// `@unchecked Sendable`: `TPPLibraryAccountsProvider` is `Sendable`, and this
+    /// mock HONORS that contract — its one mutable stored property
+    /// (`userAccountResolver`) is guarded by a single `NSLock`, mirroring
+    /// `TPPBookRegistryMock`. All other properties are immutable `let`s or
+    /// computed accessors, so they need no locking. Concurrency tests may share
+    /// one instance across tasks/threads.
+    private let lock = NSLock()
+
     let feedURL: URL
     let nyplAuthDocURL: URL
     let feed: OPDS2CatalogsFeed
@@ -117,8 +126,12 @@ class TPPLibraryAccountMock: NSObject, TPPLibraryAccountsProvider, @unchecked Se
     /// `TPPUserAccountMock.sharedAccount(libraryUUID:)` reads. Tests that
     /// exercise per-library isolation (see `TPPCrossLibrarySignOutTests`)
     /// assign a resolver that returns a distinct mock instance per UUID.
-    var userAccountResolver: (String) -> TPPUserAccount = { libraryUUID in
+    private var _userAccountResolver: (String) -> TPPUserAccount = { libraryUUID in
         TPPUserAccountMock.sharedAccount(libraryUUID: libraryUUID)
+    }
+    var userAccountResolver: (String) -> TPPUserAccount {
+        get { lock.withLock { _userAccountResolver } }
+        set { lock.withLock { _userAccountResolver = newValue } }
     }
 
     func userAccount(for libraryUUID: String) -> TPPUserAccount {

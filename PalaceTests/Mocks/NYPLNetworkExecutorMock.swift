@@ -19,23 +19,46 @@ private struct SendableResultCompletion: @unchecked Sendable {
 /// main thread during setup and only read during main-queue delivery — it is
 /// never mutated from multiple threads. The waiver documents that confinement.
 class TPPRequestExecutorMock: TPPRequestExecuting, @unchecked Sendable {
-    var requestTimeout: TimeInterval = 60
+
+    private let lock = NSLock()
+
+    private var _requestTimeout: TimeInterval = 60
+    var requestTimeout: TimeInterval {
+        get { lock.withLock { _requestTimeout } }
+        set { lock.withLock { _requestTimeout = newValue } }
+    }
 
     // table of all mock response bodies for given URLs
-    var responseBodies = [URL: String]()
+    private var _responseBodies = [URL: String]()
+    var responseBodies: [URL: String] {
+        get { lock.withLock { _responseBodies } }
+        set { lock.withLock { _responseBodies = newValue } }
+    }
 
     /// When set, ALL requests will fail with this HTTP status code.
-    var forceFailureStatusCode: Int?
+    private var _forceFailureStatusCode: Int?
+    var forceFailureStatusCode: Int? {
+        get { lock.withLock { _forceFailureStatusCode } }
+        set { lock.withLock { _forceFailureStatusCode = newValue } }
+    }
 
     /// Every URL passed to `executeRequest`, in call order. Lets tests assert
     /// that a sign-in actually FIRED the credential request (e.g. the
     /// basic/token readiness-race regression where `logIn()` used to silently
     /// no-op before `/patrons/me` was ever requested).
-    private(set) var executedRequestURLs: [URL] = []
+    private var _executedRequestURLs: [URL] = []
+    private(set) var executedRequestURLs: [URL] {
+        get { lock.withLock { _executedRequestURLs } }
+        set { lock.withLock { _executedRequestURLs = newValue } }
+    }
 
     /// Incremented in `reset()` so that stale GCD blocks from a previous
     /// test skip their completion callback.
-    private var generation: Int = 0
+    private var _generation: Int = 0
+    private var generation: Int {
+        get { lock.withLock { _generation } }
+        set { lock.withLock { _generation = newValue } }
+    }
 
     init() {
         // add here the responses of all the api calls whose flow you want to verify
