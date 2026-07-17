@@ -13,6 +13,11 @@
 
 set -eu
 
+# git exports GIT_DIR/GIT_WORK_TREE/etc. into hook environments; run under a hook,
+# this test's throwaway-repo git commands would operate on the real repo. Scrub them
+# so `git init`/`git add`/`git commit` in $TMPDIR stay isolated.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_COMMON_DIR GIT_PREFIX GIT_EXEC_PATH || true
+
 # Locate this test + the hook in the worktree
 TEST_DIR=$(cd "$(dirname "$0")" && pwd)
 REPO_ROOT=$(cd "$TEST_DIR/../.." && pwd)

@@ -502,15 +502,6 @@ cmd_auto() {
     fi
   fi
 
-  # --- BrowserStack screenshot walker ---
-  if [[ -f "$SCRIPT_DIR/browserstack-screenshot-walker.py" ]]; then
-    echo "--- BrowserStack screenshot walker ---"
-    echo "  Run manually: python3 $SCRIPT_DIR/browserstack-screenshot-walker.py"
-    echo "  Save output to: $output_dir/automated/screenshots/"
-  else
-    echo "--- BrowserStack screenshots: SKIPPED (script not found) ---"
-  fi
-
   echo ""
   echo "=== Automated sweep complete (exit=$exit_code) ==="
   echo ""

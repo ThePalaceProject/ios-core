@@ -119,7 +119,10 @@ if [[ -z "$SWIFT_CHANGED" ]]; then
   if [[ -d "$REPO_DIR/scripts/tests" ]] && command -v python3 >/dev/null 2>&1 \
      && python3 -c 'import pytest' >/dev/null 2>&1; then
     echo "[pre-push-test-gate] Running scripts/tests/ suite (python -m pytest)…" >&2
-    if (cd "$REPO_DIR" && python3 -m pytest scripts/tests -q) >/tmp/pre-push-scripts-tests.log 2>&1; then
+    # Scrub the git hook env (GIT_DIR/GIT_WORK_TREE/GIT_INDEX_FILE/…) before pytest —
+    # inherited, it makes the tests' throwaway-repo git commands operate on the real
+    # repo being pushed and corrupt the branch (same cause as the xcodebuild scrub below).
+    if (cd "$REPO_DIR" && env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u GIT_PREFIX -u GIT_EXEC_PATH python3 -m pytest scripts/tests -q) >/tmp/pre-push-scripts-tests.log 2>&1; then
       echo "[pre-push-test-gate] scripts/tests PASS — tooling suite green." >&2
       exit 0
     else
