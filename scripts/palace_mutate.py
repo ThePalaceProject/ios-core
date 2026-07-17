@@ -339,6 +339,24 @@ def any_tests_ran(output: str) -> bool:
     return bool(re.search(r"Executed [1-9]\d* test", output))
 
 
+def classify_test_outcome(*, timed_out: bool, tests_ran: bool, succeeded: bool) -> str:
+    """Grade a targeted test run into one of three outcomes:
+
+      - "passed"  — tests ran and all passed (the mutant SURVIVED).
+      - "failed"  — tests ran and at least one failed (the mutant was KILLED).
+      - "errored" — the run could not judge the mutant: it timed out (a wedged
+        run, not a caught mutant) or no test executed at all (a build failure or
+        misconfiguration, not a caught mutant).
+
+    Grading a timeout or build-failure as "failed"/killed inflates the kill rate
+    with mutants the suite never actually discriminated. "errored" mutants are
+    counted separately AND are not cached as terminal, so they retry next run.
+    """
+    if timed_out or not tests_ran:
+        return "errored"
+    return "passed" if succeeded else "failed"
+
+
 _DEFAULT_TARGETED_TEST_TIMEOUT = int(os.environ.get("PALACE_MUTATE_TEST_TIMEOUT", "1200"))
 
 
@@ -389,9 +407,10 @@ def run_targeted_tests(test_class_paths: list[str], timeout: int = _DEFAULT_TARG
                        coverage_bundle_path: str | None = None) -> tuple[bool, str]:
     """
     Run xcodebuild test scoped to the given test classes.
-    Returns (all_passed, last_lines_of_output).
-    Returns (False, "ERROR: ...") if the configuration ran zero tests — that
-    is treated as a misconfiguration, not a passing run, so callers don't
+    Returns (all_passed, outcome, last_lines_of_output) where outcome is
+    "passed" | "failed" | "errored" (see classify_test_outcome). A timeout or a
+    run that executed zero tests (build failure / misconfiguration) returns
+    outcome="errored" so callers grade it as errored, not KILLED, and don't
     grade mutants as SURVIVED against an empty test set.
 
     Default timeout is 1200s (20 min). On a cold CI runner the first xcodebuild
@@ -423,8 +442,9 @@ def run_targeted_tests(test_class_paths: list[str], timeout: int = _DEFAULT_TARG
             text=True,
             timeout=timeout,
         )
-    except subprocess.TimeoutExpired as e:
-        return (False, f"TIMEOUT after {timeout}s")
+    except subprocess.TimeoutExpired:
+        # A wedged/hung run is NOT the mutant being caught — grade errored.
+        return (False, "errored", f"TIMEOUT after {timeout}s")
     output = result.stdout + result.stderr
     last = "\n".join(output.splitlines()[-15:])
     if not any_tests_ran(output):
@@ -443,9 +463,11 @@ def run_targeted_tests(test_class_paths: list[str], timeout: int = _DEFAULT_TARG
             f"---- last 40 lines of xcodebuild output ----\n{xcb_tail}\n"
             f"---- end xcodebuild output ----"
         )
-        return (False, diagnostic)
+        # No tests executed = build failure / misconfiguration, not a caught mutant.
+        return (False, "errored", diagnostic)
     passed = result.returncode == 0 and "** TEST SUCCEEDED **" in output
-    return (passed, last)
+    outcome = classify_test_outcome(timed_out=False, tests_ran=True, succeeded=passed)
+    return (passed, outcome, last)
 
 
 # ---------------------------------------------------------------------------
@@ -821,9 +843,19 @@ def main() -> int:
 
     print("baseline: running tests with no mutations...")
     t0 = time.time()
-    baseline_ok, baseline_out = run_targeted_tests(args.tests, coverage_bundle_path=coverage_bundle)
+    baseline_ok, _, baseline_out = run_targeted_tests(args.tests, coverage_bundle_path=coverage_bundle)
     t1 = time.time()
-    print(f"baseline: {'PASS' if baseline_ok else 'FAIL'} in {t1-t0:.1f}s")
+    baseline_elapsed = t1 - t0
+    # Bound each per-mutant run at 3x the baseline (baseline includes the cold
+    # build, so this is a generous ceiling for a warm incremental run), floored
+    # at 180s and never exceeding the default ceiling. A wedged mutant is cut
+    # here and graded errored, instead of burning the full 20-min default.
+    per_mutant_timeout = min(
+        _DEFAULT_TARGETED_TEST_TIMEOUT,
+        max(180, int(3 * baseline_elapsed)),
+    )
+    print(f"baseline: {'PASS' if baseline_ok else 'FAIL'} in {baseline_elapsed:.1f}s "
+          f"(per-mutant timeout: {per_mutant_timeout}s)")
     if not baseline_ok:
         print("error: baseline test run failed. Cannot mutation-test against a broken suite.", file=sys.stderr)
         print("last lines:")
@@ -950,26 +982,40 @@ def main() -> int:
 
         try:
             t0 = time.time()
-            passed, last = run_targeted_tests(selected_tests)
+            passed, outcome, last = run_targeted_tests(selected_tests, timeout=per_mutant_timeout)
             elapsed = time.time() - t0
         finally:
             revert_file(file_path, original)
 
-        status = "SURVIVED" if passed else "KILLED"
+        # outcome: passed -> survived, failed -> killed, errored -> errored
+        # (timeout / build-failure: the suite never judged the mutant).
+        if outcome == "errored":
+            status_l = "errored"
+            display = "ERRORED"
+        else:
+            status_l = "survived" if passed else "killed"
+            display = status_l.upper()
         if not args.quiet:
-            print(f"  {status}  ({elapsed:.1f}s)")
+            note = ""
+            if outcome == "errored":
+                note = " — timeout/build-failure; not counted as killed"
+            print(f"  {display}  ({elapsed:.1f}s){note}")
 
-        results.append({
+        result_entry = {
             "mutation": dataclasses.asdict(m),
-            "status": status.lower(),
+            "status": status_l,
             "elapsed_sec": round(elapsed, 1),
-        })
+        }
+        if outcome == "errored":
+            result_entry["reason"] = last
+        results.append(result_entry)
 
-        # Update the per-mutant cache and persist atomically each time, so a
-        # killed process leaves a consistent cache for the next run.
-        if not args.no_cache:
+        # Update the per-mutant cache only for TERMINAL outcomes (killed/survived).
+        # An errored mutant (timeout/build-failure) is deliberately NOT cached, so
+        # it is retried on the next run instead of frozen as a false result.
+        if not args.no_cache and status_l in ("killed", "survived"):
             mutant_cache[mkey] = {
-                "status": status.lower(),
+                "status": status_l,
                 "elapsed_sec": round(elapsed, 1),
                 "stored_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             }
