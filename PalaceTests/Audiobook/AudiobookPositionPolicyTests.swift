@@ -14,6 +14,7 @@ import XCTest
 
 // MARK: - BeginningPositionPolicy
 
+@MainActor
 final class BeginningPositionPolicyTests: XCTestCase {
 
     func testIsAtBeginning_track0_time0_isBeginning() {
@@ -63,6 +64,7 @@ final class BeginningPositionPolicyTests: XCTestCase {
 
 // MARK: - AudiobookPositionPolicy (validator)
 
+@MainActor
 final class AudiobookPositionPolicyValidatorTests: XCTestCase {
 
     private let okTrackKey = "track-key-1"
@@ -183,6 +185,7 @@ final class AudiobookPositionPolicyValidatorTests: XCTestCase {
 
 // MARK: - ChapterChangeDetector
 
+@MainActor
 final class ChapterChangeDetectorTests: XCTestCase {
 
     func testDidChange_noPriorChapter_fires() {
@@ -237,6 +240,7 @@ final class ChapterChangeDetectorTests: XCTestCase {
 
 // MARK: - ChapterTOCNormalizer
 
+@MainActor
 final class ChapterTOCNormalizerTests: XCTestCase {
 
     func testIsOversubdivided_belowThreshold_returnsFalse() {
@@ -317,6 +321,7 @@ final class ChapterTOCNormalizerTests: XCTestCase {
 //     the `!`) reintroduces FINDING-D and fails Test 1 / Test 2.
 //   * Swapping the struct field assignments fails all four tests.
 
+@MainActor
 final class PlaybackOpenPolicyTests: XCTestCase {
 
     // Test 1 — FINDING-D regression guard: re-borrow of same book must

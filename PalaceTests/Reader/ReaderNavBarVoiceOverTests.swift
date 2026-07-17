@@ -31,6 +31,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class ReaderNavBarVoiceOverTests: XCTestCase {
 
     /// Product requirement: `viewDidAppear` in `TPPBaseReaderViewController`

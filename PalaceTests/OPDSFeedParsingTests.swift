@@ -2,6 +2,7 @@ import XCTest
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 final class OPDSFeedParsingTests: XCTestCase {
     func testParseValidOPDSFeed() {
         let bundle = Bundle(for: type(of: self))

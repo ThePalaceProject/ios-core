@@ -8,6 +8,7 @@ import XCTest
 /// behavior; a full URL is used verbatim so a developer can target an
 /// exact endpoint such as the non-crawlable `/libraries` feed that older
 /// clients parse directly.
+@MainActor
 final class TPPConfigurationCustomRegistryTests: XCTestCase {
 
   private var suiteName: String!

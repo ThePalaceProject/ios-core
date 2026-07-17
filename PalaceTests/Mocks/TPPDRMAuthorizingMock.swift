@@ -9,34 +9,75 @@
 import Foundation
 @testable import Palace
 
-class TPPDRMAuthorizingMock: NSObject, TPPDRMAuthorizing {
-    var workflowsInProgress = false
+/// `@unchecked Sendable`: `TPPDRMAuthorizing` completions are `@Sendable`, so this
+/// mock is captured across concurrency domains in concurrent DRM tests. It HONORS
+/// that contract: every mutable stored property is guarded by a single `NSLock`
+/// (mirroring `TPPBookRegistryMock`). `let` constants and computed accessors are
+/// inherently thread-safe and are left unguarded.
+class TPPDRMAuthorizingMock: NSObject, TPPDRMAuthorizing, @unchecked Sendable {
+
+    private let lock = NSLock()
+
+    private var _workflowsInProgress = false
+    var workflowsInProgress: Bool {
+        get { lock.withLock { _workflowsInProgress } }
+        set { lock.withLock { _workflowsInProgress = newValue } }
+    }
+
     let deviceID = "drmDeviceID"
     let userID = "drmUserID"
 
     // MARK: - Configurable Test Properties
 
     /// Controls what `isUserAuthorized` returns. Default is `true`.
-    var isUserAuthorizedReturnValue = true
+    private var _isUserAuthorizedReturnValue = true
+    var isUserAuthorizedReturnValue: Bool {
+        get { lock.withLock { _isUserAuthorizedReturnValue } }
+        set { lock.withLock { _isUserAuthorizedReturnValue = newValue } }
+    }
 
     /// Tracks whether `authorize` was called.
-    var authorizeWasCalled = false
+    private var _authorizeWasCalled = false
+    var authorizeWasCalled: Bool {
+        get { lock.withLock { _authorizeWasCalled } }
+        set { lock.withLock { _authorizeWasCalled = newValue } }
+    }
 
     /// Counts how many times `authorize` was called.
-    var authorizeCallCount = 0
+    private var _authorizeCallCount = 0
+    var authorizeCallCount: Int {
+        get { lock.withLock { _authorizeCallCount } }
+        set { lock.withLock { _authorizeCallCount = newValue } }
+    }
 
     /// Tracks whether `deauthorize` was called.
-    var deauthorizeWasCalled = false
+    private var _deauthorizeWasCalled = false
+    var deauthorizeWasCalled: Bool {
+        get { lock.withLock { _deauthorizeWasCalled } }
+        set { lock.withLock { _deauthorizeWasCalled = newValue } }
+    }
 
     /// Counts how many times `deauthorize` was called.
-    var deauthorizeCallCount = 0
+    private var _deauthorizeCallCount = 0
+    var deauthorizeCallCount: Int {
+        get { lock.withLock { _deauthorizeCallCount } }
+        set { lock.withLock { _deauthorizeCallCount = newValue } }
+    }
 
     /// When true, `deauthorize` captures the completion instead of calling it
     /// immediately. Call `completeDeferredDeauthorize()` to fire the callback.
-    var shouldDeferDeauthorize = false
+    private var _shouldDeferDeauthorize = false
+    var shouldDeferDeauthorize: Bool {
+        get { lock.withLock { _shouldDeferDeauthorize } }
+        set { lock.withLock { _shouldDeferDeauthorize = newValue } }
+    }
 
     /// Captured deauthorization completion for simulating slow DRM callbacks.
-    private(set) var deferredDeauthCompletion: ((Bool, Error?) -> Void)?
+    private var _deferredDeauthCompletion: ((Bool, Error?) -> Void)?
+    private(set) var deferredDeauthCompletion: ((Bool, Error?) -> Void)? {
+        get { lock.withLock { _deferredDeauthCompletion } }
+        set { lock.withLock { _deferredDeauthCompletion = newValue } }
+    }
 
     func isUserAuthorized(_ userID: String!, withDevice device: String!) -> Bool {
         return isUserAuthorizedReturnValue

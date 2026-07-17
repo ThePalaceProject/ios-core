@@ -1,6 +1,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class ReadingStatsStoreTests: XCTestCase {
   private var store: ReadingStatsStore!
   private var defaults: UserDefaults!

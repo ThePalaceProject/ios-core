@@ -21,6 +21,7 @@ import Combine
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
 
     // MARK: - Fixtures
@@ -878,31 +879,40 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
         // `_setState(.detailsLoading)` once at the entry of each non-deduped
         // call. A duplicate fetch would observe two `.detailsLoading`
         // transitions.
-        let lock = NSLock()
-        var detailsLoadingCount = 0
-        var sawTerminal = false
+        // Swift 6: NSLock.lock()/unlock() are unavailable in async contexts, and
+        // the captured `var` counters would be data races inside the Task. Fold
+        // both into one lock-guarded @unchecked Sendable box shared by the stream
+        // task and the assertion below.
+        final class Counters: @unchecked Sendable {
+            private let lock = NSLock()
+            private var _detailsLoadingCount = 0
+            private var _sawTerminal = false
+            var detailsLoadingCount: Int { lock.withLock { _detailsLoadingCount } }
+            func incrementDetailsLoading() { lock.withLock { _detailsLoadingCount += 1 } }
+            /// True exactly once — on the first terminal transition.
+            func markTerminalOnce() -> Bool {
+                lock.withLock {
+                    if _sawTerminal { return false }
+                    _sawTerminal = true
+                    return true
+                }
+            }
+        }
+        let counters = Counters()
         let observed = expectation(description: "stream reaches terminal")
         observed.assertForOverFulfill = false
 
         let streamTask = Task {
             for await state in account.stateStream {
-                lock.lock()
                 if case .detailsLoading = state {
-                    detailsLoadingCount += 1
+                    counters.incrementDetailsLoading()
                 }
                 if case .detailsFailed = state {
-                    if !sawTerminal {
-                        sawTerminal = true
-                        observed.fulfill()
-                    }
+                    if counters.markTerminalOnce() { observed.fulfill() }
                 }
                 if case .detailsLoaded = state {
-                    if !sawTerminal {
-                        sawTerminal = true
-                        observed.fulfill()
-                    }
+                    if counters.markTerminalOnce() { observed.fulfill() }
                 }
-                lock.unlock()
             }
         }
 
@@ -935,9 +945,7 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
         drainMainQueue()
         streamTask.cancel()
 
-        lock.lock()
-        let count = detailsLoadingCount
-        lock.unlock()
+        let count = counters.detailsLoadingCount
 
         // The kill case: a non-single-flight wiring would fire
         // `_setState(.detailsLoading)` twice. The single-flight guard

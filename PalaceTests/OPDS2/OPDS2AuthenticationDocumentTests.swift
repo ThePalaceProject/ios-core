@@ -9,6 +9,7 @@ import XCTest
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 final class OPDS2AuthenticationDocumentTests: XCTestCase {
 
     // MARK: - Properties
@@ -325,6 +326,7 @@ final class OPDS2AuthenticationDocumentTests: XCTestCase {
 
 // MARK: - Announcement Tests
 
+@MainActor
 final class AnnouncementTests: XCTestCase {
 
     func testAnnouncement_decodesValidJSON() throws {
@@ -371,6 +373,7 @@ final class AnnouncementTests: XCTestCase {
 
 // MARK: - OPDS2LinkRel Tests
 
+@MainActor
 final class OPDS2LinkRelTests: XCTestCase {
 
     func testPasswordReset_hasCorrectRawValue() {

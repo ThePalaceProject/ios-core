@@ -15,6 +15,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class AppLaunchTrackerWiringTests: XCTestCase {
 
     private var tracker: AppLaunchTracker!

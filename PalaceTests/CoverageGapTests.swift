@@ -15,6 +15,7 @@ import PalaceCatalog
 
 // MARK: - Gap 1-3: Account, AccountDetails, Authentication (Account.swift)
 
+@MainActor
 final class AccountModelGapTests: XCTestCase {
 
     private var mockProvider: TPPLibraryAccountMock!
@@ -186,6 +187,7 @@ final class AccountModelGapTests: XCTestCase {
 
 // MARK: - Gap 4-5: AccountsManager (AccountsManager.swift)
 
+@MainActor
 final class AccountsManagerGapTests: XCTestCase {
 
     /// Coverage Gap: AccountsManager class — verify account lookup by UUID
@@ -240,6 +242,7 @@ final class SettingsViewModelGapTests: XCTestCase {
 
 // MARK: - Gap 7: AccountDetailViewModel (AccountDetailViewModel.swift)
 
+@MainActor
 final class AccountDetailViewModelGapTests: XCTestCase {
 
     private var mockProvider: TPPLibraryAccountMock!
@@ -348,6 +351,7 @@ final class ErrorDetailViewControllerGapTests: XCTestCase {
 
 // MARK: - Gap 11-13: adept functions (MyBooksDownloadCenter.swift)
 
+@MainActor
 final class MyBooksDownloadCenterAdeptGapTests: XCTestCase {
 
     /// Coverage Gap: adept download state — verify download state management for DRM books
@@ -400,6 +404,7 @@ final class MyBooksDownloadCenterAdeptGapTests: XCTestCase {
 // Note: DRM classes are compiled in the app target (FEATURE_DRM_CONNECTOR=1)
 // and accessible via @testable import Palace.
 
+@MainActor
 final class AdobeCertificateGapTests: XCTestCase {
 
     /// Coverage Gap: AdobeCertificate class — test expirationDate from timestamp
@@ -491,6 +496,7 @@ final class AdobeCertificateGapTests: XCTestCase {
     }
 }
 
+@MainActor
 final class AdobeDRMErrorGapTests: XCTestCase {
 
     /// Coverage Gap: AdobeDRMError enum — test error case exists
@@ -525,6 +531,7 @@ final class AdobeDRMErrorGapTests: XCTestCase {
     }
 }
 
+@MainActor
 final class AdobeDRMServiceGapTests: XCTestCase {
 
     /// Coverage Gap: AdobeDRMService class — test singleton exists

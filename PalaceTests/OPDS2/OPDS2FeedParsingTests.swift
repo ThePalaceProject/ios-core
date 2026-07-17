@@ -9,6 +9,7 @@ import XCTest
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 final class OPDS2FeedParsingTests: XCTestCase {
 
     // MARK: - Properties
@@ -197,6 +198,7 @@ final class OPDS2FeedParsingTests: XCTestCase {
 
 // MARK: - OPDS2 Publication Tests
 
+@MainActor
 final class OPDS2PublicationTests: XCTestCase {
 
     func testPublication_hasRequiredFields() throws {
@@ -229,6 +231,7 @@ final class OPDS2PublicationTests: XCTestCase {
 
 // MARK: - OPDS2 Link Tests
 
+@MainActor
 final class OPDS2LinkTests: XCTestCase {
 
     func testLink_hasHref() throws {

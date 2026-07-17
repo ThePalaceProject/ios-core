@@ -10,6 +10,7 @@ import XCTest
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 class TPPBookCreationTests: XCTestCase {
     var opdsEntry: TPPOPDSEntry!
     var opdsEntryMinimal: TPPOPDSEntry!

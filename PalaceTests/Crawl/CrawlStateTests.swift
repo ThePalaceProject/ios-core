@@ -1,6 +1,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class CrawlStateTests: XCTestCase {
 
     // MARK: - Codable Round-Trip

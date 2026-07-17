@@ -12,6 +12,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class BookFileManagerTests: XCTestCase {
 
     private var registry: TPPBookRegistryMock!

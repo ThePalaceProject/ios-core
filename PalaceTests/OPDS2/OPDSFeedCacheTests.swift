@@ -10,6 +10,7 @@ import XCTest
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 final class OPDSFeedCacheTests: XCTestCase {
 
     var sut: OPDS2FeedCache!

@@ -27,6 +27,7 @@ import XCTest
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 final class CatalogRepositoryStaleWhileRevalidateTests: XCTestCase {
 
     // MARK: - Fixtures
@@ -419,6 +420,7 @@ final class CatalogRepositoryStaleWhileRevalidateTests: XCTestCase {
 // using two ticks one nanosecond apart so the assertion is unambiguous about
 // the operator's exclusivity.
 
+@MainActor
 final class CatalogCacheMetadataExactBoundaryTests: XCTestCase {
 
     /// Mutant killed: flipping `> defaultStaleTTL` (21600) to `>=

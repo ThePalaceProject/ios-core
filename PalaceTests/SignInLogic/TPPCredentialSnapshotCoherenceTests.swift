@@ -33,6 +33,7 @@ import XCTest
 import PalaceKeychain
 @testable import Palace
 
+@MainActor
 final class TPPCredentialSnapshotCoherenceTests: XCTestCase {
 
     private let testLibraryUUID = "test-coherence-\(UUID().uuidString)"

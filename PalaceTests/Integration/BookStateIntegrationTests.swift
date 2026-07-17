@@ -15,6 +15,7 @@ import Combine
 
 // SRS: REQ-BOOKSTATE-001 — Book state transition integration
 
+@MainActor
 final class BookStateIntegrationTests: XCTestCase {
 
     private var bookRegistry: TPPBookRegistryMock!

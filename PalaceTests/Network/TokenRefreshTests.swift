@@ -11,6 +11,7 @@ import XCTest
 import PalaceAuth
 @testable import Palace
 
+@MainActor
 final class TokenRefreshTests: XCTestCase {
 
     // MARK: - TokenResponse Tests
@@ -443,6 +444,7 @@ extension TokenRefreshTests {
 /// it and hangs forever. The watchdog must force-release a stuck slot while
 /// never disturbing a refresh that completed normally or a newer one in
 /// flight. These lock that contract deterministically (no real timing).
+@MainActor
 final class TokenRefreshWatchdogTests: XCTestCase {
 
     private func makeExecutor() -> TPPNetworkExecutor {

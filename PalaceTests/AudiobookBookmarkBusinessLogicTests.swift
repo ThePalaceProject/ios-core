@@ -11,6 +11,7 @@ import PalaceCatalog
 @testable import Palace
 @testable import PalaceAudiobookToolkit
 
+@MainActor
 class AudiobookBookmarkBusinessLogicTests: XCTestCase {
 
     var sut: AudiobookBookmarkBusinessLogic!

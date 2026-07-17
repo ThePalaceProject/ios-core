@@ -13,6 +13,7 @@ import PalaceNetwork
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 final class CatalogRepositoryTests: XCTestCase {
 
     // MARK: - Properties
@@ -415,6 +416,7 @@ extension CatalogRepositoryTests {
 // resolve the OPDS2 search URL. These tests pin the invariant that concurrent
 // callers share one network fetch.
 
+@MainActor
 final class CatalogAPIDedupeTests: XCTestCase {
 
     private var networkClient: NetworkClientMock!

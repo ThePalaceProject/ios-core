@@ -10,6 +10,7 @@ import Foundation
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 final class PalaceCheckPropertyTests: XCTestCase {
 
     // MARK: - BookButtonMapper.map is total

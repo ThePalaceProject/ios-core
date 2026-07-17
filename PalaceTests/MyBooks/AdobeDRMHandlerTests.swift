@@ -18,6 +18,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class AdobeDRMHandlerTests: XCTestCase {
 
     private var registry: TPPBookRegistryMock!

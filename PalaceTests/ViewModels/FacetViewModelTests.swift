@@ -9,6 +9,7 @@ import XCTest
 import Combine
 @testable import Palace
 
+@MainActor
 final class FacetViewModelTests: XCTestCase {
 
     private var cancellables: Set<AnyCancellable> = []

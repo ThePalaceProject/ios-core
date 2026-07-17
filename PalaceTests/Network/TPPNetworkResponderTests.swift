@@ -9,6 +9,7 @@ import XCTest
 @testable import Palace
 
 /// SRS: REL-003 — Token refresh retry limit prevents loops
+@MainActor
 class TPPNetworkResponderTests: XCTestCase {
 
     var responder: TPPNetworkResponder!

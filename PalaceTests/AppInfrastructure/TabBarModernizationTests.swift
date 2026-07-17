@@ -18,6 +18,7 @@ import XCTest
 import SwiftUI
 @testable import Palace
 
+@MainActor
 final class TabBarModernizationTests: XCTestCase {
 
     // MARK: - Mini-player bottom inset

@@ -11,6 +11,7 @@ import Combine
 import XCTest
 @testable import Palace
 
+@MainActor
 final class PerformanceMonitorTests: XCTestCase {
 
     private var monitor: PerformanceMonitor!

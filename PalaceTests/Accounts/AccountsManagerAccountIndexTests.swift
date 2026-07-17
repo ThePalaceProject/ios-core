@@ -22,6 +22,7 @@ import XCTest
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 final class AccountsManagerAccountIndexTests: PalaceWiringTestCase {
 
     private func stubAccount(_ uuid: String) -> Account {

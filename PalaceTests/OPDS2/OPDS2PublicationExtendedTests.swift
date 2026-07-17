@@ -13,6 +13,7 @@ import XCTest
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 final class OPDS2PublicationExtendedTests: XCTestCase {
 
     // MARK: - OPDS2BookBridge.relation(from:) Tests

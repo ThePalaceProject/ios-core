@@ -53,8 +53,16 @@ final class ChaosURLProtocol: URLProtocol {
   }
 
   private static let queue = DispatchQueue(label: "ChaosURLProtocol.queue")
-  private static var _plan = Plan()
-  private static var _requestCount: Int = 0
+  private static let _planBox = LockIsolated<Plan>(Plan())
+  private static var _plan: Plan {
+    get { _planBox.value }
+    set { _planBox.value = newValue }
+  }
+  private static let _requestCountBox = LockIsolated<Int>(0)
+  private static var _requestCount: Int {
+    get { _requestCountBox.value }
+    set { _requestCountBox.value = newValue }
+  }
 
   static func setPlan(_ plan: Plan) {
     queue.sync {
@@ -272,7 +280,11 @@ enum ChaosHarness {
   // private delegate queues fire callbacks on freed state, crashing
   // libdispatch on whichever test runs next.
   private static let registryQueue = DispatchQueue(label: "ChaosHarness.registry")
-  private static var registeredSessions: [URLSession] = []
+  private static let _registeredSessionsBox = LockIsolated<[URLSession]>([])
+  private static var registeredSessions: [URLSession] {
+    get { _registeredSessionsBox.value }
+    set { _registeredSessionsBox.value = newValue }
+  }
 
   fileprivate static func _invalidateRegisteredSessions() {
     let toCancel: [URLSession] = registryQueue.sync {

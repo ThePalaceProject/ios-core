@@ -12,6 +12,7 @@ import XCTest
 @testable import Palace
 
 /// SRS: SET-001 — Push notification token data encodes correctly for backend API
+@MainActor
 final class NotificationServiceTokenTests: XCTestCase {
 
     // MARK: - TokenData

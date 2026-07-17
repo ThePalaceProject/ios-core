@@ -11,6 +11,7 @@ import XCTest
 @testable import Palace
 
 /// SRS: SET-001 — Keychain manager handles error status codes correctly
+@MainActor
 final class TPPKeychainManagerTests: XCTestCase {
 
     // MARK: - logKeychainError

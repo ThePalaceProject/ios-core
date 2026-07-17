@@ -140,6 +140,7 @@ final class AnonymousBorrowBaselineFixtureTests: XCTestCase {
 /// regressions introduced between 3.0.0 and the candidate. Keeping this in a
 /// separate XCTestCase makes the regression delta visible at the top of the
 /// test report.
+@MainActor
 final class AnonymousBorrowCandidateFixtureTests: XCTestCase {
 
   func test_03_catalog_titleIsPalaceBookshelf() throws {
@@ -182,6 +183,7 @@ final class AnonymousBorrowCandidateFixtureTests: XCTestCase {
 /// Failures here mean a behavior changed between versions in a way the per-version
 /// asserts didn't catch. Tolerance is set high (50px) because some shifts are
 /// content-driven (different book titles) rather than code-driven.
+@MainActor
 final class AnonymousBorrowDeltaTests: XCTestCase {
 
   func test_03_catalog_structureMatchesBetweenVersions() throws {

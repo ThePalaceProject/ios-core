@@ -15,6 +15,7 @@ import Combine
 
 // MARK: - AudiobookTimeEntry Tests
 
+@MainActor
 final class AudiobookTimeEntryTests: XCTestCase {
 
     // SRS: AudiobookTimeEntry stores all properties
@@ -93,6 +94,7 @@ final class AudiobookTimeEntryTests: XCTestCase {
 
 // MARK: - NotificationService.TokenData Tests
 
+@MainActor
 final class NotificationTokenDataTests: XCTestCase {
 
     // SRS: TokenData initializes with token and sets type
@@ -134,6 +136,7 @@ final class NotificationTokenDataTests: XCTestCase {
 
 // MARK: - NSNotification+TPP Tests
 
+@MainActor
 final class NSNotificationTPPTests: XCTestCase {
 
     // SRS: Notification.Name constants exist
@@ -171,6 +174,7 @@ final class NSNotificationTPPTests: XCTestCase {
 
 // MARK: - DPLAAudiobooks.DPLAError Tests
 
+@MainActor
 final class DPLAErrorTests: XCTestCase {
 
     // SRS: DPLAError requestError has readable description
@@ -198,6 +202,7 @@ final class DPLAErrorTests: XCTestCase {
 
 // MARK: - OPDSParser Tests
 
+@MainActor
 final class OPDSParserTests: XCTestCase {
 
     // SRS: OPDSParser.ParserError invalidXML has description

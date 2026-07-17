@@ -115,6 +115,7 @@ private enum CrawlOutcome: Sendable, Equatable {
 
 // MARK: - Tests
 
+@MainActor
 final class LibraryRegistryCrawlerTests: XCTestCase {
 
     private var fetcher: MockCrawlerFetcher!

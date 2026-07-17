@@ -4,6 +4,7 @@ import XCTest
 /// PP-4712 — patron-configurable audiobook skip intervals.
 /// Behavior spec for the global skip-interval store: defaults, independence,
 /// persistence, and validation against the allowed option set.
+@MainActor
 final class AudiobookSkipIntervalSettingsTests: XCTestCase {
   private var defaults: UserDefaults!
   private var suiteName: String!

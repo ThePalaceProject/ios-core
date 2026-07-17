@@ -11,6 +11,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class TPPReaderFootnoteAccessibilityTests: XCTestCase {
 
   typealias FA = TPPReaderFootnoteAccessibility

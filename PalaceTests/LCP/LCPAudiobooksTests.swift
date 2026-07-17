@@ -8,6 +8,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class LCPAudiobooksTests: XCTestCase {
 
     // MARK: - Initialization Tests
@@ -432,6 +433,7 @@ final class LCPAudiobooksTests: XCTestCase {
 
 // MARK: - LCP Audiobook URL Scheme Tests
 
+@MainActor
 final class LCPAudiobookURLSchemeTests: XCTestCase {
 
     func testReadiumLCPScheme_isCorrect() {

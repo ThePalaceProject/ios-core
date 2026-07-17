@@ -48,6 +48,7 @@ class MockURLSessionDownloadTask: URLSessionDownloadTask, @unchecked Sendable {
 // MARK: - Download Info Tests
 
 /// Tests for MyBooksDownloadInfo functionality - a real production struct
+@MainActor
 final class DownloadInfoTests: XCTestCase {
 
     func testDownloadInfo_creation_setsInitialValues() {
@@ -159,6 +160,7 @@ final class DownloadInfoTests: XCTestCase {
 // MARK: - Download Coordinator Tests
 
 /// Tests for the DownloadCoordinator actor - a real production actor
+@MainActor
 final class DownloadCoordinatorTests: XCTestCase {
 
     func testCoordinator_canStartDownload_withinLimit() async {
@@ -330,6 +332,7 @@ final class DownloadCoordinatorTests: XCTestCase {
 
 /// Tests for redirect handling in downloads.
 /// Verifies that auth headers are not forwarded on redirects (for No DRM open access content).
+@MainActor
 final class DownloadRedirectTests: XCTestCase {
 
     // MARK: - URLRequest Auth Header Tests

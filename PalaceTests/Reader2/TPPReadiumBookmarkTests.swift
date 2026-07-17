@@ -10,6 +10,7 @@ import XCTest
 import ReadiumShared
 @testable import Palace
 
+@MainActor
 final class TPPReadiumBookmarkTests: XCTestCase {
 
     // MARK: - Initialization Tests
@@ -551,6 +552,7 @@ final class TPPReadiumBookmarkTests: XCTestCase {
 
 // MARK: - Location Matching Tests
 
+@MainActor
 final class TPPReadiumBookmarkLocationMatchingTests: XCTestCase {
 
     func testLocationMatches_matchingProgress_returnsTrue() {

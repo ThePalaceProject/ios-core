@@ -8,6 +8,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class ErrorActivityTrackerTests: XCTestCase {
 
     // Use a fresh tracker for each test to avoid shared state pollution

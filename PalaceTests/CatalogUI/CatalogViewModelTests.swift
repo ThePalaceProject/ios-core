@@ -9,6 +9,7 @@ import PalaceNetwork
 
 // MARK: - CatalogState Tests
 
+@MainActor
 final class CatalogStateTests: XCTestCase {
 
     func testState_Loading_HasNoContent() {
@@ -70,6 +71,7 @@ final class CatalogStateTests: XCTestCase {
 
 // MARK: - CatalogSelectors Tests
 
+@MainActor
 final class CatalogSelectorsTests: XCTestCase {
 
     func testWithSelectedFacet_UpdatesActiveState() {
@@ -104,6 +106,7 @@ final class CatalogSelectorsTests: XCTestCase {
 
 // MARK: - MappedCatalog Bridge Tests
 
+@MainActor
 final class MappedCatalogBridgeTests: XCTestCase {
 
     func testToCatalogContent_GroupedFeed() {
@@ -533,6 +536,7 @@ private actor PrefetchCancelFlag {
 
 // MARK: - Model Tests
 
+@MainActor
 final class CatalogFilterTests: XCTestCase {
     func testCatalogFilter_StoresValues() {
         let f = CatalogFilter(id: "t", title: "Audiobooks", href: URL(string: "https://a.com"), active: false)
@@ -541,6 +545,7 @@ final class CatalogFilterTests: XCTestCase {
     }
 }
 
+@MainActor
 final class CatalogLaneModelTests: XCTestCase {
     func testHasUniqueId() {
         let l1 = CatalogLaneModel(title: "L", books: [], moreURL: nil)

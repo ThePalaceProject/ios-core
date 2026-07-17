@@ -16,6 +16,7 @@ import PalaceCatalog
 
 // MARK: - Account Initialization Tests
 
+@MainActor
 final class AccountModelTests: XCTestCase {
 
     private var mockImageCache: MockImageCache!
@@ -317,6 +318,7 @@ final class AccountModelTests: XCTestCase {
 
 // MARK: - OPDS2SamlIDP Tests
 
+@MainActor
 final class OPDS2SamlIDPTests: XCTestCase {
 
     func testInit_WithValidLink_MapsURLCorrectly() {
@@ -398,6 +400,7 @@ final class OPDS2SamlIDPTests: XCTestCase {
 // that the real TPPSignedInStateProvider conformance on TPPUserAccount reflects
 // actual credential state rather than a private stub.
 
+@MainActor
 final class TPPSignedInStateProviderTests: XCTestCase {
 
     private var mockAccount: TPPUserAccountMock!

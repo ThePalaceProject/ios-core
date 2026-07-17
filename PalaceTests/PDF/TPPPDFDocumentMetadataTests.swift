@@ -12,6 +12,7 @@ import XCTest
 import Combine
 @testable import Palace
 
+@MainActor
 final class TPPPDFDocumentMetadataTests: XCTestCase {
 
     var cancellables = Set<AnyCancellable>()

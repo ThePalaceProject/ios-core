@@ -29,6 +29,7 @@ private func clearAudiobookTimeTrackerStore() {
     }
 }
 
+@MainActor
 final class AudiobookPlaytimesLifecycleTests: XCTestCase {
 
     private var spyExecutor: SpyAudiobookNetworkExecutor!

@@ -13,6 +13,7 @@ import XCTest
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 final class ParserFuzzTests: XCTestCase {
 
   // MARK: - OPDS 1.x XML

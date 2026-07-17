@@ -11,6 +11,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class LoanEvictionPolicyTests: XCTestCase {
 
     private let now = Date(timeIntervalSince1970: 1_000_000)

@@ -10,6 +10,7 @@ import PalaceCatalog
 /// The 413 dedicated SignInLogic tests still cover the businessLogic
 /// façade end-to-end; this file pins the transition rules in isolation
 /// so a regression in any one rule fails its own focused test.
+@MainActor
 final class AuthReducerTests: XCTestCase {
 
     // MARK: - Authentication-document loading

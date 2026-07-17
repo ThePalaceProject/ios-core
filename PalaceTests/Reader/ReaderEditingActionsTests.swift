@@ -12,6 +12,7 @@ import PalaceCatalog
 import ReadiumNavigator
 @testable import Palace
 
+@MainActor
 final class ReaderEditingActionsTests: XCTestCase {
 
     override func tearDown() {
@@ -76,7 +77,7 @@ final class ReaderEditingActionsTests: XCTestCase {
         return makeBook(identifier: "open-epub", acquisitions: [acquisition])
     }
 
-    private static let highlight = EditingAction(title: "Highlight", action: Selector("highlight"))
+    private static var highlight: EditingAction { EditingAction(title: "Highlight", action: Selector("highlight")) }
 
     // MARK: - Gating
 

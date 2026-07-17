@@ -12,6 +12,7 @@ import XCTest
 @testable import PalaceAudiobookToolkit
 
 /// Tests for audiobook Table of Contents and chapter navigation functionality.
+@MainActor
 class AudiobookTOCTests: XCTestCase {
 
     var tracks: Tracks!

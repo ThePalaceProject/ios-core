@@ -113,6 +113,7 @@ class MockNetworkExecutorForSync: TPPNetworkExecutor, @unchecked Sendable {
 
 // MARK: - Network Sync Tests
 
+@MainActor
 final class AudiobookDataManagerNetworkSyncTests: XCTestCase {
 
     private var mockNetworkExecutor: MockNetworkExecutorForSync!
@@ -314,6 +315,7 @@ final class AudiobookDataManagerNetworkSyncTests: XCTestCase {
 
 // MARK: - Error Response Handling Tests
 
+@MainActor
 final class AudiobookDataManagerErrorHandlingTests: XCTestCase {
 
     private var mockNetworkExecutor: MockNetworkExecutorForSync!
@@ -475,6 +477,7 @@ final class AudiobookDataManagerErrorHandlingTests: XCTestCase {
 
 // MARK: - Store Corruption Recovery Tests
 
+@MainActor
 final class AudiobookDataManagerStoreRecoveryTests: XCTestCase {
 
     private var testStoreDirectory: URL!
@@ -587,6 +590,7 @@ final class AudiobookDataManagerStoreRecoveryTests: XCTestCase {
 
 // MARK: - Empty Queue Tests
 
+@MainActor
 final class AudiobookDataManagerEmptyQueueTests: XCTestCase {
 
     private var mockNetworkExecutor: MockNetworkExecutorForSync!

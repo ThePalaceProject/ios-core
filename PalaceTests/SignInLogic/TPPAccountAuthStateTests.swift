@@ -14,6 +14,7 @@ import Combine
 
 // MARK: - Auth State Enum Tests
 
+@MainActor
 final class TPPAccountAuthStateEnumTests: XCTestCase {
 
     func testDescription_returnsCorrectStrings() {
@@ -54,6 +55,7 @@ final class TPPAccountAuthStateEnumTests: XCTestCase {
 
 // MARK: - User Account Auth State Tests
 
+@MainActor
 final class TPPUserAccountAuthStateTests: XCTestCase {
 
     private var userAccount: TPPUserAccountMock!

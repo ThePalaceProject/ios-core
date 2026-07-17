@@ -14,6 +14,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class TPPPDFReaderSearchBindingTests: XCTestCase {
 
     /// Dismissing the search sheet (isPresented→false) returns to `.reader`.

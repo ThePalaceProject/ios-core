@@ -24,6 +24,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class LCPPassphraseReadinessTests: XCTestCase {
 
     override func tearDown() {

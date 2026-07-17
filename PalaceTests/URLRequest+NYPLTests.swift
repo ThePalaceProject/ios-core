@@ -9,6 +9,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 class URLRequest_NYPLTests: XCTestCase {
     func testAuthorizationHeaderStrip() throws {
         var req = URLRequest(url: URL(string: "https://example.org/ciccio")!)

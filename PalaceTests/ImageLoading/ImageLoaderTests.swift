@@ -7,6 +7,7 @@ import PalaceCatalog
 /// `TPPBookCoverRegistry` + `TPPBookCoverRegistryBridge` + `ImageCache.shared`
 /// trio at call sites. Covers cache-hit short-circuits, weak-book-reference
 /// safety on the completion bridge, and the placeholder fall-through.
+@MainActor
 final class ImageLoaderTests: XCTestCase {
 
     private var cache: MockImageCache!
@@ -132,39 +133,53 @@ final class ImageLoaderTests: XCTestCase {
 
     // MARK: - Completion bridge
 
+    // Swift 6: a captured `var` mutated inside the completion (which fires on a
+    // different executor than the one that declared it) is a data race. Box it
+    // behind a lock — the write in the completion and the read after `wait`
+    // synchronize through the lock. Mirrors the @unchecked Sendable box idiom
+    // used across the test suite (e.g. AudiobookPlaytimesLifecycleTests.AccountIdBox).
+    private final class MainThreadFlag: @unchecked Sendable {
+        private let lock = NSLock()
+        private var _value = false
+        var value: Bool {
+            get { lock.withLock { _value } }
+            set { lock.withLock { _value = newValue } }
+        }
+    }
+
     func testCompletionBridge_thumbnail_invokesOnMainThread() {
         let book = makeBook()
         let expectation = expectation(description: "thumbnail completion fires")
-        var ranOnMain = false
+        let ranOnMain = MainThreadFlag()
 
         // Drive the call from a background queue to force the implementation
         // to hop back to main for completion (the contract the old bridge
         // guaranteed and the new ImageLoading must preserve).
         DispatchQueue.global().async { [loader] in
             loader!.thumbnailImage(for: book) { _ in
-                ranOnMain = Thread.isMainThread
+                ranOnMain.value = Thread.isMainThread
                 expectation.fulfill()
             }
         }
 
         wait(for: [expectation], timeout: 5.0)
-        XCTAssertTrue(ranOnMain, "Bridge completion must fire on the main thread")
+        XCTAssertTrue(ranOnMain.value, "Bridge completion must fire on the main thread")
     }
 
     func testCompletionBridge_cover_invokesOnMainThread() {
         let book = makeBook()
         let expectation = expectation(description: "cover completion fires")
-        var ranOnMain = false
+        let ranOnMain = MainThreadFlag()
 
         DispatchQueue.global().async { [loader] in
             loader!.coverImage(for: book) { _ in
-                ranOnMain = Thread.isMainThread
+                ranOnMain.value = Thread.isMainThread
                 expectation.fulfill()
             }
         }
 
         wait(for: [expectation], timeout: 5.0)
-        XCTAssertTrue(ranOnMain)
+        XCTAssertTrue(ranOnMain.value)
     }
 
     func testCompletionBridge_book_deallocatedBeforeCompletion_noCrash() {

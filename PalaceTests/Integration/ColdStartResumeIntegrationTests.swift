@@ -31,6 +31,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 class ColdStartResumeIntegrationTests: PalaceWiringTestCase {
 
     private var account: String!

@@ -11,6 +11,7 @@ import Combine
 import XCTest
 @testable import Palace
 
+@MainActor
 final class OfflineQueueServiceExtendedTests: XCTestCase {
 
     private var service: OfflineQueueService!
@@ -52,10 +53,12 @@ final class OfflineQueueServiceExtendedTests: XCTestCase {
     // MARK: - Queue FIFO Order
 
     func testProcessQueue_FIFO_Order() async {
-        var executedBookIDs: [String] = []
+        // Swift 6: the @Sendable executor closure can't mutate a captured local.
+        // Box it (lock-guarded) and read .value after the queue drains.
+        let executedBookIDs = LockIsolated<[String]>([])
 
         await service.setExecutor { action in
-            executedBookIDs.append(action.bookID)
+            executedBookIDs.withValue { $0.append(action.bookID) }
             return true
         }
 
@@ -70,7 +73,7 @@ final class OfflineQueueServiceExtendedTests: XCTestCase {
         await service.networkStatusChanged(isAvailable: true)
         try? await Task.sleep(nanoseconds: 500_000_000)
 
-        XCTAssertEqual(executedBookIDs, ["first", "second", "third"])
+        XCTAssertEqual(executedBookIDs.value, ["first", "second", "third"])
     }
 
     // MARK: - Queue Persistence Across "Restarts"

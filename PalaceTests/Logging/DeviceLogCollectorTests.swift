@@ -10,6 +10,7 @@ import PalaceLogging
 import os.log
 @testable import Palace
 
+@MainActor
 final class DeviceLogCollectorTests: XCTestCase {
 
     override func tearDown() {

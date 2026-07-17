@@ -13,6 +13,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class TPPReaderBlockNavigationTests: XCTestCase {
 
   typealias BN = TPPReaderBlockNavigation

@@ -1154,17 +1154,33 @@ class TPPNetworkErrorMock: TPPRequestExecuting {
 
 extension TPPSignInOutBusinessLogicUIDelegateMock {
     var willSignInHandler: (() -> Void)? {
-        get { objc_getAssociatedObject(self, &AssociatedKeys.willSignIn) as? () -> Void }
-        set { objc_setAssociatedObject(self, &AssociatedKeys.willSignIn, newValue, .OBJC_ASSOCIATION_RETAIN) }
+        get { objc_getAssociatedObject(self, AssociatedKeys.willSignIn.raw) as? () -> Void }
+        set { objc_setAssociatedObject(self, AssociatedKeys.willSignIn.raw, newValue, .OBJC_ASSOCIATION_RETAIN) }
     }
 
     var validationErrorHandler: ((Error?, String?, String?) -> Void)? {
-        get { objc_getAssociatedObject(self, &AssociatedKeys.validationError) as? (Error?, String?, String?) -> Void }
-        set { objc_setAssociatedObject(self, &AssociatedKeys.validationError, newValue, .OBJC_ASSOCIATION_RETAIN) }
+        get { objc_getAssociatedObject(self, AssociatedKeys.validationError.raw) as? (Error?, String?, String?) -> Void }
+        set { objc_setAssociatedObject(self, AssociatedKeys.validationError.raw, newValue, .OBJC_ASSOCIATION_RETAIN) }
     }
 }
 
-private struct AssociatedKeys {
-    static var willSignIn = "willSignIn"
-    static var validationError = "validationError"
+/// Address-stable objc associated-object key. Holds ONE immutable pointer,
+/// allocated once and never mutated — only its address is used as a key — so
+/// it is genuinely `Sendable` (the @unchecked waiver covers the fact that
+/// `UnsafeMutableRawPointer` isn't `Sendable`, which is safe here because the
+/// pointer is a `let` and its pointee is never read or written).
+private final class AssociatedKey: @unchecked Sendable {
+    let raw = UnsafeMutableRawPointer.allocate(byteCount: 1, alignment: 1)
+}
+
+private enum AssociatedKeys {
+    // Swift-6 safe associated-object keys — used ONLY for their stable address.
+    // A mutable `static var` is rejected as global mutable state; the
+    // LockIsolated computed-var pattern does NOT work (`&computedVar` yields a
+    // fresh temporary pointer each access, so set/get key differently and the
+    // association silently fails). A bare `static let UnsafeMutableRawPointer`
+    // is address-stable but non-Sendable, so it too is rejected under Swift 6.
+    // Wrapping the immutable pointer in a Sendable holder is the correct fix.
+    static let willSignIn = AssociatedKey()
+    static let validationError = AssociatedKey()
 }

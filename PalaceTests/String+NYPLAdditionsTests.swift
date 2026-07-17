@@ -9,6 +9,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 class String_NYPLAdditionsTests: XCTestCase {
     func testURLEncodingQueryParam() {
         let multiASCIIWord = "Pinco Pallino".stringURLEncodedAsQueryParamValue()

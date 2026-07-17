@@ -11,6 +11,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class SupportSectionDecisionTests: XCTestCase {
 
     private let generalFallback = "support@thepalaceproject.org"

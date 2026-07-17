@@ -12,6 +12,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class DownloadReconciliationLaunchOrderContractTests: XCTestCase {
 
     private func record(_ bookID: String, task: Int) -> PersistedDownloadRecord {

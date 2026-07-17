@@ -43,6 +43,7 @@ import XCTest
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 final class AccountsManagerFirstRunDecodeTests: PalaceWiringTestCase {
 
     // MARK: - Stub resolver

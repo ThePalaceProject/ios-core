@@ -12,6 +12,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class SideloadedBookRegistryTests: XCTestCase {
 
   private var tempDirectory: URL!

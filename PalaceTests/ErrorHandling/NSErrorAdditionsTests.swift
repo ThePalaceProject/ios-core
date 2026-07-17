@@ -1,6 +1,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class NSErrorAdditionsTests: XCTestCase {
 
     private let testDomain = "TestDomain"

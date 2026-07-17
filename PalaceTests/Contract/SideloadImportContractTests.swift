@@ -16,6 +16,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class SideloadImportContractTests: PalaceWiringTestCase {
 
   private var tempRoot: URL!

@@ -37,6 +37,7 @@ import XCTest
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 final class AccountsManagerLaunchSnapshotTests: PalaceWiringTestCase {
 
     // MARK: - Fixtures

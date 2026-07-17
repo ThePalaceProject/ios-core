@@ -50,6 +50,7 @@
 import Foundation
 import XCTest
 
+@MainActor
 final class RuntimeQuiescenceLintTests: XCTestCase {
 
     // MARK: - Resolution
@@ -185,6 +186,7 @@ final class RuntimeQuiescenceLintTests: XCTestCase {
     /// lint.
     func testDetector_flagsDirectXCTestCaseSubclassThatSetsFalse() {
         let bad = """
+        @MainActor
         final class FooTests: XCTestCase {
             func testBar() {
                 AccountsManager.deferInitialLoadCatalogsForTesting = false
@@ -201,6 +203,7 @@ final class RuntimeQuiescenceLintTests: XCTestCase {
     /// violations hides its own false-positives).
     func testDetector_passesQuiescenceBaseSubclassThatSetsFalse() {
         let goodPalaceTestCase = """
+        @MainActor
         final class FooTests: PalaceTestCase {
             func testBar() {
                 AccountsManager.deferInitialLoadCatalogsForTesting = false
@@ -208,6 +211,7 @@ final class RuntimeQuiescenceLintTests: XCTestCase {
         }
         """
         let goodWiring = """
+        @MainActor
         final class FooTests: PalaceWiringTestCase {
             func testBar() {
                 AccountsManager.deferInitialLoadCatalogsForTesting = false
@@ -224,6 +228,7 @@ final class RuntimeQuiescenceLintTests: XCTestCase {
     /// flagged, even if it is a direct XCTestCase subclass.
     func testDetector_passesFileThatNeverSetsFalse() {
         let clean = """
+        @MainActor
         final class FooTests: XCTestCase {
             func testBar() {
                 XCTAssertTrue(true)

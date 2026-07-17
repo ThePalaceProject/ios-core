@@ -23,6 +23,7 @@ import XCTest
 @testable import Palace
 @testable import PalaceAudiobookToolkit
 
+@MainActor
 final class FindawaySavedVsPlayedTests: XCTestCase {
   private let testID = "DuneSavedVsPlayed"
   private let playedKey = "urn:org.thepalaceproject:findaway:1:3"

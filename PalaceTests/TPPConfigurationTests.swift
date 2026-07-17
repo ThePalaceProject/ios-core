@@ -1,6 +1,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class TPPConfigurationTests: XCTestCase {
 
   // MARK: - Color Methods

@@ -12,6 +12,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class BookmarkManagerTests: XCTestCase {
 
     private var store: BookRegistryStore!

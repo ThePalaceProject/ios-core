@@ -3,6 +3,7 @@ import XCTest
 
 /// Tests that per-account TPPUserAccount instances are fully isolated.
 /// These validate the systemic fix for F-034 (credential cross-contamination).
+@MainActor
 final class TPPPerAccountIsolationTests: XCTestCase {
 
     private let uuidA = "urn:uuid:isolation-test-library-a"

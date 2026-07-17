@@ -99,6 +99,7 @@ private enum SAMLSLOFixtures {
 
 // MARK: - Auth-document parsing
 
+@MainActor
 final class SAMLLogoutLinkParsingTests: XCTestCase {
 
     func testSAMLAuth_ParsesLogoutHref_FromAuthDocument() throws {

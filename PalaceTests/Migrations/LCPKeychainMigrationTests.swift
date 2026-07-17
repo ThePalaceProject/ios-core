@@ -14,6 +14,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class LCPKeychainMigrationTests: XCTestCase {
 
     private let suiteName = "LCPKeychainMigrationTests.suite"

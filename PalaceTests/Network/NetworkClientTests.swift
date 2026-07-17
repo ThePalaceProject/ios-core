@@ -12,6 +12,7 @@ import XCTest
 import PalaceNetwork
 @testable import Palace
 
+@MainActor
 final class NetworkClientTests: XCTestCase {
 
     // MARK: - Properties
@@ -550,6 +551,7 @@ private final class HangingURLProtocol: URLProtocol {
 /// many libraries sharing one Circulation Manager host, a few stuck requests
 /// could starve every library's feed fetches. Cancelling the awaiting Task
 /// must now free the request promptly.
+@MainActor
 final class URLSessionNetworkClientCancellationTests: XCTestCase {
 
     func testSend_cancellingTask_freesRequestPromptly() async {

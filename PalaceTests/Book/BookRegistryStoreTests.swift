@@ -12,6 +12,7 @@ import XCTest
 import Combine
 @testable import Palace
 
+@MainActor
 final class BookRegistryStoreTests: XCTestCase {
 
     private var store: BookRegistryStore!

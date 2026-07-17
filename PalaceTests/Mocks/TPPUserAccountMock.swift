@@ -41,7 +41,6 @@ class TPPUserAccountMock: TPPUserAccount, @unchecked Sendable {
     static let testLibraryUUID = "test-library-mock"
 
     private let mockLock = NSLock()
-    private static let sharedLock = NSLock()
 
     /// Counts `removeAll()` invocations so reset tests can assert this
     /// library's credentials were cleared.
@@ -51,10 +50,14 @@ class TPPUserAccountMock: TPPUserAccount, @unchecked Sendable {
         set { mockLock.withLock { _removeAllCallCount = newValue } }
     }
 
-    private static var _shared = TPPUserAccountMock(libraryUUID: testLibraryUUID)
+    // Swift 6: a mutable `static var` is rejected even when lock-guarded via a
+    // computed wrapper (the underlying storage is still global mutable state).
+    // Hold it in a LockIsolated box (immutable `static let` binding) instead.
+    private static let _shared = LockIsolated<TPPUserAccountMock>(
+        TPPUserAccountMock(libraryUUID: testLibraryUUID))
     private static var shared: TPPUserAccountMock {
-        get { sharedLock.withLock { _shared } }
-        set { sharedLock.withLock { _shared = newValue } }
+        get { _shared.value }
+        set { _shared.value = newValue }
     }
 
     /// Tests that call `TPPUserAccountMock.sharedAccount(libraryUUID:)` get

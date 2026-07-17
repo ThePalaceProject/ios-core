@@ -15,6 +15,7 @@ import XCTest
 @preconcurrency import PalaceAudiobookToolkit
 @testable import Palace
 
+@MainActor
 final class AudiobookVendorAdapterTests: XCTestCase {
 
     // MARK: - Spy conformance

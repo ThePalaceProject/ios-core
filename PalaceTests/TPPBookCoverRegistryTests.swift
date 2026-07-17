@@ -11,6 +11,7 @@ import XCTest
 import ImageIO
 @testable import Palace
 
+@MainActor
 final class TPPBookCoverRegistryTests: XCTestCase {
 
     // MARK: - Downsample Decode Tests

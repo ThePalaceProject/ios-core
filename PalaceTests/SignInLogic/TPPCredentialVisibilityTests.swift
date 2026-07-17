@@ -346,6 +346,7 @@ final class TPPDRMFailureCredentialPreservationTests: XCTestCase {
 
 /// Tests for TPPUserAccount.credentialSnapshot(for:) which reads all
 /// credential state in a single barrier to prevent races.
+@MainActor
 final class TPPCredentialSnapshotTests: XCTestCase {
 
     override func tearDown() {
@@ -694,6 +695,7 @@ final class TPPSignInProfileDocEdgeCaseTests: XCTestCase {
 
 /// Tests that credential reads remain consistent even when multiple operations
 /// compete for the TPPUserAccount singleton.
+@MainActor
 final class TPPCredentialConcurrencyTests: XCTestCase {
 
     override func tearDown() {

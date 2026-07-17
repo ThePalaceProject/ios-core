@@ -8,6 +8,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class SEMigrationsTests: XCTestCase {
 
     private var settings: TPPSettings!

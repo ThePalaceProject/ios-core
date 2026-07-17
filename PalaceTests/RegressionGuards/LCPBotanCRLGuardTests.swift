@@ -14,6 +14,7 @@ import ReadiumShared
 ///
 /// The fix surface: Palace/Reader2/ReaderStackConfiguration/LCP/TPPLCPClient.swift.
 /// See PalaceTests/RegressionGuards/README.md for the full crash narrative.
+@MainActor
 final class LCPBotanCRLGuardTests: XCTestCase {
 
     // MARK: - decrypt(data:using:) — empty data short-circuit

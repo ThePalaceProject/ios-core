@@ -8,6 +8,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class URLRequestExtensionsTests: XCTestCase {
 
     private let testURL = URL(string: "https://example.com/api")!

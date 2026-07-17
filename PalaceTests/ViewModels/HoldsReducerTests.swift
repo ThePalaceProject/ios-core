@@ -12,7 +12,7 @@ final class HoldsReducerTests: XCTestCase {
     // MARK: - Fixtures
 
     private func makeEnv(
-        filter: @escaping (String, [TPPBook]) async -> [TPPBook] = { _, books in books }
+        filter: @escaping @Sendable (String, [TPPBook]) async -> [TPPBook] = { _, books in books }
     ) -> HoldsEnvironment {
         HoldsEnvironment(filterBooks: filter)
     }

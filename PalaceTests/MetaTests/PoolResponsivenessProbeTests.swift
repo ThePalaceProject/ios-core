@@ -26,6 +26,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class PoolResponsivenessProbeTests: PalaceTestCase {
 
     // MARK: - Wiring: probe → detector → attributed XCTFail (RED)

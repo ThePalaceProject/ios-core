@@ -8,6 +8,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class GeneralCacheTests: XCTestCase {
 
     private var cache: GeneralCache<String, String>!

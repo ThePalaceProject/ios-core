@@ -10,6 +10,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class AppLaunchTrackerExtendedTests: XCTestCase {
 
     private var tracker: AppLaunchTracker!

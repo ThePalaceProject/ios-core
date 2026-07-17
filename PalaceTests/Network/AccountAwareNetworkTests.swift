@@ -13,6 +13,7 @@ import XCTest
 import PalaceAuth
 @testable import Palace
 
+@MainActor
 final class AccountAwareNetworkTests: XCTestCase {
 
     override func setUp() {

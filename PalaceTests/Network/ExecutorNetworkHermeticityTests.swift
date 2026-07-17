@@ -24,6 +24,7 @@ import XCTest
 // per-line `// MIGRATED-DEFERRED` marker (AppContainerIsolationLint) because the
 // production shared executor IS the contract here — a makeTestAppContainer()
 // executor would not prove the PRODUCTION path is hermetic.
+@MainActor
 final class ExecutorNetworkHermeticityTests: PalaceTestCase {
 
     /// A GET to a non-stub host through the shared executor must be BLOCKED

@@ -12,6 +12,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class SearchAccessibilityTests: XCTestCase {
 
     // MARK: - Clear Search Button Tests

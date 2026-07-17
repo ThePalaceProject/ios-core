@@ -13,6 +13,7 @@ import XCTest
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 final class BookButtonMapperHoldReadyTests: XCTestCase {
 
     // MARK: - Ready Availability + Holding Registry State

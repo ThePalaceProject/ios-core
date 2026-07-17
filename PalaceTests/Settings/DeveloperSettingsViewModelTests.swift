@@ -14,6 +14,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class DeveloperSettingsEngineeringTierTests: XCTestCase {
 
     // Pure decision — no view-model construction, runs everywhere. Mirrors the

@@ -62,6 +62,7 @@ import UIKit
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 final class CatalogCacheKeyAndIsolationTests: XCTestCase {
 
     // MARK: - Fixtures

@@ -18,6 +18,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class ReaderChromeToggleFadeTests: XCTestCase {
 
     // MARK: - overlayLabelsHidden truth table

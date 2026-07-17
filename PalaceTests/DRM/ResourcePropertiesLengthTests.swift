@@ -18,6 +18,7 @@ import XCTest
 import ReadiumShared
 @testable import Palace
 
+@MainActor
 final class ResourcePropertiesLengthTests: XCTestCase {
 
     func testLength_roundTripsLargeValueWithoutTruncation() {

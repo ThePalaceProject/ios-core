@@ -25,7 +25,11 @@ class PalaceTestSetup: NSObject {
     /// our retain, ARC drops the observer immediately after
     /// `addTestObserver(_:)` returns and `testCaseDidFinish(_:)` never
     /// fires. This `static var` retain is load-bearing.
-    private static var observer: PalaceSingletonResetObserver?
+    private static let _observer = LockIsolated<PalaceSingletonResetObserver?>(nil)
+    private static var observer: PalaceSingletonResetObserver? {
+        get { _observer.value }
+        set { _observer.value = newValue }
+    }
 
     override init() {
         super.init()
@@ -270,9 +274,12 @@ class PalaceSingletonResetObserver: NSObject, XCTestObservation {
         let delta = post - pre
         lastObservedDeltaForTesting = delta
         if delta > 0 {
+            // Swift 6: capture the name (Sendable String) so the runActivity
+            // closure doesn't send the non-Sendable `testCase` across a boundary.
+            let testCaseName = testCase.name
             XCTContext.runActivity(named: "NotificationCenter observer leak (\(delta) net adds)") { activity in
                 let attachment = XCTAttachment(string:
-                    "Test \(testCase.name) added \(delta) NotificationCenter.default observer(s) without paired remove. " +
+                    "Test \(testCaseName) added \(delta) NotificationCenter.default observer(s) without paired remove. " +
                     "Pre=\(pre), Post=\(post). Route through an injected NotificationCenter or call " +
                     "removeObserver in tearDown."
                 )

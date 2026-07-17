@@ -15,6 +15,7 @@ import XCTest
 
 // MARK: - Float+TPPAdditions Tests
 
+@MainActor
 final class FloatTPPAdditionsCoverageTests: XCTestCase {
 
     // SRS: Float approximate equality returns true for equal values
@@ -76,6 +77,7 @@ final class FloatTPPAdditionsCoverageTests: XCTestCase {
 
 // MARK: - Int+Extensions Tests
 
+@MainActor
 final class IntExtensionsCoverageTests: XCTestCase {
 
     // SRS: Int ordinal returns "1st" for 1
@@ -123,6 +125,7 @@ final class IntExtensionsCoverageTests: XCTestCase {
 
 // MARK: - Dictionary+Extensions Tests
 
+@MainActor
 final class DictionaryExtensionsCoverageTests: XCTestCase {
 
     // SRS: Dictionary mapKeys transforms keys correctly
@@ -156,6 +159,7 @@ final class DictionaryExtensionsCoverageTests: XCTestCase {
 
 // MARK: - Array+Extensions Tests
 
+@MainActor
 final class ArrayExtensionsCoverageTests: XCTestCase {
 
     // SRS: Array safe subscript returns element at valid index
@@ -222,6 +226,7 @@ final class ArrayExtensionsCoverageTests: XCTestCase {
 
 // MARK: - String+Extensions Tests
 
+@MainActor
 final class StringExtensionsCoverageTests: XCTestCase {
 
     // SRS: String.isDate returns true when date1 + delay > date2
@@ -265,6 +270,7 @@ final class StringExtensionsCoverageTests: XCTestCase {
 
 // MARK: - Data+Base64 Tests
 
+@MainActor
 final class DataBase64CoverageTests: XCTestCase {
 
     // SRS: Data URL-safe base64 replaces + with -
@@ -311,6 +317,7 @@ final class DataBase64CoverageTests: XCTestCase {
 
 // MARK: - URL+Extensions Tests
 
+@MainActor
 final class URLExtensionsCoverageTests: XCTestCase {
 
     // SRS: URL replacingScheme changes http to https
@@ -346,6 +353,7 @@ final class URLExtensionsCoverageTests: XCTestCase {
 
 // MARK: - URLResponse+NYPL Tests
 
+@MainActor
 final class URLResponseNYPLCoverageTests: XCTestCase {
 
     // SRS: URLResponse isProblemDocument for application/problem+json
@@ -429,6 +437,7 @@ final class URLResponseNYPLCoverageTests: XCTestCase {
 
 // MARK: - Date+Extensions Tests
 
+@MainActor
 final class DateExtensionsCoverageTests: XCTestCase {
 
     // SRS: Date monthDayYearString formats correctly
@@ -485,6 +494,7 @@ final class DateExtensionsCoverageTests: XCTestCase {
 
 // MARK: - String+MD5 Tests
 
+@MainActor
 final class StringMD5Tests: XCTestCase {
 
     // SRS: String md5 produces correct hash for known input
@@ -540,6 +550,7 @@ final class StringMD5Tests: XCTestCase {
 
 // MARK: - UIColor+Extensions Tests
 
+@MainActor
 final class UIColorExtensionsTests: XCTestCase {
 
     // SRS: UIColor defaultLabelColor returns a color

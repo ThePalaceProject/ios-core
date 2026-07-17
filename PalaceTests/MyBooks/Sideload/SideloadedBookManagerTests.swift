@@ -13,6 +13,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class SideloadedBookManagerTests: PalaceWiringTestCase {
 
   private var tempRoot: URL!

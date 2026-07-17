@@ -11,6 +11,7 @@ import XCTest
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 final class CatalogLaneSortingTests: XCTestCase {
 
   override func tearDown() {

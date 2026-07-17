@@ -9,6 +9,7 @@ import XCTest
 import SwiftUI
 @testable import Palace
 
+@MainActor
 final class ColorExtensionTests: XCTestCase {
 
   /// SRS: EXT-CLR-001 — Black color is dark

@@ -15,6 +15,7 @@ import PalaceCatalog
 
 // MARK: - TPPProblemDocument Loan Expiry Constant
 
+@MainActor
 final class ProblemDocumentLoanExpiryTests: XCTestCase {
 
     /// The constant must be the exact substring that Feedbooks embeds in the 500 detail field.
@@ -80,6 +81,7 @@ final class ProblemDocumentLoanExpiryTests: XCTestCase {
 
 // MARK: - Expired Loan Strings
 
+@MainActor
 final class ExpiredLoanStringsTests: XCTestCase {
 
     func testExpiredLoanTitle_isNonEmpty() {

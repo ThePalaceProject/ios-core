@@ -19,6 +19,7 @@ import UIKit
 /// queue, enqueue the awaits so they are *guaranteed* still queued, cancel all
 /// operations, then resume the queue. Every cancelled-while-queued operation
 /// must still resume its continuation.
+@MainActor
 final class ImageCacheContinuationTests: XCTestCase {
 
     override func tearDown() {

@@ -34,6 +34,7 @@ import XCTest
 @testable import Palace
 
 /// Base XCTestCase that asserts runtime quiescence on tearDown. See header.
+@MainActor
 class PalaceTestCase: XCTestCase {
 
     /// Pre-test `NotificationCenter.default` observer count, captured in setUp.

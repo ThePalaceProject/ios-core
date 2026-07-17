@@ -13,6 +13,7 @@ import PalaceCatalog
 
 /// Tests for audiobook playback functionality including skip navigation,
 /// chapter transitions, and playback speed calculations.
+@MainActor
 class AudiobookPlaybackTests: XCTestCase {
 
     var mockRegistry: TPPBookRegistryMock!

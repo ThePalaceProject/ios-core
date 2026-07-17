@@ -22,6 +22,7 @@ import XCTest
 import Combine
 @testable import Palace
 
+@MainActor
 final class NotificationServiceStateMachineTests: XCTestCase {
 
     /// NYPL-fixture-backed mock: `supportsReservations == true` (the

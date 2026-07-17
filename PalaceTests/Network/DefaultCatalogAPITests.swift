@@ -13,6 +13,7 @@ import PalaceNetwork
 @testable import PalaceCatalog
 @testable import Palace
 
+@MainActor
 final class DefaultCatalogAPITests: XCTestCase {
 
     // MARK: - Properties
@@ -671,6 +672,7 @@ extension DefaultCatalogAPITests {
 /// Regression guard for the catalog "stuck state" bug. A wedged feed fetch
 /// must NOT pin the inflight dedup entry forever (which would hang every later
 /// fetch of that URL until app restart). See `InflightFeedFetches`.
+@MainActor
 final class InflightFeedFetchesTimeoutTests: XCTestCase {
 
     private actor Counter {

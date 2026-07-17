@@ -27,6 +27,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class TPPNetworkExecutorConcurrencyTests: XCTestCase {
 
     private var executor: TPPNetworkExecutor!

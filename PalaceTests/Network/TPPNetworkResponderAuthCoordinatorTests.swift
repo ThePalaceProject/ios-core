@@ -30,6 +30,7 @@ import PalaceCatalog
 @testable import Palace
 @testable import PalaceAuth
 
+@MainActor
 final class TPPNetworkResponderAuthCoordinatorTests: XCTestCase {
 
     private var responder: TPPNetworkResponder!

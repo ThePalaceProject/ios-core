@@ -12,6 +12,7 @@ import XCTest
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 final class AccountDetailsURLTests: XCTestCase {
 
     private var sut: AccountDetails!

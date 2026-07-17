@@ -24,6 +24,7 @@ import XCTest
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 final class LCPPDFAcquisitionPredicateTests: XCTestCase {
 
     // MARK: - MIME constants (mirrored from production for fixture readability)

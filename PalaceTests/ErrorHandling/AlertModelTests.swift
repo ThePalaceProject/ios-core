@@ -12,6 +12,7 @@ import XCTest
 /// Originally PP-3707 covered the retry factory; expanded here to also lock in
 /// the HalfSheetView branching contract (`secondaryButtonTitle != nil`) and the
 /// destructive-style flag.
+@MainActor
 final class AlertModelRetryTests: XCTestCase {
 
     // MARK: - Default initializer

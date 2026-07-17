@@ -17,6 +17,7 @@ import PalaceCatalog
 
 // MARK: - CatalogFilter Tests
 
+@MainActor
 final class CatalogFilterModelTests: XCTestCase {
 
     // MARK: - Initialization Tests
@@ -231,6 +232,7 @@ final class CatalogFilterModelTests: XCTestCase {
 
 // MARK: - CatalogFilterGroup Tests
 
+@MainActor
 final class CatalogFilterGroupModelTests: XCTestCase {
 
     // MARK: - Initialization Tests
@@ -463,6 +465,7 @@ final class CatalogFilterGroupModelTests: XCTestCase {
 
 // MARK: - CatalogLaneModel Struct Tests
 
+@MainActor
 final class CatalogLaneModelStructTests: XCTestCase {
 
     // MARK: - Initialization Tests

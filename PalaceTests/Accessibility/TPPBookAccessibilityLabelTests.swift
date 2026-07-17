@@ -15,6 +15,7 @@ import XCTest
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 final class TPPBookAccessibilityLabelTests: XCTestCase {
 
   // MARK: - Ebook

@@ -14,6 +14,7 @@ import PalaceCatalog
 
 #if LCP
 
+@MainActor
 final class LicensesServiceTests: XCTestCase {
 
     private var sut: TPPLicensesService!

@@ -13,6 +13,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class HostFailureTrackerTests: XCTestCase {
 
     func testHostFailureTracker_singleFailure_belowThreshold_notTripped() async {

@@ -8,6 +8,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class AudiobookFileLoggerTests: XCTestCase {
 
     // SUT and test-local logs root — injected via init to isolate from

@@ -9,6 +9,7 @@ import XCTest
 /// The "SUT" here is the helper extension itself; the file name
 /// (`XCTestCase+testUserDefaultsTests`) reflects that — the test
 /// methods exercise `testUserDefaults()` directly.
+@MainActor
 final class XCTestCase_testUserDefaultsTests: XCTestCase {
 
     override func tearDown() {

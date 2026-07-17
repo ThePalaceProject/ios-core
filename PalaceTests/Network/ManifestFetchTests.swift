@@ -25,6 +25,7 @@ import XCTest
 /// Verifies that the app correctly distinguishes CM bearer token responses
 /// from actual audiobook manifests. This is the core decision logic that
 /// determines whether a second network hop is needed.
+@MainActor
 final class BearerTokenResponseDetectionTests: XCTestCase {
 
     func testBearerTokenJSON_isDetectedCorrectly() {
@@ -129,6 +130,7 @@ final class BearerTokenResponseDetectionTests: XCTestCase {
 
 /// Tests the second-hop manifest fetch that uses the book-specific bearer token.
 /// Uses HTTP stub protocol to verify correct request construction and response handling.
+@MainActor
 final class FetchManifestWithBearerTokenTests: XCTestCase {
 
     private let manifestURL = URL(string: "https://distributor.example.com/manifest/book-123.json")!
@@ -404,6 +406,7 @@ final class FetchManifestWithBearerTokenTests: XCTestCase {
 /// Verifies that TPPNetworkExecutor.GET creates a URLSessionDataTask (not a download task).
 /// The old bug used download() which created URLSessionDownloadTask on a session without
 /// URLSessionDownloadDelegate, causing empty response data.
+@MainActor
 final class NetworkExecutorTaskTypeTests: XCTestCase {
 
     func testGET_createsDataTask_notDownloadTask() {
@@ -513,6 +516,7 @@ final class NetworkExecutorTaskTypeTests: XCTestCase {
 /// Step 2: App calls manifest location URL with bearer token → receives manifest
 ///
 /// These tests verify the complete chain using a stubbed executor.
+@MainActor
 final class BearerTokenFulfillFlowTests: XCTestCase {
 
     private let fulfillURL = URL(string: "https://cm.example.com/CA9876/works/6139999/fulfill/30")!
@@ -681,6 +685,7 @@ final class BearerTokenFulfillFlowTests: XCTestCase {
 /// Specifically tests that GET (data task) properly receives response bodies,
 /// while documenting that download (download task) on a non-download delegate
 /// may lose data.
+@MainActor
 final class DataReceptionComparisonTests: XCTestCase {
 
     func testGET_receivesNonEmptyBody_forValidJSON() {
@@ -781,11 +786,12 @@ final class DataReceptionComparisonTests: XCTestCase {
 /// LCP-specific failure: the CM returns a valid LCP license document (with
 /// encryption keys, rights, etc.), not an audiobook manifest. If the app
 /// incorrectly tries to parse it as a manifest, audiobook playback fails.
+@MainActor
 final class LCPLicenseDocumentDetectionTests: XCTestCase {
 
     /// A realistic LCP license document structure as returned by the CM
     /// for LCP audiobooks (application/vnd.readium.lcp.license.v1.0+json).
-    static let sampleLCPLicense: [String: Any] = [
+    static var sampleLCPLicense: [String: Any] { [
         "id": "urn:uuid:12345678-1234-1234-1234-123456789abc",
         "issued": "2026-03-15T10:00:00Z",
         "provider": "https://license.feedbooks.net",
@@ -833,7 +839,7 @@ final class LCPLicenseDocumentDetectionTests: XCTestCase {
             "certificate": "MIIBBase64==",
             "value": "Base64SignatureValue=="
         ]
-    ]
+    ] }
 
     func testLCPLicenseDocument_isNotDetectedAsBearerToken() {
         let token = MyBooksSimplifiedBearerToken.simplifiedBearerToken(
@@ -902,6 +908,7 @@ final class LCPLicenseDocumentDetectionTests: XCTestCase {
 /// Tests that the app routes different audiobook types through the correct
 /// code path. This prevents regression where all audiobook types fall through
 /// to fetchOpenAccessManifest regardless of their DRM type.
+@MainActor
 final class AudiobookTypeRoutingTests: XCTestCase {
 
     func testBearerTokenBook_hasExpectedIdentifiers() {
@@ -958,6 +965,7 @@ final class AudiobookTypeRoutingTests: XCTestCase {
 
 /// Verifies the file path logic used for saving and locating LCP license files.
 /// The app stores LCP licenses alongside content files with .lcpl extension.
+@MainActor
 final class LCPLicenseFilePathTests: XCTestCase {
 
     func testLCPLicenseExtension_isLcpl() {
@@ -1011,6 +1019,7 @@ final class LCPLicenseFilePathTests: XCTestCase {
 /// is broken), the bearer token detection does NOT incorrectly match it.
 /// This is a safety net: even if the routing fix fails, the app should not
 /// silently misprocess LCP license documents.
+@MainActor
 final class FetchOpenAccessManifestLCPSafetyTests: XCTestCase {
 
     func testLCPLicenseResponse_notDetectedAsBearerToken_inFetchFlow() {
@@ -1099,6 +1108,7 @@ final class FetchOpenAccessManifestLCPSafetyTests: XCTestCase {
 /// Verifies that fetchManifestWithBearerToken correctly handles the case
 /// where the manifest location URL unexpectedly returns an LCP license
 /// instead of a manifest.
+@MainActor
 final class FetchManifestWithBearerTokenLCPSafetyTests: XCTestCase {
 
     override func setUp() {
@@ -1161,6 +1171,7 @@ final class FetchManifestWithBearerTokenLCPSafetyTests: XCTestCase {
 /// Additional regression tests ensuring that TPPNetworkExecutor.GET properly
 /// receives response bodies for various content types. This prevents the
 /// original bug where URLSessionDownloadTask silently dropped response data.
+@MainActor
 final class NetworkExecutorResponseRegressionTests: XCTestCase {
 
     override func setUp() {

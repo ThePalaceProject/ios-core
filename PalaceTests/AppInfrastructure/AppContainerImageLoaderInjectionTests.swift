@@ -6,6 +6,7 @@ import SwiftUI
 /// `AppContainer`. The point is to prove a `MockImageLoader` can be threaded
 /// through the SwiftUI Environment and that prod code reads it rather than
 /// reaching for the legacy singletons.
+@MainActor
 final class AppContainerImageLoaderInjectionTests: XCTestCase {
 
     override func tearDown() {

@@ -8,6 +8,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class DataBase64Tests: XCTestCase {
 
   /// SRS: EXT-B64-001 — URL-safe encoding replaces + with -

@@ -12,6 +12,7 @@ import PalaceLogging
 
 /// Tests for the bookmark deletion log which tracks explicitly deleted bookmarks
 /// to ensure they get deleted from the server during sync, regardless of device ID.
+@MainActor
 final class TPPBookmarkDeletionLogTests: XCTestCase {
 
     private var deletionLog: TPPBookmarkDeletionLog!

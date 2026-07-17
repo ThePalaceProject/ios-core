@@ -12,6 +12,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class BackgroundSessionRoutingTests: XCTestCase {
 
     // MARK: - Routing predicate (INV-7)

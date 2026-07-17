@@ -14,6 +14,7 @@ import Combine
 
 // MARK: - Status Announcement Integration Tests (PP-3673)
 
+@MainActor
 final class StatusAnnouncementTests: XCTestCase {
 
     // MARK: - Helpers
@@ -28,7 +29,7 @@ final class StatusAnnouncementTests: XCTestCase {
         capture: Capture,
         voiceOverRunning: Bool = true,
         deduplicationInterval: TimeInterval = 0.0,
-        timeProvider: @escaping () -> Date = { Date() }
+        timeProvider: @escaping @Sendable () -> Date = { Date() }
     ) -> TPPAccessibilityAnnouncementCenter {
         TPPAccessibilityAnnouncementCenter(
             postHandler: { notification, message in

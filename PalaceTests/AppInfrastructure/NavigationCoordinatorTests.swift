@@ -249,6 +249,7 @@ final class NavigationCoordinatorTests: XCTestCase {
 
 // MARK: - AppRoute Tests
 
+@MainActor
 final class AppRouteTests: XCTestCase {
 
     func testAppRoute_BookDetail_IsHashable() {

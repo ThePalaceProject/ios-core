@@ -24,6 +24,7 @@ import Combine
 
 // MARK: - Pure bridge: toCatalogContent(prepending:)
 
+@MainActor
 final class SideloadedLaneBridgeTests: XCTestCase {
 
   private func mapped(

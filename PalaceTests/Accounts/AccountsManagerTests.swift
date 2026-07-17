@@ -16,6 +16,7 @@ import Combine
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 final class AccountsManagerTests: XCTestCase {
 
     // MARK: - Properties
@@ -886,6 +887,7 @@ extension AccountsManagerTests {
 /// Regression: loadAccountSetsAndAuthDoc created new Account objects that lost
 /// the authenticationDocument/details from the old ones, causing
 /// syncIsPossibleAndPermitted() to return false (PP-3810).
+@MainActor
 final class AccountAuthDocCarryoverTests: XCTestCase {
 
     private var feedURL: URL!

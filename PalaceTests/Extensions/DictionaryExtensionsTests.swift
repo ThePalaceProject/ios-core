@@ -8,6 +8,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class DictionaryExtensionsTests: XCTestCase {
 
   /// SRS: EXT-DICT-001 — mapKeys transforms keys while preserving values

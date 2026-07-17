@@ -23,6 +23,7 @@ import XCTest
 // quiescence base. Its `tearDown()` restores the flag to `true`; the inherited
 // `PalaceTestCase` assert runs AFTER that restore (assert-after-super), so it
 // confirms — rather than false-fails — the cleanup.
+@MainActor
 final class AppContainerResetTests: PalaceTestCase {
 
     // MARK: - Setup / Teardown

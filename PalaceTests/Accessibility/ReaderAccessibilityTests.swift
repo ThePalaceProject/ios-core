@@ -12,6 +12,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class ReaderAccessibilityTests: XCTestCase {
 
     // MARK: - Table of Contents Tests

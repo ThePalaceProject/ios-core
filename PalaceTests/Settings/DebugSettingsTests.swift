@@ -12,6 +12,7 @@ import XCTest
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 final class DebugSettingsTests: XCTestCase {
 
     private let settings = DebugSettings()

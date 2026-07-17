@@ -8,6 +8,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class URLExtensionTests: XCTestCase {
 
     // MARK: - URL Component Tests
@@ -165,6 +166,7 @@ final class URLExtensionTests: XCTestCase {
 
 // MARK: - URL Validation Tests
 
+@MainActor
 final class URLValidationTests: XCTestCase {
 
     func testValidHTTPURL() {

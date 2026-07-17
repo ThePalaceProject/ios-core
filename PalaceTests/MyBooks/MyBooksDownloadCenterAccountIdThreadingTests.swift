@@ -36,6 +36,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class MyBooksDownloadCenterAccountIdThreadingTests: XCTestCase {
 
     override func tearDown() {
@@ -71,26 +72,48 @@ final class MyBooksDownloadCenterAccountIdThreadingTests: XCTestCase {
     /// `currentAccountId` and a per-UUID `TPPUserAccountMock` map, so we
     /// can install per-account auth tokens and observe which one ends up
     /// on the resulting URLRequest.
-    private final class ControllableAccountsManagerMock: NSObject, TPPLibraryAccountsProvider {
-        var mockedCurrentAccountId: String?
-        var userAccountsByUUID: [String: TPPUserAccount] = [:]
-        var userAccountForCalls: [String] = []
+    /// Swift 6: this mock is captured into `@Sendable` closures by the
+    /// concurrent account-switch test (the switcher Task writes
+    /// `mockedCurrentAccountId` while download tasks read `currentAccountId`),
+    /// so it must be genuinely thread-safe, not merely annotated. All mutable
+    /// state is NSLock-guarded; hence `@unchecked Sendable`. This also removes a
+    /// real (previously-tolerated-under-Swift-4.2) data race in the test.
+    private final class ControllableAccountsManagerMock: NSObject, TPPLibraryAccountsProvider, @unchecked Sendable {
+        private let lock = NSLock()
+        private var _mockedCurrentAccountId: String?
+        private var _userAccountsByUUID: [String: TPPUserAccount] = [:]
+        private var _userAccountForCalls: [String] = []
+
+        var mockedCurrentAccountId: String? {
+            get { lock.withLock { _mockedCurrentAccountId } }
+            set { lock.withLock { _mockedCurrentAccountId = newValue } }
+        }
+        var userAccountsByUUID: [String: TPPUserAccount] {
+            get { lock.withLock { _userAccountsByUUID } }
+            set { lock.withLock { _userAccountsByUUID = newValue } }
+        }
+        var userAccountForCalls: [String] {
+            get { lock.withLock { _userAccountForCalls } }
+            set { lock.withLock { _userAccountForCalls = newValue } }
+        }
 
         // The protocol surface — only the bits this test class touches
         // are filled in meaningfully. Unused fields return safe defaults.
-        var currentAccountId: String? { mockedCurrentAccountId }
+        var currentAccountId: String? { lock.withLock { _mockedCurrentAccountId } }
         var currentAccount: Account? { nil }
         var tppAccountUUID: String { AccountsManager.TPPAccountUUIDs[0] }
         func account(_ uuid: String) -> Account? { nil }
         func userAccount(for libraryUUID: String) -> TPPUserAccount {
-            userAccountForCalls.append(libraryUUID)
-            if let existing = userAccountsByUUID[libraryUUID] {
-                return existing
+            lock.withLock {
+                _userAccountForCalls.append(libraryUUID)
+                if let existing = _userAccountsByUUID[libraryUUID] {
+                    return existing
+                }
+                // Fresh placeholder for any UUID we haven't pre-installed.
+                let placeholder = TPPUserAccountMock(libraryUUID: libraryUUID)
+                _userAccountsByUUID[libraryUUID] = placeholder
+                return placeholder
             }
-            // Fresh placeholder for any UUID we haven't pre-installed.
-            let placeholder = TPPUserAccountMock(libraryUUID: libraryUUID)
-            userAccountsByUUID[libraryUUID] = placeholder
-            return placeholder
         }
         var currentUserAccount: TPPUserAccount {
             if let id = mockedCurrentAccountId {

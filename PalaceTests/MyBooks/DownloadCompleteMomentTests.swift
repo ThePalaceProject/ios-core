@@ -15,6 +15,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class DownloadCompleteMomentTests: XCTestCase {
 
     /// Fires on the transition INTO downloadSuccessful (the celebration moment).

@@ -17,10 +17,18 @@ import PalaceCatalog
 final class MockAnnotationsURLProtocol: URLProtocol {
 
     /// Handler that determines the response for a given request
-    static var requestHandler: ((URLRequest) throws -> (HTTPURLResponse, Data?))?
+    private static let _requestHandler = LockIsolated<((URLRequest) throws -> (HTTPURLResponse, Data?))?>(nil)
+    static var requestHandler: ((URLRequest) throws -> (HTTPURLResponse, Data?))? {
+        get { _requestHandler.value }
+        set { _requestHandler.value = newValue }
+    }
 
     /// Tracks all requests made during a test for verification
-    static var capturedRequests: [URLRequest] = []
+    private static let _capturedRequests = LockIsolated<[URLRequest]>([])
+    static var capturedRequests: [URLRequest] {
+        get { _capturedRequests.value }
+        set { _capturedRequests.value = newValue }
+    }
 
     /// Reset state between tests
     static func reset() {
@@ -188,6 +196,7 @@ enum AnnotationsTestFixtures {
 
 // MARK: - TPPAnnotations Tests
 
+@MainActor
 final class TPPAnnotationsTests: XCTestCase {
 
     private var libraryAccountMock: TPPLibraryAccountMock!
@@ -1190,6 +1199,7 @@ private final class RecordingExecutorMock: TPPNetworkExecutor, @unchecked Sendab
 // intentionally NOT gated by `syncIsPossibleAndPermitted`, so we can exercise
 // the full request-building and response-parsing paths hermetically without
 // depending on shared account state.
+@MainActor
 final class TPPAnnotationsHermeticTests: XCTestCase {
 
     private var mock: RecordingExecutorMock!
@@ -1427,6 +1437,7 @@ final class TPPAnnotationsHermeticTests: XCTestCase {
 // seams introduced by the architectural-triad Phase 4 refactor.
 // They lock in the contract that, when an override is set, TPPAnnotations and
 // AnnotationDevice route through it instead of `*.shared`.
+@MainActor
 final class TPPAnnotationsOverrideTests: XCTestCase {
 
     override func tearDown() {
@@ -1539,6 +1550,7 @@ final class TPPAnnotationsOverrideTests: XCTestCase {
 /// 23 annotations on the server with empty device IDs, all from non-DRM
 /// devices. Cross-referenced TPPAnnotations.swift and found the fallback
 /// to TPPUserAccount.deviceID (Adobe-only) with ?? "" default.
+@MainActor
 class AnnotationDeviceIDTests: XCTestCase {
 
     override func setUp() {

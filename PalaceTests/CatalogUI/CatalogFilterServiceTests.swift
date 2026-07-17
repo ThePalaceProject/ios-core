@@ -12,6 +12,7 @@ import XCTest
 @testable import Palace
 
 /// SRS: CAT-005 — Filter service manages catalog facet state consistently
+@MainActor
 final class CatalogFilterServiceTests: XCTestCase {
 
     // MARK: - Helpers

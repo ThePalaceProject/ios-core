@@ -39,6 +39,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class BookListViewAccessibilityTests: XCTestCase {
 
     // MARK: - Source-level sentinels (BookListView)

@@ -21,6 +21,7 @@ import PalaceNetwork
 
 // MARK: - TokenRequest Empty Credential Guards
 
+@MainActor
 final class TokenRequestCredentialGuardTests: XCTestCase {
 
     private let tokenURL = URL(string: "https://example.com/patrons/me/token/")!
@@ -355,6 +356,7 @@ final class TokenRequestCredentialGuardTests: XCTestCase {
 
 // MARK: - Network Executor Token Refresh Guards
 
+@MainActor
 final class NetworkExecutorCredentialGuardTests: XCTestCase {
 
     private func makeExecutor() -> TPPNetworkExecutor {
@@ -598,6 +600,7 @@ final class NetworkExecutorCredentialGuardTests: XCTestCase {
 
 // MARK: - Concurrent Token Refresh Coordination
 
+@MainActor
 final class ConcurrentTokenRefreshTests: XCTestCase {
 
     private func makeExecutor() -> TPPNetworkExecutor {
@@ -676,6 +679,7 @@ final class ConcurrentTokenRefreshTests: XCTestCase {
 
 // MARK: - URLSession Configuration Tests
 
+@MainActor
 final class URLSessionCredentialStorageTests: XCTestCase {
 
     func testMakeURLSessionConfiguration_Default_DisablesCredentialStorage() {
@@ -714,6 +718,7 @@ final class URLSessionCredentialStorageTests: XCTestCase {
 
 // MARK: - Basic Auth Challenge Empty Credential Behavior
 
+@MainActor
 final class BasicAuthEmptyCredentialTests: XCTestCase {
 
     func testHandleChallenge_EmptyUsername_StillUsesCredential() {
@@ -816,6 +821,7 @@ final class BasicAuthEmptyCredentialTests: XCTestCase {
 
 // MARK: - Credential Edge Cases
 
+@MainActor
 final class CredentialEdgeCaseTests: XCTestCase {
 
     func testTokenCredential_NilBarcode_ReturnsNilUsername() {
@@ -904,6 +910,7 @@ final class CredentialEdgeCaseTests: XCTestCase {
 
 // MARK: - Token Request + Network Executor Integration
 
+@MainActor
 final class TokenRefreshIntegrationTests: XCTestCase {
 
     private func makeExecutor() -> TPPNetworkExecutor {

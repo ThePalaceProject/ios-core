@@ -15,6 +15,7 @@ import OSLog
 
 // MARK: - 1. AudioBookmarkGapTests
 
+@MainActor
 final class AudioBookmarkGapTests: XCTestCase {
 
     override func tearDown() {
@@ -159,6 +160,7 @@ final class AudioBookmarkGapTests: XCTestCase {
 
 // MARK: - 2. DeviceLogCollectorGapTests
 
+@MainActor
 final class DeviceLogCollectorGapTests: XCTestCase {
 
     /// Coverage Gap: DeviceLogCollector.formatDate — output contains formatted dates (via collectLogs)
@@ -197,6 +199,7 @@ final class DeviceLogCollectorGapTests: XCTestCase {
 
 // MARK: - 3. TPPUserAccountGapTests
 
+@MainActor
 final class TPPUserAccountGapTests: XCTestCase {
 
     /// Coverage Gap: TPPUserAccount.sharedAccount — is accessible
@@ -259,6 +262,7 @@ final class TPPUserAccountGapTests: XCTestCase {
 
 // MARK: - 4. RemoteFeatureFlagsGapTests
 
+@MainActor
 final class RemoteFeatureFlagsGapTests: XCTestCase {
 
     /// Coverage Gap: RemoteFeatureFlags.shared — is accessible

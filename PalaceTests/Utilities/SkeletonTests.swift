@@ -14,6 +14,7 @@ import XCTest
 import SwiftUI
 @testable import Palace
 
+@MainActor
 final class SkeletonTests: XCTestCase {
 
   // MARK: - sweepTranslationX — the diagonal band actually travels

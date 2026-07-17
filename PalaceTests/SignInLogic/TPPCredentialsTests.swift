@@ -10,6 +10,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class TPPCredentialsTests: XCTestCase {
 
     // MARK: - Token Credential Tests

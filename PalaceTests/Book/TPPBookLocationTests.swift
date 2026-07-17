@@ -15,6 +15,7 @@ import PalaceCatalog
 
 // MARK: - TPPBookLocation Tests
 
+@MainActor
 final class TPPBookLocationCoverageTests: XCTestCase {
 
     // SRS: TPPBookLocation init with valid strings succeeds
@@ -102,6 +103,7 @@ final class TPPBookLocationCoverageTests: XCTestCase {
 
 // MARK: - TPPBookLocationKey Tests
 
+@MainActor
 final class TPPBookLocationKeyTests: XCTestCase {
 
     // SRS: TPPBookLocationKey cases match the dictionary keys produced by TPPBookLocation.
@@ -142,6 +144,7 @@ final class TPPBookLocationKeyTests: XCTestCase {
 
 // MARK: - TPPBookContentTypeConverter Tests
 
+@MainActor
 final class TPPBookContentTypeConverterTests: XCTestCase {
 
     // SRS: TPPBookContentTypeConverter epub string — and it is distinct from other types
@@ -185,6 +188,7 @@ final class TPPBookContentTypeConverterTests: XCTestCase {
 
 // MARK: - TPPBookAuthor Tests
 
+@MainActor
 final class TPPBookAuthorCoverageTests: XCTestCase {
 
     // SRS: TPPBookAuthor initializes with name and URL
@@ -222,6 +226,7 @@ final class TPPBookAuthorCoverageTests: XCTestCase {
 
 // MARK: - TPPProblemDocument Tests
 
+@MainActor
 final class TPPProblemDocumentTests: XCTestCase {
 
     // SRS: TPPProblemDocument fromData decodes valid JSON
@@ -458,6 +463,7 @@ final class TPPProblemDocumentTests: XCTestCase {
 
 // MARK: - TPPBookLocation Edge Case Tests
 
+@MainActor
 final class TPPBookLocationEdgeCaseTests: XCTestCase {
 
     // MARK: - Init from string/renderer

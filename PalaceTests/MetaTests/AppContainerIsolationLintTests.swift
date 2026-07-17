@@ -52,6 +52,7 @@
 import Foundation
 import XCTest
 
+@MainActor
 final class AppContainerIsolationLintTests: XCTestCase {
 
   // MARK: - Resolution

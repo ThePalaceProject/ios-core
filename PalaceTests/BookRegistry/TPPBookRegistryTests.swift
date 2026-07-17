@@ -22,6 +22,7 @@ import Combine
 
 // MARK: - TPPBookRegistryRecord Persistence Tests
 
+@MainActor
 final class TPPBookRegistryRecordPersistenceTests: XCTestCase {
 
     // MARK: - Dictionary Round-trip Tests
@@ -88,6 +89,7 @@ final class TPPBookRegistryRecordPersistenceTests: XCTestCase {
 
 // MARK: - TPPBookRegistryData Extension Tests
 
+@MainActor
 final class TPPBookRegistryDataTests: XCTestCase {
 
     func testValueForKey_ReturnsValue() {
@@ -135,6 +137,7 @@ final class TPPBookRegistryDataTests: XCTestCase {
 
 // MARK: - Corrupted/Missing Data Tests
 
+@MainActor
 final class TPPBookRegistryCorruptedDataTests: XCTestCase {
 
     func testRecordInit_WithMissingBook_ReturnsNil() {
@@ -214,6 +217,7 @@ final class TPPBookRegistryCorruptedDataTests: XCTestCase {
 
 // MARK: - TPPBookState Tests
 
+@MainActor
 final class TPPBookStateInitializationTests: XCTestCase {
 
     func testStateInit_FromValidStrings() {
@@ -275,6 +279,7 @@ final class TPPBookStateInitializationTests: XCTestCase {
 
 // MARK: - TPPBookLocation Tests
 
+@MainActor
 final class TPPBookLocationTests: XCTestCase {
 
     func testInit_WithValidParams_Succeeds() {
@@ -410,6 +415,7 @@ final class TPPBookLocationTests: XCTestCase {
 
 // MARK: - deriveInitialState Tests
 
+@MainActor
 final class DeriveInitialStateTests: XCTestCase {
 
     func testDeriveInitialState_ForStandardBook_ReturnsDownloadNeeded() {
@@ -455,6 +461,7 @@ final class DeriveInitialStateTests: XCTestCase {
 
 /// Tests for the re-entrancy guard added to prevent EXC_BAD_ACCESS crashes
 /// when load() is called multiple times rapidly during account changes.
+@MainActor
 final class TPPBookRegistryLoadReentrancyTests: XCTestCase {
 
     var registry: TPPBookRegistry!

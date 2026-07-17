@@ -14,6 +14,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class SignInFormPresentationTests: XCTestCase {
 
     // MARK: - ActionButtonView.titleOpacity

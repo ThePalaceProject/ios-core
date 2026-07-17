@@ -26,6 +26,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class OPDSFeedServiceStateMachineTests: XCTestCase {
 
     // MARK: - Fixtures

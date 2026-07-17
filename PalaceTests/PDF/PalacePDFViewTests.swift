@@ -13,6 +13,7 @@ import XCTest
 import PDFKit
 @testable import Palace
 
+@MainActor
 final class PalacePDFViewTests: XCTestCase {
 
     private var pdfView: PalacePDFView!
