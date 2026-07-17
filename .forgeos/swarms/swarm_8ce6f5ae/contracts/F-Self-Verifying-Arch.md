@@ -59,6 +59,23 @@
 - `scripts/tests/test_arch_drift_check.py`: drift → non-zero; clean → zero
   (both directions asserted). This IS the rule-#4 clean-path gate.
 
+## Definition of Done — TWO TIERS ("ship today, verify Monday")
+**TODAY (implementer, fast/local):**
+- `scripts/arch-drift-check.py` (pure stdlib, NOT the machine-local `harness` binary
+  — CI runners lack it) + `scripts/arch-sequence-diagrams.py` + facts.json expansion +
+  tooling-checks wiring implemented.
+- `python3 scripts/arch-drift-check.py` exits 0 on the clean tree (dry-run, zero false
+  positives) AND `python3 -m pytest scripts/tests/test_arch_drift_check.py -q` passes
+  (asserts BOTH drift-fail and clean-pass, per green-board rule #4).
+- `bash -n` clean on any shell touched. Transcript + DoD evidence pasted.
+- Note: this contract's own tooling runs on CI's ubuntu tooling-checks job (~1 min),
+  which is NOT the ~7k Xcode suite — so F's gate is fully exercisable today; only the
+  Swift contracts it derives diagrams from wait on E's Monday full-suite pass.
+
+**MONDAY MERGE GATE (orchestrator only):** the ubuntu `tooling-checks.yml` job green
+(now including `arch-drift-check.py`) + `/forge-review` + drift clean against the
+INTEGRATED tree (after A/C/E land). Nothing merges to `develop` until Monday-green.
+
 ## Verification criteria (Phase 4.5)
 ```bash
 # AC1: facts.json gained download + sign-in + reader anchors

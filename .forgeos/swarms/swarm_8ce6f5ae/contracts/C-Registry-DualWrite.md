@@ -1,107 +1,152 @@
 # Contract C — Kill Registry Dual-Write + Enforce allowedTransitions (WS3)
 
-**Module:** Book (TPPBookRegistry / TPPBookState) + observer migration
+**Module:** Book (TPPBookRegistry / TPPBookState) + full observer migration (6 modules)
 **Risk:** critical_path (TPPBookRegistry is THE single source of truth for book state)
 **Depends on:** A (doctrine declares the enforcement point + SoT scope)
+
+> **FULL SCOPE — no C-now/C-follow-up split.** This contract does the COMPLETE
+> dual-write kill in one landing: enforce transitions AND migrate ALL 9 observers
+> AND delete both notification posts. Internal ordering is **enforce-before-purge**
+> (wire the Combine path + enforcement first, migrate every observer, THEN delete
+> the deprecated posts last so nothing is orphaned).
 
 ## Verified starting facts
 - Deprecated dual-write: `TPPBookRegistry.postStateNotification`
   (`Palace/Book/Models/TPPBookRegistry.swift:639`, `@available(*, deprecated,
   message: "Use Combine publishers instead.")`) posts `.TPPBookRegistryStateDidChange`
-  (`:642`) and is called from EVERY setState/addBook/removeBook path
-  (`:553,:570,:586,:600,:614`) plus a direct post in the sync path (`:283`).
-- The Combine replacements already exist: `registryPublisher` / `bookStatePublisher`
+  (`:642`), called from EVERY state path (`:553,:570,:586,:600,:614`). A SECOND
+  direct post lives in the sync path (`:283`).
+- Combine replacements already exist: `registryPublisher` / `bookStatePublisher`
   (`:313`) / `syncStatePublisher`.
-- **Observer blast radius (9 consumers across 6 modules) — verified:**
-  `Palace/CatalogUI/ViewModels/ActiveSessionsViewModel.swift:135`,
-  `Palace/CatalogUI/Views/CatalogLaneMoreView.swift:122`,
-  `Palace/CatalogUI/Views/CatalogSearchView.swift:112`,
-  `Palace/AppInfrastructure/AppTabHostView.swift:456`,
-  `Palace/Book/UI/BookDetail/BookDetailView.swift:134`,
-  `Palace/Book/UI/BookDetail/HalfSheetview.swift:227`,
-  `Palace/MyBooks/MyBooksDownloadCenter.swift:2076` (one-shot),
-  `Palace/MyBooks/MyBooks/MyBooksViewModel.swift:338`.
-- **External POSTERS (not just observers)** that also fire the notification:
-  `Palace/Holds/HoldsViewModel.swift:249`,
+- **All 9 observers (6 modules) — verified, ALL migrate in this contract:**
+  1. `Palace/CatalogUI/ViewModels/ActiveSessionsViewModel.swift:135`
+  2. `Palace/CatalogUI/Views/CatalogLaneMoreView.swift:122`
+  3. `Palace/CatalogUI/Views/CatalogSearchView.swift:112`
+  4. `Palace/AppInfrastructure/AppTabHostView.swift:456`
+  5. `Palace/Book/UI/BookDetail/BookDetailView.swift:134`
+  6. `Palace/Book/UI/BookDetail/HalfSheetview.swift:227`
+  7. `Palace/MyBooks/MyBooksDownloadCenter.swift:2076` (one-shot observer)
+  8. `Palace/MyBooks/MyBooks/MyBooksViewModel.swift:338`
+  9. `Palace/Book/Models/TPPBookRegistry.swift:455` (registry's OWN internal
+     self-observer — re-point to the internal Combine path)
+- **External POSTERS** that must ALSO stop firing the notification (or be re-pointed
+  to a registry API): `Palace/Holds/HoldsViewModel.swift:249`,
   `Palace/Settings/DeveloperSettings/DeveloperSettingsViewModel.swift:741`.
 - `allowedTransitions` (`Palace/Book/Models/TPPBookState.swift:91`) + `canTransition`
-  (`:151`) are declared but referenced by NO production file — `setState`
+  (`:151`) declared but referenced by NO production file; `setState`
   (`TPPBookRegistry.swift:605`) does not call them. **Unenforced, confirmed.**
 
-## Realistic one-day scope (conservative — the full observer purge is a follow-up)
-This is high blast-radius; a hard removal of the post + full observer migration
-in one pass is NOT safely landable and MUST NOT be attempted here. Do THIS:
-
-1. **Enforce allowedTransitions at `setState` — log-only in RELEASE, hard in DEBUG/tests.**
-   - In `TPPBookRegistry.setState` (`:605`), after computing `previousState`, call
-     `TPPBookState.canTransition(from: previousState, to: state)`. On violation:
-     `assertionFailure` in DEBUG + a telemetry/log line in RELEASE, then **still
-     apply** the transition (do NOT drop state — dropping is riskier than logging).
-   - Expand `allowedTransitions` to cover every transition the Contract-E green
-     snapshots actually exercise (soft-couple to E; if E is not yet green, seed
-     from the documented borrow/return flows in facts.json and mark TODO).
-2. **Gate the deprecated post behind a single feature switch** so it can be turned
-   off without deleting the observers yet. Keep `postStateNotification` firing by
-   default (parity), but route it through one private `emitLegacyStateNotification`
-   guarded by a `RemoteFeatureFlags` / build flag, so a follow-up flips it off.
-3. **Migrate the 2 lowest-risk observers** to `bookStatePublisher` as proof of the
-   pattern (recommend `ActiveSessionsViewModel`, `CatalogSearchView` — self-contained
-   Combine subscribers already). Leave the remaining 6 + 2 external posters as
-   **tracked debt** with a named finish-line in the doctrine.
-4. Add a **TPPBookRegistry mutation-path contract test** (CLAUDE.md names this a
-   good contract candidate) pinning: `setState` → canTransition checked →
-   `bookStatePublisher` emits. This lives in Contract E's test file set ONLY IF E
-   owns it; otherwise create `PalaceTests/Contract/TPPBookRegistryMutationContractTests.swift`
-   here (register via `scripts/pbxproj_add_swift.rb`).
+## Internal ordering (enforce-before-purge — non-negotiable)
+1. **Enforce allowedTransitions at `setState` (`:605`).** After computing
+   `previousState`, call `TPPBookState.canTransition(from:previousState,to:state)`.
+   On violation: `assertionFailure` in DEBUG + telemetry/log in RELEASE, then **still
+   apply** the transition (never DROP state — dropping is riskier than logging).
+   Expand `allowedTransitions` (`TPPBookState.swift:91`) to cover every transition the
+   Contract-E green snapshots exercise (soft-couple to E; seed from facts.json flows
+   if E not yet green, mark TODO for pairs E later confirms).
+2. **Migrate ALL 9 observers to `bookStatePublisher`** (Combine). Each migrated site
+   reacts to a publisher emission, not the NotificationCenter name. Re-point the
+   registry's own internal self-observer (`:455`) to the internal Combine path.
+3. **Re-point the 2 external posters** — `HoldsViewModel:249` and
+   `DeveloperSettingsViewModel:741` stop hand-posting `.TPPBookRegistryStateDidChange`;
+   route through a registry method or drop if redundant (their observers moved to
+   Combine in step 2).
+4. **DELETE both posts LAST**: remove `postStateNotification` (`:639`) and its call
+   sites (`:553,:570,:586,:600,:614`), and remove the direct sync-path post (`:283`).
+   Remove the `.TPPBookRegistryStateDidChange` name decl in `NSNotification+TPP.swift`
+   ONLY if no consumer remains (grep must be clean).
 
 ## Scope (exact files)
-- `Palace/Book/Models/TPPBookRegistry.swift` (setState enforcement + post gating)
+- `Palace/Book/Models/TPPBookRegistry.swift` (enforce + delete both posts + self-observer)
 - `Palace/Book/Models/TPPBookState.swift` (expand allowedTransitions if needed)
-- `Palace/CatalogUI/ViewModels/ActiveSessionsViewModel.swift` (migrate observer)
-- `Palace/CatalogUI/Views/CatalogSearchView.swift` (migrate observer)
+- `Palace/CatalogUI/ViewModels/ActiveSessionsViewModel.swift`
+- `Palace/CatalogUI/Views/CatalogLaneMoreView.swift`
+- `Palace/CatalogUI/Views/CatalogSearchView.swift`
+- `Palace/AppInfrastructure/AppTabHostView.swift`
+- `Palace/Book/UI/BookDetail/BookDetailView.swift`
+- `Palace/Book/UI/BookDetail/HalfSheetview.swift`
+- `Palace/MyBooks/MyBooks/MyBooksViewModel.swift`
+- `Palace/MyBooks/MyBooksDownloadCenter.swift` — **the :2076 one-shot observer block
+  ONLY** (Contract E owns the rest of this file; C touches only the observer)
+- `Palace/Holds/HoldsViewModel.swift` — **the :249 post ONLY**
+- `Palace/Settings/DeveloperSettings/DeveloperSettingsViewModel.swift` — **the :741 post ONLY**
+- `Palace/AppInfrastructure/NSNotification+TPP.swift` (remove name decl iff unused)
 - NEW test: `PalaceTests/Contract/TPPBookRegistryMutationContractTests.swift`
 
 ## Off-limits
-- `Palace/MyBooks/**` (owned by Contract E — including MyBooksDownloadCenter's
-  one-shot observer at :2076; do NOT migrate it here)
-- `Palace/MyBooks/Sideload/**` (owned by Contract D)
-- The remaining 6 observers + 2 external posters — leave AS-IS (tracked debt).
-  Do not touch `HoldsViewModel.swift` / `DeveloperSettingsViewModel.swift` posts.
-- `Palace/AppInfrastructure/Store.swift` / `Effect.swift` (Contract B)
+- `Palace/MyBooks/Sideload/**` (Contract D)
+- `Palace/AppInfrastructure/Store.swift` / PalaceAuth `Effect.swift` (Contract B)
+- Everything in `MyBooksDownloadCenter.swift` EXCEPT the :2076 observer (Contract E
+  owns the pipeline — C edits only the observer block; E edits the decision cores).
 
 ## What public types change
-- No signature changes to `TPPBookRegistry`'s protocol methods. `setState` gains
-  internal enforcement only. `TPPBookState.canTransition` moves from
-  unused-but-public to called.
+- No `TPPBookRegistry` protocol-method signature changes; `setState` gains internal
+  enforcement; `postStateNotification` removed. `TPPBookState.canTransition` becomes
+  live. `.TPPBookRegistryStateDidChange` removed as a public seam (iff unused).
 
 ## Test contracts
-- New `TPPBookRegistryMutationContractTests`: a legal transition emits on
-  `bookStatePublisher` and passes `canTransition`; an illegal transition
-  (e.g. `.unregistered` → `.downloadSuccessful`) trips the DEBUG assertion path
-  (test via an injected violation handler, not by crashing the suite).
-- Migrated observers: add/keep a test that the view-model reacts to a
-  `bookStatePublisher` emission (behavioral, not "publisher exists").
-- 100% mutation on the new `canTransition` call site in `setState`.
+- `TPPBookRegistryMutationContractTests`: legal transition emits on
+  `bookStatePublisher` + passes `canTransition`; illegal transition
+  (e.g. `.unregistered` → `.downloadSuccessful`) trips the DEBUG assertion path via an
+  injected violation handler (do not crash the suite).
+- Each migrated observer: behavioral test that the VM/view reacts to a
+  `bookStatePublisher` emission (NOT "publisher exists").
+- 100% mutation on the `canTransition` call site in `setState` and the removed-post
+  region.
 
-## Verification criteria (Phase 4.5)
+## Definition of Done — TWO TIERS ("ship today, verify Monday")
+**TODAY (implementer, fast/local — do NOT run the full ~7k CI suite):**
+- All scoped files IMPLEMENTED; changed files COMPILE clean:
+  `xcodebuild -project Palace.xcodeproj -scheme Palace -destination 'platform=iOS Simulator,name=iPhone 16 Pro' build`.
+- Diff-scoped mutation, 100% on the critical lines:
+  `python3 scripts/palace_mutate.py --file Palace/Book/Models/TPPBookRegistry.swift --tests PalaceTests/TPPBookRegistryMutationContractTests --diff-only`
+  (repeat for `Palace/Book/Models/TPPBookState.swift`).
+- Characterization + unit tests written and PASS via targeted selectors, e.g.
+  `-only-testing:PalaceTests/TPPBookRegistryMutationContractTests` (+ each migrated-observer test class).
+- Transcript + DoD evidence pasted.
+
+**MONDAY MERGE GATE (orchestrator only — NOT the implementer):**
+- Full CI-parity suite green: `scripts/xcode-test-optimized.sh`.
+- `/forge-review` — 3 SoD reviewers (architect + qa_test + blast_radius) approve.
+- `arch drift` clean (Contract F's `scripts/arch-drift-check.py` exits 0).
+- Nothing merges to `develop` until Monday-green.
+
+## Verification criteria (orchestrator runs at Phase 4.5)
 ```bash
-# AC1: setState now consults canTransition (enforcement wired)
+# AC1: setState consults canTransition (enforcement wired)
 grep -q 'canTransition' Palace/Book/Models/TPPBookRegistry.swift
 
-# AC2: canTransition is no longer dead code (referenced outside its own file)
+# AC2: canTransition no longer dead (referenced outside its own file)
 test "$(grep -rl 'canTransition' Palace --include='*.swift' | grep -v 'TPPBookState.swift' | wc -l | tr -d ' ')" -ge 1
 
-# AC3: the deprecated post is now gated behind one switch (single emit funnel)
-grep -Eq 'emitLegacyStateNotification|legacyStateNotificationEnabled|FeatureFlag' Palace/Book/Models/TPPBookRegistry.swift
+# AC3: the deprecated post is DELETED (function + both posts gone)
+! grep -q 'func postStateNotification' Palace/Book/Models/TPPBookRegistry.swift
+test "$(grep -c 'post(name: .TPPBookRegistryStateDidChange' Palace/Book/Models/TPPBookRegistry.swift)" = "0"
 
-# AC4: the two proof-of-pattern observers moved to the Combine publisher
-grep -q 'bookStatePublisher' Palace/CatalogUI/ViewModels/ActiveSessionsViewModel.swift
-grep -q 'bookStatePublisher' Palace/CatalogUI/Views/CatalogSearchView.swift
+# AC4: NO production observer of the old notification remains (full migration;
+#      only an unused name decl in NSNotification+TPP.swift may linger)
+test "$(grep -rlE 'publisher\(for: .TPPBookRegistryStateDidChange\)|forName: .TPPBookRegistryStateDidChange|for: .TPPBookRegistryStateDidChange' Palace --include='*.swift' | wc -l | tr -d ' ')" = "0"
 
-# AC5: a registry mutation-path contract test exists
+# AC5: the 2 external posters no longer hand-post the notification
+! grep -q 'post(name: .TPPBookRegistryStateDidChange' Palace/Holds/HoldsViewModel.swift
+! grep -q 'post(name: .TPPBookRegistryStateDidChange' Palace/Settings/DeveloperSettings/DeveloperSettingsViewModel.swift
+
+# AC6: migrated observers now use the Combine publisher
+for f in \
+  Palace/CatalogUI/ViewModels/ActiveSessionsViewModel.swift \
+  Palace/CatalogUI/Views/CatalogLaneMoreView.swift \
+  Palace/CatalogUI/Views/CatalogSearchView.swift \
+  Palace/AppInfrastructure/AppTabHostView.swift \
+  Palace/Book/UI/BookDetail/BookDetailView.swift \
+  Palace/Book/UI/BookDetail/HalfSheetview.swift \
+  Palace/MyBooks/MyBooks/MyBooksViewModel.swift ; do
+    grep -q 'bookStatePublisher\|registryPublisher' "$f" || { echo "NOT MIGRATED: $f"; exit 1; }
+done
+
+# AC7: registry mutation-path contract test exists
 test -f PalaceTests/Contract/TPPBookRegistryMutationContractTests.swift
 grep -q 'ContractSnapshot.assert' PalaceTests/Contract/TPPBookRegistryMutationContractTests.swift
 
-# AC6: MyBooks / Sideload / remaining observers untouched by THIS contract
-#      (orchestrator: assert the diff for C does not modify those paths)
+# AC8: Sideload untouched (Contract D boundary)
+#      (orchestrator: assert C's diff does not modify Palace/MyBooks/Sideload/**)
 ```

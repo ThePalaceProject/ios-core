@@ -1,22 +1,41 @@
 swarm_id: swarm_8ce6f5ae
 task: >-
   State-management architecture campaign for Palace iOS — declare ONE doctrine and
-  make it machine-checked: unify/formalize the Effect dialects, kill the
-  TPPBookRegistry dual-write and enforce allowedTransitions, formalize the
-  SideloadedBookRegistry second-owner boundary, PIN the borrow/return/download
-  god-class with characterization contracts and only THEN seam-extract a pure
-  reducer, and wire arch-drift self-verification into CI. Read-heavy triage;
-  every review claim re-verified against live source (file:line in each contract).
+  make it machine-checked: formalize the Effect boundary, do the COMPLETE
+  TPPBookRegistry dual-write kill (enforce allowedTransitions + migrate all 9
+  observers + delete both notification posts), formalize the SideloadedBookRegistry
+  second-owner boundary, PIN every borrow/return/download branch with characterization
+  contracts and only THEN extract the already-decomposed pipeline's DECISION CORES
+  into pure reducers, and wire arch-drift self-verification into CI. Read-heavy
+  triage; every review claim re-verified against live source (file:line per contract).
 created_at: "2026-07-17T00:00:00Z"
 status: triaged
 
+execution_model:
+  name: ship-today-verify-monday
+  today_per_implementer:
+    - implemented; changed files COMPILE clean (xcodebuild ... build)
+    - diff-scoped mutation via scripts/palace_mutate.py --diff-only (100% on critical paths)
+    - characterization + unit tests written and pass via -only-testing selectors
+    - transcript + DoD evidence pasted
+    - implementers do NOT run the full ~7k CI suite today
+  monday_merge_gate_orchestrator_only:
+    - full CI-parity suite green (scripts/xcode-test-optimized.sh)
+    - /forge-review — 3 SoD reviewers (architect + qa_test + blast_radius) approve
+    - arch drift clean (scripts/arch-drift-check.py exits 0 on integrated tree)
+    - nothing merges to develop until Monday-green
+  note: >-
+    Budget is NOT a scoping constraint. Full C and E (not de-scoped variants) are
+    authored today; the expensive full-suite verification batches to Monday.
+
 verification:
   ci_parity_suite: scripts/xcode-test-optimized.sh
+  today_bar: compile + diff-only mutation (100% critical) + targeted -only-testing tests
+  monday_bar: full suite + /forge-review 3 SoD + arch-drift-check.py clean
   note: >-
     Full CI-parity suite (~7k executions, -test-iterations 3 -retry-tests-on-failure)
-    is a SERIAL bottleneck — parallel authoring, serial verification. Each contract's
-    Verification criteria block is run by the orchestrator at Phase 4.5 before its
-    full-suite gate.
+    is the SERIAL Monday gate — parallel authoring today, serial verification Monday.
+    Each contract's Verification criteria block runs at Phase 4.5 before its Monday gate.
 
 modules:
   - name: Doctrine-ADR
@@ -37,6 +56,8 @@ modules:
       name TPPBookRegistry.setState (Palace/Book/Models/TPPBookRegistry.swift:605) as
       the allowedTransitions enforcement point. Phrase every debt item so an
       absence/count grep probe can encode it. No production code. Land FIRST.
+      TWO-TIER DoD: TODAY = doc authored + AC greps pass locally (no build); MONDAY =
+      /forge-review architect approves + Contract F probes derived from it pass.
 
   - name: Effect-Unification
     letter: B
@@ -54,7 +75,9 @@ modules:
       count at 2-justified for Contract F to probe. Do NOT edit Store.swift's Effect,
       do NOT touch TriageBot, do NOT collapse into a shared module (that is a
       follow-up). Ensure PalaceAuth still compiles (AuthEnvironment must be Sendable).
-      critical_path: mandatory Phase-1a review + 100% mutation on any new logic + extra SoD reviewer.
+      critical_path: mandatory Phase-1a review + 100% mutation on any new logic + extra
+      SoD reviewer. TWO-TIER DoD: TODAY = PalaceAuth compiles + --diff-only mutation +
+      targeted PalaceAuth tests; MONDAY = full suite + 3 SoD + arch drift.
 
   - name: Registry-DualWrite
     letter: C
@@ -63,27 +86,50 @@ modules:
       - Palace/Book/Models/TPPBookRegistry.swift
       - Palace/Book/Models/TPPBookState.swift
       - Palace/CatalogUI/ViewModels/ActiveSessionsViewModel.swift
+      - Palace/CatalogUI/Views/CatalogLaneMoreView.swift
       - Palace/CatalogUI/Views/CatalogSearchView.swift
+      - Palace/AppInfrastructure/AppTabHostView.swift
+      - Palace/Book/UI/BookDetail/BookDetailView.swift
+      - Palace/Book/UI/BookDetail/HalfSheetview.swift
+      - Palace/MyBooks/MyBooks/MyBooksViewModel.swift
+      - Palace/MyBooks/MyBooksDownloadCenter.swift  # :2076 observer block ONLY
+      - Palace/Holds/HoldsViewModel.swift            # :249 post ONLY
+      - Palace/Settings/DeveloperSettings/DeveloperSettingsViewModel.swift  # :741 post ONLY
+      - Palace/AppInfrastructure/NSNotification+TPP.swift  # remove name decl iff unused
       - PalaceTests/Contract/TPPBookRegistryMutationContractTests.swift
     contract_path: .forgeos/swarms/swarm_8ce6f5ae/contracts/C-Registry-DualWrite.md
     depends_on: [A]
+    blocking_internal_order: >-
+      enforce-before-purge: (1) wire canTransition enforcement + the Combine path;
+      (2) migrate ALL 9 observers; (3) re-point the 2 external posters; (4) DELETE
+      postStateNotification (:639) + the direct sync post (:283) LAST. Never delete a
+      post before every observer of it is migrated.
     implementer_prompt: >-
-      WS3, CONSERVATIVELY SCOPED (the full 9-observer purge is a follow-up). (1)
-      Enforce allowedTransitions in TPPBookRegistry.setState (:605): call
+      WS3, FULL SCOPE — no split, no exceptions. (1) Enforce allowedTransitions in
+      TPPBookRegistry.setState (:605): call
       TPPBookState.canTransition(from:previousState,to:state); on violation
       assertionFailure in DEBUG + log/telemetry in RELEASE, but STILL apply the
       transition (never drop state). Expand allowedTransitions (TPPBookState.swift:91)
-      to cover transitions the Contract-E snapshots exercise. (2) Funnel the deprecated
-      post (postStateNotification :639 firing .TPPBookRegistryStateDidChange) through a
-      single switch-gated emit so a follow-up can flip it off; keep it firing by
-      default for parity. (3) Migrate exactly TWO proof-of-pattern observers
-      (ActiveSessionsViewModel:135, CatalogSearchView:112) to bookStatePublisher. (4)
-      Add PalaceTests/Contract/TPPBookRegistryMutationContractTests.swift pinning
-      setState->canTransition->publisher emission (register via
-      scripts/pbxproj_add_swift.rb). OFF-LIMITS: Palace/MyBooks/** (Contract E incl the
-      :2076 observer), Sideload/** (Contract D), the other 7 observers + the 2 external
-      posters (HoldsViewModel:249, DeveloperSettingsViewModel:741) — leave as tracked
-      debt. critical_path: Phase-1a + 100% mutation + extra SoD reviewer.
+      to cover transitions the Contract-E snapshots exercise. (2) Migrate ALL 9
+      observers to bookStatePublisher: ActiveSessionsViewModel:135,
+      CatalogLaneMoreView:122, CatalogSearchView:112, AppTabHostView:456,
+      BookDetailView:134, HalfSheetview:227, MyBooksViewModel:338, the
+      MyBooksDownloadCenter:2076 one-shot (edit ONLY that observer block — Contract E
+      owns the rest of that file), and the registry's own self-observer
+      (TPPBookRegistry:455 -> internal Combine path). (3) Re-point the 2 external
+      posters HoldsViewModel:249 + DeveloperSettingsViewModel:741 so they stop
+      hand-posting .TPPBookRegistryStateDidChange. (4) DELETE postStateNotification
+      (:639) + its call sites (:553,:570,:586,:600,:614) + the direct sync post (:283);
+      remove the name decl in NSNotification+TPP.swift iff no consumer remains (grep
+      clean). Add PalaceTests/Contract/TPPBookRegistryMutationContractTests.swift
+      pinning setState->canTransition->publisher emission (register via
+      scripts/pbxproj_add_swift.rb). Each migrated observer gets a behavioral test it
+      reacts to a publisher emission BEFORE the post is deleted. OFF-LIMITS:
+      Sideload/** (Contract D), Store/PalaceAuth Effect (B), all of
+      MyBooksDownloadCenter EXCEPT the :2076 observer (Contract E). critical_path:
+      Phase-1a + 100% mutation + extra SoD reviewer. TWO-TIER DoD: TODAY = compile +
+      --diff-only mutation 100% on TPPBookRegistry/TPPBookState + targeted tests;
+      MONDAY = full suite + 3 SoD + arch drift.
 
   - name: Sideload-SoT-Boundary
     letter: D
@@ -105,42 +151,61 @@ modules:
       TPPBookRegistry.setState ZERO times (spy the loan registry). OFF-LIMITS:
       TPPBookRegistry/TPPBookState (Contract C), MyBooksDownloadCenter/BorrowOperation/
       BookReturnService/DownloadStart* (Contract E). critical_path: Phase-1a + 100%
-      mutation + extra SoD reviewer.
+      mutation + extra SoD reviewer. TWO-TIER DoD: TODAY = compiles + --diff-only
+      mutation + targeted SideloadImportContractTests; MONDAY = full suite + 3 SoD +
+      arch drift.
 
-  - name: MyBooks-Pipeline-Pin-then-Extract
+  - name: MyBooks-Pipeline-Pin-then-ExtractCores
     letter: E
     risk: critical_path
     files_scope:
       - PalaceTests/Contract/BookReturnServiceContractTests.swift
       - PalaceTests/Contract/BorrowOperationContractTests.swift
+      - PalaceTests/Contract/DownloadStartCoordinatorContractTests.swift
       - PalaceTests/Contract/ReturnReducerContractTests.swift
+      - PalaceTests/Contract/BorrowReducerCoreContractTests.swift
+      - PalaceTests/Contract/DownloadStartReducerContractTests.swift
       - Palace/MyBooks/ReturnReducer.swift
+      - Palace/MyBooks/BorrowReducerCore.swift
+      - Palace/MyBooks/DownloadStartReducer.swift
+      - Palace/MyBooks/BookReturnService.swift    # delegate decision to ReturnReducer
+      - Palace/MyBooks/BorrowOperation.swift        # delegate decision to BorrowReducerCore
+      - Palace/MyBooks/DownloadStartDispatcher.swift # delegate decision to DownloadStartReducer
       - CLAUDE.md
     contract_path: .forgeos/swarms/swarm_8ce6f5ae/contracts/E-MyBooks-Pipeline-Pin-then-Extract.md
     depends_on: [A]
     blocking_internal_order: >-
-      HARD GATE: Phase E1 (WS6 characterization snapshots) MUST be GREEN before
-      Phase E2 (WS7 reducer seam) changes any behavior. WS6 and WS7 are in this ONE
-      contract with the same implementer specifically so the pin cannot be reordered
-      after the extract. Do not open E2 until every E1 snapshot passes on a clean re-run.
+      HARD GATE: Phase E1 (WS6 — pin EVERY borrow/return/download branch, snapshots
+      green) MUST precede Phase E2 (WS7 — extract decision cores). WS6 and WS7 are in
+      this ONE contract with the same implementer so the pin cannot be reordered after
+      the extract. Do not open E2 until every E1 snapshot passes on a clean re-run.
     implementer_prompt: >-
-      WS6 then WS7, in THAT order, one implementer. E1 (do first): extend
-      BookReturnServiceContractTests with the two undocumented branches — no-revokeURL
-      cleanup runs setState(.unregistered) THEN removeBook (BookReturnService.swift
-      :316->:402-403), and an OverDrive revoke whose OPDS parse fails is treated as
-      server-SUCCESS and cleans up locally (:415-430); confirm/add the normal-revokeURL
-      and offline OfflineAction(.return) branches. Record baselines with
-      CONTRACT_SNAPSHOT_RECORD=1, review the JSON diff, commit. Reconcile CLAUDE.md:259
-      ("setProcessing -> setState -> removeBook -> announce") with the pinned truth.
-      GATE: all MyBooks contract snapshots green. E2 (only after E1 green): create a
-      PURE reducer core Palace/MyBooks/ReturnReducer.swift (reduce(&state,action)->Effect)
-      modelling the return decision tree; prove order-preservation with
-      ReturnReducerContractTests whose snapshot matches E1's sequence shape; register in
-      BOTH targets via scripts/pbxproj_add_swift.rb. DO NOT cut MyBooksDownloadCenter
-      (2155 LOC) over to the reducer — seam only; the cutover is a gated follow-up.
-      OFF-LIMITS: TPPBookRegistry/TPPBookState (C), Sideload (D), Store/PalaceAuth
-      Effect (B), the MyBooksDownloadCenter:2076 observer. critical_path: Phase-1a +
-      100% mutation on new reducer logic + extra SoD reviewer.
+      WS6 then WS7, in THAT order, one implementer. CONTEXT: MyBooksDownloadCenter is
+      ALREADY decomposed (a 2155-LOC delegation hub owning ~27 collaborators via
+      delegate conformances at :1809-1926; prior swarms #1009/#1018/#1024/#1212 did the
+      structural extraction). E2 is NOT decomposing a god-class. E1 (do first): pin
+      EVERY branch — extend BookReturnServiceContractTests with the two undocumented
+      ones: no-revokeURL cleanup does setState(.unregistered) THEN removeBook
+      (:316->:402-403), and an OverDrive revoke whose OPDS parse fails is treated as
+      server-SUCCESS + local cleanup (:415-430); plus normal-revokeURL,
+      offline OfflineAction(.return), no-active-loan, loan-term-limit, invalid-creds.
+      Extend BorrowOperationContractTests (reserved->.holding, ready->.downloadNeeded,
+      streaming-HTML skip, 30s timeout) and DownloadStartCoordinator/Dispatcher tests
+      for every dispatch branch. CONTRACT_SNAPSHOT_RECORD=1, review JSON diff, commit.
+      Reconcile CLAUDE.md:259 with the pinned truth. GATE: all MyBooks snapshots green.
+      E2 (only after E1 green): extract the DECISION CORES into pure reducers per WS1
+      doctrine — Palace/MyBooks/ReturnReducer.swift (BookReturnService branches),
+      BorrowReducerCore.swift (BorrowOperation branches), DownloadStartReducer.swift
+      (DownloadStartDispatcher branches); each collaborator CALLS its core for branch
+      selection then RUNS the decided effects. Prove order-preservation with per-core
+      contract tests whose snapshots are shape-equal to the E1 service snapshots.
+      Register new files in BOTH targets via scripts/pbxproj_add_swift.rb. DO NOT
+      re-plumb the hub, DO NOT touch delegate conformances, DO NOT merge collaborators.
+      OFF-LIMITS: TPPBookRegistry/TPPBookState (C), the MyBooksDownloadCenter:2076
+      observer (C), Sideload (D), Store/PalaceAuth Effect (B). critical_path: Phase-1a +
+      100% mutation on each new core + extra SoD reviewer. TWO-TIER DoD: TODAY =
+      compile + --diff-only mutation 100% on each core + targeted contract tests +
+      E1-green-before-E2 shown in transcript; MONDAY = full suite + 3 SoD + arch drift.
 
   - name: Self-Verifying-Arch
     letter: F
@@ -169,4 +234,7 @@ modules:
       (absent on ubuntu CI). Rule #4: add scripts/tests/test_arch_drift_check.py that
       asserts BOTH a drift case FAILS and a clean-tree case PASSES, and dry-run for
       zero false positives before wiring. Depends on A (doctrine), C (canTransition
-      present), E (snapshots to derive diagrams).
+      present), E (snapshots to derive diagrams). TWO-TIER DoD: TODAY = arch-drift-check.py
+      exits 0 on clean tree + pytest passes (drift-fail AND clean-pass) + bash -n clean
+      — fully exercisable today on the ubuntu tooling-checks job (~1 min, NOT the ~7k
+      suite); MONDAY = tooling-checks green on the integrated tree + /forge-review.

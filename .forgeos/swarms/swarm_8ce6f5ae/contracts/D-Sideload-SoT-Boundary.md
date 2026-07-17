@@ -55,6 +55,19 @@ interface.**
   does NOT call `TPPBookRegistry.setState` (spy the loan registry; assert 0 calls).
 - Existing `SideloadImportContractTests` snapshot stays green (no contract drift).
 
+## Definition of Done — TWO TIERS ("ship today, verify Monday")
+**TODAY (implementer, fast/local — do NOT run the full ~7k CI suite):**
+- Doc header + read-seam conformance implemented; changed files COMPILE clean
+  (`xcodebuild ... build`).
+- Diff-scoped mutation on any new logic:
+  `python3 scripts/palace_mutate.py --file Palace/MyBooks/Sideload/SideloadedBookRegistry.swift --tests PalaceTests/SideloadImportContractTests --diff-only`.
+- Boundary + existing sideload contract tests pass via targeted selector
+  (`-only-testing:PalaceTests/SideloadImportContractTests`). Transcript + DoD evidence pasted.
+
+**MONDAY MERGE GATE (orchestrator only):** full CI-parity suite
+(`scripts/xcode-test-optimized.sh`) green + `/forge-review` 3 SoD reviewers +
+`arch drift` clean (Contract F). Nothing merges to `develop` until Monday-green.
+
 ## Verification criteria (Phase 4.5)
 ```bash
 # AC1: SideloadedBookRegistry documents its authorized-second-owner scope

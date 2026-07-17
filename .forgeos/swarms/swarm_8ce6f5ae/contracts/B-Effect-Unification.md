@@ -55,6 +55,19 @@ this contract.
   add a compile-level test (a `func _requireSendable<T: Sendable>(_:)` witness) in
   the PalaceAuth test target.
 
+## Definition of Done — TWO TIERS ("ship today, verify Monday")
+**TODAY (implementer, fast/local — do NOT run the full ~7k CI suite):**
+- PalaceAuth Effect updated; PalaceAuth package COMPILES clean (build the PalaceAuth
+  SPM target / `xcodebuild ... build`).
+- Diff-scoped mutation on any new logic:
+  `python3 scripts/palace_mutate.py --file Palace/Packages/PalaceAuth/Sources/PalaceAuth/Effect.swift --tests PalaceTests/AuthReducerTests --diff-only` (or the PalaceAuth test target).
+- PalaceAuth package tests pass via targeted selector; the Sendable-witness compile
+  test passes. Transcript + DoD evidence pasted.
+
+**MONDAY MERGE GATE (orchestrator only):** full CI-parity suite
+(`scripts/xcode-test-optimized.sh`) green + `/forge-review` 3 SoD reviewers +
+`arch drift` clean (Contract F). Nothing merges to `develop` until Monday-green.
+
 ## Verification criteria (Phase 4.5)
 ```bash
 # AC1: exactly two struct Effect decls in the app tree, no third crept in

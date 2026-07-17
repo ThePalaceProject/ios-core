@@ -54,6 +54,13 @@ None (documentation). The doctrine's testable assertions are realized as probes
 in Contract F; this contract must phrase each debt item so a grep/absence probe
 can encode it (e.g. "BorrowReducer contains no `.task`").
 
+## Definition of Done — TWO TIERS ("ship today, verify Monday")
+**TODAY (implementer):** doctrine authored; all AC greps below pass locally; the
+debt items are phrased so Contract F can encode them as probes. No build needed
+(pure doc). Transcript + DoD evidence pasted.
+**MONDAY MERGE GATE (orchestrator):** `/forge-review` architect approves the
+doctrine; Contract F's probes derived from it pass. Merges to `develop` only Monday.
+
 ## Verification criteria (orchestrator runs at Phase 4.5)
 ```bash
 # AC1: file exists and is non-trivial
