@@ -58,7 +58,7 @@ RELEVANT_ADDED="$(printf '%s\n' "$DIFF" | awk '
 
 # DEVELOPMENT_TEAM: trailing ';' (pbxproj) OR end-of-line (xcconfig has no ';').
 FINDINGS="$(printf '%s\n' "$RELEVANT_ADDED" | grep -nE \
-  'CODE_SIGN_STYLE[[:space:]]*=[[:space:]]*Automatic|DEVELOPMENT_TEAM[[:space:]]*=[[:space:]]*[A-Z0-9]{10}[[:space:]]*(;|$)|PROVISIONING_PROFILE[[:space:]]*=[[:space:]]*"?[0-9a-fA-F]{8}-[0-9a-fA-F-]{27}' \
+  'CODE_SIGN_STYLE[[:space:]]*=[[:space:]]*Automatic|DEVELOPMENT_TEAM[[:space:]]*=[[:space:]]*"?[A-Z0-9]{10}"?[[:space:]]*(;|$)|PROVISIONING_PROFILE[[:space:]]*=[[:space:]]*"?[0-9a-fA-F]{8}-[0-9a-fA-F-]{27}' \
   2>/dev/null || true)"
 
 # Drop allowlisted lines.

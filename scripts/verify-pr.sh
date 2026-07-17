@@ -197,6 +197,12 @@ echo "Branch: $(git rev-parse --abbrev-ref HEAD)"
 echo "Changed files: $(echo "$CHANGED_SWIFT" | wc -l | tr -d ' ') production, $(echo "$CHANGED_TEST_SWIFT" | wc -l | tr -d ' ') test"
 echo ""
 
+# Mark the start of this run so the coverage-floor step (find -newer) matches
+# only THIS run's xcresult. Without it, `find -newer /tmp/.verify-pr-start`
+# errors on the missing marker → XCRESULT="" → the gate silently records
+# "No xcresult found (skipped)" and has never actually enforced a floor.
+touch /tmp/.verify-pr-start 2>/dev/null || true
+
 # Docs-only fast-path: skip build/test/lint/coverage/mutation/a11y when no
 # source files changed. Honest pass records, written to JSON report and stdout
 # the same as the full battery would emit, just with explicit "skipped" detail.
