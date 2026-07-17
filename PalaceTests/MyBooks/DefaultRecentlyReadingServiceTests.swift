@@ -114,6 +114,37 @@ final class DefaultRecentlyReadingServiceTests: XCTestCase {
                        "Books with no saved location MUST be excluded")
     }
 
+    // MARK: - Test 4b: includes a just-opened ebook whose location hasn't persisted yet
+
+    func testRecentlyReading_includesOpenedEbookWithoutSavedLocation_viaTracker() {
+        // Regression (Continue-lane ebook-vs-audiobook): a freshly-opened ebook
+        // has a BookOpenTracker open-time but NO saved location yet (the reader
+        // persists position asynchronously). It MUST still appear on the Continue
+        // row and, with a newer open-time, sort ahead of an older ebook — so
+        // opening a new ebook supersedes a Continue-slot audiobook instead of
+        // being filtered out. Audiobooks already qualify on open-time alone; this
+        // pins the same for ebooks.
+        let now = Date(timeIntervalSince1970: 1_720_000_000)
+        let older = now.addingTimeInterval(-3600)
+
+        let freshNoLocation = makeEpub(id: "FRESH")     // just opened; location not persisted
+        let olderWithLocation = makeEpub(id: "OLDER")
+
+        registry.myBooks = [freshNoLocation, olderWithLocation]
+        registry.addBook(freshNoLocation, location: nil, state: .downloadSuccessful)
+        registry.addBook(olderWithLocation, location: makeLocation(timestamp: older), state: .downloadSuccessful)
+
+        let tracker = StubBookOpenTracker(openTimes: ["FRESH": now, "OLDER": older])
+        let service = DefaultRecentlyReadingService(bookRegistry: registry, bookOpenTracker: tracker)
+
+        let result = service.recentlyReading()
+
+        XCTAssertEqual(result.map { $0.bookId }, ["FRESH", "OLDER"],
+                       "A just-opened ebook (tracker open-time, no saved location yet) MUST appear and sort ahead of an older-opened ebook")
+        XCTAssertEqual(result.first?.lastReadAt, now,
+                       "Its lastReadAt MUST be the fresh open-time so it supersedes a Continue-slot audiobook")
+    }
+
     // MARK: - Test 5: empty registry returns empty (no crash)
 
     func testRecentlyReading_emptyRegistryReturnsEmpty() {

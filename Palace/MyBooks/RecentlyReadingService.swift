@@ -116,12 +116,18 @@ final class DefaultRecentlyReadingService: RecentlyReadingService {
             if acquisition.relation == .sample || acquisition.relation == .preview {
                 return nil
             }
-            // No saved location → no Continue Reading entry; user hasn't
-            // opened this book yet.
-            guard let location = bookRegistry.location(forIdentifier: book.identifier) else {
-                return nil
-            }
-            let parsed = parseLocation(location, fallbackUpdated: book.updated, now: now)
+            // Include a book the patron actually opened even if its reading
+            // position hasn't persisted yet: the reader saves location
+            // asynchronously, so right after an open the tracker has a
+            // wall-clock open time while `location` is still nil. Audiobooks
+            // already qualify on open-time alone (see `recentlyOpenedAudiobook`),
+            // so gating ebooks on a saved location made a freshly-opened ebook
+            // fail to supersede a Continue-slot audiobook until some unrelated
+            // refresh. Exclude only books with neither a saved location NOR a
+            // recorded open (i.e. genuinely never opened).
+            let openedAt = bookOpenTracker?.lastOpened(book.identifier)
+            let location = bookRegistry.location(forIdentifier: book.identifier)
+            guard location != nil || openedAt != nil else { return nil }
             // Polish-phase last-read accuracy fix
             // (in-app-nav-polish-2026-06-01): prefer the BookOpenTracker's
             // wall-clock open time over parsed location timestamp /
@@ -131,15 +137,15 @@ final class DefaultRecentlyReadingService: RecentlyReadingService {
             // so the Continue Reading row shows the book with the
             // newest catalog entry, NOT the book the user actually
             // opened most recently.
-            let openedAt = bookOpenTracker?.lastOpened(book.identifier)
-            let lastReadAt = openedAt ?? parsed.lastReadAt
+            let parsed = location.map { parseLocation($0, fallbackUpdated: book.updated, now: now) }
+            let lastReadAt = openedAt ?? parsed?.lastReadAt ?? book.updated
             return ContinueReadingItem(
                 bookId: book.identifier,
                 book: book,
                 contentType: contentType,
                 lastReadAt: lastReadAt,
-                progressFraction: parsed.progressFraction,
-                progressLabel: parsed.progressLabel
+                progressFraction: parsed?.progressFraction,
+                progressLabel: parsed?.progressLabel
             )
         }
 
