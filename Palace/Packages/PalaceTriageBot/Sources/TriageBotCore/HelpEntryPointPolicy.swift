@@ -11,41 +11,26 @@ import Foundation
 public enum HelpEntryPoint: String, Sendable, CaseIterable {
     case bookDetail
     case signIn
-    case audiobookPlayer
 }
 
 /// Pure decision for whether the shared Help affordance should be visible at a
-/// given entry point. Centralizes the two rules every entry point must obey:
-///
-///   1. **AC-14 kill-switch:** when `isTriageBotEnabled` is off, every entry
-///      point vanishes together — no Settings row, no toolbar button, no
-///      audiobook overlay.
-///   2. **Audiobook mini-player collision:** the audiobook Help control lives in
-///      the FULL player chrome only. On the mini-player it would sit on top of
-///      the transport row, so it stays hidden until the player is expanded.
-///
-/// Extracted here so both rules are mutation-testable in isolation from the
-/// SwiftUI hosts (which can't build under macOS `swift test`).
+/// given entry point. Centralizes the AC-14 kill-switch: when
+/// `isTriageBotEnabled` is off, every entry point vanishes together — no
+/// Settings row and no toolbar Help button. Extracted here so the rule is
+/// mutation-testable in isolation from the SwiftUI hosts (which can't build
+/// under macOS `swift test`).
 public enum HelpEntryPointPolicy {
 
     /// - Parameters:
-    ///   - entryPoint: which surface is asking.
+    ///   - entryPoint: which surface is asking (kept for call-site clarity and
+    ///     the stable accessibility identifier the host derives from it).
     ///   - triageBotEnabled: the master kill-switch
     ///     (`RemoteFeatureFlags.shared.isTriageBotEnabled` on iOS).
-    ///   - audiobookPlayerExpanded: for `.audiobookPlayer`, whether the full
-    ///     player is currently expanded. Ignored for every other entry point.
     /// - Returns: whether the Help affordance should render.
     public static func shouldShowHelp(
         at entryPoint: HelpEntryPoint,
-        triageBotEnabled: Bool,
-        audiobookPlayerExpanded: Bool = false
+        triageBotEnabled: Bool
     ) -> Bool {
-        guard triageBotEnabled else { return false }
-        switch entryPoint {
-        case .audiobookPlayer:
-            return audiobookPlayerExpanded
-        case .bookDetail, .signIn:
-            return true
-        }
+        triageBotEnabled
     }
 }

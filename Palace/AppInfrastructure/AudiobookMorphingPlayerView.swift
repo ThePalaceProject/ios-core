@@ -387,14 +387,19 @@ struct AudiobookMorphingPlayerView: View {
         ZStack {
             grabber
             HStack {
-                // Flag-gated Help entry point (PP-4812). Lives in the FULL
-                // player chrome only (topControls is not part of `miniContent`),
-                // and `HelpEntryPointPolicy` further gates it on the expanded
-                // state, so it never collides with the mini-player transport row.
-                HelpButton(
-                    entryPoint: .audiobookPlayer,
-                    audiobookPlayerExpanded: presenter.isPlayerExpanded
-                )
+                // Explicit close: collapses the full player to the mini-bar
+                // (playback continues). The only other way down is the
+                // non-obvious pull-down gesture, so this gives the full player a
+                // discoverable exit. Occupies the slot the Help entry point used
+                // to hold — Help now lives on book-detail + sign-in only.
+                Button { setExpanded(false) } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 18, weight: .medium))
+                        .frame(width: 44, height: 44)
+                }
+                .buttonStyle(.plain)
+                .tint(.primary)
+                .accessibilityLabel(Strings.Generic.close)
                 Spacer()
                 Button { showChaptersBookmarks = true } label: {
                     Image(systemName: "list.bullet")
