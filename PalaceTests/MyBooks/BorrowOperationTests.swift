@@ -53,6 +53,11 @@ final class BorrowOperationTests: XCTestCase {
         signInModalCompletions = []
         oidcReauthResult.value = false
 
+        // Capture the Sendable boxes as locals so the non-isolated async
+        // closures reference the boxes, not `self` (now @MainActor).
+        let fetchBookCallsBox = fetchBookCalls
+        let fetchBookResultBox = fetchBookResult
+        let oidcReauthResultBox = oidcReauthResult
         operation = BorrowOperation(
             bookRegistry: bookRegistry,
             downloadAnnouncementService: DownloadAnnouncementService(),
@@ -62,8 +67,8 @@ final class BorrowOperationTests: XCTestCase {
             userAccountProvider: { [unowned self] in self.userAccount },
             adobeDRMService: AdobeDRMService.shared,
             fetchBook: { url, resetCache, useToken in
-                fetchBookCalls.withValue { $0.append((url, resetCache, useToken)) }
-                switch fetchBookResult.value! {
+                fetchBookCallsBox.withValue { $0.append((url, resetCache, useToken)) }
+                switch fetchBookResultBox.value! {
                 case .success(let result): return result
                 case .failure(let error): throw error
                 }
@@ -74,7 +79,7 @@ final class BorrowOperationTests: XCTestCase {
             presentSignInModal: { [unowned self] completion in
                 self.signInModalCompletions.append(completion)
             },
-            attemptOIDCReauth: { oidcReauthResult.value }
+            attemptOIDCReauth: { oidcReauthResultBox.value }
         )
         operation.delegate = spyDelegate
     }
