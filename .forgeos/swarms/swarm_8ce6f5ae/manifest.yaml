@@ -1,0 +1,172 @@
+swarm_id: swarm_8ce6f5ae
+task: >-
+  State-management architecture campaign for Palace iOS — declare ONE doctrine and
+  make it machine-checked: unify/formalize the Effect dialects, kill the
+  TPPBookRegistry dual-write and enforce allowedTransitions, formalize the
+  SideloadedBookRegistry second-owner boundary, PIN the borrow/return/download
+  god-class with characterization contracts and only THEN seam-extract a pure
+  reducer, and wire arch-drift self-verification into CI. Read-heavy triage;
+  every review claim re-verified against live source (file:line in each contract).
+created_at: "2026-07-17T00:00:00Z"
+status: triaged
+
+verification:
+  ci_parity_suite: scripts/xcode-test-optimized.sh
+  note: >-
+    Full CI-parity suite (~7k executions, -test-iterations 3 -retry-tests-on-failure)
+    is a SERIAL bottleneck — parallel authoring, serial verification. Each contract's
+    Verification criteria block is run by the orchestrator at Phase 4.5 before its
+    full-suite gate.
+
+modules:
+  - name: Doctrine-ADR
+    letter: A
+    risk: standard
+    files_scope:
+      - docs/architecture/state-management-doctrine.md
+    contract_path: .forgeos/swarms/swarm_8ce6f5ae/contracts/A-Doctrine-ADR.md
+    depends_on: []
+    implementer_prompt: >-
+      WS1. Author docs/architecture/state-management-doctrine.md declaring ONE
+      doctrine: reducer tier (Store + pure reduce->Effect) for critical-path state
+      machines; plain @MainActor ObservableObject for leaf UI; shape-only reducers
+      (BorrowReducer, AuthReducer — all branches .none) and the duplicate PalaceAuth
+      Effect as TRACKED DEBT with explicit finish-lines; TriageBot's (state,[effects])
+      reducer as out-of-family by design. Declare the SoT scoped to loans
+      (TPPBookRegistry) with SideloadedBookRegistry as documented second owner, and
+      name TPPBookRegistry.setState (Palace/Book/Models/TPPBookRegistry.swift:605) as
+      the allowedTransitions enforcement point. Phrase every debt item so an
+      absence/count grep probe can encode it. No production code. Land FIRST.
+
+  - name: Effect-Unification
+    letter: B
+    risk: critical_path
+    files_scope:
+      - Palace/Packages/PalaceAuth/Sources/PalaceAuth/Effect.swift
+    contract_path: .forgeos/swarms/swarm_8ce6f5ae/contracts/B-Effect-Unification.md
+    depends_on: [A]
+    implementer_prompt: >-
+      WS2. Do the LANDABLE half: add the missing `Sendable` bound to PalaceAuth's
+      Effect (Palace/Packages/PalaceAuth/Sources/PalaceAuth/Effect.swift:11) so it is
+      semantically identical to the canonical Store.swift:21 copy, add a doc header
+      explaining the package-boundary reason (PalaceAuth must not import the app
+      module; cite Palace/Packages/PalaceCatalog as the SPM precedent), and leave the
+      count at 2-justified for Contract F to probe. Do NOT edit Store.swift's Effect,
+      do NOT touch TriageBot, do NOT collapse into a shared module (that is a
+      follow-up). Ensure PalaceAuth still compiles (AuthEnvironment must be Sendable).
+      critical_path: mandatory Phase-1a review + 100% mutation on any new logic + extra SoD reviewer.
+
+  - name: Registry-DualWrite
+    letter: C
+    risk: critical_path
+    files_scope:
+      - Palace/Book/Models/TPPBookRegistry.swift
+      - Palace/Book/Models/TPPBookState.swift
+      - Palace/CatalogUI/ViewModels/ActiveSessionsViewModel.swift
+      - Palace/CatalogUI/Views/CatalogSearchView.swift
+      - PalaceTests/Contract/TPPBookRegistryMutationContractTests.swift
+    contract_path: .forgeos/swarms/swarm_8ce6f5ae/contracts/C-Registry-DualWrite.md
+    depends_on: [A]
+    implementer_prompt: >-
+      WS3, CONSERVATIVELY SCOPED (the full 9-observer purge is a follow-up). (1)
+      Enforce allowedTransitions in TPPBookRegistry.setState (:605): call
+      TPPBookState.canTransition(from:previousState,to:state); on violation
+      assertionFailure in DEBUG + log/telemetry in RELEASE, but STILL apply the
+      transition (never drop state). Expand allowedTransitions (TPPBookState.swift:91)
+      to cover transitions the Contract-E snapshots exercise. (2) Funnel the deprecated
+      post (postStateNotification :639 firing .TPPBookRegistryStateDidChange) through a
+      single switch-gated emit so a follow-up can flip it off; keep it firing by
+      default for parity. (3) Migrate exactly TWO proof-of-pattern observers
+      (ActiveSessionsViewModel:135, CatalogSearchView:112) to bookStatePublisher. (4)
+      Add PalaceTests/Contract/TPPBookRegistryMutationContractTests.swift pinning
+      setState->canTransition->publisher emission (register via
+      scripts/pbxproj_add_swift.rb). OFF-LIMITS: Palace/MyBooks/** (Contract E incl the
+      :2076 observer), Sideload/** (Contract D), the other 7 observers + the 2 external
+      posters (HoldsViewModel:249, DeveloperSettingsViewModel:741) — leave as tracked
+      debt. critical_path: Phase-1a + 100% mutation + extra SoD reviewer.
+
+  - name: Sideload-SoT-Boundary
+    letter: D
+    risk: critical_path
+    files_scope:
+      - Palace/MyBooks/Sideload/SideloadedBookRegistry.swift
+      - PalaceTests/Contract/SideloadImportContractTests.swift
+    contract_path: .forgeos/swarms/swarm_8ce6f5ae/contracts/D-Sideload-SoT-Boundary.md
+    depends_on: [A]
+    implementer_prompt: >-
+      WS4. FORMALIZE, do NOT unify. Add a doc header on
+      Palace/MyBooks/Sideload/SideloadedBookRegistry.swift:45 stating it is the
+      authorized SECOND book-state owner, scoped to side-loaded (non-loan) content,
+      and must never hold loaned-book state (that stays in TPPBookRegistry). Introduce
+      or document a single read-seam protocol (e.g. BookStateReading) both registries
+      are viewed through; conform SideloadedBookRegistry with no behavior change
+      (register any new file via scripts/pbxproj_add_swift.rb). Add a boundary test
+      asserting a sideloaded import updates SideloadedBookRegistry and calls
+      TPPBookRegistry.setState ZERO times (spy the loan registry). OFF-LIMITS:
+      TPPBookRegistry/TPPBookState (Contract C), MyBooksDownloadCenter/BorrowOperation/
+      BookReturnService/DownloadStart* (Contract E). critical_path: Phase-1a + 100%
+      mutation + extra SoD reviewer.
+
+  - name: MyBooks-Pipeline-Pin-then-Extract
+    letter: E
+    risk: critical_path
+    files_scope:
+      - PalaceTests/Contract/BookReturnServiceContractTests.swift
+      - PalaceTests/Contract/BorrowOperationContractTests.swift
+      - PalaceTests/Contract/ReturnReducerContractTests.swift
+      - Palace/MyBooks/ReturnReducer.swift
+      - CLAUDE.md
+    contract_path: .forgeos/swarms/swarm_8ce6f5ae/contracts/E-MyBooks-Pipeline-Pin-then-Extract.md
+    depends_on: [A]
+    blocking_internal_order: >-
+      HARD GATE: Phase E1 (WS6 characterization snapshots) MUST be GREEN before
+      Phase E2 (WS7 reducer seam) changes any behavior. WS6 and WS7 are in this ONE
+      contract with the same implementer specifically so the pin cannot be reordered
+      after the extract. Do not open E2 until every E1 snapshot passes on a clean re-run.
+    implementer_prompt: >-
+      WS6 then WS7, in THAT order, one implementer. E1 (do first): extend
+      BookReturnServiceContractTests with the two undocumented branches — no-revokeURL
+      cleanup runs setState(.unregistered) THEN removeBook (BookReturnService.swift
+      :316->:402-403), and an OverDrive revoke whose OPDS parse fails is treated as
+      server-SUCCESS and cleans up locally (:415-430); confirm/add the normal-revokeURL
+      and offline OfflineAction(.return) branches. Record baselines with
+      CONTRACT_SNAPSHOT_RECORD=1, review the JSON diff, commit. Reconcile CLAUDE.md:259
+      ("setProcessing -> setState -> removeBook -> announce") with the pinned truth.
+      GATE: all MyBooks contract snapshots green. E2 (only after E1 green): create a
+      PURE reducer core Palace/MyBooks/ReturnReducer.swift (reduce(&state,action)->Effect)
+      modelling the return decision tree; prove order-preservation with
+      ReturnReducerContractTests whose snapshot matches E1's sequence shape; register in
+      BOTH targets via scripts/pbxproj_add_swift.rb. DO NOT cut MyBooksDownloadCenter
+      (2155 LOC) over to the reducer — seam only; the cutover is a gated follow-up.
+      OFF-LIMITS: TPPBookRegistry/TPPBookState (C), Sideload (D), Store/PalaceAuth
+      Effect (B), the MyBooksDownloadCenter:2076 observer. critical_path: Phase-1a +
+      100% mutation on new reducer logic + extra SoD reviewer.
+
+  - name: Self-Verifying-Arch
+    letter: F
+    risk: standard
+    files_scope:
+      - docs/architecture/.arch/facts.json
+      - scripts/arch-drift-check.py
+      - scripts/arch-sequence-diagrams.py
+      - scripts/tests/test_arch_drift_check.py
+      - .github/workflows/tooling-checks.yml
+      - docs/architecture/flows/
+    contract_path: .forgeos/swarms/swarm_8ce6f5ae/contracts/F-Self-Verifying-Arch.md
+    depends_on: [A, C, E]
+    implementer_prompt: >-
+      WS5, land LAST. Expand docs/architecture/.arch/facts.json with download
+      (DownloadStartCoordinator/Dispatcher), sign-in (AuthReducer/PalaceAuth), and
+      reader (Reader2) anchors, plus semantic probes encoding Contract A doctrine
+      (absent: BorrowReducer has no .task; absent: Store.swift has no `scope(`; count:
+      exactly 2 Sendable-bound `struct Effect`; count: exactly 2 book-state owners;
+      contains: setState references canTransition). CREATE scripts/arch-drift-check.py
+      (pure stdlib) that resolves each probe against live source and exits non-zero on
+      drift. CREATE scripts/arch-sequence-diagrams.py that DERIVES Mermaid sequence
+      diagrams into docs/architecture/flows/ from PalaceTests/Contract/__Snapshots__/*/*.json
+      (do not restate flows). Wire `python3 scripts/arch-drift-check.py` into
+      .github/workflows/tooling-checks.yml — NOT the machine-local `harness` binary
+      (absent on ubuntu CI). Rule #4: add scripts/tests/test_arch_drift_check.py that
+      asserts BOTH a drift case FAILS and a clean-tree case PASSES, and dry-run for
+      zero false positives before wiring. Depends on A (doctrine), C (canTransition
+      present), E (snapshots to derive diagrams).
