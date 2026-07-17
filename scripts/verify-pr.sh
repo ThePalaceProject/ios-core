@@ -753,7 +753,7 @@ elif [ -f scripts/palace_mutate.py ] && [ -n "$CHANGED_SWIFT" ]; then
       continue
     fi
 
-    # Per-file JSON report so post-mutation-pr-comment.py can render the table.
+    # Per-file JSON report of mutation results (kept for local inspection).
     SLUG=$(echo "$swift_file" | tr '/' '_' | sed 's/\.swift$//')
     REPORT_PATH="$MUTATION_REPORTS_DIR/$SLUG.json"
 

@@ -2571,7 +2571,6 @@
 		730EF262260955EF008E1DC3 /* TPPBookmarkSpecTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TPPBookmarkSpecTests.swift; path = Bookmarks/TPPBookmarkSpecTests.swift; sourceTree = "<group>"; };
 		730EF265260967FF008E1DC3 /* TPPBookmarkFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPBookmarkFactory.swift; sourceTree = "<group>"; };
 		7311FD2A25CBD086004447CB /* TPPSignInOutBusinessLogicUIDelegateMock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPSignInOutBusinessLogicUIDelegateMock.swift; sourceTree = "<group>"; };
-		73127257259A99F50032D7B4 /* check-build-number.yml */ = {isa = PBXFileReference; lastKnownFileType = text.yaml; path = "check-build-number.yml"; sourceTree = "<group>"; };
 		7312725C259A9AB00032D7B4 /* ios-binaries-check.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "ios-binaries-check.sh"; sourceTree = "<group>"; };
 		731272AC259CF6F90032D7B4 /* xcode-export-appstore.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "xcode-export-appstore.sh"; sourceTree = "<group>"; };
 		731272B1259CFB180032D7B4 /* testflight-upload.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "testflight-upload.sh"; sourceTree = "<group>"; };
@@ -4237,7 +4236,6 @@
 			children = (
 				7300D469258829E1002256A3 /* unit-testing.yml */,
 				73EC88FF258D88E100978955 /* non-drm-build.yml */,
-				73127257259A99F50032D7B4 /* check-build-number.yml */,
 				73EC8927258D905E00978955 /* archive-and-upload.yml */,
 			);
 			path = workflows;
