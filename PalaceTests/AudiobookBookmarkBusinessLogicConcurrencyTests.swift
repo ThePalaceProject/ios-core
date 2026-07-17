@@ -153,9 +153,23 @@ final class AudiobookBookmarkBusinessLogicConcurrencyTests: XCTestCase {
 
         let n = 25
         let expectations = (0..<n).map { expectation(description: "sync completion \($0)") }
-        let countLock = NSLock()
-        var fireCount = [Int: Int]()
-        var fulfilledOnce = Set<Int>()
+        // Swift 6: captured mutable vars can't be mutated inside the @Sendable
+        // concurrentPerform closure even under a lock — the var storage is shared.
+        // Fold the count + first-fire set + lock into one Sendable tracker.
+        final class FireTracker: @unchecked Sendable {
+            private let lock = NSLock()
+            private var counts = [Int: Int]()
+            private var fulfilled = Set<Int>()
+            /// Records a fire for `i`; returns true iff this is its FIRST fire.
+            func recordFire(_ i: Int) -> Bool {
+                lock.withLock {
+                    counts[i, default: 0] += 1
+                    return fulfilled.insert(i).inserted
+                }
+            }
+            var snapshot: [Int: Int] { lock.withLock { counts } }
+        }
+        let tracker = FireTracker()
 
         // When a sync is already in flight, additional callers enqueue their
         // completion in `completionHandlersQueue`, which `finalizeSync` drains.
@@ -173,18 +187,12 @@ final class AudiobookBookmarkBusinessLogicConcurrencyTests: XCTestCase {
         // drain must not be misread as a lost completion.
         DispatchQueue.concurrentPerform(iterations: n) { i in
             sut.syncBookmarks(localBookmarks: []) { _ in
-                countLock.lock()
-                fireCount[i, default: 0] += 1
-                let firstFire = fulfilledOnce.insert(i).inserted
-                countLock.unlock()
-                if firstFire { expectations[i].fulfill() }
+                if tracker.recordFire(i) { expectations[i].fulfill() }
             }
         }
 
         wait(for: expectations, timeout: 60.0) // FLAKE-003-OK: 25-way concurrent sync fan-out via DispatchQueue.main.async; generous ceiling tolerates main-queue saturation under full-suite load (fires in <1s uncontended). Crash-safe via idempotent fulfill.
-        countLock.lock()
-        let counts = fireCount
-        countLock.unlock()
+        let counts = tracker.snapshot
         for i in 0..<n {
             XCTAssertEqual(counts[i], 1, "sync completion \(i) must fire exactly once")
         }
