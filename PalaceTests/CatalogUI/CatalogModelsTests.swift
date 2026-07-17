@@ -520,28 +520,55 @@ final class CatalogLaneModelStructTests: XCTestCase {
 
     // MARK: - Identifiable Tests
 
-    func testIdentifiable_HasUniqueId() {
-        let lane1 = CatalogLaneModel(title: "Lane", books: [], moreURL: nil)
-        let lane2 = CatalogLaneModel(title: "Lane", books: [], moreURL: nil)
+    // Lane identity is CONTENT-derived (title + moreURL), NOT a per-instance
+    // UUID. This is the whole point of the fix: a re-map of the feed (facet
+    // apply, registry update, entry-point switch) rebuilds lane structs, and
+    // `ForEach(id: \.id)` must see the SAME identity for the same lane so it
+    // diffs in place instead of tearing down + rebuilding every horizontal
+    // ScrollView and its covers (the visible feed flash). If any of these
+    // regressed to `UUID()`, the equal-content cases below would fail.
 
-        // Each lane should have a unique UUID even with identical content
-        XCTAssertNotEqual(lane1.id, lane2.id)
-        // But each lane's ID must equal itself
-        XCTAssertEqual(lane1.id, lane1.id)
-        // IDs must be valid UUIDs
-        XCTAssertNotNil(UUID(uuidString: lane1.id.uuidString))
+    func testIdentity_SameTitleAndURL_ProducesEqualID() {
+        let url = URL(string: "https://library.example.org/lane/fiction/more")
+        let lane1 = CatalogLaneModel(title: "Popular Fiction", books: [], moreURL: url)
+        // Rebuilt with DIFFERENT book contents but the same title+url — a lane
+        // whose books changed on refresh is still the same lane.
+        let lane2 = CatalogLaneModel(
+            title: "Popular Fiction",
+            books: [TPPBookMocker.mockBook(identifier: "b1", title: "B1", distributorType: .EpubZip)],
+            moreURL: url
+        )
+
+        XCTAssertEqual(lane1.id, lane2.id,
+                       "Same title+moreURL must yield a STABLE id across re-maps so ForEach diffs in place")
     }
 
-    func testIdentifiable_IdIsUUID() {
-        let lane = CatalogLaneModel(title: "Test", books: [], moreURL: nil)
+    func testIdentity_DifferentTitle_ProducesDifferentID() {
+        let url = URL(string: "https://library.example.org/lane/more")
+        let fiction = CatalogLaneModel(title: "Fiction", books: [], moreURL: url)
+        let nonFiction = CatalogLaneModel(title: "Non-Fiction", books: [], moreURL: url)
 
-        // Verify ID is a valid UUID (won't throw)
-        XCTAssertNotNil(UUID(uuidString: lane.id.uuidString))
-        // ID must be stable across accesses
-        XCTAssertEqual(lane.id, lane.id)
-        // Same model should not regenerate a new ID
-        let sameLane = lane
-        XCTAssertEqual(lane.id, sameLane.id)
+        XCTAssertNotEqual(fiction.id, nonFiction.id,
+                          "Distinct lanes must have distinct identities even sharing a moreURL")
+    }
+
+    func testIdentity_DifferentMoreURL_ProducesDifferentID() {
+        let laneA = CatalogLaneModel(title: "Featured", books: [], moreURL: URL(string: "https://example.org/a"))
+        let laneB = CatalogLaneModel(title: "Featured", books: [], moreURL: URL(string: "https://example.org/b"))
+
+        XCTAssertNotEqual(laneA.id, laneB.id,
+                          "Same title but different group href are different lanes")
+    }
+
+    func testIdentity_NilMoreURL_IsStableAndDistinctFromNonNil() {
+        let noURL1 = CatalogLaneModel(title: "Sideloaded", books: [], moreURL: nil)
+        let noURL2 = CatalogLaneModel(title: "Sideloaded", books: [], moreURL: nil)
+        let withURL = CatalogLaneModel(title: "Sideloaded", books: [], moreURL: URL(string: "https://example.org/x"))
+
+        // Two nil-URL lanes with the same title collapse to one identity (stable).
+        XCTAssertEqual(noURL1.id, noURL2.id)
+        // A nil-URL lane is distinct from a same-title lane that HAS a url.
+        XCTAssertNotEqual(noURL1.id, withURL.id)
     }
 
     // MARK: - Books Collection Tests
