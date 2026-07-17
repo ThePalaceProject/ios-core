@@ -10,7 +10,7 @@ import Foundation
 import PalaceCatalog
 @testable import Palace
 
-class TPPLibraryAccountMock: NSObject, TPPLibraryAccountsProvider {
+class TPPLibraryAccountMock: NSObject, TPPLibraryAccountsProvider, @unchecked Sendable {
     let feedURL: URL
     let nyplAuthDocURL: URL
     let feed: OPDS2CatalogsFeed

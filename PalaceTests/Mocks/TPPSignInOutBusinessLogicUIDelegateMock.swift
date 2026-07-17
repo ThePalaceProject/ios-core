@@ -9,7 +9,7 @@
 import Foundation
 @testable import Palace
 
-class TPPSignInOutBusinessLogicUIDelegateMock: NSObject, TPPSignInOutBusinessLogicUIDelegate {
+class TPPSignInOutBusinessLogicUIDelegateMock: NSObject, TPPSignInOutBusinessLogicUIDelegate, @unchecked Sendable {
 
     // MARK: - Call Tracking for Tests
     var didCallWillSignOut = false

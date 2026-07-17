@@ -9,7 +9,16 @@
 import Foundation
 @testable import Palace
 
-class TPPRequestExecutorMock: TPPRequestExecuting {
+/// Transfers the non-Sendable completion across the `DispatchQueue.main.async`
+/// hop. Safe: it is called exactly once, on the main queue.
+private struct SendableResultCompletion: @unchecked Sendable {
+    let completion: (NYPLResult<Data>) -> Void
+}
+
+/// `@unchecked Sendable`: a test double whose mutable state is configured on the
+/// main thread during setup and only read during main-queue delivery — it is
+/// never mutated from multiple threads. The waiver documents that confinement.
+class TPPRequestExecutorMock: TPPRequestExecuting, @unchecked Sendable {
     var requestTimeout: TimeInterval = 60
 
     // table of all mock response bodies for given URLs
@@ -49,8 +58,10 @@ class TPPRequestExecutorMock: TPPRequestExecuting {
         }
 
         let capturedGeneration = generation
+        let completionBox = SendableResultCompletion(completion: completion)
         DispatchQueue.main.async { [weak self] in
             guard let self, self.generation == capturedGeneration else { return }
+            let completion = completionBox.completion
 
             guard let url = req.url else {
                 completion(.failure(NSError(domain: "Unit tests: empty url",

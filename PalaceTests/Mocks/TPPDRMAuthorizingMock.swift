@@ -9,7 +9,7 @@
 import Foundation
 @testable import Palace
 
-class TPPDRMAuthorizingMock: NSObject, TPPDRMAuthorizing {
+class TPPDRMAuthorizingMock: NSObject, TPPDRMAuthorizing, @unchecked Sendable {
     var workflowsInProgress = false
     let deviceID = "drmDeviceID"
     let userID = "drmUserID"
