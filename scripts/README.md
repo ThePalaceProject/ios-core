@@ -107,14 +107,6 @@ These five scripts handle most of the day-to-day work. Read these first if you o
 | `generate-jira-tickets.py` | Creates Jira tickets from a regression-findings CSV. | dev/local (post-regression) |
 | `lint-test-quality.py` | Static linter that flags fluff tests (tautologies, no-op asserts, etc.). | dev/local, pre-PR check |
 
-### Performance
-
-| Script | What it does | Called by |
-|--------|--------------|-----------|
-| `run-perf-suite.sh` | Runs Allocations / Leaks / Time Profiler traces on a physical device while the walker drives the app. | dev/local |
-| `perf-walker-device.py` | Appium walker that drives Palace through major flows on a real device. | `run-perf-suite.sh`, dev/local |
-| `browserstack-screenshot-walker.py` | Drives Palace on BrowserStack devices and captures screenshots. | dev/local |
-
 ### Code quality
 
 | Script | What it does | Called by |
