@@ -187,23 +187,30 @@ final class OPDSFeedCacheTests: XCTestCase {
 
         await sut.set(entry, for: url)
 
-        var fetcherCalled = false
+        // The fetcher closure is @Sendable: box the flag (LockIsolated) and
+        // precompute the feed on MainActor — calling makeFeed or mutating a
+        // captured var inside the closure is a Swift 6 error.
+        let fetcherCalled = LockIsolated(false)
+        let refreshedFeed = makeFeed(title: "New Feed")
         let result = try await sut.getWithRevalidation(for: url) {
-            fetcherCalled = true
-            return (self.makeFeed(title: "New Feed"), nil, nil)
+            fetcherCalled.value = true
+            return (refreshedFeed, nil, nil)
         }
 
         XCTAssertEqual(result.feed.title, "Fresh Feed")
         XCTAssertFalse(result.isStale)
         XCTAssertFalse(result.didTriggerRefresh)
-        XCTAssertFalse(fetcherCalled, "Fetcher should not be called for fresh data")
+        XCTAssertFalse(fetcherCalled.value, "Fetcher should not be called for fresh data")
     }
 
     func testGetWithRevalidationFetchesWhenNoCache() async throws {
         let url = URL(string: "https://example.com/newurl")!
 
+        // Precompute on MainActor — the @Sendable fetcher cannot call the
+        // MainActor-isolated makeFeed (Swift 6).
+        let fetchedFeed = makeFeed(title: "Fetched Feed")
         let result = try await sut.getWithRevalidation(for: url) {
-            return (self.makeFeed(title: "Fetched Feed"), "etag123", "Mon, 01 Jan 2026 00:00:00 GMT")
+            return (fetchedFeed, "etag123", "Mon, 01 Jan 2026 00:00:00 GMT")
         }
 
         XCTAssertEqual(result.feed.title, "Fetched Feed")

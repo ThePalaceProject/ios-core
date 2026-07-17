@@ -44,8 +44,11 @@ final class BearerTokenAdapterTests: XCTestCase {
             completion: @escaping (Data?, URLResponse?, Error?) -> Void
         ) {
             requestedURLs.append(url)
+            // LockIsolated: DispatchQueue.async closures are @Sendable under
+            // Swift 6, so the non-Sendable `completion` must cross in a box.
+            let completionBox = LockIsolated(completion)
             DispatchQueue.main.async { [stubbedData, stubbedResponse, stubbedError] in
-                completion(stubbedData, stubbedResponse, stubbedError)
+                completionBox.value(stubbedData, stubbedResponse, stubbedError)
             }
         }
     }
@@ -64,9 +67,11 @@ final class BearerTokenAdapterTests: XCTestCase {
             callCount += 1
             receivedTokens.append(token)
             receivedBookIdentifiers.append(book.identifier)
-            let toReturn = stubbedJSON
+            // LockIsolated: box the non-Sendable completion + JSON across
+            // the @Sendable dispatch closure (Swift 6).
+            let box = LockIsolated((completion, stubbedJSON))
             DispatchQueue.main.async {
-                completion(toReturn)
+                box.value.0(box.value.1)
             }
         }
     }

@@ -98,6 +98,9 @@ private final class RecordingBookmarkRegistry: NSObject, TPPBookRegistryProvider
     var bookStatePublisher: AnyPublisher<(String, TPPBookState), Never> { inner.bookStatePublisher }
     var registryState: TPPBookRegistry.RegistryState { inner.registryState }
     var syncStatePublisher: AnyPublisher<Bool, Never> { inner.syncStatePublisher }
+    var registryStatePublisher: AnyPublisher<TPPBookRegistry.RegistryState, Never> { inner.registryStatePublisher }
+    var holdsDidChangePublisher: AnyPublisher<Void, Never> { inner.holdsDidChangePublisher }
+    func notifyHoldsChanged() { inner.notifyHoldsChanged() }
     var heldBooks: [TPPBook] { inner.heldBooks }
     var myBooks: [TPPBook] { inner.myBooks }
     var isSyncing: Bool { inner.isSyncing }
@@ -346,7 +349,10 @@ final class Reader2BookmarkContractTests: XCTestCase {
 
     // MARK: - Fixture helpers
 
-    private func makeBook() -> TPPBook {
+    // nonisolated: pure factory (no isolated state). Called from the
+    // inherited-nonisolated setUp override / handed to nonisolated async
+    // APIs — an isolated factory there is a Swift 6 sending error.
+    private nonisolated func makeBook() -> TPPBook {
         let url = URL(string: "https://test.example.com/book")!
         let acq = TPPOPDSAcquisition(
             relation: .generic,
@@ -384,7 +390,10 @@ final class Reader2BookmarkContractTests: XCTestCase {
         )
     }
 
-    private func makePublication() -> Publication {
+    // nonisolated: pure factory (no isolated state). Called from the
+    // inherited-nonisolated setUp override / handed to nonisolated async
+    // APIs — an isolated factory there is a Swift 6 sending error.
+    private nonisolated func makePublication() -> Publication {
         let metadata = Metadata(title: "Test", languages: ["en"])
         let readingOrder = [
             Link(href: "/chapter1.xhtml", mediaType: .xhtml),

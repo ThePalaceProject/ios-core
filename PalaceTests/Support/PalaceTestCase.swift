@@ -40,7 +40,10 @@ class PalaceTestCase: XCTestCase {
     /// Pre-test `NotificationCenter.default` observer count, captured in setUp.
     /// `nil` when the best-effort sample is unavailable (then the observer-leak
     /// check is skipped). Subclasses overriding `setUpWithError` MUST call super.
-    private var preObserverCount: Int?
+    /// `nonisolated(unsafe)`: written in setUp, read in tearDown — both
+    /// inherit `nonisolated` from XCTestCase under Swift 6, and both run on
+    /// the main thread, so the opt-out is sound.
+    private nonisolated(unsafe) var preObserverCount: Int?
 
     override func setUpWithError() throws {
         try super.setUpWithError()
@@ -55,6 +58,10 @@ class PalaceTestCase: XCTestCase {
         // correctly restores in `tearDown()` would false-fail because the
         // check ran before the restore. Verified by the WS-0 ordering proof.
         try super.tearDownWithError()
+        // NOTE (Swift 6): this override inherits `nonisolated` from
+        // XCTestCase, so everything it calls below is deliberately
+        // nonisolated (the auditor + observer statics already are; the
+        // members carry explicit `nonisolated` and run on the main thread).
         assertRuntimeQuiescent()
         warnOnObserverLeak()
         // Class-4 (accumulation pool-starvation) HARD gate — OPT-IN. Runs only
@@ -87,7 +94,7 @@ class PalaceTestCase: XCTestCase {
     /// EFFECTIVE structural guard for this leak class is the platform-independent
     /// dealloc assertion in `AccountDetailViewModelLeakTests` (red→green proven),
     /// which does not depend on the observer count at all.
-    private func warnOnObserverLeak() {
+    private nonisolated func warnOnObserverLeak() {
         guard let pre = preObserverCount,
               let post = PalaceSingletonResetObserver.sampleObserverCount() else { return }
         preObserverCount = nil
@@ -105,7 +112,7 @@ class PalaceTestCase: XCTestCase {
     ///
     /// Exposed so a subclass that overrides `tearDown()` (the non-throwing
     /// variant) can still invoke the check explicitly after its own cleanup.
-    func assertRuntimeQuiescent(
+    nonisolated func assertRuntimeQuiescent(
         file: StaticString = #file,
         line: UInt = #line
     ) {
@@ -140,7 +147,7 @@ class PalaceTestCase: XCTestCase {
     ///     override var enforcesPoolResponsiveness: Bool { true }
     /// }
     /// ```
-    var enforcesPoolResponsiveness: Bool { false }
+    nonisolated var enforcesPoolResponsiveness: Bool { false }
 
     /// Bounded check that the runtime is at rest — the class-4 (accumulation
     /// pool-starvation) gate extension. Two cheap probes run in sequence:
@@ -182,7 +189,7 @@ class PalaceTestCase: XCTestCase {
     /// - Returns: the violations produced (also surfaced via `XCTFail`), so the
     ///   self-test can assert the message shape without capturing the failure.
     @discardableResult
-    func assertRuntimeResponsive(
+    nonisolated func assertRuntimeResponsive(
         budget: TimeInterval = 5.0,
         probe: ((TimeInterval) -> Bool)? = nil,
         file: StaticString = #file,

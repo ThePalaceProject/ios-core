@@ -335,12 +335,16 @@ private final class FakeLibrariesEnvironment: LibrariesSectionEnvironment {
         MainActor.assumeIsolated { self.accountsLoaded }
     }
     nonisolated func switchToAccount(_ account: Account, completion: @escaping () -> Void) {
+        // Boxed hand-off: capturing the task-region `completion` directly in
+        // the assumeIsolated closure and storing it into MainActor state is a
+        // Swift 6 sending error — LockIsolated (Sendable) carries it across.
+        let boxed = LockIsolated(completion)
         MainActor.assumeIsolated {
             self.switchedTo.append(account.uuid)
             self.currentUUID = account.uuid
             // Park the completion so tests can simulate the async auth-doc
             // callback at a deterministic point.
-            self.pendingSwitchCompletions[account.uuid] = completion
+            self.pendingSwitchCompletions[account.uuid] = boxed.value
         }
     }
 

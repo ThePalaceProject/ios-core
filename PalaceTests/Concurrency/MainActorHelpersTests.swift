@@ -8,7 +8,9 @@
 import XCTest
 @testable import Palace
 
-@MainActor
+// Deliberately NOT @MainActor: the helpers under test are nonisolated async
+// APIs taking non-Sendable closures — driving them from a @MainActor test is
+// a Swift 6 sending error. Nothing here touches UI or main-actor state.
 final class MainActorHelpersTests: XCTestCase {
 
     // MARK: - runParallel Tests

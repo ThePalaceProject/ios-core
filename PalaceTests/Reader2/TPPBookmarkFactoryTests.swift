@@ -11,7 +11,10 @@ import ReadiumShared
 import PalaceCatalog
 @testable import Palace
 
-@MainActor
+// Deliberately NOT @MainActor: the code under test is nonisolated and the
+// fixtures (Publication / TPPBook / factory) are non-Sendable — driving them
+// from a @MainActor test is a Swift 6 sending error, while from a
+// nonisolated test everything stays in one isolation domain. No UI here.
 final class TPPBookmarkFactoryTests: XCTestCase {
 
     // MARK: - Properties
@@ -556,7 +559,10 @@ final class TPPBookmarkFactoryTests: XCTestCase {
 
 // MARK: - Server Annotation Edge Cases
 
-@MainActor
+// Deliberately NOT @MainActor: the code under test is nonisolated and the
+// fixtures (Publication / TPPBook / factory) are non-Sendable — driving them
+// from a @MainActor test is a Swift 6 sending error, while from a
+// nonisolated test everything stays in one isolation domain. No UI here.
 final class TPPBookmarkFactoryServerAnnotationEdgeCaseTests: XCTestCase {
 
     private var testBook: TPPBook!

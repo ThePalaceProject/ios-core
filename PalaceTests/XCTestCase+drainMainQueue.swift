@@ -55,7 +55,13 @@ extension XCTestCase {
     /// `drainMainQueue()`).
     ///
     /// - Parameter timeout: Maximum seconds to wait. Default 5s.
-    func drainMainQueueAsync(timeout: TimeInterval = 5.0) async {
+    ///
+    /// Inherits the caller's isolation (`#isolation`) so a `@MainActor`
+    /// caller does not "send" its non-Sendable XCTestCase across an isolation
+    /// boundary (Swift 6 sending error).
+    @nonobjc
+    func drainMainQueueAsync(isolation: isolated (any Actor)? = #isolation,
+                             timeout: TimeInterval = 5.0) async {
         let drained = expectation(description: "main queue drained (async)")
         DispatchQueue.main.async { drained.fulfill() }
         await fulfillment(of: [drained], timeout: timeout)
@@ -79,11 +85,15 @@ extension XCTestCase {
         _ predicate: @escaping () -> Bool
     ) {
         let met = expectation(description: "condition met")
-        var fulfilled = false
+        // LockIsolated: poll() re-schedules itself through a @Sendable
+        // dispatch closure, so the flag and the (non-Sendable) predicate must
+        // cross inside the box (Swift 6 sending errors otherwise).
+        let state = LockIsolated((fulfilled: false, predicate: predicate))
         func poll() {
-            if fulfilled { return }
-            if predicate() {
-                fulfilled = true
+            let (isDone, pred) = state.withValue { ($0.fulfilled, $0.predicate) }
+            if isDone { return }
+            if pred() {
+                state.withValue { $0.fulfilled = true }
                 met.fulfill()
                 return
             }
@@ -110,7 +120,12 @@ extension XCTestCase {
     ///   - pollInterval: How often to re-check. Default 25ms.
     ///   - file/line: For accurate XCTFail attribution.
     ///   - predicate: Synchronous closure returning true once converged.
+    /// Inherits the caller's isolation (`#isolation`) so a `@MainActor`
+    /// caller does not "send" its non-Sendable XCTestCase / predicate across
+    /// an isolation boundary (Swift 6 sending error).
+    @nonobjc
     func awaitConditionAsync(
+        isolation: isolated (any Actor)? = #isolation,
         timeout: TimeInterval = 10.0,
         pollInterval: TimeInterval = 0.025,
         file: StaticString = #file,
@@ -140,7 +155,11 @@ extension XCTestCase {
     /// require `await`; this overload exists so callers can avoid
     /// hand-rolling another silent while-deadline loop just because their
     /// observable is `async`.
+    /// Inherits the caller's isolation (`#isolation`) — same rationale as the
+    /// sync-predicate overload above.
+    @nonobjc
     func awaitConditionAsync(
+        isolation: isolated (any Actor)? = #isolation,
         timeout: TimeInterval = 10.0,
         pollInterval: TimeInterval = 0.025,
         file: StaticString = #file,

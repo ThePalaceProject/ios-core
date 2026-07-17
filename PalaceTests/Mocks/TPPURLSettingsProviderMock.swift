@@ -10,8 +10,17 @@ import Foundation
 import PalaceAuth
 @testable import Palace
 
-class TPPURLSettingsProviderMock: NSObject, NYPLUniversalLinksSettings, NYPLFeedURLProvider, UniversalLinksProviding {
-    var accountMainFeedURL: URL?
+// @unchecked Sendable: handed across isolation boundaries by Swift 6 tests
+// (sending-value errors otherwise); stub state is effectively immutable.
+class TPPURLSettingsProviderMock: NSObject, NYPLUniversalLinksSettings, NYPLFeedURLProvider, UniversalLinksProviding, @unchecked Sendable {
+    // Mutable stub state guarded by a single NSLock (matches TPPBookRegistryMock) so the
+    // @unchecked Sendable conformance is sound under concurrent test access.
+    private let lock = NSLock()
+    private var _accountMainFeedURL: URL?
+    var accountMainFeedURL: URL? {
+        get { lock.withLock { _accountMainFeedURL } }
+        set { lock.withLock { _accountMainFeedURL = newValue } }
+    }
 
     var universalLinksURL: URL {
         return URL(string: "https://example.com/univeral-link-redirect")!

@@ -254,26 +254,29 @@ private final class SpyDelegate: DownloadStartCoordinatorDelegate {
         case failure(Error)
     }
 
-    var borrowAsyncResult: BorrowResult = .success(TPPBookMocker.mockBook(distributorType: .EpubZip))
+    // LockIsolated-backed recorders: the nonisolated protocol methods below
+    // can't hop to MainActor to touch isolated vars without capturing
+    // non-Sendable self in a @Sendable closure (Swift 6 sending error).
+    private let borrowAsyncResultBox = LockIsolated<BorrowResult>(.success(TPPBookMocker.mockBook(distributorType: .EpubZip)))
+    var borrowAsyncResult: BorrowResult {
+        get { borrowAsyncResultBox.value }
+        set { borrowAsyncResultBox.value = newValue }
+    }
 
-    private(set) var scheduleCount = 0
-    private(set) var borrowCount = 0
+    private let counters = LockIsolated((schedule: 0, borrow: 0))
+    var scheduleCount: Int { counters.value.schedule }
+    var borrowCount: Int { counters.value.borrow }
 
     nonisolated func borrowAsync(_ book: TPPBook, attemptDownload: Bool) async throws -> TPPBook {
-        // Hop to MainActor since the recorder vars are MainActor-isolated
-        // (the test class is @MainActor).
-        await MainActor.run { self.borrowCount += 1 }
-        let result = await MainActor.run { self.borrowAsyncResult }
-        switch result {
+        counters.withValue { $0.borrow += 1 }
+        switch borrowAsyncResultBox.value {
         case .success(let book): return book
         case .failure(let error): throw error
         }
     }
 
     nonisolated func schedulePendingStartsIfPossible() {
-        // Schedule increments synchronously from a Task block — bridge
-        // back to MainActor with a Task to avoid the data-race warning.
-        Task { @MainActor in self.scheduleCount += 1 }
+        counters.withValue { $0.schedule += 1 }
     }
 }
 

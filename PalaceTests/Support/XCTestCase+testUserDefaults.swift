@@ -1,6 +1,17 @@
 import Foundation
 import XCTest
 
+/// Test-bundle sendability for `UserDefaults`.
+///
+/// `UserDefaults` is documented thread-safe, but this SDK does not declare it
+/// `Sendable`, so Swift 6 rejects handing a `UserDefaults` held on a
+/// `@MainActor` test into any nonisolated async service API ("sending
+/// 'self.userDefaults' risks causing data races"). The retroactive
+/// `@unchecked` conformance encodes the documented thread-safety once for the
+/// whole bundle instead of boxing every hand-off site. Remove if a future SDK
+/// declares the conformance.
+extension UserDefaults: @retroactive @unchecked Sendable {}
+
 /// Per-test `UserDefaults` isolation helper.
 ///
 /// Returns a `UserDefaults(suiteName:)` whose suite name encodes both the

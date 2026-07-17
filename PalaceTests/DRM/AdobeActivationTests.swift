@@ -63,27 +63,26 @@ final class AdobeActivationTests: XCTestCase {
         // verifying here is the surface the production AdobeDRMService relies
         // on: the success branch hands back non-nil IDs.
         let exp = expectation(description: "authorize completion")
-        var capturedDeviceID: String?
-        var capturedUserID: String?
-        var capturedSuccess = false
+        // The authorize completion is @Sendable under Swift 6, so mutating
+        // captured locals is rejected — route the captures through the
+        // house LockIsolated box instead.
+        let captured = LockIsolated<(success: Bool, deviceID: String?, userID: String?)>((false, nil, nil))
 
         drm.authorize(
             withVendorID: "NYPL",
             username: "client-token-username",
             password: "client-token-password"
         ) { success, error, deviceID, userID in
-            capturedSuccess = success
-            capturedDeviceID = deviceID
-            capturedUserID = userID
+            captured.value = (success, deviceID, userID)
             XCTAssertNil(error, "Happy-path activation must not surface an error")
             exp.fulfill()
         }
 
         wait(for: [exp], timeout: 1.0)
-        XCTAssertTrue(capturedSuccess, "Valid licensor must produce success=true")
-        XCTAssertEqual(capturedDeviceID, drm.deviceID,
+        XCTAssertTrue(captured.value.success, "Valid licensor must produce success=true")
+        XCTAssertEqual(captured.value.deviceID, drm.deviceID,
                        "Activation must hand back a non-nil deviceID for persistence")
-        XCTAssertEqual(capturedUserID, drm.userID,
+        XCTAssertEqual(captured.value.userID, drm.userID,
                        "Activation must hand back a non-nil userID for persistence")
         XCTAssertEqual(drm.authorizeCallCount, 1,
                        "Activation must invoke authorize exactly once per attempt")

@@ -1108,7 +1108,9 @@ final class TPPSignInErrorHandlingTests: XCTestCase {
 
 // MARK: - Mock Extensions
 
-class TPPNetworkErrorMock: TPPRequestExecuting {
+// @unchecked Sendable: handed across isolation boundaries by Swift 6 tests
+// (sending-value errors otherwise); accessed serially by the test flow.
+class TPPNetworkErrorMock: TPPRequestExecuting, @unchecked Sendable {
     var requestTimeout: TimeInterval = 60
     var shouldFail = false
     var errorStatusCode = 500
@@ -1125,6 +1127,10 @@ class TPPNetworkErrorMock: TPPRequestExecuting {
         completion: @escaping (NYPLResult<Data>) -> Void
     ) -> URLSessionDataTask? {
         let capturedGeneration = generation
+        // LockIsolated: box the non-Sendable completion across the @Sendable
+        // dispatch closure (Swift 6).
+        let completionBox = LockIsolated(completion)
+        let completion = { completionBox.value($0) } as (NYPLResult<Data>) -> Void
         DispatchQueue.main.async { [weak self] in
             guard let self, self.generation == capturedGeneration else { return }
 

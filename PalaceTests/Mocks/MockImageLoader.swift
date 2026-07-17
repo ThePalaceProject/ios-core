@@ -67,13 +67,19 @@ public final class MockImageLoader: ImageLoading {
     public func coverImage(for book: TPPBook, completion: @escaping (UIImage?) -> Void) {
         coverCalls.append(.init(identifier: book.identifier, displayPoints: nil, isCompletion: true))
         let img = stubbedCoverImage
-        DispatchQueue.main.async { completion(img) }
+        // LockIsolated: box the non-Sendable completion across the @Sendable
+        // dispatch closure (Swift 6).
+        let completionBox = LockIsolated(completion)
+        DispatchQueue.main.async { completionBox.value(img) }
     }
 
     public func thumbnailImage(for book: TPPBook, completion: @escaping (UIImage?) -> Void) {
         thumbnailCalls.append(.init(identifier: book.identifier, isCompletion: true))
         let img = stubbedThumbnailImage
-        DispatchQueue.main.async { completion(img) }
+        // LockIsolated: box the non-Sendable completion across the @Sendable
+        // dispatch closure (Swift 6).
+        let completionBox = LockIsolated(completion)
+        DispatchQueue.main.async { completionBox.value(img) }
     }
 
     public func get(for key: String) -> UIImage? {

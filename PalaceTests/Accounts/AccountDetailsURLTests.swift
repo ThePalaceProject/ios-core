@@ -16,7 +16,9 @@ import PalaceCatalog
 final class AccountDetailsURLTests: XCTestCase {
 
     private var sut: AccountDetails!
-    private var defaults: UserDefaults!
+    // nonisolated(unsafe): read by the nonisolated factory below; all
+    // access is main-thread (setUp/tearDown/test bodies).
+    private nonisolated(unsafe) var defaults: UserDefaults!
     private let testUUID = "test-account-url-\(UUID().uuidString)"
 
     override func setUpWithError() throws {
@@ -282,7 +284,9 @@ final class AccountDetailsURLTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private func makeAccountDetails(uuid: String) throws -> AccountDetails {
+    // nonisolated: called from the inherited-nonisolated setUp override
+    // (Swift 6 sending error otherwise).
+    private nonisolated func makeAccountDetails(uuid: String) throws -> AccountDetails {
         // Create minimal auth document JSON and parse it
         let json: [String: Any] = [
             "id": uuid,

@@ -87,7 +87,9 @@ final class StatusAnnouncementTests: XCTestCase {
     }
 
     func testPP3673_searchRerun_announcesNewStatus() {
-        var currentTime = Date(timeIntervalSince1970: 100)
+        // The timeProvider closure is @Sendable: reading a captured mutable
+        // var from it is a Swift 6 error — box the clock in LockIsolated.
+        let currentTime = LockIsolated(Date(timeIntervalSince1970: 100))
         let capture = Capture()
         let exp = expectation(description: "announcements")
         exp.expectedFulfillmentCount = 2
@@ -95,11 +97,11 @@ final class StatusAnnouncementTests: XCTestCase {
         let announcer = makeAnnouncer(
             capture: capture,
             deduplicationInterval: 2.0,
-            timeProvider: { currentTime }
+            timeProvider: { currentTime.value }
         )
 
         announcer.announceSearchResults(query: "robots", count: 5)
-        currentTime = currentTime.addingTimeInterval(3.0)
+        currentTime.withValue { $0 = $0.addingTimeInterval(3.0) }
         announcer.announceSearchResults(query: "robots", count: 0)
 
         waitForExpectations(timeout: 5.0)

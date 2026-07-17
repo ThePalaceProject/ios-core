@@ -88,7 +88,10 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private static func makeTokenAuth(tokenURL: URL) -> AccountDetails.Authentication {
+    // nonisolated: pure fixture/helper (no isolated state); called from
+    // inherited-nonisolated setUp/tearDown overrides or nonisolated
+    // contexts (Swift 6 sending error otherwise).
+    private nonisolated static func makeTokenAuth(tokenURL: URL) -> AccountDetails.Authentication {
         // OPDS2 authentication-document JSON for the token auth type. The
         // memberwise init on the OPDS2 type is internal to PalaceCatalog;
         // round-tripping through JSON is the supported construction path.
@@ -453,9 +456,9 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         }
         XCTAssertTrue(retried, "The queued task must be retried after the /token refresh succeeds")
 
-        lock.lock()
-        let observedAuth = capturedRetryAuth
-        lock.unlock()
+        // Swift 6 marks NSLock.lock()/unlock() `noasync`; withLock is the
+        // sanctioned scoped-locking form for async contexts.
+        let observedAuth = lock.withLock { capturedRetryAuth }
 
         XCTAssertEqual(observedAuth,
                        "Bearer \(newToken)",

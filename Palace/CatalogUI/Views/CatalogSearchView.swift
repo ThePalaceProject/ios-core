@@ -96,8 +96,7 @@ struct CatalogSearchView: View {
         .onChange(of: books) { _, newBooks in
             viewModel.updateBooks(newBooks)
         }
-        .onReceive(registryChangePublisher) { note in
-            let changedId = (note.userInfo as? [String: Any])?["bookIdentifier"] as? String
+        .onReceive(registryChangePublisher) { changedId in
             viewModel.applyRegistryUpdates(changedIdentifier: changedId)
         }
         .onReceive(downloadProgressPublisher) { changedId in
@@ -107,9 +106,13 @@ struct CatalogSearchView: View {
 
     // MARK: - Publishers
 
-    private var registryChangePublisher: AnyPublisher<Notification, Never> {
-        NotificationCenter.default
-            .publisher(for: .TPPBookRegistryStateDidChange)
+    private var registryChangePublisher: AnyPublisher<String, Never> {
+        // Migrated off `.TPPBookRegistryStateDidChange` to the registry's per-book
+        // `bookStatePublisher` (swarm_8ce6f5ae WS3); emit the changed identifier so
+        // just the affected result row refreshes. Resolved from the shared graph to
+        // match this view's existing `AppContainer.production()` defaults.
+        AppContainer.production().bookRegistry.bookStatePublisher
+            .map { $0.0 }
             .throttle(for: .milliseconds(350), scheduler: DispatchQueue.main, latest: true)
             .eraseToAnyPublisher()
     }

@@ -28,6 +28,10 @@
     `Palace/Audiobooks/AudiobookSessionManager.swift:2227` ("reset to .downloadNeeded
     first"); LRU eviction at `Palace/MyBooks/DiskBudgetManager.swift:168`.
   - `.used -> .downloadNeeded` — also live.
+  - `.holding -> .downloading` — a ready hold stays `.holding`, renders Get, and when
+    the concurrent-download cap is hit `enqueuePending` does `setState(.downloading)`
+    from `.holding` (`Palace/MyBooks/DownloadQueueOrchestrator.swift:91`, reached via
+    `Palace/MyBooks/DownloadStartCoordinator.swift:278` which lets `.holding` proceed). [Fable re-review]
   Enforcing the CURRENT set with a DEBUG `assertionFailure` crashes dev builds and
   Monday's DEBUG suite. **Correcting the SET makes these legal without touching those
   3 call sites.**
@@ -61,7 +65,7 @@
 | 8 | MyBooksViewModel:338 | `bookStatePublisher` | per-book shelf refresh |
 | 7 | MyBooksDownloadCenter:2076 | **NEW RegistryState publisher** | launch reconciliation runs on LOAD-complete; a fresh empty registry emits ZERO per-book events → `bookStatePublisher` would hang forever |
 | 9 | TPPBookRegistry:455 (SAML sync) | **NEW RegistryState publisher** | post-sign-in sync fires on SYNC lifecycle, not per-book; same empty-registry hang risk |
-| 4 | AppTabHostView:456 (holds badge) | `bookStatePublisher` (hold state changes) **+ a holds-changed trigger** replacing the 2 hand-posts | badge currently refreshes on the 2 hand-posted triggers (Holds:249, DeveloperSettings:741) |
+| 4 | AppTabHostView:456 (holds badge) | **NEW RegistryState publisher** + `bookStatePublisher` + a holds-changed trigger | LIFECYCLE-driven (keys on RegistryState `.loaded/.synced`): a background sync flipping a hold reserved→ready changes NO book state (stays `.holding`) and the `nextState != previousState` guard (`:583`) suppresses the `bookStateSubject` emission — so #4 MUST also subscribe to RegistryState or the badge goes stale. Plus `bookStatePublisher` for per-book hold flips + the holds-changed trigger replacing Holds:249/DeveloperSettings:741. [Fable re-review] |
 
 **Hand-posted-trigger replacement (#4):** replace the two `post(name:.TPPBookRegistryStateDidChange)`
 calls at HoldsViewModel:249 + DeveloperSettingsViewModel:741 with a `.send` into a
@@ -72,10 +76,12 @@ badge depending on a deleted NotificationCenter name.
 
 ## Internal ordering (non-negotiable — 5 steps)
 1. **CORRECT the transition set FIRST.** In `TPPBookState.swift:91` add
-   `.downloadSuccessful -> .downloadNeeded` and `.used -> .downloadNeeded` with an
-   inline comment citing the 3 sources (ReaderService.swift:585,
-   AudiobookSessionManager.swift:2227, DiskBudgetManager.swift:168). Seed any further
-   pairs from Contract-E green snapshots.
+   `.downloadSuccessful -> .downloadNeeded`, `.used -> .downloadNeeded`, AND
+   `.holding -> .downloading` with an inline comment citing the sources
+   (ReaderService.swift:585, AudiobookSessionManager.swift:2227,
+   DiskBudgetManager.swift:168; and DownloadQueueOrchestrator.swift:91 via
+   DownloadStartCoordinator.swift:278 for the holding→downloading pair). Seed any
+   further pairs from Contract-E green snapshots.
 2. **CREATE AND FEED a RegistryState publisher** for the lifecycle signal. Either
    revive `syncStatePublisher` by actually `.send`-feeding `syncStateSubject` at the
    load/sync-began/ended points (where `:283` currently posts), OR add a new
@@ -86,8 +92,9 @@ badge depending on a deleted NotificationCenter name.
    `assertionFailure` in DEBUG + telemetry/log in RELEASE, then **still apply** the
    transition (never drop state).
 4. **MIGRATE all 9 observers per the target map** (6 → `bookStatePublisher`, 2 → the
-   new RegistryState publisher, 1 badge → `bookStatePublisher` + holds-changed
-   trigger). Re-point the 2 external posters to the holds-changed publisher.
+   new RegistryState publisher, 1 badge → **RegistryState publisher +**
+   `bookStatePublisher` + holds-changed trigger). Re-point the 2 external posters to
+   the holds-changed publisher.
 5. **DELETE both posts LAST** — remove `postStateNotification` (`:639`) + call sites
    (`:553,:570,:586,:600,:614`) + the `:283` post; remove the
    `.TPPBookRegistryStateDidChange` name decl in `NSNotification+TPP.swift` iff no
@@ -120,15 +127,19 @@ badge depending on a deleted NotificationCenter name.
 - Everything in `MyBooksDownloadCenter.swift` EXCEPT the :2076 observer (Contract E).
 
 ## What public types change
-- `TPPBookState.allowedTransitions` gains 2 pairs; `canTransition` becomes live.
+- `TPPBookState.allowedTransitions` gains 3 pairs; `canTransition` becomes live.
 - `TPPBookRegistry` gains a FED RegistryState publisher (new or revived
   `syncStatePublisher`) + a holds-changed publisher; loses `postStateNotification`.
 - `.TPPBookRegistryStateDidChange` removed as a public seam (iff unused).
 
 ## Test contracts
-- `TPPBookRegistryMutationContractTests`: (a) each of the 2 newly-legal transitions
+- `TPPBookRegistryMutationContractTests`: (a) each of the 3 newly-legal transitions
+  (.downloadSuccessful→.downloadNeeded, .used→.downloadNeeded, .holding→.downloading)
   passes `canTransition`; an illegal one (e.g. `.unregistered -> .downloadSuccessful`)
   trips the DEBUG path via an injected violation handler (do not crash the suite).
+- **Badge lifecycle guard:** the AppTabHostView holds-badge observer fires on a
+  sync-complete RegistryState emission with ZERO per-book emissions (a reserved→ready
+  hold flip that changes no book state).
   (b) **Regression guard for the hang:** on a FRESH EMPTY-REGISTRY load, the
   SAML-sync observer (registry :455) AND the launch-reconciliation observer (MBDC
   :2076) STILL FIRE via the RegistryState publisher (zero per-book emissions).
@@ -152,10 +163,12 @@ badge depending on a deleted NotificationCenter name.
 
 ## Verification criteria (orchestrator runs at Phase 4.5)
 ```bash
-# AC0 (NEW): the 2 legitimate transitions are in the corrected set BEFORE enforcement,
-#            with the 3 sources cited in a comment
+# AC0 (NEW): the 3 legitimate transitions are in the corrected set BEFORE enforcement,
+#            with the sources cited in a comment
 grep -Eq 'downloadSuccessful.*downloadNeeded|\.downloadNeeded' Palace/Book/Models/TPPBookState.swift
+grep -Eq '\.holding.*\.downloading|holding.*downloading' Palace/Book/Models/TPPBookState.swift
 grep -Eq 'ReaderService|AudiobookSessionManager|DiskBudgetManager' Palace/Book/Models/TPPBookState.swift
+grep -Eq 'DownloadQueueOrchestrator|DownloadStartCoordinator' Palace/Book/Models/TPPBookState.swift
 
 # AC1: setState consults canTransition (enforcement wired)
 grep -q 'canTransition' Palace/Book/Models/TPPBookRegistry.swift
@@ -189,12 +202,13 @@ for f in \
     grep -q 'bookStatePublisher' "$f" || { echo "NOT MIGRATED (per-book): $f"; exit 1; }
 done
 
-# AC8 (NEW): the 2 lifecycle observers use the RegistryState publisher, NOT bookStatePublisher
+# AC8 (NEW): the lifecycle observers (incl. the holds badge #4) use the RegistryState publisher
 grep -Eq 'registryStatePublisher|syncStatePublisher' Palace/Book/Models/TPPBookRegistry.swift
 grep -Eq 'registryStatePublisher|syncStatePublisher' Palace/MyBooks/MyBooksDownloadCenter.swift
+grep -Eq 'registryStatePublisher|syncStatePublisher' Palace/AppInfrastructure/AppTabHostView.swift
 
 # AC9 (NEW): empty-registry hang regression guard is present in the contract test
-grep -Eiq 'emptyRegistry|freshSignIn|launchReconciliation|samlSync' PalaceTests/Contract/TPPBookRegistryMutationContractTests.swift
+grep -Eiq 'emptyRegistry|freshSignIn|launchReconciliation|samlSync|holdsBadge|badgeLifecycle' PalaceTests/Contract/TPPBookRegistryMutationContractTests.swift
 
 # AC10: registry mutation-path contract test exists
 test -f PalaceTests/Contract/TPPBookRegistryMutationContractTests.swift

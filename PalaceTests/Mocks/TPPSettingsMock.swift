@@ -22,7 +22,9 @@ import Foundation
 /// let sut = MyClass(settings: mockSettings)
 /// // Exercise behavior when beta libraries are enabled
 /// ```
-final class TPPSettingsMock: NSObject, TPPSettingsProviding {
+// @unchecked Sendable: handed across isolation boundaries by Swift 6 tests
+// (sending-value errors otherwise); accessed serially by the test flow.
+final class TPPSettingsMock: NSObject, TPPSettingsProviding, @unchecked Sendable {
 
     // MARK: - Stored Properties with Defaults
 

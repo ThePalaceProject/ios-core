@@ -34,22 +34,25 @@ import XCTest
 final class NowPlayingCoordinatorBackgroundTests: XCTestCase {
 
     private var coordinator: NowPlayingCoordinator!
-    private var fakeAppState: UIApplication.State = .active
-    private var fakeNow: Date = Date()
-    private var loggedDryStreamErrors: [(summary: String, metadata: [String: Any])] = []
+    // LockIsolated boxes (not stored vars): the coordinator's injected
+    // closures are nonisolated seams — capturing MainActor `self` in them is
+    // a Swift 6 sending error, so each closure captures its (Sendable) box.
+    private let fakeAppState = LockIsolated(UIApplication.State.active)
+    private let fakeNow = LockIsolated(Date())
+    private let loggedDryStreamErrors = LockIsolated<[(summary: String, metadata: [String: Any])]>([])
 
     override func setUp() {
         super.setUp()
-        fakeAppState = .active
-        fakeNow = Date()
-        loggedDryStreamErrors = []
+        fakeAppState.value = .active
+        fakeNow.value = Date()
+        loggedDryStreamErrors.value = []
 
         coordinator = NowPlayingCoordinator(
-            applicationStateProvider: { [unowned self] in self.fakeAppState },
-            dryStreamLogger: { [unowned self] summary, metadata in
-                self.loggedDryStreamErrors.append((summary, metadata ?? [:]))
+            applicationStateProvider: { [fakeAppState] in fakeAppState.value },
+            dryStreamLogger: { [loggedDryStreamErrors] summary, metadata in
+                loggedDryStreamErrors.withValue { $0.append((summary, metadata ?? [:])) }
             },
-            now: { [unowned self] in self.fakeNow }
+            now: { [fakeNow] in fakeNow.value }
         )
     }
 
@@ -66,7 +69,7 @@ final class NowPlayingCoordinatorBackgroundTests: XCTestCase {
     /// applyUpdate must therefore go direct in any non-`.active` state.
     func testApplyUpdate_inBackground_bypassesDebounce() {
         // Arrange: background state
-        fakeAppState = .background
+        fakeAppState.value = .background
 
         // Act: two rapid writes within the debounce window (0.3s)
         coordinator.updateNowPlaying(
@@ -97,7 +100,7 @@ final class NowPlayingCoordinatorBackgroundTests: XCTestCase {
     /// we don't spam MPNowPlayingInfoCenter on every chapter-tick / scrub.
     func testApplyUpdate_inForeground_debouncesAsBefore() {
         // Arrange: active state
-        fakeAppState = .active
+        fakeAppState.value = .active
 
         // Act: first write goes through immediately (lastUpdateTime is
         // distantPast). Sleep just long enough that the next write IS
@@ -155,10 +158,10 @@ final class NowPlayingCoordinatorBackgroundTests: XCTestCase {
     /// timer paused, position publisher dry, lock screen frozen).
     func testDryStreamGuard_logsErrorOnForegroundReturn_whenLastUpdateStale() {
         // Arrange: a baseline write while playing.
-        fakeAppState = .background  // background path goes direct, so we
+        fakeAppState.value = .background  // background path goes direct, so we
                                     // know lastUpdateTime advances
         let t0 = Date()
-        fakeNow = t0
+        fakeNow.value = t0
         coordinator.updateNowPlaying(
             title: "Stranded", artist: nil, album: nil,
             elapsed: 10, duration: 600, isPlaying: true, playbackRate: .normalTime
@@ -169,22 +172,22 @@ final class NowPlayingCoordinatorBackgroundTests: XCTestCase {
         // is exact and reproducible (no wall-time jitter).
         coordinator._test_setLastUpdateTime(t0)
         coordinator._test_setLastIsPlaying(true)
-        fakeNow = t0.addingTimeInterval(45)  // 45s elapsed (above threshold)
+        fakeNow.value = t0.addingTimeInterval(45)  // 45s elapsed (above threshold)
 
         // Cross back to foreground; the coordinator checks the guard here.
-        fakeAppState = .active
+        fakeAppState.value = .active
         coordinator.applicationDidBecomeActive()
 
         // Assert: one Crashlytics error logged with the dry-stream summary.
         XCTAssertEqual(
-            loggedDryStreamErrors.count, 1,
+            loggedDryStreamErrors.value.count, 1,
             "Foreground return after a >30s dry stream while isPlaying must log to Crashlytics."
         )
         XCTAssertTrue(
-            loggedDryStreamErrors.first?.summary.contains("dry") == true,
+            loggedDryStreamErrors.value.first?.summary.contains("dry") == true,
             "Logged summary should mention the dry-stream condition."
         )
-        let seconds = loggedDryStreamErrors.first?.metadata["secondsSinceLastUpdate"] as? Double ?? 0
+        let seconds = loggedDryStreamErrors.value.first?.metadata["secondsSinceLastUpdate"] as? Double ?? 0
         XCTAssertEqual(seconds, 45.0, accuracy: 0.001, "Logged metadata should reflect injected clock.")
     }
 
@@ -199,12 +202,12 @@ final class NowPlayingCoordinatorBackgroundTests: XCTestCase {
         )
 
         // Act: foreground return WITHOUT back-dating lastUpdateTime.
-        fakeAppState = .active
+        fakeAppState.value = .active
         coordinator.applicationDidBecomeActive()
 
         // Assert: no log fired.
         XCTAssertEqual(
-            loggedDryStreamErrors.count, 0,
+            loggedDryStreamErrors.value.count, 0,
             "Fresh stream on foreground return must not log — would be Crashlytics noise."
         )
     }
@@ -215,7 +218,7 @@ final class NowPlayingCoordinatorBackgroundTests: XCTestCase {
     /// is exact and reproducible.
     func testDryStreamGuard_doesNotLog_atExactlyThreshold() {
         let t0 = Date()
-        fakeNow = t0
+        fakeNow.value = t0
 
         coordinator.updateNowPlaying(
             title: "Boundary", artist: nil, album: nil,
@@ -227,13 +230,13 @@ final class NowPlayingCoordinatorBackgroundTests: XCTestCase {
         // 30 >= 30 is true → log. So `count == 0` kills the `>=` mutant.
         coordinator._test_setLastUpdateTime(t0)
         coordinator._test_setLastIsPlaying(true)
-        fakeNow = t0.addingTimeInterval(30.0)
+        fakeNow.value = t0.addingTimeInterval(30.0)
 
-        fakeAppState = .active
+        fakeAppState.value = .active
         coordinator.applicationDidBecomeActive()
 
         XCTAssertEqual(
-            loggedDryStreamErrors.count, 0,
+            loggedDryStreamErrors.value.count, 0,
             "At EXACTLY the 30s threshold the guard must NOT fire (`>` not `>=`)."
         )
     }
@@ -249,11 +252,11 @@ final class NowPlayingCoordinatorBackgroundTests: XCTestCase {
         coordinator._test_setLastUpdateTime(Date(timeIntervalSinceNow: -120))
         coordinator._test_setLastIsPlaying(false)
 
-        fakeAppState = .active
+        fakeAppState.value = .active
         coordinator.applicationDidBecomeActive()
 
         XCTAssertEqual(
-            loggedDryStreamErrors.count, 0,
+            loggedDryStreamErrors.value.count, 0,
             "Paused playback has no timer-freshness expectation — must not log."
         )
     }

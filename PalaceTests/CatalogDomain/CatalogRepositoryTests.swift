@@ -448,6 +448,11 @@ final class CatalogAPIDedupeTests: XCTestCase {
     }
 
     func testFetchFeed_ConcurrentCallersForSameURL_ShareOneNetworkRequest() async throws {
+        // Hoisted local: async-let child tasks reading the MainActor `api`
+        // property is a Swift 6 sending error (DefaultCatalogAPI is Sendable,
+        // so the local capture is clean).
+        let api = self.api!
+        let feedURL = self.feedURL
         async let a = api.fetchFeed(at: feedURL)
         async let b = api.fetchFeed(at: feedURL)
         async let c = api.fetchFeed(at: feedURL)
@@ -463,6 +468,10 @@ final class CatalogAPIDedupeTests: XCTestCase {
     }
 
     func testFetchFeed_ConcurrentCallersForDifferentURLs_DoNotDedupe() async throws {
+        // Hoisted local — see note in the sibling test above.
+        let api = self.api!
+        let feedURL = self.feedURL
+        let otherURL = self.otherURL
         async let a = api.fetchFeed(at: feedURL)
         async let b = api.fetchFeed(at: otherURL)
 

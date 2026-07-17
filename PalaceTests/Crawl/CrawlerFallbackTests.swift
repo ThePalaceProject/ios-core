@@ -10,7 +10,10 @@ import PalaceCatalog
 /// 4. First page succeeds, remaining pages fail → partial data is usable
 /// 5. Incremental crawl fails → full crawl on next attempt
 /// 6. Network completely down → returns failure (caller falls back to direct GET)
-@MainActor
+// Deliberately NOT @MainActor: LibraryRegistryCrawler is nonisolated and
+// non-Sendable — awaiting `crawl` on it from a @MainActor test is a Swift 6
+// sending error, while from a nonisolated test everything stays in one
+// isolation domain. Nothing here touches UI or main-actor state.
 final class CrawlerFallbackTests: XCTestCase {
 
     private var fetcher: MockFallbackFetcher!

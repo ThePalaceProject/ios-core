@@ -22,6 +22,17 @@
 import XCTest
 @testable import Palace
 
+/// Synchronous trampoline for `DispatchSemaphore.wait()` from an async
+/// context. Swift 6's `noasync` check is call-site-shallow by design: a
+/// synchronous function may block, and calling one from a Task is legal.
+/// The saturation test below uses this to DELIBERATELY block cooperative-
+/// pool threads — simulating the exact pool-starvation leak the probe
+/// exists to detect. Do not "fix" this into an async wait; that would
+/// remove the saturation and make the RED-first test pass vacuously.
+private func blockingWait(_ semaphore: DispatchSemaphore) {
+    semaphore.wait()
+}
+
 @MainActor
 final class RuntimeQuiescenceGateTests: PalaceTestCase {
 
@@ -205,7 +216,15 @@ final class RuntimeQuiescenceGateTests: PalaceTestCase {
         for _ in 0..<n {
             Task.detached(priority: .high) {
                 started.signal()
-                release.wait()      // blocks a cooperative-pool thread (the simulated leak)
+                // Blocks a cooperative-pool thread (the simulated leak). Routed
+                // through the synchronous file-scope trampoline below because
+                // Swift 6 marks `DispatchSemaphore.wait()` `noasync` — but
+                // BLOCKING the pool thread is this test's entire point, so the
+                // blocking wait is deliberate, not an oversight. (File-scope,
+                // not a Self. static: the member-call form trips a
+                // region-isolation-checker "please file a bug" error inside
+                // Task.detached on a @MainActor class.)
+                blockingWait(release)
                 finished.signal()
             }
         }
@@ -231,6 +250,7 @@ final class RuntimeQuiescenceGateTests: PalaceTestCase {
         XCTAssertTrue(sawTimeout,
                       "Under sustained pool saturation by \(n) blocking Tasks, the probe must time out at least once across 5 attempts (last latency=\(lastLatencyMs)ms); the detector fires")
     }
+
 
     /// End-to-end of the pure path: with the flag at its restored `true`
     /// value, `auditLiveState()` returns no violations — the steady-state the

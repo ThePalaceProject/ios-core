@@ -14,13 +14,15 @@ final class TPPMainThreadCheckerTests: XCTestCase {
     // MARK: - sync Tests
 
     func testSync_FromMainThread_ExecutesSynchronously() {
-        // We're on the main thread in test context
-        var executed = false
+        // We're on the main thread in test context. sync's block is
+        // @Sendable, so the flag is boxed (Swift 6 forbids mutating a
+        // captured var there).
+        let executed = LockIsolated(false)
         TPPMainThreadRun.sync {
             XCTAssertTrue(Thread.isMainThread)
-            executed = true
+            executed.value = true
         }
-        XCTAssertTrue(executed, "Block should execute synchronously on main thread")
+        XCTAssertTrue(executed.value, "Block should execute synchronously on main thread")
     }
 
     func testSync_FromBackgroundThread_DispatchesToMainThread() {

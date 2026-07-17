@@ -335,9 +335,13 @@ enum Group: Int {
 
     // MARK: - Notification Handling
     private func registerNotifications() {
-        let stateChange = NotificationCenter.default.publisher(for: .TPPBookRegistryStateDidChange)
-        let registryChange = NotificationCenter.default.publisher(for: .TPPBookRegistryDidChange)
-        let syncEnd = NotificationCenter.default.publisher(for: .TPPSyncEnded)
+        // Per-book state changes migrated off `.TPPBookRegistryStateDidChange` to
+        // the registry's `bookStatePublisher` (swarm_8ce6f5ae WS3). The registry
+        // and sync notifications stay as-is (out of this contract's scope). All
+        // three are mapped to `Void` so they can merge into one refresh trigger.
+        let stateChange = bookRegistry.bookStatePublisher.map { _ in () }
+        let registryChange = NotificationCenter.default.publisher(for: .TPPBookRegistryDidChange).map { _ in () }
+        let syncEnd = NotificationCenter.default.publisher(for: .TPPSyncEnded).map { _ in () }
 
         stateChange
             .merge(with: registryChange)

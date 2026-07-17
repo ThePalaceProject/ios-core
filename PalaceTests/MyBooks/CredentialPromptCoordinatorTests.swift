@@ -19,12 +19,14 @@ final class CredentialPromptCoordinatorTests: XCTestCase {
     private var userAccount: TPPUserAccountMock!
     private var credentialState: CredentialRequestState!
     private var spyDelegate: SpyDelegate!
-    private var presentedSignInModal = 0
-    private var presentedAdobeAlert = 0
-    private var isAdobeExpired = false
+    // LockIsolated boxes: the coordinator's injected seams are nonisolated
+    // closures — capturing MainActor self in them is a Swift 6 sending error.
+    private let presentedSignInModal = LockIsolated(0)
+    private let presentedAdobeAlert = LockIsolated(0)
+    private let isAdobeExpired = LockIsolated(false)
     /// Stash of completion handlers from each presentSignInModal call
     /// so tests can drive the success/cancel branches explicitly.
-    private var signInCompletions: [() -> Void] = []
+    private let signInCompletions = LockIsolated<[() -> Void]>([])
     private var coordinator: CredentialPromptCoordinator!
     private var book: TPPBook!
 
@@ -34,21 +36,21 @@ final class CredentialPromptCoordinatorTests: XCTestCase {
         userAccount = TPPUserAccountMock()
         credentialState = CredentialRequestState()
         spyDelegate = SpyDelegate()
-        presentedSignInModal = 0
-        presentedAdobeAlert = 0
-        isAdobeExpired = false
-        signInCompletions = []
+        presentedSignInModal.value = 0
+        presentedAdobeAlert.value = 0
+        isAdobeExpired.value = false
+        signInCompletions.value = []
 
         coordinator = CredentialPromptCoordinator(
             stateManager: stateManager,
-            userAccountProvider: { [unowned self] in self.userAccount },
+            userAccountProvider: { [userAccount] in userAccount! },
             credentialRequestState: credentialState,
-            presentSignInModal: { [unowned self] completion in
-                self.presentedSignInModal += 1
-                self.signInCompletions.append(completion)
+            presentSignInModal: { [presentedSignInModal, signInCompletions] completion in
+                presentedSignInModal.withValue { $0 += 1 }
+                signInCompletions.withValue { $0.append(completion) }
             },
-            isAdobeDRMExpired: { [unowned self] in self.isAdobeExpired },
-            presentAdobeExpiredAlert: { [unowned self] in self.presentedAdobeAlert += 1 }
+            isAdobeDRMExpired: { [isAdobeExpired] in isAdobeExpired.value },
+            presentAdobeExpiredAlert: { [presentedAdobeAlert] in presentedAdobeAlert.withValue { $0 += 1 } }
         )
         coordinator.delegate = spyDelegate
 
@@ -60,7 +62,7 @@ final class CredentialPromptCoordinatorTests: XCTestCase {
         userAccount = nil
         credentialState = nil
         spyDelegate = nil
-        signInCompletions = []
+        signInCompletions.value = []
         coordinator = nil
         book = nil
         try super.tearDownWithError()
@@ -88,22 +90,22 @@ final class CredentialPromptCoordinatorTests: XCTestCase {
             await Task.yield()
         }
 
-        XCTAssertEqual(presentedSignInModal, 0,
+        XCTAssertEqual(presentedSignInModal.value, 0,
                        "Re-entrant request must NOT present another sign-in modal")
-        XCTAssertEqual(presentedAdobeAlert, 0)
+        XCTAssertEqual(presentedAdobeAlert.value, 0)
         XCTAssertTrue(spyDelegate.startDownloadCalls.isEmpty)
     }
 
     // MARK: - Adobe-expired short-circuit
 
     func testRequestCredentials_adobeExpired_presentsAdobeAlertInsteadOfSignIn() async {
-        isAdobeExpired = true
+        isAdobeExpired.value = true
 
         coordinator.requestCredentialsAndStartDownload(for: book)
-        await waitForAsync { [self] in self.presentedAdobeAlert > 0 }
+        await waitForAsync { [self] in self.presentedAdobeAlert.value > 0 }
 
-        XCTAssertEqual(presentedAdobeAlert, 1)
-        XCTAssertEqual(presentedSignInModal, 0,
+        XCTAssertEqual(presentedAdobeAlert.value, 1)
+        XCTAssertEqual(presentedSignInModal.value, 0,
                        "Adobe-expired path must NOT present the regular sign-in modal")
         XCTAssertFalse(credentialState.isRequestingCredentials,
                        "Adobe-expired path resets the gate so a future request can proceed")
@@ -113,13 +115,13 @@ final class CredentialPromptCoordinatorTests: XCTestCase {
 
     func testRequestCredentials_signInSuccess_retriesDownloadViaDelegate() async {
         coordinator.requestCredentialsAndStartDownload(for: book)
-        await waitForAsync { [self] in self.presentedSignInModal > 0 }
+        await waitForAsync { [self] in self.presentedSignInModal.value > 0 }
 
         // Simulate the user signing in successfully — set credentials
         // BEFORE invoking the completion so the hasCredentials check
         // inside the closure succeeds.
         userAccount._credentials = .barcodeAndPin(barcode: "b", pin: "p")
-        signInCompletions.first?()
+        signInCompletions.value.first?()
 
         await waitForAsync { [self] in self.spyDelegate.startDownloadCalls.count > 0 }
 
@@ -132,11 +134,11 @@ final class CredentialPromptCoordinatorTests: XCTestCase {
 
     func testRequestCredentials_signInCancelled_registersCompletionAndDoesNotRetry() async {
         coordinator.requestCredentialsAndStartDownload(for: book)
-        await waitForAsync { [self] in self.presentedSignInModal > 0 }
+        await waitForAsync { [self] in self.presentedSignInModal.value > 0 }
 
         // User cancels — no credentials at completion time.
         XCTAssertFalse(userAccount.hasCredentials())
-        signInCompletions.first?()
+        signInCompletions.value.first?()
 
         // Allow the cleanup Task to register completion.
         for _ in 0..<5 {

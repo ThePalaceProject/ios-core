@@ -40,8 +40,11 @@ final class OpenAccessAdapterTests: XCTestCase {
         ) {
             requestedURLs.append(url)
             // Hop off the call stack to mirror real URLSession ordering.
+            // LockIsolated: box the non-Sendable completion across the
+            // @Sendable dispatch closure (Swift 6).
+            let completionBox = LockIsolated(completion)
             DispatchQueue.main.async { [stubbedData, stubbedResponse, stubbedError] in
-                completion(stubbedData, stubbedResponse, stubbedError)
+                completionBox.value(stubbedData, stubbedResponse, stubbedError)
             }
         }
     }
@@ -228,7 +231,10 @@ final class OpenAccessAdapterTests: XCTestCase {
             callCount += 1
             receivedToken = token
             receivedBook = book
-            DispatchQueue.main.async { [stubbedManifest] in completion(stubbedManifest) }
+            // LockIsolated: box the non-Sendable completion + manifest
+            // across the @Sendable dispatch closure (Swift 6).
+            let box = LockIsolated((completion, stubbedManifest))
+            DispatchQueue.main.async { box.value.0(box.value.1) }
         }
     }
 

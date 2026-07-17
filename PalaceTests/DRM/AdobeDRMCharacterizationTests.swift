@@ -82,28 +82,25 @@ final class AdobeDRMCharacterizationTests: XCTestCase {
         // short-circuits. A mutant that returned success but left the IDs
         // nil would corrupt the persistence step.
         let exp = expectation(description: "authorize completion")
-        var capturedSuccess = false
-        var capturedError: Error?
-        var capturedDeviceID: String?
-        var capturedUserID: String?
+        // The authorize completion is @Sendable under Swift 6, so mutating
+        // captured locals is rejected — route the captures through the
+        // house LockIsolated box instead.
+        let captured = LockIsolated<(success: Bool, error: Error?, deviceID: String?, userID: String?)>((false, nil, nil, nil))
 
         drm.authorize(withVendorID: "NYPL",
                       username: "client-token-username",
                       password: "client-token-password") { success, err, deviceID, userID in
-            capturedSuccess = success
-            capturedError = err
-            capturedDeviceID = deviceID
-            capturedUserID = userID
+            captured.value = (success, err, deviceID, userID)
             exp.fulfill()
         }
 
         wait(for: [exp], timeout: 1.0)
 
-        XCTAssertTrue(capturedSuccess, "Success-path must report success=true")
-        XCTAssertNil(capturedError, "Success-path must carry no error")
-        XCTAssertEqual(capturedDeviceID, "drmDeviceID",
+        XCTAssertTrue(captured.value.success, "Success-path must report success=true")
+        XCTAssertNil(captured.value.error, "Success-path must carry no error")
+        XCTAssertEqual(captured.value.deviceID, "drmDeviceID",
                        "Success-path must hand back the non-nil deviceID for persistence")
-        XCTAssertEqual(capturedUserID, "drmUserID",
+        XCTAssertEqual(captured.value.userID, "drmUserID",
                        "Success-path must hand back the non-nil userID for persistence")
     }
 
@@ -168,21 +165,20 @@ final class AdobeDRMCharacterizationTests: XCTestCase {
         // fires) but the production "complete logout process" branch would
         // skip — a real regression we want to catch here.
         let exp = expectation(description: "deauthorize completion")
-        var capturedSuccess = false
-        var capturedError: Error?
+        // @Sendable completion — box the captures (see LockIsolated).
+        let captured = LockIsolated<(success: Bool, error: Error?)>((false, nil))
 
         drm.deauthorize(withUsername: "user",
                         password: "pass",
                         userID: "u-1",
                         deviceID: "d-1") { success, err in
-            capturedSuccess = success
-            capturedError = err
+            captured.value = (success, err)
             exp.fulfill()
         }
 
         wait(for: [exp], timeout: 1.0)
-        XCTAssertTrue(capturedSuccess, "Default deauth completion must report success")
-        XCTAssertNil(capturedError, "Default deauth completion must carry no error")
+        XCTAssertTrue(captured.value.success, "Default deauth completion must report success")
+        XCTAssertNil(captured.value.error, "Default deauth completion must carry no error")
         XCTAssertEqual(drm.deauthorizeCallCount, 1,
                        "Single call must increment counter by exactly 1")
         XCTAssertTrue(drm.deauthorizeWasCalled,
@@ -215,14 +211,15 @@ final class AdobeDRMCharacterizationTests: XCTestCase {
         // captured completion would be nil — caught here.
         drm.shouldDeferDeauthorize = true
 
-        var captured: (Bool, Error?)?
+        // @Sendable completion — box the capture (see LockIsolated).
+        let captured = LockIsolated<(Bool, Error?)?>(nil)
         drm.deauthorize(withUsername: "u", password: "p",
                         userID: "uid", deviceID: "did") { success, err in
-            captured = (success, err)
+            captured.value = (success, err)
         }
 
         // Before manual fire: completion has NOT been invoked.
-        XCTAssertNil(captured, "Deferred deauth must NOT invoke completion synchronously")
+        XCTAssertNil(captured.value, "Deferred deauth must NOT invoke completion synchronously")
         XCTAssertNotNil(drm.deferredDeauthCompletion,
                         "Deferred deauth must STORE the completion for later firing")
 
@@ -231,9 +228,9 @@ final class AdobeDRMCharacterizationTests: XCTestCase {
         let failure = NSError(domain: "Adobe", code: 99, userInfo: nil)
         drm.completeDeferredDeauthorize(success: false, error: failure)
 
-        XCTAssertNotNil(captured, "Manual fire must invoke the captured completion")
-        XCTAssertEqual(captured?.0, false, "Captured success must reflect the manual-fire arg")
-        XCTAssertEqual((captured?.1 as NSError?)?.code, 99,
+        XCTAssertNotNil(captured.value, "Manual fire must invoke the captured completion")
+        XCTAssertEqual(captured.value?.0, false, "Captured success must reflect the manual-fire arg")
+        XCTAssertEqual((captured.value?.1 as NSError?)?.code, 99,
                        "Captured error must reflect the manual-fire arg")
         XCTAssertNil(drm.deferredDeauthCompletion,
                      "After firing, the captured completion must be cleared so a second fire is a no-op")
@@ -399,7 +396,7 @@ final class AdobeDRMCharacterizationTests: XCTestCase {
                                       password: String!,
                                       userID: String!,
                                       deviceID: String!,
-                                      completion: ((Bool, Error?) -> Void)!) {
+                                      completion: (@Sendable (Bool, Error?) -> Void)!) {
                 lastArgs = (username, password, userID, deviceID)
                 super.deauthorize(withUsername: username,
                                   password: password,

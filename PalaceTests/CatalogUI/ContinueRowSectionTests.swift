@@ -65,6 +65,7 @@ final class ContinueRowSectionTests: XCTestCase {
         let viewModel = ActiveSessionsViewModel(
             recentlyReadingService: spyService,
             audiobookSession: fakeSession,
+            bookRegistry: TPPBookRegistryMock(),
             notificationCenter: notificationCenter
         )
         let section = ContinueRowSection(

@@ -250,7 +250,9 @@ final class TPPReaderTOCBusinessLogicTests: XCTestCase {
 
     // MARK: - Helper Methods
 
-    private func createTestPublication() -> Publication {
+    // nonisolated: pure factory; called from the inherited-nonisolated
+    // setUpWithError override (Swift 6 sending error otherwise).
+    private nonisolated func createTestPublication() -> Publication {
         let metadata = Metadata(
             title: "Test Book",
             languages: ["en"]

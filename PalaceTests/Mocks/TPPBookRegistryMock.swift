@@ -55,7 +55,13 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistryProvider, @unchecked Sendabl
     private var _state: TPPBookRegistry.RegistryState = .loaded
     var state: TPPBookRegistry.RegistryState {
         get { lock.withLock { _state } }
-        set { lock.withLock { _state = newValue } }
+        set {
+            lock.withLock { _state = newValue }
+            // Feed the lifecycle publisher OUTSIDE the lock (re-entrancy rule),
+            // mirroring production's `state` setter. Tests drive lifecycle-keyed
+            // observers by assigning `mock.state = .loaded`.
+            registryStateSubject.send(newValue)
+        }
     }
     var registryState: TPPBookRegistry.RegistryState { state }
 
@@ -70,6 +76,23 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistryProvider, @unchecked Sendabl
     private let syncStateSubject = CurrentValueSubject<Bool, Never>(false)
     var syncStatePublisher: AnyPublisher<Bool, Never> {
         syncStateSubject.eraseToAnyPublisher()
+    }
+
+    /// `PassthroughSubject` (not `CurrentValueSubject`) so tests get deterministic
+    /// emission counts: a subscriber sees ONLY the transitions driven after it
+    /// subscribes, with no seeded replay to confound the empty-registry hang guard.
+    private let registryStateSubject = PassthroughSubject<TPPBookRegistry.RegistryState, Never>()
+    var registryStatePublisher: AnyPublisher<TPPBookRegistry.RegistryState, Never> {
+        registryStateSubject.eraseToAnyPublisher()
+    }
+
+    private let holdsDidChangeSubject = PassthroughSubject<Void, Never>()
+    var holdsDidChangePublisher: AnyPublisher<Void, Never> {
+        holdsDidChangeSubject.eraseToAnyPublisher()
+    }
+
+    func notifyHoldsChanged() {
+        holdsDidChangeSubject.send(())
     }
 
     func sync(completion: ((_ errorDocument: [AnyHashable: Any]?, _ newBooks: Bool) -> Void)?) {

@@ -150,7 +150,9 @@ final class NSNotificationTPPTests: XCTestCase {
         XCTAssertEqual(Notification.Name.TPPDidSignOut.rawValue, "TPPDidSignOut")
         XCTAssertEqual(Notification.Name.TPPIsSigningIn.rawValue, "TPPIsSigningIn")
         XCTAssertEqual(Notification.Name.TPPBookRegistryDidChange.rawValue, "TPPBookRegistryDidChange")
-        XCTAssertEqual(Notification.Name.TPPBookRegistryStateDidChange.rawValue, "TPPBookRegistryStateDidChange")
+        // .TPPBookRegistryStateDidChange was removed in swarm_8ce6f5ae WS3 (the
+        // registry dual-write kill) — its lifecycle/per-book signal moved to the
+        // registry's Combine publishers, so there is no longer a name to assert.
         XCTAssertEqual(Notification.Name.TPPBookProcessingDidChange.rawValue, "TPPBookProcessingDidChange")
         XCTAssertEqual(Notification.Name.TPPMyBooksDownloadCenterDidChange.rawValue, "TPPMyBooksDownloadCenterDidChange")
         XCTAssertEqual(Notification.Name.TPPBookDetailDidClose.rawValue, "TPPBookDetailDidClose")

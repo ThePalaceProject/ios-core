@@ -117,7 +117,14 @@ public enum AuthAction: Equatable {
 /// compatible with `Store<AuthState, AuthAction, AuthEnvironment>` for a
 /// future Phase that wires the network/keychain side effects through the
 /// store. Today every transition is synchronous.
-public struct AuthEnvironment: Equatable {
+///
+/// `Sendable`: required by `Effect<Action, Environment: Sendable>` (the
+/// canonical bound this package mirrors — see `Effect.swift`). The `Store`
+/// hands the environment to an effect's `run` closure across an actor-isolation
+/// boundary, so the environment must be `Sendable`. This is a public type, so
+/// the conformance is explicit (the compiler does not synthesize `Sendable`
+/// for public types); it is trivially safe — the struct carries no state.
+public struct AuthEnvironment: Equatable, Sendable {
     public init() {}
 }
 

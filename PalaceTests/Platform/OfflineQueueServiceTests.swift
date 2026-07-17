@@ -42,7 +42,10 @@ final class OfflineQueueServiceTests: XCTestCase {
     // MARK: - Helpers
 
     private func setupSuccessExecutor() async {
-        await service.setExecutor { action in
+        // Capture the (Sendable) LockIsolated box directly — reaching it via
+        // `self` would capture the non-Sendable XCTestCase in a @Sendable
+        // closure, a Swift 6 error.
+        await service.setExecutor { [executedActions] action in
             executedActions.withValue { $0.append(action) }
             return true
         }

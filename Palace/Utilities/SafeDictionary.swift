@@ -51,7 +51,10 @@ actor SafeDictionary<Key: Hashable, Value> {
     private var lastAccessTime: Date = Date()
 
     /// Get performance metrics for debugging
-    func getMetrics() -> [String: Any] {
+    // `sending` return: the dictionary is freshly built on every call, so it
+    // can safely leave the actor (Swift 6 rejects a plain non-Sendable
+    // return crossing the actor boundary).
+    func getMetrics() -> sending [String: Any] {
         return [
             "count": storage.count,
             "accessCount": accessCount,

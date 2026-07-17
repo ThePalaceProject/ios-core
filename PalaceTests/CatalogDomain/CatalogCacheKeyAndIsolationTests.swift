@@ -72,16 +72,18 @@ final class CatalogCacheKeyAndIsolationTests: XCTestCase {
     private static let lastAppLaunchKey = "CatalogRepository.lastAppLaunch"
 
     /// Mutable clock — drives the stale-while-revalidate logic deterministically.
-    private var testNow: Date = Date(timeIntervalSince1970: 1_700_000_000)
+    // LockIsolated boxes: the repository's @Sendable closures read these —
+    // capturing MainActor self there is a Swift 6 sending error.
+    private let testNow = LockIsolated(Date(timeIntervalSince1970: 1_700_000_000))
 
     /// Mutable account ID — drives the cache-isolation logic deterministically.
     /// Each test that switches accounts mutates this between calls.
-    private var testAccountID: String? = nil
+    private let testAccountID = LockIsolated<String?>(nil)
 
     override func setUp() {
         super.setUp()
         api = CatalogAPIMock()
-        testAccountID = nil
+        testAccountID.value = nil
         // swarm_cd181acd D-cleanup: per-test isolated UserDefaults suite
         // for the `lastAppLaunchKey` heuristic — no `.standard` writes.
         // The suite is dropped by `SingletonResetRegistry` when the test
@@ -91,7 +93,7 @@ final class CatalogCacheKeyAndIsolationTests: XCTestCase {
 
     override func tearDown() {
         api = nil
-        testAccountID = nil
+        testAccountID.value = nil
         defaults = nil
         super.tearDown()
     }
@@ -100,13 +102,13 @@ final class CatalogCacheKeyAndIsolationTests: XCTestCase {
 
     private func makeRepository(seedLastLaunchToNow: Bool = true) -> CatalogRepository {
         if seedLastLaunchToNow {
-            defaults.set(testNow, forKey: Self.lastAppLaunchKey)
+            defaults.set(testNow.value, forKey: Self.lastAppLaunchKey)
         }
         return CatalogRepository(
             api: api,
-            accountID: { [weak self] in self?.testAccountID },
-            now: { [weak self] in
-                self?.testNow ?? Date(timeIntervalSince1970: 0)
+            accountID: { [testAccountID] in testAccountID.value },
+            now: { [testNow] in
+                testNow.value
             },
             defaults: defaults
         )
@@ -151,7 +153,7 @@ final class CatalogCacheKeyAndIsolationTests: XCTestCase {
         XCTAssertEqual(api.fetchFeedCallCount, 3)
 
         // Move into stale-but-usable window.
-        testNow = testNow.addingTimeInterval(1_800) // 30 minutes
+        testNow.value = testNow.value.addingTimeInterval(1_800) // 30 minutes
         api.stubbedFeeds[urlA] = CatalogAPIMock.makeMockFeed(title: "A-refreshed")
         api.stubbedFeeds[urlB] = CatalogAPIMock.makeMockFeed(title: "B-refreshed")
         api.stubbedFeeds[urlC] = CatalogAPIMock.makeMockFeed(title: "C-refreshed")
@@ -198,7 +200,7 @@ final class CatalogCacheKeyAndIsolationTests: XCTestCase {
         _ = try await sut.loadTopLevelCatalog(at: urlB)
 
         // Make A stale; leave B fresh.
-        testNow = testNow.addingTimeInterval(1_800)
+        testNow.value = testNow.value.addingTimeInterval(1_800)
         api.stubbedFeeds[urlA] = CatalogAPIMock.makeMockFeed(title: "A-new")
         // Trigger A's background refresh.
         _ = try await sut.loadTopLevelCatalog(at: urlA)
@@ -404,7 +406,7 @@ final class CatalogCacheKeyAndIsolationTests: XCTestCase {
         let url = URL(string: "https://example.com/per-library")!
 
         // Library A's response.
-        testAccountID = "library-a-uuid"
+        testAccountID.value = "library-a-uuid"
         api.stubbedFeeds[url] = CatalogAPIMock.makeMockFeed(title: "Library-A-Feed")
         let sut = makeRepository()
         let a = try await sut.loadTopLevelCatalog(at: url)
@@ -412,7 +414,7 @@ final class CatalogCacheKeyAndIsolationTests: XCTestCase {
         XCTAssertEqual(api.fetchFeedCallCount, 1)
 
         // SWITCH LIBRARY: same repository instance, same URL, different account.
-        testAccountID = "library-b-uuid"
+        testAccountID.value = "library-b-uuid"
         api.stubbedFeeds[url] = CatalogAPIMock.makeMockFeed(title: "Library-B-Feed")
         let b = try await sut.loadTopLevelCatalog(at: url)
 
@@ -422,7 +424,7 @@ final class CatalogCacheKeyAndIsolationTests: XCTestCase {
                        "Different account => cache miss => network fetch")
 
         // Switch back to library A — its cache must still be intact.
-        testAccountID = "library-a-uuid"
+        testAccountID.value = "library-a-uuid"
         api.stubbedFeeds[url] = CatalogAPIMock.makeMockFeed(title: "Library-A-Feed-NEW")
         let aAgain = try await sut.loadTopLevelCatalog(at: url)
         XCTAssertEqual(aAgain?.title, "Library-A-Feed",
@@ -439,12 +441,12 @@ final class CatalogCacheKeyAndIsolationTests: XCTestCase {
         let url = URL(string: "https://example.com/shared-path")!
 
         // Cache under both accounts.
-        testAccountID = "lib-A"
+        testAccountID.value = "lib-A"
         api.stubbedFeeds[url] = CatalogAPIMock.makeMockFeed(title: "A")
         let sut = makeRepository()
         _ = try await sut.loadTopLevelCatalog(at: url)
 
-        testAccountID = "lib-B"
+        testAccountID.value = "lib-B"
         api.stubbedFeeds[url] = CatalogAPIMock.makeMockFeed(title: "B")
         _ = try await sut.loadTopLevelCatalog(at: url)
         XCTAssertEqual(api.fetchFeedCallCount, 2)
@@ -457,7 +459,7 @@ final class CatalogCacheKeyAndIsolationTests: XCTestCase {
                      "After invalidate while account=B, B's slot must be empty")
 
         // Switch back to library A — its slot must still be live.
-        testAccountID = "lib-A"
+        testAccountID.value = "lib-A"
         XCTAssertEqual(sut.cachedFeed(for: url)?.title, "A",
                        "Invalidate scoped to B must NOT clear A's slot at the same URL")
     }
@@ -471,7 +473,7 @@ final class CatalogCacheKeyAndIsolationTests: XCTestCase {
     /// underlying auth-layer churn.
     func testCacheKey_SameAccount_RepeatedReads_ShareOneCacheEntry() async throws {
         let url = URL(string: "https://example.com/same-account")!
-        testAccountID = "stable-library-uuid"
+        testAccountID.value = "stable-library-uuid"
         api.stubbedFeeds[url] = CatalogAPIMock.makeMockFeed(title: "Stable")
         let sut = makeRepository()
 

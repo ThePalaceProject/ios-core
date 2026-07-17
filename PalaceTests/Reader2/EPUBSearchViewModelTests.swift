@@ -194,8 +194,12 @@ final class EPUBSearchViewModelTests: XCTestCase {
 
     // MARK: - Setup/Teardown
 
-    override func setUp() {
-        super.setUp()
+    // async setUp/tearDown: unlike the sync overrides (which inherit
+    // `nonisolated` from XCTestCase under Swift 6 and cannot touch the
+    // class's MainActor state), the async variants honor the class's
+    // @MainActor isolation — XCTest awaits them on the right actor.
+    override func setUp() async throws {
+        try await super.setUp()
         mockSearchService = MockSearchService()
         mockDelegate = MockEPUBSearchDelegate()
         publication = Publication.makePublication(searchService: mockSearchService)
@@ -204,13 +208,13 @@ final class EPUBSearchViewModelTests: XCTestCase {
         cancellables = Set<AnyCancellable>()
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         mockSearchService = nil
         mockDelegate = nil
         publication = nil
         viewModel = nil
         cancellables = nil
-        super.tearDown()
+        try await super.tearDown()
     }
 
     // MARK: - Initialization Tests

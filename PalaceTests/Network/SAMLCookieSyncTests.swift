@@ -25,7 +25,10 @@ final class SAMLCookieSyncTests: XCTestCase {
         super.tearDown()
     }
 
-    private func clearSharedCookies() {
+    // nonisolated: touches only the (thread-safe) shared cookie store;
+    // called from the inherited-nonisolated setUp/tearDown overrides
+    // (Swift 6 sending error otherwise).
+    private nonisolated func clearSharedCookies() {
         HTTPCookieStorage.shared.cookies?.forEach {
             HTTPCookieStorage.shared.deleteCookie($0)
         }

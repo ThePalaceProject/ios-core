@@ -138,7 +138,10 @@ final class MultiLibraryTokenIsolationTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private static func makeTokenAuth(tokenURL: URL) -> AccountDetails.Authentication {
+    // nonisolated: pure fixture/helper (no isolated state); called from
+    // inherited-nonisolated setUp/tearDown overrides or nonisolated
+    // contexts (Swift 6 sending error otherwise).
+    private nonisolated static func makeTokenAuth(tokenURL: URL) -> AccountDetails.Authentication {
         let json = """
         {
           "type": "http://thepalaceproject.org/authtype/basic-token",

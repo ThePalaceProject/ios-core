@@ -8,7 +8,9 @@
 import XCTest
 @testable import Palace
 
-@MainActor
+// Deliberately NOT @MainActor: SafeDictionary's functional APIs take
+// non-Sendable closures and return non-Sendable values — driving them from a
+// @MainActor test is a Swift 6 sending error. Pure utility tests, no UI.
 final class SafeDictionaryTests: XCTestCase {
 
     // MARK: - Basic Operations

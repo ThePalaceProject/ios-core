@@ -94,8 +94,11 @@ final class LocalFileAdapterTests: XCTestCase {
             // dispatch closure. Test double: the box is created and consumed
             // on the same serial test flow, so unchecked Sendable is safe.
             let box = TokenBox(stubbedToken)
+            // LockIsolated: `completion` itself is non-Sendable and must also
+            // be boxed across the @Sendable dispatch closure (Swift 6).
+            let completionBox = LockIsolated(completion)
             DispatchQueue.main.async {
-                completion(box.value)
+                completionBox.value(box.value)
             }
         }
 
