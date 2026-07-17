@@ -184,7 +184,7 @@ def _evidence_links(row: Dict[str, str], assets_root: Optional[str]) -> str:
     raw = _g(row, "evidence_paths")
     if not raw:
         return '<span class="muted">no evidence</span>'
-    parts = [p.strip() for p in raw.split(";") if p.strip()]
+    parts = [p.strip() for p in raw.split(rf.EVIDENCE_SEP) if p.strip()]
     out = []
     for p in parts:
         href = f"{assets_root.rstrip('/')}/{p}" if assets_root else p
@@ -237,9 +237,9 @@ def _render_gallery(rows, assets_root):
     pairs = []
     for r in rows:
         sp = _g(r, "screenshot_pair")
-        if not sp or "|" not in sp:
+        if not sp or rf.SCREENSHOT_SEP not in sp:
             continue
-        base, cand = (sp.split("|", 1) + [""])[:2]
+        base, cand = (sp.split(rf.SCREENSHOT_SEP, 1) + [""])[:2]
         def src(p):
             p = p.strip()
             if not p:
