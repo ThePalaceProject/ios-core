@@ -77,5 +77,13 @@ cat > "$TMP/selftest.diff" <<'EOF'
 EOF
 "$DET" "$TMP/selftest.diff" >/dev/null 2>&1; [ $? -eq 0 ] && ok "signing strings in non-build file ignored (no self-block)" || bad "path-blind: flagged a non-build file"
 
+# 10 — QUOTED team id in a pbxproj (Xcode emits `DEVELOPMENT_TEAM = "ABCDE12345";`
+#      in some configs) -> BLOCK. The unquoted rule missed this form.
+cat > "$TMP/quoted.diff" <<'EOF'
++++ b/Palace.xcodeproj/project.pbxproj
++				DEVELOPMENT_TEAM = "88CBA74T8K";
+EOF
+"$DET" "$TMP/quoted.diff" >/dev/null 2>&1; [ $? -eq 1 ] && ok "quoted DEVELOPMENT_TEAM blocked" || bad "quoted team id slipped through"
+
 echo "[test_check_no_committed_signing] $PASS passed / $FAIL failed"
 [ "$FAIL" -eq 0 ]
