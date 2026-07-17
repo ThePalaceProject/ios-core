@@ -387,12 +387,13 @@ struct AudiobookMorphingPlayerView: View {
         ZStack {
             grabber
             HStack {
-                // Explicit close: collapses the full player to the mini-bar
-                // (playback continues). The only other way down is the
-                // non-obvious pull-down gesture, so this gives the full player a
-                // discoverable exit. Occupies the slot the Help entry point used
-                // to hold — Help now lives on book-detail + sign-in only.
-                Button { setExpanded(false) } label: {
+                // Explicit close: fully dismisses the player — stops playback,
+                // saves the position, and removes BOTH the full player and the
+                // mini-bar (not a minimize). The only other exit is the
+                // non-obvious pull-down-to-minimize gesture, so this ✕ is the
+                // discoverable way out. In the slot the Help entry point used to
+                // hold — Help now lives on book-detail + sign-in only.
+                Button { presenter.closePlayer() } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 18, weight: .medium))
                         .frame(width: 44, height: 44)
