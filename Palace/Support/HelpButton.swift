@@ -4,7 +4,7 @@
 //
 //  Shared, flag-gated "Get Help" affordance. One monochrome question-mark
 //  glyph that presents the triage-bot chat (`TriageBotSupportView`) as a sheet,
-//  reused across every entry point (book detail, sign-in, audiobook player).
+//  reused across its entry points (book detail, sign-in).
 //  Settings has its own row (`TPPSettingsView.supportSection`) but resolves
 //  visibility through the SAME `HelpEntryPointPolicy`, so all entry points
 //  appear and vanish together with the master kill-switch (AC-14).
@@ -24,23 +24,16 @@ struct HelpButton: View {
     /// stable accessibility identifier.
     let entryPoint: HelpEntryPoint
 
-    /// For `.audiobookPlayer`, whether the full player is expanded. The Help
-    /// control lives in the full-player chrome only, so on the mini-player it
-    /// stays hidden (would otherwise collide with the transport row). Ignored
-    /// for every other entry point.
-    var audiobookPlayerExpanded: Bool = false
-
     @State private var showHelp = false
 
-    /// Resolve visibility through the shared pure policy so the kill-switch and
-    /// the audiobook-expanded rule are the single source of truth (and unit-
-    /// tested in `HelpEntryPointPolicyTests`). Reading the flag at body-eval
-    /// time mirrors how `TPPSettingsView.supportSection` resolves its row.
+    /// Resolve visibility through the shared pure policy so the kill-switch is
+    /// the single source of truth (and unit-tested in `HelpEntryPointPolicyTests`).
+    /// Reading the flag at body-eval time mirrors how
+    /// `TPPSettingsView.supportSection` resolves its row.
     private var isVisible: Bool {
         HelpEntryPointPolicy.shouldShowHelp(
             at: entryPoint,
-            triageBotEnabled: RemoteFeatureFlags.shared.isTriageBotEnabled,
-            audiobookPlayerExpanded: audiobookPlayerExpanded
+            triageBotEnabled: RemoteFeatureFlags.shared.isTriageBotEnabled
         )
     }
 
