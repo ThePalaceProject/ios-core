@@ -63,7 +63,6 @@ These five scripts handle most of the day-to-day work. Read these first if you o
 | `pre-push-test-gate.sh` | Pre-push hook that runs the changed-file test selection before allowing `git push`. | local git hook |
 | `resolve-tests-for.py` | Maps a changed production-file path to the XCTest class selectors that cover it. | `verify-pr.sh`, `palace_mutate.py` |
 | `parse-xcresult.py` | Parses an `.xcresult` bundle into JSON for downstream reporting. | `unit-testing.yml` |
-| `parse-test-results.py` | Older test-results parser; kept for compatibility. | dev/local |
 | `coverage-report.py` | Extracts code coverage from `.xcresult` and writes JSON. | `unit-testing.yml` |
 | `coverage-floors.json` | Per-target coverage thresholds (see `README_coverage_floors.md`). | `enforce_coverage_floors.py` |
 | `coverage-exclude.json` | Files excluded from the testable-coverage denominator (UI/lifecycle). | `coverage-report.py` |
@@ -74,7 +73,6 @@ These five scripts handle most of the day-to-day work. Read these first if you o
 | `generate-html-report.py` | Renders an interactive HTML test report. | `unit-testing.yml` |
 | `process-snapshots.py` | Generates a snapshot-failure viewer with diff images. | `unit-testing.yml` |
 | `record-snapshots.sh` | Records baseline snapshots for snapshot-test classes. | dev/local |
-| `test-visual-regression.sh` | End-to-end smoke test for the visual-regression infrastructure. | dev/local |
 | `wire_orphan_tests.py` | Adds orphaned test files into the `PalaceTests` Sources phase. | dev/local (after extracting tests) |
 | `wire_untracked_tests.py` | Wires fully-untracked test files into the Xcode project. | dev/local |
 
@@ -89,8 +87,6 @@ These five scripts handle most of the day-to-day work. Read these first if you o
 | `simdrive-coverage.sh` | Captures code coverage from simdrive runs and merges with unit coverage. | maintainer dev/local |
 | `simdrive-report.sh` | Generates a Markdown report of simdrive replay results for PR evidence. | maintainer dev/local |
 | `simdrive-structural-check.py` | OPDS-tolerant journey verifier (checks structure, not pixels). | `chaos-replay-on-pr.yml` |
-| `fix-replay-assertions.py` | Trims `expect_elements` in replay YAMLs to stable, screen-appropriate elements. | maintainer dev/local (after recording) |
-| `fix-replay-timing.py` | Removes `expect_elements` from steps where timing makes assertions unreliable. | maintainer dev/local |
 | `marks-diff.py` | Diffs two simdrive fixture corpora and emits findings rows. | maintainer dev/local |
 | `chaos-targets.py` | Maps changed file paths to fixture flow seeds whose mutation targets cover them. | `chaos-replay-on-pr.yml` |
 | `run-chaos-pass.sh` | Runs a chaos QA pass (mutation + simdrive replay). | `chaos-qa-on-demand.yml` |
