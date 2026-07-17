@@ -14,6 +14,7 @@ import XCTest
 /// Tests the sync throttle logic extracted from NotificationService.
 /// The real NotificationService requires UNUserNotificationCenter which
 /// can't be easily mocked, so we test the decision logic directly.
+@MainActor
 final class NotificationSyncThrottleTests: XCTestCase {
 
     override func tearDown() {
@@ -112,6 +113,7 @@ final class NotificationSyncThrottleTests: XCTestCase {
 
 // MARK: - Hold Notification Classification Tests
 
+@MainActor
 final class HoldNotificationClassificationTests: XCTestCase {
 
     func testIsHoldRelated_withTypeHold_returnsTrue() {

@@ -26,6 +26,7 @@ import PalaceAuth
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 final class TokenRefreshOnForegroundTests: XCTestCase {
 
     // MARK: - Fixtures

@@ -7,6 +7,7 @@ import PalaceCatalog
 /// `TPPBookCoverRegistry` + `TPPBookCoverRegistryBridge` + `ImageCache.shared`
 /// trio at call sites. Covers cache-hit short-circuits, weak-book-reference
 /// safety on the completion bridge, and the placeholder fall-through.
+@MainActor
 final class ImageLoaderTests: XCTestCase {
 
     private var cache: MockImageCache!

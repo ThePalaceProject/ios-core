@@ -67,6 +67,7 @@ final class AppTabRouterGapTests: XCTestCase {
 
 // MARK: - 2. TPPBookModelGapTests
 
+@MainActor
 final class TPPBookModelGapTests: XCTestCase {
 
     /// Coverage Gap: TPPBook dictionaryRepresentation — produces non-empty dict
@@ -145,6 +146,7 @@ final class TPPBookModelGapTests: XCTestCase {
 
 // MARK: - 3. TPPBadgeImageGapTests
 
+@MainActor
 final class TPPBadgeImageGapTests: XCTestCase {
 
     /// Coverage Gap: TPPBadgeImage.audiobook — assetName returns "AudiobookBadge"
@@ -176,6 +178,7 @@ final class TPPBadgeImageGapTests: XCTestCase {
 
 #if DEBUG
 
+@MainActor
 final class DebugSettingsGapTests: XCTestCase {
 
     override func tearDown() {

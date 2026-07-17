@@ -15,6 +15,7 @@ import XCTest
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 final class RightsManagementDispatcherTests: XCTestCase {
 
     private var stateManager: DownloadStateManager!

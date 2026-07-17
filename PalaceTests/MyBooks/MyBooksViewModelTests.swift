@@ -32,6 +32,7 @@ private func makeViewModel() -> MyBooksViewModel {
 
 // MARK: - Facet Enum Tests (Real Production Enum)
 
+@MainActor
 final class FacetEnumTests: XCTestCase {
 
     func testFacet_LocalizedStrings_AreNotEmpty() {
@@ -57,6 +58,7 @@ final class FacetEnumTests: XCTestCase {
 
 // MARK: - AlertModel Tests (Real Production Struct)
 
+@MainActor
 final class AlertModelTests: XCTestCase {
 
     func testAlertModel_StoresProvidedValues() {

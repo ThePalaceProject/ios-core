@@ -38,6 +38,7 @@ import Combine
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 final class CredentialSnapshotInvalidationTests: PalaceWiringTestCase {
 
     override func setUpWithError() throws {

@@ -67,6 +67,7 @@ private final class TPPUserAccountCookieMock: TPPUserAccountMock, @unchecked Sen
     }
 }
 
+@MainActor
 final class CookiePersistenceTests: XCTestCase {
 
     // MARK: - Fixtures

@@ -10,6 +10,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class RatingEligibilityPolicyTests: XCTestCase {
 
   /// Fixed "now" so cooldown math is deterministic.

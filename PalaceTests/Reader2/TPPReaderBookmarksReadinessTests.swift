@@ -33,6 +33,7 @@ import ReadiumShared
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 class TPPReaderBookmarksReadinessTests: XCTestCase {
 
     var bookmarkBusinessLogic: TPPReaderBookmarksBusinessLogic!

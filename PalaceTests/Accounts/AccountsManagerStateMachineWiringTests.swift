@@ -21,6 +21,7 @@ import Combine
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
 
     // MARK: - Fixtures

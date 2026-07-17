@@ -14,6 +14,7 @@ import XCTest
 
 // MARK: - CatalogRepository Tests
 
+@MainActor
 final class CatalogRepositoryCoreTests: XCTestCase {
 
     private var api: CatalogAPIMock!
@@ -175,6 +176,7 @@ final class CatalogRepositoryCoreTests: XCTestCase {
 
 // MARK: - OPDSParser Tests
 
+@MainActor
 final class OPDSParserCoreTests: XCTestCase {
 
     private let parser = OPDSParser()
@@ -220,6 +222,7 @@ final class OPDSParserCoreTests: XCTestCase {
 
 // MARK: - CatalogFeed Model Tests
 
+@MainActor
 final class CatalogFeedModelTests: XCTestCase {
 
     func testCatalogFeedFromNilFeedReturnsNil() {
@@ -255,6 +258,7 @@ final class CatalogFeedModelTests: XCTestCase {
 
 // MARK: - DefaultCatalogAPI.extractSearchEntryPoints Tests
 
+@MainActor
 final class CatalogAPIEntryPointTests: XCTestCase {
 
     func testExtractSearchEntryPointsFromEmptyFeed() {

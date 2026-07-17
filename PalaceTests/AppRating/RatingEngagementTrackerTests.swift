@@ -9,6 +9,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class RatingEngagementTrackerTests: XCTestCase {
 
   private var suiteName: String!

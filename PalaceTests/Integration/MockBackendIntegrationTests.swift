@@ -12,6 +12,7 @@ import PalaceCatalog
 
 // MARK: - Happy Path
 
+@MainActor
 final class MockBackendIntegrationTests: XCTestCase {
 
     private var env: MockBackendEnvironment!
@@ -62,6 +63,7 @@ final class MockBackendIntegrationTests: XCTestCase {
 
 // MARK: - Expired Credentials
 
+@MainActor
 final class MockBackendExpiredCredentialsTests: XCTestCase {
 
     private var env: MockBackendEnvironment!
@@ -101,6 +103,7 @@ final class MockBackendExpiredCredentialsTests: XCTestCase {
 
 // MARK: - Loan Limit
 
+@MainActor
 final class MockBackendLoanLimitTests: XCTestCase {
 
     private var env: MockBackendEnvironment!
@@ -135,6 +138,7 @@ final class MockBackendLoanLimitTests: XCTestCase {
 
 // MARK: - Server Down
 
+@MainActor
 final class MockBackendServerDownTests: XCTestCase {
 
     private var env: MockBackendEnvironment!
@@ -169,6 +173,7 @@ final class MockBackendServerDownTests: XCTestCase {
 
 // MARK: - Route Matching Unit Tests
 
+@MainActor
 final class MockBackendRouteMatchingTests: XCTestCase {
 
     func testRouteMatching_ExactPath() {
@@ -213,6 +218,7 @@ final class MockBackendRouteMatchingTests: XCTestCase {
 /// loans/holds feed with one reserved hold (queue position 3 of 8) plus one
 /// ready-to-borrow hold, so the populated Holds tab can be tested without real
 /// limited-copy inventory.
+@MainActor
 final class MockBackendHoldsTests: XCTestCase {
 
     private var env: MockBackendEnvironment!

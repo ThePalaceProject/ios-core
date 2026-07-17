@@ -12,6 +12,7 @@ import XCTest
 import SwiftUI
 @testable import Palace
 
+@MainActor
 final class PalaceMotionTests: XCTestCase {
 
     // MARK: - resolved(_:reduceMotion:) — the reduce-motion gate

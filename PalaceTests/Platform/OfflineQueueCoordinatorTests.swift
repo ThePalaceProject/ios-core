@@ -13,6 +13,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class OfflineQueueCoordinatorTests: XCTestCase {
 
     // MARK: - Fakes

@@ -2,6 +2,7 @@ import XCTest
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 class TPPOPDSEntryTests: XCTestCase {
 
   var entry: TPPOPDSEntry!

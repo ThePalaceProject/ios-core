@@ -9,6 +9,7 @@ import XCTest
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 final class ProblemDocumentTests: XCTestCase {
 
     // MARK: - Problem Document Creation Tests

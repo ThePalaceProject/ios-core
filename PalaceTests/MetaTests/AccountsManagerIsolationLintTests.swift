@@ -42,6 +42,7 @@
 import Foundation
 import XCTest
 
+@MainActor
 final class AccountsManagerIsolationLintTests: XCTestCase {
 
     // MARK: - Resolution
@@ -362,6 +363,7 @@ final class AccountsManagerIsolationLintTests: XCTestCase {
     /// wiring base must be flagged; the same content WITH the base must not.
     func testWiringBaseLint_syntheticViolator() {
         let withoutBase = """
+        @MainActor
         final class RogueAccountsTests: XCTestCase {
             func testThing() {
                 let m = AccountsManager()
@@ -379,6 +381,7 @@ final class AccountsManagerIsolationLintTests: XCTestCase {
         )
 
         let withBase = """
+        @MainActor
         final class ProperAccountsTests: PalaceWiringTestCase {
             func testThing() {
                 let m = AccountsManager()

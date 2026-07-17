@@ -36,6 +36,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class MyBooksDownloadCenterAccountIdThreadingTests: XCTestCase {
 
     override func tearDown() {

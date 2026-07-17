@@ -8,6 +8,7 @@ import XCTest
 /// for SAML/OIDC so the sign-in modal is presented when needed.
 /// The handleBorrowAuthErrorIfNeeded guard must allow re-auth for
 /// genuinely expired SAML/OIDC sessions on unborrowed books.
+@MainActor
 final class SignInModalSAMLOIDCTests: XCTestCase {
 
     // MARK: - needsAuth correctness for all auth types

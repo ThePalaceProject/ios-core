@@ -11,6 +11,7 @@ import XCTest
 @testable import Palace
 
 /// SRS: SET-001 — Migration version comparison drives upgrade paths
+@MainActor
 final class TPPMigrationManagerTests: XCTestCase {
 
     // MARK: - Equal versions

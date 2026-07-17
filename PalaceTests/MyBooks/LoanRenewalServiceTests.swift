@@ -15,6 +15,7 @@ import PalaceAuth
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 final class LoanRenewalServiceTests: XCTestCase {
 
     // MARK: - Spies / stubs

@@ -13,6 +13,7 @@ import XCTest
 import Combine
 @testable import Palace
 
+@MainActor
 final class ChaosFaultInjectionTests: XCTestCase {
 
   private var cancellables: Set<AnyCancellable> = []

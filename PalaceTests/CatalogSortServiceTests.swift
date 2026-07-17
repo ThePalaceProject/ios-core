@@ -1,6 +1,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class CatalogSortServiceTests: XCTestCase {
 
     // MARK: - Test Data

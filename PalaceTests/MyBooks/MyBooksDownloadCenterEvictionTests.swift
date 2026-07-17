@@ -20,6 +20,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class MyBooksDownloadCenterEvictionTests: XCTestCase {
 
     private var tempDir: URL!

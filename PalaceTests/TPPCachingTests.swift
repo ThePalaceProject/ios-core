@@ -10,6 +10,7 @@ import XCTest
 import PalaceNetwork
 @testable import Palace
 
+@MainActor
 class TPPCachingTests: XCTestCase {
     var libraryCallResponse: HTTPURLResponse!
     var sufficientHeadersResponse: HTTPURLResponse!

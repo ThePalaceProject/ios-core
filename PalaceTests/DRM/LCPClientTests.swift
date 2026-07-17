@@ -33,6 +33,7 @@ import XCTest
 import ReadiumLCP
 import ReadiumShared
 
+@MainActor
 final class LCPClientTests: XCTestCase {
 
     // MARK: - createContext — input validation guards

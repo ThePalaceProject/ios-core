@@ -34,6 +34,7 @@ import XCTest
 import Combine
 @testable import Palace
 
+@MainActor
 class TPPBookRegistryPersistenceTests: PalaceWiringTestCase {
 
     private var account: String!

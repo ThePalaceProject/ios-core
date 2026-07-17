@@ -10,6 +10,7 @@ import ReadiumShared
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 final class PositionSyncTests: XCTestCase {
 
     // MARK: - Annotations Tests
@@ -86,6 +87,7 @@ final class PositionSyncTests: XCTestCase {
 
 // MARK: - Position Persistence Tests
 
+@MainActor
 final class PositionPersistenceTests: XCTestCase {
 
     private var bookRegistryMock: TPPBookRegistryMock!
@@ -225,6 +227,7 @@ final class PositionPersistenceTests: XCTestCase {
 
 // MARK: - Sync Conflict Resolution Tests
 
+@MainActor
 final class SyncConflictResolutionTests: XCTestCase {
 
     func testConflictResolution_serverNewer_usesServer() {
@@ -289,6 +292,7 @@ final class SyncConflictResolutionTests: XCTestCase {
 /// Tests that sync preconditions correctly gate on AccountDetails.
 /// Regression: After background catalog refresh, AccountDetails became nil,
 /// causing sync to silently fail even though the user was signed in.
+@MainActor
 final class SyncPermissionTests: XCTestCase {
 
     func testSyncIsPossible_withoutCredentials_returnsFalse() {
@@ -373,6 +377,7 @@ final class SyncPermissionTests: XCTestCase {
 /// Tests that TPPLastReadPositionSynchronizer can be created and invoked
 /// from the same context as ReaderService.makeEPUBViewController.
 /// Regression: The SwiftUI EPUB path bypassed the synchronizer entirely.
+@MainActor
 final class ReaderServiceSyncTests: XCTestCase {
 
     func testLastReadPositionSynchronizer_canBeCreated() {

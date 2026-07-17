@@ -10,6 +10,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class DownloadTaskPersistenceTests: XCTestCase {
 
     private var tempURL: URL!

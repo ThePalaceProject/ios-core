@@ -7,6 +7,7 @@ import XCTest
 /// test. The registry is process-wide; every test in this class drains the
 /// registry via `_removeAllForTests()` in `setUp` so the suite's built-in
 /// resetters do not leak into these assertions and vice-versa.
+@MainActor
 final class SingletonResetRegistryTests: XCTestCase {
 
     override func setUp() {

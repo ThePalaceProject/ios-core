@@ -15,6 +15,7 @@ import XCTest
 @testable import Palace
 @testable import PalaceCatalog
 
+@MainActor
 final class CatalogLaneAssemblyTests: XCTestCase {
 
     // MARK: - Helpers

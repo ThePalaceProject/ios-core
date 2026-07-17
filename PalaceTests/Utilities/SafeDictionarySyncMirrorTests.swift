@@ -9,6 +9,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class SafeDictionarySyncMirrorTests: XCTestCase {
 
     // MARK: - syncGet mirrors async set

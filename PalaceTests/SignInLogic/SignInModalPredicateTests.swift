@@ -22,6 +22,7 @@ import XCTest
 import SwiftUI
 @testable import Palace
 
+@MainActor
 final class SignInModalPredicateTests: XCTestCase {
 
     // MARK: - shouldAutoDismiss

@@ -18,6 +18,7 @@ import PalaceCatalog
 
 // MARK: - Non-OPDS Response Handling
 
+@MainActor
 final class OPDSFeedMigrationTests: XCTestCase {
 
     // MARK: - returnBook: non-OPDS revoke response treated as success

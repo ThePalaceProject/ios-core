@@ -14,6 +14,7 @@ import PalaceCatalog
 
 // MARK: - Unit Tests: AuthType & Authentication Model
 
+@MainActor
 final class OIDCAuthTypeTests: XCTestCase {
 
     func testAuthType_OidcRawValue_IsCorrect() {
@@ -64,6 +65,7 @@ final class OIDCAuthTypeTests: XCTestCase {
 
 // MARK: - Unit Tests: Authentication Properties
 
+@MainActor
 final class OIDCAuthenticationPropertyTests: XCTestCase {
 
     private var libraryMock: TPPLibraryAccountMock!
@@ -132,6 +134,7 @@ final class OIDCAuthenticationPropertyTests: XCTestCase {
 
 // MARK: - Unit Tests: OPDS Auth Document Parsing
 
+@MainActor
 final class OIDCAuthDocumentParsingTests: XCTestCase {
 
     func testAuthDocument_containsOidcType() {
@@ -184,6 +187,7 @@ final class OIDCAuthDocumentParsingTests: XCTestCase {
 
 // MARK: - Unit Tests: NSCoding Round-Trip
 
+@MainActor
 final class OIDCNSCodingTests: XCTestCase {
 
     func testOidcAuthentication_NSCodingRoundTrip_PreservesProperties() {
@@ -846,6 +850,7 @@ final class OIDCRegressionTests: XCTestCase {
 
 // MARK: - Regression Tests: UI ViewModel
 
+@MainActor
 final class OIDCViewModelRegressionTests: XCTestCase {
 
     private var libraryMock: TPPLibraryAccountMock!
@@ -1876,6 +1881,7 @@ final class OIDCViewModelSignInTests: XCTestCase {
 
 // MARK: - Tests: Network Layer OIDC 401 Handling
 
+@MainActor
 final class OIDCNetworkLayer401Tests: XCTestCase {
 
     func testOIDC_authDefinition_isNotToken() {

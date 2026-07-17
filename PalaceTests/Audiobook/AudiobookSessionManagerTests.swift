@@ -14,6 +14,7 @@ import PalaceCatalog
 
 // MARK: - AudiobookSessionState Tests
 
+@MainActor
 final class AudiobookSessionStateTests: XCTestCase {
 
     func testIdleState() {
@@ -65,6 +66,7 @@ final class AudiobookSessionStateTests: XCTestCase {
 
 // MARK: - AudiobookSessionError Tests
 
+@MainActor
 final class AudiobookSessionErrorExtTests: XCTestCase {
 
     func testErrorEquality() {
@@ -397,6 +399,7 @@ final class AudiobookPhoneAlertContentTests: XCTestCase {
 /// produced **zero** Crashlytics records, so the issue was invisible to ops.
 /// These tests pin the userInfo shape so future regressions don't drop the
 /// HTTP status / track URL / book id keys.
+@MainActor
 final class PlaybackFailureRecordTests: XCTestCase {
 
     private let kPalaceAudiobookDomain = "org.thepalaceproject.palace.audiobookPlayback"

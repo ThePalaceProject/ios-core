@@ -34,6 +34,7 @@ private enum OPDS1Fixture {
     }
 }
 
+@MainActor
 final class OPDS1ParsingTests: XCTestCase {
 
     // MARK: - Catalog feed (opds1_catalog.xml)

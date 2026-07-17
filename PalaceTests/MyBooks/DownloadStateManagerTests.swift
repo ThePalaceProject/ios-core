@@ -9,6 +9,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class DownloadStateManagerTests: XCTestCase {
 
     private var stateManager: DownloadStateManager!

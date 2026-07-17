@@ -16,6 +16,7 @@ import XCTest
 import PalaceAuth
 @testable import Palace
 
+@MainActor
 final class AuthCoordinatorTelemetryTests: XCTestCase {
 
     override func tearDown() {

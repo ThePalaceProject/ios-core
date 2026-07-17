@@ -12,6 +12,7 @@ import Combine
 ///      the same reducer. State updates remain on the main actor.
 ///   3. `@Published state` emits in order, giving SwiftUI a single source
 ///      of truth with no race between reads and writes.
+@MainActor
 final class StoreTests: XCTestCase {
 
     // MARK: - Fixtures

@@ -9,6 +9,7 @@ import XCTest
 import Combine
 @testable import Palace
 
+@MainActor
 final class TPPSettingsTests: XCTestCase {
 
     private var settings: TPPSettings!

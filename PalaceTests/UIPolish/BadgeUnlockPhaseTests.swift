@@ -12,6 +12,7 @@ import XCTest
 import SwiftUI
 @testable import Palace
 
+@MainActor
 final class BadgeUnlockPhaseTests: XCTestCase {
 
   func testPhaseOrder_isIdleThenPopThenSettle() {

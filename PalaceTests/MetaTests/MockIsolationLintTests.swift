@@ -43,6 +43,7 @@
 import Foundation
 import XCTest
 
+@MainActor
 final class MockIsolationLintTests: XCTestCase {
 
   // MARK: - Resolution
@@ -299,6 +300,7 @@ final class MockIsolationLintTests: XCTestCase {
     import Combine
     import XCTest
 
+    @MainActor
     final class SyntheticInheritsTests: PalaceWiringTestCase {
         var cancellables: Set<AnyCancellable> = []
         func testSomething() {

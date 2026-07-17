@@ -14,6 +14,7 @@ import Security
 import PalaceKeychain
 @testable import Palace
 
+@MainActor
 final class TPPBookBearerTokenTests: XCTestCase {
 
     private var book: TPPBook!

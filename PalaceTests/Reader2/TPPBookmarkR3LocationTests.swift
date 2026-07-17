@@ -10,6 +10,7 @@ import XCTest
 import ReadiumShared
 @testable import Palace
 
+@MainActor
 final class TPPBookmarkR3LocationTests: XCTestCase {
 
     // MARK: - Initialization Tests
@@ -288,6 +289,7 @@ final class TPPBookmarkR3LocationTests: XCTestCase {
 
 // MARK: - R3 Location Conversion Tests
 
+@MainActor
 final class TPPBookmarkR3ConversionTests: XCTestCase {
 
     private var publication: Publication!

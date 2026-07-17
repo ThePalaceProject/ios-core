@@ -11,6 +11,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class PDFExtensionsTests: XCTestCase {
 
     // MARK: - CGSize Extension Tests

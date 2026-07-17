@@ -36,6 +36,7 @@ final class InertNoOpURLProtocol: URLProtocol {
 
 // MARK: - Tests
 
+@MainActor
 final class BackgroundDownloadHandlerTests: XCTestCase {
 
     private var handler: BackgroundDownloadHandler!

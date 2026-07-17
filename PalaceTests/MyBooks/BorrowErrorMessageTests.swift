@@ -24,6 +24,7 @@ import XCTest
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 final class BorrowErrorMessageTests: XCTestCase {
 
     // MARK: - Constants

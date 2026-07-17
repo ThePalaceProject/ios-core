@@ -12,6 +12,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class FacetToolbarAccessibilityTests: XCTestCase {
 
     // MARK: - Sort Button Accessibility

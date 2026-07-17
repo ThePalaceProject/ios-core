@@ -36,6 +36,7 @@
 import Foundation
 import XCTest
 
+@MainActor
 final class AlertPresentationRawGuardLintTests: XCTestCase {
 
     // MARK: - Resolution

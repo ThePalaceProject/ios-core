@@ -10,6 +10,7 @@ import XCTest
 
 // MARK: - Network Retry Logic Tests
 
+@MainActor
 final class NetworkRetryLogicTests: XCTestCase {
 
     // MARK: - Properties
@@ -204,6 +205,7 @@ final class NetworkRetryLogicTests: XCTestCase {
 
 // MARK: - Network Timeout Tests
 
+@MainActor
 final class NetworkTimeoutTests: XCTestCase {
 
     func testTimeout_configuration() {
@@ -233,6 +235,7 @@ final class NetworkTimeoutTests: XCTestCase {
 
 // MARK: - Offline Detection Tests
 
+@MainActor
 final class NetworkOfflineDetectionTests: XCTestCase {
 
     func testNetworkReachability_hasSharedInstance() {
@@ -284,6 +287,7 @@ final class NetworkOfflineDetectionTests: XCTestCase {
 
 // MARK: - Request Queue Tests
 
+@MainActor
 final class NetworkRequestQueueTests: XCTestCase {
 
     private var config: URLSessionConfiguration!
@@ -383,6 +387,7 @@ final class NetworkRequestQueueTests: XCTestCase {
 
 // MARK: - Network Executor Tests
 
+@MainActor
 final class TPPNetworkExecutorTests: XCTestCase {
 
     func testExecutor_usesEphemeralCaching() {

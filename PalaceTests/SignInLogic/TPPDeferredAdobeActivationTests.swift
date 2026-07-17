@@ -262,6 +262,7 @@ final class TPPLoginNoActivationTests: XCTestCase {
 
 // MARK: - Book Adobe DRM Detection Tests
 
+@MainActor
 final class TPPBookRequiresAdobeDRMTests: XCTestCase {
 
     private static let testURL = URL(string: "https://test.example.com/borrow")!

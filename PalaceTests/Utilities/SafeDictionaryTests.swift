@@ -8,6 +8,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class SafeDictionaryTests: XCTestCase {
 
     // MARK: - Basic Operations

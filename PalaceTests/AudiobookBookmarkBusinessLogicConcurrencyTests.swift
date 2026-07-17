@@ -20,6 +20,7 @@ import PalaceCatalog
 @testable import Palace
 @testable import PalaceAudiobookToolkit
 
+@MainActor
 final class AudiobookBookmarkBusinessLogicConcurrencyTests: XCTestCase {
 
     // MARK: - Thread-safe mock so concurrency failures are attributable to the SUT

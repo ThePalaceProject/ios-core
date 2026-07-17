@@ -11,6 +11,7 @@ import XCTest
 /// Tests for DownloadErrorRecovery.isRetryableForUser() — PP-3707
 /// Verifies that errors are correctly classified as retryable or non-retryable
 /// for user-facing "Retry" button presentation.
+@MainActor
 final class RetryClassificationTests: XCTestCase {
 
     // MARK: - Network Errors (Retryable)

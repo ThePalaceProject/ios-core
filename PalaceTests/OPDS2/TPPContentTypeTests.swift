@@ -12,6 +12,7 @@ import PalaceCatalog
 
 // MARK: - TPPBookContentType Tests
 
+@MainActor
 final class TPPContentTypeTests: XCTestCase {
 
     // MARK: - from(mimeType:)
@@ -97,6 +98,7 @@ final class TPPContentTypeTests: XCTestCase {
 
 // MARK: - SampleType Tests
 
+@MainActor
 final class SampleTypeTests: XCTestCase {
 
     func testRawValue_ContentTypeEpubZip() {
@@ -165,6 +167,7 @@ final class SampleTypeTests: XCTestCase {
 
 // MARK: - SamplePlayerError Tests
 
+@MainActor
 final class SamplePlayerErrorTests: XCTestCase {
 
     func testNoSampleAvailable_IsError() {

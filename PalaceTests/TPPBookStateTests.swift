@@ -2,6 +2,7 @@ import XCTest
 
 @testable import Palace
 
+@MainActor
 class TPPBookStateTests: XCTestCase {
 
     func testInitWithString() {

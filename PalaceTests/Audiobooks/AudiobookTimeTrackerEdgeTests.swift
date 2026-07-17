@@ -12,6 +12,7 @@ import XCTest
 @testable import Palace
 
 /// SRS: AUDIO-003 -- Time tracking accumulates and persists correctly
+@MainActor
 final class AudiobookTimeTrackerEdgeTests: XCTestCase {
 
     private var tracker: AudiobookTimeTracker!

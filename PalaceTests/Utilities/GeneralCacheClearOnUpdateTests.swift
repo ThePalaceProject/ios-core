@@ -15,6 +15,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class GeneralCacheClearOnUpdateTests: XCTestCase {
 
     private let suiteName = "GeneralCacheClearOnUpdateTests"

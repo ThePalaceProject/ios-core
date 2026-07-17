@@ -11,6 +11,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class StringExtensionsTests: XCTestCase {
 
     // MARK: - isDate(_:moreRecentThan:with:) — happy paths

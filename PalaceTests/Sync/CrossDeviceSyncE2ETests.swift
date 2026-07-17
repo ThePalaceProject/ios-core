@@ -22,6 +22,7 @@ import ReadiumShared
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 final class CrossDeviceSyncE2ETests: XCTestCase {
 
     // MARK: - Test fixtures

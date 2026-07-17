@@ -11,6 +11,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class ErrorDetailViewControllerTests: XCTestCase {
 
     // MARK: - ErrorDetail Model Tests

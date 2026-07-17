@@ -8,6 +8,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class LCPLibraryServiceTests: XCTestCase {
 
     // MARK: - License Extension Tests
@@ -296,6 +297,7 @@ final class LCPLibraryServiceTests: XCTestCase {
 
 // MARK: - LCP DRM Fulfilled Publication Tests
 
+@MainActor
 final class DRMFulfilledPublicationTests: XCTestCase {
 
     func testDRMFulfilledPublication_storesLocalURL() {

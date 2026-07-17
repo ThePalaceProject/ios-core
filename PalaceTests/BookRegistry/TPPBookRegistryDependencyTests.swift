@@ -31,6 +31,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 class TPPBookRegistryDependencyTests: PalaceWiringTestCase {
 
     override func setUpWithError() throws {

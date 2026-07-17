@@ -14,6 +14,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class ImageCoverKeyUnificationTests: XCTestCase {
 
     func testCoverKey_cellAndPrefetch_coalesceForSmallDisplay() throws {

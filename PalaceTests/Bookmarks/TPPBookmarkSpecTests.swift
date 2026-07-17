@@ -10,6 +10,7 @@ import XCTest
 @testable import Palace
 
 // TODO: SIMPLY-3645
+@MainActor
 class TPPBookmarkSpecTests: XCTestCase {
 
     override func setUpWithError() throws {

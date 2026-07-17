@@ -11,6 +11,7 @@ import ReadiumShared
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 class TPPReaderBookmarksBusinessLogicTests: XCTestCase {
     var bookmarkBusinessLogic: TPPReaderBookmarksBusinessLogic!
     var bookRegistryMock: TPPBookRegistryMock!

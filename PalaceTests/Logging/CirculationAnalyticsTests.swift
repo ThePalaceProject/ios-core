@@ -12,6 +12,7 @@ import XCTest
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 final class CirculationAnalyticsTests: XCTestCase {
 
     // MARK: - Event URL Construction

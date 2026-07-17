@@ -35,6 +35,7 @@ import Combine
 
 // MARK: - TPPBookRegistry State Management Integration Tests
 
+@MainActor
 final class TPPBookRegistryStateManagementTests: XCTestCase {
 
     override func tearDown() {
@@ -182,6 +183,7 @@ final class TPPBookRegistryStateManagementTests: XCTestCase {
 
 // MARK: - TPPBookRegistry Combine Publisher Integration Tests
 
+@MainActor
 final class TPPBookRegistryPublisherTests: XCTestCase {
 
     private var cancellables: Set<AnyCancellable>!
@@ -372,6 +374,7 @@ final class TPPBookRegistryPublisherTests: XCTestCase {
 
 // MARK: - TPPBookRegistry Location Management Tests
 
+@MainActor
 final class TPPBookRegistryLocationTests: XCTestCase {
 
     func testSetLocation_UpdatesLocation() {
@@ -438,6 +441,7 @@ final class TPPBookRegistryLocationTests: XCTestCase {
 
 // MARK: - TPPBookRegistry Bookmark Tests
 
+@MainActor
 final class TPPBookRegistryBookmarkTests: XCTestCase {
 
     // MARK: - Generic Bookmark Tests
@@ -606,6 +610,7 @@ final class TPPBookRegistryBookmarkTests: XCTestCase {
 
 // MARK: - TPPBookRegistry Processing Flag Tests
 
+@MainActor
 final class TPPBookRegistryProcessingTests: XCTestCase {
 
     func testSetProcessing_TracksProcessingState() {
@@ -637,6 +642,7 @@ final class TPPBookRegistryProcessingTests: XCTestCase {
 
 // MARK: - TPPBookRegistry FulfillmentId Tests
 
+@MainActor
 final class TPPBookRegistryFulfillmentIdTests: XCTestCase {
 
     func testSetFulfillmentId_UpdatesFulfillmentId() {
@@ -669,6 +675,7 @@ final class TPPBookRegistryFulfillmentIdTests: XCTestCase {
 
 // MARK: - TPPBookRegistry Book Retrieval Tests
 
+@MainActor
 final class TPPBookRegistryBookRetrievalTests: XCTestCase {
 
     func testBook_ForValidIdentifier_ReturnsBook() {
@@ -767,6 +774,7 @@ final class TPPBookRegistryBookRetrievalTests: XCTestCase {
 
 // MARK: - TPPBookRegistry updateAndRemoveBook Tests
 
+@MainActor
 final class TPPBookRegistryUpdateAndRemoveTests: XCTestCase {
 
     func testUpdateAndRemoveBook_SetsStateToUnregistered() {
@@ -789,6 +797,7 @@ final class TPPBookRegistryUpdateAndRemoveTests: XCTestCase {
 
 /// Regression tests for Crashlytics issue 30c41d7e: concurrent read/write on
 /// the registry dictionary causing EXC_BAD_ACCESS.
+@MainActor
 final class TPPBookRegistryThreadSafetyTests: XCTestCase {
 
     private var cancellables: Set<AnyCancellable>!

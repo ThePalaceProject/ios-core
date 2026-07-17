@@ -10,6 +10,7 @@ import PalaceCatalog
 /// 4. First page succeeds, remaining pages fail → partial data is usable
 /// 5. Incremental crawl fails → full crawl on next attempt
 /// 6. Network completely down → returns failure (caller falls back to direct GET)
+@MainActor
 final class CrawlerFallbackTests: XCTestCase {
 
     private var fetcher: MockFallbackFetcher!

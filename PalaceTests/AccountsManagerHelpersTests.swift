@@ -10,6 +10,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class AccountsManagerHelpersTests: XCTestCase {
 
     // MARK: - shouldFinishSwitchingImmediately

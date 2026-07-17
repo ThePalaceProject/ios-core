@@ -45,6 +45,7 @@ private final class StubLibraryProvider: NSObject, TPPCurrentLibraryAccountProvi
 
 // MARK: - TPPAgeCheck.isValid()
 
+@MainActor
 final class TPPAgeCheckIsValidTests: XCTestCase {
 
     private var storage: TPPAgeCheckChoiceStorageMock!
@@ -122,6 +123,7 @@ final class TPPAgeCheckIsValidTests: XCTestCase {
 
 // MARK: - didCompleteAgeCheck / didFailAgeCheck
 
+@MainActor
 final class TPPAgeCheckCompletionTests: XCTestCase {
 
     private var storage: TPPAgeCheckChoiceStorageMock!
@@ -276,6 +278,7 @@ final class TPPAgeCheckCompletionTests: XCTestCase {
 
 // MARK: - verifyCurrentAccountAgeRequirement decision tree
 
+@MainActor
 final class TPPAgeCheckVerifyDecisionTests: XCTestCase {
 
     private var storage: TPPAgeCheckChoiceStorageMock!

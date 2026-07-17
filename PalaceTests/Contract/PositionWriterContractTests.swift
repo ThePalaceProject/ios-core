@@ -152,6 +152,7 @@ private final class FrozenClock: @unchecked Sendable {
 /// Contract-snapshot tests for `RemotePositionWriter`. Each scenario drives
 /// the real writer with a spy adapter + frozen clock and locks the call
 /// sequence into the adapter as a JSON snapshot.
+@MainActor
 final class PositionWriterContractTests: XCTestCase {
 
     override func tearDown() {

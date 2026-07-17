@@ -63,6 +63,7 @@
 import Foundation
 import XCTest
 
+@MainActor
 final class TearDownRequiredLintTests: XCTestCase {
 
   // MARK: - Resolution
@@ -298,6 +299,7 @@ final class TearDownRequiredLintTests: XCTestCase {
     let synthetic = """
     import XCTest
 
+    @MainActor
     final class SyntheticPolluterTests: XCTestCase {
         func testFoo() {
             let manager = AccountsManager()
@@ -326,6 +328,7 @@ final class TearDownRequiredLintTests: XCTestCase {
     let inherited = """
     import XCTest
 
+    @MainActor
     final class SyntheticInheritedTests: PalaceWiringTestCase {
         func testFoo() {
             let manager = AccountsManager()
@@ -355,6 +358,7 @@ final class TearDownRequiredLintTests: XCTestCase {
     let compliant = """
     import XCTest
 
+    @MainActor
     final class SyntheticCompliantTests: XCTestCase {
         var manager: AccountsManager?
 

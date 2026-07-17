@@ -10,6 +10,7 @@ import ReadiumShared
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 final class BookmarkBusinessLogicExtendedTests: XCTestCase {
 
     // MARK: - Properties
@@ -288,6 +289,7 @@ final class BookmarkBusinessLogicExtendedTests: XCTestCase {
 
 // MARK: - Bookmark Sync Tests
 
+@MainActor
 final class BookmarkSyncTests: XCTestCase {
 
     private var businessLogic: TPPReaderBookmarksBusinessLogic!
@@ -430,6 +432,7 @@ final class BookmarkSyncTests: XCTestCase {
 
 // MARK: - Is Bookmark Existing Tests
 
+@MainActor
 final class BookmarkExistenceTests: XCTestCase {
 
     private var businessLogic: TPPReaderBookmarksBusinessLogic!
@@ -644,6 +647,7 @@ final class BookmarkExistenceTests: XCTestCase {
 
 // MARK: - Bookmark Sorting Tests
 
+@MainActor
 final class BookmarkSortingTests: XCTestCase {
 
     private var bookRegistryMock: TPPBookRegistryMock!
@@ -762,6 +766,7 @@ final class BookmarkSortingTests: XCTestCase {
 
 // MARK: - Deletion Log Integration Tests
 
+@MainActor
 final class BookmarkDeletionLogTests: XCTestCase {
 
     private var businessLogic: TPPReaderBookmarksBusinessLogic!
@@ -974,6 +979,7 @@ final class BookmarkDeletionLogTests: XCTestCase {
 /// Tests for the re-authentication retry flow in bookmark syncing.
 /// These tests verify that the business logic properly attempts re-authentication
 /// when credentials are stale.
+@MainActor
 final class BookmarkReauthenticationTests: XCTestCase {
 
     private var businessLogic: TPPReaderBookmarksBusinessLogic!
@@ -1071,6 +1077,7 @@ final class BookmarkReauthenticationTests: XCTestCase {
 // MARK: - Device ID Matching Tests
 
 /// Tests for device ID matching behavior during bookmark sync.
+@MainActor
 final class BookmarkDeviceIdMatchingTests: XCTestCase {
 
     private var businessLogic: TPPReaderBookmarksBusinessLogic!

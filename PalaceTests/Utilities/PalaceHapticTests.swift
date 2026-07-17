@@ -43,6 +43,7 @@ private final class MockAccessibilityService: AccessibilityServiceProtocol, @unc
     func isHighContrastEffective() async -> Bool { false }
 }
 
+@MainActor
 final class PalaceHapticTests: XCTestCase {
 
     // MARK: - resolvedFeedback — the gating decision

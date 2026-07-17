@@ -48,6 +48,7 @@ private actor SpyPositionWriter: PositionWriter {
     }
 }
 
+@MainActor
 final class TPPLastReadPositionPosterTests: XCTestCase {
 
     // MARK: - Properties

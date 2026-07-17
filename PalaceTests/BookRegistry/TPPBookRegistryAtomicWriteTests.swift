@@ -31,6 +31,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 class TPPBookRegistryAtomicWriteTests: PalaceWiringTestCase {
 
     private var account: String!

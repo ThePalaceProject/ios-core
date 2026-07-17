@@ -13,6 +13,7 @@ import XCTest
 import SwiftUI
 @testable import Palace
 
+@MainActor
 final class CatalogLaneRowViewAccessibilityTests: XCTestCase {
 
     // MARK: - Regression Tests

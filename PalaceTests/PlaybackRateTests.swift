@@ -8,6 +8,7 @@
 import XCTest
 @testable import PalaceAudiobookToolkit
 
+@MainActor
 class PlaybackRateTests: XCTestCase {
 
   // MARK: - convert(rate:)

@@ -13,6 +13,7 @@ import XCTest
 
 /// Tests for download state machine logic using mock book registry
 /// These tests verify state transitions without creating real download sessions
+@MainActor
 final class DownloadStateMachineTests: XCTestCase {
 
     private var mockBookRegistry: TPPBookRegistryMock!
@@ -118,6 +119,7 @@ final class DownloadStateMachineTests: XCTestCase {
 
 // MARK: - Disk Space Tests
 
+@MainActor
 final class DownloadDiskSpaceTests: XCTestCase {
 
     func testAvailableDiskSpace_isPositive() {
@@ -145,6 +147,7 @@ final class DownloadDiskSpaceTests: XCTestCase {
 
 /// Tests for concurrent download state management using mock registry
 /// These tests verify multiple book state tracking without network calls
+@MainActor
 final class ConcurrentDownloadStateTests: XCTestCase {
 
     private var mockBookRegistry: TPPBookRegistryMock!
@@ -210,6 +213,7 @@ final class ConcurrentDownloadStateTests: XCTestCase {
 /// Tests for download slot release when borrow results in hold or failure
 /// Bug fix: XXXX - Download queue stuck when borrow results in hold
 /// NOTE: These tests verify state transitions without network calls
+@MainActor
 final class DownloadSlotManagementTests: XCTestCase {
 
     private var mockBookRegistry: TPPBookRegistryMock!

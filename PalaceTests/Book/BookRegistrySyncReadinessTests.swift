@@ -34,6 +34,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class BookRegistrySyncReadinessTests: XCTestCase {
 
     private var libraryMock: TPPLibraryAccountMock!

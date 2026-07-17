@@ -19,6 +19,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class TPPUserAccountConcurrencyTests: XCTestCase {
 
   /// Concurrent increments must each count exactly once.

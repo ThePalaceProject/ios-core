@@ -91,6 +91,7 @@ enum MockNetworkError: Error {
 
 /// Integration tests for DownloadCoordinator actor.
 /// Tests real concurrency behavior and state management.
+@MainActor
 final class DownloadCoordinatorIntegrationTests: XCTestCase {
 
     // MARK: - Concurrency Tests
@@ -300,6 +301,7 @@ final class DownloadCoordinatorIntegrationTests: XCTestCase {
 // MARK: - Download State Machine Integration Tests
 
 /// Tests for download state transitions using real MyBooksDownloadCenter behavior patterns.
+@MainActor
 final class DownloadStateMachineIntegrationTests: XCTestCase {
 
     private var mockBookRegistry: TPPBookRegistryMock!
@@ -635,6 +637,7 @@ final class DownloadStateMachineIntegrationTests: XCTestCase {
 // MARK: - Download Queue Integration Tests
 
 /// Tests for download queue management logic.
+@MainActor
 final class DownloadQueueIntegrationTests: XCTestCase {
 
     func testMaxConcurrentDownloads_limitsActiveDownloads() async {
@@ -715,6 +718,7 @@ final class DownloadQueueIntegrationTests: XCTestCase {
 // MARK: - Rights Management Detection Tests
 
 /// Tests for MIME type to rights management detection.
+@MainActor
 final class RightsManagementDetectionTests: XCTestCase {
 
     func testMimeType_adobeAdept_detectsAdobeRights() {
@@ -789,6 +793,7 @@ final class RightsManagementDetectionTests: XCTestCase {
 // MARK: - Download Progress Publisher Tests
 
 /// Tests for download progress Combine publisher.
+@MainActor
 final class DownloadProgressPublisherTests: XCTestCase {
 
     private var cancellables: Set<AnyCancellable> = []
@@ -859,6 +864,7 @@ final class DownloadProgressPublisherTests: XCTestCase {
 // MARK: - File URL Generation Tests
 
 /// Tests for book content file URL generation.
+@MainActor
 final class FileURLGenerationTests: XCTestCase {
 
     func testFileUrl_epubBook_hasEpubExtension() {
@@ -913,6 +919,7 @@ final class FileURLGenerationTests: XCTestCase {
 // MARK: - Redirect Handling Integration Tests
 
 /// Integration tests for download redirect handling.
+@MainActor
 final class RedirectHandlingIntegrationTests: XCTestCase {
 
     func testRedirect_httpsToHttp_blockedForSecurity() {
@@ -984,6 +991,7 @@ final class RedirectHandlingIntegrationTests: XCTestCase {
 // MARK: - Error Recovery Tests
 
 /// Tests for download error handling and retry logic.
+@MainActor
 final class DownloadErrorRecoveryTests: XCTestCase {
 
     private var mockBookRegistry: TPPBookRegistryMock!
@@ -1043,6 +1051,7 @@ final class DownloadErrorRecoveryTests: XCTestCase {
 // MARK: - Concurrent Book State Management Tests
 
 /// Tests for managing multiple book downloads concurrently.
+@MainActor
 final class ConcurrentBookStateTests: XCTestCase {
 
     private var mockBookRegistry: TPPBookRegistryMock!
@@ -1129,6 +1138,7 @@ final class ConcurrentBookStateTests: XCTestCase {
 // MARK: - Disk Budget Tests
 
 /// Tests for content disk budget management.
+@MainActor
 final class DiskBudgetTests: XCTestCase {
 
     func testDiskSpace_available_returnsPositiveValue() {

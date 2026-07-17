@@ -61,6 +61,7 @@ import Combine
 ///    private set so the base can drain on tearDown.
 ///  - Mint `AccountsManager` via `makeFreshAccountsManager()` rather
 ///    than `AccountsManager()` so the cancellation hook fires.
+@MainActor
 class PalaceWiringTestCase: PalaceTestCase {
 
     /// Combine subscription bag for the subclass. The base drains this

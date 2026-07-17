@@ -9,6 +9,7 @@ import SwiftUI
 /// (no `.shared` reads hidden in default parameters), substitution MUST work
 /// for every exposed service, and `@Environment(\.appContainer)` MUST route
 /// through the same production factory used by the app entry points.
+@MainActor
 final class AppContainerTests: XCTestCase {
 
     override func tearDown() {

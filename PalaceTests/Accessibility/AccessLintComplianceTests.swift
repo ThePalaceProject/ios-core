@@ -14,6 +14,7 @@ import XCTest
 
 // MARK: - AccessLint Compliance Tests
 
+@MainActor
 final class AccessLintComplianceTests: XCTestCase {
 
     // MARK: - A11Y.SWIFTUI.TOUCH_TARGET — Minimum 44pt

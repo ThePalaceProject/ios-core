@@ -14,6 +14,7 @@ import XCTest
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 final class DownloadCompletionParserTests: XCTestCase {
 
     private var stateManager: DownloadStateManager!

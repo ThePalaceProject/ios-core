@@ -28,6 +28,7 @@ import XCTest
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 final class BookRegistrySyncSideloadExemptionTests: XCTestCase {
 
   private let loansURLString = "https://sideload-exemption-test.example.com/loans"

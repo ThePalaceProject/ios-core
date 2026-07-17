@@ -12,6 +12,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class AudiobookAccessibilityTests: XCTestCase {
 
     // MARK: - Play/Pause Button Tests

@@ -14,6 +14,7 @@ import Combine
 
 // MARK: - AlertModel Tests
 
+@MainActor
 final class AlertModelCoverageTests: XCTestCase {
 
     // SRS: AlertModel stores title and message
@@ -84,6 +85,7 @@ final class AlertModelCoverageTests: XCTestCase {
 
 // MARK: - ImageCacheType Protocol Tests
 
+@MainActor
 final class ImageCacheTypeTests: XCTestCase {
 
     // SRS: ImageCacheType default set uses 7-day TTL
@@ -160,6 +162,7 @@ final class AppTabRouterCoverageTests: XCTestCase {
 
 // MARK: - TPPBookContentType Tests
 
+@MainActor
 final class TPPBookContentTypeExtendedTests: XCTestCase {
 
     // SRS: TPPBookContentType from nil mime type returns unsupported
@@ -205,6 +208,7 @@ final class TPPBookContentTypeExtendedTests: XCTestCase {
 
 // MARK: - URLRequest+Extensions Tests
 
+@MainActor
 final class URLRequestExtensionsCoverageTests: XCTestCase {
 
     // SRS: URLRequest init with custom user agent sets header

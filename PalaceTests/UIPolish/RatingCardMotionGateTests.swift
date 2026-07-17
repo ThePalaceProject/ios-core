@@ -12,6 +12,7 @@ import XCTest
 import SwiftUI
 @testable import Palace
 
+@MainActor
 final class RatingCardMotionGateTests: XCTestCase {
 
   // MARK: usesScaleTransition

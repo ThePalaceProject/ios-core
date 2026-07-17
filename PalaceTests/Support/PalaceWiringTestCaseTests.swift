@@ -24,6 +24,7 @@ import XCTest
 import Combine
 @testable import Palace
 
+@MainActor
 final class PalaceWiringTestCaseTests: XCTestCase {
 
     // MARK: - Probe — a minimal subclass we can drive synchronously
@@ -32,6 +33,7 @@ final class PalaceWiringTestCaseTests: XCTestCase {
     /// and `tearDownWithError` from this outer test and observe the effects.
     /// `XCTestCase`'s default no-arg `init()` is suitable for that — we never
     /// register `Probe` with the runner, we just instantiate it.
+    @MainActor
     final class Probe: PalaceWiringTestCase {
         var cancellableDrainCount: Int { return drainObservedCancellableCount }
         private(set) var drainObservedCancellableCount: Int = 0

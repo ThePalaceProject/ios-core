@@ -15,6 +15,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class BookFileManagerSideloadResolutionTests: PalaceWiringTestCase {
 
   private var tempDirectory: URL!

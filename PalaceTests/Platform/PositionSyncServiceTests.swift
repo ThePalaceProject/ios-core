@@ -12,6 +12,7 @@ import XCTest
 @testable import Palace
 import PalaceReadingPosition
 
+@MainActor
 final class PositionSyncServiceTests: XCTestCase {
 
     private var service: PositionSyncService!

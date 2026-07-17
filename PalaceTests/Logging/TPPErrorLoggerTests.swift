@@ -9,6 +9,7 @@ import XCTest
 @testable import Palace
 
 /// SRS: DRM-001 - Error code taxonomy and severity classification
+@MainActor
 final class TPPErrorLoggerTests: XCTestCase {
 
     // MARK: - TPPSeverity String Value Tests
@@ -379,6 +380,7 @@ final class TPPErrorLoggerTests: XCTestCase {
 
 // MARK: - ReaderError Tests
 
+@MainActor
 final class ReaderErrorTests: XCTestCase {
 
     func testFormatNotSupported_hasErrorDescription() {

@@ -11,6 +11,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class CatalogCacheMetadataTests: XCTestCase {
 
     // MARK: - isStale (default TTL = 6 hours)

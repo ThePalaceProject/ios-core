@@ -19,6 +19,7 @@ import XCTest
 /// Every test constructs a fresh `RemoteFeatureFlags(defaults:)` with a
 /// per-suite `UserDefaults` so override-key state never leaks — `.shared` is
 /// never touched.
+@MainActor
 final class RemoteFeatureFlagsSideLoadingTests: XCTestCase {
 
     private var suiteName: String!

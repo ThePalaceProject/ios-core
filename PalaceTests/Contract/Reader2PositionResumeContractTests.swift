@@ -188,6 +188,7 @@ private final class RecordingResumeRegistry: NSObject, TPPBookRegistryProvider, 
 
 // MARK: - Tests
 
+@MainActor
 final class Reader2PositionResumeContractTests: XCTestCase {
 
     private let bookIdentifier = "contract-reader2-resume-1"

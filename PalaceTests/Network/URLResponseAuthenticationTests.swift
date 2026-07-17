@@ -10,6 +10,7 @@ import PalaceAuth
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 final class URLResponseAuthenticationTests: XCTestCase {
 
     private let testURL = URL(string: "https://example.com/api")!
@@ -142,6 +143,7 @@ final class URLResponseAuthenticationTests: XCTestCase {
 /// Tests for cross-domain redirect 401 handling
 /// When a request is redirected to a different domain and returns 401,
 /// we should NOT mark credentials as stale since the 401 is from a third-party.
+@MainActor
 final class CrossDomain401Tests: XCTestCase {
 
     private let palaceURL = URL(string: "https://gorgon.palaceproject.io/library/book")!
@@ -289,6 +291,7 @@ final class CrossDomain401Tests: XCTestCase {
 /// Server uses URL path conventions to classify auth errors:
 /// - /auth/recoverable/* -> client should re-authenticate
 /// - /auth/unrecoverable/* -> client should display error to user
+@MainActor
 final class AuthErrorCategoryTests: XCTestCase {
 
     private let testURL = URL(string: "https://example.com/api")!

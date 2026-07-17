@@ -210,6 +210,7 @@ enum SynchronizerTestFixtures {
 
 // MARK: - Main Test Case
 
+@MainActor
 final class TPPLastReadPositionSynchronizerTests: XCTestCase {
 
     private var sut: TPPLastReadPositionSynchronizer!
@@ -685,6 +686,7 @@ final class TPPLastReadPositionSynchronizerTests: XCTestCase {
 
 /// Tests for the real TPPLastReadPositionSynchronizer class.
 /// These tests focus on initialization and non-network functionality.
+@MainActor
 final class TPPLastReadPositionSynchronizerIntegrationTests: XCTestCase {
 
     private var mockRegistry: TPPBookRegistryMock!
@@ -796,6 +798,7 @@ final class TPPLastReadPositionSynchronizerIntegrationTests: XCTestCase {
 // MARK: - TPPBookLocation Tests
 
 /// Tests for TPPBookLocation which is used by the synchronizer.
+@MainActor
 final class TPPLastReadPositionSynchronizer_BookLocationTests: XCTestCase {
 
     func testTPPBookLocation_Creation_WithValidParameters() {
@@ -922,6 +925,7 @@ final class TPPLastReadPositionSynchronizer_BookLocationTests: XCTestCase {
 // MARK: - TPPReadiumBookmark Tests
 
 /// Tests for TPPReadiumBookmark which represents server annotations.
+@MainActor
 final class TPPLastReadPositionSynchronizer_ReadiumBookmarkTests: XCTestCase {
 
     func testReadiumBookmark_Init_WithValidParameters() {
@@ -1134,6 +1138,7 @@ final class TPPLastReadPositionSynchronizer_ReadiumBookmarkTests: XCTestCase {
 // MARK: - Sync Logic Edge Case Tests
 
 /// Focused tests on sync decision edge cases and boundary conditions.
+@MainActor
 final class TPPLastReadPositionSynchronizer_SyncLogicTests: XCTestCase {
 
     // MARK: - Complex Location String Tests
@@ -1387,6 +1392,7 @@ final class TPPLastReadPositionSynchronizer_SyncLogicTests: XCTestCase {
 // MARK: - Concurrent Access Tests
 
 /// Tests for thread safety and concurrent access patterns.
+@MainActor
 final class TPPLastReadPositionSynchronizer_ConcurrencyTests: XCTestCase {
 
     private var mockRegistry: TPPBookRegistryMock!
@@ -1525,6 +1531,7 @@ final class TPPLastReadPositionSynchronizer_ConcurrencyTests: XCTestCase {
 // MARK: - Documentation Tests
 
 /// Tests that serve as executable documentation for expected behavior.
+@MainActor
 final class TPPLastReadPositionSynchronizer_BehaviorDocumentationTests: XCTestCase {
 
     /// Documents: When server has no reading position, no sync occurs.
@@ -1639,6 +1646,7 @@ private actor SynchronizerSpyWriter: PositionWriter {
 /// an injected spy `PositionWriter`. These tests exercise the actual class
 /// (not `SyncDecisionHelper`) — they catch regressions in the delegation
 /// to `PositionWriter.load` and in the conflict-resolution wiring.
+@MainActor
 final class TPPLastReadPositionSynchronizer_WriterDelegationTests: XCTestCase {
 
     private var bookRegistryMock: TPPBookRegistryMock!

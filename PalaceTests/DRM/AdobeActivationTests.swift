@@ -37,6 +37,7 @@ import XCTest
 // FEATURE_DRM_CONNECTOR gate. Mirrors the same approach as
 // PalaceTests/MyBooks/AdobeDRMHandlerTests.swift.
 
+@MainActor
 final class AdobeActivationTests: XCTestCase {
 
     private var drm: TPPDRMAuthorizingMock!

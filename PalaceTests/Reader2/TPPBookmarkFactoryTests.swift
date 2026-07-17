@@ -11,6 +11,7 @@ import ReadiumShared
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 final class TPPBookmarkFactoryTests: XCTestCase {
 
     // MARK: - Properties
@@ -555,6 +556,7 @@ final class TPPBookmarkFactoryTests: XCTestCase {
 
 // MARK: - Server Annotation Edge Cases
 
+@MainActor
 final class TPPBookmarkFactoryServerAnnotationEdgeCaseTests: XCTestCase {
 
     private var testBook: TPPBook!
@@ -741,6 +743,7 @@ final class TPPBookmarkFactoryServerAnnotationEdgeCaseTests: XCTestCase {
 
 // MARK: - Initialization Tests
 
+@MainActor
 final class TPPBookmarkFactoryInitTests: XCTestCase {
 
     func testInit_StoresProperties() {

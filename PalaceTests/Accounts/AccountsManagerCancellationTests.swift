@@ -36,6 +36,7 @@ import XCTest
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 class AccountsManagerCancellationTests: PalaceWiringTestCase {
 
     // MARK: - Tests

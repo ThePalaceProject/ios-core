@@ -12,6 +12,7 @@ import PalaceCatalog
 import ReadiumNavigator
 @testable import Palace
 
+@MainActor
 final class ReaderEditingActionsTests: XCTestCase {
 
     override func tearDown() {

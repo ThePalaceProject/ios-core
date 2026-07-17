@@ -78,6 +78,7 @@ private final class TwoLibraryAccountsProviderMock: NSObject, TPPLibraryAccounts
     }
 }
 
+@MainActor
 final class MultiLibraryTokenIsolationTests: XCTestCase {
 
     // MARK: - Fixtures

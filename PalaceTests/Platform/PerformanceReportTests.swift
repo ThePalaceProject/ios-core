@@ -9,6 +9,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class PerformanceReportTests: XCTestCase {
 
     // MARK: - Percentile Calculation

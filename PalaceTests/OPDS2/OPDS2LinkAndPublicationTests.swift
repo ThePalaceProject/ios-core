@@ -13,6 +13,7 @@ import PalaceCatalog
 // MARK: - OPDS2Link Computed Properties Tests
 
 /// SRS: CAT-002 — OPDS 2.0 feed parsing with authentication documents
+@MainActor
 final class OPDS2LinkComputedPropertyTests: XCTestCase {
 
     // MARK: - hrefURL
@@ -185,6 +186,7 @@ final class OPDS2LinkComputedPropertyTests: XCTestCase {
 
 // MARK: - OPDS2 Availability Tests
 
+@MainActor
 final class OPDS2AvailabilityTests: XCTestCase {
 
     func testIsAvailable_AvailableState_ReturnsTrue() {
@@ -223,6 +225,7 @@ final class OPDS2AvailabilityTests: XCTestCase {
 // MARK: - OPDS2LinkArray Extension Tests
 
 /// SRS: CAT-002 — OPDS 2.0 feed parsing with authentication documents
+@MainActor
 final class OPDS2LinkArrayTests: XCTestCase {
 
     func testAllRel_MatchingLinks_ReturnsFiltered() {
@@ -281,6 +284,7 @@ final class OPDS2LinkArrayTests: XCTestCase {
 // MARK: - OPDS2Publication Tests
 
 /// SRS: CAT-002 — OPDS 2.0 feed parsing with authentication documents
+@MainActor
 final class OPDS2PublicationImageTests: XCTestCase {
 
     func testImageURL_PNGImage_ReturnsURL() {
@@ -349,6 +353,7 @@ final class OPDS2PublicationImageTests: XCTestCase {
 // silently dropping it, so audiobooks served via the lightweight feed have
 // no narrator row in the book details view (PP-4230).
 
+@MainActor
 final class OPDS2PublicationNarratorTests: XCTestCase {
 
     /// Behavioral: an OPDS2 publication JSON that includes `narrator` must
@@ -443,6 +448,7 @@ final class OPDS2PublicationNarratorTests: XCTestCase {
 // MARK: - OPDS2FullPublication Tests
 
 /// SRS: CAT-002 — OPDS 2.0 feed parsing with authentication documents
+@MainActor
 final class OPDS2FullPublicationTests: XCTestCase {
 
     private func makeFullPublication(
@@ -659,6 +665,7 @@ final class OPDS2FullPublicationTests: XCTestCase {
 // MARK: - OPDS2FullMetadata Decoding Tests
 
 /// SRS: CAT-002 — OPDS 2.0 feed parsing with authentication documents
+@MainActor
 final class OPDS2FullMetadataTests: XCTestCase {
 
     func testDecode_AtIdKey_ParsesIdentifier() throws {
@@ -729,6 +736,7 @@ final class OPDS2FullMetadataTests: XCTestCase {
 
 // MARK: - OPDS2Contributor Decoding Tests
 
+@MainActor
 final class OPDS2ContributorTests: XCTestCase {
 
     func testDecode_StringValue_ParsesAsName() throws {
@@ -755,6 +763,7 @@ final class OPDS2ContributorTests: XCTestCase {
 
 // MARK: - OPDS2Subject Decoding Tests
 
+@MainActor
 final class OPDS2SubjectTests: XCTestCase {
 
     func testDecode_StringValue_ParsesAsName() throws {
@@ -781,6 +790,7 @@ final class OPDS2SubjectTests: XCTestCase {
 
 // MARK: - OPDS2 Supporting Types Tests
 
+@MainActor
 final class OPDS2SupportingTypesTests: XCTestCase {
 
     func testPrice_CodableRoundTrip() throws {

@@ -143,6 +143,7 @@ private final class NilCurrentAccountProvider: NSObject, TPPCurrentLibraryAccoun
 
 // MARK: - Tests
 
+@MainActor
 final class Reader2BookmarkContractTests: XCTestCase {
 
     private let bookIdentifier = "contract-reader2-bookmark-1"

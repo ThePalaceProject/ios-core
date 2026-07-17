@@ -12,6 +12,7 @@ import XCTest
 import PalaceNetwork
 @testable import Palace
 
+@MainActor
 final class SAMLCookieSyncTests: XCTestCase {
 
     override func setUp() {
@@ -126,6 +127,7 @@ final class SAMLCookieSyncTests: XCTestCase {
 
 // MARK: - Sign-Out Cache Clearing Tests
 
+@MainActor
 final class SignOutCacheClearingTests: XCTestCase {
 
     func testClearCache_doesNotCrash_andExecutorStaysReusable() {

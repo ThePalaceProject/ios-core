@@ -9,6 +9,7 @@ import XCTest
 import PalaceNetwork
 @testable import Palace
 
+@MainActor
 final class TPPBasicAuthTests: XCTestCase {
 
     // MARK: - Properties

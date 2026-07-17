@@ -195,6 +195,7 @@ private final class RecordingRegistry: NSObject, TPPBookRegistryProvider, @unche
 
 // MARK: - Tests
 
+@MainActor
 final class AudiobookPositionAdapterContractTests: XCTestCase {
 
     private let bookIdentifier = "contract-audiobook-1"

@@ -10,6 +10,7 @@ import Network
 @testable import PalaceNetwork
 @testable import Palace
 
+@MainActor
 final class ReachabilityTests: XCTestCase {
 
     override func tearDown() {

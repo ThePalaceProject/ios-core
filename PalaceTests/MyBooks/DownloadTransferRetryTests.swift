@@ -12,6 +12,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class DownloadTransferRetryTests: XCTestCase {
 
     private var mockRegistry: TPPBookRegistryMock!

@@ -11,6 +11,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class PDFSearchEmptyStateTests: XCTestCase {
 
   func testShowsNoResults_committedQueryWithZeroMatches_showsEmptyState() {

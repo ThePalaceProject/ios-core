@@ -22,6 +22,7 @@
 import Foundation
 import XCTest
 
+@MainActor
 final class TPPUserAccountIsolationLintTests: XCTestCase {
 
     // MARK: - Resolution

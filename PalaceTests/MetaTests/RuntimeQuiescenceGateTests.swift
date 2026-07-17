@@ -22,6 +22,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class RuntimeQuiescenceGateTests: PalaceTestCase {
 
     // MARK: - Detector proves it FIRES on a synthetic polluter

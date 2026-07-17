@@ -96,6 +96,7 @@ private final class SpyPositionWriter: PositionWriter, @unchecked Sendable {
 
 // MARK: - Tests
 
+@MainActor
 final class AudiobookBookmarkBusinessLogicPositionWriteTests: XCTestCase {
 
     private let bookIdentifier = "spy-book-1"

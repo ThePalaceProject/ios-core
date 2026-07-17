@@ -26,6 +26,7 @@ import XCTest
 import PalaceNetwork
 @testable import Palace
 
+@MainActor
 final class NetworkCacheClearRoutingTests: XCTestCase {
 
     override func tearDown() {

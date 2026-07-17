@@ -107,6 +107,7 @@ final class UserDefaultsIsolationLintTests: XCTestCase {
     func testLintCatchesSyntheticViolatorIfStrictModeEnabled() {
         let cleanInput = """
         import XCTest
+        @MainActor
         final class CleanTests: XCTestCase {
             func test_doesNotMentionTheBannedString() {
                 let defaults = testUserDefaults()
@@ -121,6 +122,7 @@ final class UserDefaultsIsolationLintTests: XCTestCase {
 
         let dirtyInput = """
         import XCTest
+        @MainActor
         final class DirtyTests: XCTestCase {
             func test_usesStandard() {
                 UserDefaults.standard.set(true, forKey: "bad")

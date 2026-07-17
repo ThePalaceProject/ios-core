@@ -37,6 +37,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 class AccountSwitchLifecycleTests: PalaceWiringTestCase {
 
     /// Two distinct library UUIDs so the per-library account cache keeps

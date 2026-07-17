@@ -9,6 +9,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 class TPPJWKConversionTest: XCTestCase {
 
     var jwkResponseData: Data!

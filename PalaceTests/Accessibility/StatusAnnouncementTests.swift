@@ -14,6 +14,7 @@ import Combine
 
 // MARK: - Status Announcement Integration Tests (PP-3673)
 
+@MainActor
 final class StatusAnnouncementTests: XCTestCase {
 
     // MARK: - Helpers

@@ -12,6 +12,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class DeviceSpecificErrorMonitorTests: XCTestCase {
 
     private var sut: DeviceSpecificErrorMonitor!

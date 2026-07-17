@@ -8,6 +8,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class URLExtensionsTests: XCTestCase {
 
     // MARK: - replacingScheme Tests

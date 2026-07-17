@@ -13,6 +13,7 @@ import XCTest
 import PDFKit
 @testable import Palace
 
+@MainActor
 final class PDFKitThumbnailProviderTests: XCTestCase {
 
     /// Build an in-memory PDF with `pageCount` US-letter pages.

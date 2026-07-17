@@ -25,6 +25,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 class TPPBookRegistryMigrationTests: PalaceWiringTestCase {
 
     private var account: String!

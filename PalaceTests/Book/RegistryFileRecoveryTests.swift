@@ -12,6 +12,7 @@
 import XCTest
 @testable import Palace
 
+@MainActor
 final class RegistryFileRecoveryTests: XCTestCase {
 
   private var tempDir: URL!

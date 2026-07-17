@@ -11,6 +11,7 @@ import XCTest
 import PalaceAuth
 @testable import Palace
 
+@MainActor
 final class TokenResponseTests: XCTestCase {
 
     // MARK: - Initialization Tests

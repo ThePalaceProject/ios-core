@@ -10,6 +10,7 @@ import XCTest
 
 /// Note: TPPReauthenticator requires UI presentation (SignInModalPresenter) which cannot
 /// be tested in unit tests. Use TPPReauthenticatorMockTests for testing reauthentication logic.
+@MainActor
 final class TPPReauthenticatorTests: XCTestCase {
 
     // MARK: - Properties
@@ -83,6 +84,7 @@ final class TPPReauthenticatorTests: XCTestCase {
 
 // MARK: - Mock Reauthenticator Tests
 
+@MainActor
 final class TPPReauthenticatorMockTests: XCTestCase {
 
     private var mockReauthenticator: TPPReauthenticatorMock!

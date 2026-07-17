@@ -10,6 +10,7 @@ import XCTest
 import PalaceCatalog
 @testable import Palace
 
+@MainActor
 final class OPDS2IntegrationTests: XCTestCase {
 
     private var feed: OPDS2Feed!
