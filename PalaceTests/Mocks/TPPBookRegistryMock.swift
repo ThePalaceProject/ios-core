@@ -231,8 +231,23 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistryProvider, @unchecked Sendabl
         registrySubject.send(snapshot)
         bookStateSubject.send((book.identifier, state))
 
-        // Simulate Notification (if real registry sends one)
-        NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
+        // Simulate Notification (the real registry sends one). Honor the
+        // production thread contract: every real poster of
+        // `.TPPBookRegistryDidChange` posts on the MAIN thread
+        // (BookRegistryStore / BookRegistrySync wrap the post in
+        // `DispatchQueue.main.async`). App-hosted tests have a live
+        // `MyBooksViewModel` whose `@MainActor` NotificationCenter observer
+        // asserts main-thread isolation (Swift 6) — posting off-main here
+        // crashed it (EXC_BREAKPOINT). Preserve identical synchronous timing for
+        // on-main callers (the vast majority of suites); only off-main callers
+        // (e.g. the async borrow path) defer to main, matching production.
+        if Thread.isMainThread {
+            NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
+        } else {
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
+            }
+        }
     }
 
     func removeBook(forIdentifier bookIdentifier: String) {

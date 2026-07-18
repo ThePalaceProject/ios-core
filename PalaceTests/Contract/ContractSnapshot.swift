@@ -72,9 +72,21 @@ public enum ContractSnapshot {
         named name: String,
         record: Bool = false,
         file: StaticString = #file,
+        filePath: StaticString = #filePath,
         line: UInt = #line
     ) {
-        let testFileURL = URL(fileURLWithPath: "\(file)")
+        // Resolve the snapshot directory from `#filePath`, NOT `#file`. Under
+        // the Swift 6 language mode (PalaceTests is Swift 6) `#file` uses the
+        // concise `ConciseMagicFile` form — `PalaceTests/<File>.swift`, a
+        // *module-relative* string with no directory component. Resolved
+        // against the test process's CWD (`/` on the simulator) that becomes
+        // `/PalaceTests/__Snapshots__/…`, a read-only path, so recording a new
+        // baseline fails with NSCocoaError 642 (read-only file system).
+        // `#filePath` is always the full compile-time source path on the build
+        // host (unaffected by ConciseMagicFile), and the simulator shares the
+        // host filesystem, so it is both correct and host-writable. `file` is
+        // kept solely for XCTFail's failure-location reporting.
+        let testFileURL = URL(fileURLWithPath: "\(filePath)")
         let testFileBaseName = testFileURL.deletingPathExtension().lastPathComponent
         let snapshotDir = testFileURL
             .deletingLastPathComponent()

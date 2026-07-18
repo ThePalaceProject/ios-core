@@ -889,7 +889,8 @@ private final class DownloadFailureMetadataBox: @unchecked Sendable {
             presentBorrowErrorAlert: presentBorrowErrorAlertClosure,
             presentSignInModal: presentSignInModalClosure,
             attemptOIDCReauth: attemptOIDCReauthClosure,
-            authCoordinator: authCoordinator
+            authCoordinator: authCoordinator,
+            onBorrowSucceeded: { AppContainer.production().ratingPromptPresenter.noteBorrowSucceeded() }
         )
         #else
         self.borrowOperation = borrowOperation ?? BorrowOperation(
@@ -903,7 +904,8 @@ private final class DownloadFailureMetadataBox: @unchecked Sendable {
             presentBorrowErrorAlert: presentBorrowErrorAlertClosure,
             presentSignInModal: presentSignInModalClosure,
             attemptOIDCReauth: attemptOIDCReauthClosure,
-            authCoordinator: authCoordinator
+            authCoordinator: authCoordinator,
+            onBorrowSucceeded: { AppContainer.production().ratingPromptPresenter.noteBorrowSucceeded() }
         )
         #endif
 

@@ -1,5 +1,17 @@
 # HANDOFF — swarm_8ce6f5ae (world-class state-management) — resume E2 + test creation
 
+> ## UPDATE 2026-07-17 (session 2, Opus + Fable-adjudicated): E2 CODE COMPLETE + VERIFIED
+> - **ContractSnapshot write-path fixed** — Swift-6 `ConciseMagicFile` made `#file` module-relative → read-only `/PalaceTests/__Snapshots__`. Now resolves from `#filePath`. All 17 previously-unrecordable baselines now record.
+> - **E2 cores shipped:** `DownloadStartReducer`, `ReturnReducer`, `BorrowReducerCore` (Palace/MyBooks/) — pure `reduce`→`[Effect]` cores; runners (dispatcher/service/operation) rewired to delegate. Each + a `*ContractTests.swift`. All 6 files in pbxproj (both targets).
+> - **Behavior preservation PROVEN:** post-E2 record pass re-recorded the committed DownloadStartDispatcher (12) + BookReturnService (9) snapshots BYTE-IDENTICAL (`git diff` empty). Borrow-success snapshots gained only the expected `noteBorrowSucceeded`. Verify pass (record OFF): **80 contract tests, 0 failures, TEST EXECUTE SUCCEEDED**.
+> - **Two crashes fixed (Fable-adjudicated):** (1) borrow-success MainActor deadlock on `BorrowOperation:472 AppContainer.production()` → injected `onBorrowSucceeded` seam (wired at MBDC). (2) borrow-success EXC_BREAKPOINT in `MyBooksViewModel.registerNotifications():343` → root cause was `TPPBookRegistryMock` posting `.TPPBookRegistryDidChange` OFF-main (production always posts on main); fixed the mock (guarded main-thread post, near-zero blast radius). MyBooksViewModel UNTOUCHED.
+> - **Mutation:** in progress on the 3 cores (DownloadStart initially 8/9; added killing test for the L150 `&&`→`||` auto-borrow-gate survivor).
+> - **Carry items for Monday:** (a) full `xcode-test-optimized.sh` must confirm the mock's now-async-off-main post doesn't bleed a `MyBooksViewModel.loadData()` debounce into a later test (green-board gate); (b) file a HARDENING follow-up — add `.receive(on: DispatchQueue.main)` before the `.map` at MyBooksViewModel.swift:343-344 (latent: a future off-main PRODUCTION poster would trip the same assert); (c) C-file mutation (TPPBookRegistry/TPPBookState); then F + simdrive + /forge-review + merge.
+> - **Streaming borrow service test:** now PASSES (was the pre-existing hang/crash). Kept, not skipped.
+
+---
+
+
 **You are a fresh context.** This file + the contracts in this dir + `CLAUDE.md` are
 everything you need. Read this top-to-bottom once, then work the ordered task list.
 Memory pin: `swarm-8ce6f5ae-worldclass-statemgmt`. Campaign report artifact + full

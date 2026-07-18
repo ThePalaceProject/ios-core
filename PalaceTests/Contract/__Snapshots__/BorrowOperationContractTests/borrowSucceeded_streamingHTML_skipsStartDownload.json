@@ -2,7 +2,7 @@
   {
     "args" : {
       "resetCache" : "true",
-      "url" : "F014-OK",
+      "url" : "BORROW-STREAM",
       "useToken" : "true"
     },
     "method" : "fetchBook"
@@ -12,12 +12,5 @@
 
     },
     "method" : "noteBorrowSucceeded"
-  },
-  {
-    "args" : {
-      "bookId" : "F014-OK",
-      "hasRequest" : "false"
-    },
-    "method" : "startDownload"
   }
 ]

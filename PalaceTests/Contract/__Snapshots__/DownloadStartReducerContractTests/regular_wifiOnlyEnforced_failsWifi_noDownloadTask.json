@@ -1,0 +1,8 @@
+[
+  {
+    "args" : {
+      "bookId" : "DSR-BOOK"
+    },
+    "method" : "failWithWifiRequired"
+  }
+]

@@ -117,7 +117,13 @@ final class BorrowOperationContractTests: XCTestCase {
             attemptOIDCReauth: {
                 callLog.record("attemptOIDCReauth", args: [:])
                 return false
-            }
+            },
+            // Record the injected success side effect (app-rating trigger) so
+            // the success-path snapshot pins it — shape-equal to the
+            // `.noteBorrowSucceeded` effect emitted by BorrowReducerCore. Also
+            // keeps the @MainActor success path from building the production DI
+            // graph (which deadlocked this @MainActor test).
+            onBorrowSucceeded: { callLog.record("noteBorrowSucceeded", args: [:]) }
         )
         operation.delegate = spyDelegate
     }
