@@ -91,6 +91,20 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
     # already runs this way (workers=4) successfully; Xcode merges the clones into the single
     # TestResults.xcresult so the downstream summary.failed gate is unchanged. Tune via CI_TEST_WORKERS if a
     # runner has fewer cores (Xcode caps workers to available cores regardless).
+    # Clean the test build in CI to defeat stale-DerivedData masking (layer 1).
+    # CI caches DerivedData per-branch (with a cross-branch restore-keys
+    # fallback) and this CI path never cleaned, so a broken test target could
+    # pass by REUSING compiled objects from a green cache — Xcode's incremental
+    # build skips a file whose own source is unchanged even when a transitive
+    # input made it stop compiling. That silently hid develop's Swift 6 test
+    # break behind green checks. A trustworthy board is worth the rebuild time
+    # (green-board contract). Override with PALACE_TEST_NO_CLEAN=1 if a runner
+    # must trade correctness for speed.
+    if [ "${PALACE_TEST_NO_CLEAN:-0}" != "1" ]; then
+        echo "🧹 CI: clean build (defeats stale-DerivedData masking)"
+        xcodebuild clean -project Palace.xcodeproj -scheme Palace > /dev/null 2>&1 || true
+    fi
+
     # Capture xcodebuild output so we can detect a COMPILE failure that
     # `xcodebuild test` masks. Under `-parallel-testing-enabled` xcodebuild can
     # exit 0 even when a test bundle fails to BUILD: the sibling bundles that DID
