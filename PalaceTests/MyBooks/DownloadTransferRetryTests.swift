@@ -65,7 +65,10 @@ final class DownloadTransferRetryTests: XCTestCase {
         let retried = await center.maybeRetryTransientTransfer(task: task(42), error: urlError(NSURLErrorTimedOut))
 
         XCTAssertTrue(retried, "a transient transfer error under the cap must schedule a retry")
-        let count = await stateManager.transferRetryAttempts(for: book.identifier)
+        // Read the counter on the (Sendable) SafeDictionary actor rather than via
+        // a DownloadStateManager instance method — awaiting a method on the
+        // non-Sendable manager would send it off @MainActor (Swift 6 data-race).
+        let count = await stateManager.transferRetryCounts.get(book.identifier) ?? 0
         XCTAssertEqual(count, 1, "retry must bump the per-book attempt counter")
     }
 
@@ -79,7 +82,7 @@ final class DownloadTransferRetryTests: XCTestCase {
             task: task(7), error: urlError(NSURLErrorUserAuthenticationRequired))
 
         XCTAssertFalse(retried)
-        let count = await stateManager.transferRetryAttempts(for: book.identifier)
+        let count = await stateManager.transferRetryCounts.get(book.identifier) ?? 0
         XCTAssertEqual(count, 0, "a non-retryable error must not touch the retry counter")
     }
 
@@ -101,13 +104,18 @@ final class DownloadTransferRetryTests: XCTestCase {
     func testTransientError_atCap_stopsRetryingAndResetsCounter() async {
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
         await stateManager.taskIdentifierToBook.set(9, value: book)
-        // Exhaust the cap (maxTransferRetries == 3).
-        for _ in 0..<3 { await stateManager.incrementTransferRetryAttempts(for: book.identifier) }
+        // Exhaust the cap (maxTransferRetries == 3). Increment on the (Sendable)
+        // SafeDictionary actor — atomic +1 with a 0 default, matching
+        // DownloadStateManager.incrementTransferRetryAttempts — so no non-Sendable
+        // manager instance is sent off @MainActor (Swift 6 data-race guard).
+        for _ in 0..<3 {
+            await stateManager.transferRetryCounts.updateValue(book.identifier, default: 0) { $0 += 1 }
+        }
 
         let retried = await center.maybeRetryTransientTransfer(task: task(9), error: urlError(NSURLErrorTimedOut))
 
         XCTAssertFalse(retried, "at the attempt cap the retry stops and the normal failure path runs")
-        let count = await stateManager.transferRetryAttempts(for: book.identifier)
+        let count = await stateManager.transferRetryCounts.get(book.identifier) ?? 0
         XCTAssertEqual(count, 0, "exhausting the cap resets the counter for future independent failures")
     }
 

@@ -60,7 +60,16 @@ final class DownloadStateManager: DownloadStateManaging {
 
     /// Per-book transient-transfer retry counter (content transfer only). Reset
     /// on terminal completion so a later independent failure starts fresh.
-    private let transferRetryCounts = SafeDictionary<String, Int>()
+    ///
+    /// Non-`private` (but only mutated through the `transferRetryAttempts` /
+    /// `incrementTransferRetryAttempts` / `resetTransferRetryAttempts` seam
+    /// below) so tests can await the counter directly on this `SafeDictionary`
+    /// actor — mirroring how the public `taskIdentifierToBook` /
+    /// `bookIdentifierToDownloadInfo` actors are read in tests. Awaiting the
+    /// (Sendable) actor avoids sending the non-Sendable `DownloadStateManager`
+    /// instance across the actor boundary from a `@MainActor` test, which Swift 6
+    /// rejects.
+    let transferRetryCounts = SafeDictionary<String, Int>()
 
     init(taskPersistence: DownloadTaskPersistence = DownloadTaskPersistence()) {
         self.taskPersistence = taskPersistence
