@@ -413,6 +413,12 @@ final class ResponseQualityTests: XCTestCase {
              expect: .shouldMatch(entryId: "HT-2026-003-switch-library"),
              source: "common patron question — multiple libraries in one app"),
 
+        // === HT-2026-004 notifications / reminders (how_to) ===
+        Case(userText: "how do I get notified when my hold is ready",
+             category: .other, context: nil,
+             expect: .shouldMatch(entryId: "HT-2026-004-notifications"),
+             source: "HelpSpot 18103 — hold-ready + due-soon reminders; enable notifications"),
+
         // how_to negative — no FAQ answer exists; must still escalate, not
         // grab a loosely-related how_to.
         Case(userText: "how do I delete my account permanently",

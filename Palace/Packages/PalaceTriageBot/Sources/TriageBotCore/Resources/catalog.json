@@ -754,7 +754,9 @@
       "escalate_anyway": false,
       "helpspot_tag": "how-to-renewals",
       "trust_level": "authoritative",
-      "visibility": "user_facing"
+      "visibility": "user_facing",
+      "ui_surface": "catalog",
+      "reviewed_at": "2026-07-20"
     },
     {
       "id": "HT-2026-002-return-early",
@@ -783,7 +785,9 @@
       "escalate_anyway": false,
       "helpspot_tag": "how-to-return-early",
       "trust_level": "authoritative",
-      "visibility": "user_facing"
+      "visibility": "user_facing",
+      "ui_surface": "my-books",
+      "reviewed_at": "2026-07-20"
     },
     {
       "id": "HT-2026-003-switch-library",
@@ -810,7 +814,38 @@
       "escalate_anyway": false,
       "helpspot_tag": "how-to-switch-library",
       "trust_level": "authoritative",
-      "visibility": "user_facing"
+      "visibility": "user_facing",
+      "ui_surface": "settings-libraries",
+      "reviewed_at": "2026-07-20"
+    },
+    {
+      "id": "HT-2026-004-notifications",
+      "category": "other",
+      "kind": "how_to",
+      "symptom_keywords": [
+        "get notified",
+        "notify me when",
+        "hold ready notification",
+        "remind me when",
+        "due date reminder",
+        "reminder when",
+        "turn on notifications",
+        "enable notifications",
+        "when my book is due"
+      ],
+      "user_facing_workaround": "Turn on notifications and Palace will alert you when a hold you placed is ready to borrow, and again when a loan is about to expire. You can enable them when you first install the app, or later in your phone's Settings under Palace.",
+      "internal_reference": {
+        "helpspot": [
+          18103
+        ]
+      },
+      "confidence_threshold": 0.1,
+      "escalate_anyway": false,
+      "helpspot_tag": "how-to-notifications",
+      "trust_level": "authoritative",
+      "visibility": "user_facing",
+      "ui_surface": "notifications-settings",
+      "reviewed_at": "2026-07-20"
     }
   ]
 }
