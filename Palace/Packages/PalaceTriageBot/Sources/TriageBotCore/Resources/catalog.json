@@ -262,11 +262,11 @@
         "on my ipad",
         "on my phone"
       ],
-      "user_facing_workaround": "It looks like you're connected to Palace Bookshelf, which is our demo collection. To use your real library: tap the Palace logo in the top-left corner, then add your library by name.",
+      "user_facing_workaround": "It looks like you're connected to Palace Bookshelf, which is our demo collection. To use your real library: go to Settings → Libraries, tap Add Library, and search for your library by name.",
       "user_facing_steps": [
         {
           "id": "ki004-step1-open-library-picker",
-          "instruction": "Tap the Palace logo in the top-left corner of the screen. A list of your libraries should slide in.",
+          "instruction": "Open Settings, then tap Libraries. You'll see the list of libraries on your account.",
           "check": "Did the library list appear?",
           "responses": [
             {
@@ -284,7 +284,7 @@
         },
         {
           "id": "ki004-step2-add-real-library",
-          "instruction": "Tap 'Add Library' at the top of that list. In the search box, type your actual library's name (not 'Palace Bookshelf'). Tap your library when it appears.",
+          "instruction": "On the Libraries screen, tap Add Library. In the search box, type your actual library's name (not 'Palace Bookshelf'). Tap your library when it appears.",
           "check": "Were you able to find and add your real library?",
           "responses": [
             {
@@ -673,7 +673,7 @@
       "user_facing_steps": [
         {
           "id": "ki009-step1-hard-refresh",
-          "instruction": "Tap the Palace logo in the top-left corner, then Add Library. On that screen, pull down and hold for a second or two to force the library list to refresh.",
+          "instruction": "Go to Settings → Libraries, then tap Add Library. On that screen, pull down and hold for a second or two to force the library list to refresh.",
           "check": "Does the library you're looking for show up now?",
           "responses": [
             {
@@ -800,7 +800,7 @@
         "go back to my other library",
         "toggle between libraries"
       ],
-      "user_facing_workaround": "You can keep more than one library in Palace and switch between them anytime. Tap the Palace logo in the top-left to open your list of libraries, then tap the one you want. To add another, tap Add Library and search for it by name.",
+      "user_facing_workaround": "You can keep more than one library in Palace and switch between them anytime. Go to Settings → Libraries to see your libraries, then tap the one you want to switch to it. To add another, tap Add Library there and search for it by name.",
       "internal_reference": {
         "helpspot": [
           17930
