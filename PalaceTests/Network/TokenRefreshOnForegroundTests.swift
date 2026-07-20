@@ -39,8 +39,8 @@ final class TokenRefreshOnForegroundTests: XCTestCase {
     private let apiURL = URL(string: "https://api.example.com/protected")!
     private let borrowURL = URL(string: "https://api.example.com/borrow/123")!
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         HTTPStubURLProtocol.reset()
         TPPUserAccountMock.resetShared()
 

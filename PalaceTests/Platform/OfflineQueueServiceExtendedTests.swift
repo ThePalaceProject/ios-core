@@ -22,7 +22,10 @@ final class OfflineQueueServiceExtendedTests: XCTestCase {
         super.setUp()
         userDefaults = UserDefaults(suiteName: "OfflineQueueServiceExtendedTests")!
         userDefaults.removePersistentDomain(forName: "OfflineQueueServiceExtendedTests")
-        service = OfflineQueueService(userDefaults: userDefaults)
+        // Inline same-suite UserDefaults: non-Sendable, so it must be a fresh
+        // disconnected region to be `sending`-passed into the actor init (the
+        // test also retains self.userDefaults for cleanup). Shares backing store.
+        service = OfflineQueueService(userDefaults: UserDefaults(suiteName: "OfflineQueueServiceExtendedTests")!)
         cancellables = Set<AnyCancellable>()
     }
 
@@ -84,7 +87,7 @@ final class OfflineQueueServiceExtendedTests: XCTestCase {
         await service.enqueue(OfflineAction(type: .return, bookID: "b2", bookTitle: "Book 2"))
 
         // Create new service instance using same UserDefaults
-        let newService = OfflineQueueService(userDefaults: userDefaults)
+        let newService = OfflineQueueService(userDefaults: UserDefaults(suiteName: "OfflineQueueServiceExtendedTests")!)
         let status = await newService.currentStatus()
 
         XCTAssertEqual(status.pendingCount, 2)
@@ -95,7 +98,7 @@ final class OfflineQueueServiceExtendedTests: XCTestCase {
         await service.enqueue(OfflineAction(type: .borrow, bookID: "b1", bookTitle: "T"))
 
         // Create new service - processing state should be reset to pending
-        let newService = OfflineQueueService(userDefaults: userDefaults)
+        let newService = OfflineQueueService(userDefaults: UserDefaults(suiteName: "OfflineQueueServiceExtendedTests")!)
         let processing = await newService.actions(withState: .processing)
         XCTAssertEqual(processing.count, 0)
     }

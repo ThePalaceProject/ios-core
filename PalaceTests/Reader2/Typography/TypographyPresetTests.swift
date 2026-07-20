@@ -14,8 +14,10 @@ final class TypographyPresetTests: XCTestCase {
     private var service: TypographyService!
     private var testDefaults: UserDefaults!
 
-    override func setUp() {
-        super.setUp()
+    // async setUp adopts the class's @MainActor isolation so testDefaults can be
+    // passed to the @MainActor TypographyService init without a sending violation.
+    override func setUp() async throws {
+        try await super.setUp()
         testDefaults = UserDefaults(suiteName: "TypographyPresetTests")!
         testDefaults.removePersistentDomain(forName: "TypographyPresetTests")
         service = TypographyService(userDefaults: testDefaults)

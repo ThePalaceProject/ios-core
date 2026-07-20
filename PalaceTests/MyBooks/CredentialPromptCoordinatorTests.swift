@@ -19,12 +19,21 @@ final class CredentialPromptCoordinatorTests: XCTestCase {
     private var userAccount: TPPUserAccountMock!
     private var credentialState: CredentialRequestState!
     private var spyDelegate: SpyDelegate!
-    private var presentedSignInModal = 0
-    private var presentedAdobeAlert = 0
+    // Swift 6: `presentSignInModal` / `presentAdobeExpiredAlert` are `@MainActor`
+    // closures stored on the `@unchecked Sendable` CredentialPromptCoordinator,
+    // so a closure that captures `self` (a non-Sendable XCTestCase) to mutate
+    // these recorders sends `self` across the boundary. Box the recorders the
+    // flagged closures touch (lock-guarded, Sendable) and capture the boxes as
+    // locals in `setUp`. Computed shims keep every read site unchanged.
+    private let presentedSignInModalBox = LockIsolated<Int>(0)
+    private var presentedSignInModal: Int { presentedSignInModalBox.value }
+    private let presentedAdobeAlertBox = LockIsolated<Int>(0)
+    private var presentedAdobeAlert: Int { presentedAdobeAlertBox.value }
     private var isAdobeExpired = false
     /// Stash of completion handlers from each presentSignInModal call
     /// so tests can drive the success/cancel branches explicitly.
-    private var signInCompletions: [() -> Void] = []
+    private let signInCompletionsBox = LockIsolated<[() -> Void]>([])
+    private var signInCompletions: [() -> Void] { signInCompletionsBox.value }
     private var coordinator: CredentialPromptCoordinator!
     private var book: TPPBook!
 
@@ -34,21 +43,26 @@ final class CredentialPromptCoordinatorTests: XCTestCase {
         userAccount = TPPUserAccountMock()
         credentialState = CredentialRequestState()
         spyDelegate = SpyDelegate()
-        presentedSignInModal = 0
-        presentedAdobeAlert = 0
+        presentedSignInModalBox.value = 0
+        presentedAdobeAlertBox.value = 0
         isAdobeExpired = false
-        signInCompletions = []
+        signInCompletionsBox.value = []
 
+        // Capture the Sendable boxes as locals so the @MainActor present-*
+        // closures reference the boxes, not `self`.
+        let presentedSignInModalBox = presentedSignInModalBox
+        let presentedAdobeAlertBox = presentedAdobeAlertBox
+        let signInCompletionsBox = signInCompletionsBox
         coordinator = CredentialPromptCoordinator(
             stateManager: stateManager,
             userAccountProvider: { [unowned self] in self.userAccount },
             credentialRequestState: credentialState,
-            presentSignInModal: { [unowned self] completion in
-                self.presentedSignInModal += 1
-                self.signInCompletions.append(completion)
+            presentSignInModal: { completion in
+                presentedSignInModalBox.withValue { $0 += 1 }
+                signInCompletionsBox.withValue { $0.append(completion) }
             },
             isAdobeDRMExpired: { [unowned self] in self.isAdobeExpired },
-            presentAdobeExpiredAlert: { [unowned self] in self.presentedAdobeAlert += 1 }
+            presentAdobeExpiredAlert: { presentedAdobeAlertBox.withValue { $0 += 1 } }
         )
         coordinator.delegate = spyDelegate
 
@@ -60,7 +74,7 @@ final class CredentialPromptCoordinatorTests: XCTestCase {
         userAccount = nil
         credentialState = nil
         spyDelegate = nil
-        signInCompletions = []
+        signInCompletionsBox.value = []
         coordinator = nil
         book = nil
         try super.tearDownWithError()

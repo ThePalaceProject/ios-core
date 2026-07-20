@@ -82,11 +82,12 @@ private final class GatedCrawlerFetcher: CrawlerNetworkFetching, @unchecked Send
     }
 
     func fetchData(from url: URL) async throws -> (Data, HTTPURLResponse?) {
-        lock.lock()
-        _fetchedURLs.append(url)
-        let isFirst = firstCall
-        firstCall = false
-        lock.unlock()
+        let isFirst = lock.withLock { () -> Bool in
+            _fetchedURLs.append(url)
+            let wasFirst = firstCall
+            firstCall = false
+            return wasFirst
+        }
 
         if isFirst {
             await gate.markStarted()
@@ -140,7 +141,7 @@ final class LibraryRegistryCrawlerTests: XCTestCase {
 
     private func makeCrawler(
         currentAppVersion: String? = "3.2.0",
-        now: @escaping () -> Date = Date.init
+        now: @escaping @Sendable () -> Date = Date.init
     ) -> LibraryRegistryCrawler {
         let crawler = LibraryRegistryCrawler(
             fetcher: fetcher,

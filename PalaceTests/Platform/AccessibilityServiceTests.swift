@@ -22,7 +22,12 @@ final class AccessibilityServiceTests: XCTestCase {
         super.setUp()
         userDefaults = UserDefaults(suiteName: "AccessibilityServiceTests")!
         userDefaults.removePersistentDomain(forName: "AccessibilityServiceTests")
-        service = AccessibilityService(userDefaults: userDefaults)
+        // Pass a fresh, disconnected UserDefaults into the actor init. UserDefaults
+        // is non-Sendable and the actor's init parameter is implicitly `sending`;
+        // a value the @MainActor test also retains (self.userDefaults) can't be
+        // sent, but an inline same-suite instance is its own region and shares the
+        // backing store, so cleanup via self.userDefaults still works.
+        service = AccessibilityService(userDefaults: UserDefaults(suiteName: "AccessibilityServiceTests")!)
         cancellables = Set<AnyCancellable>()
     }
 
@@ -71,8 +76,9 @@ final class AccessibilityServiceTests: XCTestCase {
 
         await service.updatePreferences(prefs)
 
-        // Create new instance with same UserDefaults
-        let newService = AccessibilityService(userDefaults: userDefaults)
+        // Create new instance with same UserDefaults suite (fresh disconnected
+        // region so it can be `sending`-passed into the actor init; shares backing store).
+        let newService = AccessibilityService(userDefaults: UserDefaults(suiteName: "AccessibilityServiceTests")!)
         let loaded = await newService.currentPreferences()
 
         XCTAssertEqual(loaded.verbosity, .minimal)

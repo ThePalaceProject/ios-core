@@ -60,7 +60,24 @@ protocol LibraryRegistryCrawlerDelegate: AnyObject {
 ///
 /// **Full crawl**: Paginates through all pages. When complete (no
 /// `rel="next"` link), libraries not present in the crawl are deleted.
-final class LibraryRegistryCrawler {
+/// `@unchecked Sendable`: exists so a `@MainActor` caller (production
+/// `AccountsManager` crawl `Task`, and the `@MainActor` XCTest cases) can
+/// `await crawler.crawl(...)` without sending a non-`Sendable` value across the
+/// actor boundary. Every stored member is safe to reference across concurrency
+/// domains:
+/// - `fetcher` is the non-`Sendable` `CrawlerNetworkFetching` existential, but
+///   its production conformer (`URLSessionCrawlerFetcher`) is a stateless struct
+///   over `URLSession.shared`, and it is already carried into the parallel
+///   task-group children via the documented `CrawlerFetcherBox` — so concurrent
+///   `fetchData` is already assumed safe by this type.
+/// - `hash` / `stateDirectory` / `currentAppVersion` are immutable `Sendable`
+///   `let`s.
+/// - `nowProvider` is now `@Sendable` (below).
+/// - `delegate` is a `weak var`, but it is only ever WRITTEN from the main
+///   thread (production never sets it; tests set it synchronously before
+///   `crawl` on the `@MainActor`) and only READ during a single crawl. No two
+///   crawls share an instance and no concurrent write races the read.
+final class LibraryRegistryCrawler: @unchecked Sendable {
 
     enum CrawlResult {
         case success(Data)   // Merged OPDS2CatalogsFeed JSON
@@ -81,7 +98,7 @@ final class LibraryRegistryCrawler {
     private let hash: String
     private let stateDirectory: URL
     private let currentAppVersion: String?
-    private let nowProvider: () -> Date
+    private let nowProvider: @Sendable () -> Date
 
     weak var delegate: LibraryRegistryCrawlerDelegate?
 
@@ -90,7 +107,7 @@ final class LibraryRegistryCrawler {
         hash: String,
         stateDirectory: URL? = nil,
         currentAppVersion: String? = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
-        now: @escaping () -> Date = Date.init
+        now: @escaping @Sendable () -> Date = Date.init
     ) {
         self.fetcher = fetcher
         self.hash = hash

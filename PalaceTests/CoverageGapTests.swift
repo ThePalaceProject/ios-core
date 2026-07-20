@@ -105,7 +105,7 @@ final class AccountModelGapTests: XCTestCase {
         // leak across tests. Both AccountDetails instances below share
         // the same suite to exercise the round-trip.
         let uuid = "coverage-gap-eula-\(UUID().uuidString)"
-        let defaults = testUserDefaults()
+        let defaults = Self.testUserDefaults()
 
         let json: [String: Any] = [
             "id": uuid, "title": "Test",
@@ -135,7 +135,7 @@ final class AccountModelGapTests: XCTestCase {
         // (swarm_cd181acd D-cleanup) so the persisted sync dict cannot
         // leak across tests.
         let uuid = "coverage-gap-sync-\(UUID().uuidString)"
-        let defaults = testUserDefaults()
+        let defaults = Self.testUserDefaults()
 
         let json: [String: Any] = [
             "id": uuid, "title": "Test",

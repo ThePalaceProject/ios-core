@@ -109,7 +109,7 @@ final class DownloadTransferRetryTests: XCTestCase {
         // DownloadStateManager.incrementTransferRetryAttempts — so no non-Sendable
         // manager instance is sent off @MainActor (Swift 6 data-race guard).
         for _ in 0..<3 {
-            await stateManager.transferRetryCounts.updateValue(book.identifier, default: 0) { $0 += 1 }
+            await stateManager.transferRetryCounts.updateValue(book.identifier, default: 0) { @Sendable in $0 += 1 }
         }
 
         let retried = await center.maybeRetryTransientTransfer(task: task(9), error: urlError(NSURLErrorTimedOut))

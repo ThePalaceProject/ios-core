@@ -36,8 +36,8 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
     private let tokenURL = URL(string: "https://token.example.com/oauth/token")!
     private let apiURL = URL(string: "https://api.example.com/protected")!
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         HTTPStubURLProtocol.reset()
         TPPUserAccountMock.resetShared()
 
@@ -453,9 +453,7 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         }
         XCTAssertTrue(retried, "The queued task must be retried after the /token refresh succeeds")
 
-        lock.lock()
-        let observedAuth = capturedRetryAuth
-        lock.unlock()
+        let observedAuth = lock.withLock { capturedRetryAuth }
 
         XCTAssertEqual(observedAuth,
                        "Bearer \(newToken)",

@@ -24,7 +24,11 @@ private final class ImageCompletionBox: @unchecked Sendable {
 ///
 /// Not `final` so test subclasses can override individual hooks if needed —
 /// per CLAUDE.md "don't make new services final reflexively".
-public class ImageLoader: ImageLoading {
+public class ImageLoader: ImageLoading, @unchecked Sendable {
+    // @unchecked Sendable: only immutable `let` collaborators (an actor-backed
+    // registry + a shared cache), no mutable state — safe to reference across
+    // concurrency domains (its async methods are awaited from @MainActor tests).
+
 
     // MARK: - Composition
 

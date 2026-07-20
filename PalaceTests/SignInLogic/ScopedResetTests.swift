@@ -27,7 +27,7 @@ final class ScopedResetTests: XCTestCase {
     override func setUp() {
         super.setUp()
         savedDefaults = TPPSignInBusinessLogic.forceResetUserDefaults
-        defaults = testUserDefaults()
+        defaults = Self.testUserDefaults()
         TPPSignInBusinessLogic.forceResetUserDefaults = defaults
     }
 

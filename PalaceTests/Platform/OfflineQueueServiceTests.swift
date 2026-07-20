@@ -26,7 +26,10 @@ final class OfflineQueueServiceTests: XCTestCase {
         super.setUp()
         userDefaults = UserDefaults(suiteName: "OfflineQueueServiceTests")!
         userDefaults.removePersistentDomain(forName: "OfflineQueueServiceTests")
-        service = OfflineQueueService(userDefaults: userDefaults)
+        // Inline same-suite UserDefaults: non-Sendable, so it must be a fresh
+        // disconnected region to be `sending`-passed into the actor init (the
+        // test also retains self.userDefaults for cleanup). Shares backing store.
+        service = OfflineQueueService(userDefaults: UserDefaults(suiteName: "OfflineQueueServiceTests")!)
         cancellables = Set<AnyCancellable>()
         executedActions.value = []
     }
@@ -42,8 +45,9 @@ final class OfflineQueueServiceTests: XCTestCase {
     // MARK: - Helpers
 
     private func setupSuccessExecutor() async {
+        let box = executedActions
         await service.setExecutor { action in
-            executedActions.withValue { $0.append(action) }
+            box.withValue { $0.append(action) }
             return true
         }
     }
@@ -232,7 +236,7 @@ final class OfflineQueueServiceTests: XCTestCase {
         let action = OfflineAction(type: .borrow, bookID: "book1", bookTitle: "Test Book")
         await service.enqueue(action)
 
-        let newService = OfflineQueueService(userDefaults: userDefaults)
+        let newService = OfflineQueueService(userDefaults: UserDefaults(suiteName: "OfflineQueueServiceTests")!)
         let status = await newService.currentStatus()
         XCTAssertEqual(status.pendingCount, 1)
     }
@@ -243,7 +247,7 @@ final class OfflineQueueServiceTests: XCTestCase {
         let action = OfflineAction(type: .hold, bookID: "book1", bookTitle: "Test Book")
         await service.enqueue(action)
 
-        let newService = OfflineQueueService(userDefaults: userDefaults)
+        let newService = OfflineQueueService(userDefaults: UserDefaults(suiteName: "OfflineQueueServiceTests")!)
         let pending = await newService.actions(withState: .pending)
         let processing = await newService.actions(withState: .processing)
 

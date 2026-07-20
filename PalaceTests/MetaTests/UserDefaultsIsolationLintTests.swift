@@ -33,7 +33,7 @@ final class UserDefaultsIsolationLintTests: XCTestCase {
         // swarm_cd181acd D-cleanup landed DI seams on AccountDetails,
         // AccountsManager, TPPBookmarkDeletionLog, CatalogRepository,
         // and TPPSignInBusinessLogic+ForceReset; the eight previously
-        // deferred test files now use `testUserDefaults()` and have
+        // deferred test files now use `Self.testUserDefaults()` and have
         // been removed from this whitelist. Future test files that
         // reach into `.standard` will trip the warn-only lint and the
         // author can either migrate (the seam exists now) or add a
@@ -83,7 +83,7 @@ final class UserDefaultsIsolationLintTests: XCTestCase {
                 let payload = """
                 File: \(relativePath)
                 UserDefaults.standard references: \(lineCount)
-                Action: migrate to testUserDefaults() once the production class \
+                Action: migrate to Self.testUserDefaults() once the production class \
                 under test exposes a UserDefaults DI seam. Until then this file \
                 is documented as a deferred gap in \
                 .forgeos/swarms/swarm_47883816/D-deferred-production-DI.md.
@@ -110,7 +110,7 @@ final class UserDefaultsIsolationLintTests: XCTestCase {
         @MainActor
         final class CleanTests: XCTestCase {
             func test_doesNotMentionTheBannedString() {
-                let defaults = testUserDefaults()
+                let defaults = Self.testUserDefaults()
                 defaults.set(true, forKey: "ok")
             }
         }

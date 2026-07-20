@@ -91,8 +91,8 @@ final class MultiLibraryTokenIsolationTests: XCTestCase {
     private let apiURL_A = URL(string: "https://api.libraryA.example.com/protected")!
     private let apiURL_B = URL(string: "https://api.libraryB.example.com/protected")!
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         HTTPStubURLProtocol.reset()
         TPPUserAccountMock.resetShared()
         libraryProvider = TwoLibraryAccountsProviderMock(startingAtA: true)

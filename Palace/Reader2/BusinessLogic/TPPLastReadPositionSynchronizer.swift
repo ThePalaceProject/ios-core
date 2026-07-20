@@ -74,7 +74,7 @@ final class TPPLastReadPositionSynchronizer: @unchecked Sendable {
         }
     }
 
-    func sync(for publication: Publication,
+    func sync(for publication: sending Publication,
               book: TPPBook,
               drmDeviceID: String?) async {
         let serverLocator = await syncReadPosition(for: book, drmDeviceID: drmDeviceID, publication: publication)

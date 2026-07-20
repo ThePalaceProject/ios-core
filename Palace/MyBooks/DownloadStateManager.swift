@@ -38,7 +38,13 @@ protocol DownloadStateManaging: AnyObject {
 
 /// Manages all download state tracking: what is downloading, progress, errors,
 /// and concurrency coordination via the DownloadCoordinator actor.
-final class DownloadStateManager: DownloadStateManaging {
+/// `@unchecked Sendable`: every stored member is either an immutable `let`
+/// binding to a `Sendable` collaborator (the `SafeDictionary` actors, the
+/// `DownloadCoordinator`, `taskPersistence`) or the lock-guarded
+/// `maxConcurrentDownloads` below. The manager is genuinely safe to reference
+/// across concurrency domains — e.g. `cleanupDownload` awaited from a
+/// `@MainActor` context — which Swift 6 otherwise rejects.
+final class DownloadStateManager: DownloadStateManaging, @unchecked Sendable {
 
     // MARK: - Thread-safe storage
 
@@ -49,7 +55,17 @@ final class DownloadStateManager: DownloadStateManaging {
     // MARK: - Coordinator
 
     let downloadCoordinator = DownloadCoordinator()
-    var maxConcurrentDownloads: Int = 4
+
+    /// Concurrency cap. Written by `DownloadThrottlingService` and read by the
+    /// orchestrator / start-coordinator from different threads, so it is
+    /// NSLock-guarded (the one piece of mutable state that made the manager
+    /// non-Sendable).
+    private let maxConcurrentLock = NSLock()
+    private var _maxConcurrentDownloads: Int = 4
+    var maxConcurrentDownloads: Int {
+        get { maxConcurrentLock.withLock { _maxConcurrentDownloads } }
+        set { maxConcurrentLock.withLock { _maxConcurrentDownloads = newValue } }
+    }
 
     // MARK: - Durable persistence (seam S1)
 

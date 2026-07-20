@@ -90,20 +90,26 @@ final class LocalFileAdapterTests: XCTestCase {
         ) {
             callCount += 1
             receivedURLs.append(fulfillURL)
-            // Box the non-Sendable token so it can cross the @Sendable
-            // dispatch closure. Test double: the box is created and consumed
-            // on the same serial test flow, so unchecked Sendable is safe.
-            let box = TokenBox(stubbedToken)
+            // Box the non-Sendable token AND the non-Sendable completion so
+            // both can cross the @Sendable dispatch closure. Test double: the
+            // box is created and consumed on the same serial test flow, so
+            // unchecked Sendable is safe.
+            let box = TokenBox(token: stubbedToken, completion: completion)
             DispatchQueue.main.async {
-                completion(box.value)
+                box.completion(box.token)
             }
         }
 
-        /// Test-only carrier that lets a non-Sendable bearer token cross a
-        /// `@Sendable` dispatch closure. Confined to the test's serial usage.
+        /// Test-only carrier that lets a non-Sendable bearer token + completion
+        /// cross a `@Sendable` dispatch closure. Confined to the test's serial
+        /// usage.
         private final class TokenBox: @unchecked Sendable {
-            let value: MyBooksSimplifiedBearerToken?
-            init(_ value: MyBooksSimplifiedBearerToken?) { self.value = value }
+            let token: MyBooksSimplifiedBearerToken?
+            let completion: (MyBooksSimplifiedBearerToken?) -> Void
+            init(token: MyBooksSimplifiedBearerToken?, completion: @escaping (MyBooksSimplifiedBearerToken?) -> Void) {
+                self.token = token
+                self.completion = completion
+            }
         }
     }
 

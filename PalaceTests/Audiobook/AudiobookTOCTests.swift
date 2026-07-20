@@ -29,7 +29,7 @@ class AudiobookTOCTests: XCTestCase {
         super.tearDown()
     }
 
-    func loadTracks(for manifestJSON: ManifestJSON) throws -> Tracks {
+    nonisolated func loadTracks(for manifestJSON: ManifestJSON) throws -> Tracks {
         let manifest = try Manifest.from(jsonFileName: manifestJSON.rawValue, bundle: Bundle(for: type(of: self)))
         return Tracks(manifest: manifest, audiobookID: testID, token: nil)
     }

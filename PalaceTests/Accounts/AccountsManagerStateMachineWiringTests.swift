@@ -224,7 +224,7 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
         // wired into the AccountsManager so the
         // `currentAccountIdentifierKey` write below cannot leak across
         // tests via `.standard`.
-        let defaults = testUserDefaults()
+        let defaults = Self.testUserDefaults()
         let manager = makeFreshAccountsManager(defaults: defaults)
 
         // Set the current account to one of the fixture UUIDs so the
@@ -309,7 +309,7 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
         // wired into the AccountsManager so the
         // `currentAccountIdentifierKey` write below cannot leak via
         // `.standard`.
-        let defaults = testUserDefaults()
+        let defaults = Self.testUserDefaults()
         // Construct the manager FIRST. Its init fires a background
         // loadCatalogs(nil); drain the main queue so any of its main-thread
         // completion blocks land before our reset below. Without network the
@@ -404,7 +404,7 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
         let currentUUID = catalogs[0].metadata.id
 
         // swarm_cd181acd D-cleanup: per-test isolated UserDefaults suite.
-        let defaults = testUserDefaults()
+        let defaults = Self.testUserDefaults()
         let manager = makeFreshAccountsManager(defaults: defaults)
         // Drain the main queue so init's background loadCatalogs has a chance
         // to fail (no network → fast failure) before our reset below.
@@ -993,7 +993,7 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
         // swarm_cd181acd D-cleanup: per-test isolated UserDefaults suite
         // wired into the AccountsManager so the
         // `currentAccountIdentifierKey` write cannot leak via `.standard`.
-        let defaults = testUserDefaults()
+        let defaults = Self.testUserDefaults()
         defaults.set(accountA.uuid, forKey: currentAccountIdentifierKey)
 
         let manager = makeFreshAccountsManager(defaults: defaults)
@@ -1039,7 +1039,7 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
         let newUUID = catalogs[1].metadata.id
 
         // swarm_cd181acd D-cleanup: per-test isolated UserDefaults suite.
-        let defaults = testUserDefaults()
+        let defaults = Self.testUserDefaults()
         // Seed disk cache + populate accountSets via preload so the
         // manager's currentAccount accessor can resolve UUIDs back to
         // Account instances after the switch.
@@ -1123,7 +1123,7 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
         accountA._setState(.detailsLoaded(accountA.details!))
 
         // swarm_cd181acd D-cleanup: per-test isolated UserDefaults suite.
-        let defaults = testUserDefaults()
+        let defaults = Self.testUserDefaults()
         defaults.set(accountA.uuid, forKey: currentAccountIdentifierKey)
 
         let manager = makeFreshAccountsManager(defaults: defaults)
@@ -1210,7 +1210,7 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
         let currentUUID = catalogs[0].metadata.id
 
         // swarm_cd181acd D-cleanup: per-test isolated UserDefaults suite.
-        let defaults = testUserDefaults()
+        let defaults = Self.testUserDefaults()
         let manager = makeFreshAccountsManager(defaults: defaults)
         let backgroundSettled = expectation(description: "background loadCatalogs settled")
         DispatchQueue.global().asyncAfter(deadline: .now() + 0.4) { backgroundSettled.fulfill() } // FLAKE-002-OK: background loadCatalogs settle window — see feedback_wiring_suite_test_isolation
@@ -1332,7 +1332,7 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
         let currentUUID = catalogs[0].metadata.id
 
         // swarm_cd181acd D-cleanup: per-test isolated UserDefaults suite.
-        let defaults = testUserDefaults()
+        let defaults = Self.testUserDefaults()
         let manager = makeFreshAccountsManager(defaults: defaults)
         // Drain the main queue so init's background loadCatalogs has a chance
         // to fail (no network → fast failure) before our reset below.

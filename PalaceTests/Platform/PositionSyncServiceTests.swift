@@ -23,7 +23,10 @@ final class PositionSyncServiceTests: XCTestCase {
         super.setUp()
         userDefaults = UserDefaults(suiteName: "PositionSyncServiceTests")!
         userDefaults.removePersistentDomain(forName: "PositionSyncServiceTests")
-        service = PositionSyncService(userDefaults: userDefaults)
+        // Fresh, disconnected same-suite UserDefaults into the actor init: the
+        // non-Sendable stored `self.userDefaults` can't be sent, but an inline
+        // instance is its own region and shares the backing store (cleanup + reads).
+        service = PositionSyncService(userDefaults: UserDefaults(suiteName: "PositionSyncServiceTests")!)
         cancellables = Set<AnyCancellable>()
     }
 
@@ -243,8 +246,9 @@ final class PositionSyncServiceTests: XCTestCase {
         )
         await service.recordPosition(position)
 
-        // Create a new service instance with the same UserDefaults
-        let newService = PositionSyncService(userDefaults: userDefaults)
+        // Create a new service instance with the same UserDefaults suite (fresh
+        // disconnected region for the actor init; shares the backing store).
+        let newService = PositionSyncService(userDefaults: UserDefaults(suiteName: "PositionSyncServiceTests")!)
         let retrieved = await newService.latestPosition(forBook: "book1", format: .epub)
         XCTAssertNotNil(retrieved)
         XCTAssertEqual(retrieved?.chapterIndex, 5)

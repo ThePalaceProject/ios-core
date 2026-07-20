@@ -83,24 +83,27 @@ extension XCTestCase {
     ///   - pollInterval: How often to re-check. Default 50ms.
     ///   - predicate: A synchronous closure that returns true once the
     ///     observed state has converged.
+    @MainActor
     func awaitCondition(
         timeout: TimeInterval = 5.0,
         pollInterval: TimeInterval = 0.05,
-        _ predicate: @escaping () -> Bool
+        _ predicate: @escaping @MainActor () -> Bool
     ) {
         let met = expectation(description: "condition met")
-        var fulfilled = false
-        func poll() {
-            if fulfilled { return }
-            if predicate() {
-                fulfilled = true
-                met.fulfill()
-                return
+        // Swift 6: the predicate reads @MainActor test/view-model state (e.g.
+        // `model.isLoading`), so it must stay on the main actor. Poll via a
+        // @MainActor Task instead of the old DispatchQueue.main.asyncAfter
+        // recursion (whose @Sendable closure couldn't capture the @MainActor
+        // predicate). `wait(for:)` spins the main runloop so the Task advances.
+        let pollTask = Task { @MainActor in
+            while !predicate() {
+                if Task.isCancelled { return }
+                try? await Task.sleep(nanoseconds: UInt64(pollInterval * 1_000_000_000))
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + pollInterval) { poll() }
+            met.fulfill()
         }
-        poll()
         wait(for: [met], timeout: timeout)
+        pollTask.cancel()
     }
 
     /// Async sibling of `awaitCondition` for `async` test bodies that need
@@ -120,7 +123,7 @@ extension XCTestCase {
     ///   - pollInterval: How often to re-check. Default 25ms.
     ///   - file/line: For accurate XCTFail attribution.
     ///   - predicate: Synchronous closure returning true once converged.
-    func awaitConditionAsync(
+    @MainActor func awaitConditionAsync(
         timeout: TimeInterval = 10.0,
         pollInterval: TimeInterval = 0.025,
         file: StaticString = #file,
@@ -150,7 +153,7 @@ extension XCTestCase {
     /// require `await`; this overload exists so callers can avoid
     /// hand-rolling another silent while-deadline loop just because their
     /// observable is `async`.
-    func awaitConditionAsync(
+    @MainActor func awaitConditionAsync(
         timeout: TimeInterval = 10.0,
         pollInterval: TimeInterval = 0.025,
         file: StaticString = #file,

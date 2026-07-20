@@ -40,7 +40,7 @@ final class CatalogRepositoryStaleWhileRevalidateTests: XCTestCase {
     /// Mutable test clock. Setting this updates the time returned by the
     /// closure passed to CatalogRepository at construction. Tests advance
     /// this directly rather than sleeping.
-    private var testNow: Date = Date(timeIntervalSince1970: 1_700_000_000)
+    private let testNow = LockIsolated<Date>(Date(timeIntervalSince1970: 1_700_000_000))
 
     /// UserDefaults key the repository uses for its last-launch heuristic.
     /// We clear it in setUp so `needsBackgroundRefresh` starts off `false`
@@ -59,7 +59,7 @@ final class CatalogRepositoryStaleWhileRevalidateTests: XCTestCase {
         // `needsBackgroundRefresh = true`). Tests that need
         // `needsBackgroundRefresh = false` seed the key BEFORE
         // constructing the repository via `makeRepository`.
-        defaults = testUserDefaults()
+        defaults = Self.testUserDefaults()
         api = CatalogAPIMock()
     }
 
@@ -81,13 +81,11 @@ final class CatalogRepositoryStaleWhileRevalidateTests: XCTestCase {
         // which forces the stale-while-revalidate branch for fresh caches and
         // ruins the fresh-cache assertions below.
         if seedLastLaunchToNow {
-            defaults.set(testNow, forKey: Self.lastAppLaunchKey)
+            defaults.set(testNow.value, forKey: Self.lastAppLaunchKey)
         }
         return CatalogRepository(
             api: api,
-            now: { [weak self] in
-                self?.testNow ?? Date(timeIntervalSince1970: 0)
-            },
+            now: { [testNow] in testNow.value },
             defaults: defaults
         )
     }
@@ -121,7 +119,7 @@ final class CatalogRepositoryStaleWhileRevalidateTests: XCTestCase {
 
         _ = try await sut.loadTopLevelCatalog(at: testURL)
         // Advance well inside the fresh window — 5 minutes in (300s < 600s).
-        testNow = testNow.addingTimeInterval(300)
+        testNow.value = testNow.value.addingTimeInterval(300)
         // Swap the stub: if the cache hit is broken the second call will return "Other".
         api.stubbedFeeds[testURL] = CatalogAPIMock.makeMockFeed(title: "Other")
         let second = try await sut.loadTopLevelCatalog(at: testURL)
@@ -138,7 +136,7 @@ final class CatalogRepositoryStaleWhileRevalidateTests: XCTestCase {
 
         _ = try await sut.loadTopLevelCatalog(at: testURL)
         // Exactly 600s later: code uses `> 600`, so 600 is NOT expired.
-        testNow = testNow.addingTimeInterval(600)
+        testNow.value = testNow.value.addingTimeInterval(600)
         api.stubbedFeeds[testURL] = CatalogAPIMock.makeMockFeed(title: "OverwrittenButShouldNotShow")
         let second = try await sut.loadTopLevelCatalog(at: testURL)
 
@@ -160,7 +158,7 @@ final class CatalogRepositoryStaleWhileRevalidateTests: XCTestCase {
         XCTAssertEqual(api.fetchFeedCallCount, 1)
 
         // 601s later → just past the fresh boundary, well inside stale-but-usable.
-        testNow = testNow.addingTimeInterval(601)
+        testNow.value = testNow.value.addingTimeInterval(601)
         api.stubbedFeeds[testURL] = CatalogAPIMock.makeMockFeed(title: "Refreshed")
         let second = try await sut.loadTopLevelCatalog(at: testURL)
 
@@ -179,7 +177,7 @@ final class CatalogRepositoryStaleWhileRevalidateTests: XCTestCase {
         // Subsequent read inside fresh window of the refreshed cache returns new title.
         // Cache was rewritten at testNow (601s post-original), so 5 minutes later
         // the new entry is fresh.
-        testNow = testNow.addingTimeInterval(300)
+        testNow.value = testNow.value.addingTimeInterval(300)
         let third = try await sut.loadTopLevelCatalog(at: testURL)
         XCTAssertEqual(third?.title, "Refreshed",
                        "Background refresh must replace the cache with network result")
@@ -195,7 +193,7 @@ final class CatalogRepositoryStaleWhileRevalidateTests: XCTestCase {
         _ = try await sut.loadTopLevelCatalog(at: testURL)
 
         // Exactly 86400s (24h) later — `isStaleButUsable` uses `<= 86400`.
-        testNow = testNow.addingTimeInterval(86400)
+        testNow.value = testNow.value.addingTimeInterval(86400)
         api.stubbedFeeds[testURL] = CatalogAPIMock.makeMockFeed(title: "WouldBeNetwork")
         let result = try await sut.loadTopLevelCatalog(at: testURL)
 
@@ -223,7 +221,7 @@ final class CatalogRepositoryStaleWhileRevalidateTests: XCTestCase {
         XCTAssertEqual(api.fetchFeedCallCount, 1)
 
         // 86401s later — one second past 24h → isTooOld returns true.
-        testNow = testNow.addingTimeInterval(86401)
+        testNow.value = testNow.value.addingTimeInterval(86401)
         api.stubbedFeeds[testURL] = CatalogAPIMock.makeMockFeed(title: "FromNetwork")
         let result = try await sut.loadTopLevelCatalog(at: testURL)
 
@@ -249,7 +247,7 @@ final class CatalogRepositoryStaleWhileRevalidateTests: XCTestCase {
 
         // Age past 24h so the next call attempts a network fetch (not stale-but-usable
         // which would skip the failing fetch).
-        testNow = testNow.addingTimeInterval(90_000)
+        testNow.value = testNow.value.addingTimeInterval(90_000)
         // Network errors out — must fall back to the cached entry.
         api.fetchFeedError = NSError(domain: "Test", code: -1, userInfo: nil)
 
@@ -287,12 +285,12 @@ final class CatalogRepositoryStaleWhileRevalidateTests: XCTestCase {
         _ = try await sut.loadTopLevelCatalog(at: testURL)
 
         // At exactly 24h, isTooOld is false (uses `> 86400`).
-        testNow = testNow.addingTimeInterval(86400)
+        testNow.value = testNow.value.addingTimeInterval(86400)
         XCTAssertEqual(sut.cachedFeed(for: testURL)?.title, "WithinBoundary",
                        "At 86400s-old cache must still be returned by cachedFeed")
 
         // 1 second over → too old → nil.
-        testNow = testNow.addingTimeInterval(1)
+        testNow.value = testNow.value.addingTimeInterval(1)
         XCTAssertNil(sut.cachedFeed(for: testURL),
                      "At 86401s-old cache must be treated as too old and nil-returned")
     }
@@ -377,9 +375,12 @@ final class CatalogRepositoryStaleWhileRevalidateTests: XCTestCase {
         XCTAssertEqual(api.fetchFeedCallCount, 1)
 
         // Move into stale-but-usable window.
-        testNow = testNow.addingTimeInterval(1800) // 30 minutes
+        testNow.value = testNow.value.addingTimeInterval(1800) // 30 minutes
         api.stubbedFeeds[testURL] = CatalogAPIMock.makeMockFeed(title: "Refreshed-concurrent")
 
+        // Sendable local so the async-let children capture it instead of reading
+        // @MainActor `self.testURL` (which would send self). `sut` is already local.
+        let testURL = testURL
         async let a = sut.loadTopLevelCatalog(at: testURL)
         async let b = sut.loadTopLevelCatalog(at: testURL)
         let (resultA, resultB) = try await (a, b)

@@ -33,44 +33,47 @@ final class LCPKeychainMigrationTests: XCTestCase {
     }
 
     func testRunIfNeeded_whenFlagUnset_runsMigrationAndSetsFlag() async {
-        var ran = false
+        let ran = LockIsolated<Bool>(false)
+        let localDefaults = UserDefaults(suiteName: suiteName)!
 
-        await LCPKeychainMigration.runIfNeeded(defaults: defaults, migrate: { ran = true })
+        await LCPKeychainMigration.runIfNeeded(defaults: localDefaults, migrate: { @Sendable in ran.value = true })
 
-        XCTAssertTrue(ran, "Migration work must run when the flag is unset")
+        XCTAssertTrue(ran.value, "Migration work must run when the flag is unset")
         XCTAssertTrue(defaults.bool(forKey: LCPKeychainMigration.didMigrateKey),
                       "Flag must be set after a successful migration")
     }
 
     func testRunIfNeeded_whenFlagAlreadySet_skipsMigration() async {
         defaults.set(true, forKey: LCPKeychainMigration.didMigrateKey)
-        var ran = false
+        let ran = LockIsolated<Bool>(false)
+        let localDefaults = UserDefaults(suiteName: suiteName)!
 
-        await LCPKeychainMigration.runIfNeeded(defaults: defaults, migrate: { ran = true })
+        await LCPKeychainMigration.runIfNeeded(defaults: localDefaults, migrate: { @Sendable in ran.value = true })
 
-        XCTAssertFalse(ran, "Migration work must NOT run once the flag is set")
+        XCTAssertFalse(ran.value, "Migration work must NOT run once the flag is set")
     }
 
     func testRunIfNeeded_whenMigrationThrows_leavesFlagUnsetAndRetriesNextTime() async {
         struct MigrationError: Error {}
-        var attempts = 0
+        let attempts = LockIsolated<Int>(0)
+        let localDefaults = UserDefaults(suiteName: suiteName)!
 
-        await LCPKeychainMigration.runIfNeeded(defaults: defaults, migrate: {
-            attempts += 1
+        await LCPKeychainMigration.runIfNeeded(defaults: localDefaults, migrate: { @Sendable in
+            attempts.value += 1
             throw MigrationError()
         })
 
-        XCTAssertEqual(attempts, 1, "Migration should have been attempted once")
+        XCTAssertEqual(attempts.value, 1, "Migration should have been attempted once")
         XCTAssertFalse(defaults.bool(forKey: LCPKeychainMigration.didMigrateKey),
                        "Flag must stay unset on failure so the next launch retries")
 
         // A subsequent launch must retry because the flag is still unset.
-        await LCPKeychainMigration.runIfNeeded(defaults: defaults, migrate: {
-            attempts += 1
+        await LCPKeychainMigration.runIfNeeded(defaults: localDefaults, migrate: { @Sendable in
+            attempts.value += 1
             throw MigrationError()
         })
 
-        XCTAssertEqual(attempts, 2, "An unflagged failed migration must retry on the next run")
+        XCTAssertEqual(attempts.value, 2, "An unflagged failed migration must retry on the next run")
     }
 }
 

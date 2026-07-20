@@ -63,27 +63,27 @@ final class AdobeActivationTests: XCTestCase {
         // verifying here is the surface the production AdobeDRMService relies
         // on: the success branch hands back non-nil IDs.
         let exp = expectation(description: "authorize completion")
-        var capturedDeviceID: String?
-        var capturedUserID: String?
-        var capturedSuccess = false
+        let capturedDeviceID = LockIsolated<String?>(nil)
+        let capturedUserID = LockIsolated<String?>(nil)
+        let capturedSuccess = LockIsolated<Bool>(false)
 
         drm.authorize(
             withVendorID: "NYPL",
             username: "client-token-username",
             password: "client-token-password"
         ) { success, error, deviceID, userID in
-            capturedSuccess = success
-            capturedDeviceID = deviceID
-            capturedUserID = userID
+            capturedSuccess.value = success
+            capturedDeviceID.value = deviceID
+            capturedUserID.value = userID
             XCTAssertNil(error, "Happy-path activation must not surface an error")
             exp.fulfill()
         }
 
         wait(for: [exp], timeout: 1.0)
-        XCTAssertTrue(capturedSuccess, "Valid licensor must produce success=true")
-        XCTAssertEqual(capturedDeviceID, drm.deviceID,
+        XCTAssertTrue(capturedSuccess.value, "Valid licensor must produce success=true")
+        XCTAssertEqual(capturedDeviceID.value, drm.deviceID,
                        "Activation must hand back a non-nil deviceID for persistence")
-        XCTAssertEqual(capturedUserID, drm.userID,
+        XCTAssertEqual(capturedUserID.value, drm.userID,
                        "Activation must hand back a non-nil userID for persistence")
         XCTAssertEqual(drm.authorizeCallCount, 1,
                        "Activation must invoke authorize exactly once per attempt")
@@ -208,7 +208,7 @@ final class AdobeActivationTests: XCTestCase {
         // NOT persist a userID/deviceID — those slots stay nil so the next
         // attempt re-runs the full flow rather than skipping the gate.
         final class FailingDRM: TPPDRMAuthorizingMock {
-            override func authorize(withVendorID vendorID: String!, username: String!, password: String!, completion: ((Bool, Error?, String?, String?) -> Void)!) {
+            override func authorize(withVendorID vendorID: String!, username: String!, password: String!, completion: (@Sendable (Bool, Error?, String?, String?) -> Void)!) {
                 authorizeWasCalled = true
                 authorizeCallCount += 1
                 let err = NSError(domain: NYPLADEPTErrorDomain,
@@ -222,25 +222,25 @@ final class AdobeActivationTests: XCTestCase {
 
         let failingDRM = FailingDRM()
         let exp = expectation(description: "failing authorize completion")
-        var capturedDeviceID: String? = "PRESET-TO-DETECT-OVERWRITE"
-        var capturedUserID: String? = "PRESET-TO-DETECT-OVERWRITE"
-        var capturedSuccess = true
-        var capturedError: Error?
+        let capturedDeviceID = LockIsolated<String?>("PRESET-TO-DETECT-OVERWRITE")
+        let capturedUserID = LockIsolated<String?>("PRESET-TO-DETECT-OVERWRITE")
+        let capturedSuccess = LockIsolated<Bool>(true)
+        let capturedError = LockIsolated<Error?>(nil)
 
         failingDRM.authorize(withVendorID: "NYPL", username: "u", password: "p") { success, error, deviceID, userID in
-            capturedSuccess = success
-            capturedError = error
-            capturedDeviceID = deviceID
-            capturedUserID = userID
+            capturedSuccess.value = success
+            capturedError.value = error
+            capturedDeviceID.value = deviceID
+            capturedUserID.value = userID
             exp.fulfill()
         }
 
         wait(for: [exp], timeout: 1.0)
-        XCTAssertFalse(capturedSuccess, "Failed activation must report success=false")
-        XCTAssertNotNil(capturedError, "Failed activation must surface an NSError")
-        XCTAssertNil(capturedDeviceID,
+        XCTAssertFalse(capturedSuccess.value, "Failed activation must report success=false")
+        XCTAssertNotNil(capturedError.value, "Failed activation must surface an NSError")
+        XCTAssertNil(capturedDeviceID.value,
                      "Failed activation must NOT hand back a deviceID — would persist garbage")
-        XCTAssertNil(capturedUserID,
+        XCTAssertNil(capturedUserID.value,
                      "Failed activation must NOT hand back a userID — would persist garbage")
     }
 }
