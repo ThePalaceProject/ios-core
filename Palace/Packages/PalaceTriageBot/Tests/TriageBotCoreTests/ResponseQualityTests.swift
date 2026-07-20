@@ -48,6 +48,11 @@ final class ResponseQualityTests: XCTestCase {
     // while global recall stays above target. Guard it with its own floor.
     static let howToRecallTarget: Double = 0.80
 
+    // A wrong how_to answer is an authoritative-sounding falsehood about the
+    // product — worse than escalating. how_to precision must be perfect: every
+    // how_to the bot surfaces must be the RIGHT how_to.
+    static let howToPrecisionTarget: Double = 1.0
+
     // The REAL ratchet. The soft aggregate targets above have a wide dead zone
     // (the suite scores ~100% today but targets are 75–95%), so a regression can
     // hide. These allowlists pin the EXACT set of cases allowed to miss / be
@@ -614,6 +619,36 @@ final class ResponseQualityTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(
             Double(known.hits) / Double(known.total), Self.recallTarget,
             "known_issue recall \(known.hits)/\(known.total) below \(Self.recallTarget)."
+        )
+    }
+
+    // MARK: - Per-kind precision (a wrong how_to is the worst failure)
+
+    func testPrecision_perKind_meetsFloors() throws {
+        let classifier = LocalClassifier()
+        let kb = try Self.loadCatalog()
+
+        func precision(forHowTo howTo: Bool) -> (correct: Int, suggested: Int) {
+            var correct = 0, suggested = 0
+            for c in Self.corpus {
+                let r = classifier.classify(userText: c.userText, category: c.category, context: c.context, knowledgeBase: kb)
+                guard case .suggest(let id) = r.decision, id.hasPrefix("HT-") == howTo else { continue }
+                suggested += 1
+                if case .shouldMatch(let expected) = c.expect, expected == id { correct += 1 }
+            }
+            return (correct, suggested)
+        }
+
+        let howTo = precision(forHowTo: true)
+        let known = precision(forHowTo: false)
+        XCTAssertGreaterThan(howTo.suggested, 0, "expected the bot to surface some how_to answers")
+        XCTAssertGreaterThanOrEqual(
+            Double(howTo.correct) / Double(howTo.suggested), Self.howToPrecisionTarget,
+            "how_to precision \(howTo.correct)/\(howTo.suggested) below \(Self.howToPrecisionTarget) — a wrong FAQ answer is worse than escalating."
+        )
+        XCTAssertGreaterThanOrEqual(
+            Double(known.correct) / Double(known.suggested), Self.precisionTarget,
+            "known_issue precision \(known.correct)/\(known.suggested) below \(Self.precisionTarget)."
         )
     }
 

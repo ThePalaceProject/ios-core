@@ -62,9 +62,10 @@ the corpus/threshold work operates on noise:
 - adds `ClassifierInternalsTests` (direct distinct-region unit tests + suggest-guard
   decision table + score-scale + cross-kind + malformed-gate; mutation-verified to kill
   8 previously-surviving mutants)
-- adds exact known-miss allowlists + a per-kind recall floor + a confidence<=1 invariant
-  to `ResponseQualityTests`; adds how_to-multi-word, unique-id, and nested-set-allowlist
-  lints to `CatalogSchemaLintTests`
+- adds exact known-miss allowlists + per-kind recall AND precision floors (how_to
+  precision target 1.0 — a wrong FAQ is worse than escalating) + a confidence<=1
+  invariant to `ResponseQualityTests`; adds how_to-multi-word, unique-id, and
+  nested-set-allowlist lints to `CatalogSchemaLintTests`
 
 ## Anti-claims
 
