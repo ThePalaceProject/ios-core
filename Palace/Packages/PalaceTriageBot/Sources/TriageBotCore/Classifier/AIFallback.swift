@@ -70,7 +70,7 @@ public enum AIFallbackPromptBuilder {
         for entry in kb.catalog.entries where entry.visibility == .userFacing {
             lines.append("- id: \(entry.id)")
             lines.append("  category: \(entry.category.rawValue)")
-            lines.append("  status: \(entry.status.rawValue)")
+            lines.append("  status: \(entry.status?.rawValue ?? entry.resolvedKind.rawValue)")
             if let v = entry.fixedInVersion {
                 lines.append("  fixed_in_version: \(v)")
             }

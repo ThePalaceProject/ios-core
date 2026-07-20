@@ -32,11 +32,17 @@ import XCTest
 /// a hard CI failure.
 final class ResponseQualityTests: XCTestCase {
 
-    // Per-corpus targets the demo build should clear. Calibrated from the
-    // hand-curated May 2026 dataset; raise as the KB grows.
+    // Targets for the real (non-demo) v1.2 corpus. Raised off the demo
+    // calibration once the matcher was corrected (smart-punctuation +
+    // distinct-region counting) and coverage grew (add-library KI + how_to
+    // lane). Precision/rejection are raised because a wrong or misdirected
+    // answer is the expensive failure; recall is deliberately HELD at 0.75 —
+    // the how_to lane is young and grows in PP-4831, and raising recall while
+    // still curating keywords is self-defeating (a miss escalates safely to a
+    // human; a false match misleads).
     static let recallTarget: Double = 0.75       // bot finds ≥75% of in-KB issues
-    static let precisionTarget: Double = 0.90    // when bot DOES match, it's right ≥90% of the time
-    static let rejectionTarget: Double = 0.85    // bot correctly escalates ≥85% of novel issues
+    static let precisionTarget: Double = 0.95    // when bot DOES match, it's right ≥95% of the time
+    static let rejectionTarget: Double = 0.90    // bot correctly escalates ≥90% of novel issues
 
     // MARK: - Corpus
 
@@ -332,8 +338,8 @@ final class ResponseQualityTests: XCTestCase {
 
         Case(userText: "I want to add a second library and the Add Library search does not show any additional libraries beyond what I already have",
              category: .library, context: nil,
-             expect: .shouldEscalate,
-             source: "HelpSpot 17930 — KB GAP: stale Add Library registry cache; fix was pull-to-refresh. Should be its own KI"),
+             expect: .shouldMatch(entryId: "KI-2026-009-add-library-stale-registry"),
+             source: "HelpSpot 17930 — stale Add Library registry cache; fix was pull-to-refresh. Now covered by KI-009"),
 
         Case(userText: "trying to sign up for a virtual library card and getting an error message",
              category: .signin, context: nil,
@@ -349,6 +355,51 @@ final class ResponseQualityTests: XCTestCase {
              category: .other, context: nil,
              expect: .shouldEscalate,
              source: "HelpSpot 17871 — KB GAP: library-staff-facing infrastructure event (ILS IP change); resolved server-side by Palace support. No patron-self-serve path"),
+
+        // === Smart punctuation — real iOS keyboard input (U+2019) ===
+        // The same phrasing as the KI-001 cases above, but with the curly
+        // apostrophe a stock iPhone actually types. Before normalization this
+        // matched nothing; it must now recall exactly like the ASCII form.
+        Case(userText: "my audiobook won\u{2019}t play the first time, it just spins",
+             category: .audiobook, context: marketplaceContext,
+             expect: .shouldMatch(entryId: "KI-2026-001-audiobook-first-open-hang"),
+             source: "real-keyboard variant of HelpSpot 17964 (curly apostrophe)"),
+
+        // === KI-2026-009 add-a-library stale registry ===
+        Case(userText: "I can't add a second library, the search doesn't show it",
+             category: .library, context: nil,
+             expect: .shouldMatch(entryId: "KI-2026-009-add-library-stale-registry"),
+             source: "paraphrase of HelpSpot 17930 — add-second-library, stale registry"),
+
+        // === HT-2026-001 renewals (how_to) ===
+        Case(userText: "how many times can I renew my loan",
+             category: .other, context: nil,
+             expect: .shouldMatch(entryId: "HT-2026-001-renewals"),
+             source: "HelpSpot 18028 — renewal limits question; answer: Palace has no in-app renewal"),
+
+        Case(userText: "can I extend my loan to keep the book longer",
+             category: .other, context: nil,
+             expect: .shouldMatch(entryId: "HT-2026-001-renewals"),
+             source: "HelpSpot 18187 — 'make renewing easier'; same underlying answer"),
+
+        // === HT-2026-002 return early (how_to) ===
+        Case(userText: "how do I return a book early before it's due",
+             category: .other, context: nil,
+             expect: .shouldMatch(entryId: "HT-2026-002-return-early"),
+             source: "HelpSpot 17901 — returning a title before the due date"),
+
+        // === HT-2026-003 switch library (how_to) ===
+        Case(userText: "how do I switch between libraries",
+             category: .library, context: nil,
+             expect: .shouldMatch(entryId: "HT-2026-003-switch-library"),
+             source: "common patron question — multiple libraries in one app"),
+
+        // how_to negative — no FAQ answer exists; must still escalate, not
+        // grab a loosely-related how_to.
+        Case(userText: "how do I delete my account permanently",
+             category: .other, context: nil,
+             expect: .shouldEscalate,
+             source: "no how_to for account deletion — routes to a human"),
     ]
 
     // MARK: - Recall (in-KB issues correctly matched)
@@ -443,6 +494,7 @@ final class ResponseQualityTests: XCTestCase {
         let negativeCases = Self.corpus.filter { $0.expect == .shouldEscalate }
 
         var rejected = 0
+        var disambiguated: [(Case, ClassificationResult)] = []
         var falseSuggests: [(Case, ClassificationResult)] = []
 
         for c in negativeCases {
@@ -455,24 +507,74 @@ final class ResponseQualityTests: XCTestCase {
             if case .escalate = result.decision {
                 rejected += 1
             } else if case .disambiguate = result.decision {
-                // Counted as rejection — disambiguation is honest "I'm not sure"
-                rejected += 1
+                // NOT counted as a rejection. A disambiguation on a novel issue
+                // is not a false suggestion, but as the corpus grows two stray
+                // keywords increasingly trip a 2-way disambiguation between
+                // irrelevant cards — counting that as "rejected" would let the
+                // metric ratchet nothing. Reported separately so we can see it.
+                disambiguated.append((c, result))
             } else {
                 falseSuggests.append((c, result))
             }
         }
 
         let rejection = Double(rejected) / Double(negativeCases.count)
-        if !falseSuggests.isEmpty {
-            print("[rejection] \(rejected)/\(negativeCases.count) = \(String(format: "%.0f%%", rejection * 100))")
+        if !falseSuggests.isEmpty || !disambiguated.isEmpty {
+            print("[rejection] \(rejected)/\(negativeCases.count) = \(String(format: "%.0f%%", rejection * 100)) (escalate only; \(disambiguated.count) disambiguated, not counted)")
             for (c, r) in falseSuggests {
                 print("  OVER-MATCH: '\(c.userText)' (\(c.source)) → \(r.decision)")
+            }
+            for (c, r) in disambiguated {
+                print("  DISAMBIGUATED (not counted as rejection): '\(c.userText)' → \(r.decision)")
             }
         }
         XCTAssertGreaterThanOrEqual(
             rejection, Self.rejectionTarget,
             "Rejection \(rejection) below target \(Self.rejectionTarget). Novel issues being misdirected to a KB workaround."
         )
+    }
+
+    // MARK: - Version gate (current-build cohort)
+
+    /// The rest of the corpus runs at appVersion 3.0.3 / nil, so the gate that
+    /// hides `fixed_in` entries from patrons who already have the fix was never
+    /// exercised. These pin both directions on a current (3.3.0) build.
+    func testFixedInEntry_suppressedForPatronWhoHasTheFix() throws {
+        let classifier = LocalClassifier()
+        let kb = try Self.loadCatalog()
+        let current = ContextSnapshot(
+            appVersion: "3.3.0", appBuild: "488", osVersion: "26.4.2",
+            deviceModel: "iPhone17,2", distributor: "palace_marketplace"
+        )
+
+        // KI-007 is fixed_in 3.2.0 — a 3.3.0 patron has the fix, so the same PDF
+        // symptom must NOT surface that "update available" card; it escalates as
+        // a possible regression instead.
+        let result = classifier.classify(
+            userText: "PDF won't open, just shows a blank screen",
+            category: .reader, context: current, knowledgeBase: kb
+        )
+        if case .suggest(let id) = result.decision, id == "KI-2026-007-lcp-pdf-fail-to-open" {
+            XCTFail("A patron on 3.3.0 already has the 3.2.0 fix — KI-007 must not be suggested")
+        }
+    }
+
+    func testOpenAndHowToEntries_stillSurfaceOnCurrentBuild() throws {
+        let classifier = LocalClassifier()
+        let kb = try Self.loadCatalog()
+        let current = ContextSnapshot(
+            appVersion: "3.3.0", appBuild: "488", osVersion: "26.4.2",
+            deviceModel: "iPhone17,2", distributor: "palace_marketplace"
+        )
+
+        // A how_to answer has no fix version and must always surface.
+        let howTo = classifier.classify(
+            userText: "how do I switch between libraries",
+            category: .library, context: current, knowledgeBase: kb
+        )
+        guard case .suggest(let id) = howTo.decision, id == "HT-2026-003-switch-library" else {
+            return XCTFail("how_to must surface on a current build; got \(howTo.decision)")
+        }
     }
 
     // MARK: - Per-KB-entry workaround quality

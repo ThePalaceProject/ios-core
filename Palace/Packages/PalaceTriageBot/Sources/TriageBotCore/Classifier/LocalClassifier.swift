@@ -34,7 +34,11 @@ public struct LocalClassifier: Sendable {
         // with `status: open`, or contexts without an app version all pass
         // through unfiltered.
         let candidates = rawCandidates.filter { entry in
-            guard entry.status == .fixedIn else { return true }
+            // Only known-issue `fixed_in` entries are version-gated. how_to
+            // (general-help) entries have no fix version and must always
+            // surface — a "how do I renew?" answer never expires against a
+            // build number.
+            guard entry.resolvedKind == .knownIssue, entry.status == .fixedIn else { return true }
             return !FixVersionGate.userAlreadyHasFix(for: entry, userAppVersion: context?.appVersion)
         }
 
@@ -105,9 +109,16 @@ public struct LocalClassifier: Sendable {
         let scoreMargin = top.score - secondScore
         let matchCountMargin = top.distinctCount - secondMatchCount
 
+        // Per-kind suggest floor. known_issue entries require ≥2 distinct match
+        // regions (the F-002 precision guard: a symptom word like "stuck" is too
+        // weak alone to route to a specific bug workaround). how_to entries carry
+        // specific intent phrases ("switch library", "return early", "renew") that
+        // are disjoint from symptom language, so a single strong intent match is a
+        // confident signal — requiring two would make most FAQ phrasings escalate.
+        let minDistinctRegions = top.entry.resolvedKind == .howTo ? 1 : 2
         let runnerUpAlsoSaturated = secondScore >= 0.8
         if top.score >= top.entry.confidenceThreshold &&
-           top.distinctCount >= 2 &&
+           top.distinctCount >= minDistinctRegions &&
            (matchCountMargin >= 1 || scoreMargin >= 0.1) &&
            !runnerUpAlsoSaturated {
             return ClassificationResult(

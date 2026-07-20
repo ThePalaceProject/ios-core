@@ -33,17 +33,19 @@ the corpus/threshold work operates on noise:
   double-counts)
 - adds field `kind` to `KBEntry` (`known_issue` | `how_to`, defaults `known_issue` for
   backward-compatible decoding)
-- changes `KBEntry` to make `status` and `userFacingWorkaround` optional, keyed off `kind`
-  (how_to entries carry an answer, not a workaround/status)
-- adds field `escalationTarget` to `KBEntry` (`palace_support` | `library`, default
-  `palace_support`)
+- changes `KBEntry` to make `status` optional, keyed off `kind` (how_to entries carry an
+  answer, not a known-issue status). `userFacingWorkaround` stays required and is reused
+  as the how_to answer text (minimal ripple; the ≥25-char quality bar still applies)
+- adds per-kind suggest policy to `LocalClassifier`: how_to entries suggest at ≥1 distinct
+  region (specific intent phrases), known_issue keeps ≥2
 - migrates `LocalClassifier` version-gating to skip `FixVersionGate` for `kind: how_to`
   entries
 - adds `how_to` entries to `catalog.json` for renewals, return-early, and switch-library
 - adds known-issue entry to `catalog.json` for add-a-second-library (HelpSpot 17930,
   pull-to-refresh)
-- removes over-broad bare keywords (`loading`, `download`, `pdf`, `boxes`, `stuck`, `first time`)
-  from existing `catalog.json` entries where they cost precision
+- removes redundant nested keyword variants + over-broad tokens (`pdf`, `hang`, bridging
+  phrases) from `catalog.json` entries (18 pruned); KEEPS bare `download` in KI-008 as a
+  load-bearing recall token (distinct-region scoring already neutralizes its precision risk)
 - renames the catalog `version` from `v1.1-demo-2026-05-28` to a non-demo `v1.2-2026-07-20`
 - changes KI-001 in `catalog.json` to reconcile `status`/`fixed_in_version` (retag so the
   card is not shown-with-stale-message to fixed patrons)
@@ -59,8 +61,9 @@ the corpus/threshold work operates on noise:
 - does NOT introduce a second classifier or a second package — same scorer, same
   escalate-by-default
 - does NOT implement the how_to staleness lint / reviewed_at governance (deferred to PP-4831)
-- does NOT implement `Decision.escalate(entryId:)` or wire `escalate_anyway` / `trust_level`
-  into behavior (deferred to PP-4832)
+- does NOT implement `Decision.escalate(entryId:)`, wire `escalate_anyway` / `trust_level`,
+  or add an `escalationTarget` field (all deferred to PP-4832 — adding an unread field now
+  would just be another dead knob, exactly what Fable flagged)
 - does NOT change the redaction / `ContextRedactor` surface
 - does NOT change the Mail-composer ticket transport or any UI gateway
 - does NOT touch sign-in, borrow, download, DRM, or audiobook production code — this is the
@@ -72,9 +75,12 @@ the corpus/threshold work operates on noise:
 
 - Palace/Packages/PalaceTriageBot/Sources/TriageBotCore/Classifier/TextNormalizer.swift
 - Palace/Packages/PalaceTriageBot/Sources/TriageBotCore/Classifier/LocalClassifier.swift
+- Palace/Packages/PalaceTriageBot/Sources/TriageBotCore/Classifier/AIFallback.swift
 - Palace/Packages/PalaceTriageBot/Sources/TriageBotCore/Models/KBEntry.swift
+- Palace/Packages/PalaceTriageBot/Sources/TriageBotUI/KBMatchCard.swift
 - Palace/Packages/PalaceTriageBot/Sources/TriageBotCore/Resources/catalog.json
 - Palace/Packages/PalaceTriageBot/Tests/TriageBotCoreTests/LocalClassifierTests.swift
 - Palace/Packages/PalaceTriageBot/Tests/TriageBotCoreTests/ResponseQualityTests.swift
 - Palace/Packages/PalaceTriageBot/Tests/TriageBotCoreTests/CatalogSchemaLintTests.swift
 - Palace/Packages/PalaceTriageBot/Tests/TriageBotCoreTests/TextNormalizerTests.swift
+- Palace/Packages/PalaceTriageBot/Tests/TriageBotCoreTests/KBKindTests.swift
