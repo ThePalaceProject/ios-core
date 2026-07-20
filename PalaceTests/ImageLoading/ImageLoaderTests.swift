@@ -155,8 +155,12 @@ final class ImageLoaderTests: XCTestCase {
         // Drive the call from a background queue to force the implementation
         // to hop back to main for completion (the contract the old bridge
         // guaranteed and the new ImageLoading must preserve).
-        DispatchQueue.global().async { [loader] in
-            loader!.thumbnailImage(for: book) { _ in
+        // Swift 6: `ImageLoader` is non-Sendable, so capturing it directly in
+        // the @Sendable global-queue closure is "sending self.loader". Box it in
+        // LockIsolated (Sendable) and read `.value` inside the closure.
+        let loaderBox = LockIsolated(loader!)
+        DispatchQueue.global().async {
+            loaderBox.value.thumbnailImage(for: book) { _ in
                 ranOnMain.value = Thread.isMainThread
                 expectation.fulfill()
             }
@@ -171,8 +175,11 @@ final class ImageLoaderTests: XCTestCase {
         let expectation = expectation(description: "cover completion fires")
         let ranOnMain = MainThreadFlag()
 
-        DispatchQueue.global().async { [loader] in
-            loader!.coverImage(for: book) { _ in
+        // Swift 6: box the non-Sendable loader (see sibling test) so it can be
+        // read inside the @Sendable global-queue closure without "sending".
+        let loaderBox = LockIsolated(loader!)
+        DispatchQueue.global().async {
+            loaderBox.value.coverImage(for: book) { _ in
                 ranOnMain.value = Thread.isMainThread
                 expectation.fulfill()
             }
