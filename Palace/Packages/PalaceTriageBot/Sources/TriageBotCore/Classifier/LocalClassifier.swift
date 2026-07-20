@@ -134,6 +134,20 @@ public struct LocalClassifier: Sendable {
            top.distinctCount >= minDistinctRegions &&
            matchCountMargin >= 1 &&
            !runnerUpAlsoSaturated {
+            // escalate_anyway: recognized AND confident, but this class of problem
+            // has no safe self-serve fix (e.g. an account-side error only staff can
+            // resolve). Route to a human carrying the recognized context — so the
+            // escalation asks the entry's targeted follow-up and files a scoped
+            // ticket — rather than showing a workaround the patron can't act on.
+            if top.entry.escalateAnyway {
+                return ClassificationResult(
+                    decision: .escalate,
+                    confidence: top.score,
+                    matchedKeywords: top.matched,
+                    consideredEntryIds: consideredIds,
+                    recognizedEntryId: top.entry.id
+                )
+            }
             return ClassificationResult(
                 decision: .suggest(entryId: top.entry.id),
                 confidence: top.score,
@@ -153,12 +167,16 @@ public struct LocalClassifier: Sendable {
             )
         }
 
-        // Single low-confidence match — escalate rather than over-promise
+        // Single low-confidence match — escalate rather than over-promise. We DID
+        // recognize a topic (top.entry), just not confidently enough to suggest;
+        // carry it so the escalation can ask that entry's targeted follow-up and
+        // hand support a scoped ticket instead of a blank hand-off.
         return ClassificationResult(
             decision: .escalate,
             confidence: top.score,
             matchedKeywords: top.matched,
-            consideredEntryIds: consideredIds
+            consideredEntryIds: consideredIds,
+            recognizedEntryId: top.entry.id
         )
     }
 
