@@ -24,6 +24,27 @@ final class CatalogSchemaLintTests: XCTestCase {
         }
     }
 
+    /// how_to keywords MUST be multi-word intent phrases. A bare word like
+    /// "renew" fires on "renewed my card" (a live false positive we fixed) —
+    /// because how_to suggests at a single distinct region, one generic word is
+    /// enough to misroute. Multi-word phrases keep the single-region floor safe.
+    func testHowToKeywordsAreMultiWord() throws {
+        var offenders: [String] = []
+        for entry in try loadEntries() where entry.resolvedKind == .howTo {
+            for keyword in entry.symptomKeywords where !keyword.contains(" ") {
+                offenders.append("\(entry.id): '\(keyword)'")
+            }
+        }
+        XCTAssertTrue(offenders.isEmpty,
+                      "how_to keywords must be multi-word intent phrases, not single words: \(offenders)")
+    }
+
+    /// Duplicate entry ids silently break `entry(id:)` lookups and telemetry.
+    func testEntryIdsAreUnique() throws {
+        let ids = try loadEntries().map { $0.id }
+        XCTAssertEqual(ids.count, Set(ids).count, "catalog has duplicate entry ids")
+    }
+
     /// how_to (general-help) entries are not bugs: no known-issue status, no fix
     /// version, no version gate. known_issue entries must carry a status.
     func testKindShapeInvariants() throws {
@@ -54,18 +75,24 @@ final class CatalogSchemaLintTests: XCTestCase {
                 }
             }
         }
-        // The known, intentional floor is the 5 bare-"download" pairs in KI-008:
-        // the generic "download" token is load-bearing for recall on inputs like
-        // "trying to download an ebook and it never works" (it forms the second
-        // distinct region alongside "never works"), so it stays despite being a
-        // substring of the specific "won't download" etc. Every other entry was
-        // pruned to distinct concepts. New entries must add zero nested variants.
-        if !offenders.isEmpty {
-            for o in offenders { print("  NESTED-KEYWORD: \(o)") }
+        // The known, intentional set is exactly the 5 bare-"download" pairs in
+        // KI-008: "download" is load-bearing for recall on inputs like "trying to
+        // download an ebook and it never works" (it forms the second distinct
+        // region alongside "never works"), so it stays despite being a substring
+        // of the specific "won't download" etc. Every other entry was pruned to
+        // distinct concepts. Asserting the exact SET (not a count ≤ N) means a
+        // swap — one nesting fixed, a new one introduced — still fails.
+        let allowed: Set<String> = [
+            "KI-2026-008-download-no-network: 'download' is nested inside 'won't download'",
+            "KI-2026-008-download-no-network: 'download' is nested inside 'wont download'",
+            "KI-2026-008-download-no-network: 'download' is nested inside 'download stuck'",
+            "KI-2026-008-download-no-network: 'download' is nested inside 'download failed'",
+            "KI-2026-008-download-no-network: 'download' is nested inside 'stuck downloading'",
+        ]
+        if Set(offenders) != allowed {
+            for o in offenders where !allowed.contains(o) { print("  UNEXPECTED NESTED-KEYWORD: \(o)") }
         }
-        XCTAssertLessThanOrEqual(
-            offenders.count, 6,
-            "Nested keyword variants grew beyond the known KI-008 bare-'download' floor (\(offenders.count)). New entries must use distinct concepts, not nested synonyms."
-        )
+        XCTAssertEqual(Set(offenders), allowed,
+                       "Nested-keyword set changed. New entries must use distinct concepts, not nested synonyms; only the KI-008 bare-'download' set is grandfathered.")
     }
 }

@@ -89,7 +89,7 @@ public struct LocalClassifier: Sendable {
 
         // Suggest only when the top score clears the entry's own threshold
         // AND beats the runner-up. THREE guards:
-        //   1. matchCountMargin ≥ 1 OR scoreMargin ≥ 0.1 — top must clearly lead
+        //   1. matchCountMargin ≥ 1 — top must lead by at least one region
         //   2. runner-up score < 0.8 — when BOTH entries are at/near saturation
         //      (e.g. user stuffed keywords from multiple entries), we have
         //      genuine ambiguity and should disambiguate, not confidently pick.
@@ -106,20 +106,33 @@ public struct LocalClassifier: Sendable {
         //      catch them.
         let secondScore = ranked.count > 1 ? ranked[1].score : 0
         let secondMatchCount = ranked.count > 1 ? ranked[1].distinctCount : 0
-        let scoreMargin = top.score - secondScore
         let matchCountMargin = top.distinctCount - secondMatchCount
 
         // Per-kind suggest floor. known_issue entries require ≥2 distinct match
         // regions (the F-002 precision guard: a symptom word like "stuck" is too
         // weak alone to route to a specific bug workaround). how_to entries carry
-        // specific intent phrases ("switch library", "return early", "renew") that
-        // are disjoint from symptom language, so a single strong intent match is a
-        // confident signal — requiring two would make most FAQ phrasings escalate.
+        // specific multi-word intent phrases ("switch library", "return early")
+        // that are disjoint from symptom language, so a single strong intent
+        // match is a confident signal — requiring two would make most FAQ
+        // phrasings escalate. (The multi-word requirement is enforced by
+        // CatalogSchemaLintTests so a bare word like "renew" can't sneak in and
+        // fire on "renewed my card".)
         let minDistinctRegions = top.entry.resolvedKind == .howTo ? 1 : 2
+
+        // confidenceThreshold lets an individual entry DEMAND more evidence than
+        // its kind floor. Scores are quantized to {1/3, 2/3, 1.0} (1, 2, 3+
+        // regions), so a threshold in (1/3, 2/3] means "require ≥2 regions" and
+        // (2/3, 1.0] means "require ≥3". A threshold ≤ 1/3 is a no-op beyond the
+        // kind floor. Shipped catalog entries sit at the floor; the knob exists
+        // for a future entry so broad it needs 3 regions to be safe.
+        //
+        // NOTE: the old `scoreMargin >= 0.1` disjunct was removed — with quantized
+        // scores, scoreMargin ≥ 0.1 can only happen when the region counts differ,
+        // which already implies matchCountMargin ≥ 1. It was provably dead.
         let runnerUpAlsoSaturated = secondScore >= 0.8
         if top.score >= top.entry.confidenceThreshold &&
            top.distinctCount >= minDistinctRegions &&
-           (matchCountMargin >= 1 || scoreMargin >= 0.1) &&
+           matchCountMargin >= 1 &&
            !runnerUpAlsoSaturated {
             return ClassificationResult(
                 decision: .suggest(entryId: top.entry.id),

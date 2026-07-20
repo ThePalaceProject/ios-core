@@ -730,13 +730,19 @@
       "category": "other",
       "kind": "how_to",
       "symptom_keywords": [
-        "renew",
+        "renew my loan",
+        "renew the loan",
+        "renew my book",
+        "renew a book",
+        "renew my checkout",
+        "how do i renew",
+        "can i renew",
         "extend my loan",
         "extend the loan",
         "extend my checkout",
         "keep the book longer",
         "keep it longer",
-        "re-borrow"
+        "borrow it again"
       ],
       "user_facing_workaround": "Palace doesn't renew loans inside the app — when your lending period ends, the book returns itself automatically. To keep reading, just borrow the title again from the catalog. If someone else has it on hold, place a hold to get back in line.",
       "internal_reference": {
@@ -790,7 +796,6 @@
         "switch between libraries",
         "change library",
         "change libraries",
-        "different library",
         "account switcher",
         "swap libraries",
         "go back to my other library",

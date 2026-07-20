@@ -55,6 +55,16 @@ the corpus/threshold work operates on noise:
   input variants, and how_to recall/precision cases
 - changes `ResponseQualityTests` targets: precision 0.90 -> 0.95, rejection 0.85 -> 0.90,
   recall held at 0.75; disambiguate no longer counted as rejection success
+- removes the dead `scoreMargin >= 0.1` disjunct from the `LocalClassifier` suggest guard
+  (provably unreachable under quantized scores)
+- changes HT-001 renewals keywords to multi-word intent phrases (fixes a bare-`renew`
+  false positive on "renewed my card" found in the Fable test review)
+- adds `ClassifierInternalsTests` (direct distinct-region unit tests + suggest-guard
+  decision table + score-scale + cross-kind + malformed-gate; mutation-verified to kill
+  8 previously-surviving mutants)
+- adds exact known-miss allowlists + a per-kind recall floor + a confidence<=1 invariant
+  to `ResponseQualityTests`; adds how_to-multi-word, unique-id, and nested-set-allowlist
+  lints to `CatalogSchemaLintTests`
 
 ## Anti-claims
 
@@ -84,3 +94,4 @@ the corpus/threshold work operates on noise:
 - Palace/Packages/PalaceTriageBot/Tests/TriageBotCoreTests/CatalogSchemaLintTests.swift
 - Palace/Packages/PalaceTriageBot/Tests/TriageBotCoreTests/TextNormalizerTests.swift
 - Palace/Packages/PalaceTriageBot/Tests/TriageBotCoreTests/KBKindTests.swift
+- Palace/Packages/PalaceTriageBot/Tests/TriageBotCoreTests/ClassifierInternalsTests.swift

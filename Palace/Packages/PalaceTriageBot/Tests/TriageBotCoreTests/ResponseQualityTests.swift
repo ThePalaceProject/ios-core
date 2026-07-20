@@ -44,6 +44,20 @@ final class ResponseQualityTests: XCTestCase {
     static let precisionTarget: Double = 0.95    // when bot DOES match, it's right ≥95% of the time
     static let rejectionTarget: Double = 0.90    // bot correctly escalates ≥90% of novel issues
 
+    // How_to is a small slice of positives (n=5); it can regress to escalate
+    // while global recall stays above target. Guard it with its own floor.
+    static let howToRecallTarget: Double = 0.80
+
+    // The REAL ratchet. The soft aggregate targets above have a wide dead zone
+    // (the suite scores ~100% today but targets are 75–95%), so a regression can
+    // hide. These allowlists pin the EXACT set of cases allowed to miss / be
+    // misclassified — keyed by userText. All empty today: any newly-missed case
+    // fails by name. To deliberately accept a regression, add its userText here
+    // with a comment explaining why (that review is the point).
+    static let acceptedRecallMisses: Set<String> = []
+    static let acceptedFalseSuggests: Set<String> = []
+    static let acceptedRejectionFailures: Set<String> = []
+
     // MARK: - Corpus
 
     /// Ground-truth expectation per case.
@@ -400,6 +414,26 @@ final class ResponseQualityTests: XCTestCase {
              category: .other, context: nil,
              expect: .shouldEscalate,
              source: "no how_to for account deletion — routes to a human"),
+
+        // === how_to ADVERSARIAL near-misses (token-bearing, wrong intent) ===
+        // These share a bare word with a how_to entry but are NOT that question.
+        // They must escalate — proof the how_to keywords are specific multi-word
+        // intent phrases, not single words. (The renew-card one was a live false
+        // positive under the earlier bare "renew" keyword.)
+        Case(userText: "the library renewed my card and now Palace won't accept my new barcode",
+             category: nil, context: nil,
+             expect: .shouldEscalate,
+             source: "adversarial — card renewal, NOT loan renewal; must not hit HT-001"),
+
+        Case(userText: "I returned the book last week but it still shows on my shelf",
+             category: nil, context: nil,
+             expect: .shouldEscalate,
+             source: "adversarial — a return BUG (past tense), not 'how do I return'; must not hit HT-002"),
+
+        Case(userText: "the app switched my library on its own and lost my place",
+             category: nil, context: nil,
+             expect: .shouldEscalate,
+             source: "adversarial — an unwanted auto-switch, not 'how do I switch'; must not hit HT-003"),
     ]
 
     // MARK: - Recall (in-KB issues correctly matched)
@@ -423,6 +457,8 @@ final class ResponseQualityTests: XCTestCase {
                 context: c.context,
                 knowledgeBase: kb
             )
+            XCTAssertLessThanOrEqual(result.confidence, 1.0,
+                                     "confidence must never exceed 1.0 (score cap): '\(c.userText)'")
             if case .shouldMatch(let expectedId) = c.expect,
                case .suggest(let actualId) = result.decision,
                expectedId == actualId {
@@ -442,6 +478,11 @@ final class ResponseQualityTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(
             recall, Self.recallTarget,
             "Recall \(recall) below target \(Self.recallTarget). \(misses.count) cases the bot failed to match. Inspect keyword coverage."
+        )
+        // Exact ratchet: the set of missed cases must equal the accepted set.
+        XCTAssertEqual(
+            Set(misses.map { $0.0.userText }), Self.acceptedRecallMisses,
+            "Recall miss SET changed. A case newly regressed to non-suggest (or an accepted miss was fixed — remove it from acceptedRecallMisses)."
         )
     }
 
@@ -482,6 +523,10 @@ final class ResponseQualityTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(
             precision, Self.precisionTarget,
             "Precision \(precision) below target \(Self.precisionTarget). False suggests = misdirection."
+        )
+        XCTAssertEqual(
+            Set(falseSuggests.map { $0.0.userText }), Self.acceptedFalseSuggests,
+            "False-suggest SET changed. The bot newly misdirected a case (a wrong or should-escalate case now suggests)."
         )
     }
 
@@ -531,6 +576,44 @@ final class ResponseQualityTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(
             rejection, Self.rejectionTarget,
             "Rejection \(rejection) below target \(Self.rejectionTarget). Novel issues being misdirected to a KB workaround."
+        )
+        // A negative case that SUGGESTS is a real misdirection (disambiguate is
+        // tracked separately above). Pin the exact set.
+        XCTAssertEqual(
+            Set(falseSuggests.map { $0.0.userText }), Self.acceptedRejectionFailures,
+            "Rejection failure SET changed — a novel/adversarial input newly grabbed a KB entry instead of escalating."
+        )
+    }
+
+    // MARK: - Per-kind recall (how_to must not hide in the aggregate)
+
+    func testRecall_perKind_meetsFloors() throws {
+        let classifier = LocalClassifier()
+        let kb = try Self.loadCatalog()
+
+        func recall(forHowTo howTo: Bool) -> (hits: Int, total: Int) {
+            let cases = Self.corpus.filter {
+                if case .shouldMatch(let id) = $0.expect { return id.hasPrefix("HT-") == howTo }
+                return false
+            }
+            var hits = 0
+            for c in cases {
+                let r = classifier.classify(userText: c.userText, category: c.category, context: c.context, knowledgeBase: kb)
+                if case .shouldMatch(let expected) = c.expect, case .suggest(let actual) = r.decision, expected == actual { hits += 1 }
+            }
+            return (hits, cases.count)
+        }
+
+        let howTo = recall(forHowTo: true)
+        let known = recall(forHowTo: false)
+        XCTAssertGreaterThan(howTo.total, 0, "expected how_to positive cases in the corpus")
+        XCTAssertGreaterThanOrEqual(
+            Double(howTo.hits) / Double(howTo.total), Self.howToRecallTarget,
+            "how_to recall \(howTo.hits)/\(howTo.total) below \(Self.howToRecallTarget) — FAQ answers regressing to escalate, hidden by the aggregate."
+        )
+        XCTAssertGreaterThanOrEqual(
+            Double(known.hits) / Double(known.total), Self.recallTarget,
+            "known_issue recall \(known.hits)/\(known.total) below \(Self.recallTarget)."
         )
     }
 
