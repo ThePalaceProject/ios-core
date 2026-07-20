@@ -1105,7 +1105,7 @@ private final class StubOPDSFeedFetcher: OPDSFeedFetching, @unchecked Sendable {
     }
 
     func fetchFeed(from url: URL, resetCache: Bool) async throws -> TPPOPDSFeed {
-        lock.lock(); _resetCacheCalls.append(resetCache); lock.unlock()
+        lock.withLock { _resetCacheCalls.append(resetCache) }
         if let stubbedError { throw stubbedError }
         if let stubbedFeed { return stubbedFeed }
         throw NSError(domain: "StubOPDSFeedFetcher", code: -1,
