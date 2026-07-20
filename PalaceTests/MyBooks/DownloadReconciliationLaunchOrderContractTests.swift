@@ -19,7 +19,7 @@ final class DownloadReconciliationLaunchOrderContractTests: XCTestCase {
     // async `runLaunchReconciliation` don't capture `self` (which, under Swift 6,
     // would make the non-`@Sendable` closure params send this @MainActor test
     // across the actor boundary). Called as `Self.record(...)`.
-    private static func record(_ bookID: String, task: Int) -> PersistedDownloadRecord {
+    private nonisolated static func record(_ bookID: String, task: Int) -> PersistedDownloadRecord {
         PersistedDownloadRecord(
             bookID: bookID, taskIdentifier: task,
             downloadURL: URL(string: "https://example.org/\(bookID)")!,
