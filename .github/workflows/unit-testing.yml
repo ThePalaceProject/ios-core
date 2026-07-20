@@ -124,9 +124,17 @@ jobs:
         id: tests
         timeout-minutes: 60
         # tee to a log so the @objc-witness-drift gate below can scan the build
-        # warnings. GitHub Actions runs `run:` with `pipefail`, so the tee does
-        # not mask the script's exit code.
-        run: ./scripts/xcode-test-optimized.sh 2>&1 | tee build-output.log
+        # warnings. `set -o pipefail` is set EXPLICITLY here: GitHub's default
+        # bash shell does NOT enable pipefail, so `cmd | tee` returns tee's exit
+        # 0 and masks a non-zero exit from the script — which is how a failing
+        # build passed as a green step even after the script correctly exited 1
+        # (the third masking layer). With pipefail, the pipeline's status is the
+        # script's, so `steps.tests.outcome` reflects a real failure and the
+        # "Fail if tests failed" gate fires.
+        shell: bash
+        run: |
+          set -o pipefail
+          ./scripts/xcode-test-optimized.sh 2>&1 | tee build-output.log
         env:
           BUILD_CONTEXT: ci
         continue-on-error: true
