@@ -91,6 +91,14 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
     # already runs this way (workers=4) successfully; Xcode merges the clones into the single
     # TestResults.xcresult so the downstream summary.failed gate is unchanged. Tune via CI_TEST_WORKERS if a
     # runner has fewer cores (Xcode caps workers to available cores regardless).
+    # Capture xcodebuild output so we can detect a COMPILE failure that
+    # `xcodebuild test` masks. Under `-parallel-testing-enabled` xcodebuild can
+    # exit 0 even when a test bundle fails to BUILD: the sibling bundles that DID
+    # compile run to completion, an `.xcresult` is still produced, and the
+    # overall exit code comes back 0 — so `TEST_EXIT_CODE` lies and the
+    # green-board masking is born (a broken test target reads as a green job).
+    # Tee to a log and scan it for the unambiguous build-failure markers below.
+    XCB_LOG="$(mktemp)"
     set +e
     xcodebuild test \
         -project Palace.xcodeproj \
@@ -111,9 +119,20 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
         ONLY_ACTIVE_ARCH=YES \
         GCC_OPTIMIZATION_LEVEL=0 \
         SWIFT_OPTIMIZATION_LEVEL=-Onone \
-        ENABLE_TESTABILITY=YES
-    TEST_EXIT_CODE=$?
+        ENABLE_TESTABILITY=YES 2>&1 | tee "$XCB_LOG"
+    TEST_EXIT_CODE=${PIPESTATUS[0]}
     set -e
+
+    # Build-failure gate (green-board contract): a compile failure must fail the
+    # job even when xcodebuild's own exit code is 0. These two markers are only
+    # emitted when the BUILD failed (not for ordinary test failures, which the
+    # exit-code propagation below handles).
+    if grep -qE "Testing cancelled because the build failed|The following build commands failed" "$XCB_LOG"; then
+        echo "🔴 ERROR: build/compile failure detected in xcodebuild output — a masked build failure must fail the run."
+        rm -f "$XCB_LOG"
+        exit 1
+    fi
+    rm -f "$XCB_LOG"
 
     if [ ! -d "TestResults.xcresult" ]; then
         echo "🔴 ERROR: No xcresult produced — build likely failed before tests ran."
