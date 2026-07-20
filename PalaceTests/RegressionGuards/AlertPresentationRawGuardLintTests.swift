@@ -44,7 +44,7 @@ final class AlertPresentationRawGuardLintTests: XCTestCase {
     /// Repo root resolved relative to this file
     /// (`<root>/PalaceTests/RegressionGuards/AlertPresentationRawGuardLintTests.swift`).
     private static let repoRoot: URL = {
-        URL(fileURLWithPath: #file)
+        URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()  // RegressionGuards/
             .deletingLastPathComponent()  // PalaceTests/
             .deletingLastPathComponent()  // repo root

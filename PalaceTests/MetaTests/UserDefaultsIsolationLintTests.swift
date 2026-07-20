@@ -49,7 +49,7 @@ final class UserDefaultsIsolationLintTests: XCTestCase {
     /// resilient to running under either the worktree or the main
     /// checkout.
     private static var palaceTestsRoot: URL? {
-        var url = URL(fileURLWithPath: #file)
+        var url = URL(fileURLWithPath: #filePath)
         // Walk up until we find a directory whose lastPathComponent is
         // "PalaceTests".
         while url.pathComponents.count > 1 {

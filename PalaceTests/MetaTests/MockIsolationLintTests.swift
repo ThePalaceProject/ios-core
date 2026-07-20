@@ -58,7 +58,7 @@ final class MockIsolationLintTests: XCTestCase {
   /// retention, shared singletons without reset) exists in test classes
   /// that drive ViewModels and services.
   private static let palaceTestsRoot: URL = {
-    URL(fileURLWithPath: #file)
+    URL(fileURLWithPath: #filePath)
       .deletingLastPathComponent()  // MetaTests/
       .deletingLastPathComponent()  // PalaceTests/
   }()
