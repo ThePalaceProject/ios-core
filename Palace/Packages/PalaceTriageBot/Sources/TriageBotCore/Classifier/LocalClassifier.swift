@@ -17,7 +17,7 @@ public struct LocalClassifier: Sendable {
         context: ContextSnapshot? = nil,
         knowledgeBase kb: KnowledgeBase
     ) -> ClassificationResult {
-        let normalized = userText.lowercased()
+        let normalized = TextNormalizer.normalize(userText)
         let rawCandidates: [KBEntry]
         if let category {
             rawCandidates = kb.entries(in: category)
@@ -47,20 +47,28 @@ public struct LocalClassifier: Sendable {
             )
         }
 
-        let scored = candidates.map { entry -> (entry: KBEntry, score: Double, matched: [String]) in
+        let scored = candidates.map { entry -> (entry: KBEntry, score: Double, matched: [String], distinctCount: Int) in
             let matched = entry.symptomKeywords.filter { keyword in
-                normalized.contains(keyword.lowercased())
+                normalized.contains(TextNormalizer.normalize(keyword))
             }
-            // Score on a capped denominator: each match is worth at most 1/3,
-            // saturating at 3+ matches → score 1.0. Rationale: KB entries with
-            // many synonym keywords (e.g. ten ways to say "won't load") were
-            // being unfairly diluted under the old matched/total formula.
-            // The cap means a confident 3-keyword hit reads as "very likely"
-            // regardless of how exhaustive the entry's synonym list is.
-            // Calibrated against the HelpSpot-mined corpus (May 2026 batch).
+            // Score on the count of DISTINCT non-overlapping regions of the
+            // patron's text that matched — not the raw count of keyword-list
+            // hits. A single word ("hangs") substring-matches every nested
+            // variant an entry lists ("hang", "hangs"), which inflated the raw
+            // count and let one word clear the ≥2 confidence guard. Counting
+            // merged match regions collapses those synonyms to the one concept
+            // the patron actually mentioned.
+            //
+            // Each region is worth at most 1/3, saturating at 3+ → 1.0. The cap
+            // means a confident 3-concept hit reads as "very likely" regardless
+            // of how exhaustive the entry's synonym list is.
+            let distinctCount = Self.distinctMatchRegionCount(
+                of: matched.map { TextNormalizer.normalize($0) },
+                in: normalized
+            )
             let kSaturation = 3
-            let normalizedScore = min(Double(matched.count) / Double(kSaturation), 1.0)
-            return (entry, normalizedScore, matched)
+            let normalizedScore = min(Double(distinctCount) / Double(kSaturation), 1.0)
+            return (entry, normalizedScore, matched, distinctCount)
         }
 
         let consideredIds = scored.map { $0.entry.id }
@@ -81,10 +89,10 @@ public struct LocalClassifier: Sendable {
         //   2. runner-up score < 0.8 — when BOTH entries are at/near saturation
         //      (e.g. user stuffed keywords from multiple entries), we have
         //      genuine ambiguity and should disambiguate, not confidently pick.
-        //   3. top.matched.count ≥ 2 — chaos-qa F-002 (2026-05-29) showed
+        //   3. top.distinctCount ≥ 2 — chaos-qa F-002 (2026-05-29) showed
         //      that a single keyword match like "my library" in KI-004
         //      could route a generic auth-loop complaint to the wrong
-        //      workaround. Requiring ≥2 keyword matches for confident
+        //      workaround. Requiring ≥2 DISTINCT match regions for confident
         //      LOCAL suggest means single-match-only inputs escalate
         //      instead, which routes them to the AI fallback (Claude)
         //      that has semantic understanding to either confirm or
@@ -93,13 +101,13 @@ public struct LocalClassifier: Sendable {
         //      misdirect users; the AI fallback's whole purpose is to
         //      catch them.
         let secondScore = ranked.count > 1 ? ranked[1].score : 0
-        let secondMatchCount = ranked.count > 1 ? ranked[1].matched.count : 0
+        let secondMatchCount = ranked.count > 1 ? ranked[1].distinctCount : 0
         let scoreMargin = top.score - secondScore
-        let matchCountMargin = top.matched.count - secondMatchCount
+        let matchCountMargin = top.distinctCount - secondMatchCount
 
         let runnerUpAlsoSaturated = secondScore >= 0.8
         if top.score >= top.entry.confidenceThreshold &&
-           top.matched.count >= 2 &&
+           top.distinctCount >= 2 &&
            (matchCountMargin >= 1 || scoreMargin >= 0.1) &&
            !runnerUpAlsoSaturated {
             return ClassificationResult(
@@ -128,6 +136,36 @@ public struct LocalClassifier: Sendable {
             matchedKeywords: top.matched,
             consideredEntryIds: consideredIds
         )
+    }
+
+    /// Count how many distinct, non-overlapping regions of `text` are covered
+    /// by any of `keywords` (all already normalized). Nested variants
+    /// ("hang" ⊂ "hangs") and positional overlaps ("won't download" ⊃
+    /// "download") collapse to a single region, so a concept the patron
+    /// mentioned once counts once — not once per synonym the entry lists.
+    /// Uses each keyword's first occurrence; merges overlapping/touching
+    /// ranges and returns the cluster count.
+    static func distinctMatchRegionCount(of keywords: [String], in text: String) -> Int {
+        var ranges: [Range<String.Index>] = []
+        for keyword in keywords where !keyword.isEmpty {
+            if let range = text.range(of: keyword) {
+                ranges.append(range)
+            }
+        }
+        guard !ranges.isEmpty else { return 0 }
+
+        ranges.sort { $0.lowerBound < $1.lowerBound }
+        var clusters = 1
+        var currentUpper = ranges[0].upperBound
+        for range in ranges.dropFirst() {
+            if range.lowerBound >= currentUpper {
+                clusters += 1
+                currentUpper = range.upperBound
+            } else if range.upperBound > currentUpper {
+                currentUpper = range.upperBound
+            }
+        }
+        return clusters
     }
 
     private func passesContextFilters(entry: KBEntry, context: ContextSnapshot?) -> Bool {

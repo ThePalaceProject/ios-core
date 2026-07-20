@@ -1,12 +1,11 @@
 {
-  "version": "v1.1-demo-2026-05-28",
-  "updated_at": "2026-05-28",
+  "version": "v1.2-2026-07-20",
+  "updated_at": "2026-07-20",
   "entries": [
     {
       "id": "KI-2026-001-audiobook-first-open-hang",
       "category": "audiobook",
       "status": "open",
-      "fixed_in_version": "3.2.0",
       "symptom_keywords": [
         "won't play",
         "wont play",
@@ -37,10 +36,12 @@
         "playback doesnt start",
         "play but no sound",
         "play and nothing",
-        "opens but"
+        "opens but",
+        "loan disappear",
+        "reinstall"
       ],
       "distributor_filter": ["palace_marketplace"],
-      "user_facing_workaround": "Tap back to your library, then tap the title again. The second open will play. We're shipping a permanent fix in the next release.",
+      "user_facing_workaround": "Tap back to your library, then tap the title again. The second open usually plays. If it keeps happening, we can send this to support.",
       "user_facing_steps": [
         {
           "id": "ki001-step1-tap-back-tap-again",
@@ -100,10 +101,9 @@
         "switched libraries",
         "changed library",
         "playback crash",
-        "crashed while playing",
+        "crashed",
         "crash while playing",
-        "crashed mid-audiobook",
-        "crashed when i switched"
+        "crashed mid-audiobook"
       ],
       "distributor_filter": ["palace_marketplace"],
       "user_facing_workaround": "This crash is fixed in the next release. As a workaround, avoid switching libraries while an audiobook is playing — pause and return to your library first.",
@@ -209,9 +209,8 @@
         "these arent",
         "doesn't appear",
         "doesnt appear",
-        "appear on my ipad",
-        "appear on my phone",
-        "on my ipad"
+        "on my ipad",
+        "on my phone"
       ],
       "user_facing_workaround": "It looks like you're connected to Palace Bookshelf, which is our demo collection. To use your real library: tap the Palace logo in the top-left corner, then add your library by name.",
       "user_facing_steps": [
@@ -276,7 +275,8 @@
         "in my car",
         "car crash",
         "crash in car",
-        "car crashes"
+        "car crashes",
+        "crashes"
       ],
       "user_facing_workaround": "This CarPlay crash is fixed in the next release. As a workaround, start playback before connecting to your car.",
       "user_facing_steps": [
