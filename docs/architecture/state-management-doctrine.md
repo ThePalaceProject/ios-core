@@ -118,9 +118,52 @@ does not tolerate (Contract C).
   logic moves onto the pure, snapshot-pinned reducer dialect, where a regression
   fails a test loudly instead of shipping to a patron.
 
+## MyBooks pipeline shape — hub, effect-runners, decision cores
+
+`MyBooksDownloadCenter` (~2.1k LOC) is **not a god-class awaiting decomposition**
+— it is the already-decomposed *delegation hub* of the borrow/return/download
+pipeline: wiring, delegate conformances, and URLSession/UIKit plumbing for its
+~27 extracted collaborators. Do not re-triage it for extraction by line count,
+and do not re-plumb the hub. The pipeline's declared shape is three layers:
+
+1. **Hub** (`MyBooksDownloadCenter`) — wiring + delegate surface, no decisions.
+2. **Effect-runners** (`BorrowOperation`, `BookReturnService`,
+   `DownloadStartDispatcher`, …) — async I/O, DRM, alerts, registry writes.
+3. **Pure decision cores** (`BorrowReducerCore`, `ReturnReducer`,
+   `DownloadStartReducer`) — branch selection + effect ordering; no I/O, no
+   singletons; 100%-mutation-testable.
+
+New branch logic goes in a core; new side effects go in the effect-runner; new
+collaborators get wired in the hub.
+
+## Extraction discipline — pin, then extract
+
+Moving decision logic out of an effect-runner (including repaying the
+shape-only-reducer debt above) follows **pin-then-extract**: every branch of
+the live service is characterization-pinned as a contract snapshot and green on
+a clean re-run *before* any decision logic moves. The extracted core's contract
+test then interprets its emitted effect plan into a `CallLog` using the same
+labels the service snapshot recorded — **snapshot shape-equality is the
+behavior-preservation proof**. An extraction without a pinned baseline is a
+rewrite, not a refactor.
+
+## Probe execution — repo-local, dependency-free
+
+Doctrine probes run in CI (`tooling-checks.yml`) via a checker committed to
+`scripts/` that is **pure-stdlib** and reads only the committed
+`docs/architecture/.arch/facts.json` plus the source tree. CI runners have no
+machine-local harness tooling; never wire a machine-local binary into the
+workflow. Probe regexes must be anchored to full type names (an unanchored
+`class TPPBookRegistry` false-matches `TPPBookRegistryRecord` and miscounts the
+book-state owners), and the probe test suite must assert that a clean tree
+**passes**, not only that a violation fails.
+
+## Flow diagrams are derived, never authored
+
+Sequence diagrams for the pinned flows (`docs/architecture/flows/`) are
+generated from the contract-snapshot JSON under
+`PalaceTests/Contract/__Snapshots__/`, never hand-written. Hand-authored flow
+prose drifts silently; a derived diagram re-generates from the pinned truth.
+
 ## References
-- Extracted architecture facts: `docs/architecture/.arch/facts.json`
 - `docs/architecture/architectural-triad.md` (MVVM + Services + Reducers rationale)
-- Contracts B (Effect boundary), C (registry dual-write kill + transition
-  enforcement), D (Sideload SoT boundary), E (pin-then-extract cores),
-  F (self-verifying probes) — `.forgeos/swarms/swarm_8ce6f5ae/contracts/`
