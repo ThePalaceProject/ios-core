@@ -55,6 +55,16 @@ extension XCTestCase {
     /// `drainMainQueue()`).
     ///
     /// - Parameter timeout: Maximum seconds to wait. Default 5s.
+    ///
+    /// `@MainActor`: this helper only ever touches main-queue machinery
+    /// (`expectation`, `DispatchQueue.main.async`, `fulfillment`), and every
+    /// caller is a `@MainActor` test method. Isolating it to the main actor
+    /// keeps the `await` on-actor so the (non-Sendable) `XCTestCase` `self`
+    /// is never *sent* across an actor boundary at the suspension point —
+    /// which is exactly the Swift 6 "sending value of non-Sendable type …
+    /// risks causing data races" error a nonisolated async helper produces
+    /// when called from a `@MainActor async` test (HoldsSyncFailureTests×3).
+    @MainActor
     func drainMainQueueAsync(timeout: TimeInterval = 5.0) async {
         let drained = expectation(description: "main queue drained (async)")
         DispatchQueue.main.async { drained.fulfill() }
