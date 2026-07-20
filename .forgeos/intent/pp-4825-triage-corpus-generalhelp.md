@@ -66,6 +66,17 @@ the corpus/threshold work operates on noise:
   precision target 1.0 — a wrong FAQ is worse than escalating) + a confidence<=1
   invariant to `ResponseQualityTests`; adds how_to-multi-word, unique-id, and
   nested-set-allowlist lints to `CatalogSchemaLintTests`
+- adds `CatalogContractCompletenessTests` (well-formed/terminating guided steps,
+  unique telemetry diagnostics, non-empty escalation prompts, every-entry-reachable)
+- adds `VersionGateMatrixTests` (every fixed_in entry gated both directions; every
+  distributor-filtered entry excluded for a foreign distributor; how_to gate-immune)
+- adds `HoldoutGeneralizationTests` — a BLIND hold-out of 6 fresh HelpSpot tickets
+  (keywords NOT tuned to them) measuring true generalization precision/recall
+- adds coverage meta-test (every entry has a benchmark case) + paraphrase-consistency
+  test to `ResponseQualityTests`
+- fixes a duplicate telemetry diagnostic in KI-004 (found by the contract test)
+- removes the generic `loading` token from KI-001 (a cross-category false positive the
+  blind hold-out surfaced — a borrow-hang was matching the audiobook entry)
 
 ## Anti-claims
 
@@ -96,3 +107,6 @@ the corpus/threshold work operates on noise:
 - Palace/Packages/PalaceTriageBot/Tests/TriageBotCoreTests/TextNormalizerTests.swift
 - Palace/Packages/PalaceTriageBot/Tests/TriageBotCoreTests/KBKindTests.swift
 - Palace/Packages/PalaceTriageBot/Tests/TriageBotCoreTests/ClassifierInternalsTests.swift
+- Palace/Packages/PalaceTriageBot/Tests/TriageBotCoreTests/CatalogContractCompletenessTests.swift
+- Palace/Packages/PalaceTriageBot/Tests/TriageBotCoreTests/VersionGateMatrixTests.swift
+- Palace/Packages/PalaceTriageBot/Tests/TriageBotCoreTests/HoldoutGeneralizationTests.swift

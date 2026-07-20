@@ -695,6 +695,45 @@ final class ResponseQualityTests: XCTestCase {
         }
     }
 
+    // MARK: - Coverage: every entry is exercised by the benchmark
+
+    func testEveryCatalogEntry_hasABenchmarkCase() throws {
+        let kb = try Self.loadCatalog()
+        let entryIds = Set(kb.catalog.entries.map { $0.id })
+        let covered = Set(Self.corpus.compactMap { c -> String? in
+            if case .shouldMatch(let id) = c.expect { return id }; return nil
+        })
+        let uncovered = entryIds.subtracting(covered)
+        XCTAssertTrue(uncovered.isEmpty,
+                      "Catalog entries with NO benchmark shouldMatch case: \(uncovered.sorted()). Every shipped entry must be exercised — add a case when you add an entry.")
+    }
+
+    // MARK: - Consistency: paraphrases of one intent land on one entry
+
+    func testParaphraseConsistency_sameIntentSameEntry() throws {
+        let classifier = LocalClassifier()
+        let kb = try Self.loadCatalog()
+
+        // Distinct phrasings a patron might type for the same need. Not in the
+        // main corpus — these specifically test that varied wording is stable.
+        let intents: [(entryId: String, category: KBCategory, phrasings: [String])] = [
+            ("HT-2026-001-renewals", .other, [
+                "how do I renew my loan", "can I renew this book", "is there a way to extend my loan"]),
+            ("HT-2026-002-return-early", .other, [
+                "how do I return a book early", "how do I return this before it's due"]),
+            ("HT-2026-003-switch-library", .library, [
+                "how do I switch libraries", "how do I change libraries"]),
+        ]
+
+        for intent in intents {
+            for phrasing in intent.phrasings {
+                let r = classifier.classify(userText: phrasing, category: intent.category, knowledgeBase: kb)
+                XCTAssertEqual(r.decision, .suggest(entryId: intent.entryId),
+                               "Paraphrase '\(phrasing)' should consistently resolve to \(intent.entryId), got \(r.decision)")
+            }
+        }
+    }
+
     // MARK: - Per-KB-entry workaround quality
 
     /// Each entry's `userFacingWorkaround` is what real patrons read. This
