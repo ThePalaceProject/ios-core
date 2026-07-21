@@ -55,6 +55,16 @@ final class DownloadCancellationHandler: @unchecked Sendable {
 
     weak var delegate: DownloadCancellationHandlerDelegate?
 
+    /// Handle to the most recently spawned cancel-teardown `Task`. The cancel
+    /// paths do their coordinator/map teardown inside a fire-and-forget
+    /// `Task { }` (spawned either from the no-task branch or from the
+    /// URLSession `cancel` completion). Retaining the handle lets callers —
+    /// and tests — `await lastCancelTeardownTask?.value` to join that teardown
+    /// deterministically instead of polling for the resulting state. Behavior
+    /// is unchanged: the same Task is created and runs exactly as before; only
+    /// a reference to it is now kept.
+    private(set) var lastCancelTeardownTask: Task<Void, Never>?
+
     private let stateManager: DownloadStateManager
     private let bookRegistry: TPPBookRegistryProvider
     #if FEATURE_DRM_CONNECTOR
@@ -94,7 +104,7 @@ final class DownloadCancellationHandler: @unchecked Sendable {
                 bookRegistry.setState(.downloadNeeded, for: identifier)
                 delegate?.broadcastUpdate()
 
-                Task { [weak self] in
+                lastCancelTeardownTask = Task { [weak self] in
                     guard let self else { return }
                     await self.stateManager.downloadCoordinator.removeCachedDownloadInfo(for: identifier)
                     await self.stateManager.downloadCoordinator.registerCompletion(identifier: identifier)
@@ -128,7 +138,7 @@ final class DownloadCancellationHandler: @unchecked Sendable {
         info.downloadTask.cancel { [weak self] _ in
             guard let self else { return }
 
-            Task { [weak self] in
+            self.lastCancelTeardownTask = Task { [weak self] in
                 guard let self else { return }
                 // Clear both maps so retry isn't blocked by stale entries.
                 _ = await self.stateManager.bookIdentifierToDownloadInfo.remove(identifier)

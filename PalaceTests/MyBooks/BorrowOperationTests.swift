@@ -134,11 +134,9 @@ final class BorrowOperationTests: XCTestCase {
         let result = try await operation.borrowAsync(book, attemptDownload: true)
 
         XCTAssertEqual(result.identifier, book.identifier)
-        // Allow the @MainActor.run hop for delegate?.startDownload to settle.
-        for _ in 0..<5 {
-            try? await Task.sleep(nanoseconds: 30_000_000)
-            await Task.yield()
-        }
+        // borrowAsync awaits its `await MainActor.run { delegate?.startDownload }`
+        // hop before returning, so the call has already landed — assert directly,
+        // no deadline poll (which starved under CI oversubscription).
         XCTAssertEqual(spyDelegate.startDownloadCalls.map { $0.identifier }, [book.identifier],
                        "attemptDownload=true with .downloadNeeded must call delegate.startDownload")
     }
@@ -202,11 +200,9 @@ final class BorrowOperationTests: XCTestCase {
             // Expected — errored borrow rethrows after presenting alert.
         }
 
-        // Allow the @MainActor.run hop for showBorrowError to settle.
-        for _ in 0..<5 {
-            try? await Task.sleep(nanoseconds: 30_000_000)
-            await Task.yield()
-        }
+        // borrowAsync awaits its `await MainActor.run { showBorrowError }` hop
+        // before rethrowing, so the alert has already been presented once the
+        // catch returns — assert directly, no deadline poll.
         XCTAssertGreaterThanOrEqual(alertCalls.count, 1,
                                     "Generic error path must invoke presentBorrowErrorAlert")
         XCTAssertEqual(alertCalls.last?.book.identifier, book.identifier)
@@ -238,11 +234,9 @@ final class BorrowOperationTests: XCTestCase {
             // expected
         }
 
-        // Let the @MainActor.run hop for presentSignInModal settle.
-        for _ in 0..<5 {
-            try? await Task.sleep(nanoseconds: 30_000_000)
-            await Task.yield()
-        }
+        // handleBorrowAuthErrorIfNeeded is awaited inside borrowAsync and the
+        // sign-in modal is presented inside `await MainActor.run { ... }`, so the
+        // completion has been recorded once the catch returns — assert directly.
 
         XCTAssertEqual(signInModalCompletions.count, 1,
                        "401-no-problem-doc must present the sign-in modal (item #7)")
@@ -266,11 +260,7 @@ final class BorrowOperationTests: XCTestCase {
             // expected
         }
 
-        for _ in 0..<5 {
-            try? await Task.sleep(nanoseconds: 30_000_000)
-            await Task.yield()
-        }
-
+        // Side effects are awaited inside borrowAsync (see above) — assert directly.
         XCTAssertEqual(signInModalCompletions.count, 1,
                        "403-no-problem-doc must present the sign-in modal (item #7)")
     }
@@ -290,11 +280,7 @@ final class BorrowOperationTests: XCTestCase {
             // expected
         }
 
-        for _ in 0..<5 {
-            try? await Task.sleep(nanoseconds: 30_000_000)
-            await Task.yield()
-        }
-
+        // Side effects are awaited inside borrowAsync (see above) — assert directly.
         XCTAssertEqual(signInModalCompletions.count, 0,
                        "Non-auth network errors must NOT trigger the sign-in modal")
         XCTAssertGreaterThanOrEqual(alertCalls.count, 1,
@@ -331,11 +317,7 @@ final class BorrowOperationTests: XCTestCase {
             // expected
         }
 
-        for _ in 0..<5 {
-            try? await Task.sleep(nanoseconds: 30_000_000)
-            await Task.yield()
-        }
-
+        // Side effects are awaited inside borrowAsync (see above) — assert directly.
         XCTAssertEqual(alertCalls.count, 0,
                        "SQ-007 suppression must NOT surface a borrow-error alert (item #8)")
         XCTAssertEqual(signInModalCompletions.count, 0,
@@ -366,11 +348,7 @@ final class BorrowOperationTests: XCTestCase {
             // expected
         }
 
-        for _ in 0..<5 {
-            try? await Task.sleep(nanoseconds: 30_000_000)
-            await Task.yield()
-        }
-
+        // Side effects are awaited inside borrowAsync (see above) — assert directly.
         XCTAssertEqual(signInModalCompletions.count, 1,
                        "No-credentials + loan-state must STILL trigger sign-in modal (not SQ-007)")
     }
@@ -398,11 +376,7 @@ final class BorrowOperationTests: XCTestCase {
             // expected
         }
 
-        for _ in 0..<5 {
-            try? await Task.sleep(nanoseconds: 30_000_000)
-            await Task.yield()
-        }
-
+        // Side effects are awaited inside borrowAsync (see above) — assert directly.
         // basic auth + creds + .unregistered → not SQ-007 → not
         // browser-reauth → no automatic recovery → generic alert.
         XCTAssertGreaterThanOrEqual(alertCalls.count, 1,
@@ -430,11 +404,7 @@ final class BorrowOperationTests: XCTestCase {
             // expected
         }
 
-        for _ in 0..<5 {
-            try? await Task.sleep(nanoseconds: 30_000_000)
-            await Task.yield()
-        }
-
+        // Side effects are awaited inside borrowAsync (see above) — assert directly.
         XCTAssertEqual(alertCalls.count, 0,
                        ".holding + credentials → SQ-007 fires → no alert")
         XCTAssertFalse(bookRegistry.processing(forIdentifier: book.identifier),
@@ -486,11 +456,7 @@ final class BorrowOperationTests: XCTestCase {
             // expected
         }
 
-        for _ in 0..<5 {
-            try? await Task.sleep(nanoseconds: 30_000_000)
-            await Task.yield()
-        }
-
+        // Side effects are awaited inside borrowAsync (see above) — assert directly.
         XCTAssertEqual(signInModalCompletions.count, 1,
                        "SAML browser-based account + creds must route to the browser re-auth modal " +
                        "(needsBrowserReauth branch at :636). A `!= true` mutant would skip this and alert instead.")

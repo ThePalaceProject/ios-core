@@ -272,9 +272,13 @@ final class BookCellModelActionTests: XCTestCase {
         _ = model.acquireReaderPresentationLock()
         XCTAssertTrue(model.isPresentingReader)
 
-        // Production lock window is 0.5s. Poll for the flag to clear with
-        // a generous timeout so heavy main-thread load can't flake this.
-        awaitCondition(timeout: 5.0) { !model.isPresentingReader }
+        // Production lock window is 0.5s (a `DispatchQueue.main.asyncAfter`).
+        // The delay is real and unavoidable, but we join the flag's actual
+        // publisher emission instead of polling a wall-clock deadline: when the
+        // asyncAfter block fires and sets `isPresentingReader = false`, the
+        // `@Published` emission fulfils the expectation. No poll loop to
+        // compete for the executor and blow the deadline under CI load.
+        awaitPublished(model.$isPresentingReader, timeout: 5.0) { $0 == false }
 
         XCTAssertTrue(model.acquireReaderPresentationLock(),
             "After the debounce window expires, a fresh tap must be able to re-acquire")

@@ -79,6 +79,32 @@ class TPPDRMAuthorizingMock: NSObject, TPPDRMAuthorizing, @unchecked Sendable {
         set { lock.withLock { _deferredDeauthCompletion = newValue } }
     }
 
+    /// TEST SEAM — a continuation resumed the instant `deauthorize(...)` is
+    /// ENTERED. Lets a test `await` the "deauthorize was invoked" edge
+    /// deterministically instead of spinning a `Timer.scheduledTimer` that
+    /// polls `deauthorizeWasCalled` on a wall-clock ceiling — a poll that
+    /// starves under parallel-sim-clone oversubscription and blows the
+    /// executionTimeAllowance. Behaviour is otherwise identical: the deferred-
+    /// completion mechanism is unchanged.
+    private var _deauthorizeCalledContinuation: CheckedContinuation<Void, Never>?
+
+    /// Await the point at which `deauthorize(...)` is invoked. Resolves
+    /// immediately if it was already called; otherwise suspends until the next
+    /// `deauthorize` entry resumes it.
+    func _awaitDeauthorizeCalledForTesting() async {
+        let alreadyCalled: Bool = lock.withLock { _deauthorizeWasCalled }
+        if alreadyCalled { return }
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            let fireNow: Bool = lock.withLock {
+                // Re-check under the lock to close the race with `deauthorize`.
+                if _deauthorizeWasCalled { return true }
+                _deauthorizeCalledContinuation = continuation
+                return false
+            }
+            if fireNow { continuation.resume() }
+        }
+    }
+
     func isUserAuthorized(_ userID: String!, withDevice device: String!) -> Bool {
         return isUserAuthorizedReturnValue
     }
@@ -90,8 +116,17 @@ class TPPDRMAuthorizingMock: NSObject, TPPDRMAuthorizing, @unchecked Sendable {
     }
 
     func deauthorize(withUsername username: String!, password: String!, userID: String!, deviceID: String!, completion: (@Sendable (Bool, Error?) -> Void)!) {
-        deauthorizeWasCalled = true
-        deauthorizeCallCount += 1
+        // Flip the flag and hand off any waiting continuation under one lock
+        // acquisition so `_awaitDeauthorizeCalledForTesting` can't miss the edge.
+        let waiter: CheckedContinuation<Void, Never>? = lock.withLock {
+            _deauthorizeWasCalled = true
+            _deauthorizeCallCount += 1
+            let c = _deauthorizeCalledContinuation
+            _deauthorizeCalledContinuation = nil
+            return c
+        }
+        waiter?.resume()
+
         if shouldDeferDeauthorize {
             deferredDeauthCompletion = completion
         } else {
@@ -114,5 +149,6 @@ class TPPDRMAuthorizingMock: NSObject, TPPDRMAuthorizing, @unchecked Sendable {
         deauthorizeCallCount = 0
         shouldDeferDeauthorize = false
         deferredDeauthCompletion = nil
+        lock.withLock { _deauthorizeCalledContinuation = nil }
     }
 }

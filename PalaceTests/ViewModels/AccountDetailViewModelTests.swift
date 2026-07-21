@@ -1252,9 +1252,23 @@ final class AccountDetailViewModelSignedInDerivationTests: XCTestCase {
 
     /// Let the init-time `loadInitialData()` / `accountDidChange()` work settle so
     /// the subsequent `dropFirst()` observation only sees OUR triggered change.
-    private func settle() async {
-        for _ in 0..<3 { await Task.yield() }
-        try? await Task.sleep(nanoseconds: 50_000_000)
+    ///
+    /// Joins the *actual* fire-and-forget init work instead of sleeping on a fixed
+    /// wall-clock deadline (which starves under CI oversubscription): `loadInitialData()`
+    /// sets `isLoadingAuth = true` synchronously in `init`, then its `@MainActor` Task
+    /// runs `accountDidChange()` and flips `isLoadingAuth = false`. Waiting for that
+    /// transition is the deterministic completion signal for the init work. If the VM
+    /// was already idle when we subscribe, the current-value emission satisfies us
+    /// immediately.
+    @MainActor
+    private func settle(_ vm: AccountDetailViewModel) async {
+        let settled = expectation(description: "init-time loadInitialData settled (isLoadingAuth == false)")
+        vm.$isLoadingAuth
+            .filter { $0 == false }
+            .first()
+            .sink { _ in settled.fulfill() }
+            .store(in: &cancellables)
+        await fulfillment(of: [settled], timeout: 5.0)
     }
 
     /// Posts `.TPPUserAccountDidChange` from a background queue (production shape)
@@ -1282,7 +1296,7 @@ final class AccountDetailViewModelSignedInDerivationTests: XCTestCase {
     func testOffMainAccountChange_withValidCredentials_signsInAndPopulatesBarcodeAndPin() async throws {
         let box = SnapshotBox(makeSnapshot(hasCredentials: false, authState: .loggedOut))
         let vm = try makeViewModel(box: box)
-        await settle()
+        await settle(vm)
         XCTAssertFalse(vm.isSignedIn, "precondition: starts signed out")
 
         box.snapshot = makeSnapshot(hasCredentials: true, authState: .loggedIn,
@@ -1299,7 +1313,7 @@ final class AccountDetailViewModelSignedInDerivationTests: XCTestCase {
         let box = SnapshotBox(makeSnapshot(hasCredentials: true, authState: .loggedIn,
                                            barcode: "OLD", pin: "OLD"))
         let vm = try makeViewModel(box: box)
-        await settle()
+        await settle(vm)
         XCTAssertTrue(vm.isSignedIn, "precondition: starts signed in")
 
         // hasCredentials stays true, but authState becomes loggedOut. This pins
@@ -1318,7 +1332,7 @@ final class AccountDetailViewModelSignedInDerivationTests: XCTestCase {
         let box = SnapshotBox(makeSnapshot(hasCredentials: true, authState: .loggedIn,
                                            barcode: "X", pin: "Y"))
         let vm = try makeViewModel(box: box)
-        await settle()
+        await settle(vm)
         XCTAssertTrue(vm.isSignedIn, "precondition: starts signed in")
 
         // Pins the `hasCredentials &&` half: no credentials → signed-out
@@ -1333,7 +1347,7 @@ final class AccountDetailViewModelSignedInDerivationTests: XCTestCase {
     func testOffMainAccountChange_credentialsStale_remainsSignedIn() async throws {
         let box = SnapshotBox(makeSnapshot(hasCredentials: false, authState: .loggedOut))
         let vm = try makeViewModel(box: box)
-        await settle()
+        await settle(vm)
 
         // credentialsStale is "has credentials, session expired" — NOT loggedOut,
         // so the account still reads as signed-in (token refreshes in background).
@@ -1349,7 +1363,7 @@ final class AccountDetailViewModelSignedInDerivationTests: XCTestCase {
     func testOffMainAccountChange_signedInWithNilBarcodeAndPin_fieldsFallThroughToEmpty() async throws {
         let box = SnapshotBox(makeSnapshot(hasCredentials: false, authState: .loggedOut))
         let vm = try makeViewModel(box: box)
-        await settle()
+        await settle(vm)
 
         // Signed-in but the snapshot carries nil barcode/pin (token-only auth).
         // Pins the `snapshot.barcode ?? ""` / `snapshot.pin ?? ""` fallthrough:

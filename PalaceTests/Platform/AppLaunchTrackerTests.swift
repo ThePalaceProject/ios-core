@@ -125,8 +125,10 @@ final class AppLaunchTrackerTests: XCTestCase {
         try? await Task.sleep(nanoseconds: 20_000_000)
         await tracker.recordMilestone(.catalogLoaded)
 
-        // Give time for the async metric reporting
-        try? await Task.sleep(nanoseconds: 100_000_000)
+        // Deterministically JOIN the fire-and-forget metric report instead of
+        // sleeping on a wall-clock deadline (which starves under CI sim-clone
+        // oversubscription → 120s executionTimeAllowance).
+        await tracker.awaitPendingMetricsReport()
 
         let metrics = await monitor.metrics(for: .appLaunch)
         XCTAssertGreaterThan(metrics.count, 0, "Should have reported launch metrics to the performance monitor")

@@ -173,8 +173,9 @@ final class AppLaunchTrackerExtendedTests: XCTestCase {
         try? await Task.sleep(nanoseconds: 20_000_000)
         await tracker.recordMilestone(.catalogLoaded)
 
-        // Give time for async metric reporting
-        try? await Task.sleep(nanoseconds: 200_000_000)
+        // Deterministically JOIN the fire-and-forget metric report rather than
+        // sleeping on a wall-clock deadline (starves under CI oversubscription).
+        await tracker.awaitPendingMetricsReport()
 
         let metrics = await monitor.metrics(for: .appLaunch)
         let warmMetrics = metrics.filter { $0.metadata["launch_type"] == "warm" }

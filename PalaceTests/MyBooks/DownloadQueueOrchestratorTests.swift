@@ -80,10 +80,10 @@ final class DownloadQueueOrchestratorTests: XCTestCase {
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
         register(book, state: .unregistered)
 
+        // enqueuePending sets .downloading SYNCHRONOUSLY (before the Task hop)
+        // so the borrow button shows feedback immediately. Assert directly —
+        // no wait needed, and no dependency on the async coordinator hop.
         orchestrator.enqueuePending(book)
-        await waitForAsync { [self] in
-            self.bookRegistry.state(for: book.identifier) == .downloading
-        }
 
         XCTAssertEqual(bookRegistry.state(for: book.identifier), .downloading,
                        "enqueuePending must immediately set state to .downloading so the borrow button shows feedback while parked behind the cap")
@@ -93,17 +93,12 @@ final class DownloadQueueOrchestratorTests: XCTestCase {
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
         register(book)
 
-        orchestrator.enqueuePending(book)
-
-        // The orchestrator hops onto a detached Task to enqueue; poll the
-        // actor until the append lands so the assertion isn't racey.
-        // Uses awaitConditionAsync's async-predicate overload to read the
-        // actor-isolated queueCount without leaking a hand-rolled silent
-        // while-deadline loop.
-        await awaitConditionAsync(timeout: 10.0) { [stateManager] in
-            let count = await stateManager?.downloadCoordinator.queueCount ?? 0
-            return count >= 1
-        }
+        // Join the actor-hopping enqueue directly instead of polling the
+        // coordinator's queueCount against a wall-clock deadline (which
+        // starves under CI oversubscription). enqueuePendingAsync runs the
+        // exact same coordinator append + notification the fire-and-forget
+        // Task does.
+        await orchestrator.enqueuePendingAsync(book)
         let observedCount = await stateManager.downloadCoordinator.queueCount
 
         XCTAssertEqual(observedCount, 1,
@@ -124,8 +119,17 @@ final class DownloadQueueOrchestratorTests: XCTestCase {
         }
         defer { notificationCenter.removeObserver(token) }
 
-        orchestrator.enqueuePending(book)
-        await waitForAsync { observedCount > 0 }
+        // The DidChange post lands via runOnMainAsync (a `Task { @MainActor }`),
+        // which drainMainQueueAsync does NOT flush. Synchronize on the post
+        // itself with an expectation the SUT fulfills — prompt-firing, so it
+        // completes the instant the notification fires (not a deadline-poll).
+        let posted = XCTNSNotificationExpectation(
+            name: .TPPMyBooksDownloadCenterDidChange,
+            object: nil,
+            notificationCenter: notificationCenter
+        )
+        await orchestrator.enqueuePendingAsync(book)
+        await fulfillment(of: [posted], timeout: 5.0)
 
         XCTAssertEqual(observedCount, 1,
                        "enqueuePending must post TPPMyBooksDownloadCenterDidChange so MyBooks/detail/cell views refresh")
@@ -161,8 +165,17 @@ final class DownloadQueueOrchestratorTests: XCTestCase {
         }
         defer { notificationCenter.removeObserver(injectedToken) }
 
-        orchestrator.enqueuePending(book)
-        await waitForAsync { injectedCount > 0 }
+        // Synchronize on the post via an expectation on the injected center —
+        // prompt-firing (fulfills the instant the SUT posts), not a deadline
+        // poll. This also lets the runOnMainAsync `Task { @MainActor }` hop
+        // (which drainMainQueueAsync can't flush) complete deterministically.
+        let posted = XCTNSNotificationExpectation(
+            name: .TPPMyBooksDownloadCenterDidChange,
+            object: nil,
+            notificationCenter: notificationCenter
+        )
+        await orchestrator.enqueuePendingAsync(book)
+        await fulfillment(of: [posted], timeout: 5.0)
 
         XCTAssertEqual(injectedCount, 1, "sanity: injected center received the post")
         XCTAssertEqual(defaultCenterCount, 0,
@@ -245,6 +258,13 @@ final class DownloadQueueOrchestratorTests: XCTestCase {
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
         await stateManager.downloadCoordinator.enqueuePending(book)
 
+        // UNJOINABLE: schedulePendingStartsIfPossible() is an intentional
+        // fire-and-forget `Task { await schedulePendingStartsAsync() }` that
+        // returns no handle — this test's whole point is to prove the sync
+        // wrapper is wired to the delegate path (guards against it being
+        // silently neutered), so we must exercise the wrapper itself, not the
+        // async sibling. No seam to await; the poll stays. The delegate call
+        // is cheap and lands within one Task hop, so starvation risk is low.
         orchestrator.schedulePendingStartsIfPossible()
         await waitForAsync { [self] in self.spyDelegate.startCalls.count > 0 }
 
