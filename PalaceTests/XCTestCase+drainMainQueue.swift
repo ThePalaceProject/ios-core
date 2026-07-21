@@ -95,12 +95,30 @@ extension XCTestCase {
         // @MainActor Task instead of the old DispatchQueue.main.asyncAfter
         // recursion (whose @Sendable closure couldn't capture the @MainActor
         // predicate). `wait(for:)` spins the main runloop so the Task advances.
+        //
+        // CANCELLATION-FIRST ordering is load-bearing. The previous shape
+        // (`while !predicate() { if Task.isCancelled ... sleep }`) evaluated
+        // the predicate ONE MORE TIME on the resumption after `cancel()`:
+        // on timeout, `wait` returns → `pollTask.cancel()` → the pending
+        // `Task.sleep` throws immediately → the loop re-entered
+        // `while !predicate()` BEFORE noticing the cancellation. That leaked
+        // resumption runs at the next main-actor availability — which can be
+        // AFTER `tearDown` has nil'd the test's implicitly-unwrapped fixtures
+        // (`self.sut!`), turning a timed-out wait into a force-unwrap
+        // `fatalError` that kills the whole test-runner process (CI run
+        // 29802862487: AudiobookPlaytimesLifecycleTests' retry crashed the
+        // Clone-2 runner exactly this way). Checking `Task.isCancelled` FIRST
+        // guarantees the predicate is never touched after `cancel()` returns:
+        // cancel + tearDown run synchronously on main, so the leaked
+        // resumption's first act is the cancellation check.
         let pollTask = Task { @MainActor in
-            while !predicate() {
-                if Task.isCancelled { return }
+            while !Task.isCancelled {
+                if predicate() {
+                    met.fulfill()
+                    return
+                }
                 try? await Task.sleep(nanoseconds: UInt64(pollInterval * 1_000_000_000))
             }
-            met.fulfill()
         }
         wait(for: [met], timeout: timeout)
         pollTask.cancel()
