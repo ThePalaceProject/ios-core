@@ -115,16 +115,10 @@ final class DownloadAuthRetryHandlerAuthCoordinatorTests: XCTestCase {
         return FakeURLSessionDownloadTask(response: response, originalRequest: URLRequest(url: url))
     }
 
-    /// Joins the handler's in-flight coordinator-routed retry Tasks. Each such
-    /// path runs inside a `launchTrackedTask` retained in `inFlightTasks`;
-    /// awaiting each one's `.value` runs its body (cleanup → coordinator
-    /// refresh → state transition → retry) AND its auto-removal to completion.
-    /// A deterministic join, replacing the fixed 8×50ms sleep loop whose
-    /// wall-clock ceiling starved under CI oversubscription. The spy modal
-    /// presenter returns synchronously, so the coordinator await never blocks.
     private func waitForAsyncCleanup() async {
-        for task in handler.inFlightTasksSnapshotForTesting() {
-            _ = await task.value
+        for _ in 0..<8 {
+            try? await Task.sleep(nanoseconds: 50_000_000) // 50ms
+            await Task.yield()
         }
     }
 
