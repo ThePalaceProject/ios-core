@@ -308,19 +308,19 @@ final class TPPSignInBusinessLogicStateMachineTests: XCTestCase {
         // Details land. The awaited retry must now fire the credential request.
         // Single-auth details: the getter resolves to basic post-load, so the
         // retried logIn() reaches validateCredentials() -> executeRequest().
-        setLoadState(.detailsLoaded(basicDetails))
-
+        //
+        // JOIN, don't poll: the fix awaits readiness on a Task, then re-enters
+        // logIn() on the main actor and calls executeRequest(). Instead of
+        // guessing when that await + main-actor hop lands via two asyncAfter
+        // probes (which starve under CI oversubscription and time out even
+        // though the request DID fire), wake the instant the mock records the
+        // request. `onExecuteRequest` fires synchronously inside executeRequest,
+        // so `fired` fulfills exactly when the awaited retry reaches the network.
         let fired = expectation(description: "credential request fires once the account is ready")
-        // Poll the mock: the fix awaits readiness on a Task, then re-enters
-        // logIn() on the main actor, which calls validateCredentials() ->
-        // executeRequest(). Give the await + main-actor hop a moment to land.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            if !mockExecutor.executedRequestURLs.isEmpty { fired.fulfill() }
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            if !mockExecutor.executedRequestURLs.isEmpty { fired.fulfill() }
-        }
-        wait(for: [fired], timeout: 3.0)
+        fired.assertForOverFulfill = false  // at-least-one semantics; retries may fire >1
+        mockExecutor.onExecuteRequest = { _ in fired.fulfill() }
+        setLoadState(.detailsLoaded(basicDetails))
+        wait(for: [fired], timeout: 5.0)
 
         XCTAssertGreaterThanOrEqual(mockExecutor.executedRequestURLs.count, 1,
                                     "after readiness, the raced Sign-in must fire the credential request — NOT silently drop (the 479 regression)")

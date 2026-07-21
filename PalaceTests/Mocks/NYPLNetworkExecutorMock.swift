@@ -52,6 +52,18 @@ class TPPRequestExecutorMock: TPPRequestExecuting, @unchecked Sendable {
         set { lock.withLock { _executedRequestURLs = newValue } }
     }
 
+    /// Fired synchronously the instant `executeRequest` records a URL — the
+    /// deterministic JOIN seam for tests that need to wake the moment the
+    /// request actually fires, instead of polling `executedRequestURLs` on a
+    /// wall-clock deadline (which starves under CI parallel oversubscription
+    /// and times out even though the request DID fire). A test sets this to
+    /// `{ _ in expectation.fulfill() }` and `await`s that expectation.
+    private var _onExecuteRequest: (@Sendable (URLRequest) -> Void)?
+    var onExecuteRequest: (@Sendable (URLRequest) -> Void)? {
+        get { lock.withLock { _onExecuteRequest } }
+        set { lock.withLock { _onExecuteRequest = newValue } }
+    }
+
     /// Incremented in `reset()` so that stale GCD blocks from a previous
     /// test skip their completion callback.
     private var _generation: Int = 0
@@ -70,6 +82,9 @@ class TPPRequestExecutorMock: TPPRequestExecuting, @unchecked Sendable {
     func reset() {
         generation += 1
         executedRequestURLs.removeAll()
+        // Drop any join hook so a stale closure can't fire a torn-down
+        // expectation on a later test's request.
+        onExecuteRequest = nil
     }
 
     func executeRequest(_ req: URLRequest,
@@ -79,6 +94,9 @@ class TPPRequestExecutorMock: TPPRequestExecuting, @unchecked Sendable {
         if let reqURL = req.url {
             executedRequestURLs.append(reqURL)
         }
+        // Join seam: notify AFTER recording, so a test woken by this callback
+        // reads a URL list that already contains this request.
+        onExecuteRequest?(req)
 
         let capturedGeneration = generation
         let completionBox = SendableResultCompletion(completion: completion)

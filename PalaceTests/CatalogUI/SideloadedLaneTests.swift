@@ -192,31 +192,32 @@ final class SideloadedLaneViewModelTests: XCTestCase {
   }
 
   private func awaitLoaded(_ vm: CatalogViewModel) async {
-    // FLAKE-003-OK: CatalogViewModel.load() spawns a Task that awaits the repo
-    // fetch, an off-actor mapFeed, and imageCache warming. Under Swift-6 timing on
-    // memory-pressured CI nodes that chain stretches past 5s (state stuck at
-    // .loading), a reliable full-suite timeout that passes in isolation. 20s
-    // tolerates the load without letting a genuinely-wedged VM hide forever —
-    // same rationale as SignInWebSheetIntegrationTests' 5s→30s widening.
-    let exp = XCTestExpectation(description: "loaded")
-    vm.$state.sink { if case .loaded = $0 { exp.fulfill() } }.store(in: &cancellables)
+    // `CatalogViewModel.load()` spawns `currentLoadTask` (repo fetch → off-actor
+    // mapFeed → imageCache warming) and returns WITHOUT awaiting it, so the
+    // `.loaded` transition lands asynchronously. Join the actual load Task via
+    // the `_awaitLoadForTesting()` seam instead of racing a wall-clock
+    // `fulfillment(timeout:)` on `$state` — the fixed deadline starved under CI
+    // sim-clone oversubscription (the old FLAKE-003 20s widening). The join
+    // blocks exactly until the load's state transition has been applied.
     await vm.load()
-    await fulfillment(of: [exp], timeout: 20.0)
+    await vm._awaitLoadForTesting()
+    guard case .loaded = vm.state else {
+      return XCTFail("Expected .loaded after load() joined, got \(vm.state)")
+    }
   }
 
   /// Drive `load()` to a terminal failure state (`.error` or `.offline`,
-  /// depending on the injected reachability) and wait for it to land. The load
-  /// task is spawned but not awaited by `load()`, so we sink on `$state`.
+  /// depending on the injected reachability) and join the load Task. The load
+  /// task is spawned but not awaited by `load()`, so we join it deterministically
+  /// via `_awaitLoadForTesting()` rather than polling `$state` on a deadline.
   private func awaitFailure(_ vm: CatalogViewModel) async {
-    let exp = XCTestExpectation(description: "failure")
-    vm.$state.sink {
-      switch $0 {
-      case .error, .offline: exp.fulfill()
-      default: break
-      }
-    }.store(in: &cancellables)
     await vm.load()
-    await fulfillment(of: [exp], timeout: 20.0)
+    await vm._awaitLoadForTesting()
+    switch vm.state {
+    case .error, .offline: break
+    default:
+      XCTFail("Expected .error/.offline after load() joined, got \(vm.state)")
+    }
   }
 
   private func groupedLanes(_ vm: CatalogViewModel) -> [CatalogLaneModel]? {

@@ -180,11 +180,14 @@ final class DownloadProgressPublisherCoreTests: XCTestCase {
             reporter.broadcastUpdate()
         }
 
-        // The publisher emits one notification immediately and schedules a
-        // single trailing broadcast at +0.5s. Poll until the trailing fires
-        // (count >= 2) rather than sleeping for a fixed window. Generous
-        // 5s timeout keeps the test resilient under loaded CI without
-        // disguising a real regression as flake.
+        // BOUNDED-TIMER (not fire-and-forget starvation): the publisher emits
+        // one notification immediately and schedules a single trailing
+        // broadcast via `DispatchQueue.main.asyncAfter(+0.5s)` — an intrinsic,
+        // by-design wall-clock delay that no join can collapse to zero.
+        // awaitCondition spins the main runloop, which fires that main-queue
+        // timer; a 0.5s timer under a 5s ceiling has ~10x headroom and is not
+        // the unbounded-async-work pattern that starves to executionTimeAllowance.
+        // Left as a bounded-timer wait.
         awaitCondition(timeout: 5.0) { notificationCount >= 2 }
         NotificationCenter.default.removeObserver(token)
 

@@ -80,15 +80,24 @@ final class CredentialPromptCoordinatorTests: XCTestCase {
         try super.tearDownWithError()
     }
 
-    /// Wraps the shared `awaitConditionAsync` helper. `file`/`line`
-    /// forwarded so timeout XCTFail blames the call site.
-    private func waitForAsync(
-        timeout: TimeInterval = 10.0,
-        file: StaticString = #file,
-        line: UInt = #line,
-        _ predicate: @escaping () -> Bool
-    ) async {
-        await awaitConditionAsync(timeout: timeout, file: file, line: line, predicate)
+    /// Deterministic join for the coordinator's flow. Every step of
+    /// `requestCredentialsAndStartDownload` (the gate check, the Adobe-expired
+    /// branch, the `presentSignInModal` call, and the post-sign-in retry /
+    /// cleanup) runs inside `Task { @MainActor }` bodies enqueued on THIS
+    /// actor. Awaiting barrier `Task { @MainActor }` values services those
+    /// earlier-submitted tasks in order — the spy increments (all synchronous
+    /// inside those tasks) are then observable. Completes the moment the actor
+    /// is free; never starves on a wall clock like the old `awaitConditionAsync`
+    /// poll did under CI oversubscription. Three hops cover the deepest chain
+    /// (entry Task → presentSignInModal completion Task → cleanup).
+    ///
+    /// Note: the 2s cooldown Task (which clears the gate later) is NOT joined
+    /// by this — it's a genuine fire-and-forget timer the tests don't wait on.
+    @MainActor
+    private func flushMainActorTasks() async {
+        await Task { @MainActor in }.value
+        await Task { @MainActor in }.value
+        await Task { @MainActor in }.value
     }
 
     // MARK: - Re-entrancy guard
@@ -97,10 +106,10 @@ final class CredentialPromptCoordinatorTests: XCTestCase {
         credentialState.isRequestingCredentials = true
 
         coordinator.requestCredentialsAndStartDownload(for: book)
-        for _ in 0..<3 {
-            try? await Task.sleep(nanoseconds: 20_000_000)
-            await Task.yield()
-        }
+        // Absence assertion: the entry Task returns immediately (gate already
+        // set). Flush the main-actor executor so it runs, then assert nothing
+        // presented — deterministic, no fixed sleep.
+        await flushMainActorTasks()
 
         XCTAssertEqual(presentedSignInModal, 0,
                        "Re-entrant request must NOT present another sign-in modal")
@@ -114,7 +123,7 @@ final class CredentialPromptCoordinatorTests: XCTestCase {
         isAdobeExpired = true
 
         coordinator.requestCredentialsAndStartDownload(for: book)
-        await waitForAsync { [self] in self.presentedAdobeAlert > 0 }
+        await flushMainActorTasks()
 
         XCTAssertEqual(presentedAdobeAlert, 1)
         XCTAssertEqual(presentedSignInModal, 0,
@@ -127,7 +136,7 @@ final class CredentialPromptCoordinatorTests: XCTestCase {
 
     func testRequestCredentials_signInSuccess_retriesDownloadViaDelegate() async {
         coordinator.requestCredentialsAndStartDownload(for: book)
-        await waitForAsync { [self] in self.presentedSignInModal > 0 }
+        await flushMainActorTasks()
 
         // Simulate the user signing in successfully — set credentials
         // BEFORE invoking the completion so the hasCredentials check
@@ -135,7 +144,9 @@ final class CredentialPromptCoordinatorTests: XCTestCase {
         userAccount._credentials = .barcodeAndPin(barcode: "b", pin: "p")
         signInCompletions.first?()
 
-        await waitForAsync { [self] in self.spyDelegate.startDownloadCalls.count > 0 }
+        // The completion enqueues a `Task { @MainActor }` retry; flush services
+        // it, then startDownload is observable — no wall-clock poll.
+        await flushMainActorTasks()
 
         XCTAssertEqual(spyDelegate.startDownloadCalls.map { $0.identifier }, [book.identifier])
         XCTAssertFalse(credentialState.isRequestingCredentials,
@@ -146,17 +157,16 @@ final class CredentialPromptCoordinatorTests: XCTestCase {
 
     func testRequestCredentials_signInCancelled_registersCompletionAndDoesNotRetry() async {
         coordinator.requestCredentialsAndStartDownload(for: book)
-        await waitForAsync { [self] in self.presentedSignInModal > 0 }
+        await flushMainActorTasks()
 
         // User cancels — no credentials at completion time.
         XCTAssertFalse(userAccount.hasCredentials())
         signInCompletions.first?()
 
-        // Allow the cleanup Task to register completion.
-        for _ in 0..<5 {
-            try? await Task.sleep(nanoseconds: 30_000_000)
-            await Task.yield()
-        }
+        // The completion enqueues a `Task { @MainActor }` cleanup that clears
+        // the gate then awaits registerCompletion; flush services its
+        // main-actor portion deterministically — no fixed sleep loop.
+        await flushMainActorTasks()
 
         XCTAssertTrue(spyDelegate.startDownloadCalls.isEmpty,
                       "Cancellation must NOT retry the download")

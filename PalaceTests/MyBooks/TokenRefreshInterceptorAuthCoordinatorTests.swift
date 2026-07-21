@@ -91,10 +91,26 @@ final class TokenRefreshInterceptorAuthCoordinatorTests: XCTestCase {
         return FakeURLSessionDownloadTask(response: response, originalRequest: URLRequest(url: url))
     }
 
+    /// Drains the coordinator-routed retry Task by servicing the main-actor
+    /// executor rather than sleeping a fixed 10×50ms. The routed path is a
+    /// single `Task { @MainActor }` whose interior `await`s (stateManager
+    /// remove/registerCompletion, `coordinator.refreshCredentialsIfNeeded` —
+    /// the spy modal returns synchronously) each resume on a subsequent
+    /// main-actor turn; awaiting a chain of barrier `Task { @MainActor }`
+    /// values steps the executor through those resumptions until the terminal
+    /// main-actor effects (modal present / markStale / state flip / retry)
+    /// have run. Completes the instant the actor is free — never starves on a
+    /// wall clock.
+    ///
+    /// NOTE: TokenRefreshInterceptor has no in-flight-Task retention seam (its
+    /// siblings DownloadAuthRetryHandler / BookReturnService do), so this can't
+    /// `await` the exact Task handle. The barrier-flush is deterministic for
+    /// the ready-actor interior hops here; a retention seam on the interceptor
+    /// (behavior-identical, mirroring the siblings) would let this become an
+    /// exact `task.value` join — flagged as the complete follow-up fix.
     private func waitForAsyncCleanup() async {
-        for _ in 0..<10 {
-            try? await Task.sleep(nanoseconds: 50_000_000)
-            await Task.yield()
+        for _ in 0..<6 {
+            await Task { @MainActor in }.value
         }
     }
 

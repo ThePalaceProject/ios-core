@@ -83,7 +83,14 @@ final class BookRegistrySyncReadinessTests: XCTestCase {
             resolved.fulfill()
         }
 
-        try await Task.sleep(nanoseconds: 50_000_000)
+        // Give the awaiter Task real scheduling opportunities to run up to its
+        // suspension point inside `awaitReady()`, then confirm it is STILL
+        // parked (blocked on the gate, not cancelled or early-resolved). A
+        // bounded `Task.yield()` loop replaces the old fixed 50ms
+        // `Task.sleep`: the awaiter suspends on a continuation until
+        // `_setState`, so once scheduled it provably cannot progress without
+        // the transition below — no wall-clock nap to starve under CI load.
+        for _ in 0..<20 { await Task.yield() }
         XCTAssertFalse(awaiterTask.isCancelled, "Gate must block awaiter, not cancel it")
 
         account._setState(.detailsLoaded(realDetails))

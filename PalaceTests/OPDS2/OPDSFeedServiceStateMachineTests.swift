@@ -97,14 +97,15 @@ final class OPDSFeedServiceStateMachineTests: XCTestCase {
 
         // Wait for the task to spin up and block on the gate.
         await fulfillment(of: [fetchStarted], timeout: 1.0)
-        try await Task.sleep(nanoseconds: 80_000_000) // 80 ms
         XCTAssertFalse(fetchTask.isCancelled,
                        "task should be parked on awaitReady, not cancelled")
 
-        // Mid-flight: explicitly assert fetch has NOT completed yet.
-        // Without the awaitReady migration, this fetch would have already
-        // run synchronously past the (sync) loansUrl read — i.e. the
-        // post-task-sleep window would show fetchCompleted fulfilled.
+        // Mid-flight: explicitly assert fetch has NOT completed yet. The task
+        // fulfilled fetchStarted before awaitReady and the only exit from the
+        // gate is the .detailsLoaded transition below, so completionTime stays
+        // 0 here without a wall-clock settle. Without the awaitReady migration
+        // the fetch would have run synchronously past the (sync) loansUrl read
+        // and completionTime would already be non-zero.
         XCTAssertEqual(completionTime.value, 0,
                        "fetchLoans must remain blocked while state is .detailsLoading")
 
@@ -113,6 +114,9 @@ final class OPDSFeedServiceStateMachineTests: XCTestCase {
         let transitionTime = Date().timeIntervalSinceReferenceDate
         account._setState(.detailsLoaded(details))
 
+        // Join the actual work, don't poll a deadline: awaiting the task
+        // suspends until fetchLoans returns and completionTime is stamped.
+        await fetchTask.value
         await fulfillment(of: [fetchCompleted], timeout: 5.0)
 
         // Assert: fetch completion happened strictly AFTER the
