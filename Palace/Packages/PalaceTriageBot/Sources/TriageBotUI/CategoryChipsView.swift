@@ -29,7 +29,11 @@ struct CategoryChipsView: View {
                 }
             }
         } else {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 110), spacing: 8)],
+            // Wider adaptive minimum so the grid drops to ~2 columns on phones
+            // (narrower than a Max), giving each chip room to keep its label on a
+            // single line — at 110pt the third column squeezed "Audiobook" /
+            // "Download" into an ugly two-line wrap on anything below Max width.
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 155), spacing: 8)],
                       alignment: .leading, spacing: 8) {
                 ForEach(categories, id: \.0) { category, emoji, label in
                     chip(category, emoji, label)
@@ -45,6 +49,11 @@ struct CategoryChipsView: View {
                 Text(emoji)
                 Text(label)
                     .font(.subheadline)
+                    // Guarantee a single line in every layout: never wrap; shrink
+                    // a hair only if a chip is ever too narrow (belt + suspenders
+                    // for the widest labels at odd widths).
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.9)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
