@@ -121,7 +121,10 @@ final class TPPLastReadPositionPosterTests: XCTestCase {
         bookRegistryMock.setLocation(nil, forIdentifier: testBook.identifier)
         poster.storeReadPosition(locator: locator)
 
-        try await Task.sleep(nanoseconds: 50_000_000)
+        // Join the actual write path deterministically. `shouldStore` rejects
+        // this locator so no Task is spawned; awaiting the (nil) pending task
+        // is a correct no-op that still asserts nothing was persisted.
+        await poster.awaitPendingWrites()
 
         XCTAssertNil(bookRegistryMock.location(forIdentifier: testBook.identifier),
                      "Zero progression + no CSS selector must not persist locally")
@@ -142,7 +145,7 @@ final class TPPLastReadPositionPosterTests: XCTestCase {
         )
 
         poster.storeReadPosition(locator: locator)
-        try await Task.sleep(nanoseconds: 50_000_000)
+        await poster.awaitPendingWrites()
 
         XCTAssertNotNil(bookRegistryMock.location(forIdentifier: testBook.identifier))
         let saved = await spyWriter.savedSnapshots
@@ -161,7 +164,7 @@ final class TPPLastReadPositionPosterTests: XCTestCase {
         )
 
         poster.storeReadPosition(locator: locator)
-        try await Task.sleep(nanoseconds: 50_000_000)
+        await poster.awaitPendingWrites()
 
         // Local registry write
         XCTAssertNotNil(bookRegistryMock.location(forIdentifier: testBook.identifier))
@@ -186,7 +189,7 @@ final class TPPLastReadPositionPosterTests: XCTestCase {
         )
 
         poster.storeReadPosition(locator: locator)
-        try await Task.sleep(nanoseconds: 50_000_000)
+        await poster.awaitPendingWrites()
 
         XCTAssertNotNil(bookRegistryMock.location(forIdentifier: testBook.identifier),
                         "Writer failures must not roll back the local registry write")
@@ -200,7 +203,8 @@ final class TPPLastReadPositionPosterTests: XCTestCase {
 
         poster.storeReadPosition(locator: locator1)
         poster.storeReadPosition(locator: locator2)
-        try await Task.sleep(nanoseconds: 100_000_000)
+        // Both spawned tasks are retained; drain BOTH before reading the spy.
+        await poster.awaitPendingWrites()
 
         let saved = await spyWriter.savedSnapshots
         XCTAssertEqual(saved.count, 2,

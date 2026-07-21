@@ -72,12 +72,9 @@ final class TPPReaderTOCBusinessLogicTests: XCTestCase {
         let tocPublication = createPublicationWithTOC()
         tocBusinessLogic = TPPReaderTOCBusinessLogic(r2Publication: tocPublication, currentLocation: nil)
 
-        // Poll until tocElements is populated rather than sleeping a fixed amount
-        let loaded = XCTNSPredicateExpectation(
-            predicate: NSPredicate { [weak self] _, _ in !(self?.tocBusinessLogic?.tocElements.isEmpty ?? true) },
-            object: nil
-        )
-        await fulfillment(of: [loaded], timeout: 10.0)
+        // JOIN the init-spawned TOC load deterministically instead of polling
+        // a wall-clock deadline (which starves under parallel oversubscription).
+        await tocBusinessLogic.awaitTOCLoad()
 
         guard !tocBusinessLogic.tocElements.isEmpty else {
             return
@@ -123,12 +120,8 @@ final class TPPReaderTOCBusinessLogicTests: XCTestCase {
         let tocPublication = createPublicationWithTOC()
         tocBusinessLogic = TPPReaderTOCBusinessLogic(r2Publication: tocPublication, currentLocation: nil)
 
-        // Poll until tocElements is populated
-        let loaded = XCTNSPredicateExpectation(
-            predicate: NSPredicate { [weak self] _, _ in !(self?.tocBusinessLogic?.tocElements.isEmpty ?? true) },
-            object: nil
-        )
-        await fulfillment(of: [loaded], timeout: 10.0)
+        // JOIN the init-spawned TOC load deterministically.
+        await tocBusinessLogic.awaitTOCLoad()
 
         let title = tocBusinessLogic.title(for: "/nonexistent.xhtml")
 
@@ -139,12 +132,8 @@ final class TPPReaderTOCBusinessLogicTests: XCTestCase {
         let tocPublication = createPublicationWithTOC()
         tocBusinessLogic = TPPReaderTOCBusinessLogic(r2Publication: tocPublication, currentLocation: nil)
 
-        // Poll until tocElements is populated
-        let loaded = XCTNSPredicateExpectation(
-            predicate: NSPredicate { [weak self] _, _ in !(self?.tocBusinessLogic?.tocElements.isEmpty ?? true) },
-            object: nil
-        )
-        await fulfillment(of: [loaded], timeout: 10.0)
+        // JOIN the init-spawned TOC load deterministically.
+        await tocBusinessLogic.awaitTOCLoad()
 
         guard !tocBusinessLogic.tocElements.isEmpty else {
             return
@@ -362,12 +351,8 @@ final class TPPReaderTOCFlattenTests: XCTestCase {
         let publication = Publication(manifest: manifest)
         let businessLogic = TPPReaderTOCBusinessLogic(r2Publication: publication, currentLocation: nil)
 
-        // Poll until tocElements is populated
-        let loaded = XCTNSPredicateExpectation(
-            predicate: NSPredicate { _, _ in businessLogic.tocElements.count > 0 },
-            object: nil
-        )
-        await fulfillment(of: [loaded], timeout: 10.0)
+        // JOIN the init-spawned TOC load deterministically.
+        await businessLogic.awaitTOCLoad()
 
         guard businessLogic.tocElements.count > 0 else { return }
 
