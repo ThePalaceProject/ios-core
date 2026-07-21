@@ -51,10 +51,20 @@ public struct ContextRedactor: Sendable {
     /// Redact a single log line. Public for tests; the snapshot pipeline
     /// calls this through `redact(_:)`.
     public func redactLine(_ line: String) -> String {
-        var result = line
+        // Strip Unicode bidi / RTL-override controls FIRST (PP-4842): they can
+        // visually reverse or spoof the text a patron sees or that lands in the
+        // ticket, and they can be spliced between a card number's digits to dodge
+        // the digit-run match below. Removing them up front normalizes the line
+        // for every downstream rule.
+        var result = Self.stripBidiControls(line)
         for pattern in Self.patterns {
             result = pattern.replace(in: result)
         }
+        // Generic long-sensitive-digit-run (PAN) redaction (PP-4842). Runs after
+        // the keyword patterns — the existing `barcode_standalone` rule handles
+        // contiguous 10–14 digit runs and keeps its own marker; this catches the
+        // 15–19 digit and single-space/dash-grouped card shapes those rules miss.
+        result = Self.redactLongDigitRuns(result)
         return result
     }
 
@@ -223,4 +233,95 @@ public struct ContextRedactor: Sendable {
             replacement: "[number-redacted]"
         )
     ]
+
+    // MARK: - PP-4842: PAN / long-digit-run + bidi-control handling
+
+    /// Unicode bidirectional / RTL-override formatting controls. Stripped from
+    /// every redacted line so they cannot visually reverse or spoof the text a
+    /// patron sees or that lands in the ticket (a chaos-redaction finding folded
+    /// into PP-4842).
+    private static let bidiControlScalars: Set<UInt32> = [
+        0x202A, 0x202B, 0x202C, 0x202D, 0x202E, // LRE RLE PDF LRO RLO
+        0x2066, 0x2067, 0x2068, 0x2069,         // LRI RLI FSI PDI
+        0x200E, 0x200F                          // LRM RLM
+    ]
+
+    private static func stripBidiControls(_ input: String) -> String {
+        guard input.unicodeScalars.contains(where: { bidiControlScalars.contains($0.value) }) else {
+            return input
+        }
+        var scalars = String.UnicodeScalarView()
+        scalars.append(contentsOf: input.unicodeScalars.filter { !bidiControlScalars.contains($0.value) })
+        return String(scalars)
+    }
+
+    /// Payment / account keywords. When one is present just before a long digit
+    /// run we redact it even if it fails Luhn — a patron who mistypes a digit of
+    /// a number they explicitly call their "card" still gets it stripped.
+    private static let paymentKeywordRegex = try? NSRegularExpression(
+        pattern: #"(?i)\b(card|credit|debit|visa|mastercard|amex|discover|cvv|cvc|barcode|acct|account\s+number)\b"#
+    )
+
+    /// Candidate 13–19 digit runs, optionally grouped by single spaces or dashes
+    /// (`4111 1111 1111 1111`, `4111-1111-1111-1111`, `4111111111111111`). The
+    /// lookaround boundaries prevent latching onto part of a longer digit blob.
+    private static let digitRunRegex = try? NSRegularExpression(
+        pattern: #"(?<![0-9])[0-9](?:[ -]?[0-9]){12,18}(?![0-9])"#
+    )
+
+    /// Redact card-length digit runs the keyword rules miss. A run is redacted
+    /// only when it is Luhn-valid OR the line carries a payment/account keyword
+    /// just before it — this is what lets us extend past the conservative 10–14
+    /// barcode rule without over-redacting benign long numbers (ISBNs, ids,
+    /// timestamps).
+    private static func redactLongDigitRuns(_ input: String) -> String {
+        guard let digitRunRegex else { return input }
+        let ns = input as NSString
+        let full = NSRange(location: 0, length: ns.length)
+        let matches = digitRunRegex.matches(in: input, range: full)
+        guard !matches.isEmpty else { return input }
+        var result = input
+        // Replace right-to-left so earlier match ranges stay valid across mutation.
+        for match in matches.reversed() {
+            let digits = ns.substring(with: match.range).compactMap { $0.wholeNumberValue }
+            guard digits.count >= 13, digits.count <= 19 else { continue }
+            guard passesLuhn(digits) || Self.hasPaymentKeyword(before: match.range, in: input)
+            else { continue }
+            if let range = Range(match.range, in: result) {
+                result.replaceSubrange(range, with: "[number-redacted]")
+            }
+        }
+        return result
+    }
+
+    /// True when a payment/account keyword sits in the ~24-char window
+    /// immediately preceding `matchRange`. Scoping to a *preceding* window
+    /// (not the whole line) is what keeps a "card" keyword from redacting an
+    /// ISBN that merely shares the line — the keyword must be adjacent to the
+    /// number it labels.
+    private static func hasPaymentKeyword(before matchRange: NSRange, in input: String) -> Bool {
+        guard let paymentKeywordRegex else { return false }
+        let windowStart = max(0, matchRange.location - 24)
+        let window = NSRange(location: windowStart, length: matchRange.location - windowStart)
+        guard window.length > 0 else { return false }
+        return paymentKeywordRegex.firstMatch(in: input, range: window) != nil
+    }
+
+    /// Luhn (mod-10) checksum — the integrity check every real card number
+    /// satisfies. Used to catch unlabeled PANs without redacting arbitrary
+    /// long numbers.
+    private static func passesLuhn(_ digits: [Int]) -> Bool {
+        var sum = 0
+        var double = false
+        for digit in digits.reversed() {
+            var value = digit
+            if double {
+                value *= 2
+                if value > 9 { value -= 9 }
+            }
+            sum += value
+            double.toggle()
+        }
+        return sum % 10 == 0
+    }
 }
