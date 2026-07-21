@@ -547,9 +547,29 @@ final class CatalogFilterTests: XCTestCase {
 
 @MainActor
 final class CatalogLaneModelTests: XCTestCase {
-    func testHasUniqueId() {
+    // `CatalogLaneModel.id` is content-derived (`title|moreURL`) by design — the
+    // fix that stopped every re-map minting a fresh `UUID()` and tearing down the
+    // whole feed in `ForEach`. So identity is STABLE across re-maps of the same
+    // lane, and DISTINCT when the title or moreURL differs.
+    func testId_isStableAcrossReMapsOfSameLane() {
         let l1 = CatalogLaneModel(title: "L", books: [], moreURL: nil)
         let l2 = CatalogLaneModel(title: "L", books: [], moreURL: nil)
-        XCTAssertNotEqual(l1.id, l2.id)
+        XCTAssertEqual(l1.id, l2.id,
+                       "Same title+moreURL must yield the same id so ForEach diffs in place")
+    }
+
+    func testId_differsWhenTitleDiffers() {
+        let a = CatalogLaneModel(title: "Fiction", books: [], moreURL: nil)
+        let b = CatalogLaneModel(title: "Non-Fiction", books: [], moreURL: nil)
+        XCTAssertNotEqual(a.id, b.id)
+    }
+
+    func testId_differsWhenMoreURLDiffers() {
+        let url1 = URL(string: "https://example.com/a")
+        let url2 = URL(string: "https://example.com/b")
+        let a = CatalogLaneModel(title: "L", books: [], moreURL: url1)
+        let b = CatalogLaneModel(title: "L", books: [], moreURL: url2)
+        XCTAssertNotEqual(a.id, b.id,
+                          "Same title but different group href must be distinct lanes")
     }
 }

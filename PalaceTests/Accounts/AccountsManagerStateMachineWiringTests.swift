@@ -109,6 +109,19 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
     /// Returns a string label for a `LoadState` — used in array-equality
     /// assertions where direct enum comparison is unwieldy (associated values
     /// on `.detailsLoaded`/`.detailsFailed` aren't trivially Equatable).
+    /// Lock-guarded accumulator for state-stream labels observed off the Task's
+    /// executor. Swift 6: a captured `var [String]` mutated inside the stream Task
+    /// and read from the test thread is a data race — this box synchronizes both.
+    private final class ObservedLabels: @unchecked Sendable {
+        private let lock = NSLock()
+        private var _labels: [String] = []
+        /// Appends and returns the just-appended label.
+        func append(_ label: String) -> String {
+            lock.withLock { _labels.append(label); return label }
+        }
+        var snapshot: [String] { lock.withLock { _labels } }
+    }
+
     private func label(_ state: Account.LoadState) -> String {
         switch state {
         case .notLoaded:        return "notLoaded"
@@ -514,13 +527,32 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
 
         // Capture the transition stream so we can assert the SEQUENCE
         // (.detailsLoading → .detailsFailed), not just the terminal state.
-        var observed: [String] = []
+        //
+        // `stateStream` is backed by a `CurrentValueSubject`, which replays only
+        // the LATEST value to a late subscriber. For a nil-URL account,
+        // `fetchAuthDocumentWithStateMachine` runs `_setState(.detailsLoading)`
+        // and `_setState(.detailsFailed)` SYNCHRONOUSLY (loadAuthenticationDocument
+        // fires `completion(false)` inline). If we fire the fetch before the
+        // `Task`'s AsyncStream sink has attached, both sends land first and the
+        // subscriber only ever sees `.detailsFailed` — the `.detailsLoading`
+        // transition is lost. So gate the fetch on the subscription being live:
+        // the stream task signals once it has received its first (replayed)
+        // value, proving the sink is attached. `SubscribedFlag` is a lock-guarded
+        // box so the fulfill is race-free under Swift 6.
+        let observedBox = ObservedLabels()
+        let subscribed = expectation(description: "stream subscription attached")
+        subscribed.assertForOverFulfill = false
         let streamTask = Task {
+            var firstSeen = false
             for await state in account.stateStream {
-                observed.append(self.label(state))
-                if observed.last?.hasPrefix("detailsFailed") == true { break }
+                if !firstSeen { firstSeen = true; subscribed.fulfill() }
+                let last = observedBox.append(self.label(state))
+                if last.hasPrefix("detailsFailed") { break }
             }
         }
+
+        // Do not fire the transition until the sink is confirmed live.
+        wait(for: [subscribed], timeout: 2.0)
 
         manager.fetchAuthDocumentWithStateMachine(for: account) { success in
             XCTAssertFalse(success, "loadAuthenticationDocument with nil URL must return false")
@@ -537,11 +569,12 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
         // terminal `.detailsFailed`, so the writes have happened; the poll
         // forces a fresh read on the main thread before assertion.
         awaitCondition(timeout: 2.0) {
-            observed.contains("detailsLoading") &&
-                observed.contains("detailsFailed.authDocumentFetchFailed")
+            observedBox.snapshot.contains("detailsLoading") &&
+                observedBox.snapshot.contains("detailsFailed.authDocumentFetchFailed")
         }
         streamTask.cancel()
 
+        let observed = observedBox.snapshot
         XCTAssertTrue(observed.contains("detailsLoading"),
                       "Stream must observe .detailsLoading before failure; observed: \(observed)")
         XCTAssertTrue(observed.contains("detailsFailed.authDocumentFetchFailed"),
@@ -902,8 +935,17 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
         let observed = expectation(description: "stream reaches terminal")
         observed.assertForOverFulfill = false
 
+        // `.detailsLoading` is set SYNCHRONOUSLY at the entry of a non-deduped
+        // fetch, and `stateStream`'s CurrentValueSubject only replays the latest
+        // value to a late subscriber. Gate the concurrent fetches on the stream
+        // sink being attached (first replayed value observed) so the single
+        // `.detailsLoading` transition is not raced away before we can count it.
+        let subscribed = expectation(description: "stream subscription attached")
+        subscribed.assertForOverFulfill = false
         let streamTask = Task {
+            var firstSeen = false
             for await state in account.stateStream {
+                if !firstSeen { firstSeen = true; subscribed.fulfill() }
                 if case .detailsLoading = state {
                     counters.incrementDetailsLoading()
                 }
@@ -915,6 +957,7 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
                 }
             }
         }
+        wait(for: [subscribed], timeout: 2.0)
 
         // Fire two near-simultaneous calls for the SAME UUID. The second
         // must observe the single-flight set and return without calling

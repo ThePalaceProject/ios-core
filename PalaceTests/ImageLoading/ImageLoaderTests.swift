@@ -295,7 +295,16 @@ final class ImageLoaderTests: XCTestCase {
     /// cover. Pre-loading the unsized cover key makes the fallback deterministic (no
     /// network, no TenPrint).
     func testCoverImage_displayPoints_nonFinite_fallsBackToUnsizedCover_withoutTrapping() async {
-        let book = makeBook()
+        // Give the book a non-nil imageURL. `TPPBook.init` fires a fire-and-forget
+        // `fetchCoverImage()`; for a URL-*less* book that path instantly generates a
+        // TenPrint placeholder and writes it into THIS mock cache under `_cover`,
+        // asynchronously clobbering the seeded sentinel mid-loop (the flake this test
+        // exhibited: iter 1 saw the sentinel, iters 2-5 saw the placeholder). With a
+        // URL, that init fetch takes the never-completing network path in-test, so the
+        // sentinel stays put. The sanitizer under test hits the `_cover` cache and
+        // short-circuits before any network/registry access, so the URL does not
+        // affect what the fallback returns — only which write wins the seed race.
+        let book = makeBook(imageURL: URL(string: "https://example.com/cover.jpg")!)
         let sentinel = makeImage(width: 10, height: 10)
         cache.set(sentinel, for: "\(book.identifier)_cover", expiresIn: nil)
 
