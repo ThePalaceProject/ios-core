@@ -3,6 +3,13 @@ import SwiftUI
 import TriageBotCore
 
 struct CategoryChipsView: View {
+    /// PP-4844: chips are only a live affordance while the conversation is
+    /// actually awaiting a category. Once the log moves on (a ticket was sent,
+    /// the flow advanced), the earlier chip row is historical — tapping it is a
+    /// reducer no-op. Render those inactive chips dimmed + disabled so they
+    /// don't look tappable, and hide them from VoiceOver so a patron isn't
+    /// promised six categories that do nothing.
+    var isActive: Bool = true
     let onTap: (KBCategory) -> Void
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -53,7 +60,10 @@ struct CategoryChipsView: View {
             .clipShape(Capsule())
         }
         .buttonStyle(.plain)
+        .disabled(!isActive)
+        .opacity(isActive ? 1.0 : 0.5)
         .accessibilityLabel("Category: \(label)")
+        .accessibilityHidden(!isActive)
     }
 }
 #endif

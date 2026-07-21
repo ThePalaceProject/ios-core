@@ -103,7 +103,11 @@ public struct SupportChatView: View {
         case .text(let text):
             ChatBubble(text: text, sender: message.sender)
         case .categoryChips:
-            CategoryChipsView { category in
+            // PP-4844: chips are only live while the reducer is awaiting a
+            // category. Any earlier chip row (e.g. still on-screen after a
+            // ticket was sent) is historical — pass isActive: false so it
+            // renders dimmed + disabled instead of looking tappable-but-dead.
+            CategoryChipsView(isActive: chipsAreLive) { category in
                 viewModel.send(.userTappedCategory(category))
             }
         case .kbMatch(let entryId):
@@ -135,6 +139,21 @@ public struct SupportChatView: View {
                 handleErrorAction(action)
             }
         }
+    }
+
+    /// Category chips are a live affordance only while the reducer is actually
+    /// awaiting a category. In every other step an on-screen chip row is a
+    /// historical turn whose taps are reducer no-ops (PP-4844).
+    private var chipsAreLive: Bool {
+        if case .awaitingCategory = viewModel.state.step { return true }
+        return false
+    }
+
+    /// The terminal "Sent" state. The ticket is filed and there's no text input
+    /// — without an explicit affordance the patron is stranded (PP-4844).
+    private var isSentTerminalStep: Bool {
+        if case .sent = viewModel.state.step { return true }
+        return false
     }
 
     private struct InputBarConfig {
@@ -203,6 +222,18 @@ public struct SupportChatView: View {
             }
             .padding(.horizontal)
             .padding(.vertical, 8)
+        } else if isSentTerminalStep {
+            // PP-4844: the ticket is filed and there's no text field, so the
+            // only recovery used to be closing + reopening the Help sheet.
+            // Give the patron a first-class way to keep going. This dispatches
+            // the reducer's existing reset action (.userTappedStartOver), which
+            // clears state back to a fresh category prompt.
+            BotUI.PrimaryButton(title: "Ask another question", systemImage: "plus.bubble") {
+                viewModel.send(.userTappedStartOver)
+            }
+            .padding(.horizontal)
+            .padding(.vertical, 8)
+            .accessibilityHint("Starts a new question. Your sent ticket is unaffected.")
         }
     }
 
