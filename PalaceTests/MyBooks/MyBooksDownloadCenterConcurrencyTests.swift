@@ -82,17 +82,6 @@ final class MyBooksDownloadCenterConcurrencyTests: XCTestCase {
         await stateManager.downloadCoordinator.registerStart(identifier: book.identifier)
     }
 
-    /// Wraps the shared `awaitConditionAsync` helper. `file`/`line`
-    /// forwarded so timeout XCTFail blames the call site.
-    private func waitForAsync(
-        timeout: TimeInterval = 10.0,
-        file: StaticString = #file,
-        line: UInt = #line,
-        _ predicate: @escaping () -> Bool
-    ) async {
-        await awaitConditionAsync(timeout: timeout, file: file, line: line, predicate)
-    }
-
     private func attach(task: URLSessionDownloadTask, to book: TPPBook) async {
         let info = MyBooksDownloadInfo(
             downloadProgress: 0.0,
@@ -255,9 +244,10 @@ final class MyBooksDownloadCenterConcurrencyTests: XCTestCase {
         cancellationHandler.cancelDownload(for: active.identifier)
 
         // The cancel completion fires synchronously (per SyncCompletingDownloadTask),
-        // then queues an actor Task to register the completion. Wait for
-        // the schedule signal so we know the actor work landed.
-        await waitForAsync { [self] in self.cancellationSpy.scheduleCount > 0 }
+        // then spawns an actor Task to register the completion. Join that Task
+        // directly via the retained handle instead of polling the schedule
+        // signal against a wall-clock deadline (which starves under CI load).
+        await cancellationHandler.lastCancelTeardownTask?.value
 
         XCTAssertEqual(task.cancelByProducingResumeDataCount, 1,
                        "cancelDownload must invoke URLSessionDownloadTask.cancel(byProducingResumeData:) exactly once")
@@ -282,7 +272,9 @@ final class MyBooksDownloadCenterConcurrencyTests: XCTestCase {
         await stateManager.downloadCoordinator.enqueuePending(queued)
 
         cancellationHandler.cancelDownload(for: active.identifier)
-        await waitForAsync { [self] in self.cancellationSpy.scheduleCount > 0 }
+        // Join the cancel-teardown Task directly (it registers the completion
+        // and fires the schedule callback as its last step) instead of polling.
+        await cancellationHandler.lastCancelTeardownTask?.value
 
         // After cancel, the schedule callback is invoked on the *cancellation*
         // delegate (not the orchestrator's delegate). We pump the orchestrator
@@ -459,8 +451,13 @@ final class MyBooksDownloadCenterConcurrencyTests: XCTestCase {
         await markActive(a1)
         await markActive(a2)
 
-        throttle.limitActiveDownloads(max: 2)
-        await waitForAsync { throttleSpy.scheduleCount > 0 }
+        // Join the throttle's async body directly (it ends by awaiting
+        // delegate.schedulePendingStartsAsync) instead of polling the spy
+        // against a deadline. The sync limitActiveDownloads(max:) just sets
+        // maxConcurrentDownloads (already 2 here) then fires this same body
+        // as a detached Task — awaiting it is behavior-identical for this
+        // assertion and removes the starvable poll.
+        await throttle.limitActiveDownloadsAsync(max: 2)
 
         XCTAssertGreaterThan(throttleSpy.scheduleCount, 0,
                              "limitActiveDownloads (foreground reapply path) must always end with schedulePendingStartsAsync — kills mutants that skip the tail call when running==max")
@@ -641,11 +638,11 @@ final class MyBooksDownloadCenterConcurrencyTests: XCTestCase {
         }
 
         // 1. Liveness: reaching here (the continuation resumed) already proves
-        //    no deadlock. Guard the end-state read behind the shared timeout
-        //    helper so a stalled barrier surfaces as a loud timeout, not a hang.
-        await waitForAsync(timeout: 15.0) { [bookRegistry] in
-            ids.allSatisfy { bookRegistry!.processing(forIdentifier: $0) == false }
-        }
+        //    no deadlock — concurrentPerform is synchronous, so ALL of its
+        //    setProcessing writes have completed before the continuation
+        //    resumed. There is no in-flight async work left to await; the
+        //    end-state is already final, so the consistency assertions below
+        //    read it directly (no starvable deadline-poll needed).
 
         // 2. Consistency: no lifecycle-completed book is stuck processing.
         for id in ids {

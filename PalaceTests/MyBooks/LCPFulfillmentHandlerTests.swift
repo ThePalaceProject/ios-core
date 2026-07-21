@@ -44,6 +44,11 @@ final class LCPFulfillmentHandlerTests: XCTestCase {
     private var handler: LCPFulfillmentHandler!
     private var capturedErrors: [DownloadErrorInfo] = []
     private var subscription: AnyCancellable?
+    /// Fulfilled by the error-publisher sink the instant an error is
+    /// published. Awaiting it is a prompt-firing wait — it resolves the
+    /// moment the value lands rather than polling a wall-clock deadline
+    /// (which starves under CI oversubscription and blows the allowance).
+    private var errorPublishedExpectation: XCTestExpectation?
 
     override func setUpWithError() throws {
         try super.setUpWithError()
@@ -71,6 +76,7 @@ final class LCPFulfillmentHandlerTests: XCTestCase {
         capturedErrors = []
         subscription = reporter.downloadErrorPublisher.sink { [weak self] info in
             self?.capturedErrors.append(info)
+            self?.errorPublishedExpectation?.fulfill()
         }
 
         handler = LCPFulfillmentHandler(
@@ -114,16 +120,38 @@ final class LCPFulfillmentHandlerTests: XCTestCase {
         return url
     }
 
-    /// Wraps the shared `awaitConditionAsync` helper. `file`/`line`
-    /// forwarded so timeout XCTFail blames the call site.
+    /// Joins the error-publish path deterministically. The handler publishes
+    /// through `runOnMainAsync` (a `Task { @MainActor }` hop), so the error
+    /// lands on a future main-actor turn — but the sink fulfils
+    /// `errorPublishedExpectation` the instant it does. Awaiting that
+    /// expectation is a prompt-firing wait that resolves the moment the value
+    /// is published, replacing the wall-clock `awaitConditionAsync` poll that
+    /// starved under CI oversubscription.
+    ///
+    /// Arming the expectation happens synchronously on this @MainActor test
+    /// before any `await`, so the pending publish Task cannot run (and fulfil)
+    /// ahead of it. If an error already landed synchronously, return at once.
     private func waitForPublishedError(
         timeout: TimeInterval = 10.0,
         file: StaticString = #file,
         line: UInt = #line
     ) async {
-        await awaitConditionAsync(timeout: timeout, file: file, line: line) { [weak self] in
-            self?.capturedErrors.isEmpty == false
-        }
+        if !capturedErrors.isEmpty { return }
+        let published = expectation(description: "download error published")
+        errorPublishedExpectation = published
+        await fulfillment(of: [published], timeout: timeout)
+        errorPublishedExpectation = nil
+    }
+
+    /// Deterministic barrier for absence-assertions: services the main-actor
+    /// executor so any `runOnMainAsync` (`Task { @MainActor }`) publish Task
+    /// submitted earlier on this actor runs first. Completes as soon as the
+    /// actor is free — never starves on a wall clock. Two hops cover a single
+    /// chained re-dispatch.
+    @MainActor
+    private func flushMainActorTasks() async {
+        await Task { @MainActor in }.value
+        await Task { @MainActor in }.value
     }
 
     // MARK: - License rename + fulfill invocation
@@ -249,10 +277,14 @@ final class LCPFulfillmentHandlerTests: XCTestCase {
         )
         completion(nil, networkLost)
 
-        // Give the async error handler time to run; without the guard it
-        // calls failDownloadWithAlert synchronously off the completion.
-        try? await Task.sleep(nanoseconds: 250_000_000)
-        await Task.yield()
+        // Absence assertion: prove NO alert publishes. There's no positive
+        // edge to join, so flush the main-actor executor instead of sleeping
+        // a fixed 250ms. `failDownloadWithAlert` publishes via
+        // `runOnMainAsync` (a `Task { @MainActor }` enqueued synchronously
+        // during `completion` above); awaiting a barrier `Task { @MainActor }`
+        // to completion services any such earlier-submitted publish Task first
+        // — deterministic and non-starving, unlike a wall-clock sleep.
+        await flushMainActorTasks()
 
         XCTAssertEqual(registry.state(for: audiobook.identifier), .downloadSuccessful,
                        "LCP audiobook with streaming-ready license must NOT flip to .downloadFailed when the phase-2 content download fails")
@@ -278,8 +310,9 @@ final class LCPFulfillmentHandlerTests: XCTestCase {
         completion(nil, NSError(domain: NSURLErrorDomain,
                                 code: NSURLErrorNetworkConnectionLost,
                                 userInfo: [NSLocalizedDescriptionKey: "lost"]))
-        try? await Task.sleep(nanoseconds: 250_000_000)
-        await Task.yield()
+        // Absence assertion — flush the main-actor executor instead of a
+        // fixed sleep (see the .downloadSuccessful sibling above).
+        await flushMainActorTasks()
 
         XCTAssertEqual(registry.state(for: audiobook.identifier), .used,
                        "Audiobook in .used (already-opened) must survive a phase-2 failure same as .downloadSuccessful")
@@ -322,12 +355,17 @@ final class LCPFulfillmentHandlerTests: XCTestCase {
 
         handler.fulfillLCPLicense(fileUrl: sourceURL, forBook: book, downloadTask: downloadTask)
 
-        // The Task hop inside the handler is fire-and-forget; allow it to
-        // resolve before asserting.
-        for _ in 0..<5 {
-            try? await Task.sleep(nanoseconds: 30_000_000)
-            await Task.yield()
-            if await stateManager.bookIdentifierToDownloadInfo.get(book.identifier) != nil { break }
+        // UNJOINABLE without a money-path prod seam: `fulfillLCPLicense` is a
+        // synchronous void method that parks the returned fulfillment task in
+        // `stateManager` via an untracked `Task { await …set(…) }` (no handle
+        // to await). Replace the hand-rolled 5×30ms loop (hard 150ms ceiling —
+        // the actual starvation risk) with the shared loud-on-timeout async
+        // helper: it converges the instant the single-hop actor set lands and
+        // fails loudly with guidance at 10s rather than silently reading a
+        // stale nil. A retained-Task seam would be a behavior-identical fix but
+        // is more than minimal to thread out of this void method for one test.
+        await awaitConditionAsync(timeout: 10.0) { [stateManager] in
+            await stateManager?.bookIdentifierToDownloadInfo.get(book.identifier) != nil
         }
 
         let stored = await stateManager.bookIdentifierToDownloadInfo.get(book.identifier)

@@ -122,9 +122,12 @@ final class UnifiedOPDSServiceStateMachineTests: XCTestCase {
         }
 
         await fulfillment(of: [fetchStarted], timeout: 1.0)
-        try await Task.sleep(nanoseconds: 80_000_000) // 80 ms
 
-        // Mid-flight: gate must hold — no HTTP attempt, no completion.
+        // Mid-flight: gate must hold — no HTTP attempt, no completion. The task
+        // has entered (fetchStarted fulfilled before awaitReady), and the only
+        // path past the gate is the .detailsLoaded transition below, so these
+        // negatives hold without a wall-clock settle: nothing can fire HTTP or
+        // complete while the state is still .detailsLoading.
         XCTAssertEqual(requestCount(), 0,
                        "No HTTP request must fire while account is .detailsLoading")
         XCTAssertFalse(fetchTask.isCancelled,
@@ -133,6 +136,10 @@ final class UnifiedOPDSServiceStateMachineTests: XCTestCase {
         // Act: transition releases the gate.
         account._setState(.detailsLoaded(details))
 
+        // Join the actual work, don't poll a deadline: awaiting the task
+        // suspends until fetchLoans returns and resultBox is set. `fetchCompleted`
+        // stays as a redundant guard but the join is `await fetchTask`.
+        await fetchTask.value
         await fulfillment(of: [fetchCompleted], timeout: 5.0)
 
         // Assert: exactly one HTTP request fired, and only after the

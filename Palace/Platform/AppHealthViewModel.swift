@@ -39,6 +39,12 @@ final class AppHealthViewModel: ObservableObject {
     private let positionSyncService: PositionSyncService
     private var cancellables = Set<AnyCancellable>()
 
+    /// Retained handle to the most recent `loadData()` task. Retaining it lets
+    /// tests deterministically JOIN the async load (see `awaitLoadForTesting()`)
+    /// instead of sleeping on a wall-clock deadline, which starves under CI
+    /// sim-clone oversubscription. Production behavior is unchanged.
+    private var loadTask: Task<Void, Never>?
+
     init(
         performanceMonitor: PerformanceMonitor = .shared,
         offlineQueueService: OfflineQueueService = .shared,
@@ -59,7 +65,7 @@ final class AppHealthViewModel: ObservableObject {
 
     func loadData() {
         isLoading = true
-        Task {
+        loadTask = Task {
             let report = await performanceMonitor.generateReport()
             let queueStatus = await offlineQueueService.currentStatus()
 
@@ -68,6 +74,16 @@ final class AppHealthViewModel: ObservableObject {
             self.rebuildMetrics()
             self.isLoading = false
         }
+    }
+
+    /// Await completion of the in-flight `loadData()` task, if any.
+    ///
+    /// Test-only join point: `loadData()` spawns a detached task that populates
+    /// `metrics`/`performanceReport` and flips `isLoading` off. Tests await this
+    /// instead of sleeping a fixed duration and hoping the task finished (which
+    /// flakes under oversubscription). No-op if nothing is in flight.
+    func awaitLoadForTesting() async {
+        await loadTask?.value
     }
 
     private func rebuildMetrics() {

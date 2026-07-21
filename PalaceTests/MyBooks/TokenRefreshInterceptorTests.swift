@@ -20,6 +20,10 @@ final class MockTokenRefreshDelegate: TokenRefreshInterceptorDelegate {
     let progressReporter: DownloadProgressReporter
 
     var startDownloadCalls: [(book: TPPBook, request: URLRequest?)] = []
+    /// Fired synchronously the instant `startDownload` is called. Lets tests
+    /// JOIN the retry with a prompt-firing expectation instead of polling a
+    /// fixed-delay `asyncAfter` check that starves under CI oversubscription.
+    var onStartDownload: (() -> Void)?
     var startBorrowCalls: [(book: TPPBook, attemptDownload: Bool)] = []
     var failDownloadCalls: [(book: TPPBook, message: String?)] = []
     var alertForProblemCalls: [(problemDoc: TPPProblemDocument?, error: Error?, book: TPPBook)] = []
@@ -42,6 +46,7 @@ final class MockTokenRefreshDelegate: TokenRefreshInterceptorDelegate {
 
     func startDownload(for book: TPPBook, withRequest request: URLRequest?) {
         startDownloadCalls.append((book: book, request: request))
+        onStartDownload?()
     }
 
     func startBorrow(for book: TPPBook, attemptDownload: Bool, borrowCompletion: (() -> Void)?) {
@@ -230,15 +235,12 @@ final class TokenRefreshInterceptorTests: XCTestCase {
         interceptor.handleBorrowInvalidCredentials(for: book, error: nil)
         wait(for: [firstExpectation], timeout: 2.0)
 
-        // Second call should show alert instead of reauth
-        let secondExpectation = XCTestExpectation(description: "Second attempt")
-        let pollItem = DispatchWorkItem { [weak self] in
-            self?.interceptor.handleBorrowInvalidCredentials(for: book, error: nil)
-            secondExpectation.fulfill()
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: pollItem)
-        wait(for: [secondExpectation], timeout: 2.0)
-        pollItem.cancel()
+        // The first attempt sets `hasAttemptedAuthentication = true` BEFORE it
+        // calls authenticateIfNeeded (whose mock fires onAuthenticate → fulfils
+        // firstExpectation). So once the wait above returns, the flag is
+        // already set — the second call can be driven directly, no fixed-delay
+        // `asyncAfter` needed.
+        interceptor.handleBorrowInvalidCredentials(for: book, error: nil)
 
         // Should only have reauthenticated once
         XCTAssertEqual(mockReauthenticator.authenticateCallCount, 1)
@@ -253,21 +255,15 @@ final class TokenRefreshInterceptorTests: XCTestCase {
             mock.setAuthToken("newtoken", barcode: "user", pin: "pin", expirationDate: nil)
         }
 
+        // Prompt-firing wait: fulfilled the instant the retry calls
+        // startDownload — replaces the fixed-0.5s `asyncAfter` poll-then-wait
+        // (a single-shot check that timed out at 10s if the retry hadn't
+        // landed by 0.5s, the exact starvation pattern under CI load).
         let expectation = XCTestExpectation(description: "Download started after reauth")
-        let pollItem = DispatchWorkItem { [weak self] in
-            if let self, !self.mockDelegate.startDownloadCalls.isEmpty {
-                expectation.fulfill()
-            }
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: pollItem)
+        mockDelegate.onStartDownload = { expectation.fulfill() }
 
         interceptor.handleBorrowInvalidCredentials(for: book, error: nil)
-        // Bumped from 3.0 → 10.0: 3s flakes in full-suite runs when the main
-        // queue is loaded; the actual reauth + download-start completes well
-        // under 1s in isolation. Larger window costs nothing on the happy
-        // path.
         wait(for: [expectation], timeout: 10.0)
-        pollItem.cancel()
 
         XCTAssertEqual(mockDelegate.startDownloadCalls.count, 1)
         XCTAssertEqual(mockDelegate.startDownloadCalls.first?.book.identifier, book.identifier)
@@ -318,17 +314,13 @@ final class TokenRefreshInterceptorTests: XCTestCase {
         mockUserAccount._credentials = .barcodeAndPin(barcode: "user", pin: "pin")
         mockUserAccount._authDefinition = makeAuthDefinition(authType: .saml)
 
-        interceptor.handleProblem(for: book, problemDocument: nil)
-
+        // Prompt-firing wait: fulfilled the instant the SAML retry calls
+        // startDownload — replaces the fixed-0.5s poll-then-wait.
         let expectation = XCTestExpectation(description: "SAML retry")
-        let pollItem = DispatchWorkItem { [weak self] in
-            if let self, !self.mockDelegate.startDownloadCalls.isEmpty {
-                expectation.fulfill()
-            }
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: pollItem)
-        wait(for: [expectation], timeout: 2.0)
-        pollItem.cancel()
+        mockDelegate.onStartDownload = { expectation.fulfill() }
+
+        interceptor.handleProblem(for: book, problemDocument: nil)
+        wait(for: [expectation], timeout: 5.0)
 
         XCTAssertEqual(mockDelegate.startDownloadCalls.count, 1)
         XCTAssertEqual(mockRegistry.state(for: book.identifier), .SAMLStarted)
@@ -344,13 +336,10 @@ final class TokenRefreshInterceptorTests: XCTestCase {
 
         interceptor.handleProblem(for: book, problemDocument: nil)
 
-        let expectation = XCTestExpectation(description: "Wait")
-        let pollItem = DispatchWorkItem {
-            expectation.fulfill()
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: pollItem)
-        wait(for: [expectation], timeout: 5.0)
-        pollItem.cancel()
+        // The has-credentials non-SAML branch sets `.downloadNeeded`
+        // synchronously and spawns NO async retry (the `if !hasCredentials`
+        // Task is skipped), so the effects are already visible on return —
+        // assert directly instead of a fixed-delay settle.
 
         // Should NOT trigger reauth for authenticated basic user
         XCTAssertFalse(mockReauthenticator.authenticateIfNeededCalled)
@@ -441,19 +430,19 @@ final class TokenRefreshInterceptorTests: XCTestCase {
         mockUserAccount._credentials = .barcodeAndPin(barcode: "user", pin: "pin")
         mockUserAccount._authDefinition = makeAuthDefinition(authType: .saml)
 
+        // triggerSAMLReauth is async (state-manager cleanup then MainActor hop),
+        // so arm a prompt-firing expectation BEFORE the trigger: the delegate
+        // fulfils it the instant startDownload lands — replacing the fixed-0.5s
+        // poll-then-wait that starves under CI oversubscription.
+        let expectation = XCTestExpectation(description: "SAML retry via startDownload")
+        mockDelegate.onStartDownload = { expectation.fulfill() }
+
         let result = interceptor.handleDownloadFailureWithAuthCheck(
             for: book, task: task, problemDoc: nil, failureError: nil
         )
         XCTAssertTrue(result, "SAML 401 must claim the failure")
 
-        // triggerSAMLReauth is async (state-manager cleanup then MainActor hop).
-        let expectation = XCTestExpectation(description: "SAML retry via startDownload")
-        let pollItem = DispatchWorkItem { [weak self] in
-            if let self, !self.mockDelegate.startDownloadCalls.isEmpty { expectation.fulfill() }
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: pollItem)
         wait(for: [expectation], timeout: 3.0)
-        pollItem.cancel()
 
         XCTAssertEqual(mockRegistry.state(for: book.identifier), .SAMLStarted,
                        "SAML 401 must route to triggerSAMLReauth → .SAMLStarted. The :166 `!= true` " +
@@ -485,18 +474,17 @@ final class TokenRefreshInterceptorTests: XCTestCase {
         mockUserAccount._credentials = .barcodeAndPin(barcode: "user", pin: "pin")
         mockUserAccount._authDefinition = makeAuthDefinition(authType: .saml)
 
+        // Arm the prompt-firing expectation before the trigger — the delegate
+        // fulfils it the instant startDownload lands (no fixed-delay poll).
+        let expectation = XCTestExpectation(description: "SAML no-active-loan retry via startDownload")
+        mockDelegate.onStartDownload = { expectation.fulfill() }
+
         let result = interceptor.handleDownloadFailureWithAuthCheck(
             for: book, task: task, problemDoc: problemDoc, failureError: nil
         )
         XCTAssertTrue(result, "SAML no-active-loan must be claimed as a session expiry")
 
-        let expectation = XCTestExpectation(description: "SAML no-active-loan retry via startDownload")
-        let pollItem = DispatchWorkItem { [weak self] in
-            if let self, !self.mockDelegate.startDownloadCalls.isEmpty { expectation.fulfill() }
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: pollItem)
         wait(for: [expectation], timeout: 3.0)
-        pollItem.cancel()
 
         XCTAssertEqual(mockRegistry.state(for: book.identifier), .SAMLStarted,
                        "SAML no-active-loan must route to triggerSAMLReauth → .SAMLStarted (:216). " +
@@ -543,22 +531,20 @@ final class TokenRefreshInterceptorTests: XCTestCase {
         mockUserAccount._credentials = .token(authToken: "expired-token")
         mockUserAccount._authDefinition = makeAuthDefinition(authType: .oidc)
 
+        // triggerBrowserReauth is async (cleans up download state first). Arm a
+        // prompt-firing expectation before the trigger: the reauth mock fires
+        // onAuthenticate the instant authenticateIfNeeded is called — replacing
+        // the fixed-1.0s poll-then-wait that starves under CI oversubscription.
+        let expectation = XCTestExpectation(description: "Reauthenticator called")
+        mockReauthenticator.onAuthenticate = { _, _ in expectation.fulfill() }
+
         let result = interceptor.handleDownloadFailureWithAuthCheck(
             for: book, task: task, problemDoc: nil, failureError: nil
         )
 
         XCTAssertTrue(result, "OIDC 401 should trigger re-auth, not show error")
 
-        // triggerBrowserReauth is async (cleans up download state first), so wait
-        let expectation = XCTestExpectation(description: "Reauthenticator called")
-        let pollItem = DispatchWorkItem { [weak self] in
-            if let self, self.mockReauthenticator.authenticateIfNeededCalled {
-                expectation.fulfill()
-            }
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: pollItem)
         wait(for: [expectation], timeout: 3.0)
-        pollItem.cancel()
         XCTAssertTrue(mockReauthenticator.authenticateIfNeededCalled,
                       "Should present sign-in modal for OIDC re-auth")
     }
@@ -607,25 +593,22 @@ final class TokenRefreshInterceptorTests: XCTestCase {
         mockUserAccount._credentials = .token(authToken: "expired-token")
         mockUserAccount._authDefinition = makeAuthDefinition(authType: .oidc)
 
+        // Prompt-firing wait: fulfilled the instant the retry calls
+        // startDownload — replaces the fixed-1.0s poll-then-wait.
+        let expectation = XCTestExpectation(description: "Download retried after OIDC re-auth")
+        mockDelegate.onStartDownload = { expectation.fulfill() }
+
         _ = interceptor.handleDownloadFailureWithAuthCheck(
             for: book, task: task, problemDoc: nil, failureError: nil
         )
 
-        let expectation = XCTestExpectation(description: "Download retried after OIDC re-auth")
-        let pollItem = DispatchWorkItem { [weak self] in
-            if let self, !self.mockDelegate.startDownloadCalls.isEmpty {
-                expectation.fulfill()
-            }
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: pollItem)
         wait(for: [expectation], timeout: 3.0)
-        pollItem.cancel()
 
         XCTAssertEqual(mockDelegate.startDownloadCalls.count, 1,
                        "Should retry download after successful OIDC re-auth")
     }
 
-    func testHandleDownloadFailure_OIDC_cancelledReauth_doesNotRetry() {
+    func testHandleDownloadFailure_OIDC_cancelledReauth_doesNotRetry() async {
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
         let url = URL(string: "https://example.com/book")!
         let response401 = HTTPURLResponse(
@@ -637,9 +620,13 @@ final class TokenRefreshInterceptorTests: XCTestCase {
             response: response401
         )
 
-        // Setup: reauthenticator fires completion but user cancelled (state stays stale)
+        // Setup: reauthenticator fires completion but user cancelled (state stays
+        // stale). Fulfil a prompt-firing expectation when reauth is reached so we
+        // can sequence deterministically off that edge instead of a fixed delay.
+        let reauthReached = XCTestExpectation(description: "reauth reached")
         mockReauthenticator.onAuthenticate = { _, _ in
             // User cancelled — no state change
+            reauthReached.fulfill()
         }
 
         mockUserAccount._credentials = .token(authToken: "expired-token")
@@ -649,16 +636,26 @@ final class TokenRefreshInterceptorTests: XCTestCase {
             for: book, task: task, problemDoc: nil, failureError: nil
         )
 
-        let expectation = XCTestExpectation(description: "Wait for async completion")
-        let pollItem = DispatchWorkItem {
-            expectation.fulfill()
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: pollItem)
-        wait(for: [expectation], timeout: 3.0)
-        pollItem.cancel()
+        // Await the reauth edge (proves the async cleanup + reauth dispatch ran),
+        // then flush the main-actor executor so the post-completion retry
+        // `Task { @MainActor }` (which decides NOT to retry on stale creds) runs
+        // before we assert absence — deterministic, no fixed-delay settle.
+        await fulfillment(of: [reauthReached], timeout: 3.0)
+        await flushMainActorTasks()
 
         XCTAssertEqual(mockDelegate.startDownloadCalls.count, 0,
                        "Should NOT retry download when re-auth is cancelled (credentials still stale)")
+    }
+
+    /// Deterministic barrier: services the main-actor executor so any
+    /// `Task { @MainActor }` already enqueued on this actor (e.g. the
+    /// post-reauth retry decision) runs before the next assertion. Completes
+    /// the instant the actor is free — never a fixed sleep. Two hops cover a
+    /// single chained re-dispatch.
+    @MainActor
+    private func flushMainActorTasks() async {
+        await Task { @MainActor in }.value
+        await Task { @MainActor in }.value
     }
 
     func testHandleDownloadFailure_noActiveLoan_OIDC_triggersReauth() {
@@ -681,22 +678,19 @@ final class TokenRefreshInterceptorTests: XCTestCase {
         mockUserAccount._credentials = .token(authToken: "expired-token")
         mockUserAccount._authDefinition = makeAuthDefinition(authType: .oidc)
 
+        // triggerBrowserReauth is async. Arm a prompt-firing expectation before
+        // the trigger: the reauth mock fires onAuthenticate the instant
+        // authenticateIfNeeded is called — no fixed-delay poll.
+        let expectation = XCTestExpectation(description: "Reauthenticator called")
+        mockReauthenticator.onAuthenticate = { _, _ in expectation.fulfill() }
+
         let result = interceptor.handleDownloadFailureWithAuthCheck(
             for: book, task: task, problemDoc: problemDoc, failureError: nil
         )
 
         XCTAssertTrue(result, "OIDC + no-active-loan should trigger re-auth, not auto-borrow")
 
-        // triggerBrowserReauth is async, so wait for completion
-        let expectation = XCTestExpectation(description: "Reauthenticator called")
-        let pollItem = DispatchWorkItem { [weak self] in
-            if let self, self.mockReauthenticator.authenticateIfNeededCalled {
-                expectation.fulfill()
-            }
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: pollItem)
         wait(for: [expectation], timeout: 3.0)
-        pollItem.cancel()
         XCTAssertTrue(mockReauthenticator.authenticateIfNeededCalled,
                       "Should present sign-in modal for OIDC re-auth on no-active-loan")
     }

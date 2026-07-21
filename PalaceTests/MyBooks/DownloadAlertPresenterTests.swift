@@ -26,6 +26,10 @@ final class DownloadAlertPresenterTests: XCTestCase {
     private var book: TPPBook!
     private var capturedErrors: [DownloadErrorInfo] = []
     private var subscription: AnyCancellable?
+    /// Fulfilled by the error-publisher sink the instant an error is
+    /// published — lets tests JOIN the publish (prompt-firing) instead of
+    /// polling a wall-clock deadline that starves under CI oversubscription.
+    private var errorPublishedExpectation: XCTestExpectation?
 
     override func setUpWithError() throws {
         try super.setUpWithError()
@@ -41,6 +45,7 @@ final class DownloadAlertPresenterTests: XCTestCase {
         capturedErrors = []
         subscription = reporter.downloadErrorPublisher.sink { [weak self] info in
             self?.capturedErrors.append(info)
+            self?.errorPublishedExpectation?.fulfill()
         }
 
         presenter = DownloadAlertPresenter(
@@ -79,16 +84,24 @@ final class DownloadAlertPresenterTests: XCTestCase {
         return try XCTUnwrap(TPPProblemDocument.fromProblemResponseData(data))
     }
 
-    /// Wraps the shared `awaitConditionAsync` helper. `file`/`line`
-    /// forwarded so timeout XCTFail blames the call site.
+    /// Joins the error-publish path deterministically. `failDownloadWithAlert`
+    /// / `alertForProblemDocument` publish through a `runOnMainAsync` hop, so
+    /// the error lands on a future main-actor turn — but the sink fulfils
+    /// `errorPublishedExpectation` the instant it does. Awaiting that
+    /// expectation is a prompt-firing wait, replacing the wall-clock
+    /// `awaitConditionAsync` poll that starved under CI oversubscription.
+    /// Arming is synchronous before any `await`, so a pending publish Task
+    /// can't fulfil ahead of the arm.
     private func waitForPublishedError(
         timeout: TimeInterval = 10.0,
         file: StaticString = #file,
         line: UInt = #line
     ) async {
-        await awaitConditionAsync(timeout: timeout, file: file, line: line) { [weak self] in
-            self?.capturedErrors.isEmpty == false
-        }
+        if !capturedErrors.isEmpty { return }
+        let published = expectation(description: "download error published")
+        errorPublishedExpectation = published
+        await fulfillment(of: [published], timeout: timeout)
+        errorPublishedExpectation = nil
     }
 
     // MARK: - failDownloadWithAlert

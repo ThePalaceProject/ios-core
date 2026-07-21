@@ -131,16 +131,15 @@ final class NotificationServiceStateMachineTests: XCTestCase {
         }
         account._setState(.detailsLoading)
 
-        // Launch the awaiter; it must be suspended on the stream.
+        // Launch the awaiter; it suspends on the stream (state is .detailsLoading).
         async let outcomeTask = NotificationService.decideHoldNavigation(currentAccount: account)
 
-        // Give the await a moment to enter the stream — too short and
-        // the test races; this is the same shape as
-        // AccountStateMachineTests.testAwaitReady_blocksUntilTransition.
-        try? await Task.sleep(nanoseconds: 30_000_000)
-
-        // Now drive the transition; the awaiter should observe it and
-        // resolve to .navigate (NYPL fixture enables reservations).
+        // Drive the transition, then JOIN the awaiter directly. No wall-clock
+        // settle sleep needed: the underlying stream is backed by a
+        // CurrentValueSubject, so even if the awaiter subscribes AFTER this
+        // transition it immediately replays the now-terminal .detailsLoaded and
+        // resolves — there is no lost-wakeup race to sleep around. `await
+        // outcomeTask` is the deterministic join (starves under no deadline).
         account._setState(.detailsLoaded(details))
 
         let resolved = await outcomeTask

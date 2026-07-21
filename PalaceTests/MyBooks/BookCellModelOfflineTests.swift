@@ -195,7 +195,13 @@ final class BookCellModelOfflineTests: XCTestCase {
 
         mockReachability.simulate(connected: false)
 
-        awaitCondition(timeout: 2.0) { !model.isLoading }
+        // Join the reachability sink's terminal effect rather than polling a
+        // deadline: the `.receive(on: RunLoop.main)` sink sets `isLoading =
+        // false` then calls `presentOfflineAlert()`, which assigns `showAlert`
+        // last. Waiting on `$showAlert` becoming non-nil therefore guarantees
+        // the whole sink has run — `isLoading` is already false by then — so
+        // both assertions below hold without a poll loop that starves on CI.
+        awaitPublished(model.$showAlert, timeout: 2.0) { $0 != nil }
         XCTAssertFalse(
             model.isLoading,
             "A mid-flight reachability drop must clear isLoading so the button " +
