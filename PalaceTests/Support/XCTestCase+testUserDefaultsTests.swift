@@ -8,7 +8,7 @@ import XCTest
 ///
 /// The "SUT" here is the helper extension itself; the file name
 /// (`XCTestCase+testUserDefaultsTests`) reflects that — the test
-/// methods exercise `testUserDefaults()` directly.
+/// methods exercise `Self.testUserDefaults()` directly.
 @MainActor
 final class XCTestCase_testUserDefaultsTests: XCTestCase {
 
@@ -18,11 +18,11 @@ final class XCTestCase_testUserDefaultsTests: XCTestCase {
 
     // MARK: - Isolation
 
-    /// Two calls to `testUserDefaults()` inside the same test must
+    /// Two calls to `Self.testUserDefaults()` inside the same test must
     /// produce two stores whose writes do NOT bleed into each other.
     func testTestUserDefaults_returnsIsolatedSuite() {
-        let storeA = testUserDefaults()
-        let storeB = testUserDefaults()
+        let storeA = Self.testUserDefaults()
+        let storeB = Self.testUserDefaults()
 
         // Arrange: write distinct values into each store under the same key.
         let key = "isolation-probe"
@@ -38,7 +38,7 @@ final class XCTestCase_testUserDefaultsTests: XCTestCase {
 
     // MARK: - No leak to `.standard`
 
-    /// A write into a `testUserDefaults()` store must NOT be visible via
+    /// A write into a `Self.testUserDefaults()` store must NOT be visible via
     /// `UserDefaults.standard`. This is the load-bearing isolation
     /// property — if it ever regresses, every test using the helper
     /// silently goes back to polluting `.standard`.
@@ -49,13 +49,13 @@ final class XCTestCase_testUserDefaultsTests: XCTestCase {
         UserDefaults.standard.removeObject(forKey: suiteKey)
 
         // Act: write to the isolated store.
-        let defaults = testUserDefaults()
+        let defaults = Self.testUserDefaults()
         defaults.set("isolated-only", forKey: suiteKey)
 
         // Assert: `.standard` is still empty for this key.
         XCTAssertNil(
             UserDefaults.standard.string(forKey: suiteKey),
-            "Writing to a testUserDefaults() store must NOT be visible via UserDefaults.standard"
+            "Writing to a Self.testUserDefaults() store must NOT be visible via UserDefaults.standard"
         )
 
         // Sanity check: the isolated store DOES have the value.
@@ -75,7 +75,7 @@ final class XCTestCase_testUserDefaultsTests: XCTestCase {
         // the helper added.
         let beforeNames = Set(SingletonResetRegistry.shared.registeredNames())
 
-        let defaults = testUserDefaults()
+        let defaults = Self.testUserDefaults()
         defaults.set("survives-only-until-reset", forKey: "reset-probe")
         XCTAssertEqual(defaults.string(forKey: "reset-probe"), "survives-only-until-reset",
                        "Pre-reset: value must be present in the suite")
@@ -84,9 +84,9 @@ final class XCTestCase_testUserDefaultsTests: XCTestCase {
         let added = afterNames.subtracting(beforeNames)
 
         // The helper must register exactly the resetters this test
-        // call adds (one per `testUserDefaults()` invocation).
+        // call adds (one per `Self.testUserDefaults()` invocation).
         XCTAssertEqual(added.count, 1,
-                       "testUserDefaults() must register exactly one resetter per call. Added: \(added)")
+                       "Self.testUserDefaults() must register exactly one resetter per call. Added: \(added)")
         guard let addedName = added.first else {
             XCTFail("No resetter was registered")
             return

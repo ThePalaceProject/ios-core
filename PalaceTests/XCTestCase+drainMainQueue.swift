@@ -56,12 +56,16 @@ extension XCTestCase {
     ///
     /// - Parameter timeout: Maximum seconds to wait. Default 5s.
     ///
-    /// Inherits the caller's isolation (`#isolation`) so a `@MainActor`
-    /// caller does not "send" its non-Sendable XCTestCase across an isolation
-    /// boundary (Swift 6 sending error).
-    @nonobjc
-    func drainMainQueueAsync(isolation: isolated (any Actor)? = #isolation,
-                             timeout: TimeInterval = 5.0) async {
+    /// `@MainActor`: this helper only ever touches main-queue machinery
+    /// (`expectation`, `DispatchQueue.main.async`, `fulfillment`), and every
+    /// caller is a `@MainActor` test method. Isolating it to the main actor
+    /// keeps the `await` on-actor so the (non-Sendable) `XCTestCase` `self`
+    /// is never *sent* across an actor boundary at the suspension point —
+    /// which is exactly the Swift 6 "sending value of non-Sendable type …
+    /// risks causing data races" error a nonisolated async helper produces
+    /// when called from a `@MainActor async` test (HoldsSyncFailureTests×3).
+    @MainActor
+    func drainMainQueueAsync(timeout: TimeInterval = 5.0) async {
         let drained = expectation(description: "main queue drained (async)")
         DispatchQueue.main.async { drained.fulfill() }
         await fulfillment(of: [drained], timeout: timeout)
@@ -79,28 +83,45 @@ extension XCTestCase {
     ///   - pollInterval: How often to re-check. Default 50ms.
     ///   - predicate: A synchronous closure that returns true once the
     ///     observed state has converged.
+    @MainActor
     func awaitCondition(
         timeout: TimeInterval = 5.0,
         pollInterval: TimeInterval = 0.05,
-        _ predicate: @escaping () -> Bool
+        _ predicate: @escaping @MainActor () -> Bool
     ) {
         let met = expectation(description: "condition met")
-        // LockIsolated: poll() re-schedules itself through a @Sendable
-        // dispatch closure, so the flag and the (non-Sendable) predicate must
-        // cross inside the box (Swift 6 sending errors otherwise).
-        let state = LockIsolated((fulfilled: false, predicate: predicate))
-        func poll() {
-            let (isDone, pred) = state.withValue { ($0.fulfilled, $0.predicate) }
-            if isDone { return }
-            if pred() {
-                state.withValue { $0.fulfilled = true }
-                met.fulfill()
-                return
+        // Swift 6: the predicate reads @MainActor test/view-model state (e.g.
+        // `model.isLoading`), so it must stay on the main actor. Poll via a
+        // @MainActor Task instead of the old DispatchQueue.main.asyncAfter
+        // recursion (whose @Sendable closure couldn't capture the @MainActor
+        // predicate). `wait(for:)` spins the main runloop so the Task advances.
+        //
+        // CANCELLATION-FIRST ordering is load-bearing. The previous shape
+        // (`while !predicate() { if Task.isCancelled ... sleep }`) evaluated
+        // the predicate ONE MORE TIME on the resumption after `cancel()`:
+        // on timeout, `wait` returns → `pollTask.cancel()` → the pending
+        // `Task.sleep` throws immediately → the loop re-entered
+        // `while !predicate()` BEFORE noticing the cancellation. That leaked
+        // resumption runs at the next main-actor availability — which can be
+        // AFTER `tearDown` has nil'd the test's implicitly-unwrapped fixtures
+        // (`self.sut!`), turning a timed-out wait into a force-unwrap
+        // `fatalError` that kills the whole test-runner process (CI run
+        // 29802862487: AudiobookPlaytimesLifecycleTests' retry crashed the
+        // Clone-2 runner exactly this way). Checking `Task.isCancelled` FIRST
+        // guarantees the predicate is never touched after `cancel()` returns:
+        // cancel + tearDown run synchronously on main, so the leaked
+        // resumption's first act is the cancellation check.
+        let pollTask = Task { @MainActor in
+            while !Task.isCancelled {
+                if predicate() {
+                    met.fulfill()
+                    return
+                }
+                try? await Task.sleep(nanoseconds: UInt64(pollInterval * 1_000_000_000))
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + pollInterval) { poll() }
         }
-        poll()
         wait(for: [met], timeout: timeout)
+        pollTask.cancel()
     }
 
     /// Async sibling of `awaitCondition` for `async` test bodies that need
@@ -120,12 +141,7 @@ extension XCTestCase {
     ///   - pollInterval: How often to re-check. Default 25ms.
     ///   - file/line: For accurate XCTFail attribution.
     ///   - predicate: Synchronous closure returning true once converged.
-    /// Inherits the caller's isolation (`#isolation`) so a `@MainActor`
-    /// caller does not "send" its non-Sendable XCTestCase / predicate across
-    /// an isolation boundary (Swift 6 sending error).
-    @nonobjc
-    func awaitConditionAsync(
-        isolation: isolated (any Actor)? = #isolation,
+    @MainActor func awaitConditionAsync(
         timeout: TimeInterval = 10.0,
         pollInterval: TimeInterval = 0.025,
         file: StaticString = #file,
@@ -155,11 +171,7 @@ extension XCTestCase {
     /// require `await`; this overload exists so callers can avoid
     /// hand-rolling another silent while-deadline loop just because their
     /// observable is `async`.
-    /// Inherits the caller's isolation (`#isolation`) — same rationale as the
-    /// sync-predicate overload above.
-    @nonobjc
-    func awaitConditionAsync(
-        isolation: isolated (any Actor)? = #isolation,
+    @MainActor func awaitConditionAsync(
         timeout: TimeInterval = 10.0,
         pollInterval: TimeInterval = 0.025,
         file: StaticString = #file,

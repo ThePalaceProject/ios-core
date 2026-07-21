@@ -13,10 +13,6 @@ final class DeviceOrientationTests: XCTestCase {
 
     var orientation: DeviceOrientation!
 
-    // async setUp/tearDown: the async overrides honor the class's @MainActor
-    // isolation (XCTest awaits them on the right actor), unlike the sync
-    // nonisolated+assumeIsolated pattern, which Swift 6's region checker
-    // rejects for capturing self across the isolation boundary.
     override func setUp() async throws {
         try await super.setUp()
         orientation = DeviceOrientation()

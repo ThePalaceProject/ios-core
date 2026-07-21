@@ -70,12 +70,13 @@ class PalaceWiringTestCase: PalaceTestCase {
     /// main thread (test methods inherit `@MainActor` via XCTest's
     /// default isolation for sync test methods).
     ///
-    /// `nonisolated(unsafe)`: `tearDownWithError` inherits `nonisolated`
-    /// from XCTestCase under Swift 6 and must drain this bag BEFORE the
-    /// nonisolated `super` call — mixing isolated member access with the
-    /// nonisolated super call in either order trips the region checker.
-    /// Sound: every access happens on the main thread (test bodies and
-    /// XCTest-driven teardown alike).
+    /// `nonisolated(unsafe)`: accessed both from `@MainActor` subclass test
+    /// bodies (`.store(in: &cancellables)`) and from the `nonisolated`
+    /// `tearDownWithError` override that drains it. XCTest runs a single test
+    /// method's body and its teardown serially on one instance — never
+    /// concurrently — so there is no data race to guard; the unsafe opt-out
+    /// keeps the bag reachable from the nonisolated hook without sending
+    /// `self` across an actor boundary.
     nonisolated(unsafe) var cancellables: Set<AnyCancellable> = []
 
     /// Internal list of `AccountsManager` instances minted via
@@ -83,9 +84,13 @@ class PalaceWiringTestCase: PalaceTestCase {
     /// walks this list and calls `cancelBackgroundWork()` on each, then
     /// empties the list so the next method starts clean. Stored as
     /// `private` — only `makeFreshAccountsManager` mutates it.
-    /// `nonisolated(unsafe)`: same teardown-isolation rationale as
-    /// `cancellables` above; all access is main-thread.
-    private nonisolated(unsafe) var managersToCancelOnTearDown: [AccountsManager] = []
+    ///
+    /// `nonisolated(unsafe)`: appended from `makeFreshAccountsManager`
+    /// (invoked in `@MainActor` test bodies) and drained from the `nonisolated`
+    /// `tearDownWithError` override. Same single-threaded serial test lifecycle
+    /// as `cancellables` — no concurrent access to guard; the opt-out keeps the
+    /// list reachable from the nonisolated hook without sending `self`.
+    nonisolated(unsafe) private var managersToCancelOnTearDown: [AccountsManager] = []
 
     // MARK: - Lifecycle
 
@@ -129,13 +134,6 @@ class PalaceWiringTestCase: PalaceTestCase {
     }
 
     override func tearDownWithError() throws {
-        // NOTE (Swift 6): this override inherits `nonisolated` from
-        // XCTestCase, and its cleanup must run BEFORE the nonisolated super
-        // call (super fires the PalaceTestCase quiescence gate). Everything
-        // it touches is therefore deliberately nonisolated — see the
-        // `nonisolated(unsafe)` notes on `cancellables` /
-        // `managersToCancelOnTearDown` and the nonisolated purge helper.
-
         // Drain Combine subscriptions FIRST so any cancellation-side
         // notifications they would observe land before we cancel the
         // managers.
@@ -180,8 +178,6 @@ class PalaceWiringTestCase: PalaceTestCase {
     ///   AND whose `cancelBackgroundWork()` will fire in tearDown
     ///   regardless of whether the test body called it.
     @discardableResult
-    // nonisolated: called from inherited-nonisolated setUp overrides in
-    // subclasses; touches only nonisolated state (see property notes).
     nonisolated func makeFreshAccountsManager(_ configure: (AccountsManager) -> Void = { _ in }) -> AccountsManager {
         // Pin the opt-out flag immediately before construction. setUp
         // already set it, but a test method that intentionally toggled
@@ -202,7 +198,7 @@ class PalaceWiringTestCase: PalaceTestCase {
     ///
     /// swarm_cd181acd D-cleanup: lets wiring tests seed
     /// `currentAccountIdentifierKey` into a per-test isolated suite (via
-    /// `testUserDefaults()`) instead of mutating `UserDefaults.standard`,
+    /// `Self.testUserDefaults()`) instead of mutating `UserDefaults.standard`,
     /// so cross-test pollution through that key is structurally
     /// impossible.
     @discardableResult
@@ -234,8 +230,6 @@ class PalaceWiringTestCase: PalaceTestCase {
     ///
     /// Missing files (cold-start) and missing directory are silently
     /// ignored — both are valid pre-test states.
-    // nonisolated: called from the (inherited-nonisolated) setUp/tearDown
-    // overrides; touches only FileManager, no actor state.
     private nonisolated func purgeAccountsDiskCacheForWiringTests() {
         let prefixes = [
             "library_list_",

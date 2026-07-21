@@ -43,13 +43,10 @@ final class BorrowOperationCleverReauthTests: XCTestCase {
     private var operation: BorrowOperation!
     private var book: TPPBook!
 
-    // LockIsolated boxes (not stored vars): the BorrowOperation seams are
-    // nonisolated closures — capturing MainActor `self` in them is a Swift 6
-    // sending error, so each closure captures its (Sendable) box instead.
     private let fetchBookResult = LockIsolated<Result<TPPBook, Error>?>(nil)
     private let alertCalls = LockIsolated<[(title: String, message: String, book: TPPBook, hasRetryAction: Bool)]>([])
     private let signInModalCompletions = LockIsolated<[() -> Void]>([])
-    private let oidcReauthResult = LockIsolated(false)
+    private let oidcReauthResult = LockIsolated<Bool>(false)
 
     override func setUpWithError() throws {
         try super.setUpWithError()
@@ -64,30 +61,34 @@ final class BorrowOperationCleverReauthTests: XCTestCase {
         signInModalCompletions.value = []
         oidcReauthResult.value = false
 
+        // Swift 6: the injected closures run outside MainActor isolation, so
+        // capturing `self` sends a main-actor-isolated value across the
+        // boundary. Capture the Sendable boxes as locals instead.
+        let fetchBookResultBox = fetchBookResult
+        let oidcReauthResultBox = oidcReauthResult
+        let alertCallsBox = alertCalls
+        let signInModalCompletionsBox = signInModalCompletions
         operation = BorrowOperation(
             bookRegistry: bookRegistry,
             downloadAnnouncementService: DownloadAnnouncementService(),
             errorActivityTracker: .shared,
             debugSettings: DebugSettings(),
             userRetryTracker: .shared,
-            // Capture lists: each seam closure captures ONLY its Sendable
-            // LockIsolated box (or the @unchecked Sendable mock) — never
-            // MainActor `self` (Swift 6 sending error; see property note).
-            userAccountProvider: { [userAccount] in userAccount! },
+            userAccountProvider: { [unowned self] in self.userAccount },
             adobeDRMService: AdobeDRMService.shared,
-            fetchBook: { [fetchBookResult] _, _, _ in
-                switch fetchBookResult.value! {
+            fetchBook: { _, _, _ in
+                switch fetchBookResultBox.value! {
                 case .success(let r): return r
                 case .failure(let e): throw e
                 }
             },
-            presentBorrowErrorAlert: { [alertCalls] title, message, _, _, b, retryAction in
-                alertCalls.withValue { $0.append((title, message, b, retryAction != nil)) }
+            presentBorrowErrorAlert: { title, message, _, _, b, retryAction in
+                alertCallsBox.withValue { $0.append((title, message, b, retryAction != nil)) }
             },
-            presentSignInModal: { [signInModalCompletions] completion in
-                signInModalCompletions.withValue { $0.append(completion) }
+            presentSignInModal: { completion in
+                signInModalCompletionsBox.withValue { $0.append(completion) }
             },
-            attemptOIDCReauth: { [oidcReauthResult] in oidcReauthResult.value }
+            attemptOIDCReauth: { oidcReauthResultBox.value }
         )
         operation.delegate = spyDelegate
     }

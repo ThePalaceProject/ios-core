@@ -82,13 +82,11 @@ private final class GatedCrawlerFetcher: CrawlerNetworkFetching, @unchecked Send
     }
 
     func fetchData(from url: URL) async throws -> (Data, HTTPURLResponse?) {
-        // Swift 6 marks NSLock.lock()/unlock() `noasync`; withLock is the
-        // sanctioned scoped-locking form for async contexts.
-        let isFirst: Bool = lock.withLock {
+        let isFirst = lock.withLock { () -> Bool in
             _fetchedURLs.append(url)
-            let first = firstCall
+            let wasFirst = firstCall
             firstCall = false
-            return first
+            return wasFirst
         }
 
         if isFirst {
@@ -118,10 +116,7 @@ private enum CrawlOutcome: Sendable, Equatable {
 
 // MARK: - Tests
 
-// Deliberately NOT @MainActor: LibraryRegistryCrawler is nonisolated and
-// non-Sendable — awaiting `crawl` on it from a @MainActor test is a Swift 6
-// sending error, while from a nonisolated test everything stays in one
-// isolation domain. Nothing here touches UI or main-actor state.
+@MainActor
 final class LibraryRegistryCrawlerTests: XCTestCase {
 
     private var fetcher: MockCrawlerFetcher!
@@ -146,7 +141,7 @@ final class LibraryRegistryCrawlerTests: XCTestCase {
 
     private func makeCrawler(
         currentAppVersion: String? = "3.2.0",
-        now: @escaping () -> Date = Date.init
+        now: @escaping @Sendable () -> Date = Date.init
     ) -> LibraryRegistryCrawler {
         let crawler = LibraryRegistryCrawler(
             fetcher: fetcher,

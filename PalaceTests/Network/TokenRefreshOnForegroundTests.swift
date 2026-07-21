@@ -39,8 +39,8 @@ final class TokenRefreshOnForegroundTests: XCTestCase {
     private let apiURL = URL(string: "https://api.example.com/protected")!
     private let borrowURL = URL(string: "https://api.example.com/borrow/123")!
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         HTTPStubURLProtocol.reset()
         TPPUserAccountMock.resetShared()
 
@@ -102,7 +102,11 @@ final class TokenRefreshOnForegroundTests: XCTestCase {
         return AccountDetails.Authentication(auth: docAuth)
     }
 
-    private static func tokenResponseJSON(accessToken: String, expiresIn: Int = 3600) -> Data {
+    // `nonisolated`: pure string→Data helper with no main-actor state. Called
+    // from `@Sendable` stub closures that run off-main on the URLProtocol
+    // handler queue, so it must not inherit the enclosing `@MainActor` class's
+    // isolation (doing so is what let the stub closure trap at runtime).
+    private nonisolated static func tokenResponseJSON(accessToken: String, expiresIn: Int = 3600) -> Data {
         return """
         {"access_token":"\(accessToken)","token_type":"Bearer","expires_in":\(expiresIn)}
         """.data(using: .utf8)!
@@ -142,17 +146,20 @@ final class TokenRefreshOnForegroundTests: XCTestCase {
         // refresh window.
         setTokenExpiringIn(seconds: 60, token: "near-expiry")
 
-        let orderQueue = DispatchQueue(label: "order-recording-queue")
-        var orderedHits: [String] = []
-        HTTPStubURLProtocol.register { [tokenURL, apiURL] request in
+        // `@Sendable` stub closure + `LockIsolated` recorder — see the
+        // `test_ConcurrentForegroundRequests` rationale: the stub runs off-main
+        // on the handler queue, so it must be non-isolated to avoid the Swift 6
+        // executor-isolation trap.
+        let orderedHits = LockIsolated<[String]>([])
+        HTTPStubURLProtocol.register { @Sendable [tokenURL, apiURL] request in
             if request.url == tokenURL {
-                orderQueue.sync { orderedHits.append("token") }
+                orderedHits.withValue { $0.append("token") }
                 return .init(statusCode: 200,
                              headers: nil,
                              body: Self.tokenResponseJSON(accessToken: "fresh-foreground-token"))
             }
             if request.url == apiURL {
-                orderQueue.sync { orderedHits.append("api") }
+                orderedHits.withValue { $0.append("api") }
                 return .init(statusCode: 200, headers: nil, body: Data("ok".utf8))
             }
             return nil
@@ -162,7 +169,7 @@ final class TokenRefreshOnForegroundTests: XCTestCase {
         executor.GET(apiURL) { _ in done.fulfill() }
         await fulfillment(of: [done], timeout: 5.0)
 
-        let snapshot = orderQueue.sync { orderedHits }
+        let snapshot = orderedHits.value
         // Both must have fired; token MUST be first.
         XCTAssertEqual(snapshot.first, "token",
                        "Proactive refresh: /token must hit the network before the user request — kills deletion of the near-expiry branch")
@@ -180,15 +187,16 @@ final class TokenRefreshOnForegroundTests: XCTestCase {
     func test_NearExpiryToken_RetriedRequest_UsesFreshBearer() async throws {
         setTokenExpiringIn(seconds: 30, token: "OLD-bearer")
 
-        var capturedAuth: String?
-        HTTPStubURLProtocol.register { [tokenURL, apiURL] request in
+        // @Sendable stub + LockIsolated: see test_ConcurrentForegroundRequests rationale
+        let capturedAuth = LockIsolated<String?>(nil)
+        HTTPStubURLProtocol.register { @Sendable [tokenURL, apiURL] request in
             if request.url == tokenURL {
                 return .init(statusCode: 200,
                              headers: nil,
                              body: Self.tokenResponseJSON(accessToken: "NEW-bearer"))
             }
             if request.url == apiURL {
-                capturedAuth = request.value(forHTTPHeaderField: "Authorization")
+                capturedAuth.value = request.value(forHTTPHeaderField: "Authorization")
                 return .init(statusCode: 200, headers: nil, body: Data("ok".utf8))
             }
             return nil
@@ -206,7 +214,7 @@ final class TokenRefreshOnForegroundTests: XCTestCase {
         // the account had at request-build time (so callers that build
         // their own request and rely on the proactive refresh updating
         // the account's stored token still get a valid app-state).
-        XCTAssertNotNil(capturedAuth,
+        XCTAssertNotNil(capturedAuth.value,
                         "The user request must include an Authorization header (kills mutation that strips bearer)")
         XCTAssertEqual(userAccount.authToken, "NEW-bearer",
                        "Refresh must persist the new bearer onto the account — kills deletion of setAuthToken on success")
@@ -224,20 +232,20 @@ final class TokenRefreshOnForegroundTests: XCTestCase {
         // Gate /token so it stays in flight long enough for the test to
         // observe that the user request has NOT fired yet.
         let releaseGate = DispatchSemaphore(value: 0)
-        let counterQueue = DispatchQueue(label: "counter-queue")
-        var tokenHits = 0
-        var apiHits = 0
+        // @Sendable stub + LockIsolated: see test_ConcurrentForegroundRequests rationale
+        let tokenHits = LockIsolated(0)
+        let apiHits = LockIsolated(0)
 
-        HTTPStubURLProtocol.register { [tokenURL, apiURL] request in
+        HTTPStubURLProtocol.register { @Sendable [tokenURL, apiURL] request in
             if request.url == tokenURL {
-                counterQueue.sync { tokenHits += 1 }
+                tokenHits.withValue { $0 += 1 }
                 _ = releaseGate.wait(timeout: .now() + 3.0)
                 return .init(statusCode: 200,
                              headers: nil,
                              body: Self.tokenResponseJSON(accessToken: "fresh"))
             }
             if request.url == apiURL {
-                counterQueue.sync { apiHits += 1 }
+                apiHits.withValue { $0 += 1 }
                 return .init(statusCode: 200, headers: nil, body: Data("ok".utf8))
             }
             return nil
@@ -251,17 +259,17 @@ final class TokenRefreshOnForegroundTests: XCTestCase {
         // 30s budget matches the #999 "un-tighten" pattern — local <100ms,
         // CI runner under parallel-test contention stalls the URLSession
         // dispatch past 2s.
-        XCTAssertTrue(waitForCondition(timeout: 30.0) { counterQueue.sync { tokenHits } == 1 },
+        XCTAssertTrue(waitForCondition(timeout: 30.0) { tokenHits.value == 1 },
                       "Token endpoint should be in-flight")
         // Snapshot now — race-window check.
-        let apiInFlightWhileTokenBlocking = counterQueue.sync { apiHits }
+        let apiInFlightWhileTokenBlocking = apiHits.value
         XCTAssertEqual(apiInFlightWhileTokenBlocking, 0,
                        "User request must NOT fire while /token is still in flight — kills mutation that performs the data task outside the refresh completion")
 
         releaseGate.signal()
         await fulfillment(of: [done], timeout: 5.0)
 
-        XCTAssertEqual(counterQueue.sync { apiHits }, 1,
+        XCTAssertEqual(apiHits.value, 1,
                        "After refresh resolves, the user request runs exactly once")
     }
 
@@ -275,10 +283,11 @@ final class TokenRefreshOnForegroundTests: XCTestCase {
         // Expires in an hour: WELL above the 5-minute threshold.
         setTokenExpiringIn(seconds: 3600)
 
-        var tokenHits = 0
-        HTTPStubURLProtocol.register { [tokenURL, apiURL] request in
+        // @Sendable stub + LockIsolated: see test_ConcurrentForegroundRequests rationale
+        let tokenHits = LockIsolated(0)
+        HTTPStubURLProtocol.register { @Sendable [tokenURL, apiURL] request in
             if request.url == tokenURL {
-                tokenHits += 1
+                tokenHits.withValue { $0 += 1 }
                 return .init(statusCode: 200,
                              headers: nil,
                              body: Self.tokenResponseJSON(accessToken: "should-not-fire"))
@@ -295,7 +304,7 @@ final class TokenRefreshOnForegroundTests: XCTestCase {
         // Wait a touch longer to make absence of /token meaningful.
         _ = waitForCondition(timeout: 0.3) { false }
 
-        XCTAssertEqual(tokenHits, 0,
+        XCTAssertEqual(tokenHits.value, 0,
                        "Healthy token must not trigger /token — kills deletion of the authTokenNearExpiry gate")
     }
 
@@ -309,17 +318,18 @@ final class TokenRefreshOnForegroundTests: XCTestCase {
     func test_UseTokenIfAvailableFalse_BypassesProactiveRefresh() async throws {
         setTokenExpiringIn(seconds: 30)
 
-        var tokenHits = 0
-        var apiAuthHeader: String?
-        HTTPStubURLProtocol.register { [tokenURL, apiURL] request in
+        // @Sendable stub + LockIsolated: see test_ConcurrentForegroundRequests rationale
+        let tokenHits = LockIsolated(0)
+        let apiAuthHeader = LockIsolated<String?>(nil)
+        HTTPStubURLProtocol.register { @Sendable [tokenURL, apiURL] request in
             if request.url == tokenURL {
-                tokenHits += 1
+                tokenHits.withValue { $0 += 1 }
                 return .init(statusCode: 200,
                              headers: nil,
                              body: Self.tokenResponseJSON(accessToken: "fresh"))
             }
             if request.url == apiURL {
-                apiAuthHeader = request.value(forHTTPHeaderField: "Authorization")
+                apiAuthHeader.value = request.value(forHTTPHeaderField: "Authorization")
                 return .init(statusCode: 200, headers: nil, body: Data("ok".utf8))
             }
             return nil
@@ -330,9 +340,9 @@ final class TokenRefreshOnForegroundTests: XCTestCase {
         executor.GET(apiURL, useTokenIfAvailable: false) { _ in done.fulfill() }
         await fulfillment(of: [done], timeout: 5.0)
 
-        XCTAssertEqual(tokenHits, 0,
+        XCTAssertEqual(tokenHits.value, 0,
                        "useTokenIfAvailable=false must skip /token even with a near-expiry token — kills mutation that always refreshes")
-        XCTAssertNil(apiAuthHeader,
+        XCTAssertNil(apiAuthHeader.value,
                      "useTokenIfAvailable=false must NOT inject an Authorization header — kills mutation that ignores the flag in request(for:)")
     }
 
@@ -349,21 +359,22 @@ final class TokenRefreshOnForegroundTests: XCTestCase {
         {"book_id":"abc-123","quantity":1,"idempotency_key":"k-9001"}
         """.utf8)
 
-        var capturedPostBodies: [Data] = []
-        var capturedPostMethod: String?
-        HTTPStubURLProtocol.register { [tokenURL, borrowURL] request in
+        // @Sendable stub + LockIsolated: see test_ConcurrentForegroundRequests rationale
+        let capturedPostBodies = LockIsolated<[Data]>([])
+        let capturedPostMethod = LockIsolated<String?>(nil)
+        HTTPStubURLProtocol.register { @Sendable [tokenURL, borrowURL] request in
             if request.url == tokenURL {
                 return .init(statusCode: 200,
                              headers: nil,
                              body: Self.tokenResponseJSON(accessToken: "post-refresh-bearer"))
             }
             if request.url == borrowURL {
-                capturedPostMethod = request.httpMethod
+                capturedPostMethod.value = request.httpMethod
                 // URLProtocol receives the body via httpBodyStream for POSTs
                 // when the request was constructed with httpBody. We read
                 // whichever surface carries the bytes.
                 if let direct = request.httpBody {
-                    capturedPostBodies.append(direct)
+                    capturedPostBodies.withValue { $0.append(direct) }
                 } else if let stream = request.httpBodyStream {
                     stream.open()
                     defer { stream.close() }
@@ -374,9 +385,9 @@ final class TokenRefreshOnForegroundTests: XCTestCase {
                         if n <= 0 { break }
                         collected.append(buffer, count: n)
                     }
-                    capturedPostBodies.append(collected)
+                    capturedPostBodies.withValue { $0.append(collected) }
                 } else {
-                    capturedPostBodies.append(Data())
+                    capturedPostBodies.withValue { $0.append(Data()) }
                 }
                 return .init(statusCode: 200, headers: nil, body: Data("ok".utf8))
             }
@@ -395,11 +406,11 @@ final class TokenRefreshOnForegroundTests: XCTestCase {
         await fulfillment(of: [done], timeout: 5.0)
 
         // Exactly one POST must have fired (no double-charge).
-        XCTAssertEqual(capturedPostBodies.count, 1,
+        XCTAssertEqual(capturedPostBodies.value.count, 1,
                        "Exactly one POST must reach the server across the proactive-refresh path — kills mutation that fires the POST twice (double-borrow)")
-        XCTAssertEqual(capturedPostMethod, "POST",
+        XCTAssertEqual(capturedPostMethod.value, "POST",
                        "Method must remain POST after refresh — kills mutation that downgrades to GET on retry")
-        XCTAssertEqual(capturedPostBodies.first, originalBody,
+        XCTAssertEqual(capturedPostBodies.value.first, originalBody,
                        "Body bytes must round-trip exactly — kills mutation that drops or rewrites the POST body during refresh")
     }
 
@@ -415,12 +426,21 @@ final class TokenRefreshOnForegroundTests: XCTestCase {
         await executor.resetRefreshAttemptCount()
 
         let releaseGate = DispatchSemaphore(value: 0)
-        let counterQueue = DispatchQueue(label: "concurrent-counter")
-        var tokenHits = 0
+        // `@Sendable` stub closure + `LockIsolated` counter: the stub handler is
+        // invoked on `HTTPStubURLProtocol.handlerQueue` (background), but this
+        // closure is written inside a `@MainActor` test class and therefore
+        // inferred `@MainActor`-isolated. Under Swift 6 the runtime executor
+        // check (`swift_task_checkIsolated`) trapped with EXC_BREAKPOINT the
+        // moment the nested `.sync {}` ran off-main, crashing the test host and
+        // failing every later test in that launch as collateral. Marking the
+        // closure `@Sendable` drops the main-actor isolation so it runs safely
+        // off-main; a `LockIsolated` box replaces the captured `var` (a
+        // `@Sendable` closure cannot capture a mutable `var`).
+        let tokenHits = LockIsolated(0)
 
-        HTTPStubURLProtocol.register { [tokenURL, apiURL] request in
+        HTTPStubURLProtocol.register { @Sendable [tokenURL, apiURL] request in
             if request.url == tokenURL {
-                counterQueue.sync { tokenHits += 1 }
+                tokenHits.withValue { $0 += 1 }
                 _ = releaseGate.wait(timeout: .now() + 3.0)
                 return .init(statusCode: 200,
                              headers: nil,
@@ -446,9 +466,9 @@ final class TokenRefreshOnForegroundTests: XCTestCase {
         // baseline, CI runner under parallel-test contention stalls the
         // actor-hop + URLSession dispatch well past 2s — same root cause
         // as the BookRegistry / CatalogCache / ImageCache 30s restorations).
-        XCTAssertTrue(waitForCondition(timeout: 30.0) { counterQueue.sync { tokenHits } >= 1 },
+        XCTAssertTrue(waitForCondition(timeout: 30.0) { tokenHits.value >= 1 },
                       "/token endpoint should be in-flight")
-        let snapshotted = counterQueue.sync { tokenHits }
+        let snapshotted = tokenHits.value
         XCTAssertEqual(snapshotted, 1,
                        "Concurrent foreground refreshes must coalesce to a single /token call — kills removal of single-flight in the proactive path")
 
@@ -467,7 +487,8 @@ final class TokenRefreshOnForegroundTests: XCTestCase {
     func test_ForegroundRefreshFailure_StillResolvesCaller() async throws {
         setTokenExpiringIn(seconds: 30)
 
-        HTTPStubURLProtocol.register { [tokenURL, apiURL] request in
+        // @Sendable stub + LockIsolated: see test_ConcurrentForegroundRequests rationale
+        HTTPStubURLProtocol.register { @Sendable [tokenURL, apiURL] request in
             if request.url == tokenURL {
                 return .init(statusCode: 500, headers: nil, body: Data("server-error".utf8))
             }
@@ -495,10 +516,11 @@ final class TokenRefreshOnForegroundTests: XCTestCase {
         // expires *exactly* at the 5-minute threshold boundary.
         setTokenExpiringIn(seconds: 300, token: "edge-case")
 
-        var tokenHits = 0
-        HTTPStubURLProtocol.register { [tokenURL, apiURL] request in
+        // @Sendable stub + LockIsolated: see test_ConcurrentForegroundRequests rationale
+        let tokenHits = LockIsolated(0)
+        HTTPStubURLProtocol.register { @Sendable [tokenURL, apiURL] request in
             if request.url == tokenURL {
-                tokenHits += 1
+                tokenHits.withValue { $0 += 1 }
                 return .init(statusCode: 200,
                              headers: nil,
                              body: Self.tokenResponseJSON(accessToken: "fresh"))
@@ -513,7 +535,7 @@ final class TokenRefreshOnForegroundTests: XCTestCase {
         executor.GET(apiURL) { _ in done.fulfill() }
         await fulfillment(of: [done], timeout: 5.0)
 
-        XCTAssertGreaterThanOrEqual(tokenHits, 1,
+        XCTAssertGreaterThanOrEqual(tokenHits.value, 1,
                                     "Token at exact threshold must be treated as near-expiry — kills mutation `<=` → `<` in isTokenNearExpiry")
     }
 
@@ -540,10 +562,11 @@ final class TokenRefreshOnForegroundTests: XCTestCase {
         userAccount._authDefinition = AccountDetails.Authentication(auth: samlAuth)
         setTokenExpiringIn(seconds: 30)
 
-        var tokenHits = 0
-        HTTPStubURLProtocol.register { [tokenURL, apiURL] request in
+        // @Sendable stub + LockIsolated: see test_ConcurrentForegroundRequests rationale
+        let tokenHits = LockIsolated(0)
+        HTTPStubURLProtocol.register { @Sendable [tokenURL, apiURL] request in
             if request.url == tokenURL {
-                tokenHits += 1
+                tokenHits.withValue { $0 += 1 }
                 return .init(statusCode: 200,
                              headers: nil,
                              body: Self.tokenResponseJSON(accessToken: "should-not"))
@@ -558,7 +581,7 @@ final class TokenRefreshOnForegroundTests: XCTestCase {
         executor.GET(apiURL) { _ in done.fulfill() }
         await fulfillment(of: [done], timeout: 5.0)
 
-        XCTAssertEqual(tokenHits, 0,
+        XCTAssertEqual(tokenHits.value, 0,
                        "SAML auth must short-circuit before the proactive refresh — kills deletion of the SAML early-return in executeRequest")
     }
 }

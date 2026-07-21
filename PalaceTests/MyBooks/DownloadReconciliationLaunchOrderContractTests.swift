@@ -15,7 +15,11 @@ import XCTest
 @MainActor
 final class DownloadReconciliationLaunchOrderContractTests: XCTestCase {
 
-    private func record(_ bookID: String, task: Int) -> PersistedDownloadRecord {
+    // Pure factory — no instance state. `static` so the closures passed to the
+    // async `runLaunchReconciliation` don't capture `self` (which, under Swift 6,
+    // would make the non-`@Sendable` closure params send this @MainActor test
+    // across the actor boundary). Called as `Self.record(...)`.
+    private nonisolated static func record(_ bookID: String, task: Int) -> PersistedDownloadRecord {
         PersistedDownloadRecord(
             bookID: bookID, taskIdentifier: task,
             downloadURL: URL(string: "https://example.org/\(bookID)")!,
@@ -25,11 +29,6 @@ final class DownloadReconciliationLaunchOrderContractTests: XCTestCase {
 
     func testLaunchReconciliation_callOrder_registryLoad_getAllTasks_reconcile_apply() async {
         let log = CallLog()
-        // @Sendable closures: runLaunchReconciliation is nonisolated async, so
-        // non-Sendable closures from this @MainActor test are a Swift 6
-        // sending error. CallLog is @unchecked Sendable; the record is
-        // precomputed (Sendable struct) so no capture of MainActor self.
-        let persisted = [record("b", task: 5)]
 
         await DownloadReconciliation.runLaunchReconciliation(
             isRegistryLoaded: { @Sendable in
@@ -38,7 +37,7 @@ final class DownloadReconciliationLaunchOrderContractTests: XCTestCase {
             },
             loadPersisted: { @Sendable in
                 log.record("loadPersisted")
-                return persisted
+                return [Self.record("b", task: 5)]
             },
             liveTaskIdentifiers: { @Sendable in
                 log.record("getAllTasks")
@@ -61,7 +60,6 @@ final class DownloadReconciliationLaunchOrderContractTests: XCTestCase {
         // must not read persisted records or query live tasks.
         let log = CallLog()
 
-        // @Sendable: same sending-boundary rationale as the test above.
         await DownloadReconciliation.runLaunchReconciliation(
             isRegistryLoaded: { @Sendable in
                 log.record("isRegistryLoaded")

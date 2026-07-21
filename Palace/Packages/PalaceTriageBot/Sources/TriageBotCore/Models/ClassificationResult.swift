@@ -21,16 +21,26 @@ public struct ClassificationResult: Equatable, Sendable {
     public let confidence: Double
     public let matchedKeywords: [String]
     public let consideredEntryIds: [String]
+    /// The KB entry the classifier recognized as most relevant, if any — even
+    /// when the decision is `.escalate`. Set when a topic was recognized but not
+    /// confidently enough to suggest, or when the entry is `escalate_anyway`. It
+    /// lets the escalation carry context to the human (ask the entry's targeted
+    /// follow-up, tag the ticket) instead of handing off a blank "couldn't help."
+    /// Nil for a genuine no-match. On `.suggest` the id is in the decision, so
+    /// this stays nil there.
+    public let recognizedEntryId: String?
 
     public init(
         decision: Decision,
         confidence: Double,
         matchedKeywords: [String] = [],
-        consideredEntryIds: [String] = []
+        consideredEntryIds: [String] = [],
+        recognizedEntryId: String? = nil
     ) {
         self.decision = decision
         self.confidence = confidence
         self.matchedKeywords = matchedKeywords
         self.consideredEntryIds = consideredEntryIds
+        self.recognizedEntryId = recognizedEntryId
     }
 }

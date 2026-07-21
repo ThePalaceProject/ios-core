@@ -19,11 +19,7 @@ private final class MockFeedPreloader: CatalogFeedPreloading, @unchecked Sendabl
     var urlsThatShouldFail: Set<URL> = []
 
     func preloadFeed(from url: URL) async throws {
-        // Swift 6 marks NSLock.lock()/unlock() `noasync`; withLock is the
-        // sanctioned scoped-locking form for async contexts.
-        lock.withLock {
-            _preloadedURLs.append(url)
-        }
+        lock.withLock { _preloadedURLs.append(url) }
         if urlsThatShouldFail.contains(url) {
             throw URLError(.notConnectedToInternet)
         }
@@ -32,10 +28,7 @@ private final class MockFeedPreloader: CatalogFeedPreloading, @unchecked Sendabl
 
 // MARK: - Tests
 
-// Deliberately NOT @MainActor: CatalogPreloader is a nonisolated async API
-// taking non-Sendable closures — driving it from a @MainActor test is a
-// Swift 6 sending error, while from a nonisolated test everything stays in
-// one isolation domain. Nothing here touches UI or main-actor state.
+@MainActor
 final class CatalogPreloaderTests: XCTestCase {
 
     // Bound every test to 30s using XCTest's built-in mechanism. The

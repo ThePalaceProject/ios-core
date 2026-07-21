@@ -10,12 +10,18 @@ import Foundation
 import PalaceAuth
 @testable import Palace
 
-// @unchecked Sendable: handed across isolation boundaries by Swift 6 tests
-// (sending-value errors otherwise); stub state is effectively immutable.
+/// `@unchecked Sendable`: this mock is passed into the `@MainActor`
+/// `TPPSignInBusinessLogic` SUT across an isolation boundary in sign-in tests,
+/// so it must be `Sendable`. Its single mutable stored property
+/// (`accountMainFeedURL`) is guarded by an `NSLock` via a locked computed
+/// accessor — mirroring `TPPSignInOutBusinessLogicUIDelegateMock` /
+/// `TPPBookRegistryMock`. The `universalLinksURL` requirement is a constant.
+/// Property names, types, and protocol conformances are preserved so no call
+/// site changes.
 class TPPURLSettingsProviderMock: NSObject, NYPLUniversalLinksSettings, NYPLFeedURLProvider, UniversalLinksProviding, @unchecked Sendable {
-    // Mutable stub state guarded by a single NSLock (matches TPPBookRegistryMock) so the
-    // @unchecked Sendable conformance is sound under concurrent test access.
+
     private let lock = NSLock()
+
     private var _accountMainFeedURL: URL?
     var accountMainFeedURL: URL? {
         get { lock.withLock { _accountMainFeedURL } }

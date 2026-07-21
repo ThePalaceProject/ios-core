@@ -432,12 +432,17 @@ final class BookRegistryStoreTests: XCTestCase {
         let iterations = 50
         let group = DispatchGroup()
 
+        // Swift 6: capture Sendable locals (the @unchecked Sendable store + a
+        // pre-built [TPPBook]) so the @Sendable global-queue closures don't
+        // capture the non-Sendable @MainActor test `self`.
+        let store = store!
+        let books = (0..<iterations).map { makeBook(identifier: "book-\($0)", title: "Title \($0)") }
+
         // Concurrent writes
         for i in 0..<iterations {
             group.enter()
             DispatchQueue.global().async {
-                let book = self.makeBook(identifier: "book-\(i)", title: "Title \(i)")
-                self.store.addBook(book, state: .downloadNeeded) { _ in
+                store.addBook(books[i], state: .downloadNeeded) { _ in
                     group.leave()
                 }
             }
@@ -447,9 +452,9 @@ final class BookRegistryStoreTests: XCTestCase {
         for i in 0..<iterations {
             group.enter()
             DispatchQueue.global().async {
-                _ = self.store.book(forIdentifier: "book-\(i)")
-                _ = self.store.state(for: "book-\(i)")
-                _ = self.store.allBooks
+                _ = store.book(forIdentifier: "book-\(i)")
+                _ = store.state(for: "book-\(i)")
+                _ = store.allBooks
                 group.leave()
             }
         }

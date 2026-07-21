@@ -33,8 +33,6 @@ final class SpyCoordinatorReauthenticator: Reauthenticating, @unchecked Sendable
     }
 
     func authenticateIfNeeded(usingExistingCredentials: Bool) async -> Bool {
-        // Swift 6 marks NSLock.lock()/unlock() `noasync`; withLock is the
-        // sanctioned scoped-locking form for async contexts.
         lock.withLock {
             calls.append((usingExistingCredentials, Date()))
             return stubbedResult
@@ -56,8 +54,6 @@ final class SpyCoordinatorModalPresenter: SignInModalPresenting, @unchecked Send
     private let lock = NSLock()
 
     func presentSignInModalForCurrentAccount() async -> Bool {
-        // Swift 6 marks NSLock.lock()/unlock() `noasync`; withLock is the
-        // sanctioned scoped-locking form for async contexts.
         lock.withLock {
             presentCallCount += 1
             return stubbedResult

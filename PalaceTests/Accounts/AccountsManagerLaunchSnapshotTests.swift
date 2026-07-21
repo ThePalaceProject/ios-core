@@ -138,7 +138,7 @@ final class AccountsManagerLaunchSnapshotTests: PalaceWiringTestCase {
         let currentUUID = catalogs[0].metadata.id
         let settingsUUID = catalogs[1].metadata.id
 
-        let defaults = testUserDefaults()
+        let defaults = Self.testUserDefaults()
         defaults.set(currentUUID, forKey: currentAccountIdentifierKey)
         let manager = makeFreshAccountsManager(defaults: defaults)
 
@@ -180,7 +180,7 @@ final class AccountsManagerLaunchSnapshotTests: PalaceWiringTestCase {
         let catalogs = try loadFeedCatalogs()
         let currentUUID = catalogs[0].metadata.id
 
-        let defaults = testUserDefaults()
+        let defaults = Self.testUserDefaults()
         defaults.set(currentUUID, forKey: currentAccountIdentifierKey)
         let manager = makeFreshAccountsManager(defaults: defaults)
 
@@ -217,7 +217,7 @@ final class AccountsManagerLaunchSnapshotTests: PalaceWiringTestCase {
         let currentUUID = catalogs[0].metadata.id
         let slimUUIDs: Set<String> = [currentUUID, catalogs[1].metadata.id]
 
-        let defaults = testUserDefaults()
+        let defaults = Self.testUserDefaults()
         defaults.set(currentUUID, forKey: currentAccountIdentifierKey)
         let manager = makeFreshAccountsManager(defaults: defaults)
 
@@ -265,7 +265,7 @@ final class AccountsManagerLaunchSnapshotTests: PalaceWiringTestCase {
         let aUUID = catalogs[0].metadata.id
         let bUUID = catalogs[1].metadata.id
 
-        let defaults = testUserDefaults()
+        let defaults = Self.testUserDefaults()
         defaults.set(aUUID, forKey: currentAccountIdentifierKey)
         let manager = makeFreshAccountsManager(defaults: defaults)
 
@@ -363,7 +363,7 @@ final class AccountsManagerLaunchSnapshotTests: PalaceWiringTestCase {
         let aUUID = catalogs[0].metadata.id
         let bUUID = catalogs[1].metadata.id
 
-        let defaults = testUserDefaults()
+        let defaults = Self.testUserDefaults()
         defaults.set(aUUID, forKey: currentAccountIdentifierKey)
         let manager = makeFreshAccountsManager(defaults: defaults)
 
@@ -436,7 +436,7 @@ final class AccountsManagerLaunchSnapshotTests: PalaceWiringTestCase {
         let catalogs = try loadFeedCatalogs()
         let aUUID = catalogs[0].metadata.id
 
-        let defaults = testUserDefaults()
+        let defaults = Self.testUserDefaults()
         defaults.set(aUUID, forKey: currentAccountIdentifierKey)
         let manager = makeFreshAccountsManager(defaults: defaults)
 
@@ -496,7 +496,7 @@ final class AccountsManagerLaunchSnapshotTests: PalaceWiringTestCase {
         let catalogs = try loadFeedCatalogs()
         let currentUUID = catalogs[0].metadata.id
 
-        let defaults = testUserDefaults()
+        let defaults = Self.testUserDefaults()
         defaults.set(currentUUID, forKey: currentAccountIdentifierKey)
         let manager = makeFreshAccountsManager(defaults: defaults)
 
@@ -560,7 +560,7 @@ final class AccountsManagerLaunchSnapshotTests: PalaceWiringTestCase {
         let staleSlimUUID = catalogs[1].metadata.id   // slim written for the PRIOR current account
         XCTAssertNotEqual(currentUUID, staleSlimUUID)
 
-        let defaults = testUserDefaults()
+        let defaults = Self.testUserDefaults()
         defaults.set(currentUUID, forKey: currentAccountIdentifierKey)
         let manager = makeFreshAccountsManager(defaults: defaults)
 

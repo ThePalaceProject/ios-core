@@ -72,6 +72,20 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
     }
     private let cache = OSAllocatedUnfairLock(uncheckedState: CacheState())
 
+    /// Handle on the most recently scheduled background stale-revalidate
+    /// refresh Task. Retained ONLY so tests can `await` its completion
+    /// deterministically (`_awaitBackgroundRefreshForTesting()`), instead of
+    /// polling `cachedFeed(...)` for the write to land — a poll that is
+    /// inherently racy under cooperative-pool oversubscription because the
+    /// refresh is dispatched at `.utility` priority and the pool can defer it
+    /// past any fixed poll deadline (the parallel-sim-clone timeouts in CI
+    /// run 29805821296). Production behavior is UNCHANGED: the refresh still
+    /// runs detached / fire-and-forget; we merely keep a reference to the last
+    /// one so a test can join it. `nil` until the first stale read schedules a
+    /// refresh. Lock-guarded so the write from `loadTopLevelCatalog` and the
+    /// read from the test seam are race-free.
+    private let lastBackgroundRefreshTask = OSAllocatedUnfairLock<Task<Void, Never>?>(initialState: nil)
+
     private struct CachedFeed {
         let feed: CatalogFeed
         let timestamp: Date
@@ -234,10 +248,16 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
             Log.info(#file, "Returning stale cached catalog feed, refreshing in background: \(url.absoluteString)")
             prewarmFormatEntriesCache(from: entry.feed, cacheKey: cacheKey)
 
-            // Schedule background refresh
-            Task.detached(priority: .utility) { [weak self] in
+            // Schedule background refresh (fire-and-forget in production). The
+            // Task handle is retained in `lastBackgroundRefreshTask` purely so a
+            // test can join it deterministically — see the field's doc comment.
+            // Behavior is identical to a bare `Task.detached { … }`: nothing
+            // production awaits this handle.
+            let refreshTask = Task.detached(priority: .utility) { [weak self] in
                 await self?.refreshFeedInBackground(url: url, cacheKey: cacheKey)
+                return ()
             }
+            lastBackgroundRefreshTask.withLock { $0 = refreshTask }
 
             return entry.feed
         }
@@ -385,6 +405,33 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
             guard let entry = state.memoryCache[cacheKey], !isTooOld(entry) else { return nil }
             return entry.feed
         }
+    }
+
+    /// TEST SEAM — deterministically await the in-flight stale-revalidate
+    /// background refresh scheduled by the most recent `loadTopLevelCatalog`
+    /// stale read. Returns immediately if none is in flight.
+    ///
+    /// Why this exists: the background refresh is dispatched via
+    /// `Task.detached(priority: .utility)` and production intentionally does
+    /// not await it. A test that needs to assert the post-refresh cache state
+    /// therefore has to wait for that Task to complete — and polling
+    /// `cachedFeed(...)` for the write to land is NON-DETERMINISTIC under
+    /// cooperative-thread-pool oversubscription: with 4 sim clones on a
+    /// 3–4-core CI runner, a `.utility` task can be deferred past any fixed
+    /// poll deadline, so the poll times out even though the code is correct
+    /// (CI run 29805821296 parallel-only timeouts). Awaiting the actual Task
+    /// handle removes the wall-clock/pool dependence entirely — the test
+    /// blocks exactly until the refresh finishes, no matter how starved the
+    /// pool is.
+    ///
+    /// This changes NO production behavior: `loadTopLevelCatalog` still fires
+    /// the refresh detached and returns immediately; this method only reads a
+    /// handle the repository already retains. `public` (not `#if DEBUG`) to be
+    /// reachable from `PalaceTests`, which imports `PalaceCatalog` without
+    /// `@testable` — matching the existing test-only initializers above.
+    public func _awaitBackgroundRefreshForTesting() async {
+        let task = lastBackgroundRefreshTask.withLock { $0 }
+        await task?.value
     }
 
     // MARK: - Background Preloading

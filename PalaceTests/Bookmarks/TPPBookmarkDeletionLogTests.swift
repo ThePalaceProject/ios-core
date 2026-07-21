@@ -28,7 +28,7 @@ final class TPPBookmarkDeletionLogTests: XCTestCase {
         // backed by a per-test UserDefaults suite (instead of mutating the
         // `.shared` singleton's `.standard` backing store). The injected
         // suite is wiped by `SingletonResetRegistry` when the test finishes.
-        deletionLog = TPPBookmarkDeletionLog(defaults: testUserDefaults())
+        deletionLog = TPPBookmarkDeletionLog(defaults: Self.testUserDefaults())
     }
 
     override func tearDown() {

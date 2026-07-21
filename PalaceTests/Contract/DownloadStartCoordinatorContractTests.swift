@@ -28,13 +28,7 @@ final class DownloadStartCoordinatorContractTests: XCTestCase {
 
     /// `processUnregistered`'s return value lets a test override the
     /// post-process state used for downstream dispatch.
-    // LockIsolated box: read by the nonisolated processUnregistered seam —
-    // capturing MainActor self there is a Swift 6 sending error.
-    private let processUnregisteredReturnBox = LockIsolated(TPPBookState.downloadNeeded)
-    private var processUnregisteredReturn: TPPBookState {
-        get { processUnregisteredReturnBox.value }
-        set { processUnregisteredReturnBox.value = newValue }
-    }
+    private var processUnregisteredReturn: TPPBookState = .downloadNeeded
 
     override func setUpWithError() throws {
         try super.setUpWithError()
@@ -51,26 +45,24 @@ final class DownloadStartCoordinatorContractTests: XCTestCase {
         coordinator = DownloadStartCoordinator(
             stateManager: stateManager,
             bookRegistry: registry,
-            // Captures: Sendable boxes / CallLog / the @unchecked Sendable
-            // mock — never MainActor self (Swift 6 sending error).
-            userAccountProvider: { [userAccount] in userAccount! },
+            userAccountProvider: { [unowned self] in self.userAccount },
             errorActivityTracker: .shared,
             queueOrchestrator: queueOrchestrator,
-            processUnregistered: { [callLog = log!, processUnregisteredReturnBox] book, location, loginRequired in
-                callLog.record("processUnregistered",
+            processUnregistered: { [unowned self] book, location, loginRequired in
+                self.log.record("processUnregistered",
                                 args: ["bookId": book.identifier,
                                        "hasLocation": "\(location != nil)",
                                        "loginRequired": Self.optBoolString(loginRequired)])
-                return processUnregisteredReturnBox.value
+                return self.processUnregisteredReturn
             },
-            processWithCredentials: { [callLog = log!] book, state, request in
-                callLog.record("processWithCredentials",
+            processWithCredentials: { [unowned self] book, state, request in
+                self.log.record("processWithCredentials",
                                 args: ["bookId": book.identifier,
                                        "state": "\(state.stringValue())",
                                        "hasRequest": "\(request != nil)"])
             },
-            requestCredentials: { [callLog = log!] book in
-                callLog.record("requestCredentials",
+            requestCredentials: { [unowned self] book in
+                self.log.record("requestCredentials",
                                 args: ["bookId": book.identifier])
             }
         )
@@ -181,8 +173,14 @@ final class DownloadStartCoordinatorContractTests: XCTestCase {
         file: StaticString = #file,
         line: UInt = #line
     ) async {
-        await awaitConditionAsync(timeout: timeout, file: file, line: line) { [log] in
-            log?.snapshot().contains(where: { $0.method == method }) ?? false
+        // Swift 6: `awaitConditionAsync`'s predicate is a non-Sendable
+        // `() -> Bool` sent to a nonisolated async helper, so it must not
+        // capture `self` (a non-Sendable XCTestCase). Hoist the Sendable
+        // `CallLog` (@unchecked Sendable) and the method name to locals so
+        // the predicate captures only Sendable values.
+        let capturedLog = log
+        await awaitConditionAsync(timeout: timeout, file: file, line: line) { [capturedLog, method] in
+            capturedLog?.snapshot().contains(where: { $0.method == method }) ?? false
         }
     }
 
@@ -232,7 +230,7 @@ final class DownloadStartCoordinatorContractTests: XCTestCase {
 
 // MARK: - Spies
 
-private final class SpyDownloadStartDelegate: DownloadStartCoordinatorDelegate {
+private final class SpyDownloadStartDelegate: DownloadStartCoordinatorDelegate, @unchecked Sendable {
     enum BorrowResult {
         case success(TPPBook)
         case failure(Error)
@@ -240,14 +238,20 @@ private final class SpyDownloadStartDelegate: DownloadStartCoordinatorDelegate {
 
     let log: CallLog
     /// Default to a failure that will be observable; tests assign before
-    /// invoking startBorrow. LockIsolated-backed so the nonisolated
-    /// borrowAsync read needs no MainActor hop (Swift 6 sending error).
-    let borrowAsyncResultBox = LockIsolated<BorrowResult>(.failure(
-        NSError(domain: "default", code: -1, userInfo: nil)
-    ))
+    /// invoking startBorrow.
+    ///
+    /// Swift 6: `borrowAsync` is a `nonisolated async` protocol requirement,
+    /// so it cannot capture `self` (a non-Sendable spy) to read this value —
+    /// the previous `await MainActor.run { self.borrowAsyncResult }` hop sent
+    /// `self`. Back the storage with `LockIsolated` (@unchecked Sendable, lock-
+    /// guarded) so the value is read directly, thread-safely, with no self-
+    /// capturing actor hop. The `var` shim keeps test call sites unchanged.
+    private let _borrowAsyncResult = LockIsolated<BorrowResult>(
+        .failure(NSError(domain: "default", code: -1, userInfo: nil))
+    )
     var borrowAsyncResult: BorrowResult {
-        get { borrowAsyncResultBox.value }
-        set { borrowAsyncResultBox.value = newValue }
+        get { _borrowAsyncResult.value }
+        set { _borrowAsyncResult.value = newValue }
     }
 
     init(log: CallLog) {
@@ -259,10 +263,9 @@ private final class SpyDownloadStartDelegate: DownloadStartCoordinatorDelegate {
         let bookId = book.identifier
         let attemptDownloadStr = "\(attemptDownload)"
         let log = self.log
-        // Read the configured result from its LockIsolated box — the previous
-        // MainActor.run hop captured non-Sendable self in a @Sendable closure
-        // (Swift 6 sending error).
-        let result: BorrowResult = borrowAsyncResultBox.value
+        // Read the configured result through the lock-guarded box — no
+        // self-capturing MainActor hop (see `_borrowAsyncResult` note).
+        let result: BorrowResult = _borrowAsyncResult.value
         log.record("delegate.borrowAsync",
                    args: ["bookId": bookId,
                           "attemptDownload": attemptDownloadStr])

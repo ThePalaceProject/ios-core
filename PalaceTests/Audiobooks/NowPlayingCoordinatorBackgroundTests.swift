@@ -34,11 +34,12 @@ import XCTest
 final class NowPlayingCoordinatorBackgroundTests: XCTestCase {
 
     private var coordinator: NowPlayingCoordinator!
-    // LockIsolated boxes (not stored vars): the coordinator's injected
-    // closures are nonisolated seams — capturing MainActor `self` in them is
-    // a Swift 6 sending error, so each closure captures its (Sendable) box.
-    private let fakeAppState = LockIsolated(UIApplication.State.active)
-    private let fakeNow = LockIsolated(Date())
+    // Swift 6: the coordinator is @MainActor and stores these injected closures,
+    // so a closure capturing `self` (a non-Sendable @MainActor XCTestCase) is
+    // "sent" across a concurrency domain and rejected. Box the mutable test
+    // state in LockIsolated and have the closures capture the boxes, not self.
+    private let fakeAppState = LockIsolated<UIApplication.State>(.active)
+    private let fakeNow = LockIsolated<Date>(Date())
     private let loggedDryStreamErrors = LockIsolated<[(summary: String, metadata: [String: Any])]>([])
 
     override func setUp() {

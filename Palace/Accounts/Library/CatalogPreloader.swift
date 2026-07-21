@@ -56,7 +56,7 @@ final class CatalogPreloader {
     func preloadCatalogs(
         currentAccount: Account?,
         recentAccountUUIDs: [String],
-        accountProvider: (String) -> Account?
+        accountProvider: @Sendable (String) -> Account?
     ) async {
         var preloadedUUIDs = Set<String>()
         var urlsToPreload = [(uuid: String, url: URL)]()

@@ -158,8 +158,12 @@ final class ImageLoaderTests: XCTestCase {
         // Drive the call from a background queue to force the implementation
         // to hop back to main for completion (the contract the old bridge
         // guaranteed and the new ImageLoading must preserve).
-        DispatchQueue.global().async { [loader] in
-            loader!.thumbnailImage(for: book) { _ in
+        // Swift 6: `ImageLoader` is non-Sendable, so capturing it directly in
+        // the @Sendable global-queue closure is "sending self.loader". Box it in
+        // LockIsolated (Sendable) and read `.value` inside the closure.
+        let loaderBox = LockIsolated(loader!)
+        DispatchQueue.global().async {
+            loaderBox.value.thumbnailImage(for: book) { _ in
                 ranOnMain.value = Thread.isMainThread
                 expectation.fulfill()
             }
@@ -174,8 +178,11 @@ final class ImageLoaderTests: XCTestCase {
         let expectation = expectation(description: "cover completion fires")
         let ranOnMain = MainThreadFlag()
 
-        DispatchQueue.global().async { [loader] in
-            loader!.coverImage(for: book) { _ in
+        // Swift 6: box the non-Sendable loader (see sibling test) so it can be
+        // read inside the @Sendable global-queue closure without "sending".
+        let loaderBox = LockIsolated(loader!)
+        DispatchQueue.global().async {
+            loaderBox.value.coverImage(for: book) { _ in
                 ranOnMain.value = Thread.isMainThread
                 expectation.fulfill()
             }
@@ -291,7 +298,16 @@ final class ImageLoaderTests: XCTestCase {
     /// cover. Pre-loading the unsized cover key makes the fallback deterministic (no
     /// network, no TenPrint).
     func testCoverImage_displayPoints_nonFinite_fallsBackToUnsizedCover_withoutTrapping() async {
-        let book = makeBook()
+        // Give the book a non-nil imageURL. `TPPBook.init` fires a fire-and-forget
+        // `fetchCoverImage()`; for a URL-*less* book that path instantly generates a
+        // TenPrint placeholder and writes it into THIS mock cache under `_cover`,
+        // asynchronously clobbering the seeded sentinel mid-loop (the flake this test
+        // exhibited: iter 1 saw the sentinel, iters 2-5 saw the placeholder). With a
+        // URL, that init fetch takes the never-completing network path in-test, so the
+        // sentinel stays put. The sanitizer under test hits the `_cover` cache and
+        // short-circuits before any network/registry access, so the URL does not
+        // affect what the fallback returns — only which write wins the seed race.
+        let book = makeBook(imageURL: URL(string: "https://example.com/cover.jpg")!)
         let sentinel = makeImage(width: 10, height: 10)
         cache.set(sentinel, for: "\(book.identifier)_cover", expiresIn: nil)
 

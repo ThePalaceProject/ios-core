@@ -5,6 +5,8 @@ import TriageBotCore
 struct CategoryChipsView: View {
     let onTap: (KBCategory) -> Void
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     private let categories: [(KBCategory, String, String)] = [
         (.audiobook, "🎧", "Audiobook"),
         (.reader, "📖", "Reading"),
@@ -15,25 +17,43 @@ struct CategoryChipsView: View {
     ]
 
     var body: some View {
-        let columns = [GridItem(.adaptive(minimum: 110), spacing: 8)]
-        LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
-            ForEach(categories, id: \.0) { category, emoji, label in
-                Button { onTap(category) } label: {
-                    HStack(spacing: 6) {
-                        Text(emoji)
-                        Text(label)
-                            .font(.subheadline)
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color(.secondarySystemBackground))
-                    .clipShape(Capsule())
+        // PP-4823 (chaos F-004): the fixed-width adaptive grid squeezed chip
+        // labels into unreadable single-character columns at the largest
+        // accessibility Dynamic Type sizes. At those sizes, stack the chips one
+        // per row (full width) so labels stay legible and tappable; keep the
+        // compact adaptive grid at normal sizes.
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(categories, id: \.0) { category, emoji, label in
+                    chip(category, emoji, label)
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Category: \(label)")
+            }
+        } else {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 110), spacing: 8)],
+                      alignment: .leading, spacing: 8) {
+                ForEach(categories, id: \.0) { category, emoji, label in
+                    chip(category, emoji, label)
+                }
             }
         }
+    }
+
+    @ViewBuilder
+    private func chip(_ category: KBCategory, _ emoji: String, _ label: String) -> some View {
+        Button { onTap(category) } label: {
+            HStack(spacing: 6) {
+                Text(emoji)
+                Text(label)
+                    .font(.subheadline)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(.secondarySystemBackground))
+            .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Category: \(label)")
     }
 }
 #endif

@@ -31,6 +31,14 @@ final class BearerTokenAdapterTests: XCTestCase {
         super.tearDown()
     }
 
+    /// Test-only carrier that lets a non-Sendable value (a completion closure
+    /// or a manifest payload) cross a `@Sendable` dispatch closure under
+    /// Swift 6. Each box is created and consumed exactly once on the same
+    /// serial test flow, so unchecked Sendable is safe here.
+    private struct SendableBox<T>: @unchecked Sendable {
+        let value: T
+    }
+
     // MARK: - Stubs
 
     private final class StubNetwork: AudiobookManifestNetworkFetching {
@@ -44,11 +52,9 @@ final class BearerTokenAdapterTests: XCTestCase {
             completion: @escaping (Data?, URLResponse?, Error?) -> Void
         ) {
             requestedURLs.append(url)
-            // LockIsolated: DispatchQueue.async closures are @Sendable under
-            // Swift 6, so the non-Sendable `completion` must cross in a box.
-            let completionBox = LockIsolated(completion)
+            let box = SendableBox(value: completion)
             DispatchQueue.main.async { [stubbedData, stubbedResponse, stubbedError] in
-                completionBox.value(stubbedData, stubbedResponse, stubbedError)
+                box.value(stubbedData, stubbedResponse, stubbedError)
             }
         }
     }
@@ -67,11 +73,9 @@ final class BearerTokenAdapterTests: XCTestCase {
             callCount += 1
             receivedTokens.append(token)
             receivedBookIdentifiers.append(book.identifier)
-            // LockIsolated: box the non-Sendable completion + JSON across
-            // the @Sendable dispatch closure (Swift 6).
-            let box = LockIsolated((completion, stubbedJSON))
+            let box = SendableBox(value: (json: stubbedJSON, completion: completion))
             DispatchQueue.main.async {
-                box.value.0(box.value.1)
+                box.value.completion(box.value.json)
             }
         }
     }

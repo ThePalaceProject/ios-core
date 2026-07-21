@@ -308,7 +308,13 @@ private final class FakeLibrariesEnvironment: LibrariesSectionEnvironment {
     var tokensDeleted: [String] = []
     var switchedTo: [String] = []
     var accountsLoaded: Bool = true
-    private var pendingSwitchCompletions: [String: () -> Void] = [:]
+    // Parked in nonisolated, lock-guarded storage — NOT main-actor state — so the
+    // `nonisolated` witness below can stash the (non-Sendable) completion without
+    // *sending* it into a `MainActor.assumeIsolated` region, which Swift 6 rejects
+    // as a data race. The closure never crosses an isolation boundary: it's stored
+    // and later fired from whatever context calls `fireSwitchCompletion`.
+    private nonisolated(unsafe) var pendingSwitchCompletions: [String: () -> Void] = [:]
+    private let pendingCompletionsLock = NSLock()
 
     init(currentUUID: String?, persisted: [Account], accountsLoaded: Bool = true) {
         self.currentUUID = currentUUID
@@ -335,20 +341,20 @@ private final class FakeLibrariesEnvironment: LibrariesSectionEnvironment {
         MainActor.assumeIsolated { self.accountsLoaded }
     }
     nonisolated func switchToAccount(_ account: Account, completion: @escaping () -> Void) {
-        // Boxed hand-off: capturing the task-region `completion` directly in
-        // the assumeIsolated closure and storing it into MainActor state is a
-        // Swift 6 sending error — LockIsolated (Sendable) carries it across.
-        let boxed = LockIsolated(completion)
         MainActor.assumeIsolated {
             self.switchedTo.append(account.uuid)
             self.currentUUID = account.uuid
-            // Park the completion so tests can simulate the async auth-doc
-            // callback at a deterministic point.
-            self.pendingSwitchCompletions[account.uuid] = boxed.value
         }
+        // Park the completion so tests can simulate the async auth-doc callback at
+        // a deterministic point. Stored in the nonisolated lock-guarded box (see
+        // the property) — no isolation boundary is crossed, so no `sending` race.
+        pendingCompletionsLock.withLock { pendingSwitchCompletions[account.uuid] = completion }
     }
 
     func fireSwitchCompletion(for uuid: String) {
-        pendingSwitchCompletions.removeValue(forKey: uuid)?()
+        let completion = pendingCompletionsLock.withLock {
+            pendingSwitchCompletions.removeValue(forKey: uuid)
+        }
+        completion?()
     }
 }

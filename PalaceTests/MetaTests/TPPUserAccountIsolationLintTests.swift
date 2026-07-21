@@ -30,7 +30,7 @@ final class TPPUserAccountIsolationLintTests: XCTestCase {
     /// `PalaceTests/` resolved relative to this file's location so the test
     /// works in every checkout — no env vars, no CI-specific paths.
     private static let palaceTestsRoot: URL = {
-        URL(fileURLWithPath: #file)
+        URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()  // MetaTests/
             .deletingLastPathComponent()  // PalaceTests/
     }()

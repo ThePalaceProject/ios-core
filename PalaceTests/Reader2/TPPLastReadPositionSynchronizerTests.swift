@@ -1392,10 +1392,7 @@ final class TPPLastReadPositionSynchronizer_SyncLogicTests: XCTestCase {
 // MARK: - Concurrent Access Tests
 
 /// Tests for thread safety and concurrent access patterns.
-// Deliberately NOT @MainActor: the code under test is nonisolated and the
-// fixtures (Publication / TPPBook / factory) are non-Sendable — driving them
-// from a @MainActor test is a Swift 6 sending error, while from a
-// nonisolated test everything stays in one isolation domain. No UI here.
+@MainActor
 final class TPPLastReadPositionSynchronizer_ConcurrencyTests: XCTestCase {
 
     private var mockRegistry: TPPBookRegistryMock!
@@ -1408,6 +1405,15 @@ final class TPPLastReadPositionSynchronizer_ConcurrencyTests: XCTestCase {
     override func tearDown() {
         mockRegistry = nil
         super.tearDown()
+    }
+
+    // nonisolated static: builds only from literals, so each fresh return is a
+    // disconnected (sendable) region — one per sending task closure.
+    private nonisolated static func makeConcurrentPublication() -> Publication {
+        Publication(manifest: Manifest(
+            metadata: Metadata(title: "Concurrent Sync"),
+            readingOrder: [Link(href: "/chapter1.xhtml", mediaType: .xhtml)]
+        ))
     }
 
     /// REGRESSION PIN for the 2026-07-04 SIGSEGV (fix/sync-mock-race-segv-bookmark-keys).
@@ -1429,21 +1435,17 @@ final class TPPLastReadPositionSynchronizer_ConcurrencyTests: XCTestCase {
         let expectation = expectation(description: "All concurrent updates complete")
         expectation.expectedFulfillmentCount = 100
 
-        // Act - concurrent updates from multiple threads. Hoisted registry:
-        // capturing non-Sendable self in the @Sendable dispatch closures is a
-        // Swift 6 sending error (the mock itself is @unchecked Sendable).
-        let registry = mockRegistry!
+        // Act - concurrent updates from multiple threads
         for i in 0..<100 {
             DispatchQueue.global().async {
                 let location = SynchronizerTestFixtures.createBookLocation(progress: Double(i) / 100.0)
-                registry.setLocation(location, forIdentifier: book.identifier)
+                self.mockRegistry.setLocation(location, forIdentifier: book.identifier)
                 expectation.fulfill()
             }
         }
 
-        // Assert — wait(for:) is nonisolated; waitForExpectations is
-        // @MainActor and would send this nonisolated test's self (Swift 6).
-        wait(for: [expectation], timeout: 5.0)
+        // Assert
+        waitForExpectations(timeout: 5.0)
         // Final location should exist (may be any of the updates)
         let finalLocation = mockRegistry.location(forIdentifier: book.identifier)
         XCTAssertNotNil(finalLocation)
@@ -1463,9 +1465,8 @@ final class TPPLastReadPositionSynchronizer_ConcurrencyTests: XCTestCase {
         let expectation = expectation(description: "All decisions complete")
         expectation.expectedFulfillmentCount = 100
 
-        // LockIsolated instead of var+NSLock: mutating a captured var from
-        // the @Sendable dispatch closures is a Swift 6 error.
-        let results = LockIsolated<[Bool]>([])
+        var results: [Bool] = []
+        let resultsLock = NSLock()
 
         // Act - make same decision from multiple threads
         for _ in 0..<100 {
@@ -1475,18 +1476,20 @@ final class TPPLastReadPositionSynchronizer_ConcurrencyTests: XCTestCase {
                     localLocation: localLocation,
                     drmDeviceID: "device-B"
                 )
-                results.withValue { $0.append(shouldSync) }
+                resultsLock.lock()
+                results.append(shouldSync)
+                resultsLock.unlock()
                 expectation.fulfill()
             }
         }
 
-        // Assert — see nonisolated wait(for:) note above.
-        wait(for: [expectation], timeout: 5.0)
+        // Assert
+        waitForExpectations(timeout: 5.0)
 
         // All results should be the same (deterministic)
-        let allTrue = results.value.allSatisfy { $0 == true }
+        let allTrue = results.allSatisfy { $0 == true }
         XCTAssertTrue(allTrue, "Sync decisions should be consistent across threads")
-        XCTAssertEqual(results.value.count, 100)
+        XCTAssertEqual(results.count, 100)
     }
 
     /// Two synchronizers sharing ONE registry is the production pattern (e.g.
@@ -1504,22 +1507,15 @@ final class TPPLastReadPositionSynchronizer_ConcurrencyTests: XCTestCase {
 
         let book = SynchronizerTestFixtures.createTestBook()
         registry.addBook(book, location: nil, state: .downloadSuccessful, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
-        let publication = Publication(manifest: Manifest(
-            metadata: Metadata(title: "Concurrent Sync"),
-            readingOrder: [Link(href: "/chapter1.xhtml", mediaType: .xhtml)]
-        ))
         let bookID = book.identifier
 
         // Act — both synchronizers sync concurrently while a third task
         // writes locations through the same provider the synchronizers read.
-        // LockIsolated hand-off: the same non-Sendable publication/book pair
-        // is deliberately shared by both concurrent child tasks (that IS the
-        // scenario under test), which Swift 6 rejects as a sending violation
-        // — the box carries them across.
-        let shared = LockIsolated((publication: publication, book: book))
+        // Each sending closure builds its own disconnected publication so no
+        // non-Sendable Publication is captured across the concurrency boundary.
         await withTaskGroup(of: Void.self) { group in
-            group.addTask { let s = shared.value; await sync1.sync(for: s.publication, book: s.book, drmDeviceID: "device-A") }
-            group.addTask { let s = shared.value; await sync2.sync(for: s.publication, book: s.book, drmDeviceID: "device-B") }
+            group.addTask { await sync1.sync(for: Self.makeConcurrentPublication(), book: book, drmDeviceID: "device-A") }
+            group.addTask { await sync2.sync(for: Self.makeConcurrentPublication(), book: book, drmDeviceID: "device-B") }
             group.addTask {
                 for i in 0..<50 {
                     let location = SynchronizerTestFixtures.createBookLocation(progress: Double(i) / 50.0)
@@ -1657,9 +1653,7 @@ private actor SynchronizerSpyWriter: PositionWriter {
 /// an injected spy `PositionWriter`. These tests exercise the actual class
 /// (not `SyncDecisionHelper`) — they catch regressions in the delegation
 /// to `PositionWriter.load` and in the conflict-resolution wiring.
-// Deliberately NOT @MainActor: the synchronizer under test is nonisolated
-// and Publication/TPPBook are non-Sendable — driving them from a @MainActor
-// test is a Swift 6 sending error. No UI here.
+@MainActor
 final class TPPLastReadPositionSynchronizer_WriterDelegationTests: XCTestCase {
 
     private var bookRegistryMock: TPPBookRegistryMock!
@@ -1673,10 +1667,7 @@ final class TPPLastReadPositionSynchronizer_WriterDelegationTests: XCTestCase {
         bookRegistryMock = TPPBookRegistryMock()
         spyWriter = SynchronizerSpyWriter()
         testBook = SynchronizerTestFixtures.createTestBook(identifier: "writer-delegation-book")
-        publication = Publication(manifest: Manifest(
-            metadata: Metadata(title: "Writer Delegation"),
-            readingOrder: [Link(href: "/chapter1.xhtml", mediaType: .xhtml)]
-        ))
+        publication = Self.makePublication()
         bookRegistryMock.addBook(
             testBook,
             location: nil,
@@ -1701,10 +1692,19 @@ final class TPPLastReadPositionSynchronizer_WriterDelegationTests: XCTestCase {
         try super.tearDownWithError()
     }
 
+    // nonisolated static: builds only from literals, so each fresh return is a
+    // disconnected (sendable) region that can cross into sync(for: sending ...).
+    private nonisolated static func makePublication() -> Publication {
+        Publication(manifest: Manifest(
+            metadata: Metadata(title: "Writer Delegation"),
+            readingOrder: [Link(href: "/chapter1.xhtml", mediaType: .xhtml)]
+        ))
+    }
+
     func testSync_writerReturnsNil_callsLoadOnce_noAlertPath() async {
         await spyWriter.set(snapshot: nil)
 
-        await synchronizer.sync(for: publication, book: testBook, drmDeviceID: "device-A")
+        await synchronizer.sync(for: Self.makePublication(), book: testBook, drmDeviceID: "device-A")
 
         let loaded = await spyWriter.loadedBookIDs
         XCTAssertEqual(loaded, [testBook.identifier],
@@ -1714,7 +1714,7 @@ final class TPPLastReadPositionSynchronizer_WriterDelegationTests: XCTestCase {
     func testSync_writerThrows_logsAndReturnsWithoutAlert() async {
         await spyWriter.set(loadError: PositionWriterError.networkUnavailable)
 
-        await synchronizer.sync(for: publication, book: testBook, drmDeviceID: "device-A")
+        await synchronizer.sync(for: Self.makePublication(), book: testBook, drmDeviceID: "device-A")
 
         let loaded = await spyWriter.loadedBookIDs
         XCTAssertEqual(loaded, [testBook.identifier],
@@ -1740,7 +1740,7 @@ final class TPPLastReadPositionSynchronizer_WriterDelegationTests: XCTestCase {
         )
         await spyWriter.set(snapshot: snapshot)
 
-        await synchronizer.sync(for: publication, book: testBook, drmDeviceID: "device-A")
+        await synchronizer.sync(for: Self.makePublication(), book: testBook, drmDeviceID: "device-A")
 
         let loaded = await spyWriter.loadedBookIDs
         XCTAssertEqual(loaded.count, 1)
@@ -1768,7 +1768,7 @@ final class TPPLastReadPositionSynchronizer_WriterDelegationTests: XCTestCase {
         )
         await spyWriter.set(snapshot: snapshot)
 
-        await synchronizer.sync(for: publication, book: testBook, drmDeviceID: "device-A")
+        await synchronizer.sync(for: Self.makePublication(), book: testBook, drmDeviceID: "device-A")
 
         let loaded = await spyWriter.loadedBookIDs
         XCTAssertEqual(loaded.count, 1)

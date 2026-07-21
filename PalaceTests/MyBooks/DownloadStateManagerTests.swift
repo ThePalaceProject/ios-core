@@ -259,17 +259,15 @@ final class DownloadStateManagerTests: XCTestCase {
         let task = fakeDownloadTask()
         let info = MyBooksDownloadInfo(downloadProgress: 0.0, downloadTask: task, rightsManagement: .none)
 
-        // Run many concurrent reads and writes. Capture the manager directly:
-        // reaching it through MainActor-isolated `self` from the @Sendable
-        // task closures is a Swift 6 isolation error.
-        let manager = stateManager!
+        // Run many concurrent reads and writes
+        let sm = stateManager!
         await withTaskGroup(of: Void.self) { group in
             for i in 0..<50 {
                 group.addTask {
                     let id = "\(bookId)-\(i)"
-                    await manager.bookIdentifierToDownloadInfo.set(id, value: info)
-                    _ = await manager.downloadInfoAsync(forBookIdentifier: id)
-                    await manager.bookIdentifierToDownloadInfo.remove(id)
+                    await sm.bookIdentifierToDownloadInfo.set(id, value: info)
+                    _ = await sm.downloadInfoAsync(forBookIdentifier: id)
+                    await sm.bookIdentifierToDownloadInfo.remove(id)
                 }
             }
         }

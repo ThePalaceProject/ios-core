@@ -79,8 +79,6 @@ class AudiobookPlaybackTests: XCTestCase {
         super.tearDown()
     }
 
-    // nonisolated: pure manifest factory called from the
-    // inherited-nonisolated setUp override (Swift 6 sending error otherwise).
     nonisolated func loadTracks(for manifestJSON: ManifestJSON) throws -> Tracks {
         let manifest = try Manifest.from(jsonFileName: manifestJSON.rawValue, bundle: Bundle(for: type(of: self)))
         return Tracks(manifest: manifest, audiobookID: testID, token: nil)

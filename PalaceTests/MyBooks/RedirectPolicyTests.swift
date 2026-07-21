@@ -21,16 +21,32 @@ final class RedirectPolicyTests: XCTestCase {
     // MARK: - Helpers
 
     /// Builds a closure-driven RedirectPolicy whose counters are backed
-    /// by a plain dictionary so tests can arrange / observe attempts
+    /// by a lock-guarded dictionary so tests can arrange / observe attempts
     /// without standing up the real DownloadCoordinator actor.
-    private final class CounterStore {
-        var attempts: [Int: Int] = [:]
-        private(set) var incrementCalls: [Int] = []
+    ///
+    /// Swift 6: `RedirectPolicy` is now `Sendable` (its closures are
+    /// `@Sendable`), so the store those closures capture must be `Sendable`
+    /// too. Every access goes through `lock`, so `@unchecked Sendable` is sound
+    /// (the same idiom as `LockIsolated`). `attempts` is exposed via a
+    /// lock-guarded computed shim so the tests' `store.attempts[42] = 10`
+    /// arrange lines and `store.incrementCalls` assertions stay unchanged.
+    private final class CounterStore: @unchecked Sendable {
+        private let lock = NSLock()
+        private var _attempts: [Int: Int] = [:]
+        private var _incrementCalls: [Int] = []
 
-        func get(_ taskID: Int) -> Int { attempts[taskID] ?? 0 }
+        var attempts: [Int: Int] {
+            get { lock.withLock { _attempts } }
+            set { lock.withLock { _attempts = newValue } }
+        }
+        var incrementCalls: [Int] { lock.withLock { _incrementCalls } }
+
+        func get(_ taskID: Int) -> Int { lock.withLock { _attempts[taskID] ?? 0 } }
         func increment(_ taskID: Int) {
-            incrementCalls.append(taskID)
-            attempts[taskID, default: 0] += 1
+            lock.withLock {
+                _incrementCalls.append(taskID)
+                _attempts[taskID, default: 0] += 1
+            }
         }
     }
 

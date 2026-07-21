@@ -21,15 +21,20 @@ final class AccountDetailsURLTests: XCTestCase {
     private nonisolated(unsafe) var defaults: UserDefaults!
     private let testUUID = "test-account-url-\(UUID().uuidString)"
 
-    override func setUpWithError() throws {
-        try super.setUpWithError()
+    // `setUp() async throws` (not the synchronous `setUpWithError()`): the async
+    // override adopts this @MainActor class's isolation, so the @MainActor
+    // fixtures (`defaults`, `sut`, `makeAccountDetails`) are touched on-actor.
+    // The synchronous `setUpWithError()` override is nonisolated, which sends
+    // the task-isolated `self` into any @MainActor access (Swift 6 data race).
+    override func setUp() async throws {
+        try await super.setUp()
         // swarm_cd181acd D-cleanup: per-test isolated UserDefaults instead
         // of mutating `.standard`. Every `AccountDetails` constructed in
         // this file shares the same per-test suite so persistence reads
         // (eulaIsAccepted, syncPermissionGranted, urlEULA dict, etc.)
         // observe the same store, and the suite is dropped by
         // `SingletonResetRegistry` when the test finishes.
-        defaults = testUserDefaults()
+        defaults = Self.testUserDefaults()
         sut = try makeAccountDetails(uuid: testUUID)
     }
 

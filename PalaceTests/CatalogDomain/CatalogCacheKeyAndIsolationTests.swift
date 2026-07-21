@@ -72,9 +72,7 @@ final class CatalogCacheKeyAndIsolationTests: XCTestCase {
     private static let lastAppLaunchKey = "CatalogRepository.lastAppLaunch"
 
     /// Mutable clock — drives the stale-while-revalidate logic deterministically.
-    // LockIsolated boxes: the repository's @Sendable closures read these —
-    // capturing MainActor self there is a Swift 6 sending error.
-    private let testNow = LockIsolated(Date(timeIntervalSince1970: 1_700_000_000))
+    private let testNow = LockIsolated<Date>(Date(timeIntervalSince1970: 1_700_000_000))
 
     /// Mutable account ID — drives the cache-isolation logic deterministically.
     /// Each test that switches accounts mutates this between calls.
@@ -88,7 +86,7 @@ final class CatalogCacheKeyAndIsolationTests: XCTestCase {
         // for the `lastAppLaunchKey` heuristic — no `.standard` writes.
         // The suite is dropped by `SingletonResetRegistry` when the test
         // finishes.
-        defaults = testUserDefaults()
+        defaults = Self.testUserDefaults()
     }
 
     override func tearDown() {
@@ -107,9 +105,7 @@ final class CatalogCacheKeyAndIsolationTests: XCTestCase {
         return CatalogRepository(
             api: api,
             accountID: { [testAccountID] in testAccountID.value },
-            now: { [testNow] in
-                testNow.value
-            },
+            now: { [testNow] in testNow.value },
             defaults: defaults
         )
     }

@@ -14,10 +14,10 @@ final class TPPMainThreadCheckerTests: XCTestCase {
     // MARK: - sync Tests
 
     func testSync_FromMainThread_ExecutesSynchronously() {
-        // We're on the main thread in test context. sync's block is
-        // @Sendable, so the flag is boxed (Swift 6 forbids mutating a
-        // captured var there).
-        let executed = LockIsolated(false)
+        // We're on the main thread in test context
+        // Swift 6: TPPMainThreadRun.sync takes a @Sendable closure, so a captured
+        // `var` can't be mutated inside it — box it.
+        let executed = LockIsolated<Bool>(false)
         TPPMainThreadRun.sync {
             XCTAssertTrue(Thread.isMainThread)
             executed.value = true
@@ -42,11 +42,11 @@ final class TPPMainThreadCheckerTests: XCTestCase {
     // MARK: - asyncIfNeeded Tests
 
     func testAsyncIfNeeded_FromMainThread_ExecutesSynchronously() {
-        var executed = false
+        let executed = LockIsolated<Bool>(false)
         TPPMainThreadRun.asyncIfNeeded {
-            executed = true
+            executed.value = true
         }
-        XCTAssertTrue(executed, "On main thread, asyncIfNeeded should execute immediately")
+        XCTAssertTrue(executed.value, "On main thread, asyncIfNeeded should execute immediately")
     }
 
     func testAsyncIfNeeded_FromBackgroundThread_DispatchesAsyncToMain() {

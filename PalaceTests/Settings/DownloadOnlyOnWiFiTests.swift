@@ -23,7 +23,7 @@ final class DownloadOnlyOnWiFiTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        isolatedDefaults = testUserDefaults()
+        isolatedDefaults = Self.testUserDefaults()
         settings = TPPSettings(defaults: isolatedDefaults)
     }
 

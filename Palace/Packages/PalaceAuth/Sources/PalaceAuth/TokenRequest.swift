@@ -10,7 +10,7 @@ import Foundation
 import PalaceLogging
 import PalaceCatalog
 
-@objcMembers public class TokenResponse: NSObject, Codable {
+@objcMembers public class TokenResponse: NSObject, Codable, @unchecked Sendable { // : all stored properties are immutable `let`s
     @objc public let accessToken: String
     public let tokenType: String
     @objc public let expiresIn: Int

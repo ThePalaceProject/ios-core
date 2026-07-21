@@ -1105,8 +1105,6 @@ private final class StubOPDSFeedFetcher: OPDSFeedFetching, @unchecked Sendable {
     }
 
     func fetchFeed(from url: URL, resetCache: Bool) async throws -> TPPOPDSFeed {
-        // Swift 6 marks NSLock.lock()/unlock() `noasync`; withLock is the
-        // sanctioned scoped-locking form for async contexts.
         lock.withLock { _resetCacheCalls.append(resetCache) }
         if let stubbedError { throw stubbedError }
         if let stubbedFeed { return stubbedFeed }

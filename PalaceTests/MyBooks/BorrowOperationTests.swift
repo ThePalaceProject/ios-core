@@ -32,10 +32,20 @@ final class BorrowOperationTests: XCTestCase {
     // boxes, the @MainActor closures keep capturing `self`.
     private let fetchBookResult = LockIsolated<Result<TPPBook, Error>?>(nil)
     private let fetchBookCalls = LockIsolated<[(url: URL, resetCache: Bool, useToken: Bool)]>([])
-    // LockIsolated boxes: the BorrowOperation seams are nonisolated closures
-    // — capturing MainActor self in them is a Swift 6 sending error.
-    private let alertCalls = LockIsolated<[(title: String, message: String, book: TPPBook, hasRetryAction: Bool)]>([])
-    private let signInModalCompletions = LockIsolated<[() -> Void]>([])
+    // Swift 6: the `presentBorrowErrorAlert` / `presentSignInModal` seams are
+    // `@MainActor` closures stored on the `@unchecked Sendable` `BorrowOperation`,
+    // so a closure that captures `self` (a non-Sendable XCTestCase) to append to
+    // these recorders sends `self` across the boundary. Box them (lock-guarded,
+    // Sendable) and capture the boxes as locals in `setUp` so the closures
+    // reference the boxes, not `self`. Computed shims keep every read site unchanged.
+    private let alertCallsBox = LockIsolated<[(title: String, message: String, book: TPPBook, hasRetryAction: Bool)]>([])
+    private var alertCalls: [(title: String, message: String, book: TPPBook, hasRetryAction: Bool)] {
+        alertCallsBox.value
+    }
+    private let signInModalCompletionsBox = LockIsolated<[() -> Void]>([])
+    private var signInModalCompletions: [() -> Void] {
+        signInModalCompletionsBox.value
+    }
     private let oidcReauthResult = LockIsolated<Bool>(false)
 
     override func setUpWithError() throws {
@@ -51,15 +61,19 @@ final class BorrowOperationTests: XCTestCase {
         // the test sets via book.acquisition replacement before calling).
         fetchBookResult.value = .success(book)
         fetchBookCalls.value = []
-        alertCalls.value = []
-        signInModalCompletions.value = []
+        alertCallsBox.value = []
+        signInModalCompletionsBox.value = []
         oidcReauthResult.value = false
 
-        // Capture the Sendable boxes as locals so the non-isolated async
-        // closures reference the boxes, not `self` (now @MainActor).
+        // Capture the Sendable boxes as locals so the closures (both the
+        // non-isolated async ones and the @MainActor present-* ones stored on
+        // the @unchecked Sendable BorrowOperation) reference the boxes, not
+        // `self` (a non-Sendable @MainActor XCTestCase).
         let fetchBookCallsBox = fetchBookCalls
         let fetchBookResultBox = fetchBookResult
         let oidcReauthResultBox = oidcReauthResult
+        let alertCallsBox = alertCallsBox
+        let signInModalCompletionsBox = signInModalCompletionsBox
         operation = BorrowOperation(
             bookRegistry: bookRegistry,
             downloadAnnouncementService: DownloadAnnouncementService(),
@@ -75,11 +89,11 @@ final class BorrowOperationTests: XCTestCase {
                 case .failure(let error): throw error
                 }
             },
-            presentBorrowErrorAlert: { [alertCalls] title, message, _, _, book, retryAction in
-                alertCalls.withValue { $0.append((title, message, book, retryAction != nil)) }
+            presentBorrowErrorAlert: { title, message, _, _, book, retryAction in
+                alertCallsBox.withValue { $0.append((title, message, book, retryAction != nil)) }
             },
-            presentSignInModal: { [signInModalCompletions] completion in
-                signInModalCompletions.withValue { $0.append(completion) }
+            presentSignInModal: { completion in
+                signInModalCompletionsBox.withValue { $0.append(completion) }
             },
             attemptOIDCReauth: { oidcReauthResultBox.value }
         )
@@ -112,7 +126,7 @@ final class BorrowOperationTests: XCTestCase {
                        "Borrow must hit the fetchBook closure exactly once on the success path")
         XCTAssertEqual(spyDelegate.startDownloadCalls.count, 0,
                        "attemptDownload=false must NOT call delegate.startDownload")
-        XCTAssertEqual(alertCalls.value.count, 0,
+        XCTAssertEqual(alertCalls.count, 0,
                        "Success path must NOT present an error alert")
     }
 
@@ -193,9 +207,9 @@ final class BorrowOperationTests: XCTestCase {
             try? await Task.sleep(nanoseconds: 30_000_000)
             await Task.yield()
         }
-        XCTAssertGreaterThanOrEqual(alertCalls.value.count, 1,
+        XCTAssertGreaterThanOrEqual(alertCalls.count, 1,
                                     "Generic error path must invoke presentBorrowErrorAlert")
-        XCTAssertEqual(alertCalls.value.last?.book.identifier, book.identifier)
+        XCTAssertEqual(alertCalls.last?.book.identifier, book.identifier)
     }
 
     // MARK: - Item #7 — 401 without problem document routes to re-auth
@@ -230,9 +244,9 @@ final class BorrowOperationTests: XCTestCase {
             await Task.yield()
         }
 
-        XCTAssertEqual(signInModalCompletions.value.count, 1,
+        XCTAssertEqual(signInModalCompletions.count, 1,
                        "401-no-problem-doc must present the sign-in modal (item #7)")
-        XCTAssertEqual(alertCalls.value.count, 0,
+        XCTAssertEqual(alertCalls.count, 0,
                        "Item #7 fix: re-auth path must NOT also surface a borrow-error alert")
     }
 
@@ -257,7 +271,7 @@ final class BorrowOperationTests: XCTestCase {
             await Task.yield()
         }
 
-        XCTAssertEqual(signInModalCompletions.value.count, 1,
+        XCTAssertEqual(signInModalCompletions.count, 1,
                        "403-no-problem-doc must present the sign-in modal (item #7)")
     }
 
@@ -281,9 +295,9 @@ final class BorrowOperationTests: XCTestCase {
             await Task.yield()
         }
 
-        XCTAssertEqual(signInModalCompletions.value.count, 0,
+        XCTAssertEqual(signInModalCompletions.count, 0,
                        "Non-auth network errors must NOT trigger the sign-in modal")
-        XCTAssertGreaterThanOrEqual(alertCalls.value.count, 1,
+        XCTAssertGreaterThanOrEqual(alertCalls.count, 1,
                                     "Non-auth network errors must surface the borrow-error alert")
     }
 
@@ -322,9 +336,9 @@ final class BorrowOperationTests: XCTestCase {
             await Task.yield()
         }
 
-        XCTAssertEqual(alertCalls.value.count, 0,
+        XCTAssertEqual(alertCalls.count, 0,
                        "SQ-007 suppression must NOT surface a borrow-error alert (item #8)")
-        XCTAssertEqual(signInModalCompletions.value.count, 0,
+        XCTAssertEqual(signInModalCompletions.count, 0,
                        "SQ-007 suppression must NOT trigger re-auth either")
         XCTAssertFalse(bookRegistry.processing(forIdentifier: book.identifier),
                        "SQ-007 suppression must idempotently clear setProcessing on the cell")
@@ -357,7 +371,7 @@ final class BorrowOperationTests: XCTestCase {
             await Task.yield()
         }
 
-        XCTAssertEqual(signInModalCompletions.value.count, 1,
+        XCTAssertEqual(signInModalCompletions.count, 1,
                        "No-credentials + loan-state must STILL trigger sign-in modal (not SQ-007)")
     }
 
@@ -391,7 +405,7 @@ final class BorrowOperationTests: XCTestCase {
 
         // basic auth + creds + .unregistered → not SQ-007 → not
         // browser-reauth → no automatic recovery → generic alert.
-        XCTAssertGreaterThanOrEqual(alertCalls.value.count, 1,
+        XCTAssertGreaterThanOrEqual(alertCalls.count, 1,
                                     ".unregistered must NOT trigger SQ-007 suppression; alert proceeds")
     }
 
@@ -421,7 +435,7 @@ final class BorrowOperationTests: XCTestCase {
             await Task.yield()
         }
 
-        XCTAssertEqual(alertCalls.value.count, 0,
+        XCTAssertEqual(alertCalls.count, 0,
                        ".holding + credentials → SQ-007 fires → no alert")
         XCTAssertFalse(bookRegistry.processing(forIdentifier: book.identifier),
                        "SQ-007 path clears the spinner")
@@ -477,10 +491,10 @@ final class BorrowOperationTests: XCTestCase {
             await Task.yield()
         }
 
-        XCTAssertEqual(signInModalCompletions.value.count, 1,
+        XCTAssertEqual(signInModalCompletions.count, 1,
                        "SAML browser-based account + creds must route to the browser re-auth modal " +
                        "(needsBrowserReauth branch at :636). A `!= true` mutant would skip this and alert instead.")
-        XCTAssertEqual(alertCalls.value.count, 0,
+        XCTAssertEqual(alertCalls.count, 0,
                        "Browser re-auth path must NOT surface a borrow-error alert. A `!= true` mutant at " +
                        ":636 would fall through to .showGenericError and fire the alert.")
     }

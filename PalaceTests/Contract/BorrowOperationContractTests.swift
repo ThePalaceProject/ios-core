@@ -91,9 +91,7 @@ final class BorrowOperationContractTests: XCTestCase {
             errorActivityTracker: .shared,
             debugSettings: DebugSettings(),
             userRetryTracker: .shared,
-            // Captures the (@unchecked Sendable) mock / CallLog, never
-            // MainActor self (Swift 6 sending error).
-            userAccountProvider: { [userAccount] in userAccount! },
+            userAccountProvider: { [unowned self] in self.userAccount },
             adobeDRMService: AdobeDRMService.shared,
             fetchBook: { url, resetCache, useToken in
                 callLog.record("fetchBook",
@@ -105,25 +103,19 @@ final class BorrowOperationContractTests: XCTestCase {
                 case .failure(let error): throw error
                 }
             },
-            presentBorrowErrorAlert: { [callLog] title, _, _, _, book, retryAction in
+            presentBorrowErrorAlert: { title, _, _, _, book, retryAction in
                 callLog.record("presentBorrowErrorAlert",
-                                args: ["title": title,
-                                       "bookId": book.identifier,
-                                       "hasRetryAction": "\(retryAction != nil)"])
+                               args: ["title": title,
+                                      "bookId": book.identifier,
+                                      "hasRetryAction": "\(retryAction != nil)"])
             },
-            presentSignInModal: { [callLog] _ in
+            presentSignInModal: { _ in
                 callLog.record("presentSignInModal", args: [:])
             },
             attemptOIDCReauth: {
                 callLog.record("attemptOIDCReauth", args: [:])
                 return false
-            },
-            // Record the injected success side effect (app-rating trigger) so
-            // the success-path snapshot pins it — shape-equal to the
-            // `.noteBorrowSucceeded` effect emitted by BorrowReducerCore. Also
-            // keeps the @MainActor success path from building the production DI
-            // graph (which deadlocked this @MainActor test).
-            onBorrowSucceeded: { callLog.record("noteBorrowSucceeded", args: [:]) }
+            }
         )
         operation.delegate = spyDelegate
     }
@@ -167,6 +159,36 @@ final class BorrowOperationContractTests: XCTestCase {
         // Wait one settle cycle so a stray dispatch would land if present.
         await yieldSettle()
         ContractSnapshot.assert(log, named: "attemptDownloadFalse_onSuccessfulBorrow_doesNotCallStartDownload")
+    }
+
+    /// A streaming-HTML title has no downloadable asset (PP-4161), so a
+    /// successful borrow must NOT emit startDownload even with attemptDownload:true.
+    /// E2's `BorrowReducerCore` must reproduce this skip.
+    func test_borrowAsync_borrowSucceeded_streamingHTML_skipsStartDownload() async throws {
+        let book = Self.makeStreamingHTMLBook(identifier: "BORROW-STREAM")
+        fetchBookResult.value = .success(book)
+
+        _ = try await operation.borrowAsync(book, attemptDownload: true)
+
+        // Settle so a stray startDownload dispatch would land if present.
+        await yieldSettle()
+        ContractSnapshot.assert(log, named: "borrowSucceeded_streamingHTML_skipsStartDownload")
+    }
+
+    /// A fetch timeout must rethrow AND surface the retryable borrow-error alert.
+    func test_borrowAsync_fetchTimeout_surfacesRetryableAlert() async {
+        let book = Self.makeBook(identifier: "BORROW-TIMEOUT", availability: .unlimited)
+        fetchBookResult.value = .failure(PalaceError.network(.timeout))
+
+        do {
+            _ = try await operation.borrowAsync(book, attemptDownload: false)
+            XCTFail("Timeout borrow must rethrow")
+        } catch {
+            // expected
+        }
+
+        await waitForLog(containing: "presentBorrowErrorAlert")
+        ContractSnapshot.assert(log, named: "fetchTimeout_surfacesRetryableAlert")
     }
 
     // MARK: - Auth-error contract
@@ -303,70 +325,6 @@ final class BorrowOperationContractTests: XCTestCase {
         ContractSnapshot.assert(log, named: "401NoProblemDoc_routesToSignInModal")
     }
 
-    // MARK: - Streaming-HTML skip contract (PP-4161 advisory F)
-
-    /// A successful borrow that lands on `.downloadNeeded` for a
-    /// streaming-HTML title must NOT fire the auto-download chain — the only
-    /// acquisition leaf is `text/html;profile=streaming-media`, so there is
-    /// no decodable asset. Contract: `fetchBook` fires, `startDownload` does
-    /// NOT (even with `attemptDownload=true`). This is the ordered-sequence
-    /// twin of `attemptDownloadTrue_onSuccessfulBorrow_callsStartDownload`;
-    /// E2's `BorrowReducerCore` must reproduce this skip.
-    func test_borrowAsync_borrowSucceeded_streamingHTML_skipsStartDownload() async throws {
-        let book = Self.makeStreamingHTMLBook(identifier: "BORROW-STREAM")
-        fetchBookResult.value = .success(book)
-
-        _ = try await operation.borrowAsync(book, attemptDownload: true)
-
-        // Settle so a stray startDownload dispatch would land if present.
-        await yieldSettle()
-        ContractSnapshot.assert(log, named: "borrowSucceeded_streamingHTML_skipsStartDownload")
-    }
-
-    // MARK: - Fetch-timeout contract (F-014 anti-hang)
-
-    /// When `fetchBook` surfaces `PalaceError.network(.timeout)` (the ceiling
-    /// `withTimeout(seconds:30)` throws when a distributor hangs the request),
-    /// the borrow must NOT leave the half-sheet spinning — it routes to a
-    /// RECOVERABLE borrow-error alert (retry action present, since timeout is
-    /// user-retryable). Contract: `fetchBook` → `presentBorrowErrorAlert`
-    /// with `hasRetryAction=true`. Pins the F-014 fix that replaced the
-    /// indefinite `isBorrowProcessing=true` hang with a clean retry alert.
-    ///
-    /// NOTE: the literal 30-second ceiling inside `borrowAsync` cannot be
-    /// exercised end-to-end in a unit test without a real 30s wait; the
-    /// racing/throw semantics of the `withTimeout` primitive itself are
-    /// covered by `BorrowOperationTimeoutTests`. This contract pins the
-    /// downstream handling of the timeout error that the ceiling produces.
-    func test_borrowAsync_fetchTimeout_surfacesRetryableAlert() async {
-        let book = Self.makeBook(identifier: "BORROW-TIMEOUT", availability: .unlimited)
-        fetchBookResult.value = .failure(PalaceError.network(.timeout))
-
-        do {
-            _ = try await operation.borrowAsync(book, attemptDownload: false)
-            XCTFail("Timeout borrow must rethrow")
-        } catch {
-            // expected
-        }
-
-        await waitForLog(containing: "presentBorrowErrorAlert")
-        ContractSnapshot.assert(log, named: "fetchTimeout_surfacesRetryableAlert")
-    }
-
-    // MARK: - DEFERRED (documented seam-gap, not faked)
-    //
-    // The FEATURE_DRM_CONNECTOR Adobe device-activation branch in
-    // `borrowAsync` (`if book.requiresAdobeDRM { try await adobeDRMService
-    // .ensureDeviceActivated() }`) is NOT pinned here. It requires (a) a book
-    // whose `requiresAdobeDRM` is true (driven by an Adept-protected
-    // acquisition path) AND (b) an `AdobeDRMService` spy seam — but the flow
-    // is handed the real `AdobeDRMService.shared` (no recording double at this
-    // layer), and the branch is compiled out of the PalaceTests source
-    // (FEATURE_DRM_CONNECTOR is absent from the test target's active
-    // conditions). Per Contract E, this is recorded as a seam-gap. Orchestrator
-    // note: drive an Adobe-DRM (Adept) borrow on a sim to cover the
-    // ensureDeviceActivated success + activation-failure paths end-to-end.
-
     // MARK: - Helpers
 
     /// Wait up to ~1s for the log to contain a record with the given method.
@@ -378,8 +336,15 @@ final class BorrowOperationContractTests: XCTestCase {
         file: StaticString = #file,
         line: UInt = #line
     ) async {
-        await awaitConditionAsync(timeout: timeout, file: file, line: line) { [log] in
-            log?.snapshot().contains(where: { $0.method == method }) ?? false
+        // Swift 6: `awaitConditionAsync`'s predicate is a non-Sendable
+        // `() -> Bool` sent to a nonisolated async helper, so it must not
+        // capture `self` (a non-Sendable XCTestCase). Hoist the Sendable
+        // `CallLog` (@unchecked Sendable) and the method name to locals so
+        // the predicate captures only Sendable values — mirrors the local-
+        // hoist pattern used in setUp for the async closure seams.
+        let capturedLog = log
+        await awaitConditionAsync(timeout: timeout, file: file, line: line) { [capturedLog, method] in
+            capturedLog?.snapshot().contains(where: { $0.method == method }) ?? false
         }
     }
 
@@ -451,9 +416,6 @@ final class BorrowOperationContractTests: XCTestCase {
         )
     }
 
-    /// Builds a streaming-HTML book that maps to `.downloadNeeded` on borrow
-    /// (unlimited availability) but reports `isStreamingHTML == true` via its
-    /// `text/html;profile=streaming-media` indirect-acquisition leaf.
     private static func makeStreamingHTMLBook(identifier: String) -> TPPBook {
         let leaf = TPPOPDSIndirectAcquisition(type: ContentTypeStreamingHTML, indirectAcquisitions: [])
         let acquisition = TPPOPDSAcquisition(
@@ -510,9 +472,10 @@ private final class SpyBorrowDelegate: BorrowOperationDelegate {
     }
 
     nonisolated func startBorrow(for book: TPPBook, attemptDownload: Bool, borrowCompletion: (() -> Void)?) {
+        // Capture Sendable snapshots BEFORE the @MainActor Task hop so the
+        // task closure never captures the non-Sendable `borrowCompletion`
+        // (`(() -> Void)?`) or the non-Sendable `TPPBook`.
         let id = book.identifier
-        // Hoisted: capturing the non-Sendable `borrowCompletion` in the
-        // @Sendable Task closure is a Swift 6 sending error.
         let hasCompletion = borrowCompletion != nil
         Task { @MainActor [log] in
             log.record("startBorrow",

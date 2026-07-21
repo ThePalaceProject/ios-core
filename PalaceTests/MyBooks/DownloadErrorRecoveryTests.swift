@@ -67,9 +67,7 @@ final class DownloadErrorRecoveryPolicyTests: XCTestCase {
 
     func testBorrowPolicy_recoversAfterNoActiveLoan() async throws {
         let recovery = DownloadErrorRecovery()
-        // Boxed: the executeWithRetry operation closure is @Sendable, so
-        // mutating a captured var there is a Swift 6 error (LockIsolated).
-        let attempts = LockIsolated(0)
+        let attempts = LockIsolated<Int>(0)
 
         let result = try await recovery.executeWithRetry(
             policy: DownloadErrorRecovery.RetryPolicy(
@@ -80,8 +78,8 @@ final class DownloadErrorRecoveryPolicyTests: XCTestCase {
                 shouldRetry: DownloadErrorRecovery.RetryPolicy.borrowOperation.shouldRetry
             )
         ) {
-            let n = attempts.withValue { $0 += 1; return $0 }
-            if n < 2 {
+            attempts.value += 1
+            if attempts.value < 2 {
                 throw PalaceError.bookRegistry(.bookNotFound)
             }
             return "Borrowed"
@@ -107,13 +105,12 @@ final class DownloadErrorRecoveryPolicyTests: XCTestCase {
 
     func testExecuteWithRetry_immediateSuccess_noRetries() async throws {
         let recovery = DownloadErrorRecovery()
-        // Boxed: @Sendable operation closure (see note above).
-        let callCount = LockIsolated(0)
+        let callCount = LockIsolated<Int>(0)
 
         _ = try await recovery.executeWithRetry(
             policy: .default
         ) {
-            callCount.withValue { $0 += 1 }
+            callCount.value += 1
             return 42
         }
 
@@ -124,8 +121,7 @@ final class DownloadErrorRecoveryPolicyTests: XCTestCase {
 
     func testExecuteWithRetry_retriesOnTransientError() async throws {
         let recovery = DownloadErrorRecovery()
-        // Boxed: @Sendable operation closure (see note above).
-        let attempts = LockIsolated(0)
+        let attempts = LockIsolated<Int>(0)
 
         let result = try await recovery.executeWithRetry(
             policy: DownloadErrorRecovery.RetryPolicy(
@@ -136,8 +132,8 @@ final class DownloadErrorRecoveryPolicyTests: XCTestCase {
                 shouldRetry: { _ in true }
             )
         ) {
-            let n = attempts.withValue { $0 += 1; return $0 }
-            if n < 3 {
+            attempts.value += 1
+            if attempts.value < 3 {
                 throw NSError(domain: NSURLErrorDomain, code: NSURLErrorNetworkConnectionLost, userInfo: nil)
             }
             return "Recovered"
@@ -149,8 +145,7 @@ final class DownloadErrorRecoveryPolicyTests: XCTestCase {
 
     func testExecuteWithRetry_failsAfterMaxAttempts() async {
         let recovery = DownloadErrorRecovery()
-        // Boxed: @Sendable operation closure (see note above).
-        let attempts = LockIsolated(0)
+        let attempts = LockIsolated<Int>(0)
 
         do {
             _ = try await recovery.executeWithRetry(
@@ -162,7 +157,7 @@ final class DownloadErrorRecoveryPolicyTests: XCTestCase {
                     shouldRetry: { _ in true }
                 )
             ) { () -> String in
-                attempts.withValue { $0 += 1 }
+                attempts.value += 1
                 throw NSError(domain: "TestDomain", code: 1, userInfo: nil)
             }
             XCTFail("Should have thrown after max attempts")
@@ -175,8 +170,7 @@ final class DownloadErrorRecoveryPolicyTests: XCTestCase {
 
     func testExecuteWithRetry_nonRetryableError_failsImmediately() async {
         let recovery = DownloadErrorRecovery()
-        // Boxed: @Sendable operation closure (see note above).
-        let attempts = LockIsolated(0)
+        let attempts = LockIsolated<Int>(0)
 
         do {
             _ = try await recovery.executeWithRetry(
@@ -188,7 +182,7 @@ final class DownloadErrorRecoveryPolicyTests: XCTestCase {
                     shouldRetry: { _ in false }  // Never retry
                 )
             ) { () -> String in
-                attempts.withValue { $0 += 1 }
+                attempts.value += 1
                 throw NSError(domain: "Fatal", code: 1, userInfo: nil)
             }
             XCTFail("Should have thrown")

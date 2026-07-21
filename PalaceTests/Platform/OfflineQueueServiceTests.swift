@@ -26,7 +26,10 @@ final class OfflineQueueServiceTests: XCTestCase {
         super.setUp()
         userDefaults = UserDefaults(suiteName: "OfflineQueueServiceTests")!
         userDefaults.removePersistentDomain(forName: "OfflineQueueServiceTests")
-        service = OfflineQueueService(userDefaults: userDefaults)
+        // Inline same-suite UserDefaults: non-Sendable, so it must be a fresh
+        // disconnected region to be `sending`-passed into the actor init (the
+        // test also retains self.userDefaults for cleanup). Shares backing store.
+        service = OfflineQueueService(userDefaults: UserDefaults(suiteName: "OfflineQueueServiceTests")!)
         cancellables = Set<AnyCancellable>()
         executedActions.value = []
     }
@@ -42,11 +45,9 @@ final class OfflineQueueServiceTests: XCTestCase {
     // MARK: - Helpers
 
     private func setupSuccessExecutor() async {
-        // Capture the (Sendable) LockIsolated box directly — reaching it via
-        // `self` would capture the non-Sendable XCTestCase in a @Sendable
-        // closure, a Swift 6 error.
-        await service.setExecutor { [executedActions] action in
-            executedActions.withValue { $0.append(action) }
+        let box = executedActions
+        await service.setExecutor { action in
+            box.withValue { $0.append(action) }
             return true
         }
     }
@@ -197,6 +198,7 @@ final class OfflineQueueServiceTests: XCTestCase {
         service.statusPublisher
             .dropFirst() // Drop initial empty
             .first()
+            .receive(on: DispatchQueue.main)   // deliver on main so the @MainActor sink closure isn't invoked off-main (Swift 6 executor-isolation trap)
             .sink { status in
                 receivedStatus = status
                 expectation.fulfill()
@@ -216,6 +218,7 @@ final class OfflineQueueServiceTests: XCTestCase {
 
         service.actionPublisher
             .first()
+            .receive(on: DispatchQueue.main)   // deliver on main so the @MainActor sink closure isn't invoked off-main (Swift 6 executor-isolation trap)
             .sink { action in
                 XCTAssertEqual(action.bookID, "book1")
                 expectation.fulfill()
@@ -235,7 +238,7 @@ final class OfflineQueueServiceTests: XCTestCase {
         let action = OfflineAction(type: .borrow, bookID: "book1", bookTitle: "Test Book")
         await service.enqueue(action)
 
-        let newService = OfflineQueueService(userDefaults: userDefaults)
+        let newService = OfflineQueueService(userDefaults: UserDefaults(suiteName: "OfflineQueueServiceTests")!)
         let status = await newService.currentStatus()
         XCTAssertEqual(status.pendingCount, 1)
     }
@@ -246,7 +249,7 @@ final class OfflineQueueServiceTests: XCTestCase {
         let action = OfflineAction(type: .hold, bookID: "book1", bookTitle: "Test Book")
         await service.enqueue(action)
 
-        let newService = OfflineQueueService(userDefaults: userDefaults)
+        let newService = OfflineQueueService(userDefaults: UserDefaults(suiteName: "OfflineQueueServiceTests")!)
         let pending = await newService.actions(withState: .pending)
         let processing = await newService.actions(withState: .processing)
 

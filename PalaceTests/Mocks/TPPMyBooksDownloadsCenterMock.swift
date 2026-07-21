@@ -9,17 +9,19 @@
 import Foundation
 @testable import Palace
 
-// @unchecked Sendable: handed across isolation boundaries by Swift 6 tests
-// (sending-value errors otherwise); accessed serially by the test flow.
-class TPPMyBooksDownloadsCenterMock: TPPBookDownloadsDeleting, @unchecked Sendable {
-    // Mutable state guarded by a single NSLock (matches TPPBookRegistryMock) so the
-    // @unchecked Sendable conformance is sound under concurrent test access.
+/// `@unchecked Sendable`: the sole mutable state (`_resetCalledLibraryIDs`) is
+/// guarded by `lock`, so instances can cross into the @MainActor SUT safely
+/// (Swift 6). Mirrors TPPBookRegistryMock.
+final class TPPMyBooksDownloadsCenterMock: TPPBookDownloadsDeleting, @unchecked Sendable {
     private let lock = NSLock()
-    private var _resetCalledLibraryIDs: [String?] = []
 
     /// Records the libraryID(s) passed to `reset` so tests can assert the
     /// downloads center was reset for the expected (active) library only.
-    var resetCalledLibraryIDs: [String?] { lock.withLock { _resetCalledLibraryIDs } }
+    private var _resetCalledLibraryIDs: [String?] = []
+    private(set) var resetCalledLibraryIDs: [String?] {
+        get { lock.withLock { _resetCalledLibraryIDs } }
+        set { lock.withLock { _resetCalledLibraryIDs = newValue } }
+    }
 
     func reset(_ libraryID: String!) {
         lock.withLock { _resetCalledLibraryIDs.append(libraryID) }

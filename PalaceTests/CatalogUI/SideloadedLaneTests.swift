@@ -185,7 +185,7 @@ final class SideloadedLaneViewModelTests: XCTestCase {
       repository: repository,
       topLevelURLProvider: { [feedURL] in feedURL },
       bookRegistry: TPPBookRegistryMock(),
-      imageCache: ImageCache.shared,
+      imageCache: MockImageCache(),
       sideloadedLaneBooksProvider: provider,
       reachability: MockReachability(initiallyConnected: connected)
     )

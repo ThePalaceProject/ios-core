@@ -47,10 +47,7 @@ final class BookReturnServiceAuthCoordinatorTests: XCTestCase {
             bookmarkDeletionLog: bookmarkLog,
             reauthenticator: reauthenticator,
             userRetryTracker: retryTracker,
-            // Captures the (@unchecked Sendable) mock, not MainActor self —
-            // a nonisolated seam closure capturing self is a Swift 6
-            // sending error.
-            userAccountProvider: { [userAccount] in userAccount! },
+            userAccountProvider: { [unowned self] in self.userAccount },
             authCoordinator: coordinator
         )
         #else
@@ -62,10 +59,7 @@ final class BookReturnServiceAuthCoordinatorTests: XCTestCase {
             bookmarkDeletionLog: bookmarkLog,
             reauthenticator: reauthenticator,
             userRetryTracker: retryTracker,
-            // Captures the (@unchecked Sendable) mock, not MainActor self —
-            // a nonisolated seam closure capturing self is a Swift 6
-            // sending error.
-            userAccountProvider: { [userAccount] in userAccount! },
+            userAccountProvider: { [unowned self] in self.userAccount },
             authCoordinator: coordinator
         )
         #endif
@@ -112,10 +106,7 @@ final class BookReturnServiceAuthCoordinatorTests: XCTestCase {
         return try XCTUnwrap(TPPProblemDocument.fromProblemResponseData(data))
     }
 
-    // nonisolated: pure factory (no self state). Calling an isolated
-    // method from the (inherited-nonisolated) setUp override is a
-    // Swift 6 sending error.
-    private nonisolated func makeBookWithRevokeURL() -> TPPBook {
+    nonisolated private func makeBookWithRevokeURL() -> TPPBook {
         let identifier = "rev-\(UUID().uuidString)"
         let acquisitionURL = URL(string: "http://example.com/\(identifier)")!
         let revokeURL = URL(string: "http://example.com/\(identifier)/revoke")!

@@ -15,14 +15,18 @@ import PalaceNetwork
 @MainActor
 final class SAMLCookieSyncTests: XCTestCase {
 
-    override func setUp() {
-        super.setUp()
+    // Swift 6: the synchronous `setUp()`/`tearDown()` overrides are `nonisolated`
+    // (XCTestCase's are), so calling the `@MainActor`-isolated `clearSharedCookies()`
+    // from them sends `self` across the boundary. The `async` overrides run on the
+    // MainActor for a `@MainActor` test class — the repo's standard idiom.
+    override func setUp() async throws {
+        try await super.setUp()
         clearSharedCookies()
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         clearSharedCookies()
-        super.tearDown()
+        try await super.tearDown()
     }
 
     // nonisolated: touches only the (thread-safe) shared cookie store;
