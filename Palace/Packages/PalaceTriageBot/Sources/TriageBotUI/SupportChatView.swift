@@ -279,6 +279,8 @@ public struct SupportChatView: View {
             viewModel.send(.userOmittedLogs(omit))
         case .editDescription(let text):
             viewModel.send(.userEditedDescription(text))
+        case .presented:
+            viewModel.send(.ticketPreviewPresented)
         }
     }
 
