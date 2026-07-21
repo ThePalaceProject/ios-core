@@ -54,7 +54,7 @@ struct TicketPreviewCard: View {
             }
 
             VStack(alignment: .leading, spacing: 6) {
-                staticRow("Category", value: draft.category.rawValue.capitalized)
+                staticRow("Category", value: draft.category.displayName)
                 staticRow("App", value: "\(draft.context.appVersion) (\(draft.context.appBuild))")
                 staticRow("Device", value: "\(draft.context.deviceModel) · iOS \(draft.context.osVersion)")
 
