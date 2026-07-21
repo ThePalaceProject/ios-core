@@ -83,19 +83,31 @@ public struct ConversationState: Equatable, Sendable {
     public var context: ContextSnapshot?
     public var lastClassification: ClassificationResult?
     public var inputText: String
+    /// PP-4843 send-consent gate. `true` means the reducer has just presented a
+    /// FRESH ticket preview and the patron has not yet been shown to have seen
+    /// it — a `.userConfirmedTicketSubmit` that arrives while this is `true` is a
+    /// same-burst rapid double-tap that skipped past the preview, so it is
+    /// suppressed rather than silently filing a ticket the patron never reviewed.
+    /// The preview card clears it by dispatching `.ticketPreviewPresented` on
+    /// appear. Defaults to `false` so a directly-constructed drafting state (and
+    /// every pre-PP-4843 flow) sends normally — only reducer-driven fresh
+    /// previews arm the gate.
+    public var pendingSendConsent: Bool
 
     public init(
         step: Step = .welcome,
         messages: [ConversationMessage] = [],
         context: ContextSnapshot? = nil,
         lastClassification: ClassificationResult? = nil,
-        inputText: String = ""
+        inputText: String = "",
+        pendingSendConsent: Bool = false
     ) {
         self.step = step
         self.messages = messages
         self.context = context
         self.lastClassification = lastClassification
         self.inputText = inputText
+        self.pendingSendConsent = pendingSendConsent
     }
 }
 
@@ -142,6 +154,13 @@ public enum ConversationAction: Equatable, Sendable {
     case userEditedDescription(String)
     /// PP-4807 preview editor: explicit include/omit for the log excerpt.
     case userOmittedLogs(Bool)
+    /// PP-4843: the ticket preview card became visible to the patron (its
+    /// `onAppear`). Clears the send-consent gate so a deliberate Send is
+    /// honored. Because this only fires once the view has actually laid out —
+    /// a runloop turn AFTER the escalation — it does NOT fire in the middle of
+    /// a synchronous rapid-tap burst, which is what lets the reducer tell a
+    /// deliberate confirm apart from a same-burst accidental one.
+    case ticketPreviewPresented
     case userConfirmedTicketSubmit
     case userCancelledTicketSubmit
     case ticketSubmitted(TicketReceipt)
