@@ -78,12 +78,16 @@ class TPPLastReadPositionPoster {
     /// drain so a test can JOIN the actual writes instead of polling a
     /// wall-clock deadline. No-op in production (never called there).
     /// Returns once all pending writes have finished.
-    func awaitPendingWrites() async {
+    /// Synchronous snapshot: hands the caller every server-post `Task` spawned
+    /// since the last drain so a test can `await` them (join the actual writes).
+    /// SYNC on purpose — an `async` seam on this non-Sendable poster would make
+    /// `await poster.<seam>()` from a `@MainActor` test *send* the poster across
+    /// an isolation boundary (Swift 6 data-race error); a sync call sends nothing,
+    /// and `Task<Void, Never>` is Sendable so the caller can await the returned set.
+    func pendingWriteTasksForTesting() -> [Task<Void, Never>] {
         let tasks = pendingWriteTasks
         pendingWriteTasks.removeAll()
-        for task in tasks {
-            await task.value
-        }
+        return tasks
     }
 
     /// Determines if a locator should be stored and posted.
