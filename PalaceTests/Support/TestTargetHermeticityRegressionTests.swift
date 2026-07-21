@@ -37,6 +37,22 @@ import XCTest
 @MainActor
 final class TestTargetHermeticityRegressionTests: XCTestCase {
 
+    /// Observer token from `testMockRegistry_...`. Removed in `tearDown` as a
+    /// belt-and-suspenders backstop to the per-test `defer`, so a mid-test
+    /// abort still cannot leak a `.TPPBookRegistryDidChange` observer into a
+    /// later test — the very hazard this suite exists to pin. Its presence
+    /// also satisfies the `TearDownRequiredLintTests` polluter-hygiene gate
+    /// (this class touches `NotificationCenter.default.addObserver`).
+    private var registryObserver: NSObjectProtocol?
+
+    override func tearDown() {
+        if let observer = registryObserver {
+            NotificationCenter.default.removeObserver(observer)
+            registryObserver = nil
+        }
+        super.tearDown()
+    }
+
     // MARK: - 1. DEBUG compilation condition (the dead-reset-layer pin)
 
     /// The singleton-reset layer is only real if the test target compiles with
@@ -113,7 +129,11 @@ final class TestTargetHermeticityRegressionTests: XCTestCase {
             }
             delivered.fulfill()
         }
-        defer { NotificationCenter.default.removeObserver(observer) }
+        registryObserver = observer
+        defer {
+            NotificationCenter.default.removeObserver(observer)
+            registryObserver = nil
+        }
 
         DispatchQueue.global(qos: .userInitiated).async {
             mock.addBook(book, location: nil, state: .downloadNeeded,
