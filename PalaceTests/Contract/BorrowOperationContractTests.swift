@@ -115,6 +115,15 @@ final class BorrowOperationContractTests: XCTestCase {
             attemptOIDCReauth: {
                 callLog.record("attemptOIDCReauth", args: [:])
                 return false
+            },
+            // The app-rating secondary trigger (PP-4088) is an injected seam,
+            // default `{}` in production. The contract pins that a *successful*
+            // borrow fires it (in order: after `fetchBook`, before `startDownload`),
+            // so record it here — otherwise the effect runs the no-op default and
+            // never reaches the CallLog, drifting the snapshot (`noteBorrowSucceeded`
+            // expected, absent in actual).
+            onBorrowSucceeded: {
+                callLog.record("noteBorrowSucceeded", args: [:])
             }
         )
         operation.delegate = spyDelegate
