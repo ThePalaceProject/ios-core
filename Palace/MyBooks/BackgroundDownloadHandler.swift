@@ -37,7 +37,17 @@ protocol BackgroundDownloadHandlerDelegate: AnyObject {
 /// - Progress updates and MIME type detection
 /// - OPDS entry response parsing
 /// - File move/replace/validation after download
-final class BackgroundDownloadHandler: NSObject {
+/// - Sendable invariant (Swift 6 `complete`-mode): the handler has exactly one
+///   stored member, `weak var delegate`, assigned once at init (or via the
+///   owner during construction) and never reassigned outside that window
+///   (weak-ref reads + ARC zeroing are atomic). The `async` methods
+///   (`handleDownloadProgress`, the OPDS-response handlers) touch only the
+///   actor-serialized state reached *through* the delegate's `stateManager` and
+///   local values, so awaiting them from a `@MainActor` caller does not race.
+///   Mirrors the `DownloadStartCoordinator` / `DownloadTaskLifecycleService`
+///   invariant. `@unchecked` only because the delegate existential is not
+///   itself `Sendable`.
+final class BackgroundDownloadHandler: NSObject, @unchecked Sendable {
 
     // MARK: - Properties
 

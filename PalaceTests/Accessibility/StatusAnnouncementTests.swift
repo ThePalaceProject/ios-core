@@ -87,7 +87,7 @@ final class StatusAnnouncementTests: XCTestCase {
     }
 
     func testPP3673_searchRerun_announcesNewStatus() {
-        var currentTime = Date(timeIntervalSince1970: 100)
+        let currentTime = LockIsolated<Date>(Date(timeIntervalSince1970: 100))
         let capture = Capture()
         let exp = expectation(description: "announcements")
         exp.expectedFulfillmentCount = 2
@@ -95,11 +95,11 @@ final class StatusAnnouncementTests: XCTestCase {
         let announcer = makeAnnouncer(
             capture: capture,
             deduplicationInterval: 2.0,
-            timeProvider: { currentTime }
+            timeProvider: { currentTime.value }
         )
 
         announcer.announceSearchResults(query: "robots", count: 5)
-        currentTime = currentTime.addingTimeInterval(3.0)
+        currentTime.value = currentTime.value.addingTimeInterval(3.0)
         announcer.announceSearchResults(query: "robots", count: 0)
 
         waitForExpectations(timeout: 5.0)

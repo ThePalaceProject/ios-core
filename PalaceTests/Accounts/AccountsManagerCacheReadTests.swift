@@ -148,7 +148,7 @@ final class AccountsManagerCacheReadTests: PalaceWiringTestCase {
         // Empty per-test defaults → currentAccountId is nil → the auth-doc
         // network branch inside loadAccountSetsAndAuthDoc stays dormant, so
         // the load is a pure parse + carry-over + state-transition pass.
-        let manager = makeFreshAccountsManager(defaults: testUserDefaults())
+        let manager = makeFreshAccountsManager(defaults: Self.testUserDefaults())
         let hash = "carryover-\(UUID().uuidString.prefix(8))"
 
         // First load establishes the old-account set in accountSets[hash].
@@ -213,7 +213,7 @@ final class AccountsManagerCacheReadTests: PalaceWiringTestCase {
         #if DEBUG
         AccountsManager.deferDiskCachePreloadForTesting = true
         #endif
-        return makeFreshAccountsManager(defaults: testUserDefaults())
+        return makeFreshAccountsManager(defaults: Self.testUserDefaults())
     }
 
     /// Seed both the catalog blob and its metadata at the production cache

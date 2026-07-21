@@ -85,6 +85,10 @@ struct KBMatchCard: View {
             case .userError: return ("Likely a setup mix-up", "info.circle.fill", .blue)
             case .wontfix: return ("By design", "info.circle", .gray)
             case .duplicateOf: return ("Tracked", "tag.fill", .gray)
+            case .none:
+                // how_to (general-help) entries have no known-issue status —
+                // render a neutral "how to" badge, not a bug status.
+                return ("How to", "questionmark.circle.fill", .blue)
             }
         }()
         Label {

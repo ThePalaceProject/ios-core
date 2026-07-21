@@ -69,14 +69,28 @@ class PalaceWiringTestCase: PalaceTestCase {
     /// `.store(in: &cancellables)`; the property is mutated only on the
     /// main thread (test methods inherit `@MainActor` via XCTest's
     /// default isolation for sync test methods).
-    var cancellables: Set<AnyCancellable> = []
+    ///
+    /// `nonisolated(unsafe)`: accessed both from `@MainActor` subclass test
+    /// bodies (`.store(in: &cancellables)`) and from the `nonisolated`
+    /// `tearDownWithError` override that drains it. XCTest runs a single test
+    /// method's body and its teardown serially on one instance — never
+    /// concurrently — so there is no data race to guard; the unsafe opt-out
+    /// keeps the bag reachable from the nonisolated hook without sending
+    /// `self` across an actor boundary.
+    nonisolated(unsafe) var cancellables: Set<AnyCancellable> = []
 
     /// Internal list of `AccountsManager` instances minted via
     /// `makeFreshAccountsManager` during a single test method. tearDown
     /// walks this list and calls `cancelBackgroundWork()` on each, then
     /// empties the list so the next method starts clean. Stored as
     /// `private` — only `makeFreshAccountsManager` mutates it.
-    private var managersToCancelOnTearDown: [AccountsManager] = []
+    ///
+    /// `nonisolated(unsafe)`: appended from `makeFreshAccountsManager`
+    /// (invoked in `@MainActor` test bodies) and drained from the `nonisolated`
+    /// `tearDownWithError` override. Same single-threaded serial test lifecycle
+    /// as `cancellables` — no concurrent access to guard; the opt-out keeps the
+    /// list reachable from the nonisolated hook without sending `self`.
+    nonisolated(unsafe) private var managersToCancelOnTearDown: [AccountsManager] = []
 
     // MARK: - Lifecycle
 
@@ -164,7 +178,7 @@ class PalaceWiringTestCase: PalaceTestCase {
     ///   AND whose `cancelBackgroundWork()` will fire in tearDown
     ///   regardless of whether the test body called it.
     @discardableResult
-    func makeFreshAccountsManager(_ configure: (AccountsManager) -> Void = { _ in }) -> AccountsManager {
+    nonisolated func makeFreshAccountsManager(_ configure: (AccountsManager) -> Void = { _ in }) -> AccountsManager {
         // Pin the opt-out flag immediately before construction. setUp
         // already set it, but a test method that intentionally toggled
         // it off mid-body must not poison helper construction after
@@ -184,11 +198,11 @@ class PalaceWiringTestCase: PalaceTestCase {
     ///
     /// swarm_cd181acd D-cleanup: lets wiring tests seed
     /// `currentAccountIdentifierKey` into a per-test isolated suite (via
-    /// `testUserDefaults()`) instead of mutating `UserDefaults.standard`,
+    /// `Self.testUserDefaults()`) instead of mutating `UserDefaults.standard`,
     /// so cross-test pollution through that key is structurally
     /// impossible.
     @discardableResult
-    func makeFreshAccountsManager(
+    nonisolated func makeFreshAccountsManager(
         defaults: UserDefaults,
         _ configure: (AccountsManager) -> Void = { _ in }
     ) -> AccountsManager {
@@ -216,7 +230,7 @@ class PalaceWiringTestCase: PalaceTestCase {
     ///
     /// Missing files (cold-start) and missing directory are silently
     /// ignored — both are valid pre-test states.
-    private func purgeAccountsDiskCacheForWiringTests() {
+    private nonisolated func purgeAccountsDiskCacheForWiringTests() {
         let prefixes = [
             "library_list_",
             "accounts_catalog_",

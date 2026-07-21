@@ -39,7 +39,7 @@ final class AccountsManagerTests: XCTestCase {
         // swarm_cd181acd D-cleanup: no `.standard.removeObject(forKey:)`
         // here. Tests that need an isolated `currentAccountIdentifierKey`
         // suite construct a fresh `AccountsManager(defaults:)` with a
-        // per-test `testUserDefaults()`. AppContainer.production()-based
+        // per-test `Self.testUserDefaults()`. AppContainer.production()-based
         // tests continue to share the production `.standard` graph (their
         // teardown is handled by `SingletonResetRegistry` via the
         // AppContainer post-test reset observer).
@@ -122,7 +122,7 @@ final class AccountsManagerTests: XCTestCase {
         // production seam — defaults.set + defaults.removeObject under
         // currentAccountIdentifierKey — to assert the manager's getter
         // reflects what the injected suite holds.
-        let defaults = testUserDefaults()
+        let defaults = Self.testUserDefaults()
         #if DEBUG
         AccountsManager.deferInitialLoadCatalogsForTesting = true
         #endif
@@ -143,7 +143,7 @@ final class AccountsManagerTests: XCTestCase {
 
     func testCurrentAccountId_PersistsToUserDefaults() {
         // Arrange: AccountsManager + isolated suite (swarm_cd181acd D-cleanup).
-        let defaults = testUserDefaults()
+        let defaults = Self.testUserDefaults()
         #if DEBUG
         AccountsManager.deferInitialLoadCatalogsForTesting = true
         #endif

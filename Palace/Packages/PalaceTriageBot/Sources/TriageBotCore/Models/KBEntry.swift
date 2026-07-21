@@ -33,6 +33,22 @@ public enum KBCategory: String, Codable, Sendable, CaseIterable {
     case other
 }
 
+/// What KIND of entry this is — the axis that lets general-help content live
+/// alongside known-issue content without overloading `status`.
+///
+///  - `.knownIssue` — a bug/known problem: has a `status`, may be version-gated
+///    by `fixedInVersion`, its `userFacingWorkaround` is a workaround.
+///  - `.howTo` — a general-help / FAQ answer ("how do I renew?"): no status, no
+///    version gate; its `userFacingWorkaround` field holds the answer text.
+///
+/// Entries that omit `kind` in JSON decode as `.knownIssue`, so the existing
+/// corpus keeps working unchanged. Prefer `resolvedKind` at call sites — it
+/// applies that default.
+public enum KBKind: String, Codable, Sendable {
+    case knownIssue = "known_issue"
+    case howTo = "how_to"
+}
+
 public struct KBInternalReference: Codable, Equatable, Sendable {
     public let jira: String?
     public let wallFailure: String?
@@ -51,7 +67,11 @@ public struct KBInternalReference: Codable, Equatable, Sendable {
 public struct KBEntry: Codable, Equatable, Identifiable, Sendable {
     public let id: String
     public let category: KBCategory
-    public let status: KBStatus
+    /// Nil in JSON decodes as `.knownIssue`; use `resolvedKind`.
+    public let kind: KBKind?
+    /// Absent for `.howTo` entries (a general-help answer has no known-issue
+    /// status). Present for `.knownIssue` entries.
+    public let status: KBStatus?
     public let fixedInVersion: String?
     public let symptomKeywords: [String]
     public let distributorFilter: [String]?
@@ -76,9 +96,13 @@ public struct KBEntry: Codable, Equatable, Identifiable, Sendable {
     public let trustLevel: KBTrustLevel
     public let visibility: KBVisibility
 
+    /// `kind` with its default applied — `.knownIssue` when the JSON omitted it.
+    public var resolvedKind: KBKind { kind ?? .knownIssue }
+
     enum CodingKeys: String, CodingKey {
         case id
         case category
+        case kind
         case status
         case fixedInVersion = "fixed_in_version"
         case symptomKeywords = "symptom_keywords"
@@ -99,7 +123,8 @@ public struct KBEntry: Codable, Equatable, Identifiable, Sendable {
     public init(
         id: String,
         category: KBCategory,
-        status: KBStatus,
+        kind: KBKind? = nil,
+        status: KBStatus? = nil,
         fixedInVersion: String? = nil,
         symptomKeywords: [String],
         distributorFilter: [String]? = nil,
@@ -117,6 +142,7 @@ public struct KBEntry: Codable, Equatable, Identifiable, Sendable {
     ) {
         self.id = id
         self.category = category
+        self.kind = kind
         self.status = status
         self.fixedInVersion = fixedInVersion
         self.symptomKeywords = symptomKeywords

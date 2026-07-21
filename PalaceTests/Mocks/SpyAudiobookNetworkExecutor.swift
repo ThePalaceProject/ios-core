@@ -28,6 +28,25 @@ final class SpyAudiobookNetworkExecutor: TPPNetworkExecutor, @unchecked Sendable
         let body: Data?
     }
 
+    /// Dedicated SERIAL queue the success completion is dispatched on.
+    ///
+    /// Production `TPPNetworkExecutor.POST` fires its completion off the
+    /// caller's stack (on the URLSession delegate queue), so the spy must do
+    /// the same to keep `AudiobookDataManager`'s threading realistic — it
+    /// cannot call the completion inline (that would run
+    /// `removeSynchronizedEntries` on the manager's `syncQueue`, changing the
+    /// concurrency shape the code under test relies on). But the ORIGINAL spy
+    /// hopped through `DispatchQueue.global()` — the shared CONCURRENT pool —
+    /// which under parallel-sim-clone CPU oversubscription (4 clones on a
+    /// 3–4-core runner) can defer the completion block past the test's poll
+    /// deadline, so the queue never drains and `awaitCondition` times out
+    /// (CI run 29805821296: `testPlaytimes_switchBack_flushesPreservedEntries`).
+    /// A PRIVATE serial queue gets its own reliably-scheduled thread, and —
+    /// crucially — lets the test install a deterministic barrier
+    /// (`drainCompletions()`) instead of polling wall-clock, removing the pool
+    /// dependence entirely.
+    let completionQueue = DispatchQueue(label: "spy.audiobook.completion")
+
     private let lock = NSLock()
     private var _calls: [RecordedCall] = []
     /// Counter incremented after the completion handler returns, so tests
@@ -62,6 +81,17 @@ final class SpyAudiobookNetworkExecutor: TPPNetworkExecutor, @unchecked Sendable
         }
     }
 
+    /// Deterministic barrier: block until every success completion dispatched
+    /// so far has run (FIFO on the serial `completionQueue`). Lets a test
+    /// replace a wall-clock `awaitCondition { calls.count == N }` poll — which
+    /// is starvable under pool oversubscription — with an exact join, matching
+    /// the `syncQueue.sync {}` barrier the sibling tests already use on the
+    /// manager side. Call AFTER the corresponding `syncQueue.sync {}` so the
+    /// POST has been dispatched and its completion enqueued here.
+    func drainCompletions() {
+        completionQueue.sync {}
+    }
+
     convenience init() {
         self.init(cachingStrategy: .ephemeral)
     }
@@ -89,7 +119,7 @@ final class SpyAudiobookNetworkExecutor: TPPNetworkExecutor, @unchecked Sendable
             httpVersion: "1.1",
             headerFields: ["Content-Type": "application/json"]
         )
-        DispatchQueue.global().async { [weak self] in
+        completionQueue.async { [weak self] in
             completion?(responseBody, httpResponse, nil)
             self?.lock.withLock { self?._completionsReturned += 1 }
         }

@@ -129,7 +129,16 @@ final class EPUBPositionTests: XCTestCase {
     /// A regression on any changed line — dropping `.string`, failing to wrap
     /// the value in `JSONValue`, or a broken serializer — breaks this
     /// round-trip while leaving the pre-existing string/dictionary tests green.
-    func testLocatorRoundTrip_preservesCssSelectorPositionProgression_throughJSONValue() async {
+    // `nonisolated`: `convertToLocator(publication:)` is a nonisolated `async`
+    // method that takes non-Sendable Readium values (`Publication`, and the
+    // `TPPBookLocation` receiver). Awaiting it from the class's `@MainActor`
+    // isolation would *send* those non-Sendable args across the actor hop
+    // (Swift 6 "sending risks data races"). Running the test method itself in
+    // the nonisolated domain — the same domain as the callee, matching the
+    // production caller `TPPLastReadPositionSynchronizer.syncReadPosition` —
+    // removes the boundary entirely, so nothing is sent. The body touches no
+    // MainActor state (only nonisolated factories, initializers, and XCTAssert).
+    nonisolated func testLocatorRoundTrip_preservesCssSelectorPositionProgression_throughJSONValue() async {
         let publication = Self.makeTestPublication()
         guard let href = AnyURL(string: "/chapter1.xhtml") else {
             return XCTFail("invalid test href")
@@ -165,7 +174,10 @@ final class EPUBPositionTests: XCTestCase {
 
     /// Edge: no cssSelector exercises the `?? ""` / `?? [:]` branches — the
     /// round-trip must still succeed and must not fabricate a non-empty selector.
-    func testLocatorRoundTrip_withoutCssSelector_succeedsAndPreservesPosition() async {
+    // `nonisolated`: see the note on the sibling round-trip test above — the
+    // nonisolated `await convertToLocator` hop would otherwise send the
+    // non-Sendable `bookLocation`/`publication` across the `@MainActor` boundary.
+    nonisolated func testLocatorRoundTrip_withoutCssSelector_succeedsAndPreservesPosition() async {
         let publication = Self.makeTestPublication()
         guard let href = AnyURL(string: "/chapter1.xhtml") else {
             return XCTFail("invalid test href")
@@ -187,7 +199,9 @@ final class EPUBPositionTests: XCTestCase {
                        "no real selector should be fabricated when none was provided")
     }
 
-    private static func makeTestPublication() -> Publication {
+    // `nonisolated`: pure factory with no MainActor state, so the two
+    // `nonisolated` round-trip tests can build a publication without a cross-actor hop.
+    private nonisolated static func makeTestPublication() -> Publication {
         let metadata = Metadata(title: "Test", languages: ["en"])
         let readingOrder = [Link(href: "/chapter1.xhtml", mediaType: .xhtml)]
         return Publication(manifest: Manifest(metadata: metadata, readingOrder: readingOrder))

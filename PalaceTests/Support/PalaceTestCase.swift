@@ -40,7 +40,15 @@ class PalaceTestCase: XCTestCase {
     /// Pre-test `NotificationCenter.default` observer count, captured in setUp.
     /// `nil` when the best-effort sample is unavailable (then the observer-leak
     /// check is skipped). Subclasses overriding `setUpWithError` MUST call super.
-    private var preObserverCount: Int?
+    ///
+    /// `nonisolated(unsafe)`: written in `setUpWithError` and read/cleared in
+    /// `warnOnObserverLeak` (from `tearDownWithError`) — both `nonisolated`
+    /// overrides of XCTest's `nonisolated` lifecycle hooks. XCTest drives a
+    /// single test method's setUp→body→tearDown strictly serially on one
+    /// instance, so there is no concurrent access to guard; the unsafe opt-out
+    /// keeps the (genuinely single-threaded) lifecycle var reachable from the
+    /// nonisolated hooks without sending `self` across an actor boundary.
+    nonisolated(unsafe) private var preObserverCount: Int?
 
     override func setUpWithError() throws {
         try super.setUpWithError()
@@ -87,7 +95,13 @@ class PalaceTestCase: XCTestCase {
     /// EFFECTIVE structural guard for this leak class is the platform-independent
     /// dealloc assertion in `AccountDetailViewModelLeakTests` (red→green proven),
     /// which does not depend on the observer count at all.
-    private func warnOnObserverLeak() {
+    ///
+    /// `nonisolated`: called from the `nonisolated` `tearDownWithError` override.
+    /// Touches only `nonisolated(unsafe)` `preObserverCount`, the nonisolated
+    /// `self.name`, static (nonisolated) `PalaceSingletonResetObserver` /
+    /// `RuntimeQuiescenceAuditor` methods, and `NSLog` — no `@MainActor` state,
+    /// so `self` is never sent across an actor boundary.
+    private nonisolated func warnOnObserverLeak() {
         guard let pre = preObserverCount,
               let post = PalaceSingletonResetObserver.sampleObserverCount() else { return }
         preObserverCount = nil
@@ -105,7 +119,11 @@ class PalaceTestCase: XCTestCase {
     ///
     /// Exposed so a subclass that overrides `tearDown()` (the non-throwing
     /// variant) can still invoke the check explicitly after its own cleanup.
-    func assertRuntimeQuiescent(
+    ///
+    /// `nonisolated`: called from the `nonisolated` `tearDownWithError` override.
+    /// Uses only the static (nonisolated) `RuntimeQuiescenceAuditor.auditLiveState()`
+    /// and `XCTFail` — no instance/`@MainActor` state — so `self` is not sent.
+    nonisolated func assertRuntimeQuiescent(
         file: StaticString = #file,
         line: UInt = #line
     ) {
@@ -140,7 +158,12 @@ class PalaceTestCase: XCTestCase {
     ///     override var enforcesPoolResponsiveness: Bool { true }
     /// }
     /// ```
-    var enforcesPoolResponsiveness: Bool { false }
+    ///
+    /// `nonisolated`: read from the `nonisolated` `tearDownWithError` override to
+    /// decide whether to run the pool gate. Returns a constant with no state
+    /// access, so reading it cannot send `self`. Subclass overrides inherit the
+    /// `nonisolated` requirement (they likewise return a literal).
+    nonisolated var enforcesPoolResponsiveness: Bool { false }
 
     /// Bounded check that the runtime is at rest — the class-4 (accumulation
     /// pool-starvation) gate extension. Two cheap probes run in sequence:
@@ -181,8 +204,17 @@ class PalaceTestCase: XCTestCase {
     ///     AND does not false-positive, without staging a real leak.
     /// - Returns: the violations produced (also surfaced via `XCTFail`), so the
     ///   self-test can assert the message shape without capturing the failure.
+    ///
+    /// `nonisolated`: invoked from the `nonisolated` `tearDownWithError` override.
+    /// Its call path — the nonisolated `drainMainQueue(timeout:)` helper, the
+    /// static (nonisolated) `PalaceSingletonResetObserver.measureCooperativePoolProbe`
+    /// / `RuntimeQuiescenceAuditor.poolResponsivenessViolations`, and `XCTFail` —
+    /// touches no `@MainActor` instance state, so `self` is never sent across an
+    /// actor boundary. (The async sibling `assertRuntimeResponsiveAsync` stays
+    /// `@MainActor` — it is only called from `@MainActor async` bodies, never the
+    /// nonisolated lifecycle hooks.)
     @discardableResult
-    func assertRuntimeResponsive(
+    nonisolated func assertRuntimeResponsive(
         budget: TimeInterval = 5.0,
         probe: ((TimeInterval) -> Bool)? = nil,
         file: StaticString = #file,

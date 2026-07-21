@@ -51,7 +51,7 @@ actor SafeDictionary<Key: Hashable, Value> {
     private var lastAccessTime: Date = Date()
 
     /// Get performance metrics for debugging
-    func getMetrics() -> [String: Any] {
+    func getMetrics() -> [String: any Sendable] {
         return [
             "count": storage.count,
             "accessCount": accessCount,

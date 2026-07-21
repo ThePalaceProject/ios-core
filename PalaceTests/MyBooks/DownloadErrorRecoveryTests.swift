@@ -67,7 +67,7 @@ final class DownloadErrorRecoveryPolicyTests: XCTestCase {
 
     func testBorrowPolicy_recoversAfterNoActiveLoan() async throws {
         let recovery = DownloadErrorRecovery()
-        var attempts = 0
+        let attempts = LockIsolated<Int>(0)
 
         let result = try await recovery.executeWithRetry(
             policy: DownloadErrorRecovery.RetryPolicy(
@@ -78,15 +78,15 @@ final class DownloadErrorRecoveryPolicyTests: XCTestCase {
                 shouldRetry: DownloadErrorRecovery.RetryPolicy.borrowOperation.shouldRetry
             )
         ) {
-            attempts += 1
-            if attempts < 2 {
+            attempts.value += 1
+            if attempts.value < 2 {
                 throw PalaceError.bookRegistry(.bookNotFound)
             }
             return "Borrowed"
         }
 
         XCTAssertEqual(result, "Borrowed")
-        XCTAssertEqual(attempts, 2, "Should succeed on second attempt after no-active-loan")
+        XCTAssertEqual(attempts.value, 2, "Should succeed on second attempt after no-active-loan")
     }
 
     // MARK: - Successful Operations
@@ -105,23 +105,23 @@ final class DownloadErrorRecoveryPolicyTests: XCTestCase {
 
     func testExecuteWithRetry_immediateSuccess_noRetries() async throws {
         let recovery = DownloadErrorRecovery()
-        var callCount = 0
+        let callCount = LockIsolated<Int>(0)
 
         _ = try await recovery.executeWithRetry(
             policy: .default
         ) {
-            callCount += 1
+            callCount.value += 1
             return 42
         }
 
-        XCTAssertEqual(callCount, 1, "Should only be called once on immediate success")
+        XCTAssertEqual(callCount.value, 1, "Should only be called once on immediate success")
     }
 
     // MARK: - Retry Behavior
 
     func testExecuteWithRetry_retriesOnTransientError() async throws {
         let recovery = DownloadErrorRecovery()
-        var attempts = 0
+        let attempts = LockIsolated<Int>(0)
 
         let result = try await recovery.executeWithRetry(
             policy: DownloadErrorRecovery.RetryPolicy(
@@ -132,20 +132,20 @@ final class DownloadErrorRecoveryPolicyTests: XCTestCase {
                 shouldRetry: { _ in true }
             )
         ) {
-            attempts += 1
-            if attempts < 3 {
+            attempts.value += 1
+            if attempts.value < 3 {
                 throw NSError(domain: NSURLErrorDomain, code: NSURLErrorNetworkConnectionLost, userInfo: nil)
             }
             return "Recovered"
         }
 
         XCTAssertEqual(result, "Recovered")
-        XCTAssertEqual(attempts, 3)
+        XCTAssertEqual(attempts.value, 3)
     }
 
     func testExecuteWithRetry_failsAfterMaxAttempts() async {
         let recovery = DownloadErrorRecovery()
-        var attempts = 0
+        let attempts = LockIsolated<Int>(0)
 
         do {
             _ = try await recovery.executeWithRetry(
@@ -157,12 +157,12 @@ final class DownloadErrorRecoveryPolicyTests: XCTestCase {
                     shouldRetry: { _ in true }
                 )
             ) { () -> String in
-                attempts += 1
+                attempts.value += 1
                 throw NSError(domain: "TestDomain", code: 1, userInfo: nil)
             }
             XCTFail("Should have thrown after max attempts")
         } catch {
-            XCTAssertEqual(attempts, 2, "Should have attempted exactly maxAttempts times")
+            XCTAssertEqual(attempts.value, 2, "Should have attempted exactly maxAttempts times")
         }
     }
 
@@ -170,7 +170,7 @@ final class DownloadErrorRecoveryPolicyTests: XCTestCase {
 
     func testExecuteWithRetry_nonRetryableError_failsImmediately() async {
         let recovery = DownloadErrorRecovery()
-        var attempts = 0
+        let attempts = LockIsolated<Int>(0)
 
         do {
             _ = try await recovery.executeWithRetry(
@@ -182,12 +182,12 @@ final class DownloadErrorRecoveryPolicyTests: XCTestCase {
                     shouldRetry: { _ in false }  // Never retry
                 )
             ) { () -> String in
-                attempts += 1
+                attempts.value += 1
                 throw NSError(domain: "Fatal", code: 1, userInfo: nil)
             }
             XCTFail("Should have thrown")
         } catch {
-            XCTAssertEqual(attempts, 1, "Non-retryable errors should fail after first attempt")
+            XCTAssertEqual(attempts.value, 1, "Non-retryable errors should fail after first attempt")
         }
     }
 

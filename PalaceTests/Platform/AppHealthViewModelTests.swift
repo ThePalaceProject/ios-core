@@ -27,8 +27,11 @@ final class AppHealthViewModelTests: XCTestCase {
         userDefaults = UserDefaults(suiteName: "AppHealthViewModelTests")!
         userDefaults.removePersistentDomain(forName: "AppHealthViewModelTests")
         performanceMonitor = PerformanceMonitor()
-        offlineQueueService = OfflineQueueService(userDefaults: userDefaults)
-        positionSyncService = PositionSyncService(userDefaults: userDefaults)
+        // Fresh, disconnected same-suite UserDefaults per actor init (non-Sendable
+        // value can't be sent from the @MainActor test's retained property; an
+        // inline instance is its own region and shares the backing store).
+        offlineQueueService = OfflineQueueService(userDefaults: UserDefaults(suiteName: "AppHealthViewModelTests")!)
+        positionSyncService = PositionSyncService(userDefaults: UserDefaults(suiteName: "AppHealthViewModelTests")!)
         viewModel = AppHealthViewModel(
             performanceMonitor: performanceMonitor,
             offlineQueueService: offlineQueueService,

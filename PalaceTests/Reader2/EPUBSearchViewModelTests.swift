@@ -194,8 +194,13 @@ final class EPUBSearchViewModelTests: XCTestCase {
 
     // MARK: - Setup/Teardown
 
-    override func setUp() {
-        super.setUp()
+    // `setUp() async throws` (not sync `setUp()`): the async override adopts this
+    // @MainActor class's isolation, so the @MainActor `EPUBSearchViewModel.init`
+    // and `self.publication` are touched on-actor. A synchronous override is
+    // nonisolated and sends the main-actor-isolated `self.publication` into the
+    // @MainActor initializer (Swift 6 data race).
+    override func setUp() async throws {
+        try await super.setUp()
         mockSearchService = MockSearchService()
         mockDelegate = MockEPUBSearchDelegate()
         publication = Publication.makePublication(searchService: mockSearchService)

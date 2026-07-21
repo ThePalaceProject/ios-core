@@ -36,7 +36,7 @@ final class OPDSFeedCacheTests: XCTestCase {
 
     func testSetAndGet() async throws {
         let url = URL(string: "https://example.com/feed")!
-        let feed = makeFeed(title: "Test Feed")
+        let feed = Self.makeFeed(title: "Test Feed")
         let entry = OPDSCacheEntry(feed: feed)
 
         await sut.set(entry, for: url)
@@ -59,7 +59,7 @@ final class OPDSFeedCacheTests: XCTestCase {
 
     func testRemove() async throws {
         let url = URL(string: "https://example.com/feed")!
-        let feed = makeFeed(title: "Test Feed")
+        let feed = Self.makeFeed(title: "Test Feed")
         let entry = OPDSCacheEntry(feed: feed)
 
         await sut.set(entry, for: url)
@@ -78,8 +78,8 @@ final class OPDSFeedCacheTests: XCTestCase {
         let url1 = URL(string: "https://example.com/feed1")!
         let url2 = URL(string: "https://example.com/feed2")!
 
-        await sut.set(OPDSCacheEntry(feed: makeFeed(title: "Feed 1")), for: url1)
-        await sut.set(OPDSCacheEntry(feed: makeFeed(title: "Feed 2")), for: url2)
+        await sut.set(OPDSCacheEntry(feed: Self.makeFeed(title: "Feed 1")), for: url1)
+        await sut.set(OPDSCacheEntry(feed: Self.makeFeed(title: "Feed 2")), for: url2)
 
         await sut.clear()
 
@@ -96,12 +96,12 @@ final class OPDSFeedCacheTests: XCTestCase {
         // Fill cache to capacity
         for i in 0..<10 {
             let url = URL(string: "https://example.com/feed\(i)")!
-            await sut.set(OPDSCacheEntry(feed: makeFeed(title: "Feed \(i)")), for: url)
+            await sut.set(OPDSCacheEntry(feed: Self.makeFeed(title: "Feed \(i)")), for: url)
         }
 
         // Add one more to trigger eviction
         let newURL = URL(string: "https://example.com/newfeed")!
-        await sut.set(OPDSCacheEntry(feed: makeFeed(title: "New Feed")), for: newURL)
+        await sut.set(OPDSCacheEntry(feed: Self.makeFeed(title: "New Feed")), for: newURL)
 
         // The oldest should be evicted
         let oldest = await sut.get(for: URL(string: "https://example.com/feed0")!)
@@ -116,8 +116,8 @@ final class OPDSFeedCacheTests: XCTestCase {
         let url2 = URL(string: "https://example.com/feed2")!
 
         // Add two entries
-        await sut.set(OPDSCacheEntry(feed: makeFeed(title: "Feed 1")), for: url1)
-        await sut.set(OPDSCacheEntry(feed: makeFeed(title: "Feed 2")), for: url2)
+        await sut.set(OPDSCacheEntry(feed: Self.makeFeed(title: "Feed 1")), for: url1)
+        await sut.set(OPDSCacheEntry(feed: Self.makeFeed(title: "Feed 2")), for: url2)
 
         // Access the first one to make it more recent
         _ = await sut.get(for: url1)
@@ -125,12 +125,12 @@ final class OPDSFeedCacheTests: XCTestCase {
         // Fill the rest of the cache
         for i in 3...10 {
             let url = URL(string: "https://example.com/feed\(i)")!
-            await sut.set(OPDSCacheEntry(feed: makeFeed(title: "Feed \(i)")), for: url)
+            await sut.set(OPDSCacheEntry(feed: Self.makeFeed(title: "Feed \(i)")), for: url)
         }
 
         // Add one more to trigger eviction
         let newURL = URL(string: "https://example.com/newfeed")!
-        await sut.set(OPDSCacheEntry(feed: makeFeed(title: "New Feed")), for: newURL)
+        await sut.set(OPDSCacheEntry(feed: Self.makeFeed(title: "New Feed")), for: newURL)
 
         // feed1 should still exist (was accessed recently), feed2 should be evicted
         let cached1 = await sut.get(for: url1)
@@ -143,7 +143,7 @@ final class OPDSFeedCacheTests: XCTestCase {
     // MARK: - Staleness and Expiration
 
     func testCacheEntryIsStale() async throws {
-        let feed = makeFeed(title: "Test")
+        let feed = Self.makeFeed(title: "Test")
         let entry = OPDSCacheEntry(feed: feed, timestamp: Date().addingTimeInterval(-2)) // 2 seconds ago
 
         // With 1 second TTL, this should be stale
@@ -152,7 +152,7 @@ final class OPDSFeedCacheTests: XCTestCase {
     }
 
     func testCacheEntryIsExpired() async throws {
-        let feed = makeFeed(title: "Test")
+        let feed = Self.makeFeed(title: "Test")
         let entry = OPDSCacheEntry(feed: feed, timestamp: Date().addingTimeInterval(-10)) // 10 seconds ago
 
         // With 5 second max age, this should be expired
@@ -162,7 +162,7 @@ final class OPDSFeedCacheTests: XCTestCase {
 
     func testExpiredEntriesNotReturned() async throws {
         let url = URL(string: "https://example.com/feed")!
-        let feed = makeFeed(title: "Old Feed")
+        let feed = Self.makeFeed(title: "Old Feed")
         let entry = OPDSCacheEntry(feed: feed, timestamp: Date().addingTimeInterval(-10)) // Very old
 
         await sut.set(entry, for: url)
@@ -172,7 +172,7 @@ final class OPDSFeedCacheTests: XCTestCase {
         XCTAssertNil(cached, "Expired entries should not be returned")
         // A fresh entry at a different URL must still be returned
         let freshURL = URL(string: "https://example.com/fresh")!
-        let freshEntry = OPDSCacheEntry(feed: makeFeed(title: "Fresh"))
+        let freshEntry = OPDSCacheEntry(feed: Self.makeFeed(title: "Fresh"))
         await sut.set(freshEntry, for: freshURL)
         let freshCached = await sut.get(for: freshURL)
         XCTAssertNotNil(freshCached, "A fresh entry must still be returned even when an expired one exists")
@@ -182,28 +182,28 @@ final class OPDSFeedCacheTests: XCTestCase {
 
     func testGetWithRevalidationReturnsFreshData() async throws {
         let url = URL(string: "https://example.com/feed")!
-        let feed = makeFeed(title: "Fresh Feed")
+        let feed = Self.makeFeed(title: "Fresh Feed")
         let entry = OPDSCacheEntry(feed: feed) // Fresh timestamp
 
         await sut.set(entry, for: url)
 
-        var fetcherCalled = false
+        let fetcherCalled = LockIsolated<Bool>(false)
         let result = try await sut.getWithRevalidation(for: url) {
-            fetcherCalled = true
-            return (self.makeFeed(title: "New Feed"), nil, nil)
+            fetcherCalled.value = true
+            return (Self.makeFeed(title: "New Feed"), nil, nil)
         }
 
         XCTAssertEqual(result.feed.title, "Fresh Feed")
         XCTAssertFalse(result.isStale)
         XCTAssertFalse(result.didTriggerRefresh)
-        XCTAssertFalse(fetcherCalled, "Fetcher should not be called for fresh data")
+        XCTAssertFalse(fetcherCalled.value, "Fetcher should not be called for fresh data")
     }
 
     func testGetWithRevalidationFetchesWhenNoCache() async throws {
         let url = URL(string: "https://example.com/newurl")!
 
         let result = try await sut.getWithRevalidation(for: url) {
-            return (self.makeFeed(title: "Fetched Feed"), "etag123", "Mon, 01 Jan 2026 00:00:00 GMT")
+            return (Self.makeFeed(title: "Fetched Feed"), "etag123", "Mon, 01 Jan 2026 00:00:00 GMT")
         }
 
         XCTAssertEqual(result.feed.title, "Fetched Feed")
@@ -220,7 +220,7 @@ final class OPDSFeedCacheTests: XCTestCase {
 
     func testConditionalHeaders() async throws {
         let url = URL(string: "https://example.com/feed")!
-        let feed = makeFeed(title: "Feed")
+        let feed = Self.makeFeed(title: "Feed")
         let entry = OPDSCacheEntry(
             feed: feed,
             etag: "\"abc123\"",
@@ -250,7 +250,7 @@ final class OPDSFeedCacheTests: XCTestCase {
 
     func testStats() async throws {
         let url = URL(string: "https://example.com/feed")!
-        await sut.set(OPDSCacheEntry(feed: makeFeed(title: "Feed")), for: url)
+        await sut.set(OPDSCacheEntry(feed: Self.makeFeed(title: "Feed")), for: url)
 
         let stats = await sut.stats()
 
@@ -260,7 +260,7 @@ final class OPDSFeedCacheTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private func makeFeed(title: String) -> OPDS2Feed {
+    private nonisolated static func makeFeed(title: String) -> OPDS2Feed {
         OPDS2Feed(
             metadata: OPDS2FeedMetadata(title: title),
             links: [OPDS2Link(href: "https://example.com", rel: "self")]

@@ -95,6 +95,11 @@ final class PalaceHapticTests: XCTestCase {
         var received: Bool?
         let cancellable = mock.preferencesPublisher
             .dropFirst() // skip the current value
+            // Deliver on main: the `.sink` closure is `@MainActor`-isolated (this
+            // is a `@MainActor` test), but `updatePreferences` sends from a
+            // background `Task`, so without this the sink runs off-main and
+            // Swift 6's executor-isolation check traps (EXC_BREAKPOINT).
+            .receive(on: DispatchQueue.main)
             .sink { received = $0.hapticFeedbackEnabled; exp.fulfill() }
 
         Task { await mock.updatePreferences(disabled) }

@@ -260,13 +260,14 @@ final class DownloadStateManagerTests: XCTestCase {
         let info = MyBooksDownloadInfo(downloadProgress: 0.0, downloadTask: task, rightsManagement: .none)
 
         // Run many concurrent reads and writes
+        let sm = stateManager!
         await withTaskGroup(of: Void.self) { group in
             for i in 0..<50 {
                 group.addTask {
                     let id = "\(bookId)-\(i)"
-                    await self.stateManager.bookIdentifierToDownloadInfo.set(id, value: info)
-                    _ = await self.stateManager.downloadInfoAsync(forBookIdentifier: id)
-                    await self.stateManager.bookIdentifierToDownloadInfo.remove(id)
+                    await sm.bookIdentifierToDownloadInfo.set(id, value: info)
+                    _ = await sm.downloadInfoAsync(forBookIdentifier: id)
+                    await sm.bookIdentifierToDownloadInfo.remove(id)
                 }
             }
         }

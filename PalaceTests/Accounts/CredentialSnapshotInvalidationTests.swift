@@ -72,7 +72,7 @@ final class CredentialSnapshotInvalidationTests: PalaceWiringTestCase {
     private func makeSeededIsolatedContainer(
         fixtureId: String
     ) -> (container: AppContainer, manager: AccountsManager, fixture: Account, cleanup: () -> Void) {
-        let defaults = testUserDefaults()
+        let defaults = Self.testUserDefaults()
         let manager = makeFreshAccountsManager(defaults: defaults)
         let pub = OPDS2Publication(
             links: [OPDS2Link(href: "https://example.com/catalog", rel: "http://opds-spec.org/catalog")],
@@ -269,7 +269,7 @@ final class CredentialSnapshotInvalidationTests: PalaceWiringTestCase {
     /// invalidation call leaves the primed (stale) cache in place and this test
     /// fails.
     func testAccountSwitch_invalidatesNewlyCurrentAccountCredentialCache() throws {
-        let defaults = testUserDefaults()
+        let defaults = Self.testUserDefaults()
         let mgr = makeFreshAccountsManager(defaults: defaults)
 
         // Seed a fixture account and make it resolvable via account(uuid), then

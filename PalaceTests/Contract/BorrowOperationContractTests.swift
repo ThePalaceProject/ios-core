@@ -103,14 +103,14 @@ final class BorrowOperationContractTests: XCTestCase {
                 case .failure(let error): throw error
                 }
             },
-            presentBorrowErrorAlert: { [unowned self] title, _, _, _, book, retryAction in
-                self.log.record("presentBorrowErrorAlert",
-                                args: ["title": title,
-                                       "bookId": book.identifier,
-                                       "hasRetryAction": "\(retryAction != nil)"])
+            presentBorrowErrorAlert: { title, _, _, _, book, retryAction in
+                callLog.record("presentBorrowErrorAlert",
+                               args: ["title": title,
+                                      "bookId": book.identifier,
+                                      "hasRetryAction": "\(retryAction != nil)"])
             },
-            presentSignInModal: { [unowned self] _ in
-                self.log.record("presentSignInModal", args: [:])
+            presentSignInModal: { _ in
+                callLog.record("presentSignInModal", args: [:])
             },
             attemptOIDCReauth: {
                 callLog.record("attemptOIDCReauth", args: [:])
@@ -306,8 +306,15 @@ final class BorrowOperationContractTests: XCTestCase {
         file: StaticString = #file,
         line: UInt = #line
     ) async {
-        await awaitConditionAsync(timeout: timeout, file: file, line: line) { [log] in
-            log?.snapshot().contains(where: { $0.method == method }) ?? false
+        // Swift 6: `awaitConditionAsync`'s predicate is a non-Sendable
+        // `() -> Bool` sent to a nonisolated async helper, so it must not
+        // capture `self` (a non-Sendable XCTestCase). Hoist the Sendable
+        // `CallLog` (@unchecked Sendable) and the method name to locals so
+        // the predicate captures only Sendable values — mirrors the local-
+        // hoist pattern used in setUp for the async closure seams.
+        let capturedLog = log
+        await awaitConditionAsync(timeout: timeout, file: file, line: line) { [capturedLog, method] in
+            capturedLog?.snapshot().contains(where: { $0.method == method }) ?? false
         }
     }
 
@@ -397,12 +404,16 @@ private final class SpyBorrowDelegate: BorrowOperationDelegate {
     }
 
     nonisolated func startBorrow(for book: TPPBook, attemptDownload: Bool, borrowCompletion: (() -> Void)?) {
+        // Capture Sendable snapshots BEFORE the @MainActor Task hop so the
+        // task closure never captures the non-Sendable `borrowCompletion`
+        // (`(() -> Void)?`) or the non-Sendable `TPPBook`.
         let id = book.identifier
+        let hasCompletion = borrowCompletion != nil
         Task { @MainActor [log] in
             log.record("startBorrow",
                        args: ["bookId": id,
                               "attemptDownload": "\(attemptDownload)",
-                              "hasCompletion": "\(borrowCompletion != nil)"])
+                              "hasCompletion": "\(hasCompletion)"])
         }
     }
 }

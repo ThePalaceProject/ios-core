@@ -76,6 +76,12 @@ public struct ConversationReducer: Sendable {
             lateBindContext(&next, context: redacted)
 
         case .userTappedCategory(let category):
+            // Debounce rapid / double taps (chaos F-001, PP-4822). Category chips
+            // are only shown while awaiting a category; once the first tap moves us
+            // to .awaitingDescription, further taps are no-ops — otherwise an eager
+            // patron appends several duplicate turns and the chat looks broken. This
+            // mirrors the Send button's debounce.
+            guard case .awaitingCategory = next.step else { return (next, effects) }
             next.step = .awaitingDescription(category: category)
             next.messages.append(.init(
                 sender: .user,
@@ -121,6 +127,15 @@ public struct ConversationReducer: Sendable {
             switch result.decision {
             case .suggest(let entryId):
                 next.step = .matched(entryId: entryId)
+                // Trust level shapes how we speak the match. An `authoritative`
+                // entry is stated directly; a lower-confidence `signal` / `context`
+                // entry is hedged so the bot doesn't assert a maybe as a fact.
+                if let entry = knowledgeBase.entry(id: entryId), entry.trustLevel != .authoritative {
+                    next.messages.append(.init(
+                        sender: .bot,
+                        kind: .text("This might be what's going on — take a look:")
+                    ))
+                }
                 next.messages.append(.init(sender: .bot, kind: .kbMatch(entryId: entryId)))
                 effects.append(.emitTelemetry(.init(
                     name: "triage_kb_match",
@@ -160,13 +175,20 @@ public struct ConversationReducer: Sendable {
                     ))
                     effects.append(.emitTelemetry(.init(name: "triage_ai_fallback_invoked")))
                 } else {
+                    // If the classifier RECOGNIZED a topic but escalated (a
+                    // low-confidence match, or an escalate_anyway entry), carry
+                    // that entry through: transitionToDrafting asks its targeted
+                    // escalation follow-up and tags the ticket with it, instead of
+                    // handing support a blank "couldn't help." nil = a genuine
+                    // no-match (novel issue).
+                    let recognized = result.recognizedEntryId
                     transitionToDrafting(
                         state: &next,
                         effects: &effects,
                         userText: userText,
                         category: category,
-                        matchedEntryId: nil,
-                        tagSuffix: "escalate-novel"
+                        matchedEntryId: recognized,
+                        tagSuffix: recognized != nil ? "escalate-recognized" : "escalate-novel"
                     )
                 }
             }

@@ -56,6 +56,10 @@ final class DownloadTaskLifecycleServiceTests: XCTestCase {
     func testRegisterStartedTask_storesDownloadInfoKeyedByBookIdentifier() async {
         let task = StubDownloadTask(taskIdentifier: 7)
 
+        // Swift 6: capture the (now `@unchecked Sendable`) service locally so
+        // awaiting its nonisolated `async` method doesn't send `self.service`
+        // off the @MainActor test.
+        let service = service!
         await service.registerStartedTask(task, book: book, maxConcurrentDownloads: 4)
 
         let info = await stateManager.bookIdentifierToDownloadInfo.get(book.identifier)
@@ -68,6 +72,10 @@ final class DownloadTaskLifecycleServiceTests: XCTestCase {
     func testRegisterStartedTask_storesTaskIdentifierToBookMapping() async {
         let task = StubDownloadTask(taskIdentifier: 99)
 
+        // Swift 6: capture the (now `@unchecked Sendable`) service locally so
+        // awaiting its nonisolated `async` method doesn't send `self.service`
+        // off the @MainActor test.
+        let service = service!
         await service.registerStartedTask(task, book: book, maxConcurrentDownloads: 4)
 
         let mapped = await stateManager.taskIdentifierToBook.get(99)
@@ -78,6 +86,10 @@ final class DownloadTaskLifecycleServiceTests: XCTestCase {
     func testRegisterStartedTask_marksBookAsDownloadingInRegistry() async {
         let task = StubDownloadTask(taskIdentifier: 1)
 
+        // Swift 6: capture the (now `@unchecked Sendable`) service locally so
+        // awaiting its nonisolated `async` method doesn't send `self.service`
+        // off the @MainActor test.
+        let service = service!
         await service.registerStartedTask(task, book: book, maxConcurrentDownloads: 4)
 
         XCTAssertEqual(bookRegistry.state(for: book.identifier), .downloading,
@@ -87,6 +99,10 @@ final class DownloadTaskLifecycleServiceTests: XCTestCase {
     func testRegisterStartedTask_announcesDownloadStartedAndNotifiesCenter() async {
         let task = StubDownloadTask(taskIdentifier: 1)
 
+        // Swift 6: capture the (now `@unchecked Sendable`) service locally so
+        // awaiting its nonisolated `async` method doesn't send `self.service`
+        // off the @MainActor test.
+        let service = service!
         await service.registerStartedTask(task, book: book, maxConcurrentDownloads: 4)
 
         XCTAssertEqual(spyAnnouncer.startedAnnouncements.map { $0.title }, [book.title])
@@ -99,6 +115,10 @@ final class DownloadTaskLifecycleServiceTests: XCTestCase {
     func testRegisterStartedTask_resumesTheTask() async {
         let task = StubDownloadTask(taskIdentifier: 1)
 
+        // Swift 6: capture the (now `@unchecked Sendable`) service locally so
+        // awaiting its nonisolated `async` method doesn't send `self.service`
+        // off the @MainActor test.
+        let service = service!
         await service.registerStartedTask(task, book: book, maxConcurrentDownloads: 4)
 
         XCTAssertEqual(task.resumeCount, 1,
@@ -110,6 +130,7 @@ final class DownloadTaskLifecycleServiceTests: XCTestCase {
     func testHandleTaskCompletionError_unknownTask_isNoOp() async {
         let task = StubDownloadTask(taskIdentifier: 999)
 
+        let service = service!
         await service.handleTaskCompletionError(task: task, error: nil)
 
         XCTAssertEqual(spyDelegate.logCalls.count, 0)
@@ -122,6 +143,7 @@ final class DownloadTaskLifecycleServiceTests: XCTestCase {
         let task = StubDownloadTask(taskIdentifier: 42)
         await stateManager.taskIdentifierToBook.set(42, value: book)
 
+        let service = service!
         await service.handleTaskCompletionError(task: task, error: nil)
 
         XCTAssertEqual(spyDelegate.logCalls.count, 0,
@@ -137,6 +159,7 @@ final class DownloadTaskLifecycleServiceTests: XCTestCase {
         await stateManager.taskIdentifierToBook.set(42, value: book)
         let netError = NSError(domain: NSURLErrorDomain, code: NSURLErrorNotConnectedToInternet)
 
+        let service = service!
         await service.handleTaskCompletionError(task: task, error: netError)
 
         XCTAssertEqual(spyDelegate.logCalls.map { $0.reason }, ["networking error"])
@@ -150,6 +173,7 @@ final class DownloadTaskLifecycleServiceTests: XCTestCase {
         await stateManager.taskIdentifierToBook.set(42, value: book)
         let cancelled = NSError(domain: NSURLErrorDomain, code: NSURLErrorCancelled)
 
+        let service = service!
         await service.handleTaskCompletionError(task: task, error: cancelled)
 
         XCTAssertEqual(spyDelegate.logCalls.count, 0,

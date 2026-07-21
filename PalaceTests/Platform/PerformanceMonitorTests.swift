@@ -179,6 +179,7 @@ final class PerformanceMonitorTests: XCTestCase {
         let expectation = XCTestExpectation(description: "Metric published")
 
         monitor.metricPublisher
+            .receive(on: DispatchQueue.main)   // deliver on main so the @MainActor sink closure isn't invoked off-main (Swift 6 executor-isolation trap)
             .sink { metric in
                 XCTAssertEqual(metric.name, "published_test")
                 expectation.fulfill()

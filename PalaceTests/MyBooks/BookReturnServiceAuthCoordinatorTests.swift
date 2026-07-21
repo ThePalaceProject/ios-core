@@ -106,7 +106,7 @@ final class BookReturnServiceAuthCoordinatorTests: XCTestCase {
         return try XCTUnwrap(TPPProblemDocument.fromProblemResponseData(data))
     }
 
-    private func makeBookWithRevokeURL() -> TPPBook {
+    nonisolated private func makeBookWithRevokeURL() -> TPPBook {
         let identifier = "rev-\(UUID().uuidString)"
         let acquisitionURL = URL(string: "http://example.com/\(identifier)")!
         let revokeURL = URL(string: "http://example.com/\(identifier)/revoke")!

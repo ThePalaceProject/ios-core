@@ -205,7 +205,12 @@ final class RuntimeQuiescenceGateTests: PalaceTestCase {
         for _ in 0..<n {
             Task.detached(priority: .high) {
                 started.signal()
-                release.wait()      // blocks a cooperative-pool thread (the simulated leak)
+                // Swift 6 bans DispatchSemaphore.wait() DIRECTLY in an async
+                // context (it blocks a cooperative-pool thread — exactly the
+                // anti-pattern this meta-test simulates). Route it through a
+                // synchronous helper so the noasync call sits in a sync context
+                // while still blocking the pool thread as intended.
+                blockCooperativeThread(on: release)   // the simulated leak
                 finished.signal()
             }
         }
@@ -245,4 +250,13 @@ final class RuntimeQuiescenceGateTests: PalaceTestCase {
             "With the defer flag at its test-safe true value, the live audit must be clean"
         )
     }
+}
+
+/// Synchronous wrapper so a `DispatchSemaphore.wait()` (marked `@available(*,
+/// noasync)`) can be invoked from inside an async `Task` — the call sits in this
+/// SYNC context, satisfying Swift 6, while still blocking the calling
+/// (cooperative-pool) thread, which is the behavior RuntimeQuiescenceGateTests
+/// deliberately exercises.
+private func blockCooperativeThread(on semaphore: DispatchSemaphore) {
+    semaphore.wait()
 }

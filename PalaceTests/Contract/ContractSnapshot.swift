@@ -71,7 +71,13 @@ public enum ContractSnapshot {
         _ log: CallLog,
         named name: String,
         record: Bool = false,
-        file: StaticString = #file,
+        // `#filePath`, NOT `#file`: this value is resolved as a filesystem path
+        // below (to locate the sibling `__Snapshots__` dir). Under Swift 6's
+        // default-on ConciseMagicFile, `#file` yields a concise "Module/Base.swift"
+        // that resolves against CWD — on CI that becomes the read-only filesystem
+        // root (`/PalaceTests/__Snapshots__/…`), which is exactly the "volume is
+        // read only" failure. `#filePath` always yields the true absolute path.
+        file: StaticString = #filePath,
         line: UInt = #line
     ) {
         let testFileURL = URL(fileURLWithPath: "\(file)")

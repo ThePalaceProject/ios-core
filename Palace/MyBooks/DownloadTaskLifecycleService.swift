@@ -38,7 +38,17 @@ protocol DownloadTaskLifecycleServiceDelegate: AnyObject {
 
 // MARK: - DownloadTaskLifecycleService
 
-final class DownloadTaskLifecycleService {
+/// - Sendable invariant (Swift 6 `complete`-mode): the three stored
+///   dependencies (`stateManager`, `bookRegistry`, `downloadAnnouncementService`)
+///   are immutable `let`s bound at init. The only mutable member is
+///   `weak var delegate`, assigned exactly once during owner
+///   (`MyBooksDownloadCenter`) construction and never reassigned (weak-ref reads
+///   + ARC zeroing are atomic). `registerStartedTask` / `handleTaskCompletionError`
+///   are nonisolated `async`; they touch only the actor-serialized
+///   `stateManager` storage and hop out to the delegate. Mirrors the
+///   `DownloadStartCoordinator` invariant. `@unchecked` only because the stored
+///   service types are not themselves `Sendable`.
+final class DownloadTaskLifecycleService: @unchecked Sendable {
 
     weak var delegate: DownloadTaskLifecycleServiceDelegate?
 

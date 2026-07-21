@@ -103,16 +103,23 @@ final class ReaderEditingActionsTests: XCTestCase {
     }
 
     func testResolve_appendsCustomActions_forNonDRMBook() {
-        let actions = ReaderEditingActions.resolve(for: openAccessEpubBook(), appending: [Self.highlight])
-        XCTAssertEqual(actions, EditingAction.defaultActions + [Self.highlight],
+        // Bind a SINGLE highlight instance: `Self.highlight` is a computed property
+        // that mints a fresh `EditingAction` (wrapping a new `UIMenuItem`) on every
+        // read, and `EditingAction`/`UIMenuItem` compare by pointer identity — so
+        // reading it twice (once as input, once as expected) would spuriously fail.
+        let highlight = Self.highlight
+        let actions = ReaderEditingActions.resolve(for: openAccessEpubBook(), appending: [highlight])
+        XCTAssertEqual(actions, EditingAction.defaultActions + [highlight],
                        "Non-DRM book must surface defaults PLUS caller-supplied custom actions (Highlight).")
     }
 
     func testResolve_treatsSampleOfDRMBook_asNonDRM() {
         // Samples are open-access preview content even when the parent book
         // is DRM-protected — borrow flow is gated, not preview reading.
-        let actions = ReaderEditingActions.resolve(for: lcpEpubBook(), isSample: true, appending: [Self.highlight])
-        XCTAssertEqual(actions, EditingAction.defaultActions + [Self.highlight],
+        // Single highlight instance — see sibling test (pointer-identity equality).
+        let highlight = Self.highlight
+        let actions = ReaderEditingActions.resolve(for: lcpEpubBook(), isSample: true, appending: [highlight])
+        XCTAssertEqual(actions, EditingAction.defaultActions + [highlight],
                        "Sample preview of a DRM book must still surface the full edit menu — samples are open-access content.")
     }
 }
