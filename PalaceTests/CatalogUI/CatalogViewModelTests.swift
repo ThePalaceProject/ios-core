@@ -181,7 +181,7 @@ final class CatalogViewModelStateMachineTests: PalaceTestCase {
             repository: mockRepository,
             topLevelURLProvider: { [testURL] in testURL },
             bookRegistry: bookRegistry,
-            imageCache: ImageCache.shared,
+            imageCache: MockImageCache(),
             reachability: reachability
         )
     }
@@ -197,7 +197,7 @@ final class CatalogViewModelStateMachineTests: PalaceTestCase {
             repository: mockRepository,
             topLevelURLProvider: { nil },
             bookRegistry: bookRegistry,
-            imageCache: ImageCache.shared
+            imageCache: MockImageCache()
         )
         await vm.load()
         XCTAssertEqual(mockRepository.loadTopLevelCatalogCallCount, 0)
@@ -445,7 +445,7 @@ final class CatalogViewModelStateMachineTests: PalaceTestCase {
             repository: mockRepository,
             topLevelURLProvider: { currentURL },
             bookRegistry: bookRegistry,
-            imageCache: ImageCache.shared,
+            imageCache: MockImageCache(),
             reachability: MockReachability(initiallyConnected: true)
         )
 
