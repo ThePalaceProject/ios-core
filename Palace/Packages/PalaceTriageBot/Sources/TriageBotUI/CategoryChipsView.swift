@@ -3,6 +3,13 @@ import SwiftUI
 import TriageBotCore
 
 struct CategoryChipsView: View {
+    /// PP-4844: chips are only a live affordance while the conversation is
+    /// actually awaiting a category. Once the log moves on (a ticket was sent,
+    /// the flow advanced), the earlier chip row is historical — tapping it is a
+    /// reducer no-op. Render those inactive chips dimmed + disabled so they
+    /// don't look tappable, and hide them from VoiceOver so a patron isn't
+    /// promised six categories that do nothing.
+    var isActive: Bool = true
     let onTap: (KBCategory) -> Void
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -29,7 +36,10 @@ struct CategoryChipsView: View {
                 }
             }
         } else {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 110), spacing: 8)],
+            // Wider adaptive minimum so the grid drops to ~2 columns on phones
+            // narrower than a Max — at 110pt the third column wrapped "Audiobook"
+            // / "Download" onto two lines. (Re-land of the pill-label fix.)
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 155), spacing: 8)],
                       alignment: .leading, spacing: 8) {
                 ForEach(categories, id: \.0) { category, emoji, label in
                     chip(category, emoji, label)
@@ -45,6 +55,10 @@ struct CategoryChipsView: View {
                 Text(emoji)
                 Text(label)
                     .font(.subheadline)
+                    // Never wrap a chip label to a second line; shrink a hair only
+                    // if a chip is ever too narrow for the label.
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.9)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
@@ -53,7 +67,10 @@ struct CategoryChipsView: View {
             .clipShape(Capsule())
         }
         .buttonStyle(.plain)
+        .disabled(!isActive)
+        .opacity(isActive ? 1.0 : 0.5)
         .accessibilityLabel("Category: \(label)")
+        .accessibilityHidden(!isActive)
     }
 }
 #endif

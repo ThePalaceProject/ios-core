@@ -146,22 +146,6 @@ final class BookReturnServiceAuthCoordinatorTests: XCTestCase {
         )
     }
 
-    /// Polls until either `predicate` is true or the spy reauthenticator
-    /// was invoked (which would indicate the legacy path fired). Returns
-    /// only after coordinator-side async work has had time to drain.
-    private func waitForCoordinatorDispatch(modal: SpyCoordinatorModalPresenter, timeout: TimeInterval = 3.0) async {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if modal.presentCallCount > 0 || reauthenticator.authenticateIfNeededCalled {
-                // Give one more cycle for any post-dispatch cleanup tasks
-                try? await Task.sleep(nanoseconds: 50_000_000)
-                return
-            }
-            try? await Task.sleep(nanoseconds: 50_000_000)
-            await Task.yield()
-        }
-    }
-
     // MARK: - QA-3 fix: drive the SERVICE seam, not the coordinator directly
 
     /// Construct a real `BookReturnService` WITH an injected coordinator
@@ -210,8 +194,13 @@ final class BookReturnServiceAuthCoordinatorTests: XCTestCase {
         let exp = expectation(description: "return completion")
         exp.assertForOverFulfill = false
         service.returnBook(withIdentifier: book.identifier) { exp.fulfill() }
+        // The coordinator dispatch is a tracked Task whose body awaits
+        // `refreshCredentialsIfNeeded` (which increments `presentCallCount`)
+        // BEFORE it calls `completion?()`. So when the completion fulfils this
+        // expectation, the modal has already been presented — JOIN on the
+        // completion, then assert directly. No wall-clock poll (which starves
+        // under CI oversubscription and is redundant here).
         await fulfillment(of: [exp], timeout: 3.0)
-        await waitForCoordinatorDispatch(modal: modal)
 
         XCTAssertEqual(modal.presentCallCount, 1,
                        "Service must route the auth-error branch through coordinator.refreshCredentialsIfNeeded EXACTLY once — modal NOT invoked means the `if let coordinator` branch was skipped")
@@ -241,14 +230,12 @@ final class BookReturnServiceAuthCoordinatorTests: XCTestCase {
         let exp = expectation(description: "return completion")
         exp.assertForOverFulfill = false
         service.returnBook(withIdentifier: book.identifier) { exp.fulfill() }
+        // The legacy fallback runs in a tracked MainActor Task that CALLS
+        // `reauthenticator.authenticateIfNeeded` (setting the flag) and only
+        // fires `completion?()` from inside that reauth callback. So when this
+        // expectation is fulfilled, the flag is already set — JOIN on the
+        // completion and assert directly, no wall-clock poll.
         await fulfillment(of: [exp], timeout: 3.0)
-        // Poll for legacy reauthenticator invocation (legacy path is also
-        // a detached Task on MainActor).
-        let deadline = Date().addingTimeInterval(3.0)
-        while Date() < deadline && !reauthenticator.authenticateIfNeededCalled {
-            try? await Task.sleep(nanoseconds: 50_000_000)
-            await Task.yield()
-        }
 
         XCTAssertTrue(reauthenticator.authenticateIfNeededCalled,
                       "Without coordinator wiring, the service MUST fall back to the legacy reauthenticator — fallback removal without a coordinator injected would silently break recovery")
@@ -278,10 +265,13 @@ final class BookReturnServiceAuthCoordinatorTests: XCTestCase {
         let exp = expectation(description: "return completion (cancellation path)")
         exp.assertForOverFulfill = false
         service.returnBook(withIdentifier: book.identifier) { exp.fulfill() }
+        // On cancellation the tracked coordinator Task presents the modal,
+        // then in a single `runOnMainAsync` block calls `announceReturnFailed`
+        // immediately before `completion?()`. So when this expectation is
+        // fulfilled, BOTH the modal-present and the failed-announcement have
+        // already happened — JOIN on the completion, assert directly. No poll,
+        // no fixed settle sleep.
         await fulfillment(of: [exp], timeout: 3.0)
-        await waitForCoordinatorDispatch(modal: modal)
-        // Allow the cancellation-failure cleanup to drain.
-        try? await Task.sleep(nanoseconds: 200_000_000)
 
         XCTAssertEqual(modal.presentCallCount, 1,
                        "Coordinator must be dispatched once on the auth-error branch")

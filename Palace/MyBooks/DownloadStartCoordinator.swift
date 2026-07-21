@@ -71,9 +71,15 @@ protocol DownloadStartCoordinatorDelegate: AnyObject {
 /// `DownloadAuthRetryHandler`) that captures `[weak delegate]`/`[weak self]`
 /// and mutates non-Sendable state.
 /// INVARIANT — the boxed closure is invoked at most once, inside the single
-/// `startBorrow` `Task` (both the success and `catch` terminal paths), never
-/// concurrently; its own thread-affinity is the caller's contract (unchanged).
-private final class BorrowCompletionBox: @unchecked Sendable {
+/// `startBorrow` `Task` (both the success and `catch` terminal paths of
+/// `startBorrowAsync`), never concurrently; its own thread-affinity is the
+/// caller's contract (unchanged).
+///
+/// `internal` (not `private`) so the joinable `startBorrowAsync` seam — which
+/// takes the box rather than the raw closure to preserve the single boxing at
+/// the `Task` boundary — is `await`-able from the test target under
+/// `@testable import`. No production behavior depends on the access level.
+final class BorrowCompletionBox: @unchecked Sendable {
     let call: (() -> Void)?
     init(_ call: (() -> Void)?) { self.call = call }
 }
@@ -193,27 +199,50 @@ final class DownloadStartCoordinator: @unchecked Sendable {
         // `@Sendable`-ing the param, which would ripple to the caller closures.
         let borrowCompletionBox = BorrowCompletionBox(borrowCompletion)
         Task { [weak self] in
-            guard let self else { return }
-            do {
-                _ = try await self.delegate?.borrowAsync(book, attemptDownload: shouldAttemptDownload)
+            await self?.startBorrowAsync(
+                for: book,
+                attemptDownload: shouldAttemptDownload,
+                borrowCompletionBox: borrowCompletionBox
+            )
+        }
+    }
 
-                let newState = self.bookRegistry.state(for: book.identifier)
-                if newState == .holding {
-                    await self.stateManager.downloadCoordinator.registerCompletion(identifier: book.identifier)
-                    let remainingCount = await self.stateManager.downloadCoordinator.activeCount
-                    Log.info(#file, "📊 Borrow resulted in hold for '\(book.title)', released slot, remaining active: \(remainingCount)")
-                    self.delegate?.schedulePendingStartsIfPossible()
-                }
+    /// Behavior-identical `async` body of `startBorrow`. The fire-and-forget
+    /// entry point above is `Task { await startBorrowAsync(...) }`; callers
+    /// already inside an `async` context (and tests) can `await` it directly
+    /// to JOIN the slot-release + reschedule + completion side effects instead
+    /// of polling a wall-clock deadline for the detached Task to settle (which
+    /// starves under CI oversubscription and blows the executionTimeAllowance).
+    ///
+    /// Takes the `BorrowCompletionBox` (not the raw closure) so the sole
+    /// caller keeps its single boxing at the `Task` boundary; the ordered
+    /// side effects — borrowAsync → post-state read → registerCompletion →
+    /// activeCount → schedulePendingStartsIfPossible → completion — are
+    /// verbatim what the previous inline Task ran.
+    func startBorrowAsync(
+        for book: TPPBook,
+        attemptDownload shouldAttemptDownload: Bool,
+        borrowCompletionBox: BorrowCompletionBox
+    ) async {
+        do {
+            _ = try await self.delegate?.borrowAsync(book, attemptDownload: shouldAttemptDownload)
 
-                borrowCompletionBox.call?()
-            } catch {
-                Log.error(#file, "Borrow failed: \(error.localizedDescription)")
+            let newState = self.bookRegistry.state(for: book.identifier)
+            if newState == .holding {
                 await self.stateManager.downloadCoordinator.registerCompletion(identifier: book.identifier)
                 let remainingCount = await self.stateManager.downloadCoordinator.activeCount
-                Log.info(#file, "📊 Borrow failed for '\(book.title)', released slot, remaining active: \(remainingCount)")
+                Log.info(#file, "📊 Borrow resulted in hold for '\(book.title)', released slot, remaining active: \(remainingCount)")
                 self.delegate?.schedulePendingStartsIfPossible()
-                borrowCompletionBox.call?()
             }
+
+            borrowCompletionBox.call?()
+        } catch {
+            Log.error(#file, "Borrow failed: \(error.localizedDescription)")
+            await self.stateManager.downloadCoordinator.registerCompletion(identifier: book.identifier)
+            let remainingCount = await self.stateManager.downloadCoordinator.activeCount
+            Log.info(#file, "📊 Borrow failed for '\(book.title)', released slot, remaining active: \(remainingCount)")
+            self.delegate?.schedulePendingStartsIfPossible()
+            borrowCompletionBox.call?()
         }
     }
 

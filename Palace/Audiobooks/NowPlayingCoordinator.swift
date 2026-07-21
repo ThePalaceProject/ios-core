@@ -359,6 +359,17 @@ public final class NowPlayingCoordinator {
     func _test_setLastIsPlaying(_ playing: Bool) {
         lastIsPlaying = playing
     }
+
+    /// Test-only join seam. Awaits the in-flight debounced update `Task`
+    /// (`pendingUpdate`) so a test can deterministically block on the actual
+    /// debounce work unit instead of polling `MPNowPlayingInfoCenter` against a
+    /// fixed wall-clock deadline (`awaitCondition(timeout:)`), which starves
+    /// under CI sim-clone oversubscription. Production behavior is unchanged —
+    /// nothing calls this outside tests. No-op when no debounced update is
+    /// pending (the immediate-apply path leaves `pendingUpdate` nil).
+    func _awaitPendingUpdateForTesting() async {
+        await pendingUpdate?.value
+    }
 }
 
 /// Nonisolated `Sendable` holder for the foreground-notification observer

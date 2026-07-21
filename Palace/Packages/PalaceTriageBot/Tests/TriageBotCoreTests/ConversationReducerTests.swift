@@ -124,6 +124,13 @@ final class ConversationReducerTests: XCTestCase {
         }
         XCTAssertNil(draft.matchedEntryId, "Novel symptom must not pin a matched entry")
 
+        // PP-4843: a reducer-driven preview arrives with the send-consent gate
+        // armed. The patron seeing the card (its onAppear) dispatches
+        // .ticketPreviewPresented, which releases the gate so a deliberate Send
+        // is honored. Without this the confirm below would be treated as a
+        // same-burst rapid double-tap and suppressed.
+        (state, _) = reducer.reduce(state: state, action: .ticketPreviewPresented)
+
         let (submitting, effects) = reducer.reduce(state: state, action: .userConfirmedTicketSubmit)
         state = submitting
 
@@ -142,6 +149,83 @@ final class ConversationReducerTests: XCTestCase {
             return XCTFail("Expected .sent after ticketSubmitted, got \(afterReceipt.step)")
         }
         XCTAssertEqual(stored.ticketId, "HS-99999")
+    }
+
+    // MARK: - PP-4843 send-consent gate (chaos rapid-tap on Send)
+
+    /// Chaos PP-4843 (MAJOR): on a short conversation the preview's own Send
+    /// button renders where the message Send arrow was, so a rapid tap burst
+    /// (tap #1 submits the message, tap #2 lands on the just-appeared confirm)
+    /// filed a ticket the patron never saw. The reducer arms a send-consent
+    /// gate on the fresh preview; a confirm that arrives in the SAME burst —
+    /// with no intervening .ticketPreviewPresented — must be a no-op that
+    /// leaves the patron on the preview, NOT sent.
+    func testRapidSubmitThenConfirm_inSameBurst_staysOnPreview_doesNotFileTicket_PP4843() {
+        let reducer = makeReducer()
+        var (state, _) = reducer.reduce(state: ConversationState(), action: .start)
+        (state, _) = reducer.reduce(state: state, action: .contextLoaded(ContextSnapshot(
+            appVersion: "3.0.3", appBuild: "478", osVersion: "26.4.2", deviceModel: "iPhone17,2"
+        )))
+        (state, _) = reducer.reduce(state: state, action: .userTappedCategory(.reader))
+        (state, _) = reducer.reduce(state: state, action: .inputChanged("something the knowledge base has never encountered before"))
+
+        // Tap #1 — the message submit. A novel symptom escalates straight to the
+        // preview (no matched entry, no follow-up), arming the consent gate.
+        let (drafted, _) = reducer.reduce(state: state, action: .userSubmittedDescription)
+        guard case .drafting = drafted.step else {
+            return XCTFail("Novel symptom should land on the ticket preview, got \(drafted.step)")
+        }
+        XCTAssertTrue(drafted.pendingSendConsent, "A fresh reducer-driven preview must arm the send-consent gate")
+
+        // Tap #2 — same burst, lands on the confirm button before the patron saw it.
+        let (afterRapidConfirm, effects) = reducer.reduce(state: drafted, action: .userConfirmedTicketSubmit)
+
+        guard case .drafting = afterRapidConfirm.step else {
+            return XCTFail("A same-burst rapid confirm must NOT leave the preview; got \(afterRapidConfirm.step)")
+        }
+        XCTAssertFalse(
+            effects.contains { if case .submitTicket = $0 { return true }; return false },
+            "A rapid confirm the patron never consented to must not file a ticket"
+        )
+        XCTAssertTrue(
+            afterRapidConfirm.messages.contains { if case .ticketPreview = $0.kind { return true }; return false },
+            "The preview card must remain so the patron can actually review it"
+        )
+    }
+
+    /// PP-4843 regression / positive path: once the patron has actually seen the
+    /// preview (the card's onAppear dispatches .ticketPreviewPresented, clearing
+    /// the gate), a deliberate Send must file the ticket normally.
+    func testSubmit_thenPreviewPresented_thenDeliberateConfirm_filesTicket_PP4843() {
+        let reducer = makeReducer()
+        var (state, _) = reducer.reduce(state: ConversationState(), action: .start)
+        (state, _) = reducer.reduce(state: state, action: .contextLoaded(ContextSnapshot(
+            appVersion: "3.0.3", appBuild: "478", osVersion: "26.4.2", deviceModel: "iPhone17,2"
+        )))
+        (state, _) = reducer.reduce(state: state, action: .userTappedCategory(.reader))
+        (state, _) = reducer.reduce(state: state, action: .inputChanged("something the knowledge base has never encountered before"))
+        (state, _) = reducer.reduce(state: state, action: .userSubmittedDescription)
+        guard case .drafting = state.step else {
+            return XCTFail("Novel symptom should land on the ticket preview, got \(state.step)")
+        }
+
+        // The preview became visible — the gate releases.
+        (state, _) = reducer.reduce(state: state, action: .ticketPreviewPresented)
+        XCTAssertFalse(state.pendingSendConsent, "Presenting the preview must release the send-consent gate")
+
+        // A deliberate Send now goes through.
+        let (submitting, effects) = reducer.reduce(state: state, action: .userConfirmedTicketSubmit)
+        guard case .submitting = submitting.step else {
+            return XCTFail("A confirm after the preview was seen must submit, got \(submitting.step)")
+        }
+        XCTAssertTrue(
+            effects.contains { if case .submitTicket = $0 { return true }; return false },
+            "A consented Send must emit the submitTicket effect"
+        )
+        XCTAssertFalse(
+            submitting.messages.contains { if case .ticketPreview = $0.kind { return true }; return false },
+            "The preview is removed once submission is in flight (F-002 contract)"
+        )
     }
 
     // Chaos-qa F-002 regression: the ticketPreview message MUST be removed

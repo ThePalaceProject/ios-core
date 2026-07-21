@@ -86,6 +86,24 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
     /// read from the test seam are race-free.
     private let lastBackgroundRefreshTask = OSAllocatedUnfairLock<Task<Void, Never>?>(initialState: nil)
 
+    /// Multi-refresh test join support. When `_trackRefreshTasksForTesting()`
+    /// has armed tracking (test-only), every background stale-revalidate Task
+    /// handle scheduled by `loadTopLevelCatalog` is ALSO appended here — so a
+    /// test that fires N concurrent stale reads across N distinct URLs can join
+    /// ALL of them via `_awaitAllBackgroundRefreshesForTesting()`, not just the
+    /// most-recently-scheduled one that `lastBackgroundRefreshTask` retains.
+    ///
+    /// Production behavior is UNCHANGED: `isTrackingRefreshTasks` defaults to
+    /// `false`, so `allBackgroundRefreshTasks` is never appended to and stays
+    /// empty in production — no retained-Task growth, no extra work on the
+    /// hot path. The append is behind the flag purely so the array cannot
+    /// accumulate handles indefinitely outside of a test.
+    private struct RefreshTrackingState {
+        var isTracking = false
+        var tasks: [Task<Void, Never>] = []
+    }
+    private let refreshTracking = OSAllocatedUnfairLock(initialState: RefreshTrackingState())
+
     private struct CachedFeed {
         let feed: CatalogFeed
         let timestamp: Date
@@ -258,6 +276,12 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
                 return ()
             }
             lastBackgroundRefreshTask.withLock { $0 = refreshTask }
+            // Test-only: when tracking is armed, retain EVERY concurrent refresh
+            // handle so a test can join all of them. No-op in production (flag
+            // defaults false — see `refreshTracking`).
+            refreshTracking.withLock { state in
+                if state.isTracking { state.tasks.append(refreshTask) }
+            }
 
             return entry.feed
         }
@@ -432,6 +456,30 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
     public func _awaitBackgroundRefreshForTesting() async {
         let task = lastBackgroundRefreshTask.withLock { $0 }
         await task?.value
+    }
+
+    /// TEST SEAM — arm multi-refresh tracking. Call this BEFORE firing the
+    /// concurrent stale reads whose background refreshes you want to join. Once
+    /// armed, every refresh Task scheduled by `loadTopLevelCatalog` is retained
+    /// (see `refreshTracking`) so `_awaitAllBackgroundRefreshesForTesting()` can
+    /// await ALL of them — the single-handle `_awaitBackgroundRefreshForTesting`
+    /// only joins the most recent, which loses N-1 of N concurrent refreshes.
+    ///
+    /// Changes NO production behavior: tracking is opt-in and defaults off, so
+    /// production never appends to (or grows) the tracked-task array.
+    public func _trackRefreshTasksForTesting() {
+        refreshTracking.withLock { $0.isTracking = true }
+    }
+
+    /// TEST SEAM — deterministically await EVERY background stale-revalidate
+    /// refresh scheduled since `_trackRefreshTasksForTesting()` was armed.
+    /// Returns immediately if none are in flight. Same rationale as
+    /// `_awaitBackgroundRefreshForTesting()` (join the actual work unit instead
+    /// of polling a wall-clock deadline that starves under sim-clone
+    /// oversubscription) but for the N-concurrent-URL case.
+    public func _awaitAllBackgroundRefreshesForTesting() async {
+        let tasks = refreshTracking.withLock { $0.tasks }
+        for task in tasks { await task.value }
     }
 
     // MARK: - Background Preloading

@@ -248,9 +248,18 @@ final class AccountStateMachineTests: XCTestCase {
         var observed: [String] = []
         let exp = expectation(description: "stream emits 3 distinct states")
         exp.expectedFulfillmentCount = 1
+        // Deterministic subscription barrier: the CurrentValueSubject emits its
+        // current value immediately on subscribe, so the FIRST awaited state
+        // proves the sink is live. Await that instead of sleeping a fixed 30ms
+        // and hoping the subscribe won the race (which starves + drops the
+        // ordering under CI oversubscription).
+        let subscribed = expectation(description: "stream subscription attached")
+        subscribed.assertForOverFulfill = false
 
         let task = Task {
+            var firstSeen = false
             for await state in account.stateStream {
+                if !firstSeen { firstSeen = true; subscribed.fulfill() }
                 switch state {
                 case .notLoaded:          observed.append("notLoaded")
                 case .basicInfoLoaded:    observed.append("basicInfoLoaded")
@@ -263,9 +272,9 @@ final class AccountStateMachineTests: XCTestCase {
             }
         }
 
-        try await Task.sleep(nanoseconds: 30_000_000)
+        // Do not drive a transition until the sink is confirmed live.
+        await fulfillment(of: [subscribed], timeout: 2.0)
         account._setState(.detailsLoading)
-        try await Task.sleep(nanoseconds: 30_000_000)
         account._setState(.detailsLoaded(details))
 
         await fulfillment(of: [exp], timeout: 2.0)

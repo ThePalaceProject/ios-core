@@ -146,13 +146,10 @@ final class BorrowOperationStreamingHTMLTests: XCTestCase {
         XCTAssertEqual(bookRegistry.state(for: book.identifier), .downloadNeeded,
                        "Successful borrow for a streamingHTML book must land in .downloadNeeded (the v2 Option (c) NORMAL post-borrow state)")
 
-        // Allow the @MainActor.run hop a chance to fire (delegate?.startDownload
-        // is wrapped in MainActor.run after the borrow). If the guard breaks
-        // and startDownload IS called, this delay gives it time to record.
-        for _ in 0..<5 {
-            try? await Task.sleep(nanoseconds: 30_000_000)
-            await Task.yield()
-        }
+        // delegate?.startDownload is invoked inside `await MainActor.run { ... }`,
+        // awaited before borrowAsync returns — so if the guard were broken the
+        // call would have ALREADY landed. No detached path fires it later; assert
+        // absence directly (a deadline poll only starves under CI oversubscription).
 
         XCTAssertEqual(spyDelegate.startDownloadCalls.count, 0,
                        "streamingHTML books MUST NOT trigger delegate.startDownload — " +
@@ -175,10 +172,7 @@ final class BorrowOperationStreamingHTMLTests: XCTestCase {
 
         XCTAssertEqual(result.identifier, book.identifier)
 
-        for _ in 0..<5 {
-            try? await Task.sleep(nanoseconds: 30_000_000)
-            await Task.yield()
-        }
+        // startDownload is awaited inside borrowAsync (see above) — assert directly.
 
         XCTAssertEqual(spyDelegate.startDownloadCalls.map { $0.identifier }, [book.identifier],
                        "EPUB borrow with attemptDownload=true MUST call delegate.startDownload exactly once — " +

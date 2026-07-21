@@ -475,8 +475,30 @@ public struct ConversationReducer: Sendable {
                 tagSuffix: "escalate-after-guided-flow-abandoned"
             )
 
+        case .ticketPreviewPresented:
+            // PP-4843: the preview card is now on screen and the patron can
+            // read it — release the send-consent gate so a deliberate Send
+            // goes through. Idempotent and safe from any state.
+            next.pendingSendConsent = false
+
         case .userConfirmedTicketSubmit:
             guard case .drafting(let draft) = next.step else { return (next, effects) }
+            // PP-4843 (chaos rapid-tap): on a short conversation the preview's
+            // own Send button renders at the same screen position the message
+            // Send arrow occupied before the auto-scroll, so a rapid burst that
+            // began as message-submit taps bleeds a confirm tap onto the
+            // just-appeared preview before the patron ever saw it. The reducer
+            // arms `pendingSendConsent` whenever it presents a FRESH preview and
+            // only the card's `.ticketPreviewPresented` (fired on a later
+            // runloop turn) clears it — so a confirm that arrives while the gate
+            // is still armed is that same-burst accidental tap. Suppress it: the
+            // patron must actually see the preview before a ticket is filed.
+            // Mirrors the PP-4822 category-chip debounce class. (A directly
+            // constructed drafting state defaults to an un-armed gate, so
+            // deliberate single-tap sends are unaffected.)
+            if next.pendingSendConsent {
+                return (next, effects)
+            }
             // Chaos-qa F-002: drop the ticketPreview from the message log
             // when leaving .drafting so the user doesn't see active Send /
             // Cancel buttons stacked next to the eventual "Sent" receipt.
@@ -662,6 +684,9 @@ public struct ConversationReducer: Sendable {
             )
             next.step = .drafting(ticket: enriched)
             next.inputText = ""
+            // PP-4843: the follow-up answer presents a fresh preview — arm the
+            // send-consent gate so a rapid tap after answering can't skip it.
+            next.pendingSendConsent = true
             // Append a user-side message showing what they answered (or a
             // "(skipped)" marker) so the chat history reads naturally.
             if let answer, !answer.isEmpty {
@@ -832,6 +857,10 @@ public struct ConversationReducer: Sendable {
             )))
         } else {
             next.step = .drafting(ticket: draft)
+            // PP-4843: arm the send-consent gate — the patron must be shown to
+            // have seen this fresh preview (.ticketPreviewPresented) before a
+            // confirm is honored.
+            next.pendingSendConsent = true
             next.messages.append(.init(
                 sender: .bot,
                 kind: .text("I haven't seen exactly that before — let me file a ticket so support can look. Here's what I'll send:")
@@ -883,6 +912,8 @@ public struct ConversationReducer: Sendable {
             )))
         } else {
             next.step = .drafting(ticket: draft)
+            // PP-4843: arm the send-consent gate for this fresh preview too.
+            next.pendingSendConsent = true
             next.messages.append(.init(
                 sender: .bot,
                 kind: .text("That didn't fix it. I'll file a ticket with the exact steps you tried so support can pick up where we left off.")

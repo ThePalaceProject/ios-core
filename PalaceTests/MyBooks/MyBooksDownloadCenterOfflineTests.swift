@@ -77,21 +77,25 @@ final class MyBooksDownloadCenterOfflineTests: XCTestCase {
         return task
     }
 
-    /// Wait until the registry reflects the expected state. Wraps the
-    /// shared `awaitConditionAsync` helper so timeout produces a loud
-    /// XCTFail attributed to the call site rather than a silent return
-    /// that lets downstream assertions read stale state.
-    /// Production transition is async (Task in DownloadAlertPresenter).
-    private func waitForState(
-        _ expected: TPPBookState,
-        on identifier: String,
-        timeout: TimeInterval = 10.0,
-        file: StaticString = #file,
-        line: UInt = #line
-    ) async {
-        await awaitConditionAsync(timeout: timeout, file: file, line: line) { [weak self] in
-            self?.mockRegistry.state(for: identifier) == expected
-        }
+    /// Deterministically joins the network-loss failure handling instead of
+    /// polling the registry against a wall-clock deadline (which starves under
+    /// CI oversubscription). The reachability sink is scheduled on
+    /// `RunLoop.main` (`.receive(on:)`), so one main-queue drain flushes the
+    /// sink → `failActiveDownloadsForNetworkLoss()` spawns its Task and
+    /// retains it on `lastNetworkLossFailureTask`; awaiting that Task's
+    /// `.value` joins the state-transition + alert work to completion.
+    private func awaitNetworkLossHandling(on center: MyBooksDownloadCenter) async {
+        // Two drains: the reachability sink is delivered via
+        // `.receive(on: RunLoop.main)` (a RunLoop.perform source), scheduled by
+        // `simulate(...)` BEFORE this helper's own DispatchQueue.main.async
+        // fulfill block. Run-loop ordering between the two source types isn't
+        // strictly FIFO, so the first drain may return before the sink has run
+        // and spawned the failure Task. The second drain guarantees the run
+        // loop has turned again after the sink was scheduled, so the Task is
+        // retained by the time we read it. Then join it to completion.
+        await drainMainQueueAsync()
+        await drainMainQueueAsync()
+        await center.lastNetworkLossFailureTask?.value
     }
 
     // MARK: - Mid-flight drop
@@ -115,7 +119,7 @@ final class MyBooksDownloadCenterOfflineTests: XCTestCase {
                        "precondition: book starts downloading")
 
         mockReachability.simulate(connected: false)
-        await waitForState(.downloadFailed, on: book.identifier)
+        await awaitNetworkLossHandling(on: center)
 
         XCTAssertEqual(mockRegistry.state(for: book.identifier), .downloadFailed,
                        "PP-4114: mid-flight network drop must transition active downloads to .downloadFailed")
@@ -142,8 +146,7 @@ final class MyBooksDownloadCenterOfflineTests: XCTestCase {
         await drainMainQueueAsync()
 
         mockReachability.simulate(connected: false)
-        await waitForState(.downloadFailed, on: bookA.identifier)
-        await waitForState(.downloadFailed, on: bookB.identifier)
+        await awaitNetworkLossHandling(on: center)
 
         XCTAssertEqual(mockRegistry.state(for: bookA.identifier), .downloadFailed)
         XCTAssertEqual(mockRegistry.state(for: bookB.identifier), .downloadFailed)
@@ -165,9 +168,14 @@ final class MyBooksDownloadCenterOfflineTests: XCTestCase {
             stateManager: stateManager,
             reachability: mockReachability
         )
+        // dropFirst() suppresses the CurrentValueSubject's initial `true`, so
+        // NO failure Task is ever spawned — assert the absence of the effect
+        // by draining the main queue (flushes any RunLoop.main-scheduled sink)
+        // and joining any spawned failure Task (nil here → no-op). No fixed
+        // sleep: if the guard regressed and a Task WAS spawned, the join would
+        // run it and the assertion would then catch the flip.
         await drainMainQueueAsync()
-        try? await Task.sleep(nanoseconds: 100_000_000)
-        await drainMainQueueAsync()
+        await center.lastNetworkLossFailureTask?.value
 
         XCTAssertEqual(mockRegistry.state(for: book.identifier), .downloading,
                        "Initial replay of connectivityPublisher's true value must NOT trip the failure path")
@@ -197,8 +205,12 @@ final class MyBooksDownloadCenterOfflineTests: XCTestCase {
         await drainMainQueueAsync()
 
         // Simulate the Retry-button path — direct call to startDownload.
+        // The offline pre-flight fails the book SYNCHRONOUSLY:
+        // startDownload → failDownloadWithAlert → bookRegistry.addBook(state:
+        // .downloadFailed) runs before any Task hop and before addDownloadTask,
+        // so both the state and the empty-active-dict assertions hold with no
+        // wait.
         center.startDownload(for: book, withRequest: nil)
-        await waitForState(.downloadFailed, on: book.identifier)
 
         XCTAssertEqual(mockRegistry.state(for: book.identifier), .downloadFailed,
                        "PP-4114: startDownload while offline must short-circuit to .downloadFailed, not spawn a hanging URLSession task")
@@ -224,8 +236,9 @@ final class MyBooksDownloadCenterOfflineTests: XCTestCase {
         await drainMainQueueAsync()
 
         mockReachability.simulate(connected: false)
-        try? await Task.sleep(nanoseconds: 50_000_000)
-        await drainMainQueueAsync()
+        // Join the failure handling (drains the sink, then awaits the spawned
+        // Task which early-returns on the empty active set) instead of sleeping.
+        await awaitNetworkLossHandling(on: center)
         // No expectations — this test passes if nothing crashes or asserts.
         _ = center
     }
@@ -268,9 +281,12 @@ final class MyBooksDownloadCenterOfflineTests: XCTestCase {
                        "precondition: book is downloaded and readable offline")
 
         mockReachability.simulate(connected: false)
-        // Give the handler time to run; the bug flips state inside ~10ms.
-        try? await Task.sleep(nanoseconds: 250_000_000)
-        await drainMainQueueAsync()
+        // Join the failure handler to completion (rather than sleeping and
+        // hoping it ran): the handler must consult the registry state and skip
+        // the .downloadSuccessful book. If the defensive filter regressed, the
+        // joined Task would flip the state and the assertion below would catch
+        // it — deterministically, not on a timing guess.
+        await awaitNetworkLossHandling(on: center)
 
         XCTAssertEqual(mockRegistry.state(for: book.identifier), .downloadSuccessful,
                        "Airplane mode must NOT flip a previously-downloaded book to .downloadFailed just because a stale taskIdentifierToBook entry exists")
@@ -299,7 +315,7 @@ final class MyBooksDownloadCenterOfflineTests: XCTestCase {
         await drainMainQueueAsync()
 
         mockReachability.simulate(connected: false)
-        await waitForState(.downloadFailed, on: activeBook.identifier)
+        await awaitNetworkLossHandling(on: center)
 
         XCTAssertEqual(mockRegistry.state(for: activeBook.identifier), .downloadFailed,
                        "PP-4114 intent preserved: genuinely in-flight downloads still fail on network loss")

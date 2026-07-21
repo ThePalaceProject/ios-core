@@ -30,11 +30,18 @@ class TPPReaderTOCBusinessLogic {
     private let publication: Publication
     private let currentLocation: Locator? // for current chapter
 
+    /// Retains the TOC-load `Task` spawned in `init` so tests can JOIN the
+    /// actual load deterministically (`awaitTOCLoad()`) instead of polling a
+    /// wall-clock deadline, which starves under parallel oversubscription.
+    /// Behavior-identical in production: the Task is spawned and runs exactly
+    /// as before; we merely hold a reference to it.
+    private var tocLoadTask: Task<Void, Never>?
+
     init(r2Publication: Publication, currentLocation: Locator?) {
         self.publication = r2Publication
         self.currentLocation = currentLocation
 
-        Task {
+        tocLoadTask = Task {
             let tocResult = await publication.tableOfContents()
             switch tocResult {
             case .success(let toc):
@@ -43,6 +50,14 @@ class TPPReaderTOCBusinessLogic {
                 return
             }
         }
+    }
+
+    /// Test seam: awaits the `init`-spawned TOC load so a test can JOIN the
+    /// real work instead of polling `tocElements`. No-op in production
+    /// (never called there). Returns once the load has finished (success or
+    /// failure).
+    func awaitTOCLoad() async {
+        await tocLoadTask?.value
     }
 
     private func flatten(_ links: [Link], level: Int = 0) -> [(level: Int, link: Link)] {
