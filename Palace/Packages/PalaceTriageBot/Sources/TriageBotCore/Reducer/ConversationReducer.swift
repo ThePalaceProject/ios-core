@@ -76,6 +76,12 @@ public struct ConversationReducer: Sendable {
             lateBindContext(&next, context: redacted)
 
         case .userTappedCategory(let category):
+            // Debounce rapid / double taps (chaos F-001, PP-4822). Category chips
+            // are only shown while awaiting a category; once the first tap moves us
+            // to .awaitingDescription, further taps are no-ops — otherwise an eager
+            // patron appends several duplicate turns and the chat looks broken. This
+            // mirrors the Send button's debounce.
+            guard case .awaitingCategory = next.step else { return (next, effects) }
             next.step = .awaitingDescription(category: category)
             next.messages.append(.init(
                 sender: .user,
