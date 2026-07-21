@@ -325,19 +325,23 @@ final class BookReturnServiceTests: XCTestCase {
         let exp = expectation(description: "completion")
         service.returnBook(withIdentifier: bookWithRevoke.identifier) { exp.fulfill() }
 
-        // The Task is launched synchronously from returnBook → insert
-        // happens before this assertion runs in test-method context.
-        // The MainActor hops inside the Task have not yet yielded back
-        // here, so the count must be ≥ 1 right now.
-        await awaitConditionAsync(timeout: 2.0) {
-            self.service.inFlightTaskCount >= 1
-        }
+        // The retention insert (`inFlightLock … inFlightTasks[id] = task`)
+        // runs SYNCHRONOUSLY inside returnBook on this @MainActor test
+        // before it returns; the tracked Task body runs on the cooperative
+        // pool and cannot auto-remove until we yield the main actor. So the
+        // count is deterministically ≥ 1 right now — assert directly instead
+        // of polling a wall-clock deadline that starves under CI
+        // oversubscription. Capture the tracked Tasks here so we can JOIN
+        // them below rather than poll the count back to zero.
+        let tracked = service.inFlightTasksSnapshotForTesting()
+        XCTAssertGreaterThanOrEqual(service.inFlightTaskCount, 1,
+                       "returnBook must synchronously retain its revokeURL cleanup Task")
 
         await fulfillment(of: [exp], timeout: 3.0)
 
-        await awaitConditionAsync(timeout: 2.0) {
-            self.service.inFlightTaskCount == 0
-        }
+        // Auto-removal is the last step of the tracked Task body; awaiting
+        // each Task's value joins that removal deterministically — no poll.
+        for task in tracked { _ = await task.value }
         XCTAssertEqual(service.inFlightTaskCount, 0,
                        "After completion, Tasks must auto-remove from the retention set")
     }
@@ -359,9 +363,9 @@ final class BookReturnServiceTests: XCTestCase {
 
         service.returnBook(withIdentifier: bookWithRevoke.identifier, completion: nil)
 
-        await awaitConditionAsync(timeout: 2.0) {
-            self.service.inFlightTaskCount >= 1
-        }
+        // Retention insert is synchronous inside returnBook (see the
+        // drains-on-completion test above); the blocked OPDS fetch keeps the
+        // Task parked, so the count is deterministically ≥ 1 right now.
         let inFlightBeforeCancel = service.inFlightTaskCount
         XCTAssertGreaterThanOrEqual(inFlightBeforeCancel, 1,
                                     "Sanity: Task must be retained while OPDS fetch is pending")
@@ -440,18 +444,25 @@ final class BookReturnServiceTests: XCTestCase {
             #endif
             svc.delegate = localDelegate
             svc.returnBook(withIdentifier: bookWithRevoke.identifier, completion: nil)
-            // Wait for the in-flight count to climb (proves retention),
-            // then for it to drain back (proves auto-removal).
-            while svc.inFlightTaskCount == 0 {
-                try? await Task.sleep(nanoseconds: 10_000_000)
-            }
-            while svc.inFlightTaskCount > 0 {
-                try? await Task.sleep(nanoseconds: 10_000_000)
-            }
+            // Retention insert is synchronous inside returnBook, so the count
+            // is already ≥ 1 (proves retention). Capture the tracked Tasks and
+            // JOIN them — awaiting each Task's value runs the auto-removal step
+            // that is the tail of the tracked-Task body, proving drain without
+            // a wall-clock sleep loop that starves under CI oversubscription.
+            XCTAssertGreaterThanOrEqual(svc.inFlightTaskCount, 1,
+                           "returnBook must synchronously retain its cleanup Task")
+            for task in svc.inFlightTasksSnapshotForTesting() { _ = await task.value }
+            XCTAssertEqual(svc.inFlightTaskCount, 0,
+                           "Tracked Tasks must auto-remove once their bodies finish")
         }()
 
         // Service has no in-flight Tasks left → its strong ref is
         // released at the closing brace → deinit runs.
+        // UNJOINABLE: deinit fires on ARC's last-release, which is not a
+        // Task/queue we can await. We've already JOINED every tracked Task
+        // above and exited the closure scope, so the release has happened;
+        // this converges on the first poll. The predicate reads a synchronous
+        // static counter, so the loop is cheap even under load.
         await awaitConditionAsync(timeout: 5.0) {
             BookReturnServiceTestHook.deinitCountSync > countBefore
         }
@@ -472,9 +483,10 @@ final class BookReturnServiceTests: XCTestCase {
         feedFetcher.blockingBehavior = blocker
 
         service.returnBook(withIdentifier: bookWithRevoke.identifier, completion: nil)
-        await awaitConditionAsync(timeout: 2.0) {
-            self.service.inFlightTaskCount >= 1
-        }
+        // Retention insert is synchronous inside returnBook; the blocked OPDS
+        // fetch parks the Task, so it is retained right now — no poll needed.
+        XCTAssertGreaterThanOrEqual(service.inFlightTaskCount, 1,
+                       "returnBook must synchronously retain its cleanup Task")
         let trackedTask = service.inFlightTasksSnapshotForTesting().first!
         XCTAssertFalse(trackedTask.isCancelled,
                        "Sanity: Task is alive (not yet cancelled) before cancelAllInFlightTasks")
