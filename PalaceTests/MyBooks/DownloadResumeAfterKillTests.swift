@@ -226,10 +226,12 @@ final class DownloadResumeAfterKillTests: XCTestCase {
 
         cancelHandler.cancelDownload(for: book.identifier)
 
-        // Wait for the async cleanup task to settle.
-        await awaitConditionAsync(timeout: 10.0) {
-            spy.scheduleCount > 0
-        }
+        // Join the cancel-teardown Task (its final step is
+        // schedulePendingStartsIfPossible) via the retained handle instead of
+        // polling spy.scheduleCount against a deadline. LateCancelStubTask
+        // fires its cancel completion synchronously, so the teardown Task is
+        // already spawned by the time cancelDownload returns.
+        await cancelHandler.lastCancelTeardownTask?.value
 
         XCTAssertEqual(stubTask.cancelByProducingResumeDataCount, 1,
                        "Late cancel must still call URLSessionDownloadTask.cancel — even at 99%")

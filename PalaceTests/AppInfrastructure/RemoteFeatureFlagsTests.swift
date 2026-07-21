@@ -161,6 +161,32 @@ final class RemoteFeatureFlagsTests: XCTestCase {
         }
     }
 
+    /// The case the `Task.sleep` test above CANNOT reproduce: `Task.sleep` honors
+    /// cancellation, so a task-group `withTimeout` unblocks when it cancels the
+    /// child. The real Firebase `fetchAndActivate()` ignores cancellation — and a
+    /// task-group implementation re-awaits that child at scope exit, so the bound
+    /// silently fails to fire (the 120s `testFetchIfNeeded_doesNotCrash` hang).
+    /// This drives an operation that never completes AND ignores cancellation:
+    /// `withTimeout` must still return promptly on the timeout, orphaning it.
+    func testWithTimeout_boundsANonCancellableHangingOperation() async {
+        let start = Date()
+        do {
+            _ = try await FirebaseManager.withTimeout(seconds: 0.2) { () async throws -> Bool in
+                // Never resumes, and does not observe cancellation — mirrors the
+                // non-cancellable Firebase fetch.
+                await withCheckedContinuation { (_: CheckedContinuation<Void, Never>) in }
+                return true
+            }
+            XCTFail("withTimeout must throw when a non-cancellable operation exceeds the bound")
+        } catch is FirebaseManager.RemoteConfigFetchTimeout {
+            let elapsed = Date().timeIntervalSince(start)
+            XCTAssertLessThan(elapsed, 2.0,
+                              "withTimeout must bound a NON-cancellable hang (the real Firebase case) by orphaning it, got \(elapsed)s")
+        } catch {
+            XCTFail("Expected RemoteConfigFetchTimeout, got \(type(of: error)): \(error)")
+        }
+    }
+
     /// A fast operation must return its value, NOT be falsely timed out —
     /// kills a mutant that always throws / always loses the race.
     func testWithTimeout_returnsResultOfFastOperation() async throws {

@@ -56,15 +56,16 @@ final class DownloadThrottlingServiceTests: XCTestCase {
         return (book, task)
     }
 
-    /// Wraps the shared `awaitConditionAsync` helper. `file`/`line`
-    /// forwarded so timeout XCTFail blames the call site.
-    private func waitForAsync(
-        timeout: TimeInterval = 10.0,
-        file: StaticString = #file,
-        line: UInt = #line,
-        _ predicate: @escaping () -> Bool
-    ) async {
-        await awaitConditionAsync(timeout: timeout, file: file, line: line, predicate)
+    /// Deterministic equivalent of the sync `service.limitActiveDownloads(max:)`
+    /// wrapper: sets the cap, then `await`s the same async policy body the
+    /// wrapper fires as a detached Task. Joining the body directly removes the
+    /// starvable poll on the fire-and-forget Task without changing behavior —
+    /// the wrapper does exactly `maxConcurrentDownloads = max` then
+    /// `Task { await limitActiveDownloadsAsync(max:) }`, so this runs the policy
+    /// exactly once, just like the wrapper.
+    private func applyCapAndJoin(max: Int) async {
+        stateManager.maxConcurrentDownloads = max
+        await service.limitActiveDownloadsAsync(max: max)
     }
 
     // MARK: - limitActiveDownloads — over the cap
@@ -74,8 +75,7 @@ final class DownloadThrottlingServiceTests: XCTestCase {
         let t2 = await register(state: .running, isAudiobook: false, taskId: 2)
         let t3 = await register(state: .running, isAudiobook: false, taskId: 3)
 
-        service.limitActiveDownloads(max: 1)
-        await waitForAsync { [self] in self.spyDelegate.scheduleCallCount > 0 }
+        await applyCapAndJoin(max: 1)
 
         let suspended = [t1.task, t2.task, t3.task].filter { $0.suspendCallCount > 0 }
         XCTAssertEqual(suspended.count, 2,
@@ -91,8 +91,7 @@ final class DownloadThrottlingServiceTests: XCTestCase {
         let book1 = await register(state: .running, isAudiobook: false, taskId: 20)
         let book2 = await register(state: .running, isAudiobook: false, taskId: 21)
 
-        service.limitActiveDownloads(max: 1)
-        await waitForAsync { [self] in self.spyDelegate.scheduleCallCount > 0 }
+        await applyCapAndJoin(max: 1)
 
         XCTAssertEqual(audiobook1.task.suspendCallCount, 0,
                        "Audiobook downloads must NEVER be suspended (streaming protection)")
@@ -111,8 +110,7 @@ final class DownloadThrottlingServiceTests: XCTestCase {
         let s1 = await register(state: .suspended, isAudiobook: false, taskId: 2)
         let s2 = await register(state: .suspended, isAudiobook: false, taskId: 3)
 
-        service.limitActiveDownloads(max: 4)
-        await waitForAsync { [self] in self.spyDelegate.scheduleCallCount > 0 }
+        await applyCapAndJoin(max: 4)
 
         let resumed = [s1.task, s2.task].filter { $0.resumeCallCount > 0 }
         XCTAssertEqual(resumed.count, 2,
@@ -125,8 +123,7 @@ final class DownloadThrottlingServiceTests: XCTestCase {
         let r1 = await register(state: .running, isAudiobook: false, taskId: 1)
         let r2 = await register(state: .running, isAudiobook: false, taskId: 2)
 
-        service.limitActiveDownloads(max: 2)
-        await waitForAsync { [self] in self.spyDelegate.scheduleCallCount > 0 }
+        await applyCapAndJoin(max: 2)
 
         XCTAssertEqual(r1.task.suspendCallCount, 0)
         XCTAssertEqual(r2.task.suspendCallCount, 0)
@@ -140,8 +137,7 @@ final class DownloadThrottlingServiceTests: XCTestCase {
         let book1 = await register(state: .running, isAudiobook: false, taskId: 1)
         let book2 = await register(state: .running, isAudiobook: false, taskId: 2)
 
-        service.pauseAllDownloads()
-        await waitForAsync { _ = self; return book1.task.suspendCallCount > 0 || book2.task.suspendCallCount > 0 }
+        await service.pauseAllDownloadsAsync()
 
         XCTAssertEqual(book1.task.suspendCallCount, 1)
         XCTAssertEqual(book2.task.suspendCallCount, 1)
@@ -151,8 +147,7 @@ final class DownloadThrottlingServiceTests: XCTestCase {
         let audio = await register(state: .running, isAudiobook: true, taskId: 1)
         let book = await register(state: .running, isAudiobook: false, taskId: 2)
 
-        service.pauseAllDownloads()
-        await waitForAsync { _ = self; return book.task.suspendCallCount > 0 }
+        await service.pauseAllDownloadsAsync()
 
         XCTAssertEqual(audio.task.suspendCallCount, 0,
                        "pauseAllDownloads must NEVER suspend an audiobook (user may be streaming)")
@@ -166,8 +161,11 @@ final class DownloadThrottlingServiceTests: XCTestCase {
         let _ = await register(state: .running, isAudiobook: false, taskId: 1)
         let s1 = await register(state: .suspended, isAudiobook: false, taskId: 2)
 
-        service.resumeIntelligentDownloads()
-        await waitForAsync { _ = self; return s1.task.resumeCallCount > 0 }
+        // resumeIntelligentDownloads() just calls limitActiveDownloads(max:
+        // current cap), which fires the async policy body. Join that body
+        // directly at the current cap (3) — behavior-identical to what
+        // resumeIntelligentDownloads triggers — instead of polling.
+        await service.limitActiveDownloadsAsync(max: stateManager.maxConcurrentDownloads)
 
         XCTAssertEqual(s1.task.resumeCallCount, 1,
                        "Re-applying cap with capacity available resumes suspended tasks")
@@ -182,8 +180,13 @@ final class DownloadThrottlingServiceTests: XCTestCase {
         service.setupNetworkMonitoring()
         notificationCenter.post(name: UIApplication.didBecomeActiveNotification, object: nil)
 
-        // The observer fires on the main queue → re-applies cap → resume.
-        await waitForAsync { _ = self; return s1.task.resumeCallCount > 0 }
+        // The observer is registered on queue: .main. Drain twice so the
+        // observer block runs (calling limitActiveDownloads, which spawns and
+        // retains the policy Task) regardless of main-queue source ordering,
+        // then await that Task to join the resume.
+        await drainMainQueueAsync()
+        await drainMainQueueAsync()
+        await service.lastLimitActiveDownloadsTask?.value
 
         XCTAssertEqual(s1.task.resumeCallCount, 1,
                        "App-became-active observer re-applies the active-cap policy")
@@ -200,7 +203,9 @@ final class DownloadThrottlingServiceTests: XCTestCase {
         service.setupNetworkMonitoring()
 
         notificationCenter.post(name: UIApplication.didBecomeActiveNotification, object: nil)
-        await waitForAsync { _ = self; return s1.task.resumeCallCount > 0 }
+        await drainMainQueueAsync()
+        await drainMainQueueAsync()
+        await service.lastLimitActiveDownloadsTask?.value
 
         XCTAssertEqual(s1.task.resumeCallCount, 1,
                        "Resume should fire exactly once per notification, not once per setupNetworkMonitoring call")
@@ -211,12 +216,10 @@ final class DownloadThrottlingServiceTests: XCTestCase {
     func testLimitActiveDownloads_alwaysCallsScheduleAfterPolicyApplied() async {
         // Scheduler must run after every limit application so newly-
         // available capacity gets filled with pending starts.
-        service.limitActiveDownloads(max: 2)
-        await waitForAsync { [self] in self.spyDelegate.scheduleCallCount > 0 }
+        await applyCapAndJoin(max: 2)
         XCTAssertEqual(spyDelegate.scheduleCallCount, 1)
 
-        service.limitActiveDownloads(max: 4)
-        await waitForAsync { [self] in self.spyDelegate.scheduleCallCount >= 2 }
+        await applyCapAndJoin(max: 4)
         XCTAssertEqual(spyDelegate.scheduleCallCount, 2)
     }
 }

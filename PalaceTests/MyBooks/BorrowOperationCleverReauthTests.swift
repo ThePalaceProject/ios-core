@@ -141,10 +141,7 @@ final class BorrowOperationCleverReauthTests: XCTestCase {
         } catch {
             // expected
         }
-        for _ in 0..<5 {
-            try? await Task.sleep(nanoseconds: 30_000_000)
-            await Task.yield()
-        }
+        // presentSignInModal is awaited inside borrowAsync's reauth path — assert directly.
 
         // Assert: browser-reauth modal was presented.
         XCTAssertEqual(signInModalCompletions.value.count, 1,
@@ -190,10 +187,7 @@ final class BorrowOperationCleverReauthTests: XCTestCase {
         } catch {
             // expected
         }
-        for _ in 0..<5 {
-            try? await Task.sleep(nanoseconds: 30_000_000)
-            await Task.yield()
-        }
+        // presentSignInModal is awaited inside borrowAsync's reauth path — assert directly.
 
         XCTAssertEqual(signInModalCompletions.value.count, 1,
                        "PP-3716 broadening: OAuth-intermediary (Clever) + no-active-loan + credentials must be treated as auth error and route to sign-in modal")

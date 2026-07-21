@@ -206,16 +206,12 @@ final class CatalogViewModelStateMachineTests: PalaceTestCase {
     func testLoad_WithError_TransitionsToError() async {
         mockRepository.loadTopLevelCatalogError = NSError(domain: "test", code: 1)
         let vm = createViewModel()
-        let exp = XCTestExpectation(description: "error")
-        vm.$state.sink { if case .error = $0 { exp.fulfill() } }.store(in: &cancellables)
+        // load() spawns currentLoadTask and returns without awaiting it; join
+        // the actual task via the _awaitLoadForTesting() seam so the .error
+        // transition is applied deterministically instead of racing a fixed
+        // wall-clock deadline (5s) that starves under CI sim-clone load.
         await vm.load()
-        // 5s timeout: load() spawns currentLoadTask but does NOT await it,
-        // so the @Published state transition lands when the Task gets
-        // scheduled. The 1-second window flaked under macos-26 CI load
-        // (testLoad_WithError saw a timeout in PR #889 CI). 5s matches
-        // drainMainQueue/awaitCondition defaults — generous in CI without
-        // hiding a real hang.
-        await fulfillment(of: [exp], timeout: 5.0)
+        await vm._awaitLoadForTesting()
         guard case .error = vm.state else {
             return XCTFail("Expected .error state after load failure, got \(vm.state)")
         }
@@ -224,16 +220,10 @@ final class CatalogViewModelStateMachineTests: PalaceTestCase {
     func testLoad_WithNilResult_TransitionsToError() async {
         mockRepository.loadTopLevelCatalogResult = nil
         let vm = createViewModel()
-        let exp = XCTestExpectation(description: "error")
-        vm.$state.sink { if case .error = $0 { exp.fulfill() } }.store(in: &cancellables)
+        // Join the spawned load task deterministically (see companion test) —
+        // no wall-clock deadline on the @Published transition.
         await vm.load()
-        // 5s timeout: load() spawns currentLoadTask but does NOT await it,
-        // so the @Published state transition lands when the Task gets
-        // scheduled. The 1-second window flaked under macos-26 CI load
-        // (testLoad_WithError saw a timeout in PR #889 CI). 5s matches
-        // drainMainQueue/awaitCondition defaults — generous in CI without
-        // hiding a real hang.
-        await fulfillment(of: [exp], timeout: 5.0)
+        await vm._awaitLoadForTesting()
         guard case .error = vm.state else {
             return XCTFail("Expected .error state after nil result, got \(vm.state)")
         }
@@ -271,16 +261,12 @@ final class CatalogViewModelStateMachineTests: PalaceTestCase {
 
     func testForceRefresh_TransitionsToLoading() async {
         let vm = createViewModel()
-        let exp = XCTestExpectation(description: "loading")
-        vm.$state.sink { if case .loading = $0 { exp.fulfill() } }.store(in: &cancellables)
+        // forceRefresh() sets state = .loading synchronously before spawning the
+        // load task. Assert that transition directly (no wait needed), then join
+        // the spawned load task so the repository invocation is guaranteed to
+        // have happened — deterministic vs. a wall-clock deadline on $state.
         await vm.forceRefresh()
-        // 5s timeout: load() spawns currentLoadTask but does NOT await it,
-        // so the @Published state transition lands when the Task gets
-        // scheduled. The 1-second window flaked under macos-26 CI load
-        // (testLoad_WithError saw a timeout in PR #889 CI). 5s matches
-        // drainMainQueue/awaitCondition defaults — generous in CI without
-        // hiding a real hang.
-        await fulfillment(of: [exp], timeout: 5.0)
+        await vm._awaitLoadForTesting()
         XCTAssertGreaterThanOrEqual(mockRepository.loadTopLevelCatalogCallCount, 1,
                                     "forceRefresh must invoke the repository at least once")
     }
@@ -290,10 +276,8 @@ final class CatalogViewModelStateMachineTests: PalaceTestCase {
     func testLoad_WhenOffline_TransitionsToOffline() async {
         mockRepository.loadTopLevelCatalogError = NSError(domain: "test", code: -1009)
         let vm = createViewModel(reachability: MockReachability(initiallyConnected: false))
-        let exp = XCTestExpectation(description: "offline")
-        vm.$state.sink { if case .offline = $0 { exp.fulfill() } }.store(in: &cancellables)
         await vm.load()
-        await fulfillment(of: [exp], timeout: 5.0)
+        await vm._awaitLoadForTesting()
         guard case .offline = vm.state else {
             return XCTFail("Expected .offline state when load fails with no connectivity, got \(vm.state)")
         }
@@ -302,10 +286,8 @@ final class CatalogViewModelStateMachineTests: PalaceTestCase {
     func testLoad_NilResultWhenOffline_TransitionsToOffline() async {
         mockRepository.loadTopLevelCatalogResult = nil
         let vm = createViewModel(reachability: MockReachability(initiallyConnected: false))
-        let exp = XCTestExpectation(description: "offline")
-        vm.$state.sink { if case .offline = $0 { exp.fulfill() } }.store(in: &cancellables)
         await vm.load()
-        await fulfillment(of: [exp], timeout: 5.0)
+        await vm._awaitLoadForTesting()
         guard case .offline = vm.state else {
             return XCTFail("Expected .offline state on nil result with no connectivity, got \(vm.state)")
         }
@@ -315,10 +297,8 @@ final class CatalogViewModelStateMachineTests: PalaceTestCase {
         // AC: genuine online load failures keep the existing error + Reload behavior.
         mockRepository.loadTopLevelCatalogError = NSError(domain: "test", code: 500)
         let vm = createViewModel(reachability: MockReachability(initiallyConnected: true))
-        let exp = XCTestExpectation(description: "error")
-        vm.$state.sink { if case .error = $0 { exp.fulfill() } }.store(in: &cancellables)
         await vm.load()
-        await fulfillment(of: [exp], timeout: 5.0)
+        await vm._awaitLoadForTesting()
         guard case .error = vm.state else {
             return XCTFail("Expected .error (not .offline) when failing while connected, got \(vm.state)")
         }
@@ -330,19 +310,29 @@ final class CatalogViewModelStateMachineTests: PalaceTestCase {
         let reachability = MockReachability(initiallyConnected: false)
         let vm = createViewModel(reachability: reachability)
 
-        let offlineExp = XCTestExpectation(description: "offline")
-        vm.$state.sink { if case .offline = $0 { offlineExp.fulfill() } }.store(in: &cancellables)
+        // Initial offline load — join the actual load task deterministically.
         await vm.load()
-        await fulfillment(of: [offlineExp], timeout: 5.0)
+        await vm._awaitLoadForTesting()
+        guard case .offline = vm.state else {
+            return XCTFail("Expected .offline before reconnect, got \(vm.state)")
+        }
         let callsWhileOffline = mockRepository.loadTopLevelCatalogCallCount
 
         // Reconnecting must trigger a fresh load attempt without any Reload tap.
-        let reloadExp = XCTestExpectation(description: "reload")
-        vm.$state.dropFirst().sink { if case .loading = $0 { reloadExp.fulfill() } }.store(in: &cancellables)
+        // UN-JOINABLE SEAM: the reload is driven by the reachability publisher
+        // through TWO untracked bare Tasks —
+        //   connectivityPublisher.sink → Task { handleConnectivityRestored() }
+        //   → Task { await forceRefresh() }
+        // — neither of which is retained on a handle the view model exposes, so
+        // there is no work unit to join at the point of `simulate(connected:)`.
+        // The reload's `currentLoadTask` isn't assigned until the second hop
+        // runs, so `_awaitLoadForTesting()` here would race the assignment.
+        // We therefore await the OBSERVABLE effect (repository re-invocation)
+        // with a bounded poll. This is the one site in the file that genuinely
+        // cannot be converted to a single-handle join without adding a
+        // connectivity-reload join seam to production; wiring the publisher hop
+        // to a retained handle is deferred to the connectivity owner.
         reachability.simulate(connected: true)
-        await fulfillment(of: [reloadExp], timeout: 5.0)
-
-        // Give the spawned load task a moment to re-hit the repository.
         let deadline = Date().addingTimeInterval(5.0)
         while mockRepository.loadTopLevelCatalogCallCount <= callsWhileOffline, Date() < deadline {
             try? await Task.sleep(nanoseconds: 50_000_000)
@@ -474,24 +464,26 @@ final class CatalogViewModelStateMachineTests: PalaceTestCase {
 
     // MARK: - SWR test helpers
 
-    /// Poll until the view model reaches `.loaded` for `url`. `load()` spawns
-    /// `currentLoadTask` without awaiting it, so the `@Published` transition
-    /// lands asynchronously; `activeEntryPointURL` is set to the loaded URL on
-    /// the success path, giving a per-leg completion signal for the A→B→A drive.
+    /// Join the view model's in-flight load and assert it reached `.loaded` for
+    /// `url`. `load()` (reached via `reload`/`handleAccountChange`, all on the
+    /// MainActor with no intermediate Task hop) spawns `currentLoadTask` and
+    /// returns without awaiting it; joining that Task via `_awaitLoadForTesting()`
+    /// is deterministic, unlike the former 5s wall-clock poll that starved under
+    /// CI sim-clone oversubscription. `activeEntryPointURL` is set to the loaded
+    /// URL on the success path, giving the per-leg completion check for the
+    /// A→B→A drive.
     private func waitUntilLoaded(
         _ vm: CatalogViewModel,
         at url: URL,
-        timeout: TimeInterval = 5.0,
         file: StaticString = #filePath,
         line: UInt = #line
     ) async {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if case .loaded = vm.state, vm.activeEntryPointURL == url { return }
-            try? await Task.sleep(nanoseconds: 20_000_000)
+        await vm._awaitLoadForTesting()
+        guard case .loaded = vm.state, vm.activeEntryPointURL == url else {
+            XCTFail("Expected .loaded at \(url) after joining the load; state=\(vm.state), active=\(String(describing: vm.activeEntryPointURL))",
+                    file: file, line: line)
+            return
         }
-        XCTFail("Timed out waiting for .loaded at \(url); state=\(vm.state), active=\(String(describing: vm.activeEntryPointURL))",
-                file: file, line: line)
     }
 
     /// Minimal real OPDS 2 grouped `CatalogFeed` (one lane, one book) so
