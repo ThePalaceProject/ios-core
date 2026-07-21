@@ -110,21 +110,13 @@ final class CatalogCacheKeyAndIsolationTests: XCTestCase {
         )
     }
 
-    /// Poll an async predicate until it holds or the timeout elapses.
-    private func awaitCondition(
-        timeout: TimeInterval = 2.0,
-        pollInterval: TimeInterval = 0.01,
-        _ predicate: () async -> Bool,
-        file: StaticString = #filePath,
-        line: UInt = #line
-    ) async {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if await predicate() { return }
-            try? await Task.sleep(nanoseconds: UInt64(pollInterval * 1_000_000_000))
-        }
-        XCTFail("Condition not satisfied within \(timeout)s", file: file, line: line)
-    }
+    // NOTE: the former local `awaitCondition(timeout:)` wall-clock poll helper
+    // was removed — every wait site in this file now JOINS the actual work unit
+    // (`_awaitBackgroundRefreshForTesting` / `_awaitAllBackgroundRefreshesForTesting`
+    // for background refreshes; synchronous notification delivery for memory
+    // warnings) rather than polling `cachedFeed(...)` on a deadline. The poll
+    // was the source of this class's parallel-only executionTimeAllowance
+    // timeouts (the #1 flaker in the parallel-clone CI set).
 
     // MARK: - 1. Concurrent stale reads ACROSS DIFFERENT URLs
 
@@ -141,6 +133,9 @@ final class CatalogCacheKeyAndIsolationTests: XCTestCase {
         api.stubbedFeeds[urlB] = CatalogAPIMock.makeMockFeed(title: "B-original")
         api.stubbedFeeds[urlC] = CatalogAPIMock.makeMockFeed(title: "C-original")
         let sut = makeRepository()
+        // Arm refresh-Task tracking so we can join ALL concurrent refreshes
+        // below (see `_awaitAllBackgroundRefreshesForTesting`). Off in production.
+        sut._trackRefreshTasksForTesting()
 
         // Prime the cache.
         _ = try await sut.loadTopLevelCatalog(at: urlA)
@@ -167,17 +162,15 @@ final class CatalogCacheKeyAndIsolationTests: XCTestCase {
         // After background refreshes land, each URL's cache reflects ITS OWN
         // refresh — no cross-talk.
         //
-        // 30s timeout: predicate body is fully sync so overload resolution
-        // picks the global sync `awaitCondition` (default 5s), not the
-        // local async helper (default 2s). Three concurrent background
-        // refreshes hopping through the repository's cacheQueue exceed 5s
-        // under CI runner contention. Matches the #989/#996 lineage —
-        // restore 30s headroom; still fails loud on a true regression.
-        await awaitCondition(timeout: 30) {
-            sut.cachedFeed(for: urlA)?.title == "A-refreshed" &&
-            sut.cachedFeed(for: urlB)?.title == "B-refreshed" &&
-            sut.cachedFeed(for: urlC)?.title == "C-refreshed"
-        }
+        // Join the actual refresh work units deterministically instead of
+        // polling `cachedFeed(...)` on a wall-clock deadline. Each of the three
+        // concurrent stale reads scheduled its OWN detached `.utility` refresh;
+        // `_awaitAllBackgroundRefreshesForTesting()` blocks until every one has
+        // written its cache entry. The old 30s poll starved under parallel-sim-
+        // clone pool oversubscription and hit the 120s executionTimeAllowance
+        // (parallel-only CI timeouts). Joining removes the wall-clock dependence
+        // entirely — this now completes in ms regardless of pool load.
+        await sut._awaitAllBackgroundRefreshesForTesting()
         XCTAssertEqual(sut.cachedFeed(for: urlA)?.title, "A-refreshed")
         XCTAssertEqual(sut.cachedFeed(for: urlB)?.title, "B-refreshed")
         XCTAssertEqual(sut.cachedFeed(for: urlC)?.title, "C-refreshed")
@@ -201,14 +194,12 @@ final class CatalogCacheKeyAndIsolationTests: XCTestCase {
         // Trigger A's background refresh.
         _ = try await sut.loadTopLevelCatalog(at: urlA)
 
-        // Wait for A's refresh to land.
-        // 30s timeout — see neighbor test for the global-vs-local
-        // overload-resolution explanation + #989/#996 CI-load lineage.
-        // CI repro of this test exceeded the global 5s default at 8.65s
-        // on macos-26 runners; 30s headroom restores stability.
-        await awaitCondition(timeout: 30) {
-            sut.cachedFeed(for: urlA)?.title == "A-new"
-        }
+        // Wait for A's refresh to land — join the actual refresh Task
+        // deterministically rather than polling `cachedFeed(...)` on a
+        // wall-clock deadline (the old 30s poll was parallel-clone-starvable
+        // and hit the executionTimeAllowance). Only A's stale read scheduled a
+        // refresh, so the single-handle seam suffices here.
+        await sut._awaitBackgroundRefreshForTesting()
 
         // B must still hold its original value — A's refresh must NOT have
         // touched B's cache entry.
@@ -304,8 +295,15 @@ final class CatalogCacheKeyAndIsolationTests: XCTestCase {
         // (including any leaked by a sibling test). Off the main thread those
         // handlers mutate the layout engine off-main → NSInternalInconsistency-
         // Exception. The main-hop restores production semantics and makes this
-        // test robust to suite-wide observer leaks. (Repository eviction still
-        // runs on cacheQueue; the awaitCondition poll below is unchanged.)
+        // test robust to suite-wide observer leaks.
+        //
+        // `NotificationCenter.default.post` delivers SYNCHRONOUSLY to same-
+        // thread observers, and `handleMemoryWarning` clears the cache inline
+        // (a direct `cache.withLockUnchecked` — NOT a queue dispatch). So the
+        // eviction is already complete when this `MainActor.run` returns; no
+        // poll is needed. The former `awaitCondition(timeout: 30)` was a
+        // vestigial wall-clock poll that starved under parallel-sim-clone pool
+        // oversubscription and hit the 120s executionTimeAllowance.
         await MainActor.run {
             NotificationCenter.default.post(
                 name: UIApplication.didReceiveMemoryWarningNotification,
@@ -313,12 +311,6 @@ final class CatalogCacheKeyAndIsolationTests: XCTestCase {
             )
         }
 
-        // The eviction is dispatched onto cacheQueue, so poll for it.
-        // 30s timeout — same global-overload + CI-load lineage as the
-        // sibling tests in this file.
-        await awaitCondition(timeout: 30) {
-            sut.cachedFeed(for: url) == nil
-        }
         XCTAssertNil(sut.cachedFeed(for: url),
                      "Gap 3 FIX: in-memory cache must be cleared after memory warning")
 
@@ -367,6 +359,10 @@ final class CatalogCacheKeyAndIsolationTests: XCTestCase {
         // UIKit delivers this on main in production, and an off-main `object: nil`
         // broadcast wakes leaked UIViewController observers that then touch the
         // layout engine off-main (NSInternalInconsistencyException).
+        //
+        // Delivery + eviction are synchronous (see sibling test), so the cache
+        // is cleared when this `MainActor.run` returns — the former 30s
+        // awaitCondition poll was vestigial and parallel-clone-starvable.
         await MainActor.run {
             NotificationCenter.default.post(
                 name: UIApplication.didReceiveMemoryWarningNotification,
@@ -374,11 +370,8 @@ final class CatalogCacheKeyAndIsolationTests: XCTestCase {
             )
         }
 
-        // Both caches must be cleared. Sanity-poll on the feed cache
-        // because the eviction is dispatched on cacheQueue.
-        // 30s timeout — same global-overload + CI-load lineage as the
-        // sibling tests in this file.
-        await awaitCondition(timeout: 30) { sut.cachedFeed(for: url) == nil }
+        XCTAssertNil(sut.cachedFeed(for: url),
+                     "Memory warning must clear the in-memory feed cache synchronously")
 
         // After eviction, the next entry-point read MUST go to the network.
         _ = try await sut.fetchSearchEntryPoints(from: url)

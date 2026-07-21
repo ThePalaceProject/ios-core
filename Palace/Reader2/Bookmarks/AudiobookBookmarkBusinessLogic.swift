@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import os
 import PalaceLogging
 import PalaceReadingPosition
 @preconcurrency import PalaceAudiobookToolkit
@@ -31,8 +32,22 @@ import PalaceReadingPosition
     /// Identifies execution already on `queue` so `onStateQueue` runs inline
     /// instead of a nested `queue.sync` (which would deadlock).
     private let queueKey = DispatchSpecificKey<Void>()
-    private let debounceInterval: TimeInterval = 1.0
+    /// Debounce window for `saveBookmark` coalescing. Production always uses
+    /// 1.0s; a test-only initializer parameter can shrink it so debounce tests
+    /// don't have to wait on the real 1.0s `asyncAfter` — a wall-clock wait that
+    /// starves and blows the executionTimeAllowance under parallel-sim-clone
+    /// oversubscription. Behavior is IDENTICAL at the default.
+    private let debounceInterval: TimeInterval
     private var debounceWorkItem: DispatchWorkItem?  // Access only on `queue`
+
+    /// TEST SEAM — handle on the most recent `saveListeningPosition` network-
+    /// write Task. Retained ONLY so a test can `await` its completion
+    /// deterministically (`_awaitPositionWriteForTesting()`) instead of polling
+    /// the completion handler on a `wait(for:timeout:)` wall-clock ceiling that
+    /// starves under cooperative-pool oversubscription (the parallel-only CI
+    /// timeouts). Production NEVER reads this handle — the write stays
+    /// fire-and-forget. Lock-guarded for race-free write/read.
+    private let lastPositionWriteTask = OSAllocatedUnfairLock<Task<Void, Never>?>(initialState: nil)
 
     // MARK: - Serialized sync state
     // `isSyncing`, `completionHandlersQueue`, and `deletedBookmarkIds` are read
@@ -62,11 +77,13 @@ import PalaceReadingPosition
         book: TPPBook,
         registry: TPPBookRegistryProvider,
         annotationsManager: AnnotationsManager,
-        positionWriter: PositionWriter? = nil
+        positionWriter: PositionWriter? = nil,
+        debounceInterval: TimeInterval = 1.0
     ) {
         self.book = book
         self.registry = registry
         self.annotationsManager = annotationsManager
+        self.debounceInterval = debounceInterval
         // Default: build a `RemotePositionWriter` from an adapter that
         // wraps the same `AnnotationsManager` the rest of this class uses.
         // This keeps the dependency injection seam in one place — tests
@@ -135,7 +152,7 @@ import PalaceReadingPosition
         let completionBox = StringCompletionBox(completion)
         let audioBookmarkBox = AudioBookmarkBox(audioBookmark)
 
-        Task { [weak self] in
+        let writeTask = Task { [weak self] in
             guard let self else { return }
             let audioBookmark = audioBookmarkBox.bookmark
             do {
@@ -200,6 +217,9 @@ import PalaceReadingPosition
                 completionBox.call?(nil)
             }
         }
+        // Retain the handle for the test-only deterministic join. Production
+        // never awaits this — the write remains fire-and-forget.
+        lastPositionWriteTask.withLock { $0 = writeTask }
     }
 
     public func saveBookmark(at position: TrackPosition, completion: ((_ position: TrackPosition?) -> Void)? = nil) {
@@ -654,6 +674,30 @@ import PalaceReadingPosition
             workItem.perform()
             debounceWorkItem = nil
         }
+    }
+
+    /// TEST SEAM — deterministically await the most recent
+    /// `saveListeningPosition` network-write Task. Use this instead of polling
+    /// the completion handler on a `wait(for:timeout:)` wall-clock ceiling: the
+    /// write runs in a detached `Task` that the cooperative pool can defer past
+    /// any fixed timeout under parallel-sim-clone oversubscription (the
+    /// parallel-only executionTimeAllowance blowouts). Awaiting the handle
+    /// blocks exactly until the write finishes, independent of pool load.
+    /// Returns immediately if no write is in flight. Production behavior is
+    /// UNCHANGED — nothing production reads this handle.
+    public func _awaitPositionWriteForTesting() async {
+        let task = lastPositionWriteTask.withLock { $0 }
+        await task?.value
+    }
+
+    /// TEST SEAM — hand back the retained `saveListeningPosition` write Task
+    /// handle so a test can `await` it AFTER the business-logic object is
+    /// deallocated (the Task is `[weak self]`, so it outlives the object and
+    /// early-returns). Lets the dealloc-during-pending-work crash-survival test
+    /// join the Task deterministically instead of sleeping past a wall-clock
+    /// deadline. Production never calls this.
+    public func _positionWriteTaskHandleForTesting() -> Task<Void, Never>? {
+        lastPositionWriteTask.withLock { $0 }
     }
 
     public func saveListeningPositionSync(at position: TrackPosition) {

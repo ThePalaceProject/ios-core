@@ -25,9 +25,23 @@ class MockPDFDocumentMetadata: TPPPDFDocumentMetadata, @unchecked Sendable {
         bookmarks: Set<Int> = [],
         isBookmarked: Bool = false
     ) {
-        // Create a minimal mock book for the parent initializer
+        // Create a minimal mock book for the parent initializer.
         let mockBook = TPPBookMocker.mockBook(distributorType: .OpenAccessPDF)
-        self.init(with: mockBook)
+
+        // Inject an ISOLATED, per-instance registry mock (seeded with the mock
+        // book) instead of letting the parent init default to
+        // `AppContainer.production().bookRegistry`. The parent initializer
+        // mutates its registry (`setState(.used)`) and fires `fetchReadingPosition`
+        // / `fetchBookmarks` Tasks against it — pointing that at the SHARED
+        // production singleton made every `MockPDFDocumentMetadata()` bleed state
+        // across tests, which is why `TPPPDFDocumentMetadataTests` flaked as a
+        // whole class under parallel-sim-clone execution (shared mutable state,
+        // not a deadline poll). A fresh mock registry per instance removes the
+        // cross-test contention entirely.
+        let isolatedRegistry = TPPBookRegistryMock()
+        isolatedRegistry.addBook(mockBook, state: .downloadSuccessful)
+
+        self.init(with: mockBook, bookRegistry: isolatedRegistry)
 
         self.mockCurrentPage = currentPage
         self.mockBookmarks = bookmarks

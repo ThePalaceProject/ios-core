@@ -177,18 +177,22 @@ final class AudiobookBookmarkBusinessLogicPositionWriteTests: XCTestCase {
         TrackPosition(track: tracks.tracks[trackIndex], timestamp: time, tracks: tracks)
     }
 
-    /// Wait briefly for the SUT's detached Task (which awaits the spy
-    /// writer) to drain. The spy resolves synchronously, but the Task hop
-    /// is asynchronous; we poll the completion handler instead of sleeping.
+    /// Drive `saveListeningPosition` and JOIN its detached network-write Task
+    /// deterministically via `_awaitPositionWriteForTesting()` — no wall-clock
+    /// `wait(for:timeout:)`. The write runs in a detached `Task` that the
+    /// cooperative pool can defer past any fixed timeout under parallel-sim-
+    /// clone oversubscription (the parallel-only executionTimeAllowance
+    /// blowouts this de-flake targets). Awaiting the retained handle blocks
+    /// exactly until the write finishes, independent of pool load, so this
+    /// completes in ms even when starved. The completion still supplies the
+    /// captured server-ID return value.
     @discardableResult
-    private func saveAndWait(position: TrackPosition, timeout: TimeInterval = 2.0) -> String? {
-        let exp = expectation(description: "saveListeningPosition completes")
+    private func saveAndWait(position: TrackPosition) async -> String? {
         var captured: String? = nil
         sut.saveListeningPosition(at: position) { result in
             captured = result
-            exp.fulfill()
         }
-        wait(for: [exp], timeout: timeout)
+        await sut._awaitPositionWriteForTesting()
         return captured
     }
 
@@ -213,11 +217,11 @@ final class AudiobookBookmarkBusinessLogicPositionWriteTests: XCTestCase {
 
     // MARK: - 2. Delegation to PositionWriter
 
-    func testSaveListeningPosition_delegatesNetworkSaveToPositionWriter() {
+    func testSaveListeningPosition_delegatesNetworkSaveToPositionWriter() async {
         spyWriter.saveResult = .success("server-abc")
         let position = position(trackIndex: 1, time: 100.0)
 
-        let returned = saveAndWait(position: position)
+        let returned = await saveAndWait(position: position)
 
         XCTAssertEqual(spyWriter.savedSnapshots.count, 1,
                        "Writer.save MUST be called exactly once")
@@ -239,14 +243,14 @@ final class AudiobookBookmarkBusinessLogicPositionWriteTests: XCTestCase {
 
     // MARK: - 3. Writer throttled → local still committed
 
-    func testSaveListeningPosition_writerThrottled_localStillCommitted() {
+    func testSaveListeningPosition_writerThrottled_localStillCommitted() async {
         // Writer returns nil — simulating throttled/queued state. The local
         // save must already be in place; the registry write does not depend
         // on the writer's outcome.
         spyWriter.saveResult = .throttled
         let position = position(trackIndex: 2, time: 200.0)
 
-        let returned = saveAndWait(position: position)
+        let returned = await saveAndWait(position: position)
 
         XCTAssertNotNil(mockRegistry.location(forIdentifier: bookIdentifier),
                         "Local registry must be written even when writer queues")
@@ -258,12 +262,12 @@ final class AudiobookBookmarkBusinessLogicPositionWriteTests: XCTestCase {
 
     // MARK: - 4. Writer error → completion called with nil, no crash
 
-    func testSaveListeningPosition_writerError_doesNotCrash_completionCalledWithError() {
+    func testSaveListeningPosition_writerError_doesNotCrash_completionCalledWithError() async {
         struct WriterError: Error {}
         spyWriter.saveResult = .failure(WriterError())
         let position = position(trackIndex: 1, time: 50.0)
 
-        let returned = saveAndWait(position: position)
+        let returned = await saveAndWait(position: position)
 
         XCTAssertNotNil(mockRegistry.location(forIdentifier: bookIdentifier),
                         "Local registry must be preserved when writer throws")
@@ -288,7 +292,7 @@ final class AudiobookBookmarkBusinessLogicPositionWriteTests: XCTestCase {
     /// lines 117–125: "Strict zero is correct"). The input below uses
     /// `time: 0` to match the strict-zero contract. A `time: 5.0` input
     /// would (correctly) bypass the guard under the new predicate.
-    func testIsAtBeginning_preservedAfterMigration_doesNotOverwriteValidPosition() throws {
+    func testIsAtBeginning_preservedAfterMigration_doesNotOverwriteValidPosition() async throws {
         // Arrange: pre-seed a "later track" position in the registry that
         // a stale beginning-of-book save must NOT clobber. The chapter
         // string is parsed by the predicate at lines 87-89 of the SUT —
@@ -332,7 +336,7 @@ final class AudiobookBookmarkBusinessLogicPositionWriteTests: XCTestCase {
         // to strict-zero by swarm_f3b9b087 P0 #4; any positive time
         // bypasses the guard under the new predicate.
         let beginningPosition = position(trackIndex: 0, time: 0)
-        let returned = saveAndWait(position: beginningPosition)
+        let returned = await saveAndWait(position: beginningPosition)
 
         // Assert: writer was called (local-save-first ordering preserved),
         // but the registry location is the ORIGINAL later-track bookmark —
@@ -364,7 +368,7 @@ final class AudiobookBookmarkBusinessLogicPositionWriteTests: XCTestCase {
     /// `String.isDate(_:moreRecentThan:with:)`), the post-save commit MUST
     /// be suppressed so a stale upload result cannot overwrite a fresh
     /// local position.
-    func testTimestampNewerRace_preservedAfterMigration_keepsLocal() throws {
+    func testTimestampNewerRace_preservedAfterMigration_keepsLocal() async throws {
         // The sentTimestamp the SUT sets is `Date().iso8601` at the moment
         // of the save call. To make the post-save guard fire, the
         // "fresh local" registry entry must carry a timestamp NEWER than
@@ -428,7 +432,7 @@ final class AudiobookBookmarkBusinessLogicPositionWriteTests: XCTestCase {
         )
 
         let stalePosition = position(trackIndex: 0, time: 5.0)
-        let returned = saveAndWait(position: stalePosition)
+        let returned = await saveAndWait(position: stalePosition)
 
         // Assert: completion received the server ID (post-save flow did
         // run) but the registry retains the fresh-local bookmark — the

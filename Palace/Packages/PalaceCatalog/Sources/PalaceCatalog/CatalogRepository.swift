@@ -86,6 +86,23 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
     /// read from the test seam are race-free.
     private let lastBackgroundRefreshTask = OSAllocatedUnfairLock<Task<Void, Never>?>(initialState: nil)
 
+    /// Handles on background stale-revalidate refresh Tasks scheduled since the
+    /// last drain — populated ONLY while `trackRefreshTasksForTesting` is armed
+    /// (a test that triggers CONCURRENT stale reads across several URLs and then
+    /// calls `_awaitAllBackgroundRefreshesForTesting()` to join every in-flight
+    /// refresh, not just the most-recently-scheduled one that
+    /// `lastBackgroundRefreshTask` captures). In production the flag is never set,
+    /// so nothing is appended and the array stays empty — no unbounded growth.
+    /// Lock-guarded so the append from `loadTopLevelCatalog` and the drain from
+    /// the test seam are race-free.
+    private let inFlightRefreshTasks = OSAllocatedUnfairLock<[Task<Void, Never>]>(initialState: [])
+
+    /// Test-only arming flag for `inFlightRefreshTasks` accumulation. Off in
+    /// production (nothing accumulates); set by
+    /// `_awaitAllBackgroundRefreshesForTesting`'s first call path via
+    /// `_trackRefreshTasksForTesting()`.
+    private let trackRefreshTasksForTesting = OSAllocatedUnfairLock<Bool>(initialState: false)
+
     private struct CachedFeed {
         let feed: CatalogFeed
         let timestamp: Date
@@ -258,6 +275,9 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
                 return ()
             }
             lastBackgroundRefreshTask.withLock { $0 = refreshTask }
+            if trackRefreshTasksForTesting.withLock({ $0 }) {
+                inFlightRefreshTasks.withLock { $0.append(refreshTask) }
+            }
 
             return entry.feed
         }
@@ -432,6 +452,37 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
     public func _awaitBackgroundRefreshForTesting() async {
         let task = lastBackgroundRefreshTask.withLock { $0 }
         await task?.value
+    }
+
+    /// TEST SEAM — deterministically await EVERY background stale-revalidate
+    /// refresh scheduled since the last drain, then clear the set. Use this
+    /// (instead of `_awaitBackgroundRefreshForTesting`) when a test triggers
+    /// CONCURRENT stale reads across multiple URLs: each read schedules its own
+    /// detached refresh, so joining only the last handle can return before the
+    /// earlier siblings have written their cache entries. Awaiting the whole
+    /// set blocks exactly until all in-flight refreshes finish — no wall-clock
+    /// poll, no pool-oversubscription starvation.
+    ///
+    /// Behavior-identical to production: `loadTopLevelCatalog` still fires each
+    /// refresh detached and returns immediately; this only reads handles the
+    /// repository already retains.
+    public func _awaitAllBackgroundRefreshesForTesting() async {
+        let tasks = inFlightRefreshTasks.withLock { current -> [Task<Void, Never>] in
+            let snapshot = current
+            current.removeAll()
+            return snapshot
+        }
+        for task in tasks {
+            await task.value
+        }
+    }
+
+    /// TEST SEAM — arm accumulation of background-refresh Task handles into
+    /// `inFlightRefreshTasks`. Call this BEFORE triggering the concurrent stale
+    /// reads a test intends to join via `_awaitAllBackgroundRefreshesForTesting()`.
+    /// Off by default so production never accumulates handles.
+    public func _trackRefreshTasksForTesting() {
+        trackRefreshTasksForTesting.withLock { $0 = true }
     }
 
     // MARK: - Background Preloading

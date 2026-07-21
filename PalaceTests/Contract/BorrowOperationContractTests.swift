@@ -297,25 +297,28 @@ final class BorrowOperationContractTests: XCTestCase {
 
     // MARK: - Helpers
 
-    /// Wait up to ~1s for the log to contain a record with the given method.
-    /// Wraps the shared `awaitConditionAsync` helper.
-    /// `file`/`line` forwarded so timeout XCTFail blames the call site.
+    /// Assert the log contains a record with the given method, JOINING the
+    /// main actor deterministically first.
+    ///
+    /// `borrowAsync` invokes the recorded delegate calls (`startDownload`,
+    /// `presentBorrowErrorAlert`, `presentSignInModal`) via `await MainActor.run`
+    /// hops that run BEFORE `borrowAsync` returns, so by the time the caller has
+    /// `await`ed `borrowAsync` the record is already present. A single
+    /// `await MainActor.run {}` drains any residual enqueued main-actor work
+    /// (FIFO) to close the ordering, then we assert directly — no wall-clock
+    /// poll. The former `awaitConditionAsync(timeout: 10)` polled the log on a
+    /// deadline that starved under parallel-sim-clone oversubscription and blew
+    /// the executionTimeAllowance; the deterministic drain removes that risk.
     private func waitForLog(
         containing method: String,
-        timeout: TimeInterval = 10.0,
         file: StaticString = #file,
         line: UInt = #line
     ) async {
-        // Swift 6: `awaitConditionAsync`'s predicate is a non-Sendable
-        // `() -> Bool` sent to a nonisolated async helper, so it must not
-        // capture `self` (a non-Sendable XCTestCase). Hoist the Sendable
-        // `CallLog` (@unchecked Sendable) and the method name to locals so
-        // the predicate captures only Sendable values — mirrors the local-
-        // hoist pattern used in setUp for the async closure seams.
-        let capturedLog = log
-        await awaitConditionAsync(timeout: timeout, file: file, line: line) { [capturedLog, method] in
-            capturedLog?.snapshot().contains(where: { $0.method == method }) ?? false
-        }
+        await MainActor.run {}
+        let present = log?.snapshot().contains(where: { $0.method == method }) ?? false
+        XCTAssertTrue(present,
+                      "Expected the call log to contain a '\(method)' record",
+                      file: file, line: line)
     }
 
     /// Short settle for cases where we expect NOT to see a call.

@@ -221,7 +221,12 @@ final class ActiveSessionsViewModelTests: XCTestCase {
             userInfo: ["bookId": "AB-NEW"]
         )
 
-        wait(for: [exp], timeout: 0.5)
+        // 5.0s ceiling (was 0.5s): the re-query fires in ms on the happy path;
+        // the generous ceiling only matters under parallel-sim-clone CPU
+        // starvation and never slows the green path. Matches the sibling
+        // `testRefresh_firesOnRegistryStateChange` rationale — 0.5s was too
+        // tight and hit the executionTimeAllowance under 2-clone oversubscription.
+        wait(for: [exp], timeout: 5.0)
         _ = observer
 
         XCTAssertGreaterThan(spyService.recentlyReadingCallCount, baselineCalls,
