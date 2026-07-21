@@ -105,7 +105,7 @@
         ]
       },
       "escalation_follow_up": {
-        "prompt": "Before I send this to support — which audiobook title is doing this? It helps them spot patterns across publishers.",
+        "prompt": "Which audiobook title is doing this? It helps them spot patterns across publishers.",
         "placeholder": "e.g. The Midnight Library by Matt Haig",
         "diagnostic": "audiobook.followup_title_captured"
       },
@@ -326,7 +326,7 @@
         ]
       },
       "escalation_follow_up": {
-        "prompt": "Quick question before I file this — which library are you trying to add? (City, county, or system name is fine.)",
+        "prompt": "Which library are you trying to add? (City, county, or system name is fine.)",
         "placeholder": "e.g. Brooklyn Public Library",
         "diagnostic": "library.followup_name_captured"
       },
@@ -395,7 +395,7 @@
         "jira": "PP-4430"
       },
       "escalation_follow_up": {
-        "prompt": "Before I escalate — what car model + year are you using, and is it wired CarPlay or wireless? Helps us repro on the same setup.",
+        "prompt": "What car model + year are you using, and is it wired CarPlay or wireless? Helps us repro on the same setup.",
         "placeholder": "e.g. 2021 Honda Civic, wired",
         "diagnostic": "carplay.followup_car_captured"
       },
