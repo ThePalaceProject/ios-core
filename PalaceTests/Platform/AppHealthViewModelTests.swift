@@ -68,8 +68,9 @@ final class AppHealthViewModelTests: XCTestCase {
 
         viewModel.loadData()
 
-        // Wait for async loading
-        try? await Task.sleep(nanoseconds: 200_000_000)
+        // Deterministically JOIN the async load instead of sleeping on a
+        // wall-clock deadline (starves under CI oversubscription).
+        await viewModel.awaitLoadForTesting()
 
         XCTAssertFalse(viewModel.isLoading)
         XCTAssertFalse(viewModel.metrics.isEmpty)
@@ -78,7 +79,9 @@ final class AppHealthViewModelTests: XCTestCase {
 
     func testLoadDataIncludesMemoryMetric() async {
         viewModel.loadData()
-        try? await Task.sleep(nanoseconds: 200_000_000)
+        // Deterministically JOIN the async load instead of sleeping on a
+        // wall-clock deadline (starves under CI oversubscription).
+        await viewModel.awaitLoadForTesting()
 
         let memoryMetric = viewModel.metrics.first(where: { $0.name == "Memory Usage" })
         XCTAssertNotNil(memoryMetric, "Should include memory usage metric")
@@ -87,7 +90,9 @@ final class AppHealthViewModelTests: XCTestCase {
 
     func testLoadDataIncludesOfflineQueueMetrics() async {
         viewModel.loadData()
-        try? await Task.sleep(nanoseconds: 200_000_000)
+        // Deterministically JOIN the async load instead of sleeping on a
+        // wall-clock deadline (starves under CI oversubscription).
+        await viewModel.awaitLoadForTesting()
 
         let pendingMetric = viewModel.metrics.first(where: { $0.name == "Pending Actions" })
         let failedMetric = viewModel.metrics.first(where: { $0.name == "Failed Actions" })
@@ -104,7 +109,9 @@ final class AppHealthViewModelTests: XCTestCase {
         await performanceMonitor.record(name: "test2", category: .bookOpen, duration: 1.0, metadata: [:])
 
         viewModel.loadData()
-        try? await Task.sleep(nanoseconds: 200_000_000)
+        // Deterministically JOIN the async load instead of sleeping on a
+        // wall-clock deadline (starves under CI oversubscription).
+        await viewModel.awaitLoadForTesting()
 
         XCTAssertNotNil(viewModel.performanceReport)
         XCTAssertEqual(viewModel.performanceReport?.totalMeasurements, 2)
@@ -117,7 +124,9 @@ final class AppHealthViewModelTests: XCTestCase {
         await performanceMonitor.record(name: "launch", category: .appLaunch, duration: 1.0, metadata: [:])
 
         viewModel.loadData()
-        try? await Task.sleep(nanoseconds: 200_000_000)
+        // Deterministically JOIN the async load instead of sleeping on a
+        // wall-clock deadline (starves under CI oversubscription).
+        await viewModel.awaitLoadForTesting()
 
         let launchMetric = viewModel.metrics.first(where: { $0.name.contains("App Launch") })
         if let metric = launchMetric {
@@ -128,11 +137,21 @@ final class AppHealthViewModelTests: XCTestCase {
     // MARK: - Offline Queue Status Updates
 
     func testOfflineQueueStatusUpdates() async {
+        // Deterministically JOIN the ViewModel's main-hopped status sink instead
+        // of sleeping on a wall-clock deadline (starves under CI oversubscription).
+        // The ViewModel subscribes to statusPublisher.receive(on: .main), so a
+        // fulfillment on $offlineQueueStatus fires exactly when the emission lands.
+        let emitted = expectation(description: "ViewModel reflects the enqueued action")
+        viewModel.$offlineQueueStatus
+            .drop(while: { $0.pendingCount == 0 })
+            .first()
+            .sink { _ in emitted.fulfill() }
+            .store(in: &cancellables)
+
         let action = OfflineAction(type: .borrow, bookID: "book1", bookTitle: "Test")
         await offlineQueueService.enqueue(action)
 
-        // Wait for publisher to emit
-        try? await Task.sleep(nanoseconds: 200_000_000)
+        await fulfillment(of: [emitted], timeout: 5.0)
 
         XCTAssertGreaterThanOrEqual(viewModel.offlineQueueStatus.pendingCount, 0)
     }
