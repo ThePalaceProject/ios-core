@@ -33,6 +33,16 @@ class TPPLastReadPositionPoster {
     private let positionWriter: PositionWriter
     private let deviceID: String
 
+    /// Retains every spawned server-post `Task` still in flight so tests can
+    /// join the actual fire-and-forget work deterministically instead of
+    /// racing a fixed wall-clock `Task.sleep` (which starves under parallel
+    /// oversubscription). Behavior-identical in production: each Task is
+    /// spawned and runs exactly as before; we merely hold references so
+    /// `awaitPendingWrites()` can drain them. Access is serialized on the
+    /// caller's actor (`storeReadPosition` / the test helper both run on the
+    /// same isolation domain as the poster's owner).
+    private var pendingWriteTasks: [Task<Void, Never>] = []
+
     init(book: TPPBook,
          publication: Publication,
          bookRegistryProvider: TPPBookRegistryProvider,
@@ -59,8 +69,20 @@ class TPPLastReadPositionPoster {
         bookRegistryProvider.setLocation(location, forIdentifier: book.identifier)
 
         guard let snapshot = makeSnapshot(from: locator) else { return }
-        Task { [positionWriter] in
+        pendingWriteTasks.append(Task { [positionWriter] in
             _ = try? await positionWriter.save(snapshot)
+        })
+    }
+
+    /// Test seam: awaits every server-post `Task` spawned since the last
+    /// drain so a test can JOIN the actual writes instead of polling a
+    /// wall-clock deadline. No-op in production (never called there).
+    /// Returns once all pending writes have finished.
+    func awaitPendingWrites() async {
+        let tasks = pendingWriteTasks
+        pendingWriteTasks.removeAll()
+        for task in tasks {
+            await task.value
         }
     }
 
