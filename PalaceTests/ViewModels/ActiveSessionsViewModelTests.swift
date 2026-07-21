@@ -238,7 +238,7 @@ final class ActiveSessionsViewModelTests: XCTestCase {
             userInfo: ["bookId": "AB-NEW"]
         )
 
-        wait(for: [exp], timeout: 0.5)
+        wait(for: [exp], timeout: 5.0) // real join (observeNextCall fulfills on re-query); ceiling widened to match site above — a 0.5s bound starves under CI oversubscription
         _ = observer
 
         XCTAssertGreaterThan(spyService.recentlyReadingCallCount, baselineCalls,
@@ -347,7 +347,7 @@ final class ActiveSessionsViewModelTests: XCTestCase {
         // Emit a state change through the publisher the SUT subscribes to.
         fakeSession.playbackStatePublisher.send(.playing(bookId: "any"))
 
-        wait(for: [exp], timeout: 0.5)
+        wait(for: [exp], timeout: 5.0) // real join (observeNextCall fulfills on re-query); ceiling widened to match site above — a 0.5s bound starves under CI oversubscription
         _ = observer
 
         XCTAssertGreaterThan(spyService.recentlyReadingCallCount, baselineCalls,
@@ -376,7 +376,7 @@ final class ActiveSessionsViewModelTests: XCTestCase {
 
         notificationCenter.post(name: .TPPCurrentAccountDidChange, object: nil)
 
-        wait(for: [exp], timeout: 0.5)
+        wait(for: [exp], timeout: 5.0) // real join (observeNextCall fulfills on re-query); ceiling widened to match site above — a 0.5s bound starves under CI oversubscription
         _ = observer
 
         XCTAssertGreaterThan(spyService.recentlyReadingCallCount, baselineCalls,

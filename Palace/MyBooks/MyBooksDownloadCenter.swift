@@ -207,6 +207,14 @@ private final class DownloadFailureMetadataBox: @unchecked Sendable {
     /// drop trigger `failActiveDownloadsForNetworkLoss()` without parking the
     /// subscription on a Set we don't otherwise need.
     private var reachabilityCancellable: AnyCancellable?
+    /// Handle to the most recent `failActiveDownloadsForNetworkLoss()` Task.
+    /// That method does its state-transition + alert work inside a
+    /// fire-and-forget `Task { }`; retaining the handle lets callers — and
+    /// tests — `await lastNetworkLossFailureTask?.value` to join that work
+    /// deterministically instead of polling the registry for `.downloadFailed`
+    /// against a wall-clock deadline. Behavior is unchanged: the same Task is
+    /// created and runs exactly as before; only a reference is now kept.
+    private(set) var lastNetworkLossFailureTask: Task<Void, Never>?
     let memoryPressureMonitor: MemoryPressureMonitor
     let bookmarkDeletionLog: TPPBookmarkDeletionLog
     let deviceSpecificErrorMonitor: DeviceSpecificErrorMonitor
@@ -1032,7 +1040,7 @@ private final class DownloadFailureMetadataBox: @unchecked Sendable {
     /// filtered by `DownloadTaskLifecycleService.handleTaskCompletionError`,
     /// so there's no double-alert.
     func failActiveDownloadsForNetworkLoss() {
-        Task { [weak self] in
+        lastNetworkLossFailureTask = Task { [weak self] in
             guard let self else { return }
             // Snapshot active state before mutations — failDownloadWithAlert
             // empties the dicts asynchronously.

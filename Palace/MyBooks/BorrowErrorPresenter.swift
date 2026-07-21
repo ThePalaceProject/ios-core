@@ -122,6 +122,32 @@ final class BorrowErrorPresenter: @unchecked Sendable {
     /// path. Called from MBDC's borrow flow on every problem-document
     /// failure.
     func process(error: [String: Any]?, for book: TPPBook) {
+        // `book` (non-Sendable `TPPBook`) and `error` (`Any`-valued dict) ride
+        // whole into the `@MainActor @Sendable` Task via read-only carrier
+        // boxes; the boxed values are only touched on the main actor inside
+        // `processAsync`.
+        let bookBox = BorrowBookBox(book)
+        let errorBox = BorrowErrorDictBox(error)
+        Task { @MainActor [weak self] in
+            await self?.processAsync(error: errorBox.error, for: bookBox.book)
+        }
+    }
+
+    /// Behavior-identical `async` sibling of `process`. Fire-and-forget
+    /// `process` is `Task { await processAsync(...) }`; callers already inside
+    /// an `async @MainActor` context (and tests) can `await` it directly to
+    /// JOIN every branch's side effects — the alert publish, the re-auth
+    /// dispatch, and the post-reauth `startDownload` retry — instead of
+    /// polling a wall-clock deadline for a fire-and-forget hop to settle.
+    ///
+    /// Structurally identical to the previous `process` body: the branch-1/2/4
+    /// publishes happen on the main actor (previously via `runOnMainAsync`,
+    /// now directly — we are already on `@MainActor`, same thread, same
+    /// order), and the invalid-credentials branch keeps the same guard order,
+    /// the same one-shot latch, the same shared-flag set, and the same
+    /// fire-and-forget 2s `isRequestingCredentials` reset Task.
+    @MainActor
+    func processAsync(error: [String: Any]?, for book: TPPBook) async {
         guard let errorType = error?["type"] as? String else {
             showGenericBorrowFailedAlert(for: book)
             return
@@ -132,49 +158,30 @@ final class BorrowErrorPresenter: @unchecked Sendable {
         switch errorType {
         case TPPProblemDocument.TypeLoanAlreadyExists:
             let alertMessage = DisplayStrings.loanAlreadyExistsAlertMessage
-            // Snapshot the Sendable identifier so the non-Sendable `book` does
-            // not cross into the `@MainActor @Sendable` closure.
-            let bookId = book.identifier
-            runOnMainAsync { [weak self] in
-                self?.progressReporter.publishAndAnnounceError(
-                    DownloadErrorInfo(bookId: bookId, title: alertTitle, message: alertMessage, kind: .borrow)
-                )
-            }
+            progressReporter.publishAndAnnounceError(
+                DownloadErrorInfo(bookId: book.identifier, title: alertTitle, message: alertMessage, kind: .borrow)
+            )
 
         case TPPProblemDocument.TypeInvalidCredentials:
-            // `book` (non-Sendable `TPPBook`) and `error` (`[String: Any]?`,
-            // `Any` is non-Sendable) both need to ride whole into the
-            // `@MainActor @Sendable` re-auth Task. Thread them through
-            // read-only carrier boxes; the boxed values are only touched on
-            // the main actor inside the Task.
-            let bookBox = BorrowBookBox(book)
-            let errorBox = BorrowErrorDictBox(error)
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                let book = bookBox.book
-                let error = errorBox.error
-
-                guard !self.hasAttemptedAuthentication else {
-                    self.showAlert(for: book, with: error, alertTitle: alertTitle)
-                    return
-                }
-
-                guard !self.credentialRequestState.isRequestingCredentials else {
-                    NSLog("Already requesting credentials, skipping re-authentication for: \(book.title)")
-                    return
-                }
-
-                self.hasAttemptedAuthentication = true
-                self.credentialRequestState.isRequestingCredentials = true
-
-                Task { @MainActor [weak self] in
-                    try? await Task.sleep(nanoseconds: 2_000_000_000)
-                    self?.credentialRequestState.isRequestingCredentials = false
-                }
-
-                await self.handleInvalidCredentials(for: book)
+            guard !self.hasAttemptedAuthentication else {
+                self.showAlert(for: book, with: error, alertTitle: alertTitle)
+                return
             }
-            return
+
+            guard !self.credentialRequestState.isRequestingCredentials else {
+                NSLog("Already requesting credentials, skipping re-authentication for: \(book.title)")
+                return
+            }
+
+            self.hasAttemptedAuthentication = true
+            self.credentialRequestState.isRequestingCredentials = true
+
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                self?.credentialRequestState.isRequestingCredentials = false
+            }
+
+            await self.handleInvalidCredentials(for: book)
 
         default:
             showAlert(for: book, with: error, alertTitle: alertTitle)
@@ -184,20 +191,28 @@ final class BorrowErrorPresenter: @unchecked Sendable {
     // MARK: - Invalid-credentials → reauth + retry
 
     @MainActor
-    private func handleInvalidCredentials(for book: TPPBook) {
+    private func handleInvalidCredentials(for book: TPPBook) async {
         let userAccount = userAccountProvider()
-        reauthenticator.authenticateIfNeeded(userAccount, usingExistingCredentials: false) { [weak self] in
-            guard let self = self else { return }
 
-            Task { @MainActor [weak self] in
-                self?.credentialRequestState.isRequestingCredentials = false
-
-                if self?.userAccountProvider().hasCredentials() == true {
-                    self?.delegate?.startDownload(for: book, withRequest: nil)
-                } else {
-                    NSLog("Authentication completed but no credentials present, user may have cancelled")
-                }
+        // Bridge the completion-handler reauthenticator API to `async` so the
+        // caller (`processAsync`) can JOIN the retry. The post-reauth body runs
+        // on the main actor exactly as before — previously it hopped through
+        // `Task { @MainActor }` from the (possibly-nonisolated) completion; now
+        // we resume back onto the main actor via the continuation and run it
+        // inline. Same thread, same order, same observable effects
+        // (`isRequestingCredentials` reset → conditional `startDownload`).
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            reauthenticator.authenticateIfNeeded(userAccount, usingExistingCredentials: false) {
+                continuation.resume()
             }
+        }
+
+        credentialRequestState.isRequestingCredentials = false
+
+        if userAccountProvider().hasCredentials() {
+            delegate?.startDownload(for: book, withRequest: nil)
+        } else {
+            NSLog("Authentication completed but no credentials present, user may have cancelled")
         }
     }
 

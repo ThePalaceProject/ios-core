@@ -34,6 +34,16 @@ import PalaceReadingPosition
     private let debounceInterval: TimeInterval = 1.0
     private var debounceWorkItem: DispatchWorkItem?  // Access only on `queue`
 
+    // MARK: - Test join seam
+    // Retains the most recent `saveListeningPosition` write `Task` so tests can
+    // deterministically JOIN the actual work unit (`await handle.value`) instead
+    // of polling a wall-clock deadline (`wait(for:timeout:)`), which starves
+    // under CI sim-clone oversubscription. Production behavior is unchanged: the
+    // Task runs and calls its completion exactly as before; this reference is
+    // write-only outside of `_awaitPositionWriteForTesting()`. Access is confined
+    // to `queue` (the file's single serialization domain).
+    private var _positionWriteTaskForTesting: Task<Void, Never>?
+
     // MARK: - Serialized sync state
     // `isSyncing`, `completionHandlersQueue`, and `deletedBookmarkIds` are read
     // and written from the UI thread, URLSession completion threads, AND the
@@ -135,7 +145,7 @@ import PalaceReadingPosition
         let completionBox = StringCompletionBox(completion)
         let audioBookmarkBox = AudioBookmarkBox(audioBookmark)
 
-        Task { [weak self] in
+        let writeTask = Task { [weak self] in
             guard let self else { return }
             let audioBookmark = audioBookmarkBox.bookmark
             do {
@@ -200,6 +210,18 @@ import PalaceReadingPosition
                 completionBox.call?(nil)
             }
         }
+        onStateQueue { self._positionWriteTaskForTesting = writeTask }
+    }
+
+    /// Test-only join seam. Awaits the most recent `saveListeningPosition`
+    /// write `Task` so a test can deterministically block on the actual async
+    /// work unit (including the post-save conflict-resolution branch and the
+    /// completion call) rather than a wall-clock `wait(for:timeout:)` poll that
+    /// starves under CI oversubscription. No-op if no write is in flight.
+    /// Behavior-identical for production: nothing calls this outside tests.
+    func _awaitPositionWriteForTesting() async {
+        let handle = onStateQueue { self._positionWriteTaskForTesting }
+        await handle?.value
     }
 
     public func saveBookmark(at position: TrackPosition, completion: ((_ position: TrackPosition?) -> Void)? = nil) {

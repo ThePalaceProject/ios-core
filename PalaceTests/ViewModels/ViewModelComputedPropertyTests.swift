@@ -914,8 +914,12 @@ final class BookCellModelRegistryBindingTests: XCTestCase {
         // Change state of OTHER book - should not affect this model
         mockRegistry.setState(.downloading, for: "other-book")
 
-        // Wait a moment for any potential (incorrect) propagation
-        try? await Task.sleep(nanoseconds: 200_000_000) // 200ms
+        // Deterministically flush the model's registry-state observer (which hops
+        // via `.receive(on: RunLoop.main)`) instead of guessing with a fixed sleep.
+        // Because the main queue is FIFO, once this no-op drains, the sink has
+        // already delivered — and correctly filtered out — the other-book emission.
+        // A fixed `Task.sleep` here starved under CI sim-clone oversubscription.
+        await drainMainQueueAsync()
 
         XCTAssertEqual(model.registryState, .downloadNeeded, "Should not react to other book's state changes")
     }

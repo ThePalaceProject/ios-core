@@ -14,6 +14,7 @@
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
 
+import Combine
 import XCTest
 @testable import Palace
 
@@ -93,15 +94,22 @@ final class AppContainerResetTests: PalaceTestCase {
         // the shared session manager's publisher.
         let session = AppContainer.production().audiobookSession
         let pollutedPresenter = AppContainer.production().audiobookSessionPresenter
-        session.playbackStatePublisher.send(.playing(bookId: "polluter"))
 
         // `hasActiveSession` is delivered async via the presenter's
-        // `.receive(on: DispatchQueue.main)` subscription; pump the run loop
-        // until it lands (CI-safe deterministic wait — never a fixed sleep).
-        let arrangeDeadline = Date().addingTimeInterval(2.0)
-        while !pollutedPresenter.hasActiveSession && Date() < arrangeDeadline {
-            RunLoop.main.run(until: Date().addingTimeInterval(0.005))
-        }
+        // `.receive(on: DispatchQueue.main)` subscription. JOIN that exact
+        // subscription by awaiting the `@Published` `$hasActiveSession` emission
+        // instead of spinning a fixed wall-clock RunLoop deadline (which starves
+        // under CI sim-clone oversubscription). The sink fulfils precisely when
+        // the main-hopped state lands — deterministic, no wall-clock gamble.
+        let becameActive = expectation(description: "presenter hasActiveSession == true")
+        let activeCancellable = pollutedPresenter.$hasActiveSession
+            .first(where: { $0 })
+            .sink { _ in becameActive.fulfill() }
+
+        session.playbackStatePublisher.send(.playing(bookId: "polluter"))
+
+        wait(for: [becameActive], timeout: 2.0)
+        activeCancellable.cancel()
         XCTAssertTrue(pollutedPresenter.hasActiveSession,
                       "ARRANGE: the shared audiobook presenter must be polluted to an active session before the reset")
 

@@ -27,7 +27,15 @@ class MockPDFDocumentMetadata: TPPPDFDocumentMetadata, @unchecked Sendable {
     ) {
         // Create a minimal mock book for the parent initializer
         let mockBook = TPPBookMocker.mockBook(distributorType: .OpenAccessPDF)
-        self.init(with: mockBook)
+        // Inject an ISOLATED per-instance registry instead of letting the
+        // parent init default to `AppContainer.production().bookRegistry`.
+        // The production default made every mock touch the shared singleton
+        // (setState/location/genericBookmarks) — cross-test shared state that
+        // starves + flakes under parallel oversubscription. A fresh mock
+        // registry per instance keeps each test hermetic; the metadata behavior
+        // these tests assert (bookmark-set membership) is unchanged because
+        // those paths are overridden below.
+        self.init(with: mockBook, bookRegistry: TPPBookRegistryMock())
 
         self.mockCurrentPage = currentPage
         self.mockBookmarks = bookmarks

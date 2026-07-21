@@ -164,17 +164,11 @@ final class MultiLibraryTokenIsolationTests: XCTestCase {
         """.data(using: .utf8)!
     }
 
-    @discardableResult
-    private func waitForCondition(timeout: TimeInterval = 5.0,
-                                  _ condition: @escaping () -> Bool) -> Bool {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if condition() { return true }
-            RunLoop.current.run(mode: .default,
-                                before: Date().addingTimeInterval(0.025))
-        }
-        return condition()
-    }
+    // NOTE: the former `waitForCondition` RunLoop wall-clock poll was removed —
+    // the one site that used it (Test `test_RefreshA_401_MarksOnlyAStale_NotB`)
+    // now drains the main actor deterministically after the awaited refresh
+    // completion instead of polling `authState` on a deadline. All other waits
+    // in this file already JOIN real completion handlers via `fulfillment(of:)`.
 
     // MARK: - Test 1: Request built while A is current carries A's bearer
     //
@@ -362,10 +356,11 @@ final class MultiLibraryTokenIsolationTests: XCTestCase {
         }
         await fulfillment(of: [done], timeout: 5.0)
 
-        // MainActor hop for markCredentialsStale.
-        _ = waitForCondition(timeout: 2.0) {
-            self.libraryProvider.accountA.authState == .credentialsStale
-        }
+        // `markCredentialsStale` runs on a @MainActor hop enqueued by the (now
+        // completed) refresh. Drain the main actor once (FIFO) to settle it
+        // deterministically instead of RunLoop-polling `authState` on a 2s
+        // wall-clock ceiling that starves under parallel-sim-clone load.
+        await MainActor.run {}
 
         XCTAssertEqual(libraryProvider.accountA.authState, .credentialsStale,
                        "A's auth state must be stale after A's 401")
