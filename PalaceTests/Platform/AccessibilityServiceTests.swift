@@ -93,6 +93,7 @@ final class AccessibilityServiceTests: XCTestCase {
 
         service.preferencesPublisher
             .dropFirst() // Drop the initial value
+            .receive(on: DispatchQueue.main)   // deliver on main so the @MainActor sink closure isn't invoked off-main (Swift 6 executor-isolation trap)
             .sink { prefs in
                 receivedPrefs = prefs
                 expectation.fulfill()

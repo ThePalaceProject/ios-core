@@ -152,6 +152,7 @@ final class PositionSyncServiceTests: XCTestCase {
         let expectation = XCTestExpectation(description: "Position recorded event")
 
         service.eventPublisher
+            .receive(on: DispatchQueue.main)   // deliver on main so the @MainActor sink closure isn't invoked off-main (Swift 6 executor-isolation trap)
             .sink { event in
                 if case .positionRecorded(let pos) = event {
                     XCTAssertEqual(pos.bookID, "book1")
@@ -181,6 +182,7 @@ final class PositionSyncServiceTests: XCTestCase {
         await service.setMapping(mapping)
 
         service.eventPublisher
+            .receive(on: DispatchQueue.main)   // deliver on main so the @MainActor sink closure isn't invoked off-main (Swift 6 executor-isolation trap)
             .sink { event in
                 if case .syncAvailable = event {
                     sawSyncAvailable = true

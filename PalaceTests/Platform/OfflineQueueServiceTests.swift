@@ -198,6 +198,7 @@ final class OfflineQueueServiceTests: XCTestCase {
         service.statusPublisher
             .dropFirst() // Drop initial empty
             .first()
+            .receive(on: DispatchQueue.main)   // deliver on main so the @MainActor sink closure isn't invoked off-main (Swift 6 executor-isolation trap)
             .sink { status in
                 receivedStatus = status
                 expectation.fulfill()
@@ -217,6 +218,7 @@ final class OfflineQueueServiceTests: XCTestCase {
 
         service.actionPublisher
             .first()
+            .receive(on: DispatchQueue.main)   // deliver on main so the @MainActor sink closure isn't invoked off-main (Swift 6 executor-isolation trap)
             .sink { action in
                 XCTAssertEqual(action.bookID, "book1")
                 expectation.fulfill()
