@@ -846,6 +846,85 @@
       "visibility": "user_facing",
       "ui_surface": "notifications-settings",
       "reviewed_at": "2026-07-20"
+    },
+    {
+      "id": "HT-2026-005-hold-pickup-window",
+      "category": "other",
+      "kind": "how_to",
+      "symptom_keywords": [
+        "how long to pick up",
+        "pick up my hold",
+        "how long is my hold",
+        "hold ready how long",
+        "hold expire",
+        "when do i lose my hold",
+        "grab my hold",
+        "hold pickup deadline",
+        "how long to get my hold"
+      ],
+      "user_facing_workaround": "How long you have to pick up a ready hold varies by library and distributor. When your hold is ready, Palace shows the exact \"pick up by\" date right on it — open the title from your holds to see the deadline.",
+      "internal_reference": {
+        "jira": "PP-4831"
+      },
+      "confidence_threshold": 0.1,
+      "escalate_anyway": false,
+      "helpspot_tag": "how-to-hold-pickup-window",
+      "trust_level": "authoritative",
+      "visibility": "user_facing",
+      "ui_surface": "my-books",
+      "reviewed_at": "2026-07-21"
+    },
+    {
+      "id": "HT-2026-006-borrow-limit",
+      "category": "other",
+      "kind": "how_to",
+      "symptom_keywords": [
+        "how many books can i borrow",
+        "how many can i borrow",
+        "borrow limit",
+        "loan limit",
+        "checkout limit",
+        "maximum books",
+        "how many at once",
+        "how many titles at once"
+      ],
+      "user_facing_workaround": "The number of titles you can borrow at once is set by your library, so it varies. If you've reached the limit, returning a title you've finished frees up a slot — or check with your library for its exact borrowing limit.",
+      "internal_reference": {
+        "jira": "PP-4831"
+      },
+      "confidence_threshold": 0.1,
+      "escalate_anyway": false,
+      "helpspot_tag": "how-to-borrow-limit",
+      "trust_level": "authoritative",
+      "visibility": "user_facing",
+      "ui_surface": "my-books",
+      "reviewed_at": "2026-07-21"
+    },
+    {
+      "id": "HT-2026-007-loan-length",
+      "category": "other",
+      "kind": "how_to",
+      "symptom_keywords": [
+        "how long is a loan",
+        "how long is the loan",
+        "loan length",
+        "how long can i read it",
+        "when is it due",
+        "how long is my checkout",
+        "lending period",
+        "loan period"
+      ],
+      "user_facing_workaround": "Loan length is set by your library, so it varies — you'll see the due date on each title when you borrow it. Palace can't extend or renew a loan in the app: when the lending period ends the book returns automatically, and to keep reading you simply borrow it again (or place a hold if there's a waitlist).",
+      "internal_reference": {
+        "jira": "PP-4831"
+      },
+      "confidence_threshold": 0.1,
+      "escalate_anyway": false,
+      "helpspot_tag": "how-to-loan-length",
+      "trust_level": "authoritative",
+      "visibility": "user_facing",
+      "ui_surface": "my-books",
+      "reviewed_at": "2026-07-21"
     }
   ]
 }
