@@ -867,14 +867,30 @@ final class BookRegistrySyncTests: XCTestCase {
         try! data.write(to: url)
     }
 
-    /// Spins the run loop until `predicate()` is true or `timeout` elapses. Lets
-    /// `DispatchQueue.main.async` completion blocks (e.g. the save notification)
-    /// run while we wait on the background disk write.
-    private func waitUntil(timeout: TimeInterval = 3.0, _ predicate: () -> Bool) {
-        let deadline = Date().addingTimeInterval(timeout)
-        while !predicate() && Date() < deadline {
-            RunLoop.current.run(until: Date().addingTimeInterval(0.02))
-        }
+    /// Runs `action` (a `syncManager.save(...)` that writes on the background
+    /// `diskWriteQueue`) and JOINS its completion by waiting for the
+    /// `.TPPBookRegistryDidChange` notification the save posts on the main
+    /// queue *after* the `write(to:)` lands — rather than polling `fileExists`
+    /// against a wall-clock deadline. The observer is registered before
+    /// `action` runs (and the post can't be serviced until this synchronous
+    /// body yields into `wait(for:)`), so the save's post is captured
+    /// deterministically. This is the success-path join: on the refused-save
+    /// path no notification fires, which is exactly why the absence assertions
+    /// still use `settle()` (there is no positive edge to await).
+    ///
+    /// Replaces the old `waitUntil { fileExists }` RunLoop poll: under CI
+    /// oversubscription the `RunLoop.current.run(until:)` spin could exhaust
+    /// the fixed deadline before the thread was scheduled to service the
+    /// background write, silently asserting against a not-yet-written file.
+    private func awaitRegistrySaved(timeout: TimeInterval = 5.0, _ action: () -> Void) {
+        let saved = expectation(description: "registry disk write posted TPPBookRegistryDidChange")
+        saved.assertForOverFulfill = false
+        let token = NotificationCenter.default.addObserver(
+            forName: .TPPBookRegistryDidChange, object: nil, queue: .main
+        ) { _ in saved.fulfill() }
+        defer { NotificationCenter.default.removeObserver(token) }
+        action()
+        wait(for: [saved], timeout: timeout)
     }
 
     /// Fixed run-loop settle for asserting the ABSENCE of an effect (a refused
@@ -907,6 +923,11 @@ final class BookRegistrySyncTests: XCTestCase {
         XCTAssertTrue(store.allBooks.isEmpty, "precondition: empty in-memory shelf")
 
         // Act: a NON-authoritative save of the empty shelf.
+        // UNJOINABLE: this save is REFUSED by INV-1 (empty + non-authoritative +
+        // rebuild window) so the diskWriteQueue closure returns early WITHOUT
+        // writing or posting `.TPPBookRegistryDidChange`. There is no positive
+        // edge to join — we assert the ABSENCE of a clobber, so a bounded
+        // `settle()` (fixed run-loop drain) is the correct primitive here.
         syncManager.save(for: account)
         settle()
 
@@ -929,8 +950,7 @@ final class BookRegistrySyncTests: XCTestCase {
         XCTAssertTrue(store.allBooks.isEmpty)
 
         // An authoritative sync result may legitimately persist an empty shelf.
-        syncManager.save(for: account, serverAuthoritative: true)
-        waitUntil { FileManager.default.fileExists(atPath: url.path) }
+        awaitRegistrySaved { syncManager.save(for: account, serverAuthoritative: true) }
 
         guard case .valid(let recs) = RegistryFileRecovery.classify(data: try? Data(contentsOf: url)) else {
             return XCTFail("an authoritative empty save must persist a valid (empty) registry.json")
@@ -952,8 +972,8 @@ final class BookRegistrySyncTests: XCTestCase {
         wait(for: [added], timeout: 2.0)
         drainMainQueue()
 
-        syncManager.save(for: account)   // non-authoritative, but non-empty
-        waitUntil { FileManager.default.fileExists(atPath: url.path) }
+        // non-authoritative, but non-empty
+        awaitRegistrySaved { syncManager.save(for: account) }
 
         guard case .valid(let recs) = RegistryFileRecovery.classify(data: try? Data(contentsOf: url)) else {
             return XCTFail("a non-empty save must always persist a valid registry")
@@ -1045,8 +1065,7 @@ final class BookRegistrySyncTests: XCTestCase {
         wait(for: [added], timeout: 2.0)
         drainMainQueue()
 
-        syncManager.save(for: account)
-        waitUntil { FileManager.default.fileExists(atPath: url.path) }
+        awaitRegistrySaved { syncManager.save(for: account) }
 
         let version = RegistryFileRecovery.schemaVersion(from: try? Data(contentsOf: url))
         XCTAssertEqual(version, RegistryFileRecovery.currentSchemaVersion,
@@ -1071,10 +1090,7 @@ final class BookRegistrySyncTests: XCTestCase {
         XCTAssertFalse(syncManager.needsRebuildFromServer, "a valid legacy file is not a corrupt/rebuild case")
 
         // Saving migrates it on disk to the versioned shape.
-        syncManager.save(for: account)
-        waitUntil {
-            RegistryFileRecovery.schemaVersion(from: try? Data(contentsOf: url)) != nil
-        }
+        awaitRegistrySaved { syncManager.save(for: account) }
         XCTAssertEqual(RegistryFileRecovery.schemaVersion(from: try? Data(contentsOf: url)),
                        RegistryFileRecovery.currentSchemaVersion,
                        "the next save must migrate the unversioned file to the current schema version")

@@ -155,7 +155,13 @@ final class DownloadCoordinatorIntegrationTests: XCTestCase {
             // Complete first 5
             for i in 0..<5 {
                 group.addTask {
-                    // Small delay to ensure starts happen first
+                    // NOT-A-DEADLINE-POLL: this 10ms sleep is an intra-task-group
+                    // ordering nudge (let the 10 registerStart tasks land before
+                    // these completions), not a wall-clock wait on fire-and-forget
+                    // work. The enclosing `await withTaskGroup` joins every child
+                    // task, so there is no starvable timeout that fails under
+                    // oversubscription — a late sleep only shifts interleaving, and
+                    // the actor serializes the final count. Left as-is.
                     try? await Task.sleep(nanoseconds: 10_000_000)
                     await coordinator.registerCompletion(identifier: "book-\(i)")
                 }

@@ -217,8 +217,30 @@ final class ButtonStateMonotonicClampTests: XCTestCase {
         return (vm, book)
     }
 
-    /// Lets the 50ms button-state throttle (RunLoop.main) emit.
+    /// Lets the 50ms button-state throttle (`RunLoop.main`) emit, then returns.
+    ///
+    /// The button pipeline throttles upstream registry changes 50ms on
+    /// `RunLoop.main` before assigning `$stableButtonState`. Both the
+    /// "changed" and the "held" (clamped) assertions need one full throttle
+    /// window to elapse — so this can't join a distinct emission (the held
+    /// cases re-emit the same value). It must let the window pass.
+    ///
+    /// The previous `RunLoop.main.run(until: now + 0.12)` was a fixed
+    /// wall-clock spin: under CI oversubscription the thread may not be
+    /// scheduled for the full 0.12s, so the throttle timer wouldn't be
+    /// serviced and the settle would return early — silently asserting a
+    /// stale `stableButtonState`. This instead waits on an `expectation`
+    /// fulfilled by a main-queue block scheduled just past the throttle
+    /// window: `wait(for:)` spins the runloop (servicing the `RunLoop.main`
+    /// throttle timer) and holds up to a generous real timeout, so a starved
+    /// runner still lets the throttle fire before we assert — no early return,
+    /// no 0.12s hard deadline to blow.
     private func settleThrottle() {
-        RunLoop.main.run(until: Date().addingTimeInterval(0.12))
+        let settled = expectation(description: "button-state throttle window elapsed")
+        // 60ms > the 50ms throttle interval, so one full window is guaranteed
+        // to have emitted by the time this block runs behind it on the main
+        // queue (FIFO after the throttle's scheduled delivery).
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) { settled.fulfill() }
+        wait(for: [settled], timeout: 5.0)
     }
 }

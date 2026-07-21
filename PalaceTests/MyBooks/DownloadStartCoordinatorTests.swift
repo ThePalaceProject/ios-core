@@ -81,19 +81,6 @@ final class DownloadStartCoordinatorTests: XCTestCase {
         try super.tearDownWithError()
     }
 
-    /// Thin wrapper around the shared `awaitConditionAsync` helper.
-    /// Replaces the prior local copy that silently swallowed timeouts.
-    /// `file`/`line` forwarded so a timeout XCTFail blames the call
-    /// site, not this wrapper.
-    private func waitForAsync(
-        timeout: TimeInterval = 10.0,
-        file: StaticString = #file,
-        line: UInt = #line,
-        _ predicate: @escaping () -> Bool
-    ) async {
-        await awaitConditionAsync(timeout: timeout, file: file, line: line, predicate)
-    }
-
     // MARK: - startBorrow slot-release semantics
 
     func testStartBorrow_success_invokesCompletionAndDoesNotReleaseSlot() async {
@@ -103,11 +90,13 @@ final class DownloadStartCoordinatorTests: XCTestCase {
         bookRegistry.setState(.downloadSuccessful, for: book.identifier)
         var completionCalls = 0
 
-        coordinator.startBorrow(for: book, attemptDownload: false) {
-            completionCalls += 1
-        }
-
-        await waitForAsync { completionCalls > 0 }
+        // Await the behavior-identical async body so slot-release + completion
+        // are JOINED — no deadline poll (starves under CI oversubscription).
+        await coordinator.startBorrowAsync(
+            for: book,
+            attemptDownload: false,
+            borrowCompletionBox: BorrowCompletionBox { completionCalls += 1 }
+        )
 
         XCTAssertEqual(completionCalls, 1, "Borrow success must invoke completion exactly once")
         let active = await stateManager.downloadCoordinator.activeCount
@@ -126,11 +115,11 @@ final class DownloadStartCoordinatorTests: XCTestCase {
         bookRegistry.setState(.holding, for: book.identifier)
         var completionCalls = 0
 
-        coordinator.startBorrow(for: book, attemptDownload: true) {
-            completionCalls += 1
-        }
-
-        await waitForAsync { [self] in self.spyDelegate.scheduleCount > 0 }
+        await coordinator.startBorrowAsync(
+            for: book,
+            attemptDownload: true,
+            borrowCompletionBox: BorrowCompletionBox { completionCalls += 1 }
+        )
 
         XCTAssertEqual(completionCalls, 1)
         let active = await stateManager.downloadCoordinator.activeCount
@@ -145,11 +134,11 @@ final class DownloadStartCoordinatorTests: XCTestCase {
         await stateManager.downloadCoordinator.registerStart(identifier: book.identifier)
         var completionCalls = 0
 
-        coordinator.startBorrow(for: book, attemptDownload: true) {
-            completionCalls += 1
-        }
-
-        await waitForAsync { [self] in self.spyDelegate.scheduleCount > 0 }
+        await coordinator.startBorrowAsync(
+            for: book,
+            attemptDownload: true,
+            borrowCompletionBox: BorrowCompletionBox { completionCalls += 1 }
+        )
 
         XCTAssertEqual(completionCalls, 1,
                        "Borrow error path must STILL invoke completion (otherwise UI hangs)")
