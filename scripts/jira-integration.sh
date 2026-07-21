@@ -299,21 +299,34 @@ find_fix_comment_id() {
 }
 
 # Add a structured fix comment for QA: what changed + how to verify
+# Strip Markdown emphasis/code markers so text reads clean in a Jira ADF
+# plain-text node (which renders Markdown literally). Removes *, `, ~ and
+# leading heading #'s — e.g. "****PP-4788**** fixes `foo`" -> "PP-4788 fixes foo".
+# Deliberately leaves "_" alone (it appears in identifiers like customfield_10033).
+strip_markdown() {
+  printf '%s' "$1" | sed -E 's/[*`~]+//g; s/(^|[[:space:]])#{1,6}[[:space:]]+/\1/g'
+}
+
 add_fix_comment() {
   local ticket="$1"
   local root_cause="$2"
   local testing_steps="$3"
   local commit_sha="${4:-$(git rev-parse HEAD 2>/dev/null || echo '')}"
-  
+
   if ! load_config; then
     return 1
   fi
-  
+
   if [[ -z "$ticket" ]]; then
     echo -e "${RED}❌ Usage: jira-integration.sh add-fix-comment <ticket> <what_changed> <how_to_verify_qa> [commit_sha]${NC}"
     return 1
   fi
-  
+
+  # Clean the human-supplied text so it renders as readable prose, not raw
+  # Markdown (the PR-body extraction upstream leaves ** and ` in the content).
+  root_cause=$(strip_markdown "$root_cause")
+  testing_steps=$(strip_markdown "$testing_steps")
+
   echo -e "${BLUE}📝 Adding fix details to $ticket...${NC}"
   
   # Check for existing fix comment to update
@@ -329,14 +342,14 @@ add_fix_comment() {
   if [[ -n "$commit_sha" ]]; then
     local commit_msg
     commit_msg=$(git log -1 --format="%s" "$commit_sha" 2>/dev/null || echo "")
-    local commit_author
-    commit_author=$(git log -1 --format="%an" "$commit_sha" 2>/dev/null || echo "")
     local commit_date
     commit_date=$(git log -1 --format="%ai" "$commit_sha" 2>/dev/null || echo "")
-    
+
+    # No author line: the local git identity (e.g. "t <t@t.io>") is meaningless
+    # to a QA/PM reader and just clutters the ticket. The commit SHA is the
+    # traceability anchor.
     if [[ -n "$commit_msg" ]]; then
       commit_info="Commit: ${commit_sha:0:12}
-Author: $commit_author
 Date: $commit_date
 Message: $commit_msg"
     fi
@@ -457,23 +470,38 @@ link_commit() {
     echo -e "${RED}❌ Invalid commit reference${NC}"
     return 1
   fi
-  
+
+  # Idempotency: if this exact commit is already linked, skip (prevents the
+  # duplicate "Commit linked" spam seen when a hook re-fires or a commit is amended
+  # and re-linked). Amended commits get a new SHA, so those are still distinct — the
+  # honest fix for those is to link once, after the final amend.
+  local already_linked
+  already_linked=$(curl -s \
+    -u "$JIRA_EMAIL:$JIRA_API_TOKEN" \
+    -H "Content-Type: application/json" \
+    "$JIRA_URL/rest/api/3/issue/$ticket/comment" \
+    | jq -r --arg sha "$commit_sha" \
+        '[.comments[]? | select(([.. | .text? // empty] | join(" ")) | contains($sha))] | length' 2>/dev/null)
+  if [[ "${already_linked:-0}" =~ ^[0-9]+$ && "${already_linked:-0}" -gt 0 ]]; then
+    echo -e "${YELLOW}↩︎ Commit ${commit_sha:0:12} already linked to $ticket — skipping.${NC}"
+    return 0
+  fi
+
   local commit_msg
   commit_msg=$(git log -1 --format="%s" "$commit_sha")
-  local commit_author
-  commit_author=$(git log -1 --format="%an <%ae>" "$commit_sha")
   local commit_date
   commit_date=$(git log -1 --format="%ai" "$commit_sha")
   local files_changed
   files_changed=$(git diff-tree --no-commit-id --name-only -r "$commit_sha" | head -10)
   local file_count
   file_count=$(git diff-tree --no-commit-id --name-only -r "$commit_sha" | wc -l | tr -d ' ')
-  
+
   echo -e "${BLUE}🔗 Linking commit $commit_sha to $ticket...${NC}"
-  
+
+  # No author line: the local git identity ("t <t@t.io>") is noise to a human
+  # reader. The commit SHA + message are the useful traceability.
   local comment="Commit linked: $commit_sha
 
-Author: $commit_author
 Date: $commit_date
 Message: $commit_msg
 
@@ -488,43 +516,147 @@ $files_changed"
   add_comment "$ticket" "$comment"
 }
 
-# Add build/merge info to a Jira ticket
+# Find an existing build-info comment for a given PR (so re-runs update, not duplicate).
+# Matches a comment that says "Merged to" AND references the PR marker (its URL).
+find_build_comment_id() {
+  local ticket="$1"
+  local marker="$2"
+
+  local response
+  response=$(curl -s \
+    -u "$JIRA_EMAIL:$JIRA_API_TOKEN" \
+    -H "Content-Type: application/json" \
+    "$JIRA_URL/rest/api/3/issue/$ticket/comment")
+
+  echo "$response" | jq -r --arg marker "$marker" '
+    [ .comments[]?
+      | select(
+          ( ([.. | .text? // empty] | join(" ")) | test("Merged to") )
+          and
+          ( ([.. | (.href? // .text? // empty)] | join(" ")) | contains($marker) )
+        )
+      | .id
+    ] | first // empty
+  ' 2>/dev/null
+}
+
+# Add build/merge info to a Jira ticket as proper ADF (bold marks + a real PR link).
+#
+# Honesty rule: a merge is NOT a TestFlight upload. Only when uploaded=true (a
+# release/main merge, or a develop merge that bumped the build number) do we claim
+# "uploaded to TestFlight as <version> (<build>)". Otherwise we say the change is
+# merged and will ride the NEXT release build — and tell QA to hold. This exists
+# because the old comment asserted "TestFlight build N" on every develop merge,
+# pointing QA at a build that predated (and therefore lacked) the fix.
+#
+# Usage: add_build_info <ticket> <build> [pr_number] [pr_title] [branch] [version] [uploaded] [repo_url]
 add_build_info() {
   local ticket="$1"
   local build_number="$2"
   local pr_number="$3"
   local pr_title="$4"
-  local branch="$5"
-  local repo_url="${6:-https://github.com/ThePalaceProject/ios-core}"
-  
+  local branch="${5:-the merge branch}"
+  local marketing_version="${6:-the next release}"
+  local uploaded_raw="${7:-false}"
+  local repo_url="${8:-https://github.com/ThePalaceProject/ios-core}"
+
   if ! load_config; then
     return 1
   fi
-  
+
   if [[ -z "$ticket" || -z "$build_number" ]]; then
-    echo -e "${RED}❌ Usage: jira-integration.sh add-build-info <ticket> <build_number> [pr_number] [pr_title] [branch]${NC}"
+    echo -e "${RED}❌ Usage: jira-integration.sh add-build-info <ticket> <build_number> [pr_number] [pr_title] [branch] [version] [uploaded]${NC}"
     return 1
   fi
-  
-  echo -e "${BLUE}📦 Adding build info to $ticket...${NC}"
-  
-  local comment="✅ *Merged to ${branch:-main}*
 
-*Ready for QA:* TestFlight build *${build_number}*
-Use the \"How to verify (QA)\" steps in the fix comment above to validate this change."
+  # Normalize the uploaded flag to a JSON boolean for jq.
+  local uploaded_bool="false"
+  case "$(echo "$uploaded_raw" | tr '[:upper:]' '[:lower:]')" in
+    true|1|yes) uploaded_bool="true" ;;
+  esac
 
-  if [[ -n "$pr_number" ]]; then
-    comment+="
+  echo -e "${BLUE}📦 Adding build info to $ticket (uploaded=$uploaded_bool)...${NC}"
 
-*PR:* [#${pr_number}|${repo_url}/pull/${pr_number}]"
+  local pr_url=""
+  [[ -n "$pr_number" ]] && pr_url="${repo_url}/pull/${pr_number}"
+
+  local json_payload
+  json_payload=$(jq -n \
+    --arg branch "$branch" \
+    --arg version "$marketing_version" \
+    --arg build "$build_number" \
+    --arg pr "$pr_number" \
+    --arg pr_url "$pr_url" \
+    --arg title "$pr_title" \
+    --argjson uploaded "$uploaded_bool" \
+    '
+    def statusPara:
+      if $uploaded then
+        { type: "paragraph", content: [
+          { type: "text", text: ("✅ Merged to " + $branch + " — uploaded to TestFlight as ") },
+          { type: "text", text: ($version + " (" + $build + ")"), marks: [{ type: "strong" }] },
+          { type: "text", text: "." }
+        ] }
+      else
+        { type: "paragraph", content: [
+          { type: "text", text: ("Merged to " + $branch + "."), marks: [{ type: "strong" }] }
+        ] }
+      end;
+    def qaPara:
+      if $uploaded then
+        { type: "paragraph", content: [
+          { type: "text", text: ("Ready for QA — use the “How to verify (QA)” steps above to validate this change in TestFlight " + $version + " (" + $build + ").") }
+        ] }
+      else
+        { type: "paragraph", content: [
+          { type: "text", text: ("Not yet in a TestFlight build. This change is on " + $branch + " and will ship in the next " + $version + " TestFlight build (not yet cut; current build number " + $build + "). Hold QA until that build is available — this fix is not in any uploaded build yet.") }
+        ] }
+      end;
+    def prPara:
+      if ($pr | length) > 0 then
+        [ { type: "paragraph", content: (
+            [ { type: "text", text: "PR: " },
+              { type: "text", text: ("#" + $pr), marks: [{ type: "link", attrs: { href: $pr_url } }] }
+            ] + (if ($title | length) > 0 then [{ type: "text", text: (" — " + $title) }] else [] end)
+          ) } ]
+      else [] end;
+    { body: { type: "doc", version: 1, content: ([statusPara, qaPara] + prPara) } }
+    ')
+
+  # Idempotency: update an existing build comment for this PR instead of duplicating.
+  local existing_id=""
+  [[ -n "$pr_url" ]] && existing_id=$(find_build_comment_id "$ticket" "$pr_url")
+
+  local api_url http_method expected_code
+  if [[ -n "$existing_id" ]]; then
+    api_url="$JIRA_URL/rest/api/3/issue/$ticket/comment/$existing_id"
+    http_method="PUT"; expected_code="200"
+    echo -e "${YELLOW}   Updating existing build comment for PR #${pr_number}...${NC}"
+  else
+    api_url="$JIRA_URL/rest/api/3/issue/$ticket/comment"
+    http_method="POST"; expected_code="201"
   fi
-  
-  if [[ -n "$pr_title" ]]; then
-    comment+="
-*Title:* ${pr_title}"
+
+  local response
+  response=$(curl -s -w "\n%{http_code}" \
+    -X "$http_method" \
+    -u "$JIRA_EMAIL:$JIRA_API_TOKEN" \
+    -H "Content-Type: application/json" \
+    -d "$json_payload" \
+    "$api_url")
+
+  local http_code body
+  http_code=$(echo "$response" | tail -1)
+  body=$(echo "$response" | sed '$d')
+
+  if [[ "$http_code" == "$expected_code" ]]; then
+    echo -e "${GREEN}✅ Build info added to $ticket${NC}"
+    return 0
+  else
+    echo -e "${RED}❌ Failed to add build info (HTTP $http_code)${NC}"
+    echo "$body"
+    return 1
   fi
-  
-  add_comment "$ticket" "$comment"
 }
 
 # Get Jira link URL for a ticket
@@ -661,7 +793,7 @@ search_tickets() {
     '{
       jql: $jql,
       maxResults: $max,
-      fields: ["summary", "status", "assignee", "priority", "customfield_10016"]
+      fields: ["summary", "status", "assignee", "priority", "customfield_10033"]
     }')
 
   local response
@@ -692,7 +824,7 @@ for issue in issues:
     status = fields.get('status', {}).get('name', 'Unknown')
     assignee = fields.get('assignee', {})
     assignee_name = assignee.get('displayName', 'Unassigned') if assignee else 'Unassigned'
-    points = fields.get('customfield_10016', '-')
+    points = fields.get('customfield_10033', '-')
     if points is not None and points != '-':
         points = int(points) if float(points) == int(float(points)) else points
     priority = fields.get('priority', {}).get('name', '-')
@@ -723,7 +855,7 @@ view_ticket() {
   response=$(curl -s \
     -u "$JIRA_EMAIL:$JIRA_API_TOKEN" \
     -H "Content-Type: application/json" \
-    "$JIRA_URL/rest/api/3/issue/$ticket?fields=summary,status,assignee,priority,customfield_10016,issuetype,sprint,created,updated,description,labels")
+    "$JIRA_URL/rest/api/3/issue/$ticket?fields=summary,status,assignee,priority,customfield_10033,issuetype,sprint,created,updated,description,labels")
 
   local http_code
   http_code=$(echo "$response" | python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if 'key' in d else 1)" 2>/dev/null && echo "200" || echo "404")
@@ -744,7 +876,7 @@ print(f\"Status:     {f.get('status', {}).get('name', '-')}\")
 print(f\"Priority:   {f.get('priority', {}).get('name', '-')}\")
 a = f.get('assignee')
 print(f\"Assignee:   {a['displayName'] if a else 'Unassigned'}\")
-print(f\"Points:     {f.get('customfield_10016', '-')}\")
+print(f\"Points:     {f.get('customfield_10033', '-')}\")
 labels = f.get('labels', [])
 print(f\"Labels:     {', '.join(labels) if labels else '-'}\")
 print(f\"Created:    {f.get('created', '-')[:10]}\")
@@ -916,13 +1048,15 @@ set_points() {
 
   echo -e "${BLUE}🎯 Setting $ticket to $points point(s)...${NC}"
 
-  # customfield_10016 = "Story point estimate" in this Jira instance
+  # customfield_10033 = "Story Points" — the field the PP board actually reads.
+  # (customfield_10016 exists but is UNUSED on this instance; writing it looks like
+  # success on a 204 while the board shows nothing. Verified against PP-4822.)
   local http_code
   http_code=$(curl -s -o /dev/null -w "%{http_code}" \
     -X PUT \
     -u "$JIRA_EMAIL:$JIRA_API_TOKEN" \
     -H "Content-Type: application/json" \
-    -d "{\"fields\": {\"customfield_10016\": $points}}" \
+    -d "{\"fields\": {\"customfield_10033\": $points}}" \
     "$JIRA_URL/rest/api/3/issue/$ticket")
 
   if [[ "$http_code" == "204" ]]; then
@@ -1071,7 +1205,7 @@ batch_update() {
     fi
 
     if [[ -n "$points" ]]; then
-      fields_json+="${comma}\"customfield_10016\": $points"
+      fields_json+="${comma}\"customfield_10033\": $points"
     fi
 
     fields_json+="}"
@@ -1212,8 +1346,9 @@ main() {
       echo "  link-commit <ticket> [sha]        Link a commit to a ticket"
       echo "  add-fix-comment <ticket> <what_changed> <how_to_verify_qa> [sha]"
       echo "                                    Add structured fix details"
-      echo "  add-build-info <ticket> <build> [pr_num] [pr_title] [branch]"
-      echo "                                    Add merge/build info to ticket"
+      echo "  add-build-info <ticket> <build> [pr_num] [pr_title] [branch] [version] [uploaded]"
+      echo "                                    Add merge/build info (honest: only claims a"
+      echo "                                    TestFlight build when uploaded=true)"
       echo "  interactive <ticket>              Interactive fix comment entry"
       echo ""
       echo "Utilities:"
