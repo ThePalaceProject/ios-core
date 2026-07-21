@@ -13,7 +13,7 @@ import os.log
 /// Hermetic tests for `DeviceLogCollector`.
 ///
 /// These drive an **injected fixture entry source** rather than the live process
-/// `OSLogStore`. The prior version called `DeviceLogCollector.shared.collectLogs`,
+/// log store. The prior version invoked the singleton collector's `collectLogs`,
 /// which scans `OSLogStore(scope: .currentProcessIdentifier)` — a process-global
 /// accumulator whose entry volume grows with every test that ran before. Under the
 /// full ~7k-test suite that scan blew the 120s per-test allowance and hung the run
@@ -22,6 +22,9 @@ import os.log
 /// logic is now exercised deterministically against controlled input, so these
 /// tests are fast, load-independent, and assert exact behavior instead of merely
 /// "non-empty".
+///
+/// This class constructs its own `DeviceLogCollector` instances (it never reads
+/// the singleton or any other process-global state), so it needs no tearDown.
 final class DeviceLogCollectorTests: XCTestCase {
 
     private struct SourceError: Error {}
