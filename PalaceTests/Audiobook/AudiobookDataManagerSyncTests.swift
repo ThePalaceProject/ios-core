@@ -30,6 +30,12 @@ class MockNetworkExecutorForSync: TPPNetworkExecutor, @unchecked Sendable {
     // full response-processing cycle (including AudiobookDataManager's closure)
     // is done, not just until the request was dispatched.
     private var _completionCalledCount: Int = 0
+    // Serial queue that dispatches every POST completion. FIFO ordering lets
+    // `drainCompletions()` (a `completionQueue.sync {}` barrier) deterministically
+    // JOIN all in-flight completions instead of polling their side effects
+    // against a wall-clock deadline — the deadline poll starves under CI
+    // sim-clone oversubscription. Mirrors `SpyAudiobookNetworkExecutor`.
+    private let completionQueue = DispatchQueue(label: "com.audiobook.mockSyncCompletions")
 
     struct MockResponse {
         let statusCode: Int
@@ -68,6 +74,17 @@ class MockNetworkExecutorForSync: TPPNetworkExecutor, @unchecked Sendable {
         }
     }
 
+    /// Deterministic barrier: block until every POST completion dispatched so
+    /// far has run (FIFO on the serial `completionQueue`). Replaces a
+    /// wall-clock `XCTNSPredicateExpectation` poll — starvable under pool
+    /// oversubscription — with an exact join. Call AFTER the manager's
+    /// `syncQueue.sync {}` so the POSTs have been dispatched and their
+    /// completions enqueued here. Mirrors `SpyAudiobookNetworkExecutor
+    /// .drainCompletions()`.
+    func drainCompletions() {
+        completionQueue.sync {}
+    }
+
     func clearHistory() {
         lock.withLock { _requestHistory.removeAll() }
     }
@@ -93,7 +110,12 @@ class MockNetworkExecutorForSync: TPPNetworkExecutor, @unchecked Sendable {
         let mockResponse = lock.withLock { _responses[url] } ?? MockResponse(statusCode: 200, data: nil)
 
         let dispatchDelay = mockResponse.delay
-        DispatchQueue.global().asyncAfter(deadline: .now() + dispatchDelay) { [weak self] in
+        // Dispatch the completion on the serial `completionQueue` (was
+        // `.global().asyncAfter`) so `drainCompletions()` can deterministically
+        // JOIN it via a `completionQueue.sync {}` barrier instead of the test
+        // polling its side effects against a wall-clock deadline. A non-zero
+        // delay still resolves on the same serial queue, preserving FIFO order.
+        completionQueue.asyncAfter(deadline: .now() + dispatchDelay) { [weak self] in
             let httpResponse = HTTPURLResponse(
                 url: url,
                 statusCode: mockResponse.statusCode,
@@ -155,6 +177,18 @@ final class AudiobookDataManagerNetworkSyncTests: XCTestCase {
         super.tearDown()
     }
 
+    /// Deterministic join for the full save→sync→respond cycle. Drains the
+    /// manager's serial `syncQueue` (flushes any pending `save` barrier write
+    /// AND the `syncValues` body that dispatches the POSTs — both FIFO on the
+    /// same queue), then drains the mock's completion queue (the POST responses
+    /// that mutate `store.queue`). Replaces the wall-clock
+    /// `XCTNSPredicateExpectation` polls that starve under CI oversubscription.
+    private func drainSync() {
+        dataManager.syncQueue.sync {}
+        mockNetworkExecutor.drainCompletions()
+        dataManager.syncQueue.sync {}
+    }
+
     // MARK: - Successful Sync Tests
 
     func testAudiobookDataManager_Sync_InitializesCorrectly() {
@@ -178,14 +212,10 @@ final class AudiobookDataManagerNetworkSyncTests: XCTestCase {
 
         dataManager.save(time: entry)
 
-        // Poll until the mock receives a POST rather than using a fixed delay
-        let mockRef = mockNetworkExecutor!
-        let requestReceived = XCTNSPredicateExpectation(
-            predicate: NSPredicate { _, _ in mockRef.requestHistory.count > 0 },
-            object: nil
-        )
+        // Deterministically JOIN the sync work instead of polling requestHistory
+        // against a wall-clock deadline.
         dataManager.syncValues()
-        wait(for: [requestReceived], timeout: 5.0)
+        drainSync()
 
         XCTAssertEqual(mockNetworkExecutor.requestHistory.count, 1, "Should have made one request")
         XCTAssertEqual(mockNetworkExecutor.requestHistory.first?.request.url, trackingURL)
@@ -207,20 +237,13 @@ final class AudiobookDataManagerNetworkSyncTests: XCTestCase {
 
         dataManager.save(time: entry)
 
-        // save uses syncQueue.async(flags:.barrier); polling queue count is safe via its internal sync
-        let savedExpectation = XCTNSPredicateExpectation(
-            predicate: NSPredicate { [weak self] _, _ in self?.dataManager.store.queue.count == 1 },
-            object: nil
-        )
-        wait(for: [savedExpectation], timeout: 2.0)
+        // save uses syncQueue.async(flags:.barrier); a plain syncQueue.sync {}
+        // barrier deterministically waits for that write to land.
+        dataManager.syncQueue.sync {}
         XCTAssertEqual(dataManager.store.queue.count, 1, "Should have one entry before sync")
 
-        let queueEmptyExpectation = XCTNSPredicateExpectation(
-            predicate: NSPredicate { [weak self] _, _ in self?.dataManager.store.queue.isEmpty == true },
-            object: nil
-        )
         dataManager.syncValues()
-        wait(for: [queueEmptyExpectation], timeout: 5.0)
+        drainSync()
 
         XCTAssertEqual(dataManager.store.queue.count, 0, "Entry should be removed after successful sync")
     }
@@ -250,13 +273,8 @@ final class AudiobookDataManagerNetworkSyncTests: XCTestCase {
         dataManager.save(time: entry1)
         dataManager.save(time: entry2)
 
-        let mockRef = mockNetworkExecutor!
-        let twoRequestsReceived = XCTNSPredicateExpectation(
-            predicate: NSPredicate { _, _ in mockRef.requestHistory.count >= 2 },
-            object: nil
-        )
         dataManager.syncValues()
-        wait(for: [twoRequestsReceived], timeout: 5.0)
+        drainSync()
 
         XCTAssertEqual(mockNetworkExecutor.requestHistory.count, 2, "Should make request for each book")
     }
@@ -275,13 +293,8 @@ final class AudiobookDataManagerNetworkSyncTests: XCTestCase {
 
         dataManager.save(time: entry)
 
-        let mockRef = mockNetworkExecutor!
-        let requestReceived = XCTNSPredicateExpectation(
-            predicate: NSPredicate { _, _ in mockRef.requestHistory.count > 0 },
-            object: nil
-        )
         dataManager.syncValues()
-        wait(for: [requestReceived], timeout: 10.0)
+        drainSync()
 
         guard let requestBody = mockNetworkExecutor.requestHistory.first?.body else {
             XCTFail("Request body should exist")
@@ -349,20 +362,28 @@ final class AudiobookDataManagerErrorHandlingTests: XCTestCase {
         super.tearDown()
     }
 
+    /// Deterministically wait for a `save(time:)` barrier write to land by
+    /// draining the serial `syncQueue` — no wall-clock predicate poll.
     private func waitForEntry(count: Int = 1, file: StaticString = #file, line: UInt = #line) {
-        let savedExpectation = XCTNSPredicateExpectation(
-            predicate: NSPredicate { [weak self] _, _ in self?.dataManager.store.queue.count == count },
-            object: nil
-        )
-        wait(for: [savedExpectation], timeout: 2.0)
+        dataManager.syncQueue.sync {}
+        XCTAssertEqual(dataManager.store.queue.count, count,
+                       "save(time:) barrier write should have landed",
+                       file: file, line: line)
     }
 
-    private func waitForSync(predicate: @escaping () -> Bool) {
-        let syncDone = XCTNSPredicateExpectation(
-            predicate: NSPredicate { _, _ in predicate() },
-            object: nil
-        )
-        wait(for: [syncDone], timeout: 5.0)
+    /// Deterministic join for the full save→sync→respond cycle. Drains the
+    /// manager's serial `syncQueue` (flushes any pending `save` barrier write
+    /// AND the `syncValues` body that dispatches the POSTs — both FIFO on the
+    /// same queue), then drains the mock's completion queue (the POST responses
+    /// that mutate `store.queue`). Replaces the wall-clock
+    /// `XCTNSPredicateExpectation` polls that starve under CI oversubscription.
+    private func drainSync() {
+        dataManager.syncQueue.sync {}
+        mockNetworkExecutor.drainCompletions()
+        // The POST completion mutates `store.queue` from the completion queue;
+        // a second `syncQueue.sync {}` is a no-op for correctness but keeps the
+        // barrier symmetric if a future completion re-dispatches onto syncQueue.
+        dataManager.syncQueue.sync {}
     }
 
     func testSyncValues_with404Response_removesEntriesAndURL() {        let trackingURL = URL(string: "https://api.example.com/track/expired")!
@@ -379,7 +400,7 @@ final class AudiobookDataManagerErrorHandlingTests: XCTestCase {
         XCTAssertNotNil(dataManager.store.urls[LibraryBook(time: entry)])
 
         dataManager.syncValues()
-        waitForSync { self.dataManager.store.queue.isEmpty }
+        drainSync()
 
         XCTAssertEqual(dataManager.store.queue.count, 0, "Entries should be removed on 404")
         XCTAssertNil(dataManager.store.urls[LibraryBook(time: entry)], "URL mapping should be removed on 404")
@@ -402,7 +423,7 @@ final class AudiobookDataManagerErrorHandlingTests: XCTestCase {
         // returned). Waiting only on requestHistory.count > 0 is a race: the mock appends
         // to history synchronously but dispatches the completion asynchronously, so the
         // assertion could run before AudiobookDataManager's 5xx handler has finished.
-        waitForSync { self.mockNetworkExecutor.completionCalledCount > 0 }
+        drainSync()
 
         XCTAssertEqual(dataManager.store.queue.count, 1, "Entries should be kept for retry on 5xx error")
     }
@@ -420,7 +441,7 @@ final class AudiobookDataManagerErrorHandlingTests: XCTestCase {
         waitForEntry()
 
         dataManager.syncValues()
-        waitForSync { self.mockNetworkExecutor.completionCalledCount > 0 }
+        drainSync()
 
         XCTAssertEqual(dataManager.store.queue.count, 1, "Entries should be kept for retry on 503")
     }
@@ -448,7 +469,7 @@ final class AudiobookDataManagerErrorHandlingTests: XCTestCase {
         waitForEntry(count: 2)
 
         dataManager.syncValues()
-        waitForSync { self.dataManager.store.queue.isEmpty }
+        drainSync()
 
         XCTAssertEqual(dataManager.store.queue.count, 0, "Both entries removed based on response IDs")
     }
@@ -469,7 +490,7 @@ final class AudiobookDataManagerErrorHandlingTests: XCTestCase {
         waitForEntry()
 
         dataManager.syncValues()
-        waitForSync { self.mockNetworkExecutor.completionCalledCount > 0 }
+        drainSync()
 
         XCTAssertEqual(dataManager.store.queue.count, 1, "Entries should be kept on network error")
     }
@@ -533,22 +554,17 @@ final class AudiobookDataManagerStoreRecoveryTests: XCTestCase {
 
         dataManager.save(time: entry)
 
-        // Poll until the entry has been written to the store
-        let savedExpectation = XCTNSPredicateExpectation(
-            predicate: NSPredicate { _, _ in dataManager.store.queue.contains { $0.id == uniqueId } },
-            object: nil
-        )
-        wait(for: [savedExpectation], timeout: 10.0)
+        // save() enqueues the append + disk write on the serial syncQueue as a
+        // barrier; syncQueue.sync {} deterministically waits for it to land (and
+        // finish the saveStore() disk write) — no wall-clock predicate poll.
+        dataManager.syncQueue.sync {}
+        XCTAssertTrue(dataManager.store.queue.contains { $0.id == uniqueId },
+                      "Entry should be in the queue after the barrier write")
 
-        // Create new manager that loads from disk
+        // Create new manager that loads from disk. loadStore() runs
+        // synchronously in init, so the persisted entry is present on return —
+        // no poll needed.
         let newDataManager = AudiobookDataManager(syncTimeInterval: 3600)
-
-        // Poll until the new manager has loaded the persisted entry
-        let loadedExpectation = XCTNSPredicateExpectation(
-            predicate: NSPredicate { _, _ in newDataManager.store.queue.contains { $0.id == uniqueId } },
-            object: nil
-        )
-        wait(for: [loadedExpectation], timeout: 10.0)
 
         let persistedEntry = newDataManager.store.queue.first { $0.id == uniqueId }
         XCTAssertNotNil(persistedEntry, "Should find persisted entry with id: \(uniqueId)")
@@ -625,9 +641,10 @@ final class AudiobookDataManagerEmptyQueueTests: XCTestCase {
 
         dataManager.syncValues()
 
-        // syncValues only POSTs when there are queued entries. With an empty queue the mock
-        // executor's POST method is never called, so requestHistory stays empty.
-        // No async wait needed — the absence of a network call is immediate.
+        // syncValues dispatches its body on syncQueue; drain it so the body has
+        // definitely run before asserting the negative. With an empty queue the
+        // mock's POST is never called, so requestHistory stays empty.
+        dataManager.syncQueue.sync {}
         XCTAssertTrue(mockNetworkExecutor.requestHistory.isEmpty, "Should not make any requests with empty queue")
     }
 }
