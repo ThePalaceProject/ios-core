@@ -69,28 +69,11 @@ final class LocalClassifierTests: XCTestCase {
         XCTAssertEqual(result.confidence, 0)
     }
 
-    func testSingleLowConfidenceMatch_returnsEscalate_doesNotOverPromise() {
-        // One keyword matches but score is below threshold and no runner-up.
-        // Bot must NOT suggest — escalation is the safe default.
-        let kb = makeKB([
-            KBEntry(
-                id: "KI-EDGE",
-                category: .reader,
-                status: .open,
-                symptomKeywords: ["reading", "missing", "page", "blank", "stuck", "broken"],
-                userFacingWorkaround: "...",
-                confidenceThreshold: 0.6
-            )
-        ])
-
-        let result = classifier.classify(
-            userText: "missing things",
-            knowledgeBase: kb
-        )
-
-        XCTAssertEqual(result.decision, .escalate)
-        XCTAssertLessThan(result.confidence, 0.6)
-    }
+    // (The single-region-escalate and below-threshold-escalate behaviors are
+    // pinned precisely in ClassifierInternalsTests — testGuard_knownIssueSingleRegion_escalates
+    // and testGuard_scoreBelowEntryThreshold_doesNotSuggest. The old test here
+    // claimed to exercise the threshold but its input only hit one region, so it
+    // was really re-testing the region floor; removed to avoid the mislabel.)
 
     // MARK: - Disambiguate
 
@@ -219,13 +202,86 @@ final class LocalClassifierTests: XCTestCase {
             knowledgeBase: kb
         )
 
-        if case .suggest(let id) = result.decision {
-            XCTAssertEqual(id, "KI-PDF", "Category filter must restrict to reader entries")
-        } else if case .disambiguate(let ids) = result.decision {
-            XCTAssertFalse(ids.contains("KI-AUDIO"), "Audiobook entry must be excluded")
-        } else {
-            XCTFail("Expected suggest or disambiguate, got \(result.decision)")
+        // Category .reader leaves KI-PDF the only candidate, and "won't open" +
+        // "stuck" are two distinct regions → a deterministic suggest. The
+        // audiobook entry with identical keywords must be filtered out entirely.
+        XCTAssertEqual(result.decision, .suggest(entryId: "KI-PDF"),
+                       "Category filter must restrict to reader entries and suggest KI-PDF")
+    }
+
+    // MARK: - Smart punctuation (real iOS keyboard input)
+
+    func testSmartApostropheInput_stillMatchesASCIIKeyword() {
+        // A stock iPhone keyboard types a curly apostrophe (U+2019). The KB
+        // keyword is written with an ASCII apostrophe. Before normalization this
+        // matched neither the apostrophe nor the no-apostrophe variant — a
+        // silent recall collapse on the app's own input method.
+        let kb = makeKB([
+            KBEntry(
+                id: "KI-001",
+                category: .audiobook,
+                status: .open,
+                symptomKeywords: ["won't play", "spinning"],
+                userFacingWorkaround: "Tap back, tap again.",
+                confidenceThreshold: 0.4
+            )
+        ])
+
+        let curly = "my audiobook won\u{2019}t play, just keeps spinning"
+        let result = classifier.classify(userText: curly, knowledgeBase: kb)
+
+        guard case .suggest(let id) = result.decision else {
+            return XCTFail("Curly-apostrophe input must still match; got \(result.decision)")
         }
+        XCTAssertEqual(id, "KI-001")
+    }
+
+    // MARK: - Distinct-region match counting (nested-variant guard)
+
+    func testNestedKeywordVariants_singleWord_doesNotOverPromise() {
+        // "hangs" substring-matches BOTH "hang" and "hangs". Counting raw
+        // keyword hits gave 2 → cleared the >=2 confidence guard → a confident
+        // suggestion off ONE word. Distinct-region counting collapses the nested
+        // variants to a single region, so one word escalates instead.
+        let kb = makeKB([
+            KBEntry(
+                id: "KI-001",
+                category: .audiobook,
+                status: .open,
+                symptomKeywords: ["hang", "hangs", "stuck", "won't play"],
+                userFacingWorkaround: "Tap back, tap again.",
+                confidenceThreshold: 0.1
+            )
+        ])
+
+        let result = classifier.classify(userText: "it hangs", knowledgeBase: kb)
+
+        XCTAssertNotEqual(
+            result.decision, .suggest(entryId: "KI-001"),
+            "A single word that only hits nested variants of one concept must not suggest"
+        )
+    }
+
+    func testTwoDistinctConcepts_stillSuggest() {
+        // Two genuinely different keyword regions ("hangs" + "spinning") remain
+        // a confident match — the dedup only collapses overlapping spans.
+        let kb = makeKB([
+            KBEntry(
+                id: "KI-001",
+                category: .audiobook,
+                status: .open,
+                symptomKeywords: ["hang", "hangs", "spinning", "won't play"],
+                userFacingWorkaround: "Tap back, tap again.",
+                confidenceThreshold: 0.1
+            )
+        ])
+
+        let result = classifier.classify(userText: "it hangs and keeps spinning", knowledgeBase: kb)
+
+        guard case .suggest(let id) = result.decision else {
+            return XCTFail("Two distinct concepts must still suggest; got \(result.decision)")
+        }
+        XCTAssertEqual(id, "KI-001")
     }
 
     // MARK: - Empty input
