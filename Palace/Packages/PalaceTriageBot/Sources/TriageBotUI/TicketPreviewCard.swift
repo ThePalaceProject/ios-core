@@ -269,8 +269,11 @@ struct TicketReceiptCard: View {
             Text("Reference: \(receipt.ticketId)")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.middle)
+                // PP-4845: at the largest accessibility Dynamic Type this line
+                // middle-truncated ("Referen…645573") so the patron couldn't
+                // read their ticket reference — their only handle on the filed
+                // ticket. Let it wrap like every other line on the receipt.
+                .fixedSize(horizontal: false, vertical: true)
             Text("Support will reply within 1 business day.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
