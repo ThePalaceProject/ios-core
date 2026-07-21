@@ -145,13 +145,21 @@ final class DownloadAuthRetryHandlerTests: XCTestCase {
         return FakeURLSessionDownloadTask(response: response, originalRequest: URLRequest(url: url))
     }
 
-    /// Wait for any pending Task { } cleanup blocks the handler may have
-    /// dispatched. The handler uses Task to do async stateManager cleanup
-    /// before hopping back to MainActor for state mutation.
-    private func waitForAsyncCleanup() async {
-        for _ in 0..<5 {
-            try? await Task.sleep(nanoseconds: 30_000_000) // 30ms
-            await Task.yield()
+    /// Joins any in-flight Task { } cleanup/retry the given handler dispatched.
+    /// The handler retains every such Task in `inFlightTasks`; awaiting each
+    /// one's `.value` runs its body AND its auto-removal to completion — a
+    /// deterministic join that replaces the fixed 5×30ms sleep loop (whose hard
+    /// 150ms ceiling was the actual starvation risk under CI oversubscription).
+    /// If a path launched no Task, the snapshot is empty and this is a no-op —
+    /// exactly right, there is nothing to wait for.
+    ///
+    /// Defaults to the setUp `handler`; tests driving a locally-built
+    /// `makeGuardedHandler` handler MUST pass it explicitly so we join the
+    /// right instance's Tasks (the guarded handler is where the SAML retry runs).
+    private func waitForAsyncCleanup(_ target: DownloadAuthRetryHandler? = nil) async {
+        let joined = target ?? handler!
+        for task in joined.inFlightTasksSnapshotForTesting() {
+            _ = await task.value
         }
     }
 
@@ -212,7 +220,7 @@ final class DownloadAuthRetryHandlerTests: XCTestCase {
 
         let handled = guarded.handleAuthFailureIfApplicable(book: book, task: task,
                                                             problemDoc: nil, failureError: nil)
-        await waitForAsyncCleanup()
+        await waitForAsyncCleanup(guarded)
 
         XCTAssertFalse(handled,
                        "Foreign-host 401 must NOT be claimed — caller falls through (:240 return false).")
@@ -246,7 +254,7 @@ final class DownloadAuthRetryHandlerTests: XCTestCase {
 
         let handled = guarded.handleAuthFailureIfApplicable(book: book, task: task,
                                                             problemDoc: nil, failureError: nil)
-        await waitForAsyncCleanup()
+        await waitForAsyncCleanup(guarded)
 
         XCTAssertTrue(handled, "Same-host 401 must be claimed and drive the SAML retry path.")
         XCTAssertEqual(registry.state(for: book.identifier), .SAMLStarted,
@@ -798,20 +806,14 @@ final class DownloadAuthRetryHandlerTaskLifecycleTests: XCTestCase {
                                                   problemDoc: nil, failureError: nil)
     }
 
-    /// Block until all in-flight Tasks the handler launched have drained.
-    /// Uses the new `inFlightTaskCount` accessor to poll deterministically
-    /// — replaces the fixed-150ms `waitForAsyncCleanup` poll for the
-    /// lifecycle tests (the contract test for that helper still lives in
-    /// the original class).
-    private func waitForInFlightDrain(timeout: TimeInterval = 2.0) async throws {
-        let deadline = Date().addingTimeInterval(timeout)
-        while handler.inFlightTaskCount > 0 {
-            if Date() > deadline {
-                XCTFail("Tasks did not drain within \(timeout)s — still \(handler.inFlightTaskCount) in flight")
-                return
-            }
-            try await Task.sleep(nanoseconds: 10_000_000) // 10ms
-            await Task.yield()
+    /// Joins all in-flight Tasks the handler launched. Awaiting each retained
+    /// Task's `.value` runs its body AND its auto-removal to completion — a
+    /// deterministic join, replacing the count-polling loop (whose wall-clock
+    /// ceiling starved under CI oversubscription). Snapshot-then-join is
+    /// exact: the retained bodies self-remove as their last step.
+    private func waitForInFlightDrain() async {
+        for task in handler.inFlightTasksSnapshotForTesting() {
+            _ = await task.value
         }
     }
 
@@ -850,7 +852,7 @@ final class DownloadAuthRetryHandlerTaskLifecycleTests: XCTestCase {
                              "Retry Tasks must be retained while their bodies run; " +
                              "a mutant dropping `inFlightTasks.insert` leaves the count at 0.")
 
-        try await waitForInFlightDrain()
+        await waitForInFlightDrain()
         XCTAssertEqual(handler.inFlightTaskCount, 0,
                        "Retained Tasks must self-remove from `inFlightTasks` after completion")
         XCTAssertEqual(spyDelegate.startDownloadCalls.count, 2,
@@ -872,14 +874,18 @@ final class DownloadAuthRetryHandlerTaskLifecycleTests: XCTestCase {
         XCTAssertGreaterThan(handler.inFlightTaskCount, 0,
                              "SAML retry path must populate `inFlightTasks` before cancellation")
 
+        // Snapshot the tracked Tasks BEFORE cancelling — `cancelAllInFlightTasks`
+        // clears the set, so we must grab the handles first to JOIN them.
+        let cancelledTasks = handler.inFlightTasksSnapshotForTesting()
+
         handler.cancelAllInFlightTasks()
         XCTAssertEqual(handler.inFlightTaskCount, 0,
                        "cancelAllInFlightTasks must drain the tracking set")
 
-        // Give the cancelled Tasks a moment to unwind through their
-        // `Task.isCancelled` short-circuits.
-        try await Task.sleep(nanoseconds: 100_000_000) // 100ms
-        await Task.yield()
+        // Join the cancelled Tasks: awaiting each `.value` completes once the
+        // body unwinds through its `Task.isCancelled` short-circuit —
+        // deterministic, replacing the fixed 100ms settle sleep.
+        for task in cancelledTasks { _ = await task.value }
 
         XCTAssertTrue(spyDelegate.startDownloadCalls.isEmpty,
                       "Cancelled retry must NOT call startDownload — the registry/delegate are " +
@@ -910,6 +916,11 @@ final class DownloadAuthRetryHandlerTaskLifecycleTests: XCTestCase {
         XCTAssertNotNil(weakHandler)
         XCTAssertNotNil(weakRegistry)
 
+        // Snapshot the tracked Tasks BEFORE releasing the handler so we can
+        // JOIN them — the Task handles keep themselves alive until their bodies
+        // return regardless of the handler's strong refs dropping.
+        let racingTasks = handler.inFlightTasksSnapshotForTesting()
+
         // Cancel all and immediately release the handler. The Task body
         // already captured weak refs; once both strong refs drop, the body
         // must unwind without writing.
@@ -919,9 +930,10 @@ final class DownloadAuthRetryHandlerTaskLifecycleTests: XCTestCase {
         spyDelegate = nil // <- if the body fires after this, the spy is
                           //    gone too and the assertion below holds vacuously
 
-        // Wait for any racing scheduler hop to attempt the MainActor entry.
-        try await Task.sleep(nanoseconds: 150_000_000) // 150ms
-        await Task.yield()
+        // Join the racing Tasks: awaiting each `.value` deterministically waits
+        // for the body to attempt its MainActor hop and unwind through the
+        // `[weak self]` guard — replacing the fixed 150ms sleep.
+        for task in racingTasks { _ = await task.value }
 
         // Don't crash, don't write to a deinited registry. If the weak
         // refs are nil here, the handler is fully gone (production ARC
@@ -951,7 +963,7 @@ final class DownloadAuthRetryHandlerTaskLifecycleTests: XCTestCase {
             let task = makeFakeTask(statusCode: 401)
             _ = handler.handleAuthFailureIfApplicable(book: b, task: task,
                                                       problemDoc: nil, failureError: nil)
-            try await waitForInFlightDrain()
+            await waitForInFlightDrain()
             XCTAssertEqual(handler.inFlightTaskCount, 0,
                            "After iteration \(i): set must be drained — auto-removal must fire")
         }

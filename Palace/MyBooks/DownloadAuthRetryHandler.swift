@@ -178,6 +178,19 @@ final class DownloadAuthRetryHandler: @unchecked Sendable {
     @MainActor
     var inFlightTaskCount: Int { inFlightTasks.count }
 
+    /// Test-only snapshot of the retained Tasks so a test can `await` each
+    /// one's `.value` and JOIN the retry/cleanup work deterministically —
+    /// rather than polling `inFlightTaskCount` against a wall-clock deadline
+    /// (which starves under CI oversubscription). Returning a copy of the
+    /// Set is safe because `Task` is `Sendable`. Behavior-identical: this is
+    /// a pure read of the existing tracking set, mutating nothing — it mirrors
+    /// the established `BookReturnService.inFlightTasksSnapshotForTesting()`
+    /// seam and does not alter any production code path.
+    @MainActor
+    internal func inFlightTasksSnapshotForTesting() -> Set<Task<Void, Never>> {
+        Set(inFlightTasks.values)
+    }
+
     /// Wraps a fire-and-forget Task in the retention + auto-removal
     /// dance. Stores the handle in `inFlightTasks` before the body
     /// runs, then removes it from the set when the body returns. The
