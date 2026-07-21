@@ -70,7 +70,7 @@ final class TearDownRequiredLintTests: XCTestCase {
 
   /// `PalaceTests/` resolved relative to this file's location.
   private static let palaceTestsRoot: URL = {
-    URL(fileURLWithPath: #file)
+    URL(fileURLWithPath: #filePath)
       .deletingLastPathComponent()  // MetaTests/
       .deletingLastPathComponent()  // PalaceTests/
   }()

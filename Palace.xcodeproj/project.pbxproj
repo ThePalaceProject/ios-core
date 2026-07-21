@@ -468,6 +468,7 @@
 		54D213147B9B62D2A4616A7C /* EPUBPositionAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3FBCE9F366E7A29724332D4 /* EPUBPositionAdapter.swift */; };
 		54E99B7757E6F82038D5F0D6 /* PerformanceMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61585F7AD2A0D6CDAF2EF098 /* PerformanceMonitor.swift */; };
 		55104FF85DE440C78F18B4E7 /* TPPLastReadPositionSynchronizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 706130D4BA8B4FE88304EC9C /* TPPLastReadPositionSynchronizerTests.swift */; };
+		554C23F2A78ABCFFF01826C9 /* TestTargetHermeticityRegressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BEE3B44EDE02103E6515DE7 /* TestTargetHermeticityRegressionTests.swift */; };
 		55630B356BB033C09FEAA9F9 /* TPPBookRegistryAsyncReadinessTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E795C64A644FD2C0F982CA69 /* TPPBookRegistryAsyncReadinessTests.swift */; };
 		55FB16FFA837DFA8E0B19E5E /* TPPOPDSFeed+Networking.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E4E0EAE6DA244AAE005691B /* TPPOPDSFeed+Networking.swift */; };
 		56196EA984C98839164BD951 /* BackupExclusionMigration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99895C63131766252D87F554 /* BackupExclusionMigration.swift */; };
@@ -2742,6 +2743,7 @@
 		8AA1511F27C932D92C002C86 /* BearerTokenAdapter.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BearerTokenAdapter.swift; sourceTree = "<group>"; };
 		8AAAA013BC37CAFD5930A97A /* AudiobookLoaderPredicateTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AudiobookLoaderPredicateTests.swift; sourceTree = "<group>"; };
 		8ADE8A45C4B4AAE67143A272 /* HoldsViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HoldsViewModelTests.swift; sourceTree = "<group>"; };
+		8BEE3B44EDE02103E6515DE7 /* TestTargetHermeticityRegressionTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TestTargetHermeticityRegressionTests.swift; sourceTree = "<group>"; };
 		8C40D6A62375FF8B006EA63B /* TPPProblemDocumentCacheManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPProblemDocumentCacheManager.swift; sourceTree = "<group>"; };
 		8C9E0F102132435465A1B2C3 /* BookSignInRedirectHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookSignInRedirectHandler.swift; sourceTree = "<group>"; };
 		8CAA704224204121A301A289 /* EULAView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EULAView.swift; sourceTree = "<group>"; };
@@ -3679,6 +3681,7 @@
 				DF90048A6DDD9A6025494F1A /* PalaceTestCase.swift */,
 				E775BA9B323D098F690BE354 /* TriageBotKeyAdminTests.swift */,
 				5192F4C62AA2DDC7E9752A5E /* LockIsolated.swift */,
+				8BEE3B44EDE02103E6515DE7 /* TestTargetHermeticityRegressionTests.swift */,
 			);
 			name = Support;
 			path = Support;
@@ -7821,6 +7824,7 @@
 				1C4CC3753B75E8677FEB66B0 /* ButtonStateMonotonicClampTests.swift in Sources */,
 				C7DFB8533719B493E14C6A56 /* LockIsolated.swift in Sources */,
 				5290120E5AFA84BAFAD4F608 /* ReaderServicePDFRouteTests.swift in Sources */,
+				554C23F2A78ABCFFF01826C9 /* TestTargetHermeticityRegressionTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -9102,7 +9106,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = org.thepalaceproject.palaceTests;
 				PRODUCT_NAME = PalaceTests;
 				PROVISIONING_PROFILE_SPECIFIER = "";
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "LCP FEATURE_OVERDRIVE";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG LCP FEATURE_OVERDRIVE";
 				SWIFT_OBJC_BRIDGING_HEADER = "PalaceTests/PalaceTests-Bridging-Header.h";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_SWIFT3_OBJC_INFERENCE = Default;

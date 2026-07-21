@@ -1108,12 +1108,39 @@ final class TPPSignInErrorHandlingTests: XCTestCase {
 
 // MARK: - Mock Extensions
 
-class TPPNetworkErrorMock: TPPRequestExecuting {
-    var requestTimeout: TimeInterval = 60
-    var shouldFail = false
-    var errorStatusCode = 500
+/// Transfers the non-Sendable completion across the `DispatchQueue.main.async`
+/// hop. Safe: called exactly once, on the main queue. (File-local — the
+/// identically-shaped helper in NYPLNetworkExecutorMock is `private` there.)
+private struct MainQueueResultCompletion: @unchecked Sendable {
+    let completion: (NYPLResult<Data>) -> Void
+}
 
-    private var generation: Int = 0
+/// `@unchecked Sendable`: all mutable state is guarded by `lock`, so the mock
+/// can cross into the @MainActor SUT safely (Swift 6). Mirrors TPPBookRegistryMock.
+final class TPPNetworkErrorMock: TPPRequestExecuting, @unchecked Sendable {
+    private let lock = NSLock()
+
+    private var _requestTimeout: TimeInterval = 60
+    var requestTimeout: TimeInterval {
+        get { lock.withLock { _requestTimeout } }
+        set { lock.withLock { _requestTimeout = newValue } }
+    }
+    private var _shouldFail = false
+    var shouldFail: Bool {
+        get { lock.withLock { _shouldFail } }
+        set { lock.withLock { _shouldFail = newValue } }
+    }
+    private var _errorStatusCode = 500
+    var errorStatusCode: Int {
+        get { lock.withLock { _errorStatusCode } }
+        set { lock.withLock { _errorStatusCode = newValue } }
+    }
+
+    private var _generation: Int = 0
+    private var generation: Int {
+        get { lock.withLock { _generation } }
+        set { lock.withLock { _generation = newValue } }
+    }
 
     func reset() {
         generation += 1
@@ -1125,8 +1152,10 @@ class TPPNetworkErrorMock: TPPRequestExecuting {
         completion: @escaping (NYPLResult<Data>) -> Void
     ) -> URLSessionDataTask? {
         let capturedGeneration = generation
+        let completionBox = MainQueueResultCompletion(completion: completion)
         DispatchQueue.main.async { [weak self] in
             guard let self, self.generation == capturedGeneration else { return }
+            let completion = completionBox.completion
 
             if self.shouldFail {
                 let error = NSError(domain: "Test", code: self.errorStatusCode, userInfo: nil)

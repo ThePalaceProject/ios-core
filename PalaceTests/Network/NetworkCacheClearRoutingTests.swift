@@ -122,7 +122,7 @@ final class NetworkCacheClearRoutingTests: XCTestCase {
     /// sign-out control flow (forbidden) or exercising real
     /// keychain / WKWebsiteDataStore singletons (banned by the TDD rules).
     func testSignOutAndForceReset_routeCacheClearThroughExecutor_notURLCacheShared() throws {
-        let repoRoot = URL(fileURLWithPath: #file)
+        let repoRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()   // Network/
             .deletingLastPathComponent()   // PalaceTests/
             .deletingLastPathComponent()   // repo root

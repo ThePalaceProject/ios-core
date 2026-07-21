@@ -36,8 +36,8 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
     private let tokenURL = URL(string: "https://token.example.com/oauth/token")!
     private let apiURL = URL(string: "https://api.example.com/protected")!
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         HTTPStubURLProtocol.reset()
         TPPUserAccountMock.resetShared()
 
@@ -108,7 +108,7 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
     }
 
     /// Encodes a TokenResponse JSON body the way the server would return it.
-    private static func tokenResponseJSON(accessToken: String,
+    private nonisolated static func tokenResponseJSON(accessToken: String,
                                           expiresIn: Int = 3600) -> Data {
         return """
         {"access_token":"\(accessToken)","token_type":"Bearer","expires_in":\(expiresIn)}
@@ -156,10 +156,11 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
     func testRefresh_TokenEndpointReturns401_MarksCredentialsStaleAndDoesNotLoop() async throws {
         await executor.resetRefreshAttemptCount()
 
-        var tokenRequestCount = 0
-        HTTPStubURLProtocol.register { [tokenURL] request in
+        let tokenRequestCount = LockIsolated(0)
+        // @Sendable stub + LockIsolated: avoids Swift 6 off-main executor-isolation trap
+        HTTPStubURLProtocol.register { @Sendable [tokenURL] request in
             guard request.url == tokenURL else { return nil }
-            tokenRequestCount += 1
+            tokenRequestCount.withValue { $0 += 1 }
             // 401 from the token endpoint — credentials no longer accepted.
             return .init(statusCode: 401, headers: nil, body: Data("denied".utf8))
         }
@@ -186,7 +187,7 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
                       "401 from /token must surface as a .failure to the caller")
         XCTAssertEqual(userAccount.authState, .credentialsStale,
                        "A 401 from /token must mark the user's credentials stale (kills `==` → `!=` on the 401-check, and deletion of markCredentialsStale)")
-        XCTAssertEqual(tokenRequestCount, 1,
+        XCTAssertEqual(tokenRequestCount.value, 1,
                        "Failed /token must NOT be retried by the executor — kills any mutation that turns the failure path into a retry loop")
 
         let attempts = await executor.refreshAttemptCount
@@ -209,7 +210,8 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         // Return a 500 — NOT a 401. The TokenRequest layer maps non-200
         // into an NSError with `.code == statusCode` (so .code == 500).
         // The executor branch we care about gates on .code == 401 only.
-        HTTPStubURLProtocol.register { [tokenURL] request in
+        // @Sendable stub + LockIsolated: avoids Swift 6 off-main executor-isolation trap
+        HTTPStubURLProtocol.register { @Sendable [tokenURL] request in
             guard request.url == tokenURL else { return nil }
             return .init(statusCode: 500, headers: nil, body: Data("boom".utf8))
         }
@@ -252,9 +254,10 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         userAccount._credentials = nil
         XCTAssertNil(userAccount.barcode)
 
-        var tokenEndpointCalls = 0
-        HTTPStubURLProtocol.register { [tokenURL] request in
-            if request.url == tokenURL { tokenEndpointCalls += 1 }
+        let tokenEndpointCalls = LockIsolated(0)
+        // @Sendable stub + LockIsolated: avoids Swift 6 off-main executor-isolation trap
+        HTTPStubURLProtocol.register { @Sendable [tokenURL] request in
+            if request.url == tokenURL { tokenEndpointCalls.withValue { $0 += 1 } }
             return .init(statusCode: 200,
                          headers: nil,
                          body: Self.tokenResponseJSON(accessToken: "should-not-be-returned"))
@@ -272,7 +275,7 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
 
         XCTAssertTrue(observedFailure,
                       "Missing credentials must surface as .failure (kills deletion of completion(.failure) in the missing-creds branch)")
-        XCTAssertEqual(tokenEndpointCalls, 0,
+        XCTAssertEqual(tokenEndpointCalls.value, 0,
                        "No HTTP call to /token can occur without credentials (kills inversion of the credentials guard)")
 
         let attempts = await executor.refreshAttemptCount
@@ -314,12 +317,12 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         // pile up behind the same /token request. We release after we've
         // observed all callers entering the queue.
         let releaseGate = DispatchSemaphore(value: 0)
-        var tokenRequestCount = 0
-        let counterQueue = DispatchQueue(label: "token.count")
+        let tokenRequestCount = LockIsolated(0)
 
-        HTTPStubURLProtocol.register { [tokenURL] request in
+        // @Sendable stub + LockIsolated: avoids Swift 6 off-main executor-isolation trap
+        HTTPStubURLProtocol.register { @Sendable [tokenURL] request in
             guard request.url == tokenURL else { return nil }
-            counterQueue.sync { tokenRequestCount += 1 }
+            tokenRequestCount.withValue { $0 += 1 }
             // Block the protocol thread until the test releases. Cap at
             // 3s so a broken single-flight guard surfaces as N>1 instead
             // of a hung test.
@@ -360,11 +363,11 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         // Give the actor a moment to serialize all entrances before we
         // release the gate. Polling: when all 5 callers have entered, the
         // refreshAttemptCount must still be exactly 1.
-        _ = waitForCondition(timeout: 2.0) { [counterQueue] in
+        _ = waitForCondition(timeout: 2.0) {
             // Wait until the /token request has been received. After that,
             // any other in-flight refresh callers have either coalesced
             // or are stuck in the actor hop.
-            counterQueue.sync { tokenRequestCount } == 1
+            tokenRequestCount.value == 1
         }
 
         // Sample the attempt counter while /token is still blocked: this
@@ -414,13 +417,13 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         // synchronization the test thread can observe `retryHits >= 1`
         // before the prior `capturedRetryAuth` store is visible (no
         // happens-before across plain `var`s in Swift). The CI flake
-        // was nil!=newToken precisely because of this gap. NSLock
+        // was nil!=newToken precisely because of this gap. LockIsolated
         // around every shared-state access closes it.
-        let lock = NSLock()
-        nonisolated(unsafe) var capturedRetryAuth: String? = nil
-        nonisolated(unsafe) var retryHits = 0
+        let capturedRetryAuth = LockIsolated<String?>(nil)
+        let retryHits = LockIsolated(0)
 
-        HTTPStubURLProtocol.register { [tokenURL, apiURL] request in
+        // @Sendable stub + LockIsolated: avoids Swift 6 off-main executor-isolation trap
+        HTTPStubURLProtocol.register { @Sendable [tokenURL, apiURL] request in
             if request.url == tokenURL {
                 return .init(statusCode: 200,
                              headers: nil,
@@ -428,10 +431,8 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
             }
             if request.url == apiURL {
                 let authValue = request.value(forHTTPHeaderField: "Authorization")
-                lock.lock()
-                capturedRetryAuth = authValue
-                retryHits += 1
-                lock.unlock()
+                capturedRetryAuth.value = authValue
+                retryHits.withValue { $0 += 1 }
                 return .init(statusCode: 200, headers: nil, body: Data("ok".utf8))
             }
             return nil
@@ -448,14 +449,11 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         // teardown well past 5s — same root cause as the BookRegistry,
         // CatalogCache, and ImageCache flakes documented in 2877d1a8e).
         let retried = waitForCondition(timeout: 30.0) {
-            lock.lock(); defer { lock.unlock() }
-            return retryHits >= 1
+            return retryHits.value >= 1
         }
         XCTAssertTrue(retried, "The queued task must be retried after the /token refresh succeeds")
 
-        lock.lock()
-        let observedAuth = capturedRetryAuth
-        lock.unlock()
+        let observedAuth = capturedRetryAuth.value
 
         XCTAssertEqual(observedAuth,
                        "Bearer \(newToken)",
@@ -478,13 +476,14 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         // Two successive successful refreshes must both increment the
         // attempt counter (1 → 2). If the slot is never released, the
         // second attempt would coalesce and the counter would stay at 1.
-        var tokenHits = 0
-        HTTPStubURLProtocol.register { [tokenURL] request in
+        let tokenHits = LockIsolated(0)
+        // @Sendable stub + LockIsolated: avoids Swift 6 off-main executor-isolation trap
+        HTTPStubURLProtocol.register { @Sendable [tokenURL] request in
             guard request.url == tokenURL else { return nil }
-            tokenHits += 1
+            let hit = tokenHits.withValue { $0 += 1; return $0 }
             return .init(statusCode: 200,
                          headers: nil,
-                         body: Self.tokenResponseJSON(accessToken: "tok-\(tokenHits)"))
+                         body: Self.tokenResponseJSON(accessToken: "tok-\(hit)"))
         }
 
         let first = expectation(description: "first refresh")
@@ -501,7 +500,7 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         let attempts = await executor.refreshAttemptCount
         XCTAssertEqual(attempts, 2,
                        "Two successive successful refreshes must each claim the slot — kills deletion of setRefreshing(false) on the success branch")
-        XCTAssertEqual(tokenHits, 2,
+        XCTAssertEqual(tokenHits.value, 2,
                        "Each released-and-reclaimed refresh must fire its own /token request")
     }
 
@@ -522,7 +521,8 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
 
     func testQueuedRequest_CompletionFiresWithRetryBodyAfterRetry() async throws {
         await executor.resetRefreshAttemptCount()
-        HTTPStubURLProtocol.register { [tokenURL, apiURL] request in
+        // @Sendable stub + LockIsolated: avoids Swift 6 off-main executor-isolation trap
+        HTTPStubURLProtocol.register { @Sendable [tokenURL, apiURL] request in
             if request.url == tokenURL {
                 return .init(statusCode: 200,
                              headers: nil,
@@ -544,17 +544,19 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         // for the original task and the success event for the retry,
         // so we rely on polling for the retry-body to land rather than
         // an XCTestExpectation that would over-fulfill.
-        var successBodies: [Data] = []
-        var failureCount = 0
-        let observerQueue = DispatchQueue(label: "test.observer")
-        executor.responder.addCompletion({ result in
-            observerQueue.sync {
-                switch result {
-                case .success(let data, _):
-                    successBodies.append(data)
-                case .failure:
-                    failureCount += 1
-                }
+        // @Sendable completion + LockIsolated: the responder invokes this
+        // completion off the main actor (URLSession delegate queue), but the
+        // closure is inferred @MainActor-isolated in this @MainActor test — so
+        // without @Sendable it trips Swift 6's off-main executor-isolation
+        // assertion (EXC_BREAKPOINT) exactly like the register stubs above.
+        let successBodies = LockIsolated<[Data]>([])
+        let failureCount = LockIsolated(0)
+        executor.responder.addCompletion({ @Sendable result in
+            switch result {
+            case .success(let data, _):
+                successBodies.withValue { $0.append(data) }
+            case .failure:
+                failureCount.withValue { $0 += 1 }
             }
         }, taskID: queuedTask.taskIdentifier)
 
@@ -565,11 +567,11 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         // success arrives (or we time out, which means updateCompletionId
         // was bypassed and the new task has no completion mapping).
         let sawRetryBody = waitForCondition(timeout: 5.0) {
-            observerQueue.sync { successBodies.contains(Data("retry-body".utf8)) }
+            successBodies.value.contains(Data("retry-body".utf8))
         }
 
-        let snapshotSuccess = observerQueue.sync { successBodies.count }
-        let snapshotFailure = observerQueue.sync { failureCount }
+        let snapshotSuccess = successBodies.value.count
+        let snapshotFailure = failureCount.value
         XCTAssertTrue(sawRetryBody,
                       "The retried task's success must reach the caller's completion (kills deletion of responder.updateCompletionId — without rewiring, no success body ever fires). successBodies=\(snapshotSuccess), failureCount=\(snapshotFailure)")
     }
@@ -593,9 +595,10 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         // and verify no token-endpoint request fires when the delete 401s.
         await executor.resetRefreshAttemptCount()
 
-        var tokenHits = 0
-        HTTPStubURLProtocol.register { [tokenURL] request in
-            if request.url == tokenURL { tokenHits += 1 }
+        let tokenHits = LockIsolated(0)
+        // @Sendable stub + LockIsolated: avoids Swift 6 off-main executor-isolation trap
+        HTTPStubURLProtocol.register { @Sendable [tokenURL] request in
+            if request.url == tokenURL { tokenHits.withValue { $0 += 1 } }
             // Fail-closed 401 on the DELETE; no body required.
             if request.httpMethod == "DELETE" {
                 return .init(statusCode: 401, headers: nil, body: nil)
@@ -616,7 +619,7 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         // is meaningful, not just earliness).
         _ = waitForCondition(timeout: 0.5) { false }
 
-        XCTAssertEqual(tokenHits, 0,
+        XCTAssertEqual(tokenHits.value, 0,
                        "A DELETE 401 must not trigger a token refresh — kills removal of the DELETE early-return in handleExpiredTokenIfNeeded")
         let attempts = await executor.refreshAttemptCount
         XCTAssertEqual(attempts, 0,
@@ -634,7 +637,8 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
 
     func testRefresh_SuccessWithoutTask_FiresSuccessCompletion() async throws {
         await executor.resetRefreshAttemptCount()
-        HTTPStubURLProtocol.register { [tokenURL] request in
+        // @Sendable stub + LockIsolated: avoids Swift 6 off-main executor-isolation trap
+        HTTPStubURLProtocol.register { @Sendable [tokenURL] request in
             guard request.url == tokenURL else { return nil }
             return .init(statusCode: 200,
                          headers: nil,

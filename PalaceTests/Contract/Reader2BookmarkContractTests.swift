@@ -151,8 +151,8 @@ final class Reader2BookmarkContractTests: XCTestCase {
     private var innerRegistry: TPPBookRegistryMock!
     private var registry: RecordingBookmarkRegistry!
     private var accountProvider: NilCurrentAccountProvider!
-    private var book: TPPBook!
-    private var publication: Publication!
+    nonisolated(unsafe) private var book: TPPBook!
+    nonisolated(unsafe) private var publication: Publication!
 
     override func setUpWithError() throws {
         try super.setUpWithError()
@@ -346,7 +346,10 @@ final class Reader2BookmarkContractTests: XCTestCase {
 
     // MARK: - Fixture helpers
 
-    private func makeBook() -> TPPBook {
+    // `nonisolated` (mirrors `makePublication` below): `setUpWithError` is a
+    // nonisolated XCTestCase override, so calling an @MainActor (class-default)
+    // factory from it sends `self` to the main actor — Swift 6 "sending 'self'".
+    private nonisolated func makeBook() -> TPPBook {
         let url = URL(string: "https://test.example.com/book")!
         let acq = TPPOPDSAcquisition(
             relation: .generic,
@@ -384,7 +387,12 @@ final class Reader2BookmarkContractTests: XCTestCase {
         )
     }
 
-    private func makePublication() -> Publication {
+    // `nonisolated`: builds a non-Sendable Readium `Publication` from no
+    // instance state. Left `@MainActor` (class default), calling it from
+    // `setUpWithError` and returning the non-Sendable result across the
+    // actor boundary trips Swift 6 "sending 'self'" / non-Sendable-result.
+    // Same fix EPUBPositionTests.makeTestPublication uses.
+    private nonisolated func makePublication() -> Publication {
         let metadata = Metadata(title: "Test", languages: ["en"])
         let readingOrder = [
             Link(href: "/chapter1.xhtml", mediaType: .xhtml),

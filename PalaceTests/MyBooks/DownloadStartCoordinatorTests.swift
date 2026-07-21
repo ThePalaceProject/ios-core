@@ -248,22 +248,36 @@ final class DownloadStartCoordinatorTests: XCTestCase {
 
 // MARK: - Stubs
 
-private final class SpyDelegate: DownloadStartCoordinatorDelegate {
+private final class SpyDelegate: DownloadStartCoordinatorDelegate, @unchecked Sendable {
     enum BorrowResult {
         case success(TPPBook)
         case failure(Error)
     }
 
-    var borrowAsyncResult: BorrowResult = .success(TPPBookMocker.mockBook(distributorType: .EpubZip))
+    // Swift 6: `borrowAsync` / `schedulePendingStartsIfPossible` are
+    // `nonisolated` protocol requirements, so their bodies cannot capture
+    // `self` (a non-Sendable spy) to reach recorder vars — the previous
+    // `MainActor.run { self.… }` / `Task { @MainActor in self.… }` hops each
+    // sent `self`. Back the storage with `LockIsolated` (@unchecked Sendable,
+    // lock-guarded) so every read/write is thread-safe with no self-capturing
+    // actor hop. `var` shims keep the test call sites unchanged.
+    private let _borrowAsyncResult = LockIsolated<BorrowResult>(
+        .success(TPPBookMocker.mockBook(distributorType: .EpubZip))
+    )
+    var borrowAsyncResult: BorrowResult {
+        get { _borrowAsyncResult.value }
+        set { _borrowAsyncResult.value = newValue }
+    }
 
-    private(set) var scheduleCount = 0
-    private(set) var borrowCount = 0
+    private let _scheduleCount = LockIsolated<Int>(0)
+    var scheduleCount: Int { _scheduleCount.value }
+
+    private let _borrowCount = LockIsolated<Int>(0)
+    var borrowCount: Int { _borrowCount.value }
 
     nonisolated func borrowAsync(_ book: TPPBook, attemptDownload: Bool) async throws -> TPPBook {
-        // Hop to MainActor since the recorder vars are MainActor-isolated
-        // (the test class is @MainActor).
-        await MainActor.run { self.borrowCount += 1 }
-        let result = await MainActor.run { self.borrowAsyncResult }
+        _borrowCount.withValue { $0 += 1 }
+        let result = _borrowAsyncResult.value
         switch result {
         case .success(let book): return book
         case .failure(let error): throw error
@@ -271,9 +285,7 @@ private final class SpyDelegate: DownloadStartCoordinatorDelegate {
     }
 
     nonisolated func schedulePendingStartsIfPossible() {
-        // Schedule increments synchronously from a Task block — bridge
-        // back to MainActor with a Task to avoid the data-race warning.
-        Task { @MainActor in self.scheduleCount += 1 }
+        _scheduleCount.withValue { $0 += 1 }
     }
 }
 

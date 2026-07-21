@@ -61,8 +61,10 @@ final class TPPLastReadPositionPosterTests: XCTestCase {
 
     // MARK: - Setup
 
-    override func setUpWithError() throws {
-        try super.setUpWithError()
+    // async setUp adopts the class's @MainActor isolation so the @MainActor
+    // createTestPublication() result is not returned to a nonisolated context.
+    override func setUp() async throws {
+        try await super.setUp()
 
         bookRegistryMock = TPPBookRegistryMock()
         testBook = createTestBook()

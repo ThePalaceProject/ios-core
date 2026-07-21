@@ -73,7 +73,15 @@ enum DownloadCompletionParseResult {
 
 // MARK: - DownloadCompletionParser
 
-final class DownloadCompletionParser {
+/// - Sendable invariant (Swift 6 `complete`-mode): both stored members are
+///   immutable `let`s bound at init. `stateManager` is `DownloadStateManager`
+///   (already `@unchecked Sendable` — lock-guarded / actor-backed storage).
+///   `routing` is a `DownloadCompletionRouting` existential; the parser only
+///   ever *reads* through it (rights detection + the two `async` OPDS-routing
+///   calls) and never mutates it, so awaiting `parse(...)` — a nonisolated
+///   `async` method — from a `@MainActor` caller does not race. `@unchecked`
+///   only because the `routing` existential is not itself statically `Sendable`.
+final class DownloadCompletionParser: @unchecked Sendable {
 
     private let routing: DownloadCompletionRouting
     private let stateManager: DownloadStateManager

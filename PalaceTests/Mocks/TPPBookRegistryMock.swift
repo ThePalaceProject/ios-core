@@ -208,8 +208,29 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistryProvider, @unchecked Sendabl
         registrySubject.send(snapshot)
         bookStateSubject.send((book.identifier, state))
 
-        // Simulate Notification (if real registry sends one)
-        NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
+        // Simulate the production notification — and match production's
+        // DELIVERY-THREAD contract: the real registry ALWAYS posts
+        // `.TPPBookRegistryDidChange` on the main queue (BookRegistryStore's
+        // `registry.didSet` and BookRegistrySync's save/update paths all wrap
+        // the post in `DispatchQueue.main.async`). Posting on the caller's
+        // thread here broke that contract: `NotificationCenter` invokes
+        // selector observers SYNCHRONOUSLY on the posting thread, so any live
+        // `@MainActor` observer (e.g. a `BookDetailViewModel` from an earlier
+        // test in the same runner process — `handleBookRegistryChange(_:)`)
+        // trips Swift 6's executor-isolation precondition
+        // (`dispatch_assert_queue_fail` → SIGTRAP) and KILLS the test-runner
+        // process, failing whichever unrelated test is in flight (CI run
+        // 29802862487: BorrowOperationTests / BorrowOperationStreamingHTMLTests /
+        // MyBooksDownloadCenterAccountIdThreadingTests all died here).
+        // Sync-post when already on main preserves the same-runloop-turn
+        // delivery that existing main-thread tests rely on.
+        if Thread.isMainThread {
+            NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
+        } else {
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
+            }
+        }
     }
 
     func removeBook(forIdentifier bookIdentifier: String) {

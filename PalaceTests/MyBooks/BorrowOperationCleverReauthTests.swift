@@ -43,10 +43,10 @@ final class BorrowOperationCleverReauthTests: XCTestCase {
     private var operation: BorrowOperation!
     private var book: TPPBook!
 
-    private var fetchBookResult: Result<TPPBook, Error>!
-    private var alertCalls: [(title: String, message: String, book: TPPBook, hasRetryAction: Bool)] = []
-    private var signInModalCompletions: [() -> Void] = []
-    private var oidcReauthResult: Bool = false
+    private let fetchBookResult = LockIsolated<Result<TPPBook, Error>?>(nil)
+    private let alertCalls = LockIsolated<[(title: String, message: String, book: TPPBook, hasRetryAction: Bool)]>([])
+    private let signInModalCompletions = LockIsolated<[() -> Void]>([])
+    private let oidcReauthResult = LockIsolated<Bool>(false)
 
     override func setUpWithError() throws {
         try super.setUpWithError()
@@ -56,11 +56,18 @@ final class BorrowOperationCleverReauthTests: XCTestCase {
         userAccount = TPPUserAccountMock()
         spyDelegate = SpyDelegate()
         book = TPPBookMocker.mockBook(distributorType: .EpubZip)
-        fetchBookResult = .success(book)
-        alertCalls = []
-        signInModalCompletions = []
-        oidcReauthResult = false
+        fetchBookResult.value = .success(book)
+        alertCalls.value = []
+        signInModalCompletions.value = []
+        oidcReauthResult.value = false
 
+        // Swift 6: the injected closures run outside MainActor isolation, so
+        // capturing `self` sends a main-actor-isolated value across the
+        // boundary. Capture the Sendable boxes as locals instead.
+        let fetchBookResultBox = fetchBookResult
+        let oidcReauthResultBox = oidcReauthResult
+        let alertCallsBox = alertCalls
+        let signInModalCompletionsBox = signInModalCompletions
         operation = BorrowOperation(
             bookRegistry: bookRegistry,
             downloadAnnouncementService: DownloadAnnouncementService(),
@@ -69,19 +76,19 @@ final class BorrowOperationCleverReauthTests: XCTestCase {
             userRetryTracker: .shared,
             userAccountProvider: { [unowned self] in self.userAccount },
             adobeDRMService: AdobeDRMService.shared,
-            fetchBook: { [unowned self] _, _, _ in
-                switch self.fetchBookResult! {
+            fetchBook: { _, _, _ in
+                switch fetchBookResultBox.value! {
                 case .success(let r): return r
                 case .failure(let e): throw e
                 }
             },
-            presentBorrowErrorAlert: { [unowned self] title, message, _, _, b, retryAction in
-                self.alertCalls.append((title, message, b, retryAction != nil))
+            presentBorrowErrorAlert: { title, message, _, _, b, retryAction in
+                alertCallsBox.withValue { $0.append((title, message, b, retryAction != nil)) }
             },
-            presentSignInModal: { [unowned self] completion in
-                self.signInModalCompletions.append(completion)
+            presentSignInModal: { completion in
+                signInModalCompletionsBox.withValue { $0.append(completion) }
             },
-            attemptOIDCReauth: { [unowned self] in self.oidcReauthResult }
+            attemptOIDCReauth: { oidcReauthResultBox.value }
         )
         operation.delegate = spyDelegate
     }
@@ -122,7 +129,7 @@ final class BorrowOperationCleverReauthTests: XCTestCase {
         userAccount.setAuthState(.loggedIn)
 
         let problemDoc = try Self.makeProblemDoc(type: TPPProblemDocument.TypeInvalidCredentials)
-        fetchBookResult = .failure(NSError(
+        fetchBookResult.value = .failure(NSError(
             domain: "test", code: 401,
             userInfo: ["problemDocument": problemDoc as Any]
         ))
@@ -140,9 +147,9 @@ final class BorrowOperationCleverReauthTests: XCTestCase {
         }
 
         // Assert: browser-reauth modal was presented.
-        XCTAssertEqual(signInModalCompletions.count, 1,
+        XCTAssertEqual(signInModalCompletions.value.count, 1,
                        "OAuth-intermediary (Clever) auth error with credentials MUST trigger presentSignInModal — the Module B broadening of `needsBrowserReauth`")
-        XCTAssertEqual(alertCalls.count, 0,
+        XCTAssertEqual(alertCalls.value.count, 0,
                        "Browser-reauth path must NOT also surface a generic borrow-error alert; that was the pre-Module-B regression for Clever users")
     }
 
@@ -172,7 +179,7 @@ final class BorrowOperationCleverReauthTests: XCTestCase {
         // Wrap the NSError so the BorrowOperation `originalError`
         // problemDocument extraction path fires (matches BorrowOperation's
         // `nsError.problemDocument` extraction).
-        fetchBookResult = .failure(NSError(
+        fetchBookResult.value = .failure(NSError(
             domain: "test", code: 401,
             userInfo: ["problemDocument": problemDoc as Any]
         ))
@@ -188,7 +195,7 @@ final class BorrowOperationCleverReauthTests: XCTestCase {
             await Task.yield()
         }
 
-        XCTAssertEqual(signInModalCompletions.count, 1,
+        XCTAssertEqual(signInModalCompletions.value.count, 1,
                        "PP-3716 broadening: OAuth-intermediary (Clever) + no-active-loan + credentials must be treated as auth error and route to sign-in modal")
     }
 

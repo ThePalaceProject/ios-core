@@ -203,7 +203,7 @@ final class Reader2PositionAdapterContractTests: XCTestCase {
     /// local-first invariant — without it, a crash mid-flight loses the
     /// reader's position.
     func test_epubPoster_storeReadPosition_serializesLocator_callsWriterSave() async throws {
-        let publication = makePublication()
+        let publication = Self.makePublication()
         let poster = TPPLastReadPositionPoster(
             book: book,
             publication: publication,
@@ -271,7 +271,7 @@ final class Reader2PositionAdapterContractTests: XCTestCase {
     /// would allow same-device snapshots to slip through and present an
     /// alert — the snapshot grows a follow-up step.
     func test_epubSynchronizer_sync_sameDevice_returnsNil() async throws {
-        let publication = makePublication()
+        let publication = Self.makePublication()
 
         // Pre-seed a local location. This is pre-state; we use the INNER
         // registry so the setLocation isn't captured as a snapshot entry.
@@ -301,8 +301,11 @@ final class Reader2PositionAdapterContractTests: XCTestCase {
         )
 
         log.record("synchronizer.sync.begin", args: ["drmDeviceID": "device-SAME"])
+        // `sync(for:)` takes a `sending Publication`; the stored `self.publication`
+        // is retained by the test, so it can't be sent. A fresh nonisolated fixture
+        // is a disconnected region (identical manifest → identical convertToLocator).
         await synchronizer.sync(
-            for: publication,
+            for: Self.makePublication(),
             book: book,
             drmDeviceID: "device-SAME"
         )
@@ -353,7 +356,11 @@ final class Reader2PositionAdapterContractTests: XCTestCase {
 
     // MARK: - Fixture helpers
 
-    private func makeBook() -> TPPBook {
+    // `nonisolated`: pure fixture factory reading only the immutable
+    // `bookIdentifier` (`let`). Left `@MainActor` (class default), the
+    // non-Sendable `TPPBook` result crosses the actor boundary back into
+    // `setUpWithError` and trips Swift 6 "sending 'self'".
+    private nonisolated func makeBook() -> TPPBook {
         let url = URL(string: "https://test.example.com/book")!
         let acq = TPPOPDSAcquisition(
             relation: .generic,
@@ -391,7 +398,14 @@ final class Reader2PositionAdapterContractTests: XCTestCase {
         )
     }
 
-    private func makePublication() -> Publication {
+    // `nonisolated`: builds a non-Sendable Readium `Publication` from no
+    // instance state, so its result is a *disconnected* region value. As a
+    // `@MainActor` factory (class default) the result is pinned to the
+    // MainActor region, and passing it into the nonisolated-async
+    // `synchronizer.sync(for:...)` sends it across the actor boundary
+    // (Swift 6 "sending 'publication'"). Disconnecting it here matches the
+    // passing `ReaderServiceSyncTests` pattern (locally-built publication).
+    private nonisolated static func makePublication() -> Publication {
         let metadata = Metadata(title: "Test", languages: ["en"])
         let readingOrder = [
             Link(href: "/chapter1.xhtml", mediaType: .xhtml),

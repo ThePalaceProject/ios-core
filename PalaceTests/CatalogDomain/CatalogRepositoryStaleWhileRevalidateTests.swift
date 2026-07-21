@@ -40,7 +40,7 @@ final class CatalogRepositoryStaleWhileRevalidateTests: XCTestCase {
     /// Mutable test clock. Setting this updates the time returned by the
     /// closure passed to CatalogRepository at construction. Tests advance
     /// this directly rather than sleeping.
-    private var testNow: Date = Date(timeIntervalSince1970: 1_700_000_000)
+    private let testNow = LockIsolated<Date>(Date(timeIntervalSince1970: 1_700_000_000))
 
     /// UserDefaults key the repository uses for its last-launch heuristic.
     /// We clear it in setUp so `needsBackgroundRefresh` starts off `false`
@@ -59,7 +59,7 @@ final class CatalogRepositoryStaleWhileRevalidateTests: XCTestCase {
         // `needsBackgroundRefresh = true`). Tests that need
         // `needsBackgroundRefresh = false` seed the key BEFORE
         // constructing the repository via `makeRepository`.
-        defaults = testUserDefaults()
+        defaults = Self.testUserDefaults()
         api = CatalogAPIMock()
     }
 
@@ -81,35 +81,20 @@ final class CatalogRepositoryStaleWhileRevalidateTests: XCTestCase {
         // which forces the stale-while-revalidate branch for fresh caches and
         // ruins the fresh-cache assertions below.
         if seedLastLaunchToNow {
-            defaults.set(testNow, forKey: Self.lastAppLaunchKey)
+            defaults.set(testNow.value, forKey: Self.lastAppLaunchKey)
         }
         return CatalogRepository(
             api: api,
-            now: { [weak self] in
-                self?.testNow ?? Date(timeIntervalSince1970: 0)
-            },
+            now: { [testNow] in testNow.value },
             defaults: defaults
         )
     }
 
-    /// Poll an async predicate until it holds or the timeout elapses. Used
-    /// to await the completion of `Task.detached` background refreshes
-    /// without sleeping for a flat duration. NOT used to age out cache —
-    /// the clock seam handles that.
-    private func awaitCondition(
-        timeout: TimeInterval = 2.0,
-        pollInterval: TimeInterval = 0.01,
-        _ predicate: () async -> Bool,
-        file: StaticString = #filePath,
-        line: UInt = #line
-    ) async {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if await predicate() { return }
-            try? await Task.sleep(nanoseconds: UInt64(pollInterval * 1_000_000_000))
-        }
-        XCTFail("Condition not satisfied within \(timeout)s", file: file, line: line)
-    }
+    // NOTE: the former private `awaitCondition` poll helper was removed — every
+    // background-refresh wait now joins the repository's refresh Task directly
+    // via `_awaitBackgroundRefreshForTesting()`, which is deterministic under
+    // pool oversubscription (a fixed-deadline poll of a `.utility` detached
+    // task's side effect was the parallel-clone flake, CI run 29805821296).
 
     // MARK: - Fresh cache window (< 10 min)
 
@@ -121,7 +106,7 @@ final class CatalogRepositoryStaleWhileRevalidateTests: XCTestCase {
 
         _ = try await sut.loadTopLevelCatalog(at: testURL)
         // Advance well inside the fresh window — 5 minutes in (300s < 600s).
-        testNow = testNow.addingTimeInterval(300)
+        testNow.value = testNow.value.addingTimeInterval(300)
         // Swap the stub: if the cache hit is broken the second call will return "Other".
         api.stubbedFeeds[testURL] = CatalogAPIMock.makeMockFeed(title: "Other")
         let second = try await sut.loadTopLevelCatalog(at: testURL)
@@ -138,7 +123,7 @@ final class CatalogRepositoryStaleWhileRevalidateTests: XCTestCase {
 
         _ = try await sut.loadTopLevelCatalog(at: testURL)
         // Exactly 600s later: code uses `> 600`, so 600 is NOT expired.
-        testNow = testNow.addingTimeInterval(600)
+        testNow.value = testNow.value.addingTimeInterval(600)
         api.stubbedFeeds[testURL] = CatalogAPIMock.makeMockFeed(title: "OverwrittenButShouldNotShow")
         let second = try await sut.loadTopLevelCatalog(at: testURL)
 
@@ -160,7 +145,7 @@ final class CatalogRepositoryStaleWhileRevalidateTests: XCTestCase {
         XCTAssertEqual(api.fetchFeedCallCount, 1)
 
         // 601s later → just past the fresh boundary, well inside stale-but-usable.
-        testNow = testNow.addingTimeInterval(601)
+        testNow.value = testNow.value.addingTimeInterval(601)
         api.stubbedFeeds[testURL] = CatalogAPIMock.makeMockFeed(title: "Refreshed")
         let second = try await sut.loadTopLevelCatalog(at: testURL)
 
@@ -169,17 +154,20 @@ final class CatalogRepositoryStaleWhileRevalidateTests: XCTestCase {
                        "Stale-but-usable must return cached value immediately")
 
         // And a background refresh must fire AND complete the cache write.
-        // Poll the cache directly (not call count): the network bumps the
-        // count slightly before the cache write lands.
-        await awaitCondition {
-            sut.cachedFeed(for: self.testURL)?.title == "Refreshed"
-        }
+        // Join the actual refresh Task deterministically (not a wall-clock
+        // poll): the refresh is a `.utility` detached Task, so polling
+        // `cachedFeed(...)` for the write is starvable under parallel-clone
+        // pool oversubscription (CI run 29805821296). Awaiting the handle
+        // blocks exactly until the write lands, independent of pool load.
+        await sut._awaitBackgroundRefreshForTesting()
+        XCTAssertEqual(sut.cachedFeed(for: self.testURL)?.title, "Refreshed",
+                       "Background refresh must complete the cache write")
         XCTAssertEqual(api.fetchFeedCallCount, 2, "Stale-but-usable must trigger ONE background refresh")
 
         // Subsequent read inside fresh window of the refreshed cache returns new title.
         // Cache was rewritten at testNow (601s post-original), so 5 minutes later
         // the new entry is fresh.
-        testNow = testNow.addingTimeInterval(300)
+        testNow.value = testNow.value.addingTimeInterval(300)
         let third = try await sut.loadTopLevelCatalog(at: testURL)
         XCTAssertEqual(third?.title, "Refreshed",
                        "Background refresh must replace the cache with network result")
@@ -195,7 +183,7 @@ final class CatalogRepositoryStaleWhileRevalidateTests: XCTestCase {
         _ = try await sut.loadTopLevelCatalog(at: testURL)
 
         // Exactly 86400s (24h) later — `isStaleButUsable` uses `<= 86400`.
-        testNow = testNow.addingTimeInterval(86400)
+        testNow.value = testNow.value.addingTimeInterval(86400)
         api.stubbedFeeds[testURL] = CatalogAPIMock.makeMockFeed(title: "WouldBeNetwork")
         let result = try await sut.loadTopLevelCatalog(at: testURL)
 
@@ -203,10 +191,11 @@ final class CatalogRepositoryStaleWhileRevalidateTests: XCTestCase {
                        "At exactly 24h, cache is still stale-but-usable (returns immediately)")
 
         // Background refresh still fires from the stale-but-usable branch.
-        // Poll the cache for the refreshed title (more reliable than call count).
-        await awaitCondition {
-            sut.cachedFeed(for: self.testURL)?.title == "WouldBeNetwork"
-        }
+        // Join the refresh Task deterministically (see the sibling test for
+        // why the old `cachedFeed` poll was parallel-clone-flaky).
+        await sut._awaitBackgroundRefreshForTesting()
+        XCTAssertEqual(sut.cachedFeed(for: self.testURL)?.title, "WouldBeNetwork",
+                       "24h-boundary stale read must still complete its background refresh")
     }
 
     // MARK: - Too-old / expired-beyond-24h
@@ -223,7 +212,7 @@ final class CatalogRepositoryStaleWhileRevalidateTests: XCTestCase {
         XCTAssertEqual(api.fetchFeedCallCount, 1)
 
         // 86401s later — one second past 24h → isTooOld returns true.
-        testNow = testNow.addingTimeInterval(86401)
+        testNow.value = testNow.value.addingTimeInterval(86401)
         api.stubbedFeeds[testURL] = CatalogAPIMock.makeMockFeed(title: "FromNetwork")
         let result = try await sut.loadTopLevelCatalog(at: testURL)
 
@@ -249,7 +238,7 @@ final class CatalogRepositoryStaleWhileRevalidateTests: XCTestCase {
 
         // Age past 24h so the next call attempts a network fetch (not stale-but-usable
         // which would skip the failing fetch).
-        testNow = testNow.addingTimeInterval(90_000)
+        testNow.value = testNow.value.addingTimeInterval(90_000)
         // Network errors out — must fall back to the cached entry.
         api.fetchFeedError = NSError(domain: "Test", code: -1, userInfo: nil)
 
@@ -287,12 +276,12 @@ final class CatalogRepositoryStaleWhileRevalidateTests: XCTestCase {
         _ = try await sut.loadTopLevelCatalog(at: testURL)
 
         // At exactly 24h, isTooOld is false (uses `> 86400`).
-        testNow = testNow.addingTimeInterval(86400)
+        testNow.value = testNow.value.addingTimeInterval(86400)
         XCTAssertEqual(sut.cachedFeed(for: testURL)?.title, "WithinBoundary",
                        "At 86400s-old cache must still be returned by cachedFeed")
 
         // 1 second over → too old → nil.
-        testNow = testNow.addingTimeInterval(1)
+        testNow.value = testNow.value.addingTimeInterval(1)
         XCTAssertNil(sut.cachedFeed(for: testURL),
                      "At 86401s-old cache must be treated as too old and nil-returned")
     }
@@ -377,9 +366,12 @@ final class CatalogRepositoryStaleWhileRevalidateTests: XCTestCase {
         XCTAssertEqual(api.fetchFeedCallCount, 1)
 
         // Move into stale-but-usable window.
-        testNow = testNow.addingTimeInterval(1800) // 30 minutes
+        testNow.value = testNow.value.addingTimeInterval(1800) // 30 minutes
         api.stubbedFeeds[testURL] = CatalogAPIMock.makeMockFeed(title: "Refreshed-concurrent")
 
+        // Sendable local so the async-let children capture it instead of reading
+        // @MainActor `self.testURL` (which would send self). `sut` is already local.
+        let testURL = testURL
         async let a = sut.loadTopLevelCatalog(at: testURL)
         async let b = sut.loadTopLevelCatalog(at: testURL)
         let (resultA, resultB) = try await (a, b)
@@ -389,23 +381,22 @@ final class CatalogRepositoryStaleWhileRevalidateTests: XCTestCase {
         XCTAssertEqual(resultB?.title, "Original-concurrent",
                        "Concurrent stale read B must return cached value")
 
-        // First await the network signal (deterministic on the mock side):
-        // both detached refreshes hit fetchFeed → callCount goes 1 → 2 or 3.
-        // This decouples the "did the refresh fire" assertion (load-bearing
-        // for the mutation kill) from the cache-write timing.
-        await awaitCondition(timeout: 5.0) {
-            self.api.fetchFeedCallCount >= 2
-        }
+        // Join the background refresh deterministically. Both stale reads
+        // scheduled a `.utility` detached refresh SYNCHRONOUSLY before
+        // returning; the repository retains the last-scheduled one. Awaiting
+        // it blocks until that refresh's cache write lands — regardless of how
+        // starved the cooperative pool is under parallel-clone oversubscription
+        // (the old two-poll approach timed out at :401/:408 exactly there in CI
+        // run 29805821296). Both refreshes fetch + write the same
+        // "Refreshed-concurrent" feed, so the last one landing proves the
+        // contract.
+        await sut._awaitBackgroundRefreshForTesting()
 
-        // Then wait for the cache write to land. The happy path completes in
-        // <0.3s; 5s is plenty of head-room and still fails loudly if the
-        // refresh is broken instead of hanging the suite.
-        await awaitCondition(timeout: 5.0) {
-            sut.cachedFeed(for: self.testURL)?.title == "Refreshed-concurrent"
-        }
+        // The refresh fired (mutation kill: a no-op'd background branch never
+        // bumps the count past 1). Deterministic now that the Task has joined.
+        XCTAssertGreaterThanOrEqual(api.fetchFeedCallCount, 2,
+                                    "Both concurrent stale reads must trigger a background refresh")
 
-        // Assertion is implicit in awaitCondition (it XCTFails on timeout),
-        // but make the success criterion explicit for readability.
         XCTAssertEqual(sut.cachedFeed(for: testURL)?.title, "Refreshed-concurrent",
                        "Background refresh must replace the cache with the new feed")
     }

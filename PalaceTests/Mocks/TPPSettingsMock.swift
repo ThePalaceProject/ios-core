@@ -14,6 +14,12 @@ import Foundation
 /// This mock provides stored properties that can be directly manipulated
 /// in tests, avoiding UserDefaults persistence and enabling test isolation.
 ///
+/// `@unchecked Sendable`: this mock is passed into `@MainActor` SUTs across
+/// concurrency domains. ALL mutable stored state (`_accountMainFeedURL`,
+/// `_customMainFeedURL`, `_useBetaLibraries`, the app-rating counters, …) is
+/// guarded by a single `NSLock` via locked computed accessors, so the mock
+/// honors the `Sendable` contract despite carrying real mutable state.
+///
 /// Usage:
 /// ```swift
 /// // inside an XCTestCase:
@@ -22,47 +28,119 @@ import Foundation
 /// let sut = MyClass(settings: mockSettings)
 /// // Exercise behavior when beta libraries are enabled
 /// ```
-final class TPPSettingsMock: NSObject, TPPSettingsProviding {
+final class TPPSettingsMock: NSObject, TPPSettingsProviding, @unchecked Sendable {
+
+    private let lock = NSLock()
 
     // MARK: - Stored Properties with Defaults
 
     /// The main feed URL for the current account/library.
-    var accountMainFeedURL: URL?
+    private var _accountMainFeedURL: URL?
+    var accountMainFeedURL: URL? {
+        get { lock.withLock { _accountMainFeedURL } }
+        set { lock.withLock { _accountMainFeedURL = newValue } }
+    }
 
     /// Custom feed URL override.
-    var customMainFeedURL: URL?
+    private var _customMainFeedURL: URL?
+    var customMainFeedURL: URL? {
+        get { lock.withLock { _customMainFeedURL } }
+        set { lock.withLock { _customMainFeedURL = newValue } }
+    }
 
     /// Whether to use beta/testing libraries.
-    var useBetaLibraries: Bool = false
+    private var _useBetaLibraries: Bool = false
+    var useBetaLibraries: Bool {
+        get { lock.withLock { _useBetaLibraries } }
+        set { lock.withLock { _useBetaLibraries = newValue } }
+    }
 
     /// Whether the age check has been presented.
-    var userPresentedAgeCheck: Bool = false
+    private var _userPresentedAgeCheck: Bool = false
+    var userPresentedAgeCheck: Bool {
+        get { lock.withLock { _userPresentedAgeCheck } }
+        set { lock.withLock { _userPresentedAgeCheck = newValue } }
+    }
 
     /// Whether the user has accepted the EULA.
-    var userHasAcceptedEULA: Bool = false
+    private var _userHasAcceptedEULA: Bool = false
+    var userHasAcceptedEULA: Bool {
+        get { lock.withLock { _userHasAcceptedEULA } }
+        set { lock.withLock { _userHasAcceptedEULA = newValue } }
+    }
 
     /// Whether to enter LCP passphrases manually.
-    var enterLCPPassphraseManually: Bool = false
+    private var _enterLCPPassphraseManually: Bool = false
+    var enterLCPPassphraseManually: Bool {
+        get { lock.withLock { _enterLCPPassphraseManually } }
+        set { lock.withLock { _enterLCPPassphraseManually = newValue } }
+    }
 
     /// The stored app version string.
-    var appVersion: String?
+    private var _appVersion: String?
+    var appVersion: String? {
+        get { lock.withLock { _appVersion } }
+        set { lock.withLock { _appVersion = newValue } }
+    }
 
     /// Custom library registry server URL.
-    var customLibraryRegistryServer: String?
+    private var _customLibraryRegistryServer: String?
+    var customLibraryRegistryServer: String? {
+        get { lock.withLock { _customLibraryRegistryServer } }
+        set { lock.withLock { _customLibraryRegistryServer = newValue } }
+    }
 
     /// Whether downloads are restricted to Wi-Fi only.
-    var downloadOnlyOnWiFi: Bool = false
+    private var _downloadOnlyOnWiFi: Bool = false
+    var downloadOnlyOnWiFi: Bool {
+        get { lock.withLock { _downloadOnlyOnWiFi } }
+        set { lock.withLock { _downloadOnlyOnWiFi = newValue } }
+    }
 
     // MARK: - App Rating (PP-4087)
 
-    var appRatingSessionCount: Int = 0
-    var appRatingBooksCompleted: Int = 0
-    var appRatingLastPromptDate: Date?
-    var appRatingPromptDisplayCount: Int = 0
-    var appRatingDismissalCount: Int = 0
-    var appRatingOptedOut: Bool = false
+    private var _appRatingSessionCount: Int = 0
+    var appRatingSessionCount: Int {
+        get { lock.withLock { _appRatingSessionCount } }
+        set { lock.withLock { _appRatingSessionCount = newValue } }
+    }
+
+    private var _appRatingBooksCompleted: Int = 0
+    var appRatingBooksCompleted: Int {
+        get { lock.withLock { _appRatingBooksCompleted } }
+        set { lock.withLock { _appRatingBooksCompleted = newValue } }
+    }
+
+    private var _appRatingLastPromptDate: Date?
+    var appRatingLastPromptDate: Date? {
+        get { lock.withLock { _appRatingLastPromptDate } }
+        set { lock.withLock { _appRatingLastPromptDate = newValue } }
+    }
+
+    private var _appRatingPromptDisplayCount: Int = 0
+    var appRatingPromptDisplayCount: Int {
+        get { lock.withLock { _appRatingPromptDisplayCount } }
+        set { lock.withLock { _appRatingPromptDisplayCount = newValue } }
+    }
+
+    private var _appRatingDismissalCount: Int = 0
+    var appRatingDismissalCount: Int {
+        get { lock.withLock { _appRatingDismissalCount } }
+        set { lock.withLock { _appRatingDismissalCount = newValue } }
+    }
+
+    private var _appRatingOptedOut: Bool = false
+    var appRatingOptedOut: Bool {
+        get { lock.withLock { _appRatingOptedOut } }
+        set { lock.withLock { _appRatingOptedOut = newValue } }
+    }
+
     /// Defaults to `true` (assume crash-free), matching `TPPSettings`.
-    var appRatingCrashFreeLastSession: Bool = true
+    private var _appRatingCrashFreeLastSession: Bool = true
+    var appRatingCrashFreeLastSession: Bool {
+        get { lock.withLock { _appRatingCrashFreeLastSession } }
+        set { lock.withLock { _appRatingCrashFreeLastSession = newValue } }
+    }
 
     // MARK: - Initialization
 
@@ -92,15 +170,15 @@ final class TPPSettingsMock: NSObject, TPPSettingsProviding {
         customLibraryRegistryServer: String? = nil,
         downloadOnlyOnWiFi: Bool = false
     ) {
-        self.accountMainFeedURL = accountMainFeedURL
-        self.customMainFeedURL = customMainFeedURL
-        self.useBetaLibraries = useBetaLibraries
-        self.userPresentedAgeCheck = userPresentedAgeCheck
-        self.userHasAcceptedEULA = userHasAcceptedEULA
-        self.enterLCPPassphraseManually = enterLCPPassphraseManually
-        self.appVersion = appVersion
-        self.customLibraryRegistryServer = customLibraryRegistryServer
-        self.downloadOnlyOnWiFi = downloadOnlyOnWiFi
+        self._accountMainFeedURL = accountMainFeedURL
+        self._customMainFeedURL = customMainFeedURL
+        self._useBetaLibraries = useBetaLibraries
+        self._userPresentedAgeCheck = userPresentedAgeCheck
+        self._userHasAcceptedEULA = userHasAcceptedEULA
+        self._enterLCPPassphraseManually = enterLCPPassphraseManually
+        self._appVersion = appVersion
+        self._customLibraryRegistryServer = customLibraryRegistryServer
+        self._downloadOnlyOnWiFi = downloadOnlyOnWiFi
         super.init()
     }
 

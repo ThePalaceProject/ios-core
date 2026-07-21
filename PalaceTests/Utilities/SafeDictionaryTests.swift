@@ -165,7 +165,7 @@ final class SafeDictionaryTests: XCTestCase {
         let dict = SafeDictionary<String, Int>()
         await dict.set("price", value: 10)
 
-        let mapped = await dict.mapValues { $0 * 2 }
+        let mapped = await dict.mapValues { @Sendable in $0 * 2 }
         XCTAssertEqual(mapped["price"], 20)
     }
 
@@ -173,7 +173,7 @@ final class SafeDictionaryTests: XCTestCase {
         let dict = SafeDictionary<String, Int>()
         await dict.updateMultiple(["a": 1, "b": 2, "c": 3, "d": 4])
 
-        let evens = await dict.filter { _, v in v % 2 == 0 }
+        let evens = await dict.filter { @Sendable _, v in v % 2 == 0 }
         XCTAssertEqual(evens.count, 2)
         XCTAssertEqual(evens["b"], 2)
         XCTAssertEqual(evens["d"], 4)
@@ -183,7 +183,7 @@ final class SafeDictionaryTests: XCTestCase {
         let dict = SafeDictionary<String, String>()
         await dict.updateMultiple(["num": "42", "str": "abc", "zero": "0"])
 
-        let ints = await dict.compactMapValues { Int($0) }
+        let ints = await dict.compactMapValues { @Sendable in Int($0) }
         XCTAssertEqual(ints.count, 2)
         XCTAssertEqual(ints["num"], 42)
         XCTAssertEqual(ints["zero"], 0)
@@ -195,7 +195,7 @@ final class SafeDictionaryTests: XCTestCase {
         let dict = SafeDictionary<String, Int>()
         await dict.set("counter", value: 5)
 
-        await dict.modify("counter") { value in
+        await dict.modify("counter") { @Sendable value in
             value = (value ?? 0) + 10
         }
 
@@ -206,7 +206,7 @@ final class SafeDictionaryTests: XCTestCase {
     func testModify_createsNewValue() async {
         let dict = SafeDictionary<String, Int>()
 
-        await dict.modify("new") { value in
+        await dict.modify("new") { @Sendable value in
             value = 99
         }
 

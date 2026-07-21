@@ -91,6 +91,49 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
     # already runs this way (workers=4) successfully; Xcode merges the clones into the single
     # TestResults.xcresult so the downstream summary.failed gate is unchanged. Tune via CI_TEST_WORKERS if a
     # runner has fewer cores (Xcode caps workers to available cores regardless).
+    # Clean the test build in CI to defeat stale-DerivedData masking (layer 1).
+    # CI caches DerivedData per-branch (with a cross-branch restore-keys
+    # fallback) and this CI path never cleaned, so a broken test target could
+    # pass by REUSING compiled objects from a green cache — Xcode's incremental
+    # build skips a file whose own source is unchanged even when a transitive
+    # input made it stop compiling. That silently hid develop's Swift 6 test
+    # break behind green checks. A trustworthy board is worth the rebuild time
+    # (green-board contract). Override with PALACE_TEST_NO_CLEAN=1 if a runner
+    # must trade correctness for speed.
+    if [ "${PALACE_TEST_NO_CLEAN:-0}" != "1" ]; then
+        echo "🧹 CI: clean build (defeats stale-DerivedData masking)"
+        xcodebuild clean -project Palace.xcodeproj -scheme Palace > /dev/null 2>&1 || true
+    fi
+
+    # Scheduling-sensitive infra tests that must run OUTSIDE the 4-clone parallel
+    # run. Under parallel-sim-clone oversubscription (workers > runner cores) the
+    # cooperative pool starves so badly that these tests' OWN internal wait
+    # timeouts starve too, and they hang to the 120s executionTimeAllowance —
+    # even though they pass deterministically when not oversubscribed (they can't
+    # be reproduced on a single local clone that owns its pool). They are NOT
+    # skipped/weakened: the parallel run below `-skip-testing`s them, then a
+    # dedicated SERIAL pass (`-parallel-testing-enabled NO`) runs them FULLY and
+    # the results are MERGED back into TestResults.xcresult so the downstream
+    # fail-gate counts them. Owner decision after CI runs 29805821296 / 29810471358.
+    ISOLATED_SERIAL_TESTS=(
+        "PalaceTests/ImageCacheContinuationTests"
+        "PalaceTests/PoolResponsivenessProbeTests"
+    )
+    ISOLATED_SKIP_ARGS=()
+    ISOLATED_ONLY_ARGS=()
+    for _t in "${ISOLATED_SERIAL_TESTS[@]}"; do
+        ISOLATED_SKIP_ARGS+=("-skip-testing:$_t")
+        ISOLATED_ONLY_ARGS+=("-only-testing:$_t")
+    done
+
+    # Capture xcodebuild output so we can detect a COMPILE failure that
+    # `xcodebuild test` masks. Under `-parallel-testing-enabled` xcodebuild can
+    # exit 0 even when a test bundle fails to BUILD: the sibling bundles that DID
+    # compile run to completion, an `.xcresult` is still produced, and the
+    # overall exit code comes back 0 — so `TEST_EXIT_CODE` lies and the
+    # green-board masking is born (a broken test target reads as a green job).
+    # Tee to a log and scan it for the unambiguous build-failure markers below.
+    XCB_LOG="$(mktemp)"
     set +e
     xcodebuild test \
         -project Palace.xcodeproj \
@@ -106,26 +149,86 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
         -maximum-test-execution-time-allowance 300 \
         -parallel-testing-enabled YES \
         -maximum-parallel-testing-workers "${CI_TEST_WORKERS:-4}" \
+        "${ISOLATED_SKIP_ARGS[@]}" \
         CODE_SIGNING_REQUIRED=NO \
         CODE_SIGNING_ALLOWED=NO \
         ONLY_ACTIVE_ARCH=YES \
         GCC_OPTIMIZATION_LEVEL=0 \
         SWIFT_OPTIMIZATION_LEVEL=-Onone \
-        ENABLE_TESTABILITY=YES
-    TEST_EXIT_CODE=$?
+        ENABLE_TESTABILITY=YES 2>&1 | tee "$XCB_LOG"
+    TEST_EXIT_CODE=${PIPESTATUS[0]}
     set -e
+
+    # Build-failure gate (green-board contract): a compile failure must fail the
+    # job even when xcodebuild's own exit code is 0. These two markers are only
+    # emitted when the BUILD failed (not for ordinary test failures, which the
+    # exit-code propagation below handles).
+    if grep -qE "Testing cancelled because the build failed|The following build commands failed" "$XCB_LOG"; then
+        echo "🔴 ERROR: build/compile failure detected in xcodebuild output — a masked build failure must fail the run."
+        rm -f "$XCB_LOG"
+        exit 1
+    fi
+    rm -f "$XCB_LOG"
 
     if [ ! -d "TestResults.xcresult" ]; then
         echo "🔴 ERROR: No xcresult produced — build likely failed before tests ran."
         exit 1
     fi
 
-    echo "✅ Tests executed on: $SIMULATOR_NAME (exit code: $TEST_EXIT_CODE)"
+    echo "✅ Parallel tests executed on: $SIMULATOR_NAME (exit code: $TEST_EXIT_CODE)"
 
-    # Propagate the test exit code so CI detects failures
-    if [ "$TEST_EXIT_CODE" -ne 0 ]; then
-        echo "🔴 Tests failed with exit code: $TEST_EXIT_CODE"
-        exit $TEST_EXIT_CODE
+    # --- Serial isolated pass for the scheduling-sensitive infra tests ---
+    # Runs the `-skip-testing`'d tests NOT under parallel oversubscription, then
+    # merges the result into TestResults.xcresult so the fail-gate counts them.
+    rm -rf TestResults-serial.xcresult
+    echo "🧵 Serial isolated pass (no parallelism): ${ISOLATED_SERIAL_TESTS[*]}"
+    set +e
+    xcodebuild test \
+        -project Palace.xcodeproj \
+        -scheme Palace \
+        -destination "id=$SIMULATOR_ID" \
+        -configuration Debug \
+        -resultBundlePath TestResults-serial.xcresult \
+        "${ISOLATED_ONLY_ARGS[@]}" \
+        -enableCodeCoverage YES \
+        -retry-tests-on-failure \
+        -test-iterations 3 \
+        -test-timeouts-enabled YES \
+        -default-test-execution-time-allowance 120 \
+        -maximum-test-execution-time-allowance 300 \
+        -parallel-testing-enabled NO \
+        CODE_SIGNING_REQUIRED=NO \
+        CODE_SIGNING_ALLOWED=NO \
+        ONLY_ACTIVE_ARCH=YES \
+        GCC_OPTIMIZATION_LEVEL=0 \
+        SWIFT_OPTIMIZATION_LEVEL=-Onone \
+        ENABLE_TESTABILITY=YES
+    SERIAL_EXIT_CODE=$?
+    set -e
+    echo "✅ Serial isolated tests executed (exit code: $SERIAL_EXIT_CODE)"
+
+    # Merge serial results into TestResults.xcresult so the downstream
+    # Parse-Test-Results fail-gate counts the isolated tests (not un-gated).
+    if [ -d "TestResults-serial.xcresult" ]; then
+        rm -rf TestResults-merged.xcresult
+        if xcrun xcresulttool merge --output-path TestResults-merged.xcresult TestResults.xcresult TestResults-serial.xcresult; then
+            rm -rf TestResults.xcresult TestResults-serial.xcresult
+            mv TestResults-merged.xcresult TestResults.xcresult
+            echo "✅ Merged serial isolated results into TestResults.xcresult"
+        else
+            echo "🔴 ERROR: failed to merge serial isolated xcresult — failing rather than leave those tests un-gated."
+            exit 1
+        fi
+    else
+        echo "🔴 ERROR: serial isolated pass produced no xcresult — cannot gate those tests."
+        exit 1
+    fi
+
+    # Propagate a combined exit code (informational under continue-on-error; the
+    # merged xcresult is the authoritative fail-gate). Non-zero if EITHER pass failed.
+    if [ "$TEST_EXIT_CODE" -ne 0 ] || [ "$SERIAL_EXIT_CODE" -ne 0 ]; then
+        echo "🔴 Tests failed (parallel=$TEST_EXIT_CODE serial=$SERIAL_EXIT_CODE)"
+        exit 1
     fi
 else
     echo "Running in local environment - using dynamic detection"

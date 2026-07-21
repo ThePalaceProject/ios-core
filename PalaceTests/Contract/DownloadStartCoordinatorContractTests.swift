@@ -173,8 +173,14 @@ final class DownloadStartCoordinatorContractTests: XCTestCase {
         file: StaticString = #file,
         line: UInt = #line
     ) async {
-        await awaitConditionAsync(timeout: timeout, file: file, line: line) { [log] in
-            log?.snapshot().contains(where: { $0.method == method }) ?? false
+        // Swift 6: `awaitConditionAsync`'s predicate is a non-Sendable
+        // `() -> Bool` sent to a nonisolated async helper, so it must not
+        // capture `self` (a non-Sendable XCTestCase). Hoist the Sendable
+        // `CallLog` (@unchecked Sendable) and the method name to locals so
+        // the predicate captures only Sendable values.
+        let capturedLog = log
+        await awaitConditionAsync(timeout: timeout, file: file, line: line) { [capturedLog, method] in
+            capturedLog?.snapshot().contains(where: { $0.method == method }) ?? false
         }
     }
 
@@ -224,7 +230,7 @@ final class DownloadStartCoordinatorContractTests: XCTestCase {
 
 // MARK: - Spies
 
-private final class SpyDownloadStartDelegate: DownloadStartCoordinatorDelegate {
+private final class SpyDownloadStartDelegate: DownloadStartCoordinatorDelegate, @unchecked Sendable {
     enum BorrowResult {
         case success(TPPBook)
         case failure(Error)
@@ -233,9 +239,20 @@ private final class SpyDownloadStartDelegate: DownloadStartCoordinatorDelegate {
     let log: CallLog
     /// Default to a failure that will be observable; tests assign before
     /// invoking startBorrow.
-    var borrowAsyncResult: BorrowResult = .failure(
-        NSError(domain: "default", code: -1, userInfo: nil)
+    ///
+    /// Swift 6: `borrowAsync` is a `nonisolated async` protocol requirement,
+    /// so it cannot capture `self` (a non-Sendable spy) to read this value —
+    /// the previous `await MainActor.run { self.borrowAsyncResult }` hop sent
+    /// `self`. Back the storage with `LockIsolated` (@unchecked Sendable, lock-
+    /// guarded) so the value is read directly, thread-safely, with no self-
+    /// capturing actor hop. The `var` shim keeps test call sites unchanged.
+    private let _borrowAsyncResult = LockIsolated<BorrowResult>(
+        .failure(NSError(domain: "default", code: -1, userInfo: nil))
     )
+    var borrowAsyncResult: BorrowResult {
+        get { _borrowAsyncResult.value }
+        set { _borrowAsyncResult.value = newValue }
+    }
 
     init(log: CallLog) {
         self.log = log
@@ -246,10 +263,9 @@ private final class SpyDownloadStartDelegate: DownloadStartCoordinatorDelegate {
         let bookId = book.identifier
         let attemptDownloadStr = "\(attemptDownload)"
         let log = self.log
-        // Pull the configured result on the MainActor (where the test
-        // assigns to it). Since the test class is @MainActor, we use a
-        // MainActor.run hop.
-        let result: BorrowResult = await MainActor.run { self.borrowAsyncResult }
+        // Read the configured result through the lock-guarded box — no
+        // self-capturing MainActor hop (see `_borrowAsyncResult` note).
+        let result: BorrowResult = _borrowAsyncResult.value
         log.record("delegate.borrowAsync",
                    args: ["bookId": bookId,
                           "attemptDownload": attemptDownloadStr])

@@ -1407,6 +1407,15 @@ final class TPPLastReadPositionSynchronizer_ConcurrencyTests: XCTestCase {
         super.tearDown()
     }
 
+    // nonisolated static: builds only from literals, so each fresh return is a
+    // disconnected (sendable) region — one per sending task closure.
+    private nonisolated static func makeConcurrentPublication() -> Publication {
+        Publication(manifest: Manifest(
+            metadata: Metadata(title: "Concurrent Sync"),
+            readingOrder: [Link(href: "/chapter1.xhtml", mediaType: .xhtml)]
+        ))
+    }
+
     /// REGRESSION PIN for the 2026-07-04 SIGSEGV (fix/sync-mock-race-segv-bookmark-keys).
     ///
     /// This test hammers the shared mock through the `TPPBookRegistryProvider`
@@ -1498,17 +1507,15 @@ final class TPPLastReadPositionSynchronizer_ConcurrencyTests: XCTestCase {
 
         let book = SynchronizerTestFixtures.createTestBook()
         registry.addBook(book, location: nil, state: .downloadSuccessful, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
-        let publication = Publication(manifest: Manifest(
-            metadata: Metadata(title: "Concurrent Sync"),
-            readingOrder: [Link(href: "/chapter1.xhtml", mediaType: .xhtml)]
-        ))
         let bookID = book.identifier
 
         // Act — both synchronizers sync concurrently while a third task
         // writes locations through the same provider the synchronizers read.
+        // Each sending closure builds its own disconnected publication so no
+        // non-Sendable Publication is captured across the concurrency boundary.
         await withTaskGroup(of: Void.self) { group in
-            group.addTask { await sync1.sync(for: publication, book: book, drmDeviceID: "device-A") }
-            group.addTask { await sync2.sync(for: publication, book: book, drmDeviceID: "device-B") }
+            group.addTask { await sync1.sync(for: Self.makeConcurrentPublication(), book: book, drmDeviceID: "device-A") }
+            group.addTask { await sync2.sync(for: Self.makeConcurrentPublication(), book: book, drmDeviceID: "device-B") }
             group.addTask {
                 for i in 0..<50 {
                     let location = SynchronizerTestFixtures.createBookLocation(progress: Double(i) / 50.0)
@@ -1660,10 +1667,7 @@ final class TPPLastReadPositionSynchronizer_WriterDelegationTests: XCTestCase {
         bookRegistryMock = TPPBookRegistryMock()
         spyWriter = SynchronizerSpyWriter()
         testBook = SynchronizerTestFixtures.createTestBook(identifier: "writer-delegation-book")
-        publication = Publication(manifest: Manifest(
-            metadata: Metadata(title: "Writer Delegation"),
-            readingOrder: [Link(href: "/chapter1.xhtml", mediaType: .xhtml)]
-        ))
+        publication = Self.makePublication()
         bookRegistryMock.addBook(
             testBook,
             location: nil,
@@ -1688,10 +1692,19 @@ final class TPPLastReadPositionSynchronizer_WriterDelegationTests: XCTestCase {
         try super.tearDownWithError()
     }
 
+    // nonisolated static: builds only from literals, so each fresh return is a
+    // disconnected (sendable) region that can cross into sync(for: sending ...).
+    private nonisolated static func makePublication() -> Publication {
+        Publication(manifest: Manifest(
+            metadata: Metadata(title: "Writer Delegation"),
+            readingOrder: [Link(href: "/chapter1.xhtml", mediaType: .xhtml)]
+        ))
+    }
+
     func testSync_writerReturnsNil_callsLoadOnce_noAlertPath() async {
         await spyWriter.set(snapshot: nil)
 
-        await synchronizer.sync(for: publication, book: testBook, drmDeviceID: "device-A")
+        await synchronizer.sync(for: Self.makePublication(), book: testBook, drmDeviceID: "device-A")
 
         let loaded = await spyWriter.loadedBookIDs
         XCTAssertEqual(loaded, [testBook.identifier],
@@ -1701,7 +1714,7 @@ final class TPPLastReadPositionSynchronizer_WriterDelegationTests: XCTestCase {
     func testSync_writerThrows_logsAndReturnsWithoutAlert() async {
         await spyWriter.set(loadError: PositionWriterError.networkUnavailable)
 
-        await synchronizer.sync(for: publication, book: testBook, drmDeviceID: "device-A")
+        await synchronizer.sync(for: Self.makePublication(), book: testBook, drmDeviceID: "device-A")
 
         let loaded = await spyWriter.loadedBookIDs
         XCTAssertEqual(loaded, [testBook.identifier],
@@ -1727,7 +1740,7 @@ final class TPPLastReadPositionSynchronizer_WriterDelegationTests: XCTestCase {
         )
         await spyWriter.set(snapshot: snapshot)
 
-        await synchronizer.sync(for: publication, book: testBook, drmDeviceID: "device-A")
+        await synchronizer.sync(for: Self.makePublication(), book: testBook, drmDeviceID: "device-A")
 
         let loaded = await spyWriter.loadedBookIDs
         XCTAssertEqual(loaded.count, 1)
@@ -1755,7 +1768,7 @@ final class TPPLastReadPositionSynchronizer_WriterDelegationTests: XCTestCase {
         )
         await spyWriter.set(snapshot: snapshot)
 
-        await synchronizer.sync(for: publication, book: testBook, drmDeviceID: "device-A")
+        await synchronizer.sync(for: Self.makePublication(), book: testBook, drmDeviceID: "device-A")
 
         let loaded = await spyWriter.loadedBookIDs
         XCTAssertEqual(loaded.count, 1)

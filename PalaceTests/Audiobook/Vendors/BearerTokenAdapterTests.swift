@@ -31,6 +31,14 @@ final class BearerTokenAdapterTests: XCTestCase {
         super.tearDown()
     }
 
+    /// Test-only carrier that lets a non-Sendable value (a completion closure
+    /// or a manifest payload) cross a `@Sendable` dispatch closure under
+    /// Swift 6. Each box is created and consumed exactly once on the same
+    /// serial test flow, so unchecked Sendable is safe here.
+    private struct SendableBox<T>: @unchecked Sendable {
+        let value: T
+    }
+
     // MARK: - Stubs
 
     private final class StubNetwork: AudiobookManifestNetworkFetching {
@@ -44,8 +52,9 @@ final class BearerTokenAdapterTests: XCTestCase {
             completion: @escaping (Data?, URLResponse?, Error?) -> Void
         ) {
             requestedURLs.append(url)
+            let box = SendableBox(value: completion)
             DispatchQueue.main.async { [stubbedData, stubbedResponse, stubbedError] in
-                completion(stubbedData, stubbedResponse, stubbedError)
+                box.value(stubbedData, stubbedResponse, stubbedError)
             }
         }
     }
@@ -64,9 +73,9 @@ final class BearerTokenAdapterTests: XCTestCase {
             callCount += 1
             receivedTokens.append(token)
             receivedBookIdentifiers.append(book.identifier)
-            let toReturn = stubbedJSON
+            let box = SendableBox(value: (json: stubbedJSON, completion: completion))
             DispatchQueue.main.async {
-                completion(toReturn)
+                box.value.completion(box.value.json)
             }
         }
     }

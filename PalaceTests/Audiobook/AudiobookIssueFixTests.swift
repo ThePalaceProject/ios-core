@@ -262,7 +262,7 @@ final class PostUpdateMigrationTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        isolatedDefaults = testUserDefaults()
+        isolatedDefaults = Self.testUserDefaults()
     }
 
     override func tearDown() {

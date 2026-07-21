@@ -26,6 +26,14 @@ final class OpenAccessAdapterTests: XCTestCase {
         super.tearDown()
     }
 
+    /// Test-only carrier that lets a non-Sendable value (a completion closure
+    /// or a manifest payload) cross a `@Sendable` dispatch closure under
+    /// Swift 6. Each box is created and consumed exactly once on the same
+    /// serial test flow, so unchecked Sendable is safe here.
+    private struct SendableBox<T>: @unchecked Sendable {
+        let value: T
+    }
+
     // MARK: - Stub network
 
     private final class StubNetwork: AudiobookManifestNetworkFetching {
@@ -40,8 +48,9 @@ final class OpenAccessAdapterTests: XCTestCase {
         ) {
             requestedURLs.append(url)
             // Hop off the call stack to mirror real URLSession ordering.
+            let box = SendableBox(value: completion)
             DispatchQueue.main.async { [stubbedData, stubbedResponse, stubbedError] in
-                completion(stubbedData, stubbedResponse, stubbedError)
+                box.value(stubbedData, stubbedResponse, stubbedError)
             }
         }
     }
@@ -228,7 +237,8 @@ final class OpenAccessAdapterTests: XCTestCase {
             callCount += 1
             receivedToken = token
             receivedBook = book
-            DispatchQueue.main.async { [stubbedManifest] in completion(stubbedManifest) }
+            let box = SendableBox(value: (manifest: stubbedManifest, completion: completion))
+            DispatchQueue.main.async { box.value.completion(box.value.manifest) }
         }
     }
 

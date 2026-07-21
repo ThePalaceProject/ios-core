@@ -15,7 +15,11 @@ import XCTest
 @MainActor
 final class DownloadReconciliationLaunchOrderContractTests: XCTestCase {
 
-    private func record(_ bookID: String, task: Int) -> PersistedDownloadRecord {
+    // Pure factory — no instance state. `static` so the closures passed to the
+    // async `runLaunchReconciliation` don't capture `self` (which, under Swift 6,
+    // would make the non-`@Sendable` closure params send this @MainActor test
+    // across the actor boundary). Called as `Self.record(...)`.
+    private nonisolated static func record(_ bookID: String, task: Int) -> PersistedDownloadRecord {
         PersistedDownloadRecord(
             bookID: bookID, taskIdentifier: task,
             downloadURL: URL(string: "https://example.org/\(bookID)")!,
@@ -27,23 +31,23 @@ final class DownloadReconciliationLaunchOrderContractTests: XCTestCase {
         let log = CallLog()
 
         await DownloadReconciliation.runLaunchReconciliation(
-            isRegistryLoaded: {
+            isRegistryLoaded: { @Sendable in
                 log.record("isRegistryLoaded")
                 return true
             },
-            loadPersisted: {
+            loadPersisted: { @Sendable in
                 log.record("loadPersisted")
-                return [self.record("b", task: 5)]
+                return [Self.record("b", task: 5)]
             },
-            liveTaskIdentifiers: {
+            liveTaskIdentifiers: { @Sendable in
                 log.record("getAllTasks")
                 return []   // dead task -> restart (registry says .downloading)
             },
-            registryState: { bookID in
+            registryState: { @Sendable bookID in
                 log.record("registryState", args: ["bookID": bookID])
                 return .downloading
             },
-            apply: { decision in
+            apply: { @Sendable decision in
                 log.record("apply", args: ["decision": decision])
             }
         )
@@ -57,20 +61,20 @@ final class DownloadReconciliationLaunchOrderContractTests: XCTestCase {
         let log = CallLog()
 
         await DownloadReconciliation.runLaunchReconciliation(
-            isRegistryLoaded: {
+            isRegistryLoaded: { @Sendable in
                 log.record("isRegistryLoaded")
                 return false
             },
-            loadPersisted: {
+            loadPersisted: { @Sendable in
                 log.record("loadPersisted")
                 return []
             },
-            liveTaskIdentifiers: {
+            liveTaskIdentifiers: { @Sendable in
                 log.record("getAllTasks")
                 return []
             },
-            registryState: { _ in .unregistered },
-            apply: { _ in log.record("apply") }
+            registryState: { @Sendable _ in .unregistered },
+            apply: { @Sendable _ in log.record("apply") }
         )
 
         XCTAssertEqual(log.snapshot().map(\.method), ["isRegistryLoaded"],

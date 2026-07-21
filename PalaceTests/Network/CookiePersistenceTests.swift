@@ -79,8 +79,8 @@ final class CookiePersistenceTests: XCTestCase {
     private let samlBorrowURL = URL(string: "https://library.example.com/borrow/123")!
     private let cookieDomain = "library.example.com"
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         HTTPStubURLProtocol.reset()
         TPPUserAccountMock.resetShared()
         clearSharedCookieStorage()
@@ -103,13 +103,15 @@ final class CookiePersistenceTests: XCTestCase {
         executor = makeExecutor()
     }
 
-    override func tearDown() {
+    // async tearDown adopts the class's @MainActor isolation so the main-actor
+    // clearSharedCookieStorage() call is not sent from a nonisolated context.
+    override func tearDown() async throws {
         HTTPStubURLProtocol.reset()
         clearSharedCookieStorage()
         executor = nil
         libraryAccount = nil
         userAccount = nil
-        super.tearDown()
+        try await super.tearDown()
     }
 
     // MARK: - Helpers
