@@ -10,132 +10,157 @@ import PalaceLogging
 import os.log
 @testable import Palace
 
-@MainActor
+/// Hermetic tests for `DeviceLogCollector`.
+///
+/// These drive an **injected fixture entry source** rather than the live process
+/// `OSLogStore`. The prior version called `DeviceLogCollector.shared.collectLogs`,
+/// which scans `OSLogStore(scope: .currentProcessIdentifier)` — a process-global
+/// accumulator whose entry volume grows with every test that ran before. Under the
+/// full ~7k-test suite that scan blew the 120s per-test allowance and hung the run
+/// (a different worker each time), while every local subset passed. Injecting the
+/// source removes the coupling entirely: the format / count / truncation / error
+/// logic is now exercised deterministically against controlled input, so these
+/// tests are fast, load-independent, and assert exact behavior instead of merely
+/// "non-empty".
 final class DeviceLogCollectorTests: XCTestCase {
 
-    override func tearDown() {
-        super.tearDown()
+    private struct SourceError: Error {}
+
+    private func entry(
+        _ message: String,
+        level: DeviceLogEntry.Level = .info,
+        subsystem: String = "org.palace",
+        category: String = "Test",
+        date: Date = Date(timeIntervalSince1970: 1_700_000_000)
+    ) -> DeviceLogEntry {
+        DeviceLogEntry(date: date, subsystem: subsystem, category: category, message: message, kind: .log(level: level))
     }
 
-    // MARK: - collectLogs Output Structure Tests
-
-    func testCollectLogs_returnsNonEmptyData() async {
-        let data = await DeviceLogCollector.shared.collectLogs(lastDays: 1)
-
-        XCTAssertFalse(data.isEmpty, "Device log data should not be empty")
+    private func collector(
+        _ entries: [DeviceLogEntry] = [],
+        maxEntries: Int = 50_000,
+        maxOutputBytes: Int = 10_000_000
+    ) -> DeviceLogCollector {
+        DeviceLogCollector(entrySource: { _, cap in Array(entries.prefix(cap)) },
+                           maxEntries: maxEntries,
+                           maxOutputBytes: maxOutputBytes)
     }
 
-    func testCollectLogs_containsExpectedHeader() async {
-        // Use a 1-day range here to avoid an expensive OSLogStore scan immediately
-        // before testCollectLogs_defaultParameterIs7Days (which tests the 7-day default).
-        // Running two 7-day collections back-to-back exceeds CI time budgets.
-        let data = await DeviceLogCollector.shared.collectLogs(lastDays: 1)
-        let output = String(data: data, encoding: .utf8) ?? ""
+    private func text(_ data: Data) -> String { String(data: data, encoding: .utf8) ?? "" }
 
-        XCTAssertTrue(output.contains("=== Device Logs (OSLogStore) ==="), "Output should contain the header")
-        XCTAssertTrue(output.contains("Generated:"), "Output should contain generation timestamp")
-        XCTAssertTrue(output.contains("Time Range: Last 1 day(s)"), "Output should contain time range")
+    // MARK: - Structure / header
+
+    func testCollectLogs_headerReflectsDayRange() async {
+        let output = text(await collector().collectLogs(lastDays: 3))
+        XCTAssertTrue(output.contains("=== Device Logs (OSLogStore) ==="))
+        XCTAssertTrue(output.contains("Time Range: Last 3 day(s)"))
+        XCTAssertTrue(output.contains("Generated:"))
     }
 
-    func testCollectLogs_containsEndMarker() async {
-        let data = await DeviceLogCollector.shared.collectLogs(lastDays: 1)
-        let output = String(data: data, encoding: .utf8) ?? ""
-
-        XCTAssertTrue(
-            output.contains("=== End Device Logs") || output.contains("Failed to access OSLogStore"),
-            "Output should contain either an end marker or an error message"
-        )
-    }
-
-    func testCollectLogs_withCustomDayRange_reflectsInOutput() async {
-        let data = await DeviceLogCollector.shared.collectLogs(lastDays: 3)
-        let output = String(data: data, encoding: .utf8) ?? ""
-
-        XCTAssertTrue(output.contains("Time Range: Last 3 day(s)"), "Output should reflect the custom day range")
+    func testCollectLogs_defaultDayRangeIsSeven() async {
+        let output = text(await collector().collectLogs())
+        XCTAssertTrue(output.contains("Time Range: Last 7 day(s)"),
+                      "collectLogs() default must be 7 days")
     }
 
     func testCollectLogs_outputIsValidUTF8() async {
-        let data = await DeviceLogCollector.shared.collectLogs(lastDays: 1)
-        let output = String(data: data, encoding: .utf8)
-
-        XCTAssertNotNil(output, "Device log output should be valid UTF-8")
+        let data = await collector([entry("hello")]).collectLogs(lastDays: 1)
+        XCTAssertNotNil(String(data: data, encoding: .utf8))
     }
 
-    // MARK: - Log Capture Tests
+    // MARK: - Entry count (the test that used to hang)
 
-    /// Polls collectLogs until the marker appears (or times out at ~1.5 s).
-    /// OSLogStore has its own flush schedule, so we poll rather than sleep a fixed amount.
-    /// Intentionally capped at 5 iterations to avoid monopolising the shared actor
-    /// (serialised calls) and blowing the CI test-suite time budget.
-    private func pollForOSLogMarker(_ marker: String) async -> String {
-        for _ in 0..<5 {
-            let data = await DeviceLogCollector.shared.collectLogs(lastDays: 1)
-            let output = String(data: data, encoding: .utf8) ?? ""
-            if output.contains(marker) { return output }
-            try? await Task.sleep(nanoseconds: 300_000_000) // 300 ms per attempt
+    func testCollectLogs_reportsExactEntryCount() async {
+        let output = text(await collector([entry("a"), entry("b"), entry("c")]).collectLogs(lastDays: 1))
+        XCTAssertTrue(output.contains("=== End Device Logs (3 entries) ==="),
+                      "entry count must reflect exactly the entries collected; got:\n\(output)")
+    }
+
+    func testCollectLogs_zeroEntries_reportsZeroCountNotError() async {
+        let output = text(await collector([]).collectLogs(lastDays: 1))
+        XCTAssertTrue(output.contains("=== End Device Logs (0 entries) ==="))
+        XCTAssertFalse(output.contains("Failed to access OSLogStore"))
+    }
+
+    // MARK: - Per-line formatting
+
+    func testCollectLogs_logEntry_lineCarriesLevelSubsystemCategoryAndMessage() async {
+        let output = text(await collector([
+            entry("boom", level: .error, subsystem: "org.palace.net", category: "Sync")
+        ]).collectLogs(lastDays: 1))
+
+        // The one formatted line between the blank-line header break and the end marker.
+        let line = output
+            .components(separatedBy: "\n")
+            .first { $0.contains("boom") } ?? ""
+        XCTAssertTrue(line.contains("[ERROR]"), "line must carry the level token; got: \(line)")
+        XCTAssertTrue(line.contains("[org.palace.net/Sync]"), "line must carry subsystem/category; got: \(line)")
+        XCTAssertTrue(line.contains("boom"), "line must carry the message; got: \(line)")
+        XCTAssertTrue(line.hasPrefix("["), "line must start with a bracketed timestamp; got: \(line)")
+    }
+
+    func testCollectLogs_signpost_rendersSignpostTag() async {
+        let sp = DeviceLogEntry(date: Date(timeIntervalSince1970: 1_700_000_000),
+                                subsystem: "org.palace", category: "Perf",
+                                message: "span-start", kind: .signpost)
+        let output = text(await collector([sp]).collectLogs(lastDays: 1))
+        let line = output.components(separatedBy: "\n").first { $0.contains("span-start") } ?? ""
+        XCTAssertTrue(line.contains("[SIGNPOST]"), "signpost lines must carry the SIGNPOST tag; got: \(line)")
+        XCTAssertTrue(line.contains("[org.palace/Perf]"))
+    }
+
+    func testCollectLogs_emptySubsystemAndCategory_renderDashes() async {
+        let output = text(await collector([entry("uniquemsg", subsystem: "", category: "")]).collectLogs(lastDays: 1))
+        let line = output.components(separatedBy: "\n").first { $0.contains("uniquemsg") } ?? ""
+        XCTAssertTrue(line.contains("[-/-]"), "empty subsystem/category must render as -/-; got: \(line)")
+    }
+
+    func testCollectLogs_levelStrings_mapEachLevelDistinctly() async {
+        let cases: [(DeviceLogEntry.Level, String)] = [
+            (.debug, "[DEBUG]"), (.info, "[INFO ]"), (.notice, "[NOTE ]"),
+            (.error, "[ERROR]"), (.fault, "[FAULT]")
+        ]
+        for (level, token) in cases {
+            let marker = "lvlmarker\(token.filter { $0.isLetter })"
+            let output = text(await collector([entry(marker, level: level)]).collectLogs(lastDays: 1))
+            let line = output.components(separatedBy: "\n").first { $0.contains(marker) } ?? ""
+            XCTAssertTrue(line.contains(token), "level \(level) must render \(token); got: \(line)")
         }
-        let data = await DeviceLogCollector.shared.collectLogs(lastDays: 1)
-        return String(data: data, encoding: .utf8) ?? ""
     }
 
-    func testCollectLogs_capturesRecentOSLogEntries() async {
-        // OSLogStore on the simulator has its own flush schedule and does not
-        // reliably surface markers emitted from the same process within a
-        // single test tick. Verify the collector returns a non-empty snapshot
-        // (proving it can read from the store at all) rather than asserting
-        // exact marker presence, which is intrinsically racy on sim.
-        let marker = "DeviceLogCollectorTest_\(UUID().uuidString)"
-        let palaceLog = OSLog(subsystem: Log.subsystem, category: "Test")
-        os_log("%{public}@", log: palaceLog, type: .error, marker)
+    // MARK: - Truncation
 
-        let output = await pollForOSLogMarker(marker)
-
-        XCTAssertFalse(
-            output.isEmpty,
-            "DeviceLogCollector should return a non-empty log snapshot from OSLogStore"
-        )
+    func testCollectLogs_truncatesWhenSourceHitsEntryCap() async {
+        // Source returns exactly maxEntries → more existed than collected.
+        let output = text(await collector([entry("x"), entry("y")], maxEntries: 2).collectLogs(lastDays: 1))
+        XCTAssertTrue(output.contains("[Log output truncated at 2 entries"),
+                      "hitting the entry cap must emit the truncation note; got:\n\(output)")
+        XCTAssertTrue(output.contains("=== End Device Logs (2 entries) ==="))
     }
 
-    func testCollectLogs_formattedEntriesContainExpectedFields() async {
-        let marker = "FormatTest_\(UUID().uuidString)"
-        let palaceLog = OSLog(subsystem: Log.subsystem, category: "FormatTest")
-        os_log("%{public}@", log: palaceLog, type: .info, marker)
-
-        let output = await pollForOSLogMarker(marker)
-
-        let lines = output.components(separatedBy: "\n")
-        let markerLine = lines.first { $0.contains(marker) }
-
-        if let line = markerLine {
-            XCTAssertTrue(line.contains("["), "Log line should contain bracket-delimited fields")
-            XCTAssertTrue(line.contains(Log.subsystem), "Log line should contain the subsystem")
-            XCTAssertTrue(line.contains("FormatTest"), "Log line should contain the category")
-        }
-        // If markerLine is nil the log system hasn't flushed yet — not a hard failure
+    func testCollectLogs_underEntryCap_doesNotTruncate() async {
+        let output = text(await collector([entry("x")], maxEntries: 50).collectLogs(lastDays: 1))
+        XCTAssertFalse(output.contains("[Log output truncated"),
+                       "collecting fewer than the cap must not claim truncation")
     }
 
-    // MARK: - Default Parameter Tests
-
-    func testCollectLogs_defaultParameterIs7Days() async {
-        let data = await DeviceLogCollector.shared.collectLogs()
-        let output = String(data: data, encoding: .utf8) ?? ""
-
-        XCTAssertTrue(output.contains("Last 7 day(s)"), "Default should be 7 days")
+    func testCollectLogs_truncatesAtByteBudget() async {
+        // Each formatted line is well over 5 bytes, so the second entry trips the cap.
+        let entries = [entry("first-line-message"), entry("second-line-message"), entry("third")]
+        let output = text(await collector(entries, maxOutputBytes: 5).collectLogs(lastDays: 1))
+        XCTAssertTrue(output.contains("[Log output truncated at 1 entries"),
+                      "byte budget must cut off after the first line; got:\n\(output)")
+        XCTAssertTrue(output.contains("=== End Device Logs (1 entries) ==="))
     }
 
-    // MARK: - Entry Count Reporting
+    // MARK: - Error path
 
-    func testCollectLogs_reportsEntryCount() async {
-        let data = await DeviceLogCollector.shared.collectLogs(lastDays: 1)
-        let output = String(data: data, encoding: .utf8) ?? ""
-
-        let entryCountPattern = "End Device Logs \\(\\d+ entries\\)"
-        let hasEntryCount = output.range(of: entryCountPattern, options: .regularExpression) != nil
-        let hasError = output.contains("Failed to access OSLogStore")
-
-        XCTAssertTrue(
-            hasEntryCount || hasError,
-            "Output should report entry count or indicate an error"
-        )
+    func testCollectLogs_sourceThrows_reportsAccessError() async {
+        let failing = DeviceLogCollector(entrySource: { _, _ in throw SourceError() })
+        let output = text(await failing.collectLogs(lastDays: 1))
+        XCTAssertTrue(output.contains("Failed to access OSLogStore"),
+                      "a throwing source must surface the access-error branch; got:\n\(output)")
+        XCTAssertFalse(output.contains("=== End Device Logs"),
+                       "the end marker must not print when collection failed")
     }
 }

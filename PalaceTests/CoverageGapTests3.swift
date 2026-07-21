@@ -160,40 +160,44 @@ final class AudioBookmarkGapTests: XCTestCase {
 
 // MARK: - 2. DeviceLogCollectorGapTests
 
-@MainActor
 final class DeviceLogCollectorGapTests: XCTestCase {
 
-    /// Coverage Gap: DeviceLogCollector.formatDate — output contains formatted dates (via collectLogs)
-    func testDeviceLogCollector_collectLogs_outputContainsFormattedStructure() async {
-        let data = await DeviceLogCollector.shared.collectLogs(lastDays: 1)
-        let output = String(data: data, encoding: .utf8) ?? ""
-
-        XCTAssertFalse(output.isEmpty, "collectLogs should return non-empty data")
-        XCTAssertTrue(output.contains("Device Logs"), "Output should contain header")
-        XCTAssertTrue(output.contains("Generated:"), "Output should contain generated timestamp")
+    // Hermetic fixture source — no live OSLogStore scan (see DeviceLogCollectorTests
+    // for why the live scan was removed: it hung the full-suite run).
+    private func collector(_ entries: [DeviceLogEntry]) -> DeviceLogCollector {
+        DeviceLogCollector(entrySource: { _, cap in Array(entries.prefix(cap)) })
     }
 
-    /// Coverage Gap: DeviceLogCollector.levelString — output can contain level strings (via collectLogs)
-    /// Log entries use formatLogEntry which calls levelString for DEBUG, INFO, NOTE, ERROR, FAULT
-    func testDeviceLogCollector_collectLogs_exercisesFormattingMethods() async {
-        let logger = Logger(subsystem: "com.thepalaceproject.test", category: "Coverage")
-        logger.info("Coverage DeviceLogCollector test log entry")
+    /// `DeviceLogCollector.formatDate` renders each entry timestamp as
+    /// `yyyy-MM-dd HH:mm:ss.SSS`. Asserted via regex so it's timezone-independent.
+    func testDeviceLogCollector_formatsTimestampInExpectedShape() async {
+        let entry = DeviceLogEntry(date: Date(timeIntervalSince1970: 1_700_000_000),
+                                   subsystem: "org.palace", category: "Coverage",
+                                   message: "datefmt-probe", kind: .log(level: .info))
+        let data = await collector([entry]).collectLogs(lastDays: 1)
+        let output = String(data: data, encoding: .utf8) ?? ""
+        let line = output.components(separatedBy: "\n").first { $0.contains("datefmt-probe") } ?? ""
 
-        // OSLogStore has its own flush schedule — poll rather than using a fixed delay
-        var output = ""
-        for _ in 0..<10 {
-            let data = await DeviceLogCollector.shared.collectLogs(lastDays: 1)
-            output = String(data: data, encoding: .utf8) ?? ""
-            if !output.isEmpty { break }
-            try? await Task.sleep(nanoseconds: 50_000_000) // 50 ms
-        }
+        let pattern = "^\\[\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\.\\d{3}\\]"
+        XCTAssertNotNil(line.range(of: pattern, options: .regularExpression),
+                        "timestamp must render as [yyyy-MM-dd HH:mm:ss.SSS]; got: \(line)")
+    }
 
-        let data = Data(output.utf8)
+    /// A single collection containing entries at multiple levels renders each
+    /// level token — exercises `levelString` across its cases in one pass.
+    func testDeviceLogCollector_rendersMultipleLevelsInOneCollection() async {
+        let entries: [DeviceLogEntry] = [
+            .init(date: Date(timeIntervalSince1970: 1_700_000_000), subsystem: "s", category: "c", message: "dbg", kind: .log(level: .debug)),
+            .init(date: Date(timeIntervalSince1970: 1_700_000_001), subsystem: "s", category: "c", message: "err", kind: .log(level: .error)),
+            .init(date: Date(timeIntervalSince1970: 1_700_000_002), subsystem: "s", category: "c", message: "flt", kind: .log(level: .fault))
+        ]
+        let data = await collector(entries).collectLogs(lastDays: 1)
+        let output = String(data: data, encoding: .utf8) ?? ""
 
-        // If our log appears, it would contain level string (INFO/DEBUG/etc) and date format yyyy-MM-dd
-        // At minimum verify the collector runs and produces valid output
-        XCTAssertFalse(data.isEmpty)
-        XCTAssertTrue(output.contains("=== Device Logs") || output.contains("Device Logs"))
+        XCTAssertTrue(output.contains("[DEBUG]"))
+        XCTAssertTrue(output.contains("[ERROR]"))
+        XCTAssertTrue(output.contains("[FAULT]"))
+        XCTAssertTrue(output.contains("=== End Device Logs (3 entries) ==="))
     }
 }
 
