@@ -635,6 +635,11 @@ public struct ConversationReducer: Sendable {
 
         case .userTappedStartOver:
             next.step = .awaitingCategory
+            // "Start fresh" means a clean composer: drop any half-typed input so
+            // the next description begins empty (PP-4846). Mirrors Discard, which
+            // also returns to .awaitingCategory with no carried-over text — the
+            // two reset paths now have identical composer semantics.
+            next.inputText = ""
             next.messages.append(.init(
                 sender: .bot,
                 kind: .text("OK — let's start fresh. What's happening?")
