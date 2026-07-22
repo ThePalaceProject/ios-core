@@ -276,7 +276,7 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
     /// Device A writes a reading-progress annotation for an EPUB locator;
     /// device B retrieves it via the same shared backend. Verifies the full
     /// POST→GET protocol exchange, including device-tagging.
-    func test_positionWrittenOnDeviceA_readableOnDeviceB() throws {
+    func test_positionWrittenOnDeviceA_readableOnDeviceB() async throws {
         try skipIfSyncGateClosed()
 
         let selectorValue = epubSelectorValue(
@@ -289,19 +289,23 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
         // A writes (the real TPPAnnotations.postListeningPosition wraps
         // postReadingPosition with motivation=.readingProgress and includes
         // device=Self.deviceA derived from AnnotationDevice.currentID()).
-        let postExp = expectation(description: "device A posts position")
-        asDeviceA {
-            TPPAnnotations.postReadingPosition(
-                forBook: Self.bookID,
-                selectorValue: selectorValue,
-                motivation: .readingProgress
-            ) { response in
-                XCTAssertNotNil(response, "Device A's POST should return an AnnotationResponse with a server ID")
-                XCTAssertNotNil(response?.serverId, "Server must assign an annotation ID")
-                postExp.fulfill()
+        // JOIN on the completion: AnnotationResponse is non-Sendable, so we
+        // project the two Sendable facts the assertions need (response
+        // presence + server-ID presence) inside the completion.
+        let postResult: (hasResponse: Bool, hasServerId: Bool) =
+            await withCheckedContinuation { (cont: CheckedContinuation<(Bool, Bool), Never>) in
+                asDeviceA {
+                    TPPAnnotations.postReadingPosition(
+                        forBook: Self.bookID,
+                        selectorValue: selectorValue,
+                        motivation: .readingProgress
+                    ) { response in
+                        cont.resume(returning: (response != nil, response?.serverId != nil))
+                    }
+                }
             }
-        }
-        wait(for: [postExp], timeout: 10.0)
+        XCTAssertTrue(postResult.hasResponse, "Device A's POST should return an AnnotationResponse with a server ID")
+        XCTAssertTrue(postResult.hasServerId, "Server must assign an annotation ID")
 
         // Verify the backend captured exactly one annotation tagged for device A.
         let stored = backend.allAnnotations(forBook: Self.bookID)
@@ -314,22 +318,24 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
 
         // B reads — same backend, but a different executor + a different
         // device ID. The reading-progress bookmark must come back parsed.
+        // JOIN on the completion: TPPReadiumBookmark is non-Sendable, so we
+        // project the Sendable facts the assertions check (type match + the
+        // four preserved fields) inside the completion.
         let book = makeBook()
-        let readExp = expectation(description: "device B reads position")
-        var readBack: Bookmark?
-        asDeviceB {
-            TPPAnnotations.getServerBookmarks(
-                forBook: book,
-                atURL: Self.baseURL,
-                motivation: .readingProgress
-            ) { bookmarks in
-                readBack = bookmarks?.first
-                readExp.fulfill()
+        let readBack: ReadiumBookmarkProjection? =
+            await withCheckedContinuation { (cont: CheckedContinuation<ReadiumBookmarkProjection?, Never>) in
+                asDeviceB {
+                    TPPAnnotations.getServerBookmarks(
+                        forBook: book,
+                        atURL: Self.baseURL,
+                        motivation: .readingProgress
+                    ) { bookmarks in
+                        cont.resume(returning: ReadiumBookmarkProjection(bookmarks?.first))
+                    }
+                }
             }
-        }
-        wait(for: [readExp], timeout: 10.0)
 
-        let readiumBookmark = try XCTUnwrap(readBack as? TPPReadiumBookmark,
+        let readiumBookmark = try XCTUnwrap(readBack,
                                             "B must receive the same annotation as a TPPReadiumBookmark")
         XCTAssertEqual(readiumBookmark.href, "/chapter3.xhtml",
                        "Round-tripped bookmark must preserve href")
@@ -388,23 +394,25 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
                        TPPBookmarkSpec.Motivation.bookmark.rawValue)
 
         // B reads as an audiobook — the factory should hand back an
-        // `AudioBookmark`, not a Readium one.
+        // `AudioBookmark`, not a Readium one. JOIN on the completion:
+        // AudioBookmark is non-Sendable, so we project the Sendable facts the
+        // assertions check (type match + the two round-tripped fields) inside
+        // the completion.
         let book = makeBook(audiobook: true)
-        let readExp = expectation(description: "device B reads audiobook position")
-        var readBack: Bookmark?
-        asDeviceB {
-            TPPAnnotations.getServerBookmarks(
-                forBook: book,
-                atURL: Self.baseURL,
-                motivation: .bookmark
-            ) { bookmarks in
-                readBack = bookmarks?.first
-                readExp.fulfill()
+        let readBack: AudioBookmarkProjection? =
+            await withCheckedContinuation { (cont: CheckedContinuation<AudioBookmarkProjection?, Never>) in
+                asDeviceB {
+                    TPPAnnotations.getServerBookmarks(
+                        forBook: book,
+                        atURL: Self.baseURL,
+                        motivation: .bookmark
+                    ) { bookmarks in
+                        cont.resume(returning: AudioBookmarkProjection(bookmarks?.first))
+                    }
+                }
             }
-        }
-        await fulfillment(of: [readExp], timeout: 10.0)
 
-        let audio = try XCTUnwrap(readBack as? AudioBookmark,
+        let audio = try XCTUnwrap(readBack,
                                   "B must receive the audiobook locator as an AudioBookmark")
         XCTAssertEqual(audio.readingOrderItem, "track-7.mp3",
                        "Audiobook reading-order item must round-trip")
@@ -416,7 +424,7 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
 
     /// User-initiated bookmark (motivation=.bookmark) on device A is fetched
     /// via the normal getServerBookmarks path on device B.
-    func test_bookmarkAddedOnDeviceA_visibleOnDeviceB() throws {
+    func test_bookmarkAddedOnDeviceA_visibleOnDeviceB() async throws {
         try skipIfSyncGateClosed()
 
         let selectorValue = epubSelectorValue(
@@ -441,15 +449,16 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
             device: Self.deviceA
         ))
 
-        let postExp = expectation(description: "device A posts bookmark")
-        var serverID: String?
-        asDeviceA {
-            TPPAnnotations.postBookmark(local, forBookID: Self.bookID) { response in
-                serverID = response?.serverId
-                postExp.fulfill()
+        // JOIN on the POST completion. serverId is a String? (Sendable), so we
+        // resume with it directly.
+        let serverID: String? =
+            await withCheckedContinuation { (cont: CheckedContinuation<String?, Never>) in
+                asDeviceA {
+                    TPPAnnotations.postBookmark(local, forBookID: Self.bookID) { response in
+                        cont.resume(returning: response?.serverId)
+                    }
+                }
             }
-        }
-        wait(for: [postExp], timeout: 10.0)
 
         XCTAssertNotNil(serverID, "Server must return an annotation ID for the new bookmark")
         let storedAfterPost = backend.allAnnotations(forBook: Self.bookID)
@@ -460,24 +469,27 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
 
         // B reads the bookmark list — it must include A's bookmark and the
         // factory must surface it with the server-assigned annotation ID.
+        // JOIN on the completion: the [Bookmark] list is non-Sendable, so we
+        // project the Sendable facts (list nil-ness, count, and the first
+        // element's Readium projection) inside the completion.
         let book = makeBook()
-        let readExp = expectation(description: "device B reads bookmarks")
-        var bookmarksOnB: [Bookmark]?
-        asDeviceB {
-            TPPAnnotations.getServerBookmarks(
-                forBook: book,
-                atURL: Self.baseURL,
-                motivation: .bookmark
-            ) { bookmarks in
-                bookmarksOnB = bookmarks
-                readExp.fulfill()
+        let readResult: BookmarkListProjection =
+            await withCheckedContinuation { (cont: CheckedContinuation<BookmarkListProjection, Never>) in
+                asDeviceB {
+                    TPPAnnotations.getServerBookmarks(
+                        forBook: book,
+                        atURL: Self.baseURL,
+                        motivation: .bookmark
+                    ) { bookmarks in
+                        cont.resume(returning: BookmarkListProjection(bookmarks))
+                    }
+                }
             }
-        }
-        wait(for: [readExp], timeout: 10.0)
 
-        let list = try XCTUnwrap(bookmarksOnB, "B's GET must return a non-nil bookmark list")
-        XCTAssertEqual(list.count, 1, "B should see exactly the bookmark A wrote")
-        let bookmark = try XCTUnwrap(list.first as? TPPReadiumBookmark)
+        XCTAssertTrue(readResult.wasNonNil, "B's GET must return a non-nil bookmark list")
+        XCTAssertEqual(readResult.count, 1, "B should see exactly the bookmark A wrote")
+        let bookmark = try XCTUnwrap(readResult.first,
+                                     "B's first bookmark must be a TPPReadiumBookmark")
         XCTAssertEqual(bookmark.annotationId, serverID,
                        "B's view of A's bookmark must carry the server-assigned annotation ID")
         // TPPBookLocation normalizes /chapter5.xhtml → chapter5.xhtml via
@@ -493,7 +505,7 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
     /// Setup: device A posts a bookmark, then deletes it via its annotation
     /// ID. Device B fetches → list must be empty. Exercises the deletion
     /// half of the sync protocol end-to-end.
-    func test_bookmarkDeletedOnDeviceA_goneOnDeviceB() throws {
+    func test_bookmarkDeletedOnDeviceA_goneOnDeviceB() async throws {
         try skipIfSyncGateClosed()
 
         let selectorValue = epubSelectorValue(
@@ -517,29 +529,30 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
             device: Self.deviceA
         ))
 
-        // A creates it.
-        let postExp = expectation(description: "device A posts then deletes bookmark")
-        var serverID: String?
-        asDeviceA {
-            TPPAnnotations.postBookmark(local, forBookID: Self.bookID) { response in
-                serverID = response?.serverId
-                postExp.fulfill()
+        // A creates it. JOIN on the POST completion; serverId is Sendable.
+        let serverID: String? =
+            await withCheckedContinuation { (cont: CheckedContinuation<String?, Never>) in
+                asDeviceA {
+                    TPPAnnotations.postBookmark(local, forBookID: Self.bookID) { response in
+                        cont.resume(returning: response?.serverId)
+                    }
+                }
             }
-        }
-        wait(for: [postExp], timeout: 10.0)
         let assignedID = try XCTUnwrap(serverID, "Setup precondition: POST must return a server ID")
         XCTAssertEqual(backend.allAnnotations(forBook: Self.bookID).count, 1,
                        "Setup precondition: backend must have one annotation before delete")
 
-        // A deletes it via the same annotation ID the server returned.
-        let deleteExp = expectation(description: "device A deletes bookmark")
-        asDeviceA {
-            TPPAnnotations.deleteBookmark(annotationId: assignedID) { success in
-                XCTAssertTrue(success, "DELETE must report success for existing annotation")
-                deleteExp.fulfill()
+        // A deletes it via the same annotation ID the server returned. JOIN on
+        // the completion; `success` is a Bool (Sendable), resumed directly.
+        let deleteSucceeded: Bool =
+            await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
+                asDeviceA {
+                    TPPAnnotations.deleteBookmark(annotationId: assignedID) { success in
+                        cont.resume(returning: success)
+                    }
+                }
             }
-        }
-        wait(for: [deleteExp], timeout: 10.0)
+        XCTAssertTrue(deleteSucceeded, "DELETE must report success for existing annotation")
 
         XCTAssertEqual(backend.allAnnotations(forBook: Self.bookID).count, 0,
                        "Backend must reflect the deletion immediately")
@@ -549,25 +562,25 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
         TPPBookmarkDeletionLog.shared.logDeletion(annotationId: assignedID,
                                                   forBook: Self.bookID)
 
-        // B reads — list must be empty.
+        // B reads — list must be empty. JOIN on the completion; project the
+        // Sendable facts (nil-ness + count) since [Bookmark] is non-Sendable.
         let book = makeBook()
-        let readExp = expectation(description: "device B reads after delete")
-        var bookmarksOnB: [Bookmark]?
-        asDeviceB {
-            TPPAnnotations.getServerBookmarks(
-                forBook: book,
-                atURL: Self.baseURL,
-                motivation: .bookmark
-            ) { bookmarks in
-                bookmarksOnB = bookmarks
-                readExp.fulfill()
+        let readResult: BookmarkListProjection =
+            await withCheckedContinuation { (cont: CheckedContinuation<BookmarkListProjection, Never>) in
+                asDeviceB {
+                    TPPAnnotations.getServerBookmarks(
+                        forBook: book,
+                        atURL: Self.baseURL,
+                        motivation: .bookmark
+                    ) { bookmarks in
+                        cont.resume(returning: BookmarkListProjection(bookmarks))
+                    }
+                }
             }
-        }
-        wait(for: [readExp], timeout: 10.0)
 
-        let list = try XCTUnwrap(bookmarksOnB, "B's GET must still return a non-nil list (empty page envelope)")
-        XCTAssertTrue(list.isEmpty,
-                      "B must not see the deleted bookmark — deletion is propagated through the shared backend")
+        XCTAssertTrue(readResult.wasNonNil, "B's GET must still return a non-nil list (empty page envelope)")
+        XCTAssertEqual(readResult.count, 0,
+                       "B must not see the deleted bookmark — deletion is propagated through the shared backend")
 
         // Cleanup: clear the deletion-log entry so we don't poison neighbouring
         // tests' UserDefaults state.
@@ -582,7 +595,7 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
     /// authoritative source. On B's next sync, the bookmark for that
     /// annotation ID must reflect the server's value, not B's local copy.
     /// This pins the documented "server-wins on conflict" policy.
-    func test_annotationConflict_serverWins() throws {
+    func test_annotationConflict_serverWins() async throws {
         try skipIfSyncGateClosed()
 
         // B writes its own bookmark first.
@@ -606,15 +619,15 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
             device: Self.deviceB
         ))
 
-        let postExp = expectation(description: "device B posts initial bookmark")
-        var assignedID: String?
-        asDeviceB {
-            TPPAnnotations.postBookmark(localB, forBookID: Self.bookID) { response in
-                assignedID = response?.serverId
-                postExp.fulfill()
+        // JOIN on the POST completion; serverId is Sendable.
+        let assignedID: String? =
+            await withCheckedContinuation { (cont: CheckedContinuation<String?, Never>) in
+                asDeviceB {
+                    TPPAnnotations.postBookmark(localB, forBookID: Self.bookID) { response in
+                        cont.resume(returning: response?.serverId)
+                    }
+                }
             }
-        }
-        wait(for: [postExp], timeout: 10.0)
         let id = try XCTUnwrap(assignedID, "Server must assign an annotation ID to B's bookmark")
 
         // Server-side authoritative record arrives (from another device, a
@@ -640,25 +653,26 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
         backend.replace(id: id, with: canonical)
 
         // B's next sync must surface the server's canonical record, not its
-        // pre-conflict local copy.
+        // pre-conflict local copy. JOIN on the completion; project the
+        // Sendable facts (count + the first element's Readium projection)
+        // since [Bookmark] is non-Sendable.
         let book = makeBook()
-        let readExp = expectation(description: "device B re-reads after server overwrite")
-        var bookmarksOnB: [Bookmark]?
-        asDeviceB {
-            TPPAnnotations.getServerBookmarks(
-                forBook: book,
-                atURL: Self.baseURL,
-                motivation: .bookmark
-            ) { bookmarks in
-                bookmarksOnB = bookmarks
-                readExp.fulfill()
+        let readResult: BookmarkListProjection =
+            await withCheckedContinuation { (cont: CheckedContinuation<BookmarkListProjection, Never>) in
+                asDeviceB {
+                    TPPAnnotations.getServerBookmarks(
+                        forBook: book,
+                        atURL: Self.baseURL,
+                        motivation: .bookmark
+                    ) { bookmarks in
+                        cont.resume(returning: BookmarkListProjection(bookmarks))
+                    }
+                }
             }
-        }
-        wait(for: [readExp], timeout: 10.0)
 
-        let list = try XCTUnwrap(bookmarksOnB)
-        XCTAssertEqual(list.count, 1, "Exactly one annotation ID exists; server-wins must not duplicate")
-        let bookmark = try XCTUnwrap(list.first as? TPPReadiumBookmark)
+        XCTAssertEqual(readResult.count, 1, "Exactly one annotation ID exists; server-wins must not duplicate")
+        let bookmark = try XCTUnwrap(readResult.first,
+                                     "B's first bookmark must be a TPPReadiumBookmark")
         XCTAssertEqual(bookmark.annotationId, id,
                        "Same annotation ID must persist — server-wins replaces value, not key")
         XCTAssertEqual(bookmark.href, "/chapter12.xhtml",
@@ -667,5 +681,65 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
                        "Server-wins: progress must match the server's record, not B's local 0.05")
         XCTAssertEqual(bookmark.device, Self.deviceA,
                        "Server-wins: device tag must reflect the authoritative writer, not B")
+    }
+}
+
+// MARK: - Sendable projections
+//
+// `Bookmark`/`TPPReadiumBookmark`/`AudioBookmark` inherit from NSObject and are
+// NOT Sendable, and the annotation completions fire off-main while the
+// continuations are `@MainActor`. Rather than smuggle a non-Sendable object
+// across that isolation boundary (which trips Swift 6's "sending 'x' risks
+// causing data races"), each projection extracts the primitive, Sendable facts
+// the assertions check *inside* the completion (on its own isolation) and
+// resumes with those. The asserted facts are byte-identical to the originals.
+
+/// The Sendable facts a `TPPReadiumBookmark` assertion needs. `nil` when the
+/// bookmark was absent or not a `TPPReadiumBookmark`, mirroring the original
+/// `readBack as? TPPReadiumBookmark` unwrap.
+private struct ReadiumBookmarkProjection: Sendable {
+    let annotationId: String?
+    let href: String
+    let progressWithinChapter: Float
+    let progressWithinBook: Float
+    let device: String?
+
+    init?(_ bookmark: Bookmark?) {
+        guard let readium = bookmark as? TPPReadiumBookmark else { return nil }
+        self.annotationId = readium.annotationId
+        self.href = readium.href
+        self.progressWithinChapter = readium.progressWithinChapter
+        self.progressWithinBook = readium.progressWithinBook
+        self.device = readium.device
+    }
+}
+
+/// The Sendable facts an `AudioBookmark` assertion needs. `nil` when the
+/// bookmark was absent or not an `AudioBookmark`, mirroring the original
+/// `readBack as? AudioBookmark` unwrap.
+private struct AudioBookmarkProjection: Sendable {
+    let readingOrderItem: String?
+    let readingOrderItemOffsetMilliseconds: Int?
+
+    init?(_ bookmark: Bookmark?) {
+        guard let audio = bookmark as? AudioBookmark else { return nil }
+        self.readingOrderItem = audio.readingOrderItem
+        self.readingOrderItemOffsetMilliseconds = audio.readingOrderItemOffsetMilliseconds
+    }
+}
+
+/// The Sendable facts a `[Bookmark]?` list assertion needs: whether the list
+/// was non-nil, its element count, and the first element projected to a Readium
+/// bookmark (nil if absent or not a `TPPReadiumBookmark`). `first` mirrors the
+/// original `list.first as? TPPReadiumBookmark` unwrap.
+private struct BookmarkListProjection: Sendable {
+    let wasNonNil: Bool
+    let count: Int
+    let first: ReadiumBookmarkProjection?
+
+    init(_ bookmarks: [Bookmark]?) {
+        self.wasNonNil = bookmarks != nil
+        self.count = bookmarks?.count ?? 0
+        self.first = ReadiumBookmarkProjection(bookmarks?.first)
     }
 }

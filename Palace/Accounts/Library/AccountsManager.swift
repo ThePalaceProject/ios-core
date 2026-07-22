@@ -2002,7 +2002,18 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
     }
 
     @objc private func updateAccountSetFromNotification(_ notif: Notification) {
-        updateAccountSet(completion: nil)
+        // Run off the poster's thread. `.TPPUseBetaDidChange` is delivered
+        // synchronously by `NotificationCenter` on whatever thread posted it —
+        // typically MAIN, from a Settings toggle. `updateAccountSet` does an
+        // `accountSetsLock.sync` read (`performRead`) that blocks until any
+        // in-flight background catalog-refresh barrier on that lock drains; under
+        // load that barrier can take a long time, so reacting synchronously stalls
+        // the poster (the Settings UI — and any test that posts this notification,
+        // which is how it surfaced as a 120s hang). The account-set update is
+        // inherently async anyway (it may reload catalogs), so dispatch it.
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            self?.updateAccountSet(completion: nil)
+        }
     }
 
     func updateAccountSet(completion: ((Bool) -> Void)?) {
