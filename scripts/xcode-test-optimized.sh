@@ -143,7 +143,7 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
         -resultBundlePath TestResults.xcresult \
         -enableCodeCoverage YES \
         -retry-tests-on-failure \
-        -test-iterations 3 \
+        -test-iterations "${CI_TEST_ITERATIONS:-3}" \
         -test-timeouts-enabled YES \
         -default-test-execution-time-allowance 120 \
         -maximum-test-execution-time-allowance 300 \
@@ -192,7 +192,7 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
         "${ISOLATED_ONLY_ARGS[@]}" \
         -enableCodeCoverage YES \
         -retry-tests-on-failure \
-        -test-iterations 3 \
+        -test-iterations "${CI_TEST_ITERATIONS:-3}" \
         -test-timeouts-enabled YES \
         -default-test-execution-time-allowance 120 \
         -maximum-test-execution-time-allowance 300 \
@@ -258,7 +258,7 @@ else
                 -resultBundlePath TestResults.xcresult \
                 -enableCodeCoverage YES \
                 -retry-tests-on-failure \
-                -test-iterations 3 \
+                -test-iterations "${CI_TEST_ITERATIONS:-3}" \
                 -parallel-testing-enabled YES \
                 -maximum-parallel-testing-workers 4 \
                 CODE_SIGNING_REQUIRED=NO \
@@ -289,7 +289,7 @@ else
             -configuration Debug \
             -resultBundlePath TestResults.xcresult \
             -retry-tests-on-failure \
-            -test-iterations 3 \
+            -test-iterations "${CI_TEST_ITERATIONS:-3}" \
             -enableCodeCoverage YES \
             -parallel-testing-enabled YES \
             -maximum-parallel-testing-workers 4 \

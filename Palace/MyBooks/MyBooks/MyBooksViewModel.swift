@@ -283,12 +283,21 @@ enum Group: Int {
 
     @objc func authenticateAndLoad(account: Account) {
         account.loadAuthenticationDocument { [weak self] success in
-            guard let self = self, success else { return }
+            // `loadAuthenticationDocument`'s completion fires on the URLSession
+            // delegate queue (off-main — `TPPNetworkExecutor` builds its session
+            // with `delegateQueue: nil`). This closure body is `@MainActor`-isolated
+            // (mutates `@Published`/settings state via `loadAccount` → `updateFeed`,
+            // and reassigns `accountsManager.currentAccount`), so running it off-main
+            // trips Swift 6's `swift_task_checkIsolated` SIGTRAP and restarts the
+            // process. Hop to main before touching any main-actor state.
+            DispatchQueue.main.async {
+                guard let self = self, success else { return }
 
-            if !settings.settingsAccountIdsList.contains(account.uuid) {
-                settings.settingsAccountIdsList.append(account.uuid)
+                if self.settings.settingsAccountIdsList.contains(account.uuid) == false {
+                    self.settings.settingsAccountIdsList.append(account.uuid)
+                }
+                self.loadAccount(account)
             }
-            self.loadAccount(account)
         }
     }
 
@@ -335,9 +344,13 @@ enum Group: Int {
 
     // MARK: - Notification Handling
     private func registerNotifications() {
-        let stateChange = NotificationCenter.default.publisher(for: .TPPBookRegistryStateDidChange)
-        let registryChange = NotificationCenter.default.publisher(for: .TPPBookRegistryDidChange)
-        let syncEnd = NotificationCenter.default.publisher(for: .TPPSyncEnded)
+        // Per-book state changes migrated off `.TPPBookRegistryStateDidChange` to
+        // the registry's `bookStatePublisher` (swarm_8ce6f5ae WS3). The registry
+        // and sync notifications stay as-is (out of this contract's scope). All
+        // three are mapped to `Void` so they can merge into one refresh trigger.
+        let stateChange = bookRegistry.bookStatePublisher.map { _ in () }
+        let registryChange = NotificationCenter.default.publisher(for: .TPPBookRegistryDidChange).map { _ in () }
+        let syncEnd = NotificationCenter.default.publisher(for: .TPPSyncEnded).map { _ in () }
 
         stateChange
             .merge(with: registryChange)

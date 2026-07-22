@@ -9,6 +9,12 @@
   },
   {
     "args" : {
+
+    },
+    "method" : "noteBorrowSucceeded"
+  },
+  {
+    "args" : {
       "bookId" : "F014-OK",
       "hasRequest" : "false"
     },

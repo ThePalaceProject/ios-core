@@ -116,7 +116,8 @@ struct AppTabHostView: View {
         )
         _activeSessionsViewModel = StateObject(wrappedValue: ActiveSessionsViewModel(
             recentlyReadingService: recentlyReading,
-            audiobookSession: appContainer.audiobookSession
+            audiobookSession: appContainer.audiobookSession,
+            bookRegistry: appContainer.bookRegistry
         ))
     }
 
@@ -453,7 +454,19 @@ private struct TabViewChrome: ViewModifier {
             .onAppear {
                 host.updateHoldsBadge()
             }
-            .onReceive(NotificationCenter.default.publisher(for: .TPPBookRegistryStateDidChange)) { _ in
+            // Migrated off `.TPPBookRegistryStateDidChange` (swarm_8ce6f5ae WS3).
+            // The badge is lifecycle-driven: a background sync flipping a hold
+            // reserved→ready changes NO book state (stays `.holding`), so it must
+            // watch `registryStatePublisher`. It also watches `bookStatePublisher`
+            // for per-book hold-state flips, and `holdsDidChangePublisher` for the
+            // hand-fired holds triggers (test-holds picker, reservations reload).
+            .onReceive(host.bookRegistry.registryStatePublisher) { _ in
+                host.updateHoldsBadge()
+            }
+            .onReceive(host.bookRegistry.bookStatePublisher) { _ in
+                host.updateHoldsBadge()
+            }
+            .onReceive(host.bookRegistry.holdsDidChangePublisher) { _ in
                 host.updateHoldsBadge()
             }
     }

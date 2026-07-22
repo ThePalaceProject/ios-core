@@ -16,6 +16,18 @@ protocol TPPBookRegistryProvider: Sendable {
     var registryPublisher: AnyPublisher<[String: TPPBookRegistryRecord], Never> { get }
     var bookStatePublisher: AnyPublisher<(String, TPPBookState), Never> { get }
     var syncStatePublisher: AnyPublisher<Bool, Never> { get }
+    /// Registry LIFECYCLE stream (unloaded → loading → loaded → syncing → synced).
+    /// Distinct from `bookStatePublisher`: it fires on load/sync transitions even
+    /// when NO per-book state changes — so lifecycle-driven consumers (launch
+    /// download reconciliation, post-sign-in sync, the holds badge) don't hang on
+    /// a fresh empty-registry sign-in that emits zero per-book events.
+    var registryStatePublisher: AnyPublisher<TPPBookRegistry.RegistryState, Never> { get }
+    /// Fires when the reservations set changes in a way that leaves book state
+    /// untouched (a background sync flipping a hold reserved→ready keeps the book
+    /// at `.holding`), so the holds badge can refresh. Hand-fired via
+    /// `notifyHoldsChanged()` from the holds/reservation flows.
+    var holdsDidChangePublisher: AnyPublisher<Void, Never> { get }
+    func notifyHoldsChanged()
     var heldBooks: [TPPBook] { get }
     var myBooks: [TPPBook] { get }
     var isSyncing: Bool { get }
@@ -58,17 +70,16 @@ protocol TPPBookRegistryProvider: Sendable {
 
 // TPPBookRegistryData and TPPBookRegistryKey defined in TPPBookRegistryRecord.swift
 
-/// Sendable holder for a `NotificationCenter` observer token so a self-removing
-/// `@Sendable` observer block can reference it without capturing (and mutating)
-/// a `var` — the pattern the `targeted` checker rejects as "'token' mutated
-/// after capture by sendable closure". The token is written exactly once (right
-/// after `addObserver` returns) and only read thereafter, so `@unchecked` is an
-/// honest documentation of write-once-then-read confinement, not a race waiver.
-private final class ObserverTokenBox: @unchecked Sendable {
-    var token: NSObjectProtocol?
-    func removeObserver() {
-        if let token { NotificationCenter.default.removeObserver(token) }
-    }
+/// Sendable holder for the `AnyCancellable` of a self-cancelling `@Sendable`
+/// Combine subscription (the one-shot `waitForLoadThenRunSync` sink). The
+/// subscription's own closure clears the box on first match, so the closure must
+/// reference a stable box rather than capture-and-mutate a `var` (which the
+/// `targeted` checker rejects as "mutated after capture by sendable closure").
+/// The cancellable is written exactly once, right after `sink` returns, and set
+/// to `nil` from inside the sink — write-once-then-clear confinement on `.main`,
+/// not a race waiver.
+private final class CancellableBox: @unchecked Sendable {
+    var cancellable: AnyCancellable?
 }
 
 /// Sendable carrier for the sync-completion closure captured by the `@Sendable`
@@ -267,7 +278,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing, @unchecked Sendable {
     private var _state: RegistryState = .unloaded
 
     /// Transition ordering is IDENTICAL to the pre-lock `didSet`: write `_state`,
-    /// derive `syncState.value`, then async-post the notification — all preserved,
+    /// derive `syncState.value`, then emit the lifecycle signal — all preserved,
     /// only the `_state` storage is now serialised.
     private(set) var state: RegistryState {
         get { stateLock.lock(); defer { stateLock.unlock() }; return _state }
@@ -277,11 +288,12 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing, @unchecked Sendable {
             stateLock.unlock()
             // Same side effects the former `didSet` performed, in the same order,
             // now outside the lock. `syncState` is self-synchronised so it needs
-            // no help from `stateLock`; the notification post was already async.
+            // no help from `stateLock`. The former async `NotificationCenter.post`
+            // of `.TPPBookRegistryStateDidChange` is replaced by feeding the
+            // Combine `registryStateSubject` (its publisher delivers on `.main`),
+            // completing the dual-write kill (swarm_8ce6f5ae WS3).
             syncState.value = (newValue == .syncing)
-            DispatchQueue.main.async {
-                NotificationCenter.default.post(name: .TPPBookRegistryStateDidChange, object: nil, userInfo: nil)
-            }
+            registryStateSubject.send(newValue)
         }
     }
 
@@ -303,6 +315,56 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing, @unchecked Sendable {
     var syncStatePublisher: AnyPublisher<Bool, Never> {
         syncStateSubject.eraseToAnyPublisher()
     }
+
+    /// Lifecycle stream, fed from the `state` setter on every transition.
+    /// `CurrentValueSubject` (not `Passthrough`) so a late subscriber immediately
+    /// sees the current lifecycle state plus every future transition — the
+    /// level-triggered semantics the deleted notification's observers relied on
+    /// (they re-read `self.state` on each post). Seeded `.unloaded` to match the
+    /// initial `_state`.
+    private let registryStateSubject = CurrentValueSubject<RegistryState, Never>(.unloaded)
+
+    var registryStatePublisher: AnyPublisher<RegistryState, Never> {
+        registryStateSubject
+            .receive(on: RunLoop.main)
+            .eraseToAnyPublisher()
+    }
+
+    /// Hand-fired holds-changed signal (see protocol doc). `PassthroughSubject`
+    /// because there is no meaningful "current" holds-change value to replay.
+    private let holdsDidChangeSubject = PassthroughSubject<Void, Never>()
+
+    var holdsDidChangePublisher: AnyPublisher<Void, Never> {
+        holdsDidChangeSubject
+            .receive(on: RunLoop.main)
+            .eraseToAnyPublisher()
+    }
+
+    func notifyHoldsChanged() {
+        holdsDidChangeSubject.send(())
+    }
+
+    // MARK: - Transition enforcement
+
+    /// Invoked by `setState` when asked to perform a transition that is NOT in
+    /// `TPPBookState.allowedTransitions`. The write still happens (state is never
+    /// dropped); this only reports the violation. Injectable so tests can observe
+    /// the DEBUG path without tripping `assertionFailure` and crashing the suite.
+    typealias IllegalTransitionHandler =
+        @Sendable (_ from: TPPBookState, _ to: TPPBookState, _ bookIdentifier: String) -> Void
+
+    static let defaultIllegalTransitionHandler: IllegalTransitionHandler = { from, to, bookIdentifier in
+        let message = "🚫 Illegal book-state transition for '\(bookIdentifier)': "
+            + "\(from.stringValue()) → \(to.stringValue()) — not in TPPBookState.allowedTransitions. "
+            + "Applying anyway (state is never dropped)."
+        #if DEBUG
+        assertionFailure(message)
+        #else
+        Log.error(#file, message)
+        #endif
+    }
+
+    private let onIllegalTransition: IllegalTransitionHandler
 
     var registryPublisher: AnyPublisher<[String: TPPBookRegistryRecord], Never> {
         store.registrySubject
@@ -328,9 +390,14 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing, @unchecked Sendable {
     /// AccountsManager so we never re-enter `AppContainer.production()`'s
     /// dispatch_once during app launch (the failure mode that motivated
     /// killing the `static let shared` singleton in Phase 6.6).
-    init(accountsManager: AccountsManager, imageLoader: ImageLoading) {
+    init(
+        accountsManager: AccountsManager,
+        imageLoader: ImageLoading,
+        onIllegalTransition: @escaping IllegalTransitionHandler = TPPBookRegistry.defaultIllegalTransitionHandler
+    ) {
         self.accountsManager = accountsManager
         self.imageLoader = imageLoader
+        self.onIllegalTransition = onIllegalTransition
         let store = BookRegistryStore()
         let sync = BookRegistrySync(
             store: store,
@@ -364,6 +431,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing, @unchecked Sendable {
     fileprivate init(account: String, accountsManager: AccountsManager, imageLoader: ImageLoading) {
         self.accountsManager = accountsManager
         self.imageLoader = imageLoader
+        self.onIllegalTransition = TPPBookRegistry.defaultIllegalTransitionHandler
         let store = BookRegistryStore()
         let sync = BookRegistrySync(
             store: store,
@@ -418,10 +486,10 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing, @unchecked Sendable {
         //       sync off `load()`'s completion misses the in-flight load
         //       and runs sync against still-unloaded state.
         //
-        // Both cases: subscribe to `TPPBookRegistryStateDidChange` and run
+        // Both cases: subscribe to `registryStatePublisher` and run
         // sync once state reaches `.loaded`/`.synced`. Then kick off a
         // load (no-op if one is already in flight). Either path drives
-        // the observer to the .loaded transition.
+        // the lifecycle publisher to the .loaded transition.
         if state == .unloaded || state == .loading {
             waitForLoadThenRunSync(completion: completion)
             if state == .unloaded {
@@ -434,34 +502,32 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing, @unchecked Sendable {
 
     func sync() { sync(completion: nil) }
 
-    /// Subscribes to the registry state-change notification and runs sync
-    /// the first time state reaches `.loaded`/`.synced`. The observer
-    /// removes itself on first match so it's a one-shot.
+    /// Subscribes to `registryStatePublisher` and runs sync the first time state
+    /// reaches `.loaded`/`.synced`. The subscription cancels itself on first match
+    /// so it's a one-shot.
+    ///
+    /// This MUST key on the lifecycle publisher, not `bookStatePublisher`: a fresh
+    /// empty-registry sign-in (SAML re-auth) loads zero books, so no per-book event
+    /// is ever emitted — a `bookStatePublisher` subscriber would wait forever and
+    /// the post-sign-in sync would never run.
     private func waitForLoadThenRunSync(completion: ((_ errorDocument: [AnyHashable: Any]?, _ newBooks: Bool) -> Void)?) {
-        // The observer block is `@Sendable`; a captured mutable `var token`
-        // assigned after the closure is formed trips the `targeted`
-        // "'token' mutated after capture by sendable closure" diagnostic.
-        // Hold the token in a Sendable box instead — the closure captures the
-        // box reference (never reassigned), and the token is written exactly
-        // once, right after `addObserver` returns.
-        // Box `completion` (a non-Sendable function value) so the `@Sendable`
-        // observer block captures a Sendable carrier instead of the raw closure —
-        // otherwise `complete` mode reports "capture of 'completion' … in a
-        // '@Sendable' closure". The observer fires on `.main`, where `runSync`
-        // (and thus the completion) already runs; boxing is behavior-neutral.
+        // Box `completion` (a non-Sendable function value) so the `@Sendable` sink
+        // captures a Sendable carrier instead of the raw closure — otherwise
+        // `complete` mode reports "capture of 'completion' … in a '@Sendable'
+        // closure". The sink fires on `.main` (publisher's `receive(on:)`), where
+        // `runSync` (and thus the completion) already runs; boxing is behavior-neutral.
         let completionBox = SyncCompletionBox(completion)
-        let tokenBox = ObserverTokenBox()
-        tokenBox.token = NotificationCenter.default.addObserver(
-            forName: .TPPBookRegistryStateDidChange,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
+        // The self-cancelling one-shot sink lives in a Sendable box for the same
+        // reason the old token did: the `@Sendable` closure must reference a stable
+        // box, never capture-and-mutate a `var`.
+        let cancellableBox = CancellableBox()
+        cancellableBox.cancellable = registryStatePublisher.sink { [weak self] newState in
             guard let self else {
-                tokenBox.removeObserver()
+                cancellableBox.cancellable = nil
                 return
             }
-            if self.state == .loaded || self.state == .synced {
-                tokenBox.removeObserver()
+            if newState == .loaded || newState == .synced {
+                cancellableBox.cancellable = nil
                 self.runSync(completion: completionBox.completion)
             }
         }
@@ -550,7 +616,6 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing, @unchecked Sendable {
             if let account { syncEngine.save(for: account) }
             DispatchQueue.main.async {
                 self.store.bookStateSubject.send((book.identifier, state))
-                self.postStateNotification(bookIdentifier: book.identifier, state: state)
             }
         }
     }
@@ -567,7 +632,6 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing, @unchecked Sendable {
             if let account { syncEngine.save(for: account) }
             DispatchQueue.main.async {
                 self.store.bookStateSubject.send((bookIdentifier, .unregistered))
-                self.postStateNotification(bookIdentifier: bookIdentifier, state: .unregistered)
                 if let book = removedBook {
                     self.imageLoader.thumbnailImage(for: book) { _ in }
                 }
@@ -583,7 +647,6 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing, @unchecked Sendable {
             if nextState != previousState {
                 DispatchQueue.main.async {
                     self.store.bookStateSubject.send((book.identifier, nextState))
-                    self.postStateNotification(bookIdentifier: book.identifier, state: nextState)
                 }
             }
         }
@@ -597,7 +660,6 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing, @unchecked Sendable {
             if let account { syncEngine.save(for: account) }
             DispatchQueue.main.async {
                 self.store.bookStateSubject.send((book.identifier, .unregistered))
-                self.postStateNotification(bookIdentifier: book.identifier, state: .unregistered)
             }
         }
     }
@@ -606,12 +668,17 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing, @unchecked Sendable {
         let previousState = self.state(for: bookIdentifier)
         if previousState != state {
             Log.debug(#file, "📊 State transition for '\(bookIdentifier)': \(previousState.stringValue()) → \(state.stringValue())")
+            // Enforce the declared legal-transition set at the single mutation
+            // seam. On violation, report (assert in DEBUG, log in RELEASE) but
+            // STILL APPLY the write below — a dropped state would strand a book.
+            if !TPPBookState.canTransition(from: previousState, to: state) {
+                onIllegalTransition(previousState, state, bookIdentifier)
+            }
         }
         let account = accountsManager.currentAccount?.uuid
         store.setState(state, for: bookIdentifier) { [weak self, syncEngine] in
             guard let self else { return }
             if let account { syncEngine.save(for: account) }
-            self.postStateNotification(bookIdentifier: bookIdentifier, state: state)
             DispatchQueue.main.async {
                 self.store.bookStateSubject.send((bookIdentifier, state))
             }
@@ -633,20 +700,6 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing, @unchecked Sendable {
         let result = store.updatedBookMetadata(book)
         if result != nil, let account { syncEngine.save(for: account) }
         return result
-    }
-
-    @available(*, deprecated, message: "Use Combine publishers instead.")
-    private func postStateNotification(bookIdentifier: String, state: TPPBookState) {
-        DispatchQueue.main.async {
-            NotificationCenter.default.post(
-                name: .TPPBookRegistryStateDidChange,
-                object: nil,
-                userInfo: [
-                    "bookIdentifier": bookIdentifier,
-                    "state": state.rawValue
-                ]
-            )
-        }
     }
 
     // MARK: - Cover / thumbnail images

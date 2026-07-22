@@ -245,8 +245,10 @@ final class HoldsViewModel: ObservableObject {
 
         store.send(.registryChanged(held: allHeld))
 
-        // Badge update — centrally managed by AppTabHostView
-        NotificationCenter.default.post(name: .TPPBookRegistryStateDidChange, object: nil)
+        // Badge update — centrally managed by AppTabHostView. Migrated off the
+        // `.TPPBookRegistryStateDidChange` post to the registry's holds-changed
+        // publisher (swarm_8ce6f5ae WS3), which AppTabHostView subscribes to.
+        bookRegistry.notifyHoldsChanged()
     }
 
     func refresh() {
