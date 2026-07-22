@@ -62,7 +62,9 @@ jobs:
       - name: Get build number
         id: build
         run: |
-          BUILD_NUM=$(grep -m1 'CURRENT_PROJECT_VERSION' Palace.xcodeproj/project.pbxproj | grep -oE '[0-9]+' | head -1)
+          # Read the Palace app target's build number (max), not whichever
+          # CURRENT_PROJECT_VERSION sorts first (a placeholder target carries "=1").
+          BUILD_NUM=$(grep -oE 'CURRENT_PROJECT_VERSION = [0-9]+' Palace.xcodeproj/project.pbxproj | grep -oE '[0-9]+' | sort -n | tail -1)
           echo "number=$BUILD_NUM" >> $GITHUB_OUTPUT
           echo "📦 Build number: $BUILD_NUM"
 
