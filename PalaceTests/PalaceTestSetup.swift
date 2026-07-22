@@ -121,6 +121,35 @@ class PalaceTestSetup: NSObject {
     private static func registerBuiltInResetters() {
         let registry = SingletonResetRegistry.shared
 
+        // Purge the on-disk catalog/auth caches after EVERY test — not just
+        // `PalaceWiringTestCase` subclasses (which do their own purge). A test that
+        // flips `deferInitialLoadCatalogsForTesting` back to `false` (e.g.
+        // AppContainerResetTests) lets the background `loadCatalogs` write the
+        // ~1142-account bundled catalog to `accounts_catalog_<hash>.json`. If that
+        // file survives the boundary, the NEXT test's `preloadAccountsFromDiskCacheSync`
+        // parses all 1142 under CPU starvation, holding the `accountSetsLock` barrier
+        // long enough to hang a later `performRead` (`account(uuid:)`) to the 120s
+        // execution allowance — the AccountsManager-suite lock-jam flakes that hit
+        // even Accounts-unrelated PRs. Registered FIRST so the stale file is gone
+        // before `AppContainer._resetForTesting` recreates + preloads. Mirrors the
+        // prefix list `AccountsManager.clearCache()` uses at runtime.
+        registry.register("AccountsDiskCache.purge") {
+            let prefixes = [
+                "library_list_", "accounts_catalog_", "accounts_catalog_metadata_",
+                "authentication_document_", "crawl_state_",
+            ]
+            let fm = FileManager.default
+            guard let appSupport = try? fm.url(for: .applicationSupportDirectory,
+                                               in: .userDomainMask,
+                                               appropriateFor: nil, create: false),
+                  let files = try? fm.contentsOfDirectory(at: appSupport,
+                                                          includingPropertiesForKeys: nil)
+            else { return }
+            for file in files where prefixes.contains(where: { file.lastPathComponent.hasPrefix($0) }) {
+                try? fm.removeItem(at: file)
+            }
+        }
+
         registry.register("AppContainer._resetForTesting") {
             #if DEBUG
             // Module B's `Palace/AppInfrastructure/AppContainer.swift`
@@ -134,6 +163,27 @@ class PalaceTestSetup: NSObject {
             MainActor.assumeIsolated {
                 AppContainer._resetForTesting()
             }
+            #endif
+        }
+
+        // Drain EVERY live AccountsManager's background work at the boundary —
+        // not just the shared one AppContainer recreates. The root of the
+        // order-dependent Accounts-suite flakes is a pending `DispatchQueue.main.async`
+        // auth-doc drive (from `preloadAccountsFromDiskCacheSync`'s deferred
+        // `driveCurrentAccountAuthDocIfNeeded()`) enqueued at EVERY AccountsManager
+        // init — including foreign instances built by test helpers. It is NOT a
+        // Task, so `cancelBackgroundWork()` can't stop it; left un-flushed it fires
+        // on a later runloop turn INSIDE the next test and writes a fixture library
+        // UUID's `.detailsLoading`/`.detailsFailed` into it. `cancelAndDrainBackgroundWork`
+        // (invoked per live instance by `_drainAllLiveInstancesForTesting`) PUMPS
+        // the main run loop (bounded) so every such pending hop fires NOW, inside
+        // the boundary — after `AppContainer._resetForTesting` above (so the
+        // just-recreated shared instance is included) and BEFORE the store reset
+        // below (so any flushed late-write is then wiped). This is the missing wire:
+        // the drain existed but ran only in one bespoke test, never per-boundary.
+        registry.register("AccountsManager._drainAllLiveInstancesForTesting") {
+            #if DEBUG
+            AccountsManager._drainAllLiveInstancesForTesting()
             #endif
         }
 
