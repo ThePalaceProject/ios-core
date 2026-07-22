@@ -133,9 +133,9 @@ final class BookReturnServiceContractTests: XCTestCase {
         // out of scope for the unit-test snapshot.
         feedFetcher.stubbedError = PalaceError.parsing(.opdsFeedInvalid)
 
-        let exp = expectation(description: "completion")
-        service.returnBook(withIdentifier: book.identifier) { exp.fulfill() }
-        await fulfillment(of: [exp], timeout: 2.0)
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            service.returnBook(withIdentifier: book.identifier) { continuation.resume() }
+        }
 
         ContractSnapshot.assert(log, named: "withRevokeURL_parsingErrorTreatedAsSuccess")
     }
@@ -147,9 +147,9 @@ final class BookReturnServiceContractTests: XCTestCase {
         let book = Self.makeBook(identifier: "RET-NOURL", revokeURL: nil)
         registry.addBookStub(book, state: .downloadSuccessful)
 
-        let exp = expectation(description: "completion")
-        service.returnBook(withIdentifier: book.identifier) { exp.fulfill() }
-        await fulfillment(of: [exp], timeout: 2.0)
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            service.returnBook(withIdentifier: book.identifier) { continuation.resume() }
+        }
 
         ContractSnapshot.assert(log, named: "withoutRevokeURL_skipsNetwork")
     }
@@ -173,12 +173,12 @@ final class BookReturnServiceContractTests: XCTestCase {
         feedFetcher.stubbedError = NSError(domain: "test", code: 401,
                                             userInfo: ["problemDocument": problemDoc])
 
-        let exp = expectation(description: "completion")
-        // The reauth path doesn't necessarily call completion if the
-        // recursive return doesn't fire — bail-out triggers
-        // announceReturnFailed + completion (line ~322 in service).
-        service.returnBook(withIdentifier: book.identifier) { exp.fulfill() }
-        await fulfillment(of: [exp], timeout: 3.0)
+        // The reauth path completes when the recursive return bails out
+        // (no credentials restored) → announceReturnFailed + completion
+        // (line ~322 in service). We JOIN on that completion.
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            service.returnBook(withIdentifier: book.identifier) { continuation.resume() }
+        }
 
         ContractSnapshot.assert(log, named: "authError_triggersReauth")
     }
@@ -195,9 +195,9 @@ final class BookReturnServiceContractTests: XCTestCase {
         feedFetcher.stubbedError = NSError(domain: "test", code: 404,
                                             userInfo: ["problemDocument": problemDoc])
 
-        let exp = expectation(description: "completion")
-        service.returnBook(withIdentifier: book.identifier) { exp.fulfill() }
-        await fulfillment(of: [exp], timeout: 2.0)
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            service.returnBook(withIdentifier: book.identifier) { continuation.resume() }
+        }
 
         ContractSnapshot.assert(log, named: "noActiveLoan_treatsAsSuccess")
     }
@@ -218,9 +218,9 @@ final class BookReturnServiceContractTests: XCTestCase {
         feedFetcher.stubbedError = NSError(domain: "test", code: 500,
                                             userInfo: ["problemDocument": problemDoc])
 
-        let exp = expectation(description: "completion")
-        service.returnBook(withIdentifier: book.identifier) { exp.fulfill() }
-        await fulfillment(of: [exp], timeout: 2.0)
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            service.returnBook(withIdentifier: book.identifier) { continuation.resume() }
+        }
 
         ContractSnapshot.assert(log, named: "genericError_announcesFailure")
     }
@@ -257,9 +257,9 @@ final class BookReturnServiceContractTests: XCTestCase {
         feedFetcher.stubbedError = NSError(domain: NSURLErrorDomain,
                                            code: NSURLErrorNotConnectedToInternet)
 
-        let exp = expectation(description: "completion")
-        offlineService.returnBook(withIdentifier: book.identifier) { exp.fulfill() }
-        await fulfillment(of: [exp], timeout: 3.0)
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            offlineService.returnBook(withIdentifier: book.identifier) { continuation.resume() }
+        }
 
         ContractSnapshot.assert(log, named: "offlineError_enqueues_noLocalCleanup")
     }
@@ -282,9 +282,9 @@ final class BookReturnServiceContractTests: XCTestCase {
         feedFetcher.stubbedError = NSError(domain: "test", code: 403,
                                            userInfo: ["problemDocument": problemDoc])
 
-        let exp = expectation(description: "completion")
-        service.returnBook(withIdentifier: book.identifier) { exp.fulfill() }
-        await fulfillment(of: [exp], timeout: 2.0)
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            service.returnBook(withIdentifier: book.identifier) { continuation.resume() }
+        }
 
         ContractSnapshot.assert(log, named: "loanTermLimitDetail_treatsAsSuccess_cleansUpLocally")
     }
@@ -329,9 +329,9 @@ final class BookReturnServiceContractTests: XCTestCase {
         )
         coordinatorService.delegate = purgeDelegate
 
-        let exp = expectation(description: "completion")
-        coordinatorService.returnBook(withIdentifier: book.identifier) { exp.fulfill() }
-        await fulfillment(of: [exp], timeout: 4.0)
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            coordinatorService.returnBook(withIdentifier: book.identifier) { continuation.resume() }
+        }
 
         ContractSnapshot.assert(log, named: "coordinatorAuthError_success_retriesAndCompletes")
     }
@@ -367,9 +367,9 @@ final class BookReturnServiceContractTests: XCTestCase {
         )
         coordinatorService.delegate = purgeDelegate
 
-        let exp = expectation(description: "completion")
-        coordinatorService.returnBook(withIdentifier: book.identifier) { exp.fulfill() }
-        await fulfillment(of: [exp], timeout: 4.0)
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            coordinatorService.returnBook(withIdentifier: book.identifier) { continuation.resume() }
+        }
 
         ContractSnapshot.assert(log, named: "coordinatorAuthError_failure_announcesFailure")
     }
