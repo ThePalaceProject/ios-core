@@ -1098,17 +1098,20 @@ final class MyBooksViewModelNotificationTests: XCTestCase {
                        "Book count must remain consistent after registry-change notification")
     }
 
-    /// Tests that ViewModel can receive state change notifications
-    func testStateChangeNotification_IsRegistered() {
+    /// Tests that the ViewModel reacts to a per-book state change through the
+    /// registry's `bookStatePublisher` (migrated off `.TPPBookRegistryStateDidChange`
+    /// in swarm_8ce6f5ae WS3).
+    func testStateChange_ViaBookStatePublisher_IsRegistered() {
         let mock = TPPBookRegistryMock()
         mock.myBooks = []
         let appContainer = makeTestAppContainer()
         let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: appContainer.accountsManager, settings: TPPSettings(), downloadCenter: appContainer.downloadCenter, isUserAuthorizedForRegistry: { true })
 
-        NotificationCenter.default.post(name: .TPPBookRegistryStateDidChange, object: nil)
+        // Mock's `setState` sends into `bookStateSubject` — the VM's migrated trigger.
+        mock.setState(.downloadSuccessful, for: "some-book")
 
-        // ViewModel must not crash; loading state must be well-defined after notification
-        XCTAssertFalse(viewModel.isLoading, "isLoading must be false after state-change notification with no pending sync")
+        // ViewModel must not crash; loading state must be well-defined afterward.
+        XCTAssertFalse(viewModel.isLoading, "isLoading must be false after a book-state change with no pending sync")
     }
 
     /// Tests that ViewModel can receive sync ended notifications

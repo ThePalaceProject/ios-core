@@ -115,6 +115,15 @@ final class BorrowOperationContractTests: XCTestCase {
             attemptOIDCReauth: {
                 callLog.record("attemptOIDCReauth", args: [:])
                 return false
+            },
+            // The app-rating secondary trigger (PP-4088) is an injected seam,
+            // default `{}` in production. The contract pins that a *successful*
+            // borrow fires it (in order: after `fetchBook`, before `startDownload`),
+            // so record it here — otherwise the effect runs the no-op default and
+            // never reaches the CallLog, drifting the snapshot (`noteBorrowSucceeded`
+            // expected, absent in actual).
+            onBorrowSucceeded: {
+                callLog.record("noteBorrowSucceeded", args: [:])
             }
         )
         operation.delegate = spyDelegate
@@ -159,6 +168,36 @@ final class BorrowOperationContractTests: XCTestCase {
         // Wait one settle cycle so a stray dispatch would land if present.
         await yieldSettle()
         ContractSnapshot.assert(log, named: "attemptDownloadFalse_onSuccessfulBorrow_doesNotCallStartDownload")
+    }
+
+    /// A streaming-HTML title has no downloadable asset (PP-4161), so a
+    /// successful borrow must NOT emit startDownload even with attemptDownload:true.
+    /// E2's `BorrowReducerCore` must reproduce this skip.
+    func test_borrowAsync_borrowSucceeded_streamingHTML_skipsStartDownload() async throws {
+        let book = Self.makeStreamingHTMLBook(identifier: "BORROW-STREAM")
+        fetchBookResult.value = .success(book)
+
+        _ = try await operation.borrowAsync(book, attemptDownload: true)
+
+        // Settle so a stray startDownload dispatch would land if present.
+        await yieldSettle()
+        ContractSnapshot.assert(log, named: "borrowSucceeded_streamingHTML_skipsStartDownload")
+    }
+
+    /// A fetch timeout must rethrow AND surface the retryable borrow-error alert.
+    func test_borrowAsync_fetchTimeout_surfacesRetryableAlert() async {
+        let book = Self.makeBook(identifier: "BORROW-TIMEOUT", availability: .unlimited)
+        fetchBookResult.value = .failure(PalaceError.network(.timeout))
+
+        do {
+            _ = try await operation.borrowAsync(book, attemptDownload: false)
+            XCTFail("Timeout borrow must rethrow")
+        } catch {
+            // expected
+        }
+
+        await waitForLog(containing: "presentBorrowErrorAlert")
+        ContractSnapshot.assert(log, named: "fetchTimeout_surfacesRetryableAlert")
     }
 
     // MARK: - Auth-error contract
@@ -356,6 +395,44 @@ final class BorrowOperationContractTests: XCTestCase {
             hrefURL: acquisitionURL,
             indirectAcquisitions: [],
             availability: availability
+        )
+        return TPPBook(
+            acquisitions: [acquisition],
+            authors: [TPPBookAuthor(authorName: "Author", relatedBooksURL: nil)],
+            categoryStrings: nil,
+            distributor: nil,
+            identifier: identifier,
+            imageURL: nil,
+            imageThumbnailURL: nil,
+            published: nil,
+            publisher: nil,
+            subtitle: nil,
+            summary: nil,
+            title: "Title-\(identifier)",
+            updated: Date(timeIntervalSince1970: 0),
+            annotationsURL: nil,
+            analyticsURL: nil,
+            alternateURL: nil,
+            relatedWorksURL: nil,
+            previewLink: nil,
+            seriesURL: nil,
+            revokeURL: nil,
+            reportURL: nil,
+            timeTrackingURL: nil,
+            contributors: nil,
+            bookDuration: nil,
+            imageCache: MockImageCache()
+        )
+    }
+
+    private static func makeStreamingHTMLBook(identifier: String) -> TPPBook {
+        let leaf = TPPOPDSIndirectAcquisition(type: ContentTypeStreamingHTML, indirectAcquisitions: [])
+        let acquisition = TPPOPDSAcquisition(
+            relation: .openAccess,
+            type: ContentTypeOPDSPublication,
+            hrefURL: URL(string: "http://example.com/\(identifier)")!,
+            indirectAcquisitions: [leaf],
+            availability: TPPOPDSAcquisitionAvailabilityUnlimited()
         )
         return TPPBook(
             acquisitions: [acquisition],

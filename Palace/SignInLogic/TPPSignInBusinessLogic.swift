@@ -796,8 +796,17 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
 
         dispatch(.authDocumentLoadStarted)
         libraryAccount.loadAuthenticationDocument(using: self) { success in
-            self.dispatch(.authDocumentLoadCompleted)
-            completion(success)
+            // `loadAuthenticationDocument`'s completion fires on the URLSession
+            // delegate queue (off-main — `TPPNetworkExecutor` uses `delegateQueue:
+            // nil`). `dispatch(_:)` is `@MainActor`-isolated (this whole type is
+            // `@MainActor`, driving UIKit alert/VM state), so calling it off-main
+            // trips Swift 6's `swift_task_checkIsolated` SIGTRAP and restarts the
+            // process — the OIDC/sign-in crash cluster. Hop to main before
+            // dispatching and firing the caller's completion.
+            DispatchQueue.main.async {
+                self.dispatch(.authDocumentLoadCompleted)
+                completion(success)
+            }
         }
     }
 

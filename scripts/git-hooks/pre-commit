@@ -107,6 +107,16 @@ if [[ -f "$REPO_ROOT_M1/scripts/check-no-committed-signing.sh" ]]; then
   fi
 fi
 
+# Repo rule: only commit docs that explain the code's what/why — never process/
+# generated artifacts (swarm transcripts, campaign scaffolding/contracts, generated
+# IR). Diff-based over STAGED added files. See scripts/check-doc-hygiene.sh.
+if [[ -f "$REPO_ROOT_M1/scripts/check-doc-hygiene.sh" ]]; then
+  if ! _dh_out=$( (cd "$REPO_ROOT_M1" && bash scripts/check-doc-hygiene.sh) 2>&1); then
+    echo "$_dh_out" >&2
+    M1_FAIL=$((M1_FAIL + 1))
+  fi
+fi
+
 m1_enforce "$M1_FAIL"
 
 # Friendly nudge — non-blocking. Only print if anything is staged at all.

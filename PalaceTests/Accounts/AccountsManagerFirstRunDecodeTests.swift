@@ -129,34 +129,15 @@ final class AccountsManagerFirstRunDecodeTests: PalaceWiringTestCase {
         return defaults
     }
 
-    /// Spin the run loop until `condition` is true or the deadline passes.
-    /// Used to observe the off-main first-run task's synchronous counters from
-    /// the main test thread without a fixed sleep.
-    @discardableResult
-    private func waitUntil(timeout: TimeInterval = 5,
-                           _ condition: () -> Bool) -> Bool {
-        let deadline = Date().addingTimeInterval(timeout)
-        while !condition() && Date() < deadline {
-            RunLoop.current.run(until: Date().addingTimeInterval(0.02))
-        }
-        return condition()
-    }
-
     // MARK: - 1. Dedupe fires BEFORE the bundled decode
 
     /// A second load arriving while the first is still in flight must
     /// short-circuit on the consolidated dedupe guard — which sits ABOVE the
     /// bundled branch — so the ~2.4 MB bundled snapshot is decoded exactly
     /// once, not once per caller.
-    func testSecondConcurrentLoad_shortCircuitsBeforeBundledDecode() throws {
+    func testSecondConcurrentLoad_shortCircuitsBeforeBundledDecode() async throws {
         let snapshotURL = try writeStubSnapshot()
-        let decodeRan = expectation(description: "bundled snapshot resolved")
-        decodeRan.expectedFulfillmentCount = 1
-        // A broken dedupe (decode runs per caller) over-fulfills → test fails.
-        decodeRan.assertForOverFulfill = true
-        let resolver = CountingSnapshotResolver(snapshotURL: snapshotURL) {
-            decodeRan.fulfill()
-        }
+        let resolver = CountingSnapshotResolver(snapshotURL: snapshotURL)
 
         let defaults = isolatedDefaults()
         let manager = makeFreshAccountsManager(defaults: defaults) {
@@ -172,10 +153,12 @@ final class AccountsManagerFirstRunDecodeTests: PalaceWiringTestCase {
         // second first-run task, no second decode.
         manager.loadCatalogs(completion: nil)
 
-        wait(for: [decodeRan], timeout: 5)
-        // Settle briefly so an (erroneous) second decode would have a chance to
-        // bump the counter before we assert.
-        _ = waitUntil(timeout: 0.5) { false }
+        // Deterministic JOIN: await the ACTUAL first-run task(s) to completion
+        // rather than racing a wall-clock deadline (which starves under CI's
+        // parallel sim clones). This awaits ALL tracked crawl tasks, so a
+        // dedupe-break that spawned a SECOND first-run task would also be joined
+        // here — after which callCount==1 proves the decode ran exactly once.
+        await manager._awaitAllCrawlTasksForTesting()
         XCTAssertEqual(resolver.callCount, 1,
                        "Bundled snapshot must be decoded exactly once; the second concurrent load must dedupe before the decode")
 
@@ -190,7 +173,7 @@ final class AccountsManagerFirstRunDecodeTests: PalaceWiringTestCase {
     /// own registration and `return` before the fetch — leaving this counter
     /// at 0 and stranding the picker on stale bundled data. This test fails
     /// loudly on that regression.
-    func testFirstRun_networkFetchStillFiresOnce_afterBundledDecode() throws {
+    func testFirstRun_networkFetchStillFiresOnce_afterBundledDecode() async throws {
         let snapshotURL = try writeStubSnapshot()
         let resolver = CountingSnapshotResolver(snapshotURL: snapshotURL)
 
@@ -204,12 +187,14 @@ final class AccountsManagerFirstRunDecodeTests: PalaceWiringTestCase {
 
         manager.loadCatalogs(completion: nil)
 
-        // The fetch is dispatched from the off-main first-run task AFTER the
-        // bundled decode. A swallowed fetch keeps this at 0 → the wait fails.
-        let fired = waitUntil { manager.fetchFromNetworkCountForTesting >= 1 }
-        XCTAssertTrue(fired, "Network fetch must fire after the bundled decode — it appears to have been swallowed by the dedupe")
+        // Deterministic JOIN: the fetch is dispatched from the off-main first-run
+        // task AFTER the bundled decode. Awaiting the actual task (instead of
+        // polling a wall-clock deadline that starves under parallel CI clones)
+        // guarantees the fetch has fired by the time the await returns; a
+        // swallowed fetch leaves the counter at 0 and fails the assert below.
+        await manager._awaitAllCrawlTasksForTesting()
         XCTAssertEqual(manager.fetchFromNetworkCountForTesting, 1,
-                       "Network fetch must fire exactly once")
+                       "Network fetch must fire exactly once after the bundled decode — it appears to have been swallowed by the dedupe")
         XCTAssertEqual(resolver.callCount, 1,
                        "The bundled snapshot must have been decoded once before the network fetch (fetch fires AFTER it, not instead of it)")
 
@@ -222,14 +207,9 @@ final class AccountsManagerFirstRunDecodeTests: PalaceWiringTestCase {
     /// must be hopped off-main — otherwise the ~2.4 MB decode blocks the main
     /// thread on cold first launch (the original bug via
     /// `presentFirstRunFlowIfNeeded`).
-    func testFirstRun_bundledDecode_runsOffMainThread() throws {
+    func testFirstRun_bundledDecode_runsOffMainThread() async throws {
         let snapshotURL = try writeStubSnapshot()
-        let decodeRan = expectation(description: "bundled snapshot resolved")
-        let resolver = CountingSnapshotResolver(snapshotURL: snapshotURL) {
-            decodeRan.fulfill()
-        }
-        decodeRan.expectedFulfillmentCount = 1
-        decodeRan.assertForOverFulfill = false
+        let resolver = CountingSnapshotResolver(snapshotURL: snapshotURL)
 
         let defaults = isolatedDefaults()
         let manager = makeFreshAccountsManager(defaults: defaults) {
@@ -239,7 +219,11 @@ final class AccountsManagerFirstRunDecodeTests: PalaceWiringTestCase {
         XCTAssertTrue(Thread.isMainThread, "test drives loadCatalogs from the main thread")
         manager.loadCatalogs(completion: nil)
 
-        wait(for: [decodeRan], timeout: 5)
+        // Deterministic JOIN: await the off-main first-run task to completion
+        // instead of racing a 5s wall-clock deadline that starves under parallel
+        // CI clones. Once it returns, the decode has run and recorded the thread
+        // it ran on.
+        await manager._awaitAllCrawlTasksForTesting()
         XCTAssertEqual(resolver.lastCallOnMainThread, false,
                        "The bundled snapshot decode must not run on the main thread")
 

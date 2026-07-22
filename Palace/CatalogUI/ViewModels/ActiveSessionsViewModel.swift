@@ -120,6 +120,7 @@ final class ActiveSessionsViewModel: ObservableObject {
     init(
         recentlyReadingService: RecentlyReadingService,
         audiobookSession: AudiobookSessionManaging,
+        bookRegistry: TPPBookRegistryProvider,
         notificationCenter: NotificationCenter = .default,
         readingRowLimit: Int = 1,
         listeningRowLimit: Int = 1
@@ -129,10 +130,12 @@ final class ActiveSessionsViewModel: ObservableObject {
         self.readingRowLimit = max(0, readingRowLimit)
         self.listeningRowLimit = max(0, listeningRowLimit)
 
-        // Debounced: the startup registry-state burst would otherwise run one
-        // full myBooks scan per notification on the main thread (froze launch).
-        notificationCenter
-            .publisher(for: .TPPBookRegistryStateDidChange)
+        // Debounced: the startup per-book state burst would otherwise run one
+        // full myBooks scan per emission on the main thread (froze launch).
+        // Migrated off `.TPPBookRegistryStateDidChange` to the registry's
+        // `bookStatePublisher` (swarm_8ce6f5ae WS3): the Continue row is a
+        // per-book UI refresh, so a per-book event is the right trigger.
+        bookRegistry.bookStatePublisher
             .debounce(for: .milliseconds(200), scheduler: RunLoop.main)
             .sink { [weak self] _ in self?.refresh() }
             .store(in: &cancellables)

@@ -6,5 +6,11 @@
       "useToken" : "true"
     },
     "method" : "fetchBook"
+  },
+  {
+    "args" : {
+
+    },
+    "method" : "noteBorrowSucceeded"
   }
 ]

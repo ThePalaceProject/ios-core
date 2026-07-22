@@ -102,6 +102,17 @@ jobs:
             echo "No committed-signing detector test — skipping."
           fi
 
+      # 5b. doc-hygiene detector: blocks process/generated docs (swarm transcripts/
+      #     contracts, campaign scaffolding, generated .arch IR) from being committed;
+      #     passes legit ADRs/READMEs. Asserts BOTH directions (see the shell test).
+      - name: doc-hygiene detector test
+        run: |
+          if [ -f scripts/tests/test_check_doc_hygiene.sh ]; then
+            bash scripts/tests/test_check_doc_hygiene.sh
+          else
+            echo "No doc-hygiene detector test — skipping."
+          fi
+
       # 6. chaos-replay corpus validator (--check). Proves scripts/chaos-replay.sh
       #    passes a well-formed corpus, BLOCKS a half-corpus entry missing its
       #    recording.yaml payload, and guards the committed .simdrive/replays/chaos.

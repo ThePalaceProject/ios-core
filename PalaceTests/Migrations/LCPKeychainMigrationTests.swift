@@ -14,7 +14,11 @@
 import XCTest
 @testable import Palace
 
-@MainActor
+// Deliberately NOT @MainActor: `LCPKeychainMigration.runIfNeeded` is a
+// nonisolated async API taking a (non-Sendable) UserDefaults and non-Sendable
+// closures — driving it from a @MainActor test is a Swift 6 sending error,
+// while from a nonisolated test everything stays in one isolation domain.
+// Nothing here touches UI or main-actor state.
 final class LCPKeychainMigrationTests: XCTestCase {
 
     private let suiteName = "LCPKeychainMigrationTests.suite"

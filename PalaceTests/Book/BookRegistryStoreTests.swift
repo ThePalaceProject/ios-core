@@ -32,7 +32,10 @@ final class BookRegistryStoreTests: XCTestCase {
         super.tearDown()
     }
 
-    private func makeBook(
+    // nonisolated: pure factory (no isolated state); called from @Sendable
+    // dispatch closures in the concurrency stress test — an isolated factory
+    // there is a Swift 6 sending error.
+    private nonisolated func makeBook(
         identifier: String = "book-1",
         title: String = "Test Book"
     ) -> TPPBook {
