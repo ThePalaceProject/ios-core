@@ -1,0 +1,16 @@
+[
+  {
+    "args" : {
+      "resetCache" : "true",
+      "url" : "BORROW-STREAM",
+      "useToken" : "true"
+    },
+    "method" : "fetchBook"
+  },
+  {
+    "args" : {
+
+    },
+    "method" : "noteBorrowSucceeded"
+  }
+]

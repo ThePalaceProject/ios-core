@@ -147,7 +147,15 @@ final class DownloadStartDispatcher {
         loginRequired: Bool?
     ) -> TPPBookState {
         guard let delegate else { return .unregistered }
-        if book.defaultAcquisitionIfBorrow == nil && (book.defaultAcquisitionIfOpenAccess != nil || !(loginRequired ?? false)) {
+        let decision = DownloadStartReducer.reduceUnregistered(
+            .init(
+                hasBorrowLink: book.defaultAcquisitionIfBorrow != nil,
+                hasOpenAccess: book.defaultAcquisitionIfOpenAccess != nil,
+                loginRequired: loginRequired ?? false
+            )
+        )
+        switch decision {
+        case .seedDownloadNeeded:
             delegate.bookRegistry.addBook(
                 book,
                 location: location,
@@ -157,8 +165,9 @@ final class DownloadStartDispatcher {
                 genericBookmarks: nil
             )
             return .downloadNeeded
+        case .stayUnregistered:
+            return .unregistered
         }
-        return .unregistered
     }
 
     /// Legacy 3-arg overload retained for pre-Module-A test call sites that
@@ -190,33 +199,50 @@ final class DownloadStartDispatcher {
         capturedAccountId: String
     ) {
         guard let delegate else { return }
-        // PP-4161 Wave 4 (Path X): streaming-HTML titles are online-only.
-        // After `processUnregisteredState` sets the registry to
-        // `.downloadNeeded` via the open-access branch (L150-159), there is
-        // no local asset to download. Module C's `BookButtonState` mapping
-        // turns `.downloadNeeded` + streamingHTML into [.readStreaming,
-        // .return]; the user taps Read to present `StreamingReaderView`.
-        // Early-return here so we don't fall through to startBorrow (no
-        // borrow link) or the asset-download URL fetch (which would 200 an
-        // HTML page that the OPDS / EPUB pipeline can't decode).
-        if book.defaultBookContentType == .streamingHTML {
+        // PP-4161 Wave 4 (Path X): streaming-HTML titles are online-only — no
+        // local asset to download; the borrow-state route needs a borrow before
+        // download; Overdrive audiobooks divert to the fulfillment handler.
+        // The branch SELECTION lives in `DownloadStartReducer.routeWithCredentials`;
+        // this method runs the chosen effect. `#if FEATURE_OVERDRIVE` gates only
+        // the precomputed Bool + the handler call, never the pure route logic.
+        #if FEATURE_OVERDRIVE
+        let isOverdriveAudiobook = book.distributor == OverdriveDistributorKey
+            && book.defaultBookContentType == .audiobook
+        let shouldDeferOverdrive = isOverdriveAudiobook
+            && MyBooksDownloadCenter.shouldDeferOverdriveFulfillment(for: book, state: state)
+        #else
+        let isOverdriveAudiobook = false
+        let shouldDeferOverdrive = false
+        #endif
+
+        let route = DownloadStartReducer.routeWithCredentials(
+            .init(
+                isStreamingHTML: book.defaultBookContentType == .streamingHTML,
+                state: state,
+                isOverdriveAudiobook: isOverdriveAudiobook,
+                shouldDeferOverdrive: shouldDeferOverdrive
+            )
+        )
+
+        switch route {
+        case .noop:
             return
-        }
-        if state == .unregistered || state == .holding {
+        case .startBorrow:
             delegate.startBorrow(for: book, attemptDownload: true, borrowCompletion: nil)
             return
-        }
-        #if FEATURE_OVERDRIVE
-        if book.distributor == OverdriveDistributorKey && book.defaultBookContentType == .audiobook {
-            if MyBooksDownloadCenter.shouldDeferOverdriveFulfillment(for: book, state: state) {
-                overdriveHandler.deferOverdriveFulfillment(for: book)
-                return
-            }
-            overdriveHandler.processOverdriveDownload(for: book, withState: state)
+        case .deferOverdrive:
+            #if FEATURE_OVERDRIVE
+            overdriveHandler.deferOverdriveFulfillment(for: book)
+            #endif
             return
+        case .processOverdrive:
+            #if FEATURE_OVERDRIVE
+            overdriveHandler.processOverdriveDownload(for: book, withState: state)
+            #endif
+            return
+        case .fallThroughToRegular:
+            processRegularDownload(for: book, withState: state, andRequest: initedRequest, capturedAccountId: capturedAccountId)
         }
-        #endif
-        processRegularDownload(for: book, withState: state, andRequest: initedRequest, capturedAccountId: capturedAccountId)
     }
 
     // MARK: - Internal
@@ -250,72 +276,99 @@ final class DownloadStartDispatcher {
         // links and rights bits reflect the current loan.
         let currentBook = delegate.bookRegistry.book(forIdentifier: book.identifier) ?? book
 
-        if currentBook.isExpired && currentBook.defaultAcquisitionIfBorrow != nil {
-            Log.warn(#file, "Book \(book.identifier) is expired. Attempting to re-borrow before download.")
-            delegate.bookRegistry.setState(.unregistered, for: book.identifier)
-            delegate.startBorrow(for: currentBook, attemptDownload: true, borrowCompletion: nil)
-            return
-        }
+        // Branch SELECTION + effect ORDER live in the pure reducer; this method
+        // executes each decided effect (logging, request construction, cookie
+        // resolution, and delegate calls stay here — the runner owns I/O).
+        let samlWithCookies = (state == .SAMLStarted) && (userAccount.cookies != nil)
+        let plan = DownloadStartReducer.reduceRegular(
+            .init(
+                state: state,
+                isExpired: currentBook.isExpired,
+                hasBorrowLink: currentBook.defaultAcquisitionIfBorrow != nil,
+                wifiOnlyEnforced: isWifiOnlyEnforced,
+                hasInitedRequest: initedRequest != nil,
+                hasAcquisitionURL: currentBook.defaultAcquisition?.hrefURL != nil,
+                samlWithCookies: samlWithCookies
+            )
+        )
 
-        if state == .downloadNeeded && currentBook.defaultAcquisitionIfBorrow != nil {
-            Log.info(#file, "Book \(book.identifier) is downloadNeeded with borrow acquisition - auto-borrowing before download")
-            delegate.bookRegistry.setState(.unregistered, for: book.identifier)
-            delegate.startBorrow(for: currentBook, attemptDownload: true) { [weak delegate] in
-                guard let delegate else { return }
-                let newState = delegate.bookRegistry.state(for: book.identifier)
-                Log.debug(#file, "Auto-borrow completed for \(book.identifier), new state: \(newState)")
-                if newState != .downloading && newState != .downloadSuccessful && newState != .downloadNeeded {
-                    Log.warn(#file, "Auto-borrow completed but book is not downloadable, state: \(newState)")
-                }
-            }
-            return
-        }
-
-        if isWifiOnlyEnforced {
-            delegate.failWithWifiRequired(for: currentBook)
-            return
-        }
-
-        let request: URLRequest
-        if let initedRequest {
-            request = initedRequest
-        } else if let url = currentBook.defaultAcquisition?.hrefURL {
+        // Lazily built once, only when a download-tail effect needs it. The
+        // reducer has already established that a request source exists.
+        func resolveRequest() -> URLRequest? {
+            if let initedRequest { return initedRequest }
+            guard let url = currentBook.defaultAcquisition?.hrefURL else { return nil }
             // Captured-accountId path: feed the pinned accountId into the
-            // bearer-auth applier so the resulting Authorization header
-            // matches the library selected at download START, not whatever
+            // bearer-auth applier so the resulting Authorization header matches
+            // the library selected at download START, not whatever
             // `currentUserAccount` resolves to at request-build time.
-            request = applyBearerAuth(
+            return applyBearerAuth(
                 URLRequest(url: url, applyingCustomUserAgent: true),
                 capturedAccountId
             )
-        } else {
-            delegate.logInvalidURLRequest(for: currentBook, withState: state, url: nil, request: nil)
-            return
         }
 
-        guard request.url != nil else {
-            delegate.logInvalidURLRequest(for: currentBook, withState: state, url: currentBook.defaultAcquisition?.hrefURL, request: request)
-            return
-        }
+        for effect in plan {
+            switch effect {
+            case .setStateUnregistered:
+                if currentBook.isExpired {
+                    Log.warn(#file, "Book \(book.identifier) is expired. Attempting to re-borrow before download.")
+                } else {
+                    Log.info(#file, "Book \(book.identifier) is downloadNeeded with borrow acquisition - auto-borrowing before download")
+                }
+                delegate.bookRegistry.setState(.unregistered, for: book.identifier)
 
-        // Reclaim space only when free disk is genuinely low. The previous
-        // unconditional `enforceContentDiskBudgetIfNeeded(adding: 0)` ran on
-        // every new download against a tight 2.5 GB budget, silently evicting
-        // older books to make room — the root cause of "titles revert to
-        // Download Needed after quits/library changes."
-        memoryPressureMonitor.reclaimDiskSpaceIfNeeded(minimumFreeMegabytes: 512)
+            case let .startBorrow(attemptDownload, withCompletion):
+                if withCompletion {
+                    delegate.startBorrow(for: currentBook, attemptDownload: attemptDownload) { [weak delegate] in
+                        guard let delegate else { return }
+                        let newState = delegate.bookRegistry.state(for: book.identifier)
+                        Log.debug(#file, "Auto-borrow completed for \(book.identifier), new state: \(newState)")
+                        if newState != .downloading && newState != .downloadSuccessful && newState != .downloadNeeded {
+                            Log.warn(#file, "Auto-borrow completed but book is not downloadable, state: \(newState)")
+                        }
+                    }
+                } else {
+                    delegate.startBorrow(for: currentBook, attemptDownload: attemptDownload, borrowCompletion: nil)
+                }
 
-        if state == .SAMLStarted, let cookies = userAccount.cookies {
-            Log.info(#file, "SAML authentication flow for '\(currentBook.title)'")
-            delegate.handleSAMLStartedState(for: currentBook, withRequest: request, cookies: cookies)
-        } else {
-            if userAccount.authToken != nil {
-                Log.debug(#file, "Auth token present for '\(currentBook.title)', proceeding with download")
-            } else if userAccount.cookies != nil {
-                Log.debug(#file, "Using saved SAML cookies for '\(currentBook.title)', proceeding with download")
+            case .failWifi:
+                delegate.failWithWifiRequired(for: currentBook)
+
+            case let .logInvalidRequest(hasURL):
+                delegate.logInvalidURLRequest(
+                    for: currentBook, withState: state,
+                    url: hasURL ? currentBook.defaultAcquisition?.hrefURL : nil,
+                    request: nil
+                )
+
+            case .reclaimDiskSpace:
+                // Reclaim space only when free disk is genuinely low — mirrors
+                // the pre-extraction unconditional pre-download call.
+                memoryPressureMonitor.reclaimDiskSpaceIfNeeded(minimumFreeMegabytes: 512)
+
+            case .handleSAML:
+                guard let request = resolveRequest(), request.url != nil else {
+                    delegate.logInvalidURLRequest(for: currentBook, withState: state, url: currentBook.defaultAcquisition?.hrefURL, request: nil)
+                    return
+                }
+                Log.info(#file, "SAML authentication flow for '\(currentBook.title)'")
+                delegate.handleSAMLStartedState(for: currentBook, withRequest: request, cookies: userAccount.cookies ?? [])
+
+            case .clearAndSetCookies:
+                if userAccount.authToken != nil {
+                    Log.debug(#file, "Auth token present for '\(currentBook.title)', proceeding with download")
+                } else if userAccount.cookies != nil {
+                    Log.debug(#file, "Using saved SAML cookies for '\(currentBook.title)', proceeding with download")
+                }
+                delegate.clearAndSetCookies()
+
+            case .addDownloadTask:
+                guard let request = resolveRequest(), request.url != nil else {
+                    delegate.logInvalidURLRequest(for: currentBook, withState: state, url: currentBook.defaultAcquisition?.hrefURL, request: nil)
+                    return
+                }
+                delegate.addDownloadTask(with: request, book: currentBook)
             }
-            delegate.clearAndSetCookies()
-            delegate.addDownloadTask(with: request, book: currentBook)
         }
     }
 }

@@ -185,55 +185,15 @@ final class BorrowOperation: @unchecked Sendable {
         }
     }
 
+    /// E2 (WS7): the availability→state + Loan→Hold race logic now lives in the
+    /// pure `BorrowReducerCore.responseState`. This static is retained as the
+    /// stable entry point for external callers (`MyBooksDownloadCenter+Async`,
+    /// the MBDC forwarder, and their tests) and simply delegates.
     static func borrowResponseState(
         for postBorrowBook: TPPBook,
         preBorrowBook: TPPBook? = nil
     ) -> (state: TPPBookState, error: PalaceError?) {
-        guard let availability = postBorrowBook.defaultAcquisition?.availability else {
-            return (.downloadNeeded, nil)
-        }
-
-        let userTappedPlaceHold = preBorrowBook.map(preBorrowWasUnavailable) ?? false
-
-        var state: TPPBookState = .downloadNeeded
-        var error: PalaceError?
-
-        availability.match(
-            unavailable: { _ in
-                state = .holding
-                if !userTappedPlaceHold {
-                    error = .bookRegistry(.holdCopyUnavailable)
-                }
-            },
-            limited: { _ in state = .downloadNeeded },
-            unlimited: { _ in state = .downloadNeeded },
-            reserved: { _ in
-                state = .holding
-                if !userTappedPlaceHold {
-                    error = .bookRegistry(.holdCopyUnavailable)
-                }
-            },
-            ready: { _ in state = .downloadNeeded }
-        )
-
-        return (state, error)
-    }
-
-    /// Pre-borrow availability discriminator: was the user looking at a
-    /// no-copies title and able only to Place Hold? PP-4178 follow-up.
-    private static func preBorrowWasUnavailable(_ book: TPPBook) -> Bool {
-        guard let availability = book.defaultAcquisition?.availability else {
-            return false
-        }
-        var wasUnavailable = false
-        availability.match(
-            unavailable: { _ in wasUnavailable = true },
-            limited: { _ in },
-            unlimited: { _ in },
-            reserved: { _ in },
-            ready: { _ in }
-        )
-        return wasUnavailable
+        BorrowReducerCore.responseState(for: postBorrowBook, preBorrowBook: preBorrowBook)
     }
 
     /// Builds a user-friendly borrow error message that always uses
@@ -311,6 +271,16 @@ final class BorrowOperation: @unchecked Sendable {
     /// Optional so existing tests keep compiling without rework.
     private let authCoordinator: AuthCoordinator?
 
+    /// Fire-and-forget side effect run once a borrow SUCCEEDS — the app-rating
+    /// secondary trigger (PP-4088). Injected so the critical borrow path holds
+    /// no hidden `AppContainer.production()` reach: production wires this to
+    /// `AppContainer.production().ratingPromptPresenter.noteBorrowSucceeded()`
+    /// (see `MyBooksDownloadCenter`); tests inject a recording/no-op closure so
+    /// the success path is deterministic and does not build the full DI graph on
+    /// the MainActor (which deadlocked the @MainActor contract tests). Defaults
+    /// to a no-op so non-production construction sites need no change.
+    private let onBorrowSucceeded: @MainActor () -> Void
+
     // MARK: - Init
 
     #if FEATURE_DRM_CONNECTOR
@@ -326,7 +296,8 @@ final class BorrowOperation: @unchecked Sendable {
         presentBorrowErrorAlert: @escaping @MainActor (String, String, NSError?, TPPProblemDocument?, TPPBook, (() -> Void)?) -> Void,
         presentSignInModal: @escaping @MainActor (@escaping () -> Void) -> Void,
         attemptOIDCReauth: @escaping () async -> Bool,
-        authCoordinator: AuthCoordinator? = nil
+        authCoordinator: AuthCoordinator? = nil,
+        onBorrowSucceeded: @escaping @MainActor () -> Void = {}
     ) {
         self.bookRegistry = bookRegistry
         self.downloadAnnouncementService = downloadAnnouncementService
@@ -340,6 +311,7 @@ final class BorrowOperation: @unchecked Sendable {
         self.presentSignInModal = presentSignInModal
         self.attemptOIDCReauth = attemptOIDCReauth
         self.authCoordinator = authCoordinator
+        self.onBorrowSucceeded = onBorrowSucceeded
     }
     #else
     init(
@@ -353,7 +325,8 @@ final class BorrowOperation: @unchecked Sendable {
         presentBorrowErrorAlert: @escaping @MainActor (String, String, NSError?, TPPProblemDocument?, TPPBook, (() -> Void)?) -> Void,
         presentSignInModal: @escaping @MainActor (@escaping () -> Void) -> Void,
         attemptOIDCReauth: @escaping () async -> Bool,
-        authCoordinator: AuthCoordinator? = nil
+        authCoordinator: AuthCoordinator? = nil,
+        onBorrowSucceeded: @escaping @MainActor () -> Void = {}
     ) {
         self.bookRegistry = bookRegistry
         self.downloadAnnouncementService = downloadAnnouncementService
@@ -366,6 +339,7 @@ final class BorrowOperation: @unchecked Sendable {
         self.presentSignInModal = presentSignInModal
         self.attemptOIDCReauth = attemptOIDCReauth
         self.authCoordinator = authCoordinator
+        self.onBorrowSucceeded = onBorrowSucceeded
     }
     #endif
 
@@ -454,44 +428,57 @@ final class BorrowOperation: @unchecked Sendable {
             )
             self.bookRegistry.setState(mapping.state, for: borrowedBook.identifier)
 
-            if let raceError = mapping.error {
-                Task { [errorActivityTracker] in await errorActivityTracker.log(
-                    "Borrow for '\(borrowedBook.title)' returned \(mapping.state) — CM Loan→Hold race (PP-4178)",
-                    category: .borrow
-                ) }
-                TPPErrorLogger.logError(raceError, summary: "Borrow race: CM returned hold for '\(borrowedBook.title)'")
-                throw raceError
-            }
+            // Branch SELECTION + effect ORDER live in the pure
+            // `BorrowReducerCore.postResponseEffects`; this loop runs each
+            // decided effect (logging, MainActor hops, the throw, and the sync
+            // `Task` stay here — the operation owns the effects).
+            let postEffects = BorrowReducerCore.postResponseEffects(
+                state: mapping.state,
+                isStreamingHTML: borrowedBook.isStreamingHTML,
+                attemptDownload: attemptDownload,
+                hasRaceError: mapping.error != nil
+            )
 
-            Task { [errorActivityTracker] in await errorActivityTracker.log("Borrow succeeded for '\(borrowedBook.title)', state: \(mapping.state)", category: .borrow) }
+            for effect in postEffects {
+                switch effect {
+                case .failWithRaceError:
+                    // PP-4178: registry is already updated to the hold state; now
+                    // throw so the catch block surfaces the borrow-failed alert.
+                    let raceError = mapping.error ?? .bookRegistry(.holdCopyUnavailable)
+                    Task { [errorActivityTracker] in await errorActivityTracker.log(
+                        "Borrow for '\(borrowedBook.title)' returned \(mapping.state) — CM Loan→Hold race (PP-4178)",
+                        category: .borrow
+                    ) }
+                    TPPErrorLogger.logError(raceError, summary: "Borrow race: CM returned hold for '\(borrowedBook.title)'")
+                    throw raceError
 
-            downloadAnnouncementService.announceBorrowSucceeded(for: borrowedBook)
+                case .announceBorrowSucceeded:
+                    Task { [errorActivityTracker] in await errorActivityTracker.log("Borrow succeeded for '\(borrowedBook.title)', state: \(mapping.state)", category: .borrow) }
+                    downloadAnnouncementService.announceBorrowSucceeded(for: borrowedBook)
 
-            // App-rating secondary trigger (PP-4088): a successful borrow is a
-            // positive moment. The gate is shown only if the patron is eligible.
-            Task { @MainActor in AppContainer.production().ratingPromptPresenter.noteBorrowSucceeded() }
+                case .noteBorrowSucceeded:
+                    // App-rating secondary trigger (PP-4088). Injected seam
+                    // instead of a direct `AppContainer.production()` reach; run
+                    // sequentially (not fire-and-forget) so the emitted effect
+                    // order is deterministic relative to `startDownload`.
+                    await MainActor.run { [onBorrowSucceeded] in onBorrowSucceeded() }
 
-            // F-014: condition was inverted (`!= .downloadNeeded`), skipping
-            // auto-download on the most common post-borrow state and stranding
-            // the user on a manual Download tap. The borrow→download chain is
-            // a single user-intent step from the half-sheet, so fire startDownload
-            // whenever the borrow lands on .downloadNeeded. .holding (hold placed,
-            // not yet ready) and other terminal-after-borrow states correctly
-            // skip the chain — there's nothing to download yet.
-            // PP-4161 advisory F: streaming-HTML has no downloadable asset; readStreaming is the terminal action.
-            if attemptDownload && mapping.state == .downloadNeeded && !borrowedBook.isStreamingHTML {
-                await MainActor.run { [weak self] in
-                    self?.delegate?.startDownload(for: borrowedBook, withRequest: nil)
-                }
-            }
+                case .startDownload:
+                    // F-014: the borrow→download chain is one user-intent step
+                    // from the half-sheet — fire whenever the borrow lands on
+                    // `.downloadNeeded` (non-streaming). `.holding` and terminal
+                    // states correctly skip it (nothing to download yet).
+                    await MainActor.run { [weak self] in
+                        self?.delegate?.startDownload(for: borrowedBook, withRequest: nil)
+                    }
 
-            // trigger a sync after a short delay so hold position
-            // updates from the loans feed (immediate borrow response often
-            // returns holdPosition=0).
-            if mapping.state == .holding {
-                Task { @MainActor in
-                    try? await Task.sleep(nanoseconds: 2_000_000_000)
-                    (self.bookRegistry as? TPPBookRegistry)?.sync()
+                case .scheduleHoldPositionSync:
+                    // Sync shortly after so the hold position updates from the
+                    // loans feed (the immediate response often returns position 0).
+                    Task { @MainActor in
+                        try? await Task.sleep(nanoseconds: 2_000_000_000)
+                        (self.bookRegistry as? TPPBookRegistry)?.sync()
+                    }
                 }
             }
 
@@ -628,17 +615,7 @@ final class BorrowOperation: @unchecked Sendable {
         // invalidCredentials — but credentials are valid, the borrow
         // simply isn't needed.
         let registeredState = self.bookRegistry.state(for: book.identifier)
-        let alreadyHasLoan: Bool = {
-            switch registeredState {
-            case .downloadNeeded, .downloading, .downloadSuccessful,
-                 .downloadFailed, .holding, .SAMLStarted, .used, .returning:
-                return true
-            case .unregistered, .unsupported:
-                return false
-            @unknown default:
-                return false
-            }
-        }()
+        let alreadyHasLoan = BorrowReducerCore.alreadyHasActiveLoan(state: registeredState)
         if alreadyHasLoan && hasCredentials {
             Log.warn(#file, "[SQ-007] Borrow auth-error suppressed for '\(book.title)' — book is already in registry with state \(registeredState) and credentials are present. Treating as benign auto-re-borrow failure, not a credentials problem.")
             return .suppressAndClearSpinner

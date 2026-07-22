@@ -382,125 +382,121 @@ final class NetworkExecutorCredentialGuardTests: XCTestCase {
 
     // MARK: refreshTokenAndResume Guards
 
-    func testRefreshTokenAndResume_NoCredentials_FailsGracefully() {
+    func testRefreshTokenAndResume_NoCredentials_FailsGracefully() async {
         let executor = makeExecutor()
-        let expectation = XCTestExpectation(description: "Refresh completes with failure")
 
-        executor.refreshTokenAndResume(task: nil, accountId: "nonexistent-account-xyz") { result in
-            switch result {
-            case .failure:
-                break
-            case .success:
-                XCTFail("Expected failure when no credentials are available")
+        // Deterministic join: await the ACTUAL refresh completion instead of a
+        // wall-clock deadline. refreshTokenAndResume's completion fires as the
+        // last step of the refresh, so bridging it through a continuation
+        // resumes exactly when the refresh settles — it can't starve under
+        // parallel-CI contention the way the fixed 10s timeout did.
+        // Resume with a Sendable projection — only the case matters here, and
+        // NYPLResult is not Sendable, so sending the whole value out of the
+        // off-isolation completion trips Swift 6's `sending 'result'`.
+        let succeeded = await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
+            executor.refreshTokenAndResume(task: nil, accountId: "nonexistent-account-xyz") { result in
+                if case .success = result { cont.resume(returning: true) }
+                else { cont.resume(returning: false) }
             }
-            expectation.fulfill()
         }
 
-        // 10s: refreshTokenAndResume spawns a Task and calls completion
-        // from inside it, so wait depends on Swift-concurrency scheduling.
-        // macos-26 CI under load occasionally exceeds the 5s window even
-        // though local Macs complete in ~30ms (flaked in PR #893 CI).
-        // 10s is generous but still surfaces true completion-not-fired bugs.
-        wait(for: [expectation], timeout: 10.0)
+        XCTAssertFalse(succeeded, "Expected failure when no credentials are available")
     }
 
-    func testRefreshTokenAndResume_NilTask_NilAccountId_DoesNotCrash() {
+    func testRefreshTokenAndResume_NilTask_NilAccountId_DoesNotCrash() async {
         let executor = makeExecutor()
-        let expectation = XCTestExpectation(description: "Refresh completes")
         var gotResult = false
 
-        executor.refreshTokenAndResume(task: nil, accountId: nil) { _ in
-            gotResult = true
-            expectation.fulfill()
+        // Deterministic join: awaiting the completion IS the assertion that it
+        // fired — the continuation only resumes when refreshTokenAndResume
+        // invokes its completion. No wall-clock timeout to starve under CI load.
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            executor.refreshTokenAndResume(task: nil, accountId: nil) { _ in
+                gotResult = true
+                cont.resume()
+            }
         }
 
-        // 10s: refreshTokenAndResume spawns a Task and calls completion
-        // from inside it, so wait depends on Swift-concurrency scheduling.
-        // macos-26 CI under load occasionally exceeds the 5s window even
-        // though local Macs complete in ~30ms (flaked in PR #893 CI).
-        // 10s is generous but still surfaces true completion-not-fired bugs.
-        wait(for: [expectation], timeout: 10.0)
         XCTAssertTrue(gotResult,
                       "Completion must be invoked (success or failure) even with nil task and nil accountId")
     }
 
-    func testRefreshTokenAndResume_DefaultAccountId_BackwardCompatible() {
+    func testRefreshTokenAndResume_DefaultAccountId_BackwardCompatible() async {
         let executor = makeExecutor()
-        let expectation = XCTestExpectation(description: "Refresh completes")
         var gotResult = false
 
-        executor.refreshTokenAndResume(task: nil) { _ in
-            gotResult = true
-            expectation.fulfill()
+        // Deterministic join: the continuation resumes exactly when the
+        // backward-compat overload delivers its completion — no fixed deadline.
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            executor.refreshTokenAndResume(task: nil) { _ in
+                gotResult = true
+                cont.resume()
+            }
         }
 
-        // 10s: refreshTokenAndResume spawns a Task and calls completion
-        // from inside it, so wait depends on Swift-concurrency scheduling.
-        // macos-26 CI under load occasionally exceeds the 5s window even
-        // though local Macs complete in ~30ms (flaked in PR #893 CI).
-        // 10s is generous but still surfaces true completion-not-fired bugs.
-        wait(for: [expectation], timeout: 10.0)
         XCTAssertTrue(gotResult,
                       "Backward-compat overload (no accountId) must still deliver a completion")
     }
 
     // MARK: executeTokenRefresh Guards
 
-    func testExecuteTokenRefresh_EmptyUsername_FailsViaTokenRequestGuard() {
+    func testExecuteTokenRefresh_EmptyUsername_FailsViaTokenRequestGuard() async {
         let executor = makeExecutor()
-        let expectation = XCTestExpectation(description: "Refresh completes")
 
         HTTPStubURLProtocol.register { _ in
             XCTFail("Should not reach the network with empty username")
             return nil
         }
 
+        // Deterministic join: await executeTokenRefresh's actual completion.
+        // The empty-credential guard fires the completion directly, so the
+        // continuation resumes the instant the guard rejects — no clock.
         let tokenURL = URL(string: "https://example.com/token")!
-        executor.executeTokenRefresh(
-            username: "",
-            password: "validpin",
-            tokenURL: tokenURL
-        ) { result in
-            switch result {
-            case .failure(let error):
-                XCTAssertTrue(error.localizedDescription.contains("empty") || error.localizedDescription.contains("username"),
-                              "Should fail with empty credentials error, got: \(error.localizedDescription)")
-            case .success:
-                XCTFail("Expected failure for empty username")
+        let result = await withCheckedContinuation { (cont: CheckedContinuation<Result<TokenResponse, Error>, Never>) in
+            executor.executeTokenRefresh(
+                username: "",
+                password: "validpin",
+                tokenURL: tokenURL
+            ) { result in
+                cont.resume(returning: result)
             }
-            expectation.fulfill()
         }
 
-        wait(for: [expectation], timeout: 5.0)
+        switch result {
+        case .failure(let error):
+            XCTAssertTrue(error.localizedDescription.contains("empty") || error.localizedDescription.contains("username"),
+                          "Should fail with empty credentials error, got: \(error.localizedDescription)")
+        case .success:
+            XCTFail("Expected failure for empty username")
+        }
     }
 
-    func testExecuteTokenRefresh_BothEmpty_FailsViaTokenRequestGuard() {
+    func testExecuteTokenRefresh_BothEmpty_FailsViaTokenRequestGuard() async {
         let executor = makeExecutor()
-        let expectation = XCTestExpectation(description: "Refresh completes")
 
         let tokenURL = URL(string: "https://example.com/token")!
-        executor.executeTokenRefresh(
-            username: "",
-            password: "",
-            tokenURL: tokenURL
-        ) { result in
-            switch result {
-            case .failure:
-                break
-            case .success:
-                XCTFail("Expected failure for both credentials empty")
+        let result = await withCheckedContinuation { (cont: CheckedContinuation<Result<TokenResponse, Error>, Never>) in
+            executor.executeTokenRefresh(
+                username: "",
+                password: "",
+                tokenURL: tokenURL
+            ) { result in
+                cont.resume(returning: result)
             }
-            expectation.fulfill()
         }
 
-        wait(for: [expectation], timeout: 5.0)
+        switch result {
+        case .failure:
+            break
+        case .success:
+            XCTFail("Expected failure for both credentials empty")
+        }
     }
 
     // MARK: executeTokenRefresh Success Path
 
-    func testExecuteTokenRefresh_ValidCredentials_ReturnsTokenResponse() {
+    func testExecuteTokenRefresh_ValidCredentials_ReturnsTokenResponse() async {
         let executor = makeExecutor()
-        let expectation = XCTestExpectation(description: "Refresh completes")
 
         HTTPStubURLProtocol.register { request in
             guard request.url?.absoluteString.contains("token") == true else { return nil }
@@ -514,29 +510,31 @@ final class NetworkExecutorCredentialGuardTests: XCTestCase {
             )
         }
 
+        // Deterministic join: the continuation resumes when the refresh's HTTP
+        // round-trip settles and the completion fires — not after a fixed 5s.
         let tokenURL = URL(string: "https://example.com/patrons/me/token/")!
-        executor.executeTokenRefresh(
-            username: "12345",
-            password: "1234",
-            tokenURL: tokenURL
-        ) { result in
-            switch result {
-            case .success(let response):
-                XCTAssertEqual(response.accessToken, "fresh-token-abc")
-                XCTAssertEqual(response.tokenType, "Bearer")
-                XCTAssertEqual(response.expiresIn, 7200)
-            case .failure(let error):
-                XCTFail("Expected success but got: \(error)")
+        let result = await withCheckedContinuation { (cont: CheckedContinuation<Result<TokenResponse, Error>, Never>) in
+            executor.executeTokenRefresh(
+                username: "12345",
+                password: "1234",
+                tokenURL: tokenURL
+            ) { result in
+                cont.resume(returning: result)
             }
-            expectation.fulfill()
         }
 
-        wait(for: [expectation], timeout: 5.0)
+        switch result {
+        case .success(let response):
+            XCTAssertEqual(response.accessToken, "fresh-token-abc")
+            XCTAssertEqual(response.tokenType, "Bearer")
+            XCTAssertEqual(response.expiresIn, 7200)
+        case .failure(let error):
+            XCTFail("Expected success but got: \(error)")
+        }
     }
 
-    func testExecuteTokenRefresh_ServerReturns401_ReturnsFailure() {
+    func testExecuteTokenRefresh_ServerReturns401_ReturnsFailure() async {
         let executor = makeExecutor()
-        let expectation = XCTestExpectation(description: "Refresh completes")
 
         HTTPStubURLProtocol.register { request in
             guard request.url?.absoluteString.contains("token") == true else { return nil }
@@ -545,26 +543,26 @@ final class NetworkExecutorCredentialGuardTests: XCTestCase {
         }
 
         let tokenURL = URL(string: "https://example.com/patrons/me/token/")!
-        executor.executeTokenRefresh(
-            username: "12345",
-            password: "wrongpin",
-            tokenURL: tokenURL
-        ) { result in
-            switch result {
-            case .failure:
-                break
-            case .success:
-                XCTFail("Expected failure for 401 from token endpoint")
+        let result = await withCheckedContinuation { (cont: CheckedContinuation<Result<TokenResponse, Error>, Never>) in
+            executor.executeTokenRefresh(
+                username: "12345",
+                password: "wrongpin",
+                tokenURL: tokenURL
+            ) { result in
+                cont.resume(returning: result)
             }
-            expectation.fulfill()
         }
 
-        wait(for: [expectation], timeout: 5.0)
+        switch result {
+        case .failure:
+            break
+        case .success:
+            XCTFail("Expected failure for 401 from token endpoint")
+        }
     }
 
-    func testExecuteTokenRefresh_WithAccountId_Succeeds() {
+    func testExecuteTokenRefresh_WithAccountId_Succeeds() async {
         let executor = makeExecutor()
-        let expectation = XCTestExpectation(description: "Refresh completes")
 
         HTTPStubURLProtocol.register { request in
             guard request.url?.absoluteString.contains("token") == true else { return nil }
@@ -578,23 +576,27 @@ final class NetworkExecutorCredentialGuardTests: XCTestCase {
             )
         }
 
+        // Deterministic join to the actual refresh completion — the exact fix
+        // for this test's parallel-CI-clone flake (fixed 5s deadline starved
+        // under 2 concurrent sim clones and failed all 3 retries).
         let tokenURL = URL(string: "https://example.com/patrons/me/token/")!
-        executor.executeTokenRefresh(
-            username: "user",
-            password: "pass",
-            tokenURL: tokenURL,
-            accountId: "urn:uuid:test-library-123"
-        ) { result in
-            switch result {
-            case .success(let response):
-                XCTAssertEqual(response.accessToken, "account-specific-token")
-            case .failure(let error):
-                XCTFail("Expected success but got: \(error)")
+        let result = await withCheckedContinuation { (cont: CheckedContinuation<Result<TokenResponse, Error>, Never>) in
+            executor.executeTokenRefresh(
+                username: "user",
+                password: "pass",
+                tokenURL: tokenURL,
+                accountId: "urn:uuid:test-library-123"
+            ) { result in
+                cont.resume(returning: result)
             }
-            expectation.fulfill()
         }
 
-        wait(for: [expectation], timeout: 5.0)
+        switch result {
+        case .success(let response):
+            XCTAssertEqual(response.accessToken, "account-specific-token")
+        case .failure(let error):
+            XCTFail("Expected success but got: \(error)")
+        }
     }
 }
 
@@ -654,26 +656,21 @@ final class ConcurrentTokenRefreshTests: XCTestCase {
         }
     }
 
-    func testRefreshTokenAndResume_noCredentials_failsImmediately() {
+    func testRefreshTokenAndResume_noCredentials_failsImmediately() async {
         let executor = makeExecutor()
-        let expectation = XCTestExpectation(description: "Refresh completes")
-        var wasFailure = false
 
-        executor.refreshTokenAndResume(task: nil) { result in
-            if case .failure = result {
-                wasFailure = true
-                expectation.fulfill()
+        // Deterministic join: await the refresh's actual completion rather than
+        // a fixed 10s deadline. The continuation resumes exactly when
+        // refreshTokenAndResume settles, so it cannot starve under parallel-CI
+        // scheduling contention.
+        let succeeded = await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
+            executor.refreshTokenAndResume(task: nil) { result in
+                if case .success = result { cont.resume(returning: true) }
+                else { cont.resume(returning: false) }
             }
         }
 
-        // 10s: refreshTokenAndResume spawns a Task and calls completion
-        // from inside it, so wait depends on Swift-concurrency scheduling.
-        // macos-26 CI under load occasionally exceeds the 5s window even
-        // though local Macs complete in ~30ms (flaked in PR #893 CI).
-        // 10s is generous but still surfaces true completion-not-fired bugs.
-        wait(for: [expectation], timeout: 10.0)
-        XCTAssertTrue(wasFailure,
-                      "refreshTokenAndResume without credentials must fail immediately, not succeed")
+        XCTAssertFalse(succeeded, "refreshTokenAndResume without credentials must fail immediately, not succeed")
     }
 }
 
@@ -970,9 +967,8 @@ final class TokenRefreshIntegrationTests: XCTestCase {
                        "executeTokenRefresh should delegate to TokenRequest which sets the correct Basic Auth header")
     }
 
-    func testExecuteTokenRefresh_EmptyUsername_NeverHitsNetwork() {
+    func testExecuteTokenRefresh_EmptyUsername_NeverHitsNetwork() async {
         let executor = makeExecutor()
-        let expectation = XCTestExpectation(description: "Token refresh completes")
         var networkCallMade = false
 
         HTTPStubURLProtocol.register { _ in
@@ -980,16 +976,21 @@ final class TokenRefreshIntegrationTests: XCTestCase {
             return HTTPStubURLProtocol.StubbedResponse(statusCode: 200, headers: nil, body: Data())
         }
 
+        // Deterministic join: the empty-username guard fires the completion
+        // without any network I/O, so awaiting the completion resumes the
+        // instant the guard rejects — no wall-clock deadline to starve. By the
+        // time the continuation returns, the guard has run, so networkCallMade
+        // reflects the final decision.
         let tokenURL = URL(string: "https://example.com/token")!
-        executor.executeTokenRefresh(
-            username: "",
-            password: "pin",
-            tokenURL: tokenURL
-        ) { _ in
-            expectation.fulfill()
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            executor.executeTokenRefresh(
+                username: "",
+                password: "pin",
+                tokenURL: tokenURL
+            ) { _ in
+                cont.resume()
+            }
         }
-
-        wait(for: [expectation], timeout: 5.0)
 
         XCTAssertFalse(networkCallMade,
                        "Empty username must be caught before any network I/O")

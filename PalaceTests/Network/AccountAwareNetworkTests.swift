@@ -13,7 +13,9 @@ import XCTest
 import PalaceAuth
 @testable import Palace
 
-@MainActor
+// Deliberately NOT @MainActor: the executor completions resume checked
+// continuations with non-Sendable payloads — a @MainActor test makes those
+// Swift 6 sending errors. Nothing here touches UI or main-actor state.
 final class AccountAwareNetworkTests: XCTestCase {
 
     override func setUp() {
@@ -240,14 +242,19 @@ final class AccountAwareNetworkTests: XCTestCase {
 
         let tokenURL = URL(string: "https://example.com/token")!
 
-        let result: Result<TokenResponse, Error> = await withCheckedContinuation { continuation in
+        // LockIsolated hand-off: TokenResponse is non-Sendable, so resuming
+        // the continuation with it is a Swift 6 sending error — carry the
+        // result in a box and resume Void.
+        let resultBox = LockIsolated<Result<TokenResponse, Error>?>(nil)
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             executor.executeTokenRefresh(
                 username: "testuser",
                 password: "testpass",
                 tokenURL: tokenURL,
                 accountId: "urn:uuid:test-account"
-            ) { continuation.resume(returning: $0) }
+            ) { resultBox.value = $0; continuation.resume() }
         }
+        let result = resultBox.value!
 
         switch result {
         case .success(let response):
@@ -282,13 +289,16 @@ final class AccountAwareNetworkTests: XCTestCase {
 
         // Call without accountId (default nil). Verify backward-compat overload
         // still delivers a result (the stub returns a valid access_token).
-        let result: Result<TokenResponse, Error> = await withCheckedContinuation { continuation in
+        // LockIsolated hand-off — same sending rationale as the test above.
+        let resultBox = LockIsolated<Result<TokenResponse, Error>?>(nil)
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             executor.executeTokenRefresh(
                 username: "testuser",
                 password: "testpass",
                 tokenURL: tokenURL
-            ) { continuation.resume(returning: $0) }
+            ) { resultBox.value = $0; continuation.resume() }
         }
+        let result = resultBox.value!
 
         HTTPStubURLProtocol.reset()
         switch result {

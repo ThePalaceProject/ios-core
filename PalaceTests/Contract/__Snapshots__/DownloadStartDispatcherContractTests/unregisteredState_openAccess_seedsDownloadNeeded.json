@@ -1,0 +1,9 @@
+[
+  {
+    "args" : {
+      "bookId" : "DSD-UNREG-OA",
+      "state" : "download-needed"
+    },
+    "method" : "registry.addBook"
+  }
+]
