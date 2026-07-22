@@ -409,16 +409,16 @@ jobs:
             // ═══════════════════════════════════════════════════════════════
             // TEST COVERAGE SECTION (QAAtlas) - only if qa domain enabled
             // ═══════════════════════════════════════════════════════════════
-            body += '---\n';
-            body += '### 🧪 Test Coverage (via QAAtlas)\n\n';
-            
-            // Check if we have valid QA data
+            // TEST COVERAGE (QAAtlas): the `qa` domain is disabled
+            // (DOMAINS="arch,reach,a11y" at the top of this file), so this
+            // section stays SILENT rather than posting a standing "set
+            // OPENAI_API_KEY" banner on every PR — a constant banner is noise
+            // that trains readers to skim past warnings
+            // (pr-report-contract.md §2, delta-or-silent).
             const hasQAData = qaCoverage && parseFloat(qaCoverage) > 0 || (parseInt(qaTested) > 0 || parseInt(qaTotal) > 0);
-            
-            if (!hasQAData) {
-              body += '> ⚠️ **No coverage data available** - QAAtlas requires an OpenAI API key.\n';
-              body += '> Set `OPENAI_API_KEY` in repository secrets to enable AI-powered test coverage analysis.\n\n';
-            } else {
+            if (hasQAData) {
+              body += '---\n';
+              body += '### 🧪 Test Coverage (via QAAtlas)\n\n';
               const coverageNum = parseFloat(qaCoverage);
               const coverageIcon = coverageNum >= 50 ? '🟢' : coverageNum >= 30 ? '🟡' : '🔴';
               body += `**Coverage Estimate:** ${coverageIcon} **${qaCoverage}%**\n\n`;
@@ -519,7 +519,17 @@ jobs:
             body += `| Layer Violations | ${violations} | Dependencies that break architectural boundaries |\n`;
             body += `| Hotspots | ${hotspots} | Files with high complexity + frequent changes |\n`;
             body += `| Avg Coupling | ${avgCoupling} | How interconnected modules are (lower is better, <1.0 is good) |\n\n`;
-            
+
+            // Honesty note: these are repo-BASELINE metrics, not diff deltas —
+            // they read identically on most PRs. Don't misread a constant as
+            // PR-caused. A true base-vs-head delta is a tracked Obligation
+            // (pr-report-contract.md §2).
+            if (changedFiles === '0') {
+              body += `> ℹ️ This diff changed **0** architecture-relevant files — the numbers above are the repo baseline, unchanged by this PR.\n\n`;
+            } else {
+              body += `> ℹ️ Baseline metrics (whole-repo), not a diff delta. Watch for a value that *moves* vs. \`develop\`, not its absolute level.\n\n`;
+            }
+
             if (parseInt(archIssues) === 0 && cycles === '0' && violations === '0') {
               body += '✅ **Architecture looks healthy!**\n\n';
             } else {
@@ -527,7 +537,13 @@ jobs:
               if (parseInt(archIssues) > 0) {
                 body += `⚠️ Found **${archIssues}** architectural issue(s).\n\n`;
               }
-              
+              // A layer violation with no issue count still gets NAMED, not left
+              // as a bare number the reader can't act on (pr-report-contract.md
+              // gap #8). Surfaces the same findings file below.
+              if (parseInt(violations) > 0) {
+                body += `⚠️ **${violations}** layer violation(s) — see **Architecture Findings** below for the offending dependency edge(s).\n\n`;
+              }
+
               // Expandable: Dependency Cycles
               if (parseInt(cycles) > 0) {
                 body += '<details>\n<summary><strong>🔄 Dependency Cycles</strong></summary>\n\n';
@@ -544,8 +560,9 @@ jobs:
                 body += '\n</details>\n\n';
               }
               
-              // Expandable: All Findings
-              if (parseInt(archIssues) > 0) {
+              // Expandable: All Findings — open when a violation exists so the
+              // offending edge is named, not just counted (gap #8).
+              if (parseInt(archIssues) > 0 || parseInt(violations) > 0) {
                 body += '<details>\n<summary><strong>📋 Architecture Findings</strong></summary>\n\n';
                 try {
                   const findings = fs.readFileSync('/tmp/arch_findings.md', 'utf8');
@@ -569,7 +586,14 @@ jobs:
             body += '> 💡 *Detects code that cannot be reached from entry points (dead code).*\n\n';
             
             if (parseInt(reachIssues) === 0) {
-              body += '✅ **No dead code detected**\n\n';
+              // Don't present a vacuous truth as a green check: "no dead code"
+              // over ZERO analyzed files is meaningless, and a fake ✅ trains
+              // readers to trust the real ones less (pr-report-contract.md §2).
+              if (changedFiles === '0') {
+                body += 'ℹ️ No architecture-relevant files in this diff — reachability not evaluated.\n\n';
+              } else {
+                body += '✅ **No dead code detected**\n\n';
+              }
             } else {
               body += `Found **${reachIssues}** potentially unreachable symbol(s).\n`;
               body += `> These functions/classes may be unused and could be candidates for removal.\n\n`;
