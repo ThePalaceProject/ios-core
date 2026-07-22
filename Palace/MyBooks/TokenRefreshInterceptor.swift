@@ -368,7 +368,7 @@ final class TokenRefreshInterceptor: @unchecked Sendable {
         if currentState == .SAMLStarted {
             Log.warn(#file, "SAML re-auth already attempted for '\(book.title)' - showing sign-in modal")
 
-            Task { @MainActor [weak self] in
+            spawnAuthDispatch { [weak self] in
                 guard let self = self, let delegate = self.delegate else { return }
                 // Re-resolve the non-Sendable registry/account through the
                 // main-actor-confined `delegate` rather than capturing them
@@ -422,7 +422,7 @@ final class TokenRefreshInterceptor: @unchecked Sendable {
                 // `await` hops to the state-manager actors and the coordinator
                 // actor suspend the main actor without blocking it — same
                 // observable ordering as the prior explicit `MainActor.run`.
-                Task { @MainActor [weak self] in
+                spawnAuthDispatch { [weak self] in
                     guard let self, let delegate = self.delegate else { return }
                     let bookRegistry = delegate.bookRegistry
                     await delegate.stateManager.bookIdentifierToDownloadInfo.remove(book.identifier)
@@ -450,7 +450,7 @@ final class TokenRefreshInterceptor: @unchecked Sendable {
             if authDef?.isSaml == true {
                 Log.info(#file, "SAML cookies expired - triggering SAML re-auth flow (legacy path)")
 
-                Task { @MainActor [weak self] in
+                spawnAuthDispatch { [weak self] in
                     guard let self, let delegate = self.delegate else { return }
                     let bookRegistry = delegate.bookRegistry
                     await delegate.stateManager.bookIdentifierToDownloadInfo.remove(book.identifier)
