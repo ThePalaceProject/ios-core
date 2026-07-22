@@ -96,6 +96,59 @@ class CatalogSearchViewModel: ObservableObject {
         hasCompletedSearch = true
     }
 
+    /// Test-only deterministic JOIN over the view model's in-flight async work
+    /// (debounce → search, entry-point loading). Awaiting this replaces the
+    /// wall-clock `Task.sleep` / `fulfillment(timeout:)` polls the tests used to
+    /// observe a fire-and-forget search: under parallel-CI sim clones a fixed
+    /// deadline STARVES and fails, whereas awaiting the actual `Task` values is
+    /// timing-independent.
+    ///
+    /// The chain is: `updateSearchQuery` spawns `debounceTask`, which sleeps then
+    /// *synchronously* calls `performSearch()` at its tail — and `performSearch()`
+    /// assigns `searchTask` synchronously. So awaiting `debounceTask.value` first
+    /// guarantees `searchTask` is assigned before we read it; then awaiting
+    /// `searchTask.value` joins the search + announce side effects. We re-snapshot
+    /// in a loop because a completed search can enqueue no further debounce, but a
+    /// format switch (`selectFormat`) cancels the debounce and calls
+    /// `performSearch()` directly — awaiting whatever handles are live until they
+    /// stop changing converges on "all observed async work done".
+    ///
+    /// The view model is `@MainActor`, so the property reads below are inherently
+    /// main-thread-serialized — no lock needed. RELEASE behavior is byte-identical:
+    /// production never calls this and the retained `Task` handles it awaits are
+    /// the same ones the VM already stores for cancellation.
+    func _awaitInFlightWorkForTesting() async {
+        // `Task` is a value type whose `==` compares the underlying task identity,
+        // so we track the last-awaited handle per slot and re-await only when a new
+        // Task has replaced it (debounce cancel/replace, a fresh performSearch, etc.).
+        var previousDebounce: Task<Void, Never>?
+        var previousSearch: Task<Void, Never>?
+        var previousEntryPoint: Task<Void, Never>?
+        while true {
+            let debounce = debounceTask
+            if debounce != previousDebounce {
+                previousDebounce = debounce
+                _ = await debounce?.value
+                continue
+            }
+            // debounceTask has settled → performSearch() has run and assigned
+            // searchTask (if a search was warranted).
+            let search = searchTask
+            if search != previousSearch {
+                previousSearch = search
+                _ = await search?.value
+                continue
+            }
+            let entryPoint = entryPointLoadTask
+            if entryPoint != previousEntryPoint {
+                previousEntryPoint = entryPoint
+                _ = await entryPoint?.value
+                continue
+            }
+            break
+        }
+    }
+
     func updateBooks(_ books: [TPPBook]) {
         allBooks = books
         if searchQuery.isEmpty {
