@@ -268,7 +268,17 @@ struct AudiobookMorphingPlayerView: View {
         .overlay(alignment: .bottom) { toastOverlay }
         .accessibilityElement(children: .contain)
         .onAppear {
-            currentRate = audiobookSession.currentPlaybackRate
+            // Only adopt the session rate once a manager is bound. On a fresh
+            // cold open the player mounts (loading shell) BEFORE bind, so a bare
+            // `currentPlaybackRate` read here returns the default 1.0× and would
+            // pin the speed chip at 1.0× for the whole session even though the
+            // toolkit restored the patron's persisted rate. The bind-time
+            // `.onChange` below re-syncs once the real rate is known.
+            currentRate = Self.displayRate(
+                sessionRate: audiobookSession.currentPlaybackRate,
+                isBound: audiobookSession.hasActiveManager,
+                fallback: currentRate
+            )
             // Announce the screen transition + move VoiceOver focus to the title
             // (mirrors toolkit AudiobookPlayerView.onAppear).
             NotificationCenter.default.post(
@@ -278,6 +288,21 @@ struct AudiobookMorphingPlayerView: View {
             UIAccessibility.post(notification: .layoutChanged, argument: nil)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
                 isTitleFocused = true
+            }
+        }
+        // Re-sync the speed chip when the player binds. `presenter.playbackModel`
+        // goes non-nil exactly at bind (`adoptPlaybackModel`), by which point the
+        // manager is set and `currentPlaybackRate` returns the toolkit's restored
+        // (persisted, global) rate — so the chip matches what's actually playing
+        // instead of the pre-bind 1.0× default. Fires only on a real bind; a
+        // mini→expand re-open (model already bound) is handled by `.onAppear`.
+        .onChange(of: presenter.playbackModel != nil) { _, isBound in
+            if isBound {
+                currentRate = Self.displayRate(
+                    sessionRate: audiobookSession.currentPlaybackRate,
+                    isBound: true,
+                    fallback: currentRate
+                )
             }
         }
         .onChange(of: presenter.toastMessage) { _, newValue in
@@ -709,6 +734,20 @@ struct AudiobookMorphingPlayerView: View {
     /// the view's buffering-window timer.
     nonisolated static func shouldSurfaceLoadTimeout(isLoaded: Bool, isDownloading: Bool) -> Bool {
         !isLoaded && !isDownloading
+    }
+
+    /// Resolves the rate the speed chip should display. Only adopts the session's
+    /// rate once a manager is bound — pre-bind, `currentPlaybackRate` returns the
+    /// default 1.0× (no player yet), which must NOT overwrite the chip, or a
+    /// freshly-reopened book (whose persisted rate the toolkit restores on bind)
+    /// would show 1.0× while playing faster. When bound, the session rate is the
+    /// source of truth. Pure so the sync decision is unit-tested for both phases.
+    nonisolated static func displayRate(
+        sessionRate: PlaybackRate,
+        isBound: Bool,
+        fallback: PlaybackRate
+    ) -> PlaybackRate {
+        isBound ? sessionRate : fallback
     }
 
     @ViewBuilder
