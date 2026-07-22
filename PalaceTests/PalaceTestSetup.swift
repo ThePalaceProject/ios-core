@@ -137,6 +137,27 @@ class PalaceTestSetup: NSObject {
             #endif
         }
 
+        // Drain EVERY live AccountsManager's background work at the boundary —
+        // not just the shared one AppContainer recreates. The root of the
+        // order-dependent Accounts-suite flakes is a pending `DispatchQueue.main.async`
+        // auth-doc drive (from `preloadAccountsFromDiskCacheSync`'s deferred
+        // `driveCurrentAccountAuthDocIfNeeded()`) enqueued at EVERY AccountsManager
+        // init — including foreign instances built by test helpers. It is NOT a
+        // Task, so `cancelBackgroundWork()` can't stop it; left un-flushed it fires
+        // on a later runloop turn INSIDE the next test and writes a fixture library
+        // UUID's `.detailsLoading`/`.detailsFailed` into it. `cancelAndDrainBackgroundWork`
+        // (invoked per live instance by `_drainAllLiveInstancesForTesting`) PUMPS
+        // the main run loop (bounded) so every such pending hop fires NOW, inside
+        // the boundary — after `AppContainer._resetForTesting` above (so the
+        // just-recreated shared instance is included) and BEFORE the store reset
+        // below (so any flushed late-write is then wiped). This is the missing wire:
+        // the drain existed but ran only in one bespoke test, never per-boundary.
+        registry.register("AccountsManager._drainAllLiveInstancesForTesting") {
+            #if DEBUG
+            AccountsManager._drainAllLiveInstancesForTesting()
+            #endif
+        }
+
         registry.register("AccountStateStore.shared._resetAllForTesting") {
             AccountStateStore.shared._resetAllForTesting()
         }
