@@ -222,6 +222,29 @@ final class AudiobookMorphingPlayerViewTests: XCTestCase {
                        "A loaded player never surfaces the timeout")
     }
 
+    // MARK: - Speed-chip rate sync (exit/return label mismatch)
+
+    /// Once a manager is bound, the chip adopts the session's (restored,
+    /// persisted) rate — regardless of the stale fallback. This is the fix for
+    /// the speed label reading 1.0× after exit/return while audio plays faster.
+    func testDisplayRate_boundAdoptsSessionRate() {
+        XCTAssertEqual(
+            V.displayRate(sessionRate: .doubleTime, isBound: true, fallback: .normalTime),
+            .doubleTime,
+            "A bound player must show the session's actual rate, not the stale chip fallback")
+    }
+
+    /// Pre-bind, the session rate is the meaningless 1.0× default (no player yet)
+    /// — the chip must KEEP its fallback rather than be pinned to that default,
+    /// so the bind-time re-sync can later show the real restored rate. Kills a
+    /// mutation that swaps the ternary (would clobber the chip with 1.0×).
+    func testDisplayRate_unboundKeepsFallback() {
+        XCTAssertEqual(
+            V.displayRate(sessionRate: .normalTime, isBound: false, fallback: .doubleTime),
+            .doubleTime,
+            "Pre-bind, the chip keeps its fallback — the default session rate must not overwrite it")
+    }
+
     // MARK: - Timecode formatter (relocated when the dead mini-player view was removed)
 
     /// Pure `TimeInterval` -> "MM:SS" / "H:MM:SS" formatter, relocated onto the
