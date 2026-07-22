@@ -91,10 +91,13 @@ final class CatalogRepositoryStaleWhileRevalidateTests: XCTestCase {
     }
 
     // NOTE: the former private `awaitCondition` poll helper was removed — every
-    // background-refresh wait now joins the repository's refresh Task directly
-    // via `_awaitBackgroundRefreshForTesting()`, which is deterministic under
-    // pool oversubscription (a fixed-deadline poll of a `.utility` detached
-    // task's side effect was the parallel-clone flake, CI run 29805821296).
+    // background-refresh wait now joins the repository's refresh Task(s) directly
+    // via `_awaitBackgroundRefreshForTesting()` (single-refresh tests) or
+    // `_awaitAllBackgroundRefreshesForTesting()` (the concurrent test, which
+    // schedules two refreshes and arms `_trackRefreshTasksForTesting()` first).
+    // Both are deterministic under pool oversubscription (a fixed-deadline poll
+    // of a `.utility` detached task's side effect was the parallel-clone flake,
+    // CI run 29805821296).
 
     // MARK: - Fresh cache window (< 10 min)
 
@@ -369,6 +372,16 @@ final class CatalogRepositoryStaleWhileRevalidateTests: XCTestCase {
         testNow.value = testNow.value.addingTimeInterval(1800) // 30 minutes
         api.stubbedFeeds[testURL] = CatalogAPIMock.makeMockFeed(title: "Refreshed-concurrent")
 
+        // Arm multi-refresh tracking BEFORE firing the concurrent reads so the
+        // repository retains EVERY scheduled refresh handle, not just the
+        // most-recently-scheduled one. Both stale reads each schedule their own
+        // `.utility` detached refresh; the single-handle
+        // `_awaitBackgroundRefreshForTesting()` only joins the last one, which
+        // would let this test observe the cache mid-flight if the un-joined
+        // refresh is the one still pending. Tracking is opt-in and defaults off,
+        // so this is a no-op in production.
+        sut._trackRefreshTasksForTesting()
+
         // Sendable local so the async-let children capture it instead of reading
         // @MainActor `self.testURL` (which would send self). `sut` is already local.
         let testURL = testURL
@@ -381,16 +394,16 @@ final class CatalogRepositoryStaleWhileRevalidateTests: XCTestCase {
         XCTAssertEqual(resultB?.title, "Original-concurrent",
                        "Concurrent stale read B must return cached value")
 
-        // Join the background refresh deterministically. Both stale reads
+        // Join BOTH background refreshes deterministically. Each stale read
         // scheduled a `.utility` detached refresh SYNCHRONOUSLY before
-        // returning; the repository retains the last-scheduled one. Awaiting
-        // it blocks until that refresh's cache write lands — regardless of how
-        // starved the cooperative pool is under parallel-clone oversubscription
-        // (the old two-poll approach timed out at :401/:408 exactly there in CI
-        // run 29805821296). Both refreshes fetch + write the same
-        // "Refreshed-concurrent" feed, so the last one landing proves the
-        // contract.
-        await sut._awaitBackgroundRefreshForTesting()
+        // returning; awaiting ALL tracked handles blocks until every refresh's
+        // cache write lands — regardless of how starved the cooperative pool is
+        // under parallel-clone oversubscription (the old two-poll approach timed
+        // out at :401/:408 exactly there in CI run 29805821296). Using the "all"
+        // variant (not the single-handle join) makes the fetch-count and
+        // cache-refresh assertions below independent of which of the two
+        // concurrent refreshes finishes last.
+        await sut._awaitAllBackgroundRefreshesForTesting()
 
         // The refresh fired (mutation kill: a no-op'd background branch never
         // bumps the count past 1). Deterministic now that the Task has joined.
