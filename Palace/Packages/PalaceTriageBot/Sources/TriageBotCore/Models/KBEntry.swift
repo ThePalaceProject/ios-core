@@ -110,6 +110,14 @@ public struct KBEntry: Codable, Equatable, Identifiable, Sendable {
     public let helpspotTag: String?
     public let trustLevel: KBTrustLevel
     public let visibility: KBVisibility
+    /// The UI screen a `how_to` answer depends on (e.g. "settings-libraries").
+    /// A how_to answer references the app's navigation and has no fix version to
+    /// expire against, so it goes stale silently when the UI moves. This anchor
+    /// lets a governance lint flag entries whose screen changed after they were
+    /// last reviewed. Nil for known_issue entries (PP-4831).
+    public let uiSurface: String?
+    /// The date (YYYY-MM-DD) a how_to answer was last verified against the UI.
+    public let reviewedAt: String?
 
     /// `kind` with its default applied — `.knownIssue` when the JSON omitted it.
     public var resolvedKind: KBKind { kind ?? .knownIssue }
@@ -133,6 +141,8 @@ public struct KBEntry: Codable, Equatable, Identifiable, Sendable {
         case helpspotTag = "helpspot_tag"
         case trustLevel = "trust_level"
         case visibility = "visibility"
+        case uiSurface = "ui_surface"
+        case reviewedAt = "reviewed_at"
     }
 
     public init(
@@ -153,7 +163,9 @@ public struct KBEntry: Codable, Equatable, Identifiable, Sendable {
         escalateAnyway: Bool = false,
         helpspotTag: String? = nil,
         trustLevel: KBTrustLevel = .authoritative,
-        visibility: KBVisibility = .userFacing
+        visibility: KBVisibility = .userFacing,
+        uiSurface: String? = nil,
+        reviewedAt: String? = nil
     ) {
         self.id = id
         self.category = category
@@ -173,6 +185,8 @@ public struct KBEntry: Codable, Equatable, Identifiable, Sendable {
         self.helpspotTag = helpspotTag
         self.trustLevel = trustLevel
         self.visibility = visibility
+        self.uiSurface = uiSurface
+        self.reviewedAt = reviewedAt
     }
 }
 
