@@ -153,6 +153,75 @@ final class AudiobookMorphingPlayerViewTests: XCTestCase {
                           "Deeper upward pull must resist further (monotonic resistance)")
     }
 
+    // MARK: - Loading overlay state decision (PP-4542 skeleton-occlusion fix)
+
+    /// A loaded player shows no overlay — regardless of the other flags.
+    func testLoadingOverlayState_loadedIsHidden() {
+        XCTAssertEqual(
+            V.loadingOverlayState(isLoaded: true, isDownloading: false, loadingTimedOut: false, forceSkeletons: false),
+            .hidden,
+            "A loaded, non-downloading player has no loading overlay")
+        XCTAssertEqual(
+            V.loadingOverlayState(isLoaded: true, isDownloading: true, loadingTimedOut: true, forceSkeletons: false),
+            .hidden,
+            "Once loaded, neither a lingering download flag nor a stale timeout resurrects the overlay")
+    }
+
+    /// The core fix: while content is downloading (and not yet loaded) the overlay
+    /// is the DETERMINATE downloading state — NOT the opaque shimmer skeleton that
+    /// previously occluded the progress bar and read as a hang. Downloading also
+    /// wins over a fired 30s timeout, so a slow-but-healthy download never shows
+    /// the load-error overlay. Kills a branch-reorder that checks `loadingTimedOut`
+    /// (or falls through to `.skeleton`) before `isDownloading`.
+    func testLoadingOverlayState_downloadingBeatsSkeletonAndTimeout() {
+        XCTAssertEqual(
+            V.loadingOverlayState(isLoaded: false, isDownloading: true, loadingTimedOut: false, forceSkeletons: false),
+            .downloading,
+            "An in-flight download shows the determinate downloading state, not the shimmer skeleton")
+        XCTAssertEqual(
+            V.loadingOverlayState(isLoaded: false, isDownloading: true, loadingTimedOut: true, forceSkeletons: false),
+            .downloading,
+            "A download in flight is healthy progress — it must win over a fired load timeout, never the error overlay")
+    }
+
+    /// A genuine load timeout (not loaded, NOT downloading, timer fired) surfaces
+    /// the error+retry. Kills dropping the `loadingTimedOut` branch.
+    func testLoadingOverlayState_timeoutWithoutDownloadIsLoadError() {
+        XCTAssertEqual(
+            V.loadingOverlayState(isLoaded: false, isDownloading: false, loadingTimedOut: true, forceSkeletons: false),
+            .loadError,
+            "A stalled, non-downloading load that fired the 30s timer shows the load-error overlay")
+    }
+
+    /// The transient load window (not loaded, not downloading, timer not yet
+    /// fired) is the skeleton. The QA `forceSkeletons` override forces the
+    /// skeleton even over a loaded/downloading player so it can be inspected.
+    func testLoadingOverlayState_skeletonDefaultAndForceOverride() {
+        XCTAssertEqual(
+            V.loadingOverlayState(isLoaded: false, isDownloading: false, loadingTimedOut: false, forceSkeletons: false),
+            .skeleton,
+            "The brief pre-download load window is the shimmer skeleton")
+        XCTAssertEqual(
+            V.loadingOverlayState(isLoaded: true, isDownloading: true, loadingTimedOut: false, forceSkeletons: true),
+            .skeleton,
+            "forceSkeletons is the QA inspection override — it wins over every other flag")
+    }
+
+    /// The 30s load-error timer must be suppressed while a download is in flight:
+    /// a healthy multi-minute content download is not a load failure. Only a
+    /// not-loaded AND not-downloading state surfaces the timeout. This is what
+    /// stops a >30s LCP `.lcpa` download from false-tripping the error overlay.
+    func testShouldSurfaceLoadTimeout_onlyWhenNotLoadedAndNotDownloading() {
+        XCTAssertTrue(V.shouldSurfaceLoadTimeout(isLoaded: false, isDownloading: false),
+                      "A stalled, non-downloading load surfaces the timeout")
+        XCTAssertFalse(V.shouldSurfaceLoadTimeout(isLoaded: false, isDownloading: true),
+                       "A download in flight must NOT surface the load-error timeout")
+        XCTAssertFalse(V.shouldSurfaceLoadTimeout(isLoaded: true, isDownloading: false),
+                       "A loaded player has nothing to time out")
+        XCTAssertFalse(V.shouldSurfaceLoadTimeout(isLoaded: true, isDownloading: true),
+                       "A loaded player never surfaces the timeout")
+    }
+
     // MARK: - Timecode formatter (relocated when the dead mini-player view was removed)
 
     /// Pure `TimeInterval` -> "MM:SS" / "H:MM:SS" formatter, relocated onto the
