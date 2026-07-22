@@ -925,6 +925,58 @@
       "visibility": "user_facing",
       "ui_surface": "my-books",
       "reviewed_at": "2026-07-21"
+    },
+    {
+      "id": "HT-2026-008-add-library-card",
+      "category": "library",
+      "kind": "how_to",
+      "symptom_keywords": [
+        "add my library card",
+        "add a library card",
+        "add my card",
+        "enter my library card",
+        "enter my barcode",
+        "sign in with my card",
+        "where do i enter my card",
+        "put in my library card",
+        "register my card"
+      ],
+      "user_facing_workaround": "To add your library card, open Settings → Libraries. If your library isn't listed yet, add it there first, then tap it and sign in with your library card number (barcode) and PIN. Once you're signed in, your loans and holds show up in Palace.",
+      "internal_reference": {
+        "jira": "PP-4831"
+      },
+      "confidence_threshold": 0.1,
+      "escalate_anyway": false,
+      "helpspot_tag": "how-to-add-library-card",
+      "trust_level": "authoritative",
+      "visibility": "user_facing",
+      "ui_surface": "settings-libraries",
+      "reviewed_at": "2026-07-22"
+    },
+    {
+      "id": "HT-2026-009-formats-kindle",
+      "category": "other",
+      "kind": "how_to",
+      "symptom_keywords": [
+        "to kindle",
+        "on kindle",
+        "use kindle",
+        "what formats",
+        "which formats",
+        "reading format",
+        "send to my ereader"
+      ],
+      "user_facing_workaround": "Palace isn't connected to Kindle — there's no \"send to Kindle\" step. You read your borrowed books right in the Palace app: ebooks open in the built-in reader and audiobooks play in the built-in player, and everything stays in Palace for the length of your loan.",
+      "internal_reference": {
+        "jira": "PP-4831"
+      },
+      "confidence_threshold": 0.1,
+      "escalate_anyway": false,
+      "helpspot_tag": "how-to-formats-kindle",
+      "trust_level": "authoritative",
+      "visibility": "user_facing",
+      "ui_surface": "my-books",
+      "reviewed_at": "2026-07-22"
     }
   ]
 }

@@ -452,6 +452,28 @@ final class ResponseQualityTests: XCTestCase {
              expect: .shouldMatch(entryId: "HT-2026-007-loan-length"),
              source: "PP-4831 FAQ — lending period is per-library"),
 
+        // === HT-2026-008 add library card (how_to) ===
+        Case(userText: "how do I add my library card",
+             category: .library, context: nil,
+             expect: .shouldMatch(entryId: "HT-2026-008-add-library-card"),
+             source: "PP-4831 FAQ — adding a card: Settings → Libraries → add + sign in with barcode/PIN"),
+
+        Case(userText: "where do I enter my barcode to sign in",
+             category: .library, context: nil,
+             expect: .shouldMatch(entryId: "HT-2026-008-add-library-card"),
+             source: "PP-4831 FAQ — where to enter the library card number"),
+
+        // === HT-2026-009 formats / send-to-Kindle (how_to) ===
+        Case(userText: "how do I send my book to Kindle",
+             category: .other, context: nil,
+             expect: .shouldMatch(entryId: "HT-2026-009-formats-kindle"),
+             source: "PP-4831 FAQ (product-confirmed not supported) — Palace isn't connected to Kindle; you read in-app"),
+
+        Case(userText: "what formats can I read in the app",
+             category: .other, context: nil,
+             expect: .shouldMatch(entryId: "HT-2026-009-formats-kindle"),
+             source: "PP-4831 FAQ — reading formats are read in-app, no Kindle export"),
+
         // how_to negative — no FAQ answer exists; must still escalate, not
         // grab a loosely-related how_to.
         Case(userText: "how do I delete my account permanently",
