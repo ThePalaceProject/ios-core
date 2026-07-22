@@ -11,7 +11,9 @@ import XCTest
 import ReadiumShared
 @testable import Palace
 
-@MainActor
+// Deliberately NOT @MainActor: TPPBookLocation/Publication are non-Sendable
+// and convertToLocator is nonisolated async — a @MainActor test makes those
+// Swift 6 sending errors. Pure model round-trip tests, no UI.
 final class EPUBPositionTests: XCTestCase {
 
     // MARK: - TPPBookLocation Creation Tests

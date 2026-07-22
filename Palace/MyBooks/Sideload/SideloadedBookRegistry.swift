@@ -4,6 +4,27 @@
 //
 //  Dedicated, local-only persistence for side-loaded books (PP-2678).
 //
+//  ───────────────────────────────────────────────────────────────────────────
+//  AUTHORIZED SECOND BOOK-STATE OWNER (swarm swarm_8ce6f5ae · Contract D).
+//  ───────────────────────────────────────────────────────────────────────────
+//  Palace's single source of truth for book state is `TPPBookRegistry`, but
+//  that SoT is *scoped to loans* (see
+//  `docs/architecture/state-management-doctrine.md`, "Single source of truth —
+//  scoped, not absolute"). This type is the ONE authorized SECOND owner of book
+//  state, scoped to side-loaded (non-loan) content:
+//    • It owns the "what is side-loaded" membership set + its manifest.
+//    • Loaned-book state (borrow / download / return transitions) stays in
+//      `TPPBookRegistry`. It MUST NOT be tracked here: this owner never calls
+//      `setState` and never drives a loan-state transition.
+//    • The two owners answer over DISJOINT identifier sets and never reconcile
+//      against each other — a loans feed omitting a side-loaded book is NOT a
+//      signal to evict it (that omission is exactly why the sync exemption
+//      below reads THIS owner's `identifiers` live at sync time).
+//  Both owners are viewed through the `BookStateReading` read seam
+//  (`BookStateReading.swift`), so callers depend on the seam, not the concrete
+//  class. Exactly TWO owners may exist; a Contract-F probe reddens CI if a third
+//  book-state owner appears.
+//
 //  Side-loading is a test-only capability (see
 //  `docs/architecture/sideloading-plan.md`): a user imports a local
 //  EPUB / PDF / audiobook file and it is registered into the main
@@ -124,6 +145,20 @@ final class SideloadedBookRegistry: @unchecked Sendable {
     lock.lock()
     defer { lock.unlock() }
     return entriesByIdentifier[identifier]?.originalFilename
+  }
+
+  /// This owner's `BookStateReading` view of `bookIdentifier`. Side-loaded books
+  /// are copied locally and registered into the main registry as
+  /// `.downloadSuccessful`, so a book THIS owner holds reports
+  /// `.downloadSuccessful`; any identifier it does not own — including every
+  /// loaned book — reports `.unregistered`. This owner therefore NEVER speaks
+  /// for the loans SoT: it reports side-load membership-derived state only and
+  /// must not be consulted as a loan-state authority (see the header + doctrine).
+  func state(for bookIdentifier: String?) -> TPPBookState {
+    guard let bookIdentifier else { return .unregistered }
+    lock.lock()
+    defer { lock.unlock() }
+    return entriesByIdentifier[bookIdentifier] != nil ? .downloadSuccessful : .unregistered
   }
 
   // MARK: - Public mutation surface

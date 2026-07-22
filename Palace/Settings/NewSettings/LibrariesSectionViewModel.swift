@@ -252,6 +252,25 @@ struct ProductionLibrariesSectionEnvironment: LibrariesSectionEnvironment {
         // doc resolves the receivers have already kicked off their work,
         // shaving visible latency off the user-facing transition.
         NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
-        account.loadAuthenticationDocument { _ in completion() }
+        // `loadAuthenticationDocument`'s completion fires on the URLSession
+        // delegate queue (off-main — `TPPNetworkExecutor` uses `delegateQueue:
+        // nil`). `completion` is supplied by `@MainActor` callers that touch
+        // main-actor state on return, so invoking it off-main risks Swift 6's
+        // `swift_task_checkIsolated` SIGTRAP. Hop to main before firing it.
+        // `completion` is a non-`Sendable` `() -> Void`, so it cannot be captured
+        // directly by `DispatchQueue.main.async`'s `@Sendable` closure — box it
+        // (invoked exactly once, on main, so the `@unchecked` is sound).
+        let completionBox = UncheckedSendableBox(completion)
+        account.loadAuthenticationDocument { _ in
+            DispatchQueue.main.async { completionBox.value() }
+        }
     }
+}
+
+/// Carries a non-`Sendable` closure across the `@Sendable` `DispatchQueue.main`
+/// boundary for a one-shot, main-thread invocation. Sound because the wrapped
+/// closure is called exactly once, on the main queue.
+private struct UncheckedSendableBox: @unchecked Sendable {
+    let value: () -> Void
+    init(_ value: @escaping () -> Void) { self.value = value }
 }

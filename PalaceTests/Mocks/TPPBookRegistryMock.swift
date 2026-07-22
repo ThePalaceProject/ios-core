@@ -55,7 +55,13 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistryProvider, @unchecked Sendabl
     private var _state: TPPBookRegistry.RegistryState = .loaded
     var state: TPPBookRegistry.RegistryState {
         get { lock.withLock { _state } }
-        set { lock.withLock { _state = newValue } }
+        set {
+            lock.withLock { _state = newValue }
+            // Feed the lifecycle publisher OUTSIDE the lock (re-entrancy rule),
+            // mirroring production's `state` setter. Tests drive lifecycle-keyed
+            // observers by assigning `mock.state = .loaded`.
+            registryStateSubject.send(newValue)
+        }
     }
     var registryState: TPPBookRegistry.RegistryState { state }
 
@@ -70,6 +76,23 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistryProvider, @unchecked Sendabl
     private let syncStateSubject = CurrentValueSubject<Bool, Never>(false)
     var syncStatePublisher: AnyPublisher<Bool, Never> {
         syncStateSubject.eraseToAnyPublisher()
+    }
+
+    /// `PassthroughSubject` (not `CurrentValueSubject`) so tests get deterministic
+    /// emission counts: a subscriber sees ONLY the transitions driven after it
+    /// subscribes, with no seeded replay to confound the empty-registry hang guard.
+    private let registryStateSubject = PassthroughSubject<TPPBookRegistry.RegistryState, Never>()
+    var registryStatePublisher: AnyPublisher<TPPBookRegistry.RegistryState, Never> {
+        registryStateSubject.eraseToAnyPublisher()
+    }
+
+    private let holdsDidChangeSubject = PassthroughSubject<Void, Never>()
+    var holdsDidChangePublisher: AnyPublisher<Void, Never> {
+        holdsDidChangeSubject.eraseToAnyPublisher()
+    }
+
+    func notifyHoldsChanged() {
+        holdsDidChangeSubject.send(())
     }
 
     func sync(completion: ((_ errorDocument: [AnyHashable: Any]?, _ newBooks: Bool) -> Void)?) {
@@ -208,22 +231,16 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistryProvider, @unchecked Sendabl
         registrySubject.send(snapshot)
         bookStateSubject.send((book.identifier, state))
 
-        // Simulate the production notification — and match production's
-        // DELIVERY-THREAD contract: the real registry ALWAYS posts
-        // `.TPPBookRegistryDidChange` on the main queue (BookRegistryStore's
-        // `registry.didSet` and BookRegistrySync's save/update paths all wrap
-        // the post in `DispatchQueue.main.async`). Posting on the caller's
-        // thread here broke that contract: `NotificationCenter` invokes
-        // selector observers SYNCHRONOUSLY on the posting thread, so any live
-        // `@MainActor` observer (e.g. a `BookDetailViewModel` from an earlier
-        // test in the same runner process — `handleBookRegistryChange(_:)`)
-        // trips Swift 6's executor-isolation precondition
-        // (`dispatch_assert_queue_fail` → SIGTRAP) and KILLS the test-runner
-        // process, failing whichever unrelated test is in flight (CI run
-        // 29802862487: BorrowOperationTests / BorrowOperationStreamingHTMLTests /
-        // MyBooksDownloadCenterAccountIdThreadingTests all died here).
-        // Sync-post when already on main preserves the same-runloop-turn
-        // delivery that existing main-thread tests rely on.
+        // Simulate Notification (the real registry sends one). Honor the
+        // production thread contract: every real poster of
+        // `.TPPBookRegistryDidChange` posts on the MAIN thread
+        // (BookRegistryStore / BookRegistrySync wrap the post in
+        // `DispatchQueue.main.async`). App-hosted tests have a live
+        // `MyBooksViewModel` whose `@MainActor` NotificationCenter observer
+        // asserts main-thread isolation (Swift 6) — posting off-main here
+        // crashed it (EXC_BREAKPOINT). Preserve identical synchronous timing for
+        // on-main callers (the vast majority of suites); only off-main callers
+        // (e.g. the async borrow path) defer to main, matching production.
         if Thread.isMainThread {
             NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
         } else {

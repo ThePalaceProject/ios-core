@@ -7,7 +7,10 @@ import PalaceCatalog
 /// `TPPBookCoverRegistry` + `TPPBookCoverRegistryBridge` + `ImageCache.shared`
 /// trio at call sites. Covers cache-hit short-circuits, weak-book-reference
 /// safety on the completion bridge, and the placeholder fall-through.
-@MainActor
+// Deliberately NOT @MainActor: ImageLoader is nonisolated and non-Sendable —
+// awaiting its async APIs on a @MainActor-held reference is a Swift 6 sending
+// error, while from a nonisolated test everything stays in one isolation
+// domain. Nothing here touches UI or main-actor state.
 final class ImageLoaderTests: XCTestCase {
 
     private var cache: MockImageCache!

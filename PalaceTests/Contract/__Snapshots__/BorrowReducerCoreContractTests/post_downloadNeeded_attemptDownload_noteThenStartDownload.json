@@ -1,0 +1,15 @@
+[
+  {
+    "args" : {
+
+    },
+    "method" : "noteBorrowSucceeded"
+  },
+  {
+    "args" : {
+      "bookId" : "BRC-BOOK",
+      "hasRequest" : "false"
+    },
+    "method" : "startDownload"
+  }
+]

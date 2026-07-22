@@ -159,7 +159,7 @@ final class AccountSwitchCleanupTests: XCTestCase {
     // MARK: - Bookmark Cleanup Model Cache
 
     @MainActor
-    func testBookCellModelCache_ClearsOnAccountChange() {
+    func testBookCellModelCache_ClearsOnAccountChange() async {
         let mockImageCache = MockImageCache()
         let mockRegistry = TPPBookRegistryMock()
 
@@ -182,8 +182,15 @@ final class AccountSwitchCleanupTests: XCTestCase {
         // Simulate account change notification
         NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
 
-        // NotificationCenter delivers synchronously to all observers on the posting thread.
-        // No sleep needed — any cache-clear triggered by the notification is already done.
+        // BookCellModelCache's account-change observer hops to main via
+        // `.receive(on: DispatchQueue.main)` (the Swift 6 off-main SIGTRAP guard),
+        // so the clear lands on the NEXT main-queue turn, not synchronously with
+        // the post. Drain the main queue deterministically: the receive block was
+        // enqueued by the post above, so a subsequent main-queue round-trip runs
+        // strictly after it (FIFO) — no wall-clock sleep.
+        await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+            DispatchQueue.main.async { c.resume() }
+        }
         XCTAssertEqual(cache.count, 0, "Cache should be cleared after account change")
         // A new model can be populated after the clear
         _ = cache.model(for: book)

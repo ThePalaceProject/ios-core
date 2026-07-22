@@ -263,7 +263,7 @@ private final class DownloadFailureMetadataBox: @unchecked Sendable {
     }
 
     /// Deferred launch-reconciliation observer (see `scheduleReconcileDownloadsAtLaunch`).
-    private var reconcileObserver: NSObjectProtocol?
+    private var reconcileObserver: AnyCancellable?
 
     /// Owns the thread-safe download tracking dictionaries + DownloadCoordinator
     /// + maxConcurrentDownloads. The properties below are computed wrappers
@@ -897,7 +897,8 @@ private final class DownloadFailureMetadataBox: @unchecked Sendable {
             presentBorrowErrorAlert: presentBorrowErrorAlertClosure,
             presentSignInModal: presentSignInModalClosure,
             attemptOIDCReauth: attemptOIDCReauthClosure,
-            authCoordinator: authCoordinator
+            authCoordinator: authCoordinator,
+            onBorrowSucceeded: { AppContainer.production().ratingPromptPresenter.noteBorrowSucceeded() }
         )
         #else
         self.borrowOperation = borrowOperation ?? BorrowOperation(
@@ -911,7 +912,8 @@ private final class DownloadFailureMetadataBox: @unchecked Sendable {
             presentBorrowErrorAlert: presentBorrowErrorAlertClosure,
             presentSignInModal: presentSignInModalClosure,
             attemptOIDCReauth: attemptOIDCReauthClosure,
-            authCoordinator: authCoordinator
+            authCoordinator: authCoordinator,
+            onBorrowSucceeded: { AppContainer.production().ratingPromptPresenter.noteBorrowSucceeded() }
         )
         #endif
 
@@ -2074,24 +2076,26 @@ extension MyBooksDownloadCenter {
     }
 
     /// Run launch reconciliation now if the registry has loaded; otherwise defer
-    /// until it does (via a one-shot `.TPPBookRegistryStateDidChange` observer).
+    /// until it does (via a one-shot `registryStatePublisher` subscription).
+    ///
+    /// This keys on the registry LIFECYCLE publisher, not `bookStatePublisher`:
+    /// a cold launch into a fresh empty registry loads zero books, so no per-book
+    /// event ever fires — a `bookStatePublisher` subscriber would never reconcile
+    /// (swarm_8ce6f5ae WS3).
     func scheduleReconcileDownloadsAtLaunch() {
         if isRegistryLoadedForReconcile {
             Task { await reconcileDownloadsAtLaunch() }
             return
         }
-        reconcileObserver = NotificationCenter.default.addObserver(
-            forName: .TPPBookRegistryStateDidChange,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            guard let self, self.isRegistryLoadedForReconcile else { return }
-            if let token = self.reconcileObserver {
-                NotificationCenter.default.removeObserver(token)
+        reconcileObserver = bookRegistry.registryStatePublisher
+            .sink { [weak self] _ in
+                guard let self, self.isRegistryLoadedForReconcile else { return }
+                // One-shot: cancel before reconciling so a later transition can't
+                // re-enter.
+                self.reconcileObserver?.cancel()
                 self.reconcileObserver = nil
+                Task { await self.reconcileDownloadsAtLaunch() }
             }
-            Task { await self.reconcileDownloadsAtLaunch() }
-        }
     }
 
     /// Reconcile persisted download records against the live URLSession tasks and

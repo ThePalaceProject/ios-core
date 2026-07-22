@@ -1,0 +1,34 @@
+[
+  {
+    "args" : {
+      "account" : "nil",
+      "bookId" : "RET-CORE"
+    },
+    "method" : "localContent.deleteLocalContent"
+  },
+  {
+    "args" : {
+      "force" : "true"
+    },
+    "method" : "delegate.purgeAllAudiobookCaches"
+  },
+  {
+    "args" : {
+      "bookId" : "RET-CORE",
+      "state" : "unregistered"
+    },
+    "method" : "registry.setState"
+  },
+  {
+    "args" : {
+      "bookId" : "RET-CORE"
+    },
+    "method" : "registry.removeBook"
+  },
+  {
+    "args" : {
+      "bookId" : "RET-CORE"
+    },
+    "method" : "announce.returnSucceeded"
+  }
+]

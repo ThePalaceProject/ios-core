@@ -48,7 +48,10 @@ private actor SpyPositionWriter: PositionWriter {
     }
 }
 
-@MainActor
+// Deliberately NOT @MainActor: the code under test is nonisolated and the
+// fixtures (Publication / TPPBook / factory) are non-Sendable — driving them
+// from a @MainActor test is a Swift 6 sending error, while from a
+// nonisolated test everything stays in one isolation domain. No UI here.
 final class TPPLastReadPositionPosterTests: XCTestCase {
 
     // MARK: - Properties

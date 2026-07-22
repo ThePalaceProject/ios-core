@@ -313,9 +313,16 @@ final class BookReturnService: @unchecked Sendable {
         }
         #endif
 
-        if book.revokeURL == nil {
-            handleReturnWithoutRevokeURL(book: book, identifier: identifier, downloaded: downloaded, completion: completion)
+        switch ReturnReducer.startRoute(hasRevokeURL: book.revokeURL != nil) {
+        case .cleanupWithoutNetwork:
+            // Books without a revokeURL skip the OPDS round trip entirely — run
+            // the shared treat-as-success teardown directly.
+            runReturnSuccessCleanup(book: book, identifier: identifier,
+                                    downloaded: downloaded, returnedBook: nil,
+                                    completion: completion)
             return
+        case .revokeOverNetwork:
+            break
         }
 
         bookRegistry.setProcessing(true, for: book.identifier)
@@ -354,20 +361,11 @@ final class BookReturnService: @unchecked Sendable {
                     return
                 }
 
-                if downloaded {
-                    self.localContentService.deleteLocalContent(for: identifier)
-                    self.delegate?.purgeAllAudiobookCaches(force: true)
-                }
-
-                TPPAnnotations.deleteAllBookmarks(forBook: book) {
-                    self.bookmarkDeletionLog.clearAllDeletions(forBook: identifier)
-                    self.bookRegistry.updateAndRemoveBook(returnedBook)
-                    self.bookRegistry.setState(.unregistered, for: identifier)
-                    self.performPostReturnSyncThen {
-                        self.downloadAnnouncementService.announceReturnSucceeded(for: book)
-                        completion?()
-                    }
-                }
+                // Normal network-revoke success: the parsed returned book drives
+                // `updateAndRemoveBook`. Shared teardown owns the ordered contract.
+                self.runReturnSuccessCleanup(book: book, identifier: identifier,
+                                             downloaded: downloaded, returnedBook: returnedBook,
+                                             completion: completion)
 
             } catch {
                 await MainActor.run {
@@ -381,26 +379,54 @@ final class BookReturnService: @unchecked Sendable {
 
     // MARK: - Private branches
 
-    /// Books without a revokeURL skip the OPDS round trip entirely —
-    /// just clear local content + bookmarks + remove the book from the
-    /// registry, then sync.
-    private func handleReturnWithoutRevokeURL(book: TPPBook, identifier: String, downloaded: Bool, completion: (@Sendable () -> Void)?) {
-        if downloaded {
+    /// Shared "treat-as-success" teardown for every return that is (or is
+    /// treated as) a success: the no-revokeURL path, the normal network-revoke
+    /// success, the OPDS-parse-fail-as-success path, and the loan-gone path.
+    /// The ORDER is owned by `ReturnReducer.cleanupEffects`; this method is the
+    /// effect-runner that interprets it, keeping the `deleteAllBookmarks`
+    /// callback nesting + post-return sync that the pure core cannot express.
+    ///
+    /// - `returnedBook`: non-nil only on the normal network-revoke success,
+    ///   where `updateAndRemoveBook` supplies the parsed book; nil on the
+    ///   treat-as-success paths, which use `setState` then `removeBook`.
+    private func runReturnSuccessCleanup(
+        book: TPPBook,
+        identifier: String,
+        downloaded: Bool,
+        returnedBook: TPPBook?,
+        completion: (@Sendable () -> Void)?
+    ) {
+        let effects = ReturnReducer.cleanupEffects(
+            downloaded: downloaded, useUpdateAndRemove: returnedBook != nil)
+
+        // Local-asset teardown runs before the bookmark deletion round trip.
+        if effects.contains(.deleteLocalContent) {
             localContentService.deleteLocalContent(for: identifier)
+        }
+        if effects.contains(.purgeAudiobookCaches) {
             delegate?.purgeAllAudiobookCaches(force: true)
         }
 
-        // Delete all server bookmarks before removing book to prevent
-        // old bookmarks from reappearing when the book is re-borrowed
+        // Delete all server bookmarks before removing the book so old bookmarks
+        // don't reappear when the book is re-borrowed.
         TPPAnnotations.deleteAllBookmarks(forBook: book) { [weak self] in
             guard let self = self else {
                 completion?()
                 return
             }
-            // Clear the deletion log since we're returning the book
             self.bookmarkDeletionLog.clearAllDeletions(forBook: identifier)
-            self.bookRegistry.setState(.unregistered, for: identifier)
-            self.bookRegistry.removeBook(forIdentifier: identifier)
+            for effect in effects {
+                switch effect {
+                case .updateAndRemoveBook:
+                    if let returnedBook { self.bookRegistry.updateAndRemoveBook(returnedBook) }
+                case .setStateUnregistered:
+                    self.bookRegistry.setState(.unregistered, for: identifier)
+                case .removeBook:
+                    self.bookRegistry.removeBook(forIdentifier: identifier)
+                case .deleteLocalContent, .purgeAudiobookCaches, .announceReturnSucceeded:
+                    break // run outside the callback / in the post-sync block
+                }
+            }
             self.performPostReturnSyncThen {
                 self.downloadAnnouncementService.announceReturnSucceeded(for: book)
                 completion?()
@@ -412,65 +438,17 @@ final class BookReturnService: @unchecked Sendable {
     /// loan-term-limit cleanup, invalid-credentials re-auth retry, or
     /// generic alert with retry / remove-from-device / cancel.
     private func handleRevokeError(_ error: Error, book: TPPBook, identifier: String, downloaded: Bool, completion: (@Sendable () -> Void)?) {
-        // The OverDrive revoke endpoint returns XML that isn't a
-        // valid OPDS feed (e.g., a simple success response). The
-        // OPDS parser rejects it → PalaceError.parsing(.opdsFeedInvalid).
-        // The revoke likely SUCCEEDED server-side — clean up locally
-        // and sync to confirm, rather than showing an error.
-        if case .parsing(.opdsFeedInvalid) = error as? PalaceError {
-            Log.info(#file, "Revoke response was not a valid OPDS feed — treating as success and syncing to verify")
-            if downloaded {
-                localContentService.deleteLocalContent(for: identifier)
-                delegate?.purgeAllAudiobookCaches(force: true)
-            }
-            TPPAnnotations.deleteAllBookmarks(forBook: book) { [weak self] in
-                guard let self else { return }
-                self.bookmarkDeletionLog.clearAllDeletions(forBook: identifier)
-                self.bookRegistry.setState(.unregistered, for: identifier)
-                self.bookRegistry.removeBook(forIdentifier: identifier)
-                self.performPostReturnSyncThen {
-                    self.downloadAnnouncementService.announceReturnSucceeded(for: book)
-                    completion?()
-                }
-            }
-            return
-        }
-
-        // Extract problem document from the typed error
+        // Pure classification facts. Parse-fail wraps a `PalaceError` (not an
+        // NSError), so it is detected before the problem-doc extraction.
+        let isOPDSParseFailure: Bool = {
+            if case .parsing(.opdsFeedInvalid) = error as? PalaceError { return true }
+            return false
+        }()
         let problemDoc = (error as NSError).problemDocument
         let problemType = problemDoc?.type
-
-        Log.error(#file, "Return failed for '\(book.title)': \(error.localizedDescription), problemDoc type: \(problemType ?? "nil")")
-
-        // Loan already gone on server — clean up locally
-        let isLoanGone = problemType == TPPProblemDocument.TypeNoActiveLoan
-            || (problemDoc?.detail?.contains(TPPProblemDocument.DetailLoanTermLimitReached) == true)
-
-        if isLoanGone {
-            if downloaded {
-                localContentService.deleteLocalContent(for: identifier)
-                delegate?.purgeAllAudiobookCaches(force: true)
-            }
-            TPPAnnotations.deleteAllBookmarks(forBook: book) { [weak self] in
-                guard let self else { return }
-                self.bookmarkDeletionLog.clearAllDeletions(forBook: identifier)
-                self.bookRegistry.setState(.unregistered, for: identifier)
-                self.bookRegistry.removeBook(forIdentifier: identifier)
-                self.performPostReturnSyncThen {
-                    self.downloadAnnouncementService.announceReturnSucceeded(for: book)
-                    completion?()
-                }
-            }
-            return
-        }
-
-        // Auth error — re-authenticate and retry. Mirrors BorrowOperation's
-        // detection logic so SAML/OIDC token expiry on return surfaces the
-        // same sign-in modal that borrow already shows. Without the broader
-        // detection, an expired SAML bearer token returned a generic 401
-        // (no `invalid-credentials` problem-doc type) and fell through to
-        // the alert path, contradicting the borrow UX.
         let nsError = error as NSError
+        // Auth-error detection mirrors BorrowOperation's so SAML/OIDC token
+        // expiry on return surfaces the same sign-in modal that borrow shows.
         let isAuthError: Bool = {
             if problemType == TPPProblemDocument.TypeInvalidCredentials { return true }
             if problemDoc?.isRecoverableAuthError == true { return true }
@@ -478,18 +456,39 @@ final class BookReturnService: @unchecked Sendable {
             return false
         }()
 
-        if isAuthError {
-            // swarm_66819d80 Module C: route through AuthCoordinator when
-            // it's wired (production). The coordinator owns mechanism
-            // dispatch (SAML/OIDC modal, basic silent refresh, etc.) and
-            // calls `markCredentialsStale()` internally — this site no
-            // longer carries IdP-dispatch knowledge.
-            //
-            // Legacy `reauthenticator.authenticateIfNeeded` fallback
-            // remains for tests that haven't been updated to inject a
-            // coordinator. Once every BookReturnService test passes a
-            // coordinator (spy or real), the fallback can be deleted and
-            // `authCoordinator` made non-optional.
+        let route = ReturnReducer.classifyError(.init(
+            isOPDSParseFailure: isOPDSParseFailure,
+            isNoActiveLoan: problemType == TPPProblemDocument.TypeNoActiveLoan,
+            isLoanTermLimitReached: problemDoc?.detail?.contains(TPPProblemDocument.DetailLoanTermLimitReached) == true,
+            isAuthError: isAuthError,
+            isOffline: Self.isOfflineNSURLError(error),
+            hasOfflineEnqueuer: offlineReturnEnqueuer != nil
+        ))
+
+        // Log at the same points the pre-extraction ladder did: parse-fail is a
+        // benign treat-as-success (info), everything else is an error.
+        if isOPDSParseFailure {
+            Log.info(#file, "Revoke response was not a valid OPDS feed — treating as success and syncing to verify")
+        } else {
+            Log.error(#file, "Return failed for '\(book.title)': \(error.localizedDescription), problemDoc type: \(problemType ?? "nil")")
+        }
+
+        switch route {
+        case .treatAsSuccessCleanup:
+            // The OverDrive revoke endpoint returns non-OPDS XML the parser
+            // rejects (the revoke likely SUCCEEDED server-side), or the loan is
+            // already gone. Either way, run the shared treat-as-success teardown.
+            runReturnSuccessCleanup(book: book, identifier: identifier,
+                                    downloaded: downloaded, returnedBook: nil,
+                                    completion: completion)
+
+        case .reauthAndRetry:
+            // swarm_66819d80 Module C: route through AuthCoordinator when it's
+            // wired (production). The coordinator owns mechanism dispatch
+            // (SAML/OIDC modal, basic silent refresh) and calls
+            // `markCredentialsStale()` internally. The legacy
+            // `reauthenticator.authenticateIfNeeded` fallback remains for tests
+            // that haven't been updated to inject a coordinator.
             if let coordinator = self.authCoordinator {
                 Log.info(#file, "Auth error on return — dispatching through AuthCoordinator")
                 launchTrackedTask { [weak self] in
@@ -539,41 +538,38 @@ final class BookReturnService: @unchecked Sendable {
                     }
                 }
             }
-            return
-        }
 
-        // Reliability WS-C (INV-3): a genuine offline / no-connection error
-        // is NOT a return failure — the loan is still ours and the revoke
-        // simply couldn't reach the server. Enqueue the return for a later
-        // drain and inform the patron. Critically, do NOT delete local
-        // content or unregister here — cleanup only runs once the queued
-        // return is server-confirmed (via OfflineQueueCoordinator ->
-        // returnBook -> the normal ordered cleanup contract).
-        if Self.isOfflineNSURLError(error), let enqueuer = self.offlineReturnEnqueuer {
-            Log.info(#file, "Offline return for '\(book.title)' — enqueuing for later; no local cleanup")
-            let action = OfflineAction(type: .return, bookID: identifier, bookTitle: book.title)
-            launchTrackedTask { [weak self] in
-                await enqueuer(action)
-                guard let self else { return }
-                runOnMainAsync {
-                    self.presentOfflineReturnQueuedAlert(for: book)
-                    completion?()
+        case .enqueueOffline:
+            // Reliability WS-C (INV-3): a genuine offline / no-connection error
+            // is NOT a return failure — the loan is still ours and the revoke
+            // simply couldn't reach the server. Enqueue for a later drain and
+            // inform the patron. Do NOT delete local content or unregister here.
+            if let enqueuer = self.offlineReturnEnqueuer {
+                Log.info(#file, "Offline return for '\(book.title)' — enqueuing for later; no local cleanup")
+                let action = OfflineAction(type: .return, bookID: identifier, bookTitle: book.title)
+                launchTrackedTask { [weak self] in
+                    await enqueuer(action)
+                    guard let self else { return }
+                    runOnMainAsync {
+                        self.presentOfflineReturnQueuedAlert(for: book)
+                        completion?()
+                    }
                 }
             }
-            return
-        }
 
-        // All other errors — show alert with problem document if available
-        launchTrackedMainActorTask { [weak self] in
-            guard let self else { return }
-            self.presentReturnFailureAlert(
-                error: error,
-                problemDoc: problemDoc,
-                book: book,
-                identifier: identifier,
-                downloaded: downloaded,
-                completion: completion
-            )
+        case .genericFailureAlert:
+            // All other errors — show alert with problem document if available.
+            launchTrackedMainActorTask { [weak self] in
+                guard let self else { return }
+                self.presentReturnFailureAlert(
+                    error: error,
+                    problemDoc: problemDoc,
+                    book: book,
+                    identifier: identifier,
+                    downloaded: downloaded,
+                    completion: completion
+                )
+            }
         }
     }
 
