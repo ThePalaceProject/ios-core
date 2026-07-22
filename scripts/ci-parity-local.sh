@@ -44,12 +44,21 @@ TARGET_CORES="${CI_PARITY_CORES:-3}"       # emulate a 3-vCPU GitHub runner
 WORKERS="${CI_PARITY_WORKERS:-2}"          # macos-15 effectively runs ~2 clones
 NCPU="$(sysctl -n hw.ncpu)"
 
+# --fast (or CI_PARITY_FAST=1): 1 test iteration instead of CI's 3. Use for a
+# quick reproduce / fix-confirm loop; keep the default 3 for a convergence
+# sign-off (matches CI's retry-as-flake-safety contract).
+for arg in "$@"; do case "$arg" in --fast) CI_PARITY_FAST=1 ;; esac; done
+ITERATIONS=3
+[ "${CI_PARITY_FAST:-0}" = "1" ] && ITERATIONS=1
+
 echo "════════════════════════════════════════════════════════════════"
 echo " CI-parity local run"
 echo "   host cores:        $NCPU"
 echo "   simulated cores:   $TARGET_CORES   (GitHub macos-15 ≈ 3 vCPU)"
 echo "   parallel workers:  $WORKERS"
+echo "   test iterations:   $ITERATIONS${CI_PARITY_FAST:+   (--fast)}"
 echo "   pressure:          ${CI_PARITY_NO_PRESSURE:+DISABLED}${CI_PARITY_NO_PRESSURE:-enabled}"
+echo "   prebuild:          ${CI_PARITY_NO_PREBUILD:+DISABLED (throttled build)}${CI_PARITY_NO_PREBUILD:-full-speed (throttle test phase only)}"
 echo "════════════════════════════════════════════════════════════════"
 
 BURN_PIDS=()
@@ -60,6 +69,36 @@ cleanup() {
     fi
 }
 trap cleanup EXIT INT TERM
+
+# --- Full-speed pre-build: compile the app + test bundle at FULL core count
+#     BEFORE the CPU throttle goes on, so the (slow, artificial) 3-core pressure
+#     applies ONLY to the test phase — which is where the flakes live. The CI
+#     script then reuses this build incrementally (PALACE_TEST_NO_CLEAN=1), so
+#     the throttled `xcodebuild test` does near-zero compile work. This is the
+#     single biggest speedup on a cold tree; the test-run timing (the part that
+#     must match CI) is unchanged.
+if [ -z "${CI_PARITY_NO_PREBUILD:-}" ]; then
+    PREBUILD_SIM="$(xcrun simctl list devices available \
+        | grep "iPhone" \
+        | grep -oE '[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}' \
+        | head -1)"
+    if [ -n "$PREBUILD_SIM" ]; then
+        echo "🏗  Pre-building at full speed (no throttle)…"
+        if xcodebuild build-for-testing \
+            -project Palace.xcodeproj -scheme Palace \
+            -destination "id=$PREBUILD_SIM" -configuration Debug \
+            CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO ONLY_ACTIVE_ARCH=YES \
+            GCC_OPTIMIZATION_LEVEL=0 SWIFT_OPTIMIZATION_LEVEL=-Onone ENABLE_TESTABILITY=YES \
+            > ci-parity-prebuild.log 2>&1; then
+            echo "   ✅ pre-build ok — throttle will apply to the test phase only."
+            # Preserve the pre-build: stop the CI script from cleaning it.
+            export PALACE_TEST_NO_CLEAN=1
+        else
+            echo "   ⚠️  pre-build failed (see ci-parity-prebuild.log) — falling back to a"
+            echo "       throttled build inside the CI script (slower but still faithful)."
+        fi
+    fi
+fi
 
 # --- CPU pressure: occupy (ncpu - TARGET_CORES) cores with tight loops so the
 #     test run + sim clones contend for only ~TARGET_CORES, mirroring the runner.
@@ -81,6 +120,7 @@ fi
 #     drives -maximum-parallel-testing-workers.
 export BUILD_CONTEXT=ci
 export CI_TEST_WORKERS="$WORKERS"
+export CI_TEST_ITERATIONS="$ITERATIONS"
 # Keep the same CI-detection env the in-test isRunningInCI check reads.
 export CI="${CI:-true}"
 export GITHUB_ACTIONS="${GITHUB_ACTIONS:-true}"
