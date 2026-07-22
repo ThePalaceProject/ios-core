@@ -109,7 +109,17 @@ final class TokenRefreshInterceptorAuthCoordinatorTests: XCTestCase {
     /// (behavior-identical, mirroring the siblings) would let this become an
     /// exact `task.value` join — flagged as the complete follow-up fix.
     private func waitForAsyncCleanup() async {
-        for _ in 0..<6 {
+        // Deterministic JOIN: await the interceptor's retained reauth-dispatch
+        // tasks (coordinator refresh → modal present → per-book state flip →
+        // retry). This replaces the former fixed 6-hop actor-hop barrier, which
+        // was a heuristic poll that lost the race under parallel-CI clones —
+        // whichever SAML-coordinator test's dispatch hadn't completed in 6 hops
+        // failed with modal.presentCallCount 0 / state != .SAMLStarted, a
+        // different victim each run. The join returns exactly when the dispatch
+        // work is done. A short main-actor drain follows for any untracked nested
+        // hop (e.g. a reauth-completion follow-up the tracked paths don't cover).
+        await interceptor._awaitAuthDispatchForTesting()
+        for _ in 0..<4 {
             await Task { @MainActor in }.value
         }
     }

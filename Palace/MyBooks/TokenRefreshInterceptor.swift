@@ -521,6 +521,59 @@ final class TokenRefreshInterceptor: @unchecked Sendable {
     // MARK: - Private Helpers
 
     /// swarm_66819d80 Module C: coordinator-routed reauth dispatch.
+    // MARK: - Test-only deterministic-join seam for reauth dispatch
+
+    /// XCTest-process detector (mirrors `AccountsManager`). Gates all retention
+    /// below so a RELEASE build never populates or reads the task list.
+    private static let _isRunningUnderXCTest =
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+
+    private let _authDispatchLock = NSLock()
+    /// Top-level reauth-dispatch `@MainActor` tasks, retained ONLY under XCTest so
+    /// a test can join the ACTUAL dispatch (coordinator refresh → modal present →
+    /// per-book state flip → retry) instead of a fixed actor-hop barrier that
+    /// starves under parallel-CI clones. Behavior-identical in RELEASE: the list
+    /// never populates off-XCTest and production never awaits it.
+    private var _authDispatchTasks: [Task<Void, Never>] = []
+
+    /// Spawns a `@MainActor` reauth-dispatch task and — under XCTest only — retains
+    /// its handle for `_awaitAuthDispatchForTesting()`. Same `Task { @MainActor in
+    /// … }` spawn, same body, same timing as the bare spawn it replaces; the only
+    /// addition is the gated append, so RELEASE behavior is byte-identical.
+    @discardableResult
+    private func spawnAuthDispatch(_ body: @escaping @MainActor () async -> Void) -> Task<Void, Never> {
+        let task = Task { @MainActor in await body() }
+        if Self._isRunningUnderXCTest {
+            _authDispatchLock.lock()
+            _authDispatchTasks.append(task)
+            _authDispatchLock.unlock()
+        }
+        return task
+    }
+
+    /// Synchronous lock-guarded snapshot (`NSLock.lock`/`unlock` are unavailable
+    /// inside an `async` function under Swift 6 — snapshot here, await in the
+    /// caller).
+    private func _snapshotAuthDispatchForTesting() -> [Task<Void, Never>] {
+        _authDispatchLock.lock(); defer { _authDispatchLock.unlock() }
+        return _authDispatchTasks
+    }
+
+    /// Test-only deterministic JOIN: awaits every retained reauth-dispatch task,
+    /// re-snapshotting until the set stops growing (a dispatch body can enqueue a
+    /// follow-up dispatch). Returns once all observed reauth work has completed —
+    /// replacing the fixed 6-hop `waitForAsyncCleanup` heuristic that lost the
+    /// race under parallel-CI clones.
+    func _awaitAuthDispatchForTesting() async {
+        var awaited = 0
+        while true {
+            let tasks = _snapshotAuthDispatchForTesting()
+            if awaited >= tasks.count { break }
+            for i in awaited..<tasks.count { _ = await tasks[i].value }
+            awaited = tasks.count
+        }
+    }
+
     /// Cleans up the per-book download tracking state, asks the
     /// coordinator to refresh credentials (the coordinator decides
     /// silent vs modal per IdP), then flips the per-book state and
@@ -539,7 +592,7 @@ final class TokenRefreshInterceptor: @unchecked Sendable {
         // boundary. The `await` hops to the state-manager / coordinator
         // actors suspend the main actor without blocking it — identical
         // observable ordering to the prior explicit `MainActor.run`.
-        Task { @MainActor [weak self] in
+        spawnAuthDispatch { [weak self] in
             guard let self, let delegate = self.delegate else { return }
             let stateManager = delegate.stateManager
             await stateManager.bookIdentifierToDownloadInfo.remove(book.identifier)
@@ -563,7 +616,7 @@ final class TokenRefreshInterceptor: @unchecked Sendable {
 
     private func triggerSAMLReauth(for book: TPPBook, task: URLSessionTask) {
         let taskIdentifier = task.taskIdentifier
-        Task { @MainActor [weak self] in
+        spawnAuthDispatch { [weak self] in
             guard let self, let delegate = self.delegate else { return }
             let stateManager = delegate.stateManager
             await stateManager.bookIdentifierToDownloadInfo.remove(book.identifier)
@@ -601,7 +654,7 @@ final class TokenRefreshInterceptor: @unchecked Sendable {
     /// cleans up tracking, resets book state, and presents the sign-in modal.
     private func triggerBrowserReauth(for book: TPPBook, task: URLSessionTask) {
         let taskIdentifier = task.taskIdentifier
-        Task { @MainActor [weak self] in
+        spawnAuthDispatch { [weak self] in
             guard let self, let delegate = self.delegate else { return }
             let stateManager = delegate.stateManager
             await stateManager.bookIdentifierToDownloadInfo.remove(book.identifier)
