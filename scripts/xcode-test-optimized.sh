@@ -126,6 +126,17 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
         ISOLATED_ONLY_ARGS+=("-only-testing:$_t")
     done
 
+    # Retry/iteration args. CI default is 3 iterations + retry-on-failure (a
+    # test passing any of 3 counts as pass — flake safety net). A caller can set
+    # CI_TEST_ITERATIONS=1 for a single-pass repro (ci-parity-local.sh --fast) —
+    # but xcodebuild REJECTS `-test-iterations 1` ("must be more than 1
+    # iteration"), so at 1 we OMIT both flags (a bare `xcodebuild test` runs each
+    # test once). Only >1 gets the retry+iterations pair.
+    RETRY_ITER_ARGS=()
+    if [ "${CI_TEST_ITERATIONS:-3}" -gt 1 ]; then
+        RETRY_ITER_ARGS=(-retry-tests-on-failure -test-iterations "${CI_TEST_ITERATIONS:-3}")
+    fi
+
     # Capture xcodebuild output so we can detect a COMPILE failure that
     # `xcodebuild test` masks. Under `-parallel-testing-enabled` xcodebuild can
     # exit 0 even when a test bundle fails to BUILD: the sibling bundles that DID
@@ -142,8 +153,7 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
         -configuration Debug \
         -resultBundlePath TestResults.xcresult \
         -enableCodeCoverage YES \
-        -retry-tests-on-failure \
-        -test-iterations "${CI_TEST_ITERATIONS:-3}" \
+        ${RETRY_ITER_ARGS[@]+"${RETRY_ITER_ARGS[@]}"} \
         -test-timeouts-enabled YES \
         -default-test-execution-time-allowance 120 \
         -maximum-test-execution-time-allowance 300 \
@@ -191,8 +201,7 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
         -resultBundlePath TestResults-serial.xcresult \
         "${ISOLATED_ONLY_ARGS[@]}" \
         -enableCodeCoverage YES \
-        -retry-tests-on-failure \
-        -test-iterations "${CI_TEST_ITERATIONS:-3}" \
+        ${RETRY_ITER_ARGS[@]+"${RETRY_ITER_ARGS[@]}"} \
         -test-timeouts-enabled YES \
         -default-test-execution-time-allowance 120 \
         -maximum-test-execution-time-allowance 300 \
@@ -257,8 +266,7 @@ else
                 -configuration Debug \
                 -resultBundlePath TestResults.xcresult \
                 -enableCodeCoverage YES \
-                -retry-tests-on-failure \
-                -test-iterations "${CI_TEST_ITERATIONS:-3}" \
+                ${RETRY_ITER_ARGS[@]+"${RETRY_ITER_ARGS[@]}"} \
                 -parallel-testing-enabled YES \
                 -maximum-parallel-testing-workers 4 \
                 CODE_SIGNING_REQUIRED=NO \
@@ -288,8 +296,7 @@ else
             -destination "platform=iOS Simulator,id=$SIMULATOR_ID" \
             -configuration Debug \
             -resultBundlePath TestResults.xcresult \
-            -retry-tests-on-failure \
-            -test-iterations "${CI_TEST_ITERATIONS:-3}" \
+            ${RETRY_ITER_ARGS[@]+"${RETRY_ITER_ARGS[@]}"} \
             -enableCodeCoverage YES \
             -parallel-testing-enabled YES \
             -maximum-parallel-testing-workers 4 \
