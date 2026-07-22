@@ -59,9 +59,11 @@ jobs:
 
       - name: Install ledger
         run: |
-          # v0.9.6: Ledger 0.9.6 + QAAtlas 2.3.0
+          # v0.9.7: monolith app-target indexing (real blast-radius on the app
+          # target; sign-in path no longer false-LOW). See CodeAtlas
+          # fix/monolith-target-indexing. Install URL redirects to SyncTek-LLC.
           curl -fsSL https://raw.githubusercontent.com/mauricecarrier7/ledger-dist/main/install.sh \
-            | bash -s -- --version 0.9.6 --dir ./tools/bin
+            | bash -s -- --version 0.9.7 --dir ./tools/bin
           
           # Clear macOS quarantine attributes (fixes exit code 11)
           xattr -cr ./tools/bin/ 2>/dev/null || true
