@@ -283,12 +283,21 @@ enum Group: Int {
 
     @objc func authenticateAndLoad(account: Account) {
         account.loadAuthenticationDocument { [weak self] success in
-            guard let self = self, success else { return }
+            // `loadAuthenticationDocument`'s completion fires on the URLSession
+            // delegate queue (off-main — `TPPNetworkExecutor` builds its session
+            // with `delegateQueue: nil`). This closure body is `@MainActor`-isolated
+            // (mutates `@Published`/settings state via `loadAccount` → `updateFeed`,
+            // and reassigns `accountsManager.currentAccount`), so running it off-main
+            // trips Swift 6's `swift_task_checkIsolated` SIGTRAP and restarts the
+            // process. Hop to main before touching any main-actor state.
+            DispatchQueue.main.async {
+                guard let self = self, success else { return }
 
-            if !settings.settingsAccountIdsList.contains(account.uuid) {
-                settings.settingsAccountIdsList.append(account.uuid)
+                if self.settings.settingsAccountIdsList.contains(account.uuid) == false {
+                    self.settings.settingsAccountIdsList.append(account.uuid)
+                }
+                self.loadAccount(account)
             }
-            self.loadAccount(account)
         }
     }
 
