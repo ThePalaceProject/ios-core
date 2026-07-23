@@ -1,0 +1,17 @@
+# Allowlist for check-appcontainer-locator-count.sh
+#
+# `AppContainer.production()` is legitimate ONLY at a composition root: the place
+# that BUILDS the object graph. Everywhere else it is a service-locator smell the
+# Wave 0 ratchet counts down (decomposition plan §3c gap 3).
+#
+# One path-suffix per line. A call site is exempt if its file path CONTAINS the
+# entry. Keep this list SMALL — every addition weakens the ratchet. '#' = comment.
+
+# The container itself (it constructs the graph and vends production()).
+Palace/AppInfrastructure/AppContainer.swift
+
+# App + scene delegates: the launch/scene composition roots.
+Palace/AppInfrastructure/TPPAppDelegate.swift
+Palace/AppInfrastructure/TPPAppDelegate+Extensions.swift
+Palace/AppInfrastructure/SceneDelegate.swift
+Palace/CarPlay/CarPlaySceneDelegate.swift

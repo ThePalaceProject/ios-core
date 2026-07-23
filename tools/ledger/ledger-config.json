@@ -129,5 +129,14 @@
       "to": "PalaceUIKit",
       "reason": "Toolkit provides both core playback (Infrastructure) and default UI (Presentation). UI components import PalaceUIKit for shared styles."
     }
+  ],
+  "knownFalsePositiveEdges": [
+    {
+      "from": "PalaceTriageBot",
+      "aka": "TriageBotUI",
+      "to": "Palace",
+      "confidence": "name-inferred",
+      "reason": "SwiftPM structurally forbids a package (PalaceTriageBot / its TriageBotUI target) from importing the app target (Palace). This edge is a name-based inference artifact, not a real import — the compiler cannot produce it. The trend gate must DISCOUNT it so the cycle count is not inflated by an impossible edge. See docs/architecture/god-class-decomposition-plan.md §3b cycle 9 (Wave 0 ledger hygiene)."
+    }
   ]
 }
