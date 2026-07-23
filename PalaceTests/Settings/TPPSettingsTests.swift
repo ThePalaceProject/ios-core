@@ -6,6 +6,7 @@
 //
 
 import XCTest
+import PalacePreferences
 import Combine
 @testable import Palace
 

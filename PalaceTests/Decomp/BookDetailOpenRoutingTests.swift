@@ -39,6 +39,7 @@
 //
 
 import Combine
+import PalacePreferences
 import UIKit
 import XCTest
 import PalaceAudiobookToolkit

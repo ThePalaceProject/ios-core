@@ -6,6 +6,7 @@
 //
 
 import XCTest
+import PalacePreferences
 @testable import Palace
 
 @MainActor

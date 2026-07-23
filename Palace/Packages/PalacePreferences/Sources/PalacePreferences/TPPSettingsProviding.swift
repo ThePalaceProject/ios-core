@@ -24,7 +24,7 @@ import Foundation
 ///     }
 /// }
 /// ```
-@objc protocol TPPSettingsProviding: AnyObject {
+@objc public protocol TPPSettingsProviding: AnyObject {
 
     // MARK: - Library Feed URLs
 

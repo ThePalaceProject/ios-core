@@ -1,17 +1,18 @@
 //
-//  TPPSettings+SE.swift
-//  The Palace Project
+//  TPPSettings+AccountsList.swift
+//  Palace
 //
-//  Created by Ettore Pasquini on 9/17/20.
-//  Copyright © 2020 NYPL Labs. All rights reserved.
+//  Wave 1a relocation of the second half of TPPSettings+SE.swift (2020).
+//  This is Accounts-domain logic (returns [Account], reads AccountsManager +
+//  AppContainer) that lived in Palace/Settings/ only by cohabitation — moving
+//  it here is what actually dissolves ledger cycle 5's Accounts→Settings edge.
+//  KNOWN WARTS (preserved verbatim; PalaceAccounts-wave debt, not Wave 1a's):
+//  reads/writes UserDefaults.standard directly (bypasses the injected
+//  `defaults`), reaches AppContainer.production(), calls synchronize().
 //
 
-extension TPPSettings: NYPLUniversalLinksSettings {
-    /// Used to handle Clever and SAML sign-ins in SimplyE.
-    @objc var universalLinksURL: URL {
-        return URL(string: "https://librarysimplified.org/callbacks/SimplyE")!
-    }
-}
+import Foundation
+import PalacePreferences
 
 extension TPPSettings {
     var settingsAccountIdsList: [String] {

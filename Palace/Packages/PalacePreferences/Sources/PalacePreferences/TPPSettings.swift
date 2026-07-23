@@ -1,19 +1,7 @@
 import Foundation
 import Combine
 
-@objc protocol NYPLUniversalLinksSettings: NSObjectProtocol {
-    /// The URL that will be used to redirect an external authentication flow
-    /// back to the our app. This URL will need to be provided to the external
-    /// service. For example, Clever authentication uses this URL to redirect
-    /// to the app after authenticating in Safari.
-    var universalLinksURL: URL { get }
-}
-
-@objc protocol NYPLFeedURLProvider {
-    var accountMainFeedURL: URL? { get set }
-}
-
-@objcMembers class TPPSettings: NSObject, NYPLFeedURLProvider, TPPAgeCheckChoiceStorage {
+@objcMembers public class TPPSettings: NSObject {
 
     // MARK: - Dependencies
 
@@ -27,7 +15,7 @@ import Combine
 
     /// Designated initializer. Defaults to `.standard` so all
     /// production call sites stay green; tests pass a fresh suite.
-    init(defaults: UserDefaults = .standard) {
+    public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         super.init()
     }
@@ -38,7 +26,7 @@ import Combine
     private let settingsChangedSubject = PassthroughSubject<Void, Never>()
 
     /// Publisher for settings changes. Use instead of observing `.TPPSettingsDidChange`.
-    var settingsDidChange: AnyPublisher<Void, Never> {
+    public var settingsDidChange: AnyPublisher<Void, Never> {
         settingsChangedSubject
             .receive(on: DispatchQueue.main)
             .eraseToAnyPublisher()
@@ -48,29 +36,29 @@ import Combine
     private let useBetaChangedSubject = PassthroughSubject<Bool, Never>()
 
     /// Publisher for beta libraries toggle. Use instead of observing `.TPPUseBetaDidChange`.
-    var useBetaDidChange: AnyPublisher<Bool, Never> {
+    public var useBetaDidChange: AnyPublisher<Bool, Never> {
         useBetaChangedSubject
             .receive(on: DispatchQueue.main)
             .eraseToAnyPublisher()
     }
 
-    static let TPPAboutPalaceURLString = "http://thepalaceproject.org/"
-    static let TPPUserAgreementURLString = "https://legal.palaceproject.io/End%20User%20License%20Agreement.html"
-    static let TPPPrivacyPolicyURLString = "https://legal.palaceproject.io/Privacy%20Policy.html"
-    static let TPPSoftwareLicensesURLString = "https://legal.palaceproject.io/software-licenses.html"
+    public static let TPPAboutPalaceURLString = "http://thepalaceproject.org/"
+    public static let TPPUserAgreementURLString = "https://legal.palaceproject.io/End%20User%20License%20Agreement.html"
+    public static let TPPPrivacyPolicyURLString = "https://legal.palaceproject.io/Privacy%20Policy.html"
+    public static let TPPSoftwareLicensesURLString = "https://legal.palaceproject.io/software-licenses.html"
 
     static private let customMainFeedURLKey = "NYPLSettingsCustomMainFeedURL"
     static private let accountMainFeedURLKey = "NYPLSettingsAccountMainFeedURL"
     static private let userPresentedAgeCheckKey = "NYPLUserPresentedAgeCheckKey"
-    static let userHasAcceptedEULAKey = "NYPLSettingsUserAcceptedEULA"
+    public static let userHasAcceptedEULAKey = "NYPLSettingsUserAcceptedEULA"
     static private let userSeenFirstTimeSyncMessageKey = "userSeenFirstTimeSyncMessageKey"
     static private let useBetaLibrariesKey = "NYPLUseBetaLibrariesKey"
-    static let settingsLibraryAccountsKey = "NYPLSettingsLibraryAccountsKey"
+    public static let settingsLibraryAccountsKey = "NYPLSettingsLibraryAccountsKey"
     static private let versionKey = "NYPLSettingsVersionKey"
     static private let customLibraryRegistryKey = "TPPSettingsCustomLibraryRegistryKey"
     static private let enterLCPPassphraseManually = "TPPSettingsEnterLCPPassphraseManually"
-    static let showDeveloperSettingsKey = "showDeveloperSettings"
-    static let downloadOnlyOnWiFiKey = "TPPSettingsDownloadOnlyOnWiFi"
+    public static let showDeveloperSettingsKey = "showDeveloperSettings"
+    public static let downloadOnlyOnWiFiKey = "TPPSettingsDownloadOnlyOnWiFi"
 
     // App-rating engagement signals (PP-4087). Local/on-device only; no PII.
     // Kept on `UserDefaults` so they survive app updates.
@@ -83,7 +71,7 @@ import Combine
     static private let appRatingCrashFreeLastSessionKey = "TPPAppRatingCrashFreeLastSession"
 
     // Set to nil (the default) if no custom feed should be used.
-    var customMainFeedURL: URL? {
+    public var customMainFeedURL: URL? {
         get {
             return defaults.url(forKey: TPPSettings.customMainFeedURLKey)
         }
@@ -97,7 +85,7 @@ import Combine
         }
     }
 
-    var accountMainFeedURL: URL? {
+    public var accountMainFeedURL: URL? {
         get {
             return defaults.url(forKey: TPPSettings.accountMainFeedURLKey)
         }
@@ -111,7 +99,7 @@ import Combine
         }
     }
 
-    var userPresentedAgeCheck: Bool {
+    public var userPresentedAgeCheck: Bool {
         get {
             defaults.bool(forKey: TPPSettings.userPresentedAgeCheckKey)
         }
@@ -120,7 +108,7 @@ import Combine
         }
     }
 
-    var userHasAcceptedEULA: Bool {
+    public var userHasAcceptedEULA: Bool {
         get {
             defaults.bool(forKey: TPPSettings.userHasAcceptedEULAKey)
         }
@@ -129,7 +117,7 @@ import Combine
         }
     }
 
-    var useBetaLibraries: Bool {
+    public var useBetaLibraries: Bool {
         get {
             defaults.bool(forKey: TPPSettings.useBetaLibrariesKey)
         }
@@ -141,7 +129,7 @@ import Combine
         }
     }
 
-    var appVersion: String? {
+    public var appVersion: String? {
         get {
             defaults.string(forKey: TPPSettings.versionKey)
         }
@@ -150,7 +138,7 @@ import Combine
         }
     }
 
-    var customLibraryRegistryServer: String? {
+    public var customLibraryRegistryServer: String? {
         get {
             defaults.string(forKey: TPPSettings.customLibraryRegistryKey)
         }
@@ -159,7 +147,7 @@ import Combine
         }
     }
 
-    var enterLCPPassphraseManually: Bool {
+    public var enterLCPPassphraseManually: Bool {
         get {
             defaults.bool(forKey: TPPSettings.enterLCPPassphraseManually)
         }
@@ -168,7 +156,7 @@ import Combine
         }
     }
 
-    var downloadOnlyOnWiFi: Bool {
+    public var downloadOnlyOnWiFi: Bool {
         get {
             defaults.bool(forKey: TPPSettings.downloadOnlyOnWiFiKey)
         }
@@ -179,17 +167,17 @@ import Combine
 
     // MARK: - App Rating (PP-4087)
 
-    var appRatingSessionCount: Int {
+    public var appRatingSessionCount: Int {
         get { defaults.integer(forKey: TPPSettings.appRatingSessionCountKey) }
         set { defaults.set(newValue, forKey: TPPSettings.appRatingSessionCountKey) }
     }
 
-    var appRatingBooksCompleted: Int {
+    public var appRatingBooksCompleted: Int {
         get { defaults.integer(forKey: TPPSettings.appRatingBooksCompletedKey) }
         set { defaults.set(newValue, forKey: TPPSettings.appRatingBooksCompletedKey) }
     }
 
-    var appRatingLastPromptDate: Date? {
+    public var appRatingLastPromptDate: Date? {
         get { defaults.object(forKey: TPPSettings.appRatingLastPromptDateKey) as? Date }
         set {
             if let newValue {
@@ -200,24 +188,24 @@ import Combine
         }
     }
 
-    var appRatingPromptDisplayCount: Int {
+    public var appRatingPromptDisplayCount: Int {
         get { defaults.integer(forKey: TPPSettings.appRatingPromptDisplayCountKey) }
         set { defaults.set(newValue, forKey: TPPSettings.appRatingPromptDisplayCountKey) }
     }
 
-    var appRatingDismissalCount: Int {
+    public var appRatingDismissalCount: Int {
         get { defaults.integer(forKey: TPPSettings.appRatingDismissalCountKey) }
         set { defaults.set(newValue, forKey: TPPSettings.appRatingDismissalCountKey) }
     }
 
-    var appRatingOptedOut: Bool {
+    public var appRatingOptedOut: Bool {
         get { defaults.bool(forKey: TPPSettings.appRatingOptedOutKey) }
         set { defaults.set(newValue, forKey: TPPSettings.appRatingOptedOutKey) }
     }
 
     /// Defaults to `true` (assume crash-free) when no session has recorded a
     /// value yet, so a never-crashed patron is not blocked by an absent key.
-    var appRatingCrashFreeLastSession: Bool {
+    public var appRatingCrashFreeLastSession: Bool {
         get {
             defaults.object(forKey: TPPSettings.appRatingCrashFreeLastSessionKey) == nil
                 ? true

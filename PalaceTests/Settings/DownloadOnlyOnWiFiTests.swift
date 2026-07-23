@@ -7,6 +7,7 @@
 //
 
 import XCTest
+import PalacePreferences
 import PalaceNetwork
 @testable import Palace
 

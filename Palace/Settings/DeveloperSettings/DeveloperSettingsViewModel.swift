@@ -13,6 +13,7 @@
 //
 
 import Foundation
+import PalacePreferences
 import SwiftUI
 import MessageUI
 import WebKit

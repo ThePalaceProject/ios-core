@@ -9,6 +9,7 @@
 //
 
 import Combine
+import PalacePreferences
 import XCTest
 import PalaceCatalog
 @testable import Palace

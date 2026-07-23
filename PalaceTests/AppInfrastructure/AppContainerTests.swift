@@ -1,4 +1,5 @@
 import XCTest
+import PalacePreferences
 import Combine
 import SwiftUI
 @testable import Palace

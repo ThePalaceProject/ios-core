@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import PalacePreferences
 import LocalAuthentication
 
 struct AccountDetailView: View {

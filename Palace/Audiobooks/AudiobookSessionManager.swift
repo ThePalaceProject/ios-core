@@ -10,6 +10,7 @@
 //
 
 import Combine
+import PalacePreferences
 import Foundation
 import MediaPlayer
 import os
