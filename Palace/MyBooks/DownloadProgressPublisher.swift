@@ -61,15 +61,6 @@ final class DownloadProgressReporter: DownloadProgressPublishing, @unchecked Sen
     @MainActor private var lastBroadcastTime: Date = Date.distantPast
     @MainActor private var pendingBroadcast: DispatchWorkItem?
 
-    /// Minimum interval between broadcast notifications — the intrinsic throttle
-    /// that coalesces rapid download-progress bursts into at most one
-    /// `TPPMyBooksDownloadCenterDidChange` post per window. Injectable ONLY so
-    /// tests can set it to `0` for deterministic (un-delayed) broadcasts; the
-    /// production default is `0.5`s, so a default-constructed reporter behaves
-    /// byte-identically to the previous hard-coded literal. `let` (immutable
-    /// after init) keeps the `@unchecked Sendable` invariant honest.
-    let throttleInterval: TimeInterval
-
     /// The object to use as the notification sender
     /// (typically `AppContainer.production().downloadCenter`).
     weak var notificationSender: AnyObject?
@@ -78,11 +69,9 @@ final class DownloadProgressReporter: DownloadProgressPublishing, @unchecked Sen
 
     init(
         accessibilityAnnouncements: TPPAccessibilityAnnouncementCenter = TPPAccessibilityAnnouncementCenter(),
-        downloadAnnouncementService: DownloadAnnouncementService? = nil,
-        throttleInterval: TimeInterval = 0.5
+        downloadAnnouncementService: DownloadAnnouncementService? = nil
     ) {
         self.accessibilityAnnouncements = accessibilityAnnouncements
-        self.throttleInterval = throttleInterval
         // The reporter and the service must share an underlying announcer
         // so deduplication / progress-bucket state are coherent across the
         // announceStatus path (used by publishAndAnnounceError) and the
@@ -120,9 +109,7 @@ final class DownloadProgressReporter: DownloadProgressPublishing, @unchecked Sen
         pendingBroadcast?.cancel()
 
         let timeSinceLastBroadcast = Date().timeIntervalSince(lastBroadcastTime)
-        // Injectable throttle window (production default 0.5s). The asyncAfter
-        // throttle below is preserved — only its interval is now configurable.
-        let minimumBroadcastInterval = throttleInterval
+        let minimumBroadcastInterval: TimeInterval = 0.5
 
         if timeSinceLastBroadcast >= minimumBroadcastInterval {
             broadcastUpdateNow()

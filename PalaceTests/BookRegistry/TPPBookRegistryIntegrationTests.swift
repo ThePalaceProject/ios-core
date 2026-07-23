@@ -208,31 +208,34 @@ final class TPPBookRegistryPublisherTests: XCTestCase {
 
     // MARK: - registryPublisher Tests
 
-    func testRegistryPublisher_EmitsOnBookAdd() {
+    func testRegistryPublisher_EmitsOnBookAdd() async {
         let registry = makeTestAppContainer().bookRegistry as! TPPBookRegistry
         let book = TPPBookMocker.mockBook(identifier: "publisher-add-\(UUID().uuidString)",
                                           title: "Publisher Add Test",
                                           distributorType: .EpubZip)
 
+        // Wave-2 (swarm_ad0b4c65): `addBook` funnels `registrySubject.send(...)`
+        // through `store`'s barrier `didSet` (`DispatchQueue.main.async` from
+        // inside the barrier). Capture instead of `expectation.fulfill()`,
+        // join via the S2 seam, then assert synchronously.
         var receivedRegistry: [String: TPPBookRegistryRecord]?
-        let expectation = self.expectation(description: "Registry publisher emits with added book")
-
         registry.registryPublisher
             .filter { $0[book.identifier] != nil }
-            .first()
-            .sink { receivedRegistry = $0; expectation.fulfill() }
+            .sink { receivedRegistry = $0 }
             .store(in: &cancellables)
 
         registry.addBook(book, state: .downloadNeeded)
 
-        waitForExpectations(timeout: 3.0)
+        await registry._awaitPendingWritesForTesting()
+        await drainMainQueueAsync()
+
         XCTAssertNotNil(receivedRegistry)
         XCTAssertNotNil(receivedRegistry?[book.identifier])
 
         registry.removeBook(forIdentifier: book.identifier)
     }
 
-    func testRegistryPublisher_EmitsOnBookRemove() {
+    func testRegistryPublisher_EmitsOnBookRemove() async {
         let registry = makeTestAppContainer().bookRegistry as! TPPBookRegistry
         let book = TPPBookMocker.mockBook(identifier: "publisher-remove-\(UUID().uuidString)",
                                           title: "Publisher Remove Test",
@@ -243,24 +246,23 @@ final class TPPBookRegistryPublisherTests: XCTestCase {
         XCTAssertNotNil(registry.book(forIdentifier: book.identifier))
 
         var receivedRegistry: [String: TPPBookRegistryRecord]?
-        let expectation = self.expectation(description: "Registry publisher emits on remove")
-
         registry.registryPublisher
             .filter { $0[book.identifier] == nil }
-            .first()
-            .sink { receivedRegistry = $0; expectation.fulfill() }
+            .sink { receivedRegistry = $0 }
             .store(in: &cancellables)
 
         registry.removeBook(forIdentifier: book.identifier)
 
-        waitForExpectations(timeout: 2.0)
+        await registry._awaitPendingWritesForTesting()
+        await drainMainQueueAsync()
+
         XCTAssertNotNil(receivedRegistry)
         XCTAssertNil(receivedRegistry?[book.identifier])
     }
 
     // MARK: - bookStatePublisher Tests
 
-    func testBookStatePublisher_EmitsOnStateChange() {
+    func testBookStatePublisher_EmitsOnStateChange() async {
         let registry = makeTestAppContainer().bookRegistry as! TPPBookRegistry
         let book = TPPBookMocker.mockBook(identifier: "state-publisher-\(UUID().uuidString)",
                                           title: "State Publisher Test",
@@ -271,24 +273,23 @@ final class TPPBookRegistryPublisherTests: XCTestCase {
 
         var receivedState: TPPBookState?
         var receivedBookId: String?
-        let expectation = self.expectation(description: "State publisher emits")
-
         registry.bookStatePublisher
             .filter { $0.0 == book.identifier && $0.1 == .downloading }
-            .first()
-            .sink { receivedBookId = $0.0; receivedState = $0.1; expectation.fulfill() }
+            .sink { receivedBookId = $0.0; receivedState = $0.1 }
             .store(in: &cancellables)
 
         registry.setState(.downloading, for: book.identifier)
 
-        waitForExpectations(timeout: 2.0)
+        await registry._awaitPendingWritesForTesting()
+        await drainMainQueueAsync()
+
         XCTAssertEqual(receivedBookId, book.identifier)
         XCTAssertEqual(receivedState, .downloading)
 
         registry.removeBook(forIdentifier: book.identifier)
     }
 
-    func testBookStatePublisher_EmitsOnBookAdd() {
+    func testBookStatePublisher_EmitsOnBookAdd() async {
         let registry = makeTestAppContainer().bookRegistry as! TPPBookRegistry
         let book = TPPBookMocker.mockBook(identifier: "add-state-publisher-\(UUID().uuidString)",
                                           title: "Add State Publisher",
@@ -296,24 +297,23 @@ final class TPPBookRegistryPublisherTests: XCTestCase {
 
         var receivedState: TPPBookState?
         var receivedBookId: String?
-        let expectation = self.expectation(description: "State publisher emits on add")
-
         registry.bookStatePublisher
             .filter { $0.0 == book.identifier }
-            .first()
-            .sink { receivedBookId = $0.0; receivedState = $0.1; expectation.fulfill() }
+            .sink { receivedBookId = $0.0; receivedState = $0.1 }
             .store(in: &cancellables)
 
         registry.addBook(book, state: .downloadSuccessful)
 
-        waitForExpectations(timeout: 2.0)
+        await registry._awaitPendingWritesForTesting()
+        await drainMainQueueAsync()
+
         XCTAssertEqual(receivedBookId, book.identifier)
         XCTAssertEqual(receivedState, .downloadSuccessful)
 
         registry.removeBook(forIdentifier: book.identifier)
     }
 
-    func testBookStatePublisher_EmitsOnBookRemove() {
+    func testBookStatePublisher_EmitsOnBookRemove() async {
         let registry = makeTestAppContainer().bookRegistry as! TPPBookRegistry
         let book = TPPBookMocker.mockBook(identifier: "remove-state-publisher-\(UUID().uuidString)",
                                           title: "Remove State Publisher",
@@ -323,21 +323,20 @@ final class TPPBookRegistryPublisherTests: XCTestCase {
         XCTAssertNotNil(registry.book(forIdentifier: book.identifier))
 
         var receivedState: TPPBookState?
-        let expectation = self.expectation(description: "State publisher emits unregistered on remove")
-
         registry.bookStatePublisher
             .filter { $0.0 == book.identifier && $0.1 == .unregistered }
-            .first()
-            .sink { receivedState = $0.1; expectation.fulfill() }
+            .sink { receivedState = $0.1 }
             .store(in: &cancellables)
 
         registry.removeBook(forIdentifier: book.identifier)
 
-        waitForExpectations(timeout: 2.0)
+        await registry._awaitPendingWritesForTesting()
+        await drainMainQueueAsync()
+
         XCTAssertEqual(receivedState, .unregistered)
     }
 
-    func testBookStatePublisher_MultipleStateChanges_EmitsAll() {
+    func testBookStatePublisher_MultipleStateChanges_EmitsAll() async {
         let registry = makeTestAppContainer().bookRegistry as! TPPBookRegistry
         let book = TPPBookMocker.mockBook(identifier: "multi-state-\(UUID().uuidString)",
                                           title: "Multi State Test",
@@ -347,30 +346,27 @@ final class TPPBookRegistryPublisherTests: XCTestCase {
         XCTAssertEqual(registry.state(for: book.identifier), .downloadNeeded)
 
         var receivedStates: [TPPBookState] = []
-        let expectation = self.expectation(description: "All states received")
-        expectation.expectedFulfillmentCount = 3
 
-        // bookStatePublisher uses receive(on: RunLoop.main), so the addBook emission
-        // above is still pending on the RunLoop when we subscribe. Filter to exactly
-        // the three states we're about to dispatch so addBook's .downloadNeeded event
-        // doesn't cause an over-fulfillment.
+        // bookStatePublisher uses receive(on: RunLoop.main). Filter to exactly
+        // the three states we're about to dispatch so addBook's .downloadNeeded
+        // event doesn't get counted alongside them.
         let targetStates: Set<TPPBookState> = [.downloading, .downloadSuccessful, .used]
         registry.bookStatePublisher
             .filter { $0.0 == book.identifier && targetStates.contains($0.1) }
-            .sink { _, state in
-                receivedStates.append(state)
-                expectation.fulfill()
-            }
+            .sink { _, state in receivedStates.append(state) }
             .store(in: &cancellables)
 
-        // Dispatch all three state transitions synchronously.
-        // Each setState enqueues an async barrier; the publisher emits each
-        // one on the main thread in order, satisfying the 3-count expectation.
+        // Dispatch all three state transitions synchronously. Each setState
+        // enqueues an async barrier on the SAME store syncQueue (FIFO), so a
+        // single seam join after all three drains every one of them; the
+        // main-queue drain then flushes all three publisher emissions.
         registry.setState(.downloading, for: book.identifier)
         registry.setState(.downloadSuccessful, for: book.identifier)
         registry.setState(.used, for: book.identifier)
 
-        waitForExpectations(timeout: 3.0)
+        await registry._awaitPendingWritesForTesting()
+        await drainMainQueueAsync()
+
         XCTAssertEqual(receivedStates.count, 3)
         XCTAssertTrue(receivedStates.contains(.downloading))
         XCTAssertTrue(receivedStates.contains(.downloadSuccessful))
@@ -820,7 +816,7 @@ final class TPPBookRegistryThreadSafetyTests: XCTestCase {
         super.tearDown()
     }
 
-    func testCrashlytics30c41d7e_RapidRegistryMutations_DoNotCrashPublisher() {
+    func testCrashlytics30c41d7e_RapidRegistryMutations_DoNotCrashPublisher() async {
         // Regression test for Crashlytics 30c41d7e (EXC_BAD_ACCESS during concurrent
         // publisher reads and registry writes). The subscription stays live throughout
         // rapid addBook/removeBook bursts so the race window stays open; assertions
@@ -846,33 +842,24 @@ final class TPPBookRegistryThreadSafetyTests: XCTestCase {
             }
             .store(in: &cancellables)
 
-        // Burst of concurrent adds.
-        let addExpectation = self.expectation(description: "All \(count) books present in registry")
-        registry.registryPublisher
-            .filter { records in bookIds.isSubset(of: Set(records.keys)) }
-            .first()
-            .sink { _ in addExpectation.fulfill() }
-            .store(in: &cancellables)
-
+        // Wave-2 (swarm_ad0b4c65): burst of adds — each `addBook` enqueues a
+        // barrier on the SAME store syncQueue (FIFO), so a single S2 seam
+        // join after the whole burst drains every one of them; the
+        // subsequent main-queue drain flushes all the resulting
+        // `registrySubject.send(...)` hops.
         for book in books { registry.addBook(book, state: .downloadNeeded) }
-        waitForExpectations(timeout: 20.0) // FLAKE-003-OK: concurrent-add stress test — burst of `count` books through addBook → publisher pipeline; 20s covers CI contention.
+        await registry._awaitPendingWritesForTesting()
+        await drainMainQueueAsync()
 
-        // Verify the state we waited for.
         for book in books {
             XCTAssertNotNil(registry.book(forIdentifier: book.identifier),
                             "Book \(book.identifier) should be in registry after addBook burst")
         }
 
         // Burst of concurrent removes — must not crash, and all 20 must be gone.
-        let removeExpectation = self.expectation(description: "All \(count) books removed from registry")
-        registry.registryPublisher
-            .filter { records in bookIds.isDisjoint(with: Set(records.keys)) }
-            .first()
-            .sink { _ in removeExpectation.fulfill() }
-            .store(in: &cancellables)
-
         for book in books { registry.removeBook(forIdentifier: book.identifier) }
-        waitForExpectations(timeout: 20.0) // FLAKE-003-OK: concurrent-remove stress test — burst of `count` removes through removeBook → publisher pipeline; 20s covers CI contention.
+        await registry._awaitPendingWritesForTesting()
+        await drainMainQueueAsync()
 
         for book in books {
             XCTAssertNil(registry.book(forIdentifier: book.identifier),
@@ -880,7 +867,7 @@ final class TPPBookRegistryThreadSafetyTests: XCTestCase {
         }
     }
 
-    func testCrashlytics30c41d7e_ConcurrentAddAndUpdate_DoNotCrash() {
+    func testCrashlytics30c41d7e_ConcurrentAddAndUpdate_DoNotCrash() async {
         let registry = makeTestAppContainer().bookRegistry as! TPPBookRegistry
         let book = TPPBookMocker.mockBook(identifier: "concurrent-update-\(UUID().uuidString)",
                                           title: "Concurrent Update Test",
@@ -889,21 +876,12 @@ final class TPPBookRegistryThreadSafetyTests: XCTestCase {
         var registrySnapshots: [[String: TPPBookRegistryRecord]] = []
         var stateChanges: [(String, TPPBookState)] = []
 
-        // We want to observe at least the final .holding state emission
-        let expectation = self.expectation(description: "Holding state received via publisher")
-
         registry.registryPublisher
             .sink { registrySnapshots.append($0) }
             .store(in: &cancellables)
 
         registry.bookStatePublisher
             .sink { stateChanges.append($0) }
-            .store(in: &cancellables)
-
-        registry.bookStatePublisher
-            .filter { $0.0 == book.identifier && $0.1 == .holding }
-            .first()
-            .sink { _ in expectation.fulfill() }
             .store(in: &cancellables)
 
         registry.addBook(book, state: .downloadNeeded)
@@ -914,14 +892,19 @@ final class TPPBookRegistryThreadSafetyTests: XCTestCase {
         registry.removeBook(forIdentifier: book.identifier)
         registry.addBook(book, state: .holding)
 
-        waitForExpectations(timeout: 3.0)
+        // Wave-2 (swarm_ad0b4c65): all seven writes above are enqueued FIFO
+        // on the same store syncQueue; one S2 seam join + main drain waits
+        // for every one of their publisher emissions to land.
+        await registry._awaitPendingWritesForTesting()
+        await drainMainQueueAsync()
+
         XCTAssertFalse(registrySnapshots.isEmpty)
         XCTAssertFalse(stateChanges.isEmpty)
 
         registry.removeBook(forIdentifier: book.identifier)
     }
 
-    func testRegistryPublisher_EmitsConsistentSnapshots_DuringRapidMutations() {
+    func testRegistryPublisher_EmitsConsistentSnapshots_DuringRapidMutations() async {
         let registry = makeTestAppContainer().bookRegistry as! TPPBookRegistry
         let iterations = 15
         let books = (0..<iterations).map { i in
@@ -931,9 +914,8 @@ final class TPPBookRegistryThreadSafetyTests: XCTestCase {
         }
 
         var allSnapshotsValid = true
-        // Fulfilled when the last book (added at index iterations-1) appears in a snapshot
+        var lastBookObserved = false
         let lastBook = books.last!
-        let expectation = self.expectation(description: "Last book observed in snapshot")
 
         registry.registryPublisher
             .sink { records in
@@ -942,13 +924,10 @@ final class TPPBookRegistryThreadSafetyTests: XCTestCase {
                         allSnapshotsValid = false
                     }
                 }
+                if records[lastBook.identifier] != nil {
+                    lastBookObserved = true
+                }
             }
-            .store(in: &cancellables)
-
-        registry.registryPublisher
-            .filter { $0[lastBook.identifier] != nil }
-            .first()
-            .sink { _ in expectation.fulfill() }
             .store(in: &cancellables)
 
         for (i, book) in books.enumerated() {
@@ -958,8 +937,14 @@ final class TPPBookRegistryThreadSafetyTests: XCTestCase {
             }
         }
 
-        waitForExpectations(timeout: 3.0)
+        // Wave-2 (swarm_ad0b4c65): all mutations above are enqueued FIFO on
+        // the same store syncQueue; the S2 seam join + main drain waits for
+        // every one of them (including the last book's) to have emitted.
+        await registry._awaitPendingWritesForTesting()
+        await drainMainQueueAsync()
+
         XCTAssertTrue(allSnapshotsValid)
+        XCTAssertTrue(lastBookObserved, "The last book added must have appeared in a registryPublisher snapshot")
 
         for book in books { registry.removeBook(forIdentifier: book.identifier) }
     }

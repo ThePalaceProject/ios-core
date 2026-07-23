@@ -293,64 +293,6 @@ private final class CompletionResultBox: @unchecked Sendable {
         await tokenCoordinator.forceReleaseIfStuck(generation: generation)
     }
 
-    // MARK: - Deterministic in-flight completion join (test-only)
-
-    /// XCTest-process detector (mirrors `TokenRefreshInterceptor` / `AccountsManager`).
-    /// Gates all retention below so a RELEASE build never populates or reads
-    /// `pendingTestTasks`; the surrounding `Task { … }` spawns stay byte-identical.
-    private static let _isRunningUnderXCTest =
-        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
-
-    private let pendingTestTasksLock = NSLock()
-    /// Handles for the fire-and-forget token-refresh / retry-drain `Task`s this
-    /// executor spawns off the caller's thread (refresh orchestration → token
-    /// request → retry-queue drain). Retained ONLY under XCTest so a test can join
-    /// the ACTUAL refresh+retry chain instead of wall-clock-waiting. Never
-    /// populated in RELEASE. The self-healing watchdog `Task` (which
-    /// `Task.sleep`s for `tokenRefreshWatchdogSeconds`) is deliberately NOT
-    /// retained — joining it would be unbounded.
-    private var pendingTestTasks: [Task<Void, Never>] = []
-
-    /// Appends `task` to the join set under XCTest only. In RELEASE the static
-    /// gate is `false`, so this returns without touching the array and the
-    /// preceding `Task { … }` spawn is byte-identical to production.
-    private func retainForTesting(_ task: Task<Void, Never>) {
-        guard Self._isRunningUnderXCTest else { return }
-        pendingTestTasksLock.lock()
-        pendingTestTasks.append(task)
-        pendingTestTasksLock.unlock()
-    }
-
-    /// Synchronous lock-guarded snapshot. `NSLock.lock()`/`unlock()` cannot span a
-    /// suspension under Swift 6 — snapshot here, `await` in the caller loop.
-    private func _snapshotInFlightForTesting() -> [Task<Void, Never>] {
-        pendingTestTasksLock.lock(); defer { pendingTestTasksLock.unlock() }
-        return pendingTestTasks
-    }
-
-    /// Test-only deterministic JOIN over every in-flight completion the executor
-    /// or its responder fired off the caller's thread / URLSession delegate queue.
-    /// Grows-until-stable over the executor's retained refresh/retry `Task`s (a
-    /// refresh `Task` enqueues the follow-up token-request + retry-drain `Task`s
-    /// as it runs, so re-snapshotting picks them up), then joins the responder's
-    /// own drain handles.
-    ///
-    /// Bounded: every retained handle resolves (the sleeping watchdog is never
-    /// retained), and there is no sleep/poll/`Date()` here. The terminal
-    /// synchronous `info.completion(result)` in the responder's
-    /// `didCompleteWithError` is intentionally left untouched — it has already run
-    /// by the time that delegate callback returns, so it needs no join.
-    func _awaitInFlightForTesting() async {
-        var awaited = 0
-        while true {
-            let tasks = _snapshotInFlightForTesting()
-            if awaited >= tasks.count { break }
-            for i in awaited..<tasks.count { _ = await tasks[i].value }
-            awaited = tasks.count
-        }
-        await responder._awaitInFlightForTesting()
-    }
-
     func GET(_ reqURL: URL,
              useTokenIfAvailable: Bool = true,
              completion: @escaping (_ result: NYPLResult<Data>) -> Void) {
@@ -675,7 +617,7 @@ extension TPPNetworkExecutor {
         // boundaries below (this Task and the nested token-refresh continuation)
         // without rippling `@Sendable` onto the public signature.
         let completionBox = completion.map { CompletionBox($0) }
-        let refreshTask = Task { [weak self] in
+        Task { [weak self] in
             guard let self = self else {
                 let error = NSError(domain: TPPErrorLogger.clientDomain, code: TPPErrorCode.invalidCredentials.rawValue, userInfo: [NSLocalizedDescriptionKey: "Network executor deallocated"])
                 completionBox?.call(NYPLResult.failure(error, nil))
@@ -741,7 +683,7 @@ extension TPPNetworkExecutor {
                 // inside the Task — same isolation-preserving carrier pattern as
                 // `CompletionBox`. Behavior unchanged.
                 let resultBox = CompletionResultBox(result)
-                let retryDrainTask = Task {
+                Task {
                     switch resultBox.result {
                     case .success(let tokenResponse):
                         Log.info(#file, "Token refresh successful for account \(capturedAccountId ?? "current"), expires in \(tokenResponse.expiresIn)s")
@@ -820,10 +762,8 @@ extension TPPNetworkExecutor {
                         completionBox?.call(NYPLResult.failure(nsError, nil))
                     }
                 }
-                self.retainForTesting(retryDrainTask)
             }
         }
-        retainForTesting(refreshTask)
     }
 
     func executeTokenRefresh(username: String, password: String, tokenURL: URL, accountId: String? = nil, completion: @escaping (Result<TokenResponse, Error>) -> Void) {
@@ -841,7 +781,7 @@ extension TPPNetworkExecutor {
         // Box the non-`Sendable` completion so it can cross the `@Sendable` Task
         // boundary below; invoked exactly once.
         let completionBox = CompletionBox(completion)
-        let tokenRequestTask = Task {
+        Task {
             let tokenRequest = TokenRequest(url: tokenURL, username: username, password: password)
             let result = await tokenRequest.execute(session: session)
 
@@ -860,7 +800,6 @@ extension TPPNetworkExecutor {
                 completionBox.call(.failure(error))
             }
         }
-        retainForTesting(tokenRequestTask)
     }
 }
 

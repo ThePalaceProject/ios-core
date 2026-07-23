@@ -1255,9 +1255,14 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
         // swarm_cd181acd D-cleanup: per-test isolated UserDefaults suite.
         let defaults = Self.testUserDefaults()
         let manager = makeFreshAccountsManager(defaults: defaults)
-        let backgroundSettled = expectation(description: "background loadCatalogs settled")
-        DispatchQueue.global().asyncAfter(deadline: .now() + 0.4) { backgroundSettled.fulfill() } // FLAKE-002-OK: background loadCatalogs settle window — see feedback_wiring_suite_test_isolation
-        wait(for: [backgroundSettled], timeout: 2.0)
+        // Deterministic barrier: `deferInitialLoadCatalogsForTesting` (pinned
+        // true by `PalaceWiringTestCase`) means `init` never spawns a
+        // background `loadCatalogs` Task, so there is no real async work to
+        // "settle" here — this was a fixed-delay pad. `drainMainQueue()`
+        // flushes anything already enqueued on the main queue (mirrors the
+        // identical construction pattern a few tests up in this file) without
+        // guessing at a wall-clock window.
+        drainMainQueue()
 
         let activeHash = TPPConfiguration.customUrlHash()
             ?? (TPPSettings().useBetaLibraries
@@ -1302,34 +1307,22 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
         // `.detailsFailed(.authDocumentFetchFailed)` are acceptable downstream
         // terminals depending on the network availability of the test env. The
         // kill condition is the marker staying put.
-        let moved = expectation(description: "state moved off stale .detailsEvicted")
-        var observedFinalState: Account.LoadState = AccountStateStore.shared.state(for: currentUUID)
-        let deadline = Date().addingTimeInterval(3.0)
-        DispatchQueue.global().async {
-            while Date() < deadline {
-                let s = AccountStateStore.shared.state(for: currentUUID)
-                switch s {
-                case .detailsLoading, .detailsLoaded:
-                    observedFinalState = s
-                    moved.fulfill()
-                    return
-                case .detailsEvicted(.libraryDeselected):
-                    Thread.sleep(forTimeInterval: 0.05) // FLAKE-001-OK: redrive yield, intentional
-                    continue
-                case .detailsFailed:
-                    // Any .detailsFailed terminal (e.g. .authDocumentFetchFailed
-                    // from the test env's lack of network) proves the fetch
-                    // was re-fired — the eviction marker was NOT respected as
-                    // a short-circuit. That's the success path for this test.
-                    observedFinalState = s
-                    moved.fulfill()
-                    return
-                default:
-                    Thread.sleep(forTimeInterval: 0.05) // FLAKE-001-OK: .detailsLoading transition poll
-                }
+        // Deterministic poll via the shared `awaitCondition` primitive
+        // (already used elsewhere in this file, e.g.
+        // `testLoadCatalogs_warmPath_drivesCurrentAccountPastBasicInfoLoaded`)
+        // instead of a hand-rolled `while Date() < deadline` loop with
+        // `Thread.sleep` yields — same bounded-poll semantics, no
+        // hand-maintained deadline/sleep bookkeeping, and a loud `XCTFail`
+        // (not a silent stale read) on timeout.
+        awaitCondition(timeout: 4.0) {
+            switch AccountStateStore.shared.state(for: currentUUID) {
+            case .detailsLoading, .detailsLoaded, .detailsFailed:
+                return true
+            default:
+                return false
             }
         }
-        wait(for: [moved], timeout: 4.0)
+        let observedFinalState = AccountStateStore.shared.state(for: currentUUID)
 
         switch observedFinalState {
         case .detailsLoading, .detailsLoaded:

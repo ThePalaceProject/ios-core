@@ -94,24 +94,22 @@ final class BookRegistrySyncTests: XCTestCase {
 
     // MARK: - Reset
 
-    func test_reset_clearsSyncUrlAndStore() {
-        // Add a book to the store
+    func test_reset_clearsSyncUrlAndStore() async {
+        // CONVERTED: addBook completion+wait replaced with the S1 seam join.
         let book = makeBook()
-        let addDone = expectation(description: "added")
-        store.addBook(book, state: .downloadNeeded) { _ in addDone.fulfill() }
-        wait(for: [addDone], timeout: 2.0)
-
-        drainMainQueue()
+        store.addBook(book, state: .downloadNeeded)
+        await store._awaitPendingWritesForTesting()
 
         XCTAssertEqual(store.allBooks.count, 1)
 
         syncManager.syncUrl = URL(string: "https://example.com/loans")
         syncManager.reset("test-account")
+        // reset() calls store.removeAll(), which is itself a barrier write —
+        // join the seam again so the read below observes the post-reset state.
+        await store._awaitPendingWritesForTesting()
 
-        // Allow barrier to complete
-        drainMainQueue()
-            XCTAssertNil(self.syncManager.syncUrl)
-            XCTAssertTrue(self.store.allBooks.isEmpty)
+        XCTAssertNil(syncManager.syncUrl)
+        XCTAssertTrue(store.allBooks.isEmpty)
     }
 
     // MARK: - Loading Account Guard
@@ -160,13 +158,11 @@ final class BookRegistrySyncTests: XCTestCase {
 
     // MARK: - Store Snapshot Round-Trip
 
-    func test_registrySnapshot_producesSerializableData() {
+    func test_registrySnapshot_producesSerializableData() async {
+        // CONVERTED: addBook completion+wait replaced with the S1 seam join.
         let book = makeBook()
-        let addDone = expectation(description: "added")
-        store.addBook(book, state: .downloadNeeded) { _ in addDone.fulfill() }
-        wait(for: [addDone], timeout: 2.0)
-
-        drainMainQueue()
+        store.addBook(book, state: .downloadNeeded)
+        await store._awaitPendingWritesForTesting()
 
         let snapshot = store.registrySnapshot()
         XCTAssertEqual(snapshot.count, 1)
@@ -203,7 +199,7 @@ final class BookRegistrySyncTests: XCTestCase {
 
     // MARK: - Multiple Books with Various States
 
-    func test_storeSnapshotWithMultipleStates() {
+    func test_storeSnapshotWithMultipleStates() async {
         let books: [(String, TPPBookState)] = [
             ("b1", .downloadNeeded),
             ("b2", .downloadSuccessful),
@@ -212,30 +208,29 @@ final class BookRegistrySyncTests: XCTestCase {
             ("b5", .used),
         ]
 
-        let addDone = expectation(description: "all added")
-        addDone.expectedFulfillmentCount = books.count
-
+        // CONVERTED: per-add expectedFulfillmentCount expectation+wait replaced
+        // with the S1 seam join — all 5 barrier writes are FIFO on the same
+        // syncQueue, so a single trailing join drains them all.
         for (id, state) in books {
             let book = makeBook(identifier: id, title: "Book \(id)")
-            store.addBook(book, state: state) { _ in addDone.fulfill() }
+            store.addBook(book, state: state)
         }
-        wait(for: [addDone], timeout: 3.0)
+        await store._awaitPendingWritesForTesting()
 
-        drainMainQueue()
-            XCTAssertEqual(self.store.allBooks.count, 5)
-            XCTAssertEqual(self.store.heldBooks.count, 1)
-            // myBooks: downloadNeeded, downloadFailed, downloadSuccessful, used = 4
-            XCTAssertEqual(self.store.myBooks.count, 4)
+        XCTAssertEqual(store.allBooks.count, 5)
+        XCTAssertEqual(store.heldBooks.count, 1)
+        // myBooks: downloadNeeded, downloadFailed, downloadSuccessful, used = 4
+        XCTAssertEqual(store.myBooks.count, 4)
 
-            for (id, expectedState) in books {
-                XCTAssertEqual(self.store.state(for: id), expectedState,
-                               "Expected \(expectedState) for book \(id)")
-            }
+        for (id, expectedState) in books {
+            XCTAssertEqual(store.state(for: id), expectedState,
+                           "Expected \(expectedState) for book \(id)")
+        }
     }
 
     // MARK: - Validate Downloaded Content
 
-    func test_validateDownloadedContent_marksDownloadNeededWhenFileMissing() {
+    func test_validateDownloadedContent_marksDownloadNeededWhenFileMissing() async {
         // This test relies on the fact that no actual book file exists for our fake book,
         // so downloadSuccessful books should be marked as downloadNeeded.
         // However, validateDownloadedContent requires the test accountsManager to have a
@@ -243,11 +238,9 @@ final class BookRegistrySyncTests: XCTestCase {
         // mechanism instead.
 
         let book = makeBook(identifier: "validated-book")
-        let addDone = expectation(description: "added")
-        store.addBook(book, state: .downloadSuccessful) { _ in addDone.fulfill() }
-        wait(for: [addDone], timeout: 2.0)
-
-        drainMainQueue()
+        // CONVERTED: addBook completion+wait replaced with the S1 seam join.
+        store.addBook(book, state: .downloadSuccessful)
+        await store._awaitPendingWritesForTesting()
 
         // Directly simulate what validateDownloadedContent does using mutateRegistrySync
         store.mutateRegistrySync { registry in
