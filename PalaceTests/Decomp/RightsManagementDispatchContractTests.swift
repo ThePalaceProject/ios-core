@@ -55,28 +55,21 @@ final class RightsManagementDispatchContractTests: XCTestCase {
         userAccount = TPPUserAccountMock()
         session = URLSession(configuration: .ephemeral)
 
-        #if FEATURE_DRM_CONNECTOR
-        // SEAM: RightsManagementDispatcher requires a concrete `AdobeDRMService`
-        // and there is no injectable `AdobeDRMService` protocol seam. The
-        // `.adobe` PDF-rejection branch under test returns synchronously WITHOUT
-        // touching the service (it is only reached on the non-PDF fulfillment
-        // path, which is `// SEAM`-noted below), so `.shared` here is a
-        // construction placeholder that is never exercised by these tests.
+        // Palace always builds with FEATURE_DRM_CONNECTOR, so the DRM-on init is
+        // the one exported through `@testable import Palace`. PalaceTests does NOT
+        // redefine the flag, so a source-code `#if FEATURE_DRM_CONNECTOR` here
+        // resolves to the wrong (no-arg) branch and fails to compile against the
+        // DRM-on module — call the DRM-on init UNCONDITIONALLY (matches the
+        // established `RightsManagementDispatcherTests` pattern). `.shared` is a
+        // construction placeholder: the `.adobe` PDF-rejection branch under test
+        // returns synchronously WITHOUT touching the service (SEAM-noted below).
         dispatcher = RightsManagementDispatcher(
             stateManager: stateManager,
             fileOps: fileOps,
             bookRegistry: registry,
             userAccountProvider: { [unowned self] in self.userAccount },
-            adobeDRMService: .shared
+            adobeDRMService: AdobeDRMService.shared
         )
-        #else
-        dispatcher = RightsManagementDispatcher(
-            stateManager: stateManager,
-            fileOps: fileOps,
-            bookRegistry: registry,
-            userAccountProvider: { [unowned self] in self.userAccount }
-        )
-        #endif
         dispatcher.delegate = delegate
     }
 
