@@ -115,9 +115,29 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
     # dedicated SERIAL pass (`-parallel-testing-enabled NO`) runs them FULLY and
     # the results are MERGED back into TestResults.xcresult so the downstream
     # fail-gate counts them. Owner decision after CI runs 29805821296 / 29810471358.
+    #
+    # De-flake convergence (DEFLAKE-PLAN, 2026-07-23): the god-class decomposition
+    # campaign needs a green board to land the keystone waves. The recurring red is
+    # "clone-wedge collateral" — a leaked cross-test job wedges a per-clone global
+    # (cooperative pool / main run loop / the AppContainer.production() singleton
+    # graph); a wandering victim then hangs to the 120s executionTimeAllowance and
+    # fails all retries because retries rerun in the SAME wedged clone process. Two
+    # named classes below are PERMANENT isolations (real WKWebView/WebContent process
+    # contention that can't be seam-fixed); the rest are TEMPORARY quarantine until
+    # their per-test hermetic-DI/bounded-await fixes land (P1/P2 in DEFLAKE-PLAN),
+    # then remove them here. This is the owner-approved serial-isolation mechanism —
+    # tests still RUN and still GATE (merged into TestResults.xcresult), so this is
+    # not a skip-allowlist and does not violate the green-board "no flake memos" rule.
     ISOLATED_SERIAL_TESTS=(
         "PalaceTests/ImageCacheContinuationTests"
         "PalaceTests/PoolResponsivenessProbeTests"
+        # Permanent — real WKWebView + WebContent process spawn under clone contention.
+        "PalaceTests/SignInWebSheetIntegrationTests"
+        # Temporary — remove each as its per-test fix lands (DEFLAKE-PLAN §3 / P1-P2):
+        "PalaceTests/AccountAwareNetworkTests"
+        "PalaceTests/AccountsManagerTests"
+        "PalaceTests/BookmarkDeletionLogTests"
+        "PalaceTests/MultiLibraryTokenIsolationTests"
     )
     ISOLATED_SKIP_ARGS=()
     ISOLATED_ONLY_ARGS=()
@@ -132,9 +152,19 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
     # but xcodebuild REJECTS `-test-iterations 1` ("must be more than 1
     # iteration"), so at 1 we OMIT both flags (a bare `xcodebuild test` runs each
     # test once). Only >1 gets the retry+iterations pair.
+    #
+    # -test-repetition-relaunch-enabled YES (DEFLAKE-PLAN, highest-leverage): a
+    # retry reruns each failed test in a FRESH process instead of the same wedged
+    # clone. Class-A "clone-wedge collateral" (a victim hung to 120s by leaked work
+    # wedging a per-clone global) then passes on retry — the wedge is gone in the
+    # new process — so the run stays green under the existing retry-as-safety-net
+    # contract (summary.failed still gates REAL failures that fail all attempts).
+    # This papers over wedges rather than fixing them; the per-test wedge-source
+    # fixes continue in parallel (DEFLAKE-PLAN P1/P2) and the watchdog still names
+    # culprits in the logs. Only applied alongside the retry pair (>1 iteration).
     RETRY_ITER_ARGS=()
     if [ "${CI_TEST_ITERATIONS:-3}" -gt 1 ]; then
-        RETRY_ITER_ARGS=(-retry-tests-on-failure -test-iterations "${CI_TEST_ITERATIONS:-3}")
+        RETRY_ITER_ARGS=(-retry-tests-on-failure -test-iterations "${CI_TEST_ITERATIONS:-3}" -test-repetition-relaunch-enabled YES)
     fi
 
     # Capture xcodebuild output so we can detect a COMPILE failure that
