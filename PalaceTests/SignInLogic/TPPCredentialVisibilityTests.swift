@@ -64,7 +64,7 @@ final class TPPCredentialPersistenceTests: XCTestCase {
 
     /// PP-3784 core regression: After a full sign-in flow (network → DRM → finalize),
     /// the barcode and PIN must be readable from the user account.
-    func testFullSignInFlow_credentialsRemainAccessible() {
+    func testFullSignInFlow_credentialsRemainAccessible() async {
         let barcode = "23333012345678"
         let pin = "1234"
         uiDelegate.username = barcode
@@ -72,14 +72,14 @@ final class TPPCredentialPersistenceTests: XCTestCase {
 
         businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
 
-        let expectation = self.expectation(description: "Sign-in completes")
-        uiDelegate.didCompleteSignInHandler = {
-            expectation.fulfill()
-        }
-
         businessLogic.validateCredentials()
 
-        waitForExpectations(timeout: 5.0)
+        // `TPPRequestExecutorMock.executeRequest` completes via a single
+        // `DispatchQueue.main.async` hop; `finalizeSignIn` runs synchronously
+        // off that hop via `TPPMainThreadRun.asyncIfNeeded`'s on-main fast
+        // path, so draining the main queue once is sufficient to observe the
+        // post-sign-in state.
+        await drainMainQueueAsync()
 
         let user = businessLogic.userAccount
         XCTAssertEqual(user.barcode, barcode,
@@ -92,20 +92,16 @@ final class TPPCredentialPersistenceTests: XCTestCase {
 
     /// PP-3784: After sign-in, the auth state must be .loggedIn (not .loggedOut).
     /// When auth state is wrong, accountDidChange() clears the text fields.
-    func testFullSignInFlow_authStateIsLoggedIn() {
+    func testFullSignInFlow_authStateIsLoggedIn() async {
         uiDelegate.username = "testbarcode"
         uiDelegate.pin = "testpin"
 
         businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
 
-        let expectation = self.expectation(description: "Sign-in completes")
-        uiDelegate.didCompleteSignInHandler = {
-            expectation.fulfill()
-        }
-
         businessLogic.validateCredentials()
 
-        waitForExpectations(timeout: 5.0)
+        // Single main-queue hop (see testFullSignInFlow_credentialsRemainAccessible).
+        await drainMainQueueAsync()
 
         let userAccount = businessLogic.userAccount as! TPPUserAccountMock
         XCTAssertEqual(userAccount.authState, .loggedIn,
@@ -114,20 +110,16 @@ final class TPPCredentialPersistenceTests: XCTestCase {
 
     /// Verifies that the UI delegate receives the sign-in completion callback
     /// exactly once per sign-in attempt.
-    func testFullSignInFlow_completionCalledOnce() {
+    func testFullSignInFlow_completionCalledOnce() async {
         uiDelegate.username = "barcode"
         uiDelegate.pin = "pin"
 
         businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
 
-        let expectation = self.expectation(description: "Sign-in completes")
-        uiDelegate.didCompleteSignInHandler = {
-            expectation.fulfill()
-        }
-
         businessLogic.validateCredentials()
 
-        waitForExpectations(timeout: 5.0)
+        // Single main-queue hop (see testFullSignInFlow_credentialsRemainAccessible).
+        await drainMainQueueAsync()
 
         XCTAssertEqual(uiDelegate.didCompleteSignInCallCount, 1,
                        "didCompleteSignIn should be called exactly once")
@@ -505,35 +497,31 @@ final class TPPSignInAuthStateTransitionTests: XCTestCase {
     }
 
     /// loggedOut → sign in → loggedIn
-    func testSignIn_transitionsFromLoggedOutToLoggedIn() {
+    func testSignIn_transitionsFromLoggedOutToLoggedIn() async {
         let user = businessLogic.userAccount as! TPPUserAccountMock
         XCTAssertEqual(user.authState, .loggedOut, "Precondition: starts loggedOut")
 
         businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
 
-        let expectation = self.expectation(description: "Sign-in completes")
-        uiDelegate.didCompleteSignInHandler = { expectation.fulfill() }
-
         businessLogic.validateCredentials()
-        waitForExpectations(timeout: 5.0)
+        // Single main-queue hop (see TPPCredentialPersistenceTests above).
+        await drainMainQueueAsync()
 
         XCTAssertEqual(user.authState, .loggedIn,
                        "Auth state should be .loggedIn after sign-in")
     }
 
     /// credentialsStale → re-authenticate → loggedIn
-    func testReauth_transitionsFromStaleToLoggedIn() {
+    func testReauth_transitionsFromStaleToLoggedIn() async {
         let user = businessLogic.userAccount as! TPPUserAccountMock
         user._credentials = .barcodeAndPin(barcode: "existing", pin: "creds")
         user.setAuthState(.credentialsStale)
 
         businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
 
-        let expectation = self.expectation(description: "Re-auth completes")
-        uiDelegate.didCompleteSignInHandler = { expectation.fulfill() }
-
         businessLogic.validateCredentials()
-        waitForExpectations(timeout: 5.0)
+        // Single main-queue hop (see TPPCredentialPersistenceTests above).
+        await drainMainQueueAsync()
 
         XCTAssertEqual(user.authState, .loggedIn,
                        "Auth state should be .loggedIn after re-authentication")
@@ -544,16 +532,14 @@ final class TPPSignInAuthStateTransitionTests: XCTestCase {
     /// PP-3784 regression: After a complete sign-in, the combination of
     /// hasCredentials + authState must make isSignedIn evaluate to true.
     /// This is the exact condition checked by accountDidChange().
-    func testSignIn_isSignedInConditionMet() {
+    func testSignIn_isSignedInConditionMet() async {
         businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
         uiDelegate.username = "testBarcode"
         uiDelegate.pin = "testPin"
 
-        let expectation = self.expectation(description: "Sign-in completes")
-        uiDelegate.didCompleteSignInHandler = { expectation.fulfill() }
-
         businessLogic.validateCredentials()
-        waitForExpectations(timeout: 5.0)
+        // Single main-queue hop (see TPPCredentialPersistenceTests above).
+        await drainMainQueueAsync()
 
         let user = businessLogic.userAccount as! TPPUserAccountMock
         let hasCreds = user.hasCredentials()
@@ -615,7 +601,7 @@ final class TPPSignInProfileDocEdgeCaseTests: XCTestCase {
 
     /// PP-3784: When the user profile doc has no DRM section at all, sign-in
     /// must still succeed with barcode visible.
-    func testSignIn_noDRMInProfileDoc_credentialsPreserved() {
+    func testSignIn_noDRMInProfileDoc_credentialsPreserved() async {
         let noDRMProfileUrl = URL(string: "https://circulation.librarysimplified.org/NYNYPL/patrons/me/")!
         let noDRMJson = """
         {
@@ -630,11 +616,9 @@ final class TPPSignInProfileDocEdgeCaseTests: XCTestCase {
         uiDelegate.pin = "4567"
         businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
 
-        let expectation = self.expectation(description: "Sign-in completes")
-        uiDelegate.didCompleteSignInHandler = { expectation.fulfill() }
-
         businessLogic.validateCredentials()
-        waitForExpectations(timeout: 5.0)
+        // Single main-queue hop (see TPPCredentialPersistenceTests above).
+        await drainMainQueueAsync()
 
         let user = businessLogic.userAccount
         XCTAssertEqual(user.barcode, "12345barcode",
@@ -646,7 +630,7 @@ final class TPPSignInProfileDocEdgeCaseTests: XCTestCase {
 
     /// PP-3784: When the profile doc is completely unparseable, sign-in
     /// must still succeed (the server already accepted the credentials).
-    func testSignIn_invalidProfileDoc_credentialsPreserved() {
+    func testSignIn_invalidProfileDoc_credentialsPreserved() async {
         let profileUrl = URL(string: "https://circulation.librarysimplified.org/NYNYPL/patrons/me/")!
         networkExecutor.responseBodies[profileUrl] = "NOT VALID JSON AT ALL"
 
@@ -654,11 +638,9 @@ final class TPPSignInProfileDocEdgeCaseTests: XCTestCase {
         uiDelegate.pin = "myPin"
         businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
 
-        let expectation = self.expectation(description: "Sign-in completes")
-        uiDelegate.didCompleteSignInHandler = { expectation.fulfill() }
-
         businessLogic.validateCredentials()
-        waitForExpectations(timeout: 5.0)
+        // Single main-queue hop (see TPPCredentialPersistenceTests above).
+        await drainMainQueueAsync()
 
         let user = businessLogic.userAccount
         XCTAssertEqual(user.barcode, "myBarcode",
@@ -668,16 +650,14 @@ final class TPPSignInProfileDocEdgeCaseTests: XCTestCase {
     }
 
     /// Standard sign-in with valid DRM info should save both credentials and DRM data.
-    func testSignIn_validDRMProfileDoc_savesCredentialsAndDRM() {
+    func testSignIn_validDRMProfileDoc_savesCredentialsAndDRM() async {
         uiDelegate.username = "drmBarcode"
         uiDelegate.pin = "drmPin"
         businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
 
-        let expectation = self.expectation(description: "Sign-in completes")
-        uiDelegate.didCompleteSignInHandler = { expectation.fulfill() }
-
         businessLogic.validateCredentials()
-        waitForExpectations(timeout: 5.0)
+        // Single main-queue hop (see TPPCredentialPersistenceTests above).
+        await drainMainQueueAsync()
 
         let user = businessLogic.userAccount
         XCTAssertEqual(user.barcode, "drmBarcode")
@@ -827,18 +807,13 @@ final class TPPCapturedCredentialsTests: XCTestCase {
     /// PP-3784: When the UI delegate's credentials are cleared between logIn()
     /// and finalizeSignIn() (e.g. by an intermediate accountDidChange notification),
     /// the captured credentials must still be used.
-    func testFinalizeSignIn_usesCapturedCredentials_whenUIDelegateCleared() {
+    func testFinalizeSignIn_usesCapturedCredentials_whenUIDelegateCleared() async {
         let barcode = "23333012345678"
         let pin = "1234"
         uiDelegate.username = barcode
         uiDelegate.pin = pin
 
         businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
-
-        let expectation = self.expectation(description: "Sign-in completes")
-        uiDelegate.didCompleteSignInHandler = {
-            expectation.fulfill()
-        }
 
         // Simulate: logIn captures credentials, then UI delegate is cleared
         // before finalizeSignIn reads them. This happens in production when
@@ -849,7 +824,9 @@ final class TPPCapturedCredentialsTests: XCTestCase {
         uiDelegate.username = nil
         uiDelegate.pin = nil
 
-        waitForExpectations(timeout: 5.0)
+        // Single main-queue hop: barcode/basic auth's logIn() resolves to
+        // validateCredentials() (see TPPCredentialPersistenceTests above).
+        await drainMainQueueAsync()
 
         let user = businessLogic.userAccount
         XCTAssertEqual(user.barcode, barcode,
@@ -939,16 +916,15 @@ final class TPPCapturedCredentialsTests: XCTestCase {
 
     /// PP-3784: Multiple sign-in attempts must not accumulate stale captured
     /// credentials. Each logIn() call must refresh the captured values.
-    func testLogIn_refreshesCapturedCredentials_onSubsequentAttempts() {
+    func testLogIn_refreshesCapturedCredentials_onSubsequentAttempts() async {
         businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
 
         uiDelegate.username = "firstBarcode"
         uiDelegate.pin = "firstPin"
 
-        let exp1 = expectation(description: "First sign-in completes")
-        uiDelegate.didCompleteSignInHandler = { exp1.fulfill() }
         businessLogic.validateCredentials()
-        waitForExpectations(timeout: 5.0)
+        // Single main-queue hop (see TPPCredentialPersistenceTests above).
+        await drainMainQueueAsync()
 
         XCTAssertEqual(businessLogic.userAccount.barcode, "firstBarcode")
 
@@ -958,15 +934,15 @@ final class TPPCapturedCredentialsTests: XCTestCase {
         uiDelegate.username = "secondBarcode"
         uiDelegate.pin = "secondPin"
 
-        let exp2 = expectation(description: "Second sign-in completes")
-        uiDelegate.didCompleteSignInHandler = { exp2.fulfill() }
         businessLogic.logIn()
 
         // Clear UI delegate to simulate intermediate notification
         uiDelegate.username = nil
         uiDelegate.pin = nil
 
-        waitForExpectations(timeout: 5.0)
+        // Single main-queue hop: barcode/basic auth's logIn() resolves to
+        // validateCredentials() (see TPPCredentialPersistenceTests above).
+        await drainMainQueueAsync()
 
         XCTAssertEqual(businessLogic.userAccount.barcode, "secondBarcode",
                        "Second sign-in must use freshly captured credentials, not stale ones")

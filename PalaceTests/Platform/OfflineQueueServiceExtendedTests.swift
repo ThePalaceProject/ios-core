@@ -25,7 +25,16 @@ final class OfflineQueueServiceExtendedTests: XCTestCase {
         // Inline same-suite UserDefaults: non-Sendable, so it must be a fresh
         // disconnected region to be `sending`-passed into the actor init (the
         // test also retains self.userDefaults for cleanup). Shares backing store.
-        service = OfflineQueueService(userDefaults: UserDefaults(suiteName: "OfflineQueueServiceExtendedTests")!)
+        //
+        // S8 seam (swarm_ad0b4c65 Wave-3): inject a no-op retry backoff so the
+        // retry state machine runs with zero wall-clock delay. Because
+        // enqueue/retry/networkStatusChanged all `await processQueue()` to full
+        // drain, every action reaches its terminal state before the call
+        // returns — no post-call settle-sleep is needed to observe it.
+        service = OfflineQueueService(
+            userDefaults: UserDefaults(suiteName: "OfflineQueueServiceExtendedTests")!,
+            backoffSleep: { _ in }
+        )
         cancellables = Set<AnyCancellable>()
     }
 
@@ -43,14 +52,14 @@ final class OfflineQueueServiceExtendedTests: XCTestCase {
         await service.setExecutor { _ in false }
 
         let action = OfflineAction(type: .borrow, bookID: "b1", bookTitle: "Test", maxRetries: 1)
+        // maxRetries:1 + always-failing executor: first attempt fails,
+        // retryCount(1) >= maxRetries(1) → .failed immediately. enqueue awaits
+        // the full drain, so the terminal state is observable on return — no 3s
+        // backoff wait, and the count is exact (not "may vary").
         await service.enqueue(action)
 
-        // Wait for processing + backoff
-        try? await Task.sleep(nanoseconds: 3_000_000_000)
-
         let failed = await service.actions(withState: .failed)
-        // After maxRetries exhausted, action should be in failed state
-        XCTAssertGreaterThanOrEqual(failed.count, 0)
+        XCTAssertEqual(failed.count, 1)
     }
 
     // MARK: - Queue FIFO Order
@@ -72,9 +81,9 @@ final class OfflineQueueServiceExtendedTests: XCTestCase {
         await service.enqueue(OfflineAction(type: .return, bookID: "second", bookTitle: "Second"))
         await service.enqueue(OfflineAction(type: .hold, bookID: "third", bookTitle: "Third"))
 
-        // Go online - triggers processing
+        // Go online - networkStatusChanged awaits processQueue() to full drain,
+        // executing all three in FIFO order before it returns.
         await service.networkStatusChanged(isAvailable: true)
-        try? await Task.sleep(nanoseconds: 500_000_000)
 
         XCTAssertEqual(executedBookIDs.value, ["first", "second", "third"])
     }
@@ -140,9 +149,9 @@ final class OfflineQueueServiceExtendedTests: XCTestCase {
 
         await service.networkStatusChanged(isAvailable: false)
         await service.enqueue(OfflineAction(type: .borrow, bookID: "bad", bookTitle: "Bad", maxRetries: 0))
+        // Going online awaits processQueue() to full drain — "bad" fails
+        // immediately (maxRetries:0) and is in .failed before this returns.
         await service.networkStatusChanged(isAvailable: true)
-
-        try? await Task.sleep(nanoseconds: 500_000_000)
 
         // Enqueue a new pending action after processing
         await service.networkStatusChanged(isAvailable: false)
@@ -162,19 +171,17 @@ final class OfflineQueueServiceExtendedTests: XCTestCase {
         await service.setExecutor { _ in false }
 
         let action = OfflineAction(type: .borrow, bookID: "b1", bookTitle: "T", maxRetries: 0)
+        // enqueue drains: fails immediately (maxRetries:0) → .failed on return.
         await service.enqueue(action)
-
-        try? await Task.sleep(nanoseconds: 500_000_000)
 
         // Should be failed now
         let failedBefore = await service.actions(withState: .failed)
         XCTAssertEqual(failedBefore.count, 1)
 
-        // Now retry with a success executor
+        // Now retry with a success executor — retry() awaits processQueue() to
+        // full drain, so the action is completed+removed before this returns.
         await service.setExecutor { _ in true }
         await service.retry(action.id)
-
-        try? await Task.sleep(nanoseconds: 500_000_000)
 
         let failedAfter = await service.actions(withState: .failed)
         let pendingAfter = await service.actions(withState: .pending)
