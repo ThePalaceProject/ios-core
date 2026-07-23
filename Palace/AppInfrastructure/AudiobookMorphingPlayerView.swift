@@ -736,6 +736,24 @@ struct AudiobookMorphingPlayerView: View {
         !isLoaded && !isDownloading
     }
 
+    /// VoiceOver label for the determinate download overlay. The overlay
+    /// visually shows cover + title + author + progress, but
+    /// `.accessibilityElement(children: .ignore)` collapses those children — so
+    /// the label must carry the title/author itself, or a blind patron hears
+    /// only a bare percentage for the up-to-180s download. Progress is clamped
+    /// so a transiently out-of-range value never announces "-4%" / "142%".
+    nonisolated static func downloadingAccessibilityLabel(
+        title: String?,
+        authors: String?,
+        progress: Double
+    ) -> String {
+        let pct = Int((min(max(progress, 0), 1)) * 100)
+        var parts = ["\(Strings.Generic.audiobookDownloading), \(pct)%"]
+        if let title, !title.isEmpty { parts.append(title) }
+        if let authors, !authors.isEmpty { parts.append(authors) }
+        return parts.joined(separator: ". ")
+    }
+
     /// Resolves the rate the speed chip should display. Only adopts the session's
     /// rate once a manager is bound — pre-bind, `currentPlaybackRate` returns the
     /// default 1.0× (no player yet), which must NOT overwrite the chip, or a
@@ -844,7 +862,11 @@ struct AudiobookMorphingPlayerView: View {
         }
         .transition(.opacity)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(Strings.Generic.audiobookDownloading), \(Int(presenter.overallDownloadProgress * 100))%")
+        .accessibilityLabel(Self.downloadingAccessibilityLabel(
+            title: presenter.currentBook?.title,
+            authors: presenter.currentBook?.authors,
+            progress: Double(presenter.overallDownloadProgress)
+        ))
     }
 
     /// Skeleton lockup shown while the audiobook loads — replaces the old

@@ -271,4 +271,38 @@ final class AudiobookMorphingPlayerViewTests: XCTestCase {
         XCTAssertEqual(V.formatTime(.infinity), "--:--",
                        "Infinity must format as --:-- (defensive against toolkit edge cases)")
     }
+
+    // MARK: downloadingAccessibilityLabel
+
+    /// The download overlay collapses its children for VoiceOver, so the label
+    /// must fold in the book title/author — otherwise a blind patron hears only
+    /// a bare percentage for the up-to-180s download. Asserts title AND author
+    /// are both present (kills dropping either) and that the percentage leads.
+    func testDownloadingAccessibilityLabel_foldsTitleAndAuthor() {
+        let label = V.downloadingAccessibilityLabel(title: "The Hobbit", authors: "J.R.R. Tolkien", progress: 0.42)
+        XCTAssertTrue(label.contains("42%"), "Progress percentage must lead the announcement: \(label)")
+        XCTAssertTrue(label.contains("The Hobbit"), "Title must be announced so the patron knows what is downloading: \(label)")
+        XCTAssertTrue(label.contains("J.R.R. Tolkien"), "Author must be announced: \(label)")
+    }
+
+    /// Missing/empty title or author must not emit a dangling separator or an
+    /// empty segment — only the parts that exist are joined.
+    func testDownloadingAccessibilityLabel_omitsMissingMetadata() {
+        let noAuthor = V.downloadingAccessibilityLabel(title: "Dune", authors: nil, progress: 0.5)
+        XCTAssertTrue(noAuthor.contains("Dune"), "Title present: \(noAuthor)")
+        XCTAssertFalse(noAuthor.hasSuffix(". "), "No dangling separator when author is absent: \(noAuthor)")
+
+        let bareEmpty = V.downloadingAccessibilityLabel(title: "", authors: "", progress: 0.0)
+        XCTAssertTrue(bareEmpty.contains("0%"), "Percentage still announced with empty metadata: \(bareEmpty)")
+        XCTAssertFalse(bareEmpty.contains(". ."), "Empty title/author must not produce empty joined segments: \(bareEmpty)")
+    }
+
+    /// Progress is clamped so a transiently out-of-range value from the toolkit
+    /// never announces a nonsensical "-4%" or "142%".
+    func testDownloadingAccessibilityLabel_clampsProgress() {
+        XCTAssertTrue(V.downloadingAccessibilityLabel(title: "T", authors: nil, progress: -0.04).contains("0%"),
+                      "Negative progress clamps to 0%")
+        XCTAssertTrue(V.downloadingAccessibilityLabel(title: "T", authors: nil, progress: 1.42).contains("100%"),
+                      "Over-unity progress clamps to 100%")
+    }
 }
