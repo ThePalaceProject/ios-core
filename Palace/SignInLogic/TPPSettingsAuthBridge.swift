@@ -27,7 +27,10 @@ import PalacePreferences
 
 extension TPPSettings: NYPLUniversalLinksSettings {
     /// Used to handle Clever and SAML sign-ins in SimplyE.
-    @objc var universalLinksURL: URL {
+    // `public` because this property is the witness for PalaceAuth's PUBLIC
+    // `UniversalLinksProviding` requirement (conformed below) — a public-protocol
+    // witness must be public even though NYPLUniversalLinksSettings is app-internal.
+    @objc public var universalLinksURL: URL {
         URL(string: "https://librarysimplified.org/callbacks/SimplyE")!
     }
 }
