@@ -36,6 +36,9 @@ final class DeveloperSettingsViewModel: ObservableObject {
 
     private let settings: TPPSettings
     private let accountsManager: AccountsManager
+    /// Loans registry — used by the DEBUG test-holds picker to fire the
+    /// holds-changed signal that refreshes the tab badge (swarm_8ce6f5ae WS3).
+    private let bookRegistry: TPPBookRegistryProvider
     private let debugSettings: DebugSettings
     private let featureFlags: RemoteFeatureFlags
     /// The UserDefaults instance the RemoteFeatureFlags overrides are written to.
@@ -135,12 +138,14 @@ final class DeveloperSettingsViewModel: ObservableObject {
     init(
         settings: TPPSettings = AppContainer.production().settings,
         accountsManager: AccountsManager = AppContainer.production().accountsManager,
+        bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry,
         debugSettings: DebugSettings = AppContainer.production().debugSettings,
         featureFlags: RemoteFeatureFlags = .shared,
         overrideDefaults: UserDefaults = .standard
     ) {
         self.settings = settings
         self.accountsManager = accountsManager
+        self.bookRegistry = bookRegistry
         self.debugSettings = debugSettings
         self.featureFlags = featureFlags
         self.overrideDefaults = overrideDefaults
@@ -738,7 +743,9 @@ final class DeveloperSettingsViewModel: ObservableObject {
                 self.testHoldsConfiguration = config
 
                 NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
-                NotificationCenter.default.post(name: .TPPBookRegistryStateDidChange, object: nil)
+                // Badge refresh migrated off `.TPPBookRegistryStateDidChange` to
+                // the registry's holds-changed publisher (swarm_8ce6f5ae WS3).
+                self.bookRegistry.notifyHoldsChanged()
 
                 if config != .none {
                     let confirmAlert = TPPAlertUtils.alert(

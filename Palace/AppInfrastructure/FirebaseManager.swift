@@ -14,6 +14,27 @@ import FirebaseAnalytics
 import FirebaseCrashlytics
 import PalaceLogging
 
+/// Lock-guarded, resume-exactly-once holder for a `CheckedContinuation`, shared
+/// across the two racing tasks in `FirebaseManager.withTimeout`. A
+/// `CheckedContinuation` is not `Sendable`, so it rides inside this
+/// `@unchecked Sendable` box; the continuation is nil'd on the first resume, so
+/// the losing task's later resume is a no-op rather than a double-resume crash.
+/// File-scope (not nested in the generic `withTimeout`) because Swift forbids a
+/// local type inside a generic function.
+private final class ResumeOnceBox<T: Sendable>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<T, Error>?
+    init(_ continuation: CheckedContinuation<T, Error>) { self.continuation = continuation }
+    func resume(returning value: T) {
+        lock.lock(); let c = continuation; continuation = nil; lock.unlock()
+        c?.resume(returning: value)
+    }
+    func resume(throwing error: Error) {
+        lock.lock(); let c = continuation; continuation = nil; lock.unlock()
+        c?.resume(throwing: error)
+    }
+}
+
 /// Centralized manager for all Firebase services.
 ///
 /// Thread Safety:
@@ -203,17 +224,29 @@ final class FirebaseManager: @unchecked Sendable {
         seconds: Double,
         _ operation: @escaping @Sendable () async throws -> T
     ) async throws -> T {
-        try await withThrowingTaskGroup(of: T.self) { group in
-            group.addTask { try await operation() }
-            group.addTask {
-                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
-                throw RemoteConfigFetchTimeout()
+        // A `withThrowingTaskGroup` race is WRONG here: the group re-awaits the
+        // operation child at scope exit, so when the timeout wins and we
+        // `cancelAll()`, exiting still blocks on the operation if it ignores
+        // cancellation — which Firebase's `fetchAndActivate()` does. That made
+        // the 10s bound a no-op for the one call it exists to bound (the 120s
+        // RemoteFeatureFlagsTests hang; a dead-network hang in production). The
+        // existing `Task.sleep`-based guard test passed only because sleep
+        // honors cancellation and so didn't reproduce the non-cancellable case.
+        //
+        // Instead: resume the caller from whichever task wins, and ORPHAN the
+        // loser. When the timeout wins, the operation task keeps running
+        // (untethered) but no longer blocks the caller — exactly the documented
+        // "orphaned fetch completes harmlessly in the background" contract.
+        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<T, Error>) in
+            let box = ResumeOnceBox(continuation)
+            Task {
+                do { box.resume(returning: try await operation()) }
+                catch { box.resume(throwing: error) }
             }
-            defer { group.cancelAll() }
-            guard let result = try await group.next() else {
-                throw RemoteConfigFetchTimeout()
+            Task {
+                try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                box.resume(throwing: RemoteConfigFetchTimeout())
             }
-            return result
         }
     }
 

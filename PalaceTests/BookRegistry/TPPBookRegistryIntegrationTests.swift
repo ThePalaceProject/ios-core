@@ -113,7 +113,15 @@ final class TPPBookRegistryStateManagementTests: XCTestCase {
                                           distributorType: .EpubZip)
         registry.addBook(book, state: .downloadNeeded)
 
-        let transitions: [TPPBookState] = [.downloading, .downloadSuccessful, .used, .downloadFailed, .downloadNeeded]
+        // A legal walk (every step in `TPPBookState.allowedTransitions`) that
+        // still visits all five terminal-ish states. This test pins that
+        // `setState` *applies* each state — NOT that illegal transitions are
+        // rejected; that contract lives in
+        // `TPPBookRegistryMutationContractTests.testSetState_illegalTransition_*`.
+        // Keeping the walk legal avoids tripping the enforced seam's DEBUG
+        // `assertionFailure`, which would SIGTRAP the test host and take the
+        // whole clone's in-flight tests down as 0.000s collateral.
+        let transitions: [TPPBookState] = [.downloading, .downloadFailed, .downloadNeeded, .downloading, .downloadSuccessful, .used]
         for expected in transitions {
             registry.setState(expected, for: book.identifier)
             // setState dispatches async barrier; state(for:) uses syncQueue.sync which drains it

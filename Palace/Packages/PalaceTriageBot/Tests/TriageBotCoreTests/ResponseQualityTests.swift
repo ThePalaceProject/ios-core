@@ -413,6 +413,67 @@ final class ResponseQualityTests: XCTestCase {
              expect: .shouldMatch(entryId: "HT-2026-003-switch-library"),
              source: "common patron question — multiple libraries in one app"),
 
+        // === HT-2026-004 notifications / reminders (how_to) ===
+        Case(userText: "how do I get notified when my hold is ready",
+             category: .other, context: nil,
+             expect: .shouldMatch(entryId: "HT-2026-004-notifications"),
+             source: "HelpSpot 18103 — hold-ready + due-soon reminders; enable notifications"),
+
+        // === HT-2026-005 hold pick-up window (how_to) ===
+        Case(userText: "how long do I have to pick up my hold once it's ready",
+             category: .other, context: nil,
+             expect: .shouldMatch(entryId: "HT-2026-005-hold-pickup-window"),
+             source: "PP-4831 FAQ (David Wilcox, option b) — pickup window varies by library/distributor; 'pick up by' date shown on the hold"),
+
+        Case(userText: "when do I lose my hold if I don't grab it",
+             category: .other, context: nil,
+             expect: .shouldMatch(entryId: "HT-2026-005-hold-pickup-window"),
+             source: "PP-4831 FAQ — hold expiry / pickup deadline"),
+
+        // === HT-2026-006 borrow limit (how_to) ===
+        Case(userText: "how many books can I borrow at once",
+             category: .other, context: nil,
+             expect: .shouldMatch(entryId: "HT-2026-006-borrow-limit"),
+             source: "PP-4831 FAQ (David Wilcox, option b) — per-library borrow limit; generic answer + free a slot by returning"),
+
+        Case(userText: "what is my checkout limit",
+             category: .other, context: nil,
+             expect: .shouldMatch(entryId: "HT-2026-006-borrow-limit"),
+             source: "PP-4831 FAQ — loan/checkout limit is set per-library"),
+
+        // === HT-2026-007 loan length (how_to) ===
+        Case(userText: "how long is a loan and when is it due",
+             category: .other, context: nil,
+             expect: .shouldMatch(entryId: "HT-2026-007-loan-length"),
+             source: "PP-4831 FAQ (David Wilcox, option b) — loan length varies by library; due date shown on each title"),
+
+        Case(userText: "how long is the lending period for a book",
+             category: .other, context: nil,
+             expect: .shouldMatch(entryId: "HT-2026-007-loan-length"),
+             source: "PP-4831 FAQ — lending period is per-library"),
+
+        // === HT-2026-008 add library card (how_to) ===
+        Case(userText: "how do I add my library card",
+             category: .library, context: nil,
+             expect: .shouldMatch(entryId: "HT-2026-008-add-library-card"),
+             source: "PP-4831 FAQ — adding a card: Settings → Libraries → add + sign in with barcode/PIN"),
+
+        Case(userText: "where do I enter my barcode to sign in",
+             category: .library, context: nil,
+             expect: .shouldMatch(entryId: "HT-2026-008-add-library-card"),
+             source: "PP-4831 FAQ — where to enter the library card number"),
+
+        // === HT-2026-009 formats / send-to-Kindle (how_to) ===
+        Case(userText: "how do I send my book to Kindle",
+             category: .other, context: nil,
+             expect: .shouldMatch(entryId: "HT-2026-009-formats-kindle"),
+             source: "PP-4831 FAQ (product-confirmed not supported) — Palace isn't connected to Kindle; you read in-app"),
+
+        Case(userText: "what formats can I read in the app",
+             category: .other, context: nil,
+             expect: .shouldMatch(entryId: "HT-2026-009-formats-kindle"),
+             source: "PP-4831 FAQ — reading formats are read in-app, no Kindle export"),
+
         // how_to negative — no FAQ answer exists; must still escalate, not
         // grab a loosely-related how_to.
         Case(userText: "how do I delete my account permanently",

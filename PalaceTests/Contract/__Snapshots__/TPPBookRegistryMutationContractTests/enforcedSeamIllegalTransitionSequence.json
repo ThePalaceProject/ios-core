@@ -1,0 +1,16 @@
+[
+  {
+    "args" : {
+      "from" : "download-needed",
+      "to" : "used"
+    },
+    "method" : "illegalTransition"
+  },
+  {
+    "args" : {
+      "from" : "used",
+      "to" : "downloading"
+    },
+    "method" : "illegalTransition"
+  }
+]

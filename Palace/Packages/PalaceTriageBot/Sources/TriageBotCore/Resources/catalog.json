@@ -105,7 +105,7 @@
         ]
       },
       "escalation_follow_up": {
-        "prompt": "Before I send this to support — which audiobook title is doing this? It helps them spot patterns across publishers.",
+        "prompt": "Which audiobook title is doing this? It helps them spot patterns across publishers.",
         "placeholder": "e.g. The Midnight Library by Matt Haig",
         "diagnostic": "audiobook.followup_title_captured"
       },
@@ -326,7 +326,7 @@
         ]
       },
       "escalation_follow_up": {
-        "prompt": "Quick question before I file this — which library are you trying to add? (City, county, or system name is fine.)",
+        "prompt": "Which library are you trying to add? (City, county, or system name is fine.)",
         "placeholder": "e.g. Brooklyn Public Library",
         "diagnostic": "library.followup_name_captured"
       },
@@ -395,7 +395,7 @@
         "jira": "PP-4430"
       },
       "escalation_follow_up": {
-        "prompt": "Before I escalate — what car model + year are you using, and is it wired CarPlay or wireless? Helps us repro on the same setup.",
+        "prompt": "What car model + year are you using, and is it wired CarPlay or wireless? Helps us repro on the same setup.",
         "placeholder": "e.g. 2021 Honda Civic, wired",
         "diagnostic": "carplay.followup_car_captured"
       },
@@ -754,7 +754,9 @@
       "escalate_anyway": false,
       "helpspot_tag": "how-to-renewals",
       "trust_level": "authoritative",
-      "visibility": "user_facing"
+      "visibility": "user_facing",
+      "ui_surface": "catalog",
+      "reviewed_at": "2026-07-20"
     },
     {
       "id": "HT-2026-002-return-early",
@@ -783,7 +785,9 @@
       "escalate_anyway": false,
       "helpspot_tag": "how-to-return-early",
       "trust_level": "authoritative",
-      "visibility": "user_facing"
+      "visibility": "user_facing",
+      "ui_surface": "my-books",
+      "reviewed_at": "2026-07-20"
     },
     {
       "id": "HT-2026-003-switch-library",
@@ -810,7 +814,169 @@
       "escalate_anyway": false,
       "helpspot_tag": "how-to-switch-library",
       "trust_level": "authoritative",
-      "visibility": "user_facing"
+      "visibility": "user_facing",
+      "ui_surface": "settings-libraries",
+      "reviewed_at": "2026-07-20"
+    },
+    {
+      "id": "HT-2026-004-notifications",
+      "category": "other",
+      "kind": "how_to",
+      "symptom_keywords": [
+        "get notified",
+        "notify me when",
+        "hold ready notification",
+        "remind me when",
+        "due date reminder",
+        "reminder when",
+        "turn on notifications",
+        "enable notifications",
+        "when my book is due"
+      ],
+      "user_facing_workaround": "Turn on notifications and Palace will alert you when a hold you placed is ready to borrow, and again when a loan is about to expire. You can enable them when you first install the app, or later in your phone's Settings under Palace.",
+      "internal_reference": {
+        "helpspot": [
+          18103
+        ]
+      },
+      "confidence_threshold": 0.1,
+      "escalate_anyway": false,
+      "helpspot_tag": "how-to-notifications",
+      "trust_level": "authoritative",
+      "visibility": "user_facing",
+      "ui_surface": "notifications-settings",
+      "reviewed_at": "2026-07-20"
+    },
+    {
+      "id": "HT-2026-005-hold-pickup-window",
+      "category": "other",
+      "kind": "how_to",
+      "symptom_keywords": [
+        "how long to pick up",
+        "pick up my hold",
+        "how long is my hold",
+        "hold ready how long",
+        "hold expire",
+        "when do i lose my hold",
+        "grab my hold",
+        "hold pickup deadline",
+        "how long to get my hold"
+      ],
+      "user_facing_workaround": "How long you have to pick up a ready hold varies by library and distributor. When your hold is ready, Palace shows the exact \"pick up by\" date right on it — open the title from your holds to see the deadline.",
+      "internal_reference": {
+        "jira": "PP-4831"
+      },
+      "confidence_threshold": 0.1,
+      "escalate_anyway": false,
+      "helpspot_tag": "how-to-hold-pickup-window",
+      "trust_level": "authoritative",
+      "visibility": "user_facing",
+      "ui_surface": "my-books",
+      "reviewed_at": "2026-07-21"
+    },
+    {
+      "id": "HT-2026-006-borrow-limit",
+      "category": "other",
+      "kind": "how_to",
+      "symptom_keywords": [
+        "how many books can i borrow",
+        "how many can i borrow",
+        "borrow limit",
+        "loan limit",
+        "checkout limit",
+        "maximum books",
+        "how many at once",
+        "how many titles at once"
+      ],
+      "user_facing_workaround": "The number of titles you can borrow at once is set by your library, so it varies. If you've reached the limit, returning a title you've finished frees up a slot — or check with your library for its exact borrowing limit.",
+      "internal_reference": {
+        "jira": "PP-4831"
+      },
+      "confidence_threshold": 0.1,
+      "escalate_anyway": false,
+      "helpspot_tag": "how-to-borrow-limit",
+      "trust_level": "authoritative",
+      "visibility": "user_facing",
+      "ui_surface": "my-books",
+      "reviewed_at": "2026-07-21"
+    },
+    {
+      "id": "HT-2026-007-loan-length",
+      "category": "other",
+      "kind": "how_to",
+      "symptom_keywords": [
+        "how long is a loan",
+        "how long is the loan",
+        "loan length",
+        "how long can i read it",
+        "when is it due",
+        "how long is my checkout",
+        "lending period",
+        "loan period"
+      ],
+      "user_facing_workaround": "Loan length is set by your library, so it varies — you'll see the due date on each title when you borrow it. Palace can't extend or renew a loan in the app: when the lending period ends the book returns automatically, and to keep reading you simply borrow it again (or place a hold if there's a waitlist).",
+      "internal_reference": {
+        "jira": "PP-4831"
+      },
+      "confidence_threshold": 0.1,
+      "escalate_anyway": false,
+      "helpspot_tag": "how-to-loan-length",
+      "trust_level": "authoritative",
+      "visibility": "user_facing",
+      "ui_surface": "my-books",
+      "reviewed_at": "2026-07-21"
+    },
+    {
+      "id": "HT-2026-008-add-library-card",
+      "category": "library",
+      "kind": "how_to",
+      "symptom_keywords": [
+        "add my library card",
+        "add a library card",
+        "add my card",
+        "enter my library card",
+        "enter my barcode",
+        "sign in with my card",
+        "where do i enter my card",
+        "put in my library card",
+        "register my card"
+      ],
+      "user_facing_workaround": "To add your library card, open Settings → Libraries. If your library isn't listed yet, add it there first, then tap it and sign in with your library card number (barcode) and PIN. Once you're signed in, your loans and holds show up in Palace.",
+      "internal_reference": {
+        "jira": "PP-4831"
+      },
+      "confidence_threshold": 0.1,
+      "escalate_anyway": false,
+      "helpspot_tag": "how-to-add-library-card",
+      "trust_level": "authoritative",
+      "visibility": "user_facing",
+      "ui_surface": "settings-libraries",
+      "reviewed_at": "2026-07-22"
+    },
+    {
+      "id": "HT-2026-009-formats-kindle",
+      "category": "other",
+      "kind": "how_to",
+      "symptom_keywords": [
+        "to kindle",
+        "on kindle",
+        "use kindle",
+        "what formats",
+        "which formats",
+        "reading format",
+        "send to my ereader"
+      ],
+      "user_facing_workaround": "Palace isn't connected to Kindle — there's no \"send to Kindle\" step. You read your borrowed books right in the Palace app: ebooks open in the built-in reader and audiobooks play in the built-in player, and everything stays in Palace for the length of your loan.",
+      "internal_reference": {
+        "jira": "PP-4831"
+      },
+      "confidence_threshold": 0.1,
+      "escalate_anyway": false,
+      "helpspot_tag": "how-to-formats-kindle",
+      "trust_level": "authoritative",
+      "visibility": "user_facing",
+      "ui_surface": "my-books",
+      "reviewed_at": "2026-07-22"
     }
   ]
 }

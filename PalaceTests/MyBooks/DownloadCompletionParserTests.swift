@@ -14,7 +14,10 @@ import XCTest
 import PalaceCatalog
 @testable import Palace
 
-@MainActor
+// Deliberately NOT @MainActor: the object under test is nonisolated and
+// non-Sendable — awaiting its async APIs on a @MainActor-held reference is a
+// Swift 6 sending error, while from a nonisolated test everything stays in
+// one isolation domain. Nothing here touches UI or main-actor state.
 final class DownloadCompletionParserTests: XCTestCase {
 
     private var stateManager: DownloadStateManager!

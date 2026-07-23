@@ -345,16 +345,19 @@ final class AudiobookSessionPresenterTests: XCTestCase {
     /// THREE transitions per CLAUDE.md DoD #3 multi-step-test-body check.
     // MARK: - Helper
 
-    /// Spins the main runloop briefly so a publisher event sent
-    /// synchronously via `playbackStatePublisher.send(...)` is delivered
-    /// through `.receive(on: DispatchQueue.main)` BEFORE the test
-    /// asserts on the presenter's published mirrored state. Without
-    /// this, the assertion races the sink and intermittently fails.
+    /// Flushes the main queue so a publisher event sent synchronously via
+    /// `playbackStatePublisher.send(...)` is delivered through
+    /// `.receive(on: DispatchQueue.main)` BEFORE the test asserts on the
+    /// presenter's published mirrored state. Without this, the assertion races
+    /// the sink and intermittently fails.
     private func spinRunLoopForPublisherDelivery() {
-        // 50ms — empirically large enough to outrun CI scheduler jitter that
-        // caused intermittent failures at 10ms. Each call adds ~50ms to the
-        // suite walltime; current usage (~10 sites) ≈ +0.5s total.
-        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        // Deterministic FIFO drain instead of a fixed wall-clock
+        // `RunLoop.main.run(until:)` spin. The presenter mirrors state through
+        // `.receive(on: DispatchQueue.main)`; enqueueing a no-op behind the
+        // already-queued delivery block and awaiting it guarantees delivery has
+        // landed — no fixed 50ms guess that under CI sim-clone oversubscription
+        // could expire before the hop delivers (races the sink → flaky assert).
+        drainMainQueue()
     }
 
     func testPresenter_expand_minimize_expandAgain_drivesIsPlayerExpandedCorrectly_acrossThreeTransitions() {

@@ -99,7 +99,7 @@ final class NowPlayingCoordinatorBackgroundTests: XCTestCase {
 
     /// Regression guard: in foreground, rapid updates must still coalesce so
     /// we don't spam MPNowPlayingInfoCenter on every chapter-tick / scrub.
-    func testApplyUpdate_inForeground_debouncesAsBefore() {
+    func testApplyUpdate_inForeground_debouncesAsBefore() async {
         // Arrange: active state
         fakeAppState.value = .active
 
@@ -133,13 +133,11 @@ final class NowPlayingCoordinatorBackgroundTests: XCTestCase {
         )
 
         // Production debounce schedules a `Task { try await Task.sleep(...) }`
-        // (NowPlayingCoordinator.swift L282-292). Tasks don't hop the main
-        // queue, so `drainMainQueue` would miss the resolution — poll the
-        // observable system signal instead.
-        awaitCondition(timeout: 5) {
-            let info = MPNowPlayingInfoCenter.default().nowPlayingInfo
-            return (info?[MPMediaItemPropertyTitle] as? String) == "Chapter C"
-        }
+        // (NowPlayingCoordinator.swift). Deterministically JOIN that debounce
+        // Task via the `_awaitPendingUpdateForTesting()` seam instead of polling
+        // `MPNowPlayingInfoCenter` against a fixed wall-clock deadline, which
+        // starves under CI oversubscription.
+        await coordinator._awaitPendingUpdateForTesting()
 
         // After waiting, Chapter C (the last one) should be live.
         let infoAfter = MPNowPlayingInfoCenter.default().nowPlayingInfo

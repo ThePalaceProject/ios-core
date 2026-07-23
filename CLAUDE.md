@@ -256,7 +256,7 @@ A test that doesn't kill any mutants should be rewritten to test the actual beha
 
 ## Contract-snapshot tests
 
-Some critical-path classes are easier to pin behaviorally than to mutation-test: state machines that emit ordered sequences of dependency calls (BorrowOperation → fetchBook then startDownload; BookReturnService → setProcessing → setState → removeBook → announce.returnSucceeded). For these we lock the *call order + argument shape* as a JSON snapshot — refactors that change the contract drift the snapshot and fail the test loudly.
+Some critical-path classes are easier to pin behaviorally than to mutation-test: state machines that emit ordered sequences of dependency calls (BorrowOperation → fetchBook then startDownload; BookReturnService no-revokeURL cleanup → setState(.unregistered) → removeBook → announce.returnSucceeded — the network revoke path wraps the fetch in setProcessing(true/false) and uses updateAndRemoveBook before setState). For these we lock the *call order + argument shape* as a JSON snapshot — refactors that change the contract drift the snapshot and fail the test loudly.
 
 **Where:** `PalaceTests/Contract/`. The framework lives in `CallLog.swift` (thread-safe recorder) + `ContractSnapshot.swift` (assert / record / diff). First-run records a baseline at `__Snapshots__/<TestClass>/<name>.json` and fails with "snapshot recorded — re-run to verify"; subsequent runs assert equality. Set `CONTRACT_SNAPSHOT_RECORD=1` to deliberately re-record (review the diff in `git diff` before committing).
 

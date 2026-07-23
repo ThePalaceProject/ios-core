@@ -60,6 +60,11 @@ final class OverdriveDownloadHandlerTests: XCTestCase {
 
     private var capturedErrors: [DownloadErrorInfo] = []
     private var subscription: AnyCancellable?
+    /// Fulfilled by the error-publisher sink the instant an error is
+    /// published — lets tests JOIN the publish (a prompt-firing wait)
+    /// instead of polling a wall-clock deadline that starves under CI
+    /// oversubscription.
+    private var errorPublishedExpectation: XCTestExpectation?
 
     override func setUpWithError() throws {
         try super.setUpWithError()
@@ -83,6 +88,7 @@ final class OverdriveDownloadHandlerTests: XCTestCase {
         capturedErrors = []
         subscription = reporter.downloadErrorPublisher.sink { [weak self] info in
             self?.capturedErrors.append(info)
+            self?.errorPublishedExpectation?.fulfill()
         }
 
         handler = OverdriveDownloadHandler(
@@ -120,17 +126,24 @@ final class OverdriveDownloadHandlerTests: XCTestCase {
 
     // MARK: - Helpers
 
-    /// Wraps the shared `awaitConditionAsync` helper. Replaces the prior
-    /// local copy that silently swallowed timeouts. `file`/`line`
-    /// forwarded so timeout XCTFail blames the call site.
+    /// Joins the error-publish path deterministically. The handler publishes
+    /// through `DownloadAlertPresenter.failDownloadWithAlert`, whose
+    /// `runOnMainAsync` hop lands the error on a future main-actor turn — but
+    /// the sink fulfils `errorPublishedExpectation` the instant it does.
+    /// Awaiting that expectation is a prompt-firing wait, replacing the
+    /// wall-clock `awaitConditionAsync` poll that starved under CI
+    /// oversubscription. Arming happens synchronously before any `await`, so a
+    /// pending publish Task cannot fulfil ahead of the arm.
     private func waitForPublishedError(
         timeout: TimeInterval = 10.0,
         file: StaticString = #file,
         line: UInt = #line
     ) async {
-        await awaitConditionAsync(timeout: timeout, file: file, line: line) { [weak self] in
-            self?.capturedErrors.isEmpty == false
-        }
+        if !capturedErrors.isEmpty { return }
+        let published = expectation(description: "download error published")
+        errorPublishedExpectation = published
+        await fulfillment(of: [published], timeout: timeout)
+        errorPublishedExpectation = nil
     }
 
     private func makeOverdriveBook() -> TPPBook {

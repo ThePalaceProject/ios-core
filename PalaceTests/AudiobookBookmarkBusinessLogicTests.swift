@@ -289,7 +289,7 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
 
     // MARK: - Save Listening Position Tests
 
-    func testSaveListeningPosition_SavesLocallyImmediately() {
+    func testSaveListeningPosition_SavesLocallyImmediately() async {
         mockRegistry = TPPBookRegistryMock()
         mockRegistry.addBook(fakeBook, state: .downloadSuccessful)
         mockAnnotations = TPPAnnotationMock()
@@ -299,20 +299,17 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
 
         let position = TrackPosition(track: tracks.tracks[0], timestamp: 500, tracks: tracks)
 
-        let expectation = XCTestExpectation(description: "Save listening position")
+        sut.saveListeningPosition(at: position, completion: nil)
 
-        sut.saveListeningPosition(at: position) { _ in
-            expectation.fulfill()
-        }
-
-        // Local save should happen immediately (before server sync)
-        wait(for: [expectation], timeout: 3.0)
+        // Deterministically JOIN the write Task instead of polling a wall-clock
+        // deadline (`wait(for:timeout:)`), which starves under CI oversubscription.
+        await sut._awaitPositionWriteForTesting()
 
         let savedLocation = mockRegistry.location(forIdentifier: fakeBook.identifier)
         XCTAssertNotNil(savedLocation, "Location should be saved to registry")
     }
 
-    func testSaveListeningPosition_SyncsToServer() {
+    func testSaveListeningPosition_SyncsToServer() async {
         mockRegistry = TPPBookRegistryMock()
         mockRegistry.addBook(fakeBook, state: .downloadSuccessful)
         mockAnnotations = TPPAnnotationMock()
@@ -322,15 +319,17 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
 
         let position = TrackPosition(track: tracks.tracks[0], timestamp: 500, tracks: tracks)
 
-        let expectation = XCTestExpectation(description: "Sync to server")
-
+        var receivedTimestamp: String? = nil
         sut.saveListeningPosition(at: position) { timestamp in
-            // Timestamp returned indicates server sync succeeded
-            XCTAssertNotNil(timestamp, "Should receive timestamp from server")
-            expectation.fulfill()
+            receivedTimestamp = timestamp
         }
 
-        wait(for: [expectation], timeout: 3.0)
+        // JOIN the write Task deterministically; the completion fires
+        // synchronously inside the Task before it returns.
+        await sut._awaitPositionWriteForTesting()
+
+        // Timestamp returned indicates server sync succeeded
+        XCTAssertNotNil(receivedTimestamp, "Should receive timestamp from server")
 
         // Verify server was called
         let serverBookmarks = mockAnnotations.savedLocations[fakeBook.identifier]
@@ -468,7 +467,7 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
                      "SUT must remain deallocated; debounced work must not resurrect self")
     }
 
-    func testDebounce_RapidCalls_OnlyLastSyncs() {
+    func testDebounce_RapidCalls_OnlyLastSyncs() async {
         mockRegistry = TPPBookRegistryMock()
         mockRegistry.addBook(fakeBook, state: .downloadSuccessful)
         mockAnnotations = TPPAnnotationMock()
@@ -477,18 +476,14 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
         tracks = try! loadTracks(for: manifestJSON)
 
         // Fire 10 rapid saves — only the last should sync to server
-        let lastExpectation = XCTestExpectation(description: "Last save syncs")
-
         for i in 0..<10 {
             let position = TrackPosition(track: tracks.tracks[0], timestamp: TimeInterval(i * 100), tracks: tracks)
-            sut.saveListeningPosition(at: position) { timestamp in
-                if i == 9 {
-                    lastExpectation.fulfill()
-                }
-            }
+            sut.saveListeningPosition(at: position, completion: nil)
         }
 
-        wait(for: [lastExpectation], timeout: 5.0)
+        // JOIN the last-launched write Task deterministically (the seam retains
+        // the most recent one) rather than polling a wall-clock deadline.
+        await sut._awaitPositionWriteForTesting()
 
         // All 10 should have saved locally (immediate), but server sync count should be small
         // due to debouncing cancelling intermediate items
@@ -542,7 +537,7 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
     /// *call-through* — they fail loudly if a refactor accidentally
     /// reintroduces the legacy 30s grace at the call site.
 
-    func testSaveListeningPosition_track0_29s_track1AlreadySaved_doesNotOverwriteWithBeginning() {
+    func testSaveListeningPosition_track0_29s_track1AlreadySaved_doesNotOverwriteWithBeginning() async {
         // Patron paused at 0:29 of chapter 1 (track index 0, timestamp 29s).
         // Under the old 30s rule this was treated as "at beginning" and
         // would have been blocked from overwriting a stored track-1 position.
@@ -558,9 +553,8 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
 
         let position = TrackPosition(track: tracks.tracks[0], timestamp: 29.0, tracks: tracks)
 
-        let exp = XCTestExpectation(description: "Save track-0 29s")
-        sut.saveListeningPosition(at: position) { _ in exp.fulfill() }
-        wait(for: [exp], timeout: 3.0)
+        sut.saveListeningPosition(at: position, completion: nil)
+        await sut._awaitPositionWriteForTesting()
 
         // The fact that we DON'T assert "blocked" here is the test — the
         // policy boundary tests own that semantic. We do verify that the
@@ -570,7 +564,7 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
                        "29s track-0 progress must be synced under strict-zero rule")
     }
 
-    func testSaveListeningPosition_track0_time0_savesToServer() {
+    func testSaveListeningPosition_track0_time0_savesToServer() async {
         // Strict-zero boundary: even 0/0 still goes through the server
         // postListeningPosition call (the in-memory mock always answers
         // success, so the response path runs). We're verifying the call
@@ -584,9 +578,8 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
         tracks = try! loadTracks(for: manifestJSON)
 
         let position = TrackPosition(track: tracks.tracks[0], timestamp: 0, tracks: tracks)
-        let exp = XCTestExpectation(description: "track-0 time-0 syncs")
-        sut.saveListeningPosition(at: position) { _ in exp.fulfill() }
-        wait(for: [exp], timeout: 3.0)
+        sut.saveListeningPosition(at: position, completion: nil)
+        await sut._awaitPositionWriteForTesting()
 
         XCTAssertFalse(
             mockAnnotations.savedLocations[fakeBook.identifier]?.isEmpty ?? true,

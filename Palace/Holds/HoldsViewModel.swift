@@ -107,14 +107,19 @@ final class HoldsViewModel: ObservableObject {
         }
 
         let environment = HoldsEnvironment(filterBooks: { query, books in
-            await withCheckedContinuation { continuation in
-                DispatchQueue.global(qos: .userInitiated).async {
-                    let filtered = books.filter {
-                        $0.title.localizedCaseInsensitiveContains(query) ||
-                            ($0.authors?.localizedCaseInsensitiveContains(query) ?? false)
-                    }
-                    continuation.resume(returning: filtered)
-                }
+            // Filter in-place. This runs on the reducer effect's `@Sendable`
+            // (off-main) task, so it never blocks the UI, and a holds list is
+            // tiny — an in-memory title/author substring match. The previous
+            // implementation bridged this through `withCheckedContinuation` +
+            // `DispatchQueue.global(qos:).async`, which made a trivial filter a
+            // VICTIM of global-queue thread-pool exhaustion: under full-suite CI
+            // load, when leaked blocking work saturates the global pool, the
+            // enqueued filter block never runs and `sendAwait(.searchQueryChanged)`
+            // hangs to the 120s execution allowance (the HoldsViewModel flake).
+            // A synchronous filter has no queue dependency and cannot starve.
+            books.filter {
+                $0.title.localizedCaseInsensitiveContains(query) ||
+                    ($0.authors?.localizedCaseInsensitiveContains(query) ?? false)
             }
         })
         self.store = Store(
@@ -245,8 +250,10 @@ final class HoldsViewModel: ObservableObject {
 
         store.send(.registryChanged(held: allHeld))
 
-        // Badge update — centrally managed by AppTabHostView
-        NotificationCenter.default.post(name: .TPPBookRegistryStateDidChange, object: nil)
+        // Badge update — centrally managed by AppTabHostView. Migrated off the
+        // `.TPPBookRegistryStateDidChange` post to the registry's holds-changed
+        // publisher (swarm_8ce6f5ae WS3), which AppTabHostView subscribes to.
+        bookRegistry.notifyHoldsChanged()
     }
 
     func refresh() {

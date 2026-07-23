@@ -123,6 +123,9 @@ private final class RecordingRegistry: NSObject, TPPBookRegistryProvider, @unche
     var bookStatePublisher: AnyPublisher<(String, TPPBookState), Never> { inner.bookStatePublisher }
     var registryState: TPPBookRegistry.RegistryState { inner.registryState }
     var syncStatePublisher: AnyPublisher<Bool, Never> { inner.syncStatePublisher }
+    var registryStatePublisher: AnyPublisher<TPPBookRegistry.RegistryState, Never> { inner.registryStatePublisher }
+    var holdsDidChangePublisher: AnyPublisher<Void, Never> { inner.holdsDidChangePublisher }
+    func notifyHoldsChanged() { inner.notifyHoldsChanged() }
     var heldBooks: [TPPBook] { inner.heldBooks }
     var myBooks: [TPPBook] { inner.myBooks }
     var isSyncing: Bool { inner.isSyncing }

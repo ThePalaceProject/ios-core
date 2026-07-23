@@ -14,13 +14,16 @@ struct CategoryChipsView: View {
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
-    private let categories: [(KBCategory, String, String)] = [
-        (.audiobook, "🎧", "Audiobook"),
-        (.reader, "📖", "Reading"),
-        (.signin, "🔑", "Sign in"),
-        (.download, "⬇️", "Download"),
-        (.library, "📚", "Library"),
-        (.other, "💬", "Other")
+    // Emoji per category; the label comes from `KBCategory.displayName` so the
+    // chip wording and the ticket-preview "Category" field share one source of
+    // truth and can't drift (PP-4847).
+    private let categories: [(KBCategory, String)] = [
+        (.audiobook, "🎧"),
+        (.reader, "📖"),
+        (.signin, "🔑"),
+        (.download, "⬇️"),
+        (.library, "📚"),
+        (.other, "💬")
     ]
 
     var body: some View {
@@ -31,8 +34,8 @@ struct CategoryChipsView: View {
         // compact adaptive grid at normal sizes.
         if dynamicTypeSize.isAccessibilitySize {
             VStack(alignment: .leading, spacing: 8) {
-                ForEach(categories, id: \.0) { category, emoji, label in
-                    chip(category, emoji, label)
+                ForEach(categories, id: \.0) { category, emoji in
+                    chip(category, emoji, category.displayName)
                 }
             }
         } else {
@@ -41,8 +44,8 @@ struct CategoryChipsView: View {
             // / "Download" onto two lines. (Re-land of the pill-label fix.)
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 155), spacing: 8)],
                       alignment: .leading, spacing: 8) {
-                ForEach(categories, id: \.0) { category, emoji, label in
-                    chip(category, emoji, label)
+                ForEach(categories, id: \.0) { category, emoji in
+                    chip(category, emoji, category.displayName)
                 }
             }
         }

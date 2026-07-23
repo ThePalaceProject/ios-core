@@ -23,7 +23,10 @@ extension Notification.Name {
     static let TPPIsSigningIn = Notification.Name("TPPIsSigningIn")
     static let TPPAppDelegateDidReceiveCleverRedirectURL = Notification.Name("TPPAppDelegateDidReceiveCleverRedirectURL")
     static let TPPBookRegistryDidChange = Notification.Name("TPPBookRegistryDidChange")
-    static let TPPBookRegistryStateDidChange = Notification.Name("TPPBookRegistryStateDidChange")
+    // .TPPBookRegistryStateDidChange removed in swarm_8ce6f5ae WS3 — the registry
+    // dual-write to NotificationCenter was killed in favor of the registry's
+    // Combine publishers (bookStatePublisher / registryStatePublisher /
+    // holdsDidChangePublisher). Do not re-introduce this name.
 
     /// The `userInfo` dictionary contains the following key-value pairs:
     /// - an `bookProcessingBookIDKey` key whose value is a String indicating
@@ -51,7 +54,7 @@ extension Notification.Name {
     public static let TPPIsSigningIn = Notification.Name.TPPIsSigningIn
     public static let TPPAppDelegateDidReceiveCleverRedirectURL = Notification.Name.TPPAppDelegateDidReceiveCleverRedirectURL
     public static let TPPBookRegistryDidChange = Notification.Name.TPPBookRegistryDidChange
-    public static let TPPBookRegistryStateDidChange = Notification.Name.TPPBookRegistryStateDidChange
+    // .TPPBookRegistryStateDidChange removed in swarm_8ce6f5ae WS3 (see above).
     public static let TPPBookProcessingDidChange = Notification.Name.TPPBookProcessingDidChange
     public static let TPPMyBooksDownloadCenterDidChange = Notification.Name.TPPMyBooksDownloadCenterDidChange
     public static let TPPBookDetailDidClose = Notification.Name.TPPBookDetailDidClose

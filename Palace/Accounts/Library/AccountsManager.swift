@@ -421,6 +421,18 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
         ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
     private let _trackedCrawlTasksLock = NSLock()
     private var _trackedCrawlTasks: [Task<Void, Never>] = []
+    /// The subset of tracked tasks that are `loadCatalogs` FIRST-RUN tasks (the
+    /// detached bundled-decode → synchronous `fetchFromNetwork` kickoff). Guarded
+    /// by `_trackedCrawlTasksLock`. Populated only under XCTest (same env gate as
+    /// `_trackedCrawlTasks`). The deterministic-join seam
+    /// `_awaitAllCrawlTasksForTesting()` awaits ONLY these — NOT the downstream
+    /// live network crawl the first-run task spawns via `fetchFromNetwork` (that
+    /// hits the real registry and would reintroduce wall-clock nondeterminism).
+    /// By the time a first-run task's `.value` resolves, its synchronous
+    /// `fetchFromNetwork` call has already returned (bumping
+    /// `_fetchFromNetworkCount`), so joining the first-run task alone is a
+    /// deterministic barrier for the decode + fetch-fired observations.
+    private var _trackedFirstRunTasks: [Task<Void, Never>] = []
 
     /// Resolves the build-time bundled registry snapshot resource. Production
     /// binds `Bundle.main`; tests inject a stub (`BundleResourceResolving`) to
@@ -451,6 +463,63 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
         _trackedCrawlTasksLock.lock()
         _trackedCrawlTasks.append(task)
         _trackedCrawlTasksLock.unlock()
+    }
+
+    /// Register a `loadCatalogs` FIRST-RUN task. Appends to BOTH the general
+    /// crawl registry (so `cancelBackgroundWork()` cancels it, identical to
+    /// `_trackCrawlTask`) AND the first-run subset the deterministic-join seam
+    /// awaits. No-op outside an XCTest process — production never populates
+    /// either list, so RELEASE behavior is byte-identical to a bare
+    /// `_trackCrawlTask` (which is itself a no-op in RELEASE).
+    private func _trackFirstRunTask(_ task: Task<Void, Never>) {
+        guard Self._isRunningUnderXCTest else { return }
+        _trackedCrawlTasksLock.lock()
+        _trackedCrawlTasks.append(task)
+        _trackedFirstRunTasks.append(task)
+        _trackedCrawlTasksLock.unlock()
+    }
+
+    /// Test-only deterministic JOIN seam. Snapshots the currently-tracked
+    /// FIRST-RUN tasks under the lock and `await`s each to completion, so a test
+    /// can join the ACTUAL off-main first-run work (bundled decode → synchronous
+    /// `fetchFromNetwork` kickoff) spawned by `loadCatalogs` instead of polling a
+    /// wall-clock deadline. Under CI's parallel sim clones a fixed-deadline poll
+    /// starves (the detached `.utility` task loses the CPU race) and fails on all
+    /// 3 retries; awaiting the real handle removes the clock entirely.
+    ///
+    /// Awaits ALL tracked first-run tasks (not just the most-recent), so a
+    /// dedupe-break that erroneously spawns a SECOND first-run task is also
+    /// joined — `testSecondConcurrentLoad` can then assert the decode ran exactly
+    /// once after every first-run task has finished. It deliberately does NOT
+    /// await the downstream live network crawl that `fetchFromNetwork` spawns
+    /// (which hits the real registry and would reintroduce nondeterministic
+    /// latency); the first-run task's synchronous `fetchFromNetwork` call has
+    /// already returned (bumping `_fetchFromNetworkCount`) by the time its
+    /// `.value` resolves, so joining the first-run task alone suffices.
+    ///
+    /// `nonisolated` + a synchronous lock-guarded snapshot: the manager is only
+    /// touched synchronously here (the `Task<Void, Never>` handles are Sendable),
+    /// so awaiting this from an `@MainActor` test never "sends" the non-Sendable
+    /// manager across an isolation boundary. Behavior-identical to a no-op in
+    /// RELEASE — the first-run-tasks array only ever populates under XCTest (the
+    /// `_trackFirstRunTask` env gate), and production never calls this method. It
+    /// only READS/awaits existing handles; it spawns no work and mutates no
+    /// production state.
+    /// Synchronous lock-guarded snapshot of the tracked first-run tasks. Split
+    /// out of the `async` join seam because `NSLock.lock()`/`.unlock()` are
+    /// unavailable from an async context (Swift 6 forbids them even when the
+    /// critical section never spans a suspension point). The `await` happens in
+    /// the caller, strictly after the lock is released here.
+    nonisolated private func _snapshotFirstRunTasksForTesting() -> [Task<Void, Never>] {
+        _trackedCrawlTasksLock.lock()
+        defer { _trackedCrawlTasksLock.unlock() }
+        return _trackedFirstRunTasks
+    }
+
+    nonisolated func _awaitAllCrawlTasksForTesting() async {
+        for task in _snapshotFirstRunTasksForTesting() {
+            _ = await task.value
+        }
     }
 
     /// Initializer is `internal` rather than `private` so `AppContainer` can
@@ -1225,7 +1294,7 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
             Log.debug(#file, "Loading catalogs from network for hash \(hash)…")
             self.fetchFromNetwork(targetUrl: targetUrl, hash: hash)
         }
-        _trackCrawlTask(firstRunTask)
+        _trackFirstRunTask(firstRunTask)
     }
 
     /// Fetches catalog data using the first-page fast path:
@@ -1933,7 +2002,18 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
     }
 
     @objc private func updateAccountSetFromNotification(_ notif: Notification) {
-        updateAccountSet(completion: nil)
+        // Run off the poster's thread. `.TPPUseBetaDidChange` is delivered
+        // synchronously by `NotificationCenter` on whatever thread posted it —
+        // typically MAIN, from a Settings toggle. `updateAccountSet` does an
+        // `accountSetsLock.sync` read (`performRead`) that blocks until any
+        // in-flight background catalog-refresh barrier on that lock drains; under
+        // load that barrier can take a long time, so reacting synchronously stalls
+        // the poster (the Settings UI — and any test that posts this notification,
+        // which is how it surfaced as a 120s hang). The account-set update is
+        // inherently async anyway (it may reload catalogs), so dispatch it.
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            self?.updateAccountSet(completion: nil)
+        }
     }
 
     func updateAccountSet(completion: ((Bool) -> Void)?) {
@@ -2073,6 +2153,10 @@ extension AccountsManager {
         _trackedCrawlTasksLock.lock()
         let crawlTasks = _trackedCrawlTasks
         _trackedCrawlTasks.removeAll()
+        // Clear the first-run subset too — its handles are a subset of
+        // `_trackedCrawlTasks` (cancelled above), so dropping them here keeps the
+        // deterministic-join seam from re-awaiting an already-cancelled task.
+        _trackedFirstRunTasks.removeAll()
         _trackedCrawlTasksLock.unlock()
         crawlTasks.forEach { $0.cancel() }
         networkExecutor.cancelNonEssentialTasks()

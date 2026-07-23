@@ -26,11 +26,16 @@ final class ActiveSessionsViewModelTests: XCTestCase {
     private var spyService: SpyRecentlyReadingService!
     private var fakeSession: FakeAudiobookSessionManager!
     private var notificationCenter: NotificationCenter!
+    /// Injected registry — the Continue row now refreshes off its
+    /// `bookStatePublisher` (swarm_8ce6f5ae WS3), so tests drive re-queries by
+    /// emitting a per-book state change through this mock.
+    private var registryMock: TPPBookRegistryMock!
 
     override func setUp() {
         super.setUp()
         spyService = SpyRecentlyReadingService()
         fakeSession = FakeAudiobookSessionManager()
+        registryMock = TPPBookRegistryMock()
         // Use a private NotificationCenter per test so notifications from
         // one test never leak into another. .default would be shared.
         notificationCenter = NotificationCenter()
@@ -39,6 +44,7 @@ final class ActiveSessionsViewModelTests: XCTestCase {
     override func tearDown() {
         spyService = nil
         fakeSession = nil
+        registryMock = nil
         notificationCenter = nil
         super.tearDown()
     }
@@ -66,6 +72,7 @@ final class ActiveSessionsViewModelTests: XCTestCase {
         let viewModel = ActiveSessionsViewModel(
             recentlyReadingService: spyService,
             audiobookSession: fakeSession,
+            bookRegistry: registryMock,
             notificationCenter: notificationCenter
         )
 
@@ -86,6 +93,7 @@ final class ActiveSessionsViewModelTests: XCTestCase {
         let viewModel = ActiveSessionsViewModel(
             recentlyReadingService: spyService,
             audiobookSession: fakeSession,
+            bookRegistry: registryMock,
             notificationCenter: notificationCenter
         )
 
@@ -106,6 +114,7 @@ final class ActiveSessionsViewModelTests: XCTestCase {
         let viewModel = ActiveSessionsViewModel(
             recentlyReadingService: spyService,
             audiobookSession: fakeSession,
+            bookRegistry: registryMock,
             notificationCenter: notificationCenter
         )
 
@@ -126,6 +135,7 @@ final class ActiveSessionsViewModelTests: XCTestCase {
         let viewModelZero = ActiveSessionsViewModel(
             recentlyReadingService: spyService,
             audiobookSession: fakeSession,
+            bookRegistry: registryMock,
             notificationCenter: notificationCenter
         )
         XCTAssertEqual(viewModelZero.continueListening.count, 0,
@@ -136,6 +146,7 @@ final class ActiveSessionsViewModelTests: XCTestCase {
         let viewModelHalf = ActiveSessionsViewModel(
             recentlyReadingService: spyService,
             audiobookSession: fakeSession,
+            bookRegistry: registryMock,
             notificationCenter: notificationCenter
         )
         XCTAssertEqual(viewModelHalf.continueListening.count, 1,
@@ -152,6 +163,7 @@ final class ActiveSessionsViewModelTests: XCTestCase {
         let viewModel = ActiveSessionsViewModel(
             recentlyReadingService: spyService,
             audiobookSession: fakeSession,
+            bookRegistry: registryMock,
             notificationCenter: notificationCenter
         )
 
@@ -159,12 +171,13 @@ final class ActiveSessionsViewModelTests: XCTestCase {
                        ".idle MUST yield empty continueListening")
     }
 
-    // MARK: - Test 6: registry-state notification triggers refresh
+    // MARK: - Test 6: a per-book registry state change triggers refresh
 
-    func testRefresh_firesOnRegistryStateNotification() {
+    func testRefresh_firesOnBookStatePublisherEmission() {
         let viewModel = ActiveSessionsViewModel(
             recentlyReadingService: spyService,
             audiobookSession: fakeSession,
+            bookRegistry: registryMock,
             notificationCenter: notificationCenter
         )
 
@@ -172,21 +185,24 @@ final class ActiveSessionsViewModelTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(baselineCalls, 1,
                                     "init MUST query the service at least once")
 
-        let exp = expectation(description: "Service queried after notification")
+        let exp = expectation(description: "Service queried after book-state change")
         let observer = spyService.observeNextCall(after: baselineCalls) {
             exp.fulfill()
         }
 
-        notificationCenter.post(name: .TPPBookRegistryStateDidChange, object: nil)
+        // A per-book state change flows through the registry's `bookStatePublisher`
+        // (mock's `setState` sends into `bookStateSubject`) — the Continue row's
+        // migrated trigger (swarm_8ce6f5ae WS3).
+        registryMock.setState(.downloadSuccessful, for: "EPUB1")
 
-        // CI-safe timeout: the notification-driven re-query fires in ms on the
-        // happy path; a generous ceiling only matters under CI CPU starvation
-        // and never slows the green path. 0.5s was too tight and flaked.
+        // CI-safe timeout: the debounced re-query fires in ms on the happy path;
+        // a generous ceiling only matters under CI CPU starvation and never slows
+        // the green path.
         wait(for: [exp], timeout: 5.0)
         _ = observer  // keep alive
 
         XCTAssertGreaterThan(spyService.recentlyReadingCallCount, baselineCalls,
-                             "Posting TPPBookRegistryStateDidChange MUST trigger a re-query")
+                             "A bookStatePublisher emission MUST trigger a re-query")
     }
 
     // MARK: - Test 6b: BookOpenTracker notification triggers refresh
@@ -203,6 +219,7 @@ final class ActiveSessionsViewModelTests: XCTestCase {
         let viewModel = ActiveSessionsViewModel(
             recentlyReadingService: spyService,
             audiobookSession: fakeSession,
+            bookRegistry: registryMock,
             notificationCenter: notificationCenter
         )
 
@@ -221,7 +238,7 @@ final class ActiveSessionsViewModelTests: XCTestCase {
             userInfo: ["bookId": "AB-NEW"]
         )
 
-        wait(for: [exp], timeout: 0.5)
+        wait(for: [exp], timeout: 5.0) // real join (observeNextCall fulfills on re-query); ceiling widened to match site above — a 0.5s bound starves under CI oversubscription
         _ = observer
 
         XCTAssertGreaterThan(spyService.recentlyReadingCallCount, baselineCalls,
@@ -315,6 +332,7 @@ final class ActiveSessionsViewModelTests: XCTestCase {
         let viewModel = ActiveSessionsViewModel(
             recentlyReadingService: spyService,
             audiobookSession: fakeSession,
+            bookRegistry: registryMock,
             notificationCenter: notificationCenter
         )
 
@@ -329,7 +347,7 @@ final class ActiveSessionsViewModelTests: XCTestCase {
         // Emit a state change through the publisher the SUT subscribes to.
         fakeSession.playbackStatePublisher.send(.playing(bookId: "any"))
 
-        wait(for: [exp], timeout: 0.5)
+        wait(for: [exp], timeout: 5.0) // real join (observeNextCall fulfills on re-query); ceiling widened to match site above — a 0.5s bound starves under CI oversubscription
         _ = observer
 
         XCTAssertGreaterThan(spyService.recentlyReadingCallCount, baselineCalls,
@@ -345,6 +363,7 @@ final class ActiveSessionsViewModelTests: XCTestCase {
         let viewModel = ActiveSessionsViewModel(
             recentlyReadingService: spyService,
             audiobookSession: fakeSession,
+            bookRegistry: registryMock,
             notificationCenter: notificationCenter
         )
 
@@ -357,7 +376,7 @@ final class ActiveSessionsViewModelTests: XCTestCase {
 
         notificationCenter.post(name: .TPPCurrentAccountDidChange, object: nil)
 
-        wait(for: [exp], timeout: 0.5)
+        wait(for: [exp], timeout: 5.0) // real join (observeNextCall fulfills on re-query); ceiling widened to match site above — a 0.5s bound starves under CI oversubscription
         _ = observer
 
         XCTAssertGreaterThan(spyService.recentlyReadingCallCount, baselineCalls,
@@ -386,6 +405,7 @@ final class ActiveSessionsViewModelTests: XCTestCase {
         let viewModel = ActiveSessionsViewModel(
             recentlyReadingService: spyService,
             audiobookSession: fakeSession,
+            bookRegistry: registryMock,
             notificationCenter: notificationCenter,
             readingRowLimit: 2
         )

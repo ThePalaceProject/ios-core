@@ -49,17 +49,6 @@ final class DownloadCancellationHandlerTests: XCTestCase {
         try super.tearDownWithError()
     }
 
-    /// Thin wrapper around the shared `awaitConditionAsync` helper.
-    /// `file`/`line` forwarded so timeout XCTFail blames the call site.
-    private func waitForAsync(
-        timeout: TimeInterval = 10.0,
-        file: StaticString = #file,
-        line: UInt = #line,
-        _ predicate: @escaping () -> Bool
-    ) async {
-        await awaitConditionAsync(timeout: timeout, file: file, line: line, predicate)
-    }
-
     // MARK: - No task: nonsensical state
 
     func testCancel_unknownIdentifierWithNonCancellableState_isNoOp() async {
@@ -67,11 +56,11 @@ final class DownloadCancellationHandlerTests: XCTestCase {
 
         handler.cancelDownload(for: book.identifier)
 
-        // Allow any spawned Task to settle.
-        for _ in 0..<3 {
-            try? await Task.sleep(nanoseconds: 20_000_000)
-            await Task.yield()
-        }
+        // Nonsensical cancel returns BEFORE spawning any teardown Task, so
+        // lastCancelTeardownTask stays nil — joining it is a no-op that
+        // deterministically confirms no async cleanup was scheduled (rather
+        // than sleeping and hoping).
+        await handler.lastCancelTeardownTask?.value
 
         XCTAssertEqual(spyDelegate.broadcastCount, 0,
                        "Nonsensical cancel must NOT broadcast an update")
@@ -88,7 +77,9 @@ final class DownloadCancellationHandlerTests: XCTestCase {
 
         handler.cancelDownload(for: book.identifier)
 
-        await waitForAsync { [self] in self.spyDelegate.scheduleCount > 0 }
+        // Join the teardown Task (its last step is schedulePendingStartsIfPossible)
+        // instead of polling scheduleCount against a deadline.
+        await handler.lastCancelTeardownTask?.value
 
         XCTAssertEqual(bookRegistry.state(for: book.identifier), .downloadNeeded,
                        "No-task cancel from .downloading must drop back to .downloadNeeded")
@@ -103,7 +94,7 @@ final class DownloadCancellationHandlerTests: XCTestCase {
 
         handler.cancelDownload(for: book.identifier)
 
-        await waitForAsync { [self] in self.spyDelegate.scheduleCount > 0 }
+        await handler.lastCancelTeardownTask?.value
 
         XCTAssertEqual(bookRegistry.state(for: book.identifier), .downloadNeeded,
                        "SAMLStarted is in the cancellable-states list — cancel must drop back to .downloadNeeded")
@@ -124,7 +115,11 @@ final class DownloadCancellationHandlerTests: XCTestCase {
 
         handler.cancelDownload(for: book.identifier)
 
-        await waitForAsync { [self] in self.spyDelegate.scheduleCount > 0 }
+        // The StubDownloadTask fires its cancel completion synchronously, which
+        // spawns the teardown Task; join it via the retained handle instead of
+        // polling. The teardown clears both maps and fires schedulePending as
+        // its final step.
+        await handler.lastCancelTeardownTask?.value
 
         XCTAssertEqual(bookRegistry.state(for: book.identifier), .downloadNeeded,
                        "With-task cancel must set state to .downloadNeeded BEFORE cancelling the task so UI updates immediately")
@@ -153,11 +148,11 @@ final class DownloadCancellationHandlerTests: XCTestCase {
 
         handler.cancelDownload(for: book.identifier)
 
-        // Allow any spawned task to settle.
-        for _ in 0..<3 {
-            try? await Task.sleep(nanoseconds: 30_000_000)
-            await Task.yield()
-        }
+        // Adobe path returns early (before the URLSession cancel + teardown),
+        // so no teardown Task is spawned — lastCancelTeardownTask stays nil and
+        // joining it is a no-op that deterministically confirms nothing async
+        // was scheduled.
+        await handler.lastCancelTeardownTask?.value
 
         // Adobe path returns early — does NOT cancel the URLSessionDownloadTask
         // and does NOT clear the dictionaries (Adobe handles its own lifecycle).

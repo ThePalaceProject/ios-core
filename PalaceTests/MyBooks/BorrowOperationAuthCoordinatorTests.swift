@@ -98,13 +98,6 @@ final class BorrowOperationAuthCoordinatorTests: XCTestCase {
         return try XCTUnwrap(TPPProblemDocument.fromProblemResponseData(data))
     }
 
-    private func waitForBorrowCleanup() async {
-        for _ in 0..<10 {
-            try? await Task.sleep(nanoseconds: 50_000_000)
-            await Task.yield()
-        }
-    }
-
     // MARK: - SAML borrow auth error → coordinator dispatches modal
 
     func testCoordinator_SAML_authError_routesThroughCoordinator_skipsLegacyPresentSignInModal() async throws {
@@ -130,7 +123,6 @@ final class BorrowOperationAuthCoordinatorTests: XCTestCase {
         } catch {
             // expected
         }
-        await waitForBorrowCleanup()
 
         XCTAssertEqual(modal.presentCallCount, 1,
                        "SAML borrow auth error must route through coordinator → modal")
@@ -168,7 +160,6 @@ final class BorrowOperationAuthCoordinatorTests: XCTestCase {
         } catch {
             // expected
         }
-        await waitForBorrowCleanup()
 
         XCTAssertEqual(modal.presentCallCount, 1,
                        "OAuth-intermediary auth error must route through coordinator → modal")
@@ -207,7 +198,6 @@ final class BorrowOperationAuthCoordinatorTests: XCTestCase {
         } catch {
             // expected
         }
-        await waitForBorrowCleanup()
 
         XCTAssertEqual(modal.presentCallCount, 0,
                        "OIDC silent-reauth success path must NOT invoke the coordinator")
@@ -240,7 +230,6 @@ final class BorrowOperationAuthCoordinatorTests: XCTestCase {
         } catch {
             // expected
         }
-        await waitForBorrowCleanup()
 
         XCTAssertEqual(modal.presentCallCount, 1,
                        "OIDC silent-reauth failure must fall back to coordinator (Option A)")
@@ -288,7 +277,6 @@ final class BorrowOperationAuthCoordinatorTests: XCTestCase {
 
         // Attempt 1: coordinator dispatches modal once; user cancels.
         do { _ = try await operation.borrowAsync(book, attemptDownload: false) } catch {}
-        await waitForBorrowCleanup()
         XCTAssertEqual(modal.presentCallCount, 1,
                        "First SAML borrow auth-error must dispatch coordinator → modal once")
         XCTAssertTrue(alertCalls.isEmpty,
@@ -298,7 +286,6 @@ final class BorrowOperationAuthCoordinatorTests: XCTestCase {
         // armed from attempt 1; `handleBorrowAuthErrorIfNeeded` must
         // return `.showGenericError` and NOT call the coordinator again.
         do { _ = try await operation.borrowAsync(book, attemptDownload: false) } catch {}
-        await waitForBorrowCleanup()
 
         XCTAssertEqual(modal.presentCallCount, 1,
                        "Per-book breaker must short-circuit second attempt — coordinator/modal MUST NOT be invoked again for the same book")
@@ -340,14 +327,12 @@ final class BorrowOperationAuthCoordinatorTests: XCTestCase {
 
         // Attempt 1: arms the breaker via the SAML auth-error route.
         do { _ = try await operation.borrowAsync(book, attemptDownload: false) } catch {}
-        await waitForBorrowCleanup()
         XCTAssertEqual(modal.presentCallCount, 1,
                        "First attempt must dispatch coordinator → modal once and arm the breaker")
 
         // Drive a SECOND attempt — must hit the breaker `.showGenericError`
         // path (no further modal). Coordinator stays at 1.
         do { _ = try await operation.borrowAsync(book, attemptDownload: false) } catch {}
-        await waitForBorrowCleanup()
         XCTAssertEqual(modal.presentCallCount, 1,
                        "Second attempt (breaker armed) must NOT dispatch coordinator a second time")
 

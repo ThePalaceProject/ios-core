@@ -88,6 +88,10 @@ final class BookSignInRedirectHandlerTests: XCTestCase {
 
     /// Thin wrapper around the shared `awaitConditionAsync` helper.
     /// `file`/`line` forwarded so timeout XCTFail blames the call site.
+    /// Retained only for the SAML-cookies-expired branch, whose retry runs on
+    /// a background `Task { }` (actor hops + `MainActor.run`) with no handle to
+    /// join — the loud-on-timeout poll is the honest fallback there. All
+    /// all-`@MainActor` branches use `flushMainActorTasks()` instead.
     private func waitForAsync(
         timeout: TimeInterval = 10.0,
         file: StaticString = #file,
@@ -95,6 +99,21 @@ final class BookSignInRedirectHandlerTests: XCTestCase {
         _ predicate: @escaping () -> Bool
     ) async {
         await awaitConditionAsync(timeout: timeout, file: file, line: line, predicate)
+    }
+
+    /// Deterministic join for the branches whose entire flow runs in
+    /// `Task { @MainActor }` bodies on THIS actor (SAMLStarted circuit breaker,
+    /// no-credentials sign-in, has-credentials no-op). Awaiting barrier
+    /// `Task { @MainActor }` values services those earlier-submitted tasks in
+    /// order; the reauth mock invokes its completion synchronously, so the
+    /// whole entry→reauth-completion→retry chain drains. Completes the instant
+    /// the actor is free — never starves on a wall clock. Three hops cover the
+    /// deepest chain. Does NOT join the 2s cooldown timer (fire-and-forget).
+    @MainActor
+    private func flushMainActorTasks() async {
+        await Task { @MainActor in }.value
+        await Task { @MainActor in }.value
+        await Task { @MainActor in }.value
     }
 
     // MARK: - handleLoginCancellation
@@ -141,7 +160,10 @@ final class BookSignInRedirectHandlerTests: XCTestCase {
         }
 
         handler.handleProblem(for: book, problemDocument: nil)
-        await waitForAsync { [self] in self.reauthenticator.authenticateIfNeededCalled }
+        // Circuit-breaker flow is all `Task { @MainActor }` — flush drains it
+        // (the entry Task calls authenticateIfNeeded, whose mock fires its
+        // completion synchronously) rather than polling a wall-clock deadline.
+        await flushMainActorTasks()
 
         XCTAssertEqual(registry.state(for: book.identifier), .downloadFailed,
                        "Circuit breaker flips state to .downloadFailed before sign-in modal")
@@ -157,6 +179,13 @@ final class BookSignInRedirectHandlerTests: XCTestCase {
         // State is currently .downloading (from setUp) — NOT .SAMLStarted
 
         handler.handleProblem(for: book, problemDocument: nil)
+        // UNJOINABLE without a prod seam: the SAML-cookies-expired branch runs
+        // its retry on a background `Task { }` (actor removes + registerCompletion,
+        // then `MainActor.run { startDownload }`) with no retained handle to
+        // await — a main-actor barrier can't join a background Task's actor
+        // work. The shared loud-on-timeout helper converges the instant the
+        // retry lands and fails loudly with guidance at the ceiling, replacing
+        // the silent-swallow risk; it is NOT a fixed sleep.
         await waitForAsync { [self] in
             self.spyDelegate.startDownloadCalls.count > 0
         }
@@ -181,7 +210,11 @@ final class BookSignInRedirectHandlerTests: XCTestCase {
         }
 
         handler.handleProblem(for: book, problemDocument: nil)
-        await waitForAsync { [self] in self.spyDelegate.startDownloadCalls.count > 0 }
+        // No-credentials flow is all `Task { @MainActor }`: the entry Task calls
+        // authenticateIfNeeded, whose mock fires the completion synchronously,
+        // enqueuing the `Task { @MainActor }` retry that calls startDownload.
+        // Flush drains the whole chain deterministically — no wall-clock poll.
+        await flushMainActorTasks()
 
         XCTAssertEqual(registry.state(for: book.identifier), .downloadNeeded,
                        "No-credentials path flips state to .downloadNeeded before sign-in modal")
@@ -195,11 +228,11 @@ final class BookSignInRedirectHandlerTests: XCTestCase {
 
         handler.handleProblem(for: book, problemDocument: nil)
 
-        // Allow Task hops a chance to run.
-        for _ in 0..<3 {
-            try? await Task.sleep(nanoseconds: 20_000_000)
-            await Task.yield()
-        }
+        // Absence assertion (no auth, no retry). The has-credentials non-SAML
+        // branch sets `.downloadNeeded` synchronously and spawns NO Task, so
+        // there is nothing to wait for — a single main-actor flush is a
+        // deterministic barrier for any stray hop rather than a fixed sleep.
+        await flushMainActorTasks()
 
         XCTAssertEqual(registry.state(for: book.identifier), .downloadNeeded,
                        "Has-credentials non-SAML path still flips state to .downloadNeeded")

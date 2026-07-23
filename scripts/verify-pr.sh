@@ -503,6 +503,23 @@ else
   record "committed_signing" "pass" "check-no-committed-signing.sh not found (skipped)"
 fi
 
+# 3b2. Doc-hygiene — only commit docs that explain the code's what/why, never
+# process/generated artifacts (swarm transcripts/contracts, generated IR).
+# Diff-based. See `scripts/check-doc-hygiene.sh`.
+echo "--- Doc-hygiene ---"
+if [ "$MUTATION_ONLY" = "true" ]; then
+  record "doc_hygiene" "pass" "Skipped (--mutation-only)"
+elif [ -f scripts/check-doc-hygiene.sh ]; then
+  DH_OUT=$(bash scripts/check-doc-hygiene.sh --base "$BASE" 2>&1)
+  if [ "$?" -eq 0 ]; then
+    record "doc_hygiene" "pass" "No process/generated doc artifacts added"
+  else
+    record "doc_hygiene" "fail" "$(echo "$DH_OUT" | grep -m1 BLOCK)"
+  fi
+else
+  record "doc_hygiene" "pass" "check-doc-hygiene.sh not found (skipped)"
+fi
+
 # 3c. Adjacency staleness (M1 universal-rigor-floor gate, warn-only)
 # Greps comments in the surviving codebase for references to removed/renamed
 # declarations in the diff. Always passes; counts warnings.

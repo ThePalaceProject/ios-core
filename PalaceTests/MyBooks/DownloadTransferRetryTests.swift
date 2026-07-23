@@ -12,6 +12,14 @@
 import XCTest
 @testable import Palace
 
+// Test-only sendability: DownloadStateManager guards all of its mutable state
+// behind SafeDictionary / DownloadCoordinator, but is not declared Sendable in
+// production. These @MainActor tests await its nonisolated-async APIs, which
+// Swift 6 rejects for non-Sendable values ("sending ... risks causing data
+// races"). The @unchecked conformance is sound for the serial await-then-assert
+// usage in this bundle. Remove once production declares the conformance.
+extension DownloadStateManager: @retroactive @unchecked Sendable {}
+
 @MainActor
 final class DownloadTransferRetryTests: XCTestCase {
 

@@ -122,6 +122,24 @@ final class CatalogViewModel: ObservableObject {
   func appendPrefetchTaskForTesting(_ task: Task<Void, Never>) { prefetchTasks.append(task) }
   func cancelPrefetchForTesting() { cancelPrefetch() }
 
+  /// Test seam — deterministically join the in-flight load. `load()` /
+  /// `forceRefresh()` / `reload()` spawn `currentLoadTask` (repo fetch →
+  /// off-actor `mapFeed` → image-cache warming) and return WITHOUT awaiting it,
+  /// so the `.loaded`/`.error`/`.offline` transition lands asynchronously. A
+  /// test that asserts the terminal state must otherwise wait on the `$state`
+  /// publisher against a fixed wall-clock deadline (`fulfillment(timeout:)`),
+  /// which STARVES under CI sim-clone oversubscription — the `.userInitiated`
+  /// map hop and cache warming get deferred past the deadline even though the
+  /// code is correct. Awaiting the retained Task handle blocks EXACTLY until the
+  /// load finishes, removing the pool/wall-clock dependence entirely.
+  ///
+  /// Changes NO production behavior: this only reads a handle the view model
+  /// already retains; `load()` still spawns the task and returns immediately.
+  /// Returns at once if no load is in flight.
+  func _awaitLoadForTesting() async {
+    await currentLoadTask?.value
+  }
+
   // MARK: - Connectivity
 
   /// Auto-reload the catalog when connectivity returns while we are showing the

@@ -75,14 +75,17 @@ let SAMLStartedKey = "saml-started"
     }
 }
 
-// MARK: - Recommended state transition contract
+// MARK: - Enforced state transition contract
 //
-// TPPBookRegistry.setState currently writes any state without validation —
-// this table documents the *recommended* transitions for the book lifecycle.
-// It is exposed so tests (e.g. PalaceCheck property tests) can pin a contract
-// and so future enforcement at the setState seam is a one-line opt-in.
+// This table is the declared legal-transition set for the book lifecycle and is
+// ENFORCED at the single mutation seam `TPPBookRegistry.setState` via
+// `canTransition` (swarm_8ce6f5ae WS3 / state-management doctrine): a transition
+// not listed here trips an `assertionFailure` in DEBUG and a telemetry log in
+// RELEASE — but the transition is STILL applied (state is never dropped).
 //
-// Adding a transition here is a docs change, not a behavior change.
+// Because the seam now enforces this set, ADDING a transition here IS a behavior
+// change (it legalizes a path that previously asserted); removing one makes a
+// live path illegal. Keep it in sync with the real call sites.
 public extension TPPBookState {
 
     /// All transitions the book lifecycle is documented to allow.
@@ -97,6 +100,11 @@ public extension TPPBookState {
         // From .holding
         .init(from: .holding, to: .unregistered),
         .init(from: .holding, to: .downloadNeeded),
+        // A ready hold stays `.holding` and renders "Get"; when the
+        // concurrent-download cap is hit, `enqueuePending` promotes it straight
+        // to `.downloading` (DownloadQueueOrchestrator.swift:91, reached via
+        // DownloadStartCoordinator.swift:278 which lets `.holding` proceed).
+        .init(from: .holding, to: .downloading),
         // From .downloadNeeded
         .init(from: .downloadNeeded, to: .downloading),
         .init(from: .downloadNeeded, to: .SAMLStarted),
@@ -116,10 +124,20 @@ public extension TPPBookState {
         .init(from: .downloadSuccessful, to: .used),
         .init(from: .downloadSuccessful, to: .returning),
         .init(from: .downloadSuccessful, to: .unregistered),
+        // Content-protection re-download (ReaderService.swift:585), OverDrive
+        // `-1008` signed-URL recovery which resets to `.downloadNeeded` first
+        // (AudiobookSessionManager.swift:2227), and LRU disk eviction
+        // (DiskBudgetManager.swift:168) all legitimately walk a completed book
+        // back to `.downloadNeeded`.
+        .init(from: .downloadSuccessful, to: .downloadNeeded),
         // From .used
         .init(from: .used, to: .downloadSuccessful),
         .init(from: .used, to: .returning),
         .init(from: .used, to: .unregistered),
+        // Same re-download / eviction paths as above can fire while a book sits
+        // in `.used` (ReaderService.swift:585, AudiobookSessionManager.swift:2227,
+        // DiskBudgetManager.swift:168).
+        .init(from: .used, to: .downloadNeeded),
         // From .returning
         .init(from: .returning, to: .unregistered),
         .init(from: .returning, to: .downloadFailed),
@@ -142,12 +160,12 @@ public extension TPPBookState {
         }
     }
 
-    /// Returns `true` if the transition from `from` to `to` is documented as
-    /// allowed. Self-transitions are always allowed.
+    /// Returns `true` if the transition from `from` to `to` is allowed.
+    /// Self-transitions are always allowed.
     ///
-    /// **Note:** This is currently a *documentation* contract. `TPPBookRegistry.setState`
-    /// does not yet enforce it. Tests use this to pin the intended state machine
-    /// so that future enforcement is a one-line opt-in at the setState seam.
+    /// Consulted by `TPPBookRegistry.setState` on every state mutation: a `false`
+    /// result routes through the registry's illegal-transition handler (assert in
+    /// DEBUG, log in RELEASE) without dropping the write.
     static func canTransition(from: TPPBookState, to: TPPBookState) -> Bool {
         if from == to { return true }
         return allowedTransitions.contains(.init(from: from, to: to))

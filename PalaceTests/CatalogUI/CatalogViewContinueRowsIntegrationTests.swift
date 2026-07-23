@@ -93,6 +93,7 @@ final class CatalogViewContinueRowsIntegrationTests: XCTestCase {
         let viewModel = ActiveSessionsViewModel(
             recentlyReadingService: spyService,
             audiobookSession: fakeSession,
+            bookRegistry: TPPBookRegistryMock(),
             notificationCenter: notificationCenter
         )
 
@@ -240,6 +241,7 @@ final class CatalogViewContinueRowsIntegrationTests: XCTestCase {
         return ActiveSessionsViewModel(
             recentlyReadingService: spyService,
             audiobookSession: fakeSession,
+            bookRegistry: TPPBookRegistryMock(),
             notificationCenter: notificationCenter
         )
     }

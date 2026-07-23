@@ -28,6 +28,13 @@ final class TypographyService: TypographyServiceProtocol {
     private let settingsSubject: CurrentValueSubject<TypographySettings, Never>
     private var persistCancellable: AnyCancellable?
 
+    /// Test seam: invoked on the main actor immediately after each debounced
+    /// persist flushes to `UserDefaults`. Lets tests JOIN the actual write
+    /// deterministically instead of polling a wall-clock deadline for the
+    /// debounce to fire (which starves the `RunLoop.main` debounce scheduler
+    /// under parallel oversubscription). `nil` in production — never invoked.
+    var onDidPersistForTesting: (() -> Void)?
+
     var settingsPublisher: AnyPublisher<TypographySettings, Never> {
         settingsSubject.eraseToAnyPublisher()
     }
@@ -298,6 +305,7 @@ final class TypographyService: TypographyServiceProtocol {
         if let data = try? JSONEncoder().encode(settings) {
             defaults.set(data, forKey: TypographyService.userDefaultsKey)
         }
+        onDidPersistForTesting?()
     }
 
     // MARK: - Helpers
