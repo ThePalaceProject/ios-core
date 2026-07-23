@@ -41,11 +41,17 @@ final class DeveloperSettingsViewModel: ObservableObject {
     /// holds-changed signal that refreshes the tab badge (swarm_8ce6f5ae WS3).
     private let bookRegistry: TPPBookRegistryProvider
     private let debugSettings: DebugSettings
+    /// Wave 1b exception E5: this admin surface is coupled to the CONCRETE
+    /// `RemoteFeatureFlags` on purpose — it toggles the impl's `*LocalOverrideKey`
+    /// statics and the DEBUG force-submit override, none of which live on the
+    /// `FeatureFlagProviding` protocol. Kept concrete (the tests inject a fresh
+    /// concrete instance).
     private let featureFlags: RemoteFeatureFlags
     /// The UserDefaults instance the RemoteFeatureFlags overrides are written to.
-    /// `RemoteFeatureFlags.shared` reads its overrides from `.standard`, and the
-    /// UIKit controller wrote them via `UserDefaults.standard.set(...)`, so this
-    /// defaults to `.standard` to preserve the exact read/write pairing.
+    /// The process-wide `RemoteFeatureFlags` singleton reads its overrides from
+    /// `.standard`, and the UIKit controller wrote them via
+    /// `UserDefaults.standard.set(...)`, so this defaults to `.standard` to
+    /// preserve the exact read/write pairing.
     private let overrideDefaults: UserDefaults
     private let triageBotKeyAdmin = TriageBotKeyAdmin()
 

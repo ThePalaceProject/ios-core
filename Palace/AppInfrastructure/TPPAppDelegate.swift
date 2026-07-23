@@ -96,7 +96,7 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         } else {
             Task {
                 await FirebaseManager.shared.fetchAndActivateRemoteConfig()
-                _ = RemoteFeatureFlags.shared.isCarPlayEnabled
+                _ = AppContainer.production().featureFlags.isCarPlayEnabled
             }
             TPPErrorLogger.configureCrashAnalytics()
         }
@@ -357,7 +357,7 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         Task {
             // Small delay to let Remote Config fetch complete
             try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
-            _ = RemoteFeatureFlags.shared.isCarPlayEnabled
+            _ = AppContainer.production().featureFlags.isCarPlayEnabled
         }
 
         // Sync held books when app becomes active to ensure UI reflects current availability

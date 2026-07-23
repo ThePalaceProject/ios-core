@@ -26,6 +26,9 @@ struct HelpButton: View {
 
     @State private var showHelp = false
 
+    /// Feature-flag read seam (Wave 1b), resolved from the environment.
+    @Environment(\.appContainer) private var appContainer
+
     /// Resolve visibility through the shared pure policy so the kill-switch is
     /// the single source of truth (and unit-tested in `HelpEntryPointPolicyTests`).
     /// Reading the flag at body-eval time mirrors how
@@ -33,7 +36,7 @@ struct HelpButton: View {
     private var isVisible: Bool {
         HelpEntryPointPolicy.shouldShowHelp(
             at: entryPoint,
-            triageBotEnabled: RemoteFeatureFlags.shared.isTriageBotEnabled
+            triageBotEnabled: appContainer.featureFlags.isTriageBotEnabled
         )
     }
 

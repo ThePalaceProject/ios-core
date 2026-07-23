@@ -113,6 +113,7 @@
 		1441E97FEA8E24E5676576B5 /* UIButton+NYPLAppearanceAdditions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68831365CC1FF46BE9A9C2C9 /* UIButton+NYPLAppearanceAdditions.swift */; };
 		1446B886F9D2F070E2AC22A5 /* Skeleton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E510DC675E5215E00B444EE /* Skeleton.swift */; };
 		145798F6215BE9E300F68AFD /* ProblemReportEmail.swift in Sources */ = {isa = PBXBuildFile; fileRef = 145798F5215BE9E300F68AFD /* ProblemReportEmail.swift */; };
+		149EA7BE30582B9CEF020DEC /* PalaceFeatureFlags in Frameworks */ = {isa = PBXBuildFile; productRef = FA466C796161E2DF957B24F4 /* PalaceFeatureFlags */; };
 		14D4531FA335D56645905798 /* DownloadStartReducer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11566537464518DD5E2536E3 /* DownloadStartReducer.swift */; };
 		14E286B1CE151643C5FF2A8B /* ReturnReducerContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66D6C1AFBD65430D25345945 /* ReturnReducerContractTests.swift */; };
 		152A3B4C5D6E7F8091A2B3C4 /* DownloadAuthRetryHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 041F2A3B4C5D6E7F8091A2B3 /* DownloadAuthRetryHandler.swift */; };
@@ -921,9 +922,7 @@
 		953B933A06DA6AF6ABAFB7EC /* BadgeDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6837ACC21376FE419332599B /* BadgeDetailView.swift */; };
 		9551D5385E148DD1FA10C632 /* TPPBookmarkDeletionLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0452B249AF7C21DDAACD5C58 /* TPPBookmarkDeletionLog.swift */; };
 		9578AA781B3BA775FBFB8788 /* PalaceHapticTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9AA2BDEDE93EDA644183E61 /* PalaceHapticTests.swift */; };
-		95CD1398F3C8152AA1161072 /* RemoteFeatureFlags+PalaceCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 272E56401C680E7771557AC3 /* RemoteFeatureFlags+PalaceCatalog.swift */; };
 		963D25AD30656028E36395ED /* FacetToolbarAccessibilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A047896E4B4E78F19CF33603 /* FacetToolbarAccessibilityTests.swift */; };
-		964B6BD847B0E6C061E6CCB2 /* RemoteFeatureFlags+PalaceCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 272E56401C680E7771557AC3 /* RemoteFeatureFlags+PalaceCatalog.swift */; };
 		967625944F77592C713BFA06 /* NYPLOPDSFeedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B814E7E38AAEFF18419C6BB /* NYPLOPDSFeedTests.swift */; };
 		97AF6721F64BB54CBB497818 /* TPPReaderPositionReport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03FE49D6CAE9861D0C5EC238 /* TPPReaderPositionReport.swift */; };
 		97D7098890B79033A5DF0E57 /* SendableSubject.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34BD75A5447FB7BD0DA90F57 /* SendableSubject.swift */; };
@@ -1014,6 +1013,7 @@
 		A92650A9F8ED7AF5F762C1B2 /* TPPCredentialsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FE7745D6905F20849740238 /* TPPCredentialsTests.swift */; };
 		A92FB0F921CDCE3D004740F4 /* TPPReturnPromptHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = A92FB0F821CDCE3D004740F4 /* TPPReturnPromptHelper.swift */; };
 		A93F9F9721CDACF700BD3B0C /* TPPAppReviewPrompt.swift in Sources */ = {isa = PBXBuildFile; fileRef = A93F9F9621CDACF700BD3B0C /* TPPAppReviewPrompt.swift */; };
+		A940C5845CFB8B9A7422E3DE /* PalaceFeatureFlags in Frameworks */ = {isa = PBXBuildFile; productRef = 7F1CB28D175A6A63406EF061 /* PalaceFeatureFlags */; };
 		A961D381DEBCF6341C9C7AA2 /* FontManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFA10178BD2885EBF24673F3 /* FontManager.swift */; };
 		A9701CD50E8850215EA9FD69 /* ReadingRulerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 422FFD436DFCCB056CCF6302 /* ReadingRulerView.swift */; };
 		AA225D8E76E146A5132FEA43 /* LCPKeychainMigration.swift in Sources */ = {isa = PBXBuildFile; fileRef = A303E282D7EFD80AED446401 /* LCPKeychainMigration.swift */; };
@@ -1043,6 +1043,7 @@
 		AE0AFD4A8BCD4BCCBD711E9E /* OPDS1ParsingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBE7F15EC8D84FCBBC17832E /* OPDS1ParsingTests.swift */; };
 		AE0F102132435465A1B2C3D4 /* BookContentResetService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF102132435465A1B2C3D4E5 /* BookContentResetService.swift */; };
 		AE7BEAB078AC66DA63AA4D9B /* BadgeDefinitionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FF4CC60E96981C8BF94891C /* BadgeDefinitionTests.swift */; };
+		AEA3F851BB96AC27109AAC50 /* PalaceFeatureFlags in Frameworks */ = {isa = PBXBuildFile; productRef = 5D6C998CDE48EB383175ED51 /* PalaceFeatureFlags */; };
 		AEBFC0D1E2F304152637484A /* BookReturnServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFC0D1E2F30415263748495B /* BookReturnServiceTests.swift */; };
 		AEBFC0D1E2F304152637485B /* CredentialPromptCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFC0D1E2F30415263748496C /* CredentialPromptCoordinatorTests.swift */; };
 		AF365318D94A1ED196775AC5 /* PalaceAudiobookToolkit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E7F9BABE2A8E6811001697DE /* PalaceAudiobookToolkit.framework */; };
@@ -2358,7 +2359,6 @@
 		2634B33D2AE74BF5948971BA /* CarPlayTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarPlayTests.swift; sourceTree = "<group>"; };
 		26AAA6A2C834984A7D21A854 /* AudiobookVendorAdapter.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AudiobookVendorAdapter.swift; sourceTree = "<group>"; };
 		26DAE1616595EBC6566A5AAE /* DeveloperSettingsRows.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DeveloperSettingsRows.swift; sourceTree = "<group>"; };
-		272E56401C680E7771557AC3 /* RemoteFeatureFlags+PalaceCatalog.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = "RemoteFeatureFlags+PalaceCatalog.swift"; sourceTree = "<group>"; };
 		2767960A51AB8CB4C0607243 /* TPPBookButtonsStateTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TPPBookButtonsStateTests.swift; sourceTree = "<group>"; };
 		2808F34E9EFB0F133F99262B /* BadgeDefinition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BadgeDefinition.swift; sourceTree = "<group>"; };
 		288504707124F8BD5C6753A2 /* TPPUserAccountTestFactory.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TPPUserAccountTestFactory.swift; sourceTree = "<group>"; };
@@ -3573,6 +3573,7 @@
 				811E00F5F755273F726941CC /* PalaceAuth in Frameworks */,
 				89382FCA6DC82E0D3906130A /* PalaceReadingPosition in Frameworks */,
 				222162424E9C1D443D5D63E1 /* PalacePreferences in Frameworks */,
+				149EA7BE30582B9CEF020DEC /* PalaceFeatureFlags in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -3626,6 +3627,7 @@
 				FF351122D30AF1A167106334 /* TriageBotIOS in Frameworks */,
 				E55EC8E17CC01B4596F546AF /* TriageBotUI in Frameworks */,
 				80D9E415F5D1C5856884BDEB /* PalacePreferences in Frameworks */,
+				A940C5845CFB8B9A7422E3DE /* PalaceFeatureFlags in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -3683,6 +3685,7 @@
 				262789F2A1A164B79D0138AB /* TriageBotIOS in Frameworks */,
 				6D1A2EAA9359F95A03E24924 /* TriageBotUI in Frameworks */,
 				2432F8D654932FC59299922F /* PalacePreferences in Frameworks */,
+				AEA3F851BB96AC27109AAC50 /* PalaceFeatureFlags in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -6418,7 +6421,6 @@
 			isa = PBXGroup;
 			children = (
 				E5E4AACD2EB2914B00CC1D67 /* RemoteFeatureFlags.swift */,
-				272E56401C680E7771557AC3 /* RemoteFeatureFlags+PalaceCatalog.swift */,
 			);
 			path = FeatureFlags;
 			sourceTree = "<group>";
@@ -6810,6 +6812,7 @@
 				3D8B27DA10A114B76EFB41A1 /* PalaceAuth */,
 				5F61B627DDE72CE091C181D5 /* PalaceReadingPosition */,
 				A8ECA5CFB21E98EE774A0B17 /* PalacePreferences */,
+				FA466C796161E2DF957B24F4 /* PalaceFeatureFlags */,
 			);
 			productName = SimplyETests;
 			productReference = 2D2B47721D08F807007F7764 /* PalaceTests.xctest */;
@@ -6857,6 +6860,7 @@
 				24CABDFC7337E0A405672FA2 /* TriageBotIOS */,
 				3A79A21734675D5D0BA2FC7D /* TriageBotUI */,
 				4E50730FA32A2D35201078B5 /* PalacePreferences */,
+				7F1CB28D175A6A63406EF061 /* PalaceFeatureFlags */,
 			);
 			productName = Simplified;
 			productReference = 73EB0B7525821DF4006BC997 /* Palace-noDRM.app */;
@@ -6905,6 +6909,7 @@
 				B848F3B79F55EEDD9B820E1F /* TriageBotIOS */,
 				EC7C8BCB15CB04F41C93E21B /* TriageBotUI */,
 				BC8FCE6E3881A8E42EF17D38 /* PalacePreferences */,
+				5D6C998CDE48EB383175ED51 /* PalaceFeatureFlags */,
 			);
 			productName = Simplified;
 			productReference = A823D80D192BABA400B55DE2 /* Palace.app */;
@@ -6995,6 +7000,7 @@
 				EA43715A76E6B1D14299A3A1 /* XCLocalSwiftPackageReference "PalaceReadingPosition" */,
 				DAAF04A6D259B174CFB2811E /* XCLocalSwiftPackageReference "PalaceTriageBot" */,
 				6FDD8B9B803694D3836E6537 /* XCLocalSwiftPackageReference "PalacePreferences" */,
+				DF9BFA072B64FA54623BCDF2 /* XCLocalSwiftPackageReference "PalaceFeatureFlags" */,
 			);
 			productRefGroup = A823D80E192BABA400B55DE2 /* Products */;
 			projectDirPath = "";
@@ -8412,7 +8418,6 @@
 				CRWL0005BNDR00000001 /* CatalogPreloader.swift in Sources */,
 				2E41D465410B8D25959BB5DD /* FirebaseCrashlyticsBridge.swift in Sources */,
 				4C65799971B136DC3A9F5F4A /* TPPProblemDocument+Localized.swift in Sources */,
-				95CD1398F3C8152AA1161072 /* RemoteFeatureFlags+PalaceCatalog.swift in Sources */,
 				BB92663A615E62C473A1DCBD /* TPPOPDSFeed+Networking.swift in Sources */,
 				5AD42A9111A49CFDF0AC22B1 /* AdobeRightsParser.swift in Sources */,
 				2E97EABBC5988E7CE735BA13 /* Account+TPPLibraryAccountReadable.swift in Sources */,
@@ -8998,7 +9003,6 @@
 				CRWL0005BPAL00000001 /* CatalogPreloader.swift in Sources */,
 				08089BE4DD377F0F13D14F15 /* FirebaseCrashlyticsBridge.swift in Sources */,
 				9ACE19188D9E6610451D5B12 /* TPPProblemDocument+Localized.swift in Sources */,
-				964B6BD847B0E6C061E6CCB2 /* RemoteFeatureFlags+PalaceCatalog.swift in Sources */,
 				55FB16FFA837DFA8E0B19E5E /* TPPOPDSFeed+Networking.swift in Sources */,
 				1A443903956F04E349F8CA79 /* AdobeRightsParser.swift in Sources */,
 				75B5588EA36A739A060A657E /* Account+TPPLibraryAccountReadable.swift in Sources */,
@@ -9888,6 +9892,10 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Palace/Packages/PalaceTriageBot;
 		};
+		DF9BFA072B64FA54623BCDF2 /* XCLocalSwiftPackageReference "PalaceFeatureFlags" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Palace/Packages/PalaceFeatureFlags;
+		};
 		EA43715A76E6B1D14299A3A1 /* XCLocalSwiftPackageReference "PalaceReadingPosition" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Palace/Packages/PalaceReadingPosition;
@@ -10028,6 +10036,11 @@
 			package = 6FDD8B9B803694D3836E6537 /* XCLocalSwiftPackageReference "PalacePreferences" */;
 			productName = PalacePreferences;
 		};
+		5D6C998CDE48EB383175ED51 /* PalaceFeatureFlags */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = DF9BFA072B64FA54623BCDF2 /* XCLocalSwiftPackageReference "PalaceFeatureFlags" */;
+			productName = PalaceFeatureFlags;
+		};
 		5E5E92EBF42CB6D733C398B0 /* stduritemplate */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = E7D51772BFB94BFBA1AE8862 /* XCRemoteSwiftPackageReference "std-uritemplate-swift" */;
@@ -10057,6 +10070,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = E7D51772BFB94BFBA1AE8862 /* XCRemoteSwiftPackageReference "std-uritemplate-swift" */;
 			productName = stduritemplate;
+		};
+		7F1CB28D175A6A63406EF061 /* PalaceFeatureFlags */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = DF9BFA072B64FA54623BCDF2 /* XCLocalSwiftPackageReference "PalaceFeatureFlags" */;
+			productName = PalaceFeatureFlags;
 		};
 		8670707E3108CFD72D4569C9 /* PalaceNetwork */ = {
 			isa = XCSwiftPackageProductDependency;
@@ -10272,6 +10290,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = E77D02182931337000544180 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
 			productName = ReadiumNavigator;
+		};
+		FA466C796161E2DF957B24F4 /* PalaceFeatureFlags */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = DF9BFA072B64FA54623BCDF2 /* XCLocalSwiftPackageReference "PalaceFeatureFlags" */;
+			productName = PalaceFeatureFlags;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

@@ -22,17 +22,19 @@ struct TPPSettingsView: View {
     /// Subscribes to the dev-settings triage bot local override so the
     /// support section appears/disappears the moment the toggle flips.
     /// Effective gating still goes through
-    /// `RemoteFeatureFlags.shared.isTriageBotEnabled` (which folds in the
+    /// `appContainer.featureFlags.isTriageBotEnabled` (which folds in the
     /// DEBUG-default-on and Firebase fallback). The @AppStorage read in
     /// `supportSection` registers the SwiftUI observation.
     @AppStorage("RemoteFeatureFlags.triageBotLocalOverride") private var triageBotLocalOverride: Bool = false
     /// Subscribes to the side-loading local override so the "Side Loading"
     /// section appears/disappears the moment the dev-menu toggle flips.
     /// Effective gating still runs through
-    /// `RemoteFeatureFlags.shared.isSideLoadingEnabled` (read in
+    /// `appContainer.featureFlags.isSideLoadingEnabled` (read in
     /// `sideLoadingSection`), whose precedence is local override > Firebase
     /// remote (default off); this @AppStorage read registers the observation.
     @AppStorage(RemoteFeatureFlags.sideLoadingLocalOverrideKey) private var sideLoadingLocalOverride: Bool = false
+    /// Feature-flag read seam (Wave 1b), resolved from the environment.
+    @Environment(\.appContainer) private var appContainer
     @State private var selectedView: Int? = 0
     @State private var orientation: UIDeviceOrientation = UIDevice.current.orientation
     @State private var switchPromptAccount: Account? = nil
@@ -329,7 +331,7 @@ struct TPPSettingsView: View {
         // triage bot is off (production Firebase default), fall back to the
         // legacy email report path so support stays reachable.
         let decision = SupportSectionDecision.decide(
-            isTriageBotEnabled: RemoteFeatureFlags.shared.isTriageBotEnabled,
+            isTriageBotEnabled: appContainer.featureFlags.isTriageBotEnabled,
             currentAccount: AppContainer.production().accountsManager.currentAccount
         )
         Section(header: Text("Support")) {
@@ -387,7 +389,7 @@ struct TPPSettingsView: View {
         // instant the dev-menu override flips; effective value still runs
         // through isSideLoadingEnabled (local override > Firebase remote) below.
         let _ = sideLoadingLocalOverride
-        if RemoteFeatureFlags.shared.isSideLoadingEnabled {
+        if appContainer.featureFlags.isSideLoadingEnabled {
             Section(header: Text("Side Loading")) {
                 let destination = SideLoadingView(
                     manager: AppContainer.production().sideloadedBookManager

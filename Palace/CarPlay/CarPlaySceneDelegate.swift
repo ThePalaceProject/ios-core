@@ -45,7 +45,7 @@ final class CarPlaySceneDelegate: UIResponder, @preconcurrency CPTemplateApplica
         self.interfaceController = interfaceController
 
         // Check feature flag - if CarPlay is disabled, show coming soon message
-        guard RemoteFeatureFlags.shared.isCarPlayEnabledCached else {
+        guard AppContainer.production().featureFlags.isCarPlayEnabledCached else {
             Log.info(#file, "🚗 CarPlay scene connected but feature is DISABLED - showing coming soon message")
             showComingSoonTemplate(interfaceController: interfaceController)
             return

@@ -1,6 +1,7 @@
 import Foundation
 import PalaceLogging
 import PalaceNetwork
+import PalaceFeatureFlags
 
 public protocol CatalogAPI {
     func fetchFeed(at url: URL) async throws -> CatalogFeed?
@@ -14,10 +15,10 @@ public protocol CatalogAPI {
 public final class DefaultCatalogAPI: CatalogAPI, Sendable {
     public let client: NetworkClient
     public let parser: OPDSParser
-    private let featureFlags: FeatureFlagProvider
+    private let featureFlags: FeatureFlagProviding
     private let inflight = InflightFeedFetches()
 
-    public init(client: NetworkClient, parser: OPDSParser, featureFlags: FeatureFlagProvider) {
+    public init(client: NetworkClient, parser: OPDSParser, featureFlags: FeatureFlagProviding) {
         self.client = client
         self.parser = parser
         self.featureFlags = featureFlags
