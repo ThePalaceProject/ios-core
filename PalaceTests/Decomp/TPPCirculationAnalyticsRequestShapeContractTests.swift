@@ -57,6 +57,16 @@ import XCTest
 @MainActor
 final class TPPCirculationAnalyticsRequestShapeContractTests: XCTestCase {
 
+    // This file holds no mutable/shared state — its single test throws XCTSkip
+    // and touches nothing. The explicit tearDown satisfies TearDownRequiredLint
+    // (a comment-blind substring scan that flags this class because the doc
+    // comments below mention `AppContainer.production()`/`Spy…`); there is
+    // genuinely nothing to reset. When the Wave-1c seam lands and the live
+    // spy-based body replaces the XCTSkip, extend this to drop that state.
+    override func tearDown() {
+        super.tearDown()
+    }
+
     /// CONTRACT (to be pinned once the Wave-1c seam lands): the offline-retry
     /// enqueue shape of a failed analytics event. `addToOfflineAnalyticsQueue`
     /// must enqueue exactly:
