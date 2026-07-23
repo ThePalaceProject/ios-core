@@ -1,5 +1,7 @@
 import Foundation
 
+// Wave 1c: moved from Palace/Audiobooks/ — prefs-store, not player logic; eventual home is the PalacePreferences package (Wave 1a follow-up).
+
 /// PP-4712 — global, patron-configurable audiobook skip intervals (seconds),
 /// independently settable for skip-forward and skip-back and applied to all
 /// audiobooks. Backed by `UserDefaults` (inject a suite for tests); both

@@ -2,127 +2,158 @@
 //  TPPCirculationAnalyticsRequestShapeContractTests.swift
 //  PalaceTests
 //
-//  PRE-WAVE gate test for the god-class decomposition campaign — Wave 1c
+//  Contract test for the god-class decomposition campaign — Wave 1c
 //  (misfiles + inversions). See docs/architecture/god-class-decomposition-plan.md
 //  §4 Wave 1c and §3b cycle 3.
 //
-//  Target: `Palace/Logging/TPPCirculationAnalytics.swift` — a circulation-domain
-//  network client MISFILED under `Logging`. Wave 1c relocates it out of the
-//  Logging folder (killing folder-cycle #3, Logging↔Network). The move is a
-//  pure file relocation, so the pre-wave test must pin the analytics request
-//  SHAPE (URL / HTTP method / what the offline path enqueues) so the relocation
-//  is provably behavior-preserving.
+//  Target: `Palace/OPDS2/Service/TPPCirculationAnalytics.swift` — a
+//  circulation-domain network client relocated OUT of `Palace/Logging/` in
+//  Wave 1c (killing folder-cycle #3, Logging↔Network). The move is a pure file
+//  relocation, so this test pins the offline-retry enqueue SHAPE so the
+//  relocation is provably behavior-preserving.
 //
-//  ─────────────────────────────────────────────────────────────────────────
-//  // SEAM: the request shape is NOT deterministically observable through the
-//  //       current public surface. Two independent production seams block a
-//  //       live contract snapshot; BOTH are read-only observations here (this
-//  //       pack makes no production edits):
-//  //
-//  //   1. The only injectable method is `private static addToOfflineAnalytics
-//  //      Queue(_:_:accountsManager:networkExecutor:)` — it already carries the
-//  //      exact default-arg seams the wave brief points at
-//  //      (`accountsManager:`, `networkExecutor:`) — but it is `private static`.
-//  //      `@testable import Palace` elevates `internal`, NOT `private`, so the
-//  //      method (and its spy-injectable params) cannot be called from a test.
-//  //
-//  //   2. The outbound event request in `post(_:withURL:)` is sent on a
-//  //      SELF-CREATED `URLSession(configuration: .ephemeral)`. A custom-config
-//  //      session consults ONLY `config.protocolClasses` — it ignores globally
-//  //      registered `URLProtocol`s. This is documented in-repo at
-//  //      `PalaceTests/PalaceTestSetup.swift` (~L50-57): "the SHARED
-//  //      TPPNetworkExecutor builds its own URLSession(configuration:), which
-//  //      consults only config.protocolClasses". So neither `HTTPStubURLProtocol`
-//  //      (scoped to `URLSession.stubbedSession()`) nor `NoNetworkURLProtocol`
-//  //      (global) can intercept it — the request would escape to the real
-//  //      network in a unit test. There is no injection point for the session.
-//  //
-//  //   Consequence: the request shape cannot be pinned as a passing gate today
-//  //   without either (a) making `addToOfflineAnalyticsQueue` `internal` (or
-//  //   `package`) so spies inject via its existing default args, OR (b) taking
-//  //   the `URLSession`/`TPPNetworkExecutor` as an injected seam on `post`.
-//  //   The RECOMMENDATION for Wave 1c is to bundle seam (a) — a one-token
-//  //   `private` → `internal` change — WITH the file move, then delete the
-//  //   `XCTSkip` below so the spy-based contract snapshot goes live in the same
-//  //   PR that relocates the file. Per CLAUDE.md's contract-test guidance:
-//  //   "the inability to write the test IS the test feedback."
-//  ─────────────────────────────────────────────────────────────────────────
+//  SEAM: RESOLVED (Wave 1c). Two blockers the pre-wave placeholder documented
+//  are now dissolved:
+//    1. `addToOfflineAnalyticsQueue(_:_:accountsManager:requestProvider:offlineQueue:)`
+//       is now `internal` (was `private static`) and takes all three
+//       dependencies as injected seams — `accountsManager` (widened to the
+//       `TPPCurrentLibraryAccountProvider` protocol), `requestProvider`
+//       (`AuthorizedRequestProviding`), and `offlineQueue`
+//       (`OfflineRequestEnqueuing`) — the latter two are PalaceNetwork-package
+//       protocols. Spies inject via those params; no live container is touched.
+//    2. The un-interceptable ephemeral `URLSession` in `post(_:withURL:)` is
+//       still un-observable, so the LIVE outbound request is NOT snapshotted
+//       here — only the offline-enqueue derivation is (that is the injectable
+//       contract, and the one the offline re-wire follow-up will build on).
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
 
 import XCTest
 @testable import Palace
+import PalaceNetwork
 
 @MainActor
 final class TPPCirculationAnalyticsRequestShapeContractTests: XCTestCase {
 
-    // This file holds no mutable/shared state — its single test throws XCTSkip
-    // and touches nothing. The explicit tearDown satisfies TearDownRequiredLint
-    // (a comment-blind substring scan that flags this class because the doc
-    // comments below mention `AppContainer.production()`/`Spy…`); there is
-    // genuinely nothing to reset. When the Wave-1c seam lands and the live
-    // spy-based body replaces the XCTSkip, extend this to drop that state.
+    // The two tests inject all three seams as local spies and never touch a
+    // singleton or the production container (`addToOfflineAnalyticsQueue` reaches
+    // AppContainer.production() only via defaulted args, which the tests always
+    // override). There is no global/spy state that outlives a test; this
+    // tearDown is the explicit no-shared-state contract for the bundle.
     override func tearDown() {
         super.tearDown()
     }
 
-    /// CONTRACT (to be pinned once the Wave-1c seam lands): the offline-retry
-    /// enqueue shape of a failed analytics event. `addToOfflineAnalyticsQueue`
-    /// must enqueue exactly:
-    ///
-    ///   networkQueue.addRequest(
-    ///     libraryID: accountsManager.currentAccount?.uuid ?? "",   // "" when no account
-    ///     updateID:  nil,
-    ///     url:       <book.analyticsURL / event>,                  // the event URL
-    ///     method:    .GET,
-    ///     parameters: nil,
-    ///     headers:   networkExecutor.request(for: url).allHTTPHeaderFields
-    ///   )
-    ///
-    /// and the outbound live request in `post` must be an HTTP **GET** to
-    /// `book.analyticsURL.appendingPathComponent(event)`.
-    ///
-    /// Once seam (a) exists, the live body is:
-    ///
-    ///   let netExec = SpyNetworkExecutor()           // records request(for:)
-    ///   let accounts = SpyAccountsManager(uuid: "lib-uuid")
-    ///   let url = URL(string: "https://analytics.example.org/events/open_book")!
-    ///   TPPCirculationAnalytics.addToOfflineAnalyticsQueue(
-    ///       "open_book", url, accountsManager: accounts, networkExecutor: netExec)
-    ///   // then assert the CallLog snapshot of netExec + the enqueued request.
-    ///   ContractSnapshot.assert(log, named: "offlineEnqueue_GET_open_book")
-    ///
-    /// NOTE while writing that body: `addToOfflineAnalyticsQueue` still calls
-    /// `AppContainer.production().networkQueue.addRequest(...)` for the actual
-    /// enqueue (only the header/libraryID derivation is injected). Pinning
-    /// "what it enqueues" therefore ALSO requires the `networkQueue` to become
-    /// an injected seam — otherwise the snapshot's enqueue leg hits the live
-    /// container. Flag this to the Wave-1c implementer: the enqueue call itself
-    /// is the third, still-uninjected dependency.
-    func testOfflineEnqueue_pinnedRequestShape_GET_withLibraryHeaders() throws {
-        throw XCTSkip("""
-            SEAM (Wave 1c): TPPCirculationAnalytics exposes no reachable test seam. \
-            `addToOfflineAnalyticsQueue(_:_:accountsManager:networkExecutor:)` is \
-            private static (unreachable via @testable), and `post`'s ephemeral \
-            URLSession(configuration:) ignores globally-registered URLProtocols \
-            (see PalaceTests/PalaceTestSetup.swift ~L50-57), so the event request \
-            cannot be intercepted. Make the method internal (and inject the \
-            networkQueue) alongside the relocation, then remove this skip to \
-            activate the spy-based ContractSnapshot documented above. This test \
-            is a deliberate placeholder that names the exact production change \
-            required — it must not be deleted without landing that change.
-            """)
+    /// CONTRACT: no current account → libraryID pinned to "" (not nil, not a
+    /// crash), request-provider consulted exactly once for the event URL, and
+    /// the enqueue is a GET of that URL with the provider's auth headers and
+    /// nil updateID/parameters.
+    func testOfflineEnqueue_noAccount_pinnedShape_GET_emptyLibraryID() {
+        let log = CallLog()
+        let url = URL(string: "https://analytics.example.org/events/open_book")!
+
+        TPPCirculationAnalytics.addToOfflineAnalyticsQueue(
+            "open_book", url,
+            accountsManager: SpyAccountProvider(account: nil),
+            requestProvider: SpyRequestProvider(log: log),
+            offlineQueue: SpyOfflineQueue(log: log)
+        )
+
+        // Inline CallLog equality (not file-based ContractSnapshot) so the test is
+        // GREEN on first CI run — no external __Snapshots__ baseline to record.
+        let snap = log.snapshot()
+        XCTAssertEqual(
+            snap.map(\.method),
+            ["requestProvider.authorizedRequest", "offlineQueue.enqueueOfflineRequest"],
+            "consult the request-provider once for the event URL, then enqueue once"
+        )
+        let enqueue = snap.first { $0.method == "offlineQueue.enqueueOfflineRequest" }
+        XCTAssertEqual(enqueue?.args["libraryID"], "", "no current account → libraryID pinned to empty string, not nil/crash")
+        XCTAssertEqual(enqueue?.args["method"], "GET", "offline analytics enqueue is a GET")
+        XCTAssertEqual(enqueue?.args["url"], url.absoluteString, "enqueues the event URL")
+        XCTAssertEqual(enqueue?.args["headers"], "Authorization=Bearer contract-test-token",
+                       "enqueue must carry the request-provider's auth headers (kills a headers:nil mutant)")
+        XCTAssertEqual(enqueue?.args["updateID"], "nil", "no updateID")
+        XCTAssertEqual(enqueue?.args["parameters"], "nil", "no body parameters")
     }
 
-    // LATENT-BUG NOTE (discovered while characterizing, reported not fixed):
-    // `handleFailure` gates the offline enqueue on
-    //   NetworkQueue.StatusCodes.contains(httpResponse.statusCode)
-    // but `NetworkQueue.StatusCodes` are NEGATIVE NSURLError codes (e.g.
-    // NSURLErrorTimedOut) while `httpResponse.statusCode` is a POSITIVE HTTP
-    // status. The two sets never intersect, so this `if` can never be true for
-    // a real HTTPURLResponse — the HTTP-response enqueue branch is effectively
-    // dead. The timeout branch in `post` (NSURLErrorTimedOut) is the only path
-    // that reaches `addToOfflineAnalyticsQueue`. When the seam lands, the live
-    // contract should pin the timeout path, not a synthetic HTTP-status path.
+    /// CONTRACT: with a current account, libraryID is that account's uuid —
+    /// kills a `?? ""`-arm swap or a uuid→name mutant. Uses the shared fixture
+    /// mock (deterministic uuid from OPDS2CatalogsFeed.json).
+    func testOfflineEnqueue_withAccount_libraryIDIsAccountUUID() {
+        let log = CallLog()
+        let url = URL(string: "https://analytics.example.org/events/open_book")!
+
+        let accounts = TPPCurrentLibraryAccountProviderMock()
+        TPPCirculationAnalytics.addToOfflineAnalyticsQueue(
+            "open_book", url,
+            accountsManager: accounts,
+            requestProvider: SpyRequestProvider(log: log),
+            offlineQueue: SpyOfflineQueue(log: log)
+        )
+
+        // Inline CallLog equality (not file-based ContractSnapshot) — GREEN on
+        // first CI run. Asserts the libraryID RELATIONSHIP (== the account uuid),
+        // stronger than a snapshotted magic string.
+        let snap = log.snapshot()
+        XCTAssertEqual(
+            snap.map(\.method),
+            ["requestProvider.authorizedRequest", "offlineQueue.enqueueOfflineRequest"],
+            "consult the request-provider once, then enqueue once"
+        )
+        let enqueue = snap.first { $0.method == "offlineQueue.enqueueOfflineRequest" }
+        XCTAssertEqual(enqueue?.args["libraryID"], accounts.currentAccount?.uuid,
+                       "with a current account, libraryID must be that account's uuid (kills the ?? \"\" arm + uuid→name mutant)")
+        XCTAssertFalse(enqueue?.args["libraryID"]?.isEmpty ?? true, "libraryID is non-empty when an account exists")
+        XCTAssertEqual(enqueue?.args["method"], "GET")
+        XCTAssertEqual(enqueue?.args["url"], url.absoluteString)
+    }
+
+    // LATENT-BUG NOTE (discovered while characterizing; DEAD gate now deleted,
+    // live fix DEFERRED): the pre-move `handleFailure` gated the offline enqueue
+    // on `NetworkQueue.StatusCodes.contains(httpResponse.statusCode)` — but
+    // StatusCodes are NEGATIVE NSURLError codes while `statusCode` is a POSITIVE
+    // HTTP status, so the branch was dead since inception (and on timeout
+    // `response` is nil). Wave 1c DELETED that dead gate (behavior-identical:
+    // nothing was ever enqueued) rather than keep the last `NetworkQueue`
+    // type-name in the relocated file. Actually making offline analytics retry
+    // live is a behavior change (first-ever enqueues → retry/dedup semantics)
+    // and is the filed follow-up; this snapshot is its landing pad.
+}
+
+// MARK: - Spies
+
+/// @objc protocol ⇒ NSObject subclass.
+private final class SpyAccountProvider: NSObject, TPPCurrentLibraryAccountProvider {
+    let currentAccount: Account?
+    init(account: Account?) { self.currentAccount = account }
+}
+
+private final class SpyRequestProvider: AuthorizedRequestProviding, @unchecked Sendable {
+    let log: CallLog
+    init(log: CallLog) { self.log = log }
+    func authorizedRequest(for url: URL) -> URLRequest {
+        log.record("requestProvider.authorizedRequest", args: ["url": url.absoluteString])
+        var request = URLRequest(url: url)
+        request.setValue("Bearer contract-test-token", forHTTPHeaderField: "Authorization")
+        return request
+    }
+}
+
+private final class SpyOfflineQueue: OfflineRequestEnqueuing, @unchecked Sendable {
+    let log: CallLog
+    init(log: CallLog) { self.log = log }
+    func enqueueOfflineRequest(libraryID: String, updateID: String?, url: URL,
+                               method: HTTPMethod, parameters: Data?, headers: [String: String]?) {
+        log.record("offlineQueue.enqueueOfflineRequest", args: [
+            "libraryID": libraryID,
+            "updateID": updateID ?? "nil",
+            "url": url.absoluteString,
+            "method": method.rawValue,
+            "parameters": parameters.map { "\($0.count)B" } ?? "nil",
+            "headers": (headers ?? [:]).sorted { $0.key < $1.key }
+                .map { "\($0.key)=\($0.value)" }.joined(separator: ";")
+        ])
+    }
 }

@@ -66,13 +66,17 @@ import PureLayout
   }
 
   private func reportIssueVC() {
-    if let email = AppContainer.production().accountsManager.currentAccount?.supportEmail {
+    let accountsManager = AppContainer.production().accountsManager
+    if let email = accountsManager.currentAccount?.supportEmail {
+      let ctx = accountsManager.problemReportContext(forLibrary: nil)
       ProblemReportEmail.sharedInstance.beginComposing(
         to: email.rawValue,
         presentingViewController: self,
-        book: book
+        book: book,
+        patronIdentifier: ctx.patronIdentifier,
+        libraryName: ctx.libraryName
       )
-    } else if let url = AppContainer.production().accountsManager.currentAccount?.supportURL {
+    } else if let url = accountsManager.currentAccount?.supportURL {
       presentWebView(url)
     }
   }

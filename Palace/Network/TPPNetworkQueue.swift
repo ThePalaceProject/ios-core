@@ -280,3 +280,25 @@ final class NetworkQueue: NSObject, @unchecked Sendable {
         return db
     }
 }
+
+// Wave 1c (cycle 3): package-protocol seam for the circulation-analytics
+// offline enqueue. Maps the package HTTPMethod onto the app HTTPMethodType
+// (rawValues are identical — "GET" → .GET).
+extension NetworkQueue: OfflineRequestEnqueuing {
+    func enqueueOfflineRequest(
+        libraryID: String,
+        updateID: String?,
+        url: URL,
+        method: HTTPMethod,
+        parameters: Data?,
+        headers: [String: String]?
+    ) {
+        // App-side HTTPMethodType has no PATCH case; the package protocol's
+        // HTTPMethod does. Assert-loud on any unmapped method so a future
+        // caller doesn't get a SILENT downgrade to .GET (today only .GET flows).
+        let mappedMethod = HTTPMethodType(rawValue: method.rawValue)
+        assert(mappedMethod != nil,
+               "OfflineRequestEnqueuing: HTTPMethod.\(method.rawValue) has no HTTPMethodType mapping — would silently degrade to .GET")
+        addRequest(libraryID, updateID, url, mappedMethod ?? .GET, parameters, headers)
+    }
+}

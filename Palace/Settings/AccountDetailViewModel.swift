@@ -72,6 +72,11 @@ class AccountDetailViewModel: NSObject, ObservableObject {
         businessLogic.libraryAccount
     }
 
+    /// Wave 1c: caller-snapshotted context for the report-issue composer.
+    var problemReportContext: (patronIdentifier: String?, libraryName: String?) {
+        accountsManager.problemReportContext(forLibrary: selectedAccount?.uuid)
+    }
+
     var selectedUserAccount: TPPUserAccount {
         businessLogic.userAccount
     }

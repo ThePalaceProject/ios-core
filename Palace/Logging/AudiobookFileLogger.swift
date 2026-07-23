@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import PalaceLogging
 
 /// Protocol seam for test-time injection. Production call sites continue to
 /// use `AudiobookFileLogger.shared`.
@@ -162,5 +163,13 @@ final class AudiobookFileLogger: AudiobookFileLogging, Sendable {
             }
         }
         return logs
+    }
+}
+
+// Wave 1c: dev-tools log-email seam. Internal witness is fine — the
+// conforming type is internal (public-witness rule applies to public types).
+extension AudiobookFileLogger: LogArchiveExporting {
+    func logArchiveDirectoryURL() -> URL? {
+        getLogsDirectoryUrl()
     }
 }

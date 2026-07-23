@@ -7,7 +7,22 @@
 
 import Foundation
 import UIKit
+import os
 import PalaceCatalog
+
+/// Wave 1c (cycle 2): ErrorHandling must not name Accounts types. The
+/// composition root (TPPAppDelegate) registers a provider for the one
+/// account-derived field the device context needs. Registration pattern
+/// mirrors Log.crashlyticsBridge (PalaceLogging/Log.swift).
+enum ErrorReportingContext {
+    private static let _libraryNameProvider =
+        OSAllocatedUnfairLock<(@Sendable () -> String?)?>(initialState: nil)
+
+    static var libraryNameProvider: (@Sendable () -> String?)? {
+        get { _libraryNameProvider.withLock { $0 } }
+        set { _libraryNameProvider.withLock { $0 = newValue } }
+    }
+}
 
 /// Captures full context about an error occurrence for the "View Error Details" feature.
 ///
@@ -66,8 +81,7 @@ struct ErrorDetail {
         problemDocument: TPPProblemDocument? = nil,
         bookIdentifier: String? = nil,
         bookTitle: String? = nil,
-        activityTracker: ErrorActivityTracker = .shared,
-        accountsManager: AccountsManager = AppContainer.production().accountsManager
+        activityTracker: ErrorActivityTracker = .shared
     ) async -> ErrorDetail {
         let trail = await activityTracker.recentActivities(seconds: 300)
 
@@ -83,19 +97,19 @@ struct ErrorDetail {
             activityTrail: trail,
             timestamp: Date(),
             bookInfo: bookInfo,
-            deviceContext: await captureDeviceContext(accountsManager: accountsManager)
+            deviceContext: await captureDeviceContext()
         )
     }
 
     /// Captures current device/app context. `@MainActor` because it reads
     /// `UIDevice.current` (main-actor isolated); it is awaited from `capture`.
     @MainActor
-    private static func captureDeviceContext(accountsManager: AccountsManager = AppContainer.production().accountsManager) -> DeviceContext {
+    private static func captureDeviceContext() -> DeviceContext {
         let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
         let buildNumber = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "Unknown"
         let iosVersion = UIDevice.current.systemVersion
         let deviceModel = UIDevice.current.model
-        let libraryName = accountsManager.currentAccount?.name ?? "No library"
+        let libraryName = ErrorReportingContext.libraryNameProvider?() ?? "No library"
 
         // Available storage
         let storageString: String
