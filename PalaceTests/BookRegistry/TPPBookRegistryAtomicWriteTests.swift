@@ -102,21 +102,20 @@ class TPPBookRegistryAtomicWriteTests: PalaceWiringTestCase {
         )
     }
 
-    /// 30s budget — atomic-write tests seed only a few hundred records,
-    /// but AccountsManager preload of 1138 cached accounts during init can
-    /// alone consume >5s on memory-pressured CI before sync.load even
-    /// starts. PR #989 attempted to drop this to 10s and CI surfaced
-    /// `testSave_AfterDirectoryDeleted_DoesNotLeaveCorruptedFile` timing
-    /// out — reverted. Proper fix is isolating AccountsManager preload
-    /// from BookRegistry test setUp (Phase 2 refactor), not bumping the
-    /// timeout.
-    private func loadAndWait() {
-        let exp = expectation(description: "load completes")
-        sync.load(account: account, setState: { newState in
-            if newState == .loaded { exp.fulfill() }
-        }, completion: nil)
-        wait(for: [exp], timeout: 30.0) // FLAKE-003-OK: covers AccountsManager 1138-account preload on memory-pressured CI; Phase 2 refactor will isolate the preload from this test.
-        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
+    /// Wave-2 (swarm_ad0b4c65): replaced the `wait(for:timeout:30.0)` +
+    /// `RunLoop.current.run(until:+0.1)` settle with a deterministic seam
+    /// join. `sync.load` drives its mutation through
+    /// `BookRegistryStore.mutateRegistry`, which enqueues on `store`'s
+    /// barrier `syncQueue`; `_awaitPendingWritesForTesting()` drains that
+    /// queue (bounded — one trailing barrier hop), which also guarantees the
+    /// `DispatchQueue.main.async { callbacks.setState(.loaded) ... }` hop
+    /// inside the load completion has been SCHEDULED. `drainMainQueueAsync()`
+    /// then flushes that scheduled main-queue hop deterministically — no
+    /// wall-clock budget, no AccountsManager-preload timing dependency.
+    private func loadAndWait() async {
+        sync.load(account: account, setState: { _ in }, completion: nil)
+        await store._awaitPendingWritesForTesting()
+        await drainMainQueueAsync()
     }
 
     // MARK: - Atomic-rename contract
@@ -168,7 +167,7 @@ class TPPBookRegistryAtomicWriteTests: PalaceWiringTestCase {
     /// second write fully replaces the first, never blends. Kills mutants
     /// that append instead of replace (which would survive round-trip but
     /// double-count records).
-    func testSaveSync_OverlappingSaves_FinalContentsOnly() throws {
+    func testSaveSync_OverlappingSaves_FinalContentsOnly() async throws {
         // First save: 10 records.
         let firstIds = seedAndSave(count: 10)
 
@@ -185,7 +184,7 @@ class TPPBookRegistryAtomicWriteTests: PalaceWiringTestCase {
 
         // Cold reload from disk and confirm the file holds ONLY the second save.
         freshStoreAndSync()
-        loadAndWait()
+        await loadAndWait()
 
         XCTAssertEqual(store.allBooks.count, 1,
                        "Second save must fully replace the first — kills mutant that appends across saves")
@@ -208,7 +207,7 @@ class TPPBookRegistryAtomicWriteTests: PalaceWiringTestCase {
     /// — in both cases, when a subsequent reload runs, the registry must be
     /// either intact-with-new-data OR cleanly empty (never half-written
     /// garbage).
-    func testSave_AfterDirectoryDeleted_DoesNotLeaveCorruptedFile() throws {
+    func testSave_AfterDirectoryDeleted_DoesNotLeaveCorruptedFile() async throws {
         // Seed an initial registry on disk.
         let initialIds = seedAndSave(count: 3)
         let url = sync.registryUrl(for: account)!
@@ -237,7 +236,7 @@ class TPPBookRegistryAtomicWriteTests: PalaceWiringTestCase {
         // Whatever state the disk is in, reload must converge — file is
         // either valid-with-postId or fully absent.
         freshStoreAndSync()
-        loadAndWait()
+        await loadAndWait()
 
         if FileManager.default.fileExists(atPath: url.path) {
             // Successful re-creation + write — must contain ONLY the new record.
@@ -260,7 +259,7 @@ class TPPBookRegistryAtomicWriteTests: PalaceWiringTestCase {
     /// `diskWriteQueue` (serial) + atomic-rename interaction here, but from
     /// a different angle than the persistence agent: we re-read the file at
     /// each intermediate step and assert each read is valid JSON.
-    func testConcurrentSaves_EveryDiskStateBetweenSaves_IsValidJSON() throws {
+    func testConcurrentSaves_EveryDiskStateBetweenSaves_IsValidJSON() async throws {
         _ = seedAndSave(count: 5)
 
         let qA = DispatchQueue(label: "atomic.qA")
@@ -303,7 +302,16 @@ class TPPBookRegistryAtomicWriteTests: PalaceWiringTestCase {
         let writeDone = expectation(description: "writers finished")
         group.notify(queue: .main) { writeDone.fulfill() }
 
-        wait(for: [writeDone, readDone], timeout: 10.0)
+        // UNMAPPED (wave-2 swarm_ad0b4c65): waits on BookRegistrySync's private
+        // `diskWriteQueue` draining via `save(for:)` fire-and-forget calls — no
+        // catalog seam exists for that queue (only BookRegistryStore's syncQueue
+        // has `_awaitPendingWritesForTesting()`). Genuinely bounded by a real
+        // DispatchGroup.notify + background-thread completion, not a settle
+        // delay — left as-is per playbook bucket 4. In an async test method the
+        // bounded wait must use the `await fulfillment` form (SDK requirement);
+        // it still blocks on the real DispatchGroup.notify + reader completion,
+        // NOT a clock, so it is not an unbounded await.
+        await fulfillment(of: [writeDone, readDone], timeout: 10.0)
 
         // Final tail-save: a blocking save bracketing all queued ones, after
         // which the file MUST be valid.
@@ -314,7 +322,7 @@ class TPPBookRegistryAtomicWriteTests: PalaceWiringTestCase {
 
         // Final state must reload cleanly.
         freshStoreAndSync()
-        loadAndWait()
+        await loadAndWait()
         XCTAssertEqual(store.allBooks.count, 5,
                        "After concurrent save bursts, all 5 seeded records must reload — kills mutant that drops records under contention")
     }

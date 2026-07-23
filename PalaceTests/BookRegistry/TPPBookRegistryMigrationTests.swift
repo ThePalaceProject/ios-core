@@ -83,25 +83,20 @@ class TPPBookRegistryMigrationTests: PalaceWiringTestCase {
         try! data.write(to: url, options: .atomic)
     }
 
-    /// Drive a load and wait for the .loaded state callback.
-    /// 30s budget — migration tests plant a single-digit number of records
-    /// per case, but AccountsManager preload of 1138 cached accounts during
-    /// init can alone consume >5s on memory-pressured CI before sync.load
-    /// even starts. PR #989 attempted to drop this to 10s and CI surfaced
-    /// `testRecordMissingCategoriesField_DefaultsToEmptyArray` timing out
-    /// — reverted. Proper fix is isolating AccountsManager preload from
-    /// BookRegistry test setUp (Phase 2 refactor), not bumping the timeout.
-    private func loadAndWait() {
-        let exp = expectation(description: "load completes")
-        sync.load(account: account, setState: { newState in
-            if newState == .loaded { exp.fulfill() }
-        }, completion: nil)
-        // FLAKE-003 root cause fixed: the AccountsManager on-disk cached-account
-        // preload (>5s on memory-pressured CI) is now skipped in setUp via
-        // `deferDiskCachePreloadForTesting`, so this load is fast. The 30s stays
-        // as generous margin, no longer covering the preload.
-        wait(for: [exp], timeout: 30.0)
-        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
+    /// Wave-2 (swarm_ad0b4c65): replaced the `wait(for:timeout:30.0)` +
+    /// `RunLoop.current.run(until:+0.1)` settle with a deterministic seam
+    /// join. `sync.load` drives its mutation through
+    /// `BookRegistryStore.mutateRegistry`, which enqueues on `store`'s
+    /// barrier `syncQueue`; `_awaitPendingWritesForTesting()` drains that
+    /// queue (bounded — one trailing barrier hop), which also guarantees the
+    /// `DispatchQueue.main.async { callbacks.setState(.loaded); ... }` hop
+    /// inside the load completion has been SCHEDULED. `drainMainQueueAsync()`
+    /// then flushes that scheduled main-queue hop deterministically — no
+    /// wall-clock budget, no AccountsManager-preload timing dependency.
+    private func loadAndWait() async {
+        sync.load(account: account, setState: { _ in }, completion: nil)
+        await store._awaitPendingWritesForTesting()
+        await drainMainQueueAsync()
     }
 
     /// Build a minimal book-metadata dictionary in the *current* (V2)
@@ -148,7 +143,7 @@ class TPPBookRegistryMigrationTests: PalaceWiringTestCase {
     /// Kills mutants that swap the keys hard-coded in
     /// `TPPBookRegistryKey` / `TPPBookRegistryData` from string literals to
     /// constants of different values.
-    func testV2BaselineRoundTrip_LoadsAndPreservesIdentifierAndState() {
+    func testV2BaselineRoundTrip_LoadsAndPreservesIdentifierAndState() async {
         let id = "v2-baseline-\(UUID().uuidString)"
         writeRegistryJSON([
             "records": [
@@ -158,7 +153,7 @@ class TPPBookRegistryMigrationTests: PalaceWiringTestCase {
             ]
         ])
 
-        loadAndWait()
+        await loadAndWait()
 
         XCTAssertEqual(store.allBooks.count, 1,
                        "Baseline V2 registry must load exactly one book")
@@ -174,7 +169,7 @@ class TPPBookRegistryMigrationTests: PalaceWiringTestCase {
     /// with valid id+title to silently disappear. The current code ignores the
     /// deprecated key on read; this test PINS that contract so a future mutant
     /// that "reactivates" the key (or hard-crashes on its presence) is caught.
-    func testV1SingularAcquisitionKey_IsIgnoredButRecordIsPreserved() {
+    func testV1SingularAcquisitionKey_IsIgnoredButRecordIsPreserved() async {
         let id = "v1-singular-acq-\(UUID().uuidString)"
         // Mix deprecated + current keys so the record is "V1-shaped".
         var bookDict = currentFormatBookDict(id: id, title: "V1 Singular Acquisition")
@@ -188,7 +183,7 @@ class TPPBookRegistryMigrationTests: PalaceWiringTestCase {
         // V1 also serialized acquisitions as empty — current code reads only this.
         writeRegistryJSON(["records": [currentFormatRecord(bookDict, state: "holding")]])
 
-        loadAndWait()
+        await loadAndWait()
 
         XCTAssertEqual(store.allBooks.count, 1,
                        "V1-shaped record with deprecated keys must still load — kills mutant that drops records on unrecognized keys")
@@ -200,7 +195,7 @@ class TPPBookRegistryMigrationTests: PalaceWiringTestCase {
     /// dictionary shape* (no nested indirectAcquisitions key) must still parse
     /// — the current TPPOPDSAcquisition.acquisition(withDictionary:) is
     /// forgiving — and the record must be preserved.
-    func testV1AcquisitionsLackingIndirectKey_StillParses() {
+    func testV1AcquisitionsLackingIndirectKey_StillParses() async {
         let id = "v1-no-indirect-\(UUID().uuidString)"
         let bookDict = currentFormatBookDict(
             id: id, title: "Legacy Acquisitions",
@@ -216,7 +211,7 @@ class TPPBookRegistryMigrationTests: PalaceWiringTestCase {
             ])
         writeRegistryJSON(["records": [currentFormatRecord(bookDict, state: "holding")]])
 
-        loadAndWait()
+        await loadAndWait()
 
         XCTAssertNotNil(store.book(forIdentifier: id),
                         "Legacy-shaped acquisitions dict must not block record load — kills mutant that requires indirectAcquisitions key")
@@ -229,13 +224,13 @@ class TPPBookRegistryMigrationTests: PalaceWiringTestCase {
     /// via `as?` casts with no defaults: a record missing those fields must
     /// still load successfully (the optional fields just stay nil). Kills
     /// mutants that change `as? String` to a force-cast.
-    func testRecordMissingAudienceAndLanguage_FillsNilDefaults() {
+    func testRecordMissingAudienceAndLanguage_FillsNilDefaults() async {
         let id = "missing-audience-lang-\(UUID().uuidString)"
         // currentFormatBookDict already omits audience + language — perfect.
         let bookDict = currentFormatBookDict(id: id, title: "No Audience or Language")
         writeRegistryJSON(["records": [currentFormatRecord(bookDict, state: "holding")]])
 
-        loadAndWait()
+        await loadAndWait()
 
         let book = store.book(forIdentifier: id)
         XCTAssertNotNil(book, "Record missing newer optional fields must still load")
@@ -248,13 +243,13 @@ class TPPBookRegistryMigrationTests: PalaceWiringTestCase {
     /// `categories` is read as `as? [String] ?? []`. A record where categories
     /// is missing entirely must default to empty, not nil — pinning the
     /// `??` fallback path against a mutant that drops the default.
-    func testRecordMissingCategoriesField_DefaultsToEmptyArray() {
+    func testRecordMissingCategoriesField_DefaultsToEmptyArray() async {
         let id = "missing-categories-\(UUID().uuidString)"
         var bookDict = currentFormatBookDict(id: id, title: "No Categories Field")
         bookDict.removeValue(forKey: "categories")
         writeRegistryJSON(["records": [currentFormatRecord(bookDict, state: "holding")]])
 
-        loadAndWait()
+        await loadAndWait()
 
         let book = store.book(forIdentifier: id)
         XCTAssertNotNil(book, "Record must load when categories field is absent")
@@ -267,13 +262,13 @@ class TPPBookRegistryMigrationTests: PalaceWiringTestCase {
     /// The `updated` field accepts both RFC 3339 (current writer) and ISO 8601
     /// date-only (legacy OPDS feeds). A record using the legacy date-only
     /// shape must still load — kills mutant that drops the ISO 8601 fallback.
-    func testRecordWithLegacyISO8601DateOnlyUpdated_StillParses() {
+    func testRecordWithLegacyISO8601DateOnlyUpdated_StillParses() async {
         let id = "iso8601-date-only-\(UUID().uuidString)"
         let bookDict = currentFormatBookDict(id: id, title: "ISO 8601 Date-Only",
                                               extraFields: ["updated": "2024-09-15"])
         writeRegistryJSON(["records": [currentFormatRecord(bookDict, state: "holding")]])
 
-        loadAndWait()
+        await loadAndWait()
 
         XCTAssertNotNil(store.book(forIdentifier: id),
                         "ISO 8601 date-only `updated` must parse — kills mutant that drops withISO8601DateString fallback")
@@ -283,13 +278,13 @@ class TPPBookRegistryMigrationTests: PalaceWiringTestCase {
     /// through to `Date.distantPast` and the book must still load — losing
     /// the timestamp is preferable to losing the downloaded book (per the
     /// comment in TPPBook.swift).
-    func testRecordWithMalformedUpdated_FallsBackToDistantPast_StillLoads() {
+    func testRecordWithMalformedUpdated_FallsBackToDistantPast_StillLoads() async {
         let id = "malformed-updated-\(UUID().uuidString)"
         let bookDict = currentFormatBookDict(id: id, title: "Malformed Updated",
                                               extraFields: ["updated": "not-a-date-at-all"])
         writeRegistryJSON(["records": [currentFormatRecord(bookDict, state: "holding")]])
 
-        loadAndWait()
+        await loadAndWait()
 
         let book = store.book(forIdentifier: id)
         XCTAssertNotNil(book,
@@ -310,7 +305,7 @@ class TPPBookRegistryMigrationTests: PalaceWiringTestCase {
     ///
     /// This pins the *drop* behavior (NOT preserve). Mutants that pretend to
     /// retain extra metadata fields fail this test.
-    func testRecordWithUnknownFutureFields_FieldDroppedButRecordSurvives() {
+    func testRecordWithUnknownFutureFields_FieldDroppedButRecordSurvives() async {
         let id = "future-fields-\(UUID().uuidString)"
         var bookDict = currentFormatBookDict(id: id, title: "Future Schema")
         bookDict["zzz-unknown-future-field"] = "a value that should not crash the loader"
@@ -324,7 +319,7 @@ class TPPBookRegistryMigrationTests: PalaceWiringTestCase {
         )
         writeRegistryJSON(["records": [recordWithExtras]])
 
-        loadAndWait()
+        await loadAndWait()
 
         let book = store.book(forIdentifier: id)
         XCTAssertNotNil(book,
@@ -346,7 +341,7 @@ class TPPBookRegistryMigrationTests: PalaceWiringTestCase {
     /// TPPBookState's known cases) must be dropped — current code logs and
     /// returns nil from TPPBookRegistryRecord(record:). Kills mutants that
     /// default unknown states to a real state (e.g. `.downloadNeeded`).
-    func testRecordWithUnknownState_DroppedFromRegistry() {
+    func testRecordWithUnknownState_DroppedFromRegistry() async {
         let knownId = "known-state-\(UUID().uuidString)"
         let unknownId = "unknown-state-\(UUID().uuidString)"
         writeRegistryJSON([
@@ -358,7 +353,7 @@ class TPPBookRegistryMigrationTests: PalaceWiringTestCase {
             ]
         ])
 
-        loadAndWait()
+        await loadAndWait()
 
         XCTAssertNotNil(store.book(forIdentifier: knownId),
                         "Known-state record must load alongside an unknown-state sibling")
@@ -376,7 +371,7 @@ class TPPBookRegistryMigrationTests: PalaceWiringTestCase {
     /// The current code uses dictionary assignment: last record wins.
     /// Kills mutants that turn `newRegistry[record.book.identifier] = record`
     /// into an *append-or-skip-if-present*.
-    func testDuplicateIdentifiersOnDisk_CollapseToOneRecord() {
+    func testDuplicateIdentifiersOnDisk_CollapseToOneRecord() async {
         let dupId = "duplicate-id-\(UUID().uuidString)"
         writeRegistryJSON([
             "records": [
@@ -387,7 +382,7 @@ class TPPBookRegistryMigrationTests: PalaceWiringTestCase {
             ]
         ])
 
-        loadAndWait()
+        await loadAndWait()
 
         XCTAssertEqual(store.allBooks.count, 1,
                        "Duplicate identifier on disk must collapse to exactly one in-memory record — kills mutant that turns the assignment into an append")
@@ -405,7 +400,7 @@ class TPPBookRegistryMigrationTests: PalaceWiringTestCase {
     /// Kills mutants that change the keying field from `book.identifier` to
     /// something else (e.g. title), which would still load the books but
     /// would silently break lookup.
-    func testLookupByIdentifier_IsUnique_AfterLoad() {
+    func testLookupByIdentifier_IsUnique_AfterLoad() async {
         var bookIds: [String] = []
         var records: [[String: Any]] = []
         for i in 0..<10 {
@@ -417,7 +412,7 @@ class TPPBookRegistryMigrationTests: PalaceWiringTestCase {
         }
         writeRegistryJSON(["records": records])
 
-        loadAndWait()
+        await loadAndWait()
 
         // Every seeded id must map to a book; every book in the store must be
         // findable by its declared identifier.
@@ -481,7 +476,7 @@ class TPPBookRegistryMigrationTests: PalaceWiringTestCase {
     /// Load drops records whose `metadata` field is missing entirely (the
     /// init?(record:) guard at TPPBookRegistryRecord.swift:110). PIN this
     /// behavior so a mutant that fabricates a placeholder book is caught.
-    func testRecordMissingMetadataField_Dropped() {
+    func testRecordMissingMetadataField_Dropped() async {
         let goodId = "has-metadata-\(UUID().uuidString)"
         writeRegistryJSON([
             "records": [
@@ -492,7 +487,7 @@ class TPPBookRegistryMigrationTests: PalaceWiringTestCase {
             ]
         ])
 
-        loadAndWait()
+        await loadAndWait()
 
         XCTAssertEqual(store.allBooks.count, 1,
                        "Record without metadata must be dropped — kills mutant that fabricates a placeholder book")
@@ -502,7 +497,7 @@ class TPPBookRegistryMigrationTests: PalaceWiringTestCase {
 
     /// Load drops records whose `state` field is missing entirely. PIN the
     /// guard at TPPBookRegistryRecord.swift:124.
-    func testRecordMissingStateField_Dropped() {
+    func testRecordMissingStateField_Dropped() async {
         let goodId = "has-state-\(UUID().uuidString)"
         let noStateId = "no-state-\(UUID().uuidString)"
         writeRegistryJSON([
@@ -514,7 +509,7 @@ class TPPBookRegistryMigrationTests: PalaceWiringTestCase {
             ]
         ])
 
-        loadAndWait()
+        await loadAndWait()
 
         XCTAssertNotNil(store.book(forIdentifier: goodId),
                         "Sibling record with state must still load")
@@ -526,7 +521,7 @@ class TPPBookRegistryMigrationTests: PalaceWiringTestCase {
     /// PIN: A record-level field outside `metadata`/`state` (e.g.
     /// `fulfillmentId`, `location`, `bookmarks`, `genericBookmarks`) IS
     /// preserved across the round-trip. Kills mutants that change those keys.
-    func testRecordLevelFulfillmentId_IsPreservedAcrossLoad() {
+    func testRecordLevelFulfillmentId_IsPreservedAcrossLoad() async {
         let id = "fulfillment-roundtrip-\(UUID().uuidString)"
         let record = currentFormatRecord(
             currentFormatBookDict(id: id, title: "With Fulfillment"),
@@ -534,7 +529,7 @@ class TPPBookRegistryMigrationTests: PalaceWiringTestCase {
             extraFields: ["fulfillmentId": "txn-12345-roundtrip"])
         writeRegistryJSON(["records": [record]])
 
-        loadAndWait()
+        await loadAndWait()
 
         // BookRegistryStore doesn't expose record-level fulfillmentId via a
         // facade method that bypasses an identifier check — use the public

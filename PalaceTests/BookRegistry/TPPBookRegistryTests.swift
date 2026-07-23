@@ -498,7 +498,7 @@ final class TPPBookRegistryLoadReentrancyTests: XCTestCase {
 
     /// Verifies that the registry emits book state events after loading
     /// This was added to fix UI sync issues when reopening the app
-    func testLoad_EmitsBookStateEventsForAllBooks() {
+    func testLoad_EmitsBookStateEventsForAllBooks() async {
         // Guard: load() requires a valid account to actually run.
         // Without one, it returns immediately as a no-op, but allBooks may still
         // contain stale books from other tests (e.g., thread safety tests that
@@ -511,9 +511,10 @@ final class TPPBookRegistryLoadReentrancyTests: XCTestCase {
         // the re-entrancy guard's loadingAccount has been cleared.
         // Without this, testLoad_RapidCallsForSameAccount_DoesNotCrash
         // may leave loadingAccount set, causing this test's load() to be skipped.
-        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.5))
-
-        let expectation = XCTestExpectation(description: "Book state events emitted")
+        // Wave-2 (swarm_ad0b4c65): replaced the fixed 0.5s RunLoop spin with
+        // a bounded main-queue drain (FIFO — flushes everything queued by
+        // prior tests, no magic duration).
+        await drainMainQueueAsync()
 
         var receivedStateUpdates = Set<String>()
 
@@ -523,22 +524,21 @@ final class TPPBookRegistryLoadReentrancyTests: XCTestCase {
             }
             .store(in: &cancellables)
 
-        // Subscribe for the first event before calling load() so we don't miss it.
-        registry.bookStatePublisher
-            .first()
-            .sink { _ in expectation.fulfill() }
-            .store(in: &cancellables)
-
         registry.load()
 
         // allBooks uses syncQueue.sync — drains the async load barrier before returning.
-        // If no books were loaded there are no publisher events, so fulfill immediately.
         let registryCount = registry.allBooks.count
-        if registryCount == 0 {
-            expectation.fulfill()
-        }
 
-        wait(for: [expectation], timeout: 5.0)
+        // Wave-2 (swarm_ad0b4c65): replaced the `.first().sink{fulfill()}` +
+        // `wait(for:timeout:5.0)` with the S2 seam
+        // (`TPPBookRegistry._awaitPendingWritesForTesting()`) + a main-queue
+        // drain — `registry.load()` schedules
+        // `DispatchQueue.main.async { callbacks.setState(.loaded); ... bookStateSubject.send(...) }`
+        // from inside the barrier block driving the load; joining the
+        // barrier then flushing main deterministically waits for every
+        // book-state event to land before we inspect `receivedStateUpdates`.
+        await registry._awaitPendingWritesForTesting()
+        await drainMainQueueAsync()
 
         if registryCount > 0 {
             XCTAssertFalse(receivedStateUpdates.isEmpty, "Should have received state updates for loaded books")

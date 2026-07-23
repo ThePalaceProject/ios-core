@@ -92,6 +92,27 @@ final class BookRegistryStore: @unchecked Sendable {
     }
   }
 
+  // MARK: - Test-only deterministic-join seam
+
+  /// Test-only: await every write enqueued on `syncQueue` before this call.
+  ///
+  /// Bounded by construction — a `.barrier` block on the concurrent `syncQueue`
+  /// runs only AFTER every previously-enqueued `addBook`/`removeBook`/
+  /// `updateBook`/`setState` barrier block (and its `onComplete`) has finished,
+  /// so the continuation is always resumed exactly once. This is NOT a bare
+  /// `await handle` that could hang and it adds NO sleep/poll/clock: it merely
+  /// drains the existing queue via one more trailing barrier hop.
+  ///
+  /// No XCTest gate is needed (unlike the retained-task seams): this spawns no
+  /// retained state and production never calls it. Mirrors the intent of
+  /// `TokenRefreshInterceptor._awaitAuthDispatchForTesting` /
+  /// `AccountsManager._awaitAllCrawlTasksForTesting`.
+  func _awaitPendingWritesForTesting() async {
+    await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+      performBarrier { cont.resume() }
+    }
+  }
+
   // MARK: - Direct registry access (for sync/load operations that need batch mutations)
 
   /// Provides direct read access to the registry dictionary within a sync block.

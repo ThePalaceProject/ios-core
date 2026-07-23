@@ -97,27 +97,20 @@ class TPPBookRegistryPersistenceTests: PalaceWiringTestCase {
         return book
     }
 
-    /// Drives `sync.load(account:)` to completion. The load dispatches the
-    /// in-memory mutation onto the store's concurrent queue and the publisher
-    /// emission onto the main thread; we wait on a `loaded` setState callback
-    /// and then drain the main RunLoop.
-    ///
-    /// Timeout: 30s. Locally these round-trips resolve in <1s, but CI
-    /// runners under parallel-test contention have been observed exceeding
-    /// 10s on the BookRegistry load path (JSON parse + publisher dispatch
-    /// + RunLoop drain). PR #989 tightened this from 30s → 10s under the
-    /// assumption that 10s "fail loud on degraded production load" was
-    /// sufficient; the actual CI floor is higher. 30s still fails loud
-    /// on a true regression (the local <1s baseline gives 30× headroom)
-    /// without bouncing off runner load.
-    private func loadAndWait(account: String) {
-        let exp = expectation(description: "load(\(account)) completes")
-        sync.load(account: account, setState: { newState in
-            if newState == .loaded { exp.fulfill() }
-        }, completion: nil)
-        // Drain RunLoop so the publisher-on-main dispatch lands before assertions.
-        wait(for: [exp], timeout: 30.0)
-        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
+    /// Wave-2 (swarm_ad0b4c65): replaced the `wait(for:timeout:30.0)` +
+    /// `RunLoop.current.run(until:+0.1)` settle with a deterministic seam
+    /// join. `sync.load` drives its mutation through
+    /// `BookRegistryStore.mutateRegistry`, which enqueues on `store`'s
+    /// barrier `syncQueue`; `_awaitPendingWritesForTesting()` drains that
+    /// queue (bounded — one trailing barrier hop), which also guarantees the
+    /// `DispatchQueue.main.async { callbacks.setState(.loaded); ... }` hop
+    /// inside the load completion has been SCHEDULED. `drainMainQueueAsync()`
+    /// then flushes that scheduled main-queue hop deterministically — no
+    /// wall-clock budget, no CI-contention timeout guessing.
+    private func loadAndWait(account: String) async {
+        sync.load(account: account, setState: { _ in }, completion: nil)
+        await store._awaitPendingWritesForTesting()
+        await drainMainQueueAsync()
     }
 
     private func writeRaw(_ data: Data, to account: String) {
@@ -135,7 +128,7 @@ class TPPBookRegistryPersistenceTests: PalaceWiringTestCase {
     /// Kills the mutant: drop the `try registryData.write(to:options:.atomic)` call
     /// (or replace JSONSerialization output with empty data). If save is a no-op,
     /// the reload sees nothing and the state assertion below fails.
-    func testSave_ThenColdStartLoad_PreservesRecord() {
+    func testSave_ThenColdStartLoad_PreservesRecord() async {
         let bookId = "round-trip-\(UUID().uuidString)"
         _ = seedStore(identifier: bookId, title: "Round Trip", state: .holding)
 
@@ -150,7 +143,7 @@ class TPPBookRegistryPersistenceTests: PalaceWiringTestCase {
             opdsFeedServiceProvider: { AppContainer.production().opdsFeedService }
         )
 
-        loadAndWait(account: account)
+        await loadAndWait(account: account)
 
         XCTAssertEqual(store.state(for: bookId), .holding,
                        "Record state must be preserved across save → cold-start load round-trip")
@@ -163,7 +156,7 @@ class TPPBookRegistryPersistenceTests: PalaceWiringTestCase {
     /// Kills the mutant that flips `.atomic` to a non-atomic write and writes
     /// partial data on the second save. Persistence must be the LAST-WRITER-WINS
     /// snapshot, not an additive append.
-    func testSave_OverwritesPreviousSave_NotAppends() {
+    func testSave_OverwritesPreviousSave_NotAppends() async {
         let firstId = "first-\(UUID().uuidString)"
         _ = seedStore(identifier: firstId, state: .holding)
         sync.saveSync(for: account)
@@ -182,7 +175,7 @@ class TPPBookRegistryPersistenceTests: PalaceWiringTestCase {
             downloadCenterProvider: { AppContainer.production().downloadCenter },
             opdsFeedServiceProvider: { AppContainer.production().opdsFeedService }
         )
-        loadAndWait(account: account)
+        await loadAndWait(account: account)
 
         XCTAssertNil(store.book(forIdentifier: firstId),
                      "Save must overwrite prior on-disk snapshot — first record must not survive")
@@ -195,12 +188,12 @@ class TPPBookRegistryPersistenceTests: PalaceWiringTestCase {
     /// Kills the mutant that replaces `(try? JSONSerialization.jsonObject(...)) as?
     /// TPPBookRegistryData` with a force-try — corrupted JSON must not crash;
     /// the registry must come up empty.
-    func testLoad_WithCorruptedJSON_RegistryIsEmpty_DoesNotCrash() {
+    func testLoad_WithCorruptedJSON_RegistryIsEmpty_DoesNotCrash() async {
         // Write a deliberately garbled blob that is NOT valid JSON.
         let garbage = Data("not-valid-json-{[]}".utf8)
         writeRaw(garbage, to: account)
 
-        loadAndWait(account: account)
+        await loadAndWait(account: account)
 
         XCTAssertTrue(store.allBooks.isEmpty,
                       "Corrupted on-disk JSON must produce an empty registry, not partial garbage")
@@ -216,7 +209,7 @@ class TPPBookRegistryPersistenceTests: PalaceWiringTestCase {
             downloadCenterProvider: { AppContainer.production().downloadCenter },
             opdsFeedServiceProvider: { AppContainer.production().opdsFeedService }
         )
-        loadAndWait(account: account)
+        await loadAndWait(account: account)
         XCTAssertNotNil(store.book(forIdentifier: recoveryId),
                         "Registry must recover (be writable + reloadable) after a corrupted-load")
     }
@@ -224,13 +217,13 @@ class TPPBookRegistryPersistenceTests: PalaceWiringTestCase {
     /// Kills the mutant that drops the `json.array(for: .records)` nil-check —
     /// a truncated JSON object that can't be deserialized as a dictionary OR a
     /// dictionary that lacks the `records` key MUST produce empty state.
-    func testLoad_WithTruncatedJSON_RegistryIsEmpty_DoesNotCrash() {
+    func testLoad_WithTruncatedJSON_RegistryIsEmpty_DoesNotCrash() async {
         // Truncate the JSON mid-stream so JSONSerialization fails. Starts with a
         // valid `{` but never closes.
         let truncated = Data("{\"records\":[{\"metadata\":{\"id\":\"abc\",\"title\":\"x\"".utf8)
         writeRaw(truncated, to: account)
 
-        loadAndWait(account: account)
+        await loadAndWait(account: account)
 
         XCTAssertTrue(store.allBooks.isEmpty,
                       "Truncated/malformed JSON must yield an empty registry — no partial parse, no crash")
@@ -239,11 +232,11 @@ class TPPBookRegistryPersistenceTests: PalaceWiringTestCase {
     /// Kills the mutant that drops the `let records = json.array(for: .records)`
     /// guard — when the file is valid JSON but missing the `records` array, the
     /// registry must come up empty.
-    func testLoad_WithJSONMissingRecordsKey_RegistryIsEmpty() {
+    func testLoad_WithJSONMissingRecordsKey_RegistryIsEmpty() async {
         let unrelatedJSON = Data("{\"some-other-key\":[]}".utf8)
         writeRaw(unrelatedJSON, to: account)
 
-        loadAndWait(account: account)
+        await loadAndWait(account: account)
 
         XCTAssertTrue(store.allBooks.isEmpty,
                       "JSON without a 'records' key must produce an empty registry")
@@ -254,7 +247,7 @@ class TPPBookRegistryPersistenceTests: PalaceWiringTestCase {
     /// Kills the mutant that removes the `store.bookStateSubject.send(...)`
     /// inside setState — the registry must publish state transitions to
     /// downstream subscribers.
-    func testBookStatePublisher_FiresOnDownloadingToDownloadedTransition() {
+    func testBookStatePublisher_FiresOnDownloadingToDownloadedTransition() async {
         let registry = TPPBookRegistry(accountsManager: makeFreshAccountsManager(), imageLoader: AppContainer.production().imageLoader)
         let book = TPPBookMocker.mockBook(identifier: "publisher-transition-\(UUID().uuidString)",
                                           title: "Transition Test",
@@ -262,16 +255,25 @@ class TPPBookRegistryPersistenceTests: PalaceWiringTestCase {
 
         registry.addBook(book, state: .downloading)
 
-        let received = expectation(description: "Publisher fires Downloaded after Downloading")
+        // Wave-2 (swarm_ad0b4c65): `registry.setState` funnels its
+        // `store.bookStateSubject.send(...)` through `store.setState`'s
+        // barrier `onComplete`, scheduled via `DispatchQueue.main.async`
+        // from inside that barrier block — the same S2 seam as
+        // `loadAndWait`. Capture instead of `expectation.fulfill()`, join
+        // via the seam, then assert synchronously.
+        var receivedStates: [TPPBookState] = []
         registry.bookStatePublisher
             .filter { $0.0 == book.identifier && $0.1 == .downloadSuccessful }
-            .first()
-            .sink { _ in received.fulfill() }
+            .sink { receivedStates.append($0.1) }
             .store(in: &cancellables)
 
         registry.setState(.downloadSuccessful, for: book.identifier)
 
-        wait(for: [received], timeout: 2.0)
+        await registry._awaitPendingWritesForTesting()
+        await drainMainQueueAsync()
+
+        XCTAssertEqual(receivedStates, [.downloadSuccessful],
+                       "Publisher must fire exactly once with .downloadSuccessful after the Downloading → Downloaded transition")
 
         registry.removeBook(forIdentifier: book.identifier)
     }
@@ -280,14 +282,16 @@ class TPPBookRegistryPersistenceTests: PalaceWiringTestCase {
     /// drops the guard entirely) inside BookRegistryStore.updateBook —
     /// updateBook with the same book must NOT spuriously emit a state event
     /// when its state doesn't change.
-    func testBookStatePublisher_DoesNotFireOnNoOpUpdateBook() {
+    func testBookStatePublisher_DoesNotFireOnNoOpUpdateBook() async {
         let registry = TPPBookRegistry(accountsManager: makeFreshAccountsManager(), imageLoader: AppContainer.production().imageLoader)
         let book = TPPBookMocker.mockBook(identifier: "no-op-update-\(UUID().uuidString)",
                                           title: "No-op Update",
                                           distributorType: .EpubZip)
         registry.addBook(book, state: .holding)
-        // Drain the addBook emission so the next subscription is clean.
-        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.2))
+        // Drain the addBook emission so the next subscription is clean —
+        // seam join (S2) instead of a fixed 0.2s RunLoop spin.
+        await registry._awaitPendingWritesForTesting()
+        await drainMainQueueAsync()
 
         var receivedAfterAdd: [(String, TPPBookState)] = []
         registry.bookStatePublisher
@@ -296,7 +300,16 @@ class TPPBookRegistryPersistenceTests: PalaceWiringTestCase {
             .store(in: &cancellables)
 
         registry.updateBook(book) // .holding → .holding (no-op transition)
-        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.5))
+        // Wave-2 (swarm_ad0b4c65): `TPPBookRegistry.updateBook` decides
+        // whether to schedule `DispatchQueue.main.async { bookStateSubject.send(...) }`
+        // SYNCHRONOUSLY inside `store.updateBook`'s barrier `onComplete`
+        // (`if nextState != previousState { DispatchQueue.main.async {...} }`)
+        // — for a genuine no-op the dispatch is never scheduled at all. So
+        // draining the barrier + one main-queue hop conclusively proves
+        // absence; no arbitrary 0.5s window needed to "probably" catch a
+        // spurious emission.
+        await registry._awaitPendingWritesForTesting()
+        await drainMainQueueAsync()
 
         XCTAssertTrue(receivedAfterAdd.isEmpty,
                       "updateBook with unchanged state must not emit on bookStatePublisher — kills `nextState != previousState` → `==` mutant")
@@ -309,7 +322,7 @@ class TPPBookRegistryPersistenceTests: PalaceWiringTestCase {
     /// Kills the mutant that hard-codes a single registry URL regardless of the
     /// `account` argument. Writes to account A must NOT be visible when loading
     /// account B's registry.
-    func testAccountIsolation_AccountADoesNotLeakIntoAccountB() {
+    func testAccountIsolation_AccountADoesNotLeakIntoAccountB() async {
         let accountA = "test-isolation-A-\(UUID().uuidString)"
         let accountB = "test-isolation-B-\(UUID().uuidString)"
 
@@ -342,7 +355,7 @@ class TPPBookRegistryPersistenceTests: PalaceWiringTestCase {
             downloadCenterProvider: { AppContainer.production().downloadCenter },
             opdsFeedServiceProvider: { AppContainer.production().opdsFeedService }
         )
-        loadAndWait(account: accountB)
+        await loadAndWait(account: accountB)
 
         XCTAssertNil(store.book(forIdentifier: aOnlyId),
                      "Account A's record must NOT be visible when loading account B's registry")
@@ -357,7 +370,7 @@ class TPPBookRegistryPersistenceTests: PalaceWiringTestCase {
             downloadCenterProvider: { AppContainer.production().downloadCenter },
             opdsFeedServiceProvider: { AppContainer.production().opdsFeedService }
         )
-        loadAndWait(account: accountA)
+        await loadAndWait(account: accountA)
         XCTAssertNotNil(store.book(forIdentifier: aOnlyId),
                         "Account A's record must remain intact in A's registry after B was saved")
     }
@@ -379,7 +392,7 @@ class TPPBookRegistryPersistenceTests: PalaceWiringTestCase {
     /// Kills the mutant that drops the serial `diskWriteQueue` and allows
     /// out-of-order writes — concurrent saves from two queues must converge on
     /// a valid on-disk JSON snapshot that contains the final in-memory state.
-    func testConcurrentSaves_ProduceValidJSONOnDisk() {
+    func testConcurrentSaves_ProduceValidJSONOnDisk() async {
         // Pre-seed with 10 records.
         let ids = (0..<10).map { "concurrent-\(UUID().uuidString)-\($0)" }
         store.mutateRegistrySync { registry in
@@ -410,7 +423,13 @@ class TPPBookRegistryPersistenceTests: PalaceWiringTestCase {
         }
         let waitExp = expectation(description: "All concurrent saves complete")
         group.notify(queue: .main) { waitExp.fulfill() }
-        wait(for: [waitExp], timeout: 10.0)
+        // UNMAPPED (wave-2 swarm_ad0b4c65): waits on BookRegistrySync's private
+        // `diskWriteQueue` draining via `save(for:)` fire-and-forget calls — no
+        // catalog seam exists for that queue. Genuinely bounded by a real
+        // DispatchGroup.notify, not a settle delay. In an async test method the
+        // bounded wait must use the `await fulfillment` form (SDK requirement);
+        // still blocks on the real DispatchGroup.notify, not a clock.
+        await fulfillment(of: [waitExp], timeout: 10.0)
 
         // Drain the diskWriteQueue deterministically. The async `save(for:)`
         // enqueues onto a serial queue; calling `saveSync(for:)` blocks until
@@ -427,7 +446,7 @@ class TPPBookRegistryPersistenceTests: PalaceWiringTestCase {
             downloadCenterProvider: { AppContainer.production().downloadCenter },
             opdsFeedServiceProvider: { AppContainer.production().opdsFeedService }
         )
-        loadAndWait(account: account)
+        await loadAndWait(account: account)
 
         for id in ids {
             XCTAssertNotNil(store.book(forIdentifier: id),

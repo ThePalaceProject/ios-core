@@ -111,19 +111,22 @@ class TPPBookRegistryLargeCorpusTests: PalaceWiringTestCase {
         )
     }
 
-    /// Default timeout is 120s rather than 60s: a 5000-book JSON load is
-    /// inherently slow, and on CI runners under memory pressure (the log
-    /// shows 49 MB available + image-cache trimming) the load can take
-    /// 66s+ which trips a 60s budget. 120s tolerates CI variance while
-    /// still failing fast on a genuinely wedged load. Performance-budget
-    /// tests pass their own (tighter) timeouts.
-    private func loadAndWait(timeout: TimeInterval = 120.0) {
-        let exp = expectation(description: "load completes")
-        sync.load(account: account, setState: { newState in
-            if newState == .loaded { exp.fulfill() }
-        }, completion: nil)
-        wait(for: [exp], timeout: timeout)
-        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.2))
+    /// Wave-2 (swarm_ad0b4c65): replaced the `wait(for:timeout:)` +
+    /// `RunLoop.current.run(until:+0.2)` settle with a deterministic seam
+    /// join — no wall-clock budget needed regardless of corpus size.
+    /// `sync.load` drives its mutation through
+    /// `BookRegistryStore.mutateRegistry`, which enqueues on `store`'s
+    /// barrier `syncQueue`; `_awaitPendingWritesForTesting()` drains that
+    /// queue (bounded — one trailing barrier hop, however long the 5000-record
+    /// parse inside the barrier block takes), then `drainMainQueueAsync()`
+    /// flushes the `DispatchQueue.main.async { callbacks.setState(.loaded) }`
+    /// hop the load schedules from inside that barrier block.
+    /// `testLoad_5000Books_CompletesUnderTimeBudget` still measures and
+    /// asserts real elapsed wall time around this call independently.
+    private func loadAndWait() async {
+        sync.load(account: account, setState: { _ in }, completion: nil)
+        await store._awaitPendingWritesForTesting()
+        await drainMainQueueAsync()
     }
 
     // MARK: - 5000-book corpus integrity
@@ -134,7 +137,7 @@ class TPPBookRegistryLargeCorpusTests: PalaceWiringTestCase {
     ///   - cap the loop iteration count
     ///   - break out of the parse loop on the first non-fatal log
     ///   - rebuild the registry from a subset of records
-    func testLoad_5000Books_ProducesExactCount() throws {
+    func testLoad_5000Books_ProducesExactCount() async throws {
         // Build records.
         var records: [[String: Any]] = []
         records.reserveCapacity(corpusCount)
@@ -150,7 +153,7 @@ class TPPBookRegistryLargeCorpusTests: PalaceWiringTestCase {
         }
         try writeCorpusJSON(records)
 
-        loadAndWait()
+        await loadAndWait()
 
         XCTAssertEqual(store.allBooks.count, corpusCount,
                        "Loading \(corpusCount) records must produce exactly \(corpusCount) in-memory books — kills mutants that drop or duplicate records at scale")
@@ -160,7 +163,7 @@ class TPPBookRegistryLargeCorpusTests: PalaceWiringTestCase {
     /// and state must all survive the round-trip for EVERY record.
     /// Kills mutants that drop fields on serialization or replace them with
     /// defaults at scale.
-    func testRoundTrip_5000Books_AllFieldsPreserved() throws {
+    func testRoundTrip_5000Books_AllFieldsPreserved() async throws {
         // Seed.
         var ids: [String] = []
         ids.reserveCapacity(corpusCount)
@@ -180,7 +183,7 @@ class TPPBookRegistryLargeCorpusTests: PalaceWiringTestCase {
         sync.saveSync(for: account)
 
         freshStoreAndSync()
-        loadAndWait()
+        await loadAndWait()
 
         XCTAssertEqual(store.allBooks.count, corpusCount,
                        "All \(corpusCount) records must round-trip — kills mutant that drops some on save")
@@ -204,7 +207,7 @@ class TPPBookRegistryLargeCorpusTests: PalaceWiringTestCase {
     /// records. If load suddenly becomes O(n²) (e.g. mutant that does a
     /// linear scan inside a loop), this test fails loudly. We do NOT pin a
     /// tight microbenchmark.
-    func testLoad_5000Books_CompletesUnderTimeBudget() throws {
+    func testLoad_5000Books_CompletesUnderTimeBudget() async throws {
         var records: [[String: Any]] = []
         records.reserveCapacity(corpusCount)
         for i in 0..<corpusCount {
@@ -216,7 +219,7 @@ class TPPBookRegistryLargeCorpusTests: PalaceWiringTestCase {
         try writeCorpusJSON(records)
 
         let start = Date()
-        loadAndWait(timeout: 60.0) // FLAKE-003-OK: large-corpus performance budget — loads 5000 book records from disk through TPPBook(dictionary:) parse + state-machine assignment; 60s is the explicit O(n²) regression guard asserted on the next line, not a sleep mask.
+        await loadAndWait() // 60s budget now lives solely in the XCTAssertLessThan below — the wait itself is a deterministic seam join with no timeout.
         let elapsed = Date().timeIntervalSince(start)
 
         XCTAssertLessThan(elapsed, 60.0,
@@ -228,7 +231,7 @@ class TPPBookRegistryLargeCorpusTests: PalaceWiringTestCase {
     /// At 5000-book scale, every identifier must resolve uniquely via
     /// book(forIdentifier:). Kills mutants that change the keying field or
     /// reuse a single record across multiple slots.
-    func testLookupByIdentifier_5000Books_AllUnique() throws {
+    func testLookupByIdentifier_5000Books_AllUnique() async throws {
         var records: [[String: Any]] = []
         records.reserveCapacity(corpusCount)
         var ids = Set<String>()
@@ -242,7 +245,7 @@ class TPPBookRegistryLargeCorpusTests: PalaceWiringTestCase {
         }
         try writeCorpusJSON(records)
 
-        loadAndWait()
+        await loadAndWait()
 
         // Every seeded id must map to a book whose identifier matches.
         for id in ids {

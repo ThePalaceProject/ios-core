@@ -702,6 +702,33 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing, @unchecked Sendable {
         return result
     }
 
+    // MARK: - Test-only deterministic-join seam
+
+    /// Test-only: await the store's pending barrier writes (S1) THEN one
+    /// main-queue hop, so the registry's state broadcasts have been delivered.
+    ///
+    /// Bounded in both stages:
+    ///  1. `store._awaitPendingWritesForTesting()` drains the write barrier —
+    ///     every prior mutation block plus its `onComplete` has run. Each of
+    ///     those synchronously enqueues its `DispatchQueue.main.async`
+    ///     re-broadcast (`registry` `didSet` snapshot post, and the per-mutation
+    ///     `bookStateSubject.send` hops at ~617/633/648/661/682) BEFORE the
+    ///     barrier completes.
+    ///  2. One `DispatchQueue.main.async` hop then runs strictly AFTER all those
+    ///     already-enqueued broadcasts by FIFO ordering on the main queue, and
+    ///     resumes the continuation exactly once — never a bare `await` that
+    ///     could hang, and no sleep/poll/clock.
+    ///
+    /// Deliberately does NOT await the account switch-back debounce
+    /// (`asyncAfter` ~line 160): that is a UX timer, not fire-and-forget work;
+    /// tests asserting switch-back drive it explicitly.
+    func _awaitPendingWritesForTesting() async {
+        await store._awaitPendingWritesForTesting()
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            DispatchQueue.main.async { cont.resume() }
+        }
+    }
+
     // MARK: - Cover / thumbnail images
 
     func cachedThumbnailImage(for book: TPPBook) -> UIImage? {

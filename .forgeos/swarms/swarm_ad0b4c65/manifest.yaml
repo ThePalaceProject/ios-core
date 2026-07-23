@@ -1,0 +1,27 @@
+swarm_id: swarm_ad0b4c65
+task: >-
+  Eliminate wall-clock waits from PalaceTests and the trivial production
+  fire-and-forget dispatches that force them, by replacing bounded
+  wall-clock waits with deterministic XCTest-gated Task-join seams.
+  Correctness over volume: no bounded wait is replaced by an unbounded await.
+created_at: "2026-07-23"
+status: triaged
+modules:
+  - {name: BookRegistryInfra,  files_scope: ["Palace/Book/Models/BookRegistryStore.swift","Palace/Book/Models/TPPBookRegistry.swift"], contract_path: contracts/BookRegistryInfra.md, risk: critical_path, depends_on: [], wave: 1}
+  - {name: NetworkInfra,       files_scope: ["Palace/Network/TPPNetworkExecutor.swift","Palace/Network/TPPNetworkResponder.swift"], contract_path: contracts/NetworkInfra.md, risk: critical_path, depends_on: [], wave: 1}
+  - {name: DownloadCenterInfra,files_scope: ["Palace/MyBooks/MyBooksDownloadCenter.swift","Palace/MyBooks/DownloadProgressPublisher.swift"], contract_path: contracts/DownloadCenterInfra.md, risk: critical_path, depends_on: [], wave: 1}
+  - {name: Book,          files_scope: ["PalaceTests/Book","Palace/Book/UI/BookDetail/BookDetailViewModel.swift"], contract_path: contracts/Book.md, risk: critical_path, depends_on: [BookRegistryInfra,NetworkInfra,DownloadCenterInfra], wave: 2}
+  - {name: BookRegistry,  files_scope: ["PalaceTests/BookRegistry","PalaceTests/BookStateManagement","PalaceTests/Sync"], contract_path: contracts/BookRegistry.md, risk: normal, depends_on: [BookRegistryInfra], wave: 2}
+  - {name: MyBooks,       files_scope: ["PalaceTests/MyBooks","Palace/MyBooks/BookReturnService.swift"], contract_path: contracts/MyBooks.md, risk: critical_path, depends_on: [BookRegistryInfra,NetworkInfra,DownloadCenterInfra], wave: 2}
+  - {name: Network,       files_scope: ["PalaceTests/Network"], contract_path: contracts/Network.md, risk: critical_path, depends_on: [NetworkInfra], wave: 2}
+  - {name: SignInLogic,   files_scope: ["PalaceTests/SignInLogic"], contract_path: contracts/SignInLogic.md, risk: critical_path, depends_on: [NetworkInfra], wave: 2}
+  - {name: Accounts,      files_scope: ["PalaceTests/Accounts"], contract_path: contracts/Accounts.md, risk: normal, depends_on: [], wave: 2}
+  - {name: Platform,      files_scope: ["PalaceTests/Platform","Palace/Platform/OfflineQueueService.swift","Palace/Platform/AppLaunchTracker.swift","Palace/Packages/PalaceReadingPosition/Sources/PalaceReadingPosition/PositionSyncService.swift"], contract_path: contracts/Platform.md, risk: normal, depends_on: [], wave: 2}
+  - {name: Accessibility, files_scope: ["PalaceTests/Accessibility","Palace/Utilities/TPPAccessibilityAnnouncementCenter.swift"], contract_path: contracts/Accessibility.md, risk: normal, depends_on: [], wave: 2}
+  - {name: Audiobooks,    files_scope: ["PalaceTests/Audiobook","PalaceTests/Audiobooks"], contract_path: contracts/Audiobooks.md, risk: critical_path, depends_on: [], wave: 2}
+  - {name: Holds,         files_scope: ["PalaceTests/Holds","Palace/Holds/HoldsViewModel.swift"], contract_path: contracts/Holds.md, risk: normal, depends_on: [BookRegistryInfra], wave: 2}
+  - {name: Catalog,       files_scope: ["PalaceTests/CatalogUI","PalaceTests/CatalogDomain"], contract_path: contracts/Catalog.md, risk: normal, depends_on: [], wave: 2}
+  - {name: Bookmarks,     files_scope: ["PalaceTests/Bookmarks"], contract_path: contracts/Bookmarks.md, risk: normal, depends_on: [BookRegistryInfra], wave: 2}
+  - {name: MiscSmall,     files_scope: ["PalaceTests/ViewModels","PalaceTests/ErrorHandling","PalaceTests/Integration","PalaceTests/Contract","PalaceTests/DRM","PalaceTests/Support","PalaceTests/Concurrency","PalaceTests/Settings","PalaceTests/Reader2","PalaceTests/PDF"], contract_path: contracts/MiscSmall.md, risk: normal, depends_on: [BookRegistryInfra,NetworkInfra,DownloadCenterInfra], wave: 3}
+architect_review:
+  verdict: pending
