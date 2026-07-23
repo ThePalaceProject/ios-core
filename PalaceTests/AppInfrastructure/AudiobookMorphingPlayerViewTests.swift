@@ -153,6 +153,98 @@ final class AudiobookMorphingPlayerViewTests: XCTestCase {
                           "Deeper upward pull must resist further (monotonic resistance)")
     }
 
+    // MARK: - Loading overlay state decision (PP-4542 skeleton-occlusion fix)
+
+    /// A loaded player shows no overlay — regardless of the other flags.
+    func testLoadingOverlayState_loadedIsHidden() {
+        XCTAssertEqual(
+            V.loadingOverlayState(isLoaded: true, isDownloading: false, loadingTimedOut: false, forceSkeletons: false),
+            .hidden,
+            "A loaded, non-downloading player has no loading overlay")
+        XCTAssertEqual(
+            V.loadingOverlayState(isLoaded: true, isDownloading: true, loadingTimedOut: true, forceSkeletons: false),
+            .hidden,
+            "Once loaded, neither a lingering download flag nor a stale timeout resurrects the overlay")
+    }
+
+    /// The core fix: while content is downloading (and not yet loaded) the overlay
+    /// is the DETERMINATE downloading state — NOT the opaque shimmer skeleton that
+    /// previously occluded the progress bar and read as a hang. Downloading also
+    /// wins over a fired 30s timeout, so a slow-but-healthy download never shows
+    /// the load-error overlay. Kills a branch-reorder that checks `loadingTimedOut`
+    /// (or falls through to `.skeleton`) before `isDownloading`.
+    func testLoadingOverlayState_downloadingBeatsSkeletonAndTimeout() {
+        XCTAssertEqual(
+            V.loadingOverlayState(isLoaded: false, isDownloading: true, loadingTimedOut: false, forceSkeletons: false),
+            .downloading,
+            "An in-flight download shows the determinate downloading state, not the shimmer skeleton")
+        XCTAssertEqual(
+            V.loadingOverlayState(isLoaded: false, isDownloading: true, loadingTimedOut: true, forceSkeletons: false),
+            .downloading,
+            "A download in flight is healthy progress — it must win over a fired load timeout, never the error overlay")
+    }
+
+    /// A genuine load timeout (not loaded, NOT downloading, timer fired) surfaces
+    /// the error+retry. Kills dropping the `loadingTimedOut` branch.
+    func testLoadingOverlayState_timeoutWithoutDownloadIsLoadError() {
+        XCTAssertEqual(
+            V.loadingOverlayState(isLoaded: false, isDownloading: false, loadingTimedOut: true, forceSkeletons: false),
+            .loadError,
+            "A stalled, non-downloading load that fired the 30s timer shows the load-error overlay")
+    }
+
+    /// The transient load window (not loaded, not downloading, timer not yet
+    /// fired) is the skeleton. The QA `forceSkeletons` override forces the
+    /// skeleton even over a loaded/downloading player so it can be inspected.
+    func testLoadingOverlayState_skeletonDefaultAndForceOverride() {
+        XCTAssertEqual(
+            V.loadingOverlayState(isLoaded: false, isDownloading: false, loadingTimedOut: false, forceSkeletons: false),
+            .skeleton,
+            "The brief pre-download load window is the shimmer skeleton")
+        XCTAssertEqual(
+            V.loadingOverlayState(isLoaded: true, isDownloading: true, loadingTimedOut: false, forceSkeletons: true),
+            .skeleton,
+            "forceSkeletons is the QA inspection override — it wins over every other flag")
+    }
+
+    /// The 30s load-error timer must be suppressed while a download is in flight:
+    /// a healthy multi-minute content download is not a load failure. Only a
+    /// not-loaded AND not-downloading state surfaces the timeout. This is what
+    /// stops a >30s LCP `.lcpa` download from false-tripping the error overlay.
+    func testShouldSurfaceLoadTimeout_onlyWhenNotLoadedAndNotDownloading() {
+        XCTAssertTrue(V.shouldSurfaceLoadTimeout(isLoaded: false, isDownloading: false),
+                      "A stalled, non-downloading load surfaces the timeout")
+        XCTAssertFalse(V.shouldSurfaceLoadTimeout(isLoaded: false, isDownloading: true),
+                       "A download in flight must NOT surface the load-error timeout")
+        XCTAssertFalse(V.shouldSurfaceLoadTimeout(isLoaded: true, isDownloading: false),
+                       "A loaded player has nothing to time out")
+        XCTAssertFalse(V.shouldSurfaceLoadTimeout(isLoaded: true, isDownloading: true),
+                       "A loaded player never surfaces the timeout")
+    }
+
+    // MARK: - Speed-chip rate sync (exit/return label mismatch)
+
+    /// Once a manager is bound, the chip adopts the session's (restored,
+    /// persisted) rate — regardless of the stale fallback. This is the fix for
+    /// the speed label reading 1.0× after exit/return while audio plays faster.
+    func testDisplayRate_boundAdoptsSessionRate() {
+        XCTAssertEqual(
+            V.displayRate(sessionRate: .doubleTime, isBound: true, fallback: .normalTime),
+            .doubleTime,
+            "A bound player must show the session's actual rate, not the stale chip fallback")
+    }
+
+    /// Pre-bind, the session rate is the meaningless 1.0× default (no player yet)
+    /// — the chip must KEEP its fallback rather than be pinned to that default,
+    /// so the bind-time re-sync can later show the real restored rate. Kills a
+    /// mutation that swaps the ternary (would clobber the chip with 1.0×).
+    func testDisplayRate_unboundKeepsFallback() {
+        XCTAssertEqual(
+            V.displayRate(sessionRate: .normalTime, isBound: false, fallback: .doubleTime),
+            .doubleTime,
+            "Pre-bind, the chip keeps its fallback — the default session rate must not overwrite it")
+    }
+
     // MARK: - Timecode formatter (relocated when the dead mini-player view was removed)
 
     /// Pure `TimeInterval` -> "MM:SS" / "H:MM:SS" formatter, relocated onto the
@@ -178,5 +270,39 @@ final class AudiobookMorphingPlayerViewTests: XCTestCase {
                        "NaN must format as --:-- (guard against /0 in playbackProgress upstream)")
         XCTAssertEqual(V.formatTime(.infinity), "--:--",
                        "Infinity must format as --:-- (defensive against toolkit edge cases)")
+    }
+
+    // MARK: downloadingAccessibilityLabel
+
+    /// The download overlay collapses its children for VoiceOver, so the label
+    /// must fold in the book title/author — otherwise a blind patron hears only
+    /// a bare percentage for the up-to-180s download. Asserts title AND author
+    /// are both present (kills dropping either) and that the percentage leads.
+    func testDownloadingAccessibilityLabel_foldsTitleAndAuthor() {
+        let label = V.downloadingAccessibilityLabel(title: "The Hobbit", authors: "J.R.R. Tolkien", progress: 0.42)
+        XCTAssertTrue(label.contains("42%"), "Progress percentage must lead the announcement: \(label)")
+        XCTAssertTrue(label.contains("The Hobbit"), "Title must be announced so the patron knows what is downloading: \(label)")
+        XCTAssertTrue(label.contains("J.R.R. Tolkien"), "Author must be announced: \(label)")
+    }
+
+    /// Missing/empty title or author must not emit a dangling separator or an
+    /// empty segment — only the parts that exist are joined.
+    func testDownloadingAccessibilityLabel_omitsMissingMetadata() {
+        let noAuthor = V.downloadingAccessibilityLabel(title: "Dune", authors: nil, progress: 0.5)
+        XCTAssertTrue(noAuthor.contains("Dune"), "Title present: \(noAuthor)")
+        XCTAssertFalse(noAuthor.hasSuffix(". "), "No dangling separator when author is absent: \(noAuthor)")
+
+        let bareEmpty = V.downloadingAccessibilityLabel(title: "", authors: "", progress: 0.0)
+        XCTAssertTrue(bareEmpty.contains("0%"), "Percentage still announced with empty metadata: \(bareEmpty)")
+        XCTAssertFalse(bareEmpty.contains(". ."), "Empty title/author must not produce empty joined segments: \(bareEmpty)")
+    }
+
+    /// Progress is clamped so a transiently out-of-range value from the toolkit
+    /// never announces a nonsensical "-4%" or "142%".
+    func testDownloadingAccessibilityLabel_clampsProgress() {
+        XCTAssertTrue(V.downloadingAccessibilityLabel(title: "T", authors: nil, progress: -0.04).contains("0%"),
+                      "Negative progress clamps to 0%")
+        XCTAssertTrue(V.downloadingAccessibilityLabel(title: "T", authors: nil, progress: 1.42).contains("100%"),
+                      "Over-unity progress clamps to 100%")
     }
 }

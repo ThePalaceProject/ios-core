@@ -268,7 +268,17 @@ struct AudiobookMorphingPlayerView: View {
         .overlay(alignment: .bottom) { toastOverlay }
         .accessibilityElement(children: .contain)
         .onAppear {
-            currentRate = audiobookSession.currentPlaybackRate
+            // Only adopt the session rate once a manager is bound. On a fresh
+            // cold open the player mounts (loading shell) BEFORE bind, so a bare
+            // `currentPlaybackRate` read here returns the default 1.0× and would
+            // pin the speed chip at 1.0× for the whole session even though the
+            // toolkit restored the patron's persisted rate. The bind-time
+            // `.onChange` below re-syncs once the real rate is known.
+            currentRate = Self.displayRate(
+                sessionRate: audiobookSession.currentPlaybackRate,
+                isBound: audiobookSession.hasActiveManager,
+                fallback: currentRate
+            )
             // Announce the screen transition + move VoiceOver focus to the title
             // (mirrors toolkit AudiobookPlayerView.onAppear).
             NotificationCenter.default.post(
@@ -278,6 +288,21 @@ struct AudiobookMorphingPlayerView: View {
             UIAccessibility.post(notification: .layoutChanged, argument: nil)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
                 isTitleFocused = true
+            }
+        }
+        // Re-sync the speed chip when the player binds. `presenter.playbackModel`
+        // goes non-nil exactly at bind (`adoptPlaybackModel`), by which point the
+        // manager is set and `currentPlaybackRate` returns the toolkit's restored
+        // (persisted, global) rate — so the chip matches what's actually playing
+        // instead of the pre-bind 1.0× default. Fires only on a real bind; a
+        // mini→expand re-open (model already bound) is handled by `.onAppear`.
+        .onChange(of: presenter.playbackModel != nil) { _, isBound in
+            if isBound {
+                currentRate = Self.displayRate(
+                    sessionRate: audiobookSession.currentPlaybackRate,
+                    isBound: true,
+                    fallback: currentRate
+                )
             }
         }
         .onChange(of: presenter.toastMessage) { _, newValue in
@@ -656,50 +681,192 @@ struct AudiobookMorphingPlayerView: View {
 
     // MARK: - Loading overlay (toolkit `LoadingView` / `LoadingErrorView` parity)
 
+    /// The four mutually-exclusive presentations of the loading overlay. Pulled
+    /// out of `loadingOverlay`'s inline branching so the decision is a pure,
+    /// mutation-testable function (`loadingOverlayState`) instead of a tangle of
+    /// view-side `if`s — matching the `nonisolated static` predicate pattern used
+    /// across the audiobook session code.
+    enum LoadingOverlayState: Equatable {
+        /// Player is loaded — no overlay.
+        case hidden
+        /// Content is still downloading (the pre-bind PP-4542 `.lcpa` wait, or a
+        /// post-bind track download). Show a determinate "Downloading… NN%" state
+        /// — NOT the shimmer skeleton (which is opaque and occluded the download
+        /// bar, so a healthy multi-minute download read as a hang) and NOT the
+        /// load-error overlay (a download in flight is not a load failure).
+        case downloading
+        /// The 30s load timeout fired while the player was neither loaded nor
+        /// downloading — surface the error + retry.
+        case loadError
+        /// Brief "materializing" shimmer for the load window before we know
+        /// whether content is downloading (or the toolkit is buffering a
+        /// locally-present book). Also the QA `forceSkeletons` inspection state.
+        case skeleton
+    }
+
+    /// Pure decision for which loading presentation to show. Kept free of view
+    /// state so it can be unit-tested for every combination.
+    ///
+    /// `forceSkeletons` (the PP-4797 QA override, a compile-time `false` in
+    /// release) always wins so the skeleton can be inspected on the sim — the
+    /// real `!isLoaded` window is shorter than simdrive's observe latency.
+    /// Otherwise: a loaded player shows nothing; an in-flight download shows the
+    /// determinate downloading state (BEFORE the load-error check, so a slow
+    /// download never trips the 30s error); a timed-out non-downloading load
+    /// shows the error; everything else is the transient skeleton.
+    nonisolated static func loadingOverlayState(
+        isLoaded: Bool,
+        isDownloading: Bool,
+        loadingTimedOut: Bool,
+        forceSkeletons: Bool
+    ) -> LoadingOverlayState {
+        if forceSkeletons { return .skeleton }
+        guard !isLoaded else { return .hidden }
+        if isDownloading { return .downloading }
+        if loadingTimedOut { return .loadError }
+        return .skeleton
+    }
+
+    /// Whether the 30s load-error timer, once fired, should actually surface the
+    /// error. A download in flight is healthy progress, not a load failure, so
+    /// the timeout is suppressed while `isDownloading` — the download has its own
+    /// bound (the PP-4542 180s content wait) and must not be short-circuited by
+    /// the view's buffering-window timer.
+    nonisolated static func shouldSurfaceLoadTimeout(isLoaded: Bool, isDownloading: Bool) -> Bool {
+        !isLoaded && !isDownloading
+    }
+
+    /// VoiceOver label for the determinate download overlay. The overlay
+    /// visually shows cover + title + author + progress, but
+    /// `.accessibilityElement(children: .ignore)` collapses those children — so
+    /// the label must carry the title/author itself, or a blind patron hears
+    /// only a bare percentage for the up-to-180s download. Progress is clamped
+    /// so a transiently out-of-range value never announces "-4%" / "142%".
+    nonisolated static func downloadingAccessibilityLabel(
+        title: String?,
+        authors: String?,
+        progress: Double
+    ) -> String {
+        let pct = Int((min(max(progress, 0), 1)) * 100)
+        var parts = ["\(Strings.Generic.audiobookDownloading), \(pct)%"]
+        if let title, !title.isEmpty { parts.append(title) }
+        if let authors, !authors.isEmpty { parts.append(authors) }
+        return parts.joined(separator: ". ")
+    }
+
+    /// Resolves the rate the speed chip should display. Only adopts the session's
+    /// rate once a manager is bound — pre-bind, `currentPlaybackRate` returns the
+    /// default 1.0× (no player yet), which must NOT overwrite the chip, or a
+    /// freshly-reopened book (whose persisted rate the toolkit restores on bind)
+    /// would show 1.0× while playing faster. When bound, the session rate is the
+    /// source of truth. Pure so the sync decision is unit-tested for both phases.
+    nonisolated static func displayRate(
+        sessionRate: PlaybackRate,
+        isBound: Bool,
+        fallback: PlaybackRate
+    ) -> PlaybackRate {
+        isBound ? sessionRate : fallback
+    }
+
     @ViewBuilder
     private var loadingOverlay: some View {
-        // `|| DebugSettings.forceSkeletons` (the PP-4797 QA override, a
-        // compile-time `false` in release) holds the loading skeleton up over a
-        // loaded player so it can be inspected on the sim — the real
-        // `!isLoaded` window is shorter than simdrive's observe latency on a
-        // warm manifest, so this is the DoD-#12 fixture seam for this state.
-        if !audiobookSession.isLoaded || DebugSettings.forceSkeletons {
-            if loadingTimedOut {
-                ZStack {
-                    Color.black.opacity(0.5).ignoresSafeArea()
-                    VStack(spacing: 16) {
-                        Image(systemName: "exclamationmark.triangle")
-                            .font(.system(size: 40)).foregroundStyle(.yellow)
-                        Text(Strings.Generic.audiobookLoadErrorTitle)
-                            .foregroundStyle(.white).font(.headline)
-                        Text(Strings.Generic.audiobookLoadErrorMessage)
-                            .foregroundStyle(.white).multilineTextAlignment(.center)
-                            .padding(.horizontal, 32)
-                        Button {
-                            loadingTimedOut = false
-                            audiobookSession.play()
-                        } label: {
-                            Text(Strings.Generic.audiobookRetry)
-                                .fontWeight(.semibold).foregroundStyle(.black)
-                                .padding(.horizontal, 32).padding(.vertical, 10)
-                                .background(Color.white).cornerRadius(8)
+        switch Self.loadingOverlayState(
+            isLoaded: audiobookSession.isLoaded,
+            isDownloading: presenter.isDownloading,
+            loadingTimedOut: loadingTimedOut,
+            forceSkeletons: DebugSettings.forceSkeletons
+        ) {
+        case .hidden:
+            EmptyView()
+        case .downloading:
+            playerDownloadingOverlay
+        case .loadError:
+            ZStack {
+                Color.black.opacity(0.5).ignoresSafeArea()
+                VStack(spacing: 16) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.system(size: 40)).foregroundStyle(.yellow)
+                    Text(Strings.Generic.audiobookLoadErrorTitle)
+                        .foregroundStyle(.white).font(.headline)
+                    Text(Strings.Generic.audiobookLoadErrorMessage)
+                        .foregroundStyle(.white).multilineTextAlignment(.center)
+                        .padding(.horizontal, 32)
+                    Button {
+                        loadingTimedOut = false
+                        audiobookSession.play()
+                    } label: {
+                        Text(Strings.Generic.audiobookRetry)
+                            .fontWeight(.semibold).foregroundStyle(.black)
+                            .padding(.horizontal, 32).padding(.vertical, 10)
+                            .background(Color.white).cornerRadius(8)
+                    }
+                }
+            }
+            .accessibilityElement(children: .contain)
+        case .skeleton:
+            playerLoadingSkeleton
+                .onAppear {
+                    // Arm the 30s timeout; reset on (re)appear (mirrors toolkit).
+                    // Suppressed while a download is in flight (see
+                    // `shouldSurfaceLoadTimeout`) so a healthy multi-minute
+                    // content download can't false-trip the load-error overlay.
+                    loadingTimedOut = false
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 30) {
+                        if Self.shouldSurfaceLoadTimeout(
+                            isLoaded: audiobookSession.isLoaded,
+                            isDownloading: presenter.isDownloading
+                        ) {
+                            loadingTimedOut = true
                         }
                     }
                 }
-                .accessibilityElement(children: .contain)
-            } else {
-                playerLoadingSkeleton
-                    .onAppear {
-                        // Arm the 30s timeout; reset on (re)appear (mirrors toolkit).
-                        loadingTimedOut = false
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 30) {
-                            if !audiobookSession.isLoaded {
-                                loadingTimedOut = true
-                            }
-                        }
-                    }
-            }
         }
+    }
+
+    /// Determinate "Downloading…" state shown while the `.lcpa` content is still
+    /// landing (or tracks are downloading post-bind). Reuses the real cover +
+    /// title so it reads as the player materializing, and shows both a
+    /// percentage bar AND an always-animated indeterminate track — the latter so
+    /// it never reads as frozen even if the fulfillment layer reports progress
+    /// coarsely (a single 0→1 jump at completion). Opaque background matches the
+    /// player chrome (follows system appearance).
+    private var playerDownloadingOverlay: some View {
+        ZStack {
+            Color(.systemBackground).ignoresSafeArea()
+            VStack(spacing: 24) {
+                Spacer(minLength: 24)
+                coverImageOrPlaceholder
+                    .aspectRatio(1, contentMode: .fit)
+                    .frame(maxWidth: 240)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .shadow(color: .black.opacity(0.25), radius: 12, y: 6)
+                titleAuthorFull
+                    .padding(.horizontal, 24)
+                VStack(spacing: 10) {
+                    ProgressView(value: Double(min(max(presenter.overallDownloadProgress, 0), 1)), total: 1.0)
+                        .progressViewStyle(.linear)
+                        .tint(.accentColor)
+                        .frame(maxWidth: 260)
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .controlSize(.mini)
+                        Text("\(Strings.Generic.audiobookDownloading) \(Int(presenter.overallDownloadProgress * 100))%")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                    }
+                }
+                Spacer(minLength: 24)
+            }
+            .padding(.horizontal, 24)
+        }
+        .transition(.opacity)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Self.downloadingAccessibilityLabel(
+            title: presenter.currentBook?.title,
+            authors: presenter.currentBook?.authors,
+            progress: Double(presenter.overallDownloadProgress)
+        ))
     }
 
     /// Skeleton lockup shown while the audiobook loads — replaces the old
