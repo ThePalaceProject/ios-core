@@ -1,0 +1,5 @@
+# Non-system `.shared` read count baseline — Wave 0 ratchet (monotone-down).
+# Consumed by scripts/check-shared-read-count.sh.
+# Single integer. Count may only go DOWN. Captured 2026-07-23.
+# See docs/architecture/god-class-decomposition-plan.md §3c + docs/architecture/singleton-census.md.
+250
