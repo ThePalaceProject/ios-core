@@ -40,6 +40,7 @@
 //
 
 import Foundation
+import PalacePreferences
 import PalaceAuth
 import PalaceNetwork
 @testable import Palace

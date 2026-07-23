@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import PalacePreferences
 import PalaceLogging
 
 extension TPPMigrationManager {

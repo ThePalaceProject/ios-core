@@ -1,4 +1,5 @@
 import Combine
+import PalacePreferences
 import SwiftUI
 import PalaceLogging
 import PalaceCatalog

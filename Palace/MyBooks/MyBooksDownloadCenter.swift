@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import PalacePreferences
 import UIKit
 import PalaceAudiobookToolkit
 import Combine

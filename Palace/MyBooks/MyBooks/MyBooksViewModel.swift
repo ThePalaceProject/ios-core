@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import PalacePreferences
 import Combine
 import PalaceLogging
 

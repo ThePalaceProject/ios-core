@@ -1,4 +1,5 @@
 import XCTest
+import PalacePreferences
 @testable import Palace
 
 /// Covers the developer-settings custom registry URL construction

@@ -12,6 +12,7 @@
 //
 
 import XCTest
+import PalacePreferences
 import Combine
 import PalaceCatalog
 @testable import Palace

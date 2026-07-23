@@ -1,4 +1,5 @@
 import Foundation
+import PalacePreferences
 import PalaceLogging
 
 /**
@@ -14,7 +15,7 @@ import PalaceLogging
 class TPPMigrationManager: NSObject {
     private static let lastLaunchBuildKey = "TPPMigrationManager.lastLaunchBuild"
 
-    @objc static func migrate(settings: TPPSettings = AppContainer.production().settings) {
+    static func migrate(settings: TPPSettings = AppContainer.production().settings) {
         // Fetch target version
         guard let infoDictionary = Bundle.main.infoDictionary,
               let targetVersion = infoDictionary["CFBundleShortVersionString"] as? String else {

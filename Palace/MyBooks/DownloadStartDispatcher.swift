@@ -26,6 +26,7 @@
 //
 
 import Foundation
+import PalacePreferences
 import PalaceLogging
 
 // MARK: - Delegate

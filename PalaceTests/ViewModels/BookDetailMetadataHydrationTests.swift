@@ -8,6 +8,7 @@
 //
 
 import XCTest
+import PalacePreferences
 import PalaceCatalog
 @testable import Palace
 
