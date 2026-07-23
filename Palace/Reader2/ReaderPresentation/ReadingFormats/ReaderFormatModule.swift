@@ -13,6 +13,7 @@
 import Foundation
 import UIKit
 import ReadiumShared
+import PalaceBookModel
 
 /// A ReaderFormatModule handles presentation of publications in a
 /// given format (eg. EPUB, CBZ).

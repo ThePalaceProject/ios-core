@@ -59,6 +59,7 @@ import Foundation
 import PalaceAudiobookToolkit
 import SwiftUI
 import UIKit
+import PalaceBookModel
 
 /// Not `final` — see CLAUDE.md "Don't make new services `final` reflexively"
 /// memory pin. Spy test doubles in

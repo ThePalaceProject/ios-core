@@ -10,6 +10,7 @@ import XCTest
 import PalaceCatalog
 @testable import Palace
 @testable import PalaceAudiobookToolkit
+import PalaceBookModel
 
 @MainActor
 class AudiobookBookmarkBusinessLogicTests: XCTestCase {

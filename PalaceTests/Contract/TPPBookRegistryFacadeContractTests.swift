@@ -47,6 +47,7 @@ import XCTest
 import Combine
 import UIKit
 @testable import Palace
+import PalaceBookModel
 
 @MainActor
 final class TPPBookRegistryFacadeContractTests: PalaceWiringTestCase {
@@ -71,7 +72,9 @@ final class TPPBookRegistryFacadeContractTests: PalaceWiringTestCase {
     /// thread-safe `CallLog`. Only the `thumbnailImage` surface the facade
     /// actually drives is recorded; everything else is an inert no-op / nil so
     /// constructing it boots nothing.
-    private final class SpyImageLoader: ImageLoading {
+    // nonisolated: ImageLoading moved into the Swift-6 PalaceBookModel package, flipping a
+    // conformer's inferred isolation; explicit nonisolated keeps this spy off-main-safe.
+    private nonisolated final class SpyImageLoader: ImageLoading, @unchecked Sendable {
         let log = CallLog()
 
         func coverImage(for book: TPPBook) async -> UIImage? { nil }

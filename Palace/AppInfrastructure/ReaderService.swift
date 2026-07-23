@@ -7,6 +7,7 @@ import Combine
 // `TPPLastReadPositionSynchronizer`, etc. Honest ceiling until Readium annotates.
 @preconcurrency import ReadiumShared
 import PalaceLogging
+import PalaceBookModel
 #if LCP
 import ReadiumLCP
 #endif

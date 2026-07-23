@@ -8,6 +8,7 @@
 import SwiftUI
 import PalacePreferences
 import LocalAuthentication
+import PalaceBookModel
 
 struct AccountDetailView: View {
     typealias DisplayStrings = Strings.Settings

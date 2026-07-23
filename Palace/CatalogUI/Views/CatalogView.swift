@@ -2,6 +2,7 @@ import SwiftUI
 import PalacePreferences
 import UIKit
 import PalaceLogging
+import PalaceBookModel
 
 struct CatalogView: View {
     // MARK: - Properties

@@ -8,7 +8,7 @@ import PalaceCatalog
 //  Copyright © 2022 The Palace Project. All rights reserved.
 //
 
-@objc enum TPPBookContentType: Int {
+public enum TPPBookContentType: Int {
     case epub
     case audiobook
     case pdf
@@ -17,7 +17,7 @@ import PalaceCatalog
     /// `Palace/ReaderStreaming/` WKWebView shell. No on-device asset.
     case streamingHTML
 
-    static func from(mimeType: String?) -> TPPBookContentType {
+    public static func from(mimeType: String?) -> TPPBookContentType {
         guard let mimeType = mimeType else {
             return .unsupported
         }

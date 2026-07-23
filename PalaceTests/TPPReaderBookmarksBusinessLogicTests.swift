@@ -10,6 +10,7 @@ import XCTest
 import ReadiumShared
 import PalaceCatalog
 @testable import Palace
+import PalaceBookModel
 
 @MainActor
 class TPPReaderBookmarksBusinessLogicTests: XCTestCase {

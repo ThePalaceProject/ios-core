@@ -13,6 +13,7 @@
 
 import SwiftUI
 import UniformTypeIdentifiers
+import PalaceBookModel
 
 // MARK: - View model
 

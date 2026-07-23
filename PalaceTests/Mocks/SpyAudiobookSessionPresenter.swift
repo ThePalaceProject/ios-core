@@ -35,6 +35,7 @@ import Foundation
 import UIKit
 import PalaceAudiobookToolkit
 @testable import Palace
+import PalaceBookModel
 
 /// Spy subclass of `AudiobookSessionPresenter` — records calls to each
 /// action method, then forwards to `super` so published state mirrors

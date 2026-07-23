@@ -7,9 +7,15 @@
 # TPPSettings moved to the leaf package — a decomposition import that REDUCES coupling,
 # not accretion. Re-baselined by exactly the import delta. (Follow-up: make the ratchet
 # count logic lines, not raw wc -l, so decomposition imports don't trip it — Wave 0 debt.)
-2762 Palace/Audiobooks/AudiobookSessionManager.swift
+# Wave 2a (+1 on 4 files): AudiobookSessionManager, MyBooksDownloadCenter,
+# BookDetailViewModel, BorrowOperation each gained a single `import PalaceBookModel`
+# line when TPPBook + book-model value types moved to the PalaceBookModel leaf package.
+# Verified import-only (git diff = one `+import` line each). AccountsManager and
+# TPPSignInBusinessLogic reference no 2a-moved type, so they are UNCHANGED here (they
+# gain the import in Wave 2b when TPPBookRegistry moves).
+2763 Palace/Audiobooks/AudiobookSessionManager.swift
 2320 Palace/Accounts/Library/AccountsManager.swift
-2168 Palace/MyBooks/MyBooksDownloadCenter.swift
-1376 Palace/Book/UI/BookDetail/BookDetailViewModel.swift
+2169 Palace/MyBooks/MyBooksDownloadCenter.swift
+1377 Palace/Book/UI/BookDetail/BookDetailViewModel.swift
 1119 Palace/SignInLogic/TPPSignInBusinessLogic.swift
-966 Palace/MyBooks/BorrowOperation.swift
+967 Palace/MyBooks/BorrowOperation.swift

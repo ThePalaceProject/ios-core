@@ -14,6 +14,7 @@ import UIKit
 // these `Sendable`, drop `@preconcurrency`.
 @preconcurrency import ReadiumShared
 @preconcurrency import ReadiumStreamer
+import PalaceBookModel
 
 /// The LibraryService makes a book ready for presentation without dealing
 /// with the specifics of how a book should be presented.

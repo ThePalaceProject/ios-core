@@ -21,6 +21,7 @@
 //
 
 import Foundation
+import PalaceBookModel
 
 enum DownloadStartReducer {
 

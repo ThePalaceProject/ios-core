@@ -1,17 +1,17 @@
 import Foundation
 
-let DownloadingKey = "downloading"
-let DownloadFailedKey = "download-failed"
-let DownloadNeededKey = "download-needed"
-let DownloadSuccessfulKey = "download-successful"
-let UnregisteredKey = "unregistered"
-let HoldingKey = "holding"
-let UsedKey = "used"
-let UnsupportedKey = "unsupported"
-let ReturningKey = "returning"
-let SAMLStartedKey = "saml-started"
+public let DownloadingKey = "downloading"
+public let DownloadFailedKey = "download-failed"
+public let DownloadNeededKey = "download-needed"
+public let DownloadSuccessfulKey = "download-successful"
+public let UnregisteredKey = "unregistered"
+public let HoldingKey = "holding"
+public let UsedKey = "used"
+public let UnsupportedKey = "unsupported"
+public let ReturningKey = "returning"
+public let SAMLStartedKey = "saml-started"
 
-@objc public enum TPPBookState: Int, CaseIterable, Sendable {
+public enum TPPBookState: Int, CaseIterable, Sendable {
     case unregistered = 0
     case downloadNeeded = 1
     case downloading
@@ -24,7 +24,7 @@ let SAMLStartedKey = "saml-started"
     // This state means that user is logged using SAML environment and app begun download process, but didn't transition to download center yet
     case SAMLStarted
 
-    init?(_ stringValue: String) {
+    public init?(_ stringValue: String) {
         switch stringValue {
         case DownloadingKey:
             self = .downloading
@@ -49,7 +49,7 @@ let SAMLStartedKey = "saml-started"
         }
     }
 
-    func stringValue() -> String {
+    public func stringValue() -> String {
         switch self {
         case .downloading:
             return DownloadingKey
@@ -169,27 +169,5 @@ public extension TPPBookState {
     static func canTransition(from: TPPBookState, to: TPPBookState) -> Bool {
         if from == to { return true }
         return allowedTransitions.contains(.init(from: from, to: to))
-    }
-}
-
-// For Objective-C, since Obj-C enum is not allowed to have methods
-// TODO: Remove when migration to Swift completed
-class TPPBookStateHelper: NSObject {
-    @objc(stringValueFromBookState:)
-    static func stringValue(from state: TPPBookState) -> String {
-        return state.stringValue()
-    }
-
-    @objc(bookStateFromString:)
-    static func bookState(fromString string: String) -> NSNumber? {
-        guard let state = TPPBookState(string) else {
-            return nil
-        }
-
-        return NSNumber(integerLiteral: state.rawValue)
-    }
-
-    @objc static func allBookStates() -> [TPPBookState.RawValue] {
-        return TPPBookState.allCases.map { $0.rawValue }
     }
 }

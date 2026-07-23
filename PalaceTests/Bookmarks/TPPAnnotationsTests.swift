@@ -9,6 +9,7 @@
 import XCTest
 import PalaceCatalog
 @testable import Palace
+import PalaceBookModel
 
 // MARK: - Mock URLProtocol for Network Request Interception
 

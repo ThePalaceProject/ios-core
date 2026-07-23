@@ -26,6 +26,7 @@
 
 import XCTest
 @testable import Palace
+import PalaceBookModel
 
 @MainActor
 final class TPPSignInBusinessLogicSignOutTests: XCTestCase {

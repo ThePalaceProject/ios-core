@@ -22,6 +22,7 @@
 
 import Foundation
 import PalaceLogging
+import PalaceBookModel
 
 // MARK: - Seam S1 types
 

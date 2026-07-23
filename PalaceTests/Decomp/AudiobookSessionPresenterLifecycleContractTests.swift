@@ -80,6 +80,7 @@ import UIKit
 import XCTest
 import PalaceAudiobookToolkit
 @testable import Palace
+import PalaceBookModel
 
 // MARK: - Recording presenter (subclasses the concrete presenter, records order)
 

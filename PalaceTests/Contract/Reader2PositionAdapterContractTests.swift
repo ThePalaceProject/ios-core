@@ -38,6 +38,7 @@ import ReadiumShared
 import PalaceCatalog
 import PalaceReadingPosition
 @testable import Palace
+import PalaceBookModel
 
 // MARK: - Spy PositionWriter (records into CallLog)
 

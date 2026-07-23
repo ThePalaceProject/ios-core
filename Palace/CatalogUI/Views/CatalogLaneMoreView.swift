@@ -3,6 +3,7 @@ import Combine
 import PalaceLogging
 import PalaceNetwork
 import PalaceCatalog
+import PalaceBookModel
 
 /// Refactored, streamlined catalog lane view that delegates business logic to ViewModel
 struct CatalogLaneMoreView: View {

@@ -1,3 +1,4 @@
+import Foundation
 import PalaceLogging
 
 /// This class specifies the keys used to represent a TPPReadiumBookmark
@@ -17,93 +18,85 @@ import PalaceLogging
 /// (STATE.SplitBrain: an independent copy that drifts silently breaks the
 /// bookmark↔locator round-trip for persisted positions). The canonical raw
 /// values are pinned by `TPPReadiumBookmarkTests.testWireFormatKeys_ArePinned`.
-@objc class TPPBookmarkDictionaryRepresentation: NSObject {
+public class TPPBookmarkDictionaryRepresentation: NSObject {
     fileprivate static let annotationIdKey = "annotationId"
-    @objc static let hrefKey = "href"
-    @objc static let locationKey = "location"
-    static let timeKey = "time"
-    static let chapterKey = "chapter"
+    public static let hrefKey = "href"
+    static let locationKey = "location"
+    public static let timeKey = "time"
+    public static let chapterKey = "chapter"
     fileprivate static let pageKey = "page"
     fileprivate static let deviceKey = "device"
-    static let chapterProgressKey = "progressWithinChapter"
-    static let bookProgressKey = "progressWithinBook"
+    public static let chapterProgressKey = "progressWithinChapter"
+    public static let bookProgressKey = "progressWithinBook"
     fileprivate static let readingOrderItem = "readingOrderItem"
     fileprivate static let readingOrderItemOffsetMilliseconds = "readingOrderItemOffsetMilliseconds"
 }
 
-protocol Bookmark: NSObject {}
+public protocol Bookmark: NSObject {}
 
 /// Internal representation of an annotation. This may represent an actual
 /// user bookmark as well as the "bookmark" of the last read position in a book.
-@objcMembers final class TPPReadiumBookmark: NSObject, Bookmark {
+public final class TPPReadiumBookmark: NSObject, Bookmark {
 
     /// The bookmark ID.
-    var annotationId: String?
+    public var annotationId: String?
 
-    var chapter: String?
-    var page: String?
+    public var chapter: String?
+    public var page: String?
 
-    var location: String
-    var href: String
+    public var location: String
+    public var href: String
 
-    var progressWithinChapter: Float = 0.0
-    var progressWithinBook: Float = 0.0
+    public var progressWithinChapter: Float = 0.0
+    public var progressWithinBook: Float = 0.0
 
-    var readingOrderItem: String?
-    var readingOrderItemOffsetMilliseconds: Float = 0.0
+    public var readingOrderItem: String?
+    public var readingOrderItemOffsetMilliseconds: Float = 0.0
 
-    var percentInChapter: String {
+    public var percentInChapter: String {
         return (self.progressWithinChapter * 100).roundTo(decimalPlaces: 0)
     }
-    var percentInBook: String {
+    public var percentInBook: String {
         return (self.progressWithinBook * 100).roundTo(decimalPlaces: 0)
     }
 
-    var device: String?
+    public var device: String?
 
     /// Date formatted as per RFC 3339
-    let time: String
+    public let time: String
 
-    init?(annotationId: String?,
-          href: String?,
-          chapter: String?,
-          page: String?,
-          location: String?,
-          progressWithinChapter: Float,
-          progressWithinBook: Float,
-          readingOrderItem: String?,
-          readingOrderItemOffsetMilliseconds: Float?,
-          time: String?,
-          device: String?) {
-
-        guard let href = href else {
-            Log.error(#file, "Bookmark creation failed init due to nil `href`.")
-            return nil
-        }
-
+    /// Package designated initializer taking a pre-resolved `locationString`.
+    /// The full-field initializer that derives the location string via the
+    /// Readium-backed `TPPBookLocation(href:type:...)` convenience init lives
+    /// app-side in `TPPReadiumBookmark+R3.swift` (ReadiumShared cannot cross
+    /// into this leaf model package) and delegates here — Wave 2a extraction,
+    /// behavior byte-identical.
+    public init(annotationId: String?,
+                href: String,
+                chapter: String?,
+                page: String?,
+                locationString: String,
+                progressWithinChapter: Float,
+                progressWithinBook: Float,
+                readingOrderItem: String?,
+                readingOrderItemOffsetMilliseconds: Float,
+                time: String,
+                device: String?) {
         self.annotationId = annotationId
         self.href = href
         self.chapter = chapter ?? ""
         self.page = page ?? ""
-
-        self.location = TPPBookLocation(
-            href: href,
-            type: "LocatorHrefProgression",
-            chapterProgression: progressWithinChapter,
-            totalProgression: progressWithinBook,
-            title: chapter,
-            position: nil
-        )?.locationString ?? ""
-
+        self.location = locationString
         self.progressWithinChapter = progressWithinChapter
         self.progressWithinBook = progressWithinBook
         self.readingOrderItem = readingOrderItem
-        self.readingOrderItemOffsetMilliseconds = readingOrderItemOffsetMilliseconds ?? 0.0
-        self.time = time ?? NSDate().rfc3339String()
+        self.readingOrderItemOffsetMilliseconds = readingOrderItemOffsetMilliseconds
+        self.time = time
         self.device = device
+        super.init()
     }
 
-    init?(dictionary: NSDictionary) {
+    public init?(dictionary: NSDictionary) {
         guard let href = dictionary[TPPBookmarkDictionaryRepresentation.hrefKey] as? String,
               let location = dictionary[TPPBookmarkDictionaryRepresentation.locationKey] as? String,
               let time = dictionary[TPPBookmarkDictionaryRepresentation.timeKey] as? String else {
@@ -151,7 +144,7 @@ protocol Bookmark: NSObject {}
         }
     }
 
-    var dictionaryRepresentation: NSDictionary {
+    public var dictionaryRepresentation: NSDictionary {
         return [
             TPPBookmarkDictionaryRepresentation.annotationIdKey: self.annotationId ?? "",
             TPPBookmarkDictionaryRepresentation.hrefKey: self.href,
@@ -167,7 +160,7 @@ protocol Bookmark: NSObject {}
         ]
     }
 
-    override func isEqual(_ object: Any?) -> Bool {
+    public override func isEqual(_ object: Any?) -> Bool {
         guard let other = object as? TPPReadiumBookmark else {
             return false
         }
@@ -184,13 +177,13 @@ protocol Bookmark: NSObject {}
 }
 
 extension TPPReadiumBookmark {
-    override var description: String {
+    public override var description: String {
         return "\(dictionaryRepresentation)"
     }
 }
 
 extension TPPReadiumBookmark {
-    func toJSONDictionary() -> [String: Any] {
+    public func toJSONDictionary() -> [String: Any] {
         var dict: [String: Any] = [:]
         dict[TPPBookmarkDictionaryRepresentation.annotationIdKey] = self.annotationId
         dict[TPPBookmarkDictionaryRepresentation.chapterKey] = self.chapter

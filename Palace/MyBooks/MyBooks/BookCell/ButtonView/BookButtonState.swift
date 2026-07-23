@@ -8,6 +8,7 @@
 
 import Foundation
 import PalaceCatalog
+import PalaceBookModel
 
 enum BookButtonState: Equatable {
     case canBorrow

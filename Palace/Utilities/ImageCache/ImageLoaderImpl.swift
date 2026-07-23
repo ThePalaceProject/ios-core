@@ -1,5 +1,6 @@
 import UIKit
 import PalaceLogging
+import PalaceBookModel
 
 /// Transports the non-`Sendable` completion handler across the `@Sendable`
 /// `Task` boundary in the Obj-C/completion-style bridge methods. The wrapped
@@ -24,7 +25,22 @@ private final class ImageCompletionBox: @unchecked Sendable {
 ///
 /// Not `final` so test subclasses can override individual hooks if needed —
 /// per CLAUDE.md "don't make new services final reflexively".
-public class ImageLoader: ImageLoading, @unchecked Sendable {
+///
+/// `nonisolated` is load-bearing (Wave 2a), for the same empirical reason as
+/// `ImageCache`: moving the `ImageLoading` protocol out of this app-target
+/// module into the `PalaceBookModel` package changed this conformer's inferred
+/// isolation. That flip stamped a main-executor precondition onto the class —
+/// so constructing it synchronously off the main actor (`_buildCachedAppContainer`
+/// is a nonisolated `static func`, and `AccountsManager`'s background
+/// `loadCatalogs` runs alongside it) tripped `dispatch_assert_queue` →
+/// EXC_BREAKPOINT (SIGTRAP) at launch, crashing the test host before any test
+/// ran. This class is genuinely off-main-safe — every stored property is an
+/// immutable `let` (an actor-backed `TPPBookCoverRegistry` + a `Sendable`
+/// `ImageCacheType`), it holds no mutable state, and every main-only touch
+/// (`UIScreen.main.scale`, the completion callbacks) is already an explicit
+/// `await MainActor.run` hop — so `nonisolated` restores the pre-extraction
+/// base behavior exactly rather than papering over a real main-thread need.
+public nonisolated class ImageLoader: ImageLoading, @unchecked Sendable {
     // @unchecked Sendable: only immutable `let` collaborators (an actor-backed
     // registry + a shared cache), no mutable state — safe to reference across
     // concurrency domains (its async methods are awaited from @MainActor tests).

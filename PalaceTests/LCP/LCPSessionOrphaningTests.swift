@@ -13,6 +13,7 @@
 import XCTest
 import CryptoSwift
 @testable import Palace
+import PalaceBookModel
 
 // MARK: - Session Identifier Stability Tests
 

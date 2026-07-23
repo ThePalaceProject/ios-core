@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import PalaceBookModel
 
 struct HoldsView: View {
     @EnvironmentObject private var coordinator: NavigationCoordinator

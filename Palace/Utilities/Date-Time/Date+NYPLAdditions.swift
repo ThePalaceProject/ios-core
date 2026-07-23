@@ -23,39 +23,6 @@ public enum NYPLDateSuffixType {
 
 public extension Date {
 
-    /// A static date formatter to get date strings formatted per RFC 1123
-    /// without incurring in the high cost of creating a new DateFormatter
-    /// each time, which would be ~300% more expensive.
-    static let rfc1123DateFormatter: DateFormatter = {
-        let df = DateFormatter()
-        df.locale = Locale(identifier: "en_US")
-        df.timeZone = TimeZone(identifier: "GMT")
-        df.dateFormat = "EEE, dd MMM yyyy HH:mm:ss 'GMT'"
-        return df
-    }()
-
-    /// A date string formatted per RFC 1123 for insertion into a HTTP
-    /// header field (such as the `Expires` header in a HTTP response).
-    /// Example: Wed, 25 Mar 2020 01:23:45 GMT
-    var rfc1123String: String {
-        return Date.rfc1123DateFormatter.string(from: self)
-    }
-
-    /// A static date formatter to get date strings formatted per RFC 339
-    /// without incurring in the high cost of creating a new DateFormatter
-    /// each time, which would be ~300% more expensive.
-    static let rfc339StringFormatter: DateFormatter = {
-        let df = DateFormatter()
-        df.locale = Locale(identifier: "en_US_POSIX")
-        df.timeZone = TimeZone(identifier: "GMT")
-        df.dateFormat = "yyyy'-'MM'-'dd'T'HH':'mm':'ss'Z'"
-        return df
-    }()
-
-    var rfc339String: String {
-        return Date.rfc339StringFormatter.string(from: self)
-    }
-
     /// A date string with the choice of short or long suffix
     /// Example: 5 years / 5 y / 6 months / 1 day
     func timeUntilString(suffixType: NYPLDateSuffixType) -> String {

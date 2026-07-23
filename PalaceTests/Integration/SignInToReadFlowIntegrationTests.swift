@@ -27,6 +27,7 @@ import XCTest
 import Combine
 import PalaceCatalog
 @testable import Palace
+import PalaceBookModel
 
 /// Thread-safe sink for reader-open book identifiers.
 ///

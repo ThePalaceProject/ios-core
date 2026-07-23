@@ -8,6 +8,7 @@
 import Foundation
 import PalaceLogging
 import PalaceCatalog
+import PalaceBookModel
 
 /// Narrow protocol that BookReturnService and similar callers depend on so
 /// tests can substitute a fixture / failing fetcher without standing up the

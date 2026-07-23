@@ -24,6 +24,7 @@
 
 import XCTest
 @testable import Palace
+import PalaceBookModel
 
 @MainActor
 class TPPBookRegistryLargeCorpusTests: PalaceWiringTestCase {

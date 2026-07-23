@@ -15,6 +15,7 @@
 
 import Foundation
 import PalaceCatalog
+import PalaceBookModel
 
 extension MyBooksDownloadCenter {
 

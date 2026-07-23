@@ -1,6 +1,7 @@
 import UIKit
 import MessageUI
 import PureLayout
+import PalaceBookModel
 
 @objc protocol TPPProblemReportViewControllerDelegate: AnyObject {
   func problemReportViewController(_ controller: TPPProblemReportViewController, didSelectProblemWithType type: String)

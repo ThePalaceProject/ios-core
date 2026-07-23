@@ -13,6 +13,7 @@
 import Foundation
 import UIKit
 import ReadiumShared
+import PalaceBookModel
 
 final class EPUBModule: ReaderFormatModule {
 

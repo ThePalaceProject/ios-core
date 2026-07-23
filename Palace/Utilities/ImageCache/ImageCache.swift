@@ -1,5 +1,6 @@
 import UIKit
 import PalaceLogging
+import PalaceBookModel
 
 /// Thread-safe one-shot resumer for `ImageCache.getAsync`'s checked
 /// continuation. The continuation must resume exactly once whether the
@@ -27,22 +28,6 @@ private final class OneShotImageResumer: @unchecked Sendable {
     }
 }
 
-public protocol ImageCacheType: Sendable {
-    func set(_ image: UIImage, for key: String, expiresIn: TimeInterval?)
-    func get(for key: String) -> UIImage?
-    func getAsync(for key: String) async -> UIImage?
-    func remove(for key: String)
-    func clear()
-    func warmMemoryCache(for keys: [String]) async
-}
-
-public extension ImageCacheType {
-    func set(_ image: UIImage, for key: String) {
-        let sevenDays: TimeInterval = 7 * 24 * 60 * 60
-        set(image, for: key, expiresIn: sevenDays)
-    }
-}
-
 /// `@unchecked Sendable` invariant: every stored property is either an
 /// immutable `let` (`defaultTTL`, `maxDimension`, `compressionQuality`) or a
 /// reference to a type that is itself internally thread-safe — `NSCache`
@@ -50,7 +35,41 @@ public extension ImageCacheType {
 /// thread-safe by Apple, and `dataCache` (`GeneralCache`) serializes its own
 /// access. There is no unguarded mutable stored state on `ImageCache` itself,
 /// so concurrent access across the `processingQueue` operations is safe.
-public final class ImageCache: ImageCacheType, @unchecked Sendable {
+///
+/// Isolation is load-bearing (Wave 2a): every off-main method here deliberately
+/// runs its work on `processingQueue`, and the `@Sendable` blocks handed to
+/// `processingQueue.addOperation` / `BlockOperation.addExecutionBlock` must be
+/// non-isolated. Empirically, moving the `ImageCacheType` protocol out of this
+/// app-target module into the Swift-6 `PalaceBookModel` package flipped this
+/// class's inferred isolation to `@MainActor` (the precise inference rule is not
+/// pinned down — `xcodebuild -showBuildSettings` shows no `@MainActor` default
+/// configured for the target — but the observable effect is definite: every
+/// closure formed in the class demangled `@MainActor @Sendable`). The
+/// `addOperation` blocks then carried a main-executor precondition; running them
+/// on the background `processingQueue` tripped `dispatch_assert_queue` →
+/// EXC_BREAKPOINT (SIGTRAP) the instant a cover promotion
+/// (`scheduleMemoryPromotion`/`set`) executed off main, crashing the whole test
+/// host at bootstrap.
+///
+/// TWO things are required, verified by demangling the BUILT object (nm +
+/// `swift demangle` on `ImageCache.o`), not the source:
+///   1. `nonisolated` on each off-main *method* that forms the block (`set`,
+///      `getAsync`, `scheduleMemoryPromotion`). The class-level `nonisolated`
+///      keyword does NOT make members nonisolated on its own — unmarked members
+///      stay `@MainActor`-inferred — so it is necessary but not sufficient.
+///   2. `nonisolated` on every *leaf helper the block calls synchronously*
+///      (`estimateAvailableMemory`, `resize`, `imageCost`). This is the step a
+///      first pass missed: even with (1), the `@Sendable` block still demangled
+///      `@MainActor @Sendable` because it calls `self.imageCost(...)` etc. — and
+///      a synchronous call to a `@MainActor` method re-drags the whole closure
+///      onto the main actor. Marking the leaves `nonisolated` drops the
+///      `@MainActor` from the block (demangle then reads `@Sendable () -> ()`),
+///      which is what actually stops the `dispatch_assert_queue` SIGTRAP.
+/// `handleMemoryWarning`'s closure stays `@MainActor` — correctly, it runs on
+/// main via `DispatchQueue.main.asyncAfter`. The class keyword is kept as intent.
+/// If you add a new off-main method here, mark BOTH it and any helper it calls
+/// `nonisolated`, then re-demangle the block to confirm no `@MainActor` remains.
+public nonisolated final class ImageCache: ImageCacheType, @unchecked Sendable {
     public static let shared = ImageCache()
 
     private let dataCache = GeneralCache<String, Data>(cacheName: "ImageCache", mode: .memoryAndDisk)
@@ -127,7 +146,7 @@ public final class ImageCache: ImageCacheType, @unchecked Sendable {
         }
     }
 
-    public func set(_ image: UIImage, for key: String, expiresIn: TimeInterval? = nil) {
+    public nonisolated func set(_ image: UIImage, for key: String, expiresIn: TimeInterval? = nil) {
         let ttl = expiresIn ?? defaultTTL
 
         processingQueue.addOperation { [weak self] in
@@ -182,7 +201,7 @@ public final class ImageCache: ImageCacheType, @unchecked Sendable {
 
     /// Estimates available memory based on system resources
     /// This is an approximation - iOS doesn't expose exact available memory
-    private func estimateAvailableMemory() -> UInt64 {
+    private nonisolated func estimateAvailableMemory() -> UInt64 {
         var info = mach_task_basic_info()
         var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size) / 4
 
@@ -236,7 +255,7 @@ public final class ImageCache: ImageCacheType, @unchecked Sendable {
     /// Async version: checks memory first (instant), then promotes from disk
     /// on the processing queue. Use this in async contexts (registry, view model)
     /// to get disk-cached images without blocking any thread.
-    public func getAsync(for key: String) async -> UIImage? {
+    public nonisolated func getAsync(for key: String) async -> UIImage? {
         if let img = memoryImages.object(forKey: key as NSString) {
             return img
         }
@@ -308,7 +327,7 @@ public final class ImageCache: ImageCacheType, @unchecked Sendable {
 
     /// Schedules a background disk→memory promotion for a key.
     /// Called when get() is invoked on the main thread and misses the memory cache.
-    private func scheduleMemoryPromotion(for key: String) {
+    private nonisolated func scheduleMemoryPromotion(for key: String) {
         processingQueue.addOperation { [weak self] in
             guard let self else { return }
             if self.memoryImages.object(forKey: key as NSString) != nil { return }
@@ -354,7 +373,7 @@ public final class ImageCache: ImageCacheType, @unchecked Sendable {
         memoryImages.removeAllObjects()
     }
 
-    private func resize(_ image: UIImage, maxDimension: CGFloat) -> UIImage? {
+    private nonisolated func resize(_ image: UIImage, maxDimension: CGFloat) -> UIImage? {
         let size = image.size
         guard size.width > 0 && size.height > 0 else { return image }
         let maxSide = max(size.width, size.height)
@@ -407,7 +426,7 @@ public final class ImageCache: ImageCacheType, @unchecked Sendable {
         }
     }
 
-    private func imageCost(_ image: UIImage) -> Int {
+    private nonisolated func imageCost(_ image: UIImage) -> Int {
         guard let cg = image.cgImage else { return 1 }
         return cg.bytesPerRow * cg.height
     }

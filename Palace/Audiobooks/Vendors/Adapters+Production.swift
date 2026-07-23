@@ -21,6 +21,7 @@
 
 import Foundation
 @preconcurrency import PalaceAudiobookToolkit
+import PalaceBookModel
 
 /// Production conformance for `AudiobookManifestNetworkFetching`. Delegates
 /// to `TPPNetworkExecutor.GET` with the executor's cache + token defaults.

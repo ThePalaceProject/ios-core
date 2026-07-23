@@ -8,9 +8,9 @@
 
 import Foundation
 
-typealias TPPBookLocationData = [String: Any]
+public typealias TPPBookLocationData = [String: Any]
 
-extension TPPBookLocationData {
+public extension TPPBookLocationData {
     func string(for key: TPPBookLocationKey) -> String? {
         return self[key.rawValue] as? String
     }
@@ -21,7 +21,6 @@ public enum TPPBookLocationKey: String {
     case renderer = "renderer"
 }
 
-@objcMembers
 public class TPPBookLocation: NSObject {
 
     /// Due to differences in how different renderers (e.g. Readium, RMSDK, et cetera) want to handle
@@ -30,16 +29,16 @@ public class TPPBookLocation: NSObject {
     /// `renderer` is a string that uniquely identifies the renderer that generated it. When loading a
     /// location, renderers can inspect `renderer` to ensure the location string they're about to use is
     /// compatible with their underlying systems.
-    var locationString: String
+    public var locationString: String
 
     // Renderer
-    var renderer: String
+    public var renderer: String
 
-    init?(locationString: String, renderer: String) {
+    public init?(locationString: String, renderer: String) {
         self.locationString = locationString
         self.renderer = renderer
     }
-    init?(dictionary: [String: Any]) {
+    public init?(dictionary: [String: Any]) {
         let locationData = dictionary as TPPBookLocationData
         guard let locationString = locationData.string(for: .locationString),
               let renderer = locationData.string(for: .renderer)
@@ -49,7 +48,7 @@ public class TPPBookLocation: NSObject {
         self.locationString = locationString
         self.renderer = renderer
     }
-    var dictionaryRepresentation: [String: Any] {
+    public var dictionaryRepresentation: [String: Any] {
         return [
             TPPBookLocationKey.locationString.rawValue: self.locationString,
             TPPBookLocationKey.renderer.rawValue: self.renderer
@@ -58,14 +57,14 @@ public class TPPBookLocation: NSObject {
 }
 
 extension TPPBookLocation {
-    func locationStringDictionary() -> [String: Any]? {
+    public func locationStringDictionary() -> [String: Any]? {
         guard let data = locationString.data(using: .utf8),
               let dictionary = try? JSONSerialization.jsonObject(with: data, options: .allowFragments) as? [String: Any]
         else { return nil }
         return dictionary
     }
 
-    func isSimilarTo(_ location: TPPBookLocation) -> Bool {
+    public func isSimilarTo(_ location: TPPBookLocation) -> Bool {
         guard renderer == location.renderer,
               let locationDict = locationStringDictionary(),
               let otherLocationDict = location.locationStringDictionary() else {

@@ -28,6 +28,7 @@
 import Foundation
 import PalacePreferences
 import PalaceLogging
+import PalaceBookModel
 
 // MARK: - Delegate
 

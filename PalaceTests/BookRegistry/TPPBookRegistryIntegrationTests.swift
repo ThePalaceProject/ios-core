@@ -32,6 +32,7 @@
 import XCTest
 import Combine
 @testable import Palace
+import PalaceBookModel
 
 // MARK: - TPPBookRegistry State Management Integration Tests
 

@@ -19,6 +19,7 @@
 import XCTest
 import Combine
 @testable import Palace
+import PalaceBookModel
 
 // MARK: - TPPBookRegistryRecord Persistence Tests
 

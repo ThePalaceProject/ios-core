@@ -19,6 +19,7 @@
 import Foundation
 import PalaceAudiobookToolkit
 import PalaceLogging
+import PalaceBookModel
 
 /// File-system lifecycle for downloaded book content.
 /// Non-final to allow test-only subclassing in `SpyLocalContentService`.

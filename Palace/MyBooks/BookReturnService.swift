@@ -20,6 +20,7 @@ import UIKit
 import PalaceAuth
 import PalaceLogging
 import PalaceCatalog
+import PalaceBookModel
 
 // MARK: - BookReturnServiceDelegate
 

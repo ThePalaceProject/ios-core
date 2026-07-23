@@ -9,6 +9,7 @@
 import Foundation
 import PalaceLogging
 import PalaceCatalog
+import PalaceBookModel
 
 /// Manages debug/testing settings for error scenarios and QA tools.
 /// Available in DEBUG and TestFlight builds; gated behind Developer Settings UI

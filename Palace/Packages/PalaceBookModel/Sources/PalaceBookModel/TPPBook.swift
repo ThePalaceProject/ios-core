@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import UIKit
 import Combine
 import CoreImage
 import CoreImage.CIFilterBuiltins
@@ -20,88 +21,88 @@ let DeprecatedAvailabilityStatusKey = "availability-status"
 let DeprecatedHoldsPositionKey = "holds-position"
 let DeprecatedTotalCopiesKey = "total-copies"
 
-let AcquisitionsKey = "acquisitions"
-let AlternateURLKey = "alternate"
-let AnalyticsURLKey = "analytics"
-let AnnotationsURLKey = "annotations"
-let AudienceKey = "audience"
-let AuthorLinksKey = "author-links"
-let AuthorsKey = "authors"
-let CategoriesKey = "categories"
-let DistributorKey = "distributor"
-let LanguageKey = "language"
-let IdentifierKey = "id"
-let ImageThumbnailURLKey = "image-thumbnail"
-let ImageURLKey = "image"
-let PublishedKey = "published"
-let PublisherKey = "publisher"
-let RelatedURLKey = "related-works-url"
-let PreviewURLKey = "preview-url"
-let ReportURLKey = "report-url"
-let RevokeURLKey = "revoke-url"
-let SeriesLinkKey = "series-link"
-let SeriesNameKey = "series-name"
-let SubtitleKey = "subtitle"
-let SummaryKey = "summary"
-let TitleKey = "title"
-let UpdatedKey = "updated"
-let TimeTrackingURLURLKey = "time-tracking-url"
+public let AcquisitionsKey = "acquisitions"
+public let AlternateURLKey = "alternate"
+public let AnalyticsURLKey = "analytics"
+public let AnnotationsURLKey = "annotations"
+public let AudienceKey = "audience"
+public let AuthorLinksKey = "author-links"
+public let AuthorsKey = "authors"
+public let CategoriesKey = "categories"
+public let DistributorKey = "distributor"
+public let LanguageKey = "language"
+public let IdentifierKey = "id"
+public let ImageThumbnailURLKey = "image-thumbnail"
+public let ImageURLKey = "image"
+public let PublishedKey = "published"
+public let PublisherKey = "publisher"
+public let RelatedURLKey = "related-works-url"
+public let PreviewURLKey = "preview-url"
+public let ReportURLKey = "report-url"
+public let RevokeURLKey = "revoke-url"
+public let SeriesLinkKey = "series-link"
+public let SeriesNameKey = "series-name"
+public let SubtitleKey = "subtitle"
+public let SummaryKey = "summary"
+public let TitleKey = "title"
+public let UpdatedKey = "updated"
+public let TimeTrackingURLURLKey = "time-tracking-url"
 
 public class TPPBook: NSObject, ObservableObject {
-    @objc var acquisitions: [TPPOPDSAcquisition]
-    @objc var bookAuthors: [TPPBookAuthor]?
-    @objc var categoryStrings: [String]?
-    @objc var distributor: String?
-    @objc var identifier: String
-    @objc var imageURL: URL?
-    @objc var imageThumbnailURL: URL?
-    @objc var published: Date?
-    @objc var publisher: String?
-    @objc var subtitle: String?
-    @objc var summary: String?
-    @objc var title: String
-    @objc var updated: Date
-    @objc var annotationsURL: URL?
-    @objc var analyticsURL: URL?
-    @objc var alternateURL: URL?
-    @objc var relatedWorksURL: URL?
-    @objc var previewLink: TPPOPDSAcquisition?
-    @objc var seriesURL: URL?
+    public var acquisitions: [TPPOPDSAcquisition]
+    public var bookAuthors: [TPPBookAuthor]?
+    public var categoryStrings: [String]?
+    public var distributor: String?
+    public var identifier: String
+    public var imageURL: URL?
+    public var imageThumbnailURL: URL?
+    public var published: Date?
+    public var publisher: String?
+    public var subtitle: String?
+    public var summary: String?
+    public var title: String
+    public var updated: Date
+    public var annotationsURL: URL?
+    public var analyticsURL: URL?
+    public var alternateURL: URL?
+    public var relatedWorksURL: URL?
+    public var previewLink: TPPOPDSAcquisition?
+    public var seriesURL: URL?
 
     /// PP-4463: display label for the series this title belongs to. Sourced from
     /// the OPDS1 `<Series><link title="…"/>` attribute or the OPDS2
     /// `metadata.belongsTo.series[].name`. Used by the Book Detail screen's
     /// SERIES row; combined with `seriesURL` to make the row a tappable link.
-    @objc var seriesName: String?
-    @objc var revokeURL: URL?
-    @objc var reportURL: URL?
-    @objc var timeTrackingURL: URL?
-    @objc var contributors: [String: Any]?
-    @objc var bookTokenQueue: DispatchQueue
-    @objc var bookDuration: String?
+    public var seriesName: String?
+    public var revokeURL: URL?
+    public var reportURL: URL?
+    public var timeTrackingURL: URL?
+    public var contributors: [String: Any]?
+    public var bookTokenQueue: DispatchQueue
+    public var bookDuration: String?
 
     /// Patron audience, e.g. "Adult", "Young Adult", "Children". Sourced
     /// from `<category scheme="schema.org/audience">` and surfaced as its
     /// own row in the book detail INFORMATION section (PP-4046).
-    @objc var audience: String?
+    public var audience: String?
 
     /// Language code (BCP-47 / ISO 639) sourced from `<dcterms:language>`.
     /// Use ``displayLanguage`` for a localized name (PP-4046).
-    @objc var language: String?
+    public var language: String?
 
-    @Published var coverImage: UIImage?
-    @Published var thumbnailImage: UIImage?
-    @Published var isCoverLoading: Bool = false
-    @Published var isThumbnailLoading: Bool = false
-    @Published var dominantUIColor: UIColor = .gray
+    @Published public var coverImage: UIImage?
+    @Published public var thumbnailImage: UIImage?
+    @Published public var isCoverLoading: Bool = false
+    @Published public var isThumbnailLoading: Bool = false
+    @Published public var dominantUIColor: UIColor = .gray
 
-    static let SimplifiedScheme = "http://librarysimplified.org/terms/genres/Simplified/"
+    public static let SimplifiedScheme = "http://librarysimplified.org/terms/genres/Simplified/"
 
-    static func categoryStringsFromCategories(categories: [TPPOPDSCategory]) -> [String] {
+    public static func categoryStringsFromCategories(categories: [TPPOPDSCategory]) -> [String] {
         categories.compactMap { $0.scheme == nil || $0.scheme?.absoluteString == SimplifiedScheme ? $0.label ?? $0.term : nil }
     }
 
-    @objc var isAudiobook: Bool {
+    public var isAudiobook: Bool {
         defaultBookContentType == .audiobook
     }
 
@@ -109,17 +110,17 @@ public class TPPBook: NSObject, ObservableObject {
     /// LibrarySimplified streaming-media MIME. Book Detail routes the
     /// "Read" action to the streaming reader and MyBooks treats the title
     /// as no-download (the asset is fetched on demand by the WKWebView).
-    @objc var isStreamingHTML: Bool {
+    public var isStreamingHTML: Bool {
         defaultBookContentType == .streamingHTML
     }
 
-    @objc var hasDuration: Bool {
+    public var hasDuration: Bool {
         !(bookDuration?.isEmpty ?? true)
     }
 
-    let imageCache: ImageCacheType
+    public let imageCache: ImageCacheType
 
-    init(
+    public init(
         acquisitions: [TPPOPDSAcquisition],
         authors: [TPPBookAuthor]?,
         categoryStrings: [String]?,
@@ -184,7 +185,7 @@ public class TPPBook: NSObject, ObservableObject {
         self.fetchCoverImage()
     }
 
-    @objc convenience init?(entry: TPPOPDSEntry?) {
+    public convenience init?(entry: TPPOPDSEntry?) {
         guard let entry = entry else {
             Log.debug(#file, ("Failed to create book with nil entry."))
             return nil
@@ -245,11 +246,11 @@ public class TPPBook: NSObject, ObservableObject {
             bookDuration: entry.duration,
             audience: entry.audience,
             language: entry.language,
-            imageCache: ImageCache.shared
+            imageCache: TPPBookImageContext.imageCache()
         )
     }
 
-    @objc convenience init?(dictionary: [String: Any]) {
+    public convenience init?(dictionary: [String: Any]) {
         // Hard requirements: a book is meaningless without id + title. Everything
         // else has a sensible default — be forgiving on read so a single malformed
         // field doesn't wipe a downloaded book from the registry on reload.
@@ -351,11 +352,11 @@ public class TPPBook: NSObject, ObservableObject {
             bookDuration: nil,
             audience: dictionary[AudienceKey] as? String,
             language: dictionary[LanguageKey] as? String,
-            imageCache: ImageCache.shared
+            imageCache: TPPBookImageContext.imageCache()
         )
     }
 
-    @objc func bookWithMetadata(from book: TPPBook) -> TPPBook {
+    public func bookWithMetadata(from book: TPPBook) -> TPPBook {
         TPPBook(
             acquisitions: self.acquisitions,
             authors: book.bookAuthors,
@@ -400,7 +401,7 @@ public class TPPBook: NSObject, ObservableObject {
     /// - Parameter fresh: The incoming book from the loans feed (authoritative
     ///                    for availability and acquisitions).
     /// - Returns: A book with fresh state and preserved-non-empty metadata.
-    @objc func mergingPreservingMetadata(from fresh: TPPBook) -> TPPBook {
+    public func mergingPreservingMetadata(from fresh: TPPBook) -> TPPBook {
         func preferNonEmpty(_ a: String?, _ b: String?) -> String? {
             if let a, !a.isEmpty { return a }
             return b
@@ -450,7 +451,7 @@ public class TPPBook: NSObject, ObservableObject {
         return merged
     }
 
-    @objc func dictionaryRepresentation() -> [String: Any] {
+    public func dictionaryRepresentation() -> [String: Any] {
         let acquisitions = self.acquisitions.map { $0.dictionaryRepresentation() }
 
         return [
@@ -486,32 +487,32 @@ public class TPPBook: NSObject, ObservableObject {
     /// Localized human-readable language name for `language` (e.g. "en" → "English"
     /// in English locales, "Anglais" in French). Falls back to the raw code if
     /// Foundation has no localization for it.
-    @objc var displayLanguage: String? {
+    public var displayLanguage: String? {
         guard let code = language, !code.isEmpty else { return nil }
         return Locale.current.localizedString(forLanguageCode: code) ?? code
     }
 
-    @objc var authorNameArray: [String]? {
+    public var authorNameArray: [String]? {
         bookAuthors?.compactMap { $0.name }
     }
 
-    @objc var authorLinkArray: [String]? {
+    public var authorLinkArray: [String]? {
         bookAuthors?.compactMap { $0.relatedBooksURL?.absoluteString }
     }
 
-    @objc var authors: String? {
+    public var authors: String? {
         authorNameArray?.joined(separator: "; ")
     }
 
-    @objc var categories: String? {
+    public var categories: String? {
         categoryStrings?.joined(separator: "; ")
     }
 
-    @objc var narrators: String? {
+    public var narrators: String? {
         (contributors?["nrt"] as? [String])?.joined(separator: "; ")
     }
 
-    @objc var defaultAcquisition: TPPOPDSAcquisition? {
+    public var defaultAcquisition: TPPOPDSAcquisition? {
         let supported = acquisitions.filter { Self.isSupportedDefaultAcquisition($0) }
         // Prefer a downloadable format over streaming-HTML when the same work is
         // offered as separate open-access links. Palace Bookshelf OPDS1 entries
@@ -553,7 +554,7 @@ public class TPPBook: NSObject, ObservableObject {
         return preference.first(where: { types.contains($0) }) ?? .unsupported
     }
 
-    @objc var sampleAcquisition: TPPOPDSAcquisition? {
+    public var sampleAcquisition: TPPOPDSAcquisition? {
         let sampleAndPreview: TPPOPDSAcquisitionRelationSet = [.sample, .preview]
         return acquisitions.first(where: {
             !TPPOPDSAcquisitionPath.supportedAcquisitionPaths(
@@ -564,12 +565,12 @@ public class TPPBook: NSObject, ObservableObject {
         }) ?? previewLink
     }
 
-    @objc var isExpired: Bool {
+    public var isExpired: Bool {
         guard let date = getExpirationDate() else { return false }
         return date < Date()
     }
 
-    @objc func getExpirationDate() -> Date? {
+    public func getExpirationDate() -> Date? {
         var date: Date?
 
         defaultAcquisition?.availability.match(unavailable:
@@ -587,7 +588,7 @@ public class TPPBook: NSObject, ObservableObject {
         return date
     }
 
-    @objc func getReservationDetails() -> ReservationDetails {
+    public func getReservationDetails() -> ReservationDetails {
         var untilDate: Date?
         let reservationDetails = ReservationDetails()
 
@@ -631,7 +632,7 @@ public class TPPBook: NSObject, ObservableObject {
         return reservationDetails
     }
 
-    func getAvailabilityDetails() -> AvailabilityDetails {
+    public func getAvailabilityDetails() -> AvailabilityDetails {
         var details = AvailabilityDetails()
         defaultAcquisition?.availability.match(unavailable: nil, limited: { limited in
             if let sinceDate = limited.since {
@@ -658,15 +659,15 @@ public class TPPBook: NSObject, ObservableObject {
         return details
     }
 
-    @objc var defaultAcquisitionIfBorrow: TPPOPDSAcquisition? {
+    public var defaultAcquisitionIfBorrow: TPPOPDSAcquisition? {
         defaultAcquisition?.relation == .borrow ? defaultAcquisition : nil
     }
 
-    @objc var defaultAcquisitionIfOpenAccess: TPPOPDSAcquisition? {
+    public var defaultAcquisitionIfOpenAccess: TPPOPDSAcquisition? {
         defaultAcquisition?.relation == .openAccess ? defaultAcquisition : nil
     }
 
-    @objc var defaultBookContentType: TPPBookContentType {
+    public var defaultBookContentType: TPPBookContentType {
         guard let acquisition = defaultAcquisition else {
             return .unsupported
         }
@@ -700,7 +701,7 @@ public class TPPBook: NSObject, ObservableObject {
 
     /// PP-3649: Whether this book requires Adobe DRM activation before download.
     /// Used by MyBooksDownloadCenter to perform on-demand device activation.
-    @objc var requiresAdobeDRM: Bool {
+    public var requiresAdobeDRM: Bool {
         guard let acquisition = defaultAcquisition else { return false }
         let paths = TPPOPDSAcquisitionPath.supportedAcquisitionPaths(
             forAllowedTypes: TPPOPDSAcquisitionPath.supportedTypes(),
@@ -717,7 +718,7 @@ public class TPPBook: NSObject, ObservableObject {
     /// text-selection edit menu — DRM titles do not surface Copy/Cut/Paste/etc.
     /// Walks the full nested acquisition chain so license types two levels
     /// deep are still detected (cf. PP-4407 acquisition-chain regression).
-    @objc var isDRMProtected: Bool {
+    public var isDRMProtected: Bool {
         guard let acquisition = defaultAcquisition else { return false }
         let paths = TPPOPDSAcquisitionPath.supportedAcquisitionPaths(
             forAllowedTypes: TPPOPDSAcquisitionPath.supportedTypes(),
@@ -741,22 +742,23 @@ extension TPPBook: Comparable {
 
 extension TPPBook: @unchecked Sendable {}
 
-extension TPPBook {
-    func requiresAuthForReturnOrDeletion() -> Bool {
-        let userAuthRequired = AppContainer.production().accountsManager.currentUserAccount.authDefinition?.needsAuth ?? false
-        return self.defaultAcquisitionIfOpenAccess == nil && userAuthRequired
-    }
-}
-
-@objcMembers
 public class ReservationDetails: NSObject {
     public var holdPosition: Int = 0
     public var remainingTime: Int = 0
     public var timeUnit: String = ""
     public var copiesAvailable: Int = 0
+
+    public override init() {
+        super.init()
+    }
 }
 
-struct AvailabilityDetails {
-    var availableSince: String?
-    var availableUntil: String?
+public struct AvailabilityDetails {
+    public var availableSince: String?
+    public var availableUntil: String?
+
+    public init(availableSince: String? = nil, availableUntil: String? = nil) {
+        self.availableSince = availableSince
+        self.availableUntil = availableUntil
+    }
 }

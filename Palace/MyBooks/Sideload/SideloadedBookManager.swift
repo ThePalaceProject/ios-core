@@ -37,6 +37,7 @@ import Foundation
 import CryptoKit
 import PalaceCatalog
 import PalaceLogging
+import PalaceBookModel
 
 // MARK: - Seams
 

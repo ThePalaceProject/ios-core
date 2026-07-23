@@ -2,6 +2,7 @@ import Foundation
 import Combine
 import PalaceLogging
 import PalaceCatalog
+import PalaceBookModel
 
 // MARK: - SearchView Model
 @MainActor

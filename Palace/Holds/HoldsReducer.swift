@@ -1,4 +1,5 @@
 import Foundation
+import PalaceBookModel
 
 /// Pure state for the Holds feature, driven by `HoldsReducer`.
 ///

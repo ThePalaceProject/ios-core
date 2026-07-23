@@ -9,6 +9,7 @@
 
 import Foundation
 import Combine
+import PalaceBookModel
 
 // MARK: - DownloadStateManaging Protocol
 

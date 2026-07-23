@@ -12,6 +12,7 @@
 #if FEATURE_DRM_CONNECTOR
 import Foundation
 import PalaceLogging
+import PalaceBookModel
 
 // MARK: - AdobeDRMHandlerDelegate
 

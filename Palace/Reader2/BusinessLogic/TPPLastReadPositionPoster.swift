@@ -9,6 +9,7 @@
 import Foundation
 import PalaceReadingPosition
 import ReadiumShared
+import PalaceBookModel
 
 /// A front-end to the position-write path that builds an EPUB-shaped
 /// `PositionSnapshot` and delegates to a `PositionWriter` for throttling,

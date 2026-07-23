@@ -1,4 +1,5 @@
 import SwiftUI
+import PalaceBookModel
 
 @MainActor
 protocol HalfSheetProvider: ObservableObject, BookButtonProvider {

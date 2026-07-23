@@ -20,6 +20,7 @@
 import Foundation
 import PalaceLogging
 @preconcurrency import PalaceAudiobookToolkit
+import PalaceBookModel
 
 /// Disk surface this adapter needs. Defined as a protocol so tests inject
 /// an in-memory fake without touching the real filesystem.

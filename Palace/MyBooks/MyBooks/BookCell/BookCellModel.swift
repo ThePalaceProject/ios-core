@@ -13,6 +13,7 @@ import SafariServices
 import PalaceAudiobookToolkit
 import PalaceLogging
 import PalaceNetwork
+import PalaceBookModel
 
 enum BookCellState {
     case normal(BookButtonState)

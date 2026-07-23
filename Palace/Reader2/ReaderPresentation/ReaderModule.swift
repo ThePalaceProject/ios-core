@@ -19,6 +19,7 @@ import UIKit
 // annotates these types Sendable; the module's own concurrency contract is
 // documented on the `@unchecked Sendable` conformance below.
 @preconcurrency import ReadiumShared
+import PalaceBookModel
 
 /// Base module delegate, that sub-modules' delegate can extend.
 /// Provides basic shared functionalities.

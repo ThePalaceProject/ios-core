@@ -9,6 +9,7 @@
 import Foundation
 import ObjectiveC
 import PalaceKeychain
+import PalaceBookModel
 
 // MARK: - Associated Object Keys for Keychain Variables
 
@@ -36,7 +37,7 @@ private enum TPPBookAssociatedKeys {
     static let fulfillURLVariable = AssociationKey(raw: UnsafeRawPointer(UnsafeMutableRawPointer.allocate(byteCount: 1, alignment: 1)))
 }
 
-@objc extension TPPBook {
+extension TPPBook {
     typealias DisplayStrings = Strings.TPPBook
 
     /// Cached keychain variable for bearer token (reused across get/set calls)

@@ -17,6 +17,7 @@ import os
 import PalaceAudiobookToolkit
 import PalaceLogging
 import PalaceNetwork
+import PalaceBookModel
 
 // MARK: - AudiobookSessionState
 

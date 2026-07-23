@@ -9,9 +9,9 @@
 import Foundation
 import PalaceLogging
 
-typealias TPPBookRegistryData = [String: Any]
+public typealias TPPBookRegistryData = [String: Any]
 
-extension TPPBookRegistryData {
+public extension TPPBookRegistryData {
     func value(for key: TPPBookRegistryKey) -> Any? {
         return self[key.rawValue]
     }
@@ -26,7 +26,7 @@ extension TPPBookRegistryData {
     }
 }
 
-enum TPPBookRegistryKey: String {
+public enum TPPBookRegistryKey: String {
     case records = "records"
     case book = "metadata"
     case state = "state"
@@ -53,14 +53,13 @@ enum TPPBookRegistryKey: String {
 ///   `TPPBookLocation`, `[TPPReadiumBookmark]`), so a value-type conversion is
 ///   not feasible without changing identity/in-place-mutation semantics; the
 ///   confinement invariant is the honest description of the actual safety model.
-@objcMembers
-final class TPPBookRegistryRecord: NSObject, @unchecked Sendable {
-    var book: TPPBook
-    var location: TPPBookLocation?
-    var state: TPPBookState
-    var fulfillmentId: String?
-    var readiumBookmarks: [TPPReadiumBookmark]?
-    var genericBookmarks: [TPPBookLocation]?
+public final class TPPBookRegistryRecord: NSObject, @unchecked Sendable {
+    public var book: TPPBook
+    public var location: TPPBookLocation?
+    public var state: TPPBookState
+    public var fulfillmentId: String?
+    public var readiumBookmarks: [TPPReadiumBookmark]?
+    public var genericBookmarks: [TPPBookLocation]?
 
     /// Creates a registry record with the specified state.
     ///
@@ -74,7 +73,7 @@ final class TPPBookRegistryRecord: NSObject, @unchecked Sendable {
     ///   - fulfillmentId: DRM fulfillment identifier (optional)
     ///   - readiumBookmarks: Readium-format bookmarks
     ///   - genericBookmarks: Generic location bookmarks
-    init(book: TPPBook, location: TPPBookLocation? = nil, state: TPPBookState, fulfillmentId: String? = nil, readiumBookmarks: [TPPReadiumBookmark]? = [], genericBookmarks: [TPPBookLocation]? = []) {
+    public init(book: TPPBook, location: TPPBookLocation? = nil, state: TPPBookState, fulfillmentId: String? = nil, readiumBookmarks: [TPPReadiumBookmark]? = [], genericBookmarks: [TPPBookLocation]? = []) {
         self.book = book
         self.location = location
         self.fulfillmentId = fulfillmentId
@@ -93,7 +92,7 @@ final class TPPBookRegistryRecord: NSObject, @unchecked Sendable {
     ///
     /// - Parameter book: The book to derive state for
     /// - Returns: The appropriate initial state based on availability
-    static func deriveInitialState(for book: TPPBook) -> TPPBookState {
+    public static func deriveInitialState(for book: TPPBook) -> TPPBookState {
         guard let defaultAcquisition = book.defaultAcquisition else {
             // No acquisition means unsupported format
             return .unsupported
@@ -116,7 +115,7 @@ final class TPPBookRegistryRecord: NSObject, @unchecked Sendable {
         return derivedState
     }
 
-    init?(record: TPPBookRegistryData) {
+    public init?(record: TPPBookRegistryData) {
         // Log which specific field is missing so we can diagnose why a record
         // silently disappears from the in-memory registry during load.
         // Silent drops caused "Found N books in registry / Registry loaded with M books"
@@ -159,7 +158,7 @@ final class TPPBookRegistryRecord: NSObject, @unchecked Sendable {
         }
     }
 
-    var dictionaryRepresentation: [String: Any] {
+    public var dictionaryRepresentation: [String: Any] {
         var dictionary = TPPBookRegistryData()
         dictionary.setValue(book.dictionaryRepresentation(), for: .book)
         dictionary.setValue(state.stringValue(), for: .state)

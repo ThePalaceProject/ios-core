@@ -1,5 +1,6 @@
 import Foundation
 import PalaceCatalog
+import PalaceBookModel
 
 // MARK: - Catalog State Machine
 

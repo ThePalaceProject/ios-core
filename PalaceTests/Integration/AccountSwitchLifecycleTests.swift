@@ -36,6 +36,7 @@
 
 import XCTest
 @testable import Palace
+import PalaceBookModel
 
 @MainActor
 class AccountSwitchLifecycleTests: PalaceWiringTestCase {

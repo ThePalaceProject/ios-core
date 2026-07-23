@@ -20,6 +20,7 @@
 
 import Foundation
 import PalaceLogging
+import PalaceBookModel
 
 /// Stateless registry-file recovery policy. All members are `static` and pure
 /// over their inputs (`Data`, `URL`) except the explicitly-named I/O helpers

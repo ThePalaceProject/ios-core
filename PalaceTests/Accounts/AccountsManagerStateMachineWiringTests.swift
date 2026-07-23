@@ -21,6 +21,7 @@ import PalacePreferences
 import Combine
 import PalaceCatalog
 @testable import Palace
+import PalaceBookModel
 
 @MainActor
 final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {

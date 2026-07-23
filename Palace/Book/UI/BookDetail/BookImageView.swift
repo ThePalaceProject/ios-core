@@ -1,4 +1,5 @@
 import SwiftUI
+import PalaceBookModel
 
 struct BookImageView: View {
     @ObservedObject var book: TPPBook

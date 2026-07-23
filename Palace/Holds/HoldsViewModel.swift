@@ -3,6 +3,7 @@ import PalacePreferences
 import SwiftUI
 import PalaceLogging
 import PalaceCatalog
+import PalaceBookModel
 
 @MainActor
 final class HoldsBookViewModel: ObservableObject, Identifiable {
