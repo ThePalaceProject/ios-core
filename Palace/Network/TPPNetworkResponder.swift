@@ -178,6 +178,64 @@ class TPPNetworkResponder: NSObject, @unchecked Sendable {
             }
         }
     }
+
+    // MARK: - Test-only deterministic in-flight completion join
+
+    /// XCTest-process detector (mirrors `TokenRefreshInterceptor` / `AccountsManager`).
+    /// Gates all retention below so a RELEASE build never populates or reads
+    /// `pendingTestTasks` — production dispatch stays byte-identical.
+    private static let _isRunningUnderXCTest =
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+
+    private let pendingTestTasksLock = NSLock()
+    /// Handles that resolve exactly when a fire-and-forget completion dispatched
+    /// off the serial `taskInfoQueue` (the session-invalidation cancel fan-out)
+    /// has finished running. Populated ONLY under XCTest so a test can join the
+    /// actual dispatch via `_awaitInFlightForTesting()` instead of wall-clock
+    /// waiting. Never touched in RELEASE.
+    private var pendingTestTasks: [Task<Void, Never>] = []
+
+    /// Under XCTest ONLY, retain a handle that resolves once the serial
+    /// `taskInfoQueue` has drained past this call — i.e. after the completion
+    /// work enqueued just before it has run. Because `taskInfoQueue` is serial, a
+    /// trailing no-op enqueued here cannot run until the real work ahead of it
+    /// completes, so awaiting the handle is a precise (not heuristic) join. The
+    /// spawned `Task` captures only the `Sendable` continuation + `self`, so no
+    /// non-`Sendable` completion state crosses into it. No-op in RELEASE (the
+    /// static gate is `false`), leaving the preceding `taskInfoQueue.async`
+    /// byte-identical to production.
+    private func retainTaskInfoQueueDrainForTesting() {
+        guard Self._isRunningUnderXCTest else { return }
+        let task = Task {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                self.taskInfoQueue.async { continuation.resume() }
+            }
+        }
+        pendingTestTasksLock.lock()
+        pendingTestTasks.append(task)
+        pendingTestTasksLock.unlock()
+    }
+
+    /// Synchronous lock-guarded snapshot. `NSLock.lock()`/`unlock()` cannot span a
+    /// suspension under Swift 6 — snapshot here, `await` in the caller loop.
+    private func _snapshotInFlightForTesting() -> [Task<Void, Never>] {
+        pendingTestTasksLock.lock(); defer { pendingTestTasksLock.unlock() }
+        return pendingTestTasks
+    }
+
+    /// Test-only deterministic JOIN: awaits every retained completion-drain
+    /// handle, re-snapshotting until the set stops growing. Bounded — every
+    /// retained handle resolves when the serial `taskInfoQueue` drains; there is
+    /// no sleep/poll/`Date()` on the awaited lines.
+    func _awaitInFlightForTesting() async {
+        var awaited = 0
+        while true {
+            let tasks = _snapshotInFlightForTesting()
+            if awaited >= tasks.count { break }
+            for i in awaited..<tasks.count { _ = await tasks[i].value }
+            awaited = tasks.count
+        }
+    }
 }
 
 // MARK: - URLSessionDelegate
@@ -216,6 +274,11 @@ extension TPPNetworkResponder: URLSessionDelegate {
                 Log.debug(#file, "URLSession invalidated normally (no error, no pending tasks)")
             }
         }
+        // Under XCTest only: retain a drain handle so a test can deterministically
+        // join the invalidation cancel fan-out enqueued above (which fires the
+        // pending completions off the serial queue). No-op / byte-identical in
+        // RELEASE — the `taskInfoQueue.async` block above is unchanged.
+        retainTaskInfoQueueDrainForTesting()
     }
 }
 

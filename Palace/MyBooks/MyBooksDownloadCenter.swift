@@ -215,6 +215,74 @@ private final class DownloadFailureMetadataBox: @unchecked Sendable {
     /// against a wall-clock deadline. Behavior is unchanged: the same Task is
     /// created and runs exactly as before; only a reference is now kept.
     private(set) var lastNetworkLossFailureTask: Task<Void, Never>?
+
+    // MARK: - Test-only deterministic-join seam for download dispatch
+    //
+    // Generalizes the single `lastNetworkLossFailureTask` handle above. This
+    // class fires many `Task { … }` download-dispatch units (progress bridging,
+    // completion handling, redirect decisions, task registration, launch
+    // reconciliation, …). A test that needs to observe the RESULT of a
+    // dispatched unit previously had to wall-clock-poll the registry against a
+    // deadline; that starves under parallel-CI clones. This seam retains each
+    // dispatched `Task`'s handle — ONLY under XCTest — so a test can join the
+    // ACTUAL work via `_awaitDownloadDispatchForTesting()`. Mirrors
+    // `TokenRefreshInterceptor.spawnAuthDispatch` / `_awaitAuthDispatchForTesting`.
+    //
+    // RELEASE is byte-identical: the identical `Task`s are still spawned at each
+    // site; the array is never populated (the `_isRunningUnderXCTest` gate is
+    // false) and production never awaits it, so completion semantics + timing
+    // are unchanged.
+
+    /// XCTest-process detector (mirrors `AccountsManager` /
+    /// `TokenRefreshInterceptor`). Gates every retention below so a RELEASE build
+    /// never populates or reads the task list.
+    private static let _isRunningUnderXCTest =
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+
+    private let _downloadDispatchLock = NSLock()
+    /// Fire-and-forget download-dispatch `Task`s, retained ONLY under XCTest.
+    /// Never populated in RELEASE (the gate is false); production never awaits it.
+    private var _downloadDispatchTasks: [Task<Void, Never>] = []
+
+    /// Retains a fire-and-forget download-dispatch `Task` — under XCTest ONLY —
+    /// for `_awaitDownloadDispatchForTesting()`. Returns the SAME task unchanged:
+    /// each call site still creates its `Task { … }` with the exact same
+    /// isolation, closure body, and timing it had before; the only addition is
+    /// the gated append, so RELEASE behavior is byte-identical.
+    @discardableResult
+    private func _trackDownloadDispatch(_ task: Task<Void, Never>) -> Task<Void, Never> {
+        if Self._isRunningUnderXCTest {
+            _downloadDispatchLock.lock()
+            _downloadDispatchTasks.append(task)
+            _downloadDispatchLock.unlock()
+        }
+        return task
+    }
+
+    /// Synchronous lock-guarded snapshot (`NSLock.lock`/`unlock` are unavailable
+    /// inside an `async` function under Swift 6 — snapshot here, await in the
+    /// caller).
+    private func _snapshotDownloadDispatchForTesting() -> [Task<Void, Never>] {
+        _downloadDispatchLock.lock(); defer { _downloadDispatchLock.unlock() }
+        return _downloadDispatchTasks
+    }
+
+    /// Test-only deterministic JOIN: awaits every retained download-dispatch
+    /// task, re-snapshotting until the set stops growing (a dispatch body can
+    /// enqueue a follow-up dispatch — e.g. reconciliation re-issuing a task).
+    /// Bounded: each retained `Task` is the actual dispatched unit and completes;
+    /// no bare never-resuming await, no sleep/poll. Returns once all observed
+    /// download-dispatch work has completed.
+    func _awaitDownloadDispatchForTesting() async {
+        var awaited = 0
+        while true {
+            let tasks = _snapshotDownloadDispatchForTesting()
+            if awaited >= tasks.count { break }
+            for i in awaited..<tasks.count { _ = await tasks[i].value }
+            awaited = tasks.count
+        }
+    }
+
     let memoryPressureMonitor: MemoryPressureMonitor
     let bookmarkDeletionLog: TPPBookmarkDeletionLog
     let deviceSpecificErrorMonitor: DeviceSpecificErrorMonitor
@@ -1040,7 +1108,7 @@ private final class DownloadFailureMetadataBox: @unchecked Sendable {
     /// filtered by `DownloadTaskLifecycleService.handleTaskCompletionError`,
     /// so there's no double-alert.
     func failActiveDownloadsForNetworkLoss() {
-        lastNetworkLossFailureTask = Task { [weak self] in
+        lastNetworkLossFailureTask = _trackDownloadDispatch(Task { [weak self] in
             guard let self else { return }
             // Snapshot active state before mutations — failDownloadWithAlert
             // empties the dicts asynchronously.
@@ -1090,7 +1158,7 @@ private final class DownloadFailureMetadataBox: @unchecked Sendable {
                     self.failDownloadWithAlert(for: book, withMessage: message)
                 }
             }
-        }
+        })
     }
 
     /// Phase 4 (Architectural Triad) convenience init that pulls injectable
@@ -1194,9 +1262,9 @@ private final class DownloadFailureMetadataBox: @unchecked Sendable {
             )
             return
         }
-        Task {
+        _trackDownloadDispatch(Task {
             await startDownloadAsync(for: book, withRequest: initedRequest)
-        }
+        })
     }
 
     func startDownloadAsync(for book: TPPBook, withRequest initedRequest: URLRequest? = nil) async {
@@ -1225,7 +1293,7 @@ private final class DownloadFailureMetadataBox: @unchecked Sendable {
                 )
             )
         }
-        Task { await self.downloadCoordinator.registerCompletion(identifier: book.identifier) }
+        _trackDownloadDispatch(Task { await self.downloadCoordinator.registerCompletion(identifier: book.identifier) })
     }
 
     // processDownloadWithCredentials moved to DownloadStartDispatcher.
@@ -1287,9 +1355,9 @@ private final class DownloadFailureMetadataBox: @unchecked Sendable {
                 bookFoundHandler: bookFoundHandler,
                 problemFoundHandler: problemFoundHandler
             )
-            Task { @MainActor in
+            _trackDownloadDispatch(Task { @MainActor in
                 SignInWebSheetPresenter.presentOnTop(model: model)
-            }
+            })
         }
     }
 
@@ -1368,7 +1436,7 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
         let key = downloadTask.taskIdentifier
 
         // Bridge to async for actor access
-        Task {
+        _trackDownloadDispatch(Task {
             guard let book = await taskIdentifierToBook.get(key) else {
                 return
             }
@@ -1380,7 +1448,7 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
                 totalBytesWritten: totalBytesWritten,
                 totalBytesExpectedToWrite: totalBytesExpectedToWrite
             )
-        }
+        })
     }
 
     // detectRightsManagement / isOPDSEntryMimeType moved to
@@ -1416,9 +1484,9 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
         }
 
         // Now process async with preserved file
-        Task {
+        _trackDownloadDispatch(Task {
             await handleDownloadCompletion(session: session, task: downloadTask, location: safeLocation)
-        }
+        })
     }
 
     func handleDownloadCompletion(session: URLSession, task: URLSessionDownloadTask, location: URL) async {
@@ -1569,14 +1637,14 @@ extension MyBooksDownloadCenter: URLSessionTaskDelegate {
         // `sending` `Task` boundary (see `RedirectCompletionBox`). Delivered and
         // invoked on the session's `.main` delegate queue.
         let completionBox = RedirectCompletionBox(completionHandler)
-        Task {
+        _trackDownloadDispatch(Task {
             let decision = await redirectPolicy.decide(
                 taskIdentifier: task.taskIdentifier,
                 originalScheme: task.originalRequest?.url?.scheme,
                 newRequest: request
             )
             completionBox.call(decision)
-        }
+        })
     }
 
     func urlSession(
@@ -1584,9 +1652,9 @@ extension MyBooksDownloadCenter: URLSessionTaskDelegate {
         task: URLSessionTask,
         didCompleteWithError error: Error?
     ) {
-        Task {
+        _trackDownloadDispatch(Task {
             await handleTaskCompletionError(task: task, error: error)
-        }
+        })
     }
 
     func handleTaskCompletionError(task: URLSessionTask, error: Error?) async {
@@ -1620,13 +1688,13 @@ extension MyBooksDownloadCenter: URLSessionTaskDelegate {
         // can be reconciled (adopted / restarted) at next launch.
         persistStartedTaskRecord(task: task, book: book, request: modifiableRequest)
 
-        Task {
+        _trackDownloadDispatch(Task {
             await self.taskLifecycleService.registerStartedTask(
                 task,
                 book: book,
                 maxConcurrentDownloads: self.maxConcurrentDownloads
             )
-        }
+        })
     }
 }
 
@@ -1713,14 +1781,14 @@ extension MyBooksDownloadCenter {
         // the `sending` `Task` boundary (see `DownloadFailureMetadataBox`); `dict`
         // is fully built above and read-only thereafter.
         let metadataBox = DownloadFailureMetadataBox(dict)
-        Task { [weak self] in
+        _trackDownloadDispatch(Task { [weak self] in
             await self?.deviceSpecificErrorMonitor.logDownloadFailure(
                 book: book,
                 reason: reason,
                 error: downloadTask.error,
                 metadata: metadataBox.metadata
             )
-        }
+        })
     }
 
     func fulfillLCPLicense(fileUrl: URL, forBook book: TPPBook, downloadTask: URLSessionDownloadTask) {
@@ -1802,7 +1870,7 @@ extension MyBooksDownloadCenter: TPPBookDownloadsDeleting {
 extension MyBooksDownloadCenter: AdobeDRMHandlerDelegate {
 
     func handleAdobeDownloadProgress(_ progress: Double, for tag: String) {
-        Task {
+        _trackDownloadDispatch(Task {
             if let info = await self.downloadInfoAsync(forBookIdentifier: tag)?.withDownloadProgress(progress) {
                 await self.bookIdentifierToDownloadInfo.set(tag, value: info)
             }
@@ -1811,7 +1879,7 @@ extension MyBooksDownloadCenter: AdobeDRMHandlerDelegate {
                 self.downloadProgressPublisher.send((tag, progress))
             }
             self.broadcastUpdate()
-        }
+        })
     }
 }
 #endif
@@ -2050,13 +2118,13 @@ extension MyBooksDownloadCenter {
             return
         }
         persistStartedTaskRecord(task: newTask, book: book, request: previousRequest ?? URLRequest(url: URL(fileURLWithPath: "/dev/null")))
-        Task {
+        _trackDownloadDispatch(Task {
             await self.taskLifecycleService.registerStartedTask(
                 newTask,
                 book: book,
                 maxConcurrentDownloads: self.maxConcurrentDownloads
             )
-        }
+        })
     }
 
     // MARK: Launch reconciliation (INV-4 — adopt, don't double-start or spuriously fail)
@@ -2084,7 +2152,7 @@ extension MyBooksDownloadCenter {
     /// (swarm_8ce6f5ae WS3).
     func scheduleReconcileDownloadsAtLaunch() {
         if isRegistryLoadedForReconcile {
-            Task { await reconcileDownloadsAtLaunch() }
+            _trackDownloadDispatch(Task { await reconcileDownloadsAtLaunch() })
             return
         }
         reconcileObserver = bookRegistry.registryStatePublisher
@@ -2094,7 +2162,7 @@ extension MyBooksDownloadCenter {
                 // re-enter.
                 self.reconcileObserver?.cancel()
                 self.reconcileObserver = nil
-                Task { await self.reconcileDownloadsAtLaunch() }
+                _trackDownloadDispatch(Task { await self.reconcileDownloadsAtLaunch() })
             }
     }
 
