@@ -762,25 +762,42 @@ jobs:
               }
               body += `**${tests} tests** | **${passed} passed** | **${failed} failed** | **${skipped} skipped** | ⏱️ ${duration} | 📊 ${passRate}${coverageDisplay}\n\n`;
               
-              // Class breakdown table — collapsed by default. Per-class
-              // rows are valuable when triaging a failure but noise on a
-              // green PR. Reviewers click through to expand.
+              // Full per-class matrix — ALWAYS collapsed, never dumped open
+              // (pr-report-contract.md §1, decision-first). ~900 green rows are
+              // noise a reviewer must not scroll past; failures are surfaced
+              // separately below. Skipped column added so an all-skipped class
+              // reconciles instead of rendering as a false-green `7|0|0`;
+              // ⚠️ flags any row where passed+failed+skipped != total.
               if (classSummary && classSummary.trim()) {
                 const classLines = classSummary.trim().split('\n').filter(l => l.split('|')[0]);
-                const failedClasses = classLines.filter(l => l.split('|')[3] !== '0').length;
+                const failedClasses = classLines.filter(l => (l.split('|')[3] || '0') !== '0').length;
                 const summaryLabel = failedClasses > 0
-                  ? `<strong>Tests by Class</strong> — ${classLines.length} classes, <strong>${failedClasses} with failures</strong>`
-                  : `<strong>Tests by Class</strong> — ${classLines.length} classes (click to expand)`;
-                body += `<details${failedClasses > 0 ? ' open' : ''}>\n<summary>${summaryLabel}</summary>\n\n`;
-                body += `| Class | Tests | Passed | Failed | Duration |\n`;
-                body += `|-------|-------|--------|--------|----------|\n`;
+                  ? `<strong>All ${classLines.length} classes</strong> — ${failedClasses} with failures (full matrix)`
+                  : `<strong>All ${classLines.length} classes</strong> (full matrix — click to expand)`;
+                body += `<details>\n<summary>${summaryLabel}</summary>\n\n`;
+                body += `| Class | Tests | Passed | Failed | Skipped | Duration |\n`;
+                body += `|-------|-------|--------|--------|---------|----------|\n`;
                 classLines.forEach(line => {
-                  const [cls, total, pass, fail, dur] = line.split('|');
-                  const icon = fail === '0' ? '✅' : '❌';
+                  // 6-field format (cls|total|pass|fail|skip|dur); tolerate the
+                  // legacy 5-field (cls|total|pass|fail|dur) during rollout.
+                  const parts = line.split('|');
+                  const cls = parts[0];
+                  const total = parts[1] || '0';
+                  const pass = parts[2] || '0';
+                  const fail = parts[3] || '0';
+                  const hasSkip = parts.length >= 6;
+                  const skip = hasSkip ? (parts[4] || '0') : '0';
+                  const dur = hasSkip ? parts[5] : (parts[4] || '-');
+                  const reconciles = (parseInt(pass) + parseInt(fail) + parseInt(skip)) === parseInt(total);
+                  const icon = parseInt(fail) > 0 ? '❌' : (reconciles ? '✅' : '⚠️');
                   const failCell = fail === '0' ? fail : `**${fail}**`;
-                  body += `| ${icon} ${cls} | ${total} | ${pass} | ${failCell} | ${dur} |\n`;
+                  body += `| ${icon} ${cls} | ${total} | ${pass} | ${failCell} | ${skip} | ${dur} |\n`;
                 });
-                body += `\n</details>\n\n`;
+                body += `\n`;
+                if (reportUrl) {
+                  body += `📊 Full interactive matrix: **[report](${reportUrl})**\n`;
+                }
+                body += `</details>\n\n`;
               }
             } else {
               if (testOutcome === 'success') {
@@ -795,10 +812,16 @@ jobs:
               }
             }
             
-            // Failed tests details
+            // Failing detail — OPEN when red so the reviewer lands on the
+            // actionable rows, not the collapsed matrix (contract §1).
             if (failedTests && failedTests.trim()) {
-              body += `<details>\n<summary><strong>Failed Tests (click to expand)</strong></summary>\n\n`;
+              body += `<details open>\n<summary>❌ <strong>Failed tests</strong></summary>\n\n`;
               body += '```\n' + failedTests.trim() + '\n```\n';
+              // Names only — parse-xcresult emits identifiers, not messages.
+              // Inlining the failure message + first stack frame is a tracked
+              // Obligation (pr-report-contract.md gap #3); until then, the
+              // interactive report carries the detail.
+              body += `\n_Names only — open the interactive report above for messages + stack frames._\n`;
               body += `</details>\n\n`;
             }
             
@@ -833,28 +856,33 @@ jobs:
             body += `not that we shipped less UI. Total coverage is kept for continuity. `;
             body += `The excluded paths are covered by simdrive E2E journeys (see \`chaos-replay-on-pr.yml\`).\n\n`;
             
-            // Trends
-            if (newFailures || fixedTests || flakyTests || testCountChange) {
-              body += `### 📈 Trends\n\n`;
-              
+            // What changed vs. base — the orchestrator's first question
+            // (contract §1). Delta-or-silent: this whole section renders only
+            // when the .test-history cache hits (populating deltas). When it's
+            // empty the section is silent by design, not a green claim — the
+            // develop cache-warm job that makes deltas reliable is a tracked
+            // Obligation (pr-report-contract.md gap #4).
+            if ((newFailures && newFailures.trim()) || (fixedTests && fixedTests.trim()) || (flakyTests && flakyTests.trim()) || testCountChange) {
+              body += `### 📈 What changed vs. base\n\n`;
+
               if (testCountChange) {
-                body += `Test count change: **${testCountChange}**\n\n`;
+                body += `Test count: **${testCountChange}**\n\n`;
               }
-              
+
               if (newFailures && newFailures.trim()) {
-                body += `<details>\n<summary>⚠️ <strong>New Failures</strong></summary>\n\n`;
+                body += `<details open>\n<summary>⚠️ <strong>New failures</strong> — passing on base, failing on this branch</summary>\n\n`;
                 body += '```\n' + newFailures.trim() + '\n```\n';
                 body += `</details>\n\n`;
               }
-              
+
               if (fixedTests && fixedTests.trim()) {
-                body += `<details>\n<summary>✅ <strong>Fixed Tests</strong></summary>\n\n`;
+                body += `<details>\n<summary>✅ <strong>Fixed</strong> — failing on base, passing on this branch</summary>\n\n`;
                 body += '```\n' + fixedTests.trim() + '\n```\n';
                 body += `</details>\n\n`;
               }
-              
+
               if (flakyTests && flakyTests.trim()) {
-                body += `<details>\n<summary>⚡ <strong>Flaky Tests Detected</strong></summary>\n\n`;
+                body += `<details>\n<summary>⚡ <strong>Flaky</strong> — inconsistent across recent runs</summary>\n\n`;
                 body += '```\n' + flakyTests.trim() + '\n```\n';
                 body += `</details>\n\n`;
               }
@@ -866,12 +894,14 @@ jobs:
               body += `Download the **snapshot-failures** artifact to view visual differences.\n\n`;
             }
             
-            // Links section
+            // Links + provenance. The counts above are produced by THIS CI run
+            // parsing the xcresult — not author-attested (contract §2,§3).
             body += `---\n`;
             if (reportUrl) {
               body += `🔗 **[Interactive HTML Report](${reportUrl})** | `;
             }
             body += `**[CI Run Details](${runUrl})**\n\n`;
+            body += `_Counts above were produced by this CI run's xcresult parse — reproduce via the run link._\n\n`;
             
             // Artifacts table
             body += `<details>\n<summary>📦 <strong>Downloadable Artifacts</strong></summary>\n\n`;

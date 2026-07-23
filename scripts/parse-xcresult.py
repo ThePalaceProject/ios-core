@@ -563,10 +563,14 @@ def output_github_actions(report: Dict, output_file: str):
             f.write("ENDOFFAILEDTESTS\n")
         
         if classes:
+            # Fields: class|total|passed|failed|skipped|duration. `skipped` is emitted so
+            # the PR comment can reconcile every row — a class of all-skipped tests must not
+            # render as `7|0|0 ✅` (total includes skipped; passed+failed alone don't sum to
+            # total). See docs/architecture/pr-report-contract.md (grounded-verifiability).
             f.write("class_summary<<ENDOFCLASSSUMMARY\n")
             for class_name, class_data in sorted(classes.items()):
                 stats = class_data['stats']
-                f.write(f"{class_name}|{stats['total']}|{stats['passed']}|{stats['failed']}|{stats['duration_formatted']}\n")
+                f.write(f"{class_name}|{stats['total']}|{stats['passed']}|{stats['failed']}|{stats.get('skipped', 0)}|{stats['duration_formatted']}\n")
             f.write("ENDOFCLASSSUMMARY\n")
 
 
