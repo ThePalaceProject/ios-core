@@ -7,9 +7,18 @@ Run as a pre-commit check or CI gate to prevent low-quality tests.
 
 Usage:
     python3 scripts/lint-test-quality.py [--fix] [--file PATH]
+    python3 scripts/lint-test-quality.py --changed [BASE]   # CI diff gate
+    python3 scripts/lint-test-quality.py --diff <PATH|->     # diff from file/stdin
 
-    --fix   Show suggested replacements (does not auto-apply)
-    --file  Lint a single file instead of all PalaceTests/
+    --fix      Show suggested replacements (does not auto-apply)
+    --file     Lint a single file instead of all PalaceTests/
+    --changed  DIFF-SCOPED STARVE-001 gate: flag NEW parallel-clone-starvation
+               deadline-poll waits on lines this PR ADDS vs BASE (default
+               origin/develop). Scoped to added lines so it never chokes on the
+               ~675 legacy occurrences. Wired into tooling-checks.yml.
+    --diff     Same gate, reading a pre-computed unified diff (file path or `-`
+               for stdin) instead of shelling out to git.
+    --quiet    Suppress the "no violations" success line (diff modes only).
 """
 
 import re
@@ -89,7 +98,11 @@ FLAKE_PATTERNS = [
     # listing. Tracking as Phase 2 follow-up per cs_2e842c4e and cs_6afc8b96
     # QA reviewer findings (rev_9cbd0540, rev_5acda1bf).
     (r'\b(Thread\.sleep|usleep|nanosleep)\b|(?<![\w.])sleep\(\s*\d',
-     "FLAKE-001: Raw sleep in test. Use XCTestExpectation, drainMainQueue, or awaitCondition.",
+     "FLAKE-001: Raw sleep in test. Replace with a deterministic Task-join seam "
+     "(retain the fire-and-forget Task under an XCTest gate and await its handle — "
+     "e.g. AccountsManager._awaitAllCrawlTasksForTesting) or drainMainQueue / "
+     "awaitCondition. Do NOT reach for a fixed-timeout XCTestExpectation — that is "
+     "the deadline-poll shape that starves under parallel sim clones (see STARVE-001).",
      False),
 
     # asyncAfter used as sleep-disguised-as-expectation. Matches an
@@ -131,7 +144,174 @@ ALLOWLIST_COMMENT_RE = {
     'FLAKE-002': re.compile(r'//\s*FLAKE-002-OK'),
     'FLAKE-003': re.compile(r'//\s*FLAKE-003-OK'),
     'MISSING-001': re.compile(r'//\s*MISSING-001-OK'),
+    'STARVE-001': re.compile(r'//\s*STARVE-001-OK'),
 }
+
+# ---------------------------------------------------------------------------
+# STARVE-001 — parallel-clone deadline-poll starvation (DIFF-SCOPED ONLY).
+#
+# The recurrence class `parallel-clone-starvation`
+# (docs/regressions/recurrence-classes.md): a test that waits on
+# fire-and-forget async via a FIXED wall-clock deadline
+# (`wait(for:timeout:)`, `fulfillment(of:timeout:)`,
+# `waitForExpectations(timeout:)`) loses the CPU race under 2+ parallel sim
+# clones on the CI macOS runner and fails all 3 `-retry-tests-on-failure`
+# iterations, because the load persists across iterations. Fixed in #1319/#1321
+# by replacing the deadline poll with a deterministic Task-join seam (retain the
+# fire-and-forget Task under an XCTest gate, expose `_await…ForTesting() async`,
+# await the handle). Real seams to model new code on:
+#   * AccountsManager._awaitAllCrawlTasksForTesting()
+#   * CatalogRepository._awaitAllBackgroundRefreshesForTesting()
+#   * TokenRefreshInterceptor._awaitAuthDispatchForTesting()
+#
+# CRITICAL SCOPING: this rule runs ONLY over ADDED lines in a diff, NEVER over a
+# full-tree scan. There are ~675 legacy deadline-poll occurrences in PalaceTests;
+# flagging them all would wall the board red and destroy the signal (green-board
+# contract). We gate reintroduction on NEW lines only — legacy debt is migrated
+# separately, not by this linter.
+#
+# Per-line escape hatch: `// STARVE-001-OK: <reason>` on the matched line (for a
+# genuinely bounded expectation that is NOT waiting on fire-and-forget async —
+# e.g. an integration test with a real, cancellable I/O bound).
+STARVE_PATTERNS = [
+    re.compile(r'\bwait\(for:'),
+    re.compile(r'\bfulfillment\(of:'),
+    re.compile(r'\bwaitForExpectations\(\s*timeout:'),
+]
+
+STARVE_DETAIL = (
+    "STARVE-001: NEW fixed-deadline wait on async work — starves under parallel "
+    "sim clones and fails all 3 CI retries (recurrence class "
+    "`parallel-clone-starvation`, docs/regressions/recurrence-classes.md). Replace "
+    "the wall-clock deadline with a deterministic Task-join seam: retain the "
+    "fire-and-forget Task in an XCTest-gated array (guard on "
+    "ProcessInfo.processInfo.environment[\"XCTestConfigurationFilePath\"] != nil), "
+    "expose `_await…ForTesting() async`, and await THAT. Model on "
+    "AccountsManager._awaitAllCrawlTasksForTesting / "
+    "CatalogRepository._awaitAllBackgroundRefreshesForTesting / "
+    "TokenRefreshInterceptor._awaitAuthDispatchForTesting. If this wait is on a "
+    "genuinely bounded/cancellable dependency (not fire-and-forget), annotate the "
+    "line with `// STARVE-001-OK: <reason>`."
+)
+
+
+def _is_test_swift(path: str) -> bool:
+    """True for a Swift file under the test target. Scoped to `PalaceTests/`
+    (where all XCTest lives) so the diff gate never trips on production code
+    that happens to contain a matching token."""
+    return path.endswith('.swift') and (
+        path.startswith('PalaceTests/') or '/PalaceTests/' in path
+    )
+
+
+class _AddedLine:
+    __slots__ = ('path', 'line_no', 'text')
+
+    def __init__(self, path: str, line_no: int, text: str):
+        self.path = path
+        self.line_no = line_no
+        self.text = text
+
+
+def parse_added_lines(diff_text: str) -> List["_AddedLine"]:
+    """Parse a unified diff and return the ADDED lines (post-image `+` lines,
+    excluding the `+++` file header) with their post-image line numbers.
+
+    Self-contained (no dependency on the detector-lib hunk parser) so
+    lint-test-quality.py stays a standalone script. Context (` `) and removed
+    (`-`) lines are intentionally ignored — STARVE-001 fires only on genuinely
+    NEW code, so a pre-existing deadline-poll appearing as diff context never
+    trips it.
+    """
+    added: List[_AddedLine] = []
+    cur_path = None
+    new_lineno = 0
+    hunk_re = re.compile(r'^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@')
+    for raw in diff_text.split('\n'):
+        if raw.startswith('+++ '):
+            # `+++ b/path` (or `+++ path`, or `/dev/null` for a deletion).
+            p = raw[4:].strip()
+            if p == '/dev/null':
+                cur_path = None
+            else:
+                if p.startswith('b/'):
+                    p = p[2:]
+                cur_path = p
+            continue
+        if raw.startswith('--- '):
+            continue
+        m = hunk_re.match(raw)
+        if m:
+            new_lineno = int(m.group(1))
+            continue
+        if raw.startswith('+'):
+            if cur_path is not None:
+                added.append(_AddedLine(cur_path, new_lineno, raw[1:]))
+            new_lineno += 1
+        elif raw.startswith('-'):
+            # Removed line: does not advance the post-image counter.
+            continue
+        elif raw.startswith(' '):
+            new_lineno += 1
+        # Any other line (diff/index/@@-less) leaves the counter alone.
+    return added
+
+
+def lint_starvation_diff(diff_text: str) -> List[Violation]:
+    """DIFF-SCOPED STARVE-001 scan: flag NEW deadline-poll waits on added lines
+    of changed test files. Never scans the full tree (see the module note)."""
+    findings: List[Violation] = []
+    for al in parse_added_lines(diff_text):
+        if not _is_test_swift(al.path):
+            continue
+        stripped = al.text.strip()
+        if stripped.startswith('//'):
+            continue
+        if ALLOWLIST_COMMENT_RE['STARVE-001'].search(al.text):
+            continue
+        if any(pat.search(al.text) for pat in STARVE_PATTERNS):
+            findings.append(Violation(
+                file=al.path,
+                line=al.line_no,
+                method='<added line>',
+                rule='STARVE-001',
+                detail=STARVE_DETAIL,
+            ))
+    return findings
+
+
+def _git_diff(base: str) -> str:
+    """Compute the unified diff of the current checkout vs `base`, scoped to the
+    test target. Tries three-dot (merge-base, correct for PRs) first, falling
+    back to two-dot for shallow/edge checkouts where the merge-base is absent."""
+    import subprocess
+    for spec in (f'{base}...HEAD', base):
+        try:
+            out = subprocess.run(
+                ['git', 'diff', spec, '--', 'PalaceTests'],
+                capture_output=True, text=True, check=True,
+            )
+            return out.stdout
+        except subprocess.CalledProcessError:
+            continue
+    return ''
+
+
+def run_diff_gate(diff_text: str, quiet: bool = False) -> int:
+    """Run the diff-scoped STARVE-001 gate over `diff_text`; print findings and
+    return the process exit code (1 on any hit, else 0)."""
+    findings = lint_starvation_diff(diff_text)
+    if not findings:
+        if not quiet:
+            print("STARVE-001: no new deadline-poll waits in changed test files.")
+        return 0
+    print(f"STARVE-001: {len(findings)} new deadline-poll wait(s) in changed test files:")
+    print("=" * 70)
+    for v in findings:
+        print(f"  {v.file}:{v.line} — {v.rule}")
+    print()
+    print(findings[0].detail)
+    return 1
 
 # Generic line-level lint-ignore marker. A line carrying
 #   // lint-ignore: FLUFF-003
@@ -394,6 +574,25 @@ def lint_file(filepath: str) -> List[Violation]:
     return violations
 
 def main():
+    # DIFF-SCOPED STARVE-001 gate. Runs ONLY the parallel-clone-starvation rule
+    # over ADDED lines of changed test files — the CI gate wired into
+    # .github/workflows/tooling-checks.yml. Kept as a separate, early-return code
+    # path so it never touches the full-tree scan below (which would drown on the
+    # ~675 legacy deadline-poll occurrences). Two entry points:
+    #   --diff <path|->   parse a unified diff from a file (or `-`/stdin)
+    #   --changed [BASE]  compute `git diff BASE...HEAD` (default origin/develop)
+    quiet = '--quiet' in sys.argv
+    if '--diff' in sys.argv:
+        idx = sys.argv.index('--diff')
+        src = sys.argv[idx + 1] if idx + 1 < len(sys.argv) else '-'
+        diff_text = sys.stdin.read() if src == '-' else open(src).read()
+        sys.exit(run_diff_gate(diff_text, quiet=quiet))
+    if '--changed' in sys.argv:
+        idx = sys.argv.index('--changed')
+        nxt = sys.argv[idx + 1] if idx + 1 < len(sys.argv) else ''
+        base = nxt if (nxt and not nxt.startswith('-')) else 'origin/develop'
+        sys.exit(run_diff_gate(_git_diff(base), quiet=quiet))
+
     fix_mode = '--fix' in sys.argv
     # `--per-file` emits one line per violation: <relpath>:<line>:<rule>
     # That gives verify-pr.sh a machine-parseable per-file view so it can
