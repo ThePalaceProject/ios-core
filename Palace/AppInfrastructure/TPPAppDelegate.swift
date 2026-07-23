@@ -51,6 +51,12 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         // PalaceLogging is Firebase-free; the host app supplies the bridge.
         Log.crashlyticsBridge = FirebaseCrashlyticsBridge()
 
+        // Wave 1c (cycle 2): ErrorHandling reads account context through this
+        // registered provider instead of importing Accounts.
+        ErrorReportingContext.libraryNameProvider = {
+            AppContainer.production().accountsManager.currentAccount?.name
+        }
+
         let startupQueue = DispatchQueue.global(qos: .userInitiated)
 
         // Build identifier marker — logged on every app launch so a sysdiagnose

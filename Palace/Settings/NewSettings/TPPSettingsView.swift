@@ -361,11 +361,14 @@ struct TPPSettingsView: View {
     /// is always safe to offer. Mirrors `AccountDetailView.handleReportIssue`.
     private func presentLegacyReportIssue(to address: String) {
         guard let topVC = topViewController() else { return }
+        let accountsManager = AppContainer.production().accountsManager
+        let ctx = accountsManager.problemReportContext(forLibrary: accountsManager.currentAccount?.uuid)
         ProblemReportEmail.sharedInstance.beginComposing(
             to: address,
             presentingViewController: topVC,
             book: nil as TPPBook?,
-            libraryUUID: AppContainer.production().accountsManager.currentAccount?.uuid
+            patronIdentifier: ctx.patronIdentifier,
+            libraryName: ctx.libraryName
         )
     }
 

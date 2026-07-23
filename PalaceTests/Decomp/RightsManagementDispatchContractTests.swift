@@ -227,9 +227,8 @@ final class RightsManagementDispatchContractTests: XCTestCase {
         XCTAssertFalse(result.failureRequiringAlert)
     }
 
-    // MARK: - Adobe ACSM (DRM builds only)
+    // MARK: - Adobe ACSM
 
-    #if FEATURE_DRM_CONNECTOR
     /// `.adobe` payload that is actually an Adobe PDF (`application/pdf` in the
     /// ACSM) is rejected as unsupported — synchronously, before any DRM
     /// fulfillment Task is spawned: it logs a failure, requires an alert, and
@@ -261,7 +260,6 @@ final class RightsManagementDispatchContractTests: XCTestCase {
         XCTAssertTrue(message.contains("Adobe PDF"),
                       "unsupported-PDF error message must be surfaced; got '\(message)'")
     }
-    #endif
 
     // MARK: - Helpers
 

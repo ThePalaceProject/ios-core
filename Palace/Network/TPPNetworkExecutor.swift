@@ -905,3 +905,13 @@ extension TPPNetworkExecutor {
         }
     }
 }
+
+// Wave 1c (cycle 3): package-protocol seam — authorized-request derivation for
+// the circulation-analytics offline enqueue. Distinct name: `request(for:)`'s
+// defaulted `useTokenIfAvailable` param means it cannot witness a protocol
+// requirement directly.
+extension TPPNetworkExecutor: AuthorizedRequestProviding {
+    func authorizedRequest(for url: URL) -> URLRequest {
+        request(for: url)
+    }
+}

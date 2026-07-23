@@ -3,4 +3,4 @@
 # Single integer. Count may only go DOWN. Captured 2026-07-23.
 # Allowlist: scripts/godclass-appcontainer-locator-allowlist.txt.
 # See docs/architecture/god-class-decomposition-plan.md §3c gap 3.
-318
+313

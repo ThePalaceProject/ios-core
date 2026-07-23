@@ -13,6 +13,7 @@
 //
 
 import Foundation
+import PalaceLogging
 import PalacePreferences
 import SwiftUI
 import MessageUI
@@ -53,6 +54,10 @@ final class DeveloperSettingsViewModel: ObservableObject {
     /// `UserDefaults.standard.set(...)`, so this defaults to `.standard` to
     /// preserve the exact read/write pairing.
     private let overrideDefaults: UserDefaults
+    /// Wave 1c: log-archive export seam for the dev-tools audiobook-logs email.
+    /// Defaults to a fresh `AudiobookFileLogger()` (NOT `.shared`) — matches the
+    /// pre-wave `emailAudiobookLogs` construction and keeps the `.shared` ratchet.
+    private let audiobookLogExporter: any LogArchiveExporting
     private let triageBotKeyAdmin = TriageBotKeyAdmin()
 
     // MARK: - Library Settings
@@ -148,7 +153,8 @@ final class DeveloperSettingsViewModel: ObservableObject {
         bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry,
         debugSettings: DebugSettings = AppContainer.production().debugSettings,
         featureFlags: RemoteFeatureFlags = .shared,
-        overrideDefaults: UserDefaults = .standard
+        overrideDefaults: UserDefaults = .standard,
+        audiobookLogExporter: any LogArchiveExporting = AudiobookFileLogger()
     ) {
         self.settings = settings
         self.accountsManager = accountsManager
@@ -156,6 +162,7 @@ final class DeveloperSettingsViewModel: ObservableObject {
         self.debugSettings = debugSettings
         self.featureFlags = featureFlags
         self.overrideDefaults = overrideDefaults
+        self.audiobookLogExporter = audiobookLogExporter
 
         // Seed the published mirrors from the live values, exactly as the UIKit
         // cell builders did (they read the effective flag so QA sees live state).
@@ -507,8 +514,7 @@ final class DeveloperSettingsViewModel: ObservableObject {
         mailComposer.setToRecipients(["logs@thepalaceproject.org"])
         mailComposer.setPreferredSendingEmailAddress("LyrasisDebugging@email.com")
 
-        let logger = AudiobookFileLogger()
-        if let logsDirectoryUrl = logger.getLogsDirectoryUrl() {
+        if let logsDirectoryUrl = audiobookLogExporter.logArchiveDirectoryURL() {
             let fileManager = FileManager.default
             let logFiles = try? fileManager.contentsOfDirectory(at: logsDirectoryUrl, includingPropertiesForKeys: nil)
 
