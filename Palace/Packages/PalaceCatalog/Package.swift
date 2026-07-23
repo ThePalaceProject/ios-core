@@ -18,12 +18,13 @@ let package = Package(
     ],
     dependencies: [
         .package(path: "../PalaceLogging"),
-        .package(path: "../PalaceNetwork")
+        .package(path: "../PalaceNetwork"),
+        .package(path: "../PalaceFeatureFlags")
     ],
     targets: [
         .target(
             name: "PalaceCatalog",
-            dependencies: ["PalaceLogging", "PalaceNetwork"]
+            dependencies: ["PalaceLogging", "PalaceNetwork", "PalaceFeatureFlags"]
         )
         // No in-package test target: PalaceCatalog's tests live in the app's
         // `PalaceTests` target (there is no `Tests/` dir here). The phantom

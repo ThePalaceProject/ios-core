@@ -149,6 +149,7 @@ func makeTestAppContainer(
     reachability: reachability,
     accountsManager: resolvedAccountsManager,
     settings: TPPSettings(),
+    featureFlags: RemoteFeatureFlags.shared,
     downloadCenter: downloadCenter,
     downloadAnnouncementService: downloadAnnouncementService,
     debugSettings: DebugSettings(),

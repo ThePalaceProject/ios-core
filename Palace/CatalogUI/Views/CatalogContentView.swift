@@ -26,9 +26,13 @@ struct CatalogContentView: View {
     let onResumeListening: (TPPBook) -> Void
     var bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry
 
+    /// Feature-flag read seam (Wave 1b); resolved from the environment so the
+    /// gating decision goes through the injected provider, not `.shared`.
+    @Environment(\.appContainer) private var appContainer
+
     /// Subscribes to the developer-settings local override so the view
     /// re-renders the moment the dev toggle flips. The actual gating decision
-    /// delegates to `RemoteFeatureFlags.shared.isContinuationCardsEnabled`,
+    /// delegates to `appContainer.featureFlags.isContinuationCardsEnabled`,
     /// which combines the override (wins when set) with the Firebase Remote
     /// Config `continuation_cards_enabled` value (fallback). Reading the
     /// @AppStorage value inside `continuationCardsEnabled` registers the
@@ -53,7 +57,7 @@ struct CatalogContentView: View {
 
     private var continuationCardsEnabled: Bool {
         _ = continuationCardsLocalOverride  // trigger SwiftUI observation
-        return RemoteFeatureFlags.shared.isContinuationCardsEnabled
+        return appContainer.featureFlags.isContinuationCardsEnabled
     }
 
     var body: some View {

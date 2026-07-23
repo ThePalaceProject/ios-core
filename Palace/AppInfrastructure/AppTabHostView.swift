@@ -49,7 +49,7 @@ struct AppTabHostView: View {
 
     /// Subscribes to the developer-settings local override so the view
     /// re-renders the moment the dev toggle flips. The actual gating
-    /// decision delegates to `RemoteFeatureFlags.shared
+    /// decision delegates to `appContainer.featureFlags
     /// .isInAppPlaybackNavEnabled`, which combines the override (wins
     /// when set) with the Firebase Remote Config `in_app_playback_nav_enabled`
     /// value (fallback). Reading the @AppStorage value inside
@@ -60,7 +60,7 @@ struct AppTabHostView: View {
 
     private var inAppPlaybackNavEnabled: Bool {
         _ = inAppPlaybackNavLocalOverride  // trigger SwiftUI observation
-        return RemoteFeatureFlags.shared.isInAppPlaybackNavEnabled
+        return appContainer.featureFlags.isInAppPlaybackNavEnabled
     }
 
     init(appContainer: AppContainer = .production()) {
@@ -75,7 +75,7 @@ struct AppTabHostView: View {
         self._ratingPromptPresenter = ObservedObject(initialValue: appContainer.ratingPromptPresenter)
         let client = URLSessionNetworkClient()
         let parser = OPDSParser()
-        let api = DefaultCatalogAPI(client: client, parser: parser, featureFlags: RemoteFeatureFlags.shared)
+        let api = DefaultCatalogAPI(client: client, parser: parser, featureFlags: appContainer.featureFlags)
         // Cache isolation: scope by the *current* account UUID so a single
         // repository instance can never serve library A's catalog to
         // library B if it somehow survives a library switch. The closure
@@ -97,7 +97,7 @@ struct AppTabHostView: View {
             // simply doesn't appear. Read lazily so registry/flag changes take
             // effect on the next catalog conversion.
             sideloadedLaneBooksProvider: {
-                RemoteFeatureFlags.shared.isSideLoadingEnabled
+                appContainer.featureFlags.isSideLoadingEnabled
                     ? appContainer.sideloadedBookRegistry.allBooks
                     : []
             }

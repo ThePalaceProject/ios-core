@@ -1,5 +1,6 @@
 import SwiftUI
 import PalacePreferences
+import PalaceFeatureFlags
 import Combine
 import os
 import PalaceAuth
@@ -25,6 +26,9 @@ struct AppContainer: @unchecked Sendable {
     let reachability: Reachability
     let accountsManager: AccountsManager
     let settings: TPPSettings
+    /// THE feature-flag read seam (Wave 1b). Protocol-typed so tests inject
+    /// MockFeatureFlagProvider; production binds RemoteFeatureFlags.shared.
+    let featureFlags: FeatureFlagProviding
     let downloadCenter: MyBooksDownloadCenter
     let downloadAnnouncementService: DownloadAnnouncementService
     let debugSettings: DebugSettings
@@ -125,6 +129,7 @@ struct AppContainer: @unchecked Sendable {
             reachability: self.reachability,
             accountsManager: self.accountsManager,
             settings: self.settings,
+            featureFlags: self.featureFlags,
             downloadCenter: self.downloadCenter,
             downloadAnnouncementService: self.downloadAnnouncementService,
             debugSettings: self.debugSettings,
@@ -177,6 +182,7 @@ struct AppContainer: @unchecked Sendable {
             reachability: self.reachability,
             accountsManager: self.accountsManager,
             settings: self.settings,
+            featureFlags: self.featureFlags,
             downloadCenter: self.downloadCenter,
             downloadAnnouncementService: self.downloadAnnouncementService,
             debugSettings: self.debugSettings,
@@ -229,7 +235,15 @@ struct AppContainer: @unchecked Sendable {
     @MainActor
     var audiobookSession: AudiobookSessionManaging {
         if let cached = AppContainer._audiobookSession { return cached }
-        let session = AudiobookSessionManager(appContainer: self)
+        // Pass the flag provider explicitly so the frozen god-class default arg
+        // (RemoteFeatureFlags.shared, exception E4) stops firing in production.
+        // FeatureFlagProviding is Sendable, so capturing `flags` in the
+        // @escaping () -> Bool is clean under Swift 6 `complete`.
+        let flags = self.featureFlags
+        let session = AudiobookSessionManager(
+            appContainer: self,
+            inAppPlaybackNavEnabledProvider: { flags.isInAppPlaybackNavEnabled }
+        )
         AppContainer._audiobookSession = session
         return session
     }
@@ -350,11 +364,15 @@ struct AppContainer: @unchecked Sendable {
     @MainActor
     var appRatingService: AppRatingService {
         if let cached = AppContainer._appRatingService { return cached }
+        let flags = self.featureFlags
         let service = AppRatingService(
             tracker: RatingEngagementTracker(settings: self.settings),
+            // Wave 1b exception E1: appRatingConfig returns RatingConfig (an
+            // app-target type) — read off the concrete impl at this composition
+            // root; it is deliberately NOT on the FeatureFlagProviding protocol.
             configProvider: { RemoteFeatureFlags.shared.appRatingConfig },
-            promptEnabledProvider: { RemoteFeatureFlags.shared.isAppRatingPromptEnabled },
-            forceEligibleProvider: { RemoteFeatureFlags.shared.isAppRatingForceEligible },
+            promptEnabledProvider: { flags.isAppRatingPromptEnabled },
+            forceEligibleProvider: { flags.isAppRatingForceEligible },
             crashFreeProbe: { FirebaseManager.shared.wasLastSessionCrashFree() },
             now: Date.init
         )
@@ -396,7 +414,7 @@ struct AppContainer: @unchecked Sendable {
         let api = DefaultCatalogAPI(
             client: URLSessionNetworkClient(),
             parser: OPDSParser(),
-            featureFlags: RemoteFeatureFlags.shared
+            featureFlags: self.featureFlags
         )
         AppContainer._catalogAPI = api
         return api
@@ -432,6 +450,7 @@ struct AppContainer: @unchecked Sendable {
         reachability: Reachability,
         accountsManager: AccountsManager,
         settings: TPPSettings,
+        featureFlags: FeatureFlagProviding,
         downloadCenter: MyBooksDownloadCenter,
         downloadAnnouncementService: DownloadAnnouncementService,
         debugSettings: DebugSettings,
@@ -453,6 +472,7 @@ struct AppContainer: @unchecked Sendable {
         self.reachability = reachability
         self.accountsManager = accountsManager
         self.settings = settings
+        self.featureFlags = featureFlags
         self.downloadCenter = downloadCenter
         self.downloadAnnouncementService = downloadAnnouncementService
         self.debugSettings = debugSettings
@@ -686,6 +706,12 @@ struct AppContainer: @unchecked Sendable {
             reachability: reachability,
             accountsManager: accountsManager,
             settings: TPPSettings(),
+            // Composition root — the one legitimate binding site for the seam.
+            // `.shared` keeps the process-singleton identity (one lastFetchTime,
+            // one `.standard`-backed override store, the same instance CarPlay's
+            // cached-read path warms). Constructing a second instance here would
+            // fork the CarPlay UserDefaults cache writer.
+            featureFlags: RemoteFeatureFlags.shared,
             downloadCenter: downloadCenter,
             downloadAnnouncementService: downloadAnnouncementService,
             debugSettings: DebugSettings(),

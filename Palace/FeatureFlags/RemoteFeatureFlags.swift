@@ -10,17 +10,18 @@ import Foundation
 import FirebaseCore
 import FirebaseAnalytics
 import PalaceLogging
+import PalaceFeatureFlags
 
 /// Remote feature flags using Firebase Remote Config.
 ///
 /// NOTE: This class delegates all Firebase RemoteConfig access to FirebaseManager
 /// to prevent race conditions that cause the "recursive_mutex lock failed" crash.
 /// Do NOT access RemoteConfig directly from this class.
-/// `@unchecked Sendable`: `FeatureFlagProvider` (the protocol this conforms to in
-/// `RemoteFeatureFlags+PalaceCatalog.swift`) is now `Sendable` (PalaceCatalog
-/// Swift 6). This shared singleton is already accessed app-wide concurrently; the
-/// conformance is honest — its only mutable stored property, `lastFetchTime`, is
-/// accessed exclusively under `lock` (an `NSLock`); every other stored property
+/// `@unchecked Sendable`: `FeatureFlagProviding` (the consolidated Layer-0 seam
+/// this conforms to, from the PalaceFeatureFlags leaf package — Wave 1b) is
+/// `Sendable`. This shared singleton is already accessed app-wide concurrently;
+/// the conformance is honest — its only mutable stored property, `lastFetchTime`,
+/// is accessed exclusively under `lock` (an `NSLock`); every other stored property
 /// is `let`. `final` keeps the assertion subclass-proof.
 final class RemoteFeatureFlags: @unchecked Sendable {
     static let shared = RemoteFeatureFlags()
@@ -39,115 +40,10 @@ final class RemoteFeatureFlags: @unchecked Sendable {
 
     // MARK: - Feature Flag Keys
 
-    enum FeatureFlag: String {
-        case enhancedErrorLogging = "enhanced_error_logging_enabled"
-        case enhancedErrorLoggingDeviceSpecific = "enhanced_error_logging_device_"
-        case downloadRetryEnabled = "download_retry_enabled"
-        case circuitBreakerEnabled = "circuit_breaker_enabled"
-        case carPlayEnabled = "carplay_enabled"
-        case opds2Enabled = "opds2_enabled"
-        case readingStatsEnabled = "reading_stats_enabled"
-        case advancedTypographyEnabled = "advanced_typography_enabled"
-        case triageBotEnabled = "triage_bot_enabled"
-        case triageBotTicketSubmissionEnabled = "triage_bot_ticket_submission_enabled"
-        case triageBotAIFallbackEnabled = "triage_bot_ai_fallback_enabled"
-        /// Gates the in-app playback-navigation feature (swarm_0b7616e7 +
-        /// polish 2026-06-02): Continue Reading/Listening hero rows on
-        /// the Catalog top, the persistent mini-player chrome above the
-        /// tab bar, and the tap-to-resume routing that wires both to
-        /// `AudiobookSessionPresenter`. **Default OFF — Firebase-gated.**
-        /// Production users get the legacy toolkit player until Firebase
-        /// Remote Config sets `in_app_playback_nav_enabled = true` (a global
-        /// or staged/condition-based rollout the team controls without
-        /// shipping a build). Precedence is UserDefaults local override
-        /// (dev-menu toggle / QA) > Firebase remote (default false) — see
-        /// `isInAppPlaybackNavEnabled`.
-        case inAppPlaybackNavEnabled = "in_app_playback_nav_enabled"
-        /// Gates ONLY the Continue Reading / Continue Listening hero rows at the
-        /// top of the Catalog (the "continuation" cards). Split out from
-        /// `inAppPlaybackNavEnabled` so the cards and the in-app player can be
-        /// rolled out independently — e.g. ship the in-app mini-player without
-        /// the continuation cards, or vice versa. **Default OFF — Firebase-gated**
-        /// (same posture as `inAppPlaybackNavEnabled`); see
-        /// `isContinuationCardsEnabled`.
-        case continuationCardsEnabled = "continuation_cards_enabled"
-        /// Gates every side-loading surface (swarm_495a88d9 — PP-2677 /
-        /// PP-2678 / PP-2679): the Settings "Side Loading" import screen and
-        /// the catalog side-loaded lane. Test-only capability for exercising
-        /// the real reader + DRM stack against local files with no OPDS feed.
-        /// Default OFF; enabled via `isSideLoadingEnabled` whose precedence is
-        /// UserDefaults local override (dev-menu toggle) > Firebase remote
-        /// (default false). No DEBUG auto-enable — QA/TestFlight builds are
-        /// non-DEBUG, so the feature is turned on explicitly by the dev-menu
-        /// toggle rather than by build configuration.
-        case sideLoadingEnabled = "side_loading_enabled"
-        /// Master kill-switch for the app-rating prompt feature (Epic PP-4086).
-        /// Default ON; set to false in Remote Config to suppress the prompt
-        /// entirely regardless of engagement state.
-        case appRatingPromptEnabled = "app_rating_prompt_enabled"
-
-        var defaultValue: Bool {
-            switch self {
-            case .downloadRetryEnabled, .circuitBreakerEnabled:
-                return true
-            case .carPlayEnabled:
-                return true
-            case .opds2Enabled:
-                return true
-            case .appRatingPromptEnabled:
-                return true
-            default:
-                // Includes `.inAppPlaybackNavEnabled`: default OFF in-app —
-                // Firebase Remote Config turns it on (see isInAppPlaybackNavEnabled).
-                return false
-            }
-        }
-
-        /// Converts to FirebaseManager key if available.
-        var managerKey: FirebaseManager.RemoteConfigKey? {
-            switch self {
-            case .enhancedErrorLogging:
-                return .enhancedErrorLoggingEnabled
-            case .downloadRetryEnabled:
-                return .downloadRetryEnabled
-            case .circuitBreakerEnabled:
-                return .circuitBreakerEnabled
-            case .carPlayEnabled:
-                return .carPlayEnabled
-            case .opds2Enabled:
-                return .opds2Enabled
-            case .triageBotEnabled:
-                return .triageBotEnabled
-            case .triageBotTicketSubmissionEnabled:
-                return .triageBotTicketSubmissionEnabled
-            case .triageBotAIFallbackEnabled:
-                return .triageBotAIFallbackEnabled
-            case .inAppPlaybackNavEnabled:
-                return .inAppPlaybackNavEnabled
-            case .continuationCardsEnabled:
-                return .continuationCardsEnabled
-            case .sideLoadingEnabled:
-                return .sideLoadingEnabled
-            case .appRatingPromptEnabled:
-                return .appRatingPromptEnabled
-            default:
-                return nil
-            }
-        }
-
-        /// Whether this flag also looks up a per-device override key
-        /// (`<rawValue>_device_<sanitizedDeviceID>`). Used for staged rollouts
-        /// where support enables a feature for one patron at a time via
-        /// Firebase Remote Config conditions.
-        var supportsDeviceSpecificOverride: Bool {
-            switch self {
-            case .enhancedErrorLogging:
-                return true
-            default:
-                return false
-            }
-        }
-    }
+    /// Wave 1b: the typed flag surface moved to the PalaceFeatureFlags leaf
+    /// package. This alias keeps every existing `RemoteFeatureFlags.FeatureFlag`
+    /// reference (tests, comments) compiling unchanged.
+    typealias FeatureFlag = PalaceFeatureFlag
 
     // MARK: - Initialization
 
@@ -505,3 +401,58 @@ final class RemoteFeatureFlags: @unchecked Sendable {
         FirebaseManager.shared.setUserPropertiesForTargeting()
     }
 }
+
+// App-side Firebase wiring for the package's typed flags. `managerKey`
+// names FirebaseManager.RemoteConfigKey (SDK adapter) — it CANNOT move to
+// the PalaceFeatureFlags leaf, which is Firebase-free by construction.
+extension PalaceFeatureFlag {
+    /// Converts to FirebaseManager key if available.
+    var managerKey: FirebaseManager.RemoteConfigKey? {
+        switch self {
+        case .enhancedErrorLogging:
+            return .enhancedErrorLoggingEnabled
+        case .downloadRetryEnabled:
+            return .downloadRetryEnabled
+        case .circuitBreakerEnabled:
+            return .circuitBreakerEnabled
+        case .carPlayEnabled:
+            return .carPlayEnabled
+        case .opds2Enabled:
+            return .opds2Enabled
+        case .triageBotEnabled:
+            return .triageBotEnabled
+        case .triageBotTicketSubmissionEnabled:
+            return .triageBotTicketSubmissionEnabled
+        case .triageBotAIFallbackEnabled:
+            return .triageBotAIFallbackEnabled
+        case .inAppPlaybackNavEnabled:
+            return .inAppPlaybackNavEnabled
+        case .continuationCardsEnabled:
+            return .continuationCardsEnabled
+        case .sideLoadingEnabled:
+            return .sideLoadingEnabled
+        case .appRatingPromptEnabled:
+            return .appRatingPromptEnabled
+        default:
+            return nil
+        }
+    }
+
+    /// Whether this flag also looks up a per-device override key
+    /// (`<rawValue>_device_<sanitizedDeviceID>`). Used for staged rollouts
+    /// where support enables a feature for one patron at a time via
+    /// Firebase Remote Config conditions.
+    var supportsDeviceSpecificOverride: Bool {
+        switch self {
+        case .enhancedErrorLogging:
+            return true
+        default:
+            return false
+        }
+    }
+}
+
+// Wave 1b: the single consolidated conformance. All app consumers reach
+// this instance as `appContainer.featureFlags` (protocol-typed); packages
+// (PalaceCatalog) receive it through their initializers.
+extension RemoteFeatureFlags: FeatureFlagProviding {}
