@@ -29,6 +29,29 @@ actor OfflineQueueService: OfflineQueueServiceProtocol {
     private let userDefaults: UserDefaults
     private var executor: OfflineActionExecutor?
 
+    /// S8 deterministic-backoff seam (swarm_ad0b4c65 Wave-3).
+    ///
+    /// The per-action retry backoff is an INLINE `await` inside the
+    /// directly-awaited `processQueue()` (see the call site below), NOT a
+    /// fire-and-forget `Task`. `enqueue`/`retry`/`networkStatusChanged` all
+    /// `await processQueue()`, which fully drains the queue (every action
+    /// reaching `.completed` or `.failed`) before returning — there is no
+    /// detached task handle to "join". A Task-join seam
+    /// (`_awaitInFlightForTesting`) would therefore be meaningless here: the
+    /// only fire-and-forget Tasks in this actor are the `NWPathMonitor`
+    /// callbacks (init + `startNetworkMonitoring`), which no test waits on and
+    /// which cannot be deterministically joined (they fire on real network-path
+    /// changes, an unbounded/never-guaranteed number of times).
+    ///
+    /// So — exactly as the S11 throttle did for `DownloadProgressReporter` — we
+    /// INJECT the backoff sleep instead. Production keeps the real
+    /// `Task.sleep`; tests inject `{ _ in }` so the retry state machine
+    /// (retryCount increments, `.pending`→`.processing`→`.failed`/`.completed`
+    /// transitions, FIFO drain) runs deterministically with zero wall-clock
+    /// backoff. RELEASE is byte-identical: the default parameter reproduces the
+    /// original inline `try? await Task.sleep(nanoseconds:)` exactly.
+    private let backoffSleep: @Sendable (TimeInterval) async -> Void
+
     // MARK: - Network Monitoring
 
     private let networkMonitor = NWPathMonitor()
@@ -50,8 +73,14 @@ actor OfflineQueueService: OfflineQueueServiceProtocol {
 
     // MARK: - Init
 
-    init(userDefaults: UserDefaults = .standard) {
+    init(
+        userDefaults: UserDefaults = .standard,
+        backoffSleep: @escaping @Sendable (TimeInterval) async -> Void = { delay in
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+        }
+    ) {
         self.userDefaults = userDefaults
+        self.backoffSleep = backoffSleep
 
         // Load persisted queue
         if let data = userDefaults.data(forKey: storageKey),
@@ -165,8 +194,10 @@ actor OfflineQueueService: OfflineQueueServiceProtocol {
                     // Schedule retry with exponential backoff
                     let delay = queue[currentIndex].nextRetryDelay
                     queue[currentIndex].state = .pending
-                    // Wait for backoff delay
-                    try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                    // Wait for backoff delay (S8 seam: injected sleep; the
+                    // default reproduces `Task.sleep(nanoseconds:)`, tests
+                    // inject a no-op for deterministic retries).
+                    await backoffSleep(delay)
                 }
                 actionSubject.send(queue[currentIndex])
             }
