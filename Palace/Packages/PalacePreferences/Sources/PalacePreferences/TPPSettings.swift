@@ -1,7 +1,7 @@
 import Foundation
 import Combine
 
-@objcMembers public class TPPSettings: NSObject {
+public final class TPPSettings {
 
     // MARK: - Dependencies
 
@@ -17,7 +17,6 @@ import Combine
     /// production call sites stay green; tests pass a fresh suite.
     public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        super.init()
     }
 
     // MARK: - Combine Publishers

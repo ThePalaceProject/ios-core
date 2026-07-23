@@ -4,16 +4,17 @@
 //
 //  Wave 1a (PalacePreferences): app-target bridge that re-attaches the
 //  auth-flow protocol conformances TPPSettings carried before it moved into
-//  the PalacePreferences package. The @objc protocols stay app-target because
-//  their only consumers (TPPSignInBusinessLogic, LegacySAMLAuthAdapter) are
-//  app-target; the package must stay dependency-free.
+//  the PalacePreferences package. These are plain Swift protocols (their only
+//  consumers — TPPSignInBusinessLogic, LegacySAMLAuthAdapter — are all Swift),
+//  so the app-side conformances generate NO ObjC category on the now-external
+//  TPPSettings class; the package stays dependency-free.
 //
 
 import Foundation
 import PalaceAuth
 import PalacePreferences
 
-@objc protocol NYPLUniversalLinksSettings: NSObjectProtocol {
+protocol NYPLUniversalLinksSettings: AnyObject {
     /// The URL that will be used to redirect an external authentication flow
     /// back to the our app. This URL will need to be provided to the external
     /// service. For example, Clever authentication uses this URL to redirect
@@ -21,7 +22,7 @@ import PalacePreferences
     var universalLinksURL: URL { get }
 }
 
-@objc protocol NYPLFeedURLProvider {
+protocol NYPLFeedURLProvider: AnyObject {
     var accountMainFeedURL: URL? { get set }
 }
 
@@ -30,7 +31,7 @@ extension TPPSettings: NYPLUniversalLinksSettings {
     // `public` because this property is the witness for PalaceAuth's PUBLIC
     // `UniversalLinksProviding` requirement (conformed below) — a public-protocol
     // witness must be public even though NYPLUniversalLinksSettings is app-internal.
-    @objc public var universalLinksURL: URL {
+    public var universalLinksURL: URL {
         URL(string: "https://librarysimplified.org/callbacks/SimplyE")!
     }
 }

@@ -19,7 +19,7 @@ protocol TPPAgeCheckValidationDelegate: AnyObject, Sendable {
                                             completion: ((Bool) -> Void)?)
 }
 
-@objc protocol TPPAgeCheckChoiceStorage {
+protocol TPPAgeCheckChoiceStorage: AnyObject {
     var userPresentedAgeCheck: Bool { get set }
 }
 

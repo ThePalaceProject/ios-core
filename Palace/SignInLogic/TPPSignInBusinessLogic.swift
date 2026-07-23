@@ -57,14 +57,14 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
 
     /// Makes a business logic object with a network request executor that
     /// performs no persistent storage for caching.
-    @objc convenience init(libraryAccountID: String,
-                           libraryAccountsProvider: TPPLibraryAccountsProvider,
-                           urlSettingsProvider: NYPLUniversalLinksSettings & NYPLFeedURLProvider,
-                           bookRegistry: TPPBookRegistrySyncing,
-                           bookDownloadsCenter: TPPBookDownloadsDeleting,
-                           userAccountProvider: TPPUserAccountProvider.Type,
-                           uiDelegate: TPPSignInOutBusinessLogicUIDelegate?,
-                           drmAuthorizer: TPPDRMAuthorizing?) {
+    convenience init(libraryAccountID: String,
+                     libraryAccountsProvider: TPPLibraryAccountsProvider,
+                     urlSettingsProvider: NYPLUniversalLinksSettings & NYPLFeedURLProvider,
+                     bookRegistry: TPPBookRegistrySyncing,
+                     bookDownloadsCenter: TPPBookDownloadsDeleting,
+                     userAccountProvider: TPPUserAccountProvider.Type,
+                     uiDelegate: TPPSignInOutBusinessLogicUIDelegate?,
+                     drmAuthorizer: TPPDRMAuthorizing?) {
         self.init(libraryAccountID: libraryAccountID,
                   libraryAccountsProvider: libraryAccountsProvider,
                   urlSettingsProvider: urlSettingsProvider,
@@ -182,7 +182,7 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
     var patron: [String: Any]?
 
     /// Settings used by OAuth sign-in flows.
-    @objc let urlSettingsProvider: NYPLUniversalLinksSettings & NYPLFeedURLProvider
+    let urlSettingsProvider: NYPLUniversalLinksSettings & NYPLFeedURLProvider
 
     /// NotificationCenter used by OAuth observer registration / removal.
     /// Production defaults to `.default`; tests may inject an isolated
