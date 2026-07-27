@@ -26,7 +26,7 @@ extension BookRegistrySync {
         accountsManager: AccountsManager,
         downloadCenterProvider: @escaping @Sendable () -> MyBooksDownloadCenter,
         opdsFeedServiceProvider: @escaping @Sendable () -> any OPDSFeedFetching,
-        sideloadedIDsProvider: @escaping @Sendable () -> Set<String> = { AppContainer.production().sideloadedBookRegistry.identifiers }
+        sideloadedIDsProvider: @escaping @Sendable () -> Set<String> = { AppContainer.production().sideloadedBookRegistry.identifiers } // MIGRATED-DEFERRED: swarm_47883816 — test-engine-init DEFAULT arg mirrors the production sideloaded-IDs wiring; the closure defers resolution and callers that need isolation override it (same lazy-provider pattern as downloadCenterProvider/opdsFeedServiceProvider above)
     ) {
         self.init(
             store: store,

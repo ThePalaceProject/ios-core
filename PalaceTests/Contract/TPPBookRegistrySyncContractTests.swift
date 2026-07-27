@@ -260,7 +260,7 @@ final class TPPBookRegistrySyncContractTests: XCTestCase {
         // sync() reads credentials via sharedAccount(libraryUUID:) → the
         // production keychain-backed user account; there is no DI seam for the
         // credential path (only currentAccount STATE is injected).
-        let prodUserAccount = AppContainer.production().accountsManager.userAccount(for: uuid)
+        let prodUserAccount = AppContainer.production().accountsManager.userAccount(for: uuid) // MIGRATED-DEFERRED: PP-4542 — sync() checks hasCredentials() via sharedAccount→production keychain-backed userAccount; the credential path has no DI seam (only currentAccount STATE is injected)
         prodUserAccount.setAuthToken("sync-contract-token", barcode: "bc", pin: "1234",
                                      expirationDate: Date().addingTimeInterval(3600))
         accountsManager.currentAccount?._setState(.detailsLoaded(makeLoansUrlDetails(uuid: uuid)))
@@ -381,7 +381,7 @@ final class TPPBookRegistrySyncContractTests: XCTestCase {
         let (uuid, cleanup) = seedFixtureCurrentAccount()
         defer { cleanup() }
 
-        let prodUserAccount = AppContainer.production().accountsManager.userAccount(for: uuid)
+        let prodUserAccount = AppContainer.production().accountsManager.userAccount(for: uuid) // MIGRATED-DEFERRED: PP-4542 — sync() checks hasCredentials() via sharedAccount→production keychain-backed userAccount; the credential path has no DI seam (only currentAccount STATE is injected)
         XCTAssertFalse(prodUserAccount.hasCredentials(),
                        "precondition: fresh-UUID fixture must have no stored credentials")
 
@@ -422,7 +422,7 @@ final class TPPBookRegistrySyncContractTests: XCTestCase {
         let (uuid, seedCleanup) = seedFixtureCurrentAccount()
         defer { seedCleanup() }
 
-        let prodUserAccount = AppContainer.production().accountsManager.userAccount(for: uuid)
+        let prodUserAccount = AppContainer.production().accountsManager.userAccount(for: uuid) // MIGRATED-DEFERRED: PP-4542 — sync() checks hasCredentials() via sharedAccount→production keychain-backed userAccount; the credential path has no DI seam (only currentAccount STATE is injected)
         prodUserAccount.setAuthToken("sync-contract-token", barcode: "bc", pin: "1234",
                                      expirationDate: Date().addingTimeInterval(3600))
         defer { prodUserAccount.removeAll() }
