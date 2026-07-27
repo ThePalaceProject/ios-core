@@ -27,6 +27,7 @@
 //
 
 import XCTest
+import PalaceBookModel
 @testable import Palace
 
 @MainActor
