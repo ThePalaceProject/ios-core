@@ -276,6 +276,42 @@ final class AudiobookBookmarkBusinessLogicPositionWriteTests: XCTestCase {
                      "(local is safe; the user's data is not lost)")
     }
 
+    // MARK: - 4b. Pending remote-write cancellation (3.2.3 Cause 2)
+
+    /// `cancelPendingRemotePositionWrite()` MUST forward to the writer's
+    /// `cancel(for:)` with THIS book's identifier. This is the seam the
+    /// session-teardown and return paths call so a queued snapshot can't flush
+    /// after `deleteAllBookmarks` and resurrect the stale server position.
+    /// Before the 3.2.3 wiring, `RemotePositionWriter.cancel(for:)` had zero
+    /// production callers.
+    func testCancelPendingRemotePositionWrite_forwardsBookIdentifierToWriter() async {
+        XCTAssertTrue(spyWriter.cancelledBookIDs.isEmpty,
+                      "Pre-state: writer must not have been cancelled yet")
+
+        await sut.cancelPendingRemotePositionWrite()
+
+        XCTAssertEqual(spyWriter.cancelledBookIDs, [bookIdentifier],
+                       "cancel MUST be forwarded to the writer exactly once, keyed by this book's identifier")
+    }
+
+    /// A save that the writer throttles (queues, returns nil) followed by a
+    /// cancel must reach the writer's cancel seam — proving the position-write
+    /// path and the cancellation path both target the same book. Guards the
+    /// wiring end-to-end at the business-logic layer (the writer's own
+    /// "no post after cancel" semantics are pinned in RemotePositionWriterTests).
+    func testSaveThenCancel_routesBothThroughWriter_sameBook() async {
+        spyWriter.saveResult = .throttled
+        _ = saveAndWait(position: position(trackIndex: 1, time: 10.0))
+        XCTAssertEqual(spyWriter.savedSnapshots.count, 1,
+                       "Save must have reached the writer (throttled)")
+
+        await sut.cancelPendingRemotePositionWrite()
+
+        XCTAssertEqual(spyWriter.cancelledBookIDs, [bookIdentifier],
+                       "Cancel must target the same book the throttled save queued")
+        XCTAssertEqual(spyWriter.savedSnapshots.first?.bookID, bookIdentifier)
+    }
+
     // MARK: - 5. isAtBeginning guard preserved (swarm_f3b9b087 #4)
 
     /// Pin the swarm_f3b9b087 P0 #4 predicate: when a save is at the

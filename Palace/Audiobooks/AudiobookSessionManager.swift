@@ -816,6 +816,14 @@ public final class AudiobookSessionManager: ObservableObject {
 
         let bookId = currentBook?.identifier
 
+        // 3.2.3 Cause 2: cancel any pending throttled remote listening-position
+        // write BEFORE tearing down the manager, so a queued snapshot can't
+        // flush after teardown and resurrect a stale server position. Must run
+        // while `manager?.bookmarkDelegate` (the writer's owner) is still live.
+        if let bookId {
+            await cancelPendingRemotePositionWrite(forBookId: bookId)
+        }
+
         if persistFinalPosition {
             // Prefer the live position from the player over the cached value, which
             // may lag behind if the user scrubbed or the position update hadn't fired yet.
@@ -857,6 +865,24 @@ public final class AudiobookSessionManager: ObservableObject {
         playbackStatePublisher.send(state)
 
         Log.info(#file, "Playback stopped and session cleared")
+    }
+
+    /// 3.2.3 Cause 2 wiring. Cancels any pending throttled remote
+    /// listening-position write for `bookId` by routing to the live bookmark
+    /// delegate (`AudiobookBookmarkBusinessLogic`) that owns the
+    /// `RemotePositionWriter`. Only cancels when `bookId` is the active
+    /// session's book (a queued write can only exist for the book whose
+    /// delegate is currently bound); a no-op otherwise. This is the single
+    /// implementation used by both `stopPlayback` (self) and the
+    /// `BookReturnService` return path (via the `AudiobookSessionManaging`
+    /// protocol on `AppContainer.audiobookSession`).
+    @MainActor
+    public func cancelPendingRemotePositionWrite(forBookId bookId: String) async {
+        guard let logic = manager?.bookmarkDelegate as? AudiobookBookmarkBusinessLogic,
+              logic.book.identifier == bookId else {
+            return
+        }
+        await logic.cancelPendingRemotePositionWrite()
     }
 
     /// Dismisses the audiobook player view on the phone.
@@ -1208,6 +1234,47 @@ public final class AudiobookSessionManager: ObservableObject {
         }
         guard Self.preferRemotePosition(local: localPosition, remote: remote) else {
             Log.debug(#file, "Local position is current — opening at local position")
+            return fallback
+        }
+        // Manifest-validate the REMOTE position with the SAME gate the local
+        // path applies (`tryLoadPrimaryLocalPosition` at the `validationFailure`
+        // seam): a stale remote track key absent from the loaded manifest is
+        // exactly the 3.2.3 Cause 2 failure — seeking it verbatim opens at a
+        // phantom position. Drop to the safe fallback (local-or-Ch1) instead.
+        let resolved = validatedRemotePosition(
+            remote,
+            fallback: fallback,
+            in: audiobook.tableOfContents,
+            bookId: book.identifier
+        )
+        return resolved
+    }
+
+    /// Applies the manifest-validation gate to a resolved REMOTE position,
+    /// mirroring the local path's `validationFailure(for:in:)` check. Returns
+    /// `remote` when it validates against the loaded manifest, else `fallback`
+    /// — a remote track key that isn't in the manifest must NOT be seeked
+    /// verbatim (3.2.3 Cause 2). `internal` so the decision is unit-pinnable
+    /// with a real TOC + a foreign-keyed position, the same way the local
+    /// `validationFailure` / `selectMostRecentValidBookmark` seams are.
+    func validatedRemotePosition(
+        _ remote: TrackPosition,
+        fallback: TrackPosition,
+        in tableOfContents: AudiobookTableOfContents,
+        bookId: String
+    ) -> TrackPosition {
+        if let failure = validationFailure(for: remote, in: tableOfContents) {
+            let manifestKeys = tableOfContents.tracks.tracks
+                .prefix(5).map(\.key).joined(separator: ",")
+            positionLogger.logFailure(
+                reason: failureReasonString(failure),
+                context: [
+                    "bookId": bookId,
+                    "savedKey": remote.track.key,
+                    "manifestKeys": manifestKeys,
+                    "source": "remote"
+                ]
+            )
             return fallback
         }
         Log.info(#file, "📡 Opening at remote position (newer than local): track=\(remote.track.key), timestamp=\(remote.timestamp)")

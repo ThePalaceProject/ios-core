@@ -513,16 +513,40 @@ protocol AnnotationsManager {
         // Fire-and-forget: delete bookmarks in background
         guard syncIsPossibleAndPermitted() else { return }
 
-        getServerBookmarks(forBook: book, atURL: book.annotationsURL, motivation: .bookmark) { bookmarks in
-            guard let readiumBookmarks = bookmarks as? [TPPReadiumBookmark], !readiumBookmarks.isEmpty else {
-                return
-            }
-
-            for bookmark in readiumBookmarks {
-                guard let annotationId = bookmark.annotationId else { continue }
-                deleteBookmark(annotationId: annotationId) { _ in }
+        // Delete BOTH user bookmarks (`.bookmark`) AND the reading/listening
+        // position (`.readingProgress`). Leaving the reading-progress
+        // annotation on the server made a stale listening position
+        // authoritative on re-borrow (3.2.3 Cause 2 — HelpSpot
+        // #18468 / #18019 / #18449). `getServerBookmarks` already scopes to the
+        // returned book (the factory drops annotations whose `source` != this
+        // book's identifier), so other books' bookmarks are never touched.
+        for motivation in [TPPBookmarkSpec.Motivation.bookmark, .readingProgress] {
+            getServerBookmarks(forBook: book, atURL: book.annotationsURL, motivation: motivation) { bookmarks in
+                guard let bookmarks, !bookmarks.isEmpty else { return }
+                for bookmark in bookmarks {
+                    guard let annotationId = serverAnnotationId(of: bookmark) else { continue }
+                    deleteBookmark(annotationId: annotationId) { _ in }
+                }
             }
         }
+    }
+
+    /// Extracts the server annotation ID from a parsed `Bookmark`, regardless
+    /// of concrete type. A `.readingProgress` annotation on an audiobook parses
+    /// as an `AudioBookmark`, which the old `as? [TPPReadiumBookmark]` array
+    /// cast silently dropped — leaving the listening position on the server to
+    /// resurface on re-borrow (3.2.3 Cause 2). Returns `nil` for a bookmark
+    /// with no server linkage or an unrecognised type (e.g. an unsynced
+    /// `AudioBookmark`, or a PDF page bookmark — whose deletion behaviour is
+    /// intentionally left unchanged).
+    private static func serverAnnotationId(of bookmark: Bookmark) -> String? {
+        if let readium = bookmark as? TPPReadiumBookmark {
+            return readium.annotationId
+        }
+        if let audio = bookmark as? AudioBookmark {
+            return audio.annotationId.isEmpty ? nil : audio.annotationId
+        }
+        return nil
     }
 
     static func deleteBookmark(annotationId: String,

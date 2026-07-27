@@ -136,6 +136,98 @@ final class BookReturnServiceTests: XCTestCase {
         XCTAssertEqual(announcementService.failedCalls, [])
     }
 
+    // MARK: - 3.2.3 Cause 2: pending remote-write cancellation on return
+
+    /// The return flow MUST cancel any pending throttled remote
+    /// listening-position write for the book BEFORE the cleanup runs, so a
+    /// queued snapshot can't flush after `deleteAllBookmarks` and resurrect the
+    /// stale server position. Verify the injected canceller is invoked with the
+    /// returned book's identifier. (The canceller runs synchronously at the top
+    /// of `returnBook`, before any async hop.)
+    func testReturnBook_cancelsPendingRemotePositionWrite_forTheReturnedBook() async throws {
+        final class Recorder: @unchecked Sendable {
+            private let lock = NSLock()
+            private var ids: [String] = []
+            func record(_ id: String) { lock.lock(); ids.append(id); lock.unlock() }
+            var recorded: [String] { lock.lock(); defer { lock.unlock() }; return ids }
+        }
+        let recorder = Recorder()
+
+        #if FEATURE_DRM_CONNECTOR
+        let svc = BookReturnService(
+            bookRegistry: registry,
+            localContentService: localContent,
+            opdsFeedService: feedFetcher,
+            downloadAnnouncementService: announcementService,
+            bookmarkDeletionLog: bookmarkLog,
+            reauthenticator: reauthenticator,
+            userRetryTracker: retryTracker,
+            userAccountProvider: { [unowned self] in self.userAccount },
+            remotePositionWriteCanceller: { id in recorder.record(id) }
+        )
+        #else
+        let svc = BookReturnService(
+            bookRegistry: registry,
+            localContentService: localContent,
+            opdsFeedService: feedFetcher,
+            downloadAnnouncementService: announcementService,
+            bookmarkDeletionLog: bookmarkLog,
+            reauthenticator: reauthenticator,
+            userRetryTracker: retryTracker,
+            userAccountProvider: { [unowned self] in self.userAccount },
+            remotePositionWriteCanceller: { id in recorder.record(id) }
+        )
+        #endif
+        svc.delegate = spyDelegate
+        registry.addBook(book, location: nil, state: .downloadSuccessful,
+                         fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+
+        let exp = expectation(description: "completion")
+        svc.returnBook(withIdentifier: book.identifier) { exp.fulfill() }
+        await fulfillment(of: [exp], timeout: 2.0)
+
+        XCTAssertEqual(recorder.recorded, [book.identifier],
+                       "returnBook must cancel the pending remote position write for the returned book exactly once")
+    }
+
+    /// A return for a book that isn't in the registry short-circuits BEFORE the
+    /// cancellation seam (there's nothing to return). Guards against a mutant
+    /// that moves the canceller above the `guard let book` early-out.
+    func testReturnBook_bookNotInRegistry_doesNotCancelRemoteWrite() async throws {
+        final class Recorder: @unchecked Sendable {
+            private let lock = NSLock()
+            private var ids: [String] = []
+            func record(_ id: String) { lock.lock(); ids.append(id); lock.unlock() }
+            var recorded: [String] { lock.lock(); defer { lock.unlock() }; return ids }
+        }
+        let recorder = Recorder()
+        #if FEATURE_DRM_CONNECTOR
+        let svc = BookReturnService(
+            bookRegistry: registry, localContentService: localContent,
+            opdsFeedService: feedFetcher, downloadAnnouncementService: announcementService,
+            bookmarkDeletionLog: bookmarkLog, reauthenticator: reauthenticator,
+            userRetryTracker: retryTracker,
+            userAccountProvider: { [unowned self] in self.userAccount },
+            remotePositionWriteCanceller: { id in recorder.record(id) }
+        )
+        #else
+        let svc = BookReturnService(
+            bookRegistry: registry, localContentService: localContent,
+            opdsFeedService: feedFetcher, downloadAnnouncementService: announcementService,
+            bookmarkDeletionLog: bookmarkLog, reauthenticator: reauthenticator,
+            userRetryTracker: retryTracker,
+            userAccountProvider: { [unowned self] in self.userAccount },
+            remotePositionWriteCanceller: { id in recorder.record(id) }
+        )
+        #endif
+        let exp = expectation(description: "completion")
+        svc.returnBook(withIdentifier: "missing-id") { exp.fulfill() }
+        await fulfillment(of: [exp], timeout: 1.0)
+
+        XCTAssertEqual(recorder.recorded, [],
+                       "No book in registry → nothing to cancel; the seam must run only after the book is resolved")
+    }
+
     // MARK: - Branch 2: revokeURL == nil + downloaded
 
     func testReturnBook_noRevokeURL_downloaded_deletesContentAndRemovesBook() async throws {
