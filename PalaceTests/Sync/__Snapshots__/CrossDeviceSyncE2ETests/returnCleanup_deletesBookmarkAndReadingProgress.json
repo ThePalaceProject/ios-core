@@ -1,0 +1,14 @@
+[
+  {
+    "args" : {
+      "annotationId" : "contract-bookmark"
+    },
+    "method" : "deleteBookmark"
+  },
+  {
+    "args" : {
+      "annotationId" : "contract-readingProgress"
+    },
+    "method" : "deleteBookmark"
+  }
+]

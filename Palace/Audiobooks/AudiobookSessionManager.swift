@@ -75,6 +75,27 @@ public enum AudiobookSessionError: Error, Equatable {
     }
 }
 
+// MARK: - ContentGateResult
+
+/// Outcome of the pre-open LCP content gate (PP-4542 / 323-Cause-1). Returned
+/// by `gateOnLCPContentDownload` so `openAudiobook` can act on it without the
+/// gate itself touching UI or instance identity state.
+///
+/// - `proceed`: nothing was awaited — the content is already on disk, or the
+///   gate wasn't applicable (not an LCP book, or a cold-load recovery re-open).
+///   Open immediately.
+/// - `landedAfterTrigger`: the content download was TRIGGERED and the `.lcpa`
+///   landed within the wait window. Open from the local package (after the
+///   caller re-checks open identity, since an `await` elapsed).
+/// - `contentUnavailable`: the download was triggered but the content did not
+///   land within the wait window. Caller surfaces the existing "Audiobook
+///   Unavailable" experience.
+enum ContentGateResult: Equatable {
+    case proceed
+    case landedAfterTrigger
+    case contentUnavailable
+}
+
 // MARK: - AudiobookSessionManager
 
 /// Singleton manager that owns audiobook playback state.
@@ -217,6 +238,21 @@ public final class AudiobookSessionManager: ObservableObject {
     /// flag-branch decision is exercised without touching UserDefaults.
     private let inAppPlaybackNavEnabledProvider: () -> Bool
 
+    /// PP-4542 / 323-Cause-1: TRIGGERS the LCP `.lcpa` content download for a
+    /// freshly-borrowed audiobook whose `.lcpl` license landed (flipping the
+    /// book to `.downloadSuccessful`) but whose full content package never
+    /// made it to disk. Content downloads separately from the license and can
+    /// permanently fail — so the old poll-only gate would spin the whole
+    /// 180s window then dead-end at "Audiobook Unavailable", forever (the
+    /// #1-volume patron complaint). Production wires
+    /// `AppContainer.production().downloadCenter.redownloadLCPContentFile` —
+    /// the SAME idempotent self-heal seam `BookRegistrySync` uses; it re-runs
+    /// `LCPLibraryService.fulfill` from the on-disk `.lcpl` and reliably lands
+    /// the `.lcpa` (no-ops if the file already exists or a download is already
+    /// in flight). Tests inject a spy to prove the gate TRIGGERS the download
+    /// rather than only polling for a file that may never appear.
+    private let lcpContentDownloadTrigger: (TPPBook) -> Void
+
     // MARK: - F-011 readiness-gate injection points
     //
     // PR #990 introduced a race where Palace's first `play(at:)` could fire
@@ -257,6 +293,7 @@ public final class AudiobookSessionManager: ObservableObject {
         navigationCoordinatorHubProvider: @escaping () -> NavigationCoordinatorHub,
         audiobookSessionPresenterProvider: @escaping @MainActor () -> AudiobookSessionPresenter,
         inAppPlaybackNavEnabledProvider: @escaping () -> Bool,
+        lcpContentDownloadTrigger: @escaping (TPPBook) -> Void,
         readinessProbeFactory: @escaping @MainActor (Player) -> PlaybackReadinessProbing,
         playbackCommandFactory: @escaping @MainActor (Player) -> PlaybackEngineCommanding,
         readinessTimeout: TimeInterval
@@ -269,6 +306,7 @@ public final class AudiobookSessionManager: ObservableObject {
         self.navigationCoordinatorHubProvider = navigationCoordinatorHubProvider
         self.audiobookSessionPresenterProvider = audiobookSessionPresenterProvider
         self.inAppPlaybackNavEnabledProvider = inAppPlaybackNavEnabledProvider
+        self.lcpContentDownloadTrigger = lcpContentDownloadTrigger
         self.readinessProbeFactory = readinessProbeFactory
         self.playbackCommandFactory = playbackCommandFactory
         self.readinessTimeout = readinessTimeout
@@ -297,6 +335,9 @@ public final class AudiobookSessionManager: ObservableObject {
         navigationCoordinatorHubProvider: @escaping () -> NavigationCoordinatorHub = { AppContainer.production().navigationCoordinatorHub },
         audiobookSessionPresenterProvider: @escaping @MainActor () -> AudiobookSessionPresenter = { AppContainer.production().audiobookSessionPresenter },
         inAppPlaybackNavEnabledProvider: @escaping () -> Bool = { RemoteFeatureFlags.shared.isInAppPlaybackNavEnabled },
+        lcpContentDownloadTrigger: @escaping (TPPBook) -> Void = { book in
+            AppContainer.production().downloadCenter.redownloadLCPContentFile(for: book)
+        },
         readinessProbeFactory: @escaping @MainActor (Player) -> PlaybackReadinessProbing = { player in
             PlayerReadinessProbe(isLoadedSnapshot: { [weak player] in player?.isLoaded ?? false })
         },
@@ -314,6 +355,7 @@ public final class AudiobookSessionManager: ObservableObject {
             navigationCoordinatorHubProvider: navigationCoordinatorHubProvider,
             audiobookSessionPresenterProvider: audiobookSessionPresenterProvider,
             inAppPlaybackNavEnabledProvider: inAppPlaybackNavEnabledProvider,
+            lcpContentDownloadTrigger: lcpContentDownloadTrigger,
             readinessProbeFactory: readinessProbeFactory,
             playbackCommandFactory: playbackCommandFactory,
             readinessTimeout: readinessTimeout
@@ -487,37 +529,46 @@ public final class AudiobookSessionManager: ObservableObject {
         playbackStatePublisher.send(state)
 
 #if LCP
-        // PP-4542 (gate): a freshly-borrowed LCP audiobook is marked
-        // download-successful the instant its tiny .lcpl license lands, but the
-        // real .lcpa content is still downloading in the background. Opening now
-        // would route through the streaming path — and LCP streaming-from-
-        // license is BROKEN under Readium 3.9.0: the remote read returns 0 bytes
-        // with nil length, so AVPlayer dead-ends in CoreMedia -12873 → -11849
-        // "Operation Stopped" (the 3.2.0-only "Audiobook Unavailable"; confirmed
-        // via instrumented repro). The content download is already in flight, so
-        // instead of attempting the broken stream we HOLD the loading state and
-        // open from the local package the moment it lands — the reliable path.
-        // Skipped for cold-load recovery re-opens (content is already local by
-        // then). Generation/identity re-checked after the wait so a newer open
-        // supersedes us cleanly.
-        if !isColdLoadRecovery,
-           LCPAudiobooks.canOpenBook(book),
-           !Self.audiobookContentIsLocal(book.identifier) {
-            Log.info(#file, "LCP audiobook content still downloading — awaiting local package before opening (PP-4542 gate)")
-            let landed = await Self.awaitAudiobookContentLocal(book.identifier)
-            // A newer open (user tapped a different book) would have replaced
-            // currentBook + the .loading state; bail if so.
+        // PP-4542 (gate) + 323-Cause-1: a freshly-borrowed LCP audiobook is
+        // marked download-successful the instant its tiny .lcpl license lands,
+        // but the real .lcpa content downloads SEPARATELY and can permanently
+        // fail to arrive. Opening now would route through the streaming path —
+        // and LCP streaming-from-license is BROKEN under Readium 3.9.0: the
+        // remote read returns 0 bytes with nil length, so AVPlayer dead-ends in
+        // CoreMedia -12873 → -11849 "Operation Stopped" (the "Audiobook
+        // Unavailable"; confirmed via instrumented repro). So instead of
+        // streaming, we HOLD the loading state and open from the local package.
+        //
+        // Cause-1 fix: the old gate only POLLED for the content, but for a
+        // license-only book there may be NO download in flight — the poll would
+        // spin the whole 180s window then dead-end at "Audiobook Unavailable",
+        // forever (the #1-volume patron complaint). `gateOnLCPContentDownload`
+        // now TRIGGERS the download (idempotent self-heal seam) before awaiting,
+        // so the .lcpa actually lands. Skipped for cold-load recovery re-opens
+        // (content is already local by then). Identity re-checked after any
+        // await so a newer open supersedes us cleanly; the unavailable outcome
+        // is only reachable AFTER a real trigger + genuine timeout.
+        let gateResult = await gateOnLCPContentDownload(
+            for: book,
+            isColdLoadRecovery: isColdLoadRecovery,
+            canOpenLCPBook: LCPAudiobooks.canOpenBook(book),
+            contentIsLocal: Self.audiobookContentIsLocal(book.identifier)
+        )
+        if gateResult != .proceed {
+            // An await elapsed (download triggered): a newer open (user tapped a
+            // different book) may have replaced currentBook + the .loading
+            // state; bail if so.
             guard currentBook?.identifier == book.identifier,
                   case .loading(let lid) = state, lid == book.identifier else {
                 Log.info(#file, "PP-4542 gate: a newer open superseded \(book.identifier) while awaiting content — bailing")
                 return .failure(.alreadyLoading)
             }
-            if !landed {
-                Log.info(#file, "PP-4542 gate: content did not finish downloading within the wait window — surfacing unavailable")
+            if gateResult == .contentUnavailable {
+                Log.info(#file, "PP-4542 gate: content did not finish downloading within the wait window after trigger — surfacing unavailable")
                 await dismissAndPresentColdLoadUnavailable()
                 return .failure(.unknown("Audiobook content is still downloading"))
             }
-            Log.info(#file, "PP-4542 gate: content landed — opening '\(book.title)' from local package")
+            Log.info(#file, "PP-4542 gate: content landed after trigger — opening '\(book.title)' from local package")
         }
 #endif
 
@@ -816,6 +867,14 @@ public final class AudiobookSessionManager: ObservableObject {
 
         let bookId = currentBook?.identifier
 
+        // 3.2.3 Cause 2: cancel any pending throttled remote listening-position
+        // write BEFORE tearing down the manager, so a queued snapshot can't
+        // flush after teardown and resurrect a stale server position. Must run
+        // while `manager?.bookmarkDelegate` (the writer's owner) is still live.
+        if let bookId {
+            await cancelPendingRemotePositionWrite(forBookId: bookId)
+        }
+
         if persistFinalPosition {
             // Prefer the live position from the player over the cached value, which
             // may lag behind if the user scrubbed or the position update hadn't fired yet.
@@ -857,6 +916,24 @@ public final class AudiobookSessionManager: ObservableObject {
         playbackStatePublisher.send(state)
 
         Log.info(#file, "Playback stopped and session cleared")
+    }
+
+    /// 3.2.3 Cause 2 wiring. Cancels any pending throttled remote
+    /// listening-position write for `bookId` by routing to the live bookmark
+    /// delegate (`AudiobookBookmarkBusinessLogic`) that owns the
+    /// `RemotePositionWriter`. Only cancels when `bookId` is the active
+    /// session's book (a queued write can only exist for the book whose
+    /// delegate is currently bound); a no-op otherwise. This is the single
+    /// implementation used by both `stopPlayback` (self) and the
+    /// `BookReturnService` return path (via the `AudiobookSessionManaging`
+    /// protocol on `AppContainer.audiobookSession`).
+    @MainActor
+    public func cancelPendingRemotePositionWrite(forBookId bookId: String) async {
+        guard let logic = manager?.bookmarkDelegate as? AudiobookBookmarkBusinessLogic,
+              logic.book.identifier == bookId else {
+            return
+        }
+        await logic.cancelPendingRemotePositionWrite()
     }
 
     /// Dismisses the audiobook player view on the phone.
@@ -1208,6 +1285,47 @@ public final class AudiobookSessionManager: ObservableObject {
         }
         guard Self.preferRemotePosition(local: localPosition, remote: remote) else {
             Log.debug(#file, "Local position is current — opening at local position")
+            return fallback
+        }
+        // Manifest-validate the REMOTE position with the SAME gate the local
+        // path applies (`tryLoadPrimaryLocalPosition` at the `validationFailure`
+        // seam): a stale remote track key absent from the loaded manifest is
+        // exactly the 3.2.3 Cause 2 failure — seeking it verbatim opens at a
+        // phantom position. Drop to the safe fallback (local-or-Ch1) instead.
+        let resolved = validatedRemotePosition(
+            remote,
+            fallback: fallback,
+            in: audiobook.tableOfContents,
+            bookId: book.identifier
+        )
+        return resolved
+    }
+
+    /// Applies the manifest-validation gate to a resolved REMOTE position,
+    /// mirroring the local path's `validationFailure(for:in:)` check. Returns
+    /// `remote` when it validates against the loaded manifest, else `fallback`
+    /// — a remote track key that isn't in the manifest must NOT be seeked
+    /// verbatim (3.2.3 Cause 2). `internal` so the decision is unit-pinnable
+    /// with a real TOC + a foreign-keyed position, the same way the local
+    /// `validationFailure` / `selectMostRecentValidBookmark` seams are.
+    func validatedRemotePosition(
+        _ remote: TrackPosition,
+        fallback: TrackPosition,
+        in tableOfContents: AudiobookTableOfContents,
+        bookId: String
+    ) -> TrackPosition {
+        if let failure = validationFailure(for: remote, in: tableOfContents) {
+            let manifestKeys = tableOfContents.tracks.tracks
+                .prefix(5).map(\.key).joined(separator: ",")
+            positionLogger.logFailure(
+                reason: failureReasonString(failure),
+                context: [
+                    "bookId": bookId,
+                    "savedKey": remote.track.key,
+                    "manifestKeys": manifestKeys,
+                    "source": "remote"
+                ]
+            )
             return fallback
         }
         Log.info(#file, "📡 Opening at remote position (newer than local): track=\(remote.track.key), timestamp=\(remote.timestamp)")
@@ -1731,11 +1849,17 @@ public final class AudiobookSessionManager: ObservableObject {
     }
 
     /// Awaits a freshly-borrowed audiobook's content download landing on disk by
-    /// polling existence of the local package. The download is already in flight
-    /// (it auto-starts on borrow), so this is a *wait*, not a trigger. Bounded so
-    /// a stalled/failed download can't hold the loading state forever; on timeout
-    /// the caller surfaces the unavailable alert (i.e. no worse than today, just
-    /// after giving the in-flight download a chance to finish).
+    /// polling existence of the local package. Bounded so a stalled/failed
+    /// download can't hold the loading state forever; on timeout the caller
+    /// surfaces the unavailable alert.
+    ///
+    /// 323-Cause-1: this is a *wait*, and the wait is now preceded by an
+    /// explicit `lcpContentDownloadTrigger(book)` in `gateOnLCPContentDownload`
+    /// — because an LCP audiobook that flipped to `.downloadSuccessful` on
+    /// license-only may have NO content download in flight (content downloads
+    /// separately and can permanently fail), so a poll with nothing running
+    /// would spin the whole window then dead-end. The trigger makes the file
+    /// actually arrive; this awaits it.
     static func awaitAudiobookContentLocal(
         _ bookId: String,
         timeout: TimeInterval = 180,
@@ -1747,6 +1871,66 @@ public final class AudiobookSessionManager: ObservableObject {
             try? await Task.sleep(nanoseconds: UInt64(pollInterval * 1_000_000_000))
         }
         return audiobookContentIsLocal(bookId)
+    }
+
+    /// PP-4542 / 323-Cause-1: pure predicate for the upfront LCP content gate.
+    /// An LCP audiobook that is openable but whose content package isn't on
+    /// disk must TRIGGER a content download and await it — it must NOT stream
+    /// (broken under Readium 3.9.0) and must NOT merely poll for a file that
+    /// may never land. Cold-load recovery re-opens skip the gate entirely
+    /// (content is already local by then). Pure so a flipped conditional is
+    /// caught by mutation testing.
+    static func shouldTriggerContentDownloadBeforeOpen(
+        isColdLoadRecovery: Bool,
+        canOpenLCPBook: Bool,
+        contentIsLocal: Bool
+    ) -> Bool {
+        !isColdLoadRecovery && canOpenLCPBook && !contentIsLocal
+    }
+
+    /// PP-4542 / 323-Cause-1: the upfront LCP content gate. If the audiobook is
+    /// openable but its `.lcpa` content package isn't on disk, TRIGGER the
+    /// content download (via the idempotent self-heal seam) and await it
+    /// landing; otherwise return `.proceed` immediately.
+    ///
+    /// The Cause-1 fix lives here: the prior gate only *polled*
+    /// (`awaitAudiobookContentLocal`) for content that, for a license-only
+    /// `.downloadSuccessful` book, may have NO download in flight and may never
+    /// arrive — so it spun the full 180s window then surfaced "Audiobook
+    /// Unavailable", permanently. Firing `lcpContentDownloadTrigger` before the
+    /// await makes the `.lcpa` actually land. The unavailable outcome is only
+    /// reachable AFTER a real trigger + a genuine timeout.
+    ///
+    /// Extracted with the two branch inputs (`canOpenLCPBook`, `contentIsLocal`)
+    /// passed in and the await injectable, so the trigger-then-await contract is
+    /// unit-testable without a live loader/toolkit, an LCP license, or a 180s
+    /// real poll. Identity re-check + UI presentation stay in the caller
+    /// (`openAudiobook`) because they read instance state and touch UIKit.
+    func gateOnLCPContentDownload(
+        for book: TPPBook,
+        isColdLoadRecovery: Bool,
+        canOpenLCPBook: Bool,
+        contentIsLocal: Bool,
+        awaitContentLanding: (String) async -> Bool = { bookId in
+            await AudiobookSessionManager.awaitAudiobookContentLocal(bookId)
+        }
+    ) async -> ContentGateResult {
+        guard Self.shouldTriggerContentDownloadBeforeOpen(
+            isColdLoadRecovery: isColdLoadRecovery,
+            canOpenLCPBook: canOpenLCPBook,
+            contentIsLocal: contentIsLocal
+        ) else {
+            return .proceed
+        }
+
+        Log.info(#file, "LCP audiobook content not on disk — TRIGGERING content download before opening (PP-4542 gate / 323-Cause-1)")
+        // TRIGGER (not just poll): idempotent — no-ops if the .lcpa already
+        // exists or a download is already in flight. This is exactly what
+        // BookRegistrySync's self-heal uses and it reliably lands the .lcpa.
+        lcpContentDownloadTrigger(book)
+
+        let landed = await awaitContentLanding(book.identifier)
+        return landed ? .landedAfterTrigger : .contentUnavailable
     }
 
     /// Dismisses the player UI and shows the honest "couldn't play right now"

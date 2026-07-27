@@ -101,6 +101,13 @@ protocol AudiobookSessionManaging: AnyObject {
     /// Stops playback and clears the current session.
     func stopPlayback(dismissPhoneUI: Bool, persistFinalPosition: Bool) async
 
+    /// Cancels any pending throttled remote listening-position write for
+    /// `bookId`, so a queued snapshot can't flush after teardown / return and
+    /// resurrect a stale server position (3.2.3 Cause 2). Idempotent; a no-op
+    /// when `bookId` is not the active audiobook session. Called by the return
+    /// flow (`BookReturnService`) before it deletes the server bookmarks.
+    func cancelPendingRemotePositionWrite(forBookId bookId: String) async
+
     /// Updates the cover image for Now Playing display.
     func updateCoverImage(_ image: UIImage?)
 
@@ -118,6 +125,16 @@ protocol AudiobookSessionManaging: AnyObject {
     /// Polish-phase addition (in-app-nav-polish-2026-06-01) for the
     /// "playback freezes when backgrounded" user-reported regression.
     func recoverPlaybackForForegroundEntry()
+}
+
+// MARK: - Default implementations
+
+extension AudiobookSessionManaging {
+    /// Default no-op so lightweight test doubles that don't own a
+    /// `RemotePositionWriter` conform without boilerplate. The production
+    /// `AudiobookSessionManager` overrides this with the real cancellation
+    /// (3.2.3 Cause 2).
+    func cancelPendingRemotePositionWrite(forBookId bookId: String) async {}
 }
 
 // MARK: - AudiobookSessionManager Conformance
