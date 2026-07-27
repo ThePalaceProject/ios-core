@@ -1,0 +1,21 @@
+[
+  {
+    "args" : {
+      "state" : "syncing"
+    },
+    "method" : "setState"
+  },
+  {
+    "args" : {
+      "state" : "loaded"
+    },
+    "method" : "setState"
+  },
+  {
+    "args" : {
+      "hasError" : "false",
+      "newBooks" : "false"
+    },
+    "method" : "completion"
+  }
+]
