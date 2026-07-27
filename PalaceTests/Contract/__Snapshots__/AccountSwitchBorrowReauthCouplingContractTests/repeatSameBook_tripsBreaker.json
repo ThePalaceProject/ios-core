@@ -1,0 +1,14 @@
+[
+  {
+    "args" : {
+      "book" : "reauth-coupling-C1"
+    },
+    "method" : "presentSignInModal"
+  },
+  {
+    "args" : {
+      "book" : "reauth-coupling-C1"
+    },
+    "method" : "presentBorrowErrorAlert"
+  }
+]

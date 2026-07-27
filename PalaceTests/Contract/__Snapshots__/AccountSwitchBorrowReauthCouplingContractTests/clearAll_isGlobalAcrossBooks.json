@@ -1,0 +1,38 @@
+[
+  {
+    "args" : {
+      "book" : "reauth-coupling-C3-A"
+    },
+    "method" : "presentSignInModal"
+  },
+  {
+    "args" : {
+      "book" : "reauth-coupling-C3-A"
+    },
+    "method" : "presentBorrowErrorAlert"
+  },
+  {
+    "args" : {
+      "book" : "reauth-coupling-C3-B"
+    },
+    "method" : "presentSignInModal"
+  },
+  {
+    "args" : {
+      "book" : "reauth-coupling-C3-B"
+    },
+    "method" : "presentBorrowErrorAlert"
+  },
+  {
+    "args" : {
+      "book" : "reauth-coupling-C3-A"
+    },
+    "method" : "presentSignInModal"
+  },
+  {
+    "args" : {
+      "book" : "reauth-coupling-C3-B"
+    },
+    "method" : "presentSignInModal"
+  }
+]
