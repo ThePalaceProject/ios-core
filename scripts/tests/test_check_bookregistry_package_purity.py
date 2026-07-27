@@ -109,3 +109,62 @@ def test_clean_package_passes(tmp_path):
         f"stdout: {result.stdout!r}\nstderr: {result.stderr!r}"
     )
     assert "PASS" in result.stdout
+
+
+def test_forbidden_symbol_in_doc_comment_passes(tmp_path):
+    """The extracted package's boundary docs legitimately NAME these types
+    (e.g. "no `AccountsManager` type crosses this boundary"). The invariant is
+    about CODE coupling, not prose — a comment mention MUST NOT be flagged, or
+    the gate would fail on its own documentation (the Wave 2b regression)."""
+    root = tmp_path / "Sources"
+    root.mkdir(parents=True)
+    (root / "AccountScopeProviding.swift").write_text(
+        "import Foundation\n"
+        "/// Value-only: no `Account`, `AccountsManager`, or `TPPUserAccount`\n"
+        "/// type ever crosses this boundary. The package holds no edge to\n"
+        "/// `AppContainer` / `MyBooksDownloadCenter` / `NotificationService`.\n"
+        "/* block comment naming LCPAudiobooks too */\n"
+        "protocol AccountScopeProviding {\n"
+        "    var currentAccountID: String { get }  // adapter reads AppContainer app-side\n"
+        "}\n"
+    )
+    result = _run(root)
+    assert result.returncode == 0, (
+        f"expected exit 0 — forbidden names appear ONLY in comments, got "
+        f"{result.returncode}\nstdout: {result.stdout!r}\nstderr: {result.stderr!r}"
+    )
+    assert "PASS" in result.stdout
+
+
+def test_forbidden_symbol_in_string_literal_passes(tmp_path):
+    """A forbidden name inside a string literal is not a code coupling edge."""
+    root = tmp_path / "Sources"
+    root.mkdir(parents=True)
+    (root / "Log.swift").write_text(
+        'let msg = "resolved via AppContainer.production() on the app side"\n'
+        "let n = 1\n"
+    )
+    result = _run(root)
+    assert result.returncode == 0, (
+        f"expected exit 0 — forbidden name is in a string literal, got "
+        f"{result.returncode}\nstdout: {result.stdout!r}\nstderr: {result.stderr!r}"
+    )
+    assert "PASS" in result.stdout
+
+
+def test_forbidden_symbol_in_code_after_a_comment_line_is_flagged(tmp_path):
+    """Comment-stripping must not mask a REAL code reference elsewhere in the
+    file — a doc comment naming the type PLUS actual code usage still fails."""
+    root = tmp_path / "Sources"
+    root.mkdir(parents=True)
+    (root / "Sync.swift").write_text(
+        "/// This package must not touch AccountsManager.\n"
+        "import Foundation\n"
+        "let leaked = AccountsManager.shared\n"
+    )
+    result = _run(root)
+    assert result.returncode == 1, (
+        f"expected exit 1 — real code reference despite a comment, got "
+        f"{result.returncode}\nstdout: {result.stdout!r}\nstderr: {result.stderr!r}"
+    )
+    assert "AccountsManager" in result.stdout
