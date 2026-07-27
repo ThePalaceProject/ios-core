@@ -235,4 +235,61 @@ final class RegistryFileRecoveryTests: XCTestCase {
     XCTAssertNil(RegistryFileRecovery.recoverFromBackup(for: url),
                  "a corrupt backup must not be offered as a recovery source")
   }
+
+  // MARK: - primaryHasRecords() / onDiskHasRecords() (broadened INV-1, #18414)
+
+  func testPrimaryHasRecords_nonEmptyPrimary_isTrue() {
+    let url = registryURL()
+    write(versionedPayload(records: [recordDict(id: "p1")], version: 1), to: url)
+    XCTAssertTrue(RegistryFileRecovery.primaryHasRecords(for: url),
+                  "a valid non-empty primary must report primaryHasRecords == true")
+  }
+
+  func testPrimaryHasRecords_absentPrimary_isFalse() {
+    XCTAssertFalse(RegistryFileRecovery.primaryHasRecords(for: registryURL()),
+                   "an absent primary file must report false")
+  }
+
+  func testPrimaryHasRecords_validEmptyPrimary_isFalse() {
+    let url = registryURL()
+    write(versionedPayload(records: [], version: 1), to: url)
+    XCTAssertFalse(RegistryFileRecovery.primaryHasRecords(for: url),
+                   "a valid-but-empty primary is not a shelf to protect — must report false")
+  }
+
+  func testPrimaryHasRecords_corruptPrimary_isFalse() {
+    let url = registryURL()
+    write(Data("{ truncated corrupt".utf8), to: url)
+    XCTAssertFalse(RegistryFileRecovery.primaryHasRecords(for: url),
+                   "a corrupt primary carries no usable records — must report false")
+  }
+
+  /// Kills the `||` -> `&&` mutant on `onDiskHasRecords`: a non-empty PRIMARY
+  /// with NO backup must still report true. Under `&&` (both required) this
+  /// would be false, so the assertion fails the mutant.
+  func testOnDiskHasRecords_primaryOnly_noBackup_isTrue() {
+    let url = registryURL()
+    write(versionedPayload(records: [recordDict(id: "only-primary")], version: 1), to: url)
+    XCTAssertFalse(RegistryFileRecovery.backupHasRecords(for: url),
+                   "precondition: no backup present")
+    XCTAssertTrue(RegistryFileRecovery.onDiskHasRecords(for: url),
+                  "onDiskHasRecords must be true when only the PRIMARY holds records (|| not &&)")
+  }
+
+  /// The other `||` arm: a non-empty BACKUP with NO/empty primary must report
+  /// true (the post-corrupt rebuild-window shape).
+  func testOnDiskHasRecords_backupOnly_noPrimary_isTrue() {
+    let url = registryURL()
+    write(versionedPayload(records: [recordDict(id: "only-bak")], version: 1),
+          to: RegistryFileRecovery.backupURL(for: url))
+    XCTAssertFalse(RegistryFileRecovery.primaryHasRecords(for: url),
+                   "precondition: primary absent")
+    XCTAssertTrue(RegistryFileRecovery.onDiskHasRecords(for: url),
+                  "onDiskHasRecords must be true when only the BACKUP holds records")
+  }
+
+  func testOnDiskHasRecords_neitherPresent_isFalse() {
+    XCTAssertFalse(RegistryFileRecovery.onDiskHasRecords(for: registryURL()),
+                   "no primary and no backup means nothing on disk to protect — false")
+  }
 }

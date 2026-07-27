@@ -115,6 +115,43 @@ final class BookRegistrySyncReadinessTests: XCTestCase {
         }
     }
 
+    // MARK: - testReadiness_wedge_timesOut (HelpSpot #18414)
+
+    /// Contract: the BOUNDED gate `BookRegistrySync.sync` now consumes
+    /// (`awaitReady(timeout:)`) must THROW `.readinessTimedOut` when the account
+    /// stays wedged at `.detailsLoading` past the bound — instead of blocking
+    /// registry sync forever. This is the account-side half of the #18414
+    /// self-heal: `sync()`'s `catch` reverts state to `.loaded` and lets the
+    /// registry's retry policy drive the next attempt, so the wedge NEVER
+    /// reaches the reconciliation/save block with an empty in-memory shelf (the
+    /// path that persisted an empty registry over the good on-disk file).
+    ///
+    /// Kill case: an un-bounded `awaitReady()` (the pre-fix call) never throws
+    /// here — this test would hang and fail on timeout.
+    func testReadiness_wedgedAtDetailsLoading_bounded_throwsReadinessTimedOut() async {
+        let account = libraryMock.tppAccount
+        account._setState(.detailsLoading)   // wedged; no transition ever comes
+
+        do {
+            _ = try await account.awaitReady(timeout: 0.3)
+            XCTFail("The bounded gate must throw when the account never leaves .detailsLoading — an un-bounded await would hang registry sync forever")
+        } catch let error as AccountLoadError {
+            guard case .readinessTimedOut = error else {
+                return XCTFail("Expected .readinessTimedOut so sync()'s catch reverts to .loaded and retries; got \(error)")
+            }
+        } catch {
+            XCTFail("Expected AccountLoadError.readinessTimedOut, got \(type(of: error)): \(error)")
+        }
+
+        // The gate is NOT reset — a later drive can still resolve it; the caller
+        // owns the retry cadence.
+        if case .detailsLoading = account.loadState {
+            // pass
+        } else {
+            XCTFail("Timeout must leave the account wedge in place for a later drive; got \(account.loadState)")
+        }
+    }
+
     // MARK: - Integration: full migrated path when production has a currentAccount
 
     /// When the production accountsManager has a currentAccount (varies

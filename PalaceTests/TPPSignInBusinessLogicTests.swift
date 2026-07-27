@@ -375,4 +375,107 @@ class TPPSignInBusinessLogicTests: XCTestCase {
         XCTAssertTrue(businessLogic.shouldShowEULALink(),
                       "EULA link must reappear when the sign-in form is shown for re-auth.")
     }
+
+    // MARK: - boundedCompletion: auth-doc GET timeout seam (HelpSpot #18414)
+    //
+    // `ensureAuthenticationDocumentIsLoaded` gates borrow. When the auth-doc
+    // fetch drops its completion, the un-bounded call hangs borrow forever (its
+    // own 30s timeout is never even reached). `boundedCompletion` is the
+    // extracted, network-free seam that guarantees a completion fires — either
+    // the real value or `timeoutValue` — exactly once. These tests drive the
+    // wedge (operation never calls back), the happy path, and the exactly-once
+    // race directly, since the full method's dependency on
+    // AppContainer.production().networkExecutor can't be made to hang in a unit
+    // test.
+
+    func testBoundedCompletion_operationNeverCompletes_firesTimeoutValueAfterTimeout() {
+        // The wedge: the operation NEVER calls its completion (dropped auth-doc
+        // fetch). boundedCompletion must still fire completion(timeoutValue).
+        let done = expectation(description: "completion fires despite a hung operation")
+        var received: Bool?
+        var onTimeoutFired = false
+        let start = Date()
+
+        TPPSignInBusinessLogic.boundedCompletion(
+            timeout: 0.3,
+            timeoutValue: false,
+            onTimeout: { onTimeoutFired = true },
+            operation: { _ in /* never calls the completion — wedged */ },
+            completion: { value in received = value; done.fulfill() }
+        )
+
+        wait(for: [done], timeout: 2.0)
+        let elapsed = Date().timeIntervalSince(start)
+        XCTAssertEqual(received, false, "a hung operation must surface the timeoutValue (false) so borrow retries")
+        XCTAssertTrue(onTimeoutFired, "onTimeout hook must fire on the timeout path")
+        XCTAssertGreaterThanOrEqual(elapsed, 0.25, "must actually wait ~the timeout before giving up")
+        XCTAssertLessThan(elapsed, 1.5, "must not exceed the bound by a wide margin")
+    }
+
+    func testBoundedCompletion_operationCompletesFast_firesRealValue_andNeverDoubleFires() {
+        // Happy path: the operation calls back quickly with the real value. The
+        // timeout must NOT steal the result, and must NOT double-fire completion
+        // after the timeout deadline passes.
+        let done = expectation(description: "completion fires with the real value")
+        var receivedValues: [Bool] = []
+        var onTimeoutFired = false
+        let lock = NSLock()
+
+        TPPSignInBusinessLogic.boundedCompletion(
+            timeout: 0.3,
+            timeoutValue: false,
+            onTimeout: { onTimeoutFired = true },
+            operation: { op in
+                DispatchQueue.global().async { op(true) } // real success, fast
+            },
+            completion: { value in
+                lock.lock(); receivedValues.append(value); lock.unlock()
+                done.fulfill()
+            }
+        )
+
+        wait(for: [done], timeout: 1.0)
+
+        // Wait PAST the timeout deadline to prove the cancelled timer can't
+        // double-fire the completion.
+        let settle = expectation(description: "settle past the timeout deadline")
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.6) { settle.fulfill() }
+        wait(for: [settle], timeout: 2.0)
+
+        lock.lock(); let values = receivedValues; lock.unlock()
+        XCTAssertEqual(values, [true],
+                       "completion must fire exactly once with the real value; got \(values)")
+        XCTAssertFalse(onTimeoutFired,
+                       "onTimeout must NOT fire when the operation completed before the deadline")
+    }
+
+    func testBoundedCompletion_zeroTimeout_stillFiresExactlyOnce() {
+        // Edge: a zero timeout must not crash (max(0,timeout)) and must still
+        // deliver exactly one completion — either the racing operation's value
+        // or the timeoutValue, never both.
+        let done = expectation(description: "completion fires exactly once at zero timeout")
+        done.assertForOverFulfill = true
+        var count = 0
+        let lock = NSLock()
+
+        TPPSignInBusinessLogic.boundedCompletion(
+            timeout: 0,
+            timeoutValue: false,
+            operation: { op in
+                DispatchQueue.global().asyncAfter(deadline: .now() + 0.05) { op(true) }
+            },
+            completion: { _ in
+                lock.lock(); count += 1; lock.unlock()
+                done.fulfill()
+            }
+        )
+
+        wait(for: [done], timeout: 1.0)
+        // Let any (incorrectly un-guarded) second fire land before asserting.
+        let settle = expectation(description: "settle")
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.2) { settle.fulfill() }
+        wait(for: [settle], timeout: 1.0)
+        lock.lock(); let final = count; lock.unlock()
+        XCTAssertEqual(final, 1, "exactly-once must hold even when both racers are ready near-simultaneously")
+    }
 }

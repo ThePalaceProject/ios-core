@@ -778,27 +778,90 @@ final class BookRegistrySyncTests: XCTestCase {
                       "a non-empty save must write the last-good .bak backup")
     }
 
-    // MARK: INV-1 — legitimately-empty shelf (flag NOT set) still persists (don't over-block)
+    // MARK: INV-1 (broadened, HelpSpot #18414) — non-authoritative empty over a
+    // non-empty PRIMARY is refused even with NO rebuild flag; zero-book patron
+    // is un-trapped via the authoritative sync path instead.
+    //
+    // D1 shipped a corrupt-only guard: it refused an empty non-authoritative
+    // save only while `needsRebuildFromServer` was set (i.e. a `.bak` existed
+    // from a corrupt load). D2 broadens it to cover the confirmed data-loss
+    // wedge where the shelf was NEVER corrupted (no `.bak`, flag unset) but
+    // registry sync wedged on a dropped auth-doc fetch, leaving an empty
+    // in-memory shelf poised to clobber a healthy primary. These two tests flip
+    // the D1 assertion for that precondition (non-authoritative empty over a
+    // non-empty primary now REFUSED), and the third proves the genuine
+    // zero-book patron is NOT trapped because the authoritative loans-feed sync
+    // still persists empty.
 
-    func testEmptySave_whenNoRebuildFlag_persistsEmptyShelf_zeroBookPatronNotTrapped() {
-        // The don't-over-block case (task requirement (c)): a patron who returns
-        // their LAST book has an empty in-memory shelf but is NOT in a rebuild
-        // window (needsRebuildFromServer == false). That empty save must persist
-        // normally — otherwise a zero-book patron would be trapped with a stale
-        // non-empty file forever. This is the regression-guard against making the
-        // INV-1 fix too aggressive.
+    func testEmptySave_nonAuthoritative_overNonEmptyPrimary_isRefused_evenWithoutRebuildFlag() {
+        // The exact HelpSpot #18414 data-loss path: a healthy non-empty primary
+        // on disk, NO rebuild flag (never corrupted), an empty in-memory shelf
+        // (registry sync wedged / never populated), and an incidental
+        // non-authoritative save. That save must be REFUSED so the patron's
+        // books survive — this is the wedge D1's corrupt-only guard missed.
         let (account, url) = makeIsolatedAccount()
         defer { cleanupAccount(url) }
 
-        // Seed a stale non-empty primary on disk (the book the patron just returned).
-        writeRegistryPayload(records: snapshotWithOneBook(id: "just-returned"),
+        writeRegistryPayload(records: snapshotWithOneBook(id: "kept-primary"),
                              schemaVersion: 1, to: url)
+        XCTAssertTrue(RegistryFileRecovery.primaryHasRecords(for: url),
+                      "precondition: a non-empty primary registry.json exists")
         XCTAssertFalse(syncManager.needsRebuildFromServer,
-                       "precondition: not in a rebuild window (clean load, no corruption)")
-        XCTAssertTrue(store.allBooks.isEmpty, "precondition: empty in-memory shelf after returning last book")
+                       "precondition: NOT in a rebuild window (clean load, no corruption)")
+        XCTAssertTrue(store.allBooks.isEmpty, "precondition: empty in-memory shelf (wedge)")
 
-        // Act: a plain (non-authoritative) empty save — the normal return path.
+        // Act: a plain (non-authoritative) empty save.
         syncManager.save(for: account)
+        settle()
+
+        // Assert: the healthy primary survived — the empty snapshot was refused.
+        guard case .valid(let recs) = RegistryFileRecovery.classify(data: try? Data(contentsOf: url)) else {
+            return XCTFail("INV-1(broadened): the non-empty primary must NOT be overwritten/erased by a non-authoritative empty save")
+        }
+        XCTAssertEqual(recs.count, 1,
+                       "INV-1(broadened): a non-authoritative empty save must NOT clobber a non-empty primary even without a rebuild flag — this is the #18414 data-loss guard")
+    }
+
+    func testSaveSyncEmpty_overNonEmptyPrimary_isRefused_evenWithoutRebuildFlag() {
+        // Same broadened invariant for the SYNCHRONOUS teardown path
+        // (bookmark/location persistence on scene disconnect): a bookmark-flush
+        // must never erase a healthy primary while the in-memory shelf is
+        // transiently empty, flag or no flag.
+        let (account, url) = makeIsolatedAccount()
+        defer { cleanupAccount(url) }
+
+        writeRegistryPayload(records: snapshotWithOneBook(id: "sync-kept-primary"),
+                             schemaVersion: 1, to: url)
+        XCTAssertTrue(RegistryFileRecovery.primaryHasRecords(for: url))
+        XCTAssertFalse(syncManager.needsRebuildFromServer)
+        XCTAssertTrue(store.allBooks.isEmpty)
+
+        syncManager.saveSync(for: account)   // synchronous — no run loop needed
+
+        guard case .valid(let recs) = RegistryFileRecovery.classify(data: try? Data(contentsOf: url)) else {
+            return XCTFail("INV-1(broadened): saveSync must not erase a non-empty primary with an empty snapshot")
+        }
+        XCTAssertEqual(recs.count, 1,
+                       "saveSync of an empty shelf must be refused over a non-empty primary even with no rebuild flag")
+    }
+
+    func testEmptySave_withServerAuthority_overNonEmptyPrimary_persists_zeroBookPatronNotTrapped() {
+        // The don't-over-block guarantee: a GENUINE zero-book patron (server's
+        // loans feed came back empty) persists an empty shelf via the
+        // AUTHORITATIVE sync save — even over a previously non-empty primary.
+        // This is how a patron who returned their last book is NOT trapped with
+        // a stale non-empty file: the authoritative reconciliation clears it.
+        let (account, url) = makeIsolatedAccount()
+        defer { cleanupAccount(url) }
+
+        writeRegistryPayload(records: snapshotWithOneBook(id: "returned-then-synced"),
+                             schemaVersion: 1, to: url)
+        XCTAssertTrue(RegistryFileRecovery.primaryHasRecords(for: url),
+                      "precondition: a non-empty primary exists (the book before the loans-feed reconciliation)")
+        XCTAssertTrue(store.allBooks.isEmpty, "precondition: reconciled in-memory shelf is empty")
+
+        // Act: the authoritative loans-feed reconciliation persists the empty shelf.
+        syncManager.save(for: account, serverAuthoritative: true)
         waitUntil {
             if case .valid(let recs) = RegistryFileRecovery.classify(data: try? Data(contentsOf: url)) {
                 return recs.isEmpty
@@ -806,33 +869,11 @@ final class BookRegistrySyncTests: XCTestCase {
             return false
         }
 
-        // Assert: the empty shelf WAS persisted — the guard did not block it.
         guard case .valid(let recs) = RegistryFileRecovery.classify(data: try? Data(contentsOf: url)) else {
-            return XCTFail("a legitimately-empty save (flag not set) must persist a valid registry.json, not be blocked")
+            return XCTFail("an authoritative empty save must persist a valid (empty) registry.json even over a non-empty primary")
         }
         XCTAssertTrue(recs.isEmpty,
-                      "returning your last book must persist an empty shelf when no rebuild flag is set — a zero-book patron is not trapped by INV-1")
-    }
-
-    func testSaveSyncEmpty_whenNoRebuildFlag_persistsEmptyShelf() {
-        // Same don't-over-block invariant for the SYNCHRONOUS teardown path
-        // (bookmark/location persistence on scene disconnect). An empty shelf
-        // with no rebuild flag must persist through saveSync too.
-        let (account, url) = makeIsolatedAccount()
-        defer { cleanupAccount(url) }
-
-        writeRegistryPayload(records: snapshotWithOneBook(id: "sync-returned"),
-                             schemaVersion: 1, to: url)
-        XCTAssertFalse(syncManager.needsRebuildFromServer)
-        XCTAssertTrue(store.allBooks.isEmpty)
-
-        syncManager.saveSync(for: account)   // synchronous — no run loop needed
-
-        guard case .valid(let recs) = RegistryFileRecovery.classify(data: try? Data(contentsOf: url)) else {
-            return XCTFail("saveSync of a legitimately-empty shelf (flag not set) must persist a valid registry.json")
-        }
-        XCTAssertTrue(recs.isEmpty,
-                      "saveSync must not over-block a zero-book patron when no rebuild flag is set")
+                      "a genuine zero-book patron is NOT trapped: the authoritative sync persists the empty shelf over the stale non-empty primary")
     }
 
     func testSaveSyncEmpty_duringRebuildWindow_isRefused() {

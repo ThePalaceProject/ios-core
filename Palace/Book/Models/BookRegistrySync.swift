@@ -20,6 +20,17 @@ class BookRegistrySync {
   private let opdsFeedServiceProvider: () -> OPDSFeedService
   private let registryFolderName = "registry"
   private let registryFileName = "registry.json"
+
+  /// Upper bound on how long a single `sync()` pass will block on the current
+  /// account's `awaitReady()` before giving up and reverting to `.loaded` so a
+  /// later trigger retries. Without a bound, a wedged `authentication_document`
+  /// fetch (its network completion dropped, account stuck at `.detailsLoading`)
+  /// makes `awaitReady()` hang forever — registry sync never completes, My Books
+  /// shows empty, and an incidental empty save can then persist over the good
+  /// on-disk shelf (HelpSpot #18414 data-loss). 30s is comfortably above a
+  /// healthy auth-doc round-trip while still self-healing a dropped-completion
+  /// wedge within one foreground/account-change retry cycle.
+  static let authReadinessTimeout: TimeInterval = 30
   /// Serial queue for disk writes — prevents out-of-order save races where a stale
   /// snapshot could overwrite a newer one if two saves dispatch concurrently.
   private let diskWriteQueue = DispatchQueue(label: "com.palace.registryDiskWrite")
@@ -381,13 +392,17 @@ class BookRegistrySync {
       // `awaitReady()`. Pre-Phase-1 this silently returned on first cold-
       // launch (details still loading → loansUrl nil → guard bailed →
       // registry stuck `.loaded` empty until the next sync trigger). Now
-      // we block on terminal state. On `AccountLoadError` we revert state
-      // to `.loaded` (BookRegistrySync's own retry policy from
-      // `waitForLoadThenRunSync` / account-change notifications drives the
-      // next attempt — per the ADR's "no additional timeout" UX policy).
+      // we block on terminal state, but BOUNDED by `authReadinessTimeout`
+      // (HelpSpot #18414): a wedged auth-doc fetch used to hang this await
+      // forever. On any `AccountLoadError` — including `.readinessTimedOut` —
+      // we revert state to `.loaded` so BookRegistrySync's own retry policy
+      // (`waitForLoadThenRunSync` / account-change notifications) drives the
+      // next attempt. Crucially, aborting here means we NEVER reach the
+      // reconciliation/save block with an empty in-memory shelf, so a wedge
+      // cannot trigger an empty-over-good persist.
       let details: AccountDetails
       do {
-        details = try await currentAccount.awaitReady()
+        details = try await currentAccount.awaitReady(timeout: Self.authReadinessTimeout)
       } catch {
         Log.warn(#file, "BookRegistrySync abort: awaitReady failed for \(accountUUID): \(error)")
         await MainActor.run {
@@ -577,13 +592,19 @@ class BookRegistrySync {
     ]
 
     diskWriteQueue.async { [self] in
-      // INV-1: during the post-corrupt-load rebuild window, only an authoritative
-      // server sync may persist an empty shelf. Refuse any other empty save — the
-      // corrupt original is quarantined and the last-good `.bak` (if present) still
-      // holds the shelf, so we must not overwrite the primary with an empty file
-      // before `sync()` repopulates from the loans feed.
-      if isEmpty, !serverAuthoritative, needsRebuild {
-        Log.error(#file, "INV-1: refusing to persist an EMPTY registry during rebuild window (no server authority) — backup non-empty: \(RegistryFileRecovery.backupHasRecords(for: registryUrl))")
+      // INV-1 (broadened, HelpSpot #18414): only an authoritative server sync
+      // may persist an EMPTY shelf over a non-empty on-disk registry. Refuse any
+      // NON-authoritative empty save whenever a non-empty shelf exists on disk —
+      // whether via the last-good `.bak` (post-corrupt rebuild window) OR the
+      // primary file itself. D1 guarded only the `needsRebuild` window; that
+      // missed the wedge path where the shelf was never corrupted (no `.bak`
+      // minted) but registry sync wedged, leaving an empty in-memory shelf about
+      // to clobber a healthy primary. A genuine zero-book patron still persists
+      // empty via `sync()`'s authoritative save (serverAuthoritative == true),
+      // so nobody is trapped.
+      if isEmpty, !serverAuthoritative,
+         (needsRebuild || RegistryFileRecovery.onDiskHasRecords(for: registryUrl)) {
+        Log.error(#file, "INV-1: refusing to persist an EMPTY registry (no server authority) over a non-empty on-disk shelf — needsRebuild: \(needsRebuild), onDiskHasRecords: \(RegistryFileRecovery.onDiskHasRecords(for: registryUrl))")
         return
       }
       do {
@@ -639,11 +660,15 @@ class BookRegistrySync {
     // ALREADY executing on `diskWriteQueue`, run inline — a nested
     // `diskWriteQueue.sync` would deadlock against itself.
     let write = {
-      // INV-1: saveSync is teardown persistence (bookmarks/location), never a
-      // server reconciliation — so it is always non-authoritative. Refuse an
-      // empty snapshot over a non-empty backup during the rebuild window.
-      if isEmpty, needsRebuild {
-        Log.error(#file, "INV-1: refusing synchronous EMPTY registry save during rebuild window (backup non-empty: \(RegistryFileRecovery.backupHasRecords(for: registryUrl)))")
+      // INV-1 (broadened, HelpSpot #18414): saveSync is teardown persistence
+      // (bookmarks/location), never a server reconciliation — so it is always
+      // non-authoritative. Refuse an empty snapshot whenever a non-empty shelf
+      // exists on disk (primary OR `.bak`), not only during the corrupt-rebuild
+      // window — a bookmark-flush on scene disconnect must never erase a healthy
+      // primary while an in-memory shelf is transiently empty (e.g. sync wedged).
+      if isEmpty,
+         (needsRebuild || RegistryFileRecovery.onDiskHasRecords(for: registryUrl)) {
+        Log.error(#file, "INV-1: refusing synchronous EMPTY registry save over a non-empty on-disk shelf — needsRebuild: \(needsRebuild), onDiskHasRecords: \(RegistryFileRecovery.onDiskHasRecords(for: registryUrl))")
         return
       }
       do {
