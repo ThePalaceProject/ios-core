@@ -13,6 +13,7 @@ import Combine
 import Foundation
 import MediaPlayer
 import PalaceAudiobookToolkit
+import PalaceCatalog
 import PalaceLogging
 import PalaceNetwork
 
@@ -439,6 +440,15 @@ public final class AudiobookSessionManager: ObservableObject {
     /// ONCE per playback session and never loops on the shared handler.
     private var overdriveRefulfillAttemptedBookIds = Set<String>()
 
+    /// 323-Cause-3 (HelpSpot #18471): per-session bound on the generalized
+    /// bearer-token mid-listen re-fulfill recovery. A book id is inserted when
+    /// its automatic re-fulfill re-open fires and removed when the user starts a
+    /// fresh open — so an expired-entitlement failure re-fulfills at most ONCE
+    /// per playback session and a persistent failure surfaces the existing
+    /// terminal error instead of looping. Internal so the recovery test can
+    /// assert the bound.
+    var bearerTokenRefulfillAttemptedBookIds = Set<String>()
+
     /// PP-4542: per-session bound on the cold-load auto-reopen recovery. A book
     /// id is inserted when its automatic re-open fires and removed when the user
     /// initiates a fresh open — so a cold-load failure auto-reopens at most ONCE
@@ -484,6 +494,11 @@ public final class AudiobookSessionManager: ObservableObject {
         // (forceRefulfill) must NOT reset it, or the bound never holds.
         if !forceRefulfill {
             overdriveRefulfillAttemptedBookIds.remove(book.identifier)
+            // 323-Cause-3: same reset semantics as the OverDrive bound — a fresh
+            // user-initiated open re-arms the bearer-token recovery; the recovery
+            // re-open itself (forceRefulfill) must NOT reset it or the bound never
+            // holds and a persistently-expired title would loop.
+            bearerTokenRefulfillAttemptedBookIds.remove(book.identifier)
             // The cold-load recovery re-open must NOT reset its own bound, or the
             // one-shot guard never holds and a persistently-failing book loops
             // (re-open → fail → re-open …). Mirrors the OverDrive forceRefulfill
@@ -1823,10 +1838,17 @@ public final class AudiobookSessionManager: ObservableObject {
         !hasEverStartedPlayback && hasCurrentBook && !alreadyAttempted
     }
 
+#endif
+
     /// Extracts an HTTP status code from a playback error. The toolkit's network
     /// layer stamps `userInfo["httpStatusCode"]` on download/streaming failures
     /// (`OpenAccessDownloadTask`); we also walk one level of the
     /// `NSUnderlyingError` chain.
+    ///
+    /// Relocated OUT of the `#if FEATURE_OVERDRIVE` block (323-Cause-3) so the
+    /// distributor-agnostic bearer-token recovery below can reuse it in every
+    /// build configuration (the OverDrive predicate above still calls it — same
+    /// type, so ordering is irrelevant).
     static func httpStatusCode(from error: Error?) -> Int? {
         guard let nsError = error as NSError? else { return nil }
         if let status = nsError.userInfo["httpStatusCode"] as? Int { return status }
@@ -1836,7 +1858,91 @@ public final class AudiobookSessionManager: ObservableObject {
         }
         return nil
     }
-#endif
+
+    // MARK: - 323-Cause-3 (HelpSpot #18471): mid-listen expired-entitlement recovery
+
+    /// True when `error` (or one level of its `NSUnderlyingError` chain) is an
+    /// `NSURLErrorResourceUnavailable` (-1008) — the signal an expired signed
+    /// content URL surfaces once its S3-style deadline passes. Kept distinct
+    /// from `httpStatusCode(from:)` because -1008 is a URLError *code* in
+    /// `NSURLErrorDomain`, not an HTTP status stamped into `userInfo`.
+    static func isResourceUnavailable(_ error: Error?) -> Bool {
+        guard let nsError = error as NSError? else { return false }
+        if nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorResourceUnavailable {
+            return true
+        }
+        if let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError,
+           underlying.domain == NSURLErrorDomain,
+           underlying.code == NSURLErrorResourceUnavailable {
+            return true
+        }
+        return false
+    }
+
+    /// True when a playback error carries an expired-entitlement signal a fresh
+    /// re-fulfill can recover: an HTTP 410 (Gone) or 403 (Forbidden) surfaced by
+    /// the toolkit's network layer, or a URLError -1008 (resourceUnavailable)
+    /// from an expired signed URL. 403 is included here (unlike the OverDrive
+    /// predicate, which excludes it) because the bearer-token recovery below is
+    /// non-destructive — see `shouldTriggerBearerTokenRefulfillForPlaybackFailure`.
+    static func isExpiredEntitlementSignal(_ error: Error?) -> Bool {
+        if let status = httpStatusCode(from: error), status == 410 || status == 403 {
+            return true
+        }
+        return isResourceUnavailable(error)
+    }
+
+    /// 323-Cause-3 (HelpSpot #18471): generalizes mid-listen expired-entitlement
+    /// recovery beyond OverDrive to **bearer-token audiobooks** — the vendors
+    /// (BiblioBoard, Unlimited Listens, and any other title fulfilled through an
+    /// `application/vnd.librarysimplified.bearer-token+json` acquisition) whose
+    /// signed content URL / entitlement expires MID-LISTEN. Before this fix such
+    /// a title matched NONE of the recovery paths (SAML is 401-only, OverDrive is
+    /// distributor-gated, cold-load reopen is `!hasEverStartedPlayback`-gated) and
+    /// dead-ended at the "content no longer available" alert.
+    ///
+    /// Recovery uses the SAME proven mechanism as OverDrive: re-open via
+    /// `AudiobookLoader(forceRefulfill: true)`, which drops the stale on-disk
+    /// manifest and re-fetches a FRESH manifest (fresh signed URLs) from the CM
+    /// through `BearerTokenAdapter`. It is **non-destructive**: it re-fetches the
+    /// existing fulfillment link, it does NOT re-borrow — so a genuinely-revoked
+    /// or truly-expired loan simply re-fails the fetch and falls through to the
+    /// existing terminal error UX (no regression, no false loan extension). That
+    /// non-destructiveness is why 403 is accepted here even though the OverDrive
+    /// path conservatively excludes it: the worst case is one bounded, harmless
+    /// re-fetch before the same alert the user would have seen anyway.
+    ///
+    /// Positive allowlist by acquisition type (`ContentTypeBearerToken`) — this
+    /// is exactly the set the loader's `BearerTokenMIMEGate` claims for fresh
+    /// fulfillment, so the recovery only fires where re-fetching the manifest IS
+    /// the fix. Everything else is left on the existing terminal alert by
+    /// construction:
+    ///  - **OverDrive** carries an overdrive-profile acquisition, not
+    ///    bearer-token, so it never matches here; its dedicated 410 path above
+    ///    runs first and is kept byte-identical.
+    ///  - **LCP / Palace Marketplace** audiobooks: a mid-listen LCP failure is
+    ///    LICENSE/loan expiry, not a signed-URL expiry. The `.lcpa` is already on
+    ///    disk and `redownloadLCPContentFile` skips-if-present + re-fulfills from
+    ///    the stale on-disk `.lcpl`, so it CANNOT refresh an expired license. The
+    ///    terminal alert is the correct outcome — left on the existing fallback.
+    ///  - **Findaway / Audible** carry a distinct `ContentTypeFindaway`
+    ///    acquisition (never bearer-token); their AudioEngine session re-fulfill
+    ///    is not safely verifiable for a hotfix, so they too stay on the alert.
+    ///
+    /// NOT gated on `hasEverStartedPlayback` — that is the mid-listen exclusion
+    /// this fix lifts. Bounded to one attempt per book per session by
+    /// `alreadyAttempted` (mirrors the OverDrive + cold-load guards) so a
+    /// persistent failure reaches the alert instead of looping. Pure, so the
+    /// trigger classification is pinned by mutation testing.
+    static func shouldTriggerBearerTokenRefulfillForPlaybackFailure(
+        error: Error?,
+        book: TPPBook?,
+        alreadyAttempted: Bool
+    ) -> Bool {
+        guard !alreadyAttempted, let book else { return false }
+        guard book.defaultAcquisition?.type == ContentTypeBearerToken else { return false }
+        return isExpiredEntitlementSignal(error)
+    }
 
     /// True once the LCP audiobook's full content package is on disk. The `.lcpa`
     /// is moved into place atomically on download completion
@@ -2191,6 +2297,36 @@ public final class AudiobookSessionManager: ObservableObject {
                 return
             }
 #endif
+
+            // 323-Cause-3 (HelpSpot #18471): generalize mid-listen expired-
+            // entitlement recovery beyond OverDrive to bearer-token audiobooks
+            // (BiblioBoard / Unlimited Listens / other bearer-token vendors). A
+            // signed-URL / entitlement expiry MID-LISTEN previously dead-ended
+            // here for every non-OverDrive, non-SAML vendor (see the "403 from
+            // BiblioBoard fell through to a generic toast" note above). Re-open
+            // via the proven fresh-fulfillment loader path (forceRefulfill:
+            // drops the stale on-disk manifest, re-fetches fresh signed URLs
+            // through BearerTokenAdapter). Non-destructive: it does NOT re-borrow,
+            // so a genuinely-revoked loan simply re-fails the open and falls
+            // through to the existing terminal error UX (BookService
+            // .showAudiobookTryAgainError / errorPublisher) — no regression, no
+            // new copy. Bounded to one attempt per book per session; fires
+            // regardless of hasEverStartedPlayback, which is the mid-listen
+            // exclusion this fix lifts.
+            if Self.shouldTriggerBearerTokenRefulfillForPlaybackFailure(
+                error: error,
+                book: currentBook,
+                alreadyAttempted: bearerTokenRefulfillAttemptedBookIds.contains(bookId)
+            ), let book = currentBook {
+                Log.info(#file, "Bearer-token audiobook playback failed on an expired entitlement — re-fulfilling fresh manifest and re-opening (323-Cause-3)")
+                bearerTokenRefulfillAttemptedBookIds.insert(bookId)
+                Task { [weak self] in
+                    guard let self else { return }
+                    guard self.currentBook?.identifier == book.identifier else { return }
+                    _ = await self.openAudiobook(book, startPlaying: true, forceRefulfill: true)
+                }
+                return
+            }
 
             // PP-4542: cold-load auto-recovery. A first cold open of an LCP
             // audiobook can fail transiently because the encrypted package
