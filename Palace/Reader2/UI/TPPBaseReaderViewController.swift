@@ -11,6 +11,7 @@
 import SafariServices
 import UIKit
 import WebKit
+import PalaceBookRegistry
 @preconcurrency import ReadiumNavigator
 @preconcurrency import ReadiumShared
 import Combine

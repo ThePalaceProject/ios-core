@@ -3,6 +3,7 @@ import os
 import FirebaseCore
 import FirebaseAnalytics
 import FirebaseCrashlytics
+import PalaceBookRegistry
 // `@preconcurrency`: FirebaseDynamicLinks is not Sendable-audited upstream; its
 // `DynamicLink` crosses into a `@MainActor` Task when routing a universal link.
 // Honest ceiling until Firebase annotates its concurrency (see fix vocabulary).

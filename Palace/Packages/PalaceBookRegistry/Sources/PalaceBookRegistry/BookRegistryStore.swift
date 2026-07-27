@@ -54,9 +54,16 @@ final class BookRegistryStore: @unchecked Sendable {
   let registrySubject = CurrentValueSubject<[String: TPPBookRegistryRecord], Never>([:])
   let bookStateSubject = PassthroughSubject<(String, TPPBookState), Never>()
 
+  /// Fired when `updateBook` reconciles a record whose availability changed
+  /// (drives the app's push-notification comparison). Injected app-side (god-class
+  /// decomp Wave 2b — `NotificationService` stays app-target). Defaults to a no-op
+  /// so white-box tests that construct a bare store need not supply it.
+  private let onAvailabilityChange: @Sendable (_ cachedRecord: TPPBookRegistryRecord, _ newBook: TPPBook) -> Void
+
   // MARK: - Init
 
-  init() {
+  init(onAvailabilityChange: @escaping @Sendable (_ cachedRecord: TPPBookRegistryRecord, _ newBook: TPPBook) -> Void = { _, _ in }) {
+    self.onAvailabilityChange = onAvailabilityChange
     syncQueue.setSpecific(key: syncQueueKey, value: ())
   }
 
@@ -251,7 +258,7 @@ final class BookRegistryStore: @unchecked Sendable {
         )
       }
 
-      NotificationService.compareAvailability(cachedRecord: record, andNewBook: book)
+      onAvailabilityChange(record, book)
       self.registry[book.identifier] = TPPBookRegistryRecord(
         book: book,
         location: record.location,
@@ -332,9 +339,9 @@ final class BookRegistryStore: @unchecked Sendable {
         self.processingIdentifiers.remove(identifier)
       }
       DispatchQueue.main.async {
-        NotificationCenter.default.post(name: .TPPBookProcessingDidChange, object: nil, userInfo: [
-          TPPNotificationKeys.bookProcessingBookIDKey: identifier,
-          TPPNotificationKeys.bookProcessingValueKey: processing
+        NotificationCenter.default.post(name: .registryBookProcessingDidChange, object: nil, userInfo: [
+          RegistryProcessingNotificationKeys.bookID: identifier,
+          RegistryProcessingNotificationKeys.value: processing
         ])
       }
     }

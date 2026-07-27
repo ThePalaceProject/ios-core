@@ -15,6 +15,7 @@ import Foundation
 import MediaPlayer
 import PalaceAudiobookToolkit
 import PalaceLogging
+import PalaceBookRegistry
 
 // MARK: - PlaybackBootstrapper
 

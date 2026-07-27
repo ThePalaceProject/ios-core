@@ -41,6 +41,7 @@
 
 import Foundation
 import XCTest
+import PalaceBookRegistry
 
 @MainActor
 final class AccountsManagerIsolationLintTests: XCTestCase {

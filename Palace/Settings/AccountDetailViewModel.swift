@@ -12,6 +12,7 @@ import LocalAuthentication
 import PalaceLogging
 import PalaceNetwork
 import PalaceAuth
+import PalaceBookRegistry
 
 @MainActor
 class AccountDetailViewModel: NSObject, ObservableObject {

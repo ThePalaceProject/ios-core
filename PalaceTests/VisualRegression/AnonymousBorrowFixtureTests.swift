@@ -9,6 +9,7 @@
 // per-step mutation_targets list.
 
 import XCTest
+import PalaceBookRegistry
 
 @MainActor
 final class AnonymousBorrowBaselineFixtureTests: XCTestCase {

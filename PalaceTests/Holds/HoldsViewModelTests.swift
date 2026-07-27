@@ -13,6 +13,7 @@ import Combine
 import PalaceCatalog
 @testable import Palace
 import PalaceBookModel
+import PalaceBookRegistry
 
 @MainActor
 final class HoldsViewModelTests: XCTestCase {

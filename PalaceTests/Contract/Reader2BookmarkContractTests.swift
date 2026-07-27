@@ -41,6 +41,7 @@ import ReadiumShared
 import PalaceCatalog
 @testable import Palace
 import PalaceBookModel
+import PalaceBookRegistry
 
 // MARK: - Spy registry (records bookmark-facing calls into a CallLog)
 

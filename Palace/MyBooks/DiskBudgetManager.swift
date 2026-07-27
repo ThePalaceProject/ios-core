@@ -16,6 +16,7 @@
 import Foundation
 import UIKit
 import PalaceLogging
+import PalaceBookRegistry
 
 /// Resolves the "is this an iPhone SE/8-class (small) device" flag without
 /// touching the main-actor-isolated `UIScreen.main` from a background thread.

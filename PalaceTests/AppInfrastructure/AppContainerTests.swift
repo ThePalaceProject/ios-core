@@ -3,6 +3,7 @@ import PalacePreferences
 import Combine
 import SwiftUI
 @testable import Palace
+import PalaceBookRegistry
 
 /// Contract tests for AppContainer as the single DI composition root.
 ///

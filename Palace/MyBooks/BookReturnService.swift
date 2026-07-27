@@ -21,6 +21,7 @@ import PalaceAuth
 import PalaceLogging
 import PalaceCatalog
 import PalaceBookModel
+import PalaceBookRegistry
 
 // MARK: - BookReturnServiceDelegate
 

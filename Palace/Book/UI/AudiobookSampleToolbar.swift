@@ -9,6 +9,7 @@
 import SwiftUI
 import PalaceUIKit
 import PalaceBookModel
+import PalaceBookRegistry
 
 struct AudiobookSampleToolbar: View {
     typealias Images = ImageProviders.AudiobookSampleToolbar

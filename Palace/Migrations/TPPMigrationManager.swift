@@ -1,6 +1,7 @@
 import Foundation
 import PalacePreferences
 import PalaceLogging
+import PalaceBookRegistry
 
 /**
  Manages data migrations as they are needed throughout the app's life

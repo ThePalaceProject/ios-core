@@ -46,6 +46,7 @@ import PalaceAudiobookToolkit
 import PalaceCatalog
 @testable import Palace
 import PalaceBookModel
+import PalaceBookRegistry
 
 @MainActor
 final class BookDetailOpenRoutingTests: XCTestCase {

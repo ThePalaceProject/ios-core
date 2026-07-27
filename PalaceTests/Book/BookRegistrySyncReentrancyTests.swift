@@ -19,6 +19,7 @@ import XCTest
 import PalaceCatalog
 @testable import Palace
 import PalaceBookModel
+@testable import PalaceBookRegistry
 
 @MainActor
 final class BookRegistrySyncReentrancyTests: XCTestCase {

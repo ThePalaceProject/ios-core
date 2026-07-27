@@ -9,6 +9,7 @@
 import Foundation
 import PalaceAudiobookToolkit
 import PalaceBookModel
+import PalaceBookRegistry
 
 /// Sendable carrier for `syncLocation`'s non-Sendable captures so the `@Sendable`
 /// `Task` closure (Swift 6 `complete`) captures a Sendable box rather than the raw

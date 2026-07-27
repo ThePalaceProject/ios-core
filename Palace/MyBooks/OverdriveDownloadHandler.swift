@@ -23,6 +23,7 @@ import Foundation
 import OverdriveProcessor
 import PalaceLogging
 import PalaceBookModel
+import PalaceBookRegistry
 
 // MARK: - OverdriveDownloadHandlerDelegate
 

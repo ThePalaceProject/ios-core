@@ -9,6 +9,7 @@ import PalaceBookModel
 #if LCP
 import ReadiumShared
 import ReadiumStreamer
+import PalaceBookRegistry
 #endif
 
 struct BookLane {
@@ -905,7 +906,7 @@ final class BookDetailViewModel: ObservableObject {
     private func startDownloadAfterAuth(book: TPPBook) {
         bookState = .downloading
         showHalfSheet = true
-        downloadCenter.startDownload(for: book)
+        downloadCenter.startDownload(for: book, withRequest: nil)
     }
 
     func didSelectReserve(for book: TPPBook, completion: (() -> Void)? = nil) {

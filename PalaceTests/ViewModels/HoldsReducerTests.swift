@@ -1,6 +1,7 @@
 import XCTest
 @testable import Palace
 import PalaceBookModel
+import PalaceBookRegistry
 
 /// Behavior tests for `HoldsReducer` — the pure-function core of
 /// HoldsViewModel's state machine. These tests exercise the reducer

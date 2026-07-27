@@ -11,6 +11,7 @@ import Combine
 import PalaceCatalog
 @testable import Palace
 import PalaceBookModel
+import PalaceBookRegistry
 
 // MARK: - Mock Delegate
 

@@ -20,6 +20,7 @@
 
 import Foundation
 import PalaceReadingPosition
+import PalaceBookRegistry
 
 /// Network adapter for audiobook position writes. Wraps an
 /// `AnnotationsManager` and translates `PositionSnapshot` calls into

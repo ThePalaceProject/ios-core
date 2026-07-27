@@ -30,6 +30,7 @@
 
 import XCTest
 @testable import Palace
+import PalaceBookRegistry
 
 @MainActor
 class TPPBookRegistryDependencyTests: PalaceWiringTestCase {

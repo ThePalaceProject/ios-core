@@ -12,6 +12,7 @@
 import XCTest
 import Combine
 @testable import Palace
+import PalaceBookRegistry
 
 @MainActor
 final class ChaosFaultInjectionTests: XCTestCase {

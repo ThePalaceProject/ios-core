@@ -19,6 +19,7 @@ import PalaceBookModel
 
 #if FEATURE_OVERDRIVE
 import OverdriveProcessor
+import PalaceBookRegistry
 #endif
 
 // DownloadCoordinator is defined in MyBooksDownloadQueue.swift

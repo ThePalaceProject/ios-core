@@ -1,5 +1,6 @@
 import SwiftUI
 import PalaceBookModel
+import PalaceBookRegistry
 
 // MARK: - CatalogContentView (Data-Driven)
 

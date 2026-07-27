@@ -29,6 +29,7 @@
 import XCTest
 import PalaceBookModel
 @testable import Palace
+@testable import PalaceBookRegistry
 
 @MainActor
 final class TPPBookRegistryRebuildRefusalContractTests: XCTestCase {
