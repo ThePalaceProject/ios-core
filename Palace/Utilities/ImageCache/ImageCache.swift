@@ -36,39 +36,43 @@ private final class OneShotImageResumer: @unchecked Sendable {
 /// access. There is no unguarded mutable stored state on `ImageCache` itself,
 /// so concurrent access across the `processingQueue` operations is safe.
 ///
-/// Isolation is load-bearing (Wave 2a): every off-main method here deliberately
-/// runs its work on `processingQueue`, and the `@Sendable` blocks handed to
-/// `processingQueue.addOperation` / `BlockOperation.addExecutionBlock` must be
-/// non-isolated. Empirically, moving the `ImageCacheType` protocol out of this
-/// app-target module into the Swift-6 `PalaceBookModel` package flipped this
-/// class's inferred isolation to `@MainActor` (the precise inference rule is not
-/// pinned down — `xcodebuild -showBuildSettings` shows no `@MainActor` default
-/// configured for the target — but the observable effect is definite: every
-/// closure formed in the class demangled `@MainActor @Sendable`). The
-/// `addOperation` blocks then carried a main-executor precondition; running them
-/// on the background `processingQueue` tripped `dispatch_assert_queue` →
-/// EXC_BREAKPOINT (SIGTRAP) the instant a cover promotion
-/// (`scheduleMemoryPromotion`/`set`) executed off main, crashing the whole test
-/// host at bootstrap.
+/// ## Off-main closures are hoisted into explicitly-typed `let`s (load-bearing)
 ///
-/// TWO things are required, verified by demangling the BUILT object (nm +
-/// `swift demangle` on `ImageCache.o`), not the source:
-///   1. `nonisolated` on each off-main *method* that forms the block (`set`,
-///      `getAsync`, `scheduleMemoryPromotion`). The class-level `nonisolated`
-///      keyword does NOT make members nonisolated on its own — unmarked members
-///      stay `@MainActor`-inferred — so it is necessary but not sufficient.
-///   2. `nonisolated` on every *leaf helper the block calls synchronously*
-///      (`estimateAvailableMemory`, `resize`, `imageCost`). This is the step a
-///      first pass missed: even with (1), the `@Sendable` block still demangled
-///      `@MainActor @Sendable` because it calls `self.imageCost(...)` etc. — and
-///      a synchronous call to a `@MainActor` method re-drags the whole closure
-///      onto the main actor. Marking the leaves `nonisolated` drops the
-///      `@MainActor` from the block (demangle then reads `@Sendable () -> ()`),
-///      which is what actually stops the `dispatch_assert_queue` SIGTRAP.
-/// `handleMemoryWarning`'s closure stays `@MainActor` — correctly, it runs on
-/// main via `DispatchQueue.main.asyncAfter`. The class keyword is kept as intent.
-/// If you add a new off-main method here, mark BOTH it and any helper it calls
-/// `nonisolated`, then re-demangle the block to confirm no `@MainActor` remains.
+/// Every `processingQueue.addOperation` / `BlockOperation.addExecutionBlock` /
+/// `completionBlock` closure in this file is bound to an explicitly-typed
+/// `let work: @Sendable () -> Void` before being handed to the API, rather than
+/// written inline as a trailing-closure literal. This is a WORKAROUND for a
+/// confirmed Xcode 26.2 / Swift 6.2 ClangImporter bug (#1338), NOT a style
+/// choice — do not "simplify" it back to trailing closures.
+///
+/// The bug: WebKit's headers annotate blocks with `NS_SWIFT_UI_ACTOR`
+/// (`@MainActor`) while Foundation's `-addOperationWithBlock:` /
+/// `-addExecutionBlock:` / `completionBlock` use `NS_SWIFT_SENDABLE`. Both are
+/// `swift_attr` sugar over the SAME canonical clang block type `void (^)(void)`.
+/// The FIRST time any WebKit block declaration is type-checked in a given
+/// `swift-frontend` process, the ClangImporter caches the imported Swift type
+/// for that canonical block type as `@MainActor @Sendable () -> Void`; every
+/// LATER structurally-identical block parameter in the same process (batch or
+/// WMO) then surfaces as `@MainActor`. A `@MainActor`-typed closure literal at
+/// an `addOperation` call gets a `dispatch_assert_queue(main)` prologue and
+/// SIGTRAPs (`swift_task_checkIsolated` → `dispatch_assert_queue_fail`) the
+/// instant `processingQueue` runs it off-main — the #1338 bootstrap crash.
+/// Which files are affected depends only on frontend batch membership (which is
+/// why an unrelated file-set change flipped THIS file), and it is a Palace-
+/// independent 2-file reproducer; `import WebKit` alone is not enough, a WebKit
+/// declaration must be USED somewhere in the same process.
+///
+/// The fix works because the closure's type comes from the `let` ANNOTATION
+/// (`@Sendable () -> Void`, correct), not from the poisonable imported parameter
+/// type; passing that typed value to even a poisoned parameter is a safe
+/// conversion with no runtime isolation assertion. `nonisolated` on the methods/
+/// helpers is retained but is neither necessary nor sufficient for this bug.
+/// `handleMemoryWarning`'s `DispatchQueue.main.asyncAfter` closure stays
+/// `@MainActor` — correctly, it runs on main.
+///
+/// If you add a new off-main `NSOperation`-family closure here, hoist it into an
+/// explicitly-typed `let` the same way. (Upstream Swift/Apple bug report drafted;
+/// remove this workaround once the toolchain is fixed.)
 public nonisolated final class ImageCache: ImageCacheType, @unchecked Sendable {
     public static let shared = ImageCache()
 
@@ -149,7 +153,15 @@ public nonisolated final class ImageCache: ImageCacheType, @unchecked Sendable {
     public nonisolated func set(_ image: UIImage, for key: String, expiresIn: TimeInterval? = nil) {
         let ttl = expiresIn ?? defaultTTL
 
-        processingQueue.addOperation { [weak self] in
+        // Hoisted into an explicitly-typed `let` so the closure's type comes
+        // from this annotation, not from `addOperation`'s imported parameter
+        // type — which an Xcode 26.2 ClangImporter bug can poison to
+        // `@MainActor` when any WebKit declaration was type-checked earlier in
+        // the same swift-frontend process (batch/WMO). A @MainActor-typed
+        // literal here gets a dispatch_assert_queue(main) prologue and traps
+        // when processingQueue runs it off-main — the #1338 bootstrap crash.
+        // Same pattern at every NSOperation-family enqueue in this file.
+        let work: @Sendable () -> Void = { [weak self] in
             guard let self = self else { return }
 
             autoreleasepool {
@@ -197,6 +209,7 @@ public nonisolated final class ImageCache: ImageCacheType, @unchecked Sendable {
                 self.dataCache.set(jpegData, for: key, expiresIn: ttl)
             }
         }
+        processingQueue.addOperation(work)
     }
 
     /// Estimates available memory based on system resources
@@ -279,7 +292,13 @@ public nonisolated final class ImageCache: ImageCacheType, @unchecked Sendable {
             let resumer = OneShotImageResumer(continuation)
 
             let operation = BlockOperation()
-            operation.addExecutionBlock { [weak self, weak operation] in
+            // Hoisted into an explicitly-typed `let` so the closure's type
+            // comes from this annotation, not from `addExecutionBlock`'s
+            // imported parameter type — which the Xcode 26.2 ClangImporter
+            // bug can poison to `@MainActor` (see the file-header note). A
+            // @MainActor-typed literal here would dispatch_assert_queue(main)
+            // and trap when processingQueue runs it off-main.
+            let executionBlock: @Sendable () -> Void = { [weak self, weak operation] in
                 guard let self, operation?.isCancelled != true else {
                     resumer.resume(nil)
                     return
@@ -302,13 +321,19 @@ public nonisolated final class ImageCache: ImageCacheType, @unchecked Sendable {
                 self.memoryImages.setObject(img, forKey: key as NSString, cost: cost)
                 resumer.resume(img)
             }
+            operation.addExecutionBlock(executionBlock)
             // Runs for both finished and cancelled operations. If the op was
             // cancelled before its execution block ran, `resume` was never
             // called — resume here so the awaiter never hangs. The one-shot
             // guard makes this a no-op on the normal completion path.
-            operation.completionBlock = {
+            // Explicitly-typed for the same reason as `executionBlock` above:
+            // the imported `completionBlock` property type is equally subject
+            // to the ClangImporter @MainActor poisoning, and NSOperation
+            // invokes it on a private background queue.
+            let completion: @Sendable () -> Void = {
                 resumer.resume(nil)
             }
+            operation.completionBlock = completion
             processingQueue.addOperation(operation)
         }
     }
@@ -328,7 +353,9 @@ public nonisolated final class ImageCache: ImageCacheType, @unchecked Sendable {
     /// Schedules a background disk→memory promotion for a key.
     /// Called when get() is invoked on the main thread and misses the memory cache.
     private nonisolated func scheduleMemoryPromotion(for key: String) {
-        processingQueue.addOperation { [weak self] in
+        // Explicitly-typed `let` — see the comment in `set(_:for:expiresIn:)`
+        // (Xcode 26.2 ClangImporter @MainActor poisoning of addOperation).
+        let work: @Sendable () -> Void = { [weak self] in
             guard let self else { return }
             if self.memoryImages.object(forKey: key as NSString) != nil { return }
             guard let data = self.dataCache.get(for: key) else { return }
@@ -336,6 +363,7 @@ public nonisolated final class ImageCache: ImageCacheType, @unchecked Sendable {
             let cost = self.imageCost(img)
             self.memoryImages.setObject(img, forKey: key as NSString, cost: cost)
         }
+        processingQueue.addOperation(work)
     }
 
     public func remove(for key: String) {
