@@ -734,6 +734,18 @@ public class TPPBookRegistry: @unchecked Sendable {
         }
     }
 
+    /// Test-only: like `_awaitPendingWritesForTesting`, but ALSO drains the sync
+    /// engine's async disk-write queue so a subsequent ON-DISK assertion is
+    /// race-free. Order is load-bearing: drain the store-write barrier FIRST (so
+    /// each mutation's `onComplete` has run and ENQUEUED its `save(...)` disk
+    /// write), THEN drain the disk-write queue (so those writes have flushed).
+    /// Deterministic replacement for a `.TPPBookRegistryDidChange` deadline wait
+    /// in the account-capture persistence contract tests (STARVE-001).
+    public func _awaitPendingPersistenceForTesting() async {
+        await _awaitPendingWritesForTesting()
+        await syncEngine._awaitPendingDiskWritesForTesting()
+    }
+
     // MARK: - Cover / thumbnail images
 
     public func cachedThumbnailImage(for book: TPPBook) -> UIImage? {

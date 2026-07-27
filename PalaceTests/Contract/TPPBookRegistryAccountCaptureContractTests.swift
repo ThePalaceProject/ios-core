@@ -128,19 +128,14 @@ final class TPPBookRegistryAccountCaptureContractTests: PalaceWiringTestCase {
         )
     }
 
-    /// Deterministic join on the async save: the save posts
-    /// `.TPPBookRegistryDidChange` on main AFTER the bytes land. Fulfill only once
-    /// `predicate()` observes the persisted effect, so the noisier store-mutation
-    /// posts of the same notification cannot false-satisfy the wait.
-    private func awaitPersisted(_ desc: String, timeout: TimeInterval = 5.0, _ predicate: @escaping () -> Bool) {
-        if predicate() { return }
-        let exp = expectation(description: desc)
-        exp.assertForOverFulfill = false
-        let token = NotificationCenter.default.addObserver(
-            forName: .TPPBookRegistryDidChange, object: nil, queue: .main
-        ) { _ in if predicate() { exp.fulfill() } }
-        defer { NotificationCenter.default.removeObserver(token) }
-        wait(for: [exp], timeout: timeout)
+    /// Deterministic join on the async save: drain the registry's store-write
+    /// barrier (so each mutation's `onComplete` has enqueued its `save(...)`) and
+    /// then the sync engine's disk-write queue (so the bytes have flushed), so a
+    /// subsequent on-disk assertion is race-free. Replaces a
+    /// `.TPPBookRegistryDidChange` deadline wait — no wall-clock timeout to starve
+    /// under parallel sim clones (STARVE-001).
+    private func awaitPersisted(_ registry: TPPBookRegistry) async {
+        await registry._awaitPendingPersistenceForTesting()
     }
 
     // MARK: - addBook
@@ -148,7 +143,7 @@ final class TPPBookRegistryAccountCaptureContractTests: PalaceWiringTestCase {
     /// addBook captures A at dispatch; a flip to B before the barrier's save runs
     /// must NOT retarget the write. The book must land in A's registry, and B's
     /// registry file must never be created.
-    func testAddBook_capturesAccountAtDispatch_persistsToOriginalAccount() {
+    func testAddBook_capturesAccountAtDispatch_persistsToOriginalAccount() async {
         let (registry, manager) = makeHarness()
         seedCurrentA(manager)
 
@@ -156,7 +151,7 @@ final class TPPBookRegistryAccountCaptureContractTests: PalaceWiringTestCase {
         registry.addBook(makeBook(id: id), state: .downloadNeeded)   // captures A
         flipCurrentToB(manager)                                       // user switches libraries
 
-        awaitPersisted("addBook persisted to A") { self.onDiskRecord(forAccount: self.accountAUUID, id: id, registry: registry) != nil }
+        await awaitPersisted(registry)
 
         XCTAssertNotNil(onDiskRecord(forAccount: accountAUUID, id: id, registry: registry),
                         "addBook must persist to the ORIGINALLY-captured account A")
@@ -168,20 +163,18 @@ final class TPPBookRegistryAccountCaptureContractTests: PalaceWiringTestCase {
 
     /// setState captures A at dispatch; a flip to B before its save barrier runs
     /// must persist the new state to A, not B.
-    func testSetState_capturesAccountAtDispatch_persistsToOriginalAccount() {
+    func testSetState_capturesAccountAtDispatch_persistsToOriginalAccount() async {
         let (registry, manager) = makeHarness()
         seedCurrentA(manager)
 
         let id = "cap-setstate-\(UUID().uuidString)"
         registry.addBook(makeBook(id: id), state: .downloadNeeded)   // captures A
-        awaitPersisted("addBook persisted") { self.onDiskRecord(forAccount: self.accountAUUID, id: id, registry: registry) != nil }
+        await awaitPersisted(registry)
 
         registry.setState(.downloading, for: id)                     // captures A (legal transition)
         flipCurrentToB(manager)                                      // user switches libraries
 
-        awaitPersisted("setState persisted to A") {
-            self.onDiskRecord(forAccount: self.accountAUUID, id: id, registry: registry)?.state == .downloading
-        }
+        await awaitPersisted(registry)
 
         XCTAssertEqual(onDiskRecord(forAccount: accountAUUID, id: id, registry: registry)?.state, .downloading,
                        "setState must persist the new state to the ORIGINALLY-captured account A")
@@ -194,13 +187,13 @@ final class TPPBookRegistryAccountCaptureContractTests: PalaceWiringTestCase {
     /// The readium-bookmark add wrapper captures A at dispatch and routes the save
     /// through a store barrier `onComplete`; a flip to B must persist the bookmark
     /// to A, not B.
-    func testAddReadiumBookmark_capturesAccountAtDispatch_persistsToOriginalAccount() {
+    func testAddReadiumBookmark_capturesAccountAtDispatch_persistsToOriginalAccount() async {
         let (registry, manager) = makeHarness()
         seedCurrentA(manager)
 
         let id = "cap-bookmark-\(UUID().uuidString)"
         registry.addBook(makeBook(id: id), state: .downloadSuccessful) // captures A
-        awaitPersisted("addBook persisted") { self.onDiskRecord(forAccount: self.accountAUUID, id: id, registry: registry) != nil }
+        await awaitPersisted(registry)
 
         let bookmark = TPPReadiumBookmark(
             annotationId: "anno-\(UUID().uuidString)",
@@ -218,9 +211,7 @@ final class TPPBookRegistryAccountCaptureContractTests: PalaceWiringTestCase {
         registry.add(bookmark, forIdentifier: id)                     // captures A
         flipCurrentToB(manager)                                       // user switches libraries
 
-        awaitPersisted("bookmark persisted to A") {
-            (self.onDiskRecord(forAccount: self.accountAUUID, id: id, registry: registry)?.readiumBookmarks?.isEmpty == false)
-        }
+        await awaitPersisted(registry)
 
         XCTAssertEqual(onDiskRecord(forAccount: accountAUUID, id: id, registry: registry)?.readiumBookmarks?.count, 1,
                        "the bookmark must persist to the ORIGINALLY-captured account A")
@@ -235,13 +226,13 @@ final class TPPBookRegistryAccountCaptureContractTests: PalaceWiringTestCase {
     /// This pins that it targets the synchronously-current account: we delete A's
     /// file, call saveSync while A is current, and assert A is recreated while B
     /// is never written.
-    func testSaveSync_persistsToCurrentAccount_synchronously() {
+    func testSaveSync_persistsToCurrentAccount_synchronously() async {
         let (registry, manager) = makeHarness()
         seedCurrentA(manager)
 
         let id = "cap-savesync-\(UUID().uuidString)"
         registry.addBook(makeBook(id: id), state: .downloadNeeded)
-        awaitPersisted("addBook persisted") { self.onDiskRecord(forAccount: self.accountAUUID, id: id, registry: registry) != nil }
+        await awaitPersisted(registry)
 
         // Delete A's file so a successful saveSync must recreate it.
         if let url = registry.registryUrl(for: accountAUUID) {

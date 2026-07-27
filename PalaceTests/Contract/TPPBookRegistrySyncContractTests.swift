@@ -182,14 +182,14 @@ final class TPPBookRegistrySyncContractTests: XCTestCase {
         )
     }
 
-    private func seedStore(_ books: [(id: String, state: TPPBookState)]) {
-        let done = expectation(description: "seeded")
-        done.expectedFulfillmentCount = books.count
+    private func seedStore(_ books: [(id: String, state: TPPBookState)]) async {
         for entry in books {
-            store.addBook(makeBook(identifier: entry.id, title: "Seed \(entry.id)"), state: entry.state) { _ in done.fulfill() }
+            store.addBook(makeBook(identifier: entry.id, title: "Seed \(entry.id)"), state: entry.state)
         }
-        wait(for: [done], timeout: 5.0)
-        drainMainQueue()
+        // Drain the store-write barrier deterministically — a trailing barrier runs
+        // after every enqueued addBook, so the shelf is fully seeded with no
+        // wall-clock deadline to starve under parallel sim clones (STARVE-001).
+        await store._awaitPendingWritesForTesting()
     }
 
     /// Well-formed OPDS acquisition feed with one open-access entry per id.
@@ -280,21 +280,31 @@ final class TPPBookRegistrySyncContractTests: XCTestCase {
         )
     }
 
-    /// Deterministic join for the authoritative disk write: the save posts
-    /// `.TPPBookRegistryDidChange` on main AFTER the bytes land. We fulfill only
-    /// once the file actually exists, so the noisier store-mutation posts of the
-    /// same notification can't false-satisfy the wait.
-    private func awaitFileExists(at url: URL, timeout: TimeInterval = 5.0) {
-        if FileManager.default.fileExists(atPath: url.path) { return }
-        let exp = expectation(description: "authoritative save wrote \(url.lastPathComponent)")
-        exp.assertForOverFulfill = false
-        let token = NotificationCenter.default.addObserver(
-            forName: .TPPBookRegistryDidChange, object: nil, queue: .main
-        ) { _ in
-            if FileManager.default.fileExists(atPath: url.path) { exp.fulfill() }
+    /// Deterministic join for the SUT's `sync(...)` completion: resume exactly
+    /// when the completion closure fires, recording its args into the shared log.
+    /// Replaces a `wait(for:)` deadline on the completion — a checked continuation
+    /// resumes on the real completion edge, with no wall-clock timeout to starve
+    /// under parallel sim clones (STARVE-001).
+    private func runSync(
+        _ sut: BookRegistrySync,
+        currentState: TPPBookRegistry.RegistryState,
+        log: CallLog,
+        received: @escaping (TPPBookRegistry.RegistryState) -> Void,
+        onCompletion: @escaping (_ errorDoc: [AnyHashable: Any]?, _ newBooks: Bool) -> Void
+    ) async {
+        // Resume Void and hand the completion args back through `onCompletion`
+        // (captured main-actor locals) rather than through the continuation's
+        // return type — the same non-Sendable `[AnyHashable: Any]?` the original
+        // `wait(for:)` code kept main-actor-local, so no value crosses an
+        // isolation boundary (Swift 6 strict-concurrency).
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            sut.sync(currentState: currentState,
+                     setState: recordingSetState(log, into: received)) { errorDoc, newBooks in
+                log.record("completion", args: ["newBooks": newBooks, "hasError": errorDoc != nil])
+                onCompletion(errorDoc, newBooks)
+                cont.resume()
+            }
         }
-        defer { NotificationCenter.default.removeObserver(token) }
-        wait(for: [exp], timeout: timeout)
     }
 
     // MARK: - 1. Happy path — reconcile (merge + fresh + eviction + authoritative save)
@@ -304,14 +314,14 @@ final class TPPBookRegistrySyncContractTests: XCTestCase {
     /// (a pre-existing record is MERGE-preserved; a feed-only id becomes a FRESH
     /// record) plus the eviction of a downloaded book absent from the feed and the
     /// authoritative save to the syncing account's on-disk registry.
-    func testSync_happyPath_reconcilesFeed_evicts_persistsAuthoritative_andSyncs() throws {
+    func testSync_happyPath_reconcilesFeed_evicts_persistsAuthoritative_andSyncs() async throws {
         let (uuid, cleanup) = try seedCredentialedLoansAccount()
         defer { cleanup() }
 
         // Pre-seed: a book that WILL appear in the feed (merge branch, state
         // preserved) + a downloaded book that WON'T (eviction).
-        seedStore([(id: "sync-merge-1", state: .downloadSuccessful),
-                   (id: "sync-gone-1", state: .downloadSuccessful)])
+        await seedStore([(id: "sync-merge-1", state: .downloadSuccessful),
+                         (id: "sync-gone-1", state: .downloadSuccessful)])
 
         let log = CallLog()
         let fetcher = RecordingOPDSFeedFetcher(log: log)
@@ -325,14 +335,9 @@ final class TPPBookRegistrySyncContractTests: XCTestCase {
 
         var received: [TPPBookRegistry.RegistryState] = []
         var completionArgs: (errorDoc: [AnyHashable: Any]?, newBooks: Bool)?
-        let done = expectation(description: "sync completed")
-        sut.sync(currentState: .loaded,
-                 setState: recordingSetState(log, into: { received.append($0) })) { errorDoc, newBooks in
-            log.record("completion", args: ["newBooks": newBooks, "hasError": errorDoc != nil])
-            completionArgs = (errorDoc, newBooks)
-            done.fulfill()
-        }
-        wait(for: [done], timeout: 10.0)
+        await runSync(sut, currentState: .loaded, log: log,
+                      received: { received.append($0) },
+                      onCompletion: { completionArgs = ($0, $1) })
 
         // --- Ordered dependency-call contract ---
         ContractSnapshot.assert(log, named: "syncHappyPathReconcile")
@@ -358,8 +363,10 @@ final class TPPBookRegistrySyncContractTests: XCTestCase {
         XCTAssertEqual(spyContentService.deletedBookIds, ["sync-gone-1"],
                        "exactly the evicted downloaded book's local content is deleted")
 
-        // AUTHORITATIVE save landed in the SYNCING account's registry file.
-        awaitFileExists(at: registryURL)
+        // AUTHORITATIVE save landed in the SYNCING account's registry file. The
+        // save is enqueued on the sync engine's serial disk-write queue before the
+        // completion fires; draining it deterministically flushes the bytes.
+        await sut._awaitPendingDiskWritesForTesting()
         XCTAssertTrue(FileManager.default.fileExists(atPath: registryURL.path),
                       "a changes-made sync must persist an authoritative save to the syncing account's registry.json")
     }
@@ -410,7 +417,7 @@ final class TPPBookRegistrySyncContractTests: XCTestCase {
     /// clears syncUrl, and completes with a nil error document — WITHOUT ever
     /// fetching the feed. Distinct from the loans-fetch error path (that one
     /// forwards a non-nil error document).
-    func testSync_awaitReadyFailure_revertsToLoaded_withoutFetching() throws {
+    func testSync_awaitReadyFailure_revertsToLoaded_withoutFetching() async throws {
         try KeychainAvailability.skipIfUnavailable()
         let (uuid, seedCleanup) = seedFixtureCurrentAccount()
         defer { seedCleanup() }
@@ -430,14 +437,9 @@ final class TPPBookRegistrySyncContractTests: XCTestCase {
 
         var received: [TPPBookRegistry.RegistryState] = []
         var completionArgs: (errorDoc: [AnyHashable: Any]?, newBooks: Bool)?
-        let done = expectation(description: "awaitReady failure resolved")
-        sut.sync(currentState: .loaded,
-                 setState: recordingSetState(log, into: { received.append($0) })) { errorDoc, newBooks in
-            log.record("completion", args: ["newBooks": newBooks, "hasError": errorDoc != nil])
-            completionArgs = (errorDoc, newBooks)
-            done.fulfill()
-        }
-        wait(for: [done], timeout: 5.0)
+        await runSync(sut, currentState: .loaded, log: log,
+                      received: { received.append($0) },
+                      onCompletion: { completionArgs = ($0, $1) })
 
         ContractSnapshot.assert(log, named: "syncAwaitReadyFailureRevert")
 
@@ -460,12 +462,12 @@ final class TPPBookRegistrySyncContractTests: XCTestCase {
     /// .synced, but performs ZERO deleteLocalContent and (changesMade == false)
     /// writes NO authoritative save. The boolean is unit-tested directly
     /// elsewhere; this pins the end-to-end no-eviction sequence.
-    func testSync_bulkDeletionGuard_emptyFeedNonEmptyShelf_skipsAllDeletions() throws {
+    func testSync_bulkDeletionGuard_emptyFeedNonEmptyShelf_skipsAllDeletions() async throws {
         let (uuid, cleanup) = try seedCredentialedLoansAccount()
         defer { cleanup() }
 
-        seedStore([(id: "guard-1", state: .downloadSuccessful),
-                   (id: "guard-2", state: .downloadSuccessful)])
+        await seedStore([(id: "guard-1", state: .downloadSuccessful),
+                         (id: "guard-2", state: .downloadSuccessful)])
 
         let log = CallLog()
         let fetcher = RecordingOPDSFeedFetcher(log: log)
@@ -478,14 +480,9 @@ final class TPPBookRegistrySyncContractTests: XCTestCase {
 
         var received: [TPPBookRegistry.RegistryState] = []
         var completionArgs: (errorDoc: [AnyHashable: Any]?, newBooks: Bool)?
-        let done = expectation(description: "sync completed")
-        sut.sync(currentState: .loaded,
-                 setState: recordingSetState(log, into: { received.append($0) })) { errorDoc, newBooks in
-            log.record("completion", args: ["newBooks": newBooks, "hasError": errorDoc != nil])
-            completionArgs = (errorDoc, newBooks)
-            done.fulfill()
-        }
-        wait(for: [done], timeout: 10.0)
+        await runSync(sut, currentState: .loaded, log: log,
+                      received: { received.append($0) },
+                      onCompletion: { completionArgs = ($0, $1) })
 
         ContractSnapshot.assert(log, named: "syncBulkDeletionGuardEmptyFeed")
 

@@ -54,14 +54,21 @@ final class AccountScopeAdapterTests: PalaceWiringTestCase {
         let manager = makeFreshAccountsManager()
         let adapter = AccountsManagerAccountScopeAdapter(accountsManager: manager)
 
-        let fired = expectation(description: "accountDidChangePublisher emits")
+        var fired = false
         adapter.accountDidChangePublisher
-            .sink { _ in fired.fulfill() }
+            .sink { _ in fired = true }
             .store(in: &cancellables)
 
+        // The adapter re-posts `.TPPCurrentAccountDidChange` through Combine's
+        // NotificationCenter publisher with NO `.receive(on:)`, so the sink runs
+        // SYNCHRONOUSLY during `post`. Drain the main queue to settle delivery,
+        // then assert synchronously — no wall-clock deadline to starve under
+        // parallel sim clones (STARVE-001).
         NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
+        drainMainQueue()
 
-        wait(for: [fired], timeout: 2.0)
+        XCTAssertTrue(fired,
+                      "the adapter must forward .TPPCurrentAccountDidChange to accountDidChangePublisher")
     }
 
     /// An unknown account resolves to nil (account-not-found) rather than throwing —

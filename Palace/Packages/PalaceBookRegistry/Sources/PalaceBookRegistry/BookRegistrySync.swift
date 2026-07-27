@@ -738,6 +738,24 @@ final class BookRegistrySync: @unchecked Sendable {
     }
   }
 
+  // MARK: - Test-only deterministic-join seam
+
+  /// Test-only: drain any pending async disk writes enqueued by `save(for:)`.
+  ///
+  /// `diskWriteQueue` is serial, so a trailing `async` block resumes STRICTLY
+  /// AFTER every previously-enqueued write block has finished flushing to disk
+  /// (and enqueued its main-hop `.TPPBookRegistryDidChange` post) — including a
+  /// refused INV-1 empty save, whose block runs and returns without writing.
+  /// Bounded by construction: no `wait(for:)` deadline, no sleep/poll/clock.
+  /// Mirrors `BookRegistryStore._awaitPendingWritesForTesting`. Production never
+  /// calls it — it is a deterministic replacement for a `.TPPBookRegistryDidChange`
+  /// deadline wait in the persistence contract tests (STARVE-001).
+  func _awaitPendingDiskWritesForTesting() async {
+    await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+      diskWriteQueue.async { cont.resume() }
+    }
+  }
+
   func validateDownloadedContent() {
     guard let account = accountScope.currentAccountID else { return }
 

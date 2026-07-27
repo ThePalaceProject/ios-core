@@ -82,17 +82,17 @@ final class TPPBookRegistryRebuildRefusalContractTests: XCTestCase {
     }
 
     /// One-book snapshot in the exact persisted dictionary shape, then clears the
-    /// store — used to seed a non-empty last-good `.bak`. Synchronous: the test
-    /// method must NOT be async, else the `wait(for:)` joins below would block the
-    /// main actor and starve the save's main-queue notification post.
-    private func snapshotWithOneBook(id: String) -> [[String: Any]] {
-        let added = expectation(description: "added")
-        store.addBook(makeBook(id: id), state: .downloadNeeded) { _ in added.fulfill() }
-        wait(for: [added], timeout: 2.0)
-        drainMainQueue()
+    /// store — used to seed a non-empty last-good `.bak`. Drains the store-write
+    /// barrier deterministically (no wall-clock deadline) so the snapshot reflects
+    /// the just-added book; the barrier drain is bounded by construction, so it is
+    /// safe to `await` on the main actor (unlike a `wait(for:)` join, which would
+    /// block the executor the save's main-queue post is waiting on — STARVE-001).
+    private func snapshotWithOneBook(id: String) async -> [[String: Any]] {
+        store.addBook(makeBook(id: id), state: .downloadNeeded)
+        await store._awaitPendingWritesForTesting()
         let snapshot = store.registrySnapshot()
         store.removeAll()
-        drainMainQueue()
+        await store._awaitPendingWritesForTesting()
         return snapshot
     }
 
@@ -104,25 +104,6 @@ final class TPPBookRegistryRebuildRefusalContractTests: XCTestCase {
         try! data.write(to: url)
     }
 
-    /// Join a SUCCESSFUL disk write via the `.TPPBookRegistryDidChange` the save
-    /// posts after `write(to:)` lands.
-    private func awaitRegistrySaved(timeout: TimeInterval = 5.0, _ action: () -> Void) {
-        let saved = expectation(description: "registry disk write posted TPPBookRegistryDidChange")
-        saved.assertForOverFulfill = false
-        let token = NotificationCenter.default.addObserver(
-            forName: .TPPBookRegistryDidChange, object: nil, queue: .main
-        ) { _ in saved.fulfill() }
-        defer { NotificationCenter.default.removeObserver(token) }
-        action()
-        wait(for: [saved], timeout: timeout)
-    }
-
-    /// Fixed run-loop settle for asserting the ABSENCE of an effect (a refused
-    /// save posts no notification — there is no positive edge to await).
-    private func settle(_ seconds: TimeInterval = 0.4) {
-        RunLoop.current.run(until: Date().addingTimeInterval(seconds))
-    }
-
     private func primaryIsValidRegistry(at url: URL) -> Bool {
         guard let data = try? Data(contentsOf: url) else { return false }
         if case .valid = RegistryFileRecovery.classify(data: data) { return true }
@@ -132,13 +113,13 @@ final class TPPBookRegistryRebuildRefusalContractTests: XCTestCase {
     // MARK: - Contract
 
     /// The refuse-then-allow decision sequence across one rebuild window.
-    func testRebuildWindow_refusesNonAuthoritativeEmpty_thenAllowsAuthoritativeEmpty() {
+    func testRebuildWindow_refusesNonAuthoritativeEmpty_thenAllowsAuthoritativeEmpty() async {
         let (account, url) = makeIsolatedAccount()
         defer { cleanupAccount(url) }
 
         // Arrange the post-corrupt rebuild window: a non-empty last-good backup on
         // disk, the SUT flagged for rebuild, and an empty in-memory shelf.
-        let goodRecords = snapshotWithOneBook(id: "kept-book")
+        let goodRecords = await snapshotWithOneBook(id: "kept-book")
         XCTAssertEqual(goodRecords.count, 1, "precondition: backup fixture has one record")
         writeRegistryPayload(records: goodRecords, schemaVersion: 1,
                              to: RegistryFileRecovery.backupURL(for: url))
@@ -150,9 +131,12 @@ final class TPPBookRegistryRebuildRefusalContractTests: XCTestCase {
         let log = CallLog()
 
         // --- Decision 1: NON-authoritative empty save → REFUSED ---
-        // Refused saves post no notification; settle then observe the disk/flag.
+        // A refused save posts no notification, but its diskWriteQueue block still
+        // runs (and returns without writing). Drain that queue deterministically —
+        // after the drain the refusal decision has been made — then observe the
+        // disk/flag. No wall-clock settle to starve under parallel clones (STARVE-001).
         syncManager.save(for: account) // serverAuthoritative: false
-        settle()
+        await syncManager._awaitPendingDiskWritesForTesting()
         log.record("emptySave", args: [
             "authoritative": false,
             "primaryPersisted": primaryIsValidRegistry(at: url),
@@ -168,7 +152,10 @@ final class TPPBookRegistryRebuildRefusalContractTests: XCTestCase {
                       "INV-1: a refused save must leave the rebuild flag set")
 
         // --- Decision 2: AUTHORITATIVE empty save → ALLOWED + clears flag ---
-        awaitRegistrySaved { syncManager.save(for: account, serverAuthoritative: true) }
+        // Drain the disk-write queue so the authoritative write has flushed before
+        // we read it back off disk — deterministic, no notification deadline.
+        syncManager.save(for: account, serverAuthoritative: true)
+        await syncManager._awaitPendingDiskWritesForTesting()
         log.record("emptySave", args: [
             "authoritative": true,
             "primaryPersisted": primaryIsValidRegistry(at: url),
