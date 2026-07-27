@@ -197,11 +197,15 @@ private final class BoolWithDelay: @unchecked Sendable {
 /// `setupAccountDidChangeObserver()` (on the constructing thread, before the
 /// instance escapes) and only read/torn-down thereafter, so it carries no
 /// cross-thread write race. This is a documented invariant, not a bare waiver.
-@objcMembers
-class TPPBookRegistry: NSObject, TPPBookRegistrySyncing, @unchecked Sendable {
+// De-objc (god-class decomp Wave 2b prep): dropped `@objcMembers` + `NSObject`
+// superclass + `@objc` on `RegistryState`. The entire ObjC surface is vestigial —
+// zero `.m`/`.h` references to the class, the notifications, or `TPPBookRegistrySyncing`;
+// zero selector/`NSClassFromString` dispatch (verified at branch tip). Removing NSObject
+// also removes the two `super.init()` calls below.
+class TPPBookRegistry: TPPBookRegistrySyncing, @unchecked Sendable {
     static let syncFailureErrorDocumentKey = "TPPBookRegistrySyncFailureErrorDocument"
 
-    @objc enum RegistryState: Int, Sendable {
+    enum RegistryState: Int, Sendable {
         case unloaded, loading, loaded, syncing, synced
     }
 
@@ -421,7 +425,6 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing, @unchecked Sendable {
             save: { [weak sync] account in sync?.save(for: account) },
             saveSync: { [weak sync] account in sync?.saveSync(for: account) }
         )
-        super.init()
         setupAccountDidChangeObserver()
     }
 
@@ -450,7 +453,6 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing, @unchecked Sendable {
             save: { [weak sync] account in sync?.save(for: account) },
             saveSync: { [weak sync] account in sync?.saveSync(for: account) }
         )
-        super.init()
         syncEngine.load(account: account) { [weak self] newState in self?.state = newState }
     }
 

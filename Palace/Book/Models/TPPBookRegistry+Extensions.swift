@@ -23,7 +23,9 @@ private struct SyncLocationBox: @unchecked Sendable {
     let completion: (AudioBookmark?) -> Void
 }
 
-@objc extension TPPBookRegistry {
+// De-objc (god-class decomp Wave 2b prep): was `@objc extension` — no ObjC callers
+// of `syncLocation` (verified zero `.m`/`.h`/selector references).
+extension TPPBookRegistry {
     func syncLocation(for book: TPPBook, completion: @escaping (AudioBookmark?) -> Void) {
         let box = SyncLocationBox(book: book, completion: completion)
         Task {

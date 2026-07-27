@@ -20,7 +20,12 @@ import PalaceAuth
     func reset(_ libraryID: String!)
 }
 
-@objc protocol TPPBookRegistrySyncing: NSObjectProtocol {
+// De-objc (god-class decomp Wave 2b prep): was `@objc protocol … : NSObjectProtocol`.
+// Every consumer is Swift-only (BookDetailViewModel, AccountDetailViewModel,
+// DeveloperSettingsViewModel, SignInBusinessLogic, TPPBookRegistryMock) — verified
+// zero `.m`/`.h` references, zero selector/`responds(to:)` dispatch. Plain protocol
+// drops the NSObjectProtocol constraint so the concrete conformer need not be NSObject.
+protocol TPPBookRegistrySyncing {
     var isSyncing: Bool {get}
     func reset(_ libraryAccountUUID: String)
     func sync()
