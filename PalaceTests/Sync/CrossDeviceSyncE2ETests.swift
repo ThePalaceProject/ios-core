@@ -191,6 +191,36 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
         return try block()
     }
 
+    /// Activates device A's stubbed executor + device tag and returns a closure
+    /// that restores the prior override state.
+    ///
+    /// Unlike `asDeviceA`, this does NOT auto-restore on scope exit. It exists
+    /// for the fire-and-forget return-cleanup path: `deleteAllBookmarks` issues
+    /// a GET synchronously, then re-reads `TPPAnnotations.executorOverride` at
+    /// DELETE time inside the GET's *async* completion — long after the
+    /// synchronous call returns. `asDeviceA`'s `defer` restores the override
+    /// before those DELETEs fire, so they route through
+    /// `AppContainer.production().networkExecutor` (blocked by
+    /// `NoNetworkURLProtocol`, error -1003) instead of the mock backend, and
+    /// the annotations are never actually deleted. The caller must hold the
+    /// returned restore closure across the whole async chain + poll window and
+    /// invoke it only once the deletions have settled.
+    private func holdDeviceAExecutor() -> () -> Void {
+        let prevExec = TPPAnnotations.executorOverride
+        let prevDev = AnnotationDevice.firebaseDeviceIDOverride
+        let prevAccountDeviceID = userAccount.deviceID
+        TPPAnnotations.executorOverride = executorA
+        AnnotationDevice.firebaseDeviceIDOverride = Self.deviceA
+        userAccount.setDeviceID(Self.deviceA)
+        return { [weak self] in
+            TPPAnnotations.executorOverride = prevExec
+            AnnotationDevice.firebaseDeviceIDOverride = prevDev
+            if let prev = prevAccountDeviceID {
+                self?.userAccount?.setDeviceID(prev)
+            }
+        }
+    }
+
     // MARK: - Helpers: locators / books / sync gate verification
 
     private func epubSelectorValue(href: String,
@@ -745,12 +775,16 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
                        "Setup: the other book must have its bookmark before return")
 
         // Drive the real return-cleanup call through device A's executor.
+        // Hold the executor override across the async GET→DELETE chain + poll
+        // (see holdDeviceAExecutor): the chained DELETEs re-read the override
+        // long after this synchronous call returns.
         let book = makeBook(audiobook: true)
+        let restoreExecutor = holdDeviceAExecutor()
+        defer { restoreExecutor() }
+
         let completed = expectation(description: "deleteAllBookmarks completion (fire-and-forget)")
-        asDeviceA {
-            TPPAnnotations.deleteAllBookmarks(forBook: book) {
-                completed.fulfill()
-            }
+        TPPAnnotations.deleteAllBookmarks(forBook: book) {
+            completed.fulfill()
         }
         wait(for: [completed], timeout: 5.0)
 
@@ -812,11 +846,17 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
             return backendRef.handle(request)
         }
 
+        // Hold device A's executor across the fire-and-forget GET→DELETE chain
+        // + poll (see holdDeviceAExecutor) so the chained DELETEs route through
+        // the mock backend and are recorded, rather than the production
+        // executor (NoNetworkURLProtocol -1003) which would record zero DELETEs
+        // and snapshot an empty — meaningless — contract.
         let book = makeBook(audiobook: true)
+        let restoreExecutor = holdDeviceAExecutor()
+        defer { restoreExecutor() }
+
         let completed = expectation(description: "deleteAllBookmarks completion")
-        asDeviceA {
-            TPPAnnotations.deleteAllBookmarks(forBook: book) { completed.fulfill() }
-        }
+        TPPAnnotations.deleteAllBookmarks(forBook: book) { completed.fulfill() }
         wait(for: [completed], timeout: 5.0)
 
         let deadline = Date().addingTimeInterval(8.0)
