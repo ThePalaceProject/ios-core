@@ -31,6 +31,7 @@
 //
 
 import Foundation
+import PalaceBookModel
 
 enum BorrowReducerCore {
 

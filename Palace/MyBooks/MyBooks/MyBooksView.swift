@@ -2,6 +2,7 @@ import SwiftUI
 import PalacePreferences
 import Combine
 import PalaceUIKit
+import PalaceBookModel
 
 struct MyBooksView: View {
     @EnvironmentObject private var coordinator: NavigationCoordinator

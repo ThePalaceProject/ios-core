@@ -22,6 +22,7 @@
 //
 
 import Foundation
+import PalaceBookModel
 
 /// One recorded call: method name + flat dictionary of stringified arguments.
 public struct CallRecord: Hashable, Codable {

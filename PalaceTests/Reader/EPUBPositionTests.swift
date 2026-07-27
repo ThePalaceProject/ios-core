@@ -10,6 +10,7 @@
 import XCTest
 import ReadiumShared
 @testable import Palace
+import PalaceBookModel
 
 // Deliberately NOT @MainActor: TPPBookLocation/Publication are non-Sendable
 // and convertToLocator is nonisolated async — a @MainActor test makes those

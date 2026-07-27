@@ -3,6 +3,7 @@ import Combine
 import PalaceLogging
 @preconcurrency import PalaceCatalog
 import PalaceNetwork
+import PalaceBookModel
 
 @MainActor
 final class CatalogViewModel: ObservableObject {

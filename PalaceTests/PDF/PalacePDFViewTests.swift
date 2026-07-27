@@ -12,6 +12,7 @@
 import XCTest
 import PDFKit
 @testable import Palace
+import PalaceBookModel
 
 @MainActor
 final class PalacePDFViewTests: XCTestCase {

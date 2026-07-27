@@ -22,6 +22,7 @@
 import XCTest
 import PalaceCatalog
 @testable import Palace
+import PalaceBookModel
 
 final class ReaderServicePDFRouteTests: XCTestCase {
 

@@ -13,6 +13,7 @@ import SwiftUI
 import PalaceLogging
 @preconcurrency import ReadiumShared
 import ReadiumNavigator
+import PalaceBookModel
 
 /// Bridges Readium's `PDFNavigatorViewController` into Palace's reading-position
 /// sync (via `onLocationChange`) without Palace-layer code depending on

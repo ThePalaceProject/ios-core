@@ -6,6 +6,7 @@ import os
 import PalaceAuth
 import PalaceNetwork
 import PalaceCatalog // swarm_27c181b5 A5: shared CatalogRepository / DefaultCatalogAPI accessor
+import PalaceBookModel
 
 // Swift 6 `complete` — `@unchecked Sendable` invariant: every stored member is
 // an immutable `let` established once at the composition root and only read
@@ -639,6 +640,10 @@ struct AppContainer: @unchecked Sendable {
         // that re-entered _cached's own dispatch_once and SIGTRAPped on launch.
         let imageCache = ImageCache.shared
         let imageLoader: ImageLoading = ImageLoader(imageCache: imageCache)
+        // Wave 2a: configure the package-side image context BEFORE the first
+        // TPPBook is constructed (the registry construction below parses records).
+        TPPBookImageContext.imageCacheProvider = { imageCache }
+        TPPBookImageContext.imageLoaderProvider = { imageLoader }
         let bookRegistry = TPPBookRegistry(accountsManager: accountsManager, imageLoader: imageLoader)
         // Build one accessibility announcer and one DownloadAnnouncementService
         // that wraps it. Sharing this announcer between the service and any

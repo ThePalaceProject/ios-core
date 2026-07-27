@@ -8,6 +8,7 @@
 
 import Combine
 import Foundation
+import PalaceBookModel
 
 /// Protocol for the download center, enabling dependency injection for testing.
 ///

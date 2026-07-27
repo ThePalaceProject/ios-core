@@ -1,7 +1,7 @@
 [
   {
     "args" : {
-      "contentType" : "TPPBookContentType(rawValue: 0)",
+      "contentType" : "epub",
       "mimeType" : "application\/epub+zip"
     },
     "method" : "classify"
@@ -14,7 +14,7 @@
   },
   {
     "args" : {
-      "contentType" : "TPPBookContentType(rawValue: 0)"
+      "contentType" : "epub"
     },
     "method" : "sideloadRegistry.add"
   },

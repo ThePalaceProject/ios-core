@@ -8,6 +8,7 @@
 
 import Foundation
 import PalaceLogging
+import PalaceBookModel
 
 enum BookmarkType: String, Codable {
     case locatorAudioBookTime = "LocatorAudioBookTime"

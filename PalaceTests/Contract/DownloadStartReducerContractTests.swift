@@ -18,6 +18,7 @@
 
 import XCTest
 @testable import Palace
+import PalaceBookModel
 
 final class DownloadStartReducerContractTests: XCTestCase {
 

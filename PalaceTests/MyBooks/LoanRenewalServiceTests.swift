@@ -14,6 +14,7 @@ import XCTest
 import PalaceAuth
 import PalaceCatalog
 @testable import Palace
+import PalaceBookModel
 
 @MainActor
 final class LoanRenewalServiceTests: XCTestCase {

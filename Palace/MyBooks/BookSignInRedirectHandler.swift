@@ -21,6 +21,7 @@ import Foundation
 import UIKit
 import PalaceCatalog
 import PalaceLogging
+import PalaceBookModel
 
 // MARK: - BookSignInRedirectHandlerDelegate
 

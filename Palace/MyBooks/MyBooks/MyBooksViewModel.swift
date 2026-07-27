@@ -10,6 +10,7 @@ import Foundation
 import PalacePreferences
 import Combine
 import PalaceLogging
+import PalaceBookModel
 
 enum Group: Int {
     case groupSortBy

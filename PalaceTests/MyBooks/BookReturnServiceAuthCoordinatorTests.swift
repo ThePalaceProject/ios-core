@@ -21,6 +21,7 @@ import XCTest
 import PalaceCatalog
 @testable import Palace
 @testable import PalaceAuth
+import PalaceBookModel
 
 @MainActor
 final class BookReturnServiceAuthCoordinatorTests: XCTestCase {

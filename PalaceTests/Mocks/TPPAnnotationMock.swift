@@ -1,6 +1,7 @@
 import Foundation
 @testable import Palace
 @testable import PalaceAudiobookToolkit
+import PalaceBookModel
 
 struct TestBookmark {
     var annotationId: String
@@ -32,7 +33,7 @@ class TPPAnnotationMock: NSObject, AnnotationsManager {
         return response
     }
 
-    func getServerBookmarks(forBook book: TPPBook?, atURL annotationURL: URL?, motivation: Palace.TPPBookmarkSpec.Motivation, completion: @escaping ([Palace.Bookmark]?) -> Void) {
+    func getServerBookmarks(forBook book: TPPBook?, atURL annotationURL: URL?, motivation: Palace.TPPBookmarkSpec.Motivation, completion: @escaping ([Bookmark]?) -> Void) {
         guard let bookID = book?.identifier else {
             completion([])
             return

@@ -4,6 +4,7 @@ import SwiftUI
 @preconcurrency import ReadiumNavigator
 import GameController
 import PalaceLogging
+import PalaceBookModel
 
 class TPPEPUBViewController: TPPBaseReaderViewController {
     /// Tap handling is performed by Readium's input observer system:

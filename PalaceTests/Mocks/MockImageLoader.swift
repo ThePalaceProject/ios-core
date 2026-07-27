@@ -1,10 +1,14 @@
 import UIKit
 @testable import Palace
+import PalaceBookModel
 
 /// In-memory test double for the `ImageLoading` protocol. Records the calls it
 /// receives so tests can assert routing without depending on the live actor,
 /// disk cache, or network.
-public final class MockImageLoader: ImageLoading {
+// nonisolated + @unchecked Sendable: ImageLoading moved into the Swift-6 PalaceBookModel
+// package, flipping a conformer's inferred isolation. nonisolated keeps this double off-main-safe
+// (its own in-memory state; the test drives threading) and matches production ImageLoader.
+public nonisolated final class MockImageLoader: ImageLoading, @unchecked Sendable {
 
     // MARK: - Configurable returns
 

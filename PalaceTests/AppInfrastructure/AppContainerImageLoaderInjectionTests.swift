@@ -1,6 +1,7 @@
 import XCTest
 import SwiftUI
 @testable import Palace
+import PalaceBookModel
 
 /// End-to-end tests that exercise the `ImageLoading` injection seam on
 /// `AppContainer`. The point is to prove a `MockImageLoader` can be threaded

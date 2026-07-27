@@ -9,6 +9,7 @@
 import XCTest
 import PalaceCatalog
 @testable import Palace
+import PalaceBookModel
 
 // MARK: - OPDS2Link Computed Properties Tests
 

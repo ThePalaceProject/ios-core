@@ -3,6 +3,7 @@ import UIKit
 import PalaceLogging
 import PalaceNetwork
 import PalaceCatalog
+import PalaceBookModel
 
 struct AppTabHostView: View {
     // `fileprivate` (not `private`) so the same-file `TabViewChrome` view

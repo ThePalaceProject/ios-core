@@ -37,6 +37,7 @@ import OverdriveProcessor
 import PalaceCatalog
 @preconcurrency import PalaceAudiobookToolkit
 @testable import Palace
+import PalaceBookModel
 
 @MainActor
 final class OverdriveFulfillmentTests: XCTestCase {

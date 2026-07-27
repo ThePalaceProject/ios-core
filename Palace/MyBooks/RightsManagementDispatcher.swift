@@ -26,6 +26,7 @@
 import Foundation
 import PalaceCatalog
 import PalaceLogging
+import PalaceBookModel
 
 // MARK: - File-ops surface
 

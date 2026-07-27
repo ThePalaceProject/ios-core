@@ -9,6 +9,7 @@
 import Foundation
 import Combine
 import UIKit
+import PalaceBookModel
 
 // MARK: - DownloadProgressPublishing Protocol
 

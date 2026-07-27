@@ -21,6 +21,7 @@ import XCTest
 import ReadiumShared
 import PalaceCatalog
 @testable import Palace
+import PalaceBookModel
 
 @MainActor
 final class CrossDeviceSyncE2ETests: XCTestCase {

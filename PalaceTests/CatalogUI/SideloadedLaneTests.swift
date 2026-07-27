@@ -21,6 +21,7 @@ import XCTest
 import Combine
 @testable import Palace
 @testable import PalaceCatalog
+import PalaceBookModel
 
 // MARK: - Pure bridge: toCatalogContent(prepending:)
 

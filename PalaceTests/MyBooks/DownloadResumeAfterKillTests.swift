@@ -21,6 +21,7 @@
 
 import XCTest
 @testable import Palace
+import PalaceBookModel
 
 private let resumeTestSession: URLSession = {
     let config = URLSessionConfiguration.ephemeral

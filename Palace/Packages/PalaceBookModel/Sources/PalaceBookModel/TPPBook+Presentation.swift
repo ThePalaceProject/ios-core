@@ -18,17 +18,14 @@ import PalaceLogging
 extension TPPBook {
     /// Routes cover/thumbnail loads through the `ImageLoading` umbrella so this
     /// file no longer reaches for `TPPBookCoverRegistry.shared` /
-    /// `TPPBookCoverRegistryBridge.shared` directly. Reads
-    /// `AppContainer.production().imageLoader`, which is the same graph every
-    /// other consumer (BookListView, TPPAppDelegate, CarPlay) reads.
-    ///
-    /// Safe to read here even though `AppContainer.production()` builds its
-    /// graph on a dispatch_once: TPPBook instances are constructed *after* the
-    /// AppContainer is fully built, so this access is post-bootstrap and
-    /// never re-enters the once. (Direct reads from inside `_cached`'s init
-    /// would SIGTRAP — see the cycle warning in TPPBookRegistry.swift.)
-    var imageLoader: ImageLoading {
-        AppContainer.production().imageLoader
+    /// `TPPBookCoverRegistryBridge.shared` directly. Wave 2a inverted the former
+    /// `AppContainer.production().imageLoader` reach through
+    /// `TPPBookImageContext`, which the composition root configures once at
+    /// bootstrap (before any TPPBook is constructed). Returns `nil` only in
+    /// unit tests that never configure the context — in which case the network
+    /// fetch branches below no-op and the injected cache-hit paths still run.
+    var imageLoader: ImageLoading? {
+        TPPBookImageContext.imageLoader()
     }
 
     func fetchCoverImage() {
@@ -39,7 +36,7 @@ extension TPPBook {
     /// When `displayHeight` is provided, the decoded image is sized to match the view rather
     /// than the conservative device memory-tier cap, so the image is always sharp at its
     /// actual display size without wasting memory decoding more than needed.
-    func fetchCoverImage(forDisplayHeight displayHeight: CGFloat?) {
+    public func fetchCoverImage(forDisplayHeight displayHeight: CGFloat?) {
         // A view can hand back a NaN / infinite / non-positive height while it is
         // still laying out; `Int($0)` in the size key below would trap
         // (EXC_BREAKPOINT). Treat an unusable height as "no size" and take the
@@ -82,8 +79,13 @@ extension TPPBook {
                     }
                 }
 
-                // Cache miss — fetch from network
-                let img = await self.imageLoader.coverImage(for: self, displayPoints: displayHeight)
+                // Cache miss — fetch from network (no-op if the image context
+                // is unconfigured, e.g. in a unit test).
+                guard let imageLoader = self.imageLoader else {
+                    await MainActor.run { self.isCoverLoading = false }
+                    return
+                }
+                let img = await imageLoader.coverImage(for: self, displayPoints: displayHeight)
                 let final = img ?? self.thumbnailImage
                 await MainActor.run {
                     self.coverImage = final
@@ -98,8 +100,12 @@ extension TPPBook {
         } else {
             let startFetch = { @Sendable [weak self] in
                 guard let self else { return }
+                guard let imageLoader = self.imageLoader else {
+                    DispatchQueue.main.async { self.isCoverLoading = false }
+                    return
+                }
 
-                self.imageLoader.coverImage(for: self) { [weak self] image in
+                imageLoader.coverImage(for: self) { [weak self] image in
                     guard let self = self else { return }
                     let final = image ?? self.thumbnailImage
 
@@ -138,7 +144,12 @@ extension TPPBook {
             guard let self, !self.isThumbnailLoading else { return }
             self.isThumbnailLoading = true
 
-            self.imageLoader.thumbnailImage(for: self) { [weak self] image in
+            guard let imageLoader = self.imageLoader else {
+                DispatchQueue.main.async { self.isThumbnailLoading = false }
+                return
+            }
+
+            imageLoader.thumbnailImage(for: self) { [weak self] image in
                 guard let self = self else { return }
 
                 DispatchQueue.main.async {
@@ -162,7 +173,7 @@ extension TPPBook {
         }
     }
 
-    func clearCachedImages() {
+    public func clearCachedImages() {
         imageCache.remove(for: identifier)
         imageCache.remove(for: "\(identifier)_cover")
         imageCache.remove(for: "\(identifier)_thumbnail")
@@ -177,11 +188,11 @@ extension TPPBook {
 // MARK: - Display Helpers
 
 extension TPPBook {
-    var wrappedCoverImage: UIImage? {
+    public var wrappedCoverImage: UIImage? {
         coverImage
     }
 
-    @objc public class func ordinalString(for n: Int) -> String {
+    public class func ordinalString(for n: Int) -> String {
         return n.ordinal()
     }
 }

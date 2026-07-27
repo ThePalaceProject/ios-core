@@ -1,5 +1,6 @@
 import XCTest
 @testable import Palace
+import PalaceBookModel
 
 /// Verifies that the SignInModalPresenter guards (SQ-005, SQ-007)
 /// do NOT interfere with SAML and OIDC authentication flows.

@@ -25,6 +25,7 @@
 
 import XCTest
 @testable import Palace
+import PalaceBookModel
 
 #if FEATURE_DRM_CONNECTOR
 

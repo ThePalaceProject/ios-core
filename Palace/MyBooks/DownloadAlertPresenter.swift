@@ -26,6 +26,7 @@
 import Foundation
 import PalaceLogging
 import PalaceCatalog
+import PalaceBookModel
 
 // MARK: - RetryBookBox
 

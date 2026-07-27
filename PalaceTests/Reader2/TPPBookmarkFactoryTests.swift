@@ -10,6 +10,7 @@ import XCTest
 import ReadiumShared
 import PalaceCatalog
 @testable import Palace
+import PalaceBookModel
 
 // Deliberately NOT @MainActor: the code under test is nonisolated and the
 // fixtures (Publication / TPPBook / factory) are non-Sendable — driving them

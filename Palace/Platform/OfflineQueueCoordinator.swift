@@ -26,6 +26,7 @@
 //
 
 import Foundation
+import PalaceBookModel
 
 // MARK: - OfflineExecutorRegistering
 

@@ -11,6 +11,7 @@ import FirebaseCore
 import FirebaseAnalytics
 import FirebaseCrashlytics
 import PalaceLogging
+import PalaceBookModel
 
 /// Protocol seam for tests. Production call sites continue to use
 /// `DeviceSpecificErrorMonitor.shared`.

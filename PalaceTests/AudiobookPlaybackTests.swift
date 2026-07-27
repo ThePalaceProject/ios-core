@@ -10,6 +10,7 @@ import XCTest
 import PalaceCatalog
 @testable import Palace
 @testable import PalaceAudiobookToolkit
+import PalaceBookModel
 
 /// Tests for audiobook playback functionality including skip navigation,
 /// chapter transitions, and playback speed calculations.

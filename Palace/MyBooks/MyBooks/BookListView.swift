@@ -1,4 +1,5 @@
 import SwiftUI
+import PalaceBookModel
 
 /// Carrier box that lets a read-only `[TPPBook]` snapshot cross into a
 /// `@Sendable` detached prefetch task. `TPPBook` is a non-Sendable

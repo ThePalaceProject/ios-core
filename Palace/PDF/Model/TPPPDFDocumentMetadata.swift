@@ -10,6 +10,7 @@ import Foundation
 import Combine
 import PalaceLogging
 import PalaceReadingPosition
+import PalaceBookModel
 
 /// PDF Document metadata
 ///

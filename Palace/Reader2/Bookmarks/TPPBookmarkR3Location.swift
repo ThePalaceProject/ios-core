@@ -8,6 +8,7 @@
 
 import Foundation
 import ReadiumShared
+import PalaceBookModel
 
 /// Immutable data-carrier describing a Reader-2 (Readium 3) reading position.
 ///

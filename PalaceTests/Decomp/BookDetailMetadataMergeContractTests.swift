@@ -38,6 +38,7 @@ import XCTest
 import PalacePreferences
 import PalaceCatalog
 @testable import Palace
+import PalaceBookModel
 
 @MainActor
 final class BookDetailMetadataMergeContractTests: XCTestCase {

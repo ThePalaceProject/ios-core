@@ -4,6 +4,7 @@ import SwiftUI
 import PalaceAudiobookToolkit
 import PalaceLogging
 import PalaceCatalog
+import PalaceBookModel
 
 #if LCP
 import ReadiumShared

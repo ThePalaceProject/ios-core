@@ -2,6 +2,7 @@ import Foundation
 import Combine
 import UIKit
 import PalaceLogging
+import PalaceBookModel
 
 /// `Sendable` (Swift 6 `complete`): the registry is passed to, and captured by,
 /// closures/`Task`s across ~60 consumer files (MyBooks, CatalogUI, Reader2,

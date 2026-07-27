@@ -10,6 +10,7 @@ import Foundation
 import PalaceLogging
 import PalaceReadingPosition
 @preconcurrency import ReadiumShared
+import PalaceBookModel
 
 /// A front-end to the position-load path that resolves cross-device read
 /// position conflicts. The remote fetch is delegated to a `PositionWriter`;

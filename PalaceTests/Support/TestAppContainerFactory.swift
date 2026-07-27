@@ -44,6 +44,7 @@ import PalacePreferences
 import PalaceAuth
 import PalaceNetwork
 @testable import Palace
+import PalaceBookModel
 
 /// Build a fresh `AppContainer` whose service graph is hand-threaded just
 /// like the production builder, but with NO interaction with the static

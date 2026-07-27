@@ -34,6 +34,7 @@ import XCTest
 import Combine
 import OverdriveProcessor
 @testable import Palace
+import PalaceBookModel
 
 @MainActor
 final class OverdriveDownloadHandlerTests: XCTestCase {

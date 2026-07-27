@@ -9,6 +9,7 @@
 import SwiftUI
 import Combine
 import PalaceUIKit
+import PalaceBookModel
 
 struct NormalBookCell: View {
     @Environment(\.colorScheme) var colorScheme

@@ -28,6 +28,7 @@
 
 import XCTest
 @testable import Palace
+import PalaceBookModel
 
 private let freeSpaceTestSession: URLSession = {
     let config = URLSessionConfiguration.ephemeral

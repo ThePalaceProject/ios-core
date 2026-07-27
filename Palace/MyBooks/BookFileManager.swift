@@ -14,6 +14,7 @@
 //
 
 import Foundation
+import PalaceBookModel
 
 /// Resolves the on-disk URL for a book download. Per-account, hashed
 /// identifier, LCP-aware file extension. Creates the content directory on

@@ -31,6 +31,7 @@
 import XCTest
 import PalaceCatalog
 @testable import Palace
+import PalaceBookModel
 
 // MARK: - BorrowOperation broadening (sites 4.5 + 4.6)
 

@@ -1,5 +1,6 @@
 import UIKit
 import PalaceLogging
+import PalaceBookModel
 
 /// Thread-safe one-shot resumer for `ImageCache.getAsync`'s checked
 /// continuation. The continuation must resume exactly once whether the
@@ -27,22 +28,6 @@ private final class OneShotImageResumer: @unchecked Sendable {
     }
 }
 
-public protocol ImageCacheType: Sendable {
-    func set(_ image: UIImage, for key: String, expiresIn: TimeInterval?)
-    func get(for key: String) -> UIImage?
-    func getAsync(for key: String) async -> UIImage?
-    func remove(for key: String)
-    func clear()
-    func warmMemoryCache(for keys: [String]) async
-}
-
-public extension ImageCacheType {
-    func set(_ image: UIImage, for key: String) {
-        let sevenDays: TimeInterval = 7 * 24 * 60 * 60
-        set(image, for: key, expiresIn: sevenDays)
-    }
-}
-
 /// `@unchecked Sendable` invariant: every stored property is either an
 /// immutable `let` (`defaultTTL`, `maxDimension`, `compressionQuality`) or a
 /// reference to a type that is itself internally thread-safe — `NSCache`
@@ -50,7 +35,45 @@ public extension ImageCacheType {
 /// thread-safe by Apple, and `dataCache` (`GeneralCache`) serializes its own
 /// access. There is no unguarded mutable stored state on `ImageCache` itself,
 /// so concurrent access across the `processingQueue` operations is safe.
-public final class ImageCache: ImageCacheType, @unchecked Sendable {
+///
+/// ## Off-main closures are hoisted into explicitly-typed `let`s (load-bearing)
+///
+/// Every `processingQueue.addOperation` / `BlockOperation.addExecutionBlock` /
+/// `completionBlock` closure in this file is bound to an explicitly-typed
+/// `let work: @Sendable () -> Void` before being handed to the API, rather than
+/// written inline as a trailing-closure literal. This is a WORKAROUND for a
+/// confirmed Xcode 26.2 / Swift 6.2 ClangImporter bug (#1338), NOT a style
+/// choice — do not "simplify" it back to trailing closures.
+///
+/// The bug: WebKit's headers annotate blocks with `NS_SWIFT_UI_ACTOR`
+/// (`@MainActor`) while Foundation's `-addOperationWithBlock:` /
+/// `-addExecutionBlock:` / `completionBlock` use `NS_SWIFT_SENDABLE`. Both are
+/// `swift_attr` sugar over the SAME canonical clang block type `void (^)(void)`.
+/// The FIRST time any WebKit block declaration is type-checked in a given
+/// `swift-frontend` process, the ClangImporter caches the imported Swift type
+/// for that canonical block type as `@MainActor @Sendable () -> Void`; every
+/// LATER structurally-identical block parameter in the same process (batch or
+/// WMO) then surfaces as `@MainActor`. A `@MainActor`-typed closure literal at
+/// an `addOperation` call gets a `dispatch_assert_queue(main)` prologue and
+/// SIGTRAPs (`swift_task_checkIsolated` → `dispatch_assert_queue_fail`) the
+/// instant `processingQueue` runs it off-main — the #1338 bootstrap crash.
+/// Which files are affected depends only on frontend batch membership (which is
+/// why an unrelated file-set change flipped THIS file), and it is a Palace-
+/// independent 2-file reproducer; `import WebKit` alone is not enough, a WebKit
+/// declaration must be USED somewhere in the same process.
+///
+/// The fix works because the closure's type comes from the `let` ANNOTATION
+/// (`@Sendable () -> Void`, correct), not from the poisonable imported parameter
+/// type; passing that typed value to even a poisoned parameter is a safe
+/// conversion with no runtime isolation assertion. `nonisolated` on the methods/
+/// helpers is retained but is neither necessary nor sufficient for this bug.
+/// `handleMemoryWarning`'s `DispatchQueue.main.asyncAfter` closure stays
+/// `@MainActor` — correctly, it runs on main.
+///
+/// If you add a new off-main `NSOperation`-family closure here, hoist it into an
+/// explicitly-typed `let` the same way. (Upstream Swift/Apple bug report drafted;
+/// remove this workaround once the toolchain is fixed.)
+public nonisolated final class ImageCache: ImageCacheType, @unchecked Sendable {
     public static let shared = ImageCache()
 
     private let dataCache = GeneralCache<String, Data>(cacheName: "ImageCache", mode: .memoryAndDisk)
@@ -127,10 +150,18 @@ public final class ImageCache: ImageCacheType, @unchecked Sendable {
         }
     }
 
-    public func set(_ image: UIImage, for key: String, expiresIn: TimeInterval? = nil) {
+    public nonisolated func set(_ image: UIImage, for key: String, expiresIn: TimeInterval? = nil) {
         let ttl = expiresIn ?? defaultTTL
 
-        processingQueue.addOperation { [weak self] in
+        // Hoisted into an explicitly-typed `let` so the closure's type comes
+        // from this annotation, not from `addOperation`'s imported parameter
+        // type — which an Xcode 26.2 ClangImporter bug can poison to
+        // `@MainActor` when any WebKit declaration was type-checked earlier in
+        // the same swift-frontend process (batch/WMO). A @MainActor-typed
+        // literal here gets a dispatch_assert_queue(main) prologue and traps
+        // when processingQueue runs it off-main — the #1338 bootstrap crash.
+        // Same pattern at every NSOperation-family enqueue in this file.
+        let work: @Sendable () -> Void = { [weak self] in
             guard let self = self else { return }
 
             autoreleasepool {
@@ -178,11 +209,12 @@ public final class ImageCache: ImageCacheType, @unchecked Sendable {
                 self.dataCache.set(jpegData, for: key, expiresIn: ttl)
             }
         }
+        processingQueue.addOperation(work)
     }
 
     /// Estimates available memory based on system resources
     /// This is an approximation - iOS doesn't expose exact available memory
-    private func estimateAvailableMemory() -> UInt64 {
+    private nonisolated func estimateAvailableMemory() -> UInt64 {
         var info = mach_task_basic_info()
         var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size) / 4
 
@@ -236,7 +268,7 @@ public final class ImageCache: ImageCacheType, @unchecked Sendable {
     /// Async version: checks memory first (instant), then promotes from disk
     /// on the processing queue. Use this in async contexts (registry, view model)
     /// to get disk-cached images without blocking any thread.
-    public func getAsync(for key: String) async -> UIImage? {
+    public nonisolated func getAsync(for key: String) async -> UIImage? {
         if let img = memoryImages.object(forKey: key as NSString) {
             return img
         }
@@ -260,7 +292,13 @@ public final class ImageCache: ImageCacheType, @unchecked Sendable {
             let resumer = OneShotImageResumer(continuation)
 
             let operation = BlockOperation()
-            operation.addExecutionBlock { [weak self, weak operation] in
+            // Hoisted into an explicitly-typed `let` so the closure's type
+            // comes from this annotation, not from `addExecutionBlock`'s
+            // imported parameter type — which the Xcode 26.2 ClangImporter
+            // bug can poison to `@MainActor` (see the file-header note). A
+            // @MainActor-typed literal here would dispatch_assert_queue(main)
+            // and trap when processingQueue runs it off-main.
+            let executionBlock: @Sendable () -> Void = { [weak self, weak operation] in
                 guard let self, operation?.isCancelled != true else {
                     resumer.resume(nil)
                     return
@@ -283,13 +321,19 @@ public final class ImageCache: ImageCacheType, @unchecked Sendable {
                 self.memoryImages.setObject(img, forKey: key as NSString, cost: cost)
                 resumer.resume(img)
             }
+            operation.addExecutionBlock(executionBlock)
             // Runs for both finished and cancelled operations. If the op was
             // cancelled before its execution block ran, `resume` was never
             // called — resume here so the awaiter never hangs. The one-shot
             // guard makes this a no-op on the normal completion path.
-            operation.completionBlock = {
+            // Explicitly-typed for the same reason as `executionBlock` above:
+            // the imported `completionBlock` property type is equally subject
+            // to the ClangImporter @MainActor poisoning, and NSOperation
+            // invokes it on a private background queue.
+            let completion: @Sendable () -> Void = {
                 resumer.resume(nil)
             }
+            operation.completionBlock = completion
             processingQueue.addOperation(operation)
         }
     }
@@ -308,8 +352,10 @@ public final class ImageCache: ImageCacheType, @unchecked Sendable {
 
     /// Schedules a background disk→memory promotion for a key.
     /// Called when get() is invoked on the main thread and misses the memory cache.
-    private func scheduleMemoryPromotion(for key: String) {
-        processingQueue.addOperation { [weak self] in
+    private nonisolated func scheduleMemoryPromotion(for key: String) {
+        // Explicitly-typed `let` — see the comment in `set(_:for:expiresIn:)`
+        // (Xcode 26.2 ClangImporter @MainActor poisoning of addOperation).
+        let work: @Sendable () -> Void = { [weak self] in
             guard let self else { return }
             if self.memoryImages.object(forKey: key as NSString) != nil { return }
             guard let data = self.dataCache.get(for: key) else { return }
@@ -317,6 +363,7 @@ public final class ImageCache: ImageCacheType, @unchecked Sendable {
             let cost = self.imageCost(img)
             self.memoryImages.setObject(img, forKey: key as NSString, cost: cost)
         }
+        processingQueue.addOperation(work)
     }
 
     public func remove(for key: String) {
@@ -354,7 +401,7 @@ public final class ImageCache: ImageCacheType, @unchecked Sendable {
         memoryImages.removeAllObjects()
     }
 
-    private func resize(_ image: UIImage, maxDimension: CGFloat) -> UIImage? {
+    private nonisolated func resize(_ image: UIImage, maxDimension: CGFloat) -> UIImage? {
         let size = image.size
         guard size.width > 0 && size.height > 0 else { return image }
         let maxSide = max(size.width, size.height)
@@ -407,7 +454,7 @@ public final class ImageCache: ImageCacheType, @unchecked Sendable {
         }
     }
 
-    private func imageCost(_ image: UIImage) -> Int {
+    private nonisolated func imageCost(_ image: UIImage) -> Int {
         guard let cg = image.cgImage else { return 1 }
         return cg.bytesPerRow * cg.height
     }

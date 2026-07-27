@@ -12,6 +12,7 @@
 import XCTest
 import SwiftUI
 @testable import Palace
+import PalaceBookModel
 
 @MainActor
 final class CatalogLaneRowViewAccessibilityTests: XCTestCase {

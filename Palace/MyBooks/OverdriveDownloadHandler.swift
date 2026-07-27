@@ -22,6 +22,7 @@
 import Foundation
 import OverdriveProcessor
 import PalaceLogging
+import PalaceBookModel
 
 // MARK: - OverdriveDownloadHandlerDelegate
 
@@ -195,7 +196,7 @@ final class OverdriveDownloadHandler: @unchecked Sendable {
                 responseHeadersKey: responseHeaders ?? nA,
                 acquisitionURLKey: url?.absoluteString ?? nA,
                 bookKey: book.loggableDictionary,
-                bookRegistryStateKey: TPPBookStateHelper.stringValue(from: state)
+                bookRegistryStateKey: state.stringValue()
             ])
             alertPresenter.failDownloadWithAlert(for: book, withMessage: nil)
             return
@@ -215,7 +216,7 @@ final class OverdriveDownloadHandler: @unchecked Sendable {
                 responseHeadersKey: responseHeaders ?? nA,
                 acquisitionURLKey: url?.absoluteString ?? nA,
                 bookKey: book.loggableDictionary,
-                bookRegistryStateKey: TPPBookStateHelper.stringValue(from: state)
+                bookRegistryStateKey: state.stringValue()
             ])
             alertPresenter.failDownloadWithAlert(for: book, withMessage: nil)
             return

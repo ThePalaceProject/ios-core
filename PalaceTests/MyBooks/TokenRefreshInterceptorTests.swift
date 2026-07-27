@@ -10,6 +10,7 @@ import XCTest
 import Combine
 import PalaceCatalog
 @testable import Palace
+import PalaceBookModel
 
 // MARK: - Mock Delegate
 

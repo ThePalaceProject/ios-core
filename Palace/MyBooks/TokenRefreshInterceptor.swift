@@ -11,6 +11,7 @@ import Foundation
 import PalaceAuth
 import PalaceLogging
 import PalaceCatalog
+import PalaceBookModel
 
 // MARK: - TokenRefreshInterceptorDelegate
 

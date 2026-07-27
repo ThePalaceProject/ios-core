@@ -9,6 +9,7 @@
 //
 
 import Foundation
+import PalaceBookModel
 
 // MARK: - Lifecycle Announcer Protocol
 

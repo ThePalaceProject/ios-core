@@ -9,6 +9,7 @@
 
 import Foundation
 import PalaceCatalog
+import PalaceBookModel
 
 struct BookButtonMapper {
 

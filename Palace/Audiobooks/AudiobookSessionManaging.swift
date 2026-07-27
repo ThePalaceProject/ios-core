@@ -10,6 +10,7 @@ import Combine
 import Foundation
 import PalaceAudiobookToolkit
 import UIKit
+import PalaceBookModel
 
 /// Protocol for managing audiobook playback sessions, enabling dependency injection for testing.
 ///

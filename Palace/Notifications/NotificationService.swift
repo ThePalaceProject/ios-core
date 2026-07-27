@@ -19,6 +19,7 @@ import FirebaseCore
 // changing behavior.
 @preconcurrency import FirebaseMessaging
 import PalaceLogging
+import PalaceBookModel
 
 // MARK: - Notification Constants
 

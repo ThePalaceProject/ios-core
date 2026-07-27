@@ -58,6 +58,7 @@ import Combine
 import XCTest
 @preconcurrency import PalaceAudiobookToolkit
 @testable import Palace
+import PalaceBookModel
 
 @MainActor
 final class AudiobookCrossVendorSmokeTests: XCTestCase {

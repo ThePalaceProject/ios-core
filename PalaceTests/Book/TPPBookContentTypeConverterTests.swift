@@ -12,6 +12,7 @@
 import XCTest
 import PalaceCatalog
 @testable import Palace
+import PalaceBookModel
 
 // Renamed to avoid collision with the legacy class of the same name embedded
 // in `TPPBookLocationTests.swift` — Module A created this file but the

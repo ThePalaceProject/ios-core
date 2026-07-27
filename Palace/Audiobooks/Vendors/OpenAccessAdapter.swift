@@ -26,6 +26,7 @@
 import Foundation
 import PalaceLogging
 @preconcurrency import PalaceAudiobookToolkit
+import PalaceBookModel
 
 /// Minimal callback surface this adapter needs from a network executor.
 /// Defined here so adapter tests can inject a stub without dragging the

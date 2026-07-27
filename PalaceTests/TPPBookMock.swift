@@ -9,6 +9,7 @@
 import Foundation
 import PalaceCatalog
 @testable import Palace
+import PalaceBookModel
 
 enum DistributorType: String {
     case OPDSCatalog = "application/atom+xml;type=entry;profile=opds-catalog"

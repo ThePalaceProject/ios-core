@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import PalaceBookModel
 
 /// Thread-safe in-memory storage for book registry records.
 /// Uses a concurrent DispatchQueue with barrier writes for thread safety.
@@ -157,7 +158,7 @@ final class BookRegistryStore: @unchecked Sendable {
   var allBooks: [TPPBook] {
     return performSync {
       registry.values
-        .filter { TPPBookStateHelper.allBookStates().contains($0.state.rawValue) }
+        .filter { record in TPPBookState.allCases.map { $0.rawValue }.contains(record.state.rawValue) }
         .map { $0.book }
     }
   }

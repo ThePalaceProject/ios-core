@@ -9,6 +9,7 @@
 import Foundation
 import ReadiumShared
 import PalaceLogging
+import PalaceBookModel
 
 class TPPBookmarkFactory {
 

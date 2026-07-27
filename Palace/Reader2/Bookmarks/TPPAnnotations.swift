@@ -1,6 +1,7 @@
 import UIKit
 import ReadiumShared
 import PalaceLogging
+import PalaceBookModel
 
 public struct AnnotationResponse: Sendable {
     var serverId: String?

@@ -1,6 +1,7 @@
 import Foundation
 import ReadiumShared
 import PalaceLogging
+import PalaceBookModel
 
 extension TPPBookLocation {
     static let r3Renderer = "readium3"

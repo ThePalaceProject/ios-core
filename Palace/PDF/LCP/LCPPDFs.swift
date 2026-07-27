@@ -18,6 +18,7 @@
 
 import Foundation
 import PalaceCatalog
+import PalaceBookModel
 
 /// LCP PDF detection helper.
 @objc class LCPPDFs: NSObject {

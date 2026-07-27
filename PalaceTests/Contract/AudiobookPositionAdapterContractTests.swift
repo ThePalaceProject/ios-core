@@ -39,6 +39,7 @@ import PalaceCatalog
 @testable import Palace
 @testable import PalaceAudiobookToolkit
 import PalaceReadingPosition
+import PalaceBookModel
 
 // MARK: - Spy PositionWriter (records into CallLog)
 

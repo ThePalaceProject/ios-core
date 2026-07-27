@@ -10,6 +10,7 @@ import Foundation
 import UIKit
 import Combine
 import PalaceLogging
+import PalaceBookModel
 
 // MARK: - BookCellModel Cache
 

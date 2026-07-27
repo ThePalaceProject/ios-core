@@ -1,6 +1,7 @@
 import XCTest
 import PalaceCatalog
 @testable import Palace
+import PalaceBookModel
 
 @MainActor
 class TPPBookContentTypeTests: XCTestCase {

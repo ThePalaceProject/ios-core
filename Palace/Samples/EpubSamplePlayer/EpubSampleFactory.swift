@@ -8,6 +8,7 @@
 
 import Foundation
 import PalaceLogging
+import PalaceBookModel
 
 /// Swift 6 `complete` — `@unchecked Sendable` invariant: `url` is set once at
 /// `init` and is not mutated afterward anywhere in the codebase (the `@objc var` is

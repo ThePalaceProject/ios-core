@@ -13,6 +13,7 @@ import PalacePreferences
 import XCTest
 import PalaceCatalog
 @testable import Palace
+import PalaceBookModel
 
 @MainActor
 final class BookDetailViewModelTests: XCTestCase {
