@@ -648,23 +648,12 @@ struct AppContainer: @unchecked Sendable {
         // god-class decomposition Wave 2b: the registry engine now lives in the
         // PalaceBookRegistry package and consumes accounts through the value-only
         // `AccountScopeProviding` inversion + a `RegistryExternalDependencies` bundle.
-        // The provider closures keep the SAME lazy `AppContainer.production()`
-        // resolution the engine's inline closures had (deferred to first use, so a
-        // mid-reset rebuild can't capture a stale graph and construction here doesn't
-        // re-enter the still-resolving dispatch_once).
-        let accountScopeAdapter = AccountsManagerAccountScopeAdapter(accountsManager: accountsManager)
-        let registryDependencies = RegistryExternalDependencies(
-            downloadService: { AppContainer.production().downloadCenter },
-            loansFeedFetcher: { AppContainer.production().opdsFeedService },
-            sideloadedIdentifiers: { AppContainer.production().sideloadedBookRegistry.identifiers },
-            registryDirectory: { TPPBookContentMetadataFilesHelper.directory(for: $0) },
-            onAvailabilityChange: { NotificationService.compareAvailability(cachedRecord: $0, andNewBook: $1) }
-        )
-        let bookRegistry = TPPBookRegistry(
-            accountScope: accountScopeAdapter,
-            imageLoader: imageLoader,
-            dependencies: registryDependencies
-        )
+        // The convenience init builds the `AccountsManagerAccountScopeAdapter` and the
+        // `.production()` dependency bundle whose provider closures keep the SAME lazy
+        // `AppContainer.production()` resolution the engine's inline closures had
+        // (deferred to first use, so a mid-reset rebuild can't capture a stale graph
+        // and construction here doesn't re-enter the still-resolving dispatch_once).
+        let bookRegistry = TPPBookRegistry(accountsManager: accountsManager, imageLoader: imageLoader)
         // Build one accessibility announcer and one DownloadAnnouncementService
         // that wraps it. Sharing this announcer between the service and any
         // other consumers (MyBooksDownloadCenter still calls
