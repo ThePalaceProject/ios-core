@@ -1,3 +1,4 @@
+import PalaceBookRegistry
 //
 //  AdobeDRMHandler.swift
 //  Palace
@@ -13,7 +14,6 @@
 import Foundation
 import PalaceLogging
 import PalaceBookModel
-import PalaceBookRegistry
 
 // MARK: - AdobeDRMHandlerDelegate
 

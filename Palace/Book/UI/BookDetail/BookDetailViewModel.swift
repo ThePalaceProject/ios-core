@@ -5,11 +5,11 @@ import PalaceAudiobookToolkit
 import PalaceLogging
 import PalaceCatalog
 import PalaceBookModel
+import PalaceBookRegistry
 
 #if LCP
 import ReadiumShared
 import ReadiumStreamer
-import PalaceBookRegistry
 #endif
 
 struct BookLane {
