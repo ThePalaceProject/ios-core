@@ -520,6 +520,23 @@ else
   record "doc_hygiene" "pass" "check-doc-hygiene.sh not found (skipped)"
 fi
 
+# 3b3. DORMANT Wave 2b gate — PalaceBookRegistry/Sources package purity.
+# Whole-tree scan (not diff-based), but a no-op until the package is
+# extracted. See `scripts/check-bookregistry-package-purity.sh`.
+echo "--- BookRegistry package purity (dormant — Wave 2b) ---"
+if [ "$MUTATION_ONLY" = "true" ]; then
+  record "bookregistry_package_purity" "pass" "Skipped (--mutation-only)"
+elif [ -f scripts/check-bookregistry-package-purity.sh ]; then
+  BR_OUT=$(bash scripts/check-bookregistry-package-purity.sh 2>&1)
+  if [ "$?" -eq 0 ]; then
+    record "bookregistry_package_purity" "pass" "$(echo "$BR_OUT" | head -1)"
+  else
+    record "bookregistry_package_purity" "fail" "$(echo "$BR_OUT" | grep -m1 FAIL)"
+  fi
+else
+  record "bookregistry_package_purity" "pass" "check-bookregistry-package-purity.sh not found (skipped)"
+fi
+
 # 3c. Adjacency staleness (M1 universal-rigor-floor gate, warn-only)
 # Greps comments in the surviving codebase for references to removed/renamed
 # declarations in the diff. Always passes; counts warnings.
@@ -678,6 +695,8 @@ run_phase35_detector "notification_center_observer_storage" "check-notification-
   "No NotificationCenter observer registered without storage/removal" "diff"
 run_phase35_detector "unsynchronized_sendable_mock" "check-unsynchronized-sendable-mock.py" "block" \
   "No unsynchronized @unchecked Sendable mock driven by concurrent tests" "scan"
+run_phase35_detector "addoperation_literal_ban" "check-addoperation-literal-ban.py" "block" \
+  "No raw NSOperation-family closure literal (#1338 ClangImporter @MainActor-poisoning risk)" "diff"
 
 # 4. Coverage floors
 echo "--- Coverage Floors ---"

@@ -117,6 +117,17 @@ if [[ -f "$REPO_ROOT_M1/scripts/check-doc-hygiene.sh" ]]; then
   fi
 fi
 
+# DORMANT Wave 2b gate: PalaceBookRegistry/Sources package purity. Whole-tree
+# scan (not diff-based) but a no-op today — the package doesn't exist until
+# Wave 2b extracts it — so it's cheap to run unconditionally. See
+# scripts/check-bookregistry-package-purity.sh.
+if [[ -f "$REPO_ROOT_M1/scripts/check-bookregistry-package-purity.sh" ]]; then
+  if ! _br_out=$(bash "$REPO_ROOT_M1/scripts/check-bookregistry-package-purity.sh" 2>&1); then
+    echo "$_br_out" >&2
+    M1_FAIL=$((M1_FAIL + 1))
+  fi
+fi
+
 m1_enforce "$M1_FAIL"
 
 # Friendly nudge — non-blocking. Only print if anything is staged at all.
