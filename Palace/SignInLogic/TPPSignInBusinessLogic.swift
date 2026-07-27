@@ -16,6 +16,23 @@ import PalaceAuth
     case signOut = 2
 }
 
+/// One-shot completion guard: guarantees a completion runs exactly once even
+/// when a timeout races the underlying (possibly-dropped) network callback.
+/// Thread-safe — either racer may win from any queue. Used to bound the
+/// `authentication_document` GET so borrow can't hang forever (HelpSpot #18414).
+private final class TPPOnceGuard {
+    private let lock = NSLock()
+    private var fired = false
+    /// Returns `true` exactly once — for the FIRST caller — and `false`
+    /// thereafter. The winner runs the side effect; losers no-op.
+    func claim() -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        if fired { return false }
+        fired = true
+        return true
+    }
+}
+
 @objc protocol TPPBookDownloadsDeleting {
     func reset(_ libraryID: String!)
 }
@@ -733,9 +750,72 @@ class TPPSignInBusinessLogic: NSObject, TPPSignedInStateProvider, TPPCurrentLibr
         }
 
         dispatch(.authDocumentLoadStarted)
-        libraryAccount.loadAuthenticationDocument(using: self) { success in
-            self.dispatch(.authDocumentLoadCompleted)
-            completion(success)
+
+        // Bound the auth-doc GET so a dropped/hung network completion can't
+        // wedge borrow forever (HelpSpot #18414): borrow gates on this method,
+        // and if `loadAuthenticationDocument`'s completion is never called
+        // (auth-doc fetch wedged at `.detailsLoading`) borrow's own 30s timeout
+        // is never even reached. On timeout we surface `false` so borrow takes
+        // its normal retry/error path instead of spinning. The bounding logic
+        // lives in the testable static seam `boundedCompletion`.
+        Self.boundedCompletion(
+            timeout: Self.authDocumentLoadTimeout,
+            timeoutValue: false,
+            onTimeout: {
+                Log.warn(#file, "Auth-doc load timed out after \(Self.authDocumentLoadTimeout)s — surfacing failure so borrow can retry (HelpSpot #18414)")
+            },
+            operation: { done in
+                libraryAccount.loadAuthenticationDocument(using: self, completion: done)
+            },
+            completion: { [weak self] success in
+                self?.dispatch(.authDocumentLoadCompleted)
+                completion(success)
+            }
+        )
+    }
+
+    /// Upper bound on the `authentication_document` GET inside
+    /// `ensureAuthenticationDocumentIsLoaded`. Above a healthy round-trip yet
+    /// low enough that a wedged (dropped-completion) fetch surfaces a
+    /// retryable failure to borrow well before a user gives up. See HelpSpot
+    /// #18414.
+    static let authDocumentLoadTimeout: TimeInterval = 30
+
+    /// Bounds a completion-based `operation` with a `timeout`. Runs
+    /// `operation`, and if it hasn't called its completion within `timeout`
+    /// seconds fires `completion(timeoutValue)` instead (also invoking
+    /// `onTimeout` for logging). Whichever of {operation callback, timeout}
+    /// fires FIRST wins; the loser is a guaranteed no-op (exactly-once). Both
+    /// racers may fire from any queue. `completion` runs on the winning racer's
+    /// thread — the same threading contract the un-bounded call had.
+    ///
+    /// Extracted as an internal static seam so the timeout/exactly-once
+    /// behavior is unit-testable without the `AppContainer.production()`
+    /// network dependency buried inside `Account.loadAuthenticationDocument`.
+    /// HelpSpot #18414.
+    static func boundedCompletion<T>(
+        timeout: TimeInterval,
+        timeoutValue: T,
+        timerQueue: DispatchQueue = .global(),
+        onTimeout: @escaping () -> Void = {},
+        operation: (@escaping (T) -> Void) -> Void,
+        completion: @escaping (T) -> Void
+    ) {
+        let guardOnce = TPPOnceGuard()
+        let finish: (T) -> Void = { value in
+            guard guardOnce.claim() else { return }
+            completion(value)
+        }
+
+        let timeoutWork = DispatchWorkItem {
+            onTimeout()
+            finish(timeoutValue)
+        }
+        timerQueue.asyncAfter(deadline: .now() + max(0, timeout), execute: timeoutWork)
+
+        operation { value in
+            timeoutWork.cancel()
+            finish(value)
         }
     }
 
