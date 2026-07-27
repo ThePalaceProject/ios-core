@@ -1,0 +1,20 @@
+[
+  {
+    "args" : {
+      "bookId" : "gate-contract-book"
+    },
+    "method" : "triggerDownload"
+  },
+  {
+    "args" : {
+      "bookId" : "gate-contract-book"
+    },
+    "method" : "awaitContentLanding"
+  },
+  {
+    "args" : {
+      "outcome" : "landedAfterTrigger"
+    },
+    "method" : "result"
+  }
+]
