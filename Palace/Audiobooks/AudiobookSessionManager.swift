@@ -1818,6 +1818,8 @@ public final class AudiobookSessionManager: ObservableObject {
         return status == 410
     }
 
+#endif
+
     /// PP-4542: decides whether a `.playbackFailed` should trigger ONE silent
     /// auto-reopen before surfacing the "Audiobook Unavailable" alert. Pure so
     /// the per-session bound is unit-pinned without driving the auth-gated open
@@ -1830,6 +1832,12 @@ public final class AudiobookSessionManager: ObservableObject {
     /// - `hasCurrentBook`: there must be a book to reopen.
     /// - `alreadyAttempted == false`: bounded to one reopen per book per session
     ///   so a genuinely persistent failure reaches the alert instead of looping.
+    ///
+    /// 323-integration: relocated OUT of the `#if FEATURE_OVERDRIVE` block. This
+    /// predicate is distributor-agnostic and is invoked from the general
+    /// (non-Overdrive) cold-load recovery path below (323-Cause-3), so it must
+    /// compile in the noDRM configuration too (FEATURE_OVERDRIVE undefined). The
+    /// DRM build masked the gap; the Palace-noDRM build surfaced it.
     static func shouldAutoReopenOnColdLoadFailure(
         hasEverStartedPlayback: Bool,
         hasCurrentBook: Bool,
@@ -1837,8 +1845,6 @@ public final class AudiobookSessionManager: ObservableObject {
     ) -> Bool {
         !hasEverStartedPlayback && hasCurrentBook && !alreadyAttempted
     }
-
-#endif
 
     /// Extracts an HTTP status code from a playback error. The toolkit's network
     /// layer stamps `userInfo["httpStatusCode"]` on download/streaming failures
