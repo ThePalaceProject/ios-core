@@ -803,6 +803,86 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
                        "The unrelated OTHER book's bookmark must be untouched (deletion is scoped to the returned book)")
     }
 
+    // MARK: - Test 6b: EBOOK reading position is PRESERVED on return (Cause 2 scoping)
+
+    /// Cause 2 (delete the stale listening position on return) originally deleted
+    /// `.readingProgress` for ALL formats. That over-reached: an EBOOK's
+    /// `.readingProgress` is the auto-saved READING PLACE (parses as a
+    /// `TPPReadiumBookmark`, not an `AudioBookmark`), and wiping it made a patron
+    /// lose their spot across return/re-borrow. The fix scopes the
+    /// `.readingProgress` deletion to AUDIOBOOK positions (`AudioBookmark`) only.
+    ///
+    /// This drives the REAL `deleteAllBookmarks` for an EBOOK and asserts the
+    /// `.readingProgress` reading place SURVIVES while the user `.bookmark` is
+    /// still deleted. A regression that deletes ebook `.readingProgress` (or that
+    /// removes the scoping guard) makes the reading place vanish and fails here.
+    func test_deleteAllBookmarks_ebook_preservesReadingProgress_stillDeletesBookmark() throws {
+        try skipIfSyncGateClosed()
+
+        let base = Self.baseURL.absoluteString  // ends in "annotations/"
+
+        // Ebook reading PLACE (motivation=.readingProgress, EPUB locator → parses
+        // as TPPReadiumBookmark). This must be PRESERVED across return.
+        let progressID = base + "ebook-readingProgress"
+        backend.seed(MockSyncBackend.StoredAnnotation(
+            id: progressID,
+            bookID: Self.bookID,
+            motivation: TPPBookmarkSpec.Motivation.readingProgress.rawValue,
+            device: Self.deviceA,
+            time: "2026-01-01T00:00:00Z",
+            selectorValue: epubSelectorValue(
+                href: "/chapter5.xhtml", progressInChapter: 0.5, progressInBook: 0.3, title: "Chapter 5"
+            ),
+            chapterTitle: "Chapter 5",
+            progressWithinBook: 0.3
+        ))
+
+        // A user bookmark for the SAME ebook (motivation=.bookmark) — deleted.
+        let bookmarkID = base + "ebook-bookmark"
+        backend.seed(MockSyncBackend.StoredAnnotation(
+            id: bookmarkID,
+            bookID: Self.bookID,
+            motivation: TPPBookmarkSpec.Motivation.bookmark.rawValue,
+            device: Self.deviceA,
+            time: "2026-01-01T00:01:00Z",
+            selectorValue: epubSelectorValue(
+                href: "/chapter6.xhtml", progressInChapter: 0.1, progressInBook: 0.35, title: "Chapter 6"
+            ),
+            chapterTitle: "Chapter 6",
+            progressWithinBook: 0.35
+        ))
+
+        XCTAssertEqual(backend.allAnnotations(forBook: Self.bookID).count, 2,
+                       "Setup: the ebook must have both annotations before return")
+
+        // EBOOK — not an audiobook.
+        let book = makeBook(audiobook: false)
+        let restoreExecutor = holdDeviceAExecutor()
+        defer { restoreExecutor() }
+
+        let completed = expectation(description: "deleteAllBookmarks completion")
+        TPPAnnotations.deleteAllBookmarks(forBook: book) { completed.fulfill() }
+        wait(for: [completed], timeout: 5.0)
+
+        // Poll until the user bookmark is gone (bounded). The reading position
+        // must remain — so we wait for the set to shrink to exactly the progress
+        // annotation, not to empty.
+        let deadline = Date().addingTimeInterval(8.0)
+        while Date() < deadline && backend.allAnnotations(forBook: Self.bookID).contains(where: { $0.id == bookmarkID }) {
+            let tick = expectation(description: "poll tick")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { tick.fulfill() }
+            wait(for: [tick], timeout: 1.0)
+        }
+
+        let remaining = backend.allAnnotations(forBook: Self.bookID)
+        XCTAssertFalse(remaining.contains { $0.id == bookmarkID },
+                       "the user .bookmark must still be deleted on return")
+        XCTAssertTrue(remaining.contains { $0.id == progressID },
+                      "the EBOOK .readingProgress reading place must be PRESERVED — Cause 2's .readingProgress deletion is scoped to audiobooks (AudioBookmark) only")
+        XCTAssertEqual(remaining.map(\.id), [progressID],
+                       "exactly the reading position remains: bookmark deleted, ebook reading place kept")
+    }
+
     // MARK: - Test 7: contract snapshot — return cleanup deletes BOTH motivations
 
     /// Contract snapshot pinning the return-cleanup call shape: for an

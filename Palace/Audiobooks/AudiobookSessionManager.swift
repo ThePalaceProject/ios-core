@@ -943,7 +943,7 @@ public final class AudiobookSessionManager: ObservableObject {
     /// `BookReturnService` return path (via the `AudiobookSessionManaging`
     /// protocol on `AppContainer.audiobookSession`).
     @MainActor
-    public func cancelPendingRemotePositionWrite(forBookId bookId: String) async {
+    func cancelPendingRemotePositionWrite(forBookId bookId: String) async {
         guard let logic = manager?.bookmarkDelegate as? AudiobookBookmarkBusinessLogic,
               logic.book.identifier == bookId else {
             return

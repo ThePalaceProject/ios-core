@@ -350,7 +350,12 @@ final class BookReturnService {
 
                 TPPAnnotations.deleteAllBookmarks(forBook: book) {
                     self.bookmarkDeletionLog.clearAllDeletions(forBook: identifier)
-                    self.bookRegistry.updateAndRemoveBook(returnedBook)
+                    // serverAuthoritative: the revoke fetch returned 2xx — the
+                    // server CONFIRMED the return, so persisting a return-to-empty
+                    // shelf is legitimate and must NOT be refused by the #18414
+                    // empty-over-nonempty guard. Otherwise returning your only
+                    // book leaves it on disk and it resurrects on relaunch.
+                    self.bookRegistry.updateAndRemoveBook(returnedBook, serverAuthoritative: true)
                     self.bookRegistry.setState(.unregistered, for: identifier)
                     self.performPostReturnSyncThen {
                         self.downloadAnnouncementService.announceReturnSucceeded(for: book)
@@ -389,7 +394,11 @@ final class BookReturnService {
             // Clear the deletion log since we're returning the book
             self.bookmarkDeletionLog.clearAllDeletions(forBook: identifier)
             self.bookRegistry.setState(.unregistered, for: identifier)
-            self.bookRegistry.removeBook(forIdentifier: identifier)
+            // serverAuthoritative: a no-revokeURL book has no server endpoint to
+            // confirm against — removing it locally IS the authoritative outcome
+            // of the deliberate return, so a return-to-empty must persist (not be
+            // refused as a suspected #18414 wedge) and survive relaunch.
+            self.bookRegistry.removeBook(forIdentifier: identifier, serverAuthoritative: true)
             self.performPostReturnSyncThen {
                 self.downloadAnnouncementService.announceReturnSucceeded(for: book)
                 completion?()
@@ -416,7 +425,11 @@ final class BookReturnService {
                 guard let self else { return }
                 self.bookmarkDeletionLog.clearAllDeletions(forBook: identifier)
                 self.bookRegistry.setState(.unregistered, for: identifier)
-                self.bookRegistry.removeBook(forIdentifier: identifier)
+                // serverAuthoritative: the revoke succeeded server-side (OverDrive
+                // just returned non-OPDS XML) — treat the return-to-empty as
+                // confirmed so it persists over a non-empty shelf (#18414 guard
+                // otherwise refuses it and the book resurrects on relaunch).
+                self.bookRegistry.removeBook(forIdentifier: identifier, serverAuthoritative: true)
                 self.performPostReturnSyncThen {
                     self.downloadAnnouncementService.announceReturnSucceeded(for: book)
                     completion?()
@@ -444,7 +457,11 @@ final class BookReturnService {
                 guard let self else { return }
                 self.bookmarkDeletionLog.clearAllDeletions(forBook: identifier)
                 self.bookRegistry.setState(.unregistered, for: identifier)
-                self.bookRegistry.removeBook(forIdentifier: identifier)
+                // serverAuthoritative: the server reports the loan is already gone
+                // (no-active-loan / loan-term-limit) — the removal is confirmed by
+                // the server, so a return-to-empty must persist (#18414 guard
+                // otherwise refuses it and the book resurrects on relaunch).
+                self.bookRegistry.removeBook(forIdentifier: identifier, serverAuthoritative: true)
                 self.performPostReturnSyncThen {
                     self.downloadAnnouncementService.announceReturnSucceeded(for: book)
                     completion?()

@@ -85,7 +85,7 @@ import PalaceReadingPosition
     /// cleanup and resurrect the stale server position that
     /// `TPPAnnotations.deleteAllBookmarks` just deleted (3.2.3 Cause 2).
     /// Idempotent; a no-op when the writer has nothing queued for this book.
-    public func cancelPendingRemotePositionWrite() async {
+    func cancelPendingRemotePositionWrite() async {
         await positionWriter.cancel(for: book.identifier)
     }
 

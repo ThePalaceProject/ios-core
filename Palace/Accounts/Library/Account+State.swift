@@ -134,7 +134,7 @@ extension Account {
     /// - Throws: `AccountLoadError.readinessTimedOut(timeout:)` on timeout;
     ///   the account's `AccountLoadError` on failure; `CancellationError`
     ///   if the awaiting Task is cancelled.
-    public func awaitReady(timeout: TimeInterval) async throws -> AccountDetails {
+    func awaitReady(timeout: TimeInterval) async throws -> AccountDetails {
         // Fast path: already terminal — never pay the timeout cost.
         if let terminal = try Self.resolveTerminal(loadState) {
             return terminal

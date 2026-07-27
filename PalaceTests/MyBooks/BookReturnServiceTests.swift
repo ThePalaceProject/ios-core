@@ -674,6 +674,281 @@ final class BookReturnServiceTests: XCTestCase {
                       "Basic return auth error still dispatches reauth (just without the stale-marking).")
     }
 
+    // MARK: - Return-to-empty ghost (#18414 / return-your-last-book) — production seam
+    //
+    // Architect Finding 1: D2 broadened the empty-guard so a non-authoritative
+    // empty save is REFUSED over a non-empty on-disk shelf (to stop the #18414
+    // wedge clobbering good data). But that ALSO refused the LEGITIMATE empty
+    // save when a patron returns their ONLY book — the return removal was
+    // non-authoritative, so the empty snapshot was refused, the book stayed on
+    // disk, and it resurrected into My Books on the next launch (and, per the
+    // blast-radius reviewer, its download auto-restarted).
+    //
+    // These tests drive the REAL return→persist→reload wiring against a REAL
+    // TPPBookRegistry + BookRegistrySync + on-disk registry.json (NOT the guard
+    // predicate in isolation, and NOT the TPPBookRegistryMock the branch tests
+    // above use). The fix threads `serverAuthoritative: true` from the confirmed
+    // return removal into `BookRegistrySync.save`, so a confirmed return-to-empty
+    // persists an empty registry that survives a cold reload. With the plumbing
+    // reverted (removal left non-authoritative) both tests FAIL: the reloaded
+    // shelf still contains the returned book (the ghost).
+
+    /// Seeds a fresh-UUID fixture as `currentAccount` on the given manager so the
+    /// real registry's mutations resolve to an isolated on-disk registry.json.
+    /// The fresh UUID guarantees the fixture is absent from the PRODUCTION
+    /// accounts manager (which `syncAsync()`'s default arg consults), so the
+    /// post-return sync throws `accountNotFound` immediately instead of awaiting a
+    /// real loans fetch. Returns the UUID + a cleanup closure (defer-call it).
+    private func seedFixtureCurrentAccount(on manager: AccountsManager) -> (uuid: String, cleanup: () -> Void) {
+        let fixtureId = "brs-ghost-\(UUID().uuidString)"
+        let pub = OPDS2Publication(
+            links: [OPDS2Link(href: "https://example.com/catalog",
+                              rel: "http://opds-spec.org/catalog")],
+            metadata: OPDS2Publication.Metadata(id: fixtureId, title: "Ghost Fixture"),
+            images: nil
+        )
+        let fixture = Account(publication: pub, imageCache: MockImageCache())
+        let cleanup = manager._seedAccountForTesting(fixture)
+        return (fixtureId, cleanup)
+    }
+
+    /// Number of records in the on-disk primary registry.json, or nil if the file
+    /// is absent/unreadable. Uses the same classifier the loader uses.
+    private func onDiskRecordCount(at url: URL) -> Int? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        if case .valid(let records) = RegistryFileRecovery.classify(data: data) {
+            return records.count
+        }
+        return nil
+    }
+
+    /// Builds a real BookReturnService wired to the given real registry, reusing
+    /// the file's spy collaborators for the non-persistence dependencies. An
+    /// optional pre-configured feed fetcher drives the revoke error branches
+    /// (parsing-as-success, no-active-loan) against real persistence.
+    private func makeServiceBackedByRealRegistry(
+        _ realRegistry: TPPBookRegistry,
+        feed: StubOPDSFeedFetcher = StubOPDSFeedFetcher()
+    ) -> BookReturnService {
+        let noCredsAccount = TPPUserAccountMock()  // hasCredentials() == false → sync gate closed
+        #if FEATURE_DRM_CONNECTOR
+        let svc = BookReturnService(
+            bookRegistry: realRegistry,
+            localContentService: SpyLocalContentService(),
+            opdsFeedService: feed,
+            downloadAnnouncementService: SpyAnnouncementService(),
+            bookmarkDeletionLog: .shared,
+            reauthenticator: TPPReauthenticatorMock(),
+            userRetryTracker: .shared,
+            userAccountProvider: { noCredsAccount }
+        )
+        #else
+        let svc = BookReturnService(
+            bookRegistry: realRegistry,
+            localContentService: SpyLocalContentService(),
+            opdsFeedService: feed,
+            downloadAnnouncementService: SpyAnnouncementService(),
+            bookmarkDeletionLog: .shared,
+            reauthenticator: TPPReauthenticatorMock(),
+            userRetryTracker: .shared,
+            userAccountProvider: { noCredsAccount }
+        )
+        #endif
+        svc.delegate = spyDelegate
+        return svc
+    }
+
+    /// Shared body for the "confirmed-server-error → removeBook empty → persist
+    /// authoritative empty → no resurrect on reload" real-disk repro. Used by the
+    /// parsing-as-success and no-active-loan paths (they share the removeBook
+    /// mechanism the no-revokeURL path exercises, but reach it via a stubbed
+    /// revoke error). Kills the `serverAuthoritative: true → false` mutant on each
+    /// of those branch sites — the in-memory mock branch tests above cannot,
+    /// because the mock ignores the flag.
+    private func assertConfirmedReturnError_persistsEmpty_noResurrect(
+        stubbedError: Error,
+        file: StaticString = #file,
+        line: UInt = #line
+    ) async throws {
+        #if DEBUG
+        AccountsManager.deferInitialLoadCatalogsForTesting = true
+        #endif
+        let manager = AccountsManager()
+        defer { manager.cancelBackgroundWork() }
+        let (uuid, cleanup) = seedFixtureCurrentAccount(on: manager)
+        defer { cleanup() }
+
+        let realRegistry = TPPBookRegistry(
+            accountsManager: manager,
+            imageLoader: ImageLoader(imageCache: MockImageCache())
+        )
+        let registryURL = try XCTUnwrap(realRegistry.registryUrl(for: uuid))
+        defer { try? FileManager.default.removeItem(at: registryURL.deletingLastPathComponent()) }
+
+        let onlyBook = makeBookWithRevokeURL()
+        realRegistry.addBook(onlyBook, state: .downloadSuccessful)
+        await waitForCompletion { self.onDiskRecordCount(at: registryURL) == 1 }
+
+        let feed = StubOPDSFeedFetcher()
+        feed.stubbedError = stubbedError
+        let service = makeServiceBackedByRealRegistry(realRegistry, feed: feed)
+        let exp = expectation(description: "return completion")
+        service.returnBook(withIdentifier: onlyBook.identifier) { exp.fulfill() }
+        await fulfillment(of: [exp], timeout: 10.0)
+        await waitForCompletion { self.onDiskRecordCount(at: registryURL) == 0 }
+        XCTAssertEqual(onDiskRecordCount(at: registryURL), 0,
+                       "a confirmed server-error return of the last book must persist an EMPTY registry", file: file, line: line)
+
+        let store2 = BookRegistryStore()
+        let sync2 = BookRegistrySync(
+            store: store2,
+            accountsManager: manager,
+            downloadCenterProvider: { AppContainer.production().downloadCenter },
+            opdsFeedServiceProvider: { AppContainer.production().opdsFeedService }
+        )
+        let loaded = expectation(description: "cold reload")
+        sync2.load(account: uuid, setState: { if $0 == .loaded { loaded.fulfill() } })
+        await fulfillment(of: [loaded], timeout: 10.0)
+        XCTAssertTrue(store2.allBooks.isEmpty,
+                      "the returned last book must NOT resurrect on relaunch", file: file, line: line)
+    }
+
+    /// Parsing-as-success (OverDrive's non-OPDS XML) return of the last book.
+    func testReturnLastBook_parsingErrorAsSuccess_persistsEmpty_noResurrect() async throws {
+        try await assertConfirmedReturnError_persistsEmpty_noResurrect(
+            stubbedError: PalaceError.parsing(.opdsFeedInvalid)
+        )
+    }
+
+    /// No-active-loan (server says the loan is already gone) return of the last book.
+    func testReturnLastBook_noActiveLoan_persistsEmpty_noResurrect() async throws {
+        let problemDoc = try makeProblemDoc(type: TPPProblemDocument.TypeNoActiveLoan)
+        try await assertConfirmedReturnError_persistsEmpty_noResurrect(
+            stubbedError: NSError(domain: "test", code: 404, userInfo: ["problemDocument": problemDoc])
+        )
+    }
+
+    /// PRIMARY ghost repro (no-revokeURL return path → removeBook). Returning the
+    /// ONLY book must persist an empty registry that survives a cold reload — the
+    /// book must NOT resurrect, and (empty shelf ⇒ empty orphan list) no
+    /// auto-restart download can be scheduled.
+    func testReturnLastBook_noRevokeURL_persistsEmptyRegistry_bookDoesNotResurrectOnReload() async throws {
+        #if DEBUG
+        AccountsManager.deferInitialLoadCatalogsForTesting = true
+        #endif
+        let manager = AccountsManager()
+        defer { manager.cancelBackgroundWork() }
+        let (uuid, cleanup) = seedFixtureCurrentAccount(on: manager)
+        defer { cleanup() }
+
+        let realRegistry = TPPBookRegistry(
+            accountsManager: manager,
+            imageLoader: ImageLoader(imageCache: MockImageCache())
+        )
+        let registryURL = try XCTUnwrap(realRegistry.registryUrl(for: uuid))
+        defer { try? FileManager.default.removeItem(at: registryURL.deletingLastPathComponent()) }
+
+        // Arrange: the patron's ONLY book, downloaded, persisted to disk.
+        let onlyBook = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        XCTAssertNil(onlyBook.revokeURL, "precondition: no-revokeURL return path")
+        realRegistry.addBook(onlyBook, state: .downloadSuccessful)
+        await waitForCompletion { self.onDiskRecordCount(at: registryURL) == 1 }
+        XCTAssertEqual(onDiskRecordCount(at: registryURL), 1,
+                       "precondition: a non-empty registry.json exists before the return")
+
+        // Act: return the only book through the REAL return service.
+        let service = makeServiceBackedByRealRegistry(realRegistry)
+        let exp = expectation(description: "return completion")
+        service.returnBook(withIdentifier: onlyBook.identifier) { exp.fulfill() }
+        await fulfillment(of: [exp], timeout: 10.0)
+        // Let the authoritative empty save flush to disk.
+        await waitForCompletion { self.onDiskRecordCount(at: registryURL) == 0 }
+
+        // Assert (persist): the confirmed return-to-empty persisted an empty
+        // registry — the #18414 guard did NOT refuse it.
+        XCTAssertEqual(onDiskRecordCount(at: registryURL), 0,
+                       "a confirmed return of the last book must persist an EMPTY registry.json (serverAuthoritative), not refuse it")
+
+        // Assert (reload): a cold reload must NOT resurrect the book — and an
+        // empty shelf means the orphan auto-restart loop has nothing to
+        // re-download (blast-radius reviewer's no-redownload requirement).
+        let store2 = BookRegistryStore()
+        let sync2 = BookRegistrySync(
+            store: store2,
+            accountsManager: manager,
+            downloadCenterProvider: { AppContainer.production().downloadCenter },
+            opdsFeedServiceProvider: { AppContainer.production().opdsFeedService }
+        )
+        let loaded = expectation(description: "cold reload")
+        sync2.load(account: uuid, setState: { if $0 == .loaded { loaded.fulfill() } })
+        await fulfillment(of: [loaded], timeout: 10.0)
+
+        XCTAssertTrue(store2.allBooks.isEmpty,
+                      "the returned last book must NOT resurrect on relaunch — the ghost is fixed")
+        XCTAssertNil(store2.book(forIdentifier: onlyBook.identifier),
+                     "no record for the returned book ⇒ no orphaned download can be auto-restarted")
+    }
+
+    /// Revoke-path (2xx revoke → `updateAndRemoveBook`) return-last-book contract.
+    ///
+    /// Unlike `removeBook` (test above), `store.updateAndRemoveBook` marks the
+    /// record `.unregistered` and KEEPS it — so the revoke path persists a
+    /// (non-empty) `.unregistered` record rather than an empty registry, and the
+    /// #18414 empty-guard is never the mechanism here. `.unregistered` is
+    /// filtered out of `myBooks`, so the returned book must be invisible in My
+    /// Books immediately AND stay invisible across a cold reload — it must never
+    /// resurrect into a visible download state. We thread `serverAuthoritative:
+    /// true` into this call too (a confirmed revoke removal is authoritative);
+    /// this test pins that the confirmed revoke of the LAST book leaves no
+    /// visible book on reload.
+    func testReturnLastBook_revokePath_updateAndRemoveBook_bookNotVisibleAfterReload() async throws {
+        #if DEBUG
+        AccountsManager.deferInitialLoadCatalogsForTesting = true
+        #endif
+        let manager = AccountsManager()
+        defer { manager.cancelBackgroundWork() }
+        let (uuid, cleanup) = seedFixtureCurrentAccount(on: manager)
+        defer { cleanup() }
+
+        let realRegistry = TPPBookRegistry(
+            accountsManager: manager,
+            imageLoader: ImageLoader(imageCache: MockImageCache())
+        )
+        let registryURL = try XCTUnwrap(realRegistry.registryUrl(for: uuid))
+        defer { try? FileManager.default.removeItem(at: registryURL.deletingLastPathComponent()) }
+
+        let onlyBook = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        realRegistry.addBook(onlyBook, state: .downloadSuccessful)
+        await waitForCompletion { self.onDiskRecordCount(at: registryURL) == 1 }
+        XCTAssertEqual(realRegistry.myBooks.count, 1, "precondition: the book is visible in My Books before return")
+
+        // Act: the exact call the confirmed-revoke return branch makes.
+        realRegistry.updateAndRemoveBook(onlyBook, serverAuthoritative: true)
+        await waitForCompletion { realRegistry.myBooks.isEmpty }
+        XCTAssertTrue(realRegistry.myBooks.isEmpty,
+                      "after a confirmed revoke return the book must disappear from My Books (marked .unregistered)")
+        // Force the .unregistered snapshot to flush to disk before the cold
+        // reload (saveSync drains the diskWriteQueue FIFO). Without this the
+        // reload can race the async save and read the pre-return
+        // .downloadSuccessful state — a test artifact, not a production ghost.
+        realRegistry.saveSync()
+
+        // Cold reload: the .unregistered record must NOT resurrect into a visible
+        // My Books state.
+        let store2 = BookRegistryStore()
+        let sync2 = BookRegistrySync(
+            store: store2,
+            accountsManager: manager,
+            downloadCenterProvider: { AppContainer.production().downloadCenter },
+            opdsFeedServiceProvider: { AppContainer.production().opdsFeedService }
+        )
+        let loaded = expectation(description: "cold reload")
+        sync2.load(account: uuid, setState: { if $0 == .loaded { loaded.fulfill() } })
+        await fulfillment(of: [loaded], timeout: 10.0)
+        XCTAssertTrue(store2.myBooks.isEmpty,
+                      "the revoke-returned last book must NOT resurrect into My Books on relaunch")
+    }
+
     // MARK: - Helpers
 
     private func makeAuth(typeRaw: String) -> AccountDetails.Authentication {
