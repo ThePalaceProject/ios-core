@@ -770,10 +770,15 @@ final class BookReturnServiceTests: XCTestCase {
         file: StaticString = #file,
         line: UInt = #line
     ) async throws {
-        #if DEBUG
-        AccountsManager.deferInitialLoadCatalogsForTesting = true
-        #endif
-        let manager = AccountsManager()
+        // Isolation-lint seam: a fresh per-test factory container replaces
+        // bare `AccountsManager()` + `AppContainer.production()` reads. The
+        // factory pins `deferInitialLoadCatalogsForTesting = true` before
+        // constructing the manager (no background `loadCatalogs` Task) and
+        // exposes the SAME graph's `downloadCenter` / `opdsFeedService` the
+        // cold-reload `BookRegistrySync` below needs — consistent identity,
+        // no `_cached` mutation. swarm_47883816.
+        let appContainer = makeTestAppContainer()
+        let manager = appContainer.accountsManager
         defer { manager.cancelBackgroundWork() }
         let (uuid, cleanup) = seedFixtureCurrentAccount(on: manager)
         defer { cleanup() }
@@ -803,8 +808,8 @@ final class BookReturnServiceTests: XCTestCase {
         let sync2 = BookRegistrySync(
             store: store2,
             accountsManager: manager,
-            downloadCenterProvider: { AppContainer.production().downloadCenter },
-            opdsFeedServiceProvider: { AppContainer.production().opdsFeedService }
+            downloadCenterProvider: { appContainer.downloadCenter },
+            opdsFeedServiceProvider: { appContainer.opdsFeedService }
         )
         let loaded = expectation(description: "cold reload")
         sync2.load(account: uuid, setState: { if $0 == .loaded { loaded.fulfill() } })
@@ -833,10 +838,15 @@ final class BookReturnServiceTests: XCTestCase {
     /// book must NOT resurrect, and (empty shelf ⇒ empty orphan list) no
     /// auto-restart download can be scheduled.
     func testReturnLastBook_noRevokeURL_persistsEmptyRegistry_bookDoesNotResurrectOnReload() async throws {
-        #if DEBUG
-        AccountsManager.deferInitialLoadCatalogsForTesting = true
-        #endif
-        let manager = AccountsManager()
+        // Isolation-lint seam: a fresh per-test factory container replaces
+        // bare `AccountsManager()` + `AppContainer.production()` reads. The
+        // factory pins `deferInitialLoadCatalogsForTesting = true` before
+        // constructing the manager (no background `loadCatalogs` Task) and
+        // exposes the SAME graph's `downloadCenter` / `opdsFeedService` the
+        // cold-reload `BookRegistrySync` below needs — consistent identity,
+        // no `_cached` mutation. swarm_47883816.
+        let appContainer = makeTestAppContainer()
+        let manager = appContainer.accountsManager
         defer { manager.cancelBackgroundWork() }
         let (uuid, cleanup) = seedFixtureCurrentAccount(on: manager)
         defer { cleanup() }
@@ -876,8 +886,8 @@ final class BookReturnServiceTests: XCTestCase {
         let sync2 = BookRegistrySync(
             store: store2,
             accountsManager: manager,
-            downloadCenterProvider: { AppContainer.production().downloadCenter },
-            opdsFeedServiceProvider: { AppContainer.production().opdsFeedService }
+            downloadCenterProvider: { appContainer.downloadCenter },
+            opdsFeedServiceProvider: { appContainer.opdsFeedService }
         )
         let loaded = expectation(description: "cold reload")
         sync2.load(account: uuid, setState: { if $0 == .loaded { loaded.fulfill() } })
@@ -902,10 +912,15 @@ final class BookReturnServiceTests: XCTestCase {
     /// this test pins that the confirmed revoke of the LAST book leaves no
     /// visible book on reload.
     func testReturnLastBook_revokePath_updateAndRemoveBook_bookNotVisibleAfterReload() async throws {
-        #if DEBUG
-        AccountsManager.deferInitialLoadCatalogsForTesting = true
-        #endif
-        let manager = AccountsManager()
+        // Isolation-lint seam: a fresh per-test factory container replaces
+        // bare `AccountsManager()` + `AppContainer.production()` reads. The
+        // factory pins `deferInitialLoadCatalogsForTesting = true` before
+        // constructing the manager (no background `loadCatalogs` Task) and
+        // exposes the SAME graph's `downloadCenter` / `opdsFeedService` the
+        // cold-reload `BookRegistrySync` below needs — consistent identity,
+        // no `_cached` mutation. swarm_47883816.
+        let appContainer = makeTestAppContainer()
+        let manager = appContainer.accountsManager
         defer { manager.cancelBackgroundWork() }
         let (uuid, cleanup) = seedFixtureCurrentAccount(on: manager)
         defer { cleanup() }
@@ -939,8 +954,8 @@ final class BookReturnServiceTests: XCTestCase {
         let sync2 = BookRegistrySync(
             store: store2,
             accountsManager: manager,
-            downloadCenterProvider: { AppContainer.production().downloadCenter },
-            opdsFeedServiceProvider: { AppContainer.production().opdsFeedService }
+            downloadCenterProvider: { appContainer.downloadCenter },
+            opdsFeedServiceProvider: { appContainer.opdsFeedService }
         )
         let loaded = expectation(description: "cold reload")
         sync2.load(account: uuid, setState: { if $0 == .loaded { loaded.fulfill() } })
