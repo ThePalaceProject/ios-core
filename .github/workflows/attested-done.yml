@@ -1,0 +1,101 @@
+name: Attested Done
+
+# Self-validating proof-of-done: after the authoritative "Unit Tests" suite passes,
+# CI mints a SIGNED, tip-bound verify attestation with its OWN key (ci-runner) and
+# reports an `attested-done` commit status. Make that status a required check to gate
+# merges on a proof only CI can produce — no human proof-gate, no agent self-attest.
+#
+# Design + activation (human trust-root setup): docs/architecture/attested-done-ci.md
+# NOT a required check until the dry-run in that doc is clean (green-board contract).
+
+on:
+  workflow_run:
+    workflows: ["Unit Tests"]
+    types: [completed]
+
+# One attestation per head SHA; a newer suite run supersedes an in-flight attest.
+concurrency:
+  group: attested-done-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: true
+
+jobs:
+  attest:
+    runs-on: macos-15
+    timeout-minutes: 20
+    permissions:
+      contents: write      # push refs/heka/evidence/<sha>
+      statuses: write       # post the `attested-done` commit status (the gate)
+    env:
+      HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+      HEKA2_REF: main       # pin heka2 to a SHA here when you want a fixed governance binary
+    steps:
+      # If the suite did not pass, post a failing status at the SHA and stop — the
+      # required check goes red, the merge is blocked, and no proof is minted.
+      - name: Gate on the suite outcome
+        if: ${{ github.event.workflow_run.conclusion != 'success' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api -X POST "repos/${{ github.repository }}/statuses/${HEAD_SHA}" \
+            -f state=failure -f context=attested-done \
+            -f description="Unit Tests did not pass — no proof-of-done minted."
+          echo "Unit Tests conclusion=${{ github.event.workflow_run.conclusion }} — withholding proof." >&2
+          exit 1
+
+      - name: Checkout the exact SHA the suite passed at
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.HEAD_SHA }}
+          token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+
+      - name: Build the heka2 governance binary (pinned)
+        env:
+          GH_TOKEN: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
+        run: |
+          # Trust comes from building the pinned governance source in CI, not a blob.
+          # CI_GITHUB_ACCESS_TOKEN must have read access to the heka2 repo.
+          git clone --depth 1 --branch "${HEKA2_REF}" \
+            "https://x-access-token:${GH_TOKEN}@github.com/SyncTek-LLC/heka2.git" /tmp/heka2 \
+            || git clone "https://x-access-token:${GH_TOKEN}@github.com/SyncTek-LLC/heka2.git" /tmp/heka2
+          ( cd /tmp/heka2 && [ "${HEKA2_REF}" = "main" ] || git checkout "${HEKA2_REF}"; go build -o /usr/local/bin/heka2 ./cmd/heka )
+          heka2 --version || true
+
+      - name: Mint the signed, tip-bound proof-of-done
+        env:
+          HEKA_CI_SIGNING_KEY_MATERIAL: ${{ secrets.HEKA_CI_SIGNING_KEY }}
+          HEKA_CI_ALLOWED_SIGNERS: ${{ vars.HEKA_CI_ALLOWED_SIGNERS }}
+          HEKA_HOME: ${{ runner.temp }}/heka-home     # hermetic ledger-signing key
+        run: scripts/ci-attest.sh --tier T2 --runner ci-runner --sha "${HEAD_SHA}"
+
+      - name: Publish the attestation as tamper-evident evidence
+        env:
+          GH_TOKEN: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
+        run: |
+          # refs/heka/evidence/<sha>/* — a merge recheck reads the SIGNED payload here,
+          # never trusting event fields (a stripped/forged blob fails closed).
+          git config user.name  "ci-runner"
+          git config user.email "ci-runner@users.noreply.github.com"
+          EVID=$(ls .heka/evidence/*.json | head -1)
+          git update-ref "refs/heka/evidence/${HEAD_SHA}/verify-t2" "$(git hash-object -w "$EVID")" || true
+          git push origin "refs/heka/evidence/${HEAD_SHA}/verify-t2" || true
+
+      - name: Upload evidence artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: attested-done-${{ env.HEAD_SHA }}
+          path: .heka/evidence/*.json
+          if-no-files-found: error
+
+      - name: Post the passing gate status
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api -X POST "repos/${{ github.repository }}/statuses/${HEAD_SHA}" \
+            -f state=success -f context=attested-done \
+            -f description="Signed proof-of-done minted (verify:T2, ci-runner)."
