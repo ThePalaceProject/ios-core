@@ -8,6 +8,7 @@
 
 import Foundation
 import FirebaseDynamicLinks
+import PalaceBookRegistry
 
 /// No stored state — all members are methods over the passed-in `DynamicLink`,
 /// so the type is trivially `Sendable`; `final` pins that (no subclass can add

@@ -18,6 +18,7 @@
 import XCTest
 @testable import Palace
 import PalaceBookModel
+import PalaceBookRegistry
 
 @MainActor
 final class AdobeDRMHandlerTests: XCTestCase {

@@ -13,7 +13,7 @@ import PalaceBookModel
 /// `_state` is lock-guarded, `syncState` self-synchronised, everything else an
 /// immutable `let`); `TPPBookRegistryMock` is `@unchecked Sendable` for
 /// single-threaded test use (documented at its declaration).
-protocol TPPBookRegistryProvider: Sendable {
+public protocol TPPBookRegistryProvider: Sendable {
     var registryPublisher: AnyPublisher<[String: TPPBookRegistryRecord], Never> { get }
     var bookStatePublisher: AnyPublisher<(String, TPPBookState), Never> { get }
     var syncStatePublisher: AnyPublisher<Bool, Never> { get }
@@ -177,7 +177,7 @@ private final class BoolWithDelay: @unchecked Sendable {
 ///   - the `TPPBookRegistrySyncing` / `TPPBookRegistryProvider` conformance
 ///   - the shared singleton + account-scoped temporary-instance factory
 ///
-/// Every mutation captures `accountsManager.currentAccount?.uuid` synchronously
+/// Every mutation captures `accountScope.currentAccountID` synchronously
 /// at dispatch time and passes it through to the collaborators. A mutation
 /// queued on account A executing after the user has switched to account B
 /// still persists to A's registry file — otherwise cross-account
@@ -197,11 +197,15 @@ private final class BoolWithDelay: @unchecked Sendable {
 /// `setupAccountDidChangeObserver()` (on the constructing thread, before the
 /// instance escapes) and only read/torn-down thereafter, so it carries no
 /// cross-thread write race. This is a documented invariant, not a bare waiver.
-@objcMembers
-class TPPBookRegistry: NSObject, TPPBookRegistrySyncing, @unchecked Sendable {
-    static let syncFailureErrorDocumentKey = "TPPBookRegistrySyncFailureErrorDocument"
+// De-objc (god-class decomp Wave 2b prep): dropped `@objcMembers` + `NSObject`
+// superclass + `@objc` on `RegistryState`. The entire ObjC surface is vestigial —
+// zero `.m`/`.h` references to the class, the notifications, or `TPPBookRegistrySyncing`;
+// zero selector/`NSClassFromString` dispatch (verified at branch tip). Removing NSObject
+// also removes the two `super.init()` calls below.
+public class TPPBookRegistry: @unchecked Sendable {
+    public static let syncFailureErrorDocumentKey = "TPPBookRegistrySyncFailureErrorDocument"
 
-    @objc enum RegistryState: Int, Sendable {
+    public enum RegistryState: Int, Sendable {
         case unloaded, loading, loaded, syncing, synced
     }
 
@@ -213,7 +217,15 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing, @unchecked Sendable {
 
     // MARK: - External dependencies
 
-    private let accountsManager: AccountsManager
+    /// Value-only account scope (god-class decomposition Wave 2b — the Book→Accounts
+    /// inversion). The facade reads only `currentAccountID` (synchronously, at every
+    /// mutation dispatch — the PP-4129 capture discipline) and subscribes to
+    /// `accountDidChangePublisher`; no Account/AccountsManager type crosses the boundary.
+    private let accountScope: any AccountScopeProviding
+    /// The external collaborators (download service, loans fetcher, sideload set,
+    /// directory rule, availability hook), forwarded to the sync engine + store and
+    /// re-used to build the account-scoped temporary instance in `with(account:)`.
+    private let dependencies: RegistryExternalDependencies
     /// Image-loading umbrella. Required — must be threaded through from the
     /// `AppContainer` graph (or a test mock). NEVER take a default that
     /// resolves via `AppContainer.production()` here — TPPBookRegistry is
@@ -225,7 +237,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing, @unchecked Sendable {
     private var accountDidChangeCancellable: AnyCancellable?
 
     private func setupAccountDidChangeObserver() {
-        accountDidChangeCancellable = NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)
+        accountDidChangeCancellable = accountScope.accountDidChangePublisher
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 guard let self else { return }
@@ -281,7 +293,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing, @unchecked Sendable {
     /// Transition ordering is IDENTICAL to the pre-lock `didSet`: write `_state`,
     /// derive `syncState.value`, then emit the lifecycle signal — all preserved,
     /// only the `_state` storage is now serialised.
-    private(set) var state: RegistryState {
+    public private(set) var state: RegistryState {
         get { stateLock.lock(); defer { stateLock.unlock() }; return _state }
         set {
             stateLock.lock()
@@ -306,14 +318,14 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing, @unchecked Sendable {
         }
     }
 
-    private(set) var isSyncing: Bool {
+    public private(set) var isSyncing: Bool {
         get { syncState.value }
         set { }
     }
 
     private let syncStateSubject = CurrentValueSubject<Bool, Never>(false)
 
-    var syncStatePublisher: AnyPublisher<Bool, Never> {
+    public var syncStatePublisher: AnyPublisher<Bool, Never> {
         syncStateSubject.eraseToAnyPublisher()
     }
 
@@ -325,7 +337,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing, @unchecked Sendable {
     /// initial `_state`.
     private let registryStateSubject = CurrentValueSubject<RegistryState, Never>(.unloaded)
 
-    var registryStatePublisher: AnyPublisher<RegistryState, Never> {
+    public var registryStatePublisher: AnyPublisher<RegistryState, Never> {
         registryStateSubject
             .receive(on: RunLoop.main)
             .eraseToAnyPublisher()
@@ -335,13 +347,13 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing, @unchecked Sendable {
     /// because there is no meaningful "current" holds-change value to replay.
     private let holdsDidChangeSubject = PassthroughSubject<Void, Never>()
 
-    var holdsDidChangePublisher: AnyPublisher<Void, Never> {
+    public var holdsDidChangePublisher: AnyPublisher<Void, Never> {
         holdsDidChangeSubject
             .receive(on: RunLoop.main)
             .eraseToAnyPublisher()
     }
 
-    func notifyHoldsChanged() {
+    public func notifyHoldsChanged() {
         holdsDidChangeSubject.send(())
     }
 
@@ -351,10 +363,10 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing, @unchecked Sendable {
     /// `TPPBookState.allowedTransitions`. The write still happens (state is never
     /// dropped); this only reports the violation. Injectable so tests can observe
     /// the DEBUG path without tripping `assertionFailure` and crashing the suite.
-    typealias IllegalTransitionHandler =
+    public typealias IllegalTransitionHandler =
         @Sendable (_ from: TPPBookState, _ to: TPPBookState, _ bookIdentifier: String) -> Void
 
-    static let defaultIllegalTransitionHandler: IllegalTransitionHandler = { from, to, bookIdentifier in
+    public static let defaultIllegalTransitionHandler: IllegalTransitionHandler = { from, to, bookIdentifier in
         let message = "🚫 Illegal book-state transition for '\(bookIdentifier)': "
             + "\(from.stringValue()) → \(to.stringValue()) — not in TPPBookState.allowedTransitions. "
             + "Applying anyway (state is never dropped)."
@@ -367,13 +379,13 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing, @unchecked Sendable {
 
     private let onIllegalTransition: IllegalTransitionHandler
 
-    var registryPublisher: AnyPublisher<[String: TPPBookRegistryRecord], Never> {
+    public var registryPublisher: AnyPublisher<[String: TPPBookRegistryRecord], Never> {
         store.registrySubject
             .receive(on: RunLoop.main)
             .eraseToAnyPublisher()
     }
 
-    var bookStatePublisher: AnyPublisher<(String, TPPBookState), Never> {
+    public var bookStatePublisher: AnyPublisher<(String, TPPBookState), Never> {
         store.bookStateSubject
             .receive(on: RunLoop.main)
             .eraseToAnyPublisher()
@@ -381,33 +393,29 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing, @unchecked Sendable {
 
     // MARK: - Init
 
-    /// Construct the app-scoped registry. `accountsManager` is the only
-    /// external dependency the registry needs at init time — every other
-    /// collaborator (download center, OPDS feed service) is lazily resolved
-    /// via the AppContainer providers below.
-    ///
-    /// AppContainer is the sole production caller (see
-    /// `AppContainer._cached`); pass the explicitly-constructed
-    /// AccountsManager so we never re-enter `AppContainer.production()`'s
-    /// dispatch_once during app launch (the failure mode that motivated
-    /// killing the `static let shared` singleton in Phase 6.6).
-    init(
-        accountsManager: AccountsManager,
+    /// Construct the app-scoped registry (god-class decomposition Wave 2b init shape).
+    /// `accountScope` is the value-only account surface (inversion); `dependencies`
+    /// carries the lazily-resolved external collaborators (download service, loans
+    /// fetcher, sideload set, directory rule, availability hook) — supplied by the
+    /// composition root instead of hard-coded `AppContainer.production()` closures, so
+    /// the package holds no edge to AppContainer. The lazy-resolution timing is
+    /// unchanged: AppContainer builds the registry before the download center, and the
+    /// provider closures defer resolution to first use.
+    public init(
+        accountScope: any AccountScopeProviding,
         imageLoader: ImageLoading,
+        dependencies: RegistryExternalDependencies,
         onIllegalTransition: @escaping IllegalTransitionHandler = TPPBookRegistry.defaultIllegalTransitionHandler
     ) {
-        self.accountsManager = accountsManager
+        self.accountScope = accountScope
         self.imageLoader = imageLoader
+        self.dependencies = dependencies
         self.onIllegalTransition = onIllegalTransition
-        let store = BookRegistryStore()
+        let store = BookRegistryStore(onAvailabilityChange: dependencies.onAvailabilityChange)
         let sync = BookRegistrySync(
             store: store,
-            accountsManager: accountsManager,
-            downloadCenterProvider: { AppContainer.production().downloadCenter },
-            opdsFeedServiceProvider: { AppContainer.production().opdsFeedService },
-            // Side-loaded books are exempt from loans-feed reconciliation.
-            // Provider resolved lazily (same AppContainer-cycle avoidance).
-            sideloadedIDsProvider: { AppContainer.production().sideloadedBookRegistry.identifiers }
+            accountScope: accountScope,
+            dependencies: dependencies
         )
         self.store = store
         self.syncEngine = sync
@@ -421,27 +429,24 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing, @unchecked Sendable {
             save: { [weak sync] account in sync?.save(for: account) },
             saveSync: { [weak sync] account in sync?.saveSync(for: account) }
         )
-        super.init()
         setupAccountDidChangeObserver()
     }
 
     /// Account-scoped temporary instance used by `with(account:perform:)` to
     /// run a block against a *different* registry file than the current one.
-    /// Inherits `accountsManager` from the calling facade — no default arg, no
-    /// AppContainer lookup, so the cycle that motivated 6.6 can't sneak back.
-    fileprivate init(account: String, accountsManager: AccountsManager, imageLoader: ImageLoading) {
-        self.accountsManager = accountsManager
+    /// Inherits `accountScope` + `dependencies` from the calling facade — no
+    /// default arg, no AppContainer lookup, so the cycle that motivated 6.6 can't
+    /// sneak back.
+    fileprivate init(account: String, accountScope: any AccountScopeProviding, imageLoader: ImageLoading, dependencies: RegistryExternalDependencies) {
+        self.accountScope = accountScope
         self.imageLoader = imageLoader
+        self.dependencies = dependencies
         self.onIllegalTransition = TPPBookRegistry.defaultIllegalTransitionHandler
-        let store = BookRegistryStore()
+        let store = BookRegistryStore(onAvailabilityChange: dependencies.onAvailabilityChange)
         let sync = BookRegistrySync(
             store: store,
-            accountsManager: accountsManager,
-            downloadCenterProvider: { AppContainer.production().downloadCenter },
-            opdsFeedServiceProvider: { AppContainer.production().opdsFeedService },
-            // Side-loaded books are exempt from loans-feed reconciliation.
-            // Provider resolved lazily (same AppContainer-cycle avoidance).
-            sideloadedIDsProvider: { AppContainer.production().sideloadedBookRegistry.identifiers }
+            accountScope: accountScope,
+            dependencies: dependencies
         )
         self.store = store
         self.syncEngine = sync
@@ -450,29 +455,28 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing, @unchecked Sendable {
             save: { [weak sync] account in sync?.save(for: account) },
             saveSync: { [weak sync] account in sync?.saveSync(for: account) }
         )
-        super.init()
         syncEngine.load(account: account) { [weak self] newState in self?.state = newState }
     }
 
-    func with(account: String, perform block: (_ registry: TPPBookRegistry) -> Void) {
-        block(TPPBookRegistry(account: account, accountsManager: accountsManager, imageLoader: imageLoader))
+    public func with(account: String, perform block: (_ registry: TPPBookRegistry) -> Void) {
+        block(TPPBookRegistry(account: account, accountScope: accountScope, imageLoader: imageLoader, dependencies: dependencies))
     }
 
     // MARK: - Load / sync / save / reset (delegate to BookRegistrySync)
 
-    func registryUrl(for account: String) -> URL? {
+    public func registryUrl(for account: String) -> URL? {
         return syncEngine.registryUrl(for: account)
     }
 
-    func load(account: String? = nil, completion: (() -> Void)? = nil) {
+    public func load(account: String? = nil, completion: (() -> Void)? = nil) {
         syncEngine.load(account: account, setState: { [weak self] newState in
             self?.state = newState
         }, completion: completion)
     }
 
-    func load() { load(account: nil, completion: nil) }
+    public func load() { load(account: nil, completion: nil) }
 
-    func sync(completion: ((_ errorDocument: [AnyHashable: Any]?, _ newBooks: Bool) -> Void)? = nil) {
+    public func sync(completion: ((_ errorDocument: [AnyHashable: Any]?, _ newBooks: Bool) -> Void)? = nil) {
         // `BookRegistrySync.sync` bails when state is `.unloaded`/`.loading`
         // to protect against the feed-only reconciliation path overwriting
         // on-disk records — but post-sign-in (and any other caller hitting
@@ -501,7 +505,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing, @unchecked Sendable {
         runSync(completion: completion)
     }
 
-    func sync() { sync(completion: nil) }
+    public func sync() { sync(completion: nil) }
 
     /// Subscribes to `registryStatePublisher` and runs sync the first time state
     /// reaches `.loaded`/`.synced`. The subscription cancels itself on first match
@@ -546,17 +550,17 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing, @unchecked Sendable {
         })
     }
 
-    func validateDownloadedContent() {
+    public func validateDownloadedContent() {
         syncEngine.validateDownloadedContent()
     }
 
-    func reset(_ account: String) {
+    public func reset(_ account: String) {
         state = .unloaded
         syncEngine.reset(account)
     }
 
-    func saveSync() {
-        guard let account = accountsManager.currentAccount?.uuid else { return }
+    public func saveSync() {
+        guard let account = accountScope.currentAccountID else { return }
         syncEngine.saveSync(for: account)
     }
 
@@ -570,29 +574,29 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing, @unchecked Sendable {
 
     // MARK: - Read-only queries (delegate directly to store — thread-safe via its sync queue)
 
-    var allBooks: [TPPBook] { store.allBooks }
-    var heldBooks: [TPPBook] { store.heldBooks }
-    var myBooks: [TPPBook] { store.myBooks }
+    public var allBooks: [TPPBook] { store.allBooks }
+    public var heldBooks: [TPPBook] { store.heldBooks }
+    public var myBooks: [TPPBook] { store.myBooks }
 
-    func book(forIdentifier bookIdentifier: String?) -> TPPBook? {
+    public func book(forIdentifier bookIdentifier: String?) -> TPPBook? {
         return store.book(forIdentifier: bookIdentifier)
     }
 
-    func state(for bookIdentifier: String?) -> TPPBookState {
+    public func state(for bookIdentifier: String?) -> TPPBookState {
         return store.state(for: bookIdentifier)
     }
 
-    func fulfillmentId(forIdentifier bookIdentifier: String?) -> String? {
+    public func fulfillmentId(forIdentifier bookIdentifier: String?) -> String? {
         return store.fulfillmentId(forIdentifier: bookIdentifier)
     }
 
-    func processing(forIdentifier bookIdentifier: String) -> Bool {
+    public func processing(forIdentifier bookIdentifier: String) -> Bool {
         return store.processing(forIdentifier: bookIdentifier)
     }
 
     // MARK: - Mutations
 
-    func addBook(
+    public func addBook(
         _ book: TPPBook,
         location: TPPBookLocation? = nil,
         state: TPPBookState = .downloadNeeded,
@@ -604,7 +608,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing, @unchecked Sendable {
         Log.info(#file, "📚 ADDING BOOK to registry: \(book.identifier), state: \(state.stringValue())")
         Log.info(#file, "📚 Initial bookmarks - readium: \(readiumBookmarks?.count ?? 0), generic: \(genericBookmarks?.count ?? 0)")
 
-        let account = accountsManager.currentAccount?.uuid
+        let account = accountScope.currentAccountID
         store.addBook(
             book,
             location: location,
@@ -621,12 +625,12 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing, @unchecked Sendable {
         }
     }
 
-    func removeBook(forIdentifier bookIdentifier: String) {
+    public func removeBook(forIdentifier bookIdentifier: String) {
         guard !bookIdentifier.isEmpty else {
             Log.error(#file, "removeBook called with empty bookIdentifier")
             return
         }
-        let account = accountsManager.currentAccount?.uuid
+        let account = accountScope.currentAccountID
         store.removeBook(forIdentifier: bookIdentifier) { [weak self, syncEngine] removedBook, _ in
             guard let self else { return }
             Log.info(#file, "📚 REMOVING BOOK from registry: \(bookIdentifier)")
@@ -640,8 +644,8 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing, @unchecked Sendable {
         }
     }
 
-    func updateBook(_ book: TPPBook) {
-        let account = accountsManager.currentAccount?.uuid
+    public func updateBook(_ book: TPPBook) {
+        let account = accountScope.currentAccountID
         store.updateBook(book) { [weak self, syncEngine] previousState, nextState, _ in
             guard let self else { return }
             if let account { syncEngine.save(for: account) }
@@ -653,9 +657,9 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing, @unchecked Sendable {
         }
     }
 
-    func updateAndRemoveBook(_ book: TPPBook) {
+    public func updateAndRemoveBook(_ book: TPPBook) {
         imageLoader.thumbnailImage(for: book) { _ in }
-        let account = accountsManager.currentAccount?.uuid
+        let account = accountScope.currentAccountID
         store.updateAndRemoveBook(book) { [weak self, syncEngine] _ in
             guard let self else { return }
             if let account { syncEngine.save(for: account) }
@@ -665,7 +669,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing, @unchecked Sendable {
         }
     }
 
-    func setState(_ state: TPPBookState, for bookIdentifier: String) {
+    public func setState(_ state: TPPBookState, for bookIdentifier: String) {
         let previousState = self.state(for: bookIdentifier)
         if previousState != state {
             Log.debug(#file, "📊 State transition for '\(bookIdentifier)': \(previousState.stringValue()) → \(state.stringValue())")
@@ -676,7 +680,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing, @unchecked Sendable {
                 onIllegalTransition(previousState, state, bookIdentifier)
             }
         }
-        let account = accountsManager.currentAccount?.uuid
+        let account = accountScope.currentAccountID
         store.setState(state, for: bookIdentifier) { [weak self, syncEngine] in
             guard let self else { return }
             if let account { syncEngine.save(for: account) }
@@ -686,18 +690,18 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing, @unchecked Sendable {
         }
     }
 
-    func setFulfillmentId(_ fulfillmentId: String, for bookIdentifier: String) {
-        let account = accountsManager.currentAccount?.uuid
+    public func setFulfillmentId(_ fulfillmentId: String, for bookIdentifier: String) {
+        let account = accountScope.currentAccountID
         store.setFulfillmentId(fulfillmentId, for: bookIdentifier)
         if let account { syncEngine.save(for: account) }
     }
 
-    func setProcessing(_ processing: Bool, for bookIdentifier: String) {
+    public func setProcessing(_ processing: Bool, for bookIdentifier: String) {
         store.setProcessing(processing, for: bookIdentifier)
     }
 
-    func updatedBookMetadata(_ book: TPPBook) -> TPPBook? {
-        let account = accountsManager.currentAccount?.uuid
+    public func updatedBookMetadata(_ book: TPPBook) -> TPPBook? {
+        let account = accountScope.currentAccountID
         let result = store.updatedBookMetadata(book)
         if result != nil, let account { syncEngine.save(for: account) }
         return result
@@ -723,22 +727,34 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing, @unchecked Sendable {
     /// Deliberately does NOT await the account switch-back debounce
     /// (`asyncAfter` ~line 160): that is a UX timer, not fire-and-forget work;
     /// tests asserting switch-back drive it explicitly.
-    func _awaitPendingWritesForTesting() async {
+    public func _awaitPendingWritesForTesting() async {
         await store._awaitPendingWritesForTesting()
         await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
             DispatchQueue.main.async { cont.resume() }
         }
     }
 
+    /// Test-only: like `_awaitPendingWritesForTesting`, but ALSO drains the sync
+    /// engine's async disk-write queue so a subsequent ON-DISK assertion is
+    /// race-free. Order is load-bearing: drain the store-write barrier FIRST (so
+    /// each mutation's `onComplete` has run and ENQUEUED its `save(...)` disk
+    /// write), THEN drain the disk-write queue (so those writes have flushed).
+    /// Deterministic replacement for a `.TPPBookRegistryDidChange` deadline wait
+    /// in the account-capture persistence contract tests (STARVE-001).
+    public func _awaitPendingPersistenceForTesting() async {
+        await _awaitPendingWritesForTesting()
+        await syncEngine._awaitPendingDiskWritesForTesting()
+    }
+
     // MARK: - Cover / thumbnail images
 
-    func cachedThumbnailImage(for book: TPPBook) -> UIImage? {
+    public func cachedThumbnailImage(for book: TPPBook) -> UIImage? {
         let simpleKey = book.identifier
         let thumbnailKey = "\(book.identifier)_thumbnail"
         return book.imageCache.get(for: simpleKey) ?? book.imageCache.get(for: thumbnailKey)
     }
 
-    func thumbnailImage(
+    public func thumbnailImage(
         for book: TPPBook?,
         handler: @escaping (_ image: UIImage?) -> Void
     ) {
@@ -746,7 +762,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing, @unchecked Sendable {
         imageLoader.thumbnailImage(for: book, completion: handler)
     }
 
-    func thumbnailImages(
+    public func thumbnailImages(
         forBooks books: Set<TPPBook>,
         handler: @escaping (_ bookIdentifiersToImages: [String: UIImage]) -> Void
     ) {
@@ -762,7 +778,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing, @unchecked Sendable {
         group.notify(queue: .main) { handler(result) }
     }
 
-    func coverImage(
+    public func coverImage(
         for book: TPPBook,
         handler: @escaping (_ image: UIImage?) -> Void
     ) {
@@ -778,7 +794,7 @@ class TPPBookRegistry: NSObject, TPPBookRegistrySyncing, @unchecked Sendable {
 // whether the user has switched libraries while the async barrier was pending.
 
 extension TPPBookRegistry: TPPBookRegistryProvider {
-    var registryState: RegistryState { state }
+    public var registryState: RegistryState { state }
 
     // Bookmark/location mutations mirror the addBook pattern in the main class:
     // capture `currentAccount?.uuid` synchronously (so a library switch mid-flight
@@ -786,63 +802,63 @@ extension TPPBookRegistry: TPPBookRegistryProvider {
     // through to the collaborator. BookmarkManager performs the in-memory mutation
     // unconditionally and skips save-to-disk when account is nil.
 
-    func setLocation(_ location: TPPBookLocation?, forIdentifier bookIdentifier: String) {
+    public func setLocation(_ location: TPPBookLocation?, forIdentifier bookIdentifier: String) {
         bookmarks.setLocation(location, forIdentifier: bookIdentifier,
-                               account: accountsManager.currentAccount?.uuid)
+                               account: accountScope.currentAccountID)
     }
 
-    func setLocationSync(_ location: TPPBookLocation?, forIdentifier bookIdentifier: String) {
+    public func setLocationSync(_ location: TPPBookLocation?, forIdentifier bookIdentifier: String) {
         bookmarks.setLocationSync(location, forIdentifier: bookIdentifier,
-                                   account: accountsManager.currentAccount?.uuid)
+                                   account: accountScope.currentAccountID)
     }
 
-    func location(forIdentifier bookIdentifier: String) -> TPPBookLocation? {
+    public func location(forIdentifier bookIdentifier: String) -> TPPBookLocation? {
         return bookmarks.location(forIdentifier: bookIdentifier)
     }
 
-    func readiumBookmarks(forIdentifier bookIdentifier: String) -> [TPPReadiumBookmark] {
+    public func readiumBookmarks(forIdentifier bookIdentifier: String) -> [TPPReadiumBookmark] {
         return bookmarks.readiumBookmarks(forIdentifier: bookIdentifier)
     }
 
-    func add(_ bookmark: TPPReadiumBookmark, forIdentifier bookIdentifier: String) {
+    public func add(_ bookmark: TPPReadiumBookmark, forIdentifier bookIdentifier: String) {
         bookmarks.addReadiumBookmark(bookmark, forIdentifier: bookIdentifier,
-                                      account: accountsManager.currentAccount?.uuid)
+                                      account: accountScope.currentAccountID)
     }
 
-    func delete(_ bookmark: TPPReadiumBookmark, forIdentifier bookIdentifier: String) {
+    public func delete(_ bookmark: TPPReadiumBookmark, forIdentifier bookIdentifier: String) {
         bookmarks.deleteReadiumBookmark(bookmark, forIdentifier: bookIdentifier,
-                                         account: accountsManager.currentAccount?.uuid)
+                                         account: accountScope.currentAccountID)
     }
 
-    func replace(_ oldBookmark: TPPReadiumBookmark, with newBookmark: TPPReadiumBookmark, forIdentifier bookIdentifier: String) {
+    public func replace(_ oldBookmark: TPPReadiumBookmark, with newBookmark: TPPReadiumBookmark, forIdentifier bookIdentifier: String) {
         bookmarks.replaceReadiumBookmark(oldBookmark, with: newBookmark,
                                           forIdentifier: bookIdentifier,
-                                          account: accountsManager.currentAccount?.uuid)
+                                          account: accountScope.currentAccountID)
     }
 
-    func genericBookmarksForIdentifier(_ bookIdentifier: String) -> [TPPBookLocation] {
+    public func genericBookmarksForIdentifier(_ bookIdentifier: String) -> [TPPBookLocation] {
         return bookmarks.genericBookmarks(forIdentifier: bookIdentifier)
     }
 
-    func addOrReplaceGenericBookmark(_ location: TPPBookLocation, forIdentifier bookIdentifier: String) {
+    public func addOrReplaceGenericBookmark(_ location: TPPBookLocation, forIdentifier bookIdentifier: String) {
         bookmarks.addOrReplaceGenericBookmark(location, forIdentifier: bookIdentifier,
-                                               account: accountsManager.currentAccount?.uuid)
+                                               account: accountScope.currentAccountID)
     }
 
-    func addGenericBookmark(_ location: TPPBookLocation, forIdentifier bookIdentifier: String) {
+    public func addGenericBookmark(_ location: TPPBookLocation, forIdentifier bookIdentifier: String) {
         bookmarks.addGenericBookmark(location, forIdentifier: bookIdentifier,
-                                      account: accountsManager.currentAccount?.uuid)
+                                      account: accountScope.currentAccountID)
     }
 
-    func deleteGenericBookmark(_ location: TPPBookLocation, forIdentifier bookIdentifier: String) {
+    public func deleteGenericBookmark(_ location: TPPBookLocation, forIdentifier bookIdentifier: String) {
         bookmarks.deleteGenericBookmark(location, forIdentifier: bookIdentifier,
-                                         account: accountsManager.currentAccount?.uuid)
+                                         account: accountScope.currentAccountID)
     }
 
-    func replaceGenericBookmark(_ oldLocation: TPPBookLocation, with newLocation: TPPBookLocation, forIdentifier bookIdentifier: String) {
+    public func replaceGenericBookmark(_ oldLocation: TPPBookLocation, with newLocation: TPPBookLocation, forIdentifier bookIdentifier: String) {
         bookmarks.replaceGenericBookmark(oldLocation, with: newLocation,
                                           forIdentifier: bookIdentifier,
-                                          account: accountsManager.currentAccount?.uuid)
+                                          account: accountScope.currentAccountID)
     }
 }
 

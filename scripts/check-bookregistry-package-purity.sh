@@ -41,7 +41,64 @@ if [ ! -d "$SCAN_ROOT" ]; then
   exit 0
 fi
 
-FINDINGS="$(grep -rnE "$FORBIDDEN" "$SCAN_ROOT" --include='*.swift' 2>/dev/null || true)"
+# Match CODE references only, not documentation. The extracted package's
+# boundary docs legitimately NAME these types (e.g. "no `AccountsManager` type
+# crosses this boundary", "the package holds no edge to `AppContainer`") — the
+# invariant is about code coupling (imports / type usage), never prose. So strip
+# Swift comments (`//`, `///`, `/* */`) and string literals before matching, and
+# require a word-boundary hit on the residue. A naive grep would flag the gate's
+# own documentation.
+FINDINGS="$(FORBIDDEN="$FORBIDDEN" SCAN_ROOT="$SCAN_ROOT" python3 - <<'PY' 2>/dev/null || true
+import os, re, sys
+forbidden = os.environ["FORBIDDEN"]
+root = os.environ["SCAN_ROOT"]
+pat = re.compile(r'\b(' + forbidden + r')\b')
+
+def strip(src):
+    # Blank out //-line-comments, /* */ block comments, and "..." string
+    # literals, preserving newlines so line numbers stay accurate.
+    out = []
+    i, n = 0, len(src)
+    while i < n:
+        c = src[i]
+        if c == '"':                       # string literal
+            out.append(' '); i += 1
+            while i < n and src[i] != '"':
+                if src[i] == '\\' and i + 1 < n:
+                    out.append('  '); i += 2; continue
+                out.append('\n' if src[i] == '\n' else ' '); i += 1
+            if i < n:
+                out.append(' '); i += 1
+        elif c == '/' and i + 1 < n and src[i+1] == '/':   # // or /// line comment
+            while i < n and src[i] != '\n':
+                out.append(' '); i += 1
+        elif c == '/' and i + 1 < n and src[i+1] == '*':   # /* */ block comment
+            out.append('  '); i += 2
+            while i + 1 < n and not (src[i] == '*' and src[i+1] == '/'):
+                out.append('\n' if src[i] == '\n' else ' '); i += 1
+            if i + 1 < n:
+                out.append('  '); i += 2
+        else:
+            out.append(c); i += 1
+    return ''.join(out)
+
+hits = []
+for dirpath, _, files in os.walk(root):
+    for f in files:
+        if not f.endswith('.swift'):
+            continue
+        p = os.path.join(dirpath, f)
+        try:
+            code = strip(open(p, encoding='utf-8', errors='replace').read())
+        except OSError:
+            continue
+        for ln, line in enumerate(code.splitlines(), 1):
+            m = pat.search(line)
+            if m:
+                hits.append(f"{p}:{ln}: {m.group(1)}")
+sys.stdout.write("\n".join(hits))
+PY
+)"
 
 if [ -n "$FINDINGS" ]; then
   echo "[bookregistry-purity] FAIL: PalaceBookRegistry/Sources references the app-target"

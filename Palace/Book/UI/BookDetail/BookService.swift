@@ -4,6 +4,7 @@ import Combine
 import PalaceAudiobookToolkit
 import PalaceLogging
 import PalaceBookModel
+import PalaceBookRegistry
 
 /// Dispatches book-open requests to the right reader/player. Owns only the
 /// EPUB and PDF paths directly; audiobook opens delegate to

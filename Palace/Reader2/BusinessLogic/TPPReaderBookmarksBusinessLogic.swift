@@ -11,6 +11,7 @@ import ReadiumShared
 import ReadiumNavigator
 import PalaceLogging
 import PalaceBookModel
+import PalaceBookRegistry
 
 /// Encapsulates all of the SimplyE business logic related to bookmarking
 /// for a given book.

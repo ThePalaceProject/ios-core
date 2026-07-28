@@ -10,6 +10,7 @@ import SwiftUI
 import PalacePreferences
 import PalaceUIKit
 import PalaceBookModel
+import PalaceBookRegistry
 
 struct TPPSettingsView: View {
     typealias DisplayStrings = Strings.Settings

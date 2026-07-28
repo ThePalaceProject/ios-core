@@ -11,6 +11,7 @@
 import UIKit
 import SwiftUI
 import PalaceLogging
+import PalaceBookRegistry
 @preconcurrency import ReadiumShared
 import ReadiumNavigator
 import PalaceBookModel

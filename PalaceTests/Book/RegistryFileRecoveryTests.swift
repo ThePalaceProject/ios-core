@@ -11,6 +11,7 @@
 
 import XCTest
 @testable import Palace
+@testable import PalaceBookRegistry
 import PalaceBookModel
 
 @MainActor

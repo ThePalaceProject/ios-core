@@ -23,6 +23,7 @@
 import XCTest
 @testable import Palace
 import PalaceBookModel
+import PalaceBookRegistry
 
 // The loan owner already exposes `state(for:)` via `TPPBookRegistryProvider`;
 // the test conforms the mock to the shared read seam so a heterogeneous

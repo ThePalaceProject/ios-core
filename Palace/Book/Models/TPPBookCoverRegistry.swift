@@ -4,6 +4,7 @@ import ImageIO
 import PalaceLogging
 import PalaceNetwork
 import PalaceBookModel
+import PalaceBookRegistry
 
 // MARK: - Host Failure Tracker (Circuit Breaker)
 

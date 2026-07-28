@@ -1,3 +1,4 @@
+import PalaceBookRegistry
 #if LCP
 
 import Foundation

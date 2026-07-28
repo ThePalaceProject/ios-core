@@ -16,6 +16,7 @@ import PalaceLogging
 import PalaceNetwork
 import PalaceCatalog
 import PalaceBookModel
+import PalaceBookRegistry
 
 #if FEATURE_OVERDRIVE
 import OverdriveProcessor

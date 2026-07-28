@@ -7,6 +7,7 @@ import PalaceAuth
 import PalaceNetwork
 import PalaceCatalog // swarm_27c181b5 A5: shared CatalogRepository / DefaultCatalogAPI accessor
 import PalaceBookModel
+import PalaceBookRegistry
 
 // Swift 6 `complete` — `@unchecked Sendable` invariant: every stored member is
 // an immutable `let` established once at the composition root and only read
@@ -644,6 +645,14 @@ struct AppContainer: @unchecked Sendable {
         // TPPBook is constructed (the registry construction below parses records).
         TPPBookImageContext.imageCacheProvider = { imageCache }
         TPPBookImageContext.imageLoaderProvider = { imageLoader }
+        // god-class decomposition Wave 2b: the registry engine now lives in the
+        // PalaceBookRegistry package and consumes accounts through the value-only
+        // `AccountScopeProviding` inversion + a `RegistryExternalDependencies` bundle.
+        // The convenience init builds the `AccountsManagerAccountScopeAdapter` and the
+        // `.production()` dependency bundle whose provider closures keep the SAME lazy
+        // `AppContainer.production()` resolution the engine's inline closures had
+        // (deferred to first use, so a mid-reset rebuild can't capture a stale graph
+        // and construction here doesn't re-enter the still-resolving dispatch_once).
         let bookRegistry = TPPBookRegistry(accountsManager: accountsManager, imageLoader: imageLoader)
         // Build one accessibility announcer and one DownloadAnnouncementService
         // that wraps it. Sharing this announcer between the service and any

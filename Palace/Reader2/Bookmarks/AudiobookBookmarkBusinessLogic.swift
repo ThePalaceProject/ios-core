@@ -9,6 +9,7 @@
 import Foundation
 import PalaceLogging
 import PalaceReadingPosition
+import PalaceBookRegistry
 @preconcurrency import PalaceAudiobookToolkit
 import PalaceBookModel
 

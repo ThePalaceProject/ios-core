@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import PalaceLogging
+import PalaceBookRegistry
 @preconcurrency import PalaceCatalog
 import PalaceNetwork
 import PalaceBookModel

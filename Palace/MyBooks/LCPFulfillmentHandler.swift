@@ -1,3 +1,4 @@
+import PalaceBookRegistry
 //
 //  LCPFulfillmentHandler.swift
 //  Palace

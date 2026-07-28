@@ -17,6 +17,7 @@
 
 import XCTest
 @testable import Palace
+import PalaceBookRegistry
 
 @MainActor
 final class TPPBookRegistryAsyncReadinessTests: XCTestCase {

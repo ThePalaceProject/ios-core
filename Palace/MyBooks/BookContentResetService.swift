@@ -17,6 +17,7 @@
 import Foundation
 import PalaceLogging
 import PalaceBookModel
+import PalaceBookRegistry
 
 /// Coordinates per-account content obliteration. Cancels in-flight
 /// downloads, clears state-manager bookkeeping, removes the on-disk

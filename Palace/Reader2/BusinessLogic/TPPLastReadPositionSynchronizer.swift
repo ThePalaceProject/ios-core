@@ -9,6 +9,7 @@
 import Foundation
 import PalaceLogging
 import PalaceReadingPosition
+import PalaceBookRegistry
 @preconcurrency import ReadiumShared
 import PalaceBookModel
 

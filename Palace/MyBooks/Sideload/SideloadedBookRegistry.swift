@@ -52,6 +52,7 @@
 import Foundation
 import PalaceLogging
 import PalaceBookModel
+import PalaceBookRegistry
 
 /// Local-only registry of side-loaded books.
 ///

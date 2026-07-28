@@ -1,0 +1,27 @@
+[
+  {
+    "args" : {
+      "state" : "syncing"
+    },
+    "method" : "setState"
+  },
+  {
+    "args" : {
+      "resetCache" : "true"
+    },
+    "method" : "fetchFeed"
+  },
+  {
+    "args" : {
+      "state" : "synced"
+    },
+    "method" : "setState"
+  },
+  {
+    "args" : {
+      "hasError" : "false",
+      "newBooks" : "false"
+    },
+    "method" : "completion"
+  }
+]

@@ -12,6 +12,7 @@ import XCTest
 import Combine
 @testable import Palace
 import PalaceBookModel
+@testable import PalaceBookRegistry
 
 @MainActor
 final class BookRegistryStoreTests: XCTestCase {

@@ -34,32 +34,25 @@ import PalaceBookModel
 final class BookRegistrySync: @unchecked Sendable {
 
   private let store: BookRegistryStore
-  private let accountsManager: AccountsManager
-  /// Resolved lazily because `MyBooksDownloadCenter` reads the registry
-  /// via `AppContainer.production().bookRegistry` for its own default args
-  /// — taking the instance at BookRegistrySync construction time would
-  /// deadlock the static-let initialization chain (BookRegistrySync is
-  /// constructed inside `TPPBookRegistry.init` which runs while
-  /// `AppContainer._cached` is still resolving). The closure runs only
-  /// inside async dispatched blocks, by which point
-  /// `AppContainer.production().downloadCenter` has settled.
-  private let downloadCenterProvider: () -> MyBooksDownloadCenter
-  /// Widened to the narrow `OPDSFeedFetching` protocol (was the concrete
-  /// `OPDSFeedService` actor) so tests can inject a failing / fixture fetcher
-  /// and exercise sync()'s feed-fetch-failure and `.synced` branches without
-  /// standing up the full actor + URL stack. Production wires the real
-  /// `OPDSFeedService`, which conforms.
-  private let opdsFeedServiceProvider: () -> OPDSFeedFetching
-  /// Identifiers of side-loaded books, resolved lazily on each `sync()`.
-  /// Side-loaded books are registered `.downloadSuccessful` but never appear
-  /// in the loans feed, so without this exemption `sync()`'s reconciliation
-  /// would un-register them AND delete their on-disk file every sync (the
+  /// Value-only account scope (god-class decomposition Wave 2b — the Book→Accounts
+  /// inversion). No `Account` / `AccountsManager` / `TPPUserAccount` type crosses
+  /// this boundary; the engine reads `currentAccountID`, credential presence, and
+  /// the loans URL through it, nothing more.
+  private let accountScope: any AccountScopeProviding
+  /// External collaborators — the download service, the loans-feed fetcher, the
+  /// sideload-exemption set, the registry-directory path rule, and the
+  /// availability-change hook. Each is resolved LAZILY by the composition root
+  /// (same deferred `AppContainer.production()` semantics the inline closures had,
+  /// now supplied from outside) so this package carries no edge to AppContainer,
+  /// downloads, accounts, settings, or NotificationService. The download-service
+  /// and loans-fetcher provider closures defer resolution because the download
+  /// center reads the registry back for its own defaults — resolving at construction
+  /// time (inside `TPPBookRegistry.init`, while the composition root is still
+  /// settling) would deadlock the init chain. Side-loaded books are registered
+  /// `.downloadSuccessful` but never appear in the loans feed, so
+  /// `dependencies.sideloadedIdentifiers()` exempts them from reconciliation (the
   /// load-bearing hazard in `docs/architecture/sideloading-plan.md`).
-  /// Immutable `let` (preserves the `@unchecked Sendable` invariant above);
-  /// resolved lazily via `AppContainer.production()` mirroring
-  /// `downloadCenterProvider` so construction inside `TPPBookRegistry.init`
-  /// does not re-enter the still-resolving `AppContainer._cached`.
-  private let sideloadedIDsProvider: () -> Set<String>
+  private let dependencies: RegistryExternalDependencies
   private let registryFolderName = "registry"
   private let registryFileName = "registry.json"
   /// Serial queue for disk writes — prevents out-of-order save races where a stale
@@ -87,29 +80,29 @@ final class BookRegistrySync: @unchecked Sendable {
     set { rebuildFlagLock.lock(); defer { rebuildFlagLock.unlock() }; _needsRebuildFromServer = newValue }
   }
 
-  /// Resolved-on-demand accessors. Tests may inject closures returning
-  /// fakes; production wires `AppContainer.production().downloadCenter`
-  /// (and the `.shared` OPDS feed service) at construction time.
-  private var downloadCenter: MyBooksDownloadCenter { downloadCenterProvider() }
-  private var opdsFeedService: OPDSFeedFetching { opdsFeedServiceProvider() }
+  /// Resolved-on-demand accessors. Tests inject fakes via `dependencies`;
+  /// production wires the live download center + OPDS feed service through the
+  /// composition root. Same lazy-resolution timing as before the extraction.
+  private var downloadService: any RegistryDownloadServicing { dependencies.downloadService() }
+  private var opdsFeedService: any OPDSFeedFetching { dependencies.loansFeedFetcher() }
 
   init(
     store: BookRegistryStore,
-    accountsManager: AccountsManager,
-    downloadCenterProvider: @escaping () -> MyBooksDownloadCenter,
-    opdsFeedServiceProvider: @escaping () -> OPDSFeedFetching,
-    sideloadedIDsProvider: @escaping () -> Set<String> = { AppContainer.production().sideloadedBookRegistry.identifiers }
+    accountScope: any AccountScopeProviding,
+    dependencies: RegistryExternalDependencies
   ) {
     self.store = store
-    self.accountsManager = accountsManager
-    self.downloadCenterProvider = downloadCenterProvider
-    self.opdsFeedServiceProvider = opdsFeedServiceProvider
-    self.sideloadedIDsProvider = sideloadedIDsProvider
+    self.accountScope = accountScope
+    self.dependencies = dependencies
     diskWriteQueue.setSpecific(key: diskWriteQueueKey, value: ())
   }
 
   func registryUrl(for account: String) -> URL? {
-    return TPPBookContentMetadataFilesHelper.directory(for: account)?
+    // The `TPPAccountUUIDs[0]` root-vs-subdir path-layout rule + error logging
+    // lives app-side behind `dependencies.registryDirectory` (god-class decomp
+    // Wave 2b) — the resolved file path is byte-identical (pinned by the migration
+    // tests).
+    return dependencies.registryDirectory(account)?
       .appendingPathComponent(registryFolderName)
       .appendingPathComponent(registryFileName)
   }
@@ -119,7 +112,7 @@ final class BookRegistrySync: @unchecked Sendable {
     setState: @escaping (TPPBookRegistry.RegistryState) -> Void,
     completion: (() -> Void)? = nil
   ) {
-    guard let account = account ?? accountsManager.currentAccountId,
+    guard let account = account ?? accountScope.currentAccountID,
           let url = registryUrl(for: account)
     else {
       completion?()
@@ -218,7 +211,7 @@ final class BookRegistrySync: @unchecked Sendable {
           // as .downloadSuccessful: flip to .downloadNeeded and schedule
           // auto-restart.
           if record.state == .downloading || record.state == .SAMLStarted || record.state == .downloadSuccessful || record.state == .downloadNeeded || record.state == .used {
-            let fileExists = self.checkIfBookFileExists(for: record.book, account: account)
+            let fileExists = self.downloadService.contentFileSatisfied(for: record.book, account: account)
 
             if record.state == .downloading {
               if fileExists {
@@ -268,23 +261,19 @@ final class BookRegistrySync: @unchecked Sendable {
                 record.state = .downloadNeeded
                 orphanedBooksNeedingRedownload.append(record.book)
               } else {
-                #if LCP
-                // LCP audiobooks pass checkIfBookFileExists as soon as the .lcpl
+                // LCP audiobooks pass `contentFileSatisfied` as soon as the .lcpl
                 // license exists (playable via streaming). If the .lcpa content
                 // file is missing, schedule a silent background re-download so
                 // subsequent opens use the local copy instead of ranged reads
-                // from GCS (PP-3704).
-                if LCPAudiobooks.canOpenBook(record.book),
-                   let bookURL = downloadCenter.fileUrl(for: record.book, account: account),
-                   !FileManager.default.fileExists(atPath: bookURL.path) {
+                // from GCS (PP-3704). The `#if LCP` / `LCPAudiobooks` probe now
+                // lives app-side behind `lcpContentFileMissing` — SPM targets do
+                // not inherit the app's LCP define (noDRM returns false → no-op).
+                if self.downloadService.lcpContentFileMissing(for: record.book, account: account) {
                   Log.warn(#file, "  '\(record.book.title)' LCP audiobook playable via streaming but .lcpa MISSING - scheduling background re-download")
                   lcpBooksNeedingBackgroundRedownload.append(record.book)
                 } else {
                   Log.debug(#file, "  '\(record.book.title)' downloaded and file verified")
                 }
-                #else
-                Log.debug(#file, "  '\(record.book.title)' downloaded and file verified")
-                #endif
               }
             }
 
@@ -341,7 +330,9 @@ final class BookRegistrySync: @unchecked Sendable {
         // re-checks that the account that ran the load is still current before
         // firing downloads — switching libraries during the wait would otherwise
         // kick off a re-download with the wrong auth context.
-        #if LCP
+        // The `#if LCP` gate is gone: on noDRM `lcpContentFileMissing` always
+        // returns false, so `lcpBooksNeedingBackgroundRedownload` is empty and
+        // this block no-ops — behavior-identical across build flavors.
         if !lcpBooksNeedingBackgroundRedownload.isEmpty {
           Log.info(#file, "  Scheduling background .lcpa re-download for \(lcpBooksNeedingBackgroundRedownload.count) orphaned LCP audiobook(s)")
           // Capture an immutable `let` snapshot in the capture list: the
@@ -352,30 +343,29 @@ final class BookRegistrySync: @unchecked Sendable {
           // snapshot array is a Sendable value. Mirrors the DLNavigator
           // "capture an immutable copy before the closure" pattern.
           let lcpRedownloadSnapshot = lcpBooksNeedingBackgroundRedownload
-          DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [accountsManager, downloadCenter, lcpRedownloadSnapshot] in
-            guard accountsManager.currentAccountId == loadedAccount else {
+          DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [accountScope, downloadService, lcpRedownloadSnapshot] in
+            guard accountScope.currentAccountID == loadedAccount else {
               Log.info(#file, "  Skipping LCP background re-download — account changed during wait")
               return
             }
             for book in lcpRedownloadSnapshot {
-              downloadCenter.redownloadLCPContentFile(for: book)
+              downloadService.redownloadLCPContentFile(for: book)
             }
           }
         }
-        #endif
 
         if !orphanedBooksNeedingRedownload.isEmpty {
           Log.info(#file, "  Scheduling auto-restart for \(orphanedBooksNeedingRedownload.count) orphaned download(s)")
           // Immutable `let` snapshot captured in the list — see the LCP branch
           // above for the same `sending`-mutable-var rationale.
           let orphanRedownloadSnapshot = orphanedBooksNeedingRedownload
-          DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) { [accountsManager, downloadCenter, orphanRedownloadSnapshot] in
-            guard accountsManager.currentAccountId == loadedAccount else {
+          DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) { [accountScope, downloadService, orphanRedownloadSnapshot] in
+            guard accountScope.currentAccountID == loadedAccount else {
               Log.info(#file, "  Skipping orphan auto-restart — account changed during wait")
               return
             }
             for book in orphanRedownloadSnapshot {
-              downloadCenter.startDownload(for: book)
+              downloadService.startDownload(for: book)
             }
           }
         }
@@ -406,8 +396,7 @@ final class BookRegistrySync: @unchecked Sendable {
     // libraries while the feed fetch is in flight, we persist the result to
     // the account that was syncing — not the one that happens to be current
     // when the save commits (PP-4129 regression).
-    guard let currentAccount = accountsManager.currentAccount else { return }
-    let accountUUID = currentAccount.uuid
+    guard let accountUUID = accountScope.currentAccountID else { return }
 
     // Skip the loans fetch when no credentials are stored for the current
     // account. The `loansUrl` from the OPDS auth document is only useful
@@ -423,8 +412,7 @@ final class BookRegistrySync: @unchecked Sendable {
     //
     // Discovered by chaos-qa dogfood-3 → F-007 (PP-4164).
     // Refined by chaos-qa dogfood-4 → F-DG4-001.
-    let userAccount = TPPUserAccount.sharedAccount(libraryUUID: accountUUID)
-    if !userAccount.hasCredentials() {
+    if !accountScope.hasCredentials(forAccount: accountUUID) {
       Log.debug(#file, "Skipping loans sync — no credentials for account \(accountUUID)")
       setState(.loaded)
       completion?(nil, false)
@@ -454,21 +442,20 @@ final class BookRegistrySync: @unchecked Sendable {
       // to `.loaded` (BookRegistrySync's own retry policy from
       // `waitForLoadThenRunSync` / account-change notifications drives the
       // next attempt — per the ADR's "no additional timeout" UX policy).
-      let details: AccountDetails
+      let loansUrl: URL
       do {
-        details = try await currentAccount.awaitReady()
+        guard let resolvedLoansUrl = try await accountScope.loansURL(forAccount: accountUUID) else {
+          Log.debug(#file, "BookRegistrySync abort: account \(accountUUID) has no loansUrl after awaitReady — anonymous library")
+          await MainActor.run {
+            callbacks.setState(.loaded)
+            self.syncUrl = nil
+            callbacks.completion?(nil, false)
+          }
+          return
+        }
+        loansUrl = resolvedLoansUrl
       } catch {
         Log.warn(#file, "BookRegistrySync abort: awaitReady failed for \(accountUUID): \(error)")
-        await MainActor.run {
-          callbacks.setState(.loaded)
-          self.syncUrl = nil
-          callbacks.completion?(nil, false)
-        }
-        return
-      }
-
-      guard let loansUrl = details.loansUrl else {
-        Log.debug(#file, "BookRegistrySync abort: account \(accountUUID) has no loansUrl after awaitReady — anonymous library")
         await MainActor.run {
           callbacks.setState(.loaded)
           self.syncUrl = nil
@@ -511,7 +498,7 @@ final class BookRegistrySync: @unchecked Sendable {
           // Side-loaded books never appear in the loans feed. Exempt them so
           // reconciliation neither un-registers them (:480-481) nor deletes
           // their on-disk content (:496-497). See sideloading-plan.md R1.
-          recordsToDelete.subtract(sideloadedIDsProvider())
+          recordsToDelete.subtract(dependencies.sideloadedIdentifiers())
           for entry in feed.entries {
             guard let opdsEntry = entry as? TPPOPDSEntry,
                   let book = TPPBook(entry: opdsEntry)
@@ -527,7 +514,7 @@ final class BookRegistrySync: @unchecked Sendable {
                   ready: { _ in nextState = .holding }
                 )
               }
-              NotificationService.compareAvailability(cachedRecord: record, andNewBook: book)
+              dependencies.onAvailabilityChange(record, book)
               // Preserve metadata already in the registry if the loans feed's
               // entry for this book came back lean (authors / summary /
               // categories missing). The CM's loans endpoint has been observed
@@ -602,7 +589,7 @@ final class BookRegistrySync: @unchecked Sendable {
         // overload so the call never re-enters the registry to look up the book
         // by identifier (the record is already gone at this point anyway).
         for book in booksToDeleteLocally {
-          downloadCenter.deleteLocalContent(forBook: book, account: accountUUID)
+          downloadService.deleteLocalContent(forBook: book, account: accountUUID)
         }
 
         if changesMade {
@@ -669,7 +656,7 @@ final class BookRegistrySync: @unchecked Sendable {
         if !FileManager.default.fileExists(atPath: directoryURL.path) {
           try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
         }
-        directoryURL.excludeFromBackup()
+        directoryURL.registryExcludeFromBackup()
         let registryData = try JSONSerialization.data(withJSONObject: payload.value, options: .fragmentsAllowed)
         // Refresh the last-good `.bak` BEFORE overwriting the primary, but only
         // for a good snapshot (non-empty, or a server-authoritative empty) so a
@@ -729,7 +716,7 @@ final class BookRegistrySync: @unchecked Sendable {
         if !FileManager.default.fileExists(atPath: directoryURL.path) {
           try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
         }
-        directoryURL.excludeFromBackup()
+        directoryURL.registryExcludeFromBackup()
         let registryData = try JSONSerialization.data(withJSONObject: registryObject, options: .fragmentsAllowed)
         if !isEmpty {
           try? RegistryFileRecovery.writeBackup(data: registryData, for: registryUrl)
@@ -751,14 +738,32 @@ final class BookRegistrySync: @unchecked Sendable {
     }
   }
 
+  // MARK: - Test-only deterministic-join seam
+
+  /// Test-only: drain any pending async disk writes enqueued by `save(for:)`.
+  ///
+  /// `diskWriteQueue` is serial, so a trailing `async` block resumes STRICTLY
+  /// AFTER every previously-enqueued write block has finished flushing to disk
+  /// (and enqueued its main-hop `.TPPBookRegistryDidChange` post) — including a
+  /// refused INV-1 empty save, whose block runs and returns without writing.
+  /// Bounded by construction: no `wait(for:)` deadline, no sleep/poll/clock.
+  /// Mirrors `BookRegistryStore._awaitPendingWritesForTesting`. Production never
+  /// calls it — it is a deterministic replacement for a `.TPPBookRegistryDidChange`
+  /// deadline wait in the persistence contract tests (STARVE-001).
+  func _awaitPendingDiskWritesForTesting() async {
+    await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+      diskWriteQueue.async { cont.resume() }
+    }
+  }
+
   func validateDownloadedContent() {
-    guard let account = accountsManager.currentAccount?.uuid else { return }
+    guard let account = accountScope.currentAccountID else { return }
 
     var didChange = false
     store.mutateRegistrySync { registry in
       for (identifier, record) in registry {
         guard record.state == .downloadSuccessful || record.state == .used else { continue }
-        let fileExists = self.checkIfBookFileExists(for: record.book, account: account)
+        let fileExists = self.downloadService.contentFileSatisfied(for: record.book, account: account)
         if !fileExists {
           Log.warn(#file, "Post-update validation: '\(record.book.title)' file missing - marking as downloadNeeded")
           registry[identifier]?.state = .downloadNeeded
@@ -802,28 +807,13 @@ final class BookRegistrySync: @unchecked Sendable {
     return localCount >= 1 && feedCount == 0 && deletionCount > 0
   }
 
+  /// Thin delegate over the `contentFileSatisfied` seam (god-class decomp Wave 2b):
+  /// the app-side adapter owns the `#if LCP` license-vs-content probe that used to
+  /// live here — the SPM package never sees the `LCP` compilation condition. Kept as
+  /// an internal method so the white-box `BookRegistrySyncTests` continue to exercise
+  /// this call path through an injected download service.
   func checkIfBookFileExists(for book: TPPBook, account: String) -> Bool {
-    guard let bookURL = downloadCenter.fileUrl(for: book, account: account) else {
-      return false
-    }
-
-    let fileExists = FileManager.default.fileExists(atPath: bookURL.path)
-
-    #if LCP
-    if LCPAudiobooks.canOpenBook(book) {
-      let licenseURL = bookURL.deletingPathExtension().appendingPathExtension("lcpl")
-      let licenseExists = FileManager.default.fileExists(atPath: licenseURL.path)
-
-      if licenseExists {
-        Log.debug(#file, "  LCP audiobook license file exists (content file: \(fileExists ? "yes" : "streaming-only"))")
-        return true
-      }
-
-      return fileExists
-    }
-    #endif
-
-    return fileExists
+    return downloadService.contentFileSatisfied(for: book, account: account)
   }
 }
 
@@ -869,8 +859,9 @@ private struct LoadCallbacks: @unchecked Sendable {
 /// `TPPBookRegistryAsync.swift` can box the same error-document shape when it
 /// crosses the `@MainActor processLoansSync` / continuation boundaries, rather
 /// than each site minting its own near-identical carrier.
-struct SendableErrorDocument: @unchecked Sendable {
-  let value: [AnyHashable: Any]?
+public struct SendableErrorDocument: @unchecked Sendable {
+  public let value: [AnyHashable: Any]?
+  public init(value: [AnyHashable: Any]?) { self.value = value }
 }
 
 /// Sendable carrier for the JSON registry payload that `save(for:)` hands to the

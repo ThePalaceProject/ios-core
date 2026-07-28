@@ -20,6 +20,7 @@
 import XCTest
 @testable import Palace
 import PalaceBookModel
+@testable import PalaceBookRegistry
 
 @MainActor
 final class MyBooksDownloadCenterConcurrencyTests: XCTestCase {
