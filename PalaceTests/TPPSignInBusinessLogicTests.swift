@@ -389,94 +389,177 @@ class TPPSignInBusinessLogicTests: XCTestCase {
     // AppContainer.production().networkExecutor can't be made to hang in a unit
     // test.
 
-    func testBoundedCompletion_operationNeverCompletes_firesTimeoutValueAfterTimeout() {
+    func testBoundedCompletion_operationNeverCompletes_firesTimeoutValueAfterTimeout() async {
         // The wedge: the operation NEVER calls its completion (dropped auth-doc
         // fetch). boundedCompletion must still fire completion(timeoutValue).
-        let done = expectation(description: "completion fires despite a hung operation")
-        var received: Bool?
         var onTimeoutFired = false
         let start = Date()
 
-        TPPSignInBusinessLogic.boundedCompletion(
-            timeout: 0.3,
-            timeoutValue: false,
-            onTimeout: { onTimeoutFired = true },
-            operation: { _ in /* never calls the completion — wedged */ },
-            completion: { value in received = value; done.fulfill() }
-        )
+        // Await the real completion — no test-side deadline. A fixed
+        // `wait(for:timeout:)` here races the SUT's own 0.3s timer and starves
+        // under parallel CI sim clones (STARVE-001); the continuation resumes
+        // whenever the seam actually fires.
+        let received: Bool = await withCheckedContinuation { continuation in
+            TPPSignInBusinessLogic.boundedCompletion(
+                timeout: 0.3,
+                timeoutValue: false,
+                onTimeout: { onTimeoutFired = true },
+                operation: { _ in /* never calls the completion — wedged */ },
+                completion: { value in continuation.resume(returning: value) }
+            )
+        }
 
-        wait(for: [done], timeout: 2.0)
         let elapsed = Date().timeIntervalSince(start)
-        XCTAssertEqual(received, false, "a hung operation must surface the timeoutValue (false) so borrow retries")
+        XCTAssertFalse(received, "a hung operation must surface the timeoutValue (false) so borrow retries")
         XCTAssertTrue(onTimeoutFired, "onTimeout hook must fire on the timeout path")
+        // Lower bound only. It is starvation-safe (a starved host makes the wait
+        // LONGER, never shorter) and still kills the mutant that fires the
+        // timeout immediately. An upper bound would be a wall-clock deadline in
+        // disguise — the thing STARVE-001 exists to remove.
         XCTAssertGreaterThanOrEqual(elapsed, 0.25, "must actually wait ~the timeout before giving up")
-        XCTAssertLessThan(elapsed, 1.5, "must not exceed the bound by a wide margin")
     }
 
-    func testBoundedCompletion_operationCompletesFast_firesRealValue_andNeverDoubleFires() {
+    func testBoundedCompletion_operationCompletesFast_firesRealValue_andNeverDoubleFires() async {
         // Happy path: the operation calls back quickly with the real value. The
         // timeout must NOT steal the result, and must NOT double-fire completion
         // after the timeout deadline passes.
-        let done = expectation(description: "completion fires with the real value")
+        // Delivery is now guaranteed on the main actor, so plain vars suffice —
+        // no lock needed to read what the completion wrote.
         var receivedValues: [Bool] = []
         var onTimeoutFired = false
-        let lock = NSLock()
+        var timer: DispatchWorkItem?
 
-        TPPSignInBusinessLogic.boundedCompletion(
-            timeout: 0.3,
-            timeoutValue: false,
-            onTimeout: { onTimeoutFired = true },
-            operation: { op in
-                DispatchQueue.global().async { op(true) } // real success, fast
-            },
-            completion: { value in
-                lock.lock(); receivedValues.append(value); lock.unlock()
-                done.fulfill()
-            }
-        )
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            var resumed = false
+            timer = TPPSignInBusinessLogic.boundedCompletion(
+                timeout: 0.3,
+                timeoutValue: false,
+                onTimeout: { onTimeoutFired = true },
+                operation: { op in
+                    DispatchQueue.global().async { op(true) } // real success, fast
+                },
+                completion: { value in
+                    receivedValues.append(value)
+                    // Resume once: a double-fire must surface as a failed
+                    // assertion on `receivedValues`, not as a continuation crash.
+                    if !resumed { resumed = true; continuation.resume() }
+                }
+            )
+        }
 
-        wait(for: [done], timeout: 1.0)
+        // Join the LOSING racer instead of sleeping past its deadline: `notify`
+        // fires once the timeout work item has run or reached its deadline
+        // cancelled, so this is deterministic under any CI load (STARVE-001).
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            timer?.notify(queue: .main) { continuation.resume() }
+        }
 
-        // Wait PAST the timeout deadline to prove the cancelled timer can't
-        // double-fire the completion.
-        let settle = expectation(description: "settle past the timeout deadline")
-        DispatchQueue.global().asyncAfter(deadline: .now() + 0.6) { settle.fulfill() }
-        wait(for: [settle], timeout: 2.0)
-
-        lock.lock(); let values = receivedValues; lock.unlock()
-        XCTAssertEqual(values, [true],
-                       "completion must fire exactly once with the real value; got \(values)")
+        XCTAssertEqual(receivedValues, [true],
+                       "completion must fire exactly once with the real value; got \(receivedValues)")
         XCTAssertFalse(onTimeoutFired,
                        "onTimeout must NOT fire when the operation completed before the deadline")
     }
 
-    func testBoundedCompletion_zeroTimeout_stillFiresExactlyOnce() {
+    func testBoundedCompletion_zeroTimeout_stillFiresExactlyOnce() async throws {
         // Edge: a zero timeout must not crash (max(0,timeout)) and must still
         // deliver exactly one completion — either the racing operation's value
-        // or the timeoutValue, never both.
-        let done = expectation(description: "completion fires exactly once at zero timeout")
-        done.assertForOverFulfill = true
+        // or the timeoutValue, never both. At `timeout: 0` the timer wins and
+        // the operation callback is the LOSER, so the mutant this test kills is
+        // a broken `TPPOnceGuard` letting the loser fire a second completion.
         var count = 0
-        let lock = NSLock()
+        // Signals that the losing racer has finished AND that any (incorrectly
+        // un-guarded) second delivery it queued has already run — see below.
+        let loserSettled = AsyncBlocker()
 
-        TPPSignInBusinessLogic.boundedCompletion(
-            timeout: 0,
-            timeoutValue: false,
-            operation: { op in
-                DispatchQueue.global().asyncAfter(deadline: .now() + 0.05) { op(true) }
-            },
-            completion: { _ in
-                lock.lock(); count += 1; lock.unlock()
-                done.fulfill()
-            }
-        )
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            var resumed = false
+            TPPSignInBusinessLogic.boundedCompletion(
+                timeout: 0,
+                timeoutValue: false,
+                operation: { op in
+                    DispatchQueue.global().asyncAfter(deadline: .now() + 0.05) {
+                        op(true)
+                        // `op` delivers via `Task { @MainActor in … }`. Enqueue
+                        // the signal on the SAME actor immediately afterwards:
+                        // the main actor drains its jobs in order, so by the
+                        // time this runs, a second delivery (if the guard were
+                        // broken) has already incremented `count`. That is the
+                        // deterministic replacement for the old 0.2s settle
+                        // sleep, which only *hoped* the second fire had landed.
+                        Task { @MainActor in await loserSettled.unblock() }
+                    }
+                },
+                completion: { _ in
+                    count += 1
+                    if !resumed { resumed = true; continuation.resume() }
+                }
+            )
+        }
 
-        wait(for: [done], timeout: 1.0)
-        // Let any (incorrectly un-guarded) second fire land before asserting.
-        let settle = expectation(description: "settle")
-        DispatchQueue.global().asyncAfter(deadline: .now() + 0.2) { settle.fulfill() }
-        wait(for: [settle], timeout: 1.0)
-        lock.lock(); let final = count; lock.unlock()
-        XCTAssertEqual(final, 1, "exactly-once must hold even when both racers are ready near-simultaneously")
+        try await loserSettled.wait()
+        XCTAssertEqual(count, 1, "exactly-once must hold even when both racers are ready near-simultaneously")
+    }
+
+    // MARK: - boundedCompletion: main-actor delivery contract
+    //
+    // `TPPSignInBusinessLogic` is `@MainActor`, so a closure literal written by
+    // ANY caller — production or test — inherits main-actor isolation. Both of
+    // `boundedCompletion`'s racers fire off-main (the timeout `DispatchWorkItem`
+    // on `timerQueue` = `.global()`; the operation callback on the URLSession
+    // delegate queue, since `TPPNetworkExecutor` uses `delegateQueue: nil`).
+    // Invoking a main-actor-isolated closure off-main is Swift 6's
+    // `swift_task_checkIsolated` SIGTRAP — it kills the test host and, in
+    // production, the app. These two tests pin the delivery isolation for BOTH
+    // racers; drop the main-actor hop in `boundedCompletion` and they crash.
+
+    func testBoundedCompletion_timeoutRacerWins_deliversOnMainActor() async {
+        // Wedged operation → the timeout `DispatchWorkItem` wins from `.global()`.
+        var onTimeoutWasOnMain: Bool?
+        var completionWasOnMain: Bool?
+
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            TPPSignInBusinessLogic.boundedCompletion(
+                timeout: 0.1,
+                timeoutValue: false,
+                onTimeout: { onTimeoutWasOnMain = Thread.isMainThread },
+                operation: { _ in /* never calls back — the timer racer wins */ },
+                completion: { _ in
+                    completionWasOnMain = Thread.isMainThread
+                    continuation.resume()
+                }
+            )
+        }
+
+        XCTAssertEqual(onTimeoutWasOnMain, true,
+                       "onTimeout must be delivered on the main actor, not on the timer queue")
+        XCTAssertEqual(completionWasOnMain, true,
+                       "completion must be delivered on the main actor, not on the timer queue")
+    }
+
+    func testBoundedCompletion_operationRacerWinsOffMain_deliversOnMainActor() async {
+        // The other racer: the operation calls back from a global queue, exactly
+        // as the real auth-doc GET does.
+        var completionWasOnMain: Bool?
+        var receivedValue: Bool?
+
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            TPPSignInBusinessLogic.boundedCompletion(
+                timeout: 5.0,
+                timeoutValue: false,
+                operation: { op in
+                    DispatchQueue.global().async { op(true) }
+                },
+                completion: { value in
+                    completionWasOnMain = Thread.isMainThread
+                    receivedValue = value
+                    continuation.resume()
+                }
+            )
+        }
+
+        XCTAssertEqual(completionWasOnMain, true,
+                       "completion must be delivered on the main actor even though the operation called back off-main")
+        XCTAssertEqual(receivedValue, true,
+                       "the operation's real value must survive the hop to the main actor")
     }
 }

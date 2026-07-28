@@ -1489,7 +1489,7 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
     ///
     /// Kill case: removing the staleness check (always deduping) makes this
     /// observe `completion(true)` + `.detailsLoading` and fail.
-    func testWedgedInflightAuthDoc_stale_isReclaimedAndRefired() {
+    func testWedgedInflightAuthDoc_stale_isReclaimedAndRefired() async {
         let account = makeNoAuthDocAccount(uuidHint: "wedge")
         XCTAssertNil(account.authenticationDocumentUrl,
                      "setup: account must have no auth-doc URL so the fetch fails deterministically")
@@ -1506,14 +1506,15 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
         XCTAssertTrue(manager._inflightAuthDocContainsForTesting(uuid: account.uuid),
                       "setup: stale in-flight entry seeded")
 
-        let exp = expectation(description: "fetch completes")
-        var receivedSuccess: Bool?
-        manager.fetchAuthDocumentWithStateMachine(for: account) { success in
-            receivedSuccess = success
-            exp.fulfill()
+        // Join the fetch's own completion — it always fires, so there is nothing
+        // to bound; a fixed deadline just starves under parallel sim clones
+        // (STARVE-001).
+        let receivedSuccess: Bool = await withCheckedContinuation { continuation in
+            manager.fetchAuthDocumentWithStateMachine(for: account) { success in
+                continuation.resume(returning: success)
+            }
         }
-        wait(for: [exp], timeout: 3.0)
-        drainMainQueue()
+        await drainMainQueueAsync()
 
         // Re-fired (not deduped): the no-URL fetch failed → completion(false).
         XCTAssertEqual(receivedSuccess, false,
@@ -1536,7 +1537,7 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
     /// DEDUPE — the second caller returns `completion(true)` WITHOUT re-firing,
     /// leaving the account at `.detailsLoading` (the genuine concurrent-fetch
     /// case). Proves the reclaim is gated on staleness, not unconditional.
-    func testInflightAuthDoc_recent_dedupes_doesNotRefire() {
+    func testInflightAuthDoc_recent_dedupes_doesNotRefire() async {
         let account = makeNoAuthDocAccount(uuidHint: "recent")
         let manager = makeFreshAccountsManager()
 
@@ -1545,26 +1546,28 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
         manager._seedInflightAuthDocForTesting(uuid: account.uuid, age: 1)
 
         // Subscribe: any emission after the initial value proves a re-fire.
+        // Join the stream's FIRST emission through a continuation rather than
+        // racing a fixed deadline against the AsyncStream (STARVE-001).
         var emissionsAfterInitial: [String] = []
-        let initial = expectation(description: "stream emits initial value")
-        let streamTask = Task {
+        var streamTask: Task<Void, Never>?
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             var isFirst = true
-            for await state in account.stateStream {
-                if isFirst { isFirst = false; initial.fulfill(); continue }
-                emissionsAfterInitial.append(self.label(state))
+            streamTask = Task {
+                for await state in account.stateStream {
+                    if isFirst { isFirst = false; continuation.resume(); continue }
+                    emissionsAfterInitial.append(self.label(state))
+                }
             }
         }
-        wait(for: [initial], timeout: 1.0)
 
-        let exp = expectation(description: "second caller completes")
-        var receivedSuccess: Bool?
-        manager.fetchAuthDocumentWithStateMachine(for: account) { success in
-            receivedSuccess = success
-            exp.fulfill()
+        // Same for the fetch: its completion always fires, so join it directly.
+        let receivedSuccess: Bool = await withCheckedContinuation { continuation in
+            manager.fetchAuthDocumentWithStateMachine(for: account) { success in
+                continuation.resume(returning: success)
+            }
         }
-        wait(for: [exp], timeout: 2.0)
-        drainMainQueue()
-        streamTask.cancel()
+        await drainMainQueueAsync()
+        streamTask?.cancel()
 
         XCTAssertEqual(receivedSuccess, true,
                        "a RECENT in-flight fetch must dedupe (completion true), not re-fire")
