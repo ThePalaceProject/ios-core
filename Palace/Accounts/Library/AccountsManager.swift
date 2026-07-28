@@ -2189,10 +2189,11 @@ extension AccountsManager {
     ///
     /// This is the COOPERATIVE cancel — it returns immediately. The SYNCHRONOUS
     /// `cancelAndDrainBackgroundWork()` (which `_resetForTesting()` actually
-    /// calls at every boundary) awaits the full owned set, closing the residual
-    /// window below. Kept for the idempotent/observation-surface tests.
+    /// calls at every boundary) awaits the full owned set, which drains the
+    /// previously un-awaitable fallback-GET channel. Kept for the
+    /// idempotent/observation-surface tests.
     ///
-    /// Residual race window (now CLOSED by the drain): if `loadCatalogs` is
+    /// Residual race window (NARROWED to one boundary): if `loadCatalogs` is
     /// already past the post-await `Task.isCancelled` check inside
     /// `fetchFromNetwork`, the network response still lands in `accountSets`
     /// on the OLD AccountsManager instance — but the OLD instance is no

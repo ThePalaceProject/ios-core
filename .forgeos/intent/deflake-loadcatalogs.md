@@ -35,8 +35,8 @@ behavior-identical; only ownership/cancellability/test-joinability change.
 
 - does NOT change what the crawl does (same registry crawl, pagination, preload, snapshot bytes, `.TPPCatalogDidLoad` posts, stale-while-revalidate branch order)
 - does NOT change the public surface of `AccountsManager` beyond the defaulted `crawlScheduler` init param and the two new test-only seams (all 159 existing `AccountsManager(` constructions compile unchanged)
-- does NOT remove or rename the existing observation surfaces (`_backgroundFetchTaskWasExplicitlyCancelled`, `_backgroundFetchTaskHandleIsNil`, `_injectBackgroundFetchTaskForTesting`, `fetchFromNetworkCountForTesting`, `_awaitAllCrawlTasksForTesting`, `deferInitialLoadCatalogsForTesting`)
-- does NOT remove `deferInitialLoadCatalogsForTesting`
+- keeps the existing observation surfaces unchanged in name and semantics (`_backgroundFetchTaskWasExplicitlyCancelled`, `_backgroundFetchTaskHandleIsNil`, `_injectBackgroundFetchTaskForTesting`, `fetchFromNetworkCountForTesting`, `_awaitAllCrawlTasksForTesting`, `deferInitialLoadCatalogsForTesting`)
+- keeps `deferInitialLoadCatalogsForTesting` (not deleted)
 - does NOT touch Wave-3 seams (S1 breaker inversion, S2 download protocols, S3 de-locatoring); `networkExecutor` lazy var stays as-is
 - does NOT change `AppContainer._resetForTesting`'s structure (comment-only update)
 

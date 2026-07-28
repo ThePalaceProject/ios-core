@@ -786,7 +786,7 @@ struct AppContainer: @unchecked Sendable {
     ///      (`AppContainerResetTests`); the safe default between tests is
     ///      `true`, matching `PalaceTestSetup.bootstrap()`.
     ///
-    /// Residual race window (NOW CLOSED — PP-4754):
+    /// Residual race window (NARROWED — PP-4754):
     /// Step 2 no longer relies on cooperative cancellation alone. Every
     /// background crawl Task — including the previously un-drainable fallback
     /// GET completions — is now OWNED by `AccountsManager.ownedCrawlTasks`, and
@@ -794,8 +794,13 @@ struct AppContainer: @unchecked Sendable {
     /// full owned set before returning. So a `fetchFromNetwork` Task mid-await
     /// on `crawler.crawlFirstPage` is drained to completion (its post-await
     /// `Task.isCancelled` guard drops the write) inside this boundary rather
-    /// than landing on the OLD instance a few ms later. The next test gets a
-    /// clean `production()` graph with no in-flight crawl surviving the reset.
+    /// than landing on the OLD instance a few ms later. The one remaining
+    /// window: a crawl that passes its `Task.isCancelled` guard concurrently
+    /// with the cancel can spawn a successor (pagination/preload) that is
+    /// neither in the drained snapshot nor yet cancelled — it is caught at the
+    /// NEXT boundary by `_drainAllLiveInstancesForTesting()`. Strictly narrower
+    /// than the pre-change fire-and-forget behavior; no write survives past that
+    /// next boundary's store reset.
     ///
     /// swarm_4b64e4e0 Fix 2 — DEBUG-only test seam. Not callable from
     /// production code (compile-time gated). The function is `internal` so

@@ -55,6 +55,26 @@ final class CatalogCrawlSchedulerTests: XCTestCase {
                        "register must skip a token already tombstoned by an earlier complete — else a finished task leaks forever")
     }
 
+    /// Completing a LIVE token must not leave a spurious tombstone — a later
+    /// re-registration of that token must succeed. Kills the mutant that flips
+    /// `complete`'s `tasks.removeValue(...) == nil` to `!= nil` (which would
+    /// tombstone a token it just successfully removed, silently dropping a
+    /// subsequent registration of that token).
+    func test_completeOfLiveToken_leavesNoTombstoneForReuse() {
+        let registry = OwnedCrawlTaskRegistry()
+        let token = UUID()
+
+        registry.register(token, Task<Void, Never> {})
+        registry.complete(token)               // removes the live task
+        XCTAssertEqual(registry.count, 0)
+
+        // Re-registering the same token must succeed — a spurious tombstone from
+        // the mutated `complete` would make this insert be skipped.
+        registry.register(token, Task<Void, Never> {})
+        XCTAssertEqual(registry.count, 1,
+                       "complete() of a live token must not leave a tombstone that blocks re-registration")
+    }
+
     /// Two distinct tokens are tracked independently — completing one does not
     /// prune the other. Guards against a mutant that clears the whole map on any
     /// completion.

@@ -128,14 +128,51 @@ final class AccountsManagerCatalogLoadJoinTests: PalaceWiringTestCase {
         // fallback GET is actually owned when we drain — the join is the
         // deterministic barrier that guarantees it spawned.
         await manager._awaitCatalogLoadForTesting()
-        XCTAssertTrue(recorder.spawns.contains(.init(priority: .utility, detached: true)),
-                      "sanity: the fallback GET was spawned as an owned task")
+        // Positional (not `.contains`, which the first-run spawn's identical
+        // signature would also satisfy): the 3rd spawn IS the fallback GET.
+        let spawns = recorder.spawns
+        XCTAssertGreaterThanOrEqual(spawns.count, 3, "sanity: first-run + crawl + fallback GET all spawned")
+        XCTAssertEqual(spawns[2], .init(priority: .utility, detached: true),
+                       "sanity: the 3rd spawn is the owned fallback GET")
 
         // The synchronous drain must leave nothing live — a fire-and-forget
         // fallback completion (the pre-fix behavior) would survive this.
         manager.cancelAndDrainBackgroundWork()
         XCTAssertEqual(manager._ownedCrawlTaskCountForTesting, 0,
                        "cancelAndDrainBackgroundWork must leave the owned set empty — the wrapped fallback GET is drained, not leaked")
+    }
+
+    // MARK: - 4. Live-drain arm: an in-flight owned task is awaited by the drain
+
+    /// Exercises the LIVE drain arm directly (not the join-first path): a crawl
+    /// task held in-flight on a cancellation-aware gate is snapshotted by
+    /// `cancelAndDrainBackgroundWork`, cancelled, and awaited to completion — so
+    /// the owned set is empty on return. A drain that skipped the await (or
+    /// never cancelled) would leave the gated task live. The gate resumes on
+    /// cancellation, so no wall-clock is involved.
+    func testCancelAndDrain_awaitsInFlightGatedOwnedTask() async throws {
+        let snapshotURL = try writeStubSnapshot()
+        let resolver = StubSnapshotResolver(snapshotURL: snapshotURL)
+        let gate = SpawnGate()
+
+        let manager = makeFreshAccountsManager(
+            defaults: isolatedDefaults(),
+            crawlScheduler: gate.scheduler()
+        ) {
+            $0.snapshotResourceResolver = resolver
+        }
+
+        manager.loadCatalogs(completion: nil)
+        // The first-run task is registered synchronously by spawnOwnedCrawlTask
+        // and immediately suspends on the gate → in-flight, before doing any work.
+        XCTAssertGreaterThanOrEqual(manager._ownedCrawlTaskCountForTesting, 1,
+                                    "an owned crawl task must be in-flight (gated) before the drain")
+
+        // Drain: snapshot (non-empty) → cancel (the gate resumes on cancellation)
+        // → await to completion. Must return with the owned set empty.
+        manager.cancelAndDrainBackgroundWork()
+        XCTAssertEqual(manager._ownedCrawlTaskCountForTesting, 0,
+                       "cancelAndDrainBackgroundWork must cancel + await the in-flight owned task, not return while it is still live")
     }
 }
 
@@ -149,6 +186,59 @@ private final class StubSnapshotResolver: BundleResourceResolving, @unchecked Se
         guard name == BundledRegistrySnapshot.resourceName,
               ext == BundledRegistrySnapshot.resourceExtension else { return nil }
         return snapshotURL
+    }
+}
+
+/// A `CrawlTaskScheduler` that suspends every spawned op on a cancellation-aware
+/// gate BEFORE it runs, so a test can hold an owned task in-flight and then
+/// exercise the live drain arm. The gate resumes when the surrounding task is
+/// cancelled (via `withTaskCancellationHandler`), so `cancelAndDrainBackgroundWork`
+/// unblocks + drains it with no wall-clock wait.
+private final class SpawnGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuations: [CheckedContinuation<Void, Never>] = []
+    private var opened = false
+
+    func scheduler() -> CrawlTaskScheduler {
+        // Suspend on the gate, then ALWAYS run `op` — it is the registry's
+        // self-pruning wrapper (`defer { complete(token) }` around the real crawl
+        // body), so skipping it on cancel would leak the token. The crawl body's
+        // own `Task.isCancelled` checks make it return fast when cancelled.
+        CrawlTaskScheduler(
+            spawn: { [self] priority, op in
+                Task(priority: priority) { await self.gate(); await op() }
+            },
+            spawnDetached: { [self] priority, op in
+                Task.detached(priority: priority) { await self.gate(); await op() }
+            }
+        )
+    }
+
+    /// Suspends until `open()` is called or the surrounding task is cancelled.
+    private func gate() async {
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+                lock.lock()
+                if opened { lock.unlock(); c.resume(); return }
+                continuations.append(c)
+                lock.unlock()
+            }
+        } onCancel: {
+            resumeAll()
+        }
+    }
+
+    /// Release every gated op (and any future one). Idempotent; resumes each
+    /// registered continuation exactly once.
+    func open() { resumeAll() }
+
+    private func resumeAll() {
+        lock.lock()
+        let pending = continuations
+        continuations = []
+        opened = true
+        lock.unlock()
+        pending.forEach { $0.resume() }
     }
 }
 
