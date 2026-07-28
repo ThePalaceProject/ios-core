@@ -537,6 +537,40 @@ else
   record "bookregistry_package_purity" "pass" "check-bookregistry-package-purity.sh not found (skipped)"
 fi
 
+# 3b4. DORMANT Wave 3a gate — PalaceAccounts/Sources package purity.
+# Whole-tree scan (not diff-based), but a no-op until the package is
+# extracted. See `scripts/check-palaceaccounts-package-purity.sh`.
+echo "--- PalaceAccounts package purity (dormant — Wave 3a) ---"
+if [ "$MUTATION_ONLY" = "true" ]; then
+  record "palaceaccounts_package_purity" "pass" "Skipped (--mutation-only)"
+elif [ -f scripts/check-palaceaccounts-package-purity.sh ]; then
+  PA_OUT=$(bash scripts/check-palaceaccounts-package-purity.sh 2>&1)
+  if [ "$?" -eq 0 ]; then
+    record "palaceaccounts_package_purity" "pass" "$(echo "$PA_OUT" | head -1)"
+  else
+    record "palaceaccounts_package_purity" "fail" "$(echo "$PA_OUT" | grep -m1 FAIL)"
+  fi
+else
+  record "palaceaccounts_package_purity" "pass" "check-palaceaccounts-package-purity.sh not found (skipped)"
+fi
+
+# 3b5. DORMANT Wave 3b gate — PalaceDownloads/Sources package purity.
+# Whole-tree scan (not diff-based), but a no-op until the package is
+# extracted. See `scripts/check-palacedownloads-package-purity.sh`.
+echo "--- PalaceDownloads package purity (dormant — Wave 3b) ---"
+if [ "$MUTATION_ONLY" = "true" ]; then
+  record "palacedownloads_package_purity" "pass" "Skipped (--mutation-only)"
+elif [ -f scripts/check-palacedownloads-package-purity.sh ]; then
+  PD_OUT=$(bash scripts/check-palacedownloads-package-purity.sh 2>&1)
+  if [ "$?" -eq 0 ]; then
+    record "palacedownloads_package_purity" "pass" "$(echo "$PD_OUT" | head -1)"
+  else
+    record "palacedownloads_package_purity" "fail" "$(echo "$PD_OUT" | grep -m1 FAIL)"
+  fi
+else
+  record "palacedownloads_package_purity" "pass" "check-palacedownloads-package-purity.sh not found (skipped)"
+fi
+
 # 3c. Adjacency staleness (M1 universal-rigor-floor gate, warn-only)
 # Greps comments in the surviving codebase for references to removed/renamed
 # declarations in the diff. Always passes; counts warnings.

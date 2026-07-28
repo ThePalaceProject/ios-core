@@ -128,6 +128,28 @@ if [[ -f "$REPO_ROOT_M1/scripts/check-bookregistry-package-purity.sh" ]]; then
   fi
 fi
 
+# DORMANT Wave 3a gate: PalaceAccounts/Sources package purity. Whole-tree
+# scan (not diff-based) but a no-op today — the package doesn't exist until
+# Wave 3a extracts it — so it's cheap to run unconditionally. See
+# scripts/check-palaceaccounts-package-purity.sh.
+if [[ -f "$REPO_ROOT_M1/scripts/check-palaceaccounts-package-purity.sh" ]]; then
+  if ! _pa_out=$(bash "$REPO_ROOT_M1/scripts/check-palaceaccounts-package-purity.sh" 2>&1); then
+    echo "$_pa_out" >&2
+    M1_FAIL=$((M1_FAIL + 1))
+  fi
+fi
+
+# DORMANT Wave 3b gate: PalaceDownloads/Sources package purity. Whole-tree
+# scan (not diff-based) but a no-op today — the package doesn't exist until
+# Wave 3b extracts it — so it's cheap to run unconditionally. See
+# scripts/check-palacedownloads-package-purity.sh.
+if [[ -f "$REPO_ROOT_M1/scripts/check-palacedownloads-package-purity.sh" ]]; then
+  if ! _pd_out=$(bash "$REPO_ROOT_M1/scripts/check-palacedownloads-package-purity.sh" 2>&1); then
+    echo "$_pd_out" >&2
+    M1_FAIL=$((M1_FAIL + 1))
+  fi
+fi
+
 m1_enforce "$M1_FAIL"
 
 # Friendly nudge — non-blocking. Only print if anything is staged at all.
