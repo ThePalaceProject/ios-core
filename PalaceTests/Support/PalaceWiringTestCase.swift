@@ -139,15 +139,22 @@ class PalaceWiringTestCase: PalaceTestCase {
         // managers.
         cancellables.removeAll()
 
-        // Cancel background work on every helper-minted manager. We
+        // Cancel AND DRAIN background work on every helper-minted manager. We
         // capture the list locally and clear the stored property first
         // so a re-entrant tearDown (shouldn't happen, but) sees an empty
-        // list. `cancelBackgroundWork()` is idempotent — already-cancelled
-        // managers ignore the second call.
+        // list. `cancelAndDrainBackgroundWork()` is idempotent — already-drained
+        // managers return immediately.
+        //
+        // Drain (not just cancel): a bare `cancelBackgroundWork()` returns while
+        // a just-cancelled crawl is still mid-flight, which then bleeds into the
+        // NEXT method of THIS same class (the per-class boundary drain in
+        // `AppContainer._resetForTesting()` only covers cross-CLASS bleed). The
+        // synchronous drain here awaits the full owned set — including the
+        // wrapped fallback GETs — so nothing survives the method boundary.
         let managers = managersToCancelOnTearDown
         managersToCancelOnTearDown.removeAll()
         for manager in managers {
-            manager.cancelBackgroundWork()
+            manager.cancelAndDrainBackgroundWork()
         }
 
         // Symmetry with setUp: wipe the on-disk OPDS2 catalog cache so
@@ -230,6 +237,26 @@ class PalaceWiringTestCase: PalaceTestCase {
         AccountsManager.deferInitialLoadCatalogsForTesting = true
         #endif
         let manager = AccountsManager(defaults: defaults, borrowReauthResetter: borrowReauthResetter)
+        configure(manager)
+        managersToCancelOnTearDown.append(manager)
+        return manager
+    }
+
+    /// DI-aware overload that injects the background-crawl spawn seam
+    /// (`CrawlTaskScheduler`, PP-4754). Lets a test install a recording scheduler
+    /// to pin the crawl scheduling contract while keeping the same opt-out flag
+    /// pin + tearDown drain as the other helpers (so it stays off the
+    /// `AccountsManagerIsolationLint` bare-construction ban).
+    @discardableResult
+    nonisolated func makeFreshAccountsManager(
+        defaults: UserDefaults,
+        crawlScheduler: CrawlTaskScheduler,
+        _ configure: (AccountsManager) -> Void = { _ in }
+    ) -> AccountsManager {
+        #if DEBUG
+        AccountsManager.deferInitialLoadCatalogsForTesting = true
+        #endif
+        let manager = AccountsManager(defaults: defaults, crawlScheduler: crawlScheduler)
         configure(manager)
         managersToCancelOnTearDown.append(manager)
         return manager
