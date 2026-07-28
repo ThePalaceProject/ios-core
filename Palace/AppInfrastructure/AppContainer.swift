@@ -309,7 +309,7 @@ struct AppContainer: @unchecked Sendable {
         let manager = SideloadedBookManager(
             bookRegistry: self.bookRegistry,
             sideloadedRegistry: self.sideloadedBookRegistry,
-            bookFileManager: BookFileManager()
+            bookFileManager: BookFileManager(accountScope: self.downloadAccountContext)
         )
         return AppContainer._sideloadedBookManager.withLock { slot in
             if let existing = slot { return existing }
@@ -884,6 +884,21 @@ struct AppContainer: @unchecked Sendable {
         AccountsManager.deferInitialLoadCatalogsForTesting = true
     }
     #endif
+}
+
+// MARK: - Downloads account-context seam (Wave 3 S2)
+
+extension AppContainer {
+    /// Vends the Downloads-owned account-context adapter over this container's
+    /// `accountsManager` (god-class decomposition Wave 3, S2). Stateless
+    /// wrapper — computed, so it needs no stored property and no init churn, and
+    /// every container (production or a test container) yields an adapter scoped
+    /// to its OWN `accountsManager`. Consumed by `BookFileManager` (and, at the
+    /// deferred follow-up, `MyBooksDownloadCenter`) in place of the concrete
+    /// `AccountsManager`.
+    var downloadAccountContext: AccountsManagerDownloadContextAdapter {
+        AccountsManagerDownloadContextAdapter(accountsManager: accountsManager)
+    }
 }
 
 // MARK: - SwiftUI Environment Integration

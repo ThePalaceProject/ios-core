@@ -83,7 +83,7 @@ final class BookFileManagerSideloadResolutionTests: PalaceWiringTestCase {
 
     return BookFileManager(
       bookRegistry: registry,
-      accountsManager: accountsManager,
+      accountScope: AccountsManagerDownloadContextAdapter(accountsManager: accountsManager),
       fileManager: .default,
       directoryProvider: { account in
         dir.appendingPathComponent("acct-\(account ?? "nil")")

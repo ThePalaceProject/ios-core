@@ -26,7 +26,6 @@ final class BookFileManagerTests: XCTestCase {
         testAccountId = "bookfilemanager-test-\(UUID().uuidString)"
         sut = BookFileManager(
             bookRegistry: registry,
-            accountsManager: AppContainer.production().accountsManager,
             fileManager: .default
         )
     }

@@ -26,7 +26,11 @@ import PalaceBookRegistry
 class BookFileManager {
 
     private let bookRegistry: TPPBookRegistryProvider
-    private let accountsManager: AccountsManager
+    /// Account-scope read seam (god-class decomposition Wave 3, S2). Was the
+    /// concrete `AccountsManager`; now the Downloads-owned
+    /// `DownloadAccountScopeProviding` so this type carries no Accounts
+    /// dependency into PalaceDownloads at 3b. Only `currentAccountID` is read.
+    private let accountScope: any DownloadAccountScopeProviding
     private let fileManager: FileManager
     /// Test-only override for the per-account content directory lookup.
     /// Production passes nil so `contentDirectoryURL(_:)` resolves the
@@ -47,13 +51,13 @@ class BookFileManager {
 
     init(
         bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry,
-        accountsManager: AccountsManager = AppContainer.production().accountsManager,
+        accountScope: any DownloadAccountScopeProviding = AppContainer.production().downloadAccountContext,
         fileManager: FileManager = .default,
         directoryProvider: ((String?) -> URL?)? = nil,
         sideloadedIdentifiersProvider: @escaping () -> Set<String> = { AppContainer.production().sideloadedBookRegistry.identifiers }
     ) {
         self.bookRegistry = bookRegistry
-        self.accountsManager = accountsManager
+        self.accountScope = accountScope
         self.fileManager = fileManager
         self.directoryProvider = directoryProvider
         self.sideloadedIdentifiersProvider = sideloadedIdentifiersProvider
@@ -65,7 +69,7 @@ class BookFileManager {
     /// under the current account. Returns nil if the book is unknown or the
     /// content directory can't be created.
     func fileUrl(for identifier: String) -> URL? {
-        fileUrl(for: identifier, account: accountsManager.currentAccountId)
+        fileUrl(for: identifier, account: accountScope.currentAccountID)
     }
 
     func fileUrl(for identifier: String, account: String?) -> URL? {
