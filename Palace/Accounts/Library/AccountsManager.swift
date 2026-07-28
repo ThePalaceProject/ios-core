@@ -315,15 +315,30 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
     private var loadingCompletionHandlers = [String: [(Bool) -> Void]]()
     private let loadingHandlersQueue = DispatchQueue(label: "com.tpp.loadingHandlers", attributes: .concurrent)
 
-    /// Per-UUID single-flight guard for `authentication_document` fetches.
-    /// Without this, two concurrent consumers calling `awaitReady()` on the
-    /// same Account would each cause `current.loadAuthenticationDocument` to
-    /// fire a duplicate HTTP request. The state machine's broadcast
-    /// (`CurrentValueSubject`) handles multi-consumer observation; this set
-    /// just prevents the duplicate network request. See ADR
-    /// docs/architecture/account-state-machine.md Open Q #1.
-    private var inflightAuthDocFetches = Set<String>()
+    /// Per-UUID single-flight guard for `authentication_document` fetches,
+    /// keyed by UUID → the `Date` the fetch was started. Without single-flight,
+    /// two concurrent consumers calling `awaitReady()` on the same Account would
+    /// each cause `current.loadAuthenticationDocument` to fire a duplicate HTTP
+    /// request. The state machine's broadcast (`CurrentValueSubject`) handles
+    /// multi-consumer observation; this map just prevents the duplicate network
+    /// request. See ADR docs/architecture/account-state-machine.md Open Q #1.
+    ///
+    /// The start-time value (rather than a bare `Set`) exists so a wedged fetch
+    /// can be reclaimed: if a fetch's network completion is DROPPED, the UUID
+    /// would otherwise stay in-flight forever and every later
+    /// `driveCurrentAccountAuthDocIfNeeded` would early-return on the dead entry,
+    /// leaving the account stuck at `.detailsLoading` (HelpSpot #18414). When an
+    /// entry is older than `authDocInflightTimeout`, the next fetch reclaims the
+    /// slot and re-fires instead of deduping against the corpse.
+    private var inflightAuthDocFetches = [String: Date]()
     private let inflightAuthDocLock = NSLock()
+
+    /// How long a single-flight `authentication_document` fetch may remain
+    /// in-flight before a subsequent fetch treats it as wedged (dropped
+    /// completion) and reclaims the slot. Sized above a healthy auth-doc
+    /// round-trip so a genuinely concurrent fetch is still deduped, while a
+    /// dropped-completion wedge self-heals on the next drive.
+    static let authDocInflightTimeout: TimeInterval = 30
 
     #if DEBUG
     /// Test-only opt-out from the post-init background `loadCatalogs` spawn.
@@ -402,6 +417,23 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
     /// qa-fixup — addresses qa_test concern about the prior single observation
     /// surface conflating those two semantics.
     private var _explicitCancelCalled: Bool = false
+
+    /// Test-only: seed the single-flight `inflightAuthDocFetches` map with an
+    /// entry whose start time is `age` seconds in the past. Lets the stale-wedge
+    /// reclaim path in `fetchAuthDocumentWithStateMachine` be exercised
+    /// deterministically without burning `authDocInflightTimeout` wall-clock
+    /// seconds. NOT compiled into release builds.
+    func _seedInflightAuthDocForTesting(uuid: String, age: TimeInterval) {
+        inflightAuthDocLock.lock()
+        inflightAuthDocFetches[uuid] = Date().addingTimeInterval(-age)
+        inflightAuthDocLock.unlock()
+    }
+
+    /// Test-only read of whether a UUID currently occupies the single-flight map.
+    func _inflightAuthDocContainsForTesting(uuid: String) -> Bool {
+        inflightAuthDocLock.lock(); defer { inflightAuthDocLock.unlock() }
+        return inflightAuthDocFetches[uuid] != nil
+    }
     #endif
 
     /// Registry of the unstructured background `Task`s spawned by
@@ -1732,20 +1764,40 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
             return
         }
         #endif
+
+        let now = Date()
         inflightAuthDocLock.lock()
-        let alreadyInflight = inflightAuthDocFetches.contains(account.uuid)
-        if !alreadyInflight {
-            inflightAuthDocFetches.insert(account.uuid)
+        let existingStart = inflightAuthDocFetches[account.uuid]
+        let isStaleWedge: Bool
+        if let existingStart {
+            isStaleWedge = now.timeIntervalSince(existingStart) >= Self.authDocInflightTimeout
+        } else {
+            isStaleWedge = false
+        }
+        // Claim (or re-claim) the slot unless a genuinely-recent fetch owns it.
+        let deduping = existingStart != nil && !isStaleWedge
+        if !deduping {
+            inflightAuthDocFetches[account.uuid] = now
         }
         inflightAuthDocLock.unlock()
 
-        if alreadyInflight {
-            // A fetch for this UUID is already in flight. Don't fire a
+        if deduping {
+            // A fresh fetch for this UUID is already in flight. Don't fire a
             // duplicate HTTP request — the state stream's broadcast covers
             // multi-consumer observation. Caller's completion gets `true`
             // so the calling DispatchGroup (if any) balances.
             completion(true)
             return
+        }
+
+        if isStaleWedge {
+            // The prior in-flight fetch never reported back (its network
+            // completion was dropped) — the account is wedged at
+            // `.detailsLoading`. We reclaimed the slot above; re-fire the fetch
+            // so `awaitReady()` callers aren't stuck forever (HelpSpot #18414).
+            // Re-entering `.detailsLoading` below is the retryable reset: the
+            // stream re-broadcasts and the fresh fetch drives a real terminal.
+            Log.warn(#file, "Auth-doc fetch for \(account.uuid) was wedged in-flight beyond \(Self.authDocInflightTimeout)s — reclaiming and re-firing")
         }
 
         account._setState(.detailsLoading)
@@ -1755,7 +1807,7 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
                 return
             }
             self.inflightAuthDocLock.lock()
-            self.inflightAuthDocFetches.remove(account.uuid)
+            self.inflightAuthDocFetches.removeValue(forKey: account.uuid)
             self.inflightAuthDocLock.unlock()
 
             #if DEBUG

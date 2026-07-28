@@ -96,6 +96,16 @@ final class BookReturnService: @unchecked Sendable {
     /// computed property semantics).
     private let userAccountProvider: () -> TPPUserAccount
 
+    /// 3.2.3 Cause 2. Fire-and-forget cancellation of any pending throttled
+    /// remote listening-position write for a book, called at the START of the
+    /// return flow so a queued snapshot can't flush AFTER `deleteAllBookmarks`
+    /// and resurrect the stale server position we just deleted. Defaults to a
+    /// no-op so existing tests/callers compile unchanged; production wiring
+    /// (MBDC) routes it to `AppContainer.audiobookSession
+    /// .cancelPendingRemotePositionWrite(forBookId:)`. Idempotent and a no-op
+    /// when the book isn't the active audiobook session.
+    private let remotePositionWriteCanceller: @Sendable (String) -> Void
+
     /// Adobe DRM service stored property gated on FEATURE_DRM_CONNECTOR
     /// (the type itself is gated). In Palace-noDRM the property doesn't
     /// exist and the Adobe-return code path is compiled out.
@@ -147,7 +157,8 @@ final class BookReturnService: @unchecked Sendable {
         userAccountProvider: @escaping () -> TPPUserAccount,
         adobeDRMService: AdobeDRMService = .shared,
         authCoordinator: AuthCoordinator? = nil,
-        offlineReturnEnqueuer: (@Sendable (OfflineAction) async -> Void)? = BookReturnService.productionOfflineReturnEnqueuer
+        offlineReturnEnqueuer: (@Sendable (OfflineAction) async -> Void)? = BookReturnService.productionOfflineReturnEnqueuer,
+        remotePositionWriteCanceller: @escaping @Sendable (String) -> Void = { _ in }
     ) {
         self.bookRegistry = bookRegistry
         self.localContentService = localContentService
@@ -160,6 +171,7 @@ final class BookReturnService: @unchecked Sendable {
         self.adobeDRMService = adobeDRMService
         self.authCoordinator = authCoordinator
         self.offlineReturnEnqueuer = offlineReturnEnqueuer
+        self.remotePositionWriteCanceller = remotePositionWriteCanceller
     }
     #else
     init(
@@ -172,7 +184,8 @@ final class BookReturnService: @unchecked Sendable {
         userRetryTracker: UserRetryTracker,
         userAccountProvider: @escaping () -> TPPUserAccount,
         authCoordinator: AuthCoordinator? = nil,
-        offlineReturnEnqueuer: (@Sendable (OfflineAction) async -> Void)? = BookReturnService.productionOfflineReturnEnqueuer
+        offlineReturnEnqueuer: (@Sendable (OfflineAction) async -> Void)? = BookReturnService.productionOfflineReturnEnqueuer,
+        remotePositionWriteCanceller: @escaping @Sendable (String) -> Void = { _ in }
     ) {
         self.bookRegistry = bookRegistry
         self.localContentService = localContentService
@@ -184,6 +197,7 @@ final class BookReturnService: @unchecked Sendable {
         self.userAccountProvider = userAccountProvider
         self.authCoordinator = authCoordinator
         self.offlineReturnEnqueuer = offlineReturnEnqueuer
+        self.remotePositionWriteCanceller = remotePositionWriteCanceller
     }
     #endif
 
@@ -293,6 +307,15 @@ final class BookReturnService: @unchecked Sendable {
             completion?()
             return
         }
+
+        // 3.2.3 Cause 2: cancel any pending throttled remote listening-position
+        // write for this book BEFORE the return cleanup runs, so a queued
+        // snapshot can't flush AFTER `deleteAllBookmarks` deletes the server
+        // position and resurrect it on re-borrow. Fire-and-forget; idempotent;
+        // a no-op when the book isn't the active audiobook session. Covers all
+        // sub-paths (revoke, no-revokeURL, and the error branches) since they
+        // are all reached from here.
+        remotePositionWriteCanceller(identifier)
 
         downloadAnnouncementService.announceReturnStarted(for: book)
 

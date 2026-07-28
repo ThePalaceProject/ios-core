@@ -388,4 +388,52 @@ final class AudiobookPositionRestoreTests: XCTestCase {
         let remote = makePosition(savedAt: "2026-01-01T00:00:00Z") // -10s
         XCTAssertFalse(AudiobookSessionManager.preferRemotePosition(local: local, remote: remote))
     }
+
+    // MARK: - validatedRemotePosition (3.2.3 Cause 2 — remote manifest gate)
+    //
+    // The open path resolves a remote listening position and, before 3.2.3,
+    // seeked it verbatim. A remote track key absent from the loaded manifest
+    // (a stale position from a prior manifest / different audiobook edition)
+    // therefore opened at a phantom position. `validatedRemotePosition` applies
+    // the SAME `validationFailure(for:in:)` gate the local path uses and drops
+    // to the safe fallback when the remote key isn't in the manifest. These
+    // mirror `testValidationFailure_trackKeyNotInManifest_*` for the remote seam.
+
+    func testValidatedRemotePosition_remoteKeyNotInManifest_returnsFallback() throws {
+        let foreign = try makeForeignKeyedTrack()
+        let staleRemote = TrackPosition(track: foreign, timestamp: 100, tracks: tracks)
+        let safeFallback = TrackPosition(track: tracks.tracks[0], timestamp: 0, tracks: tracks)
+
+        let resolved = sut.validatedRemotePosition(
+            staleRemote,
+            fallback: safeFallback,
+            in: toc,
+            bookId: bookIdentifier
+        )
+
+        XCTAssertEqual(resolved.track.key, safeFallback.track.key,
+                       "A remote track key absent from the manifest must drop to the safe fallback, NOT seek the stale remote position (3.2.3 Cause 2)")
+        XCTAssertNotEqual(resolved.track.key, staleRemote.track.key,
+                          "The stale foreign-keyed remote position must not be returned")
+    }
+
+    func testValidatedRemotePosition_remoteKeyInManifest_returnsRemote() {
+        // An in-manifest remote position validates → it is honored verbatim,
+        // NOT replaced by the fallback. Kills a mutant that always returns the
+        // fallback (which would defeat cross-device resume entirely).
+        let validRemote = TrackPosition(track: tracks.tracks[2], timestamp: 30, tracks: tracks)
+        let fallback = TrackPosition(track: tracks.tracks[0], timestamp: 0, tracks: tracks)
+
+        let resolved = sut.validatedRemotePosition(
+            validRemote,
+            fallback: fallback,
+            in: toc,
+            bookId: bookIdentifier
+        )
+
+        XCTAssertEqual(resolved.track.key, validRemote.track.key,
+                       "A remote position whose key IS in the manifest must be honored, not dropped to the fallback")
+        XCTAssertNotEqual(resolved.track.key, fallback.track.key,
+                          "The fallback must not win when the remote position is valid")
+    }
 }
