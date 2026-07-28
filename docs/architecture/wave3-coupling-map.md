@@ -113,3 +113,65 @@ bearer-auth threading (B2, `MyBooksDownloadCenterAccountIdThreadingTests`),
 per-library credential + registry isolation across a switch
 (`AccountSwitchLifecycleTests`), and the `currentAccount` setter publication
 order (`Decomp/AccountsManagerCurrentAccountSwitchContractTests`).
+
+---
+
+## Post-2b refresh (2026-07-27)
+
+Re-verified against `origin/develop` @ `c231b5a43` (Wave 2b, PR #1341, landed
+after this map was first written). Rebased `feat/wave3-writeahead-tests` onto
+this tip — **conflict-free**, no test edits needed, both new suites still pass
+(byte-equal contract snapshots, unchanged). Facts below are grepped/read from
+current source this session, not carried over from the pre-2b draft.
+
+- **Line drift.** The A1 static call site is now
+  `AccountsManager.swift:995` (was `:994` pre-2b — a one-line shift from an
+  intervening edit, not a behavior change):
+  `MyBooksDownloadCenter.clearAllBorrowReauthState()`, still fired
+  unconditionally from `cleanupActiveContentBeforeAccountSwitch`. The B1 read
+  moved to `BookFileManager.swift:68` (was `:67`):
+  `accountsManager.currentAccountId` inside `fileUrl(for:)`. The breaker
+  itself, `BorrowOperation.clearAllBorrowReauthState()`, is now at `:142` (was
+  `:141`). All three are pure line-number churn — the pinned call-order and
+  seam sequence in both new suites are unaffected.
+
+- **Cycle-1 Accounts→registry down-edge is now COMMENT-ONLY.** Pre-2b,
+  `AccountsManager` had a live code edge into the book registry; Wave 2b's
+  `PalaceBookRegistry` extraction + `AccountScopeProviding` inversion cut it.
+  `AccountsManager.swift` today has exactly one `import PalaceBookRegistry`
+  (for the adapter conformance, in the separate
+  `AccountsManagerAccountScopeAdapter.swift`) and two remaining mentions of
+  `TPPBookRegistry`/`BookRegistrySync`, both inside doc comments (`:369-370`,
+  `:1049`) — no live call. The registry now depends on Accounts only through
+  the protocol; Accounts does not reach back into the registry in code.
+
+- **`AccountScopeProviding` shipped 4-member**, confirmed at
+  `Palace/Packages/PalaceBookRegistry/Sources/PalaceBookRegistry/AccountScopeProviding.swift`:
+  `currentAccountID: String?`, `accountDidChangePublisher:
+  AnyPublisher<Void, Never>`, `hasCredentials(forAccount:) -> Bool`,
+  `loansURL(forAccount:) async throws -> URL?`. This **supersedes §S2 above**:
+  the decision (made during 2b) is AGAINST widening this shared protocol for
+  Downloads' B1–B6 reads. `AccountScopeProviding` stays value-only
+  (registry-only consumer); Wave 3b's S2 introduces its own
+  Downloads-owned protocol(s) (`DownloadAccountScopeProviding` /
+  `DownloadCredentialsProviding`) rather than extending this one — a
+  capability-boundary split, not a shared surface.
+
+- **Sequencing refinement: S1/A1 structurally blocks 3a only, not 3b.**
+  Restated from the original §S1: a packaged `AccountsManager` (3a) cannot
+  name the app-target `MyBooksDownloadCenter` type, so A1 must invert before
+  3a can extract. 3b (packaging the Downloads side) does **not** have the same
+  hard blocker — the MBDC shell can stay app-target with a static forwarder
+  into package-side `BorrowOperation`, so 3b alone would still compile without
+  S1. S1 still lands first regardless: it is small, removes the one edge that
+  would otherwise force a serialization decision mid-wave, and makes the
+  account-switch cleanup ordering spy-testable (feeds S3). This refines, not
+  reverses, the original "serialize 3b behind 3a" framing — the constraint is
+  narrower than first stated.
+
+No other divergences found. The pinned suites
+(`AccountSwitchBorrowReauthCouplingContractTests`,
+`BookFileManagerAccountScopingTests`) remain valid unmodified against
+post-2b source.
+
+<!-- audit-verified -->
