@@ -13,6 +13,7 @@
 import XCTest
 import PalaceCatalog
 @testable import Palace
+import PalaceBookModel
 
 // Deliberately NOT @MainActor: the object under test is nonisolated and
 // non-Sendable — awaiting its async APIs on a @MainActor-held reference is a

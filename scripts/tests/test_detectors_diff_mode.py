@@ -36,6 +36,7 @@ _CASES = [
     ("check-nserror-problemdoc-preservation.py",     "nserror_problemdoc",  "violation_dropped_problemdoc.swift", "Palace/Network",           "D4-1",    "block"),
     ("check-swiftui-placeholder-a11y.py",            "swiftui_a11y",        "violation.swift",                    "Palace/CatalogUI",         "PP-4421", "warn"),
     ("check-notification-center-observer-storage.py","notification_center", "violation_unstored_observer.swift",  "Palace/AppInfrastructure", "D5-1",    "warn"),
+    ("check-addoperation-literal-ban.py",             "addoperation_literal_ban", "violation_addoperation_trailing_closure.swift", "Palace/Utilities", "AOB-1", "block"),
 ]
 
 _IDS = [c[0].removeprefix("check-").removesuffix(".py") for c in _CASES]

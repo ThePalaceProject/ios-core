@@ -6,11 +6,13 @@
 //
 
 import SwiftUI
+import PalacePreferences
 import Combine
 import LocalAuthentication
 import PalaceLogging
 import PalaceNetwork
 import PalaceAuth
+import PalaceBookRegistry
 
 @MainActor
 class AccountDetailViewModel: NSObject, ObservableObject {
@@ -69,6 +71,11 @@ class AccountDetailViewModel: NSObject, ObservableObject {
 
     var selectedAccount: Account? {
         businessLogic.libraryAccount
+    }
+
+    /// Wave 1c: caller-snapshotted context for the report-issue composer.
+    var problemReportContext: (patronIdentifier: String?, libraryName: String?) {
+        accountsManager.problemReportContext(forLibrary: selectedAccount?.uuid)
     }
 
     var selectedUserAccount: TPPUserAccount {

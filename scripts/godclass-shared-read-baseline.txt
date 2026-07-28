@@ -1,0 +1,12 @@
+# Non-system `.shared` read count baseline — Wave 0 ratchet (monotone-down).
+# Consumed by scripts/check-shared-read-count.sh.
+# Single integer. Count may only go DOWN. Captured 2026-07-23.
+# See docs/architecture/god-class-decomposition-plan.md §3c + docs/architecture/singleton-census.md.
+# Wave 1b (PalaceFeatureFlags extraction): 250 -> 232 (RemoteFeatureFlags.shared
+# reads migrated to the injected AppContainer.featureFlags seam; E1-E5 kept).
+# Wave 2a (PalaceBookModel extraction): 232 -> 224. TPPBook's two convenience-init
+# `ImageCache.shared` reads were inverted through TPPBookImageContext, and the
+# book-model files that moved into Palace/Packages/PalaceBookModel/ took their
+# remaining `.shared` mentions out of the counted (non-package) tree. No new
+# `.shared` read was introduced app-side.
+224

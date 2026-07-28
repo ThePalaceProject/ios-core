@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import PalacePreferences
 import UIKit
 import PalaceAudiobookToolkit
 import Combine
@@ -14,6 +15,8 @@ import PalaceAuth
 import PalaceLogging
 import PalaceNetwork
 import PalaceCatalog
+import PalaceBookModel
+import PalaceBookRegistry
 
 #if FEATURE_OVERDRIVE
 import OverdriveProcessor

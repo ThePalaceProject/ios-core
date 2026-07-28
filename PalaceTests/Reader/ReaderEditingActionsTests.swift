@@ -11,6 +11,7 @@ import XCTest
 import PalaceCatalog
 import ReadiumNavigator
 @testable import Palace
+import PalaceBookModel
 
 @MainActor
 final class ReaderEditingActionsTests: XCTestCase {

@@ -1,8 +1,10 @@
 import Foundation
 import Combine
 import PalaceLogging
+import PalaceBookRegistry
 @preconcurrency import PalaceCatalog
 import PalaceNetwork
+import PalaceBookModel
 
 @MainActor
 final class CatalogViewModel: ObservableObject {

@@ -18,6 +18,7 @@
 
 import Foundation
 @preconcurrency import PalaceAudiobookToolkit
+import PalaceBookModel
 
 /// A vendor-shape dispatcher that prepares an audiobook manifest (and optional
 /// DRM decryptor) for a given `TPPBook`.

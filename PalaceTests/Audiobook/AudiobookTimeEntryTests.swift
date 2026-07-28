@@ -9,9 +9,11 @@
 //
 
 import XCTest
+import PalacePreferences
 import Combine
 @testable import PalaceCatalog
 @testable import Palace
+import PalaceBookRegistry
 
 // MARK: - AudiobookTimeEntry Tests
 

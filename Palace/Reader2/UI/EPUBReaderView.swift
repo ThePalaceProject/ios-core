@@ -8,6 +8,7 @@ import SwiftUI
 import ReadiumShared
 import UIKit
 import PalaceLogging
+import PalaceBookModel
 
 /// SwiftUI view for presenting EPUB publications
 struct EPUBReaderView: View {

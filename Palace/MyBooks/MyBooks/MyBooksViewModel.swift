@@ -7,8 +7,11 @@
 //
 
 import Foundation
+import PalacePreferences
 import Combine
 import PalaceLogging
+import PalaceBookModel
+import PalaceBookRegistry
 
 enum Group: Int {
     case groupSortBy

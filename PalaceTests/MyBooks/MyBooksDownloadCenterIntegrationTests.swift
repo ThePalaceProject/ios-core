@@ -13,6 +13,7 @@ import XCTest
 import Combine
 import PalaceCatalog
 @testable import Palace
+import PalaceBookModel
 
 // MARK: - MockURLProtocol for Network Mocking
 

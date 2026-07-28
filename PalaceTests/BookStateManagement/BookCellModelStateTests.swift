@@ -8,6 +8,7 @@
 import XCTest
 import Combine
 @testable import Palace
+import PalaceBookModel
 
 @MainActor
 final class BookCellModelStateTests: XCTestCase {
@@ -257,22 +258,12 @@ final class BookCellModelStateTests: XCTestCase {
 
     // MARK: - Download Error Routing
 
-    func testDownloadErrorRoutesToCellAlertWhenHalfSheetHidden() {
+    func testDownloadErrorRoutesToCellAlertWhenHalfSheetHidden() async {
         let book = createTestBook(id: "download-error-hidden")
         mockRegistry.addBook(book, state: .downloadNeeded)
 
         let downloadCenter = appContainer.downloadCenter
         let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: downloadCenter, accountsManager: appContainer.accountsManager, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService)
-        let expectation = XCTestExpectation(description: "Cell alert should be populated")
-
-        model.$showAlert
-            .dropFirst()
-            .sink { alert in
-                if alert != nil {
-                    expectation.fulfill()
-                }
-            }
-            .store(in: &cancellables)
 
         downloadCenter.downloadErrorPublisher.send(
             DownloadErrorInfo(
@@ -282,29 +273,24 @@ final class BookCellModelStateTests: XCTestCase {
             )
         )
 
-        wait(for: [expectation], timeout: 1.0)
+        // Wave-2 (swarm_ad0b4c65): the publish is synchronous, but
+        // BookCellModel's subscription uses `.receive(on: DispatchQueue.main)`
+        // before assigning `showAlert` — no BookRegistry seam involved here
+        // (this is a plain Combine main-queue hop), so `drainMainQueueAsync()`
+        // alone deterministically flushes it.
+        await drainMainQueueAsync()
+
         XCTAssertNotNil(model.showAlert)
         XCTAssertNil(model.downloadErrorAlert)
     }
 
-    func testDownloadErrorRoutesToHalfSheetAlertWhenHalfSheetVisible() {
+    func testDownloadErrorRoutesToHalfSheetAlertWhenHalfSheetVisible() async {
         let book = createTestBook(id: "download-error-halfsheet")
         mockRegistry.addBook(book, state: .downloadNeeded)
 
         let downloadCenter = appContainer.downloadCenter
         let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: downloadCenter, accountsManager: appContainer.accountsManager, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService)
         model.showHalfSheet = true
-
-        let expectation = XCTestExpectation(description: "Half sheet alert should be populated")
-
-        model.$downloadErrorAlert
-            .dropFirst()
-            .sink { alert in
-                if alert != nil {
-                    expectation.fulfill()
-                }
-            }
-            .store(in: &cancellables)
 
         downloadCenter.downloadErrorPublisher.send(
             DownloadErrorInfo(
@@ -315,7 +301,10 @@ final class BookCellModelStateTests: XCTestCase {
             )
         )
 
-        wait(for: [expectation], timeout: 1.0)
+        // Wave-2 (swarm_ad0b4c65): same plain Combine main-queue hop as
+        // above — `drainMainQueueAsync()` flushes it deterministically.
+        await drainMainQueueAsync()
+
         XCTAssertNotNil(model.downloadErrorAlert)
         XCTAssertNil(model.showAlert)
     }

@@ -14,6 +14,7 @@
 import XCTest
 import PalaceCatalog
 @testable import Palace
+import PalaceBookModel
 
 // MARK: - saveDRMCredentials Tests
 
@@ -194,17 +195,16 @@ final class TPPLoginNoActivationTests: XCTestCase {
     /// PP-3649: Validates that a full login flow does NOT trigger Adobe activation.
     /// The mock network executor returns validUserProfileJson (which contains DRM info),
     /// and we verify that despite the DRM info being present, `authorize()` is never called.
-    func testValidateCredentials_doesNotTriggerAdobeActivation() {
+    func testValidateCredentials_doesNotTriggerAdobeActivation() async {
         businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
-
-        let expectation = self.expectation(description: "Sign-in completes")
-        uiDelegate.didCompleteSignInHandler = {
-            expectation.fulfill()
-        }
 
         businessLogic.validateCredentials()
 
-        waitForExpectations(timeout: 5.0)
+        // Single main-queue hop: `TPPRequestExecutorMock.executeRequest`
+        // completes via one `DispatchQueue.main.async`, and `finalizeSignIn`
+        // runs synchronously off that hop via `TPPMainThreadRun.asyncIfNeeded`'s
+        // on-main fast path (mirrors TPPCredentialVisibilityTests.swift).
+        await drainMainQueueAsync()
 
         XCTAssertEqual(drmAuthorizer.authorizeCallCount, 0,
                        "PP-3649: Login must NOT trigger Adobe device activation")
@@ -212,17 +212,13 @@ final class TPPLoginNoActivationTests: XCTestCase {
 
     /// PP-3649: Validates that DRM credentials are persisted during login
     /// so they can be used later at borrow time for on-demand activation.
-    func testValidateCredentials_savesLicensorForLaterUse() {
+    func testValidateCredentials_savesLicensorForLaterUse() async {
         businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
-
-        let expectation = self.expectation(description: "Sign-in completes")
-        uiDelegate.didCompleteSignInHandler = {
-            expectation.fulfill()
-        }
 
         businessLogic.validateCredentials()
 
-        waitForExpectations(timeout: 5.0)
+        // Single main-queue hop (see testValidateCredentials_doesNotTriggerAdobeActivation above).
+        await drainMainQueueAsync()
 
         #if FEATURE_DRM_CONNECTOR
         let licensor = businessLogic.userAccount.licensor
@@ -236,7 +232,7 @@ final class TPPLoginNoActivationTests: XCTestCase {
 
     /// PP-3649: Validates that login succeeds even when re-authenticating with
     /// stale credentials — and still does not trigger Adobe activation.
-    func testValidateCredentials_withStaleCredentials_doesNotActivate() {
+    func testValidateCredentials_withStaleCredentials_doesNotActivate() async {
         let userAccount = businessLogic.userAccount as! TPPUserAccountMock
         userAccount._credentials = .barcodeAndPin(barcode: "test", pin: "1234")
         userAccount.setAuthState(.credentialsStale)
@@ -246,14 +242,10 @@ final class TPPLoginNoActivationTests: XCTestCase {
 
         businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
 
-        let expectation = self.expectation(description: "Sign-in completes")
-        uiDelegate.didCompleteSignInHandler = {
-            expectation.fulfill()
-        }
-
         businessLogic.validateCredentials()
 
-        waitForExpectations(timeout: 5.0)
+        // Single main-queue hop (see testValidateCredentials_doesNotTriggerAdobeActivation above).
+        await drainMainQueueAsync()
 
         XCTAssertEqual(drmAuthorizer.authorizeCallCount, 0,
                        "PP-3649: Re-auth must NOT trigger Adobe activation")

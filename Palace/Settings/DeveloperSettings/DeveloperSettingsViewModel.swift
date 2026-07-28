@@ -13,10 +13,13 @@
 //
 
 import Foundation
+import PalaceLogging
+import PalacePreferences
 import SwiftUI
 import MessageUI
 import WebKit
 import PalaceCatalog
+import PalaceBookRegistry
 
 /// Owns all Testing / Advanced screen state and actions. The two SwiftUI
 /// screens (`DeveloperSettingsView`, `AppAdvancedSettingsView`) share this one
@@ -40,12 +43,22 @@ final class DeveloperSettingsViewModel: ObservableObject {
     /// holds-changed signal that refreshes the tab badge (swarm_8ce6f5ae WS3).
     private let bookRegistry: TPPBookRegistryProvider
     private let debugSettings: DebugSettings
+    /// Wave 1b exception E5: this admin surface is coupled to the CONCRETE
+    /// `RemoteFeatureFlags` on purpose — it toggles the impl's `*LocalOverrideKey`
+    /// statics and the DEBUG force-submit override, none of which live on the
+    /// `FeatureFlagProviding` protocol. Kept concrete (the tests inject a fresh
+    /// concrete instance).
     private let featureFlags: RemoteFeatureFlags
     /// The UserDefaults instance the RemoteFeatureFlags overrides are written to.
-    /// `RemoteFeatureFlags.shared` reads its overrides from `.standard`, and the
-    /// UIKit controller wrote them via `UserDefaults.standard.set(...)`, so this
-    /// defaults to `.standard` to preserve the exact read/write pairing.
+    /// The process-wide `RemoteFeatureFlags` singleton reads its overrides from
+    /// `.standard`, and the UIKit controller wrote them via
+    /// `UserDefaults.standard.set(...)`, so this defaults to `.standard` to
+    /// preserve the exact read/write pairing.
     private let overrideDefaults: UserDefaults
+    /// Wave 1c: log-archive export seam for the dev-tools audiobook-logs email.
+    /// Defaults to a fresh `AudiobookFileLogger()` (NOT `.shared`) — matches the
+    /// pre-wave `emailAudiobookLogs` construction and keeps the `.shared` ratchet.
+    private let audiobookLogExporter: any LogArchiveExporting
     private let triageBotKeyAdmin = TriageBotKeyAdmin()
 
     // MARK: - Library Settings
@@ -141,7 +154,8 @@ final class DeveloperSettingsViewModel: ObservableObject {
         bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry,
         debugSettings: DebugSettings = AppContainer.production().debugSettings,
         featureFlags: RemoteFeatureFlags = .shared,
-        overrideDefaults: UserDefaults = .standard
+        overrideDefaults: UserDefaults = .standard,
+        audiobookLogExporter: any LogArchiveExporting = AudiobookFileLogger()
     ) {
         self.settings = settings
         self.accountsManager = accountsManager
@@ -149,6 +163,7 @@ final class DeveloperSettingsViewModel: ObservableObject {
         self.debugSettings = debugSettings
         self.featureFlags = featureFlags
         self.overrideDefaults = overrideDefaults
+        self.audiobookLogExporter = audiobookLogExporter
 
         // Seed the published mirrors from the live values, exactly as the UIKit
         // cell builders did (they read the effective flag so QA sees live state).
@@ -500,8 +515,7 @@ final class DeveloperSettingsViewModel: ObservableObject {
         mailComposer.setToRecipients(["logs@thepalaceproject.org"])
         mailComposer.setPreferredSendingEmailAddress("LyrasisDebugging@email.com")
 
-        let logger = AudiobookFileLogger()
-        if let logsDirectoryUrl = logger.getLogsDirectoryUrl() {
+        if let logsDirectoryUrl = audiobookLogExporter.logArchiveDirectoryURL() {
             let fileManager = FileManager.default
             let logFiles = try? fileManager.contentsOfDirectory(at: logsDirectoryUrl, includingPropertiesForKeys: nil)
 

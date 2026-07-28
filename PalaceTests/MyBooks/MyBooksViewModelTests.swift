@@ -9,8 +9,11 @@
 //
 
 import XCTest
+import PalacePreferences
 import Combine
 @testable import Palace
+import PalaceBookModel
+import PalaceBookRegistry
 
 // MARK: - Publisher-join helper
 

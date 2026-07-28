@@ -21,6 +21,8 @@ import ReadiumShared
 import PalaceCatalog
 import PalaceReadingPosition
 @testable import Palace
+import PalaceBookModel
+import PalaceBookRegistry
 
 // MARK: - Mock Annotations Provider
 

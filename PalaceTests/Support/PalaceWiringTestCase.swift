@@ -215,6 +215,26 @@ class PalaceWiringTestCase: PalaceTestCase {
         return manager
     }
 
+    /// DI-aware overload that also injects the account-switch borrow-reauth reset
+    /// seam (`BorrowReauthResetting`, Wave 3 S1). Routes bare `AccountsManager`
+    /// construction through this whitelisted helper so a spy-injected switch test
+    /// still gets the `loadCatalogs` opt-out pin + tearDown cancellation, keeping
+    /// it off the `AccountsManagerIsolationLint` bare-construction ban.
+    @discardableResult
+    nonisolated func makeFreshAccountsManager(
+        defaults: UserDefaults,
+        borrowReauthResetter: any BorrowReauthResetting,
+        _ configure: (AccountsManager) -> Void = { _ in }
+    ) -> AccountsManager {
+        #if DEBUG
+        AccountsManager.deferInitialLoadCatalogsForTesting = true
+        #endif
+        let manager = AccountsManager(defaults: defaults, borrowReauthResetter: borrowReauthResetter)
+        configure(manager)
+        managersToCancelOnTearDown.append(manager)
+        return manager
+    }
+
     // MARK: - Disk-cache cleanup
 
     /// Remove every on-disk catalog/auth/crawl cache file in the test

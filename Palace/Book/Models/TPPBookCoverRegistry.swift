@@ -3,24 +3,8 @@ import UIKit
 import ImageIO
 import PalaceLogging
 import PalaceNetwork
-
-// MARK: - Display-dimension sanitizing
-
-extension CGFloat {
-    /// The value when it is a finite, strictly-positive display dimension; otherwise `nil`.
-    ///
-    /// A view can report a `NaN`, infinite, or non-positive size while it is still
-    /// laying out. Feeding such a value into `Int(_:)` traps with `EXC_BREAKPOINT`
-    /// ("… not representable in Int"), and into a `CGSize` / CoreGraphics renderer
-    /// produces an invalid-context crash. The cover pipeline converted a raw display
-    /// height straight into an `Int` cache key and a decode dimension without this
-    /// guard — the source of PP-4772 / Crashlytics `077218fc` (`fetchCoverImage`
-    /// `EXC_BREAKPOINT`). Callers use this to fall back to the unsized cover path
-    /// instead of trapping.
-    var finitePositiveDimension: CGFloat? {
-        (isFinite && self > 0) ? self : nil
-    }
-}
+import PalaceBookModel
+import PalaceBookRegistry
 
 // MARK: - Host Failure Tracker (Circuit Breaker)
 

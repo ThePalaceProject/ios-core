@@ -11,6 +11,8 @@
 import XCTest
 import PalaceCatalog
 @testable import Palace
+import PalaceBookModel
+import PalaceBookRegistry
 
 @MainActor
 final class LocalBookContentServiceTests: XCTestCase {

@@ -1,5 +1,6 @@
 import UIKit
 import Combine
+import PalaceBookRegistry
 // `@preconcurrency`: ReadiumShared is not Sendable-audited upstream; its
 // `Publication`, `Link`, and `Locator` cross `await` boundaries into this
 // `@MainActor` type (TOC/positions loads, sync, locator conversion). Matches the
@@ -7,6 +8,7 @@ import Combine
 // `TPPLastReadPositionSynchronizer`, etc. Honest ceiling until Readium annotates.
 @preconcurrency import ReadiumShared
 import PalaceLogging
+import PalaceBookModel
 #if LCP
 import ReadiumLCP
 #endif
@@ -620,7 +622,7 @@ final class ReaderService {
                 }
             }
 
-        AppContainer.production().downloadCenter.startDownload(for: book)
+        AppContainer.production().downloadCenter.startDownload(for: book, withRequest: nil)
     }
 
     @MainActor

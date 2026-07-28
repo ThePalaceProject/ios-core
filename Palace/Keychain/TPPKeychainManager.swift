@@ -1,4 +1,5 @@
 import Foundation
+import PalacePreferences
 import PalaceAudiobookToolkit
 import PalaceLogging
 import PalaceKeychain

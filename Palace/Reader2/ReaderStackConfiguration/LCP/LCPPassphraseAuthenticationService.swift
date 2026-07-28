@@ -1,6 +1,8 @@
+import PalaceBookRegistry
 #if LCP
 
 import Foundation
+import PalacePreferences
 // Swift 6 `complete`: `LCPAuthenticatedLicense` / `LCPAuthenticationReason` are
 // ReadiumLCP types that are not Sendable-audited upstream, so passing the inbound
 // `license` from the `nonisolated async` `retrievePassphrase` into the sibling

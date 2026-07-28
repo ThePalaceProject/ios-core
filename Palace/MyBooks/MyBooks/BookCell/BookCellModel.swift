@@ -13,6 +13,8 @@ import SafariServices
 import PalaceAudiobookToolkit
 import PalaceLogging
 import PalaceNetwork
+import PalaceBookModel
+import PalaceBookRegistry
 
 enum BookCellState {
     case normal(BookButtonState)
@@ -742,7 +744,7 @@ extension BookCellModel {
         if case .canHold = state.buttonState {
             NotificationService.requestAuthorization()
         }
-        downloadCenter.startDownload(for: book)
+        downloadCenter.startDownload(for: book, withRequest: nil)
     }
 
     func didSelectReserve() {

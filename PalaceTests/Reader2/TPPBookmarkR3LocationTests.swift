@@ -9,6 +9,7 @@
 import XCTest
 import ReadiumShared
 @testable import Palace
+import PalaceBookModel
 
 @MainActor
 final class TPPBookmarkR3LocationTests: XCTestCase {

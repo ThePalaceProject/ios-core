@@ -10,12 +10,15 @@
 //
 
 import Combine
+import PalacePreferences
 import Foundation
 import MediaPlayer
 import os
 import PalaceAudiobookToolkit
 import PalaceLogging
 import PalaceNetwork
+import PalaceBookModel
+import PalaceBookRegistry
 
 // MARK: - AudiobookSessionState
 

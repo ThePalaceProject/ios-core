@@ -15,6 +15,7 @@ import PalaceCatalog
 @preconcurrency import ReadiumStreamer
 @preconcurrency import ReadiumLCP
 @preconcurrency import PalaceAudiobookToolkit
+import PalaceBookModel
 
 /// - Sendable invariant: instances are safe to share across concurrency
 ///   domains (they are captured by the `@Sendable` closures

@@ -1,4 +1,5 @@
 import XCTest
+import PalaceBookModel
 
 @testable import Palace
 
@@ -29,24 +30,23 @@ class TPPBookStateTests: XCTestCase {
     }
 
     func testBookStateFromString() {
-        XCTAssertEqual(TPPBookState.unregistered.rawValue, TPPBookStateHelper.bookState(fromString: UnregisteredKey)?.intValue)
-        XCTAssertEqual(TPPBookState.downloadNeeded.rawValue, TPPBookStateHelper.bookState(fromString: DownloadNeededKey)?.intValue)
-        XCTAssertEqual(TPPBookState.downloading.rawValue, TPPBookStateHelper.bookState(fromString: DownloadingKey)?.intValue)
-        XCTAssertEqual(TPPBookState.downloadFailed.rawValue, TPPBookStateHelper.bookState(fromString: DownloadFailedKey)?.intValue)
-        XCTAssertEqual(TPPBookState.downloadSuccessful.rawValue, TPPBookStateHelper.bookState(fromString: DownloadSuccessfulKey)?.intValue)
-        XCTAssertEqual(TPPBookState.holding.rawValue, TPPBookStateHelper.bookState(fromString: HoldingKey)?.intValue)
-        XCTAssertEqual(TPPBookState.used.rawValue, TPPBookStateHelper.bookState(fromString: UsedKey)?.intValue)
-        XCTAssertEqual(TPPBookState.unsupported.rawValue, TPPBookStateHelper.bookState(fromString: UnsupportedKey)?.intValue)
-        XCTAssertNil(TPPBookStateHelper.bookState(fromString: "InvalidString"))
+        XCTAssertEqual(TPPBookState.unregistered.rawValue, TPPBookState(UnregisteredKey)?.rawValue)
+        XCTAssertEqual(TPPBookState.downloadNeeded.rawValue, TPPBookState(DownloadNeededKey)?.rawValue)
+        XCTAssertEqual(TPPBookState.downloading.rawValue, TPPBookState(DownloadingKey)?.rawValue)
+        XCTAssertEqual(TPPBookState.downloadFailed.rawValue, TPPBookState(DownloadFailedKey)?.rawValue)
+        XCTAssertEqual(TPPBookState.downloadSuccessful.rawValue, TPPBookState(DownloadSuccessfulKey)?.rawValue)
+        XCTAssertEqual(TPPBookState.holding.rawValue, TPPBookState(HoldingKey)?.rawValue)
+        XCTAssertEqual(TPPBookState.used.rawValue, TPPBookState(UsedKey)?.rawValue)
+        XCTAssertEqual(TPPBookState.unsupported.rawValue, TPPBookState(UnsupportedKey)?.rawValue)
+        XCTAssertNil(TPPBookState("InvalidString"))
     }
 
     func testAllBookState() {
-        XCTAssertEqual(TPPBookStateHelper.allBookStates(), TPPBookState.allCases.map { $0.rawValue })
-        // allBookStates should be non-empty (there are valid states)
-        XCTAssertFalse(TPPBookStateHelper.allBookStates().isEmpty,
-                       "allBookStates should return a non-empty array of raw values")
-        // Count should match allCases count
-        XCTAssertEqual(TPPBookStateHelper.allBookStates().count, TPPBookState.allCases.count,
-                       "allBookStates count should equal the number of TPPBookState cases")
+        // Pins the ordered raw-value contract (formerly asserted via the deleted
+        // TPPBookStateHelper.allBookStates()). The wire raw values must stay
+        // stable — a reorder or inserted case would change persisted state ints.
+        XCTAssertEqual(TPPBookState.allCases.map { $0.rawValue }, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+        XCTAssertFalse(TPPBookState.allCases.isEmpty,
+                       "allCases should return a non-empty array of states")
     }
 }

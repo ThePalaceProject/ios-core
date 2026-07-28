@@ -27,6 +27,8 @@
 import XCTest
 import PalaceCatalog
 @testable import Palace
+import PalaceBookModel
+@testable import PalaceBookRegistry
 
 @MainActor
 final class BookRegistrySyncSideloadExemptionTests: XCTestCase {

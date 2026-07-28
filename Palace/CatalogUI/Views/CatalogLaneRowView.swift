@@ -1,4 +1,5 @@
 import SwiftUI
+import PalaceBookModel
 
 struct CatalogLaneRowView: View {
     let title: String

@@ -19,6 +19,8 @@
 
 import XCTest
 @testable import Palace
+import PalaceBookModel
+@testable import PalaceBookRegistry
 
 @MainActor
 final class MyBooksDownloadCenterEvictionTests: XCTestCase {

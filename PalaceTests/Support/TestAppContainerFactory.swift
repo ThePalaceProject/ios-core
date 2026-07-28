@@ -40,9 +40,12 @@
 //
 
 import Foundation
+import PalacePreferences
 import PalaceAuth
 import PalaceNetwork
 @testable import Palace
+import PalaceBookModel
+import PalaceBookRegistry
 
 /// Build a fresh `AppContainer` whose service graph is hand-threaded just
 /// like the production builder, but with NO interaction with the static
@@ -148,6 +151,7 @@ func makeTestAppContainer(
     reachability: reachability,
     accountsManager: resolvedAccountsManager,
     settings: TPPSettings(),
+    featureFlags: RemoteFeatureFlags.shared,
     downloadCenter: downloadCenter,
     downloadAnnouncementService: downloadAnnouncementService,
     debugSettings: DebugSettings(),

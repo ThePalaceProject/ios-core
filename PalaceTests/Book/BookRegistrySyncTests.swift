@@ -12,6 +12,8 @@
 import XCTest
 import PalaceCatalog
 @testable import Palace
+import PalaceBookModel
+@testable import PalaceBookRegistry
 
 @MainActor
 final class BookRegistrySyncTests: XCTestCase {
@@ -94,24 +96,22 @@ final class BookRegistrySyncTests: XCTestCase {
 
     // MARK: - Reset
 
-    func test_reset_clearsSyncUrlAndStore() {
-        // Add a book to the store
+    func test_reset_clearsSyncUrlAndStore() async {
+        // CONVERTED: addBook completion+wait replaced with the S1 seam join.
         let book = makeBook()
-        let addDone = expectation(description: "added")
-        store.addBook(book, state: .downloadNeeded) { _ in addDone.fulfill() }
-        wait(for: [addDone], timeout: 2.0)
-
-        drainMainQueue()
+        store.addBook(book, state: .downloadNeeded)
+        await store._awaitPendingWritesForTesting()
 
         XCTAssertEqual(store.allBooks.count, 1)
 
         syncManager.syncUrl = URL(string: "https://example.com/loans")
         syncManager.reset("test-account")
+        // reset() calls store.removeAll(), which is itself a barrier write —
+        // join the seam again so the read below observes the post-reset state.
+        await store._awaitPendingWritesForTesting()
 
-        // Allow barrier to complete
-        drainMainQueue()
-            XCTAssertNil(self.syncManager.syncUrl)
-            XCTAssertTrue(self.store.allBooks.isEmpty)
+        XCTAssertNil(syncManager.syncUrl)
+        XCTAssertTrue(store.allBooks.isEmpty)
     }
 
     // MARK: - Loading Account Guard
@@ -160,13 +160,11 @@ final class BookRegistrySyncTests: XCTestCase {
 
     // MARK: - Store Snapshot Round-Trip
 
-    func test_registrySnapshot_producesSerializableData() {
+    func test_registrySnapshot_producesSerializableData() async {
+        // CONVERTED: addBook completion+wait replaced with the S1 seam join.
         let book = makeBook()
-        let addDone = expectation(description: "added")
-        store.addBook(book, state: .downloadNeeded) { _ in addDone.fulfill() }
-        wait(for: [addDone], timeout: 2.0)
-
-        drainMainQueue()
+        store.addBook(book, state: .downloadNeeded)
+        await store._awaitPendingWritesForTesting()
 
         let snapshot = store.registrySnapshot()
         XCTAssertEqual(snapshot.count, 1)
@@ -203,7 +201,7 @@ final class BookRegistrySyncTests: XCTestCase {
 
     // MARK: - Multiple Books with Various States
 
-    func test_storeSnapshotWithMultipleStates() {
+    func test_storeSnapshotWithMultipleStates() async {
         let books: [(String, TPPBookState)] = [
             ("b1", .downloadNeeded),
             ("b2", .downloadSuccessful),
@@ -212,30 +210,29 @@ final class BookRegistrySyncTests: XCTestCase {
             ("b5", .used),
         ]
 
-        let addDone = expectation(description: "all added")
-        addDone.expectedFulfillmentCount = books.count
-
+        // CONVERTED: per-add expectedFulfillmentCount expectation+wait replaced
+        // with the S1 seam join — all 5 barrier writes are FIFO on the same
+        // syncQueue, so a single trailing join drains them all.
         for (id, state) in books {
             let book = makeBook(identifier: id, title: "Book \(id)")
-            store.addBook(book, state: state) { _ in addDone.fulfill() }
+            store.addBook(book, state: state)
         }
-        wait(for: [addDone], timeout: 3.0)
+        await store._awaitPendingWritesForTesting()
 
-        drainMainQueue()
-            XCTAssertEqual(self.store.allBooks.count, 5)
-            XCTAssertEqual(self.store.heldBooks.count, 1)
-            // myBooks: downloadNeeded, downloadFailed, downloadSuccessful, used = 4
-            XCTAssertEqual(self.store.myBooks.count, 4)
+        XCTAssertEqual(store.allBooks.count, 5)
+        XCTAssertEqual(store.heldBooks.count, 1)
+        // myBooks: downloadNeeded, downloadFailed, downloadSuccessful, used = 4
+        XCTAssertEqual(store.myBooks.count, 4)
 
-            for (id, expectedState) in books {
-                XCTAssertEqual(self.store.state(for: id), expectedState,
-                               "Expected \(expectedState) for book \(id)")
-            }
+        for (id, expectedState) in books {
+            XCTAssertEqual(store.state(for: id), expectedState,
+                           "Expected \(expectedState) for book \(id)")
+        }
     }
 
     // MARK: - Validate Downloaded Content
 
-    func test_validateDownloadedContent_marksDownloadNeededWhenFileMissing() {
+    func test_validateDownloadedContent_marksDownloadNeededWhenFileMissing() async {
         // This test relies on the fact that no actual book file exists for our fake book,
         // so downloadSuccessful books should be marked as downloadNeeded.
         // However, validateDownloadedContent requires the test accountsManager to have a
@@ -243,11 +240,9 @@ final class BookRegistrySyncTests: XCTestCase {
         // mechanism instead.
 
         let book = makeBook(identifier: "validated-book")
-        let addDone = expectation(description: "added")
-        store.addBook(book, state: .downloadSuccessful) { _ in addDone.fulfill() }
-        wait(for: [addDone], timeout: 2.0)
-
-        drainMainQueue()
+        // CONVERTED: addBook completion+wait replaced with the S1 seam join.
+        store.addBook(book, state: .downloadSuccessful)
+        await store._awaitPendingWritesForTesting()
 
         // Directly simulate what validateDownloadedContent does using mutateRegistrySync
         store.mutateRegistrySync { registry in
@@ -405,6 +400,48 @@ final class BookRegistrySyncTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: url.path),
                        "reset(account:) must delete the registry file from disk")
         XCTAssertNil(syncManager.syncUrl)
+    }
+
+    /// The registry has two on-disk SIDECARS next to `registry.json`: the
+    /// last-good `.bak` written before every good save, and `.corrupt-<ts>`
+    /// quarantine copies. `reset(_:)` — the sign-out / force-reset / "delete
+    /// server data" path — deleted only the PRIMARY, so a signed-out patron's
+    /// entire shelf (titles, identifiers, reading positions) stayed readable on
+    /// disk indefinitely. It also kept `RegistryFileRecovery.onDiskHasRecords`
+    /// true after sign-out, and left the corrupt-primary recovery path able to
+    /// restore the PREVIOUS patron's books into the next patron's session at
+    /// the same library (same account UUID → same registry path).
+    ///
+    /// Verified live on the 3.2.3 hotfix line: after sign-out + relaunch,
+    /// `registry.json` was gone but `registry.json.bak` still held all 9 of the
+    /// signed-out patron's records. Ported here from build 490.
+    func test_reset_removesBackupAndQuarantineSidecars() throws {
+        let (account, url) = makeIsolatedAccount()
+        defer { cleanupAccount(url) }
+
+        let book = makeBook(identifier: "r-sidecar")
+        let record = TPPBookRegistryRecord(book: book, state: .downloadNeeded)
+        try writeRegistryFile(records: [record.dictionaryRepresentation], to: url)
+
+        let backup = RegistryFileRecovery.backupURL(for: url)
+        try Data(contentsOf: url).write(to: backup)
+        let quarantine = RegistryFileRecovery.quarantineURL(
+            for: url,
+            timestamp: Date(timeIntervalSince1970: 1_700_000_000)
+        )
+        try Data("{ truncated".utf8).write(to: quarantine)
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: backup.path), "setup: .bak present")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: quarantine.path), "setup: quarantine present")
+
+        syncManager.reset(account)
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: url.path),
+                       "reset must delete the primary registry file")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: backup.path),
+                       "reset must delete the last-good .bak — otherwise a signed-out patron's shelf persists on disk and can be recovered into the next patron's session")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: quarantine.path),
+                       "reset must prune quarantined corrupt registry copies rather than accumulate them forever")
     }
 
     // MARK: - checkIfBookFileExists

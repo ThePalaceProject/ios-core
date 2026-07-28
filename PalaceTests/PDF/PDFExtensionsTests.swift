@@ -10,6 +10,7 @@
 
 import XCTest
 @testable import Palace
+import PalaceBookModel
 
 @MainActor
 final class PDFExtensionsTests: XCTestCase {

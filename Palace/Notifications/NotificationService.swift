@@ -9,6 +9,7 @@
 @preconcurrency import UserNotifications
 import Combine
 import FirebaseCore
+import PalaceBookRegistry
 // `@preconcurrency`: Firebase Messaging's completion handlers (`token { }`) and
 // the `MessagingDelegate` protocol carry `@Sendable`/isolation expectations that
 // `NotificationService` (a non-Sendable `@objcMembers` singleton whose callbacks
@@ -19,6 +20,7 @@ import FirebaseCore
 // changing behavior.
 @preconcurrency import FirebaseMessaging
 import PalaceLogging
+import PalaceBookModel
 
 // MARK: - Notification Constants
 

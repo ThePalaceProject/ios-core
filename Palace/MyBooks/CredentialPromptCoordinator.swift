@@ -16,6 +16,7 @@
 
 import Foundation
 import PalaceLogging
+import PalaceBookModel
 
 // MARK: - CredentialPromptCoordinatorDelegate
 

@@ -25,6 +25,7 @@
 import Foundation
 import PalaceLogging
 @preconcurrency import PalaceAudiobookToolkit
+import PalaceBookModel
 
 /// Callback surface for the second-leg bearer-token manifest fetch. Wraps
 /// `BookService.fetchManifestWithBearerToken` so adapter tests can stub

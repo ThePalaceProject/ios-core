@@ -13,6 +13,7 @@
 //
 
 import AVFoundation
+import PalacePreferences
 import XCTest
 @testable import Palace
 @testable import PalaceAudiobookToolkit

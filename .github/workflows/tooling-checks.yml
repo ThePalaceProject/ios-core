@@ -7,6 +7,8 @@ name: Tooling Checks
 #   1. bash -n on every committed shell script  (catches syntax breaks)
 #   2. pytest on the detector suite              (catches detector logic regressions)
 #   3. the pre-commit hook fixture test          (catches hook-wiring regressions)
+# A second job (flake-lint) diff-scopes the STARVE-001 test-flakiness gate against
+# the PR's base branch — blocks NEW parallel-clone-starvation deadline-polls.
 on: [ pull_request, workflow_dispatch ]
 concurrency:
   group: tooling-checks-${{ github.event.pull_request.number || github.ref }}
@@ -156,3 +158,36 @@ jobs:
           else
             echo "No verify-tiers drift gate — skipping."
           fi
+  # Diff-scoped test-flakiness gate. Separate job because it needs the PR's base
+  # branch fetched (fetch-depth: 0 + an explicit base fetch) to diff against —
+  # the tooling-integrity job runs shallow. Fails the PR if a changed test file
+  # ADDS a fixed-deadline wait on async work (STARVE-001 / recurrence class
+  # `parallel-clone-starvation`): those starve under the 2 parallel sim clones on
+  # the macOS test runner and fail all 3 `-retry-tests-on-failure` iterations.
+  # Scoped to ADDED lines only, so it never chokes on the ~675 legacy occurrences.
+  flake-lint:
+    runs-on: ubuntu-latest
+    env:
+      # PR target branch (develop for the overwhelming majority); default to
+      # develop for a manual workflow_dispatch run that has no base_ref.
+      BASE: ${{ github.base_ref || 'develop' }}
+    steps:
+      - name: Checkout (full history so the base merge-base is reachable)
+        uses: actions/checkout@v7
+        with:
+          submodules: false
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Fetch PR base branch
+        run: git fetch --no-tags origin "+refs/heads/${BASE}:refs/remotes/origin/${BASE}"
+
+      # Flag NEW deadline-poll waits on lines this PR adds vs its base. The
+      # linter's --changed mode is diff-scoped (added lines of PalaceTests/*.swift
+      # only) and exits 1 on a hit. No Xcode/simulator needed.
+      - name: STARVE-001 — no new deadline-poll waits in changed tests
+        run: python3 scripts/lint-test-quality.py --changed "origin/${BASE}"

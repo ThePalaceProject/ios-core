@@ -1,4 +1,5 @@
 import SwiftUI
+import PalaceBookModel
 
 private typealias DisplayStrings = Strings.BookButton
 

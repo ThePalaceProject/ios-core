@@ -18,6 +18,7 @@ import Combine
 import XCTest
 @preconcurrency import PalaceAudiobookToolkit
 @preconcurrency @testable import Palace
+import PalaceBookModel
 
 @MainActor
 final class LocalFileAdapterTests: XCTestCase {

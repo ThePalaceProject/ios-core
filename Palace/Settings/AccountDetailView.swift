@@ -6,7 +6,9 @@
 //
 
 import SwiftUI
+import PalacePreferences
 import LocalAuthentication
+import PalaceBookModel
 
 struct AccountDetailView: View {
     typealias DisplayStrings = Strings.Settings
@@ -718,11 +720,13 @@ struct AccountDetailView: View {
             return
         }
 
+        let ctx = viewModel.problemReportContext
         ProblemReportEmail.sharedInstance.beginComposing(
             to: email.rawValue,
             presentingViewController: topVC,
             book: nil as TPPBook?,
-            libraryUUID: viewModel.selectedAccount?.uuid
+            patronIdentifier: ctx.patronIdentifier,
+            libraryName: ctx.libraryName
         )
     }
 

@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import PalacePreferences
 @testable import Palace
 
 /// Mock implementation of `TPPSettingsProviding` for unit testing.

@@ -11,6 +11,7 @@
 //
 
 import Foundation
+import PalacePreferences
 import Combine
 
 /// Environment seam for `LibrariesSectionViewModel`. Production wiring

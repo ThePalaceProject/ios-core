@@ -28,6 +28,7 @@ import XCTest
 import PalaceCatalog
 @testable import Palace
 @testable import PalaceAudiobookToolkit
+import PalaceBookModel
 
 @MainActor
 final class ContinueRowSectionTests: XCTestCase {

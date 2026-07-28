@@ -17,6 +17,8 @@
 // directly without re-guarding here.
 import XCTest
 @testable import Palace
+import PalaceBookModel
+import PalaceBookRegistry
 
 @MainActor
 final class AdobeDRMHandlerTests: XCTestCase {

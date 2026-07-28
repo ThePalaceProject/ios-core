@@ -4,6 +4,8 @@ import Combine
 import PalaceLogging
 import PalaceNetwork
 import PalaceCatalog
+import PalaceBookModel
+import PalaceBookRegistry
 
 /// ViewModel for CatalogLaneMoreView that manages catalog feed loading, filtering, and sorting
 @MainActor

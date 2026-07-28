@@ -1,4 +1,5 @@
 import Foundation
+import PalacePreferences
 
 protocol TPPAgeCheckValidationDelegate: AnyObject, Sendable {
     var minYear: Int { get }
@@ -18,7 +19,7 @@ protocol TPPAgeCheckValidationDelegate: AnyObject, Sendable {
                                             completion: ((Bool) -> Void)?)
 }
 
-@objc protocol TPPAgeCheckChoiceStorage {
+protocol TPPAgeCheckChoiceStorage: AnyObject {
     var userPresentedAgeCheck: Bool { get set }
 }
 
@@ -252,3 +253,7 @@ private struct AgeCheckCallbacks: @unchecked Sendable {
 private struct AgeCheckAccountBox: @unchecked Sendable {
     let account: Account
 }
+
+// Wave 1a: TPPSettings moved to PalacePreferences; the age-check storage
+// conformance re-attaches here beside the protocol it satisfies.
+extension TPPSettings: TPPAgeCheckChoiceStorage {}

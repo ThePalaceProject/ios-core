@@ -1,6 +1,8 @@
 import Foundation
+import PalacePreferences
 import PalaceLogging
 import PalaceCatalog
+import PalaceBookRegistry
 
 let currentAccountIdentifierKey = "TPPCurrentAccountIdentifier"
 
@@ -265,6 +267,10 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
     /// explicit initializer so two tests touching the current-account
     /// key cannot pollute each other. There is NO fallback once injected.
     private let defaults: UserDefaults
+    /// Injected account-switch borrow-reauth circuit-breaker reset (Wave 3 S1).
+    /// Replaces the static `MyBooksDownloadCenter.clearAllBorrowReauthState()`
+    /// call so the money-path clear is spy-testable. See `BorrowReauthResetting`.
+    private let borrowReauthResetter: any BorrowReauthResetting
     /// Lazy-resolved from AppContainer to break the singleton init cycle:
     /// AccountsManager is constructed inline by AppContainer._cached's
     /// initializer, so we cannot read AppContainer.production() during this
@@ -530,8 +536,15 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
     /// - Parameter defaults: UserDefaults backing store for
     ///   `currentAccountIdentifierKey` reads/writes. Defaults to `.standard`
     ///   so production callers stay green; tests pass a per-suite instance.
-    init(defaults: UserDefaults = .standard) {
+    /// - Parameter borrowReauthResetter: account-switch borrow-reauth reset seam
+    ///   (Wave 3 S1). REAL default keeps every existing call site behavior-identical;
+    ///   tests inject a spy, `AppContainer` passes it explicitly.
+    init(
+        defaults: UserDefaults = .standard,
+        borrowReauthResetter: any BorrowReauthResetting = DownloadCenterBorrowReauthResetter()
+    ) {
         self.defaults = defaults
+        self.borrowReauthResetter = borrowReauthResetter
         self.settings = TPPSettings()
         self.accountSet = TPPConfiguration.customUrlHash()
             ?? (settings.useBetaLibraries
@@ -990,7 +1003,7 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
     /// content before switching accounts to prevent cross-account credential leaks.
     private func cleanupActiveContentBeforeAccountSwitch(from previousId: String?, to newId: String?) {
         networkExecutor.cancelNonEssentialTasks()
-        MyBooksDownloadCenter.clearAllBorrowReauthState()
+        borrowReauthResetter.clearAllBorrowReauthState()
 
         Task { @MainActor [weak self] in
             if let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator {

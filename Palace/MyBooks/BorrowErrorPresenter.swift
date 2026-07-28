@@ -18,6 +18,7 @@
 import Foundation
 import PalaceCatalog
 import PalaceLogging
+import PalaceBookModel
 
 // MARK: - Carrier boxes
 

@@ -33,6 +33,7 @@
 
 import XCTest
 @testable import Palace
+@testable import PalaceBookRegistry
 
 @MainActor
 final class BookRegistrySyncReadinessTests: XCTestCase {

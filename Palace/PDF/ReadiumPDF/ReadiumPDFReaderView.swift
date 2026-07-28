@@ -19,6 +19,7 @@
 import SwiftUI
 import ReadiumShared
 import PalaceUIKit
+import PalaceBookModel
 
 struct ReadiumPDFReaderView: View {
 

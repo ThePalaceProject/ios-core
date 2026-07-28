@@ -56,8 +56,11 @@
 //
 
 import XCTest
+import PalacePreferences
 import PalaceCatalog
 @testable import Palace
+import PalaceBookModel
+import PalaceBookRegistry
 
 @MainActor
 final class DownloadStartDispatcherContractTests: XCTestCase {

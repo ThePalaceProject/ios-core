@@ -9,9 +9,12 @@
 //
 
 import Combine
+import PalacePreferences
 import XCTest
 import PalaceCatalog
 @testable import Palace
+import PalaceBookModel
+import PalaceBookRegistry
 
 @MainActor
 final class BookDetailViewModelTests: XCTestCase {

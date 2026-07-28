@@ -20,7 +20,12 @@ import PalaceAuth
     func reset(_ libraryID: String!)
 }
 
-@objc protocol TPPBookRegistrySyncing: NSObjectProtocol {
+// De-objc (god-class decomp Wave 2b prep): was `@objc protocol … : NSObjectProtocol`.
+// Every consumer is Swift-only (BookDetailViewModel, AccountDetailViewModel,
+// DeveloperSettingsViewModel, SignInBusinessLogic, TPPBookRegistryMock) — verified
+// zero `.m`/`.h` references, zero selector/`responds(to:)` dispatch. Plain protocol
+// drops the NSObjectProtocol constraint so the concrete conformer need not be NSObject.
+protocol TPPBookRegistrySyncing {
     var isSyncing: Bool {get}
     func reset(_ libraryAccountUUID: String)
     func sync()
@@ -57,14 +62,14 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
 
     /// Makes a business logic object with a network request executor that
     /// performs no persistent storage for caching.
-    @objc convenience init(libraryAccountID: String,
-                           libraryAccountsProvider: TPPLibraryAccountsProvider,
-                           urlSettingsProvider: NYPLUniversalLinksSettings & NYPLFeedURLProvider,
-                           bookRegistry: TPPBookRegistrySyncing,
-                           bookDownloadsCenter: TPPBookDownloadsDeleting,
-                           userAccountProvider: TPPUserAccountProvider.Type,
-                           uiDelegate: TPPSignInOutBusinessLogicUIDelegate?,
-                           drmAuthorizer: TPPDRMAuthorizing?) {
+    convenience init(libraryAccountID: String,
+                     libraryAccountsProvider: TPPLibraryAccountsProvider,
+                     urlSettingsProvider: NYPLUniversalLinksSettings & NYPLFeedURLProvider,
+                     bookRegistry: TPPBookRegistrySyncing,
+                     bookDownloadsCenter: TPPBookDownloadsDeleting,
+                     userAccountProvider: TPPUserAccountProvider.Type,
+                     uiDelegate: TPPSignInOutBusinessLogicUIDelegate?,
+                     drmAuthorizer: TPPDRMAuthorizing?) {
         self.init(libraryAccountID: libraryAccountID,
                   libraryAccountsProvider: libraryAccountsProvider,
                   urlSettingsProvider: urlSettingsProvider,
@@ -182,7 +187,7 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
     var patron: [String: Any]?
 
     /// Settings used by OAuth sign-in flows.
-    @objc let urlSettingsProvider: NYPLUniversalLinksSettings & NYPLFeedURLProvider
+    let urlSettingsProvider: NYPLUniversalLinksSettings & NYPLFeedURLProvider
 
     /// NotificationCenter used by OAuth observer registration / removal.
     /// Production defaults to `.default`; tests may inject an isolated

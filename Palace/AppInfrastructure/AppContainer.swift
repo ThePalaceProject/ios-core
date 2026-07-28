@@ -1,9 +1,13 @@
 import SwiftUI
+import PalacePreferences
+import PalaceFeatureFlags
 import Combine
 import os
 import PalaceAuth
 import PalaceNetwork
 import PalaceCatalog // swarm_27c181b5 A5: shared CatalogRepository / DefaultCatalogAPI accessor
+import PalaceBookModel
+import PalaceBookRegistry
 
 // Swift 6 `complete` — `@unchecked Sendable` invariant: every stored member is
 // an immutable `let` established once at the composition root and only read
@@ -24,6 +28,9 @@ struct AppContainer: @unchecked Sendable {
     let reachability: Reachability
     let accountsManager: AccountsManager
     let settings: TPPSettings
+    /// THE feature-flag read seam (Wave 1b). Protocol-typed so tests inject
+    /// MockFeatureFlagProvider; production binds RemoteFeatureFlags.shared.
+    let featureFlags: FeatureFlagProviding
     let downloadCenter: MyBooksDownloadCenter
     let downloadAnnouncementService: DownloadAnnouncementService
     let debugSettings: DebugSettings
@@ -124,6 +131,7 @@ struct AppContainer: @unchecked Sendable {
             reachability: self.reachability,
             accountsManager: self.accountsManager,
             settings: self.settings,
+            featureFlags: self.featureFlags,
             downloadCenter: self.downloadCenter,
             downloadAnnouncementService: self.downloadAnnouncementService,
             debugSettings: self.debugSettings,
@@ -176,6 +184,7 @@ struct AppContainer: @unchecked Sendable {
             reachability: self.reachability,
             accountsManager: self.accountsManager,
             settings: self.settings,
+            featureFlags: self.featureFlags,
             downloadCenter: self.downloadCenter,
             downloadAnnouncementService: self.downloadAnnouncementService,
             debugSettings: self.debugSettings,
@@ -228,7 +237,15 @@ struct AppContainer: @unchecked Sendable {
     @MainActor
     var audiobookSession: AudiobookSessionManaging {
         if let cached = AppContainer._audiobookSession { return cached }
-        let session = AudiobookSessionManager(appContainer: self)
+        // Pass the flag provider explicitly so the frozen god-class default arg
+        // (RemoteFeatureFlags.shared, exception E4) stops firing in production.
+        // FeatureFlagProviding is Sendable, so capturing `flags` in the
+        // @escaping () -> Bool is clean under Swift 6 `complete`.
+        let flags = self.featureFlags
+        let session = AudiobookSessionManager(
+            appContainer: self,
+            inAppPlaybackNavEnabledProvider: { flags.isInAppPlaybackNavEnabled }
+        )
         AppContainer._audiobookSession = session
         return session
     }
@@ -349,11 +366,15 @@ struct AppContainer: @unchecked Sendable {
     @MainActor
     var appRatingService: AppRatingService {
         if let cached = AppContainer._appRatingService { return cached }
+        let flags = self.featureFlags
         let service = AppRatingService(
             tracker: RatingEngagementTracker(settings: self.settings),
+            // Wave 1b exception E1: appRatingConfig returns RatingConfig (an
+            // app-target type) — read off the concrete impl at this composition
+            // root; it is deliberately NOT on the FeatureFlagProviding protocol.
             configProvider: { RemoteFeatureFlags.shared.appRatingConfig },
-            promptEnabledProvider: { RemoteFeatureFlags.shared.isAppRatingPromptEnabled },
-            forceEligibleProvider: { RemoteFeatureFlags.shared.isAppRatingForceEligible },
+            promptEnabledProvider: { flags.isAppRatingPromptEnabled },
+            forceEligibleProvider: { flags.isAppRatingForceEligible },
             crashFreeProbe: { FirebaseManager.shared.wasLastSessionCrashFree() },
             now: Date.init
         )
@@ -395,7 +416,7 @@ struct AppContainer: @unchecked Sendable {
         let api = DefaultCatalogAPI(
             client: URLSessionNetworkClient(),
             parser: OPDSParser(),
-            featureFlags: RemoteFeatureFlags.shared
+            featureFlags: self.featureFlags
         )
         AppContainer._catalogAPI = api
         return api
@@ -431,6 +452,7 @@ struct AppContainer: @unchecked Sendable {
         reachability: Reachability,
         accountsManager: AccountsManager,
         settings: TPPSettings,
+        featureFlags: FeatureFlagProviding,
         downloadCenter: MyBooksDownloadCenter,
         downloadAnnouncementService: DownloadAnnouncementService,
         debugSettings: DebugSettings,
@@ -452,6 +474,7 @@ struct AppContainer: @unchecked Sendable {
         self.reachability = reachability
         self.accountsManager = accountsManager
         self.settings = settings
+        self.featureFlags = featureFlags
         self.downloadCenter = downloadCenter
         self.downloadAnnouncementService = downloadAnnouncementService
         self.debugSettings = debugSettings
@@ -608,7 +631,13 @@ struct AppContainer: @unchecked Sendable {
         // background `loadCatalogs` the initializer dispatches. Do NOT reintroduce
         // a synchronous full-account preload here — `production()` must return
         // without paying the ~207ms (fast sim) / ~0.3-0.6s (device) full decode.
-        let accountsManager = AccountsManager()
+        // Wave 3 S1: inject the account-switch borrow-reauth circuit-breaker
+        // reset explicitly (no-default-fires house rule) rather than relying on
+        // AccountsManager's real default arg. `DownloadCenterBorrowReauthResetter`
+        // is a stateless struct that forwards to a static, so it needs no MBDC
+        // instance — no construction-order hazard even though MBDC is built later
+        // in this method.
+        let accountsManager = AccountsManager(borrowReauthResetter: DownloadCenterBorrowReauthResetter())
         // Single image-loading umbrella composed of the existing disk+memory
         // ImageCache and the TPPBookCoverRegistry actor — replaces three
         // overlapping singletons at consumer sites (Track A of the 3.2.0
@@ -618,6 +647,18 @@ struct AppContainer: @unchecked Sendable {
         // that re-entered _cached's own dispatch_once and SIGTRAPped on launch.
         let imageCache = ImageCache.shared
         let imageLoader: ImageLoading = ImageLoader(imageCache: imageCache)
+        // Wave 2a: configure the package-side image context BEFORE the first
+        // TPPBook is constructed (the registry construction below parses records).
+        TPPBookImageContext.imageCacheProvider = { imageCache }
+        TPPBookImageContext.imageLoaderProvider = { imageLoader }
+        // god-class decomposition Wave 2b: the registry engine now lives in the
+        // PalaceBookRegistry package and consumes accounts through the value-only
+        // `AccountScopeProviding` inversion + a `RegistryExternalDependencies` bundle.
+        // The convenience init builds the `AccountsManagerAccountScopeAdapter` and the
+        // `.production()` dependency bundle whose provider closures keep the SAME lazy
+        // `AppContainer.production()` resolution the engine's inline closures had
+        // (deferred to first use, so a mid-reset rebuild can't capture a stale graph
+        // and construction here doesn't re-enter the still-resolving dispatch_once).
         let bookRegistry = TPPBookRegistry(accountsManager: accountsManager, imageLoader: imageLoader)
         // Build one accessibility announcer and one DownloadAnnouncementService
         // that wraps it. Sharing this announcer between the service and any
@@ -685,6 +726,12 @@ struct AppContainer: @unchecked Sendable {
             reachability: reachability,
             accountsManager: accountsManager,
             settings: TPPSettings(),
+            // Composition root — the one legitimate binding site for the seam.
+            // `.shared` keeps the process-singleton identity (one lastFetchTime,
+            // one `.standard`-backed override store, the same instance CarPlay's
+            // cached-read path warms). Constructing a second instance here would
+            // fork the CarPlay UserDefaults cache writer.
+            featureFlags: RemoteFeatureFlags.shared,
             downloadCenter: downloadCenter,
             downloadAnnouncementService: downloadAnnouncementService,
             debugSettings: DebugSettings(),

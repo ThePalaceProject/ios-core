@@ -18,6 +18,7 @@
 //
 
 import Foundation
+import PalaceBookModel
 
 /// The eviction decision for a single downloaded loan.
 enum EvictionDecision: Equatable {

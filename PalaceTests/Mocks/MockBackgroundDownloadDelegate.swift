@@ -11,6 +11,8 @@
 import Foundation
 import PalaceCatalog
 @testable import Palace
+import PalaceBookModel
+import PalaceBookRegistry
 
 final class MockBackgroundDownloadDelegate: BackgroundDownloadHandlerDelegate {
     let stateManager = DownloadStateManager()

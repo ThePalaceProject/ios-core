@@ -9,8 +9,57 @@
 import Foundation
 import ReadiumShared
 import ReadiumNavigator
+import PalaceBookModel
+import PalaceLogging
 
 extension TPPReadiumBookmark {
+
+    /// Full-field initializer. Lives app-side (rather than in the PalaceBookModel
+    /// package alongside the rest of TPPReadiumBookmark) because it derives the
+    /// location string via the Readium-backed `TPPBookLocation(href:type:...)`
+    /// convenience initializer in `TPPBookLocation+Locator.swift`, which imports
+    /// ReadiumShared — a dependency the leaf model package must not carry. It
+    /// resolves the location string here, then delegates to the package
+    /// designated initializer. Behavior is byte-identical to the designated
+    /// initializer this replaced (Wave 2a extraction, PP god-class decomp).
+    convenience init?(annotationId: String?,
+          href: String?,
+          chapter: String?,
+          page: String?,
+          location: String?,
+          progressWithinChapter: Float,
+          progressWithinBook: Float,
+          readingOrderItem: String?,
+          readingOrderItemOffsetMilliseconds: Float?,
+          time: String?,
+          device: String?) {
+
+        guard let href = href else {
+            Log.error(#file, "Bookmark creation failed init due to nil `href`.")
+            return nil
+        }
+
+        let locationString = TPPBookLocation(
+            href: href,
+            type: "LocatorHrefProgression",
+            chapterProgression: progressWithinChapter,
+            totalProgression: progressWithinBook,
+            title: chapter,
+            position: nil
+        )?.locationString ?? ""
+
+        self.init(annotationId: annotationId,
+                  href: href,
+                  chapter: chapter,
+                  page: page,
+                  locationString: locationString,
+                  progressWithinChapter: progressWithinChapter,
+                  progressWithinBook: progressWithinBook,
+                  readingOrderItem: readingOrderItem,
+                  readingOrderItemOffsetMilliseconds: readingOrderItemOffsetMilliseconds ?? 0.0,
+                  time: time ?? NSDate().rfc3339String(),
+                  device: device)
+    }
 
     /// Converts the bookmark model into a location object that can be used
     /// with Readium 3.

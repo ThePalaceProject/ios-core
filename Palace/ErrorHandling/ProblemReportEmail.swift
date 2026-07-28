@@ -1,5 +1,6 @@
 import MessageUI
 import UIKit
+import PalaceBookModel
 
 @MainActor
 @objcMembers class ProblemReportEmail: NSObject {
@@ -9,33 +10,22 @@ import UIKit
 
     fileprivate weak var lastPresentingViewController: UIViewController?
 
-    func beginComposing(
-        to emailAddress: String,
-        presentingViewController: UIViewController,
-        book: TPPBook?) {
-        beginComposing(to: emailAddress, presentingViewController: presentingViewController, book: book, libraryUUID: nil)
-    }
-
-    /// Composes a problem report email using the patron ID for the specified library.
-    /// - Parameters:
-    ///   - emailAddress: The support email address.
-    ///   - presentingViewController: The view controller to present the mail composer from.
-    ///   - book: An optional book associated with the report.
-    ///   - libraryUUID: The UUID of the library being viewed. When nil, falls back to the active library.
+    /// Composes a problem report email. Wave 1c (cycle 2): the caller snapshots
+    /// the account-derived context (see AccountsManager.problemReportContext)
+    /// — ErrorHandling no longer names AccountsManager/TPPUserAccount.
+    /// `patronIdentifier`/`libraryName` are deliberately NOT defaulted so every
+    /// call site migrates explicitly (a defaulted overload would let a missed
+    /// site compile and silently drop the patron ID).
     func beginComposing(
         to emailAddress: String,
         presentingViewController: UIViewController,
         book: TPPBook?,
-        libraryUUID: String?,
-        accountsManager: AccountsManager = AppContainer.production().accountsManager) {
-        let account: TPPUserAccount
-        if let id = libraryUUID ?? accountsManager.currentAccountId {
-            account = accountsManager.userAccount(for: id)
-        } else {
-            account = accountsManager.currentUserAccount
-        }
-        let patronID = account.authorizationIdentifier
-        beginComposing(to: emailAddress, presentingViewController: presentingViewController, body: generateBody(book: book, patronIdentifier: patronID))
+        patronIdentifier: String?,
+        libraryName: String?) {
+        beginComposing(
+            to: emailAddress,
+            presentingViewController: presentingViewController,
+            body: generateBody(book: book, patronIdentifier: patronIdentifier, libraryName: libraryName))
     }
 
     func beginComposing(
@@ -66,7 +56,7 @@ import UIKit
         presentingViewController.present(mailComposeViewController, animated: true)
     }
 
-    func generateBody(book: TPPBook?, patronIdentifier: String? = nil, accountsManager: AccountsManager = AppContainer.production().accountsManager) -> String {
+    func generateBody(book: TPPBook?, patronIdentifier: String? = nil, libraryName: String? = nil) -> String {
         let nativeHeight = UIScreen.main.nativeBounds.height
         let systemVersion = UIDevice.current.systemVersion
         let idiom: String
@@ -92,7 +82,7 @@ import UIKit
         }
 
         let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
-        var body = "\n\n---\nIdiom: \(idiom)\nPlatform: iOS\nOS: \(systemVersion)\nHeight: \(nativeHeight)\nPalace Version: \(appVersion)\nLibrary: \(accountsManager.currentAccount?.name ?? "")"
+        var body = "\n\n---\nIdiom: \(idiom)\nPlatform: iOS\nOS: \(systemVersion)\nHeight: \(nativeHeight)\nPalace Version: \(appVersion)\nLibrary: \(libraryName ?? "")"
 
         if let patronIdentifier = patronIdentifier {
             body += "\nPatron ID: \(patronIdentifier)"

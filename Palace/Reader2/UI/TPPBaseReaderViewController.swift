@@ -11,10 +11,12 @@
 import SafariServices
 import UIKit
 import WebKit
+import PalaceBookRegistry
 @preconcurrency import ReadiumNavigator
 @preconcurrency import ReadiumShared
 import Combine
 import PalaceLogging
+import PalaceBookModel
 
 /// Bridges Readium's `Navigator` (which has a `go(to:options:)` method)
 /// to our internal `NavigatorGoTo` testing seam, used by

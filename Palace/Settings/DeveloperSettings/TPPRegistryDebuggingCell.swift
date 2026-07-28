@@ -1,4 +1,5 @@
 import UIKit
+import PalacePreferences
 
 protocol TPPRegistryDebugger: TPPLoadingViewController {}
 

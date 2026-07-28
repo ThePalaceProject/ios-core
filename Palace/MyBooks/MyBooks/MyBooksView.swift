@@ -1,6 +1,9 @@
 import SwiftUI
+import PalacePreferences
 import Combine
 import PalaceUIKit
+import PalaceBookModel
+import PalaceBookRegistry
 
 struct MyBooksView: View {
     @EnvironmentObject private var coordinator: NavigationCoordinator

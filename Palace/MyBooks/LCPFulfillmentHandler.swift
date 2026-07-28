@@ -1,3 +1,4 @@
+import PalaceBookRegistry
 //
 //  LCPFulfillmentHandler.swift
 //  Palace
@@ -19,6 +20,7 @@
 
 import Foundation
 import PalaceLogging
+import PalaceBookModel
 
 // MARK: - LCPFulfillmentHandlerDelegate
 

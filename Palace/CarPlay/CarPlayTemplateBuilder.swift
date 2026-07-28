@@ -10,6 +10,7 @@
 import CarPlay
 import PalaceAudiobookToolkit
 import PalaceLogging
+import PalaceBookModel
 
 /// Pure factory for building CarPlay templates.
 /// Stateless — all context is passed in via parameters.

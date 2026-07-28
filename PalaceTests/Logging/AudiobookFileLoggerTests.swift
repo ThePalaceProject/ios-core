@@ -7,6 +7,7 @@
 
 import XCTest
 @testable import Palace
+import PalaceLogging
 
 @MainActor
 final class AudiobookFileLoggerTests: XCTestCase {
@@ -291,5 +292,19 @@ final class AudiobookFileLoggerTests: XCTestCase {
             FileManager.default.fileExists(atPath: logsDir.appendingPathComponent("\(oldestBook).log").path),
             "Cleanup must delete the oldest log file once total size > 10MB"
         )
+    }
+
+    // MARK: - LogArchiveExporting seam (Wave 1c)
+
+    /// The exporter seam must surface the same directory the logger writes to —
+    /// exercised through a real write against the injected temp root (kills a
+    /// `return nil` / wrong-directory mutant; not a conformance tautology).
+    func testLogArchiveDirectoryURL_afterLoggingEvent_containsTheWrittenLog() throws {
+        sut.logEvent(forBookId: testBookId, event: "playback started")
+
+        let exporter: any LogArchiveExporting = sut
+        let dir = try XCTUnwrap(exporter.logArchiveDirectoryURL())
+        let contents = try FileManager.default.contentsOfDirectory(atPath: dir.path)
+        XCTAssertFalse(contents.isEmpty, "exported directory must contain the written log")
     }
 }

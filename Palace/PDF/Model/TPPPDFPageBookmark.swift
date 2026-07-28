@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import PalaceBookModel
 
 /// Page bookmark object for page synchronization between devices
 ///

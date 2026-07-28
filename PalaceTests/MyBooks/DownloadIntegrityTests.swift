@@ -23,6 +23,7 @@
 import XCTest
 import CryptoKit
 @testable import Palace
+import PalaceBookModel
 
 private let integrityTestSession: URLSession = {
     let config = URLSessionConfiguration.ephemeral

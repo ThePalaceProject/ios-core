@@ -1,5 +1,6 @@
 import XCTest
 @testable import Palace
+import PalaceBookModel
 
 /// Behavior tests for `BorrowReducer` — the pure-function core of the
 /// borrow / download / return state machine that backs `BookDetailViewModel`.

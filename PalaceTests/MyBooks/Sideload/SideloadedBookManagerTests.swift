@@ -12,6 +12,8 @@
 
 import XCTest
 @testable import Palace
+import PalaceBookModel
+import PalaceBookRegistry
 
 @MainActor
 final class SideloadedBookManagerTests: PalaceWiringTestCase {

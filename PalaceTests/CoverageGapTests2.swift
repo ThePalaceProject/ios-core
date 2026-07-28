@@ -10,6 +10,7 @@
 import XCTest
 import Combine
 @testable import Palace
+import PalaceBookModel
 
 // MARK: - 1. AppTabRouterGapTests
 

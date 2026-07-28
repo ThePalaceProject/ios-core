@@ -1,5 +1,6 @@
 import XCTest
 @testable import Palace
+import PalaceBookModel
 
 /// Tests cross-device bookmark and reading position sync logic.
 ///

@@ -8,6 +8,8 @@
 
 import Foundation
 import PalaceAudiobookToolkit
+import PalaceBookModel
+import PalaceBookRegistry
 
 /// Sendable carrier for `syncLocation`'s non-Sendable captures so the `@Sendable`
 /// `Task` closure (Swift 6 `complete`) captures a Sendable box rather than the raw
@@ -22,7 +24,9 @@ private struct SyncLocationBox: @unchecked Sendable {
     let completion: (AudioBookmark?) -> Void
 }
 
-@objc extension TPPBookRegistry {
+// De-objc (god-class decomp Wave 2b prep): was `@objc extension` — no ObjC callers
+// of `syncLocation` (verified zero `.m`/`.h`/selector references).
+extension TPPBookRegistry {
     func syncLocation(for book: TPPBook, completion: @escaping (AudioBookmark?) -> Void) {
         let box = SyncLocationBox(book: book, completion: completion)
         Task {

@@ -3,6 +3,7 @@ import os
 import FirebaseCore
 import FirebaseAnalytics
 import FirebaseCrashlytics
+import PalaceBookRegistry
 // `@preconcurrency`: FirebaseDynamicLinks is not Sendable-audited upstream; its
 // `DynamicLink` crosses into a `@MainActor` Task when routing a universal link.
 // Honest ceiling until Firebase annotates its concurrency (see fix vocabulary).
@@ -51,6 +52,12 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         // PalaceLogging is Firebase-free; the host app supplies the bridge.
         Log.crashlyticsBridge = FirebaseCrashlyticsBridge()
 
+        // Wave 1c (cycle 2): ErrorHandling reads account context through this
+        // registered provider instead of importing Accounts.
+        ErrorReportingContext.libraryNameProvider = {
+            AppContainer.production().accountsManager.currentAccount?.name
+        }
+
         let startupQueue = DispatchQueue.global(qos: .userInitiated)
 
         // Build identifier marker — logged on every app launch so a sysdiagnose
@@ -96,7 +103,7 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         } else {
             Task {
                 await FirebaseManager.shared.fetchAndActivateRemoteConfig()
-                _ = RemoteFeatureFlags.shared.isCarPlayEnabled
+                _ = AppContainer.production().featureFlags.isCarPlayEnabled
             }
             TPPErrorLogger.configureCrashAnalytics()
         }
@@ -357,7 +364,7 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         Task {
             // Small delay to let Remote Config fetch complete
             try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
-            _ = RemoteFeatureFlags.shared.isCarPlayEnabled
+            _ = AppContainer.production().featureFlags.isCarPlayEnabled
         }
 
         // Sync held books when app becomes active to ensure UI reflects current availability

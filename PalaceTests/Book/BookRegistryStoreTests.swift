@@ -11,6 +11,8 @@
 import XCTest
 import Combine
 @testable import Palace
+import PalaceBookModel
+@testable import PalaceBookRegistry
 
 @MainActor
 final class BookRegistryStoreTests: XCTestCase {
@@ -70,23 +72,21 @@ final class BookRegistryStoreTests: XCTestCase {
 
     // MARK: - Add / Retrieve
 
-    func test_addBook_thenRetrieve() {
+    func test_addBook_thenRetrieve() async {
         let book = makeBook()
-        let addExpectation = expectation(description: "add completes")
 
-        store.addBook(book, state: .downloadNeeded) { snapshot in
-            XCTAssertEqual(snapshot.count, 1)
-            XCTAssertEqual(snapshot[book.identifier]?.state, .downloadNeeded)
-            addExpectation.fulfill()
-        }
+        // CONVERTED: expectation+wait(for:) on the addBook completion replaced
+        // with the S1 seam join (BookRegistryStore._awaitPendingWritesForTesting).
+        // The barrier write is committed by the time the seam resumes, so the
+        // registry read below is deterministic — no drainMainQueue needed since
+        // `book(forIdentifier:)` is a plain `performSync` read with no main hop.
+        store.addBook(book, state: .downloadNeeded)
+        await store._awaitPendingWritesForTesting()
 
-        wait(for: [addExpectation], timeout: 2.0)
-
-        // Allow the async barrier to complete
-        drainMainQueue()
-            let retrieved = self.store.book(forIdentifier: book.identifier)
-            XCTAssertEqual(retrieved?.identifier, book.identifier)
-            XCTAssertEqual(retrieved?.title, "Test Book")
+        let retrieved = store.book(forIdentifier: book.identifier)
+        XCTAssertEqual(retrieved?.identifier, book.identifier)
+        XCTAssertEqual(retrieved?.title, "Test Book")
+        XCTAssertEqual(store.allBooks.count, 1)
     }
 
     /// Lookup guards: nil/empty/unknown identifiers must all resolve to a
@@ -94,7 +94,7 @@ final class BookRegistryStoreTests: XCTestCase {
     /// branch (e.g. an early return that only handles nil but not "") fails
     /// loudly. Also asserts the positive case in the same test so a mutant
     /// flipping the lookup-hit path is caught here too.
-    func test_bookForIdentifier_returnsNilForUnregisteredOrInvalidInputs() {
+    func test_bookForIdentifier_returnsNilForUnregisteredOrInvalidInputs() async {
         // Negative cases — three distinct invalid-input shapes.
         XCTAssertNil(store.book(forIdentifier: nil),         "nil → nil")
         XCTAssertNil(store.book(forIdentifier: ""),          "empty string → nil")
@@ -103,10 +103,8 @@ final class BookRegistryStoreTests: XCTestCase {
         // Positive case — registered book is retrievable, distinguishing
         // "always-nil" mutants from real lookup behaviour.
         let book = makeBook(identifier: "registered")
-        let added = expectation(description: "added")
-        store.addBook(book, state: .downloadNeeded) { _ in added.fulfill() }
-        wait(for: [added], timeout: 2.0)
-        drainMainQueue()
+        store.addBook(book, state: .downloadNeeded)
+        await store._awaitPendingWritesForTesting()
         XCTAssertEqual(store.book(forIdentifier: "registered")?.identifier, "registered")
     }
 
@@ -115,149 +113,131 @@ final class BookRegistryStoreTests: XCTestCase {
     /// Same guard pattern for `state(for:)` — every invalid-input shape must
     /// resolve to `.unregistered`, and the positive case must surface the
     /// stored state so an "always-unregistered" mutant fails.
-    func test_state_returnsUnregisteredForUnregisteredOrInvalidInputs() {
+    func test_state_returnsUnregisteredForUnregisteredOrInvalidInputs() async {
         XCTAssertEqual(store.state(for: nil),       .unregistered, "nil → .unregistered")
         XCTAssertEqual(store.state(for: ""),        .unregistered, "empty → .unregistered")
         XCTAssertEqual(store.state(for: "unknown"), .unregistered, "unknown id → .unregistered")
 
         let book = makeBook(identifier: "tracked")
-        let added = expectation(description: "added")
-        store.addBook(book, state: .downloadSuccessful) { _ in added.fulfill() }
-        wait(for: [added], timeout: 2.0)
-        drainMainQueue()
+        store.addBook(book, state: .downloadSuccessful)
+        await store._awaitPendingWritesForTesting()
         XCTAssertEqual(store.state(for: "tracked"), .downloadSuccessful,
                        "Registered books must surface their stored state, not .unregistered")
     }
 
-    func test_setState_updatesState() {
+    func test_setState_updatesState() async {
         let book = makeBook()
-        let addDone = expectation(description: "added")
-        store.addBook(book, state: .downloadNeeded) { _ in addDone.fulfill() }
-        wait(for: [addDone], timeout: 2.0)
+        store.addBook(book, state: .downloadNeeded)
+        store.setState(.downloadSuccessful, for: book.identifier)
+        // Both barrier writes are enqueued FIFO on the same syncQueue, so a
+        // single trailing seam join drains both.
+        await store._awaitPendingWritesForTesting()
 
-        let setDone = expectation(description: "state set")
-        store.setState(.downloadSuccessful, for: book.identifier) {
-            setDone.fulfill()
-        }
-        wait(for: [setDone], timeout: 2.0)
-
-        // Read after barrier completes
-        drainMainQueue()
-            XCTAssertEqual(self.store.state(for: book.identifier), .downloadSuccessful)
+        XCTAssertEqual(store.state(for: book.identifier), .downloadSuccessful)
     }
 
     // MARK: - Remove
 
-    func test_removeBook_removesFromRegistry() {
+    func test_removeBook_removesFromRegistry() async {
         let book = makeBook()
-        let addDone = expectation(description: "added")
-        store.addBook(book, state: .downloadNeeded) { _ in addDone.fulfill() }
-        wait(for: [addDone], timeout: 2.0)
+        store.addBook(book, state: .downloadNeeded)
+        await store._awaitPendingWritesForTesting()
 
-        let removeDone = expectation(description: "removed")
-        store.removeBook(forIdentifier: book.identifier) { removedBook, snapshot in
-            XCTAssertEqual(removedBook?.identifier, book.identifier)
-            XCTAssertTrue(snapshot.isEmpty)
-            removeDone.fulfill()
+        var removedBook: TPPBook?
+        var snapshotAfterRemove: [String: TPPBookRegistryRecord] = [:]
+        store.removeBook(forIdentifier: book.identifier) { removed, snapshot in
+            removedBook = removed
+            snapshotAfterRemove = snapshot
         }
-        wait(for: [removeDone], timeout: 2.0)
+        await store._awaitPendingWritesForTesting()
 
-        drainMainQueue()
-            XCTAssertNil(self.store.book(forIdentifier: book.identifier))
+        XCTAssertEqual(removedBook?.identifier, book.identifier)
+        XCTAssertTrue(snapshotAfterRemove.isEmpty)
+        XCTAssertNil(store.book(forIdentifier: book.identifier))
     }
 
-    func test_removeBook_nonexistentId_completesWithNilBook() {
-        let removeDone = expectation(description: "removed")
-        store.removeBook(forIdentifier: "nonexistent") { removedBook, snapshot in
-            XCTAssertNil(removedBook)
-            XCTAssertTrue(snapshot.isEmpty)
-            removeDone.fulfill()
+    func test_removeBook_nonexistentId_completesWithNilBook() async {
+        var removedBook: TPPBook?
+        var snapshotAfterRemove: [String: TPPBookRegistryRecord] = [:]
+        store.removeBook(forIdentifier: "nonexistent") { removed, snapshot in
+            removedBook = removed
+            snapshotAfterRemove = snapshot
         }
-        wait(for: [removeDone], timeout: 2.0)
+        await store._awaitPendingWritesForTesting()
+
+        XCTAssertNil(removedBook)
+        XCTAssertTrue(snapshotAfterRemove.isEmpty)
     }
 
     // MARK: - Query: allBooks, heldBooks, myBooks
 
-    func test_allBooks_returnsAllRegisteredBooks() {
+    func test_allBooks_returnsAllRegisteredBooks() async {
         let book1 = makeBook(identifier: "b1", title: "Book 1")
         let book2 = makeBook(identifier: "b2", title: "Book 2")
 
-        let done = expectation(description: "books added")
-        done.expectedFulfillmentCount = 2
-        store.addBook(book1, state: .downloadNeeded) { _ in done.fulfill() }
-        store.addBook(book2, state: .holding) { _ in done.fulfill() }
-        wait(for: [done], timeout: 2.0)
+        store.addBook(book1, state: .downloadNeeded)
+        store.addBook(book2, state: .holding)
+        await store._awaitPendingWritesForTesting()
 
-        drainMainQueue()
-            let allBooks = self.store.allBooks
-            XCTAssertEqual(allBooks.count, 2)
-            let ids = Set(allBooks.map { $0.identifier })
-            XCTAssertTrue(ids.contains("b1"))
-            XCTAssertTrue(ids.contains("b2"))
+        let allBooks = store.allBooks
+        XCTAssertEqual(allBooks.count, 2)
+        let ids = Set(allBooks.map { $0.identifier })
+        XCTAssertTrue(ids.contains("b1"))
+        XCTAssertTrue(ids.contains("b2"))
     }
 
-    func test_heldBooks_onlyReturnsHoldingState() {
+    func test_heldBooks_onlyReturnsHoldingState() async {
         let held = makeBook(identifier: "held-1")
         let downloading = makeBook(identifier: "dl-1")
 
-        let done = expectation(description: "added")
-        done.expectedFulfillmentCount = 2
-        store.addBook(held, state: .holding) { _ in done.fulfill() }
-        store.addBook(downloading, state: .downloading) { _ in done.fulfill() }
-        wait(for: [done], timeout: 2.0)
+        store.addBook(held, state: .holding)
+        store.addBook(downloading, state: .downloading)
+        await store._awaitPendingWritesForTesting()
 
-        drainMainQueue()
-            let heldBooks = self.store.heldBooks
-            XCTAssertEqual(heldBooks.count, 1)
-            XCTAssertEqual(heldBooks.first?.identifier, "held-1")
+        let heldBooks = store.heldBooks
+        XCTAssertEqual(heldBooks.count, 1)
+        XCTAssertEqual(heldBooks.first?.identifier, "held-1")
     }
 
-    func test_myBooks_returnsCorrectStates() {
+    func test_myBooks_returnsCorrectStates() async {
         let book1 = makeBook(identifier: "dn")
         let book2 = makeBook(identifier: "ds")
         let book3 = makeBook(identifier: "df")
         let book4 = makeBook(identifier: "used")
         let book5 = makeBook(identifier: "held")
 
-        let done = expectation(description: "added")
-        done.expectedFulfillmentCount = 5
-        store.addBook(book1, state: .downloadNeeded) { _ in done.fulfill() }
-        store.addBook(book2, state: .downloadSuccessful) { _ in done.fulfill() }
-        store.addBook(book3, state: .downloadFailed) { _ in done.fulfill() }
-        store.addBook(book4, state: .used) { _ in done.fulfill() }
-        store.addBook(book5, state: .holding) { _ in done.fulfill() }
-        wait(for: [done], timeout: 2.0)
+        store.addBook(book1, state: .downloadNeeded)
+        store.addBook(book2, state: .downloadSuccessful)
+        store.addBook(book3, state: .downloadFailed)
+        store.addBook(book4, state: .used)
+        store.addBook(book5, state: .holding)
+        await store._awaitPendingWritesForTesting()
 
-        drainMainQueue()
-            let myBooks = self.store.myBooks
-            // myBooks includes: downloadNeeded, downloading, SAMLStarted, downloadFailed, downloadSuccessful, used
-            // NOT holding
-            XCTAssertEqual(myBooks.count, 4)
-            let ids = Set(myBooks.map { $0.identifier })
-            XCTAssertTrue(ids.contains("dn"))
-            XCTAssertTrue(ids.contains("ds"))
-            XCTAssertTrue(ids.contains("df"))
-            XCTAssertTrue(ids.contains("used"))
-            XCTAssertFalse(ids.contains("held"))
+        let myBooks = store.myBooks
+        // myBooks includes: downloadNeeded, downloading, SAMLStarted, downloadFailed, downloadSuccessful, used
+        // NOT holding
+        XCTAssertEqual(myBooks.count, 4)
+        let ids = Set(myBooks.map { $0.identifier })
+        XCTAssertTrue(ids.contains("dn"))
+        XCTAssertTrue(ids.contains("ds"))
+        XCTAssertTrue(ids.contains("df"))
+        XCTAssertTrue(ids.contains("used"))
+        XCTAssertFalse(ids.contains("held"))
     }
 
     // MARK: - FulfillmentId
 
-    func test_fulfillmentId_setAndGet() {
+    func test_fulfillmentId_setAndGet() async {
         let book = makeBook()
-        let addDone = expectation(description: "added")
-        store.addBook(book, state: .downloadNeeded, fulfillmentId: "initial-fid") { _ in
-            addDone.fulfill()
-        }
-        wait(for: [addDone], timeout: 2.0)
+        store.addBook(book, state: .downloadNeeded, fulfillmentId: "initial-fid")
+        await store._awaitPendingWritesForTesting()
 
-        drainMainQueue()
-            XCTAssertEqual(self.store.fulfillmentId(forIdentifier: book.identifier), "initial-fid")
+        XCTAssertEqual(store.fulfillmentId(forIdentifier: book.identifier), "initial-fid")
 
         store.setFulfillmentId("updated-fid", for: book.identifier)
+        await store._awaitPendingWritesForTesting()
 
-        drainMainQueue()
-            XCTAssertEqual(self.store.fulfillmentId(forIdentifier: book.identifier), "updated-fid")
+        XCTAssertEqual(store.fulfillmentId(forIdentifier: book.identifier), "updated-fid")
     }
 
     func test_fulfillmentId_nilIdentifier_returnsNil() {
@@ -273,21 +253,29 @@ final class BookRegistryStoreTests: XCTestCase {
     /// Processing flag defaults to false for every identifier (registered or
     /// not). This guards against an "always-true" mutant on the dictionary
     /// lookup as well as an unintended default of `true`.
-    func test_processing_defaultsFalseForUnknownAndRegisteredBooks() {
+    func test_processing_defaultsFalseForUnknownAndRegisteredBooks() async {
         // Unknown identifier — never seen by the store.
         XCTAssertFalse(store.processing(forIdentifier: "never-seen"))
 
         // Registered book — the processing flag is independent of registry
         // membership and starts false until setProcessing flips it.
         let book = makeBook(identifier: "tracked")
-        let added = expectation(description: "added")
-        store.addBook(book, state: .downloadNeeded) { _ in added.fulfill() }
-        wait(for: [added], timeout: 2.0)
-        drainMainQueue()
+        store.addBook(book, state: .downloadNeeded)
+        await store._awaitPendingWritesForTesting()
         XCTAssertFalse(store.processing(forIdentifier: "tracked"),
                        "Adding a book must not flip its processing flag — that is reserved for setProcessing")
     }
 
+    // KEPT: `setProcessing` posts `.TPPBookProcessingDidChange` via a nested
+    // `DispatchQueue.main.async` *inside* the barrier block, so this is testing
+    // the actual NotificationCenter contract (name + userInfo payload), not
+    // just registry-write convergence. `_awaitPendingWritesForTesting()` only
+    // proves the barrier ran (i.e. the post was *submitted*); it does not
+    // prove the notification was *delivered* with the right payload. There is
+    // no catalog seam for "assert this specific notification's userInfo", so
+    // converting would silently drop coverage of the notification contract
+    // that UI badges depend on. `expectation(forNotification:)` is the correct
+    // bounded primitive for this and is left byte-for-byte.
     func test_setProcessing_true_thenFalse() {
         let notifExpectation = expectation(forNotification: .TPPBookProcessingDidChange, object: nil) { notif in
             let id = notif.userInfo?[TPPNotificationKeys.bookProcessingBookIDKey] as? String
@@ -315,61 +303,63 @@ final class BookRegistryStoreTests: XCTestCase {
 
     // MARK: - RemoveAll
 
-    func test_removeAll_clearsRegistry() {
+    func test_removeAll_clearsRegistry() async {
         let book1 = makeBook(identifier: "a")
         let book2 = makeBook(identifier: "b")
 
-        let done = expectation(description: "added")
-        done.expectedFulfillmentCount = 2
-        store.addBook(book1, state: .downloadNeeded) { _ in done.fulfill() }
-        store.addBook(book2, state: .holding) { _ in done.fulfill() }
-        wait(for: [done], timeout: 2.0)
+        store.addBook(book1, state: .downloadNeeded)
+        store.addBook(book2, state: .holding)
+        await store._awaitPendingWritesForTesting()
 
         store.removeAll()
+        await store._awaitPendingWritesForTesting()
 
-        drainMainQueue()
-            XCTAssertTrue(self.store.allBooks.isEmpty)
-            XCTAssertNil(self.store.book(forIdentifier: "a"))
-            XCTAssertNil(self.store.book(forIdentifier: "b"))
+        XCTAssertTrue(store.allBooks.isEmpty)
+        XCTAssertNil(store.book(forIdentifier: "a"))
+        XCTAssertNil(store.book(forIdentifier: "b"))
     }
 
     // MARK: - Combine Subjects
 
-    func test_registrySubject_emitsOnAdd() {
+    func test_registrySubject_emitsOnAdd() async {
         let book = makeBook()
-        let received = expectation(description: "received snapshot")
 
         // Skip the initial empty value
         var receivedCount = 0
+        var receivedSnapshotContainsBook = false
         store.registrySubject
             .dropFirst()
             .sink { snapshot in
                 receivedCount += 1
                 if snapshot[book.identifier] != nil {
-                    received.fulfill()
+                    receivedSnapshotContainsBook = true
                 }
             }
             .store(in: &cancellables)
 
         store.addBook(book, state: .downloadNeeded)
-        // Barrier + main dispatch can take several seconds under load
-        wait(for: [received], timeout: 10.0)
+        // The subject is published from a `DispatchQueue.main.async` in
+        // `registry`'s `didSet`, which runs AFTER the barrier write completes.
+        // Join the S1 seam first (barrier drained), then flush the one
+        // resulting main-queue hop via the bounded `drainMainQueueAsync`
+        // primitive — the composite the playbook explicitly allows.
+        await store._awaitPendingWritesForTesting()
+        await drainMainQueueAsync()
+
         XCTAssertGreaterThan(receivedCount, 0,
                              "Subject must emit at least once when a book is added")
+        XCTAssertTrue(receivedSnapshotContainsBook,
+                      "Emitted snapshot must contain the added book")
         XCTAssertEqual(store.state(for: book.identifier), .downloadNeeded,
                        "Added book's state must be observable via state(for:)")
     }
 
     // MARK: - MutateRegistrySync
 
-    func test_mutateRegistrySync_directMutation() {
+    func test_mutateRegistrySync_directMutation() async {
         let book = makeBook()
-        let addDone = expectation(description: "added")
-        store.addBook(book, state: .downloadNeeded) { _ in addDone.fulfill() }
-        wait(for: [addDone], timeout: 2.0)
-
-        // Wait for barrier to complete
-        drainMainQueue()
+        store.addBook(book, state: .downloadNeeded)
+        await store._awaitPendingWritesForTesting()
 
         store.mutateRegistrySync { registry in
             registry[book.identifier]?.state = .downloadFailed
@@ -378,13 +368,10 @@ final class BookRegistryStoreTests: XCTestCase {
         XCTAssertEqual(store.state(for: book.identifier), .downloadFailed)
     }
 
-    func test_readRegistry_returnsSnapshot() {
+    func test_readRegistry_returnsSnapshot() async {
         let book = makeBook()
-        let addDone = expectation(description: "added")
-        store.addBook(book, state: .holding) { _ in addDone.fulfill() }
-        wait(for: [addDone], timeout: 2.0)
-
-        drainMainQueue()
+        store.addBook(book, state: .holding)
+        await store._awaitPendingWritesForTesting()
 
         let count = store.readRegistry { registry in
             registry.count
@@ -394,13 +381,10 @@ final class BookRegistryStoreTests: XCTestCase {
 
     // MARK: - RegistrySnapshot
 
-    func test_registrySnapshot_returnsDictionaryRepresentations() {
+    func test_registrySnapshot_returnsDictionaryRepresentations() async {
         let book = makeBook()
-        let addDone = expectation(description: "added")
-        store.addBook(book, state: .downloadNeeded) { _ in addDone.fulfill() }
-        wait(for: [addDone], timeout: 2.0)
-
-        drainMainQueue()
+        store.addBook(book, state: .downloadNeeded)
+        await store._awaitPendingWritesForTesting()
 
         let snapshot = store.registrySnapshot()
         XCTAssertEqual(snapshot.count, 1)
@@ -410,24 +394,30 @@ final class BookRegistryStoreTests: XCTestCase {
 
     // MARK: - UpdateAndRemoveBook
 
-    func test_updateAndRemoveBook_setsStateUnregistered() {
+    func test_updateAndRemoveBook_setsStateUnregistered() async {
         let book = makeBook()
-        let addDone = expectation(description: "added")
-        store.addBook(book, state: .downloadSuccessful) { _ in addDone.fulfill() }
-        wait(for: [addDone], timeout: 2.0)
+        store.addBook(book, state: .downloadSuccessful)
+        await store._awaitPendingWritesForTesting()
 
-        let updateDone = expectation(description: "updated and removed")
+        var recordStateAfterUpdate: TPPBookState?
         store.updateAndRemoveBook(book) { snapshot in
             // The record should still exist but with state unregistered
-            let record = snapshot[book.identifier]
-            XCTAssertEqual(record?.state, .unregistered)
-            updateDone.fulfill()
+            recordStateAfterUpdate = snapshot[book.identifier]?.state
         }
-        wait(for: [updateDone], timeout: 2.0)
+        await store._awaitPendingWritesForTesting()
+
+        XCTAssertEqual(recordStateAfterUpdate, .unregistered)
     }
 
     // MARK: - Thread Safety Under Concurrent Access
 
+    // KEPT: this deliberately drives the store from raw `DispatchQueue.global`
+    // work items (not through the seam) to exercise the store's OWN internal
+    // synchronization under real concurrent pressure — routing it through
+    // `_awaitPendingWritesForTesting()` would defeat the point of the stress
+    // test. The completion signal is a `DispatchGroup.notify`, which is a
+    // deterministic zero-count callback (not a wall-clock/deadline poll), so
+    // it does not violate the wave's wait-elimination goal.
     func test_concurrentReadsAndWrites_noDataRace() {
         let iterations = 50
         let group = DispatchGroup()
@@ -471,7 +461,7 @@ final class BookRegistryStoreTests: XCTestCase {
 
     // MARK: - AddBook with Location and Bookmarks
 
-    func test_addBook_withLocationAndBookmarks() {
+    func test_addBook_withLocationAndBookmarks() async {
         let book = makeBook()
         let location = TPPBookLocation(locationString: "{\"page\": 5}", renderer: "test-renderer")
         let bookmark = TPPReadiumBookmark(
@@ -488,7 +478,6 @@ final class BookRegistryStoreTests: XCTestCase {
             device: nil
         )
 
-        let addDone = expectation(description: "added")
         store.addBook(
             book,
             location: location,
@@ -496,16 +485,15 @@ final class BookRegistryStoreTests: XCTestCase {
             fulfillmentId: "fid-123",
             readiumBookmarks: bookmark != nil ? [bookmark!] : nil,
             genericBookmarks: nil
-        ) { _ in addDone.fulfill() }
-        wait(for: [addDone], timeout: 2.0)
+        )
+        await store._awaitPendingWritesForTesting()
 
-        drainMainQueue()
-            let record = self.store.record(forIdentifier: book.identifier)
-            XCTAssertNotNil(record)
-            XCTAssertEqual(record?.state, .downloadSuccessful)
-            XCTAssertEqual(record?.fulfillmentId, "fid-123")
-            XCTAssertEqual(record?.location?.renderer, "test-renderer")
-            XCTAssertEqual(record?.readiumBookmarks?.count, 1)
+        let record = store.record(forIdentifier: book.identifier)
+        XCTAssertNotNil(record)
+        XCTAssertEqual(record?.state, .downloadSuccessful)
+        XCTAssertEqual(record?.fulfillmentId, "fid-123")
+        XCTAssertEqual(record?.location?.renderer, "test-renderer")
+        XCTAssertEqual(record?.readiumBookmarks?.count, 1)
     }
 
     // MARK: - Record for nil/empty identifier
@@ -513,16 +501,14 @@ final class BookRegistryStoreTests: XCTestCase {
     /// `record(forIdentifier:)` is the lower-level lookup that
     /// `book(forIdentifier:)` and `state(for:)` build on. Same guard contract,
     /// pinned alongside the positive case so an "always-nil" mutant fails.
-    func test_record_returnsNilForUnregisteredOrInvalidInputs() {
+    func test_record_returnsNilForUnregisteredOrInvalidInputs() async {
         XCTAssertNil(store.record(forIdentifier: nil),        "nil → nil")
         XCTAssertNil(store.record(forIdentifier: ""),         "empty → nil")
         XCTAssertNil(store.record(forIdentifier: "unknown"),  "unknown id → nil")
 
         let book = makeBook(identifier: "tracked")
-        let added = expectation(description: "added")
-        store.addBook(book, state: .downloadNeeded) { _ in added.fulfill() }
-        wait(for: [added], timeout: 2.0)
-        drainMainQueue()
+        store.addBook(book, state: .downloadNeeded)
+        await store._awaitPendingWritesForTesting()
         XCTAssertNotNil(store.record(forIdentifier: "tracked"),
                         "Registered book MUST yield a record, otherwise the store can't be queried")
     }

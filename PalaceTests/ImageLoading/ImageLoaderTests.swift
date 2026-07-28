@@ -2,6 +2,7 @@ import XCTest
 import UIKit
 import PalaceCatalog
 @testable import Palace
+import PalaceBookModel
 
 /// Unit tests for the new `ImageLoader` umbrella that replaces the
 /// `TPPBookCoverRegistry` + `TPPBookCoverRegistryBridge` + `ImageCache.shared`

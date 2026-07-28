@@ -1,5 +1,7 @@
 import PalaceLogging
+import PalacePreferences
 import PalaceCatalog
+import PalaceBookModel
 
 private let userAboveAgeKey              = "TPPSettingsUserAboveAgeKey"
 private let accountSyncEnabledKey        = "TPPAccountSyncEnabledKey"
@@ -675,6 +677,12 @@ private final class AccountBoolFlag: @unchecked Sendable {
 
     let imageCache: ImageCacheType
 
+    /// Wave 1c (cycle 2): error-reporting seam. Production default forwards to
+    /// TPPErrorLogger via TPPErrorReporter; tests inject a spy. Existential is
+    /// not ObjC-representable so @objcMembers skips it (by design). Becomes
+    /// constructor-injected when Account moves to PalaceAccounts (Wave 3).
+    var errorReporter: any ErrorReporting = TPPErrorReporter()
+
     var loansUrl: URL? {
         return details?.loansUrl
     }
@@ -775,8 +783,8 @@ private final class AccountBoolFlag: @unchecked Sendable {
     func loadAuthenticationDocument(using signedInStateProvider: TPPSignedInStateProvider? = nil, completion: @escaping (Bool) -> Void) {
         Log.debug(#function, "Entering...")
         guard let urlString = authenticationDocumentUrl else {
-            TPPErrorLogger.logError(
-                withCode: .noURL,
+            errorReporter.report(
+                code: .noURL,
                 summary: "Failed to load authentication document because its URL is invalid",
                 metadata: ["self.uuid": uuid,
                            "urlString": authenticationDocumentUrl ?? "N/A"]
@@ -814,8 +822,8 @@ private final class AccountBoolFlag: @unchecked Sendable {
         var document: OPDS2AuthenticationDocument?
 
         guard let url = URL(string: urlString) else {
-            TPPErrorLogger.logError(
-                withCode: .noURL,
+            errorReporter.report(
+                code: .noURL,
                 summary: "Failed to load authentication document because its URL is invalid",
                 metadata: ["self.uuid": uuid,
                            "urlString": urlString]
@@ -832,8 +840,8 @@ private final class AccountBoolFlag: @unchecked Sendable {
                     completion(document)
                 } catch let error {
                     let responseBody = String(data: serverData, encoding: .utf8)
-                    TPPErrorLogger.logError(
-                        withCode: .authDocParseFail,
+                    self.errorReporter.report(
+                        code: .authDocParseFail,
                         summary: "Authentication Document Data Parse Error",
                         metadata: [
                             "underlyingError": error,
@@ -844,8 +852,8 @@ private final class AccountBoolFlag: @unchecked Sendable {
                     completion(document)
                 }
             case .failure(let error, _):
-                TPPErrorLogger.logError(
-                    withCode: .authDocLoadFail,
+                self.errorReporter.report(
+                    code: .authDocLoadFail,
                     summary: "Authentication Document request failed to load",
                     metadata: ["loadError": error, "url": url]
                 )
@@ -896,8 +904,8 @@ private final class AccountBoolFlag: @unchecked Sendable {
                     payload.account.imageCache.set(image, for: payload.account.uuid)
                     payload.completion(image)
                 case .failure(let error, _):
-                    TPPErrorLogger.logError(
-                        withCode: .authDocLoadFail,
+                    payload.account.errorReporter.report(
+                        code: .authDocLoadFail,
                         summary: "Logo image failed to load",
                         metadata: ["loadError": error.localizedDescription, "url": url.absoluteString]
                     )

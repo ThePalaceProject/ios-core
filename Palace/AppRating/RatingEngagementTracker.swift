@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import PalacePreferences
 
 /// An immutable snapshot of the engagement signals that feed the eligibility
 /// policy. All values are local/on-device; no PII is captured.

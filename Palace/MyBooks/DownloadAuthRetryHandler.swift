@@ -24,6 +24,8 @@ import Foundation
 import PalaceAuth
 import PalaceCatalog
 import PalaceLogging
+import PalaceBookModel
+import PalaceBookRegistry
 
 // MARK: - DownloadAuthRetryHandlerDelegate
 

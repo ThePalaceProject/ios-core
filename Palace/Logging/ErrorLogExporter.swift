@@ -12,6 +12,7 @@ import FirebaseCrashlytics
 import Compression
 import OSLog
 import PalaceLogging
+import PalaceBookRegistry
 
 /// Actor responsible for collecting and exporting error logs for diagnostics
 actor ErrorLogExporter {

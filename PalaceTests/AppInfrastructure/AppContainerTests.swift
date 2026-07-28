@@ -1,7 +1,9 @@
 import XCTest
+import PalacePreferences
 import Combine
 import SwiftUI
 @testable import Palace
+import PalaceBookRegistry
 
 /// Contract tests for AppContainer as the single DI composition root.
 ///
@@ -50,6 +52,7 @@ final class AppContainerTests: XCTestCase {
             reachability: AppContainer.production().reachability,
             accountsManager: AppContainer.production().accountsManager,
             settings: TPPSettings(),
+            featureFlags: RemoteFeatureFlags.shared,
             downloadCenter: AppContainer.production().downloadCenter,
             downloadAnnouncementService: AppContainer.production().downloadAnnouncementService,
             debugSettings: AppContainer.production().debugSettings,
@@ -73,6 +76,46 @@ final class AppContainerTests: XCTestCase {
         )
     }
 
+    /// Wave 1b: the featureFlags seam must hand back the injected instance and
+    /// PROPAGATE it through the with*-modifier copies (a copy that rebinds to
+    /// RemoteFeatureFlags.shared would silently un-inject every downstream test).
+    @MainActor
+    func testInit_withInjectedFeatureFlags_exposesMockAndSurvivesModifierCopies() {
+        let mockFlags = MockFeatureFlagProvider(isOPDS2Enabled: true)
+        let container = AppContainer(
+            bookRegistry: TPPBookRegistryMock(),
+            networkExecutor: AppContainer.production().networkExecutor,
+            networkQueue: AppContainer.production().networkQueue,
+            reachability: AppContainer.production().reachability,
+            accountsManager: AppContainer.production().accountsManager,
+            settings: TPPSettings(),
+            featureFlags: mockFlags,
+            downloadCenter: AppContainer.production().downloadCenter,
+            downloadAnnouncementService: AppContainer.production().downloadAnnouncementService,
+            debugSettings: AppContainer.production().debugSettings,
+            imageCache: ImageCache.shared,
+            imageLoader: AppContainer.production().imageLoader,
+            userAccountPublisher: .shared,
+            opdsFeedService: AppContainer.production().opdsFeedService,
+            readerService: AppContainer.production().readerService,
+            navigationCoordinatorHub: NavigationCoordinatorHub(),
+            tabRouterHub: AppTabRouterHub(),
+            drmAuthorizerProvider: { nil },
+            authCoordinator: AppContainer.production().authCoordinator
+        )
+        XCTAssertTrue(
+            container.featureFlags === mockFlags,
+            "Container must hand back the injected flag provider"
+        )
+        let copied = container.withSignInModalSheetPresenter(
+            SignInModalSheetPresenter(appContainer: container)
+        )
+        XCTAssertTrue(
+            copied.featureFlags === mockFlags,
+            "with*-modifier copies must carry the injected provider, not rebind to .shared"
+        )
+    }
+
     // MARK: - Value Semantics
 
     /// AppContainer is a `struct` for a reason — separate containers must
@@ -89,6 +132,7 @@ final class AppContainerTests: XCTestCase {
             reachability: AppContainer.production().reachability,
             accountsManager: AppContainer.production().accountsManager,
             settings: TPPSettings(),
+            featureFlags: RemoteFeatureFlags.shared,
             downloadCenter: AppContainer.production().downloadCenter,
             downloadAnnouncementService: AppContainer.production().downloadAnnouncementService,
             debugSettings: AppContainer.production().debugSettings,

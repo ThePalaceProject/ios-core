@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import PalaceLogging
 
 extension Account {
 
@@ -52,10 +53,10 @@ extension Account {
                     }
                     return
                 } catch {
-                    TPPErrorLogger.logError(error, summary: "Error parsing user profile document")
+                    self.errorReporter.report(error, summary: "Error parsing user profile document")
                 }
             case .failure(let error, _):
-                TPPErrorLogger.logError(error, summary: "Error retrieveing user profile document")
+                self.errorReporter.report(error, summary: "Error retrieveing user profile document")
             }
             let box = ProfileDocumentCompletionBox(completion: completion, document: nil)
             DispatchQueue.main.async {

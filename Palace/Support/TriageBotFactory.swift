@@ -8,12 +8,14 @@
 //  Firebase Remote Config flags.
 //
 //  Visibility of the whole bot — Settings row, chat surface, anything —
-//  must be gated on `RemoteFeatureFlags.shared.isTriageBotEnabled` BEFORE
-//  this factory is called. Treat that flag as the master kill-switch.
+//  must be gated on `featureFlags.isTriageBotEnabled` (the injected
+//  FeatureFlagProviding seam) BEFORE this factory is called. Treat that
+//  flag as the master kill-switch.
 //
 
 import Foundation
 import PalaceLogging
+import PalaceFeatureFlags
 import TriageBotCore
 import TriageBotIOS
 
@@ -22,7 +24,7 @@ enum TriageBotFactory {
     /// Builds a fully-wired ViewModel for the active user. Returns nil if the
     /// bundled KB can't be loaded (degenerate; bot is unusable in that case).
     @MainActor
-    static func makeViewModel() -> Any? {
+    static func makeViewModel(featureFlags: FeatureFlagProviding) -> Any? {
         // Synchronous load via BundledCatalogSource.loadCatalogSync(). The
         // earlier semaphore-bridge implementation triggered iOS 26's "Hang
         // Risk" runtime fault and intermittently returned nil on force-quit
@@ -51,7 +53,7 @@ enum TriageBotFactory {
         // Inert-by-default invariant (flag AND key) lives in TriageBotAIWiring so
         // it is unit-tested under `swift test`; see TriageBotAIWiringTests (PP-4810).
         let aiEnabled = TriageBotAIWiring.aiWiring(
-            flagEnabled: RemoteFeatureFlags.shared.isTriageBotAIFallbackEnabled,
+            flagEnabled: featureFlags.isTriageBotAIFallbackEnabled,
             keyPresent: bootstrappedKey != nil
         )
 
@@ -89,7 +91,7 @@ enum TriageBotFactory {
         //     internal fallback when canSendMail() returns false (sim without
         //     configured Mail account), so the demo never gets stuck.
         let gateway: TicketGateway
-        if RemoteFeatureFlags.shared.isTriageBotTicketSubmissionEnabled {
+        if featureFlags.isTriageBotTicketSubmissionEnabled {
             gateway = EmailTicketGateway(
                 supportEmail: "support@thepalaceproject.org",
                 fallback: ClipboardTicketGateway()
@@ -108,6 +110,10 @@ enum TriageBotFactory {
         // never see this override read or the forced gateway.
         let effectiveGateway: TicketGateway
         #if DEBUG
+        // Wave 1b exception E2: isTriageBotForceSubmitFailureEnabled is a
+        // DEBUG-only override deliberately kept OFF the FeatureFlagProviding
+        // protocol (a #if DEBUG requirement would fork the witness table across
+        // build configs) — read it off the concrete impl here.
         if RemoteFeatureFlags.shared.isTriageBotForceSubmitFailureEnabled {
             effectiveGateway = ForcedFailureTicketGateway(mode: .transport)
         } else {

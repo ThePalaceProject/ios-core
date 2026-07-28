@@ -12,6 +12,7 @@
 //
 
 import XCTest
+import PalacePreferences
 import Combine
 import PalaceCatalog
 @testable import Palace
@@ -168,9 +169,11 @@ final class AccountsManagerTests: XCTestCase {
     func testCurrentAccount_WhenChanged_PostsNotification() {
         // Given: A mock account provider
         let provider = mockLibraryAccountProvider!
-        let expectation = expectation(description: "TPPCurrentAccountDidChange notification posted")
 
-        // When: Observing for the notification
+        // When: Observing for the notification. `queue: .main` delivers the
+        // block asynchronously on the main queue regardless of the posting
+        // thread, so this needs a real main-queue barrier, not a fixed-delay
+        // wait.
         var notificationReceived = false
         let observer = NotificationCenter.default.addObserver(
             forName: .TPPCurrentAccountDidChange,
@@ -178,7 +181,6 @@ final class AccountsManagerTests: XCTestCase {
             queue: .main
         ) { _ in
             notificationReceived = true
-            expectation.fulfill()
         }
 
         // And: Triggering an account change via the mock's currentAccount
@@ -186,8 +188,11 @@ final class AccountsManagerTests: XCTestCase {
         // So we test that the notification exists and can be posted
         NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
 
-        // Then: Notification should be received
-        waitForExpectations(timeout: 1.0)
+        // Then: Notification should be received. Deterministic main-queue
+        // barrier (see `XCTestCase+drainMainQueue.swift`) — the `.main`
+        // observer's dispatch is FIFO-ordered after the post above, so
+        // draining the queue guarantees it has landed.
+        drainMainQueue()
         XCTAssertTrue(notificationReceived)
 
         NotificationCenter.default.removeObserver(observer)
@@ -378,9 +383,9 @@ final class AccountsManagerTests: XCTestCase {
     }
 
     func testUseBetaDidChange_PostsNotificationWhenSettingChanges() {
-        // Given: An expectation for the notification
-        let expectation = expectation(description: "TPPUseBetaDidChange notification")
-
+        // Given: a `.main`-queue observer — its dispatch is asynchronous
+        // regardless of the posting thread, so this needs a real main-queue
+        // barrier rather than a fixed-delay wait.
         var notificationReceived = false
         let observer = NotificationCenter.default.addObserver(
             forName: .TPPUseBetaDidChange,
@@ -388,7 +393,6 @@ final class AccountsManagerTests: XCTestCase {
             queue: .main
         ) { _ in
             notificationReceived = true
-            expectation.fulfill()
         }
 
         // Capture original value to restore later
@@ -398,8 +402,10 @@ final class AccountsManagerTests: XCTestCase {
         // When: Toggling the beta libraries setting
         settings.useBetaLibraries = !originalValue
 
-        // Then: Should receive notification
-        waitForExpectations(timeout: 1.0)
+        // Then: Should receive notification. Deterministic main-queue
+        // barrier (see `XCTestCase+drainMainQueue.swift`) — the observer's
+        // dispatch is FIFO-ordered after the setting change above.
+        drainMainQueue()
         XCTAssertTrue(notificationReceived)
 
         // Cleanup
@@ -560,8 +566,8 @@ final class AccountsManagerTests: XCTestCase {
     // MARK: - Notification Integration Tests
 
     func testNotificationObserver_ForAccountChange_CanBeAdded() {
-        // Given: An observer for account changes with expectation
-        let notificationExpectation = expectation(description: "Notification received")
+        // Given: an observer on the `.main` queue — its dispatch is
+        // asynchronous regardless of the posting thread.
         var notificationCount = 0
 
         let observer = NotificationCenter.default.addObserver(
@@ -570,14 +576,15 @@ final class AccountsManagerTests: XCTestCase {
             queue: .main
         ) { _ in
             notificationCount += 1
-            notificationExpectation.fulfill()
         }
 
         // When: Posting the notification
         NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
 
-        // Then: Wait for notification to be received
-        waitForExpectations(timeout: 2.0)
+        // Then: deterministic main-queue barrier (see
+        // `XCTestCase+drainMainQueue.swift`) instead of an expectation —
+        // the observer's dispatch is FIFO-ordered after the post above.
+        drainMainQueue()
 
         XCTAssertEqual(notificationCount, 1)
 
@@ -586,10 +593,7 @@ final class AccountsManagerTests: XCTestCase {
     }
 
     func testMultipleNotificationObservers_AllReceiveAccountChange() {
-        // Given: Multiple observers with expectations
-        let expectation1 = expectation(description: "Observer 1 received notification")
-        let expectation2 = expectation(description: "Observer 2 received notification")
-
+        // Given: multiple observers on the `.main` queue.
         var observer1Count = 0
         var observer2Count = 0
 
@@ -599,7 +603,6 @@ final class AccountsManagerTests: XCTestCase {
             queue: .main
         ) { _ in
             observer1Count += 1
-            expectation1.fulfill()
         }
 
         let observer2 = NotificationCenter.default.addObserver(
@@ -608,14 +611,15 @@ final class AccountsManagerTests: XCTestCase {
             queue: .main
         ) { _ in
             observer2Count += 1
-            expectation2.fulfill()
         }
 
         // When: Posting notification
         NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
 
-        // Wait for both observers to be called
-        wait(for: [expectation1, expectation2], timeout: 2.0)
+        // Deterministic main-queue barrier: both `.main`-queue observers were
+        // enqueued FIFO before this drain, so both have run by the time it
+        // returns.
+        drainMainQueue()
 
         // Then: Both observers should receive notification
         XCTAssertEqual(observer1Count, 1)

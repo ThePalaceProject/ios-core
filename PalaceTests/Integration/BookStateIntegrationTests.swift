@@ -12,6 +12,7 @@
 import XCTest
 import Combine
 @testable import Palace
+import PalaceBookModel
 
 // SRS: REQ-BOOKSTATE-001 — Book state transition integration
 

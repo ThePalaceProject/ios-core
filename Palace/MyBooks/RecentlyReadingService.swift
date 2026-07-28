@@ -14,6 +14,8 @@
 //
 
 import Foundation
+import PalaceBookModel
+import PalaceBookRegistry
 
 // MARK: - ContinueReadingItem
 

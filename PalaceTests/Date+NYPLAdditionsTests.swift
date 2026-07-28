@@ -8,6 +8,7 @@
 
 import XCTest
 @testable import Palace
+import PalaceBookModel
 
 @MainActor
 class Date_NYPLAdditionsTests: XCTestCase {

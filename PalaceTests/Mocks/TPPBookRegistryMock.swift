@@ -2,6 +2,8 @@ import Foundation
 import Combine
 import UIKit
 @testable import Palace
+import PalaceBookModel
+@testable import PalaceBookRegistry
 
 /// `@unchecked Sendable`: `TPPBookRegistryProvider` is `Sendable` (so production
 /// consumers can capture the registry across concurrency domains), and this mock

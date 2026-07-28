@@ -20,6 +20,8 @@
 import Combine
 import Foundation
 import SwiftUI
+import PalaceBookModel
+import PalaceBookRegistry
 
 // MARK: - ContinueListeningItem
 

@@ -12,6 +12,7 @@
 
 import Foundation
 import UIKit
+import PalaceBookRegistry
 // Swift 6 `complete`: `Publication` (and `Locator`, produced by
 // `convertToLocator`) are non-Sendable Readium types that this module hands to
 // `formatModule.makeReaderViewController(...)` from inside a `Task.detached` and
@@ -19,6 +20,7 @@ import UIKit
 // annotates these types Sendable; the module's own concurrency contract is
 // documented on the `@unchecked Sendable` conformance below.
 @preconcurrency import ReadiumShared
+import PalaceBookModel
 
 /// Base module delegate, that sub-modules' delegate can extend.
 /// Provides basic shared functionalities.

@@ -8,6 +8,7 @@
 import Foundation
 import PalaceCatalog
 @testable import Palace
+import PalaceBookModel
 
 // MARK: - Primitives
 

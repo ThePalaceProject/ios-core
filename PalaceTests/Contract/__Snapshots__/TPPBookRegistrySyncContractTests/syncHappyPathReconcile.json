@@ -1,0 +1,33 @@
+[
+  {
+    "args" : {
+      "state" : "syncing"
+    },
+    "method" : "setState"
+  },
+  {
+    "args" : {
+      "resetCache" : "true"
+    },
+    "method" : "fetchFeed"
+  },
+  {
+    "args" : {
+      "book" : "sync-gone-1"
+    },
+    "method" : "deleteLocalContent"
+  },
+  {
+    "args" : {
+      "state" : "synced"
+    },
+    "method" : "setState"
+  },
+  {
+    "args" : {
+      "hasError" : "false",
+      "newBooks" : "true"
+    },
+    "method" : "completion"
+  }
+]

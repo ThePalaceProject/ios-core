@@ -31,6 +31,8 @@
 //
 
 import Foundation
+import PalaceBookModel
+import PalaceBookRegistry
 
 /// The one read question both authorized book-state owners answer, each over
 /// its own (disjoint) identifier set. See the file header + the state-management

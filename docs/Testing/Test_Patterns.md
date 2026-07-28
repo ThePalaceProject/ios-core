@@ -741,30 +741,99 @@ func testRealKeychain() throws {
 
 ### 10.1 Flaky Async Tests
 
-**Problem:** Tests pass locally but fail in CI due to timing.
+**Problem:** A test waits on fire-and-forget async work (a detached `Task`, a
+background `loadCatalogs` crawl, a reauth dispatch) by arming an
+`XCTestExpectation` and blocking on a *fixed wall-clock deadline* —
+`fulfillment(of:timeout:)`, `wait(for:timeout:)`, `waitForExpectations(timeout:)`.
+It passes locally and fails in CI.
 
-**Solution:** Use explicit expectations with appropriate timeouts.
+**Why the deadline poll fails — parallel-clone starvation.** CI does not run one
+test process. `scripts/xcode-test-optimized.sh` runs the whole scheme under
+`-retry-tests-on-failure -test-iterations 3` with **two sim clones in parallel**
+on a shared macOS runner (3–4 cores). A detached `.utility`/`.background` Task is
+scheduled on the cooperative thread pool; when two clones oversubscribe the pool,
+that Task can be deferred *past* any fixed timeout. The deadline fires before the
+work runs, the expectation never fulfills, and the test fails. Retry does not save
+it: the parallel load **persists across all 3 iterations**, so a deadline-poll test
+that loses the CPU race loses it three times and stays red. Run serially it is
+green every time — which is the tell for this class. This is recurrence class
+[`parallel-clone-starvation`](../regressions/recurrence-classes.md) (fixed in
+#1319/#1321), and it is why the "Good" example that used to live here —
+`await fulfillment(of: [expectation], timeout: 5.0)` — was **the anti-pattern**,
+not the fix. A timeout is a guess about a CPU race; the linter's `STARVE-001` rule
+blocks it on any newly-added test line.
+
+**Solution — a deterministic Task-join seam.** Don't guess a deadline; *join the
+actual work unit*. The production code retains the fire-and-forget `Task` handle in
+an XCTest-gated array and exposes an `_await…ForTesting() async` that awaits the
+handles. The test `await`s that — it blocks exactly until the work finishes, no
+matter how starved the pool is, so there is no clock to lose.
+
+The retention must be gated so a RELEASE build never populates the array:
 
 ```swift
-// Bad
-func testAsync() async {
-    await viewModel.load()
-    XCTAssertTrue(viewModel.isLoaded) // May fail if async completion not awaited
+// Production code (the class under test)
+private static let _isRunningUnderXCTest =
+    ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+
+private let _tasksLock = NSLock()
+private var _trackedTasks: [Task<Void, Never>] = []
+
+private func trackForTesting(_ task: Task<Void, Never>) {
+    guard Self._isRunningUnderXCTest else { return }   // no-op in RELEASE
+    _tasksLock.lock(); _trackedTasks.append(task); _tasksLock.unlock()
 }
 
-// Good
-func testAsync() async {
-    let expectation = XCTestExpectation(description: "Load completes")
-
-    viewModel.$isLoaded
-        .filter { $0 }
-        .sink { _ in expectation.fulfill() }
-        .store(in: &cancellables)
-
-    await viewModel.load()
-    await fulfillment(of: [expectation], timeout: 5.0)
+/// Test-only deterministic JOIN seam — awaits the ACTUAL fire-and-forget work
+/// instead of polling a wall-clock deadline. `nonisolated` + a synchronous
+/// lock-guarded snapshot so an @MainActor test can await it without sending a
+/// non-Sendable self across the isolation boundary.
+nonisolated func _awaitTrackedWorkForTesting() async {
+    _tasksLock.lock(); let tasks = _trackedTasks; _tasksLock.unlock()
+    for task in tasks { _ = await task.value }
 }
 ```
+
+```swift
+// Bad — deadline poll; starves under 2 parallel sim clones, fails all 3 retries
+func testAsync() async {
+    let expectation = XCTestExpectation(description: "Load completes")
+    viewModel.$isLoaded.filter { $0 }.sink { _ in expectation.fulfill() }
+        .store(in: &cancellables)
+    await viewModel.load()
+    await fulfillment(of: [expectation], timeout: 5.0)   // ← STARVE-001
+}
+
+// Good — join the real work unit; no clock, so no race to lose
+func testAsync() async {
+    await viewModel.load()                     // fires the detached Task, returns
+    await viewModel._awaitTrackedWorkForTesting()  // blocks until it actually finishes
+    XCTAssertTrue(viewModel.isLoaded)
+}
+```
+
+**Real seams already in the tree — model new code on these, don't reinvent:**
+
+- `AccountsManager._awaitAllCrawlTasksForTesting()` — joins the off-main
+  first-run `loadCatalogs` decode → `fetchFromNetwork` kickoff (`nonisolated`,
+  snapshots the first-run task list under a lock, awaits each handle).
+- `CatalogRepository._awaitAllBackgroundRefreshesForTesting()` — joins every
+  background stale-while-revalidate refresh armed via
+  `_trackRefreshTasksForTesting()` (the single-handle
+  `_awaitBackgroundRefreshForTesting()` joins only the most recent).
+- `TokenRefreshInterceptor._awaitAuthDispatchForTesting()` — joins the reauth
+  dispatch chain (coordinator refresh → modal present → per-book state flip →
+  retry), re-snapshotting until the task set stops growing.
+
+Each is gated on `ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"]
+!= nil` so RELEASE behavior is byte-identical to the bare fire-and-forget spawn it
+replaces — the tracking array only ever populates under XCTest, and production
+never calls the await seam.
+
+> If you genuinely must wait on a *bounded, cancellable* dependency (a real I/O
+> op with its own timeout, not fire-and-forget async), that is the rare legitimate
+> `wait(for:timeout:)` — annotate the line `// STARVE-001-OK: <reason>` so the
+> gate stays honest. Everything else joins the Task.
 
 ### 10.2 Singleton State Leakage
 
