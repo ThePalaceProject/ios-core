@@ -60,6 +60,16 @@ final class BookReturnService {
     /// computed property semantics).
     private let userAccountProvider: () -> TPPUserAccount
 
+    /// 3.2.3 Cause 2. Fire-and-forget cancellation of any pending throttled
+    /// remote listening-position write for a book, called at the START of the
+    /// return flow so a queued snapshot can't flush AFTER `deleteAllBookmarks`
+    /// and resurrect the stale server position we just deleted. Defaults to a
+    /// no-op so existing tests/callers compile unchanged; production wiring
+    /// (MBDC) routes it to `AppContainer.audiobookSession
+    /// .cancelPendingRemotePositionWrite(forBookId:)`. Idempotent and a no-op
+    /// when the book isn't the active audiobook session.
+    private let remotePositionWriteCanceller: @Sendable (String) -> Void
+
     /// Adobe DRM service stored property gated on FEATURE_DRM_CONNECTOR
     /// (the type itself is gated). In Palace-noDRM the property doesn't
     /// exist and the Adobe-return code path is compiled out.
@@ -110,7 +120,8 @@ final class BookReturnService {
         userRetryTracker: UserRetryTracker,
         userAccountProvider: @escaping () -> TPPUserAccount,
         adobeDRMService: AdobeDRMService = .shared,
-        authCoordinator: AuthCoordinator? = nil
+        authCoordinator: AuthCoordinator? = nil,
+        remotePositionWriteCanceller: @escaping @Sendable (String) -> Void = { _ in }
     ) {
         self.bookRegistry = bookRegistry
         self.localContentService = localContentService
@@ -122,6 +133,7 @@ final class BookReturnService {
         self.userAccountProvider = userAccountProvider
         self.adobeDRMService = adobeDRMService
         self.authCoordinator = authCoordinator
+        self.remotePositionWriteCanceller = remotePositionWriteCanceller
     }
     #else
     init(
@@ -133,7 +145,8 @@ final class BookReturnService {
         reauthenticator: Reauthenticator,
         userRetryTracker: UserRetryTracker,
         userAccountProvider: @escaping () -> TPPUserAccount,
-        authCoordinator: AuthCoordinator? = nil
+        authCoordinator: AuthCoordinator? = nil,
+        remotePositionWriteCanceller: @escaping @Sendable (String) -> Void = { _ in }
     ) {
         self.bookRegistry = bookRegistry
         self.localContentService = localContentService
@@ -144,6 +157,7 @@ final class BookReturnService {
         self.userRetryTracker = userRetryTracker
         self.userAccountProvider = userAccountProvider
         self.authCoordinator = authCoordinator
+        self.remotePositionWriteCanceller = remotePositionWriteCanceller
     }
     #endif
 
@@ -258,6 +272,15 @@ final class BookReturnService {
             return
         }
 
+        // 3.2.3 Cause 2: cancel any pending throttled remote listening-position
+        // write for this book BEFORE the return cleanup runs, so a queued
+        // snapshot can't flush AFTER `deleteAllBookmarks` deletes the server
+        // position and resurrect it on re-borrow. Fire-and-forget; idempotent;
+        // a no-op when the book isn't the active audiobook session. Covers all
+        // sub-paths (revoke, no-revokeURL, and the error branches) since they
+        // are all reached from here.
+        remotePositionWriteCanceller(identifier)
+
         downloadAnnouncementService.announceReturnStarted(for: book)
 
         let state = bookRegistry.state(for: identifier)
@@ -327,7 +350,12 @@ final class BookReturnService {
 
                 TPPAnnotations.deleteAllBookmarks(forBook: book) {
                     self.bookmarkDeletionLog.clearAllDeletions(forBook: identifier)
-                    self.bookRegistry.updateAndRemoveBook(returnedBook)
+                    // serverAuthoritative: the revoke fetch returned 2xx — the
+                    // server CONFIRMED the return, so persisting a return-to-empty
+                    // shelf is legitimate and must NOT be refused by the #18414
+                    // empty-over-nonempty guard. Otherwise returning your only
+                    // book leaves it on disk and it resurrects on relaunch.
+                    self.bookRegistry.updateAndRemoveBook(returnedBook, serverAuthoritative: true)
                     self.bookRegistry.setState(.unregistered, for: identifier)
                     self.performPostReturnSyncThen {
                         self.downloadAnnouncementService.announceReturnSucceeded(for: book)
@@ -366,7 +394,11 @@ final class BookReturnService {
             // Clear the deletion log since we're returning the book
             self.bookmarkDeletionLog.clearAllDeletions(forBook: identifier)
             self.bookRegistry.setState(.unregistered, for: identifier)
-            self.bookRegistry.removeBook(forIdentifier: identifier)
+            // serverAuthoritative: a no-revokeURL book has no server endpoint to
+            // confirm against — removing it locally IS the authoritative outcome
+            // of the deliberate return, so a return-to-empty must persist (not be
+            // refused as a suspected #18414 wedge) and survive relaunch.
+            self.bookRegistry.removeBook(forIdentifier: identifier, serverAuthoritative: true)
             self.performPostReturnSyncThen {
                 self.downloadAnnouncementService.announceReturnSucceeded(for: book)
                 completion?()
@@ -393,7 +425,11 @@ final class BookReturnService {
                 guard let self else { return }
                 self.bookmarkDeletionLog.clearAllDeletions(forBook: identifier)
                 self.bookRegistry.setState(.unregistered, for: identifier)
-                self.bookRegistry.removeBook(forIdentifier: identifier)
+                // serverAuthoritative: the revoke succeeded server-side (OverDrive
+                // just returned non-OPDS XML) — treat the return-to-empty as
+                // confirmed so it persists over a non-empty shelf (#18414 guard
+                // otherwise refuses it and the book resurrects on relaunch).
+                self.bookRegistry.removeBook(forIdentifier: identifier, serverAuthoritative: true)
                 self.performPostReturnSyncThen {
                     self.downloadAnnouncementService.announceReturnSucceeded(for: book)
                     completion?()
@@ -421,7 +457,11 @@ final class BookReturnService {
                 guard let self else { return }
                 self.bookmarkDeletionLog.clearAllDeletions(forBook: identifier)
                 self.bookRegistry.setState(.unregistered, for: identifier)
-                self.bookRegistry.removeBook(forIdentifier: identifier)
+                // serverAuthoritative: the server reports the loan is already gone
+                // (no-active-loan / loan-term-limit) — the removal is confirmed by
+                // the server, so a return-to-empty must persist (#18414 guard
+                // otherwise refuses it and the book resurrects on relaunch).
+                self.bookRegistry.removeBook(forIdentifier: identifier, serverAuthoritative: true)
                 self.performPostReturnSyncThen {
                     self.downloadAnnouncementService.announceReturnSucceeded(for: book)
                     completion?()

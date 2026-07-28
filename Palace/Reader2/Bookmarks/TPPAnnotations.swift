@@ -513,16 +513,55 @@ protocol AnnotationsManager {
         // Fire-and-forget: delete bookmarks in background
         guard syncIsPossibleAndPermitted() else { return }
 
-        getServerBookmarks(forBook: book, atURL: book.annotationsURL, motivation: .bookmark) { bookmarks in
-            guard let readiumBookmarks = bookmarks as? [TPPReadiumBookmark], !readiumBookmarks.isEmpty else {
-                return
-            }
-
-            for bookmark in readiumBookmarks {
-                guard let annotationId = bookmark.annotationId else { continue }
-                deleteBookmark(annotationId: annotationId) { _ in }
+        // Delete user bookmarks (`.bookmark`) for every format, AND the
+        // AUDIOBOOK listening position (`.readingProgress`). Leaving the
+        // audiobook reading-progress annotation on the server made a stale
+        // listening position authoritative on re-borrow (3.2.3 Cause 2 — HelpSpot
+        // #18468 / #18019 / #18449). `getServerBookmarks` already scopes to the
+        // returned book (the factory drops annotations whose `source` != this
+        // book's identifier), so other books' bookmarks are never touched.
+        //
+        // SCOPING (review finding): the `.readingProgress` deletion is scoped to
+        // AUDIOBOOK positions only. An EBOOK/PDF reading position also has
+        // `.readingProgress` motivation but parses (via `TPPBookmarkFactory`,
+        // keyed on `book.isAudiobook`) as a `TPPReadiumBookmark` — deleting it
+        // would wipe the patron's saved reading PLACE across return/re-borrow,
+        // which Cause 2 never intended. We therefore delete a `.readingProgress`
+        // annotation only when it parsed as an `AudioBookmark` (i.e. the
+        // audiobook listening position); ebook/PDF reading positions are left
+        // intact. User `.bookmark` annotations are still deleted for all formats
+        // (unchanged pre-Cause-2 behavior).
+        for motivation in [TPPBookmarkSpec.Motivation.bookmark, .readingProgress] {
+            getServerBookmarks(forBook: book, atURL: book.annotationsURL, motivation: motivation) { bookmarks in
+                guard let bookmarks, !bookmarks.isEmpty else { return }
+                for bookmark in bookmarks {
+                    if motivation == .readingProgress, !(bookmark is AudioBookmark) {
+                        // Preserve ebook/PDF reading position (TPPReadiumBookmark).
+                        continue
+                    }
+                    guard let annotationId = serverAnnotationId(of: bookmark) else { continue }
+                    deleteBookmark(annotationId: annotationId) { _ in }
+                }
             }
         }
+    }
+
+    /// Extracts the server annotation ID from a parsed `Bookmark`, regardless
+    /// of concrete type. A `.readingProgress` annotation on an audiobook parses
+    /// as an `AudioBookmark`, which the old `as? [TPPReadiumBookmark]` array
+    /// cast silently dropped — leaving the listening position on the server to
+    /// resurface on re-borrow (3.2.3 Cause 2). Returns `nil` for a bookmark
+    /// with no server linkage or an unrecognised type (e.g. an unsynced
+    /// `AudioBookmark`, or a PDF page bookmark — whose deletion behaviour is
+    /// intentionally left unchanged).
+    private static func serverAnnotationId(of bookmark: Bookmark) -> String? {
+        if let readium = bookmark as? TPPReadiumBookmark {
+            return readium.annotationId
+        }
+        if let audio = bookmark as? AudioBookmark {
+            return audio.annotationId.isEmpty ? nil : audio.annotationId
+        }
+        return nil
     }
 
     static func deleteBookmark(annotationId: String,

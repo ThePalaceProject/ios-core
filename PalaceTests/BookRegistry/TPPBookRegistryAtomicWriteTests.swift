@@ -127,10 +127,20 @@ class TPPBookRegistryAtomicWriteTests: PalaceWiringTestCase {
                        "All 20 seeded records must appear in the saved file — kills mutant that truncates output")
     }
 
-    /// After a successful save, the registry directory must contain exactly
-    /// one file: the canonical `registry.json`. The atomic-rename should
-    /// leave no `.tmp` / staging artifacts behind. Kills mutants that switch
-    /// from atomic-rename to a manual temp-file + rename leaving staging.
+    /// After a successful save, the registry directory must contain the
+    /// canonical `registry.json` and (since the #1212/D1 resilience work) the
+    /// durable last-good `registry.json.bak` sidecar — and NOTHING ELSE. The
+    /// atomic-rename (primary) and write-new→fsync→rename (backup) must leave
+    /// no `.tmp` / staging artifacts behind. Kills mutants that switch from
+    /// atomic-rename to a manual temp-file + rename leaving staging.
+    ///
+    /// Updated for the `.bak` sidecar: a non-empty saveSync now legitimately
+    /// writes the last-good backup (RegistryFileRecovery.writeBackup) as the
+    /// recovery source a later corrupt load reads. The `.bak` is a PERMANENT
+    /// durable artifact, not staging — so the anti-staging intent is preserved
+    /// by asserting the exact {registry.json, registry.json.bak} set and, in
+    /// particular, the ABSENCE of any `.tmp` file (the staging artifact the
+    /// mutant would leave).
     func testSaveSync_LeavesNoStagingArtifactsInRegistryDir() throws {
         _ = seedAndSave(count: 5)
 
@@ -138,9 +148,12 @@ class TPPBookRegistryAtomicWriteTests: PalaceWiringTestCase {
         let contents = try FileManager.default.contentsOfDirectory(atPath: dir.path)
             // Filter macOS metadata
             .filter { !$0.hasPrefix(".") }
+            .sorted()
 
-        XCTAssertEqual(contents, ["registry.json"],
-                       "Registry dir must contain only registry.json — kills mutant that leaves staging .tmp files")
+        XCTAssertEqual(contents, ["registry.json", "registry.json.bak"],
+                       "Registry dir must contain only the primary + its durable .bak sidecar — kills mutant that leaves staging .tmp files")
+        XCTAssertFalse(contents.contains { $0.hasSuffix(".tmp") },
+                       "No staging .tmp artifact may survive an atomic save/backup")
     }
 
     /// Two back-to-back saves (write a registry, then a smaller one) must
