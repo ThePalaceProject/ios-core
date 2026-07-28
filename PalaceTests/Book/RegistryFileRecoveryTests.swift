@@ -292,4 +292,51 @@ final class RegistryFileRecoveryTests: XCTestCase {
     XCTAssertFalse(RegistryFileRecovery.onDiskHasRecords(for: registryURL()),
                    "no primary and no backup means nothing on disk to protect — false")
   }
+
+  // MARK: - purgeSidecars (sign-out / reset cleanup)
+
+  /// `reset(_:)` used to delete only the PRIMARY, leaving the signed-out
+  /// patron's whole shelf readable in the `.bak` — and recoverable into the
+  /// next patron's session at the same library. `purgeSidecars` must remove the
+  /// backup AND every accumulated quarantine copy, while leaving unrelated
+  /// files in the directory alone.
+  func testPurgeSidecars_removesBackupAndAllQuarantineCopies_leavingUnrelatedFiles() throws {
+    let url = registryURL()
+    write(versionedPayload(records: [recordDict(id: "keep")], version: 1), to: url)
+    write(versionedPayload(records: [recordDict(id: "leaked")], version: 1),
+          to: RegistryFileRecovery.backupURL(for: url))
+
+    // Two quarantine copies from repeated corruption — both must go.
+    let q1 = RegistryFileRecovery.quarantineURL(for: url, timestamp: Date(timeIntervalSince1970: 1_700_000_000))
+    let q2 = RegistryFileRecovery.quarantineURL(for: url, timestamp: Date(timeIntervalSince1970: 1_700_000_999))
+    write(Data("{ truncated".utf8), to: q1)
+    write(Data("{ truncated".utf8), to: q2)
+
+    // An unrelated neighbour that must survive.
+    let unrelated = url.deletingLastPathComponent().appendingPathComponent("other.json")
+    write(Data("{}".utf8), to: unrelated)
+
+    RegistryFileRecovery.purgeSidecars(for: url)
+
+    XCTAssertFalse(FileManager.default.fileExists(atPath: RegistryFileRecovery.backupURL(for: url).path),
+                   "the last-good .bak must be deleted — it holds the signed-out patron's shelf")
+    XCTAssertFalse(FileManager.default.fileExists(atPath: q1.path),
+                   "quarantine copies must be pruned, not accumulated forever")
+    XCTAssertFalse(FileManager.default.fileExists(atPath: q2.path),
+                   "ALL quarantine copies must be pruned, not just the first match")
+    XCTAssertTrue(FileManager.default.fileExists(atPath: unrelated.path),
+                  "purgeSidecars must not touch unrelated files in the registry directory")
+  }
+
+  /// Cleanup path: purging when nothing is on disk must be a silent no-op, so a
+  /// sign-out never fails on an already-clean directory.
+  func testPurgeSidecars_withNoSidecarsPresent_isSilentNoOp() {
+    let url = registryURL()
+    write(versionedPayload(records: [recordDict(id: "solo")], version: 1), to: url)
+
+    RegistryFileRecovery.purgeSidecars(for: url)
+
+    XCTAssertTrue(FileManager.default.fileExists(atPath: url.path),
+                  "purgeSidecars must not delete the primary registry file")
+  }
 }
