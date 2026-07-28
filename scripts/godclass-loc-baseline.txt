@@ -24,8 +24,16 @@
 #     replacing one declaration line with a 5-line explanatory comment + the plain
 #     declaration. Verified extraction-mechanical: no logic added (git diff = comment
 #     + protocol-keyword change only).
+# Wave 3 S1 (+11 on AccountsManager, 2321 -> 2332): the account-switch borrow-reauth
+#   circuit-breaker reset was INVERTED behind the injected `BorrowReauthResetting` seam
+#   (new `private let borrowReauthResetter` + its init param + a 3-line doc). This is the
+#   decomposition inversion itself, not reliability accretion — the residual growth is a
+#   stored dependency + minimal docs (the rationale lives in the new, unfrozen
+#   BorrowReauthResetting.swift). Nets strongly NEGATIVE at the 3a package move, when the
+#   MyBooksDownloadCenter static call site and its cluster leave the hub. Re-baselined by
+#   the exact delta; the freeze still catches any further unrelated growth.
 2764 Palace/Audiobooks/AudiobookSessionManager.swift
-2321 Palace/Accounts/Library/AccountsManager.swift
+2332 Palace/Accounts/Library/AccountsManager.swift
 2170 Palace/MyBooks/MyBooksDownloadCenter.swift
 1378 Palace/Book/UI/BookDetail/BookDetailViewModel.swift
 1124 Palace/SignInLogic/TPPSignInBusinessLogic.swift

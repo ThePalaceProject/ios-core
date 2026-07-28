@@ -631,7 +631,13 @@ struct AppContainer: @unchecked Sendable {
         // background `loadCatalogs` the initializer dispatches. Do NOT reintroduce
         // a synchronous full-account preload here — `production()` must return
         // without paying the ~207ms (fast sim) / ~0.3-0.6s (device) full decode.
-        let accountsManager = AccountsManager()
+        // Wave 3 S1: inject the account-switch borrow-reauth circuit-breaker
+        // reset explicitly (no-default-fires house rule) rather than relying on
+        // AccountsManager's real default arg. `DownloadCenterBorrowReauthResetter`
+        // is a stateless struct that forwards to a static, so it needs no MBDC
+        // instance — no construction-order hazard even though MBDC is built later
+        // in this method.
+        let accountsManager = AccountsManager(borrowReauthResetter: DownloadCenterBorrowReauthResetter())
         // Single image-loading umbrella composed of the existing disk+memory
         // ImageCache and the TPPBookCoverRegistry actor — replaces three
         // overlapping singletons at consumer sites (Track A of the 3.2.0
