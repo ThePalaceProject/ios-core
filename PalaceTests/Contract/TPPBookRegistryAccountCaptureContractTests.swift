@@ -36,7 +36,7 @@ import XCTest
 import PalaceCatalog
 import PalaceBookModel
 @testable import Palace
-@testable import PalaceBookRegistry
+@_spi(Testing) @testable import PalaceBookRegistry
 
 @MainActor
 final class TPPBookRegistryAccountCaptureContractTests: PalaceWiringTestCase {

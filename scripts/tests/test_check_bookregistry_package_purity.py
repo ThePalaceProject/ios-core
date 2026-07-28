@@ -16,6 +16,8 @@ BOOKREGISTRY_SCAN_ROOT so it never touches the real repo tree.
 
 from __future__ import annotations
 
+import os
+import stat
 import subprocess
 from pathlib import Path
 
@@ -23,11 +25,11 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 _SCRIPT = _REPO_ROOT / "scripts" / "check-bookregistry-package-purity.sh"
 
 
-def _run(scan_root: Path) -> subprocess.CompletedProcess:
+def _run(scan_root: Path, path: str = "/usr/bin:/bin:/usr/sbin:/sbin") -> subprocess.CompletedProcess:
     return subprocess.run(
         ["bash", str(_SCRIPT)],
         env={
-            "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+            "PATH": path,
             "BOOKREGISTRY_SCAN_ROOT": str(scan_root),
         },
         capture_output=True,
@@ -150,6 +152,41 @@ def test_forbidden_symbol_in_string_literal_passes(tmp_path):
         f"{result.returncode}\nstdout: {result.stdout!r}\nstderr: {result.stderr!r}"
     )
     assert "PASS" in result.stdout
+
+
+def test_python_crash_fails_closed(tmp_path):
+    """If the embedded python3 scanner itself crashes (bad interpreter, syntax
+    error, whatever), the gate must FAIL, not silently pass. Previously the
+    heredoc was wrapped in `2>/dev/null || true`, so a python crash produced
+    an empty FINDINGS string indistinguishable from "clean package" ->
+    fail-open. Simulate a crash by shadowing `python3` on PATH with a stub
+    that always exits non-zero, then assert the gate fails closed with a
+    message that names the crash (not a false "PASS")."""
+    root = tmp_path / "Sources"
+    root.mkdir(parents=True)
+    (root / "Clean.swift").write_text("import Foundation\nstruct Clean {}\n")
+
+    fake_bin = tmp_path / "fakebin"
+    fake_bin.mkdir()
+    fake_python = fake_bin / "python3"
+    fake_python.write_text(
+        "#!/bin/sh\n"
+        "echo 'boom: simulated interpreter crash' >&2\n"
+        "exit 137\n"
+    )
+    fake_python.chmod(fake_python.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
+
+    result = _run(root, path=f"{fake_bin}:/usr/bin:/bin:/usr/sbin:/sbin")
+
+    assert result.returncode != 0, (
+        f"expected the gate to fail closed when python3 crashes, got exit "
+        f"{result.returncode}\nstdout: {result.stdout!r}\nstderr: {result.stderr!r}"
+    )
+    assert "PASS" not in result.stdout, (
+        "gate must never report PASS when the scanner itself crashed "
+        f"(fail-open regression)\nstdout: {result.stdout!r}"
+    )
+    assert "crash" in result.stdout.lower() or "crash" in result.stderr.lower()
 
 
 def test_forbidden_symbol_in_code_after_a_comment_line_is_flagged(tmp_path):
