@@ -73,14 +73,10 @@ final class BorrowReauthResettingTests: PalaceWiringTestCase {
     }
 
     override func tearDownWithError() throws {
-        // Do not leak a tripped breaker into downstream suites.
+        // Do not leak a tripped breaker into downstream suites. Manager
+        // background-work cancellation is handled by the base (every manager is
+        // minted via `makeFreshAccountsManager`).
         BorrowOperation.clearAllBorrowReauthState()
-        // Directly-constructed (spy-path) managers aren't tracked by the base's
-        // private list, so cancel their background work here. Idempotent.
-        for manager in managersToCancel {
-            manager.cancelBackgroundWork()
-        }
-        managersToCancel.removeAll()
         try super.tearDownWithError()
     }
 
@@ -105,7 +101,7 @@ final class BorrowReauthResettingTests: PalaceWiringTestCase {
         let spy = SpyBorrowReauthResetter()
         let defaults = Self.testUserDefaults()
         defaults.set(aUUID, forKey: currentAccountIdentifierKey)
-        let manager = makeManager(defaults: defaults, resetter: spy)
+        let manager = makeFreshAccountsManager(defaults: defaults, borrowReauthResetter: spy)
 
         // Act — synchronous.
         manager.currentAccount = accountB
@@ -134,7 +130,7 @@ final class BorrowReauthResettingTests: PalaceWiringTestCase {
         let spy = SpyBorrowReauthResetter()
         let defaults = Self.testUserDefaults()
         defaults.set(bUUID, forKey: currentAccountIdentifierKey)
-        let manager = makeManager(defaults: defaults, resetter: spy)
+        let manager = makeFreshAccountsManager(defaults: defaults, borrowReauthResetter: spy)
 
         manager.currentAccount = accountB
 
@@ -157,7 +153,7 @@ final class BorrowReauthResettingTests: PalaceWiringTestCase {
         let spy = SpyBorrowReauthResetter()
         let defaults = Self.testUserDefaults()
         defaults.set(aUUID, forKey: currentAccountIdentifierKey)
-        let manager = makeManager(defaults: defaults, resetter: spy)
+        let manager = makeFreshAccountsManager(defaults: defaults, borrowReauthResetter: spy)
 
         manager.currentAccount = nil
 
@@ -221,24 +217,6 @@ final class BorrowReauthResettingTests: PalaceWiringTestCase {
         AccountStateStore.shared.reset(for: aUUID)
         AccountStateStore.shared.reset(for: bUUID)
     }
-
-    // MARK: - Manager helper (spy injection)
-
-    /// Construct a fresh `AccountsManager` with an injected resetter and per-test
-    /// defaults, pinning the background-loadCatalogs opt-out (like the base's
-    /// `makeFreshAccountsManager`) and registering it for teardown cancellation.
-    private func makeManager(defaults: UserDefaults, resetter: any BorrowReauthResetting) -> AccountsManager {
-        #if DEBUG
-        AccountsManager.deferInitialLoadCatalogsForTesting = true
-        #endif
-        let manager = AccountsManager(defaults: defaults, borrowReauthResetter: resetter)
-        managersToCancel.append(manager)
-        return manager
-    }
-
-    /// Directly-constructed managers (spy path) aren't tracked by the base's
-    /// private list; `tearDownWithError` cancels their background work.
-    private var managersToCancel: [AccountsManager] = []
 
     // MARK: - Account / book fixtures
 
