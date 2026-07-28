@@ -97,7 +97,87 @@ extension Account {
     ///   the awaiting Task is cancelled.
     public func awaitReady() async throws -> AccountDetails {
         // Fast path: already terminal.
-        switch loadState {
+        if let terminal = try Self.resolveTerminal(loadState) {
+            return terminal
+        }
+
+        // Slow path: await the next terminal state via the stream.
+        for await state in stateStream {
+            try Task.checkCancellation()
+            if let terminal = try Self.resolveTerminal(state) {
+                return terminal
+            }
+        }
+        // Stream terminated without resolution — treat as cancellation.
+        throw CancellationError()
+    }
+
+    /// Bounded readiness gate. Identical resolution semantics to
+    /// `awaitReady()` but races the stream against a `timeout`. If the
+    /// account is still non-terminal after `timeout` seconds — e.g. the
+    /// per-UUID `authentication_document` fetch wedged at `.detailsLoading`
+    /// because its network completion was dropped — this throws
+    /// `AccountLoadError.readinessTimedOut(timeout:)` instead of hanging
+    /// forever.
+    ///
+    /// The gate itself is NOT reset on timeout: the account stays in its
+    /// pre-terminal state so a later drive (`driveCurrentAccountAuthDocIfNeeded`)
+    /// can still resolve it, and a caller that owns a retry policy
+    /// (`BookRegistrySync.sync`) can `try await` again on the next trigger.
+    /// This is the account-side half of the HelpSpot #18414 self-heal: an
+    /// unbounded `awaitReady()` behind registry-sync was the load-forever /
+    /// empty-My-Books wedge.
+    ///
+    /// - Parameter timeout: Seconds to wait for a terminal state. Values
+    ///   ≤ 0 mean "fail immediately if not already terminal."
+    /// - Returns: Resolved `AccountDetails` on success.
+    /// - Throws: `AccountLoadError.readinessTimedOut(timeout:)` on timeout;
+    ///   the account's `AccountLoadError` on failure; `CancellationError`
+    ///   if the awaiting Task is cancelled.
+    func awaitReady(timeout: TimeInterval) async throws -> AccountDetails {
+        // Fast path: already terminal — never pay the timeout cost.
+        if let terminal = try Self.resolveTerminal(loadState) {
+            return terminal
+        }
+
+        let stream = stateStream
+        return try await withThrowingTaskGroup(of: AccountDetails.self) { group in
+            group.addTask {
+                for await state in stream {
+                    try Task.checkCancellation()
+                    if let terminal = try Self.resolveTerminal(state) {
+                        return terminal
+                    }
+                }
+                throw CancellationError()
+            }
+            group.addTask {
+                let nanos = UInt64(max(0.0, timeout) * 1_000_000_000)
+                try await Task.sleep(nanoseconds: nanos)
+                throw AccountLoadError.readinessTimedOut(timeout: timeout)
+            }
+            do {
+                guard let first = try await group.next() else {
+                    throw CancellationError()
+                }
+                group.cancelAll()
+                return first
+            } catch {
+                group.cancelAll()
+                throw error
+            }
+        }
+    }
+
+    /// Maps a `LoadState` to a terminal outcome: returns the details on
+    /// `.detailsLoaded`, throws on `.detailsFailed`/`.detailsEvicted`, and
+    /// returns `nil` for the non-terminal states (`.notLoaded`,
+    /// `.basicInfoLoaded`, `.detailsLoading`) so the caller keeps waiting.
+    /// Extracted so the bounded and unbounded gates share one source of
+    /// truth for the terminal decision (DRY — a divergence here would let
+    /// one gate resolve on a state the other treats as pending).
+    private static func resolveTerminal(_ state: LoadState) throws -> AccountDetails? {
+        switch state {
         case .detailsLoaded(let details):
             return details
         case .detailsFailed(let error):
@@ -105,25 +185,8 @@ extension Account {
         case .detailsEvicted(let reason):
             throw AccountLoadError.evicted(reason: reason)
         case .notLoaded, .basicInfoLoaded, .detailsLoading:
-            break
+            return nil
         }
-
-        // Slow path: await the next terminal state via the stream.
-        for await state in stateStream {
-            try Task.checkCancellation()
-            switch state {
-            case .detailsLoaded(let details):
-                return details
-            case .detailsFailed(let error):
-                throw error
-            case .detailsEvicted(let reason):
-                throw AccountLoadError.evicted(reason: reason)
-            case .notLoaded, .basicInfoLoaded, .detailsLoading:
-                continue
-            }
-        }
-        // Stream terminated without resolution — treat as cancellation.
-        throw CancellationError()
     }
 
     // MARK: - Internal Transition Seam (for AccountsManager + tests)
@@ -173,6 +236,17 @@ public enum AccountLoadError: Error, Equatable, Sendable {
     /// pipeline broke." Surfacing the reason lets callers decide whether
     /// to retry, re-resolve, or simply discard the request.
     case evicted(reason: AccountEvictionReason)
+
+    /// A bounded `awaitReady(timeout:)` gave up before the account reached
+    /// a terminal state — the `authentication_document` fetch is taking
+    /// longer than the caller's budget (typically because its network
+    /// completion was dropped and the account is wedged at `.detailsLoading`).
+    /// Distinct from `.authDocumentFetchFailed`: the fetch did NOT report a
+    /// failure, it simply never resolved in time. Callers with a retry policy
+    /// (registry sync) treat this as "try again on the next trigger" rather
+    /// than a hard error. Not surfaced to users — reuses existing silent-retry
+    /// paths (HelpSpot #18414).
+    case readinessTimedOut(timeout: TimeInterval)
 }
 
 /// Reasons an account's LoadState may transition to `.detailsEvicted`.

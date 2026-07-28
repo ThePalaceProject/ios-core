@@ -176,6 +176,109 @@ final class AccountStateMachineTests: XCTestCase {
         await fulfillment(of: [exp], timeout: 1.0)
     }
 
+    // MARK: - Bounded readiness gate: awaitReady(timeout:) (HelpSpot #18414)
+
+    /// Loads the bundled NYPL auth-doc fixture and returns a fresh Account whose
+    /// `.details` are populated (via `authenticationDocument.didSet`). Used by
+    /// the bounded-gate resolve test, which needs a real `AccountDetails` to
+    /// carry through `.detailsLoaded`.
+    private func makeAccountWithDetails(uuid: String) throws -> (Account, AccountDetails) {
+        let bundle = Bundle(for: type(of: self))
+        guard let url = bundle.url(forResource: "nypl_authentication_document", withExtension: "json") else {
+            throw XCTSkip("nypl_authentication_document.json fixture missing from PalaceTests bundle")
+        }
+        let authDoc = try OPDS2AuthenticationDocument.fromData(Data(contentsOf: url))
+        let account = makeFreshAccount(uuid: uuid)
+        account.authenticationDocument = authDoc
+        guard let details = account.details else {
+            throw XCTSkip("auth-doc fixture did not populate account.details")
+        }
+        return (account, details)
+    }
+
+    /// The core #18414 self-heal at the account layer: an account WEDGED at
+    /// `.detailsLoading` (its auth-doc fetch dropped its completion) must NOT
+    /// hang a bounded `awaitReady(timeout:)` forever — it must throw
+    /// `.readinessTimedOut` at roughly the deadline. This is what lets
+    /// `BookRegistrySync.sync` abort-and-retry instead of blocking registry
+    /// sync indefinitely (which caused the empty-My-Books / data-loss face).
+    func testAwaitReadyTimeout_wedgedAtDetailsLoading_throwsReadinessTimedOut() async {
+        let account = makeFreshAccount(uuid: "wedge-\(UUID().uuidString)")
+        account._setState(.detailsLoading)   // wedged; never transitions
+
+        let start = Date()
+        do {
+            _ = try await account.awaitReady(timeout: 0.3)
+            XCTFail("awaitReady(timeout:) must throw when the account never leaves .detailsLoading")
+        } catch let error as AccountLoadError {
+            guard case .readinessTimedOut(let t) = error else {
+                return XCTFail("Expected .readinessTimedOut, got \(error)")
+            }
+            XCTAssertEqual(t, 0.3, accuracy: 0.001, "timeout value must be carried on the error")
+        } catch {
+            XCTFail("Expected AccountLoadError.readinessTimedOut, got \(type(of: error)): \(error)")
+        }
+        let elapsed = Date().timeIntervalSince(start)
+        XCTAssertGreaterThanOrEqual(elapsed, 0.25, "must actually wait ~the timeout, not fail instantly")
+        XCTAssertLessThan(elapsed, 2.0, "must not exceed the bound by a wide margin")
+
+        // The gate is NOT reset on timeout: a later drive can still resolve it,
+        // and a caller with a retry policy re-awaits on the next trigger.
+        if case .detailsLoading = account.loadState {
+            // pass — pre-terminal state preserved
+        } else {
+            XCTFail("Timeout must leave the account in .detailsLoading (gate not reset); got \(account.loadState)")
+        }
+    }
+
+    /// A transition that lands BEFORE the bound resolves normally — the timeout
+    /// must not steal a win from a real terminal. Kill case: a bounded gate that
+    /// always throws timeout, or races incorrectly, fails here.
+    func testAwaitReadyTimeout_transitionBeforeTimeout_resolves() async throws {
+        let (account, details) = try makeAccountWithDetails(uuid: "resolve-\(UUID().uuidString)")
+        account._setState(.detailsLoading)
+
+        let awaiterTask = Task { try await account.awaitReady(timeout: 5.0) }
+
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertFalse(awaiterTask.isCancelled)
+        account._setState(.detailsLoaded(details))
+
+        // Join the awaiter Task directly instead of racing a fixed deadline
+        // against it (STARVE-001). This is also STRICTER than the old
+        // `XCTAssertLessThan(elapsed, 5.0)`: if the bound had stolen the win,
+        // `awaitReady` would throw `.readinessTimedOut` and `.value` rethrows
+        // here, so the timing assertion it replaces was redundant — and it was
+        // the one assertion in this test that a starved CI clone could
+        // false-fail.
+        let resolved = try await awaiterTask.value
+        XCTAssertTrue(resolved === details, "must resolve with the loaded details, not time out")
+    }
+
+    /// The bounded gate honors an ALREADY-terminal failure on the fast path —
+    /// it must surface the underlying `AccountLoadError`, NOT wait out the
+    /// timeout and NOT convert it into `.readinessTimedOut`.
+    func testAwaitReadyTimeout_alreadyTerminalFailed_throwsUnderlyingError_notTimeout() async {
+        let account = makeFreshAccount(uuid: "failed-\(UUID().uuidString)")
+        account._setState(.detailsFailed(.authDocumentFetchFailed(underlyingDescription: "HTTP 503")))
+
+        let start = Date()
+        do {
+            _ = try await account.awaitReady(timeout: 5.0)
+            XCTFail("bounded awaitReady must throw on an already-.detailsFailed account")
+        } catch let error as AccountLoadError {
+            if case .authDocumentFetchFailed(let desc) = error {
+                XCTAssertEqual(desc, "HTTP 503")
+            } else {
+                XCTFail("Expected the underlying .authDocumentFetchFailed, got \(error) — must not mask it as .readinessTimedOut")
+            }
+        } catch {
+            XCTFail("Expected AccountLoadError, got \(type(of: error)): \(error)")
+        }
+        XCTAssertLessThan(Date().timeIntervalSince(start), 1.0,
+                          "fast-path terminal must not wait out the timeout")
+    }
+
     // MARK: - Teardown drain (test-isolation root cause)
 
     /// The teardown drain `AccountStateStore._resetAllForTesting()` now sends the

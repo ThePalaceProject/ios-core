@@ -16,6 +16,56 @@ import PalaceAuth
     case signOut = 2
 }
 
+/// One-shot completion guard: guarantees a completion runs exactly once even
+/// when a timeout races the underlying (possibly-dropped) network callback.
+/// Thread-safe — either racer may win from any queue. Used to bound the
+/// `authentication_document` GET so borrow can't hang forever (HelpSpot #18414).
+/// `@unchecked Sendable` is sound: the only mutable state (`fired`) is read and
+/// written exclusively under `lock`.
+private final class TPPOnceGuard: @unchecked Sendable {
+    private let lock = NSLock()
+    private var fired = false
+    /// Returns `true` exactly once — for the FIRST caller — and `false`
+    /// thereafter. The winner runs the side effect; losers no-op.
+    func claim() -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        if fired { return false }
+        fired = true
+        return true
+    }
+}
+
+/// Carries the timeout `DispatchWorkItem` into the `@Sendable` operation
+/// callback so the winning racer can cancel the loser. `@unchecked Sendable` is
+/// sound: `DispatchWorkItem` is itself thread-safe (`cancel()` is documented as
+/// callable from any queue); it simply predates `Sendable` annotation.
+private struct TPPWorkItemBox: @unchecked Sendable {
+    let item: DispatchWorkItem
+}
+
+/// Carries `boundedCompletion`'s caller-supplied closures — which inherit
+/// `TPPSignInBusinessLogic`'s `@MainActor` isolation and are therefore not
+/// `Sendable` — across the `@Sendable` boundary of the timeout
+/// `DispatchWorkItem` and the operation's off-main callback, so they can be
+/// delivered ON the main actor rather than on the winning racer's thread.
+/// `@unchecked Sendable` is sound: the stored closures are only ever read from
+/// inside the `@MainActor` `deliver`/`deliverTimeout` methods below, so
+/// main-actor-only invocation is compiler-enforced rather than merely a
+/// convention (`TPPOnceGuard` separately guarantees exactly one of them runs).
+private struct TPPBoundedCompletionSink<T>: @unchecked Sendable {
+    let onTimeout: () -> Void
+    let completion: (T) -> Void
+
+    @MainActor func deliverTimeout(_ value: T) {
+        onTimeout()
+        completion(value)
+    }
+
+    @MainActor func deliver(_ value: T) {
+        completion(value)
+    }
+}
+
 @objc protocol TPPBookDownloadsDeleting {
     func reset(_ libraryID: String!)
 }
@@ -800,19 +850,106 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
         }
 
         dispatch(.authDocumentLoadStarted)
-        libraryAccount.loadAuthenticationDocument(using: self) { success in
-            // `loadAuthenticationDocument`'s completion fires on the URLSession
-            // delegate queue (off-main — `TPPNetworkExecutor` uses `delegateQueue:
-            // nil`). `dispatch(_:)` is `@MainActor`-isolated (this whole type is
-            // `@MainActor`, driving UIKit alert/VM state), so calling it off-main
-            // trips Swift 6's `swift_task_checkIsolated` SIGTRAP and restarts the
-            // process — the OIDC/sign-in crash cluster. Hop to main before
-            // dispatching and firing the caller's completion.
-            DispatchQueue.main.async {
-                self.dispatch(.authDocumentLoadCompleted)
+        // Bound the auth-doc GET so a dropped/hung network completion can't
+        // wedge borrow forever (HelpSpot #18414): borrow gates on this method,
+        // and if `loadAuthenticationDocument`'s completion is never called
+        // (auth-doc fetch wedged at `.detailsLoading`) borrow's own 30s timeout
+        // is never even reached. On timeout we surface `false` so borrow takes
+        // its normal retry/error path instead of spinning. The bounding logic
+        // lives in the testable static seam `boundedCompletion`.
+        Self.boundedCompletion(
+            timeout: Self.authDocumentLoadTimeout,
+            timeoutValue: false,
+            onTimeout: {
+                Log.warn(#file, "Auth-doc load timed out after \(Self.authDocumentLoadTimeout)s — surfacing failure so borrow can retry (HelpSpot #18414)")
+            },
+            operation: { done in
+                libraryAccount.loadAuthenticationDocument(using: self, completion: done)
+            },
+            completion: { [weak self] success in
+                // MERGE (forward-port): this body needs the main actor —
+                // `dispatch(_:)` is `@MainActor`-isolated (this type drives
+                // UIKit alert/VM state) and off-main invocation trips Swift 6's
+                // `swift_task_checkIsolated` SIGTRAP (the OIDC/sign-in crash
+                // cluster). The hop now lives in `boundedCompletion`, which
+                // guarantees main-actor delivery for BOTH racers — hopping here
+                // only covered this one call site and left the seam itself
+                // trapping for every other caller.
+                self?.dispatch(.authDocumentLoadCompleted)
                 completion(success)
             }
+        )
+    }
+
+    /// Upper bound on the `authentication_document` GET inside
+    /// `ensureAuthenticationDocumentIsLoaded`. Above a healthy round-trip yet
+    /// low enough that a wedged (dropped-completion) fetch surfaces a
+    /// retryable failure to borrow well before a user gives up. See HelpSpot
+    /// #18414.
+    static let authDocumentLoadTimeout: TimeInterval = 30
+
+    /// Bounds a completion-based `operation` with a `timeout`. Runs
+    /// `operation`, and if it hasn't called its completion within `timeout`
+    /// seconds fires `completion(timeoutValue)` instead (also invoking
+    /// `onTimeout` for logging). Whichever of {operation callback, timeout}
+    /// fires FIRST wins; the loser is a guaranteed no-op (exactly-once).
+    ///
+    /// - Important: `onTimeout` and `completion` are ALWAYS delivered on the
+    /// main actor, never on the winning racer's thread. That is a correctness
+    /// requirement, not a convenience: `TPPSignInBusinessLogic` is `@MainActor`,
+    /// so a closure literal written by any caller inherits main-actor isolation,
+    /// while BOTH racers fire off-main (the timeout `DispatchWorkItem` on
+    /// `timerQueue` = `.global()`; the operation callback on the URLSession
+    /// delegate queue, since `TPPNetworkExecutor` uses `delegateQueue: nil`).
+    /// Invoking a main-actor-isolated closure off-main trips Swift 6's
+    /// `swift_task_checkIsolated` SIGTRAP and kills the process. The earlier
+    /// "runs on the winning racer's thread" contract was itself the defect.
+    ///
+    /// Extracted as an internal static seam so the timeout/exactly-once
+    /// behavior is unit-testable without the `AppContainer.production()`
+    /// network dependency buried inside `Account.loadAuthenticationDocument`.
+    /// HelpSpot #18414.
+    ///
+    /// - Returns: the timeout `DispatchWorkItem`, so a test can deterministically
+    /// JOIN the losing racer (`item.notify { … }` fires once the item has run or
+    /// reached its deadline cancelled) instead of sleeping past the deadline on a
+    /// wall clock, which starves under parallel CI sim clones (STARVE-001).
+    /// Production callers discard it.
+    @discardableResult
+    static func boundedCompletion<T: Sendable>(
+        timeout: TimeInterval,
+        timeoutValue: T,
+        timerQueue: DispatchQueue = .global(),
+        onTimeout: @escaping () -> Void = {},
+        operation: (@escaping @Sendable (T) -> Void) -> Void,
+        completion: @escaping (T) -> Void
+    ) -> DispatchWorkItem {
+        let guardOnce = TPPOnceGuard()
+        // `onTimeout`/`completion` inherit this type's `@MainActor` isolation
+        // and are not `Sendable`, so the `@Sendable` racer closures below can't
+        // capture them directly — box them (same pattern as
+        // `LibrariesSectionViewModel.UncheckedSendableBox`). Sound: `guardOnce`
+        // admits exactly one racer, and the box is only ever opened from inside
+        // a `@MainActor` task.
+        let sink = TPPBoundedCompletionSink(onTimeout: onTimeout, completion: completion)
+
+        // Explicitly `@Sendable` so this closure does NOT inherit `@MainActor`:
+        // it runs on `timerQueue`, and an isolated closure invoked there is the
+        // SIGTRAP described above.
+        let timeoutWork = DispatchWorkItem { @Sendable in
+            guard guardOnce.claim() else { return }
+            Task { @MainActor in sink.deliverTimeout(timeoutValue) }
         }
+        timerQueue.asyncAfter(deadline: .now() + max(0, timeout), execute: timeoutWork)
+
+        let timerBox = TPPWorkItemBox(item: timeoutWork)
+        operation { value in
+            timerBox.item.cancel()
+            guard guardOnce.claim() else { return }
+            Task { @MainActor in sink.deliver(value) }
+        }
+
+        return timeoutWork
     }
 
     /// Set up the sign-in business logic to refresh the authentication token

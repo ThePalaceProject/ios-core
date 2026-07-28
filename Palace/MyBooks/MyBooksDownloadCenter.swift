@@ -456,7 +456,17 @@ private final class DownloadFailureMetadataBox: @unchecked Sendable {
             // received so BookReturnService's auth-error branch routes
             // through the single seam. Tests that construct MBDC without
             // a coordinator fall back to the legacy reauthenticator path.
-            authCoordinator: authCoordinator
+            authCoordinator: authCoordinator,
+            // 3.2.3 Cause 2: route the return flow's pending-remote-write
+            // cancellation to the process-wide audiobook session, which owns
+            // the live `RemotePositionWriter` via its bookmark delegate.
+            // Fire-and-forget on the main actor so the return path never blocks.
+            remotePositionWriteCanceller: { identifier in
+                Task { @MainActor in
+                    await AppContainer.production().audiobookSession
+                        .cancelPendingRemotePositionWrite(forBookId: identifier)
+                }
+            }
         )
         self.stateManager = stateManager
         // DownloadAlertPresenter built eagerly so `self` can wire as its

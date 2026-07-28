@@ -1457,6 +1457,130 @@ final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {
         }
     }
 
+    // MARK: - Test 11: wedged single-flight entry is reclaimed + re-fired (HelpSpot #18414)
+
+    /// Builds an isolated Account with NO `authentication_document` link so
+    /// `loadAuthenticationDocument` short-circuits with `completion(false)` —
+    /// letting us observe the fetch WITHOUT network mocking. The wiring drives
+    /// `.detailsLoading → .detailsFailed(.authDocumentFetchFailed)`.
+    private func makeNoAuthDocAccount(uuidHint: String) -> Account {
+        let metadata = OPDS2Publication.Metadata(
+            updated: Date(),
+            description: "no auth doc (#18414 reclaim test)",
+            id: "urn:uuid:\(uuidHint)-\(UUID().uuidString)",
+            title: "No-AuthDoc Library"
+        )
+        let pub = OPDS2Publication(links: [], metadata: metadata, images: nil)
+        return Account(publication: pub, imageCache: MockImageCache())
+    }
+
+    /// Contract (HelpSpot #18414 root cause): when a UUID sits in the
+    /// single-flight `inflightAuthDocFetches` map beyond `authDocInflightTimeout`
+    /// — i.e. a prior fetch DROPPED its completion and the account is wedged at
+    /// `.detailsLoading` — the next `fetchAuthDocumentWithStateMachine` must
+    /// RECLAIM the stale slot and RE-FIRE the fetch, NOT early-return
+    /// `completion(true)` on the dead entry. Without the reclaim,
+    /// `driveCurrentAccountAuthDocIfNeeded` no-ops forever and every
+    /// `awaitReady()` caller hangs.
+    ///
+    /// Discriminator: a re-fired fetch on a no-auth-doc account resolves
+    /// `completion(false)` and lands `.detailsFailed`; a dedupe-noop on the dead
+    /// entry would resolve `completion(true)` and leave `.detailsLoading`.
+    ///
+    /// Kill case: removing the staleness check (always deduping) makes this
+    /// observe `completion(true)` + `.detailsLoading` and fail.
+    func testWedgedInflightAuthDoc_stale_isReclaimedAndRefired() async {
+        let account = makeNoAuthDocAccount(uuidHint: "wedge")
+        XCTAssertNil(account.authenticationDocumentUrl,
+                     "setup: account must have no auth-doc URL so the fetch fails deterministically")
+
+        let manager = makeFreshAccountsManager()
+
+        // Wedge: account stuck at .detailsLoading with a STALE in-flight entry
+        // (as if a prior fetch's completion was dropped `authDocInflightTimeout+`
+        // seconds ago).
+        account._setState(.detailsLoading)
+        manager._seedInflightAuthDocForTesting(
+            uuid: account.uuid,
+            age: AccountsManager.authDocInflightTimeout + 5)
+        XCTAssertTrue(manager._inflightAuthDocContainsForTesting(uuid: account.uuid),
+                      "setup: stale in-flight entry seeded")
+
+        // Join the fetch's own completion — it always fires, so there is nothing
+        // to bound; a fixed deadline just starves under parallel sim clones
+        // (STARVE-001).
+        let receivedSuccess: Bool = await withCheckedContinuation { continuation in
+            manager.fetchAuthDocumentWithStateMachine(for: account) { success in
+                continuation.resume(returning: success)
+            }
+        }
+        await drainMainQueueAsync()
+
+        // Re-fired (not deduped): the no-URL fetch failed → completion(false).
+        XCTAssertEqual(receivedSuccess, false,
+                       "a stale wedge must be reclaimed and re-fired (completion false from the failed fetch), NOT dedupe-return true on the dead entry")
+
+        // The state machine advanced OFF the wedge to a real terminal.
+        switch AccountStateStore.shared.state(for: account.uuid) {
+        case .detailsFailed:
+            break // fix is in — the reclaim re-fired and drove a terminal
+        default:
+            XCTFail("Reclaimed wedge must reach a terminal (.detailsFailed) instead of staying wedged at .detailsLoading; got \(label(AccountStateStore.shared.state(for: account.uuid)))")
+        }
+
+        // The slot was cleared by the re-fired fetch's completion.
+        XCTAssertFalse(manager._inflightAuthDocContainsForTesting(uuid: account.uuid),
+                       "the re-fired fetch's completion must clear the single-flight slot")
+    }
+
+    /// Control (kills the inverse mutant): a RECENT in-flight entry must still
+    /// DEDUPE — the second caller returns `completion(true)` WITHOUT re-firing,
+    /// leaving the account at `.detailsLoading` (the genuine concurrent-fetch
+    /// case). Proves the reclaim is gated on staleness, not unconditional.
+    func testInflightAuthDoc_recent_dedupes_doesNotRefire() async {
+        let account = makeNoAuthDocAccount(uuidHint: "recent")
+        let manager = makeFreshAccountsManager()
+
+        account._setState(.detailsLoading)
+        // A fresh (1s-old) in-flight entry — a genuinely concurrent fetch.
+        manager._seedInflightAuthDocForTesting(uuid: account.uuid, age: 1)
+
+        // Subscribe: any emission after the initial value proves a re-fire.
+        // Join the stream's FIRST emission through a continuation rather than
+        // racing a fixed deadline against the AsyncStream (STARVE-001).
+        var emissionsAfterInitial: [String] = []
+        var streamTask: Task<Void, Never>?
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            var isFirst = true
+            streamTask = Task {
+                for await state in account.stateStream {
+                    if isFirst { isFirst = false; continuation.resume(); continue }
+                    emissionsAfterInitial.append(self.label(state))
+                }
+            }
+        }
+
+        // Same for the fetch: its completion always fires, so join it directly.
+        let receivedSuccess: Bool = await withCheckedContinuation { continuation in
+            manager.fetchAuthDocumentWithStateMachine(for: account) { success in
+                continuation.resume(returning: success)
+            }
+        }
+        await drainMainQueueAsync()
+        streamTask?.cancel()
+
+        XCTAssertEqual(receivedSuccess, true,
+                       "a RECENT in-flight fetch must dedupe (completion true), not re-fire")
+        XCTAssertTrue(emissionsAfterInitial.isEmpty,
+                      "dedupe path must not drive any state transition; observed: \(emissionsAfterInitial)")
+        switch AccountStateStore.shared.state(for: account.uuid) {
+        case .detailsLoading:
+            break // unchanged — the concurrent fetch still owns the slot
+        default:
+            XCTFail("Dedupe must leave state at .detailsLoading; got \(label(AccountStateStore.shared.state(for: account.uuid)))")
+        }
+    }
+
     // MARK: - Test 8: startDownload captures currentAccountId once — full A→nil→A→B round-trip
 
     /// Contract (Module A — `feedback_round_trip_wiring_tests.md`): the

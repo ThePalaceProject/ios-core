@@ -115,6 +115,64 @@ protocol AnnotationsManager {
     /// base URL here. Never set from production code.
     nonisolated(unsafe) static var annotationsURLOverride: URL?
 
+    // MARK: - Deletion-chain test join seam (STARVE-001)
+    //
+    // `deleteAllBookmarks` is deliberately fire-and-forget: it calls its
+    // completion IMMEDIATELY and then runs a GET followed by N chained DELETEs
+    // in the background, so a book return is never blocked. That makes it
+    // untestable by waiting on the completion — tests used to poll a 3s
+    // wall-clock deadline and assert on "whatever had happened by then", which
+    // starves under parallel CI sim clones and is the STARVE-001 recurrence
+    // class.
+    //
+    // Each `deleteAllBookmarks` call gets its OWN group counting that call's
+    // in-flight chain (the GET, plus each DELETE it spawns), published here for
+    // the test to join. Per-call rather than one process-wide group on purpose:
+    // a shared group would accumulate imbalance across the whole test process,
+    // so an unjoined call in one suite could hang an `await` in another. It is
+    // only ever created under XCTest, so every production call site below is a
+    // no-op `?.enter()` / `?.leave()` — the env-var gate (rather than
+    // `#if DEBUG`) keeps the deletion path free of conditional compilation,
+    // matching `AccountsManager._trackedCrawlTasks`.
+    private static let _isRunningUnderXCTest =
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+    private static let _deletionChainLock = NSLock()
+    nonisolated(unsafe) private static var _lastDeletionChain: DispatchGroup?
+
+    /// Publishes a fresh group for the chain that is about to start, or `nil`
+    /// outside XCTest.
+    private static func _beginDeletionChainTracking() -> DispatchGroup? {
+        guard _isRunningUnderXCTest else { return nil }
+        let group = DispatchGroup()
+        _deletionChainLock.lock()
+        _lastDeletionChain = group
+        _deletionChainLock.unlock()
+        return group
+    }
+
+    /// Synchronous lock-guarded read of the published chain. Split out of the
+    /// `async` join seam below because `NSLock.lock()`/`.unlock()` are
+    /// unavailable from an async context (Swift 6 forbids them even when the
+    /// critical section never spans a suspension point) — same split as
+    /// `AccountsManager._snapshotFirstRunTasksForTesting`.
+    private static func _snapshotLastDeletionChain() -> DispatchGroup? {
+        _deletionChainLock.lock()
+        defer { _deletionChainLock.unlock() }
+        return _lastDeletionChain
+    }
+
+    /// Suspends until the MOST RECENT `deleteAllBookmarks` chain has fully
+    /// settled — its GET completed and every DELETE it spawned called back.
+    /// Returns immediately if no chain has started. Test-only; no-ops outside
+    /// XCTest. Call it right after the `deleteAllBookmarks` whose effects you
+    /// are about to assert on.
+    static func _awaitDeletionChainForTesting() async {
+        guard let group = _snapshotLastDeletionChain() else { return }
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            group.notify(queue: .global()) { continuation.resume() }
+        }
+    }
+
     /// Returns the executor TPPAnnotations should use for the current call.
     /// In production this is always `.shared`. In tests, setting
     /// `executorOverride` lets the test inject a stubbed executor.
@@ -522,22 +580,86 @@ protocol AnnotationsManager {
     ///   - book: The book whose bookmarks should be deleted
     ///   - completion: Called immediately. Deletions continue in background.
     static func deleteAllBookmarks(forBook book: TPPBook, completion: @escaping () -> Void) {
+        // Publish this call's chain BEFORE anything can return, so a test that
+        // joins right after `completion()` can never observe a STALE previous
+        // chain (or none at all, on the sync-gate early return) and conclude
+        // "already settled". Today the tests are safe only because they are
+        // `@MainActor` and this function runs to its tail synchronously —
+        // publishing first makes that independent of the caller's isolation.
+        // Every early return below must `leave()`. Nil (fully inert) outside XCTest.
+        let chain = _beginDeletionChainTracking()
+        chain?.enter()
+
         // Call completion immediately - never block book returns
         completion()
 
         // Fire-and-forget: delete bookmarks in background
-        guard syncIsPossibleAndPermitted() else { return }
+        guard syncIsPossibleAndPermitted() else { chain?.leave(); return }
 
+        // Delete USER bookmarks (`.bookmark`) only. The READING POSITION
+        // (`.readingProgress`) is deliberately preserved for every format —
+        // ebook, PDF, and audiobook alike.
+        //
+        // WHY (3.2.3 build 490): 489 additionally deleted the AUDIOBOOK
+        // `.readingProgress` on return, filed as "Cause 2" and described as a
+        // 3.2.0 regression fix. Verification against the release tags showed it
+        // is neither:
+        //   • `deleteAllBookmarks` is BYTE-IDENTICAL in 3.1.0 and 3.2.0 — both
+        //     query only `.bookmark` — so the audiobook position has never been
+        //     deleted on return in any shipped build.
+        //   • `TrackPosition+Annotations.swift` (the payload written to the
+        //     server) has an EMPTY diff 3.1.0 → 3.2.0, and 3.1.0 already synced
+        //     positions to the CM via `postListeningPosition`.
+        //   • The cited tickets don't describe it: #18019 — the only genuine
+        //     position report — was filed 2026-05-31 on 3.1.0, five weeks BEFORE
+        //     3.2.0 shipped (07-08); #18449 is a download failure and #18468 a
+        //     won't-play. What #18019 actually asks is that the position be
+        //     CORRECT ("says ch1 p1 but it is not"), which is handled by
+        //     `AudiobookSessionManager.validatedRemotePosition` — retained.
+        //
+        // Deleting a patron's place on return is therefore a NEW product
+        // decision, not a regression fix, and it would be inconsistent on two
+        // axes: audiobooks but not ebooks, and deliberate return but not loan
+        // expiry (expiry never calls this method). Pending product sign-off it
+        // stays out — a patron re-borrowing a 20-hour title keeps their place.
+        //
+        // NOTE: in 489 this deletion silently never executed anyway —
+        // `AudioBookmark.create` lets the embedded `"annotationId": ""` that
+        // Palace always writes shadow the real server id, so the parsed
+        // bookmark had no server linkage and no DELETE was issued. Removing the
+        // code makes the shipped behavior explicit instead of dependent on that
+        // latent bug, which a future unrelated fix could otherwise wake up.
+        // The GET's `leave()` is deferred to the END of its completion so the
+        // group cannot reach zero in the window between the GET finishing and
+        // its DELETEs being entered. (`chain` was entered at the top.)
         getServerBookmarks(forBook: book, atURL: book.annotationsURL, motivation: .bookmark) { bookmarks in
-            guard let readiumBookmarks = bookmarks as? [TPPReadiumBookmark], !readiumBookmarks.isEmpty else {
-                return
-            }
-
-            for bookmark in readiumBookmarks {
-                guard let annotationId = bookmark.annotationId else { continue }
-                deleteBookmark(annotationId: annotationId) { _ in }
+            defer { chain?.leave() }
+            guard let bookmarks, !bookmarks.isEmpty else { return }
+            for bookmark in bookmarks {
+                guard let annotationId = serverAnnotationId(of: bookmark) else { continue }
+                chain?.enter()
+                deleteBookmark(annotationId: annotationId) { _ in
+                    chain?.leave()
+                }
             }
         }
+    }
+
+    /// Extracts the server annotation ID from a parsed `Bookmark`, regardless
+    /// of concrete type. Kept from 489 because it is strictly more correct than
+    /// the historical `as? [TPPReadiumBookmark]` array cast for USER bookmarks:
+    /// that cast silently dropped audiobook bookmarks wholesale. Returns `nil`
+    /// for a bookmark with no server linkage or an unrecognised type (e.g. an
+    /// unsynced `AudioBookmark`, or a PDF page bookmark — whose deletion
+    /// behaviour is intentionally left unchanged).
+    private static func serverAnnotationId(of bookmark: Bookmark) -> String? {
+        if let readium = bookmark as? TPPReadiumBookmark {
+            return readium.annotationId
+        }
+        if let audio = bookmark as? AudioBookmark {
+            return audio.annotationId.isEmpty ? nil : audio.annotationId
+        }
+        return nil
     }
 
     static func deleteBookmark(annotationId: String,
@@ -569,13 +691,31 @@ protocol AnnotationsManager {
                 Log.error(#file, "DELETE bookmark failed with server response code: \(code)")
                 completionHandler(false)
             } else {
-                guard let error = error as NSError? else { return }
-                Log.error(#file, "DELETE bookmark Request Failed with Error Code: \(error.code). Description: \(error.localizedDescription)")
+                // Previously `guard let error … else { return }` — a nil response
+                // AND nil error exited WITHOUT calling `completionHandler`. Every
+                // caller then waits forever; the deletion-chain join seam turns
+                // that silent gap into an unbounded test hang. A completion that
+                // sometimes never fires is a bug for all callers, so report the
+                // failure instead of vanishing.
+                let nsError = error as NSError?
+                Log.error(#file, "DELETE bookmark Request Failed with Error Code: \(nsError?.code ?? -1). Description: \(nsError?.localizedDescription ?? "no response and no error")")
                 completionHandler(false)
             }
         }
 
-        task?.resume()
+        if let task {
+            task.resume()
+        } else {
+            // Defensive, and currently unreachable: the ONLY `nil` return from
+            // `TPPNetworkExecutor.executeRequest` is the proactive-token-refresh
+            // deferral, which is gated on `enableTokenRefresh` — and `DELETE`
+            // passes `enableTokenRefresh: false`. Keep that in sync: if DELETE
+            // ever enables refresh, this branch would DOUBLE-call the handler
+            // (once here, once when the deferred request completes), which would
+            // also double-`leave()` the deletion-chain group under test.
+            Log.error(#file, "DELETE bookmark could not create a request task for \(annotationId)")
+            completionHandler(false)
+        }
     }
 
     static func uploadLocalBookmarks(_ bookmarks: [TPPReadiumBookmark],

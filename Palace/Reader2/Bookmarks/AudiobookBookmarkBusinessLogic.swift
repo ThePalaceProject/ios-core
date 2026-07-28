@@ -104,6 +104,17 @@ import PalaceBookModel
         }
     }
 
+    // MARK: - Remote-write cancellation (3.2.3 Cause 2)
+
+    /// Cancels any pending throttled remote listening-position write for this
+    /// book so a queued snapshot can't flush AFTER session teardown / return
+    /// cleanup and resurrect the stale server position that
+    /// `TPPAnnotations.deleteAllBookmarks` just deleted (3.2.3 Cause 2).
+    /// Idempotent; a no-op when the writer has nothing queued for this book.
+    func cancelPendingRemotePositionWrite() async {
+        await positionWriter.cancel(for: book.identifier)
+    }
+
     // MARK: - Bookmark Management
 
     public func saveListeningPosition(at position: TrackPosition, completion: ((String?) -> Void)?) {

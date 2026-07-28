@@ -1,0 +1,330 @@
+[
+  {
+    "args" : {
+      "midListen" : "false",
+      "signal" : "http410",
+      "vendor" : "bearerToken"
+    },
+    "method" : "bearerTokenRefulfill.reopen(forceRefulfill=true)"
+  },
+  {
+    "args" : {
+      "midListen" : "true",
+      "signal" : "http410",
+      "vendor" : "bearerToken"
+    },
+    "method" : "bearerTokenRefulfill.reopen(forceRefulfill=true)"
+  },
+  {
+    "args" : {
+      "midListen" : "false",
+      "signal" : "http403",
+      "vendor" : "bearerToken"
+    },
+    "method" : "bearerTokenRefulfill.reopen(forceRefulfill=true)"
+  },
+  {
+    "args" : {
+      "midListen" : "true",
+      "signal" : "http403",
+      "vendor" : "bearerToken"
+    },
+    "method" : "bearerTokenRefulfill.reopen(forceRefulfill=true)"
+  },
+  {
+    "args" : {
+      "midListen" : "false",
+      "signal" : "urlError_minus1008",
+      "vendor" : "bearerToken"
+    },
+    "method" : "bearerTokenRefulfill.reopen(forceRefulfill=true)"
+  },
+  {
+    "args" : {
+      "midListen" : "true",
+      "signal" : "urlError_minus1008",
+      "vendor" : "bearerToken"
+    },
+    "method" : "bearerTokenRefulfill.reopen(forceRefulfill=true)"
+  },
+  {
+    "args" : {
+      "midListen" : "false",
+      "signal" : "http401_auth",
+      "vendor" : "bearerToken"
+    },
+    "method" : "existingFallback"
+  },
+  {
+    "args" : {
+      "midListen" : "true",
+      "signal" : "http401_auth",
+      "vendor" : "bearerToken"
+    },
+    "method" : "existingFallback"
+  },
+  {
+    "args" : {
+      "midListen" : "false",
+      "signal" : "http410",
+      "vendor" : "overdrive"
+    },
+    "method" : "existingFallback"
+  },
+  {
+    "args" : {
+      "midListen" : "true",
+      "signal" : "http410",
+      "vendor" : "overdrive"
+    },
+    "method" : "existingFallback"
+  },
+  {
+    "args" : {
+      "midListen" : "false",
+      "signal" : "http403",
+      "vendor" : "overdrive"
+    },
+    "method" : "existingFallback"
+  },
+  {
+    "args" : {
+      "midListen" : "true",
+      "signal" : "http403",
+      "vendor" : "overdrive"
+    },
+    "method" : "existingFallback"
+  },
+  {
+    "args" : {
+      "midListen" : "false",
+      "signal" : "urlError_minus1008",
+      "vendor" : "overdrive"
+    },
+    "method" : "existingFallback"
+  },
+  {
+    "args" : {
+      "midListen" : "true",
+      "signal" : "urlError_minus1008",
+      "vendor" : "overdrive"
+    },
+    "method" : "existingFallback"
+  },
+  {
+    "args" : {
+      "midListen" : "false",
+      "signal" : "http401_auth",
+      "vendor" : "overdrive"
+    },
+    "method" : "existingFallback"
+  },
+  {
+    "args" : {
+      "midListen" : "true",
+      "signal" : "http401_auth",
+      "vendor" : "overdrive"
+    },
+    "method" : "existingFallback"
+  },
+  {
+    "args" : {
+      "midListen" : "false",
+      "signal" : "http410",
+      "vendor" : "lcp"
+    },
+    "method" : "existingFallback"
+  },
+  {
+    "args" : {
+      "midListen" : "true",
+      "signal" : "http410",
+      "vendor" : "lcp"
+    },
+    "method" : "existingFallback"
+  },
+  {
+    "args" : {
+      "midListen" : "false",
+      "signal" : "http403",
+      "vendor" : "lcp"
+    },
+    "method" : "existingFallback"
+  },
+  {
+    "args" : {
+      "midListen" : "true",
+      "signal" : "http403",
+      "vendor" : "lcp"
+    },
+    "method" : "existingFallback"
+  },
+  {
+    "args" : {
+      "midListen" : "false",
+      "signal" : "urlError_minus1008",
+      "vendor" : "lcp"
+    },
+    "method" : "existingFallback"
+  },
+  {
+    "args" : {
+      "midListen" : "true",
+      "signal" : "urlError_minus1008",
+      "vendor" : "lcp"
+    },
+    "method" : "existingFallback"
+  },
+  {
+    "args" : {
+      "midListen" : "false",
+      "signal" : "http401_auth",
+      "vendor" : "lcp"
+    },
+    "method" : "existingFallback"
+  },
+  {
+    "args" : {
+      "midListen" : "true",
+      "signal" : "http401_auth",
+      "vendor" : "lcp"
+    },
+    "method" : "existingFallback"
+  },
+  {
+    "args" : {
+      "midListen" : "false",
+      "signal" : "http410",
+      "vendor" : "findaway"
+    },
+    "method" : "existingFallback"
+  },
+  {
+    "args" : {
+      "midListen" : "true",
+      "signal" : "http410",
+      "vendor" : "findaway"
+    },
+    "method" : "existingFallback"
+  },
+  {
+    "args" : {
+      "midListen" : "false",
+      "signal" : "http403",
+      "vendor" : "findaway"
+    },
+    "method" : "existingFallback"
+  },
+  {
+    "args" : {
+      "midListen" : "true",
+      "signal" : "http403",
+      "vendor" : "findaway"
+    },
+    "method" : "existingFallback"
+  },
+  {
+    "args" : {
+      "midListen" : "false",
+      "signal" : "urlError_minus1008",
+      "vendor" : "findaway"
+    },
+    "method" : "existingFallback"
+  },
+  {
+    "args" : {
+      "midListen" : "true",
+      "signal" : "urlError_minus1008",
+      "vendor" : "findaway"
+    },
+    "method" : "existingFallback"
+  },
+  {
+    "args" : {
+      "midListen" : "false",
+      "signal" : "http401_auth",
+      "vendor" : "findaway"
+    },
+    "method" : "existingFallback"
+  },
+  {
+    "args" : {
+      "midListen" : "true",
+      "signal" : "http401_auth",
+      "vendor" : "findaway"
+    },
+    "method" : "existingFallback"
+  },
+  {
+    "args" : {
+      "midListen" : "false",
+      "signal" : "http410",
+      "vendor" : "openAccess"
+    },
+    "method" : "existingFallback"
+  },
+  {
+    "args" : {
+      "midListen" : "true",
+      "signal" : "http410",
+      "vendor" : "openAccess"
+    },
+    "method" : "existingFallback"
+  },
+  {
+    "args" : {
+      "midListen" : "false",
+      "signal" : "http403",
+      "vendor" : "openAccess"
+    },
+    "method" : "existingFallback"
+  },
+  {
+    "args" : {
+      "midListen" : "true",
+      "signal" : "http403",
+      "vendor" : "openAccess"
+    },
+    "method" : "existingFallback"
+  },
+  {
+    "args" : {
+      "midListen" : "false",
+      "signal" : "urlError_minus1008",
+      "vendor" : "openAccess"
+    },
+    "method" : "existingFallback"
+  },
+  {
+    "args" : {
+      "midListen" : "true",
+      "signal" : "urlError_minus1008",
+      "vendor" : "openAccess"
+    },
+    "method" : "existingFallback"
+  },
+  {
+    "args" : {
+      "midListen" : "false",
+      "signal" : "http401_auth",
+      "vendor" : "openAccess"
+    },
+    "method" : "existingFallback"
+  },
+  {
+    "args" : {
+      "midListen" : "true",
+      "signal" : "http401_auth",
+      "vendor" : "openAccess"
+    },
+    "method" : "existingFallback"
+  },
+  {
+    "args" : {
+      "note" : "alreadyAttemptedThisSession",
+      "signal" : "http410",
+      "vendor" : "bearerToken"
+    },
+    "method" : "existingFallback"
+  }
+]
