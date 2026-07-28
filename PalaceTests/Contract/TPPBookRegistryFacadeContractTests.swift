@@ -48,7 +48,7 @@ import Combine
 import UIKit
 @testable import Palace
 import PalaceBookModel
-@testable import PalaceBookRegistry
+@_spi(Testing) @testable import PalaceBookRegistry
 
 @MainActor
 final class TPPBookRegistryFacadeContractTests: PalaceWiringTestCase {

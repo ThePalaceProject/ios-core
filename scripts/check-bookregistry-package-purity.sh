@@ -48,7 +48,11 @@ fi
 # Swift comments (`//`, `///`, `/* */`) and string literals before matching, and
 # require a word-boundary hit on the residue. A naive grep would flag the gate's
 # own documentation.
-FINDINGS="$(FORBIDDEN="$FORBIDDEN" SCAN_ROOT="$SCAN_ROOT" python3 - <<'PY' 2>/dev/null || true
+PY_STDERR="$(mktemp)"
+trap 'rm -f "$PY_STDERR"' EXIT
+
+set +e
+FINDINGS="$(FORBIDDEN="$FORBIDDEN" SCAN_ROOT="$SCAN_ROOT" python3 - 2>"$PY_STDERR" <<'PY'
 import os, re, sys
 forbidden = os.environ["FORBIDDEN"]
 root = os.environ["SCAN_ROOT"]
@@ -99,6 +103,16 @@ for dirpath, _, files in os.walk(root):
 sys.stdout.write("\n".join(hits))
 PY
 )"
+PY_EXIT=$?
+set -e
+
+if [ "$PY_EXIT" -ne 0 ]; then
+  echo "[bookregistry-purity] FAIL: the python3 scanner crashed (exit $PY_EXIT) instead of"
+  echo "  producing findings. A crashed scanner is NOT the same as zero findings — failing"
+  echo "  closed rather than silently passing. Interpreter stderr:"
+  sed 's/^/  /' "$PY_STDERR"
+  exit 1
+fi
 
 if [ -n "$FINDINGS" ]; then
   echo "[bookregistry-purity] FAIL: PalaceBookRegistry/Sources references the app-target"
