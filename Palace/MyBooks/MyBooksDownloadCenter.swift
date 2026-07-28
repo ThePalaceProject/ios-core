@@ -122,6 +122,8 @@ private final class DownloadFailureMetadataBox: @unchecked Sendable {
     private let reauthenticator: Reauthenticator
     let bookRegistry: TPPBookRegistryProvider
     private let accountsManager: AccountsManager
+    // account-scope read seam — see MyBooksDownloadCenter+AccountScope.swift
+    private let accountScope: any DownloadAccountScopeProviding
     private let networkExecutor: TPPNetworkExecutor
     private let accessibilityAnnouncements: TPPAccessibilityAnnouncementCenter
     let downloadAnnouncementService: DownloadAnnouncementService
@@ -333,6 +335,7 @@ private final class DownloadFailureMetadataBox: @unchecked Sendable {
         reauthenticator: Reauthenticator = TPPReauthenticator(),
         bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry,
         accountsManager: AccountsManager = AppContainer.production().accountsManager,
+        accountScope: (any DownloadAccountScopeProviding)? = nil, // seam — see MyBooksDownloadCenter+AccountScope.swift
         networkExecutor: TPPNetworkExecutor = AppContainer.production().networkExecutor,
         accessibilityAnnouncements: TPPAccessibilityAnnouncementCenter = TPPAccessibilityAnnouncementCenter(),
         downloadAnnouncementService: DownloadAnnouncementService = DownloadAnnouncementService(),
@@ -398,6 +401,9 @@ private final class DownloadFailureMetadataBox: @unchecked Sendable {
         self.bookRegistry = bookRegistry
         self.reauthenticator = reauthenticator
         self.accountsManager = accountsManager
+        // resolve seam to a local (pre-super.init closures need it) — see MyBooksDownloadCenter+AccountScope.swift
+        let resolvedAccountScope: any DownloadAccountScopeProviding = accountScope ?? AccountsManagerDownloadContextAdapter(accountsManager: accountsManager)
+        self.accountScope = resolvedAccountScope
         self.networkExecutor = networkExecutor
         self.accessibilityAnnouncements = accessibilityAnnouncements
         self.downloadAnnouncementService = downloadAnnouncementService
@@ -410,7 +416,7 @@ private final class DownloadFailureMetadataBox: @unchecked Sendable {
         // per-account directory without standing up a custom BookFileManager.
         self.bookFileManager = bookFileManager ?? BookFileManager(
             bookRegistry: bookRegistry,
-            accountScope: AccountsManagerDownloadContextAdapter(accountsManager: accountsManager),
+            accountScope: resolvedAccountScope,
             directoryProvider: directoryProvider
         )
         // DiskBudgetManager pulls from the same registry + accounts manager
@@ -487,7 +493,7 @@ private final class DownloadFailureMetadataBox: @unchecked Sendable {
             // Foreign-host guard (PR #1018 cross-host regression fix —
             // wall-failure 2026-06-05-pr1018-icarus-cross-host-logout.md).
             currentAccountHostsProvider: {
-                AppContainer.production().accountsManager.currentAccount?.authSurfaceHosts
+                resolvedAccountScope.currentAccountAuthSurfaceHosts
             }
         )
         self.backgroundDownloadHandler = backgroundDownloadHandler ?? BackgroundDownloadHandler()
@@ -618,7 +624,7 @@ private final class DownloadFailureMetadataBox: @unchecked Sendable {
             // Foreign-host guard (PR #1018 cross-host regression fix —
             // wall-failure 2026-06-05-pr1018-icarus-cross-host-logout.md).
             currentAccountHostsProvider: {
-                AppContainer.production().accountsManager.currentAccount?.authSurfaceHosts
+                resolvedAccountScope.currentAccountAuthSurfaceHosts
             }
         )
         // DownloadThrottlingService shares the same DownloadStateManager
@@ -787,12 +793,10 @@ private final class DownloadFailureMetadataBox: @unchecked Sendable {
         let resolveAccountForStart: () -> TPPUserAccount = {
             userAccount ?? accountsManager.currentUserAccount
         }
-        // Capture-at-start seam: reads currentAccountId from the same
-        // accountsManager MBDC owns, evaluated lazily so each new
-        // startDownloadAsync sees the CURRENT current-account-id at its
-        // entry — pinning it for the rest of THAT download path.
+        // Capture-at-start seam: reads the current id through the account-scope
+        // seam, evaluated lazily so each startDownloadAsync pins the CURRENT id.
         let captureCurrentAccountId: () -> String? = {
-            accountsManager.currentAccountId
+            resolvedAccountScope.currentAccountID
         }
         let coordinatorDispatcher = self.startDispatcher
         let coordinatorCredentialPrompt = self.credentialPromptCoordinator
@@ -1786,7 +1790,7 @@ extension MyBooksDownloadCenter: TPPBookDownloadsDeleting {
 
     func reset(account: String) {
         contentResetService.reset(account: account)
-        if accountsManager.currentAccountId == account {
+        if accountScope.currentAccountID == account {
             bookIdentifierOfBookToRemove = nil
         }
     }
@@ -2000,7 +2004,7 @@ extension MyBooksDownloadCenter {
             bookID: book.identifier,
             taskIdentifier: task.taskIdentifier,
             downloadURL: url,
-            account: accountsManager.currentAccountId ?? "",
+            account: accountScope.currentAccountID ?? "",
             expectedBytes: nil
         )
     }
