@@ -139,3 +139,20 @@ jobs:
           else
             echo "No contributor-surface gate — skipping."
           fi
+
+      # 8. Tiered-parity manifest drift gate. Asserts scripts/verify-tiers.json —
+      #    the source of truth the local `scripts/run-tier.sh` reads — stays
+      #    aligned with CI reality: the T1 MetaTests class list must EQUAL
+      #    `ls PalaceTests/MetaTests/*.swift`, and the T1 detector list must be a
+      #    SUPERSET of the detectors CI runs (verify-pr.sh phase-3.5 block +
+      #    tooling-checks direct check-*). So adding a 10th isolation-lint class or
+      #    a new detector can't silently widen the CI/local gap (the exact hole
+      #    that let isolation-lint failures first appear on the ~40-min CI).
+      #    Enforced against the tree here, in addition to its pytest.
+      - name: verify-tiers manifest drift gate
+        run: |
+          if [ -f scripts/check-verify-tiers-drift.py ]; then
+            python3 scripts/check-verify-tiers-drift.py
+          else
+            echo "No verify-tiers drift gate — skipping."
+          fi

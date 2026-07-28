@@ -1,0 +1,250 @@
+{
+  "_comment": [
+    "verify-tiers.json — the ONE machine-readable source of truth for what each",
+    "local-verification tier runs, and which CI job each gate mirrors.",
+    "",
+    "WHY THIS EXISTS",
+    "  Agents run `-only-testing:<FeatureClass>` spot-checks that SILENTLY SKIP the",
+    "  PalaceTests/MetaTests/ isolation-lint XCTest classes (a narrow -only-testing",
+    "  run never loads them). So an isolation-lint failure — e.g. a bare",
+    "  `AppContainer.production()` in a non-exempt test file — first appears on the",
+    "  full ~40-min CI, costing a wasted cycle. This manifest + scripts/run-tier.sh",
+    "  give the MetaTests + tooling detectors a FAST local equivalent (T1).",
+    "",
+    "  This file DESCRIBES current CI reality (see `mirrors` / `source_of_truth` on",
+    "  every gate); scripts/run-tier.sh reproduces it locally. It is data — the",
+    "  runner interprets it. scripts/check-verify-tiers-drift.py (wired into",
+    "  tooling-checks.yml) fails CI if this manifest drifts from CI reality:",
+    "    - T1 metatests list must EQUAL `ls PalaceTests/MetaTests/*.swift`, and",
+    "    - T1 detector list must be a SUPERSET of the detectors CI runs",
+    "      (verify-pr.sh run_phase35_detector block + tooling-checks direct check-*)."
+  ],
+  "version": 1,
+  "canonical_sources": {
+    "phase35_detectors": "scripts/verify-pr.sh — the run_phase35_detector(...) invocations",
+    "metatests_glob": "PalaceTests/MetaTests/*.swift",
+    "ci_jobs": [
+      ".github/workflows/unit-testing.yml",
+      ".github/workflows/tooling-checks.yml",
+      ".github/workflows/ledger.yml"
+    ]
+  },
+  "env": {
+    "sim_udid_var": "HARNESS_SESSION_SIM_UDID",
+    "sim_udid_note": "run-tier.sh resolves the destination from HARNESS_SESSION_SIM_UDID, else the first booted iPhone simulator. Never hardcode a UDID.",
+    "derived_data_path": "~/Library/Developer/Xcode/DerivedData/Palace-tier",
+    "base_branch_note": "diff-scoped gates diff against origin/develop (then origin/main), matching verify-pr.sh detect_base_branch."
+  },
+  "tiers": {
+    "T0": {
+      "name": "iteration spot-check",
+      "attestable": false,
+      "target_minutes": 2,
+      "mirrors": "nothing — a scoped fast-iteration convenience, NOT a CI gate",
+      "never_attestable_reason": "A `-only-testing:<Class>` subset NEVER loads the PalaceTests/MetaTests isolation-lint classes and runs a tiny slice of the ~7k CI executions. A green T0 is NOT a full or green pass (CLAUDE.md build-&-test rule; incident PP-4542). run-tier.sh REFUSES to print an attestation for T0.",
+      "gates": [
+        {
+          "id": "affected_tests",
+          "kind": "xctest-classes",
+          "blocking": true,
+          "classes": [],
+          "classes_note": "caller-supplied via TIER_ONLY_TESTING (space-separated class names); empty here because T0 scope is per-invocation.",
+          "run_via": "test",
+          "source_of_truth": "developer choice — mirrors no CI job"
+        }
+      ]
+    },
+    "T1": {
+      "name": "fast parity",
+      "attestable": true,
+      "target_minutes": 10,
+      "mirrors": ".github/workflows/tooling-checks.yml (all detector/lint/pytest/bash-n steps) + the PalaceTests/MetaTests isolation-lint subset of .github/workflows/unit-testing.yml",
+      "description": "The gates that cost the wasted cycles — none needing the full ~40-min suite. Build the test bundle ONCE, then run the MetaTests isolation-lint classes, the phase-3.5 detectors, test-quality lint, bash -n, the scripts/tests pytest suite, and the stanza/signing/contributor-surface checks. This is the pre-push + tooling-diff bar.",
+      "gates": [
+        {
+          "id": "build_for_testing",
+          "kind": "xcodebuild-build-for-testing",
+          "blocking": true,
+          "scheme": "Palace",
+          "project": "Palace.xcodeproj",
+          "source_of_truth": "unit-testing.yml → 'Run Palace unit tests' (this is the build half; xcode-test-optimized.sh builds+tests, we only build here so the MetaTests can run without-building)"
+        },
+        {
+          "id": "metatests_isolation_lint",
+          "kind": "xctest-classes",
+          "blocking": true,
+          "run_via": "test-without-building",
+          "classes": [
+            "AccountsManagerIsolationLintTests",
+            "AppContainerIsolationLintTests",
+            "MockIsolationLintTests",
+            "PoolResponsivenessProbeTests",
+            "RuntimeQuiescenceGateTests",
+            "RuntimeQuiescenceLintTests",
+            "TearDownRequiredLintTests",
+            "TPPUserAccountIsolationLintTests",
+            "UserDefaultsIsolationLintTests"
+          ],
+          "classes_source_of_truth": "PalaceTests/MetaTests/*.swift — MUST equal this list (enforced by check-verify-tiers-drift.py). These are filesystem-scanning XCTest classes; a narrow -only-testing spot-check never loads them, so they only fail on full CI without this tier.",
+          "source_of_truth": "unit-testing.yml → xcode-test-optimized.sh runs these as part of the full PalaceTests bundle"
+        },
+        {
+          "id": "detector_foreign_host_401_scoping",
+          "kind": "detector",
+          "detector_script": "check-foreign-host-401-scoping.py",
+          "mode": "block",
+          "scan_mode": "diff",
+          "blocking": true,
+          "source_of_truth": "verify-pr.sh run_phase35_detector; tooling-checks.yml pytest (test_check_foreign_host_401_scoping.py)"
+        },
+        {
+          "id": "detector_lcp_acquisition_recursive",
+          "kind": "detector",
+          "detector_script": "check-lcp-acquisition-recursive.py",
+          "mode": "block",
+          "scan_mode": "scan",
+          "blocking": true,
+          "source_of_truth": "verify-pr.sh run_phase35_detector; tooling-checks.yml pytest (test_check_lcp_acquisition_recursive.py)"
+        },
+        {
+          "id": "detector_completion_nil_error_suppression",
+          "kind": "detector",
+          "detector_script": "check-completion-nil-error-suppression.py",
+          "mode": "block",
+          "scan_mode": "diff",
+          "blocking": true,
+          "source_of_truth": "verify-pr.sh run_phase35_detector; tooling-checks.yml pytest (test_check_completion_nil_error_suppression.py)"
+        },
+        {
+          "id": "detector_nserror_problemdoc_preservation",
+          "kind": "detector",
+          "detector_script": "check-nserror-problemdoc-preservation.py",
+          "mode": "block",
+          "scan_mode": "diff",
+          "blocking": true,
+          "source_of_truth": "verify-pr.sh run_phase35_detector; tooling-checks.yml pytest (test_check_nserror_problemdoc_preservation.py)"
+        },
+        {
+          "id": "detector_swiftui_placeholder_a11y",
+          "kind": "detector",
+          "detector_script": "check-swiftui-placeholder-a11y.py",
+          "mode": "warn",
+          "scan_mode": "diff",
+          "blocking": false,
+          "source_of_truth": "verify-pr.sh run_phase35_detector; tooling-checks.yml pytest (test_check_swiftui_placeholder_a11y.py)"
+        },
+        {
+          "id": "detector_notification_center_observer_storage",
+          "kind": "detector",
+          "detector_script": "check-notification-center-observer-storage.py",
+          "mode": "warn",
+          "scan_mode": "diff",
+          "blocking": false,
+          "source_of_truth": "verify-pr.sh run_phase35_detector; tooling-checks.yml pytest (test_check_notification_center_observer_storage.py)"
+        },
+        {
+          "id": "detector_unsynchronized_sendable_mock",
+          "kind": "detector",
+          "detector_script": "check-unsynchronized-sendable-mock.py",
+          "mode": "block",
+          "scan_mode": "scan",
+          "blocking": true,
+          "source_of_truth": "verify-pr.sh run_phase35_detector; tooling-checks.yml pytest (test_check_unsynchronized_sendable_mock.py)"
+        },
+        {
+          "id": "detector_blast_radius",
+          "kind": "detector",
+          "detector_script": "check-blast-radius.py",
+          "mode": "block",
+          "scan_mode": "diff",
+          "blocking": true,
+          "source_of_truth": "verify-pr.sh M1 blast-radius gate; tooling-checks.yml pytest (test_check_blast_radius.py)"
+        },
+        {
+          "id": "detector_contributor_surface",
+          "kind": "detector",
+          "detector_script": "check-contributor-surface.py",
+          "mode": "block",
+          "scan_mode": "none",
+          "blocking": true,
+          "source_of_truth": "tooling-checks.yml → 'contributor-surface gate' (runs the script directly against the tree)"
+        },
+        {
+          "id": "test_quality_lint",
+          "kind": "lint-test-quality",
+          "blocking": true,
+          "script": "lint-test-quality.py",
+          "source_of_truth": "verify-pr.sh 'Test Quality Lint' — diff-scoped, blocks FLAKE/FLUFF/MISSING/TIMEOUT in changed test files"
+        },
+        {
+          "id": "committed_signing",
+          "kind": "script-diff",
+          "blocking": true,
+          "script": "check-no-committed-signing.sh",
+          "source_of_truth": "verify-pr.sh 'Committed-signing'; tooling-checks.yml 'committed-signing detector test'"
+        },
+        {
+          "id": "commit_stanza",
+          "kind": "stanza",
+          "blocking": true,
+          "hook": "~/harness/core/hooks/commit-msg-stanza.sh",
+          "optional_when_absent": true,
+          "source_of_truth": "harness commit-msg hook — enforces **Not done:**/**Scope:**/**Deferred:** for changes >=50 prod LOC. Self-disabling: skipped (pass) when the hook is absent (outside contributors)."
+        },
+        {
+          "id": "bash_n_shell",
+          "kind": "bash-n",
+          "blocking": true,
+          "glob": "scripts/**/*.sh",
+          "source_of_truth": "tooling-checks.yml → 'bash -n all shell scripts' + 'bash -n verify-pr.sh (explicit)'"
+        },
+        {
+          "id": "pytest_scripts_tests",
+          "kind": "pytest",
+          "blocking": true,
+          "path": "scripts/tests/",
+          "source_of_truth": "tooling-checks.yml → 'pytest detector suite'"
+        }
+      ]
+    },
+    "T2": {
+      "name": "full parity",
+      "attestable": true,
+      "target_minutes": 45,
+      "mirrors": ".github/workflows/unit-testing.yml (full build+test) + the rest of the verify-pr.sh battery",
+      "description": "CI-identical full suite (xcode-test-optimized.sh: -test-iterations 3 -retry-tests-on-failure, all targets) + verify-pr.sh coverage/mutation/accessibility battery. This is the real green-board sign-off.",
+      "gates": [
+        {
+          "id": "full_suite_ci_identical",
+          "kind": "delegate",
+          "blocking": true,
+          "cmd": ["scripts/xcode-test-optimized.sh"],
+          "source_of_truth": "unit-testing.yml → 'Run Palace unit tests' (identical flags)"
+        },
+        {
+          "id": "verify_pr_battery",
+          "kind": "delegate",
+          "blocking": true,
+          "cmd": ["scripts/verify-pr.sh", "--quick"],
+          "source_of_truth": "the pre-PR battery — build, lint, coverage, accessibility, detectors"
+        }
+      ]
+    },
+    "T3": {
+      "name": "starvation parity",
+      "attestable": true,
+      "target_minutes": 60,
+      "mirrors": ".github/workflows/unit-testing.yml on the 3-vCPU macos runner (CPU-starvation interleaving)",
+      "description": "Reproduces the macos-15 3-vCPU starvation interleaving locally so CI-only deadline-poll flakes / off-main SIGTRAPs surface before a ~45-min GitHub cycle.",
+      "gates": [
+        {
+          "id": "ci_parity_starvation",
+          "kind": "delegate",
+          "blocking": true,
+          "cmd": ["scripts/ci-parity-local.sh"],
+          "source_of_truth": "emulates unit-testing.yml runner core-count + worker oversubscription"
+        }
+      ]
+    }
+  }
+}
