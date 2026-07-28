@@ -81,8 +81,21 @@ BASE_REF="${BASE_REF:-origin/develop}"
 # Fetch + create worktree on a fresh branch off the base
 git fetch origin
 git worktree add -b "swarm/${SWARM_ID}-scaffold" "$ORCH_WT" "$BASE_REF"
+
+# PREFERRED — turnkey buildability. This wires the whole tree (adobe-rmsdk,
+# Carthage/Build, ios-audiobooktoolkit COPY at the pinned SHA, gitignored
+# secrets), then ASSERTS the worktree will build, and registers it with the TTL
+# reaper. Inputs come from the project's `worktree:` config, so the recipe can't
+# drift from what a build actually needs:
+harness worktree setup-ios "$ORCH_WT"                 # or: harness worktree doctor "$ORCH_WT" --repair
+harness worktree doctor     "$ORCH_WT"                # must print "✓ Worktree buildable" — fix any ✗ before proceeding
+harness clean-worktrees register "$ORCH_WT" "swarm/${SWARM_ID}-scaffold"
 cd "$ORCH_WT"
 
+# FALLBACK ONLY (if `harness` is unavailable): the manual recipe below does the
+# same thing by hand. Prefer the two commands above — they are the single source
+# of truth the doctor asserts against.
+#
 # Set up Carthage + submodules per feedback_worktree_palace_setup.md.
 #
 # CRITICAL: not all submodules can be symlinked.
@@ -447,6 +460,29 @@ Use `run_in_background: false` (foreground) for the parallel dispatch — you ne
 After all implementers return:
 
 1. **Read all transcripts** under `.forgeos/swarms/<swarm_id>/transcripts/`. Look for `gaps:` flags AND verify each transcript pasted Definition-of-Done evidence for all 6 checks. If any implementer skipped the evidence, send them back BEFORE proceeding — that's a Definition-of-Done violation, not an integrator-handleable gap.
+
+   **1a. Coordinator-DoD — confirm DONE in the ledger, NEVER the prose (HARD, multi-agent only).** An implementer agent's "done" / "READY FOR INTEGRATION" is an *unreliable narrator*: the claim is accepted ONLY after YOU (the coordinator) confirm a green, tip-bound `verify:*` at the tip the implementer reported — read from `.heka/telemetry.jsonl` (or `heka context`), not from the transcript's words. Concretely, for the SHA each implementer says it landed:
+
+   ```bash
+   TIP=<implementer-reported-sha>
+   python3 - "$ORCH_WT/.heka/telemetry.jsonl" "$TIP" <<'PY'
+   import json,sys
+   path,tip=sys.argv[1],sys.argv[2]
+   latest={}
+   for ln in open(path):
+       try:e=json.loads(ln)
+       except:continue
+       g=str(e.get("gate",""))
+       if g.startswith("verify:"):latest[g]=e
+   good=[g for g,e in latest.items() if e.get("passed") and not e.get("dirty")
+         and str(e.get("sha","")) and (tip.startswith(str(e["sha"])) or str(e["sha"]).startswith(tip[:7]))]
+   print("VERIFIED" if good else "NO-PROOF", good)
+   PY
+   ```
+
+   `NO-PROOF` ⇒ the implementer has NOT demonstrated done regardless of how confident the transcript reads — send it back to run `harness verify --tier T1` (or paste why the tier can't run, which is itself a scope-deferral, not a done). This is the inversion that fixes the unreliable-narrator problem: prose never closes a task; a signed tip-bound attestation does.
+
+   **SCOPE — multi-agent only.** This rule governs the coordinator↔implementer contract. In a **solo session** (one agent doing the work, no separate coordinator) it is **self-satisfied and a no-op** — the single agent runs `harness verify` for itself and the pre-push / Stop-hook attested-done gates enforce the same proof directly. Never block a solo session waiting on a "coordinator" that does not exist.
 2. **Run module contract check**: `python3 scripts/export-module-contracts.py --check`. If any module's public surface changed without a contract update, flag it (the architect's contract is supposed to capture all public changes).
 3. **Resolve gaps**: integrator (you) handles cross-module wiring, AppContainer composition, anything implementers flagged. Make these changes directly — don't re-spawn.
 
