@@ -17,12 +17,9 @@ struct CatalogView: View {
     /// `CatalogView`, not the viewmodel).
     @ObservedObject private var activeSessionsViewModel: ActiveSessionsViewModel
     @State private var currentAccountUUID: String = ""
-    @State private var showAccountDialog: Bool = false
-    @State private var showAddLibrarySheet: Bool = false
     @State private var showSearch: Bool = false
 
     private let accountsManager: AccountsManager
-    private let settings: TPPSettings
     /// Resolves `ReaderService` + `AudiobookSessionPresenter` for the
     /// resume taps. Held as an `AppContainer` so test injection can
     /// supply a spy presenter via `withAudiobookSessionPresenter(_:)`.
@@ -33,13 +30,11 @@ struct CatalogView: View {
         viewModel: CatalogViewModel,
         activeSessionsViewModel: ActiveSessionsViewModel,
         accountsManager: AccountsManager = AppContainer.production().accountsManager,
-        settings: TPPSettings = AppContainer.production().settings,
         appContainer: AppContainer = AppContainer.production()
     ) {
         _viewModel = StateObject(wrappedValue: viewModel)
         self.activeSessionsViewModel = activeSessionsViewModel
         self.accountsManager = accountsManager
-        self.settings = settings
         self.appContainer = appContainer
     }
 
@@ -55,7 +50,6 @@ struct CatalogView: View {
                 setupCurrentAccount()
                 coordinator.clearAllCatalogFilterStates()
             }
-            .sheet(isPresented: $showAddLibrarySheet) { addLibrarySheet }
             .task { await viewModel.load() }
             .onReceive(NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)) { _ in
                 handleAccountChange()
@@ -76,14 +70,13 @@ private extension CatalogView {
                 .accessibilityIdentifier(AccessibilityID.Catalog.libraryLogo)
         }
         ToolbarItem(placement: .navigationBarLeading) {
-            Button(action: { showAccountDialog = true }, label: {
-                ImageProviders.MyBooksView.myLibraryIcon
-                    .frame(minWidth: 44, minHeight: 44)
-                    .contentShape(Rectangle())
-            })
-            .accessibilityIdentifier(AccessibilityID.Catalog.accountButton)
-            .accessibilityLabel(Strings.Generic.switchLibrary)
-            .actionSheet(isPresented: $showAccountDialog) { libraryPicker }
+            // PP-4821: the top-left Palace icon is static branding only. Library
+            // switching lives solely in Settings now, so this is a plain image —
+            // not a Button — and stays hidden from VoiceOver (no button trait, no
+            // "Switch Library" announcement).
+            ImageProviders.MyBooksView.myLibraryIcon
+                .frame(minWidth: 44, minHeight: 44)
+                .accessibilityHidden(true)
         }
 
         ToolbarItem(placement: .navigationBarTrailing) {
@@ -103,33 +96,6 @@ private extension CatalogView {
                 .accessibilityLabel(Strings.Generic.searchCatalog)
             }
         }
-    }
-
-    private var libraryPicker: ActionSheet {
-        var buttons: [ActionSheet.Button] = settings.settingsAccountsList.map { account in
-            .default(Text(account.name)) {
-                switchToAccount(account)
-            }
-        }
-        buttons.append(.default(Text(Strings.MyBooksView.addLibrary)) {
-            showAddLibrarySheet = true
-        })
-        buttons.append(.cancel())
-        return ActionSheet(
-            title: Text(Strings.MyBooksView.findYourLibrary),
-            buttons: buttons
-        )
-    }
-
-    @ViewBuilder
-    var addLibrarySheet: some View {
-        UIViewControllerWrapper(
-            TPPAccountList { account in
-                addAndSwitchToAccount(account)
-                showAddLibrarySheet = false
-            },
-            updater: { _ in }
-        )
     }
 
     @ViewBuilder
@@ -383,25 +349,6 @@ private extension CatalogView {
         coordinator.clearAllCatalogFilterStates()
 
         Task { await viewModel.handleAccountChange() }
-    }
-
-    func switchToAccount(_ account: Account) {
-        if let urlString = account.catalogUrl, let url = URL(string: urlString) {
-            settings.accountMainFeedURL = url
-        }
-
-        // Setting `currentAccount` posts `.TPPCurrentAccountDidChange` (→
-        // `onReceive` → `handleAccountChange` → SWR reload) and single-flights
-        // `driveCurrentAccountAuthDocIfNeeded()`. So no manual notification
-        // post, no direct catalog refresh, and no manual auth-doc load here.
-        accountsManager.currentAccount = account
-    }
-
-    func addAndSwitchToAccount(_ account: Account) {
-        if !settings.settingsAccountIdsList.contains(account.uuid) {
-            settings.settingsAccountIdsList.append(account.uuid)
-        }
-        switchToAccount(account)
     }
 
     // MARK: - Computed Properties
