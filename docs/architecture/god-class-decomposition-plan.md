@@ -85,7 +85,18 @@ PalaceKeychain         → (nothing)                        [as today]
 PalaceNetwork          → PalaceLogging                    [as today]
 PalaceCatalog          → PalaceLogging, PalaceNetwork, PalaceFeatureFlags
 PalaceBookModel        → PalaceLogging                    (models only — near-leaf)
-PalaceBookRegistry     → PalaceBookModel, PalaceLogging, PalacePreferences
+PalaceBookRegistry     → PalaceBookModel, PalaceCatalog, PalaceLogging
+                         [as shipped in Wave 2b — deviates from this ADR's
+                         original DAG, which named PalacePreferences instead
+                         of PalaceCatalog: the extracted cluster (TPPBookRegistry
+                         + BookRegistryStore/Sync + BookmarkManager +
+                         RegistryFileRecovery) has zero TPPSettings references,
+                         so PalacePreferences was dropped; it DOES need
+                         PalaceCatalog for TPPOPDSFeed/TPPOPDSEntry + the
+                         OPDSFeedFetching seam, which already live there
+                         (PalaceBookModel already depends on PalaceCatalog, so
+                         this stays layer-clean). See
+                         Palace/Packages/PalaceBookRegistry/Package.swift.]
 PalaceAuth             → PalaceLogging, PalaceNetwork, PalaceCatalog,
                          PalaceKeychain                   [+Keychain vs today]
 PalaceAccounts         → PalaceAuth, PalaceCatalog, PalaceNetwork,

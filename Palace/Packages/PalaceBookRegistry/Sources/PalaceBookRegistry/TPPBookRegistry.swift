@@ -727,7 +727,7 @@ public class TPPBookRegistry: @unchecked Sendable {
     /// Deliberately does NOT await the account switch-back debounce
     /// (`asyncAfter` ~line 160): that is a UX timer, not fire-and-forget work;
     /// tests asserting switch-back drive it explicitly.
-    public func _awaitPendingWritesForTesting() async {
+    @_spi(Testing) public func _awaitPendingWritesForTesting() async {
         await store._awaitPendingWritesForTesting()
         await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
             DispatchQueue.main.async { cont.resume() }
@@ -741,7 +741,7 @@ public class TPPBookRegistry: @unchecked Sendable {
     /// write), THEN drain the disk-write queue (so those writes have flushed).
     /// Deterministic replacement for a `.TPPBookRegistryDidChange` deadline wait
     /// in the account-capture persistence contract tests (STARVE-001).
-    public func _awaitPendingPersistenceForTesting() async {
+    @_spi(Testing) public func _awaitPendingPersistenceForTesting() async {
         await _awaitPendingWritesForTesting()
         await syncEngine._awaitPendingDiskWritesForTesting()
     }
