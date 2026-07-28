@@ -730,7 +730,13 @@ class BookRegistrySync {
       } catch {
         Log.error(#file, "Error deleting registry data: \(error.localizedDescription)")
       }
+      // Also drop the 3.2.3 sidecars (last-good `.bak` + `.corrupt-<ts>`
+      // quarantine copies). Deleting only the primary left the signed-out
+      // patron's whole shelf readable on disk and recoverable into the next
+      // patron's session at the same library.
+      RegistryFileRecovery.purgeSidecars(for: registryUrl)
     }
+    needsRebuildFromServer = false
   }
 
   /// Decides whether a sync() reconciliation should skip deleting books that

@@ -513,47 +513,55 @@ protocol AnnotationsManager {
         // Fire-and-forget: delete bookmarks in background
         guard syncIsPossibleAndPermitted() else { return }
 
-        // Delete user bookmarks (`.bookmark`) for every format, AND the
-        // AUDIOBOOK listening position (`.readingProgress`). Leaving the
-        // audiobook reading-progress annotation on the server made a stale
-        // listening position authoritative on re-borrow (3.2.3 Cause 2 — HelpSpot
-        // #18468 / #18019 / #18449). `getServerBookmarks` already scopes to the
-        // returned book (the factory drops annotations whose `source` != this
-        // book's identifier), so other books' bookmarks are never touched.
+        // Delete USER bookmarks (`.bookmark`) only. The READING POSITION
+        // (`.readingProgress`) is deliberately preserved for every format —
+        // ebook, PDF, and audiobook alike.
         //
-        // SCOPING (review finding): the `.readingProgress` deletion is scoped to
-        // AUDIOBOOK positions only. An EBOOK/PDF reading position also has
-        // `.readingProgress` motivation but parses (via `TPPBookmarkFactory`,
-        // keyed on `book.isAudiobook`) as a `TPPReadiumBookmark` — deleting it
-        // would wipe the patron's saved reading PLACE across return/re-borrow,
-        // which Cause 2 never intended. We therefore delete a `.readingProgress`
-        // annotation only when it parsed as an `AudioBookmark` (i.e. the
-        // audiobook listening position); ebook/PDF reading positions are left
-        // intact. User `.bookmark` annotations are still deleted for all formats
-        // (unchanged pre-Cause-2 behavior).
-        for motivation in [TPPBookmarkSpec.Motivation.bookmark, .readingProgress] {
-            getServerBookmarks(forBook: book, atURL: book.annotationsURL, motivation: motivation) { bookmarks in
-                guard let bookmarks, !bookmarks.isEmpty else { return }
-                for bookmark in bookmarks {
-                    if motivation == .readingProgress, !(bookmark is AudioBookmark) {
-                        // Preserve ebook/PDF reading position (TPPReadiumBookmark).
-                        continue
-                    }
-                    guard let annotationId = serverAnnotationId(of: bookmark) else { continue }
-                    deleteBookmark(annotationId: annotationId) { _ in }
-                }
+        // WHY (3.2.3 build 490): 489 additionally deleted the AUDIOBOOK
+        // `.readingProgress` on return, filed as "Cause 2" and described as a
+        // 3.2.0 regression fix. Verification against the release tags showed it
+        // is neither:
+        //   • `deleteAllBookmarks` is BYTE-IDENTICAL in 3.1.0 and 3.2.0 — both
+        //     query only `.bookmark` — so the audiobook position has never been
+        //     deleted on return in any shipped build.
+        //   • `TrackPosition+Annotations.swift` (the payload written to the
+        //     server) has an EMPTY diff 3.1.0 → 3.2.0, and 3.1.0 already synced
+        //     positions to the CM via `postListeningPosition`.
+        //   • The cited tickets don't describe it: #18019 — the only genuine
+        //     position report — was filed 2026-05-31 on 3.1.0, five weeks BEFORE
+        //     3.2.0 shipped (07-08); #18449 is a download failure and #18468 a
+        //     won't-play. What #18019 actually asks is that the position be
+        //     CORRECT ("says ch1 p1 but it is not"), which is handled by
+        //     `AudiobookSessionManager.validatedRemotePosition` — retained.
+        //
+        // Deleting a patron's place on return is therefore a NEW product
+        // decision, not a regression fix, and it would be inconsistent on two
+        // axes: audiobooks but not ebooks, and deliberate return but not loan
+        // expiry (expiry never calls this method). Pending product sign-off it
+        // stays out — a patron re-borrowing a 20-hour title keeps their place.
+        //
+        // NOTE: in 489 this deletion silently never executed anyway —
+        // `AudioBookmark.create` lets the embedded `"annotationId": ""` that
+        // Palace always writes shadow the real server id, so the parsed
+        // bookmark had no server linkage and no DELETE was issued. Removing the
+        // code makes the shipped behavior explicit instead of dependent on that
+        // latent bug, which a future unrelated fix could otherwise wake up.
+        getServerBookmarks(forBook: book, atURL: book.annotationsURL, motivation: .bookmark) { bookmarks in
+            guard let bookmarks, !bookmarks.isEmpty else { return }
+            for bookmark in bookmarks {
+                guard let annotationId = serverAnnotationId(of: bookmark) else { continue }
+                deleteBookmark(annotationId: annotationId) { _ in }
             }
         }
     }
 
     /// Extracts the server annotation ID from a parsed `Bookmark`, regardless
-    /// of concrete type. A `.readingProgress` annotation on an audiobook parses
-    /// as an `AudioBookmark`, which the old `as? [TPPReadiumBookmark]` array
-    /// cast silently dropped — leaving the listening position on the server to
-    /// resurface on re-borrow (3.2.3 Cause 2). Returns `nil` for a bookmark
-    /// with no server linkage or an unrecognised type (e.g. an unsynced
-    /// `AudioBookmark`, or a PDF page bookmark — whose deletion behaviour is
-    /// intentionally left unchanged).
+    /// of concrete type. Kept from 489 because it is strictly more correct than
+    /// the historical `as? [TPPReadiumBookmark]` array cast for USER bookmarks:
+    /// that cast silently dropped audiobook bookmarks wholesale. Returns `nil`
+    /// for a bookmark with no server linkage or an unrecognised type (e.g. an
+    /// unsynced `AudioBookmark`, or a PDF page bookmark — whose deletion
+    /// behaviour is intentionally left unchanged).
     private static func serverAnnotationId(of bookmark: Bookmark) -> String? {
         if let readium = bookmark as? TPPReadiumBookmark {
             return readium.annotationId

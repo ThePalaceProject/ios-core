@@ -241,9 +241,24 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
     private func audiobookSelectorValue(readingOrderItem: String,
                                         offsetMilliseconds: Int,
                                         chapter: String) -> String {
+        // NOTE: `"annotationId": ""` is deliberate and load-bearing. Every
+        // listening position Palace POSTs embeds an EMPTY annotationId
+        // (`AudioBookmark.encode` writes the field unconditionally; a fresh
+        // local position has no server id yet), so this is the real shape of
+        // the bytes on the server.
+        //
+        // Omitting the key made this fixture diverge from production and hid a
+        // shipped bug: with the key absent, `AudioBookmark.create`'s
+        // `locatorData["annotationId"] as? String ?? annotationId` fell through
+        // to the real server id and the return-cleanup DELETE was issued, so
+        // the test passed. In production the empty string won, the parsed
+        // bookmark had no server linkage, and the listening position was never
+        // deleted — resurrecting on re-borrow (HelpSpot #18468 / #18019 /
+        // #18449). Keep this key here so the fixture can fail.
         let dict: [String: Any] = [
             "@type": "LocatorAudioBookTime",
             "@version": 2,
+            "annotationId": "",
             "readingOrderItem": readingOrderItem,
             "readingOrderItemOffsetMilliseconds": offsetMilliseconds,
             "chapter": chapter
@@ -711,7 +726,7 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
     /// shared backend and asserts BOTH the `.readingProgress` listening
     /// position AND the `.bookmark` are deleted for the returned book, while an
     /// unrelated OTHER book's bookmark is left untouched (scoping).
-    func test_deleteAllBookmarks_removesReadingProgressAndBookmark_scopedToBook() throws {
+    func test_deleteAllBookmarks_deletesUserBookmark_preservesAudiobookPosition_scopedToBook() throws {
         try skipIfSyncGateClosed()
 
         let otherBookID = "urn:uuid:cross-device-e2e-OTHER-book"
@@ -788,17 +803,35 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
         }
         wait(for: [completed], timeout: 5.0)
 
-        // Deletions are fire-and-forget (GET then chained DELETEs). Poll until
-        // the returned book's annotations are gone, bounded by a deadline.
-        let deadline = Date().addingTimeInterval(8.0)
-        while Date() < deadline && !backend.allAnnotations(forBook: Self.bookID).isEmpty {
-            let tick = expectation(description: "poll tick")
+        // Deletions are fire-and-forget (GET then chained DELETEs). Give the
+        // chain a bounded window to run so we assert on a settled state rather
+        // than merely on "nothing has happened yet".
+        let deadline = Date().addingTimeInterval(3.0)
+        while Date() < deadline {
+            let tick = expectation(description: "settle tick")
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { tick.fulfill() }
             wait(for: [tick], timeout: 1.0)
         }
 
-        XCTAssertTrue(backend.allAnnotations(forBook: Self.bookID).isEmpty,
-                      "Both the .readingProgress listening position AND the .bookmark must be deleted for the returned book — the pre-3.2.3 path left .readingProgress (an AudioBookmark) on the server")
+        let remaining = backend.allAnnotations(forBook: Self.bookID)
+
+        // THE CONTRACT THAT MATTERS: the patron's place survives the return.
+        XCTAssertTrue(remaining.contains { $0.motivation == TPPBookmarkSpec.Motivation.readingProgress.rawValue },
+                      "The audiobook LISTENING POSITION must be PRESERVED on return — matching 3.1.0/3.2.0 and the ebook/PDF path. Deleting a patron's place is a product decision that has not been made; see deleteAllBookmarks for the tag-level evidence that it was never a 3.2.0 regression.")
+
+        // PRE-EXISTING GAP (documented, deliberately NOT changed here): an
+        // AUDIOBOOK user `.bookmark` is also not deleted. Every annotation
+        // Palace writes embeds `"annotationId": ""`, so an `AudioBookmark`
+        // parses with no server linkage and `serverAnnotationId` returns nil.
+        // 3.1.0/3.2.0 dropped these too (their `as? [TPPReadiumBookmark]` array
+        // cast failed wholesale for audiobooks), so this is long-standing
+        // behavior — NOT introduced or altered by 3.2.3. Pinned here so the
+        // real shipped behavior is visible rather than implied; fixing it means
+        // deleting patron data that is currently kept, so it needs the same
+        // product decision as the listening position.
+        XCTAssertTrue(remaining.contains { $0.motivation == TPPBookmarkSpec.Motivation.bookmark.rawValue },
+                      "Pins the PRE-EXISTING audiobook user-bookmark gap (empty embedded annotationId ⇒ no server linkage ⇒ no DELETE). Unchanged since 3.1.0.")
+
         XCTAssertEqual(backend.allAnnotations(forBook: otherBookID).count, 1,
                        "The unrelated OTHER book's bookmark must be untouched (deletion is scoped to the returned book)")
     }
@@ -883,16 +916,21 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
                        "exactly the reading position remains: bookmark deleted, ebook reading place kept")
     }
 
-    // MARK: - Test 7: contract snapshot — return cleanup deletes BOTH motivations
+    // MARK: - Test 7: contract snapshot — return cleanup deletes ONLY the user bookmark
 
     /// Contract snapshot pinning the return-cleanup call shape: for an
     /// audiobook with both a `.bookmark` and a `.readingProgress` server
-    /// annotation, `deleteAllBookmarks` must issue a DELETE for each. The
-    /// snapshot is the SORTED set of deleted annotation IDs (deterministic
-    /// regardless of the async GET→DELETE interleave). A regression that drops
-    /// the `.readingProgress` motivation (the pre-3.2.3 bug) shrinks the set and
-    /// trips the diff loudly.
-    func test_deleteAllBookmarks_contract_deletesBothBookmarkAndReadingProgress() throws {
+    /// annotation, `deleteAllBookmarks` must issue a DELETE for the USER
+    /// BOOKMARK ONLY. The snapshot is the SORTED set of deleted annotation IDs
+    /// (deterministic regardless of the async GET→DELETE interleave).
+    ///
+    /// This is the guard that makes the "don't delete the patron's place"
+    /// decision hard to reverse by accident: any change that re-adds the
+    /// `.readingProgress` motivation grows the set and trips the diff loudly,
+    /// forcing a deliberate re-record and a product conversation rather than a
+    /// silent behavior change. See `deleteAllBookmarks` for why deletion was
+    /// removed in build 490.
+    func test_deleteAllBookmarks_contract_deletesOnlyUserBookmark() throws {
         try skipIfSyncGateClosed()
 
         let base = Self.baseURL.absoluteString
@@ -950,7 +988,7 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
         for id in deleted.sortedIDs {
             log.record("deleteBookmark", args: ["annotationId": id])
         }
-        ContractSnapshot.assert(log, named: "returnCleanup_deletesBookmarkAndReadingProgress")
+        ContractSnapshot.assert(log, named: "returnCleanup_deletesUserBookmarkOnly")
     }
 }
 

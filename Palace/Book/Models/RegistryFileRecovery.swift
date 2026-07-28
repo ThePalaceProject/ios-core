@@ -171,6 +171,34 @@ enum RegistryFileRecovery {
     try FileManager.default.moveItem(at: tempURL, to: backup)
   }
 
+  /// Deletes every sidecar this type creates for `registryURL`: the last-good
+  /// `.bak` backup and any `.corrupt-<timestamp>` quarantine copies.
+  ///
+  /// Called from `BookRegistrySync.reset(_:)` — the sign-out / force-reset /
+  /// "delete server data" path — which otherwise removed only the PRIMARY file.
+  /// Leaving the sidecars behind kept a signed-out patron's entire shelf
+  /// (titles, identifiers, reading positions) readable on disk indefinitely,
+  /// kept `onDiskHasRecords` true after sign-out, and left the corrupt-primary
+  /// recovery path able to restore the PREVIOUS patron's books into the next
+  /// patron's session at the same library (same account UUID → same path).
+  ///
+  /// Best-effort and silent: reset is a cleanup path, and a sidecar that is
+  /// already absent (or unreadable) must not fail the sign-out.
+  static func purgeSidecars(for registryURL: URL) {
+    let fileManager = FileManager.default
+    try? fileManager.removeItem(at: backupURL(for: registryURL))
+
+    // Quarantine copies are `registry.json.corrupt-<unix-timestamp>`, so there
+    // may be several from repeated corruption. Match on the prefix rather than
+    // reconstructing timestamps we no longer know.
+    let directory = registryURL.deletingLastPathComponent()
+    let quarantinePrefix = registryURL.lastPathComponent + ".corrupt-"
+    guard let entries = try? fileManager.contentsOfDirectory(atPath: directory.path) else { return }
+    for entry in entries where entry.hasPrefix(quarantinePrefix) {
+      try? fileManager.removeItem(at: directory.appendingPathComponent(entry))
+    }
+  }
+
   /// The records recoverable from the `.bak` backup, or `nil` when there is no
   /// backup, it is unreadable, corrupt, or valid-but-empty. Only a NON-empty
   /// valid backup is a usable recovery source.
