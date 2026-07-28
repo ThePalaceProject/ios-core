@@ -402,6 +402,48 @@ final class BookRegistrySyncTests: XCTestCase {
         XCTAssertNil(syncManager.syncUrl)
     }
 
+    /// The registry has two on-disk SIDECARS next to `registry.json`: the
+    /// last-good `.bak` written before every good save, and `.corrupt-<ts>`
+    /// quarantine copies. `reset(_:)` — the sign-out / force-reset / "delete
+    /// server data" path — deleted only the PRIMARY, so a signed-out patron's
+    /// entire shelf (titles, identifiers, reading positions) stayed readable on
+    /// disk indefinitely. It also kept `RegistryFileRecovery.onDiskHasRecords`
+    /// true after sign-out, and left the corrupt-primary recovery path able to
+    /// restore the PREVIOUS patron's books into the next patron's session at
+    /// the same library (same account UUID → same registry path).
+    ///
+    /// Verified live on the 3.2.3 hotfix line: after sign-out + relaunch,
+    /// `registry.json` was gone but `registry.json.bak` still held all 9 of the
+    /// signed-out patron's records. Ported here from build 490.
+    func test_reset_removesBackupAndQuarantineSidecars() throws {
+        let (account, url) = makeIsolatedAccount()
+        defer { cleanupAccount(url) }
+
+        let book = makeBook(identifier: "r-sidecar")
+        let record = TPPBookRegistryRecord(book: book, state: .downloadNeeded)
+        try writeRegistryFile(records: [record.dictionaryRepresentation], to: url)
+
+        let backup = RegistryFileRecovery.backupURL(for: url)
+        try Data(contentsOf: url).write(to: backup)
+        let quarantine = RegistryFileRecovery.quarantineURL(
+            for: url,
+            timestamp: Date(timeIntervalSince1970: 1_700_000_000)
+        )
+        try Data("{ truncated".utf8).write(to: quarantine)
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: backup.path), "setup: .bak present")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: quarantine.path), "setup: quarantine present")
+
+        syncManager.reset(account)
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: url.path),
+                       "reset must delete the primary registry file")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: backup.path),
+                       "reset must delete the last-good .bak — otherwise a signed-out patron's shelf persists on disk and can be recovered into the next patron's session")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: quarantine.path),
+                       "reset must prune quarantined corrupt registry copies rather than accumulate them forever")
+    }
+
     // MARK: - checkIfBookFileExists
 
     func test_checkIfBookFileExists_returnsFalseForUnknownBook() {
