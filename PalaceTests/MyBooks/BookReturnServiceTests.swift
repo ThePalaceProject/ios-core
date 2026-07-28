@@ -185,9 +185,12 @@ final class BookReturnServiceTests: XCTestCase {
         registry.addBook(book, location: nil, state: .downloadSuccessful,
                          fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
 
-        let exp = expectation(description: "completion")
-        svc.returnBook(withIdentifier: book.identifier) { exp.fulfill() }
-        await fulfillment(of: [exp], timeout: 2.0)
+        // Join the service's own completion — `returnBook` always calls it, so
+        // there is nothing to bound. A fixed deadline here starves under
+        // parallel CI sim clones (STARVE-001).
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            svc.returnBook(withIdentifier: book.identifier) { continuation.resume() }
+        }
 
         XCTAssertEqual(recorder.recorded, [book.identifier],
                        "returnBook must cancel the pending remote position write for the returned book exactly once")
@@ -223,9 +226,9 @@ final class BookReturnServiceTests: XCTestCase {
             remotePositionWriteCanceller: { id in recorder.record(id) }
         )
         #endif
-        let exp = expectation(description: "completion")
-        svc.returnBook(withIdentifier: "missing-id") { exp.fulfill() }
-        await fulfillment(of: [exp], timeout: 1.0)
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            svc.returnBook(withIdentifier: "missing-id") { continuation.resume() }
+        }
 
         XCTAssertEqual(recorder.recorded, [],
                        "No book in registry → nothing to cancel; the seam must run only after the book is resolved")

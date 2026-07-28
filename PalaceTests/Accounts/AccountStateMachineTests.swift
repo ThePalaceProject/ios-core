@@ -238,21 +238,21 @@ final class AccountStateMachineTests: XCTestCase {
         let (account, details) = try makeAccountWithDetails(uuid: "resolve-\(UUID().uuidString)")
         account._setState(.detailsLoading)
 
-        let exp = expectation(description: "bounded awaitReady resolves on transition")
-        let start = Date()
-        let awaiterTask = Task {
-            let resolved = try await account.awaitReady(timeout: 5.0)
-            XCTAssertTrue(resolved === details, "must resolve with the loaded details, not time out")
-            exp.fulfill()
-        }
+        let awaiterTask = Task { try await account.awaitReady(timeout: 5.0) }
 
         try await Task.sleep(nanoseconds: 50_000_000)
         XCTAssertFalse(awaiterTask.isCancelled)
         account._setState(.detailsLoaded(details))
 
-        await fulfillment(of: [exp], timeout: 2.0)
-        XCTAssertLessThan(Date().timeIntervalSince(start), 5.0,
-                          "resolve must happen well before the 5s bound")
+        // Join the awaiter Task directly instead of racing a fixed deadline
+        // against it (STARVE-001). This is also STRICTER than the old
+        // `XCTAssertLessThan(elapsed, 5.0)`: if the bound had stolen the win,
+        // `awaitReady` would throw `.readinessTimedOut` and `.value` rethrows
+        // here, so the timing assertion it replaces was redundant — and it was
+        // the one assertion in this test that a starved CI clone could
+        // false-fail.
+        let resolved = try await awaiterTask.value
+        XCTAssertTrue(resolved === details, "must resolve with the loaded details, not time out")
     }
 
     /// The bounded gate honors an ALREADY-terminal failure on the fast path —

@@ -32,9 +32,33 @@
 #   BorrowReauthResetting.swift). Nets strongly NEGATIVE at the 3a package move, when the
 #   MyBooksDownloadCenter static call site and its cluster leave the hub. Re-baselined by
 #   the exact delta; the freeze still catches any further unrelated growth.
-2764 Palace/Audiobooks/AudiobookSessionManager.swift
-2332 Palace/Accounts/Library/AccountsManager.swift
-2170 Palace/MyBooks/MyBooksDownloadCenter.swift
+# 3.2.1 / 3.2.2 / 3.2.3 hotfix forward-port (main -> develop, PR #1348). Four hubs grew
+#   because that is exactly where hotfix code lives — the hubs are the seams the fixes had
+#   to land on, and this code has ALREADY SHIPPED to patrons on `main`. Re-baselining is the
+#   intended escape hatch for a forward-port: the alternative is either re-engineering
+#   shipped, patron-verified fixes inside a merge PR (high risk, unreviewable) or blocking
+#   the forward-port entirely. The freeze still catches any further unrelated growth, and
+#   these hubs are the campaign's Wave 3/4/5 extraction targets — the debt is tracked, not
+#   forgiven.
+#     AudiobookSessionManager  2764 -> 3093 (+329): #18414 borrow-hang + audiobook 3.2.0
+#       regression cluster (LCP content-download gate, bearer-token re-fulfill, position
+#       restore) — the largest single contributor.
+#     AccountsManager          2332 -> 2384  (+52): auth-doc single-flight reclaim.
+#     MyBooksDownloadCenter    2170 -> 2180  (+10): OverDrive re-fulfill on expired URL.
+#     TPPSignInBusinessLogic   1124 -> 1207  (+83): the `boundedCompletion` auth-doc GET
+#       timeout seam (#18414) + its supporting state.
+#   NOT forward-ported code (+54, 1207 -> 1261) — called out separately so this
+#   re-baseline does not launder new accretion: fixing the `boundedCompletion` Swift 6
+#   `@MainActor` SIGTRAP (the merge-introduced crash that blocked this PR) added a
+#   main-actor delivery hop plus two small `@unchecked Sendable` carrier types
+#   (`TPPBoundedCompletionSink`, `TPPWorkItemBox`), plus returning the timeout work item
+#   so tests can join the losing racer deterministically (STARVE-001). FOLLOW-UP (not in this PR — a merge
+#   must not also carry a decomposition move): `boundedCompletion` + `TPPOnceGuard` + both
+#   carriers are a self-contained, network-free, sign-in-agnostic primitive (~90 LOC) and
+#   should be EXTRACTED to its own file, which nets this hub back BELOW 1207.
+3093 Palace/Audiobooks/AudiobookSessionManager.swift
+2384 Palace/Accounts/Library/AccountsManager.swift
+2180 Palace/MyBooks/MyBooksDownloadCenter.swift
 1378 Palace/Book/UI/BookDetail/BookDetailViewModel.swift
-1124 Palace/SignInLogic/TPPSignInBusinessLogic.swift
+1261 Palace/SignInLogic/TPPSignInBusinessLogic.swift
 968 Palace/MyBooks/BorrowOperation.swift
