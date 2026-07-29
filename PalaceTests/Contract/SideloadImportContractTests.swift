@@ -54,7 +54,7 @@ final class SideloadImportContractTests: PalaceWiringTestCase {
     let isolatedDefaults = UserDefaults(suiteName: "SideloadContract-\(UUID().uuidString)") ?? .standard
     let bookFileManager = BookFileManager(
       bookRegistry: recordingRegistry,
-      accountsManager: makeFreshAccountsManager(defaults: isolatedDefaults),
+      accountScope: AccountsManagerDownloadContextAdapter(accountsManager: makeFreshAccountsManager(defaults: isolatedDefaults)),
       fileManager: .default,
       directoryProvider: { [contentRoot] account in contentRoot!.appendingPathComponent("acct-\(account ?? "nil")") },
       sideloadedIdentifiersProvider: { [] }

@@ -98,7 +98,7 @@ final class BookFileManagerAccountScopingTests: PalaceWiringTestCase {
     ) -> BookFileManager {
         BookFileManager(
             bookRegistry: registry,
-            accountsManager: accountsManager,
+            accountScope: AccountsManagerDownloadContextAdapter(accountsManager: accountsManager),
             fileManager: .default,
             directoryProvider: Self.echoingDirectoryProvider(),
             sideloadedIdentifiersProvider: { sideloadedIdentifiers }

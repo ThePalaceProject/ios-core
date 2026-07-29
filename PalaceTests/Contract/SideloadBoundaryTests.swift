@@ -133,7 +133,7 @@ final class SideloadBoundaryTests: PalaceWiringTestCase {
     let isolatedDefaults = UserDefaults(suiteName: "SideloadBoundary-\(UUID().uuidString)") ?? .standard
     let bookFileManager = BookFileManager(
       bookRegistry: spyLoanRegistry,
-      accountsManager: makeFreshAccountsManager(defaults: isolatedDefaults),
+      accountScope: AccountsManagerDownloadContextAdapter(accountsManager: makeFreshAccountsManager(defaults: isolatedDefaults)),
       fileManager: .default,
       directoryProvider: { [contentRoot] account in contentRoot!.appendingPathComponent("acct-\(account ?? "nil")") },
       sideloadedIdentifiersProvider: { [] }

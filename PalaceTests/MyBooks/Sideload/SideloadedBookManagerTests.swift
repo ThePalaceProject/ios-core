@@ -70,7 +70,7 @@ final class SideloadedBookManagerTests: PalaceWiringTestCase {
     let root = contentRoot!
     return BookFileManager(
       bookRegistry: registry,
-      accountsManager: accountsManager,
+      accountScope: AccountsManagerDownloadContextAdapter(accountsManager: accountsManager),
       fileManager: .default,
       directoryProvider: { account in root.appendingPathComponent("acct-\(account ?? "nil")") },
       sideloadedIdentifiersProvider: { [] }
@@ -225,7 +225,7 @@ final class SideloadedBookManagerTests: PalaceWiringTestCase {
     // so the import cannot resolve a copy destination → `.destinationUnavailable`.
     let bfm = BookFileManager(
       bookRegistry: registry,
-      accountsManager: accountsManager,
+      accountScope: AccountsManagerDownloadContextAdapter(accountsManager: accountsManager),
       fileManager: .default,
       directoryProvider: { _ in nil },
       sideloadedIdentifiersProvider: { [] }

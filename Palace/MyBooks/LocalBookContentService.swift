@@ -43,7 +43,7 @@ class LocalBookContentService {
         self.accountsManager = accountsManager
         self.bookFileManager = bookFileManager ?? BookFileManager(
             bookRegistry: bookRegistry,
-            accountsManager: accountsManager,
+            accountScope: AccountsManagerDownloadContextAdapter(accountsManager: accountsManager),
             fileManager: fileManager
         )
         self.fileManager = fileManager

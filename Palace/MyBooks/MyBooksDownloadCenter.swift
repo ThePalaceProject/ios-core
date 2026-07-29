@@ -410,7 +410,7 @@ private final class DownloadFailureMetadataBox: @unchecked Sendable {
         // per-account directory without standing up a custom BookFileManager.
         self.bookFileManager = bookFileManager ?? BookFileManager(
             bookRegistry: bookRegistry,
-            accountsManager: accountsManager,
+            accountScope: AccountsManagerDownloadContextAdapter(accountsManager: accountsManager),
             directoryProvider: directoryProvider
         )
         // DiskBudgetManager pulls from the same registry + accounts manager

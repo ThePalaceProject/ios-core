@@ -57,7 +57,7 @@ final class DownloadFreeSpaceExhaustionTests: XCTestCase {
         diskBudget = DiskBudgetManager(
             bookRegistry: registry,
             accountsManager: AppContainer.production().accountsManager,
-            bookFileManager: BookFileManager(bookRegistry: registry, accountsManager: AppContainer.production().accountsManager),
+            bookFileManager: BookFileManager(bookRegistry: registry),
             fileManager: .default
         )
     }
