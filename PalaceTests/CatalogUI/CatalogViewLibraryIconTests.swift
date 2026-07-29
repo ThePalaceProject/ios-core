@@ -48,10 +48,14 @@ final class CatalogViewLibraryIconTests: XCTestCase {
                       "The leading toolbar item MUST still render the Palace branding icon (no visual regression to the header)")
         XCTAssertTrue(leadingBlock.contains("accessibilityHidden(true)"),
                       "The branding icon MUST stay hidden from VoiceOver — no button trait, no switching announcement")
-        XCTAssertFalse(leadingBlock.contains("Button"),
+        // Match the control *constructors*, not the bare words — the explanatory
+        // comment in this toolbar item legitimately mentions "Button"/"tap".
+        XCTAssertFalse(leadingBlock.contains("Button("),
                        "The Palace icon MUST NOT be a Button — library switching lives in Settings now (PP-4821)")
-        XCTAssertFalse(leadingBlock.contains("actionSheet"),
+        XCTAssertFalse(leadingBlock.contains(".actionSheet("),
                        "Tapping the Palace icon MUST NOT open a library-picker action sheet")
+        XCTAssertFalse(leadingBlock.contains(".onTapGesture"),
+                       "The Palace icon MUST NOT carry a tap gesture")
     }
 
     /// The switcher's supporting machinery is gone entirely, not merely
