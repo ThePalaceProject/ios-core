@@ -51,7 +51,6 @@ public enum AccessibilityID {
         // Navigation
         public static let navigationBar = "catalog.navigationBar"
         public static let searchButton = "catalog.searchButton"
-        public static let accountButton = "catalog.accountButton"
         public static let libraryLogo = "catalog.libraryLogo"
 
         // Content
