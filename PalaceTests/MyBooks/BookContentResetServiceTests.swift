@@ -118,7 +118,6 @@ private final class SpyBookFileManager: BookFileManager {
         self.tempDir = tempDir
         super.init(
             bookRegistry: bookRegistry,
-            accountsManager: AppContainer.production().accountsManager,
             fileManager: .default
         )
     }
