@@ -32,6 +32,7 @@ import XCTest
 @testable import Palace
 import ReadiumLCP
 import ReadiumShared
+import R2LCPClient
 
 @MainActor
 final class LCPClientTests: XCTestCase {
@@ -230,6 +231,32 @@ final class LCPClientTests: XCTestCase {
                 "findOneValidPassphrase must return nil on garbage license JSON (\(garbage.prefix(40))) — never crash, never return a bogus passphrase"
             )
         }
+    }
+
+    // MARK: - getSupportedLCPProfileURIs — PP-4848 (Readium 3.11) facade forwarding
+
+    func test_getSupportedLCPProfileURIs_forwardsLiblcpAdvertisedProfiles() {
+        // PP-4848: Readium 3.11 added getSupportedLCPProfileURIs() to the
+        // LCPClient protocol WITH a hardcoded default implementation. The
+        // facade must NOT rely on that default — it must forward the set the
+        // embedded liblcp (R2LCPClient) actually advertises, so ReadiumLCP can
+        // raise the correct "profile not supported" error for a license whose
+        // profile this liblcp build can't handle (AC #2). If the override were
+        // dropped, the facade would silently fall back to Readium's default
+        // list — which could claim support liblcp doesn't have.
+        let client = TPPLCPClient()
+        let facade = client.getSupportedLCPProfileURIs()
+        let liblcp = R2LCPClient.getSupportedLCPProfileURIs() ?? []
+
+        // Forwarding contract: facade == exactly what liblcp reports. Kills the
+        // "return Readium's default" and "return []" mutants.
+        XCTAssertEqual(facade, liblcp,
+                       "Facade must forward R2LCPClient.getSupportedLCPProfileURIs() verbatim, not Readium's hardcoded default")
+        // Sanity: this liblcp build advertises the standard production profile.
+        XCTAssertFalse(facade.isEmpty,
+                       "liblcp must advertise at least one supported LCP profile")
+        XCTAssertTrue(facade.contains("http://readium.org/lcp/profile-1.0"),
+                      "The standard LCP production profile 1.0 must be advertised by this liblcp build")
     }
 }
 
