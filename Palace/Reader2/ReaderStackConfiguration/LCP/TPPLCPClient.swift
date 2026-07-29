@@ -222,6 +222,16 @@ class TPPLCPClient: ReadiumLCP.LCPClient {
 
         return result
     }
+
+    /// PP-4848 (Readium 3.11): `LCPClient` now requires this. Readium ships a
+    /// hardcoded default list, but forwarding the value liblcp actually reports
+    /// is what lets Readium surface the correct "profile not supported" error
+    /// for a license whose profile the embedded `R2LCPClient` can't handle,
+    /// instead of failing opaquely. `R2LCPClient.getSupportedLCPProfileURIs()`
+    /// returns an optional; an empty list is the honest "none advertised" value.
+    func getSupportedLCPProfileURIs() -> [String] {
+        R2LCPClient.getSupportedLCPProfileURIs() ?? []
+    }
 }
 
 extension TPPLCPClient {
