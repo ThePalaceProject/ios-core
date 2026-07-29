@@ -15,11 +15,11 @@ description: Technical documentation for the Palace triage bot V1 - behavioral c
 
 Technical documentation for the Palace triage bot: what it does, the behavioral contracts any implementation must reproduce, and where each piece lives in the iOS reference implementation. Written for engineers implementing the Android client or the shared server components, and for anyone maintaining the iOS bot.
 
-The iOS implementation is the reference implementation. Sections describing behavior (the classifier, redaction, the corpus schema, the escalation state machine) define the contract; footnoted citations point at the Swift code that realizes it. Detail that is genuinely platform-specific is labeled as such so nobody ports it by mistake. The companion document `triage-bot-shared-architecture-proposal.md` designs the future shared architecture; wherever a reader asks "so what changes?", the answer lives there.
+The iOS implementation is the reference implementation. Sections describing behavior (the classifier, redaction, the corpus schema, the escalation state machine) define the contract; footnoted citations point at the Swift code that realizes it. Detail that is platform-specific is labeled as such so nobody ports it by mistake. The companion document `triage-bot-shared-architecture-proposal.md` designs the future shared architecture and describes what changes under it.
 
 File paths are relative to the repo root; the package root `Palace/Packages/PalaceTriageBot/` is abbreviated `PKG/`.
 
-> **Where code comments and this document disagree, this document is correct.** Several load-bearing comments are stale, and a code-first reader will build the wrong model from them. Known-stale as of 2026-07-28: `LocalClassifier.swift:6-10` still describes the retired raw-count scoring (actual scoring is by distinct match regions, [section 3.3](#33-scoring-distinct-match-regions-not-raw-hits)); the comment on `LocalClassifier.distinctMatchRegionCount` says touching ranges merge (they do not, [section 3.3](#33-scoring-distinct-match-regions-not-raw-hits)); the `KnowledgeBase.entries(in:)` comment claims `wontfix` entries are hidden (the code checks only `duplicate_of`); `PKG/Package.swift` claims every Core type has a 1:1 Kotlin analogue (no Kotlin exists); and comments in `ConversationReducer.swift:948-950`, `Protocols/Protocols.swift:11-14`, and `Palace/FeatureFlags/RemoteFeatureFlags.swift` describe a HelpSpot HTTP POST that has never existed (the only gateways are email and clipboard).
+> Where code comments and this document disagree, this document is correct. Several load-bearing comments are stale, and a code-first reader will build the wrong model from them. Known-stale as of 2026-07-28: `LocalClassifier.swift:6-10` still describes the retired raw-count scoring (actual scoring is by distinct match regions, [section 3.3](#33-scoring-distinct-match-regions-not-raw-hits)); the comment on `LocalClassifier.distinctMatchRegionCount` says touching ranges merge (they do not, [section 3.3](#33-scoring-distinct-match-regions-not-raw-hits)); the `KnowledgeBase.entries(in:)` comment claims `wontfix` entries are hidden (the code checks only `duplicate_of`); `PKG/Package.swift` claims every Core type has a 1:1 Kotlin analogue (no Kotlin exists); and comments in `ConversationReducer.swift:948-950`, `Protocols/Protocols.swift:11-14`, and `Palace/FeatureFlags/RemoteFeatureFlags.swift` describe a HelpSpot HTTP POST that has never existed (the only gateways are email and clipboard).
 
 ## At a glance
 
@@ -28,7 +28,7 @@ File paths are relative to the repo root; the package root `Palace/Packages/Pala
 - **The concepts to hold in your head.** The pure reducer decides and the ViewModel performs all I/O ([section 2](#2-component-architecture)); the classifier is pure, deterministic, and scores by distinct match regions ([section 3](#3-the-pattern-matching-engine)); the corpus is one bundled JSON file updated editorially ([sections 5](#5-the-local-corpus)-[6](#6-how-the-corpus-gets-updated)); redaction runs before anything leaves the device ([section 8](#8-privacy-and-redaction)).
 - **What an alternate implementation reproduces.** The classifier ([section 3](#3-the-pattern-matching-engine)), the redaction rules ([section 8](#8-privacy-and-redaction)), the corpus schema ([section 5](#5-the-local-corpus)), and the draft/consent flow ([section 7](#7-the-escalation-path)). The conformance corpora live in the test suites ([section 9](#9-test-posture)).
 - **Status.** iOS only, 18 KB entries, master flag off in release, no production traffic ([section 11](#11-status)).
-- **For a decision-maker.** The two sections you need sit at the very end: [section 11 (Status)](#11-status) for what is real today and [section 12 (Known gaps)](#12-known-gaps-and-open-questions) for what is not. Read those two first.
+- **For a decision-maker.** The two sections you need are at the end: [section 11 (Status)](#11-status) for what is real today and [section 12 (Known gaps)](#12-known-gaps-and-open-questions) for what is not. Read those two first.
 
 ## Contents
 
@@ -230,7 +230,7 @@ Status filtering is asymmetric and happens at query time, not on load: the categ
 
 ### 3.3 Scoring: distinct match regions, not raw hits
 
-For each candidate, the matched keywords are those whose normalized form is a substring of the normalized text. Substring means plain containment with no word-boundary requirement, and conformance depends on that: `stalled` matches inside `uninstalled`, which is the second distinct region that lifts the shipped quality case "audiobooks won't download after I uninstalled and reinstalled and rebooted" over KI-008's two-region floor. A helpfully word-bounded search fails exactly there. The score is NOT the raw hit count. Instead, `distinctMatchRegionCount` counts distinct match regions:[^region-scoring]
+For each candidate, the matched keywords are those whose normalized form is a substring of the normalized text. Substring means plain containment with no word-boundary requirement, and conformance depends on that: `stalled` matches inside `uninstalled`, which is the second distinct region that lifts the shipped quality case "audiobooks won't download after I uninstalled and reinstalled and rebooted" over KI-008's two-region floor. A word-bounded search fails there. The score is NOT the raw hit count. Instead, `distinctMatchRegionCount` counts distinct match regions:[^region-scoring]
 
 1. For each matched keyword, take its FIRST occurrence range in the normalized text (later occurrences never contribute).
 2. Sort the ranges by start position.
@@ -321,7 +321,7 @@ sequenceDiagram
 
 Alternatives from the match card: "File a ticket anyway" drafts a low-priority ticket carrying the matched entry id.
 
-A "Notify me when fixed" affordance is **not** rendered: `KBMatchActionPolicy.showsNotifyMeOnFix` returns false because no delivery mechanism exists ([section 12](#12-known-gaps-and-open-questions)). The reducer's handler survives behind it, producing a synthetic local receipt `notify-<entryId>` and a confirmation message only.[^notify-stub] That receipt is deliberately stamped with `Self.syntheticReceiptTimestamp` (epoch 0), never the current time: `ResponseDeterminismTests` pins byte-identical responses, so "improving" it with a wall-clock timestamp breaks that suite for reasons the diff alone will not explain. Only real gateway receipts carry real times.
+A "Notify me when fixed" affordance is not rendered: `KBMatchActionPolicy.showsNotifyMeOnFix` returns false because no delivery mechanism exists ([section 12](#12-known-gaps-and-open-questions)). The reducer's handler survives behind it, producing a synthetic local receipt `notify-<entryId>` and a confirmation message only.[^notify-stub] That receipt is deliberately stamped with `Self.syntheticReceiptTimestamp` (epoch 0), never the current time: `ResponseDeterminismTests` pins byte-identical responses, so "improving" it with a wall-clock timestamp breaks that suite for reasons the diff alone will not explain. Only real gateway receipts carry real times.
 
 ### 4.2 Escalation to a support ticket (AI off, the App Store path)
 
@@ -536,28 +536,28 @@ Two mechanisms, both in-repo and test-enforced:
 - **Known issues:** the `FixVersionGate` auto-suppresses `fixed_in` entries for users on or past the fix version, and a lint test pins the status/fix-version consistency class.[^staleness-tests]
 - **How_to entries:** every how_to must declare `ui_surface` and `reviewed_at`. A hand-maintained map of UI surface to last-changed date (4 surfaces) fails the suite when any how_to was reviewed before its anchored surface last changed, or anchors to an unknown surface.[^staleness-tests]
 
-This is deliberate but small-scale: the change log is a literal dictionary inside a test file, and it scales with maintainer discipline, not automation ([section 12](#12-known-gaps-and-open-questions)).
+This is deliberate but small-scale: the change log is a literal dictionary inside a test file, and it scales with editorial discipline, not automation ([section 12](#12-known-gaps-and-open-questions)).
 
 ---
 
 ## 6. How the corpus gets updated
 
-**There is no automated scrape-to-corpus pipeline. Corpus update is a maintainer-run, human-in-the-loop editorial process, and shipping a corpus change requires an app release.** A shared-architecture decision hinges on this, so it is stated plainly. The editorial loop:
+There is no automated scrape-to-corpus pipeline. Corpus update is a manual, human-in-the-loop editorial process, and shipping a corpus change requires an app release. A shared-architecture decision hinges on this. The editorial loop:
 
-1. A maintainer reads real HelpSpot tickets and identifies recurring symptom clusters and FAQ intents.
+1. The person curating the corpus reads real HelpSpot tickets and identifies recurring symptom clusters and FAQ intents.
 2. They hand-edit `catalog.json`: new or revised entries, keyword lists written against real patron phrasing, `version` and `updated_at` bumped, `reviewed_at` set on touched how_to entries.
 3. Provenance is pinned in each entry's `internal_reference` ids (for example KI-001 cites HelpSpot tickets 17964, 17929, 17989, 17959). This is for humans auditing "why does this entry exist"; code never reads it.
 4. The change must pass the in-repo quality gates: `CatalogSchemaLintTests`, `HowToGovernanceTests`, `ResponseQualityTests` (with its named-miss allowlists, [section 9](#9-test-posture)), and `HoldoutGeneralizationTests`.
 5. It ships as a normal PR and reaches patrons only in the next App Store release, because the catalog is a bundled resource.[^curation-history]
 
-What does NOT exist, so nobody assumes it does:
+What does not exist:
 
 - No scheduled HelpSpot mining job feeding the catalog.
 - No KB authoring tool for support staff.
 - No server hot-update path. The `KnowledgeBaseSource` protocol seam for a server-backed catalog exists,[^kb-source-seam] but its only implementations are `BundledCatalogSource` and the tests' in-memory source.
 - `scripts/triage-corpus-check.sh`, despite the name, is a redaction leak gate ([section 8](#8-privacy-and-redaction)), not KB tooling.
 
-The release-cadence and curation-bottleneck consequences are exactly what `triage-bot-shared-architecture-proposal.md` addresses.
+The release-cadence and curation-bottleneck consequences are what `triage-bot-shared-architecture-proposal.md` addresses.
 
 ---
 
@@ -608,7 +608,7 @@ Gateway errors map into `userCancelled` (composer dismissed: restore the preview
 
 > **Note.** Redaction runs before anything leaves the device, at four points: every context snapshot before the reducer sees it, every patron-typed line at draft assembly/edit/follow-up, every captured log line, and (via `AIFallbackPromptBuilder.sanitize`) before any byte reaches Claude.[^redactor-src] The rule set below is a behavioral contract: an alternate implementation reproduces the rules and their ordering, not just the intent.
 
-**Snapshot level:** `libraryUUID` and `libraryBarcode` are hashed via FNV-1a into an `anon-` token.[^redactor-src] The exact rule, which an implementation must match byte for byte: FNV-1a 64-bit over the raw string's UTF-8 bytes (offset basis `0xcbf29ce484222325`, prime `0x100000001b3`, wrapping 64-bit arithmetic); render the digest as lowercase hex left-zero-padded to 16 characters; the token is `anon-` plus the FIRST 8 hex characters (the most-significant 32 bits). The function is fully deterministic on input bytes, so the same input yields the same token on every platform; cross-platform equality is required, not optional, because it is what lets support correlate reports for one account across clients, and any divergence is a conformance failure. **Gap: nothing currently enforces that equality.** `ContextRedactorTests` asserts only determinism and the `anon-` prefix; no test or fixture on any platform pins an exact digest for a known input, so a divergent Kotlin hash would pass every shipped suite. The fix is a pinned input-to-token vector in the conformance fixtures ([proposal, section 9](./triage-bot-shared-architecture-proposal.md#9-cross-platform-conformance-fixtures)). This is a non-reversible cluster id, explicitly not a cryptographic primitive. The raw barcode never lands in conversation state.
+**Snapshot level:** `libraryUUID` and `libraryBarcode` are hashed via FNV-1a into an `anon-` token.[^redactor-src] The exact rule, which an implementation must match byte for byte: FNV-1a 64-bit over the raw string's UTF-8 bytes (offset basis `0xcbf29ce484222325`, prime `0x100000001b3`, wrapping 64-bit arithmetic); render the digest as lowercase hex left-zero-padded to 16 characters; the token is `anon-` plus the FIRST 8 hex characters (the most-significant 32 bits). The function is fully deterministic on input bytes, so the same input yields the same token on every platform; cross-platform equality is required: it lets support correlate reports for one account across clients, and any divergence is a conformance failure. **Gap:** nothing currently enforces that equality. `ContextRedactorTests` asserts only determinism and the `anon-` prefix; no test or fixture on any platform pins an exact digest for a known input, so a divergent Kotlin hash would pass every shipped suite. The fix is a pinned input-to-token vector in the conformance fixtures ([proposal, section 9](./triage-bot-shared-architecture-proposal.md#9-cross-platform-conformance-fixtures)). This is a non-reversible cluster id, explicitly not a cryptographic primitive. The raw barcode never lands in conversation state.
 
 **Line level:** three phases, in order.[^redactor-src]
 
@@ -638,7 +638,7 @@ The 15 phase-2 patterns. This is the byte-for-byte contract: order, regex, and r
 
 (Earlier drafts of this document counted "17 patterns" by folding the two phase-3 helper regexes into the list; the phase-2 pattern list has 15 entries.)
 
-**The ISBN carve-out is narrower than "ISBNs survive".** The `barcode_standalone` negative lookahead exempts exactly one shape: a contiguous 13-digit run starting 978 or 979. Verified consequences: a patron-typed ISBN-10 (10 digits, never 978/979-prefixed) IS redacted to `[number-redacted]` by pattern 15, but only when all ten characters are digits. An ISBN-10 whose check digit is X (roughly one in eleven) has only nine contiguous digits, too short for pattern 15's 10-digit floor and for the phase-3 13-digit floor, so it survives unredacted; that is the shipped behavior, and a port must NOT add an X-aware "fix", which would break fixture parity. A contiguous ISBN-13 survives phase 2 but is still a phase-3 candidate (13 digits), so it is redacted after all when it coincidentally passes Luhn (ISBN-13 uses a different checksum, so a Luhn pass is possible but not typical) or when a payment/account keyword, a list that includes "barcode", sits within the 24 characters before it. A hyphen-grouped ISBN ("978-0-...") never matches phase 2 (each contiguous digit run is too short) and follows the same phase-3 rule.
+**The ISBN carve-out is narrower than "ISBNs survive".** The `barcode_standalone` negative lookahead exempts exactly one shape: a contiguous 13-digit run starting 978 or 979. Verified consequences: a patron-typed ISBN-10 (10 digits, never 978/979-prefixed) IS redacted to `[number-redacted]` by pattern 15, but only when all ten characters are digits. An ISBN-10 whose check digit is X (roughly one in eleven) has only nine contiguous digits, too short for pattern 15's 10-digit floor and for the phase-3 13-digit floor, so it survives unredacted; that is the shipped behavior, and a port must not add an X-aware "fix", which would break fixture parity. A contiguous ISBN-13 survives phase 2 but is still a phase-3 candidate (13 digits), so it is redacted after all when it coincidentally passes Luhn (ISBN-13 uses a different checksum, so a Luhn pass is possible but not typical) or when a payment/account keyword, a list that includes "barcode", sits within the 24 characters before it. A hyphen-grouped ISBN ("978-0-...") never matches phase 2 (each contiguous digit run is too short) and follows the same phase-3 rule.
 
 **Prose credentials.** The delimiter-based key/value pattern catches `password: hunter2` but not the prose form a patron naturally types in chat ("my password is hunter2"). The dedicated `password_prose` pattern covers that form; its "is"/"was" linker requirement keeps benign phrases like "forgot my password" or "password not working" intact.[^password-prose] The general principle: enumerate the ways humans state secrets in prose, not just the ways machines serialize them.
 
@@ -722,7 +722,7 @@ Keychain storage: `kSecClassGenericPassword`, `kSecAttrAccessibleAfterFirstUnloc
 
 ## 12. Known gaps and open questions
 
-Stub behaviors and nil wiring, stated directly. Plan around these; do not port them.
+Stub behaviors and nil wiring. Plan around these; do not port them.
 
 1. **Notify-me-on-fix is not offered.** No notification delivery mechanism exists, so the affordance is suppressed rather than promising the patron something the app cannot do: `KBMatchActionPolicy.showsNotifyMeOnFix` returns false and the match card consults it. The reducer still handles `.userTappedNotifyMeOnFix`, producing a synthetic local receipt (`notify-<entryId>`),[^notify-stub] and its tests still cover that path, so restoring the affordance is a one-line change in the policy once delivery exists. Delivery is tracked as PP-4886 (under the launch-gate story PP-4882); it does not gate turning the bot on. <!-- audit-verified: PP-4886/PP-4882 verified via Jira API 2026-07-29 --> The receipt's epoch-0 timestamp is a deliberate determinism constraint, not sloppiness ([section 4.1](#41-kb-hit-local-match-guided-flow-available)).
 2. **`distributor` and `authType` are nil in production** ("Phase 2" comments in the factory),[^factory-wiring] so `distributor_filter` never engages on device and the marketplace scoping on KI-001/002/007 is decorative.
@@ -746,7 +746,7 @@ Each of these either has already broken a change once, or provably breaks a naiv
 - **Canonical equivalence vs code-unit matching**: Foundation matches composed/decomposed forms, Kotlin does not; NFC-normalize or use an equivalence-aware search ([section 3.1](#31-normalization)).
 - **Region merging is strict-overlap**; adjacent ranges count as separate regions, and only each keyword's first occurrence participates ([section 3.3](#33-scoring-distinct-match-regions-not-raw-hits)).
 - **Integer division in scoring** silently yields {0, 0, 1} instead of {1/3, 2/3, 1} and flips two guards ([section 3.3](#33-scoring-distinct-match-regions-not-raw-hits)).
-- **Wall-clock reads inside `reduce`**: `Date()` is called at 7 explicit sites (`ConversationReducer.swift:307, 331, 336, 365, 397, 458, 464`), and every appended `ConversationMessage` additionally evaluates a `Date()` default timestamp at its call site. A strict port replaces ALL of these with an injected clock; seaming only some sites leaves the hazard open.[^port-couplings]
+- **Wall-clock reads inside `reduce`**: `Date()` is called at 7 explicit sites (`ConversationReducer.swift:307, 331, 336, 365, 397, 458, 464`), and every appended `ConversationMessage` additionally evaluates a `Date()` default timestamp at its call site. A port replaces all of these with an injected clock; seaming only some sites leaves the hazard open.[^port-couplings]
 - **Regex dialect**: the redactor's patterns are `NSRegularExpression` (ICU). Port them against ICU semantics (lookbehind, Unicode-aware `\b`) and verify with the redaction corpus, not by eyeballing.
 - **`SemanticVersion` quirks**: strip-every-"v", coerce non-numeric minor/patch to 0, pre-release suffixes silently drop ([section 3.2](#32-candidate-filtering)).
 - **Residual Apple couplings in Core**: `Bundle.module` resource loading, `UserDefaults`-backed concrete stores, `NSLock`, `String.Index` range mechanics in region counting.
