@@ -9,4 +9,10 @@
 # book-model files that moved into Palace/Packages/PalaceBookModel/ took their
 # remaining `.shared` mentions out of the counted (non-package) tree. No new
 # `.shared` read was introduced app-side.
-224
+# Wave 3 S3 (AccountsManager de-locatoring): 224 -> 213. The account-switch cleanup
+# path's ambient reads (5 `ImageCache.shared`, 6 `AccountStateStore.shared`, 1
+# `TPPBookCoverRegistry.shared`) were inverted behind the injected
+# `AccountSwitchDependencies` bundle; the composition-root `.production` binding
+# re-introduces only `ImageCache.shared` + `TPPBookCoverRegistry.shared` (2), for a
+# net -11. (There was already a -1 drift to 223 from the de-flake before this change.)
+213

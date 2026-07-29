@@ -8,6 +8,7 @@ import PalaceNetwork
 import PalaceCatalog // swarm_27c181b5 A5: shared CatalogRepository / DefaultCatalogAPI accessor
 import PalaceBookModel
 import PalaceBookRegistry
+import PalaceLogging
 
 // Swift 6 `complete` — `@unchecked Sendable` invariant: every stored member is
 // an immutable `let` established once at the composition root and only read
@@ -637,7 +638,16 @@ struct AppContainer: @unchecked Sendable {
         // is a stateless struct that forwards to a static, so it needs no MBDC
         // instance — no construction-order hazard even though MBDC is built later
         // in this method.
-        let accountsManager = AccountsManager(borrowReauthResetter: DownloadCenterBorrowReauthResetter())
+        // Wave 3 S3: inject the account-switch cleanup collaborators as a frozen
+        // bundle (the `RegistryExternalDependencies` precedent) rather than letting
+        // the setter / cleanup reach for the shared singletons directly. `.production`
+        // resolves them at the composition root — its network-executor + nav-hub
+        // reads are DEFERRED in closures, so evaluating it here does not re-enter this
+        // dispatch_once. Passed explicitly (no-default-fires house rule).
+        let accountsManager = AccountsManager(
+            borrowReauthResetter: DownloadCenterBorrowReauthResetter(),
+            switchDependencies: .production
+        )
         // Single image-loading umbrella composed of the existing disk+memory
         // ImageCache and the TPPBookCoverRegistry actor — replaces three
         // overlapping singletons at consumer sites (Track A of the 3.2.0
@@ -917,5 +927,41 @@ extension EnvironmentValues {
     var appContainer: AppContainer {
         get { self[AppContainerKey.self] }
         set { self[AppContainerKey.self] = newValue }
+    }
+}
+
+// MARK: - Account-switch cleanup deps (Wave 3 S3)
+
+extension AccountSwitchDependencies {
+    /// The live account-switch cleanup collaborators, resolved at the composition
+    /// root. This is the ONE legitimate binding site for these singletons — the
+    /// account-switch cleanup used to reach for them inline. The network-executor and
+    /// nav-hub reads are wrapped in closures so they resolve LAZILY (first account
+    /// switch), never during the `production()` dispatch_once that constructs the
+    /// manager — preserving the documented init-cycle deferral.
+    static var production: AccountSwitchDependencies {
+        AccountSwitchDependencies(
+            imageCache: ImageCache.shared,
+            accountStateStore: .shared,
+            resetCoverCircuitBreaker: { TPPBookCoverRegistry.shared.resetHostFailures() },
+            networkExecutorProvider: { AppContainer.production().networkExecutor },
+            popToRootForAccountSwitch: { await AppContainer.popToRootForAccountSwitch() }
+        )
+    }
+}
+
+extension AppContainer {
+    /// Main-actor navigation cleanup for an account switch: pop the active navigation
+    /// stack to root when it is non-empty, then wait the documented settle interval.
+    /// Extracted verbatim from the manager's prior inline cleanup Task so the seam is
+    /// a single spy point while the production behavior is byte-for-byte identical.
+    @MainActor
+    fileprivate static func popToRootForAccountSwitch() async {
+        guard let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator else { return }
+        Log.debug(#file, "  Navigation path has \(coordinator.path.count) items")
+        guard AccountsManager.shouldPopToRoot(navigationPathCount: coordinator.path.count) else { return }
+        Log.info(#file, "  🔄 Popping to root to clean up active content before account switch")
+        coordinator.popToRoot()
+        try? await Task.sleep(nanoseconds: 100_000_000) // 0.1s
     }
 }

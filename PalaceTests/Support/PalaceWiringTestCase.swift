@@ -262,6 +262,32 @@ class PalaceWiringTestCase: PalaceTestCase {
         return manager
     }
 
+    /// DI-aware overload that injects BOTH the account-switch borrow-reauth reset
+    /// seam and the account-switch cleanup collaborators (`AccountSwitchDependencies`,
+    /// Wave 3 S3). Lets the switch-cleanup contract test drive the setter with spies
+    /// for every cleanup side effect (image evict, cover reset, account-state store,
+    /// nav pop-to-root, network cancel) while keeping the same `loadCatalogs` opt-out
+    /// pin + tearDown drain — so it stays off the isolation-lint bare-construction ban.
+    @discardableResult
+    nonisolated func makeFreshAccountsManager(
+        defaults: UserDefaults,
+        borrowReauthResetter: any BorrowReauthResetting,
+        switchDependencies: AccountSwitchDependencies,
+        _ configure: (AccountsManager) -> Void = { _ in }
+    ) -> AccountsManager {
+        #if DEBUG
+        AccountsManager.deferInitialLoadCatalogsForTesting = true
+        #endif
+        let manager = AccountsManager(
+            defaults: defaults,
+            borrowReauthResetter: borrowReauthResetter,
+            switchDependencies: switchDependencies
+        )
+        configure(manager)
+        managersToCancelOnTearDown.append(manager)
+        return manager
+    }
+
     // MARK: - Disk-cache cleanup
 
     /// Remove every on-disk catalog/auth/crawl cache file in the test

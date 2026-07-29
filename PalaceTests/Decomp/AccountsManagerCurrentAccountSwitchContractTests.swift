@@ -51,7 +51,9 @@
 //
 
 import XCTest
+import UIKit
 import PalaceCatalog
+import PalaceBookModel
 @testable import Palace
 
 @MainActor
@@ -187,6 +189,139 @@ final class AccountsManagerCurrentAccountSwitchContractTests: PalaceWiringTestCa
         AccountStateStore.shared.reset(for: bUUID)
     }
 
+    // MARK: - Contract 4: spy-order cleanup sequence (Wave 3 S3)
+
+    /// Contract: on a real switch A → B, the setter drives its cleanup
+    /// collaborators in a FIXED order —
+    ///   cancelNonEssentialTasks → clearAllBorrowReauthState → evictDecodedImages
+    ///   → resetCoverCircuitBreaker → (account-state eviction of A) → popToRoot
+    ///   → isAccountSwitching reset.
+    /// Every seam is now an injected double recording into one `CallLog`, so the
+    /// ORDER is pinned directly against spies instead of inferred through a
+    /// `NotificationCenter` round-trip. The account-state eviction is a store
+    /// mutation (the injected `AccountStateStore` instance is not a `CallLog` spy),
+    /// so it is pinned by its effect + its synchronous position between the cover
+    /// reset and the async nav pop; `isAccountSwitching`'s deferred reset is pinned
+    /// by the true-before / false-after state assertions.
+    ///
+    /// Kill cases (each flips this test red):
+    ///  - Reordering any two of the four synchronous seam calls.
+    ///  - Moving `evictDecodedImages` / `resetCoverCircuitBreaker` before the
+    ///    `cleanupActiveContentBeforeAccountSwitch` call (they'd precede
+    ///    cancel/borrow-clear in the log).
+    ///  - Dropping the prior-account eviction → A stays `.notLoaded`.
+    ///  - Resetting `isAccountSwitching` synchronously in the setter (F-032) →
+    ///    the true-before assertion fails.
+    ///  - Firing the nav pop synchronously → it appears in the pre-yield log.
+    func testSwitch_AtoB_drivesCleanupSeamsInOrder() async {
+        let aUUID = "urn:uuid:decomp-s3-A-\(UUID().uuidString)"
+        let bUUID = "urn:uuid:decomp-s3-B-\(UUID().uuidString)"
+        let accountB = Self.makeAccount(uuid: bUUID)
+
+        let log = CallLog()
+        let stateStore = AccountStateStore() // fresh, isolated — not `.shared`
+        let spyExecutor = SpyAccountSwitchNetworkExecutor(log: log)
+        let spyImageCache = SpySwitchImageCache(log: log)
+        let spyBorrow = SpySwitchBorrowReauthResetter(log: log)
+
+        let deps = AccountSwitchDependencies(
+            imageCache: spyImageCache,
+            accountStateStore: stateStore,
+            resetCoverCircuitBreaker: { log.record("resetCoverCircuitBreaker") },
+            networkExecutorProvider: { spyExecutor },
+            popToRootForAccountSwitch: { log.record("popToRoot") }
+        )
+
+        let defaults = Self.testUserDefaults()
+        defaults.set(aUUID, forKey: currentAccountIdentifierKey)
+        let manager = makeFreshAccountsManager(
+            defaults: defaults,
+            borrowReauthResetter: spyBorrow,
+            switchDependencies: deps
+        )
+
+        guard case .notLoaded = stateStore.state(for: aUUID) else {
+            return XCTFail("Setup: fresh prior account must start at .notLoaded in the injected store")
+        }
+
+        // Act — synchronous portion runs inline on the main actor.
+        manager.currentAccount = accountB
+
+        // Synchronous cleanup order: cancel + borrow-clear (inside
+        // cleanupActiveContentBeforeAccountSwitch) then image evict + cover reset.
+        XCTAssertEqual(log.snapshot().map(\.method),
+                       ["cancelNonEssentialTasks", "clearAllBorrowReauthState",
+                        "evictDecodedImages", "resetCoverCircuitBreaker"],
+                       "synchronous cleanup seams must fire in this exact order")
+        // Prior account A terminally evicted in the injected store (synchronous).
+        XCTAssertEqual(switchStateLabel(stateStore.state(for: aUUID)),
+                       "detailsEvicted.libraryDeselected",
+                       "prior account A must be evicted before control returns")
+        // Nav pop is deferred to the async cleanup Task — not yet fired.
+        XCTAssertFalse(log.snapshot().contains { $0.method == "popToRoot" },
+                       "nav pop-to-root must be deferred to the async cleanup, not synchronous")
+        // isAccountSwitching reset is deferred (F-032).
+        XCTAssertTrue(manager.isAccountSwitching,
+                      "isAccountSwitching must still be true synchronously (reset is deferred)")
+
+        // Let the @MainActor cleanup Task run (nav pop then flag reset).
+        for _ in 0..<1000 {
+            if log.snapshot().contains(where: { $0.method == "popToRoot" }),
+               !manager.isAccountSwitching { break }
+            await Task.yield()
+        }
+
+        XCTAssertEqual(log.snapshot().map(\.method),
+                       ["cancelNonEssentialTasks", "clearAllBorrowReauthState",
+                        "evictDecodedImages", "resetCoverCircuitBreaker", "popToRoot"],
+                       "full cleanup order: nav pop must follow every synchronous seam")
+        XCTAssertFalse(manager.isAccountSwitching,
+                       "isAccountSwitching must be reset only AFTER the async nav cleanup completes")
+    }
+
+    /// Contract: first selection nil → B takes NO cleanup path — none of the
+    /// switch seams fire (no prior content to clean up). Pins the
+    /// `previousAccountId != nil` guard against the injected spies.
+    ///
+    /// Kill case: dropping the `previousAccountId != nil` guard → cancel / evict /
+    /// cover reset / nav pop would fire on first selection → non-empty log.
+    func testFirstSelection_nilToB_drivesNoCleanupSeams() async {
+        let bUUID = "urn:uuid:decomp-s3-nilB-\(UUID().uuidString)"
+        let accountB = Self.makeAccount(uuid: bUUID)
+
+        let log = CallLog()
+        let stateStore = AccountStateStore()
+        let spyExecutor = SpyAccountSwitchNetworkExecutor(log: log)
+        let spyImageCache = SpySwitchImageCache(log: log)
+        let spyBorrow = SpySwitchBorrowReauthResetter(log: log)
+
+        let deps = AccountSwitchDependencies(
+            imageCache: spyImageCache,
+            accountStateStore: stateStore,
+            resetCoverCircuitBreaker: { log.record("resetCoverCircuitBreaker") },
+            networkExecutorProvider: { spyExecutor },
+            popToRootForAccountSwitch: { log.record("popToRoot") }
+        )
+
+        let defaults = Self.testUserDefaults() // currentAccountId starts nil
+        let manager = makeFreshAccountsManager(
+            defaults: defaults,
+            borrowReauthResetter: spyBorrow,
+            switchDependencies: deps
+        )
+        XCTAssertNil(manager.currentAccountId, "Setup: first selection requires a nil starting id")
+
+        manager.currentAccount = accountB
+
+        // Give any (erroneously scheduled) async cleanup a chance to run.
+        for _ in 0..<50 { await Task.yield() }
+
+        XCTAssertTrue(log.snapshot().isEmpty,
+                      "nil→B must drive NO cleanup seams (no prior content)")
+        XCTAssertFalse(manager.isAccountSwitching,
+                       "first selection must not enter the switching state")
+    }
+
     // MARK: - Helpers
 
     /// Register a synchronous (`queue: nil`) `.TPPCurrentAccountDidChange`
@@ -234,6 +369,44 @@ final class AccountsManagerCurrentAccountSwitchContractTests: PalaceWiringTestCa
         let publication = OPDS2Publication(links: [], metadata: metadata, images: nil)
         return Account(publication: publication, imageCache: MockImageCache())
     }
+}
+
+// MARK: - Spies for the Wave 3 S3 switch-cleanup contract
+
+/// Records `cancelNonEssentialTasks()` into a shared `CallLog`. Subclasses the real
+/// `TPPNetworkExecutor` (the only way to observe the concrete cancel seam); every
+/// other executor behavior is inherited but never exercised on the switch path.
+fileprivate final class SpyAccountSwitchNetworkExecutor: TPPNetworkExecutor, @unchecked Sendable {
+    let log: CallLog
+    init(log: CallLog) {
+        self.log = log
+        super.init(cachingStrategy: .ephemeral)
+    }
+    override func cancelNonEssentialTasks() {
+        log.record("cancelNonEssentialTasks")
+    }
+}
+
+/// Records `evictDecodedImages()`; all other `ImageCacheType` surface is inert (the
+/// switch setter only evicts). `@unchecked Sendable`: it holds only the thread-safe
+/// `CallLog`.
+fileprivate final class SpySwitchImageCache: ImageCacheType, @unchecked Sendable {
+    let log: CallLog
+    init(log: CallLog) { self.log = log }
+    func set(_ image: UIImage, for key: String, expiresIn: TimeInterval?) {}
+    func get(for key: String) -> UIImage? { nil }
+    func getAsync(for key: String) async -> UIImage? { nil }
+    func remove(for key: String) {}
+    func clear() {}
+    func warmMemoryCache(for keys: [String]) async {}
+    func evictDecodedImages() { log.record("evictDecodedImages") }
+}
+
+/// Records the account-switch borrow-reauth circuit-breaker clear (Wave 3 S1 seam).
+fileprivate final class SpySwitchBorrowReauthResetter: BorrowReauthResetting, @unchecked Sendable {
+    let log: CallLog
+    init(log: CallLog) { self.log = log }
+    func clearAllBorrowReauthState() { log.record("clearAllBorrowReauthState") }
 }
 
 /// Stable, associated-value-free `LoadState` label. Free function (nonisolated) so
