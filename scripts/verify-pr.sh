@@ -386,6 +386,37 @@ else
   fi
 fi
 
+# 2c. TriageBot redaction leak gate (self-testing)
+# The package suite above already runs RedactionCorpusTests, but a deny-list
+# guard is only worth as much as its ability to fail. This runs the guard AND
+# its --self-test, which disables redaction to prove the guard goes red on an
+# un-redacted corpus. A guard that silently stopped guarding is the failure
+# mode this catches; the suite alone cannot catch it. Build products are warm
+# from 2b, so this is seconds.
+echo "--- TriageBot Redaction Leak Gate ---"
+if [ "$MUTATION_ONLY" = "true" ]; then
+  record "triage_redaction_gate" "pass" "Skipped (--mutation-only)"
+elif [ ! -f "scripts/triage-corpus-check.sh" ]; then
+  record "triage_redaction_gate" "pass" "Gate script not present (skipped)"
+elif [ ! -d "Palace/Packages/PalaceTriageBot" ]; then
+  record "triage_redaction_gate" "pass" "Package not present (skipped)"
+else
+  # Capture rc from the command itself; `|| true` would mask it and $? would
+  # always read 0.
+  if GATE_OUTPUT=$(bash scripts/triage-corpus-check.sh --self-test 2>&1); then
+    GATE_RC=0
+  else
+    GATE_RC=$?
+  fi
+  if echo "$GATE_OUTPUT" | grep -q "SELF-TEST PASS"; then
+    record "triage_redaction_gate" "pass" "Deny-list guard clean; gate provably fails on a leak"
+  elif echo "$GATE_OUTPUT" | grep -q "SELF-TEST FAIL"; then
+    record "triage_redaction_gate" "fail" "Guard did NOT go red on an injected leak — the gate is broken"
+  else
+    record "triage_redaction_gate" "fail" "A credential shape survived redaction (rc=$GATE_RC)"
+  fi
+fi
+
 # 3. Test quality lint
 # Diff-scoped: only fail when *changed* test files carry blocking rules
 # (FLAKE-* / FLUFF-* / MISSING-* / TIMEOUT-*). SHALLOW-001 is advisory —
