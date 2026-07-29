@@ -786,18 +786,21 @@ struct AppContainer: @unchecked Sendable {
     ///      (`AppContainerResetTests`); the safe default between tests is
     ///      `true`, matching `PalaceTestSetup.bootstrap()`.
     ///
-    /// Residual race window (DOCUMENTED INTENTIONAL):
-    /// Step 2's cancellation is cooperative. If the prior AccountsManager's
-    /// `fetchFromNetwork` Task is mid-await on `crawler.crawlFirstPage`, the
-    /// completion still fires and writes through to `accountSets` on the OLD
-    /// instance — but the OLD instance is no longer reachable from
-    /// `production()`, so the write is observable only by code paths that
-    /// held a strong reference to the prior `accountsManager` (none in
-    /// production; vanishingly few in tests). The next test gets a clean
-    /// `production()` graph regardless. This window is the brief moment
-    /// between cancel-request and Task cancellation observation; on a
-    /// 100Mbps link with the bundled snapshot path, < 50ms in 99% of cases.
-    /// Acceptable per swarm_4b64e4e0 outcome.md user direction.
+    /// Residual race window (NARROWED — PP-4754):
+    /// Step 2 no longer relies on cooperative cancellation alone. Every
+    /// background crawl Task — including the previously un-drainable fallback
+    /// GET completions — is now OWNED by `AccountsManager.ownedCrawlTasks`, and
+    /// `cancelAndDrainBackgroundWork()` (called below) synchronously awaits the
+    /// full owned set before returning. So a `fetchFromNetwork` Task mid-await
+    /// on `crawler.crawlFirstPage` is drained to completion (its post-await
+    /// `Task.isCancelled` guard drops the write) inside this boundary rather
+    /// than landing on the OLD instance a few ms later. The one remaining
+    /// window: a crawl that passes its `Task.isCancelled` guard concurrently
+    /// with the cancel can spawn a successor (pagination/preload) that is
+    /// neither in the drained snapshot nor yet cancelled — it is caught at the
+    /// NEXT boundary by `_drainAllLiveInstancesForTesting()`. Strictly narrower
+    /// than the pre-change fire-and-forget behavior; no write survives past that
+    /// next boundary's store reset.
     ///
     /// swarm_4b64e4e0 Fix 2 — DEBUG-only test seam. Not callable from
     /// production code (compile-time gated). The function is `internal` so

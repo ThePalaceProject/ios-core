@@ -742,7 +742,7 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
     /// shared backend and asserts BOTH the `.readingProgress` listening
     /// position AND the `.bookmark` are deleted for the returned book, while an
     /// unrelated OTHER book's bookmark is left untouched (scoping).
-    func test_deleteAllBookmarks_deletesUserBookmark_preservesAudiobookPosition_scopedToBook() throws {
+    func test_deleteAllBookmarks_deletesUserBookmark_preservesAudiobookPosition_scopedToBook() async throws {
         try skipIfSyncGateClosed()
 
         let otherBookID = "urn:uuid:cross-device-e2e-OTHER-book"
@@ -813,21 +813,16 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
         let restoreExecutor = holdDeviceAExecutor()
         defer { restoreExecutor() }
 
-        let completed = expectation(description: "deleteAllBookmarks completion (fire-and-forget)")
-        TPPAnnotations.deleteAllBookmarks(forBook: book) {
-            completed.fulfill()
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            TPPAnnotations.deleteAllBookmarks(forBook: book) { continuation.resume() }
         }
-        wait(for: [completed], timeout: 5.0)
 
-        // Deletions are fire-and-forget (GET then chained DELETEs). Give the
-        // chain a bounded window to run so we assert on a settled state rather
-        // than merely on "nothing has happened yet".
-        let deadline = Date().addingTimeInterval(3.0)
-        while Date() < deadline {
-            let tick = expectation(description: "settle tick")
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { tick.fulfill() }
-            wait(for: [tick], timeout: 1.0)
-        }
+        // Deletions are fire-and-forget (GET then chained DELETEs), so the
+        // completion above proves nothing. Join the chain itself — this is what
+        // makes "the position was PRESERVED" a real assertion instead of one
+        // that a starved CI clone could pass simply by nothing having run yet
+        // (STARVE-001).
+        await TPPAnnotations._awaitDeletionChainForTesting()
 
         let remaining = backend.allAnnotations(forBook: Self.bookID)
 
@@ -865,7 +860,7 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
     /// `.readingProgress` reading place SURVIVES while the user `.bookmark` is
     /// still deleted. A regression that deletes ebook `.readingProgress` (or that
     /// removes the scoping guard) makes the reading place vanish and fails here.
-    func test_deleteAllBookmarks_ebook_preservesReadingProgress_stillDeletesBookmark() throws {
+    func test_deleteAllBookmarks_ebook_preservesReadingProgress_stillDeletesBookmark() async throws {
         try skipIfSyncGateClosed()
 
         let base = Self.baseURL.absoluteString  // ends in "annotations/"
@@ -909,19 +904,15 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
         let restoreExecutor = holdDeviceAExecutor()
         defer { restoreExecutor() }
 
-        let completed = expectation(description: "deleteAllBookmarks completion")
-        TPPAnnotations.deleteAllBookmarks(forBook: book) { completed.fulfill() }
-        wait(for: [completed], timeout: 5.0)
-
-        // Poll until the user bookmark is gone (bounded). The reading position
-        // must remain — so we wait for the set to shrink to exactly the progress
-        // annotation, not to empty.
-        let deadline = Date().addingTimeInterval(8.0)
-        while Date() < deadline && backend.allAnnotations(forBook: Self.bookID).contains(where: { $0.id == bookmarkID }) {
-            let tick = expectation(description: "poll tick")
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { tick.fulfill() }
-            wait(for: [tick], timeout: 1.0)
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            TPPAnnotations.deleteAllBookmarks(forBook: book) { continuation.resume() }
         }
+        // `deleteAllBookmarks` completes IMMEDIATELY and deletes in the
+        // background, so join the chain itself. This replaces an 8s wall-clock
+        // poll that asserted on "whatever happened by the deadline" — under a
+        // starved CI clone that read as a pass with the DELETEs still in flight
+        // (STARVE-001).
+        await TPPAnnotations._awaitDeletionChainForTesting()
 
         let remaining = backend.allAnnotations(forBook: Self.bookID)
         XCTAssertFalse(remaining.contains { $0.id == bookmarkID },
@@ -946,7 +937,7 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
     /// forcing a deliberate re-record and a product conversation rather than a
     /// silent behavior change. See `deleteAllBookmarks` for why deletion was
     /// removed in build 490.
-    func test_deleteAllBookmarks_contract_deletesOnlyUserBookmark() throws {
+    func test_deleteAllBookmarks_contract_deletesOnlyUserBookmark() async throws {
         try skipIfSyncGateClosed()
 
         let base = Self.baseURL.absoluteString
@@ -989,16 +980,15 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
         let restoreExecutor = holdDeviceAExecutor()
         defer { restoreExecutor() }
 
-        let completed = expectation(description: "deleteAllBookmarks completion")
-        TPPAnnotations.deleteAllBookmarks(forBook: book) { completed.fulfill() }
-        wait(for: [completed], timeout: 5.0)
-
-        let deadline = Date().addingTimeInterval(8.0)
-        while Date() < deadline && !backend.allAnnotations(forBook: Self.bookID).isEmpty {
-            let tick = expectation(description: "poll tick")
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { tick.fulfill() }
-            wait(for: [tick], timeout: 1.0)
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            TPPAnnotations.deleteAllBookmarks(forBook: book) { continuation.resume() }
         }
+        // Join the fire-and-forget chain so the snapshot below records the FULL
+        // set of DELETEs. The old 8s poll made the contract snapshot itself
+        // load-dependent: a starved clone would snapshot a partial set of IDs
+        // and either drift the baseline or lock in an incomplete contract
+        // (STARVE-001).
+        await TPPAnnotations._awaitDeletionChainForTesting()
 
         // Deterministic contract: the SORTED set of deleted annotation IDs.
         for id in deleted.sortedIDs {
