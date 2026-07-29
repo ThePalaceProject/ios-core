@@ -192,7 +192,9 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
 ///   - `inflightAuthDocFetches`  → read/written only under `inflightAuthDocLock`.
 ///   - `userAccounts`, `lastKnownCurrentUserAccount`  → read/written only under
 ///     `userAccountsLock`.
-///   - `_trackedCrawlTasks`  → read/written only under `_trackedCrawlTasksLock`.
+///   - `_trackedFirstRunTasks`  → read/written only under `_trackedCrawlTasksLock`.
+///   - `ownedCrawlTasks`  → an `OwnedCrawlTaskRegistry`, internally synchronized;
+///     `crawlScheduler`  → immutable `Sendable` `let` bound once from `init`.
 ///   - `isAccountSwitching`  → storage moved into the lock-backed
 ///     `AccountsManagerBoolFlag` holder (`_isAccountSwitching`), so its `Bool`
 ///     set/get is serialized by the holder's own `NSLock`; the public
@@ -277,6 +279,14 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
     /// class's init. The lazy var is first accessed *after* AppContainer
     /// finishes constructing, so the cached instance is ready.
     private lazy var networkExecutor: TPPNetworkExecutor = AppContainer.production().networkExecutor
+    /// Injectable background-crawl spawn seam (see `CatalogCrawlScheduler`).
+    /// Immutable `Sendable` `let`; `.production` by default, recording under test.
+    private let crawlScheduler: CrawlTaskScheduler
+    /// Owns every background catalog-crawl Task — production included (PP-4754):
+    /// the previously fire-and-forget crawl now has an owner the reset
+    /// choreography cancels + awaits, so no un-drainable write channel survives a
+    /// test boundary. Self-pruning + internally synchronized.
+    private let ownedCrawlTasks = OwnedCrawlTaskRegistry()
     private var accountSet: String
     private var accountSets = [String: [Account]]()
     /// O(1) `uuid → Account` index derived from `accountSets`, kept in lockstep
@@ -342,9 +352,8 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
 
     #if DEBUG
     /// Test-only opt-out from the post-init background `loadCatalogs` spawn.
-    /// When `true`, `AccountsManager.init()` skips the
-    /// `DispatchQueue.global(qos: .utility).async { loadCatalogs(...) }`
-    /// dispatch — eliminating the cross-test race where lingering background
+    /// When `true`, `AccountsManager.init()` skips the owned background
+    /// `loadCatalogs` Task spawn — eliminating the cross-test race where lingering background
     /// work from a previously-constructed AccountsManager instance writes
     /// through to `accountSets` / `AccountStateStore.shared` mid-test.
     ///
@@ -436,40 +445,20 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
     }
     #endif
 
-    /// Registry of the unstructured background `Task`s spawned by
-    /// `loadCatalogs` → `fetchFromNetwork` / `refreshInBackground` (the
-    /// registry crawl, pagination, and catalog-preload). These are independent
-    /// tasks — NOT children of `backgroundFetchTask` — so `cancelBackgroundWork()`
-    /// did not previously cancel them. When a test constructed an
-    /// `AccountsManager` under `deferInitialLoadCatalogsForTesting = false`
-    /// (e.g. `AppContainerResetTests`), these tasks outlived the test and the
-    /// cooperative-cancel of `backgroundFetchTask`, leaking a live multi-page
-    /// network crawl into whatever test ran next — the root of the intermittent
-    /// cross-test CI crashes (a different victim each run).
-    ///
-    /// `_trackCrawlTask` no-ops outside an XCTest process (the runtime gate
-    /// below), so release / TestFlight / dev-sim builds never append — the
-    /// array stays empty and there is no storage cost or unbounded growth. The
-    /// only consumer that drains/cancels the list is `cancelBackgroundWork()`,
-    /// which is itself `#if DEBUG` and only invoked under `_resetForTesting()`
-    /// / wiring-suite tearDown. Using the XCTest env-var gate rather than
-    /// `#if DEBUG` on these production call sites keeps the crawl-spawn paths
-    /// free of conditional compilation (blast-radius BR-2).
+    /// PP-4754: every background catalog-crawl `Task` (init load, first-run,
+    /// crawl, pagination, refresh, the wrapped fallback GETs, preload) is spawned
+    /// through `spawnOwnedCrawlTask` into `ownedCrawlTasks` — production included,
+    /// no XCTest/`#if DEBUG` bookkeeping on the spawn path — so the reset
+    /// choreography cancels + awaits every one, closing the last un-drainable
+    /// write channel that leaked a live crawl into the next test.
     private static let _isRunningUnderXCTest =
         ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+    /// Guards `_trackedFirstRunTasks`.
     private let _trackedCrawlTasksLock = NSLock()
-    private var _trackedCrawlTasks: [Task<Void, Never>] = []
-    /// The subset of tracked tasks that are `loadCatalogs` FIRST-RUN tasks (the
-    /// detached bundled-decode → synchronous `fetchFromNetwork` kickoff). Guarded
-    /// by `_trackedCrawlTasksLock`. Populated only under XCTest (same env gate as
-    /// `_trackedCrawlTasks`). The deterministic-join seam
-    /// `_awaitAllCrawlTasksForTesting()` awaits ONLY these — NOT the downstream
-    /// live network crawl the first-run task spawns via `fetchFromNetwork` (that
-    /// hits the real registry and would reintroduce wall-clock nondeterminism).
-    /// By the time a first-run task's `.value` resolves, its synchronous
-    /// `fetchFromNetwork` call has already returned (bumping
-    /// `_fetchFromNetworkCount`), so joining the first-run task alone is a
-    /// deterministic barrier for the decode + fetch-fired observations.
+    /// Subset of owned tasks that are `loadCatalogs` FIRST-RUN tasks. Populated
+    /// only under XCTest (byte-identical to the prior `_trackFirstRunTask` gate).
+    /// The narrow `_awaitAllCrawlTasksForTesting()` seam joins ONLY these (see it
+    /// for why); the broad `_awaitCatalogLoadForTesting()` joins the whole set.
     private var _trackedFirstRunTasks: [Task<Void, Never>] = []
 
     /// Resolves the build-time bundled registry snapshot resource. Production
@@ -494,60 +483,74 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
         return _fetchFromNetworkCount
     }
 
-    /// Register a spawned background crawl task so `cancelBackgroundWork()` can
-    /// cancel it. No-op outside an XCTest process.
-    private func _trackCrawlTask(_ task: Task<Void, Never>) {
-        guard Self._isRunningUnderXCTest else { return }
-        _trackedCrawlTasksLock.lock()
-        _trackedCrawlTasks.append(task)
-        _trackedCrawlTasksLock.unlock()
+    /// Spawn a background crawl `Task` through `crawlScheduler` and register it in
+    /// `ownedCrawlTasks` so the reset choreography can cancel + await it.
+    /// `detached`/`priority` preserve each call site's exact semantics + QoS;
+    /// `firstRun` also records it in the narrow-join subset (XCTest only). A
+    /// `defer` self-prunes the token as the task unwinds, bounding the live set.
+    @discardableResult
+    private func spawnOwnedCrawlTask(
+        priority: TaskPriority,
+        detached: Bool,
+        firstRun: Bool = false,
+        _ operation: @escaping @Sendable () async -> Void
+    ) -> Task<Void, Never> {
+        let token = UUID()
+        let registry = ownedCrawlTasks
+        let owned: @Sendable () async -> Void = {
+            defer { registry.complete(token) }
+            await operation()
+        }
+        let task = detached
+            ? crawlScheduler.spawnDetached(priority, owned)
+            : crawlScheduler.spawn(priority, owned)
+        ownedCrawlTasks.register(token, task)
+        if firstRun { _trackFirstRunTask(task) }
+        return task
     }
 
-    /// Register a `loadCatalogs` FIRST-RUN task. Appends to BOTH the general
-    /// crawl registry (so `cancelBackgroundWork()` cancels it, identical to
-    /// `_trackCrawlTask`) AND the first-run subset the deterministic-join seam
-    /// awaits. No-op outside an XCTest process — production never populates
-    /// either list, so RELEASE behavior is byte-identical to a bare
-    /// `_trackCrawlTask` (which is itself a no-op in RELEASE).
+    /// Record a `loadCatalogs` FIRST-RUN task in the narrow-join subset. No-op
+    /// outside XCTest (the whole-set drain uses `ownedCrawlTasks`, not this).
     private func _trackFirstRunTask(_ task: Task<Void, Never>) {
         guard Self._isRunningUnderXCTest else { return }
         _trackedCrawlTasksLock.lock()
-        _trackedCrawlTasks.append(task)
         _trackedFirstRunTasks.append(task)
         _trackedCrawlTasksLock.unlock()
     }
 
-    /// Test-only deterministic JOIN seam. Snapshots the currently-tracked
-    /// FIRST-RUN tasks under the lock and `await`s each to completion, so a test
-    /// can join the ACTUAL off-main first-run work (bundled decode → synchronous
-    /// `fetchFromNetwork` kickoff) spawned by `loadCatalogs` instead of polling a
-    /// wall-clock deadline. Under CI's parallel sim clones a fixed-deadline poll
-    /// starves (the detached `.utility` task loses the CPU race) and fails on all
-    /// 3 retries; awaiting the real handle removes the clock entirely.
-    ///
-    /// Awaits ALL tracked first-run tasks (not just the most-recent), so a
-    /// dedupe-break that erroneously spawns a SECOND first-run task is also
-    /// joined — `testSecondConcurrentLoad` can then assert the decode ran exactly
-    /// once after every first-run task has finished. It deliberately does NOT
-    /// await the downstream live network crawl that `fetchFromNetwork` spawns
-    /// (which hits the real registry and would reintroduce nondeterministic
-    /// latency); the first-run task's synchronous `fetchFromNetwork` call has
+    /// Test-only whole-quiescence JOIN seam (PP-4754). Grows-until-stable: awaits
+    /// every owned crawl `Task`, re-snapshotting to catch tasks the wave spawned
+    /// (crawl → pagination/fallback → preload is a finite chain) until none is
+    /// new or `maxRounds` is hit. NO wall-clock — pure Task-join, so it never
+    /// starves under parallel CI clones (STARVE-001-clean) and never blocks main
+    /// (it suspends). No-op outside XCTest.
+    nonisolated func _awaitCatalogLoadForTesting(maxRounds: Int = 8) async {
+        guard Self._isRunningUnderXCTest else { return }
+        var awaited = Set<UUID>()
+        for _ in 0..<maxRounds {
+            let fresh = ownedCrawlTasks.snapshot().filter { !awaited.contains($0.0) }
+            if fresh.isEmpty { return }
+            for (token, task) in fresh {
+                _ = await task.value
+                awaited.insert(token)
+            }
+        }
+    }
+
+    /// Test-only quiescence assertion helper: number of live owned crawl tasks.
+    var _ownedCrawlTaskCountForTesting: Int { ownedCrawlTasks.count }
+
+    /// Test-only NARROW deterministic JOIN seam. Awaits every tracked FIRST-RUN
+    /// task (bundled decode → synchronous `fetchFromNetwork` kickoff) instead of
+    /// polling a wall-clock deadline that starves under parallel CI clones. It
+    /// deliberately does NOT await the downstream live crawl `fetchFromNetwork`
+    /// spawns — the first-run task's synchronous `fetchFromNetwork` call has
     /// already returned (bumping `_fetchFromNetworkCount`) by the time its
-    /// `.value` resolves, so joining the first-run task alone suffices.
-    ///
-    /// `nonisolated` + a synchronous lock-guarded snapshot: the manager is only
-    /// touched synchronously here (the `Task<Void, Never>` handles are Sendable),
-    /// so awaiting this from an `@MainActor` test never "sends" the non-Sendable
-    /// manager across an isolation boundary. Behavior-identical to a no-op in
-    /// RELEASE — the first-run-tasks array only ever populates under XCTest (the
-    /// `_trackFirstRunTask` env gate), and production never calls this method. It
-    /// only READS/awaits existing handles; it spawns no work and mutates no
-    /// production state.
-    /// Synchronous lock-guarded snapshot of the tracked first-run tasks. Split
-    /// out of the `async` join seam because `NSLock.lock()`/`.unlock()` are
-    /// unavailable from an async context (Swift 6 forbids them even when the
-    /// critical section never spans a suspension point). The `await` happens in
-    /// the caller, strictly after the lock is released here.
+    /// `.value` resolves, so joining the first-run task alone suffices for the
+    /// decode + fetch-fired observations. (For whole-quiescence use
+    /// `_awaitCatalogLoadForTesting`.) No-op in RELEASE — the array only
+    /// populates under XCTest. Snapshot-then-await-without-a-lock (Swift 6 bans
+    /// `NSLock.lock()` across an await).
     nonisolated private func _snapshotFirstRunTasksForTesting() -> [Task<Void, Never>] {
         _trackedCrawlTasksLock.lock()
         defer { _trackedCrawlTasksLock.unlock() }
@@ -571,12 +574,16 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
     /// - Parameter borrowReauthResetter: account-switch borrow-reauth reset seam
     ///   (Wave 3 S1). REAL default keeps every existing call site behavior-identical;
     ///   tests inject a spy, `AppContainer` passes it explicitly.
+    /// - Parameter crawlScheduler: injectable background-crawl spawn seam
+    ///   (PP-4754). `.production` keeps every call site behavior-identical.
     init(
         defaults: UserDefaults = .standard,
-        borrowReauthResetter: any BorrowReauthResetting = DownloadCenterBorrowReauthResetter()
+        borrowReauthResetter: any BorrowReauthResetting = DownloadCenterBorrowReauthResetter(),
+        crawlScheduler: CrawlTaskScheduler = .production
     ) {
         self.defaults = defaults
         self.borrowReauthResetter = borrowReauthResetter
+        self.crawlScheduler = crawlScheduler
         self.settings = TPPSettings()
         self.accountSet = TPPConfiguration.customUrlHash()
             ?? (settings.useBetaLibraries
@@ -629,20 +636,23 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
             // explicitly. Production never takes this branch.
             return
         }
-        // DEBUG-only arm: use `Task.detached` so the background work is
-        // cancellable from `cancelBackgroundWork()` (called by
-        // `AppContainer._resetForTesting()`). Production uses
-        // `DispatchQueue.global(qos: .utility).async`. Both arms run at
-        // `.utility` (bumped from `.background` in CP-D3) so the cold-launch
-        // registry crawl is not starved behind lower-priority work — and so
-        // DEBUG tests exercise the same QoS as production. swarm_4b64e4e0 Fix 2.
-        backgroundFetchTask = Task.detached(priority: .utility) { [weak self] in
+        #endif
+        // Unified background-load arm (both configs) — PP-4754. Routed through
+        // `spawnOwnedCrawlTask` so the crawl is OWNED (cancellable + drainable at
+        // a test boundary). RELEASE previously used a bare
+        // `DispatchQueue.global(qos: .utility).async` (untracked); it now spawns
+        // the SAME detached `.utility` work DEBUG has exercised for months. This
+        // ownership unification is the single deliberate production-visible
+        // delta; the crawl work (`loadCatalogs`) is unchanged. DEBUG keeps a
+        // separate `backgroundFetchTask` handle for the injection + cancellation
+        // observation seams; RELEASE lets the registry own it.
+        let initialLoadTask = spawnOwnedCrawlTask(priority: .utility, detached: true) { [weak self] in
             self?.loadCatalogs(completion: nil)
         }
+        #if DEBUG
+        backgroundFetchTask = initialLoadTask
         #else
-        DispatchQueue.global(qos: .utility).async { [weak self] in
-            self?.loadCatalogs(completion: nil)
-        }
+        _ = initialLoadTask
         #endif
     }
 
@@ -818,13 +828,12 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
         // conditional compilation on the production path). Production always
         // refreshes; tests seed slim snapshots explicitly.
         guard !Self._isRunningUnderXCTest else { return }
-        let task = Task.detached(priority: .utility) { [weak self] in
+        spawnOwnedCrawlTask(priority: .utility, detached: true) { [weak self] in
             guard let self, !Task.isCancelled else { return }
             guard let data = self.readCachedAccountsCatalogData(hash: hash) else { return }
             guard !Task.isCancelled else { return }
             self.writeSlimSnapshot(fromFullCatalogData: data, hash: hash)
         }
-        _trackCrawlTask(task)
     }
 
     /// Carve the current + settings accounts out of the full catalog blob and
@@ -1311,7 +1320,7 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
         // `_trackCrawlTask` so `cancelBackgroundWork()` cancels it — which
         // keeps the `Task.isCancelled` guard below meaningful (mirrors the
         // crawl tasks spawned inside `fetchFromNetwork`).
-        let firstRunTask = Task.detached(priority: .utility) { [weak self] in
+        spawnOwnedCrawlTask(priority: .utility, detached: true, firstRun: true) { [weak self] in
             guard let self = self else { return }
 
             // 2.5. Bundled snapshot fast-path. The `Task.isCancelled` guard
@@ -1339,7 +1348,6 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
             Log.debug(#file, "Loading catalogs from network for hash \(hash)…")
             self.fetchFromNetwork(targetUrl: targetUrl, hash: hash)
         }
-        _trackFirstRunTask(firstRunTask)
     }
 
     /// Fetches catalog data using the first-page fast path:
@@ -1365,7 +1373,7 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
             fallbackFetchFromNetwork(targetUrl: targetUrl, hash: hash)
             return
         }
-        let crawlTask = Task(priority: .userInitiated) { [weak self] in
+        spawnOwnedCrawlTask(priority: .userInitiated, detached: false) { [weak self] in
             guard let self = self else { return }
             Log.debug(#file, "Fetching catalogs via first-page fast path for hash \(hash)")
 
@@ -1405,7 +1413,7 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
                 // via a documented box (used strictly sequentially — see
                 // `CrawlerHandoffBox`). `firstPage`/`targetUrl` are Sendable.
                 let crawlerBox = CrawlerHandoffBox(crawler: crawler)
-                let paginationTask = Task(priority: .utility) { [weak self] in
+                self.spawnOwnedCrawlTask(priority: .utility, detached: false) { [weak self] in
                     guard let self = self else { return }
 
                     let remainingResult = await crawlerBox.crawler.crawlRemainingPages(
@@ -1425,7 +1433,6 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
                     }
                     self.triggerCatalogPreload()
                 }
-                self._trackCrawlTask(paginationTask)
 
             case .noChanges:
                 self.callAndClearLoadingHandlers(for: hash, true)
@@ -1435,34 +1442,32 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
                 self.fallbackFetchFromNetwork(targetUrl: targetUrl, hash: hash)
             }
         }
-        _trackCrawlTask(crawlTask)
     }
 
     /// Fallback direct GET when crawler fails on first launch.
+    ///
+    /// PP-4754: the GET completion used to be a fire-and-forget closure the
+    /// test-boundary drain could not await (the last un-drainable write channel).
+    /// It now runs inside an OWNED `spawnOwnedCrawlTask` bridging the callback GET
+    /// via the existing `ContinuationGuard`-protected `async throws` `GET` (so
+    /// the continuation resumes exactly once even on a -999 cancel). The
+    /// post-await `Task.isCancelled` guard drops a late response instead of
+    /// late-writing `AccountStateStore.shared` into the next test — now that the
+    /// task is owned+cancelled, this fully supersedes the prior DEBUG
+    /// `_explicitCancelCalled` completion guard.
     private func fallbackFetchFromNetwork(targetUrl: URL, hash: String) {
-        networkExecutor.GET(targetUrl, useTokenIfAvailable: false) { [weak self] result in
+        spawnOwnedCrawlTask(priority: .utility, detached: true) { [weak self] in
             guard let self = self else { return }
-            #if DEBUG
-            // Test-pollution guard: a completion for a manager the test-boundary
-            // drain already cancelled must not late-write AccountStateStore.shared
-            // into a subsequent test. This network completion is untracked (not a
-            // `_trackCrawlTask` Task, so the drain's cooperative-cancellation
-            // observation misses it) — without this guard its `cacheAccountsCatalogData`
-            // / `loadAccountSetsAndAuthDoc` writes can land on a later runloop turn,
-            // after the next test's AccountStateStore reset, keyed by a fixture-shared
-            // library UUID. Mirrors the `fetchAuthDocumentWithStateMachine` guards.
-            // Production is UNAFFECTED: `_explicitCancelCalled` is `#if DEBUG` and set
-            // only by `cancelBackgroundWork()` (reachable only from `_resetForTesting()`).
-            if self._explicitCancelCalled { return }
-            #endif
-            switch result {
-            case .success(let data, _):
+            do {
+                let (data, _) = try await self.networkExecutor.GET(targetUrl, useTokenIfAvailable: false)
+                if Task.isCancelled { return }
                 self.cacheAccountsCatalogData(data, hash: hash)
                 self.loadAccountSetsAndAuthDoc(fromCatalogData: data, key: hash) { success in
                     NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
                     self.callAndClearLoadingHandlers(for: hash, success)
                 }
-            case .failure(let error, _):
+            } catch {
+                if Task.isCancelled { return }
                 Log.error(#file, "Failed to load catalogs from network: \(error.localizedDescription)")
                 if let data = self.readCachedAccountsCatalogData(hash: hash) {
                     Log.info(#file, "Using cached catalog data as fallback after network failure")
@@ -1487,7 +1492,7 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
             fallbackFetchFromNetwork(targetUrl: targetUrl, hash: hash)
             return
         }
-        let refreshTask = Task(priority: .utility) { [weak self] in
+        spawnOwnedCrawlTask(priority: .utility, detached: false) { [weak self] in
             guard let self = self else { return }
             Log.debug(#file, "Starting background refresh (crawl) for catalog hash \(hash)")
 
@@ -1532,34 +1537,23 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
                 self.fallbackDirectRefresh(targetUrl: targetUrl, hash: hash)
             }
         }
-        _trackCrawlTask(refreshTask)
     }
 
-    /// Fallback to direct GET when crawlable endpoint fails.
+    /// Fallback to direct GET when crawlable endpoint fails. PP-4754: owned +
+    /// drainable, bridging the callback GET via the `ContinuationGuard`-protected
+    /// `async throws` `GET` — see `fallbackFetchFromNetwork` for the rationale.
     private func fallbackDirectRefresh(targetUrl: URL, hash: String) {
-        networkExecutor.GET(targetUrl, useTokenIfAvailable: false) { [weak self] result in
+        spawnOwnedCrawlTask(priority: .utility, detached: true) { [weak self] in
             guard let self = self else { return }
-            #if DEBUG
-            // Test-pollution guard: a completion for a manager the test-boundary
-            // drain already cancelled must not late-write AccountStateStore.shared
-            // into a subsequent test. This network completion is untracked (not a
-            // `_trackCrawlTask` Task, so the drain's cooperative-cancellation
-            // observation misses it) — without this guard its `cacheAccountsCatalogData`
-            // / `loadAccountSetsAndAuthDoc` writes can land on a later runloop turn,
-            // after the next test's AccountStateStore reset, keyed by a fixture-shared
-            // library UUID. Mirrors the `fetchAuthDocumentWithStateMachine` guards.
-            // Production is UNAFFECTED: `_explicitCancelCalled` is `#if DEBUG` and set
-            // only by `cancelBackgroundWork()` (reachable only from `_resetForTesting()`).
-            if self._explicitCancelCalled { return }
-            #endif
-            switch result {
-            case .success(let data, _):
+            do {
+                let (data, _) = try await self.networkExecutor.GET(targetUrl, useTokenIfAvailable: false)
+                if Task.isCancelled { return }
                 Log.info(#file, "Fallback direct refresh successful for hash \(hash)")
                 self.cacheAccountsCatalogData(data, hash: hash)
                 self.loadAccountSetsAndAuthDoc(fromCatalogData: data, key: hash) { _ in
                     NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
                 }
-            case .failure(let error, _):
+            } catch {
                 Log.debug(#file, "Fallback direct refresh also failed for hash \(hash): \(error.localizedDescription)")
             }
         }
@@ -1567,7 +1561,7 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
 
     /// Triggers catalog feed preloading for active accounts.
     private func triggerCatalogPreload() {
-        let preloadTask = Task(priority: .utility) { [weak self] in
+        spawnOwnedCrawlTask(priority: .utility, detached: false) { [weak self] in
             guard let self = self else { return }
             await self.catalogPreloader.preloadCatalogs(
                 currentAccount: self.currentAccount,
@@ -1575,7 +1569,6 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
                 accountProvider: { self.account($0) }
             )
         }
-        _trackCrawlTask(preloadTask)
     }
 
     // MARK: – Disk cache helpers
@@ -2194,7 +2187,13 @@ extension AccountsManager {
     /// `AppContainer._resetForTesting()`. swarm_4b64e4e0 Fix 2 — closes the
     /// H1 finding from swarm_f88ae9e3 A.
     ///
-    /// Residual race window (documented intentional): if `loadCatalogs` is
+    /// This is the COOPERATIVE cancel — it returns immediately. The SYNCHRONOUS
+    /// `cancelAndDrainBackgroundWork()` (which `_resetForTesting()` actually
+    /// calls at every boundary) awaits the full owned set, which drains the
+    /// previously un-awaitable fallback-GET channel. Kept for the
+    /// idempotent/observation-surface tests.
+    ///
+    /// Residual race window (NARROWED to one boundary): if `loadCatalogs` is
     /// already past the post-await `Task.isCancelled` check inside
     /// `fetchFromNetwork`, the network response still lands in `accountSets`
     /// on the OLD AccountsManager instance — but the OLD instance is no
@@ -2211,19 +2210,17 @@ extension AccountsManager {
         _explicitCancelCalled = true
         backgroundFetchTask?.cancel()
         backgroundFetchTask = nil
-        // Cancel the unstructured crawl / pagination / preload tasks spawned by
-        // loadCatalogs. These are independent of backgroundFetchTask, so
-        // without this they leak a live registry crawl past the test boundary
-        // and pollute the next test (the intermittent cross-test CI crash).
+        // Cancel every OWNED crawl / pagination / refresh / fallback-GET /
+        // preload task spawned by loadCatalogs — without this they leak a live
+        // crawl past the test boundary and pollute the next test. Each task
+        // self-prunes its token as it unwinds, so cancelAll() does not clear the
+        // map — the drain then awaits whatever is still live.
+        ownedCrawlTasks.cancelAll()
+        // Drop the first-run subset so the narrow join seam does not re-await an
+        // already-cancelled task.
         _trackedCrawlTasksLock.lock()
-        let crawlTasks = _trackedCrawlTasks
-        _trackedCrawlTasks.removeAll()
-        // Clear the first-run subset too — its handles are a subset of
-        // `_trackedCrawlTasks` (cancelled above), so dropping them here keeps the
-        // deterministic-join seam from re-awaiting an already-cancelled task.
         _trackedFirstRunTasks.removeAll()
         _trackedCrawlTasksLock.unlock()
-        crawlTasks.forEach { $0.cancel() }
         networkExecutor.cancelNonEssentialTasks()
     }
 
@@ -2253,14 +2250,16 @@ extension AccountsManager {
     /// `AppContainer._resetForTesting()` (every test boundary) so the fix is
     /// global across ALL flag-false crawl spawners, not a per-test patch.
     func cancelAndDrainBackgroundWork(timeout: TimeInterval = 3.0) {
-        // Capture the in-flight tasks BEFORE cancelBackgroundWork() clears them.
-        _trackedCrawlTasksLock.lock()
-        let crawlTasks = _trackedCrawlTasks
-        _trackedCrawlTasksLock.unlock()
+        // Capture the FULL owned set BEFORE cancelBackgroundWork() cancels it —
+        // including the newly-wrapped fallback GET tasks, so the last
+        // un-drainable write channel is now awaited, not missed.
+        // `backgroundFetchTask` is also awaited to cover a test-INJECTED task
+        // not in the registry (an owned task awaited twice returns immediately).
+        let ownedTasks = ownedCrawlTasks.snapshot().map { $0.1 }
         let fetchTask = backgroundFetchTask
-        let tasksToDrain = crawlTasks + [fetchTask].compactMap { $0 }
+        let tasksToDrain = ownedTasks + [fetchTask].compactMap { $0 }
 
-        cancelBackgroundWork() // requests cancellation, nils handles, clears list
+        cancelBackgroundWork() // requests cancellation, nils the handle
 
         if tasksToDrain.isEmpty {
             // No tracked Tasks, but init may have enqueued a DispatchQueue.main.async
