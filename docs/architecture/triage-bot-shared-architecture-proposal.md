@@ -11,7 +11,7 @@ description: Technical documentation for the shared triage bot architecture acro
 
 # Triage Bot: Shared Architecture (iOS + Android + Server)
 
-<!-- audit-verified: PP-4882/4883/4884/4885/4886 summaries and story/sub-task structure verified via Jira API 2026-07-29; Android log-leak citations carried from section 8.4 footnotes, themselves audit-verified against android-core source -->
+<!-- audit-verified: PP-4882/4883/4884/4885/4886 summaries and story/sub-task structure verified via Jira API 2026-07-29; Android report-redaction prerequisite verified against android-core source; implementation specifics deliberately omitted and raised with the maintainer directly -->
 
 ## Decision cover memo
 
@@ -32,10 +32,6 @@ description: Technical documentation for the shared triage bot architecture acro
 | The corpus tamper window between Phase 1 and the Phase 3 manifest anchor ([section 4.3](#43-client-fetch-cache-and-integrity)) | _unassigned_ |
 | The HelpSpot vendor credential stored in plaintext JSONB in the CM database ([C7](#3-design-constraints), [section 5.3](#53-credential-storage-rate-limiting-and-permanence)) | _unassigned_ |
 | Patron problem text, redacted and sanitized on device, reaching a commercial AI vendor in V2 ([section 6](#6-server-ai-proxy-v2)) | _unassigned_ |
-
-## Escalation: the Android log leak
-
-> **Addressed to Mark Raynsford, as the `android-core` maintainer.** This review surfaced a pre-existing issue that is independent of the triage bot and of every decision in this document; it is recorded here so it is not lost, not because it belongs to this project. The shipped Android app's existing "report an issue" flow zips up to seven days of logs into a mail intent; release builds log at DEBUG level; and `AccountUsername` and the SAML/OIDC `accessToken` fields are logged wholesale, with no redaction anywhere in that codebase. Only `AccountPassword` redacts. This is present in the shipped app today, bot or no bot, and does not depend on anything decided here. The assessment and the fix are the maintainer's to own. It also matters to this plan: the bot would use the same path, so it is a prerequisite for the Android work as well as an issue in its own right. Citations and the scoping ask are in [section 8.4](#84-prerequisite-workstream-report-redaction).
 
 **Status: revision 4. The iOS client is built and flagged off; none of the server or Android components exist yet.** This document is written as the documentation for those components, ahead of their build: when the corpus artifact, the ticket endpoint, and the Android module exist, this is the document an engineer reads to understand them. The [open-decision register](#16-open-decisions) is the single authority on what is settled versus open; if a fork appears in prose but not in the register, that is a bug in this document.
 
@@ -70,7 +66,6 @@ The triage bot is a fully on-device support assistant: an 18-entry knowledge cat
 ## Contents
 
 - [Decision cover memo](#decision-cover-memo)
-- [Escalation: the Android log leak](#escalation-the-android-log-leak)
 
 1. [Overview](#1-overview)
 2. [Architecture](#2-architecture)
@@ -470,7 +465,9 @@ These fixtures are the same ones the corpus publish gate runs ([section 4.2](#42
 
 ### 8.4 Prerequisite workstream: report redaction
 
-Stated factually, because it is Android-owned: the existing Android report leaks materially more than iOS's, and there is zero redaction anywhere in the codebase. Release builds log at DEBUG to a rolling file with 7 daily archives, all zipped into the support email[^android-logs]; `AccountUsername` and SAML/OIDC `accessToken` have no `toString()` override and are logged wholesale[^android-logs]; only `AccountPassword` redacts. This finding is [escalated at the top of this document](#escalation-the-android-log-leak), addressed to the `android-core` maintainer: it predates the bot, exists in the shipped app today, and is the maintainer's to assess and fix regardless of what happens to this proposal.
+The existing Android report flow attaches log archives that are not redacted: there is no redaction layer anywhere in that codebase, and the bot would use the same path[^android-logs]. Redaction at the logging boundary, or at zip-assembly time, is therefore a prerequisite for the Android client rather than a nice-to-have, and it is Android-owned work that predates this proposal.
+
+Specifics have been raised directly with the `android-core` maintainer rather than enumerated here. What matters for planning is the shape: this is a separate workstream, plausibly larger than the bot module itself, and it gates the bot's use of the report path.
 
 Porting the redactor is necessary but **not sufficient**: a redacted transcript beside a log zip full of bearer tokens is theatre. Redaction at the logging boundary or at zip-assembly time is a prerequisite for any Android ticket submission, bot or no bot.
 
@@ -820,7 +817,7 @@ This architecture cannot be executed by this repo's contributors alone; naming t
 [^ecs-prose]: `circulation/docker/README.md:60-61`.
 [^android-reports]: `android-core`: `palace-reports/.../Reports.kt:99-131` (zip + `ACTION_SEND` to `logs@thepalaceproject.org`; log-zip assembly at `:103-109`).
 [^android-support-email]: `android-core`: `AccountDetailFragment.kt:425-471`.
-[^android-logs]: `android-core`: `MainLogging.kt:148-153` (release builds log at DEBUG, 7 daily archives); `BorrowTask.kt:623` (`AccountUsername`), `FeedHTTPTransport.kt:37` (SAML/OIDC `accessToken`).
+[^android-logs]: `android-core`: logging configuration in `MainLogging.kt` and the report-assembly path in `palace-reports/Reports.kt`. A repository-wide search finds no redaction layer. Specifics raised directly with the maintainer.
 [^android-analytics]: `android-core`: `CirculationAnalyticsSystem.kt:28-42`.
 [^swift-android-sdk]: Swift.org, "Announcing the Swift SDK for Android": <https://www.swift.org/blog/nightly-swift-sdk-for-android/>; over 2,200 packages building for Android per the Swift Android Workgroup's tracking.
 [^swift-android-wg]: Swift Android Workgroup: <https://www.swift.org/android-workgroup/>.
