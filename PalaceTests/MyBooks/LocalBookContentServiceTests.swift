@@ -223,16 +223,81 @@ final class LocalBookContentServiceTests: XCTestCase {
 
     private func makeService(
         fulfiller: SpyLCPContentFulfiller,
-        reporter: SpyProgressReporter? = nil
+        reporter: SpyProgressReporter? = nil,
+        idleTimeout: TimeInterval = LocalBookContentService.inflightContentDownloadIdleTimeout
     ) -> LocalBookContentService {
         let service = LocalBookContentService(
             bookRegistry: registry,
             accountsManager: AppContainer.production().accountsManager,
             bookFileManager: bookFileManager,
-            lcpContentFulfiller: fulfiller.fulfill
+            lcpContentFulfiller: fulfiller.fulfill,
+            inflightIdleTimeout: idleTimeout
         )
         service.contentDownloadReporter = reporter
         return service
+    }
+
+    // MARK: - Claim lifetime: idle expiry, heartbeat, token-matched release
+    //
+    // The first version of this guard held a claim for the process lifetime, so
+    // a dropped completion wedged the book forever. The second sized the window
+    // to the open gate's 180s ceiling as a TOTAL duration — which every title
+    // this change was measured against exceeds, so a healthy transfer aged out
+    // of its own slot and the next Listen started a duplicate: the exact defect
+    // the guard exists to prevent. It is now an IDLE window with a heartbeat.
+
+    func testClaim_silentPastTheIdleWindow_isReclaimed() throws {
+        let book = try seedLicenseOnlyLCPAudiobook()
+        let fulfiller = SpyLCPContentFulfiller()
+        let service = makeService(fulfiller: fulfiller, idleTimeout: 0.05)
+
+        service.redownloadLCPContentFile(for: book)
+        XCTAssertEqual(fulfiller.callCount, 1)
+
+        // No progress, no completion — the transfer is silent.
+        Thread.sleep(forTimeInterval: 0.12)
+        service.redownloadLCPContentFile(for: book)
+
+        XCTAssertEqual(fulfiller.callCount, 2,
+                       "a transfer that has gone silent past the idle window must be reclaimable, or a dropped callback wedges the book permanently")
+    }
+
+    func testClaim_heartbeatedByProgress_isNOTReclaimed() throws {
+        let book = try seedLicenseOnlyLCPAudiobook()
+        let fulfiller = SpyLCPContentFulfiller()
+        let service = makeService(fulfiller: fulfiller, idleTimeout: 0.05)
+
+        service.redownloadLCPContentFile(for: book)
+        XCTAssertEqual(fulfiller.callCount, 1)
+
+        // A long but healthy transfer: total elapsed far exceeds the window,
+        // but it keeps reporting progress throughout.
+        for _ in 0..<6 {
+            Thread.sleep(forTimeInterval: 0.02)
+            fulfiller.emitProgress(0.1)
+        }
+
+        service.redownloadLCPContentFile(for: book)
+
+        XCTAssertEqual(fulfiller.callCount, 1,
+                       "a live transfer must never age out of its own slot — that is what turned a 1.9 GB download into two")
+    }
+
+    func testRelease_fromAReclaimedTransfer_doesNotFreeTheSuccessorsSlot() throws {
+        let book = try seedLicenseOnlyLCPAudiobook()
+        let first = SpyLCPContentFulfiller()
+        let service = makeService(fulfiller: first, idleTimeout: 0.05)
+
+        service.redownloadLCPContentFile(for: book)
+        Thread.sleep(forTimeInterval: 0.12)
+        service.redownloadLCPContentFile(for: book)   // reclaimed by a second transfer
+        XCTAssertEqual(first.callCount, 2)
+
+        // The ABANDONED first transfer finally reports back.
+        first.finishWithError(NSError(domain: "test", code: 1), callIndex: 0)
+
+        XCTAssertTrue(service.isContentDownloadInFlight(for: book.identifier),
+                      "a late completion from a reclaimed transfer must not release the slot its successor holds, or a third duplicate can start")
     }
 
     func testRedownload_whileFirstTransferInFlight_doesNotStartADuplicate() throws {
@@ -382,8 +447,14 @@ final class LocalBookContentServiceTests: XCTestCase {
 private final class SpyLCPContentFulfiller {
     private(set) var callCount = 0
     private(set) var lastLicenseURL: URL?
-    private var progressHandler: ((Double) -> Void)?
-    private var completionHandler: ((URL?, Error?) -> Void)?
+    /// Retained PER CALL, not just the latest. A reclaimed transfer's callback
+    /// must be firable after its successor has started, which is the only way to
+    /// exercise token-matched release.
+    private var progressHandlers: [(Double) -> Void] = []
+    private var completionHandlers: [(URL?, Error?) -> Void] = []
+
+    private var progressHandler: ((Double) -> Void)? { progressHandlers.last }
+    private var completionHandler: ((URL?, Error?) -> Void)? { completionHandlers.last }
 
     func fulfill(
         licenseURL: URL,
@@ -392,8 +463,14 @@ private final class SpyLCPContentFulfiller {
     ) {
         callCount += 1
         lastLicenseURL = licenseURL
-        progressHandler = progress
-        completionHandler = completion
+        progressHandlers.append(progress)
+        completionHandlers.append(completion)
+    }
+
+    /// Fires the completion of the Nth transfer (0-based), so an abandoned
+    /// transfer can report back after a successor has claimed the slot.
+    func finishWithError(_ error: Error, callIndex: Int) {
+        completionHandlers[callIndex](nil, error)
     }
 
     func emitProgress(_ fraction: Double) {

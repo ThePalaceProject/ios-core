@@ -7,92 +7,14 @@
 //
 
 import XCTest
-import PalaceCatalog
 @testable import Palace
 
 final class ButtonStateTests: XCTestCase {
 
     override func tearDown() {
-        #if LCP
-        BookButtonState.lcpContentPresenceOverride = nil
-        #endif
         super.tearDown()
     }
 
-    #if LCP
-
-    // MARK: - LCP audiobook: "Listen" requires audio on the device
-    //
-    // `.downloadNeeded` used to map to `.downloadSuccessful` for any LCP
-    // audiobook, on the premise that the license alone made it playable by
-    // streaming. Streaming from the license is broken upstream and the whole
-    // `.lcpa` must be local before playback, so that mapping offered a Listen
-    // button that could not play anything — most visibly after a cancelled
-    // download, where the state persists for as long as the archive is missing.
-
-    /// Marketplace `/loans/` shape: LCP license MIME on the acquisition with
-    /// `application/audiobook+lcp` as the terminal indirect, which is what
-    /// `LCPAudiobooks.canOpenBook` actually accepts.
-    private func makeLCPAudiobook() -> TPPBook {
-        let acquisition = TPPOPDSAcquisition(
-            relation: .generic,
-            type: "application/vnd.readium.lcp.license.v1.0+json",
-            hrefURL: URL(string: "https://library.test/book.lcpl")!,
-            indirectAcquisitions: [
-                TPPOPDSIndirectAcquisition(type: "application/audiobook+lcp", indirectAcquisitions: [])
-            ],
-            availability: TPPOPDSAcquisitionAvailabilityUnlimited()
-        )
-        return TPPBook(
-            acquisitions: [acquisition], authors: [], categoryStrings: [],
-            distributor: "Test", identifier: UUID().uuidString,
-            imageURL: nil, imageThumbnailURL: nil, published: Date(),
-            publisher: "Test", subtitle: nil, summary: nil,
-            title: "Test LCP Audiobook", updated: Date(),
-            annotationsURL: nil, analyticsURL: nil, alternateURL: nil,
-            relatedWorksURL: nil, previewLink: nil, seriesURL: nil,
-            revokeURL: nil, reportURL: nil, timeTrackingURL: nil,
-            contributors: [:], bookDuration: nil, imageCache: MockImageCache()
-        )
-    }
-
-    func testDownloadNeeded_lcpAudiobookWithoutContent_offersDownloadNotListen() {
-        let book = makeLCPAudiobook()
-        let registry = TPPBookRegistryMock()
-        registry.addBook(book, state: .downloadNeeded)
-        BookButtonState.lcpContentPresenceOverride = { _ in false }
-
-        let state = BookButtonState(book, bookRegistry: registry)
-
-        XCTAssertEqual(state, .downloadNeeded,
-                       "with no .lcpa on disk there is nothing to play — offering Listen hands the patron a dead button")
-    }
-
-    func testDownloadNeeded_lcpAudiobookWithContent_offersListen() {
-        let book = makeLCPAudiobook()
-        let registry = TPPBookRegistryMock()
-        registry.addBook(book, state: .downloadNeeded)
-        BookButtonState.lcpContentPresenceOverride = { _ in true }
-
-        let state = BookButtonState(book, bookRegistry: registry)
-
-        XCTAssertEqual(state, .downloadSuccessful,
-                       "content present means it really is playable — this is the heal for a stale .downloadNeeded")
-    }
-
-    func testDownloadNeeded_nonLCPBook_isUnaffectedByContentPresence() {
-        let book = testEpub
-        let registry = TPPBookRegistryMock()
-        registry.addBook(book, state: .downloadNeeded)
-        BookButtonState.lcpContentPresenceOverride = { _ in true }
-
-        let state = BookButtonState(book, bookRegistry: registry)
-
-        XCTAssertEqual(state, .downloadNeeded,
-                       "the LCP-audiobook special case must not leak into ordinary books")
-    }
-
-    #endif
 
     private var testAudiobook: TPPBook {
         TPPBook(dictionary: [

@@ -103,6 +103,13 @@ class BookCellModel: ObservableObject {
     /// progress for the whole transfer.
     @Published var isDownloadingLCPContent: Bool = false
 
+    /// Progress samples observed from `downloadProgressPublisher`. Needed
+    /// because the LCP content re-download is not registered in the download
+    /// center's `downloadInfo`, so the computed `downloadProgress` below has no
+    /// other source for it. Reset on the rising edge of a new content transfer
+    /// so a book whose earlier download reached 1.0 does not show a full bar.
+    @Published private var observedProgress: Double = 0.0
+
     @Published private(set) var stableButtonState: BookButtonState = .unsupported {
         didSet {
             // Always update state when stableButtonState changes - avoids comparison edge cases
@@ -300,9 +307,25 @@ class BookCellModel: ObservableObject {
         // this transfer and the ordinary progress cue cannot see it.
         downloadCenter.lcpContentDownloadPublisher
             .filter { [weak self] in $0.0 == self?.book.identifier }
-            .map(\.1)
             .receive(on: RunLoop.main)
-            .assign(to: &$isDownloadingLCPContent)
+            .sink { [weak self] update in
+                guard let self else { return }
+                let isActive = update.1
+                if isActive && !self.isDownloadingLCPContent {
+                    self.observedProgress = 0.0
+                }
+                self.isDownloadingLCPContent = isActive
+            }
+            .store(in: &cancellables)
+
+        downloadCenter.downloadProgressPublisher
+            .filter { [weak self] in $0.0 == self?.book.identifier }
+            .receive(on: RunLoop.main)
+            .sink { [weak self] update in
+                guard let self else { return }
+                self.observedProgress = max(self.observedProgress, update.1)
+            }
+            .store(in: &cancellables)
 
         // Subscribe to download errors so the half sheet can present them via SwiftUI .alert.
         // Filter by error kind: borrow errors only show for unregistered books (user tapped Get),
@@ -857,6 +880,13 @@ extension BookCellModel: HalfSheetProvider {
     }
 
     var downloadProgress: Double {
-        downloadCenter.downloadProgress(for: book.identifier)
+        // `downloadCenter.downloadProgress(for:)` reads `downloadInfo`, which is
+        // populated only for transfers the download center owns. The LCP `.lcpa`
+        // content re-download runs on an out-of-band background session and
+        // never appears there, so relying on it alone would render a
+        // determinate bar pinned at 0% for the whole transfer — the "looks
+        // broken" impression this cue exists to remove. `observedProgress`
+        // carries the published samples for that case.
+        max(downloadCenter.downloadProgress(for: book.identifier), observedProgress)
     }
 }

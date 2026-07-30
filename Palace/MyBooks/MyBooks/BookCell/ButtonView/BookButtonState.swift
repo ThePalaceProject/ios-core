@@ -143,27 +143,6 @@ extension BookButtonState {
 }
 
 extension BookButtonState {
-
-    #if LCP
-    /// Whether the LCP audiobook's `.lcpa` content package is on disk.
-    ///
-    /// Overridable so the mapping above can be exercised without touching the
-    /// real container. Production reads the same download-center path the
-    /// fulfillment and self-heal paths use, so the three agree on what
-    /// "downloaded" means.
-    static var lcpContentPresenceOverride: ((TPPBook) -> Bool)?
-
-    static func lcpContentIsOnDisk(_ book: TPPBook) -> Bool {
-        if let lcpContentPresenceOverride {
-            return lcpContentPresenceOverride(book)
-        }
-        guard let url = AppContainer.production().downloadCenter.fileUrl(for: book.identifier) else {
-            return false
-        }
-        return FileManager.default.fileExists(atPath: url.path)
-    }
-    #endif
-
     init?(_ book: TPPBook, bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry) {
         let bookState = bookRegistry.state(for: book.identifier)
         switch bookState {
@@ -176,17 +155,7 @@ extension BookButtonState {
             self = buttonState
         case .downloadNeeded:
             #if LCP
-            // Streaming-era assumption, no longer true: an LCP audiobook whose
-            // license was on disk used to be playable by streaming, so this
-            // reported `.downloadSuccessful` ("Listen") regardless of whether
-            // the audio was on the device. Streaming from the license is broken
-            // upstream and the whole `.lcpa` must be local before playback, so
-            // reporting Listen here hands the patron a button that cannot play
-            // anything — and, after a cancelled download, does so for as long as
-            // the archive is missing rather than for a few microseconds.
-            //
-            // Offer Listen only when the content is genuinely present.
-            if LCPAudiobooks.canOpenBook(book), Self.lcpContentIsOnDisk(book) {
+            if LCPAudiobooks.canOpenBook(book) {
                 self = .downloadSuccessful
             } else {
                 self = .downloadNeeded

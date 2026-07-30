@@ -43,6 +43,9 @@ class LocalBookContentService {
     private let bookFileManager: BookFileManager
     private let fileManager: FileManager
     private let lcpContentFulfiller: LCPContentFulfilling
+    /// Per-instance so tests can drive the idle-expiry and heartbeat behaviour
+    /// in milliseconds instead of waiting out the production window.
+    private let inflightIdleTimeout: TimeInterval
 
     /// Progress/activity sink for the LCP content re-download. Assigned by
     /// `MyBooksDownloadCenter` after `init` because the reporter is created
@@ -62,32 +65,53 @@ class LocalBookContentService {
     /// the two competed for the patron's bandwidth. Verified on device against
     /// A1QA: 2 × 778 MB for one 778 MB audiobook.
     ///
-    /// Keyed by book identifier → the time the transfer was claimed, so a claim
-    /// whose completion never fires can be reclaimed instead of wedging the book
-    /// for the process lifetime. That failure mode is reachable: the fulfillment
-    /// call is a background `URLSession` and a cancelled or suspended task can
-    /// drop its callback, after which every later `redownloadLCPContentFile`
-    /// would no-op and the open gate would dead-end at "Audiobook Unavailable" —
-    /// the exact complaint the gate exists to remove.
-    ///
-    /// Sized to the open gate's own ceiling: past that point the gate has
-    /// already given up on this transfer, so nothing is served by still
-    /// reserving the slot for it.
-    private var inflightContentDownloads = [String: Date]()
+    /// A claim is reclaimable rather than permanent, because a dropped callback
+    /// is reachable: the fulfillment call runs on a background `URLSession` and a
+    /// cancelled or suspended task can lose its completion, after which every
+    /// later `redownloadLCPContentFile` would no-op and the open gate would
+    /// dead-end at "Audiobook Unavailable" — the exact complaint the gate exists
+    /// to remove.
+    private struct ContentDownloadClaim {
+        /// Identifies THIS transfer. Release and heartbeat both require it, so a
+        /// late completion from an abandoned transfer cannot free, or keep
+        /// alive, the slot belonging to a different one.
+        let token: UUID
+        /// Monotonic nanoseconds of the last sign of life. Monotonic rather than
+        /// wall-clock so a clock adjustment or timezone change cannot make a
+        /// live transfer look expired.
+        var lastActivity: UInt64
+    }
+
+    private var inflightContentDownloads = [String: ContentDownloadClaim]()
     private let inflightLock = NSLock()
 
-    /// How long a claimed transfer may stay in flight before a later caller
-    /// treats it as dead and reclaims the slot. Matches
-    /// `AudiobookSessionManager.awaitAudiobookContentLocal`'s timeout.
-    static let inflightContentDownloadTimeout: TimeInterval = 180
+    /// How long a claim may go WITHOUT a sign of life before a later caller
+    /// treats it as dead and reclaims the slot.
+    ///
+    /// This is an idle timeout, not a total-duration one, and the distinction is
+    /// load-bearing. Sizing it to the open gate's 180s ceiling as a total
+    /// duration would expire a healthy transfer of any of the titles this change
+    /// was measured against (438 MB / 778 MB / 1,897 MB routinely exceed three
+    /// minutes), so the patron's next Listen would start a SECOND full transfer
+    /// — reintroducing the very defect the guard exists to prevent. The progress
+    /// callback heartbeats the claim, so only a genuinely silent transfer ages
+    /// out. Comfortably beyond the fulfillment session's own 60s request
+    /// timeout, so a stalled connection fails there first.
+    static let inflightContentDownloadIdleTimeout: TimeInterval = 180
+
+    private static func monotonicNow() -> UInt64 {
+        DispatchTime.now().uptimeNanoseconds
+    }
 
     init(
         bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry,
         accountsManager: AccountsManager = AppContainer.production().accountsManager,
         bookFileManager: BookFileManager? = nil,
         fileManager: FileManager = .default,
-        lcpContentFulfiller: LCPContentFulfilling? = nil
+        lcpContentFulfiller: LCPContentFulfilling? = nil,
+        inflightIdleTimeout: TimeInterval = LocalBookContentService.inflightContentDownloadIdleTimeout
     ) {
+        self.inflightIdleTimeout = inflightIdleTimeout
         self.bookRegistry = bookRegistry
         self.accountsManager = accountsManager
         self.bookFileManager = bookFileManager ?? BookFileManager(
@@ -107,30 +131,51 @@ class LocalBookContentService {
 
     // MARK: - In-flight bookkeeping
 
-    /// Claims the in-flight slot for `identifier`. Returns `false` when a
-    /// download is already running for that book, in which case the caller must
-    /// not start another.
-    private func claimContentDownloadSlot(_ identifier: String, now: Date = Date()) -> Bool {
+    /// Claims the slot for `identifier`, returning the claim token, or `nil`
+    /// when a transfer that is still showing signs of life already holds it —
+    /// in which case the caller must not start another.
+    private func claimContentDownloadSlot(
+        _ identifier: String,
+        now: UInt64 = LocalBookContentService.monotonicNow()
+    ) -> UUID? {
         inflightLock.lock()
         defer { inflightLock.unlock() }
-        if let startedAt = inflightContentDownloads[identifier],
-           now.timeIntervalSince(startedAt) < Self.inflightContentDownloadTimeout {
-            return false
+        let idleLimit = UInt64(inflightIdleTimeout * 1_000_000_000)
+        if let existing = inflightContentDownloads[identifier],
+           now &- existing.lastActivity < idleLimit {
+            return nil
         }
-        // Either unclaimed, or the previous claim is older than the window and
-        // its completion is never coming — reclaim rather than dedupe against a
-        // dead transfer.
-        inflightContentDownloads[identifier] = now
-        return true
+        // Either unclaimed, or the holder has been silent past the idle window
+        // and its completion is never coming — reclaim rather than dedupe
+        // against a dead transfer and leave the book unrecoverable.
+        let token = UUID()
+        inflightContentDownloads[identifier] = ContentDownloadClaim(token: token, lastActivity: now)
+        return token
+    }
+
+    /// Records a sign of life for a claim. Called from the progress callback so
+    /// a long but healthy transfer never ages out of its own slot.
+    private func touchContentDownloadSlot(
+        _ identifier: String,
+        token: UUID,
+        now: UInt64 = LocalBookContentService.monotonicNow()
+    ) {
+        inflightLock.lock()
+        defer { inflightLock.unlock() }
+        guard inflightContentDownloads[identifier]?.token == token else { return }
+        inflightContentDownloads[identifier]?.lastActivity = now
     }
 
     /// Releases the in-flight slot for `identifier`. Must run on every
     /// completion path — success, fulfillment error, and file-move failure —
     /// or the book can never be re-downloaded for the rest of the process.
-    private func releaseContentDownloadSlot(_ identifier: String) {
+    /// Token-matched so a late completion from a reclaimed transfer cannot free
+    /// the slot its successor is holding.
+    private func releaseContentDownloadSlot(_ identifier: String, token: UUID) {
         inflightLock.lock()
+        defer { inflightLock.unlock() }
+        guard inflightContentDownloads[identifier]?.token == token else { return }
         inflightContentDownloads.removeValue(forKey: identifier)
-        inflightLock.unlock()
     }
 
     /// Test seam: whether a content download is currently claimed for
@@ -271,7 +316,7 @@ class LocalBookContentService {
         // the fulfiller is invoked so a synchronous re-entrant call cannot slip
         // between the check and the start.
         let identifier = book.identifier
-        guard claimContentDownloadSlot(identifier) else {
+        guard let claimToken = claimContentDownloadSlot(identifier) else {
             Log.info(#file, "📥 [LCP RE-DOWNLOAD] a download is already in flight for '\(book.title)' — skipping duplicate")
             return
         }
@@ -280,13 +325,17 @@ class LocalBookContentService {
         contentDownloadReporter?.sendLCPContentDownloadActive(bookIdentifier: identifier, active: true)
 
         let progressHandler: (Double) -> Void = { [weak self] fraction in
+            // Heartbeat the claim: a multi-gigabyte transfer takes far longer
+            // than the idle window, and without this it would age out of its own
+            // slot mid-flight and the next Listen would start a duplicate.
+            self?.touchContentDownloadSlot(identifier, token: claimToken)
             self?.contentDownloadReporter?.sendProgress(bookIdentifier: identifier, progress: fraction)
         }
 
         lcpContentFulfiller(licenseURL, progressHandler) { [weak self, fileManager] localUrl, error in
             // Release the slot and close the UI cue on EVERY exit path below.
             defer {
-                self?.releaseContentDownloadSlot(identifier)
+                self?.releaseContentDownloadSlot(identifier, token: claimToken)
                 self?.contentDownloadReporter?.sendLCPContentDownloadActive(bookIdentifier: identifier, active: false)
             }
 

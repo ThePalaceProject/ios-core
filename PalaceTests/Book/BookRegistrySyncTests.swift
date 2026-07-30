@@ -61,6 +61,28 @@ final class BookRegistrySyncTests: XCTestCase {
         )
     }
 
+    /// Kills the `return true` mutant: without a content-present case the helper
+    /// could unconditionally claim every book is missing content, which would
+    /// push healthy downloaded audiobooks back to `.downloadNeeded` on every
+    /// launch and re-download them.
+    func testLCPContentMissing_lcpAudiobookWithContentOnDisk_isFalse() throws {
+        let book = makeLCPAudiobook()
+        let account = "test-account"
+        let contentURL = try XCTUnwrap(
+            appContainerForContentPath.downloadCenter.fileUrl(for: book, account: account),
+            "need a resolvable content path to stage the present-content case"
+        )
+        try FileManager.default.createDirectory(at: contentURL.deletingLastPathComponent(),
+                                                withIntermediateDirectories: true)
+        try Data(repeating: 0xAB, count: 1024).write(to: contentURL)
+        defer { try? FileManager.default.removeItem(at: contentURL) }
+
+        XCTAssertFalse(
+            syncManager.lcpContentMissing(for: book, account: account),
+            "content on disk means nothing is missing — reporting true here would re-download every healthy audiobook at launch"
+        )
+    }
+
     func testLCPContentMissing_nonLCPBook_isFalse() {
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
 
@@ -77,11 +99,15 @@ final class BookRegistrySyncTests: XCTestCase {
     private var syncManager: BookRegistrySync!
     private var accountsManager: AccountsManager!
     private var tempDirectory: URL!
+    /// Retained so LCP content-presence tests can resolve the same download
+    /// paths the sync manager uses.
+    private var appContainerForContentPath: AppContainer!
 
     override func setUp() {
         super.setUp()
         store = BookRegistryStore()
         let appContainer = makeTestAppContainer()
+        appContainerForContentPath = appContainer
         accountsManager = appContainer.accountsManager
         syncManager = BookRegistrySync(
             store: store,
