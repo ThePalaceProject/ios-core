@@ -179,6 +179,40 @@ final class DownloadStartCoordinatorTests: XCTestCase {
         XCTAssertEqual(processUnregisteredCalls.count, 0)
     }
 
+    /// A book whose `.lcpa` is already transferring must not start a second fetch
+    /// when the patron taps Download.
+    ///
+    /// Neither existing gate covers this: `downloadInfo` is cleared ~100 ms into the
+    /// content phase, and the book deliberately does NOT claim `.downloading` while
+    /// a background re-download runs (that would offer a Cancel which cannot stop
+    /// the transfer). So the state is `.downloadNeeded`, the patron sees a Download
+    /// button beside a moving progress bar, and a tap previously fell straight
+    /// through to a full second archive fetch.
+    func testStartDownloadAsync_lcpContentTransferAlreadyRunning_skipsDuplicate() async {
+        bookRegistry.setState(.downloadNeeded, for: book.identifier)
+        coordinator.hasActiveLCPContentTransfer = { [bookIdentifier = book.identifier] in
+            $0 == bookIdentifier
+        }
+
+        await coordinator.startDownloadAsync(for: book, withRequest: nil)
+
+        XCTAssertEqual(processWithCredentialsCalls.count, 0,
+                       "a tap during a live .lcpa transfer must not start a second archive download")
+        XCTAssertEqual(requestCredentialsCalls.count, 0)
+        XCTAssertEqual(processUnregisteredCalls.count, 0)
+    }
+
+    /// The gate must be scoped to the book that is actually transferring.
+    func testStartDownloadAsync_anotherBooksTransfer_doesNotBlockThisDownload() async {
+        bookRegistry.setState(.downloadNeeded, for: book.identifier)
+        coordinator.hasActiveLCPContentTransfer = { _ in false }
+
+        await coordinator.startDownloadAsync(for: book, withRequest: nil)
+
+        XCTAssertEqual(processWithCredentialsCalls.count, 1,
+                       "an unrelated book's transfer must not block this download")
+    }
+
     func testStartDownloadAsync_alreadyDownloadingState_skips() async {
         bookRegistry.setState(.downloading, for: book.identifier)
 

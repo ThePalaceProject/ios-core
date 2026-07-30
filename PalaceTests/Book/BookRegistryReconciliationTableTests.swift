@@ -194,6 +194,13 @@ final class BookRegistryReconciliationTableTests: XCTestCase {
             (.used, .licenseOnly, .downloadNeeded),
             (.downloadSuccessful, .absent, .downloadNeeded),
             (.used, .absent, .downloadNeeded),
+            // The remaining four cells, previously unpinned. `.SAMLStarted` keeps
+            // its own arm's answer — unchanged from base — because the sign-in
+            // wedge heal is a different concern from a content transfer.
+            (.downloadNeeded, .absent, .downloadNeeded),
+            (.SAMLStarted, .present, .SAMLStarted),
+            (.SAMLStarted, .licenseOnly, .downloadNeeded),
+            (.SAMLStarted, .absent, .downloadFailed),
         ]
 
         for (entry, disk, expected) in cells {

@@ -346,6 +346,44 @@ final class LocalBookContentServiceTests: XCTestCase {
                        "once the previous transfer has ended a fresh download must be allowed")
     }
 
+    /// A self-heal that SUCCEEDS must promote the record. Reconciliation moved the
+    /// book to `.downloadNeeded` on finding a license with no content, and `load()`
+    /// is the ONLY reconciler — it runs at launch, from CarPlay bootstrap and on
+    /// no-auth holds changes, but NOT on foreground. Without promotion a fully
+    /// downloaded audiobook keeps offering "Download" until the next cold launch,
+    /// and every 3.2.0-3.2.2 audiobook marked successful at license time lands in
+    /// that state on first 3.2.3 launch.
+    func testRedownload_onSuccess_promotesTheRecordToDownloadSuccessful() throws {
+        let book = try seedLicenseOnlyLCPAudiobook()
+        registry.setState(.downloadNeeded, for: book.identifier)
+        let fulfiller = SpyLCPContentFulfiller()
+        let service = makeService(fulfiller: fulfiller)
+
+        service.redownloadLCPContentFile(for: book)
+        let landed = try writeFile(at: tempDir.appendingPathComponent("landed-\(UUID().uuidString).lcpa"))
+        fulfiller.finishWithSuccess(localURL: landed)
+
+        XCTAssertEqual(
+            registry.state(for: book.identifier), .downloadSuccessful,
+            "content landed but the shelf still offers Download — the patron re-downloads a book they already have"
+        )
+    }
+
+    /// Must not overwrite a terminal state a concurrent path already set.
+    func testRedownload_onSuccess_doesNotOverwriteATerminalState() throws {
+        let book = try seedLicenseOnlyLCPAudiobook()
+        registry.setState(.used, for: book.identifier)
+        let fulfiller = SpyLCPContentFulfiller()
+        let service = makeService(fulfiller: fulfiller)
+
+        service.redownloadLCPContentFile(for: book)
+        let landed = try writeFile(at: tempDir.appendingPathComponent("landed-\(UUID().uuidString).lcpa"))
+        fulfiller.finishWithSuccess(localURL: landed)
+
+        XCTAssertEqual(registry.state(for: book.identifier), .used,
+                       "a book the patron is already listening to must not be reset by a background re-fetch")
+    }
+
     func testRedownload_whenFileMoveFails_stillReleasesTheSlot() throws {
         let book = try seedLicenseOnlyLCPAudiobook()
         let fulfiller = SpyLCPContentFulfiller()

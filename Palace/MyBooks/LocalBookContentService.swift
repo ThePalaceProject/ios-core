@@ -404,6 +404,21 @@ class LocalBookContentService {
                 parentDir.excludeFromBackup()
                 try fileManager.moveItem(at: localUrl, to: destURL)
                 Log.info(#file, "📥 [LCP RE-DOWNLOAD] ✅ .lcpa stored for '\(book.title)' — local playback now available")
+
+                // Promote the record. Reconciliation moved this book to
+                // `.downloadNeeded` when it found a license with no content, and
+                // `load()` is the ONLY reconciler — it runs at launch, from CarPlay
+                // bootstrap, and on no-auth holds changes, but NOT on foreground.
+                // Without this, a self-heal that SUCCEEDS leaves a fully downloaded
+                // audiobook showing "Download" until the next cold launch. The
+                // upgrade population makes that loud: every 3.2.0-3.2.2 audiobook
+                // marked successful at license time lands here on first 3.2.3 launch.
+                //
+                // Guarded on `.downloadNeeded` so this cannot overwrite a terminal
+                // state a concurrent path already set (`.used`, `.returning`).
+                if self?.bookRegistry.state(for: identifier) == .downloadNeeded {
+                    self?.bookRegistry.setState(.downloadSuccessful, for: identifier)
+                }
             } catch {
                 Log.warn(#file, "📥 [LCP RE-DOWNLOAD] ⚠️ File move failed for '\(book.title)': \(error.localizedDescription)")
             }

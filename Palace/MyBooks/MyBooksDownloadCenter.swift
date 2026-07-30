@@ -876,6 +876,13 @@ import OverdriveProcessor
                 || self.progressReporter.isLCPContentTransferActive(for: identifier)
         }
 
+        // A patron tap must not start a second archive fetch for a book whose
+        // content is already transferring — `downloadInfo` and `.downloading` both
+        // miss that case (see the property's own note).
+        self.startCoordinator.hasActiveLCPContentTransfer = { [weak self] identifier in
+            self?.progressReporter.isLCPContentTransferActive(for: identifier) ?? false
+        }
+
         // Cancel must drop the LCP content-transfer registration: Readium never
         // calls the fulfillment completion handler for a cancelled transfer.
         self.cancellationHandler.progressReporter = progressReporter
