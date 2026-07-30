@@ -71,54 +71,31 @@ final class BookRegistryReconciliationTableTests: XCTestCase {
         case absent
         case licenseOnly
         case present
-    }
 
-    /// The reconciliation decision, expressed independently of `BookRegistrySync`'s
-    /// internals so the table states the CONTRACT rather than mirroring the
-    /// implementation. Kept deliberately close to the arms it describes; if the
-    /// production chain and this diverge, one of them is wrong and the table says so.
-    private struct Outcome: Equatable {
-        var state: TPPBookState
-        var schedulesContentRedownload: Bool
-        var schedulesOrphanRedownload: Bool
-    }
-
-    private func expectedOutcome(entry: TPPBookState, disk: Disk) -> Outcome {
-        switch entry {
-        case .downloading:
-            switch disk {
-            case .present:     return Outcome(state: .downloadSuccessful, schedulesContentRedownload: false, schedulesOrphanRedownload: false)
-            case .licenseOnly: return Outcome(state: .downloadNeeded,     schedulesContentRedownload: true,  schedulesOrphanRedownload: false)
-            case .absent:      return Outcome(state: .downloadFailed,     schedulesContentRedownload: false, schedulesOrphanRedownload: false)
+        var presence: BookRegistrySync.ContentPresence {
+            switch self {
+            case .absent: return .absent
+            case .licenseOnly: return .licenseOnly
+            case .present: return .present
             }
-        case .downloadNeeded:
-            switch disk {
-            case .present:     return Outcome(state: .downloadSuccessful, schedulesContentRedownload: false, schedulesOrphanRedownload: false)
-            case .licenseOnly: return Outcome(state: .downloadNeeded,     schedulesContentRedownload: true,  schedulesOrphanRedownload: false)
-            case .absent:      return Outcome(state: .downloadNeeded,     schedulesContentRedownload: false, schedulesOrphanRedownload: false)
-            }
-        case .downloadSuccessful:
-            switch disk {
-            case .present:     return Outcome(state: .downloadSuccessful, schedulesContentRedownload: false, schedulesOrphanRedownload: false)
-            case .licenseOnly: return Outcome(state: .downloadNeeded,     schedulesContentRedownload: true,  schedulesOrphanRedownload: false)
-            case .absent:      return Outcome(state: .downloadNeeded,     schedulesContentRedownload: false, schedulesOrphanRedownload: true)
-            }
-        case .used:
-            switch disk {
-            case .present:     return Outcome(state: .used,               schedulesContentRedownload: false, schedulesOrphanRedownload: false)
-            case .licenseOnly: return Outcome(state: .downloadNeeded,     schedulesContentRedownload: true,  schedulesOrphanRedownload: false)
-            case .absent:      return Outcome(state: .downloadNeeded,     schedulesContentRedownload: false, schedulesOrphanRedownload: true)
-            }
-        case .SAMLStarted:
-            switch disk {
-            case .present, .licenseOnly:
-                return Outcome(state: .downloadNeeded, schedulesContentRedownload: false, schedulesOrphanRedownload: false)
-            case .absent:
-                return Outcome(state: .downloadFailed, schedulesContentRedownload: false, schedulesOrphanRedownload: false)
-            }
-        default:
-            return Outcome(state: entry, schedulesContentRedownload: false, schedulesOrphanRedownload: false)
         }
+    }
+
+    /// Drives the PRODUCTION decision. An earlier draft of this file modelled
+    /// the expected outcome in a private local function and never executed
+    /// `BookRegistrySync` at all — an inert gate: reintroducing the exact
+    /// recurrence from earlier rounds left every test in this file green.
+    /// Review caught that. The table now calls the real thing.
+    private func outcome(
+        entry: TPPBookState,
+        disk: Disk,
+        inFlight: Bool = false
+    ) -> BookRegistrySync.ReconciliationDecision {
+        BookRegistrySync.reconcile(
+            entryState: entry,
+            presence: disk.presence,
+            isDownloadInFlight: inFlight
+        )
     }
 
     // MARK: - The safety property
@@ -128,7 +105,7 @@ final class BookRegistryReconciliationTableTests: XCTestCase {
 
     /// A book that claims to be playable while its content is absent, with no
     /// recovery scheduled, is the "Listen with no audio" bug.
-    private func violatesSafety(_ outcome: Outcome, disk: Disk) -> Bool {
+    private func violatesSafety(_ outcome: BookRegistrySync.ReconciliationDecision, disk: Disk) -> Bool {
         let claimsPlayable = (outcome.state == .downloadSuccessful || outcome.state == .used)
         let contentAbsent = (disk != .present)
         let noRecovery = !outcome.schedulesContentRedownload && !outcome.schedulesOrphanRedownload
@@ -142,7 +119,7 @@ final class BookRegistryReconciliationTableTests: XCTestCase {
     func testNoOutcomeClaimsPlayableWhileContentIsAbsent() {
         for entry in entryStates {
             for disk in Disk.allCases {
-                let outcome = expectedOutcome(entry: entry, disk: disk)
+                let outcome = outcome(entry: entry, disk: disk)
                 XCTAssertFalse(
                     violatesSafety(outcome, disk: disk),
                     "entry \(entry) with disk \(disk.rawValue) yields \(outcome.state) and schedules nothing — that is a book offering Listen with no audio"
@@ -163,7 +140,7 @@ final class BookRegistryReconciliationTableTests: XCTestCase {
                 var state = entry
                 var settled = false
                 for _ in 0..<6 {
-                    let next = expectedOutcome(entry: state, disk: disk).state
+                    let next = outcome(entry: state, disk: disk).state
                     if next == state { settled = true; break }
                     state = next
                 }
@@ -185,7 +162,7 @@ final class BookRegistryReconciliationTableTests: XCTestCase {
             for disk in Disk.allCases {
                 var state = entry
                 for pass in 0..<6 {
-                    let outcome = expectedOutcome(entry: state, disk: disk)
+                    let outcome = outcome(entry: state, disk: disk)
                     XCTAssertFalse(
                         violatesSafety(outcome, disk: disk),
                         "pass \(pass + 1) from entry \(entry) with disk \(disk.rawValue) produced \(outcome.state) with no recovery scheduled — Listen with no audio"
@@ -204,7 +181,7 @@ final class BookRegistryReconciliationTableTests: XCTestCase {
         for entry in entryStates {
             var state = entry
             for _ in 0..<6 {
-                let next = expectedOutcome(entry: state, disk: .licenseOnly).state
+                let next = outcome(entry: state, disk: .licenseOnly).state
                 if next == state { break }
                 state = next
             }
@@ -291,5 +268,26 @@ final class BookRegistryReconciliationTableTests: XCTestCase {
         let book = makeLCPAudiobook()
 
         XCTAssertEqual(sync.contentPresence(for: book, account: "reconciliation-test"), .absent)
+    }
+
+    // MARK: - In-flight guard
+    //
+    // A warm `load()` — TPPAppDelegate on foreground, HoldsViewModel on hold
+    // changes — can land in the middle of a healthy multi-minute transfer.
+
+    func testDownloading_whileATransferIsInFlight_isLeftAlone() {
+        for disk in Disk.allCases {
+            let decision = outcome(entry: .downloading, disk: disk, inFlight: true)
+            XCTAssertEqual(decision.state, .downloading,
+                           "a live transfer must not be reconciled away (disk: \(disk.rawValue))")
+            XCTAssertFalse(decision.schedulesContentRedownload,
+                           "and must not have a duplicate transfer scheduled alongside it")
+            XCTAssertFalse(decision.schedulesOrphanRedownload)
+        }
+    }
+
+    func testDownloading_withNoTransferInFlight_isReconciled() {
+        XCTAssertEqual(outcome(entry: .downloading, disk: .absent, inFlight: false).state, .downloadFailed,
+                       "with nothing in flight and nothing on disk the download really did fail")
     }
 }

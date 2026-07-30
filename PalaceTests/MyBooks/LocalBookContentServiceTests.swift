@@ -19,6 +19,7 @@ final class LocalBookContentServiceTests: XCTestCase {
     private var registry: TPPBookRegistryMock!
     private var bookFileManager: SpyBookFileManager!
     private var service: LocalBookContentService!
+    private var appContainer: AppContainer!
 
     override func setUpWithError() throws {
         try super.setUpWithError()
@@ -26,14 +27,16 @@ final class LocalBookContentServiceTests: XCTestCase {
             .appendingPathComponent("LocalBookContentServiceTests-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
 
+        appContainer = makeTestAppContainer()
         registry = TPPBookRegistryMock()
         bookFileManager = SpyBookFileManager(
             tempDir: tempDir,
-            bookRegistry: registry
+            bookRegistry: registry,
+            accountsManager: appContainer.accountsManager
         )
         service = LocalBookContentService(
             bookRegistry: registry,
-            accountsManager: AppContainer.production().accountsManager,
+            accountsManager: appContainer.accountsManager,
             bookFileManager: bookFileManager
         )
     }
@@ -44,6 +47,7 @@ final class LocalBookContentServiceTests: XCTestCase {
         registry = nil
         bookFileManager = nil
         service = nil
+        appContainer = nil
         try super.tearDownWithError()
     }
 
@@ -224,14 +228,16 @@ final class LocalBookContentServiceTests: XCTestCase {
     private func makeService(
         fulfiller: SpyLCPContentFulfiller,
         reporter: SpyProgressReporter? = nil,
-        idleTimeout: TimeInterval = LocalBookContentService.inflightContentDownloadIdleTimeout
+        idleTimeout: TimeInterval = LocalBookContentService.inflightContentDownloadIdleTimeout,
+        clock: FakeClock? = nil
     ) -> LocalBookContentService {
         let service = LocalBookContentService(
             bookRegistry: registry,
-            accountsManager: AppContainer.production().accountsManager,
+            accountsManager: appContainer.accountsManager,
             bookFileManager: bookFileManager,
             lcpContentFulfiller: fulfiller.fulfill,
-            inflightIdleTimeout: idleTimeout
+            inflightIdleTimeout: idleTimeout,
+            monotonicClock: clock.map { c in { c.now } }
         )
         service.contentDownloadReporter = reporter
         return service
@@ -249,13 +255,15 @@ final class LocalBookContentServiceTests: XCTestCase {
     func testClaim_silentPastTheIdleWindow_isReclaimed() throws {
         let book = try seedLicenseOnlyLCPAudiobook()
         let fulfiller = SpyLCPContentFulfiller()
-        let service = makeService(fulfiller: fulfiller, idleTimeout: 0.05)
+        let clock = FakeClock()
+        let service = makeService(fulfiller: fulfiller, idleTimeout: 180, clock: clock)
 
         service.redownloadLCPContentFile(for: book)
         XCTAssertEqual(fulfiller.callCount, 1)
 
-        // No progress, no completion — the transfer is silent.
-        Thread.sleep(forTimeInterval: 0.12)
+        // No progress, no completion — the transfer is silent. Advance past the
+        // idle window rather than sleeping through it.
+        clock.advance(seconds: 200)
         service.redownloadLCPContentFile(for: book)
 
         XCTAssertEqual(fulfiller.callCount, 2,
@@ -265,15 +273,17 @@ final class LocalBookContentServiceTests: XCTestCase {
     func testClaim_heartbeatedByProgress_isNOTReclaimed() throws {
         let book = try seedLicenseOnlyLCPAudiobook()
         let fulfiller = SpyLCPContentFulfiller()
-        let service = makeService(fulfiller: fulfiller, idleTimeout: 0.05)
+        let clock = FakeClock()
+        let service = makeService(fulfiller: fulfiller, idleTimeout: 180, clock: clock)
 
         service.redownloadLCPContentFile(for: book)
         XCTAssertEqual(fulfiller.callCount, 1)
 
         // A long but healthy transfer: total elapsed far exceeds the window,
         // but it keeps reporting progress throughout.
+        // Total elapsed far exceeds the window, but it keeps reporting.
         for _ in 0..<6 {
-            Thread.sleep(forTimeInterval: 0.02)
+            clock.advance(seconds: 60)
             fulfiller.emitProgress(0.1)
         }
 
@@ -286,10 +296,11 @@ final class LocalBookContentServiceTests: XCTestCase {
     func testRelease_fromAReclaimedTransfer_doesNotFreeTheSuccessorsSlot() throws {
         let book = try seedLicenseOnlyLCPAudiobook()
         let first = SpyLCPContentFulfiller()
-        let service = makeService(fulfiller: first, idleTimeout: 0.05)
+        let clock = FakeClock()
+        let service = makeService(fulfiller: first, idleTimeout: 180, clock: clock)
 
         service.redownloadLCPContentFile(for: book)
-        Thread.sleep(forTimeInterval: 0.12)
+        clock.advance(seconds: 200)
         service.redownloadLCPContentFile(for: book)   // reclaimed by a second transfer
         XCTAssertEqual(first.callCount, 2)
 
@@ -404,7 +415,7 @@ final class LocalBookContentServiceTests: XCTestCase {
     /// assignment line would silently kill the whole feature with every unit
     /// test still green.
     func testDownloadCenter_wiresItsReporterIntoTheContentService() {
-        let center = AppContainer.production().downloadCenter
+        let center = appContainer.downloadCenter
 
         XCTAssertNotNil(center.localContentService.contentDownloadReporter,
                         "MyBooksDownloadCenter must wire its progress reporter into the content service, or the LCP content download reports to nothing")
@@ -434,6 +445,14 @@ final class LocalBookContentServiceTests: XCTestCase {
     }
 
 #endif
+}
+
+/// Deterministic monotonic clock for the claim-lifetime tests.
+private final class FakeClock {
+    private(set) var now: UInt64 = 1_000_000_000
+    func advance(seconds: TimeInterval) {
+        now &+= UInt64(seconds * 1_000_000_000)
+    }
 }
 
 // MARK: - Test fakes
@@ -520,11 +539,11 @@ private final class SpyBookFileManager: BookFileManager {
     /// "Could not resolve fileUrl" branch.
     var failResolutionForIdentifier: String?
 
-    init(tempDir: URL, bookRegistry: TPPBookRegistryProvider) {
+    init(tempDir: URL, bookRegistry: TPPBookRegistryProvider, accountsManager: AccountsManager) {
         self.tempDir = tempDir
         super.init(
             bookRegistry: bookRegistry,
-            accountsManager: AppContainer.production().accountsManager,
+            accountsManager: accountsManager,
             fileManager: .default
         )
     }

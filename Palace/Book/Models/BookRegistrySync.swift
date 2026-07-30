@@ -178,101 +178,24 @@ class BookRegistrySync {
           // auto-restart.
           if record.state == .downloading || record.state == .SAMLStarted || record.state == .downloadSuccessful || record.state == .downloadNeeded || record.state == .used {
             let presence = self.contentPresence(for: record.book, account: account)
-            let fileExists = presence != .absent
+            let decision = Self.reconcile(
+              entryState: record.state,
+              presence: presence,
+              isDownloadInFlight: self.isDownloadInFlight(for: record.book)
+            )
 
-            if record.state == .downloading {
-              if self.isDownloadInFlight(for: record.book) {
-                // A warm `load()` (foreground, hold change) can land in the
-                // middle of a healthy multi-minute `.lcpa` transfer. Leave it be;
-                // its own completion will settle the state.
-                Log.debug(#file, "  '\(record.book.title)' is downloading and a transfer is in flight — leaving alone")
-              } else {
-                switch presence {
-                case .present:
-                  Log.info(#file, "  '\(record.book.title)' was downloading but file exists - marking as successful")
-                  record.state = .downloadSuccessful
-                case .licenseOnly:
-                  // Interrupted between the license landing and the content
-                  // arriving. Not playable, and it must not be promoted to
-                  // `.downloadSuccessful` — that offers Listen with no audio and
-                  // skips the content re-download scheduled from the
-                  // `.downloadSuccessful` arm below.
-                  Log.warn(#file, "  '\(record.book.title)' was downloading with license but no content - marking download needed and scheduling content re-download")
-                  record.state = .downloadNeeded
-                  lcpBooksNeedingBackgroundRedownload.append(record.book)
-                case .absent:
-                  Log.warn(#file, "  '\(record.book.title)' was downloading but file missing - marking as failed")
-                  record.state = .downloadFailed
-                }
-              }
-            } else if record.state == .SAMLStarted {
-              if fileExists {
-                Log.info(#file, "  '\(record.book.title)' was in SAML flow but file exists - marking as download needed")
-                record.state = .downloadNeeded
-              } else {
-                Log.warn(#file, "  '\(record.book.title)' was in SAML flow but file missing - marking as failed")
-                record.state = .downloadFailed
-              }
-            } else if record.state == .downloadNeeded {
-              // Migration heal: the pre-PR-#856 sync-before-load race (plus the
-              // UpdatedKey parse regression that silently dropped records during
-              // load) could leave a downloaded book persisted as .downloadNeeded
-              // even though its content file was still on disk. If we see that
-              // combination now, promote to .downloadSuccessful so the user
-              // doesn't get a spurious "Download" button for a book they already
-              // have locally. No-op for the normal case where .downloadNeeded
-              // genuinely has no file.
-              // Only REAL content heals this. Promoting on a license alone is
-              // how the interrupted-download case came back one load later: the
-              // arm above writes `.downloadNeeded`, and this heal then promoted
-              // it straight to `.downloadSuccessful` on the next launch.
-              switch presence {
-              case .present:
-                Log.info(#file, "  '\(record.book.title)' state was .downloadNeeded but content present — healing to .downloadSuccessful")
-                record.state = .downloadSuccessful
-              case .licenseOnly:
-                Log.debug(#file, "  '\(record.book.title)' has a license but no content — scheduling content re-download")
-                lcpBooksNeedingBackgroundRedownload.append(record.book)
-              case .absent:
-                break
-              }
-            } else if record.state == .used {
-              // A book the user has opened at least once. If its content file
-              // was evicted by the LRU budget (pre-fix) the reader fails to
-              // load with "unable to open PDF/EPUB". Same heal as
-              // .downloadSuccessful: flip to .downloadNeeded + auto-restart.
-              switch presence {
-              case .present:
-                Log.debug(#file, "  '\(record.book.title)' used and content verified")
-              case .licenseOnly:
-                Log.error(#file, "  '\(record.book.title)' was .used but content MISSING (license only) — marking download needed and scheduling content re-download")
-                record.state = .downloadNeeded
-                lcpBooksNeedingBackgroundRedownload.append(record.book)
-              case .absent:
-                Log.error(#file, "  '\(record.book.title)' was .used but FILE MISSING — marking as download needed")
-                record.state = .downloadNeeded
-                orphanedBooksNeedingRedownload.append(record.book)
-              }
-            } else if record.state == .downloadSuccessful {
-              // The PP-3704 special case that used to live here — re-derive
-              // "LCP audiobook with a license but no .lcpa" inline — is now the
-              // `.licenseOnly` case of the shared predicate.
-              switch presence {
-              case .present:
-                Log.debug(#file, "  '\(record.book.title)' downloaded and content verified")
-              case .licenseOnly:
-                // Was marked playable, but the content is gone. Streaming can no
-                // longer cover for it, so report it honestly and re-fetch in the
-                // background (PP-3704 lineage).
-                Log.warn(#file, "  '\(record.book.title)' LCP audiobook has a license but the .lcpa is MISSING - marking download needed and scheduling background re-download")
-                record.state = .downloadNeeded
-                lcpBooksNeedingBackgroundRedownload.append(record.book)
-              case .absent:
-                Log.error(#file, "  '\(record.book.title)' marked as downloaded but FILE MISSING - marking as download needed")
-                Log.error(#file, "     This suggests the file was deleted or the path is wrong")
-                record.state = .downloadNeeded
-                orphanedBooksNeedingRedownload.append(record.book)
-              }
+            if decision.state != record.state {
+              Log.info(#file, "  Reconciling '\(record.book.title)': \(record.state) -> \(decision.state) (content: \(presence))")
+            }
+            record.state = decision.state
+
+            if decision.schedulesContentRedownload {
+              Log.warn(#file, "  '\(record.book.title)' has a license but no content — scheduling content re-download")
+              lcpBooksNeedingBackgroundRedownload.append(record.book)
+            }
+            if decision.schedulesOrphanRedownload {
+              Log.error(#file, "  '\(record.book.title)' content MISSING — scheduling orphan re-download")
+              orphanedBooksNeedingRedownload.append(record.book)
             }
 
             if originalState != record.state {
@@ -781,6 +704,87 @@ class BookRegistrySync {
   /// feed-fetch pipeline.
   static func shouldSkipBulkDeletion(localCount: Int, feedCount: Int, deletionCount: Int) -> Bool {
     return localCount >= 1 && feedCount == 0 && deletionCount > 0
+  }
+
+
+  /// The outcome of reconciling one record at load time.
+  struct ReconciliationDecision: Equatable {
+    var state: TPPBookState
+    /// Schedule the LCP `.lcpa` content re-download (license present, content not).
+    var schedulesContentRedownload: Bool
+    /// Schedule the ordinary orphaned-download restart (nothing on disk).
+    var schedulesOrphanRedownload: Bool
+  }
+
+  /// The load-time reconciliation decision for a single record, as a pure
+  /// function of the things that actually determine it.
+  ///
+  /// Extracted from the else-if chain in `load` deliberately. That chain is a
+  /// fossil record — each arm is an incident fix accreted over time — and three
+  /// separate defects came from changing one arm and breaking a neighbour,
+  /// because "a file exists implies playable" was re-derived independently in
+  /// four places. There was no way to assert over the whole decision, so every
+  /// regression had to be caught by a human reading the diff.
+  ///
+  /// As a pure function it can be driven exhaustively over
+  /// (entry state × content presence × in-flight), which is what
+  /// `BookRegistryReconciliationTableTests` does. `load` below is the only
+  /// production caller and simply applies the result.
+  static func reconcile(
+    entryState: TPPBookState,
+    presence: ContentPresence,
+    isDownloadInFlight: Bool
+  ) -> ReconciliationDecision {
+    func decision(
+      _ state: TPPBookState,
+      content: Bool = false,
+      orphan: Bool = false
+    ) -> ReconciliationDecision {
+      ReconciliationDecision(state: state,
+                             schedulesContentRedownload: content,
+                             schedulesOrphanRedownload: orphan)
+    }
+
+    switch entryState {
+    case .downloading:
+      // A warm `load()` (foreground, hold changes) can land mid-transfer. A
+      // live download settles its own state; do not pre-empt it.
+      if isDownloadInFlight { return decision(.downloading) }
+      switch presence {
+      case .present:     return decision(.downloadSuccessful)
+      case .licenseOnly: return decision(.downloadNeeded, content: true)
+      case .absent:      return decision(.downloadFailed)
+      }
+
+    case .SAMLStarted:
+      return presence == .absent ? decision(.downloadFailed) : decision(.downloadNeeded)
+
+    case .downloadNeeded:
+      // Only REAL content heals this. Promoting on a license alone is exactly
+      // how the interrupted-download defect returned one launch later.
+      switch presence {
+      case .present:     return decision(.downloadSuccessful)
+      case .licenseOnly: return decision(.downloadNeeded, content: true)
+      case .absent:      return decision(.downloadNeeded)
+      }
+
+    case .downloadSuccessful:
+      switch presence {
+      case .present:     return decision(.downloadSuccessful)
+      case .licenseOnly: return decision(.downloadNeeded, content: true)
+      case .absent:      return decision(.downloadNeeded, orphan: true)
+      }
+
+    case .used:
+      switch presence {
+      case .present:     return decision(.used)
+      case .licenseOnly: return decision(.downloadNeeded, content: true)
+      case .absent:      return decision(.downloadNeeded, orphan: true)
+      }
+
+    default:
+      return decision(entryState)
+    }
   }
 
   /// What is actually on disk for a book.

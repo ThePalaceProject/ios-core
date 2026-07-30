@@ -56,6 +56,12 @@ class LocalBookContentService {
     /// duplicate alongside the handler's transfer.
     var downloadCenterHasTransfer: ((String) -> Bool)?
 
+    /// Monotonic clock source. Injectable so the idle-expiry and heartbeat
+    /// behaviour can be driven deterministically instead of by sleeping past a
+    /// real window — sleeps in this suite feed the documented parallel-clone
+    /// starvation flakes.
+    private let monotonicClock: () -> UInt64
+
     /// Progress/activity sink for the LCP content re-download. Assigned by
     /// `MyBooksDownloadCenter` after `init` because the reporter is created
     /// later in that initializer than this service is (mirrors the existing
@@ -119,9 +125,11 @@ class LocalBookContentService {
         fileManager: FileManager = .default,
         lcpContentFulfiller: LCPContentFulfilling? = nil,
         inflightIdleTimeout: TimeInterval = LocalBookContentService.inflightContentDownloadIdleTimeout,
-        downloadCenterHasTransfer: ((String) -> Bool)? = nil
+        downloadCenterHasTransfer: ((String) -> Bool)? = nil,
+        monotonicClock: (() -> UInt64)? = nil
     ) {
         self.inflightIdleTimeout = inflightIdleTimeout
+        self.monotonicClock = monotonicClock ?? LocalBookContentService.monotonicNow
         self.downloadCenterHasTransfer = downloadCenterHasTransfer
         self.bookRegistry = bookRegistry
         self.accountsManager = accountsManager
@@ -147,8 +155,9 @@ class LocalBookContentService {
     /// in which case the caller must not start another.
     private func claimContentDownloadSlot(
         _ identifier: String,
-        now: UInt64 = LocalBookContentService.monotonicNow()
+        now: UInt64? = nil
     ) -> UUID? {
+        let now = now ?? monotonicClock()
         inflightLock.lock()
         defer { inflightLock.unlock() }
         let idleLimit = UInt64(inflightIdleTimeout * 1_000_000_000)
@@ -169,8 +178,9 @@ class LocalBookContentService {
     private func touchContentDownloadSlot(
         _ identifier: String,
         token: UUID,
-        now: UInt64 = LocalBookContentService.monotonicNow()
+        now: UInt64? = nil
     ) {
+        let now = now ?? monotonicClock()
         inflightLock.lock()
         defer { inflightLock.unlock() }
         guard inflightContentDownloads[identifier]?.token == token else { return }
