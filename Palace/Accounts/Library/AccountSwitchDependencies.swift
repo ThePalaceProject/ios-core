@@ -54,11 +54,13 @@ struct AccountSwitchDependencies: Sendable {
     /// (was the shared cover registry's `resetHostFailures()`).
     let resetCoverCircuitBreaker: @Sendable () -> Void
 
-    /// Lazily resolves the shared network executor. DEFERRED because `AccountsManager`
+    /// Lazily resolves the shared network executor, typed to the account-facing
+    /// `AccountNetworking` seam so a packaged `AccountsManager` names no concrete
+    /// `Palace/Network` type (3a precondition). DEFERRED because `AccountsManager`
     /// is constructed inline inside `AppContainer`'s dispatch_once — resolving the
     /// executor eagerly at init would re-enter that lock and trap. Resolved once,
     /// cached behind the manager's `lazy var networkExecutor`.
-    let networkExecutorProvider: @Sendable () -> TPPNetworkExecutor
+    let networkExecutorProvider: @Sendable () -> any AccountNetworking
 
     /// Main-actor navigation cleanup before an account switch: pop the active
     /// navigation stack to root (when non-empty) then wait the documented settle
@@ -71,7 +73,7 @@ struct AccountSwitchDependencies: Sendable {
         imageCache: ImageCacheType,
         accountStateStore: AccountStateStore,
         resetCoverCircuitBreaker: @escaping @Sendable () -> Void,
-        networkExecutorProvider: @escaping @Sendable () -> TPPNetworkExecutor,
+        networkExecutorProvider: @escaping @Sendable () -> any AccountNetworking,
         popToRootForAccountSwitch: @escaping @MainActor @Sendable () async -> Void
     ) {
         self.imageCache = imageCache

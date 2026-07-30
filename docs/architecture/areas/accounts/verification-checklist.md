@@ -66,7 +66,7 @@ description: Per-area verification reference; refresh before next swarm/rigorous
 
 | Module | Owner | Public surface (what changes here is a contract break) |
 |--------|-------|---------------------------------------------------------|
-| `Palace/Accounts/Library/` | Main target | `Account`, `AccountDetails`, `AccountsManager` (`TPPLibraryAccountsProvider` + `TPPUserAccountResolving` conformance), `Account.LoadState`, `AccountLoadError`, `AccountStateStore.shared`, `awaitReady()`, `LibraryRegistryCrawler`, `CatalogPreloader`, `LibraryCatalogMerger`, `BundledRegistrySnapshot`, `CrawlState` / `CrawlableFeedAnalysis` |
+| `Palace/Accounts/Library/` | Main target | `Account`, `AccountDetails`, `AccountsManager` (`TPPLibraryAccountsProvider` + `TPPUserAccountResolving` conformance), `Account.LoadState`, `AccountLoadError`, `AccountStateStore.shared`, `awaitReady()`, `LibraryRegistryCrawler`, `CatalogPreloader`, `LibraryCatalogMerger`, `BundledRegistrySnapshot`, `CrawlState` / `CrawlableFeedAnalysis`, `AccountSwitchDependencies` (S3), `AccountNetworking` (3a executor seam) |
 | `Palace/Accounts/User/` | Main target | `TPPUserAccount` (per-library instance + `sharedAccount()` legacy delegates), `TPPUserAccountProvider`, `TPPCredentials`, `TPPAccountAuthState`, `UserAccountAuthHelper`, `UserAccountPublisher`, `CredentialSnapshot`, `UserProfileDocument` |
 | `Palace/Accounts/AgeCheck/` | Main target | `TPPAgeCheck` (`TPPAgeCheckVerifying` conformance), `TPPAgeCheckViewController` |
 | `AppContainer` cross-cutting | `Palace/AppInfrastructure/AppContainer.swift` | Owns the single live `AccountsManager` instance. New consumers MUST read `appContainer.accountsManager` — do NOT call `AccountsManager()` directly outside tests. |
@@ -203,6 +203,7 @@ Before any new swarm or /rigorous-fix in this area, the architect should:
 
 | Date | Refreshed by | Notes |
 |------|-------------|-------|
+| 2026-07-30 | feat/pp-decomp-3a-account-networking | Wave 3 / 3a seam: `AccountsManager.networkExecutor` retyped to `any AccountNetworking` (new `AccountNetworking.swift`; app-side `TPPNetworkExecutor+AccountNetworking.swift` conformance) — the hub no longer names `Palace/Network` app-target types, unblocking the `PalaceAccounts` package move. Behavior-identical. Sections 1–7 content NOT re-audited this pass (seam-scoped touch); the `.detailsEvicted` enum rename vs the doc's `.accountNotFound` prose remains a pending content refresh. |
 | 2026-05-28 | chore/swarm-rigor-meta-improvement (initial baseline) | Derived from Phase 1 state-machine PoC (PR #961 / `222137d3a`), Phase 2 migration (PR #967 / `2f5b4339f`), warm-path driver gap (PR #975 / `1fdd59c73`), currentAccount setter driver (PR #985 / `dce81974e`), library swap-back redrive (PR #996 / `14100c62a`), wiring-suite isolation flag (PR #995 / `49c581b24`). Memories consulted: `enum_conflation_account_not_found`, `phase1_account_state_machine_2026_05_19`, `reference_tpp_user_account_migration_retro`, `feedback_wiring_suite_test_isolation`, `singleton_audit_2026_04_24`, `saml_two_surface_auth_model`, `debug_protocol_auth_regressions`, `investigation_icarus_oidc_auth_loss_2026_05_14`. |
 
 ---
