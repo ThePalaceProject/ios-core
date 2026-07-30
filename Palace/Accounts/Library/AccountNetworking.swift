@@ -9,8 +9,8 @@
 //  as a protocol beside `AccountsManager` removes the manager's last concrete
 //  reference to the app-target `TPPNetworkExecutor` type: S3 already inverted the
 //  ambient REACH (the executor is resolved through `AccountSwitchDependencies`'s
-//  injected provider closure rather than `AppContainer.production()`), but the
-//  property and provider were still concretely typed. A SwiftPM `PalaceAccounts`
+//  injected provider closure rather than reaching the composition root directly),
+//  but the property and provider were still concretely typed. A SwiftPM `PalaceAccounts`
 //  target cannot name a `Palace/Network` app-target type, so this seam is the
 //  documented precondition for the 3a package move.
 //
