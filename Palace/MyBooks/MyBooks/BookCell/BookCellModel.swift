@@ -887,6 +887,14 @@ extension BookCellModel: HalfSheetProvider {
         // determinate bar pinned at 0% for the whole transfer — the "looks
         // broken" impression this cue exists to remove. `observedProgress`
         // carries the published samples for that case.
-        max(downloadCenter.downloadProgress(for: book.identifier), observedProgress)
+        //
+        // Scoped to that case deliberately. `observedProgress` is a monotone
+        // maximum reset only on the LCP rising edge, so merging it into every
+        // download would let a cached cell that once saw 1.0 (this model is
+        // cached with a 120s TTL) show a full bar for an unrelated later
+        // re-download.
+        let reported = downloadCenter.downloadProgress(for: book.identifier)
+        guard isDownloadingLCPContent else { return reported }
+        return max(reported, observedProgress)
     }
 }

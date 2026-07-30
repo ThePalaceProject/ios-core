@@ -43,27 +43,30 @@ an invisible spacer. The percentage is already being computed and published; it
 is simply never drawn. Field report: patrons read the silence as a failure and
 back out before the download completes.
 
-## Scope change (2026-07-30, after three review rounds)
+## Course correction (2026-07-30, after four review rounds)
 
-Claim **B** was removed from this branch and moved to
-`feat/lcp-download-state-honesty` for the next release. Three SoD review rounds
-each found that B's fix generated a new defect in code outside the diff, because
-the invariant it retires ("license on disk implies playable") is denormalized
-across roughly five sites and was being patched one arm at a time.
+Claim **B** was briefly split out and has been RESTORED, deliberately.
 
-Archaeology settled the urgency: the early mark is byte-identical in 3.1.0
-(`LCPFulfillmentHandler.swift:179-188`), and 3.1.0 pinned Readium 3.7.0, which
-predates the PR #723 clamp removal that shipped in 3.8.0 — so in 3.1.0 the early
-"Listen" was truthful because streaming worked. What regressed in 3.2.0 is
-latency, not function, and CarPlay routes through the same gated `openAudiobook`
-(`CarPlayAudiobookBridge.swift:151`), so it is not an unmitigated path. B fixes a
-misleading label on pre-existing behaviour and is holdable.
+Splitting it produced an incoherent UI: with the book still marked
+`.downloadSuccessful` during the content phase, the sheet showed a progress bar
+next to a live "Listen" button. Reusing the ordinary download state means the
+existing progress bar and Cancel affordance do the job, with no parallel cue for
+the fresh-borrow path.
 
-B returns next release as what it actually is: a redefinition of the
-license-only-means-playable predicate, verified by a reconciliation table test
-run to fixpoint.
+What changed on restore is HOW. Three review rounds each found that patching one
+reconciliation arm broke a neighbouring one, because the invariant being retired
+— "a file on disk means the book is playable" — was re-derived independently in
+four arms, and `checkIfBookFileExists` reports true for an LCP audiobook holding
+only its `.lcpl`. Rather than patch a fourth arm, the predicate itself is now
+explicit (`ContentPresence`: absent / licenseOnly / present) and every arm
+consumes it. The PP-3704 special case collapsed into the `.licenseOnly` branch
+and was deleted rather than duplicated.
 
-The patron-visible half of B is preserved here without it — see claim C.
+This is guarded by a reconciliation table test asserting convergence to a
+fixpoint and, at every step of that settle, the safety property: no outcome
+leaves a book claiming to be playable with its content absent and no recovery
+scheduled. That property is the patron-visible defect stated directly, so it
+survives future rewrites of the chain.
 
 ## Claims
 
@@ -78,19 +81,22 @@ The patron-visible half of B is preserved here without it — see claim C.
   healthy transfers of every measured title, reintroducing the duplicate), is
   heartbeated from the progress callback, uses a monotonic clock, and is
   token-matched on release so a late completion cannot free a successor's slot.
-- **B.** WITHDRAWN from this branch (see Scope change above). No registry state
-  transition is altered here; `LCPFulfillmentHandler` is byte-identical to 490.
-- **C.** The content re-download reports progress (previously discarded as
-  `progress: { _ in }`) and an active/idle signal, which `BookDetailViewModel`
-  and `BookCellModel` expose as `isDownloadingLCPContent` and
-  `HalfSheetProgressCue.resolve` renders as the linear bar. Extended after the
-  split to emit the same edge around the FRESH-BORROW content phase in
-  `LCPFulfillmentHandler`, so the bar shows for that wait too without any state
-  change — this is how the patron-visible half of B is preserved. Progress was
-  already published by `lcpProgress` and `downloadInfo` already populated, so
-  only the edge was missing. `BookCellModel` additionally tracks
-  `observedProgress`, because its `downloadProgress` reads `downloadInfo`, which
-  this out-of-band transfer never populates.
+- **B.** An LCP audiobook stays `.downloading` until its `.lcpa` is on disk;
+  `markDownloadSuccessful` moves from the license-fulfilled point into the
+  content-completion callback. The ordinary download progress bar and Cancel
+  then cover the wait, and "Listen" is not offered for a book with no audio.
+  Load-time reconciliation consumes a tri-state `ContentPresence` predicate so a
+  license-only book is never promoted to a playable state, and a warm `load()`
+  cannot flip a transfer that is still in flight.
+- **C.** The background content re-download reports progress (previously
+  discarded as `progress: { _ in }`) and an active/idle signal, which
+  `BookDetailViewModel` and `BookCellModel` expose as `isDownloadingLCPContent`
+  and `HalfSheetProgressCue.resolve` renders as the linear bar. This covers the
+  SELF-HEAL path only — a book that is legitimately `.downloadSuccessful` and
+  whose content went missing — because the fresh-borrow path is now carried by
+  B's ordinary `.downloading` bar. `BookCellModel` tracks `observedProgress` for
+  this case, scoped to it, because its `downloadProgress` reads `downloadInfo`,
+  which the out-of-band transfer never populates.
 - **D.** A dependency-upgrade gate: any change to the Readium pin must record
   money-path validation evidence or CI fails, plus the architecture record of the
   3.7 → 3.9 streaming loss that motivates it.
@@ -105,13 +111,12 @@ The patron-visible half of B is preserved here without it — see claim C.
   on an out-of-band background `URLSession` that is not registered in
   `downloadInfo`, so Cancel would be a button that cannot cancel. C therefore
   uses a dedicated signal rather than a registry-state change.
-- **Does NOT change any registry state transition.** The fulfillment path's
-  state behaviour, including the existing "streaming license intact" guard, is
-  byte-identical to 490. That was claim B and it is withdrawn.
-- **Does NOT stop "Listen" being offered before the audio is local.** That is
-  pre-existing 3.1.0 behaviour and is B's job next release. The open-time gate
-  continues to cover it: tapping Listen triggers the download and opens when it
-  lands, now with a visible bar.
+- **Does NOT downgrade a book that already has playable content.** The
+  content-failure guard tests the FILE rather than registry state, so a
+  re-fetch failure for a book whose `.lcpa` is present leaves it alone.
+- **Does NOT put the self-heal re-download into `.downloading`.** That state
+  maps to `buttons = [.cancel]`, and the self-heal runs on an out-of-band
+  session Cancel cannot reach, so it uses the dedicated signal instead.
 - **Does NOT change the 180 s gate ceiling.** Flagged separately: a large archive
   on a slow connection can still exceed it and surface "Audiobook Unavailable".
 
@@ -126,7 +131,9 @@ The patron-visible half of B is preserved here without it — see claim C.
 - `Palace/MyBooks/MyBooks/BookCell/BookCellModel.swift` (C)
 - `Palace/Book/UI/BookDetail/HalfSheetview.swift` (C)
 - `PalaceTests/MyBooks/LocalBookContentServiceTests.swift` (A, C)
-- `PalaceTests/MyBooks/LCPFulfillmentHandlerTests.swift` (C)
+- `PalaceTests/MyBooks/LCPFulfillmentHandlerTests.swift` (B)
+- `Palace/Book/Models/BookRegistrySync.swift` (B — the `ContentPresence` predicate and the arms that consume it)
+- `PalaceTests/Book/BookRegistryReconciliationTableTests.swift` (B — table + properties)
 - `scripts/check-dependency-money-paths.sh` + `scripts/tests/` + docs (D)
 - `Palace.xcodeproj/project.pbxproj` (build 490 → 491, new files both targets)
 

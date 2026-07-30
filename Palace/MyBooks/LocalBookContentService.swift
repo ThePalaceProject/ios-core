@@ -46,6 +46,15 @@ class LocalBookContentService {
     /// Per-instance so tests can drive the idle-expiry and heartbeat behaviour
     /// in milliseconds instead of waiting out the production window.
     private let inflightIdleTimeout: TimeInterval
+    /// Whether the download CENTER is already transferring this book.
+    ///
+    /// The in-flight claim below only covers transfers this service starts. The
+    /// fulfillment handler runs its own `.lcpa` transfer for a fresh borrow and
+    /// registers it in `downloadInfo`, not here — two uncoordinated producers of
+    /// the same file. Without consulting the download center, the open-time gate
+    /// could find license-present/content-absent, claim a free slot, and start a
+    /// duplicate alongside the handler's transfer.
+    var downloadCenterHasTransfer: ((String) -> Bool)?
 
     /// Progress/activity sink for the LCP content re-download. Assigned by
     /// `MyBooksDownloadCenter` after `init` because the reporter is created
@@ -109,9 +118,11 @@ class LocalBookContentService {
         bookFileManager: BookFileManager? = nil,
         fileManager: FileManager = .default,
         lcpContentFulfiller: LCPContentFulfilling? = nil,
-        inflightIdleTimeout: TimeInterval = LocalBookContentService.inflightContentDownloadIdleTimeout
+        inflightIdleTimeout: TimeInterval = LocalBookContentService.inflightContentDownloadIdleTimeout,
+        downloadCenterHasTransfer: ((String) -> Bool)? = nil
     ) {
         self.inflightIdleTimeout = inflightIdleTimeout
+        self.downloadCenterHasTransfer = downloadCenterHasTransfer
         self.bookRegistry = bookRegistry
         self.accountsManager = accountsManager
         self.bookFileManager = bookFileManager ?? BookFileManager(
@@ -176,6 +187,16 @@ class LocalBookContentService {
         defer { inflightLock.unlock() }
         guard inflightContentDownloads[identifier]?.token == token else { return }
         inflightContentDownloads.removeValue(forKey: identifier)
+    }
+
+    /// Whether `token` is still the live claim for `identifier`. Reporter
+    /// traffic is gated on this so an abandoned transfer's late progress sample
+    /// or completion cannot drive — or prematurely close — the UI cue belonging
+    /// to the transfer that reclaimed the slot.
+    private func isCurrentClaim(_ identifier: String, token: UUID) -> Bool {
+        inflightLock.lock()
+        defer { inflightLock.unlock() }
+        return inflightContentDownloads[identifier]?.token == token
     }
 
     /// Test seam: whether a content download is currently claimed for
@@ -312,10 +333,20 @@ class LocalBookContentService {
             return
         }
 
+        let identifier = book.identifier
+
+        // Skip if the download center is already transferring this book. Its
+        // fulfillment-handler transfer is invisible to the claim map below, so
+        // without this the two producers race and the patron pays for the
+        // archive twice.
+        if downloadCenterHasTransfer?(identifier) == true {
+            Log.info(#file, "📥 [LCP RE-DOWNLOAD] the download center is already transferring '\(book.title)' — skipping duplicate")
+            return
+        }
+
         // Skip if a transfer for this book is already running. Claimed BEFORE
         // the fulfiller is invoked so a synchronous re-entrant call cannot slip
         // between the check and the start.
-        let identifier = book.identifier
         guard let claimToken = claimContentDownloadSlot(identifier) else {
             Log.info(#file, "📥 [LCP RE-DOWNLOAD] a download is already in flight for '\(book.title)' — skipping duplicate")
             return
@@ -328,15 +359,22 @@ class LocalBookContentService {
             // Heartbeat the claim: a multi-gigabyte transfer takes far longer
             // than the idle window, and without this it would age out of its own
             // slot mid-flight and the next Listen would start a duplicate.
-            self?.touchContentDownloadSlot(identifier, token: claimToken)
-            self?.contentDownloadReporter?.sendProgress(bookIdentifier: identifier, progress: fraction)
+            guard let self, self.isCurrentClaim(identifier, token: claimToken) else { return }
+            self.touchContentDownloadSlot(identifier, token: claimToken)
+            self.contentDownloadReporter?.sendProgress(bookIdentifier: identifier, progress: fraction)
         }
 
         lcpContentFulfiller(licenseURL, progressHandler) { [weak self, fileManager] localUrl, error in
             // Release the slot and close the UI cue on EVERY exit path below.
             defer {
+                // Only the live claim may close the cue. A reclaimed transfer
+                // reporting back late must not blank the bar of the transfer
+                // that replaced it.
+                let isLive = self?.isCurrentClaim(identifier, token: claimToken) ?? false
                 self?.releaseContentDownloadSlot(identifier, token: claimToken)
-                self?.contentDownloadReporter?.sendLCPContentDownloadActive(bookIdentifier: identifier, active: false)
+                if isLive {
+                    self?.contentDownloadReporter?.sendLCPContentDownloadActive(bookIdentifier: identifier, active: false)
+                }
             }
 
             if let error {

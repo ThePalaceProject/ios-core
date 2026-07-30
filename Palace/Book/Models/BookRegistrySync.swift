@@ -177,15 +177,33 @@ class BookRegistrySync {
           // as .downloadSuccessful: flip to .downloadNeeded and schedule
           // auto-restart.
           if record.state == .downloading || record.state == .SAMLStarted || record.state == .downloadSuccessful || record.state == .downloadNeeded || record.state == .used {
-            let fileExists = self.checkIfBookFileExists(for: record.book, account: account)
+            let presence = self.contentPresence(for: record.book, account: account)
+            let fileExists = presence != .absent
 
             if record.state == .downloading {
-              if fileExists {
-                Log.info(#file, "  '\(record.book.title)' was downloading but file exists - marking as successful")
-                record.state = .downloadSuccessful
+              if self.isDownloadInFlight(for: record.book) {
+                // A warm `load()` (foreground, hold change) can land in the
+                // middle of a healthy multi-minute `.lcpa` transfer. Leave it be;
+                // its own completion will settle the state.
+                Log.debug(#file, "  '\(record.book.title)' is downloading and a transfer is in flight — leaving alone")
               } else {
-                Log.warn(#file, "  '\(record.book.title)' was downloading but file missing - marking as failed")
-                record.state = .downloadFailed
+                switch presence {
+                case .present:
+                  Log.info(#file, "  '\(record.book.title)' was downloading but file exists - marking as successful")
+                  record.state = .downloadSuccessful
+                case .licenseOnly:
+                  // Interrupted between the license landing and the content
+                  // arriving. Not playable, and it must not be promoted to
+                  // `.downloadSuccessful` — that offers Listen with no audio and
+                  // skips the content re-download scheduled from the
+                  // `.downloadSuccessful` arm below.
+                  Log.warn(#file, "  '\(record.book.title)' was downloading with license but no content - marking download needed and scheduling content re-download")
+                  record.state = .downloadNeeded
+                  lcpBooksNeedingBackgroundRedownload.append(record.book)
+                case .absent:
+                  Log.warn(#file, "  '\(record.book.title)' was downloading but file missing - marking as failed")
+                  record.state = .downloadFailed
+                }
               }
             } else if record.state == .SAMLStarted {
               if fileExists {
@@ -204,46 +222,56 @@ class BookRegistrySync {
               // doesn't get a spurious "Download" button for a book they already
               // have locally. No-op for the normal case where .downloadNeeded
               // genuinely has no file.
-              if fileExists {
-                Log.info(#file, "  '\(record.book.title)' state was .downloadNeeded but file present — healing to .downloadSuccessful")
+              // Only REAL content heals this. Promoting on a license alone is
+              // how the interrupted-download case came back one load later: the
+              // arm above writes `.downloadNeeded`, and this heal then promoted
+              // it straight to `.downloadSuccessful` on the next launch.
+              switch presence {
+              case .present:
+                Log.info(#file, "  '\(record.book.title)' state was .downloadNeeded but content present — healing to .downloadSuccessful")
                 record.state = .downloadSuccessful
+              case .licenseOnly:
+                Log.debug(#file, "  '\(record.book.title)' has a license but no content — scheduling content re-download")
+                lcpBooksNeedingBackgroundRedownload.append(record.book)
+              case .absent:
+                break
               }
             } else if record.state == .used {
               // A book the user has opened at least once. If its content file
               // was evicted by the LRU budget (pre-fix) the reader fails to
               // load with "unable to open PDF/EPUB". Same heal as
               // .downloadSuccessful: flip to .downloadNeeded + auto-restart.
-              if !fileExists {
+              switch presence {
+              case .present:
+                Log.debug(#file, "  '\(record.book.title)' used and content verified")
+              case .licenseOnly:
+                Log.error(#file, "  '\(record.book.title)' was .used but content MISSING (license only) — marking download needed and scheduling content re-download")
+                record.state = .downloadNeeded
+                lcpBooksNeedingBackgroundRedownload.append(record.book)
+              case .absent:
                 Log.error(#file, "  '\(record.book.title)' was .used but FILE MISSING — marking as download needed")
                 record.state = .downloadNeeded
                 orphanedBooksNeedingRedownload.append(record.book)
-              } else {
-                Log.debug(#file, "  '\(record.book.title)' used and file verified")
               }
             } else if record.state == .downloadSuccessful {
-              if !fileExists {
+              // The PP-3704 special case that used to live here — re-derive
+              // "LCP audiobook with a license but no .lcpa" inline — is now the
+              // `.licenseOnly` case of the shared predicate.
+              switch presence {
+              case .present:
+                Log.debug(#file, "  '\(record.book.title)' downloaded and content verified")
+              case .licenseOnly:
+                // Was marked playable, but the content is gone. Streaming can no
+                // longer cover for it, so report it honestly and re-fetch in the
+                // background (PP-3704 lineage).
+                Log.warn(#file, "  '\(record.book.title)' LCP audiobook has a license but the .lcpa is MISSING - marking download needed and scheduling background re-download")
+                record.state = .downloadNeeded
+                lcpBooksNeedingBackgroundRedownload.append(record.book)
+              case .absent:
                 Log.error(#file, "  '\(record.book.title)' marked as downloaded but FILE MISSING - marking as download needed")
                 Log.error(#file, "     This suggests the file was deleted or the path is wrong")
                 record.state = .downloadNeeded
                 orphanedBooksNeedingRedownload.append(record.book)
-              } else {
-                #if LCP
-                // LCP audiobooks pass checkIfBookFileExists as soon as the .lcpl
-                // license exists (playable via streaming). If the .lcpa content
-                // file is missing, schedule a silent background re-download so
-                // subsequent opens use the local copy instead of ranged reads
-                // from GCS (PP-3704).
-                if LCPAudiobooks.canOpenBook(record.book),
-                   let bookURL = downloadCenter.fileUrl(for: record.book, account: account),
-                   !FileManager.default.fileExists(atPath: bookURL.path) {
-                  Log.warn(#file, "  '\(record.book.title)' LCP audiobook playable via streaming but .lcpa MISSING - scheduling background re-download")
-                  lcpBooksNeedingBackgroundRedownload.append(record.book)
-                } else {
-                  Log.debug(#file, "  '\(record.book.title)' downloaded and file verified")
-                }
-                #else
-                Log.debug(#file, "  '\(record.book.title)' downloaded and file verified")
-                #endif
               }
             }
 
@@ -753,6 +781,57 @@ class BookRegistrySync {
   /// feed-fetch pipeline.
   static func shouldSkipBulkDeletion(localCount: Int, feedCount: Int, deletionCount: Int) -> Bool {
     return localCount >= 1 && feedCount == 0 && deletionCount > 0
+  }
+
+  /// What is actually on disk for a book.
+  ///
+  /// `checkIfBookFileExists` answers a weaker question: for an LCP audiobook it
+  /// reports `true` on the `.lcpl` LICENSE alone, because while streaming worked
+  /// a license WAS enough to play. That assumption is denormalized across the
+  /// reconciliation arms below, and it is the reason three separate defects were
+  /// found in this file: each arm independently treated "a file exists" as "the
+  /// book is playable", so an interrupted or cancelled LCP download was promoted
+  /// to `.downloadSuccessful` and offered a Listen button with no audio behind
+  /// it.
+  ///
+  /// Streaming is unusable upstream, so the license alone no longer means
+  /// playable. This makes the distinction explicit and gives every arm one
+  /// predicate to consume instead of re-deriving it.
+  enum ContentPresence {
+    /// Nothing on disk.
+    case absent
+    /// LCP audiobook whose `.lcpl` license is present but whose `.lcpa` content
+    /// package is not. Not playable; recoverable by re-fetching the content.
+    case licenseOnly
+    /// Real, playable content on disk.
+    case present
+  }
+
+  func contentPresence(for book: TPPBook, account: String) -> ContentPresence {
+    guard let bookURL = downloadCenter.fileUrl(for: book, account: account) else {
+      return .absent
+    }
+    if FileManager.default.fileExists(atPath: bookURL.path) {
+      return .present
+    }
+    #if LCP
+    if LCPAudiobooks.canOpenBook(book) {
+      let licenseURL = bookURL.deletingPathExtension().appendingPathExtension("lcpl")
+      if FileManager.default.fileExists(atPath: licenseURL.path) {
+        return .licenseOnly
+      }
+    }
+    #endif
+    return .absent
+  }
+
+  /// True when the download center is currently transferring this book, so
+  /// reconciliation must leave a `.downloading` record alone. `load()` is not
+  /// launch-only — `TPPAppDelegate` runs it on foreground and `HoldsViewModel`
+  /// on hold changes — so without this a warm load during a multi-minute `.lcpa`
+  /// transfer would flip a perfectly healthy in-flight download.
+  func isDownloadInFlight(for book: TPPBook) -> Bool {
+    downloadCenter.downloadInfo(forBookIdentifier: book.identifier) != nil
   }
 
   func checkIfBookFileExists(for book: TPPBook, account: String) -> Bool {

@@ -861,6 +861,13 @@ import OverdriveProcessor
         // `reporter` is (same reason as `notificationSender` above).
         self.localContentService.contentDownloadReporter = progressReporter
 
+        // The content re-download must not race the fulfillment handler's own
+        // transfer for the same book. That one is registered here, not in the
+        // service's claim map, so the service asks us.
+        self.localContentService.downloadCenterHasTransfer = { [weak self] identifier in
+            self?.downloadInfo(forBookIdentifier: identifier) != nil
+        }
+
         // Both helpers are weak-delegate types; safe to wire here. Use
         // `self.` to disambiguate from the init parameters (which are
         // Optional and shadow the stored properties at this scope).

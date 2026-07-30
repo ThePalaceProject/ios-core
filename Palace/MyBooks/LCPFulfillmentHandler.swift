@@ -113,15 +113,6 @@ final class LCPFulfillmentHandler {
 
         let lcpCompletion: (URL?, Error?) -> Void = { [weak self] localUrl, error in
             guard let self = self else { return }
-            // Close the content-download cue on EVERY exit path, success or
-            // failure, or the progress bar would hang on screen forever.
-            defer {
-                if book.defaultBookContentType == .audiobook {
-                    self.progressReporter.sendLCPContentDownloadActive(
-                        bookIdentifier: book.identifier, active: false
-                    )
-                }
-            }
             if let error = error {
                 let summary = "\(String(describing: book.distributor)) LCP license fulfillment error"
                 TPPErrorLogger.logError(error, summary: summary, metadata: [
@@ -130,16 +121,24 @@ final class LCPFulfillmentHandler {
                     "localURL": localUrl?.absoluteString ?? "N/A"
                 ])
 
-                // adjacent: LCP audiobooks are marked
-                // `.downloadSuccessful` the moment the .lcpl license lands
-                // (streaming-ready). A phase-2 .lcpa content download
-                // failure — typically airplane mode mid-fetch from
-                // googleapis.com — must NOT downgrade an already-readable
-                // audiobook back to `.downloadFailed`. The user reported
-                // this on iPad: previously-downloaded audiobooks losing
-                // the Read/Listen affordance the second they went offline.
-                // Streaming still works off the license; offline playback
-                // just isn't ready until they retry.
+                // A `.lcpa` content-download failure — typically airplane mode
+                // mid-fetch from googleapis.com — must NOT downgrade an
+                // audiobook that ALREADY has playable content on disk. The
+                // report that motivated this guard was on iPad: previously
+                // downloaded audiobooks losing the Read/Listen affordance the
+                // moment the device went offline.
+                //
+                // The state check is what distinguishes the two cases, and it
+                // still does the right thing now that a first fulfillment stays
+                // `.downloading` until content lands:
+                //  - re-fulfillment of a book that already has content → state
+                //    is `.downloadSuccessful`/`.used` → leave it alone.
+                //  - first fulfillment whose content never arrived → state is
+                //    `.downloading` → fall through and fail honestly, so the
+                //    book does not sit in `.downloading` forever.
+                // The old comment here claimed audiobooks were marked
+                // `.downloadSuccessful` as soon as the license landed; that is
+                // no longer the case (see the audiobook branch below).
                 //
                 // `.used` is included for future-proofing — audiobooks
                 // don't transition through `.used` today (only PDFs do, see
@@ -148,10 +147,25 @@ final class LCPFulfillmentHandler {
                 // BookReturnService keeps the guard correct if audiobook
                 // playback ever wires through the open-once → `.used`
                 // transition.
-                let currentState = self.bookRegistry.state(for: book.identifier)
-                let isStreamingReady = currentState == .downloadSuccessful || currentState == .used
-                if book.defaultBookContentType == .audiobook && isStreamingReady {
-                    Log.warn(#file, "LCP audiobook content download failed but streaming license intact — leaving '\(book.title)' (\(book.identifier)) as \(currentState)")
+                // Test the DISK, not the registry state. The state test this
+                // replaces only worked while the book had already been marked
+                // `.downloadSuccessful` at license-fulfilled time; now that a
+                // first fulfillment stays `.downloading`, the state at this
+                // point is `.downloading` on every reachable path
+                // (`DownloadTaskLifecycleService` sets it at task start, and
+                // `DownloadStartCoordinator` refuses to start a download from
+                // `.downloadSuccessful`/`.used`), so a state test would never
+                // fire and would let a book that DOES have content on disk fall
+                // through to `.downloadFailed` — which `BookRegistrySync` then
+                // excludes from its file-existence heal, stranding a perfectly
+                // good download behind a permanent Retry.
+                //
+                // What the guard is actually protecting is "this book already
+                // has playable audio", so ask that question directly.
+                let hasLocalContent = self.bookFileManager.fileUrl(for: book.identifier)
+                    .map { self.fileManager.fileExists(atPath: $0.path) } ?? false
+                if book.defaultBookContentType == .audiobook && hasLocalContent {
+                    Log.warn(#file, "LCP audiobook content re-fetch failed but local content is intact — leaving '\(book.title)' (\(book.identifier)) alone")
                     return
                 }
 
@@ -169,15 +183,20 @@ final class LCPFulfillmentHandler {
             self.bookRegistry.setFulfillmentId(license.identifier, for: book.identifier)
 
             if !self.backgroundDownloadHandler.replaceBook(book, withFileAtURL: localUrl, forDownloadTask: downloadTask) {
-                if book.defaultBookContentType == .audiobook {
-                    Log.warn(#file, "Content storage failed for audiobook, but streaming still available")
-                } else {
-                    let errorMessage = "Error replacing content file with file \(localUrl.absoluteString)"
-                    self.alertPresenter.failDownloadWithAlert(for: book, withMessage: errorMessage)
-                    return
-                }
-            } else if book.defaultBookContentType == .audiobook {
-                Log.info(#file, "Audiobook content stored successfully, offline playback now available")
+                // Storing the content failed, so there is no playable audio on
+                // disk and (with streaming broken) nothing to fall back to.
+                // This used to warn and continue, leaving the book in the
+                // `.downloadSuccessful` state it had been given early; now that
+                // the book is still `.downloading`, continuing would strand it
+                // there forever. Surface the failure so the patron can retry.
+                let errorMessage = "Error replacing content file with file \(localUrl.absoluteString)"
+                self.alertPresenter.failDownloadWithAlert(for: book, withMessage: errorMessage)
+                return
+            }
+
+            if book.defaultBookContentType == .audiobook {
+                Log.info(#file, "Audiobook content stored successfully — marking download successful: \(book.identifier)")
+                self.delegate?.markDownloadSuccessful(for: book)
             }
 
             // PDF fulfillment: Readium's PDFNavigator streams decrypted
@@ -192,20 +211,25 @@ final class LCPFulfillmentHandler {
         let fulfillmentDownloadTask = lcpService.fulfill(licenseUrl, progress: lcpProgress, completion: lcpCompletion)
 
         if book.defaultBookContentType == .audiobook {
-            Log.info(#file, "LCP audiobook license fulfilled, ready for streaming: \(book.identifier)")
-
-            // The tiny .lcpl has landed; the .lcpa content package — well over a
-            // gigabyte for some titles — is still transferring. The book is
-            // marked `.downloadSuccessful` immediately below (pre-existing
-            // behaviour, unchanged), so the registry-state-driven progress cue
-            // cannot see this phase and the sheet would show nothing at all for
-            // the whole wait. Patrons read that silence as failure and back out.
-            // This edge lets the half-sheet draw the bar without touching any
-            // persisted state. Progress itself is already published by
-            // `lcpProgress` above.
-            progressReporter.sendLCPContentDownloadActive(
-                bookIdentifier: book.identifier, active: true
-            )
+            // The `.lcpl` license has landed; the `.lcpa` content package is
+            // still transferring (it can be well over a gigabyte). The book
+            // therefore stays `.downloading` until `lcpCompletion` confirms the
+            // content is on disk.
+            //
+            // It used to be marked `.downloadSuccessful` right here, on the
+            // grounds that a license alone was enough to stream. That is no
+            // longer true: streaming-from-license is broken upstream
+            // (readium/swift-toolkit#579) and an `.lcpa` is a single encrypted
+            // container with no partial-play threshold, so the license alone
+            // does not make a playable book. Marking success early had two
+            // visible costs — "Listen" was offered for a book whose audio was
+            // absent, and the half-sheet's progress bar (gated on
+            // `bookState == .downloading`) rendered an invisible spacer for the
+            // entire download, which patrons read as a failure.
+            //
+            // Cancel keeps working across the content phase because the
+            // fulfillment download task is registered in `downloadInfo` below.
+            Log.info(#file, "LCP audiobook license fulfilled; awaiting .lcpa content before marking successful: \(book.identifier)")
 
             if let license = TPPLCPLicense(url: licenseUrl) {
                 bookRegistry.setFulfillmentId(license.identifier, for: book.identifier)
@@ -214,7 +238,6 @@ final class LCPFulfillmentHandler {
             }
 
             copyLicenseForStreaming(book: book, sourceLicenseUrl: licenseUrl)
-            delegate?.markDownloadSuccessful(for: book)
 
             runOnMainAsync { [weak self] in
                 self?.progressReporter.broadcastUpdate()
