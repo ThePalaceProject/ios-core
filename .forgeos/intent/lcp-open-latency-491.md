@@ -43,27 +43,54 @@ an invisible spacer. The percentage is already being computed and published; it
 is simply never drawn. Field report: patrons read the silence as a failure and
 back out before the download completes.
 
+## Scope change (2026-07-30, after three review rounds)
+
+Claim **B** was removed from this branch and moved to
+`feat/lcp-download-state-honesty` for the next release. Three SoD review rounds
+each found that B's fix generated a new defect in code outside the diff, because
+the invariant it retires ("license on disk implies playable") is denormalized
+across roughly five sites and was being patched one arm at a time.
+
+Archaeology settled the urgency: the early mark is byte-identical in 3.1.0
+(`LCPFulfillmentHandler.swift:179-188`), and 3.1.0 pinned Readium 3.7.0, which
+predates the PR #723 clamp removal that shipped in 3.8.0 — so in 3.1.0 the early
+"Listen" was truthful because streaming worked. What regressed in 3.2.0 is
+latency, not function, and CarPlay routes through the same gated `openAudiobook`
+(`CarPlayAudiobookBridge.swift:151`), so it is not an unmitigated path. B fixes a
+misleading label on pre-existing behaviour and is holdable.
+
+B returns next release as what it actually is: a redefinition of the
+license-only-means-playable predicate, verified by a reconciliation table test
+run to fixpoint.
+
+The patron-visible half of B is preserved here without it — see claim C.
+
 ## Claims
 
 - **A.** `redownloadLCPContentFile` becomes idempotent against concurrency: a
-  lock-guarded in-flight set keyed by book identifier, released on completion
+  lock-guarded in-flight claim keyed by book identifier, released on completion
   (success and failure), so a second caller during the download window no-ops
   instead of starting a duplicate transfer. The existing `fileExists` skip is
   retained. The LCP fulfillment call is injected so the guard is testable
   without a live LCP service, a license on disk, or a network fetch.
-- **B.** An LCP audiobook stays `.downloading` until its `.lcpa` is actually on
-  disk; `markDownloadSuccessful` moves from the license-fulfilled point into the
-  content-completion callback. This lights up the existing half-sheet and
-  book-cell progress bars for the fresh-borrow path with no UI change, and stops
-  offering "Listen" for a book whose audio is absent. Cancel remains functional
-  on this path because the fulfillment download task is registered in
-  `downloadInfo`.
-- **C.** The self-heal re-download reports progress (currently discarded as
+  Reworked after review: the claim expires on an IDLE window rather than a total
+  duration (a total-duration window sized to the gate's 180s ceiling expired
+  healthy transfers of every measured title, reintroducing the duplicate), is
+  heartbeated from the progress callback, uses a monotonic clock, and is
+  token-matched on release so a late completion cannot free a successor's slot.
+- **B.** WITHDRAWN from this branch (see Scope change above). No registry state
+  transition is altered here; `LCPFulfillmentHandler` is byte-identical to 490.
+- **C.** The content re-download reports progress (previously discarded as
   `progress: { _ in }`) and an active/idle signal, which `BookDetailViewModel`
-  exposes as `isDownloadingLCPContent` and `HalfSheetView.progressIndicator`
-  renders as the linear bar. This path is NOT covered by B: the book is
-  legitimately `.downloadSuccessful` from an earlier session and only its content
-  went missing.
+  and `BookCellModel` expose as `isDownloadingLCPContent` and
+  `HalfSheetProgressCue.resolve` renders as the linear bar. Extended after the
+  split to emit the same edge around the FRESH-BORROW content phase in
+  `LCPFulfillmentHandler`, so the bar shows for that wait too without any state
+  change — this is how the patron-visible half of B is preserved. Progress was
+  already published by `lcpProgress` and `downloadInfo` already populated, so
+  only the edge was missing. `BookCellModel` additionally tracks
+  `observedProgress`, because its `downloadProgress` reads `downloadInfo`, which
+  this out-of-band transfer never populates.
 - **D.** A dependency-upgrade gate: any change to the Readium pin must record
   money-path validation evidence or CI fails, plus the architecture record of the
   3.7 → 3.9 streaming loss that motivates it.
@@ -78,10 +105,13 @@ back out before the download completes.
   on an out-of-band background `URLSession` that is not registered in
   `downloadInfo`, so Cancel would be a button that cannot cancel. C therefore
   uses a dedicated signal rather than a registry-state change.
-- **Does NOT downgrade a book that already has local content.** On a failed
-  content download the existing "streaming license intact" guard is preserved for
-  books whose `.lcpa` is present; only a first fulfillment that never landed
-  content becomes `.downloadFailed` (honest and retryable).
+- **Does NOT change any registry state transition.** The fulfillment path's
+  state behaviour, including the existing "streaming license intact" guard, is
+  byte-identical to 490. That was claim B and it is withdrawn.
+- **Does NOT stop "Listen" being offered before the audio is local.** That is
+  pre-existing 3.1.0 behaviour and is B's job next release. The open-time gate
+  continues to cover it: tapping Listen triggers the download and opens when it
+  lands, now with a visible bar.
 - **Does NOT change the 180 s gate ceiling.** Flagged separately: a large archive
   on a slow connection can still exceed it and surface "Audiobook Unavailable".
 
@@ -90,11 +120,13 @@ back out before the download completes.
 - `Palace/MyBooks/LocalBookContentService.swift` (A, C)
 - `Palace/MyBooks/DownloadProgressPublisher.swift` (C)
 - `Palace/MyBooks/MyBooksDownloadCenter.swift` (C wiring)
-- `Palace/MyBooks/LCPFulfillmentHandler.swift` (B)
+- `Palace/MyBooks/LCPFulfillmentHandler.swift` (C — the two content-phase
+  emission points only; the state transition is unchanged from 490)
 - `Palace/Book/UI/BookDetail/BookDetailViewModel.swift` (C)
+- `Palace/MyBooks/MyBooks/BookCell/BookCellModel.swift` (C)
 - `Palace/Book/UI/BookDetail/HalfSheetview.swift` (C)
 - `PalaceTests/MyBooks/LocalBookContentServiceTests.swift` (A, C)
-- `PalaceTests/MyBooks/LCPFulfillmentHandlerTests.swift` (B)
+- `PalaceTests/MyBooks/LCPFulfillmentHandlerTests.swift` (C)
 - `scripts/check-dependency-money-paths.sh` + `scripts/tests/` + docs (D)
 - `Palace.xcodeproj/project.pbxproj` (build 490 → 491, new files both targets)
 
@@ -103,5 +135,7 @@ back out before the download completes.
 - Unit + mutation on the changed decision points (in-flight guard, state
   transition, failure branches).
 - Suites derived from the changed files rather than guessed.
-- simdrive pass on the simulator against A1QA: single download per open, bar
-  visible for the whole wait, Listen absent until the archive is on disk.
+- simdrive pass on the simulator against A1QA: single download per open and no
+  discarded transfer, bar visible for the whole wait.
+  Result on build 491: 1 download started and 0 discarded, for the scenario that
+  produced 2 and 1 on build 490; content landed and playback started.
