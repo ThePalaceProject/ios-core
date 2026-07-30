@@ -102,13 +102,14 @@ public enum TicketEmailComposition {
     public static func attachments(for rawDraft: TicketDraft) -> [Attachment] {
         // PP-4807: encode the sanitized draft so omitted fields are ABSENT from
         // the JSON attachment (nil optionals are dropped by encodeIfPresent).
+        // PP-4883: serialize via the shared TicketWirePayload so the email
+        // attachment and the clipboard copy path produce byte-identical bytes.
+        // Pass the RAW draft to jsonData and let TicketWirePayload be the sole
+        // sanitize owner for the JSON — `draft` below is only for the log file.
         let draft = rawDraft.sanitizedForSubmission()
         var result: [Attachment] = []
 
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        encoder.dateEncodingStrategy = .iso8601
-        if let json = try? encoder.encode(draft) {
+        if let json = try? TicketWirePayload.jsonData(for: rawDraft) {
             result.append(Attachment(
                 fileName: "palace-diagnostics.json",
                 mimeType: "application/json",
