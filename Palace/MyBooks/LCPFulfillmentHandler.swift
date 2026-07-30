@@ -103,10 +103,16 @@ final class LCPFulfillmentHandler {
                 if let info = await self.stateManager.bookIdentifierToDownloadInfo.get(book.identifier)?.withDownloadProgress(progressValue) {
                     await self.stateManager.bookIdentifierToDownloadInfo.set(book.identifier, value: info)
                 }
-                // Publish to progress publisher so UI updates (HalfSheet, BookCell, etc.)
-                await MainActor.run {
-                    self.progressReporter.downloadProgressPublisher.send((book.identifier, progressValue))
-                }
+                // Through `sendProgress`, NOT straight to the publisher. That method
+                // also HEARTBEATS the content-transfer registration, and this is the
+                // only signal of life a `.lcpa` fetch produces: `downloadInfo` is
+                // cleared ~100 ms into the phase, so the registration is all that
+                // stands between a long download and a duplicate. Publishing
+                // directly left it un-heartbeated, so it expired at the 180 s idle
+                // mark and re-armed the second archive fetch — on every title
+                // measured for this fix (438 MB / 778 MB / 1.9 GB), all of which
+                // run past three minutes on an ordinary connection.
+                self.progressReporter.sendProgress(bookIdentifier: book.identifier, progress: progressValue)
                 self.progressReporter.broadcastUpdate()
             }
         }

@@ -225,6 +225,39 @@ final class LCPFulfillmentHandlerTests: XCTestCase {
                        "the failure arm must release the registration as well")
     }
 
+    /// F1: the PRODUCER, not the unit. `testTransferRegistry_heartbeatKeepsALongDownloadAlive`
+    /// calls `sendProgress` directly, so it passed while the fulfillment path
+    /// published straight to the publisher and never heartbeated at all. This
+    /// drives Readium's actual progress callback and then advances the clock past
+    /// the idle window — the registration must survive, or a long download expires
+    /// mid-flight and a second full archive is fetched.
+    func testFulfill_progressCallbackHeartbeatsTheRegistration() throws {
+        let book = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        let sourceURL = try writeSourceFile()
+        let downloadTask = FakeDownloadTask(state: .running, identifier: 11)
+
+        var now: TimeInterval = 1_000
+        reporter.monotonicClock = { now }
+
+        handler.fulfillLCPLicense(fileUrl: sourceURL, forBook: book, downloadTask: downloadTask)
+        let progress = try XCTUnwrap(lcpService.lastProgress)
+
+        // A long transfer that keeps reporting, well past the idle window.
+        for _ in 0..<4 {
+            now += DownloadProgressReporter.contentTransferIdleTimeout - 10
+            progress(0.5)
+            let ticked = expectation(description: "heartbeat applied")
+            DispatchQueue.main.async { ticked.fulfill() }
+            wait(for: [ticked], timeout: 5.0)
+        }
+        now += DownloadProgressReporter.contentTransferIdleTimeout - 10
+
+        XCTAssertTrue(
+            reporter.isLCPContentTransferActive(for: book.identifier),
+            "a still-transferring .lcpa expired at the idle mark — reconciliation then schedules a duplicate of the archive already downloading"
+        )
+    }
+
     // MARK: - Fulfill completion error → alert
 
     func testFulfill_completionWithError_publishesFulfilmentErrorAlert() async throws {

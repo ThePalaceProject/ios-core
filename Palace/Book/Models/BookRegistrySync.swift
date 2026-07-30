@@ -799,8 +799,51 @@ class BookRegistrySync {
       // Content already on disk: leave the record exactly as it is. Forcing
       // `.downloading` here would strip the Listen button from a `.used` book
       // whose content is present while a background re-download runs.
-      // Nothing on disk yet: the book IS downloading, whatever state it entered in.
-      return presence == .present ? decision(entryState) : decision(.downloading)
+      if presence == .present {
+        return decision(entryState)
+      }
+      // A first-borrow fulfillment genuinely is `.downloading`, and that is the
+      // state fix (B) established for it.
+      if entryState == .downloading {
+        return decision(.downloading)
+      }
+      // Every other entry state keeps the answer its own arm would give, with the
+      // re-download scheduling SUPPRESSED because a transfer is already running.
+      //
+      // Deliberately not `.downloading` for these. That state maps to
+      // `buttons = [.cancel]`, and the transfer these states are waiting on is the
+      // BACKGROUND re-download, whose task handle is discarded
+      // (`LCPContentFulfilling` returns Void) — so cancel would report success
+      // while the transfer kept running, possibly on cellular. Both
+      // `lcpContentDownloadPublisher` and `redownloadLCPContentFile` document that
+      // this path must not claim `.downloading` for exactly this reason; an earlier
+      // revision of this guard contradicted its own design note. Progress is still
+      // shown, via the `isDownloadingLCPContent` cue, which is independent of book
+      // state.
+      var suppressed = armDecision(entryState: entryState, presence: presence)
+      suppressed.schedulesContentRedownload = false
+      suppressed.schedulesOrphanRedownload = false
+      return suppressed
+    }
+
+    return armDecision(entryState: entryState, presence: presence)
+  }
+
+  /// The per-entry-state reconciliation arms, with no in-flight consideration.
+  /// Split out so the in-flight guard above can reuse an arm's STATE while
+  /// suppressing its scheduling.
+  private static func armDecision(
+    entryState: TPPBookState,
+    presence: ContentPresence
+  ) -> ReconciliationDecision {
+    func decision(
+      _ state: TPPBookState,
+      content: Bool = false,
+      orphan: Bool = false
+    ) -> ReconciliationDecision {
+      ReconciliationDecision(state: state,
+                             schedulesContentRedownload: content,
+                             schedulesOrphanRedownload: orphan)
     }
 
     switch entryState {

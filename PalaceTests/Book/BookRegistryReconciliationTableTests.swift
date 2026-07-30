@@ -173,13 +173,57 @@ final class BookRegistryReconciliationTableTests: XCTestCase {
     /// mid-download, not just `.downloading`. The device trace's 2nd and 3rd
     /// duplicate schedules both came from `.downloadNeeded`, which returns
     /// `content: true` on its own.
+    /// F3: the in-flight COLUMN, pinned cell by cell. The not-in-flight half had
+    /// all 15 cells; this half had only a scheduling assertion, so the states it
+    /// produces were unpinned — including the `.used` + present identity that keeps
+    /// a listening patron's Listen button during a background re-download.
+    func testEveryCellOfTheInFlightColumn() {
+        let cells: [(TPPBookState, Disk, TPPBookState)] = [
+            // Content present: the record passes through untouched.
+            (.downloading, .present, .downloading),
+            (.downloadNeeded, .present, .downloadNeeded),
+            (.downloadSuccessful, .present, .downloadSuccessful),
+            (.used, .present, .used),
+            // A first-borrow fulfillment is genuinely downloading.
+            (.downloading, .licenseOnly, .downloading),
+            (.downloading, .absent, .downloading),
+            // The background re-download must NOT claim `.downloading`: that offers
+            // a Cancel that cannot stop the transfer.
+            (.downloadNeeded, .licenseOnly, .downloadNeeded),
+            (.downloadSuccessful, .licenseOnly, .downloadNeeded),
+            (.used, .licenseOnly, .downloadNeeded),
+            (.downloadSuccessful, .absent, .downloadNeeded),
+            (.used, .absent, .downloadNeeded),
+        ]
+
+        for (entry, disk, expected) in cells {
+            let got = outcome(entry: entry, disk: disk, inFlight: true)
+            XCTAssertEqual(got.state, expected,
+                           "in-flight, entry \(entry), disk \(disk.rawValue)")
+            XCTAssertFalse(got.schedulesContentRedownload,
+                           "in-flight, entry \(entry), disk \(disk.rawValue): must not schedule")
+            XCTAssertFalse(got.schedulesOrphanRedownload,
+                           "in-flight, entry \(entry), disk \(disk.rawValue): must not schedule")
+        }
+    }
+
+    /// No in-flight outcome may claim the book is playable without its content —
+    /// the same safety property the not-in-flight column carries.
+    func testInFlightOutcomesNeverClaimPlayableWithoutContent() {
+        for entry in entryStates {
+            for disk in Disk.allCases where disk != .present {
+                let got = outcome(entry: entry, disk: disk, inFlight: true)
+                XCTAssertFalse(
+                    got.state == .downloadSuccessful || got.state == .used,
+                    "entry \(entry) + \(disk.rawValue) while downloading yields \(got.state) — Listen with no audio"
+                )
+            }
+        }
+    }
+
     func testInFlightTransfer_leavesEveryMidDownloadEntryStateAlone() {
         for entry in [TPPBookState.downloading, .downloadNeeded, .downloadSuccessful, .used] {
-            let got = BookRegistrySync.reconcile(
-                entryState: entry,
-                presence: .licenseOnly,
-                isDownloadInFlight: true
-            )
+            let got = outcome(entry: entry, disk: .licenseOnly, inFlight: true)
             XCTAssertFalse(
                 got.schedulesContentRedownload,
                 "entry \(entry) scheduled a re-download while the archive was already transferring — that is the doubled download"
