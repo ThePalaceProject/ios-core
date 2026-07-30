@@ -98,18 +98,93 @@ final class BookRegistryReconciliationTableTests: XCTestCase {
         )
     }
 
+    // MARK: - The expectation table
+    //
+    // Every (entry, presence) cell pinned explicitly. An earlier version of this
+    // file had NO table at all — it asserted only properties, and no licenseOnly
+    // cell was pinned anywhere, so flipping `.downloadSuccessful` + `.licenseOnly`
+    // back to the shipped defect failed zero tests. Properties alone are not a
+    // gate; they need the cells underneath them.
+
+    private struct Cell {
+        let entry: TPPBookState
+        let disk: Disk
+        let expected: TPPBookState
+        let content: Bool
+        let orphan: Bool
+    }
+
+    private var table: [Cell] {
+        [
+            // A live transfer settles its own state — see the in-flight tests.
+            Cell(entry: .downloading, disk: .present,     expected: .downloadSuccessful, content: false, orphan: false),
+            Cell(entry: .downloading, disk: .licenseOnly, expected: .downloadNeeded,     content: true,  orphan: false),
+            Cell(entry: .downloading, disk: .absent,      expected: .downloadFailed,     content: false, orphan: false),
+
+            Cell(entry: .downloadNeeded, disk: .present,     expected: .downloadSuccessful, content: false, orphan: false),
+            Cell(entry: .downloadNeeded, disk: .licenseOnly, expected: .downloadNeeded,     content: true,  orphan: false),
+            Cell(entry: .downloadNeeded, disk: .absent,      expected: .downloadNeeded,     content: false, orphan: false),
+
+            Cell(entry: .downloadSuccessful, disk: .present,     expected: .downloadSuccessful, content: false, orphan: false),
+            // THE cell the shipped defect got wrong: a license is not playable.
+            Cell(entry: .downloadSuccessful, disk: .licenseOnly, expected: .downloadNeeded,     content: true,  orphan: false),
+            Cell(entry: .downloadSuccessful, disk: .absent,      expected: .downloadNeeded,     content: false, orphan: true),
+
+            Cell(entry: .used, disk: .present,     expected: .used,           content: false, orphan: false),
+            Cell(entry: .used, disk: .licenseOnly, expected: .downloadNeeded, content: true,  orphan: false),
+            Cell(entry: .used, disk: .absent,      expected: .downloadNeeded, content: false, orphan: true),
+
+            Cell(entry: .SAMLStarted, disk: .present,     expected: .downloadNeeded, content: false, orphan: false),
+            Cell(entry: .SAMLStarted, disk: .licenseOnly, expected: .downloadNeeded, content: false, orphan: false),
+            Cell(entry: .SAMLStarted, disk: .absent,      expected: .downloadFailed, content: false, orphan: false),
+        ]
+    }
+
+    func testEveryCellOfTheReconciliationTable() {
+        for cell in table {
+            let got = outcome(entry: cell.entry, disk: cell.disk)
+            XCTAssertEqual(got.state, cell.expected,
+                           "entry \(cell.entry) + disk \(cell.disk.rawValue) should reconcile to \(cell.expected)")
+            XCTAssertEqual(got.schedulesContentRedownload, cell.content,
+                           "entry \(cell.entry) + disk \(cell.disk.rawValue): content re-download scheduling")
+            XCTAssertEqual(got.schedulesOrphanRedownload, cell.orphan,
+                           "entry \(cell.entry) + disk \(cell.disk.rawValue): orphan re-download scheduling")
+        }
+    }
+
+    /// States `reconcile` must pass through untouched. This became load-bearing
+    /// when the entry-state gate was removed from `load()`: every record now
+    /// goes through `reconcile`, so a mutation of the identity branch would
+    /// rewrite every `.holding` record in the registry.
+    func testStatesOutsideTheChainAreReturnedUnchanged() {
+        let untouched: [TPPBookState] = [.unregistered, .holding, .downloadFailed, .returning, .unsupported]
+        for state in untouched {
+            for disk in Disk.allCases {
+                let got = outcome(entry: state, disk: disk)
+                XCTAssertEqual(got.state, state,
+                               "\(state) must pass through untouched (disk: \(disk.rawValue)) — load() no longer gates on entry state")
+                XCTAssertFalse(got.schedulesContentRedownload)
+                XCTAssertFalse(got.schedulesOrphanRedownload)
+            }
+        }
+    }
+
     // MARK: - The safety property
     //
     // Stated in terms of the patron-visible defect rather than any arm, so it
     // survives a rewrite of the chain.
 
-    /// A book that claims to be playable while its content is absent, with no
-    /// recovery scheduled, is the "Listen with no audio" bug.
-    private func violatesSafety(_ outcome: BookRegistrySync.ReconciliationDecision, disk: Disk) -> Bool {
+    /// A state that claims the book is playable while its content is absent is
+    /// the "Listen with no audio" bug — FULL STOP.
+    ///
+    /// An earlier version of this predicate also required "and no recovery is
+    /// scheduled", which made it excuse the exact defect that shipped: that bug
+    /// DID schedule a background re-download, and still handed the patron a
+    /// Listen button that could not play. Recovery running in the background
+    /// does not make the button work now.
+    private func claimsPlayableWithoutContent(_ outcome: BookRegistrySync.ReconciliationDecision, disk: Disk) -> Bool {
         let claimsPlayable = (outcome.state == .downloadSuccessful || outcome.state == .used)
-        let contentAbsent = (disk != .present)
-        let noRecovery = !outcome.schedulesContentRedownload && !outcome.schedulesOrphanRedownload
-        return claimsPlayable && contentAbsent && noRecovery
+        return claimsPlayable && disk != .present
     }
 
     private var entryStates: [TPPBookState] {
@@ -119,10 +194,10 @@ final class BookRegistryReconciliationTableTests: XCTestCase {
     func testNoOutcomeClaimsPlayableWhileContentIsAbsent() {
         for entry in entryStates {
             for disk in Disk.allCases {
-                let outcome = outcome(entry: entry, disk: disk)
+                let got = outcome(entry: entry, disk: disk)
                 XCTAssertFalse(
-                    violatesSafety(outcome, disk: disk),
-                    "entry \(entry) with disk \(disk.rawValue) yields \(outcome.state) and schedules nothing — that is a book offering Listen with no audio"
+                    claimsPlayableWithoutContent(got, disk: disk),
+                    "entry \(entry) with disk \(disk.rawValue) yields \(got.state) — a book offering Listen with no audio"
                 )
             }
         }
@@ -131,9 +206,7 @@ final class BookRegistryReconciliationTableTests: XCTestCase {
     /// Reconciliation must SETTLE. Some entries legitimately take two passes —
     /// `.SAMLStarted` with content present resolves to `.downloadNeeded`, which
     /// the next pass heals to `.downloadSuccessful` — so the property is
-    /// convergence to a fixpoint, not single-step idempotence. (The first draft
-    /// of this test asserted the stricter thing and failed on that legitimate
-    /// settle, which is the table doing its job.)
+    /// convergence to a fixpoint, not single-step idempotence.
     func testReconciliationConvergesToAFixpoint() {
         for entry in entryStates {
             for disk in Disk.allCases {
@@ -144,152 +217,41 @@ final class BookRegistryReconciliationTableTests: XCTestCase {
                     if next == state { settled = true; break }
                     state = next
                 }
-                XCTAssertTrue(
-                    settled,
-                    "entry \(entry) with disk \(disk.rawValue) never settled — it keeps changing answer every launch"
-                )
+                XCTAssertTrue(settled,
+                              "entry \(entry) with disk \(disk.rawValue) never settled — it changes answer every launch")
             }
         }
     }
 
-    /// The property that actually protects the patron, asserted at EVERY step of
-    /// the settle rather than only at the end. The recurrence that survived a
-    /// review round passed through a safe-looking intermediate state and only
-    /// became wrong on the following launch, so checking the endpoint alone
-    /// would have missed it.
-    func testSafetyHoldsAtEveryStepOfTheSettle() {
-        for entry in entryStates {
-            for disk in Disk.allCases {
-                var state = entry
-                for pass in 0..<6 {
-                    let outcome = outcome(entry: state, disk: disk)
-                    XCTAssertFalse(
-                        violatesSafety(outcome, disk: disk),
-                        "pass \(pass + 1) from entry \(entry) with disk \(disk.rawValue) produced \(outcome.state) with no recovery scheduled — Listen with no audio"
-                    )
-                    if outcome.state == state { break }
-                    state = outcome.state
-                }
-            }
-        }
-    }
-
-    /// The specific class that bit us three times: a book holding only its
-    /// license must never settle into a state that claims it is playable, from
-    /// any entry state.
+    /// The class that bit us repeatedly: with only a license on disk, the chain
+    /// must never REST in — or pass through — a state claiming to be playable.
     ///
-    /// Asserts SETTLEMENT before inspecting the endpoint. An earlier version
-    /// read the state after a fixed number of iterations, which made it pass by
-    /// parity for the one entry state whose mutated arm happened to land back on
-    /// itself — the mutated arm, of all of them. Every visited state is checked,
-    /// so an oscillation cannot hide the violation in a trough.
-    func testLicenseOnlyNeverSettlesIntoAPlayableState() {
+    /// Checks the settled state as well as every intermediate. An earlier version
+    /// used `visited.dropFirst()`, which asserts NOTHING when the chain settles
+    /// on step zero — precisely the `.downloadSuccessful` / `.used` entries the
+    /// defect lived in.
+    func testLicenseOnlyNeverRestsOrPassesThroughAPlayableState() {
         for entry in entryStates {
             var state = entry
-            var visited: [TPPBookState] = [state]
             var settled = false
+            var produced: [TPPBookState] = []
 
             for _ in 0..<6 {
                 let next = outcome(entry: state, disk: .licenseOnly).state
+                produced.append(next)
                 if next == state { settled = true; break }
                 state = next
-                visited.append(state)
             }
 
-            XCTAssertTrue(
-                settled,
-                "entry \(entry) never settled with only a license — visited \(visited); an oscillating chain has no safe endpoint to check"
-            )
+            XCTAssertTrue(settled, "entry \(entry) never settled with only a license — produced \(produced)")
 
-            // Skip the entry itself: `.downloadSuccessful` and `.used` ARE
-            // playable states, and starting there is the whole point — the chain
-            // must demote them. What must never happen is the chain PRODUCING or
-            // returning to a playable state while only a license is on disk.
-            for produced in visited.dropFirst() {
+            for state in produced {
                 XCTAssertFalse(
-                    produced == .downloadSuccessful || produced == .used,
-                    "entry \(entry) was reconciled INTO \(produced) with only a license — visited \(visited). That is the Listen-with-no-audio defect, and checking only the endpoint is how it survived a review round."
+                    state == .downloadSuccessful || state == .used,
+                    "entry \(entry) reconciled INTO \(state) with only a license — produced \(produced). That is Listen-with-no-audio."
                 )
             }
         }
-    }
-
-    // MARK: - The predicate itself, against real files
-    //
-    // The table above pins the DECISION. This pins the input it consumes, so the
-    // two cannot drift apart silently.
-
-    private func makeLCPAudiobook() -> TPPBook {
-        let acquisition = TPPOPDSAcquisition(
-            relation: .generic,
-            type: "application/vnd.readium.lcp.license.v1.0+json",
-            hrefURL: URL(string: "https://library.test/book.lcpl")!,
-            indirectAcquisitions: [
-                TPPOPDSIndirectAcquisition(type: "application/audiobook+lcp", indirectAcquisitions: [])
-            ],
-            availability: TPPOPDSAcquisitionAvailabilityUnlimited()
-        )
-        return TPPBook(
-            acquisitions: [acquisition], authors: [], categoryStrings: [],
-            distributor: "Test", identifier: UUID().uuidString,
-            imageURL: nil, imageThumbnailURL: nil, published: Date(),
-            publisher: "Test", subtitle: nil, summary: nil,
-            title: "Reconciliation Fixture", updated: Date(),
-            annotationsURL: nil, analyticsURL: nil, alternateURL: nil,
-            relatedWorksURL: nil, previewLink: nil, seriesURL: nil,
-            revokeURL: nil, reportURL: nil, timeTrackingURL: nil,
-            contributors: [:], bookDuration: nil, imageCache: MockImageCache()
-        )
-    }
-
-    private func makeSync() -> BookRegistrySync {
-        BookRegistrySync(
-            store: BookRegistryStore(),
-            accountsManager: appContainer.accountsManager,
-            downloadCenterProvider: { [appContainer] in appContainer!.downloadCenter },
-            opdsFeedServiceProvider: { [appContainer] in appContainer!.opdsFeedService }
-        )
-    }
-
-    func testContentPresence_licenseWithoutContent_isLicenseOnlyNotPresent() throws {
-        let sync = makeSync()
-        let book = makeLCPAudiobook()
-        let account = "reconciliation-test"
-
-        let contentURL = try XCTUnwrap(
-            appContainer.downloadCenter.fileUrl(for: book, account: account)
-        )
-        let licenseURL = contentURL.deletingPathExtension().appendingPathExtension("lcpl")
-        try FileManager.default.createDirectory(at: contentURL.deletingLastPathComponent(),
-                                                withIntermediateDirectories: true)
-        try Data(repeating: 0x01, count: 512).write(to: licenseURL)
-        defer { try? FileManager.default.removeItem(at: licenseURL) }
-
-        XCTAssertEqual(sync.contentPresence(for: book, account: account), .licenseOnly,
-                       "a license without its .lcpa must NOT read as present — that conflation is what promoted interrupted downloads to Listen-with-no-audio")
-    }
-
-    func testContentPresence_withContent_isPresent() throws {
-        let sync = makeSync()
-        let book = makeLCPAudiobook()
-        let account = "reconciliation-test"
-
-        let contentURL = try XCTUnwrap(
-            appContainer.downloadCenter.fileUrl(for: book, account: account)
-        )
-        try FileManager.default.createDirectory(at: contentURL.deletingLastPathComponent(),
-                                                withIntermediateDirectories: true)
-        try Data(repeating: 0x02, count: 512).write(to: contentURL)
-        defer { try? FileManager.default.removeItem(at: contentURL) }
-
-        XCTAssertEqual(sync.contentPresence(for: book, account: account), .present)
-    }
-
-    func testContentPresence_nothingOnDisk_isAbsent() {
-        let sync = makeSync()
-        let book = makeLCPAudiobook()
-
-        XCTAssertEqual(sync.contentPresence(for: book, account: "reconciliation-test"), .absent)
     }
 
     // MARK: - In-flight guard

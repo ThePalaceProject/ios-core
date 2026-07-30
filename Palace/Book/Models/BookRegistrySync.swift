@@ -4,6 +4,21 @@ import PalaceCatalog
 
 /// Handles server synchronization for the book registry.
 /// Manages syncing loans from the OPDS feed and loading/saving from disk.
+/// The two re-download actions `load()` schedules once reconciliation has decided
+/// a book's content is missing.
+///
+/// Narrow by design. `MyBooksDownloadCenter` declares both methods in extensions,
+/// so a subclass cannot override them, and constructing a real download center in
+/// a unit test is not viable. Without this seam the scheduling plumbing in
+/// `load()` is unobservable — review confirmed that deleting either scheduling
+/// block killed zero tests.
+protocol RegistryRedownloadScheduling: AnyObject {
+  /// A license landed but the `.lcpa` content did not. Fetch the content.
+  func scheduleLCPContentRedownload(for book: TPPBook)
+  /// The book's content is gone from disk entirely. Restart the download.
+  func scheduleOrphanRedownload(for book: TPPBook)
+}
+
 class BookRegistrySync {
 
   private let store: BookRegistryStore
@@ -18,6 +33,8 @@ class BookRegistrySync {
   /// `AppContainer.production().downloadCenter` has settled.
   private let downloadCenterProvider: () -> MyBooksDownloadCenter
   private let opdsFeedServiceProvider: () -> OPDSFeedService
+  /// Defaults to the download center; injected in tests to observe scheduling.
+  private let redownloadSchedulerProvider: () -> RegistryRedownloadScheduling
   private let registryFolderName = "registry"
   private let registryFileName = "registry.json"
 
@@ -66,12 +83,14 @@ class BookRegistrySync {
     store: BookRegistryStore,
     accountsManager: AccountsManager,
     downloadCenterProvider: @escaping () -> MyBooksDownloadCenter,
-    opdsFeedServiceProvider: @escaping () -> OPDSFeedService
+    opdsFeedServiceProvider: @escaping () -> OPDSFeedService,
+    redownloadSchedulerProvider: (() -> RegistryRedownloadScheduling)? = nil
   ) {
     self.store = store
     self.accountsManager = accountsManager
     self.downloadCenterProvider = downloadCenterProvider
     self.opdsFeedServiceProvider = opdsFeedServiceProvider
+    self.redownloadSchedulerProvider = redownloadSchedulerProvider ?? { downloadCenterProvider() }
     diskWriteQueue.setSpecific(key: diskWriteQueueKey, value: ())
   }
 
@@ -254,13 +273,14 @@ class BookRegistrySync {
         #if LCP
         if !lcpBooksNeedingBackgroundRedownload.isEmpty {
           Log.info(#file, "  Scheduling background .lcpa re-download for \(lcpBooksNeedingBackgroundRedownload.count) orphaned LCP audiobook(s)")
-          DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [accountsManager, downloadCenter] in
+          let scheduler = self.redownloadSchedulerProvider()
+          DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [accountsManager] in
             guard accountsManager.currentAccountId == loadedAccount else {
               Log.info(#file, "  Skipping LCP background re-download — account changed during wait")
               return
             }
             for book in lcpBooksNeedingBackgroundRedownload {
-              downloadCenter.redownloadLCPContentFile(for: book)
+              scheduler.scheduleLCPContentRedownload(for: book)
             }
           }
         }
@@ -268,13 +288,14 @@ class BookRegistrySync {
 
         if !orphanedBooksNeedingRedownload.isEmpty {
           Log.info(#file, "  Scheduling auto-restart for \(orphanedBooksNeedingRedownload.count) orphaned download(s)")
-          DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) { [accountsManager, downloadCenter] in
+          let scheduler = self.redownloadSchedulerProvider()
+          DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) { [accountsManager] in
             guard accountsManager.currentAccountId == loadedAccount else {
               Log.info(#file, "  Skipping orphan auto-restart — account changed during wait")
               return
             }
             for book in orphanedBooksNeedingRedownload {
-              downloadCenter.startDownload(for: book)
+              scheduler.scheduleOrphanRedownload(for: book)
             }
           }
         }

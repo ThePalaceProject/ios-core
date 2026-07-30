@@ -1248,6 +1248,17 @@ import OverdriveProcessor
     }
 }
 
+extension MyBooksDownloadCenter: RegistryRedownloadScheduling {
+
+    func scheduleLCPContentRedownload(for book: TPPBook) {
+        redownloadLCPContentFile(for: book)
+    }
+
+    func scheduleOrphanRedownload(for book: TPPBook) {
+        startDownload(for: book)
+    }
+}
+
 extension MyBooksDownloadCenter {
 
     func redownloadLCPContentFile(for book: TPPBook) {
