@@ -214,6 +214,11 @@ import OverdriveProcessor
 
     let downloadProgressPublisher: PassthroughSubject<(String, Double), Never>
 
+    /// Publishes (bookIdentifier, isActive) for the background LCP `.lcpa`
+    /// content re-download. See `DownloadProgressPublishing` for why this is a
+    /// distinct signal rather than a registry-state change.
+    let lcpContentDownloadPublisher: PassthroughSubject<(String, Bool), Never>
+
     /// Publishes download error alerts for a given book identifier.
     /// Subscribers (e.g. view models showing a half sheet) can present the
     /// error inline via SwiftUI `.alert` instead of relying on UIKit
@@ -489,6 +494,7 @@ import OverdriveProcessor
         )
         self.progressReporter = reporter
         self.downloadProgressPublisher = reporter.downloadProgressPublisher
+        self.lcpContentDownloadPublisher = reporter.lcpContentDownloadPublisher
         self.downloadErrorPublisher = reporter.downloadErrorPublisher
         // DownloadAlertPresenter shares the same reporter / stateManager /
         // announcer / registry MBDC just wired so all download-failure paths
@@ -842,6 +848,13 @@ import OverdriveProcessor
         // Notification sender has to outlive `super.init()` since the
         // reporter holds it weakly — set after self is fully constructed.
         progressReporter.notificationSender = self
+
+        // The LCP content re-download reports progress + an active/idle edge so
+        // the half-sheet can show a real percentage while a multi-gigabyte
+        // `.lcpa` transfers. Wired here rather than at construction because
+        // `localContentService` is built earlier in this initializer than
+        // `reporter` is (same reason as `notificationSender` above).
+        self.localContentService.contentDownloadReporter = progressReporter
 
         // Both helpers are weak-delegate types; safe to wire here. Use
         // `self.` to disambiguate from the init parameters (which are

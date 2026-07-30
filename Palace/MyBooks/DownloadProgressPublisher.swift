@@ -19,8 +19,30 @@ protocol DownloadProgressPublishing: AnyObject {
     /// Publishes download/borrow error info for inline alert presentation
     var downloadErrorPublisher: PassthroughSubject<DownloadErrorInfo, Never> { get }
 
+    /// Publishes (bookIdentifier, isActive) for the LCP audiobook *content*
+    /// re-download — the background `.lcpa` fetch that runs when a book is
+    /// already `.downloadSuccessful` but its content package is missing.
+    ///
+    /// Separate from `downloadProgressPublisher` because the consumer needs a
+    /// definite "a content download is running" edge, not an inference from a
+    /// progress value. `BookDetailViewModel` clamps `downloadProgress`
+    /// monotonically upward, so a book whose earlier download already reached
+    /// 1.0 would clamp every fresh 0.0…1.0 sample back to 1.0 and the UI could
+    /// never tell that a new transfer had begun.
+    ///
+    /// This deliberately does NOT move the book to `.downloading`: that state
+    /// maps to `buttons = [.cancel]`, and this transfer runs on an out-of-band
+    /// background `URLSession` that is not registered in `downloadInfo`, so the
+    /// button would not be able to cancel anything.
+    var lcpContentDownloadPublisher: PassthroughSubject<(String, Bool), Never> { get }
+
     /// Sends a progress update for a book
     func sendProgress(bookIdentifier: String, progress: Double)
+
+    /// Marks the LCP content re-download for `bookIdentifier` as running
+    /// (`active == true`) or finished (`active == false`, on success *and*
+    /// failure, so the UI cue always closes).
+    func sendLCPContentDownloadActive(bookIdentifier: String, active: Bool)
 
     /// Publishes an error and announces it via VoiceOver
     func publishAndAnnounceError(_ errorInfo: DownloadErrorInfo)
@@ -39,6 +61,7 @@ final class DownloadProgressReporter: DownloadProgressPublishing {
 
     let downloadProgressPublisher = PassthroughSubject<(String, Double), Never>()
     let downloadErrorPublisher = PassthroughSubject<DownloadErrorInfo, Never>()
+    let lcpContentDownloadPublisher = PassthroughSubject<(String, Bool), Never>()
 
     // MARK: - Dependencies
 
@@ -73,6 +96,12 @@ final class DownloadProgressReporter: DownloadProgressPublishing {
     func sendProgress(bookIdentifier: String, progress: Double) {
         Task { @MainActor in
             downloadProgressPublisher.send((bookIdentifier, progress))
+        }
+    }
+
+    func sendLCPContentDownloadActive(bookIdentifier: String, active: Bool) {
+        Task { @MainActor in
+            lcpContentDownloadPublisher.send((bookIdentifier, active))
         }
     }
 

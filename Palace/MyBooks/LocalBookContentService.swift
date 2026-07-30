@@ -26,16 +26,50 @@ import PalaceLogging
 /// called in tight loops.
 class LocalBookContentService {
 
+    /// Shape of the LCP content-fulfillment call used by
+    /// `redownloadLCPContentFile`. Injected so the in-flight guard and the
+    /// progress plumbing can be exercised without a live `LCPLibraryService`, a
+    /// license on disk, or a network fetch — the spy decides *when* completion
+    /// fires, which is the only way to test that the in-flight slot is held for
+    /// the duration and released afterwards.
+    typealias LCPContentFulfilling = (
+        _ licenseURL: URL,
+        _ progress: @escaping (Double) -> Void,
+        _ completion: @escaping (URL?, Error?) -> Void
+    ) -> Void
+
     private let bookRegistry: TPPBookRegistryProvider
     private let accountsManager: AccountsManager
     private let bookFileManager: BookFileManager
     private let fileManager: FileManager
+    private let lcpContentFulfiller: LCPContentFulfilling
+
+    /// Progress/activity sink for the LCP content re-download. Assigned by
+    /// `MyBooksDownloadCenter` after `init` because the reporter is created
+    /// later in that initializer than this service is (mirrors the existing
+    /// `progressReporter.notificationSender = self` post-init wiring). `weak`
+    /// because the reporter is owned by the download center.
+    weak var contentDownloadReporter: DownloadProgressPublishing?
+
+    /// Book identifiers whose `.lcpa` content download is currently running.
+    ///
+    /// The `fileExists` skip below cannot see an in-flight transfer, and two
+    /// callers reach `redownloadLCPContentFile` independently: the registry-load
+    /// self-heal (`BookRegistrySync`) and the open-time gate
+    /// (`AudiobookSessionManager.gateOnLCPContentDownload`). Without this set,
+    /// tapping Listen during the self-heal's download window started a SECOND
+    /// full transfer of the same archive; both completed, one was discarded, and
+    /// the two competed for the patron's bandwidth. Verified on device against
+    /// A1QA: 2 × 778 MB for one 778 MB audiobook.
+    private var inflightContentDownloads = Set<String>()
+    private let inflightLock = NSLock()
 
     init(
         bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry,
         accountsManager: AccountsManager = AppContainer.production().accountsManager,
         bookFileManager: BookFileManager? = nil,
-        fileManager: FileManager = .default
+        fileManager: FileManager = .default,
+        lcpContentFulfiller: LCPContentFulfilling? = nil
     ) {
         self.bookRegistry = bookRegistry
         self.accountsManager = accountsManager
@@ -45,6 +79,41 @@ class LocalBookContentService {
             fileManager: fileManager
         )
         self.fileManager = fileManager
+        self.lcpContentFulfiller = lcpContentFulfiller ?? { licenseURL, progress, completion in
+            #if LCP
+            _ = LCPLibraryService().fulfill(licenseURL, progress: progress, completion: completion)
+            #else
+            completion(nil, nil)
+            #endif
+        }
+    }
+
+    // MARK: - In-flight bookkeeping
+
+    /// Claims the in-flight slot for `identifier`. Returns `false` when a
+    /// download is already running for that book, in which case the caller must
+    /// not start another.
+    private func claimContentDownloadSlot(_ identifier: String) -> Bool {
+        inflightLock.lock()
+        defer { inflightLock.unlock() }
+        return inflightContentDownloads.insert(identifier).inserted
+    }
+
+    /// Releases the in-flight slot for `identifier`. Must run on every
+    /// completion path — success, fulfillment error, and file-move failure —
+    /// or the book can never be re-downloaded for the rest of the process.
+    private func releaseContentDownloadSlot(_ identifier: String) {
+        inflightLock.lock()
+        inflightContentDownloads.remove(identifier)
+        inflightLock.unlock()
+    }
+
+    /// Test seam: whether a content download is currently claimed for
+    /// `identifier`. Reads through the same lock as the mutators.
+    func isContentDownloadInFlight(for identifier: String) -> Bool {
+        inflightLock.lock()
+        defer { inflightLock.unlock() }
+        return inflightContentDownloads.contains(identifier)
     }
 
     // MARK: - Delete local content
@@ -140,10 +209,24 @@ class LocalBookContentService {
 
     // MARK: - Re-download LCP content
 
-    /// Silently re-downloads the .lcpa content file for an LCP audiobook
-    /// that only has the .lcpl license. The book stays in
-    /// `.downloadSuccessful` (playable via streaming) while the download
-    /// runs in the background (PP-3704).
+    /// Re-downloads the `.lcpa` content file for an LCP audiobook that only has
+    /// its `.lcpl` license on disk. Runs in the background; the book's registry
+    /// state is left alone (see the `lcpContentDownloadPublisher` note in
+    /// `DownloadProgressPublisher` for why this path does not move the book to
+    /// `.downloading`). Originally PP-3704.
+    ///
+    /// Idempotent in two dimensions:
+    ///  - content already on disk → skip (`fileExists`)
+    ///  - a download already running for this book → skip (in-flight set)
+    ///
+    /// The second guard is the fix for the duplicate-transfer defect: the
+    /// self-heal and the open-time gate both call this, and before the guard a
+    /// Listen tap during the self-heal's window started a second full transfer
+    /// of the same archive.
+    ///
+    /// Progress and an active/idle edge are reported to
+    /// `contentDownloadReporter` so the half-sheet can show a real percentage
+    /// for the whole wait instead of nothing.
     func redownloadLCPContentFile(for book: TPPBook) {
         #if LCP
         guard LCPAudiobooks.canOpenBook(book) else { return }
@@ -159,10 +242,29 @@ class LocalBookContentService {
             return
         }
 
-        Log.info(#file, "📥 [LCP RE-DOWNLOAD] Starting background .lcpa download for '\(book.title)'")
+        // Skip if a transfer for this book is already running. Claimed BEFORE
+        // the fulfiller is invoked so a synchronous re-entrant call cannot slip
+        // between the check and the start.
+        let identifier = book.identifier
+        guard claimContentDownloadSlot(identifier) else {
+            Log.info(#file, "📥 [LCP RE-DOWNLOAD] a download is already in flight for '\(book.title)' — skipping duplicate")
+            return
+        }
 
-        let lcpService = LCPLibraryService()
-        _ = lcpService.fulfill(licenseURL, progress: { _ in }) { [fileManager] localUrl, error in
+        Log.info(#file, "📥 [LCP RE-DOWNLOAD] Starting background .lcpa download for '\(book.title)'")
+        contentDownloadReporter?.sendLCPContentDownloadActive(bookIdentifier: identifier, active: true)
+
+        let progressHandler: (Double) -> Void = { [weak self] fraction in
+            self?.contentDownloadReporter?.sendProgress(bookIdentifier: identifier, progress: fraction)
+        }
+
+        lcpContentFulfiller(licenseURL, progressHandler) { [weak self, fileManager] localUrl, error in
+            // Release the slot and close the UI cue on EVERY exit path below.
+            defer {
+                self?.releaseContentDownloadSlot(identifier)
+                self?.contentDownloadReporter?.sendLCPContentDownloadActive(bookIdentifier: identifier, active: false)
+            }
+
             if let error {
                 Log.error(#file, "📥 [LCP RE-DOWNLOAD] ❌ Failed for '\(book.title)': \(error.localizedDescription)")
                 return
@@ -181,7 +283,7 @@ class LocalBookContentService {
                 try fileManager.moveItem(at: localUrl, to: destURL)
                 Log.info(#file, "📥 [LCP RE-DOWNLOAD] ✅ .lcpa stored for '\(book.title)' — local playback now available")
             } catch {
-                Log.warn(#file, "📥 [LCP RE-DOWNLOAD] ⚠️ File move failed for '\(book.title)': \(error.localizedDescription) — streaming still available")
+                Log.warn(#file, "📥 [LCP RE-DOWNLOAD] ⚠️ File move failed for '\(book.title)': \(error.localizedDescription)")
             }
         }
         #endif

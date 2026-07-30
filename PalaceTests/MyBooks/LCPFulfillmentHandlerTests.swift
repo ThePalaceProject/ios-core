@@ -185,21 +185,29 @@ final class LCPFulfillmentHandlerTests: XCTestCase {
                       "Missing local URL surfaces the documented error message")
     }
 
-    // MARK: - Audiobook unconditional path
+    // MARK: - Audiobook: success waits for the content package
 
-    func testFulfill_audiobook_marksDownloadSuccessfulEvenBeforeCompletion() async throws {
+    /// Inverted deliberately. This test previously asserted the opposite —
+    /// that an LCP audiobook is marked `.downloadSuccessful` the moment its
+    /// `.lcpl` license lands — on the premise that a license alone was enough
+    /// to stream. That premise no longer holds: streaming-from-license is
+    /// broken upstream (readium/swift-toolkit#579) and an `.lcpa` is a single
+    /// encrypted container with no partial-play threshold, so until the whole
+    /// archive is on disk there is nothing playable.
+    ///
+    /// Marking success early had two visible costs: "Listen" was offered for a
+    /// book whose audio was absent, and the half-sheet's progress bar (gated on
+    /// `bookState == .downloading`) drew an invisible spacer for the entire
+    /// multi-gigabyte transfer, which patrons read as a failure.
+    func testFulfill_audiobook_doesNotMarkSuccessfulUntilContentLands() async throws {
         let audiobook = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
         let sourceURL = try writeSourceFile(ext: "lcpa")
         let downloadTask = FakeDownloadTask(state: .completed, identifier: 1)
 
         handler.fulfillLCPLicense(fileUrl: sourceURL, forBook: audiobook, downloadTask: downloadTask)
 
-        // The audiobook path runs the markDownloadSuccessful + streaming-
-        // license-copy side effects unconditionally — they don't wait for
-        // the fulfillment task to finish, so the user can stream
-        // immediately.
-        XCTAssertEqual(spyDelegate.markSuccessfulCalls, [audiobook.identifier],
-                       "Audiobook books mark .downloadSuccessful immediately so streaming works")
+        XCTAssertTrue(spyDelegate.markSuccessfulCalls.isEmpty,
+                      "the license landing must NOT mark the book successful — the .lcpa content is still transferring")
     }
 
     // MARK: - LCP audiobook phase-2 download failure must not downgrade
@@ -207,10 +215,14 @@ final class LCPFulfillmentHandlerTests: XCTestCase {
     /// Regression of PP-4114-adjacent iPad bug.
     ///
     /// LCP audiobooks have a two-phase download: the .lcpl license file
-    /// completes first and the book is immediately marked `.downloadSuccessful`
-    /// (playable via streaming). The LCP toolkit then runs a SECONDARY
-    /// background download for the .lcpa content file from googleapis.com
-    /// so offline playback also works.
+    /// completes first, then the LCP toolkit runs a SECONDARY background
+    /// download for the .lcpa content file from googleapis.com.
+    ///
+    /// The case guarded here is a RE-fulfillment of a book that already has
+    /// playable content on disk (hence the explicitly staged
+    /// `.downloadSuccessful` below). A first fulfillment is `.downloading` at
+    /// this point and must fail honestly instead — see
+    /// `testFulfill_audiobook_freshFulfillmentContentError_surfacesAlert`.
     ///
     /// If that secondary download fails — for example, the user toggles
     /// airplane mode mid-fetch — `lcpCompletion` was previously firing
@@ -232,12 +244,9 @@ final class LCPFulfillmentHandlerTests: XCTestCase {
 
         handler.fulfillLCPLicense(fileUrl: sourceURL, forBook: audiobook, downloadTask: downloadTask)
 
-        // Mirror production: the audiobook path's synchronous
-        // markDownloadSuccessful runs immediately. We assert the spy saw
-        // it (sanity), then stage the registry state production would be
-        // in when the phase-2 error fires.
-        XCTAssertEqual(spyDelegate.markSuccessfulCalls, [audiobook.identifier],
-                       "precondition: audiobook is marked .downloadSuccessful at license-fulfilled time")
+        // Stage the state a book that ALREADY has content on disk would be in
+        // when a re-fulfillment's content fetch fails. (The handler no longer
+        // marks success itself at license-fulfilled time.)
         registry.addBook(audiobook, state: .downloadSuccessful)
 
         // Fire the secondary-fetch failure (airplane mode in production).
@@ -285,6 +294,35 @@ final class LCPFulfillmentHandlerTests: XCTestCase {
                        "Audiobook in .used (already-opened) must survive a phase-2 failure same as .downloadSuccessful")
         XCTAssertTrue(capturedErrors.isEmpty,
                       "No alert should publish for an already-opened audiobook on phase-2 failure")
+    }
+
+    /// The other side of the guard above. On a FIRST fulfillment the book is
+    /// still `.downloading` when the content fetch fails, so there is no
+    /// playable audio to protect and (with streaming broken) nothing to fall
+    /// back to. Continuing silently would strand the book in `.downloading`
+    /// forever with no way for the patron to retry, so the failure must
+    /// surface. Before this change the book had already been marked
+    /// `.downloadSuccessful`, which is what sent it down the "leave it alone"
+    /// branch and produced a book that advertised Listen but had no audio.
+    func testFulfill_audiobook_freshFulfillmentContentError_surfacesAlert() async throws {
+        let audiobook = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        let sourceURL = try writeSourceFile(ext: "lcpa")
+        let downloadTask = FakeDownloadTask(state: .completed, identifier: 1)
+
+        handler.fulfillLCPLicense(fileUrl: sourceURL, forBook: audiobook, downloadTask: downloadTask)
+
+        // A first fulfillment: the book is mid-download, NOT streaming-ready.
+        registry.addBook(audiobook, state: .downloading)
+
+        let completion = try XCTUnwrap(lcpService.lastCompletion)
+        completion(nil, NSError(domain: NSURLErrorDomain,
+                                code: NSURLErrorNetworkConnectionLost,
+                                userInfo: [NSLocalizedDescriptionKey: "lost"]))
+        try? await Task.sleep(nanoseconds: 250_000_000)
+        await Task.yield()
+
+        XCTAssertFalse(capturedErrors.isEmpty,
+                       "a first fulfillment whose content never arrived must surface a failure, not sit in .downloading forever")
     }
 
     /// Sibling check: a non-audiobook (e.g. LCP EPUB) does NOT get the
