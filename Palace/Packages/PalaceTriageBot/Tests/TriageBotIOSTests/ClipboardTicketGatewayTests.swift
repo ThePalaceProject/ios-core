@@ -1,11 +1,17 @@
 import XCTest
 @testable import TriageBotCore
 
-// The gateway is UIKit-gated, so on macOS `swift test` this file compiles away
-// and these assertions run only on an iOS simulator (via the app build).
-// The load-bearing, gate-run coverage of the copy-path serialization lives in
-// TriageBotCoreTests/TicketWirePayloadTests; this pins the GATEWAY itself —
-// that it routes the draft through the sanitizing serializer before writing.
+// The gateway is UIKit-gated, so on macOS `swift test` this file compiles away,
+// and the Palace xcodebuild scheme runs only PalaceTests/TenPrintCoverTests —
+// so this file runs in NO CI job today. It is a local/sim supplement and an
+// API-compile check, not the regression guard.
+//
+// The load-bearing, CI-gate-run guarantee that the patron's omit choices are
+// honored on the wire lives in TriageBotCoreTests/SubmitEffectSanitizationTests
+// (the pure reducer sanitizes the submitTicket effect for every gateway) and
+// TriageBotCoreTests/TicketWirePayloadTests (the serializer). This file pins the
+// GATEWAY wiring itself for anyone who later adds TriageBotIOSTests to the
+// scheme's TestAction.
 #if canImport(UIKit)
 @testable import TriageBotIOS
 

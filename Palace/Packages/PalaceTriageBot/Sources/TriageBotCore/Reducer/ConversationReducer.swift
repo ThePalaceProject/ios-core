@@ -513,7 +513,16 @@ public struct ConversationReducer: Sendable {
                 kind: .text("Sending your ticket…")
             ))
             next.step = .submitting(ticket: draft)
-            effects.append(.submitTicket(draft))
+            // PP-4883: the draft leaves the reducer WIRE-READY — every field the
+            // patron switched off is stripped here, in pure Core, before any
+            // gateway sees it. This is the single chokepoint that makes the
+            // omit-choices guarantee independent of which gateway runs (email,
+            // clipboard, a future HelpSpot POST) and testable under the fast
+            // `swift test` gate. `.submitting(ticket: draft)` keeps the original
+            // draft so the failure/retry/persist path still shows what the
+            // patron reviewed. `sanitizedForSubmission()` is idempotent, so the
+            // gateway's own serialization sanitize is harmless defense-in-depth.
+            effects.append(.submitTicket(draft.sanitizedForSubmission()))
             effects.append(.emitTelemetry(.init(
                 name: "triage_ticket_submit_requested",
                 parameters: ["priority": draft.priority.rawValue]
@@ -630,7 +639,8 @@ public struct ConversationReducer: Sendable {
             }
             next.messages.append(.init(sender: .bot, kind: .text("Trying again…")))
             next.step = .submitting(ticket: draft)
-            effects.append(.submitTicket(draft))
+            // PP-4883: sanitize on the retry path too (see .userConfirmedTicketSubmit).
+            effects.append(.submitTicket(draft.sanitizedForSubmission()))
             effects.append(.emitTelemetry(.init(name: "triage_ticket_submit_retried")))
 
         case .userTappedStartOver:
