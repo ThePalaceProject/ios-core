@@ -3,4 +3,10 @@
 # Single integer. Count may only go DOWN. Captured 2026-07-23.
 # Allowlist: scripts/godclass-appcontainer-locator-allowlist.txt.
 # See docs/architecture/god-class-decomposition-plan.md §3c gap 3.
-313
+# Wave 3 S3 (AccountsManager de-locatoring): the setter/cleanup's two bare
+# `AppContainer.production()` locators (networkExecutor + navigationCoordinatorHub)
+# were inverted behind the injected `AccountSwitchDependencies` seam; the production
+# resolution now lives at the composition root (`AppContainer.swift`, allowlisted).
+# Combined with pre-existing de-flake drift this ratchets 313 -> 305 (rebased onto
+# develop after S2 #1350 landed its download-seam resolutions; net still down from 313).
+305

@@ -83,6 +83,8 @@ public nonisolated final class MockImageCache: ImageCacheType, @unchecked Sendab
         for key in keys { _ = get(for: key) }
     }
 
+    public func evictDecodedImages() {}
+
     public func resetHistory() {
         sync {
             setKeys.removeAll()

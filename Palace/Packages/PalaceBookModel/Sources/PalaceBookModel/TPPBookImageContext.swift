@@ -39,4 +39,5 @@ final class NullImageCache: ImageCacheType {
     func remove(for key: String) {}
     func clear() {}
     func warmMemoryCache(for keys: [String]) async {}
+    func evictDecodedImages() {}
 }

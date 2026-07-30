@@ -273,12 +273,14 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
     /// Replaces the static `MyBooksDownloadCenter.clearAllBorrowReauthState()`
     /// call so the money-path clear is spy-testable. See `BorrowReauthResetting`.
     private let borrowReauthResetter: any BorrowReauthResetting
-    /// Lazy-resolved from AppContainer to break the singleton init cycle:
-    /// AccountsManager is constructed inline by AppContainer._cached's
-    /// initializer, so we cannot read AppContainer.production() during this
-    /// class's init. The lazy var is first accessed *after* AppContainer
-    /// finishes constructing, so the cached instance is ready.
-    private lazy var networkExecutor: TPPNetworkExecutor = AppContainer.production().networkExecutor
+    /// Wave 3 S3 — account-switch cleanup collaborators injected as a frozen bundle so the setter /
+    /// cleanup invert the ambient singleton REACHES (spy-observable); the concrete TPPNetworkExecutor TYPE edge survives, so 3a must still introduce a NetworkExecuting protocol to fully unblock the PalaceAccounts move.
+    private let switchDeps: AccountSwitchDependencies
+    /// Lazy-resolved through the injected provider to break the singleton init cycle:
+    /// AccountsManager is constructed inline by AppContainer._cached's initializer, so
+    /// we cannot resolve the executor during init. First accessed *after* AppContainer
+    /// finishes constructing; resolved exactly once, then cached here.
+    private lazy var networkExecutor: TPPNetworkExecutor = switchDeps.networkExecutorProvider()
     /// Injectable background-crawl spawn seam (see `CatalogCrawlScheduler`).
     /// Immutable `Sendable` `let`; `.production` by default, recording under test.
     private let crawlScheduler: CrawlTaskScheduler
@@ -576,14 +578,18 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
     ///   tests inject a spy, `AppContainer` passes it explicitly.
     /// - Parameter crawlScheduler: injectable background-crawl spawn seam
     ///   (PP-4754). `.production` keeps every call site behavior-identical.
+    /// - Parameter switchDependencies: account-switch cleanup seams (Wave 3 S3);
+    ///   `.production` binds the live collaborators (behavior-identical), tests spy.
     init(
         defaults: UserDefaults = .standard,
         borrowReauthResetter: any BorrowReauthResetting = DownloadCenterBorrowReauthResetter(),
-        crawlScheduler: CrawlTaskScheduler = .production
+        crawlScheduler: CrawlTaskScheduler = .production,
+        switchDependencies: AccountSwitchDependencies = .production
     ) {
         self.defaults = defaults
         self.borrowReauthResetter = borrowReauthResetter
         self.crawlScheduler = crawlScheduler
+        self.switchDeps = switchDependencies
         self.settings = TPPSettings()
         self.accountSet = TPPConfiguration.customUrlHash()
             ?? (settings.useBetaLibraries
@@ -712,7 +718,7 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
         do {
             let feed = try OPDS2CatalogsFeed.fromData(data)
             let accounts = feed.catalogs.map {
-                Account(publication: $0, imageCache: ImageCache.shared)
+                Account(publication: $0, imageCache: switchDeps.imageCache)
             }
             guard !accounts.isEmpty else { return false }
             // CP-D1 (Finding 5): the slim snapshot is written from the
@@ -731,7 +737,7 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
             }
             storeSlimAccounts(accounts)
             for account in accounts {
-                if case .notLoaded = AccountStateStore.shared.state(for: account.uuid) {
+                if case .notLoaded = switchDeps.accountStateStore.state(for: account.uuid) {
                     account._setState(.basicInfoLoaded)
                 }
             }
@@ -774,7 +780,7 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
         do {
             let feed = try OPDS2CatalogsFeed.fromData(cachedData)
             let accounts = feed.catalogs.map {
-                Account(publication: $0, imageCache: ImageCache.shared)
+                Account(publication: $0, imageCache: switchDeps.imageCache)
             }
             mutateAccountSets { $0[hash] = accounts }
             // Account state-machine wiring (3.2.0): Phase 1 — drive every
@@ -783,7 +789,7 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
             // critical-path readers `awaitReady()` continue blocking until
             // the auth-doc transition completes.
             for account in accounts {
-                if case .notLoaded = AccountStateStore.shared.state(for: account.uuid) {
+                if case .notLoaded = switchDeps.accountStateStore.state(for: account.uuid) {
                     account._setState(.basicInfoLoaded)
                 }
             }
@@ -963,11 +969,11 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
                 cleanupActiveContentBeforeAccountSwitch(from: previousAccountId, to: newAccountId)
                 // Evict decoded cover images — the new library has different covers.
                 // Keeps compressed JPEG cache on disk for fast re-decode if user switches back.
-                ImageCache.shared.evictDecodedImages()
+                switchDeps.imageCache.evictDecodedImages()
                 // Reset the cover-fetch circuit breaker: a host that tripped while
                 // the prior library was active must not keep cover fetches
                 // suppressed for the newly selected library.
-                TPPBookCoverRegistry.shared.resetHostFailures()
+                switchDeps.resetCoverCircuitBreaker()
             }
 
             self.currentAccount?.hasUpdatedToken = false
@@ -1003,7 +1009,7 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
             // Re-entering the same UUID later overwrites the marker through
             // the `.basicInfoLoaded` path on the next preload/loadCatalogs.
             if let prev = previousAccountId, prev != newAccountId {
-                AccountStateStore.shared.setState(
+                switchDeps.accountStateStore.setState(
                     .detailsEvicted(.libraryDeselected(uuid: prev)),
                     for: prev
                 )
@@ -1046,18 +1052,12 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
         networkExecutor.cancelNonEssentialTasks()
         borrowReauthResetter.clearAllBorrowReauthState()
 
+        // Capture the injected nav-pop seam BY VALUE so the hop fires regardless of
+        // the manager's lifetime (matching the prior composition-root-based pop). The
+        // seam encapsulates the coordinator lookup + `shouldPopToRoot` + settle.
+        let popToRoot = switchDeps.popToRootForAccountSwitch
         Task { @MainActor [weak self] in
-            if let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator {
-                let pathCount = coordinator.path.count
-                Log.debug(#file, "  Navigation path has \(pathCount) items")
-
-                if Self.shouldPopToRoot(navigationPathCount: pathCount) {
-                    Log.info(#file, "  🔄 Popping to root to clean up active content before account switch")
-                    coordinator.popToRoot()
-
-                    try? await Task.sleep(nanoseconds: 100_000_000) // 0.1s
-                }
-            }
+            await popToRoot()
             // Reset flag AFTER async cleanup completes — not in the setter (F-032)
             self?.isAccountSwitching = false
         }
@@ -1832,7 +1832,7 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
             // a fetch that landed just before cancellation must not resurrect the
             // now-non-current account.
             if AccountsManager.fetchCompletionMayWriteTerminal(
-                currentState: AccountStateStore.shared.state(for: account.uuid)
+                currentState: switchDeps.accountStateStore.state(for: account.uuid)
             ) {
                 if success, let details = account.details {
                     account._setState(.detailsLoaded(details))
@@ -1860,7 +1860,7 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
     /// the library-switch path.
     internal func driveCurrentAccountAuthDocIfNeeded() {
         guard let account = currentAccount else { return }
-        switch AccountStateStore.shared.state(for: account.uuid) {
+        switch switchDeps.accountStateStore.state(for: account.uuid) {
         case .detailsLoaded:
             return // terminal — `awaitReady()` awaiters resolve via the loaded details
         case .detailsEvicted(.libraryDeselected):
@@ -1956,7 +1956,7 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
                    let slim = slimAccount(publication.metadata.id) {
                     return slim
                 }
-                return Account(publication: publication, imageCache: ImageCache.shared)
+                return Account(publication: publication, imageCache: switchDeps.imageCache)
             }
 
             // Carry over authenticationDocument (and thus details) from old
@@ -1970,7 +1970,7 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
                     }
                     // Evict cached logo if the thumbnail URL changed
                     if old.logoUrl != newAccount.logoUrl {
-                        ImageCache.shared.remove(for: newAccount.uuid)
+                        switchDeps.imageCache.remove(for: newAccount.uuid)
                     }
                 }
             }
@@ -1993,7 +1993,7 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
                     // mock-data publication could in principle land here
                     // with an authDoc that fails to construct details.
                     newAccount._setState(.detailsLoaded(details))
-                } else if case .notLoaded = AccountStateStore.shared.state(for: newAccount.uuid) {
+                } else if case .notLoaded = switchDeps.accountStateStore.state(for: newAccount.uuid) {
                     // CP-D1: preserve any state the slim launch snapshot already
                     // advanced this uuid to. The slim current-account drive can
                     // reach `.detailsLoading`/`.detailsLoaded` BEFORE this async
