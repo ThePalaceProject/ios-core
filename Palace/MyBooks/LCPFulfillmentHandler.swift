@@ -147,10 +147,25 @@ final class LCPFulfillmentHandler {
                 // BookReturnService keeps the guard correct if audiobook
                 // playback ever wires through the open-once → `.used`
                 // transition.
-                let currentState = self.bookRegistry.state(for: book.identifier)
-                let isStreamingReady = currentState == .downloadSuccessful || currentState == .used
-                if book.defaultBookContentType == .audiobook && isStreamingReady {
-                    Log.warn(#file, "LCP audiobook content download failed but streaming license intact — leaving '\(book.title)' (\(book.identifier)) as \(currentState)")
+                // Test the DISK, not the registry state. The state test this
+                // replaces only worked while the book had already been marked
+                // `.downloadSuccessful` at license-fulfilled time; now that a
+                // first fulfillment stays `.downloading`, the state at this
+                // point is `.downloading` on every reachable path
+                // (`DownloadTaskLifecycleService` sets it at task start, and
+                // `DownloadStartCoordinator` refuses to start a download from
+                // `.downloadSuccessful`/`.used`), so a state test would never
+                // fire and would let a book that DOES have content on disk fall
+                // through to `.downloadFailed` — which `BookRegistrySync` then
+                // excludes from its file-existence heal, stranding a perfectly
+                // good download behind a permanent Retry.
+                //
+                // What the guard is actually protecting is "this book already
+                // has playable audio", so ask that question directly.
+                let hasLocalContent = self.bookFileManager.fileUrl(for: book.identifier)
+                    .map { self.fileManager.fileExists(atPath: $0.path) } ?? false
+                if book.defaultBookContentType == .audiobook && hasLocalContent {
+                    Log.warn(#file, "LCP audiobook content re-fetch failed but local content is intact — leaving '\(book.title)' (\(book.identifier)) alone")
                     return
                 }
 

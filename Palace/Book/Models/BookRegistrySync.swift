@@ -180,7 +180,25 @@ class BookRegistrySync {
             let fileExists = self.checkIfBookFileExists(for: record.book, account: account)
 
             if record.state == .downloading {
-              if fileExists {
+              // `checkIfBookFileExists` returns true for an LCP audiobook on the
+              // LICENSE alone (see its `#if LCP` branch), and the license is
+              // written at fulfillment time before the content arrives. Since
+              // 3.2.3 a first fulfillment stays `.downloading` until the `.lcpa`
+              // lands, so an interrupted download of a large audiobook reaches
+              // this branch with a license and no audio.
+              //
+              // Promoting it to `.downloadSuccessful` here would offer "Listen"
+              // for a book with nothing to play AND skip the self-heal below,
+              // which only runs in the `.downloadSuccessful` arm of this same
+              // `else if` chain. Before 3.2.3 the book was already
+              // `.downloadSuccessful` at this point and did get that self-heal,
+              // so without this the change would silently delete recovery for
+              // exactly the largest, most-interrupted titles.
+              if lcpContentMissing(for: record.book, account: account) {
+                Log.warn(#file, "  '\(record.book.title)' was downloading with license but no .lcpa - marking download-needed and scheduling content re-download")
+                record.state = .downloadNeeded
+                lcpBooksNeedingBackgroundRedownload.append(record.book)
+              } else if fileExists {
                 Log.info(#file, "  '\(record.book.title)' was downloading but file exists - marking as successful")
                 record.state = .downloadSuccessful
               } else {
@@ -753,6 +771,22 @@ class BookRegistrySync {
   /// feed-fetch pipeline.
   static func shouldSkipBulkDeletion(localCount: Int, feedCount: Int, deletionCount: Int) -> Bool {
     return localCount >= 1 && feedCount == 0 && deletionCount > 0
+  }
+
+  /// True when `book` is an LCP audiobook whose `.lcpa` content package is NOT
+  /// on disk. Distinct from `checkIfBookFileExists`, which deliberately treats
+  /// the `.lcpl` license alone as "exists" for these books; that was correct
+  /// while streaming worked and is not a signal that anything is playable now.
+  func lcpContentMissing(for book: TPPBook, account: String) -> Bool {
+    #if LCP
+    guard LCPAudiobooks.canOpenBook(book),
+          let bookURL = downloadCenter.fileUrl(for: book, account: account) else {
+      return false
+    }
+    return !FileManager.default.fileExists(atPath: bookURL.path)
+    #else
+    return false
+    #endif
   }
 
   func checkIfBookFileExists(for book: TPPBook, account: String) -> Bool {

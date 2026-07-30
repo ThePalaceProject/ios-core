@@ -239,10 +239,12 @@ public final class AudiobookSessionManager: ObservableObject {
     /// flag-branch decision is exercised without touching UserDefaults.
     private let inAppPlaybackNavEnabledProvider: () -> Bool
 
-    /// PP-4542 / 323-Cause-1: TRIGGERS the LCP `.lcpa` content download for a
-    /// freshly-borrowed audiobook whose `.lcpl` license landed (flipping the
-    /// book to `.downloadSuccessful`) but whose full content package never
-    /// made it to disk. Content downloads separately from the license and can
+    /// PP-4542 / 323-Cause-1: TRIGGERS the LCP `.lcpa` content download for an
+    /// audiobook whose `.lcpl` license is on disk but whose full content package
+    /// is not. (Before 3.2.3 the license landing also flipped the book to
+    /// `.downloadSuccessful`; it no longer does, so the book this gate rescues
+    /// is typically one whose content was lost or interrupted rather than a
+    /// freshly-borrowed one.) Content downloads separately from the license and can
     /// permanently fail — so the old poll-only gate would spin the whole
     /// 180s window then dead-end at "Audiobook Unavailable", forever (the
     /// #1-volume patron complaint). Production wires

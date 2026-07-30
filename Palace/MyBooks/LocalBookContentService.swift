@@ -56,13 +56,30 @@ class LocalBookContentService {
     /// The `fileExists` skip below cannot see an in-flight transfer, and two
     /// callers reach `redownloadLCPContentFile` independently: the registry-load
     /// self-heal (`BookRegistrySync`) and the open-time gate
-    /// (`AudiobookSessionManager.gateOnLCPContentDownload`). Without this set,
+    /// (`AudiobookSessionManager.gateOnLCPContentDownload`). Without this guard,
     /// tapping Listen during the self-heal's download window started a SECOND
     /// full transfer of the same archive; both completed, one was discarded, and
     /// the two competed for the patron's bandwidth. Verified on device against
     /// A1QA: 2 × 778 MB for one 778 MB audiobook.
-    private var inflightContentDownloads = Set<String>()
+    ///
+    /// Keyed by book identifier → the time the transfer was claimed, so a claim
+    /// whose completion never fires can be reclaimed instead of wedging the book
+    /// for the process lifetime. That failure mode is reachable: the fulfillment
+    /// call is a background `URLSession` and a cancelled or suspended task can
+    /// drop its callback, after which every later `redownloadLCPContentFile`
+    /// would no-op and the open gate would dead-end at "Audiobook Unavailable" —
+    /// the exact complaint the gate exists to remove.
+    ///
+    /// Sized to the open gate's own ceiling: past that point the gate has
+    /// already given up on this transfer, so nothing is served by still
+    /// reserving the slot for it.
+    private var inflightContentDownloads = [String: Date]()
     private let inflightLock = NSLock()
+
+    /// How long a claimed transfer may stay in flight before a later caller
+    /// treats it as dead and reclaims the slot. Matches
+    /// `AudiobookSessionManager.awaitAudiobookContentLocal`'s timeout.
+    static let inflightContentDownloadTimeout: TimeInterval = 180
 
     init(
         bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry,
@@ -93,10 +110,18 @@ class LocalBookContentService {
     /// Claims the in-flight slot for `identifier`. Returns `false` when a
     /// download is already running for that book, in which case the caller must
     /// not start another.
-    private func claimContentDownloadSlot(_ identifier: String) -> Bool {
+    private func claimContentDownloadSlot(_ identifier: String, now: Date = Date()) -> Bool {
         inflightLock.lock()
         defer { inflightLock.unlock() }
-        return inflightContentDownloads.insert(identifier).inserted
+        if let startedAt = inflightContentDownloads[identifier],
+           now.timeIntervalSince(startedAt) < Self.inflightContentDownloadTimeout {
+            return false
+        }
+        // Either unclaimed, or the previous claim is older than the window and
+        // its completion is never coming — reclaim rather than dedupe against a
+        // dead transfer.
+        inflightContentDownloads[identifier] = now
+        return true
     }
 
     /// Releases the in-flight slot for `identifier`. Must run on every
@@ -104,7 +129,7 @@ class LocalBookContentService {
     /// or the book can never be re-downloaded for the rest of the process.
     private func releaseContentDownloadSlot(_ identifier: String) {
         inflightLock.lock()
-        inflightContentDownloads.remove(identifier)
+        inflightContentDownloads.removeValue(forKey: identifier)
         inflightLock.unlock()
     }
 
@@ -113,7 +138,7 @@ class LocalBookContentService {
     func isContentDownloadInFlight(for identifier: String) -> Bool {
         inflightLock.lock()
         defer { inflightLock.unlock() }
-        return inflightContentDownloads.contains(identifier)
+        return inflightContentDownloads[identifier] != nil
     }
 
     // MARK: - Delete local content

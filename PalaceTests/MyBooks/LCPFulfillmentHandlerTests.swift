@@ -6,18 +6,23 @@
 //  LCPFulfillmentHandler. The class is gated `#if LCP` (it depends on
 //  ReadiumLCP types) so the test class shares the same gate.
 //
-//  Branches covered (failure paths only — the TPPLCPLicense(url:) read
-//  on the success path requires a valid Readium-encoded license JSON
-//  file which is too heavy to fixture in a unit test):
+//  Branches covered:
 //    - License rename succeeds → fulfill is invoked with the renamed
 //      license URL.
 //    - fulfill completion fires with an error → alertPresenter publishes
 //      a "Fulfilment Error" message.
 //    - fulfill completion fires with localUrl=nil → alertPresenter
 //      publishes the "no local URL" error.
-//    - Audiobook path: the unconditional copyLicenseForStreaming +
-//      markDownloadSuccessful side effects fire even before the
-//      fulfillment task completes.
+//    - Audiobook path: the license landing does NOT mark the book
+//      successful; the content landing does. The header previously said
+//      the opposite, and separately claimed the success path was too
+//      heavy to fixture — it is not: a minimal `{"id":…,"links":[]}`
+//      parses, and `replaceBook` only needs a delegate that resolves a
+//      destination plus a non-empty file.
+//    - Content-fetch failure does not downgrade a book whose content is
+//      already on disk. That guard tests the FILE, not registry state, so
+//      these fixtures write real content rather than staging a registry
+//      state production forbids as an entry condition.
 //
 //  Copyright (c) 2026 The Palace Project. All rights reserved.
 //
@@ -63,7 +68,14 @@ final class LCPFulfillmentHandlerTests: XCTestCase {
             progressReporter: reporter,
             downloadAnnouncementService: DownloadAnnouncementService()
         )
-        bookFileManager = BookFileManager(bookRegistry: registry)
+        // Resolve book files inside the per-test temp dir so the disk state the
+        // handler inspects is controllable. The content-failure guard tests the
+        // FILE, not the registry state, so a test that wants "this book already
+        // has local content" has to be able to create that content.
+        bookFileManager = BookFileManager(
+            bookRegistry: registry,
+            directoryProvider: { [tempDir] _ in tempDir }
+        )
         backgroundHandler = BackgroundDownloadHandler()
         lcpService = SpyLCPLibraryService()
         spyDelegate = SpyDelegate()
@@ -185,6 +197,19 @@ final class LCPFulfillmentHandlerTests: XCTestCase {
                       "Missing local URL surfaces the documented error message")
     }
 
+    /// Writes a non-empty content file where the handler resolves this book's
+    /// local content, so `hasLocalContent` is true.
+    @discardableResult
+    private func writeLocalContent(for book: TPPBook) throws -> URL {
+        // Book-based overload: the identifier overload resolves through the
+        // registry, and these fixtures write content before registering.
+        let url = try XCTUnwrap(bookFileManager.fileUrl(for: book, account: nil))
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
+                                                withIntermediateDirectories: true)
+        try Data(repeating: 0xEE, count: 2048).write(to: url)
+        return url
+    }
+
     // MARK: - Audiobook: success waits for the content package
 
     /// Inverted deliberately. This test previously asserted the opposite —
@@ -244,9 +269,11 @@ final class LCPFulfillmentHandlerTests: XCTestCase {
 
         handler.fulfillLCPLicense(fileUrl: sourceURL, forBook: audiobook, downloadTask: downloadTask)
 
-        // Stage the state a book that ALREADY has content on disk would be in
-        // when a re-fulfillment's content fetch fails. (The handler no longer
-        // marks success itself at license-fulfilled time.)
+        // Stage a book that ALREADY has content on disk — which is what the
+        // guard actually protects. Registry state alone is NOT enough any more
+        // (and staging `.downloadSuccessful` by hand was a fixture that
+        // production forbids as an entry condition to this path).
+        try writeLocalContent(for: audiobook)
         registry.addBook(audiobook, state: .downloadSuccessful)
 
         // Fire the secondary-fetch failure (airplane mode in production).
@@ -280,7 +307,9 @@ final class LCPFulfillmentHandlerTests: XCTestCase {
         let downloadTask = FakeDownloadTask(state: .completed, identifier: 1)
 
         handler.fulfillLCPLicense(fileUrl: sourceURL, forBook: audiobook, downloadTask: downloadTask)
-        // Stage the future state: book has been opened at least once.
+        // Stage the future state: book has been opened at least once AND its
+        // content is on disk.
+        try writeLocalContent(for: audiobook)
         registry.addBook(audiobook, state: .used)
 
         let completion = try XCTUnwrap(lcpService.lastCompletion)
@@ -294,6 +323,55 @@ final class LCPFulfillmentHandlerTests: XCTestCase {
                        "Audiobook in .used (already-opened) must survive a phase-2 failure same as .downloadSuccessful")
         XCTAssertTrue(capturedErrors.isEmpty,
                       "No alert should publish for an already-opened audiobook on phase-2 failure")
+    }
+
+    /// The positive path, and the reason this test exists: after 3.2.3 moved
+    /// `markDownloadSuccessful` out of the license-fulfilled branch and into the
+    /// content-landed branch, NOTHING asserted that an LCP audiobook ever
+    /// reaches `.downloadSuccessful` at all. Deleting that call killed zero
+    /// tests while stranding every fresh LCP download in `.downloading`
+    /// (Cancel-only, no Listen). Reviewers caught it; this pins it.
+    ///
+    /// Reaching the branch needs the real `replaceBook` to succeed, which needs
+    /// a delegate that can resolve a destination — hence the mock delegate — and
+    /// a license the completion can parse, hence the JSON fixture rather than
+    /// arbitrary bytes.
+    func testFulfill_audiobook_marksSuccessfulOnceContentLands() async throws {
+        let audiobook = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+
+        // Destination the content will be moved to.
+        let destination = tempDir.appendingPathComponent("\(audiobook.identifier).lcpa")
+        let mockDelegate = MockBackgroundDownloadDelegate(bookRegistry: registry)
+        mockDelegate.fileUrls[audiobook.identifier] = destination
+        backgroundHandler.delegate = mockDelegate
+
+        // The file handed to fulfillLCPLicense is renamed to `.lcpl` and later
+        // re-read by the completion, so it must be a parseable license.
+        let sourceURL = tempDir.appendingPathComponent("incoming-\(UUID().uuidString).lcpa")
+        let licenseJSON = """
+        {"id":"urn:uuid:\(UUID().uuidString)","links":[]}
+        """
+        try licenseJSON.data(using: .utf8)!.write(to: sourceURL)
+
+        let downloadTask = FakeDownloadTask(state: .completed, identifier: 1)
+        handler.fulfillLCPLicense(fileUrl: sourceURL, forBook: audiobook, downloadTask: downloadTask)
+
+        XCTAssertTrue(spyDelegate.markSuccessfulCalls.isEmpty,
+                      "precondition: the license landing alone must not mark success")
+
+        // The content arrives.
+        let contentURL = tempDir.appendingPathComponent("content-\(UUID().uuidString).lcpa")
+        try Data(repeating: 0xAB, count: 4096).write(to: contentURL)
+
+        let completion = try XCTUnwrap(lcpService.lastCompletion)
+        completion(contentURL, nil)
+        try? await Task.sleep(nanoseconds: 250_000_000)
+        await Task.yield()
+
+        XCTAssertEqual(spyDelegate.markSuccessfulCalls, [audiobook.identifier],
+                       "once the .lcpa is stored the book must become downloadSuccessful, or it strands in .downloading forever")
+        XCTAssertTrue(capturedErrors.isEmpty,
+                      "a successful content landing must not surface a failure alert")
     }
 
     /// The other side of the guard above. On a FIRST fulfillment the book is
