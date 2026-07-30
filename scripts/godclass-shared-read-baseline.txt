@@ -15,4 +15,8 @@
 # `AccountSwitchDependencies` bundle; the composition-root `.production` binding
 # re-introduces only `ImageCache.shared` + `TPPBookCoverRegistry.shared` (2), for a
 # net -11. (There was already a -1 drift to 223 from the de-flake before this change.)
+# Wave 3 S2b: net-neutral on the counted `.shared` reads (stays at S3's 213) — the one
+# MBDC `.shared` read inverted via the account-scope seam is offset by a `.shared`
+# mention in the new MyBooksDownloadCenter+AccountScope.swift rationale (the detector
+# counts prose too — Wave-0 debt noted above). Baseline held at the measured 213.
 213

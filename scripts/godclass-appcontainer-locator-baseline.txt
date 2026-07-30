@@ -9,4 +9,7 @@
 # resolution now lives at the composition root (`AppContainer.swift`, allowlisted).
 # Combined with pre-existing de-flake drift this ratchets 313 -> 305 (rebased onto
 # develop after S2 #1350 landed its download-seam resolutions; net still down from 313).
-305
+# Wave 3 S2b: MBDC's B6 `authSurfaceHosts` locators route through the S2
+# `DownloadAccountScopeProviding` seam instead → 305 -> 304 (net -1 after rebase; one
+# `AppContainer.production()` prose mention remains in the new AccountScope rationale).
+304
