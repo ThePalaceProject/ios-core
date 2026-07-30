@@ -15,99 +15,15 @@ import PalaceCatalog
 
 final class BookRegistrySyncTests: XCTestCase {
 
-#if LCP
-
-    // MARK: - LCP content presence vs the license-only "file exists" signal
-    //
-    // `checkIfBookFileExists` deliberately reports true for an LCP audiobook on
-    // the `.lcpl` LICENSE alone. That was right while streaming worked. Since
-    // 3.2.3 leaves a first fulfillment in `.downloading` until the `.lcpa`
-    // lands, an interrupted download reaches load-time reconciliation with a
-    // license and no audio — and treating that as "file exists" promoted it to
-    // `.downloadSuccessful`, which both offers Listen for a book with nothing to
-    // play AND skips the background content re-download, because that is only
-    // scheduled from the `.downloadSuccessful` arm of the same `else if` chain.
-    // `lcpContentMissing` is the distinction that keeps recovery alive.
-
-    private func makeLCPAudiobook() -> TPPBook {
-        let acquisition = TPPOPDSAcquisition(
-            relation: .generic,
-            type: "application/vnd.readium.lcp.license.v1.0+json",
-            hrefURL: URL(string: "https://library.test/book.lcpl")!,
-            indirectAcquisitions: [
-                TPPOPDSIndirectAcquisition(type: "application/audiobook+lcp", indirectAcquisitions: [])
-            ],
-            availability: TPPOPDSAcquisitionAvailabilityUnlimited()
-        )
-        return TPPBook(
-            acquisitions: [acquisition], authors: [], categoryStrings: [],
-            distributor: "Test", identifier: UUID().uuidString,
-            imageURL: nil, imageThumbnailURL: nil, published: Date(),
-            publisher: "Test", subtitle: nil, summary: nil,
-            title: "Interrupted LCP Audiobook", updated: Date(),
-            annotationsURL: nil, analyticsURL: nil, alternateURL: nil,
-            relatedWorksURL: nil, previewLink: nil, seriesURL: nil,
-            revokeURL: nil, reportURL: nil, timeTrackingURL: nil,
-            contributors: [:], bookDuration: nil, imageCache: MockImageCache()
-        )
-    }
-
-    func testLCPContentMissing_lcpAudiobookWithNoContentOnDisk_isTrue() {
-        let book = makeLCPAudiobook()
-
-        XCTAssertTrue(
-            syncManager.lcpContentMissing(for: book, account: "test-account"),
-            "an LCP audiobook with no .lcpa on disk must be reported as content-missing, or load-time reconciliation promotes it to downloadSuccessful and never schedules the re-download"
-        )
-    }
-
-    /// Kills the `return true` mutant: without a content-present case the helper
-    /// could unconditionally claim every book is missing content, which would
-    /// push healthy downloaded audiobooks back to `.downloadNeeded` on every
-    /// launch and re-download them.
-    func testLCPContentMissing_lcpAudiobookWithContentOnDisk_isFalse() throws {
-        let book = makeLCPAudiobook()
-        let account = "test-account"
-        let contentURL = try XCTUnwrap(
-            appContainerForContentPath.downloadCenter.fileUrl(for: book, account: account),
-            "need a resolvable content path to stage the present-content case"
-        )
-        try FileManager.default.createDirectory(at: contentURL.deletingLastPathComponent(),
-                                                withIntermediateDirectories: true)
-        try Data(repeating: 0xAB, count: 1024).write(to: contentURL)
-        defer { try? FileManager.default.removeItem(at: contentURL) }
-
-        XCTAssertFalse(
-            syncManager.lcpContentMissing(for: book, account: account),
-            "content on disk means nothing is missing — reporting true here would re-download every healthy audiobook at launch"
-        )
-    }
-
-    func testLCPContentMissing_nonLCPBook_isFalse() {
-        let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
-
-        XCTAssertFalse(
-            syncManager.lcpContentMissing(for: book, account: "test-account"),
-            "the LCP-audiobook special case must not claim ordinary books are content-missing"
-        )
-    }
-
-#endif
-
-
     private var store: BookRegistryStore!
     private var syncManager: BookRegistrySync!
     private var accountsManager: AccountsManager!
     private var tempDirectory: URL!
-    /// Retained so LCP content-presence tests can resolve the same download
-    /// paths the sync manager uses.
-    private var appContainerForContentPath: AppContainer!
 
     override func setUp() {
         super.setUp()
         store = BookRegistryStore()
         let appContainer = makeTestAppContainer()
-        appContainerForContentPath = appContainer
         accountsManager = appContainer.accountsManager
         syncManager = BookRegistrySync(
             store: store,

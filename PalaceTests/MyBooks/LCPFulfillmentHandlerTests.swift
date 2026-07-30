@@ -6,23 +6,18 @@
 //  LCPFulfillmentHandler. The class is gated `#if LCP` (it depends on
 //  ReadiumLCP types) so the test class shares the same gate.
 //
-//  Branches covered:
+//  Branches covered (failure paths only — the TPPLCPLicense(url:) read
+//  on the success path requires a valid Readium-encoded license JSON
+//  file which is too heavy to fixture in a unit test):
 //    - License rename succeeds → fulfill is invoked with the renamed
 //      license URL.
 //    - fulfill completion fires with an error → alertPresenter publishes
 //      a "Fulfilment Error" message.
 //    - fulfill completion fires with localUrl=nil → alertPresenter
 //      publishes the "no local URL" error.
-//    - Audiobook path: the license landing does NOT mark the book
-//      successful; the content landing does. The header previously said
-//      the opposite, and separately claimed the success path was too
-//      heavy to fixture — it is not: a minimal `{"id":…,"links":[]}`
-//      parses, and `replaceBook` only needs a delegate that resolves a
-//      destination plus a non-empty file.
-//    - Content-fetch failure does not downgrade a book whose content is
-//      already on disk. That guard tests the FILE, not registry state, so
-//      these fixtures write real content rather than staging a registry
-//      state production forbids as an entry condition.
+//    - Audiobook path: the unconditional copyLicenseForStreaming +
+//      markDownloadSuccessful side effects fire even before the
+//      fulfillment task completes.
 //
 //  Copyright (c) 2026 The Palace Project. All rights reserved.
 //
@@ -68,14 +63,7 @@ final class LCPFulfillmentHandlerTests: XCTestCase {
             progressReporter: reporter,
             downloadAnnouncementService: DownloadAnnouncementService()
         )
-        // Resolve book files inside the per-test temp dir so the disk state the
-        // handler inspects is controllable. The content-failure guard tests the
-        // FILE, not the registry state, so a test that wants "this book already
-        // has local content" has to be able to create that content.
-        bookFileManager = BookFileManager(
-            bookRegistry: registry,
-            directoryProvider: { [tempDir] _ in tempDir }
-        )
+        bookFileManager = BookFileManager(bookRegistry: registry)
         backgroundHandler = BackgroundDownloadHandler()
         lcpService = SpyLCPLibraryService()
         spyDelegate = SpyDelegate()
@@ -138,6 +126,70 @@ final class LCPFulfillmentHandlerTests: XCTestCase {
         }
     }
 
+    // MARK: - Content-download progress cue (fresh borrow)
+    //
+    // The `.lcpa` content phase runs while the book is already
+    // `.downloadSuccessful` (pre-existing behaviour), so the registry-state
+    // progress cue cannot see it and the half-sheet drew nothing for the whole
+    // multi-gigabyte transfer. These pin the active/idle edge that lets the bar
+    // render without touching persisted state.
+
+    func testFulfill_audiobook_opensTheContentDownloadCue() async throws {
+        let audiobook = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        let sourceURL = try writeSourceFile(ext: "lcpa")
+        let downloadTask = FakeDownloadTask(state: .completed, identifier: 1)
+
+        var edges: [Bool] = []
+        let sub = reporter.lcpContentDownloadPublisher
+            .filter { $0.0 == audiobook.identifier }
+            .sink { edges.append($0.1) }
+        defer { sub.cancel() }
+
+        handler.fulfillLCPLicense(fileUrl: sourceURL, forBook: audiobook, downloadTask: downloadTask)
+        await awaitConditionAsync { edges.isEmpty == false }
+
+        XCTAssertEqual(edges, [true],
+                       "the cue must open when the content phase begins, or the sheet shows nothing for the whole transfer")
+    }
+
+    func testFulfill_audiobook_closesTheCueOnFailureToo() async throws {
+        let audiobook = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        let sourceURL = try writeSourceFile(ext: "lcpa")
+        let downloadTask = FakeDownloadTask(state: .completed, identifier: 1)
+
+        var edges: [Bool] = []
+        let sub = reporter.lcpContentDownloadPublisher
+            .filter { $0.0 == audiobook.identifier }
+            .sink { edges.append($0.1) }
+        defer { sub.cancel() }
+
+        handler.fulfillLCPLicense(fileUrl: sourceURL, forBook: audiobook, downloadTask: downloadTask)
+        await awaitConditionAsync { edges.isEmpty == false }
+
+        let completion = try XCTUnwrap(lcpService.lastCompletion)
+        completion(nil, NSError(domain: "test", code: 1))
+        await awaitConditionAsync { edges.count >= 2 }
+
+        XCTAssertEqual(edges, [true, false],
+                       "a failed content fetch must close the cue, or the bar hangs on screen forever")
+    }
+
+    func testFulfill_nonAudiobook_doesNotOpenTheCue() async throws {
+        let book = TPPBookMocker.mockBook(distributorType: .ReadiumLCP)
+        let sourceURL = try writeSourceFile()
+        let downloadTask = FakeDownloadTask(state: .completed, identifier: 1)
+
+        var edges: [Bool] = []
+        let sub = reporter.lcpContentDownloadPublisher.sink { edges.append($0.1) }
+        defer { sub.cancel() }
+
+        handler.fulfillLCPLicense(fileUrl: sourceURL, forBook: book, downloadTask: downloadTask)
+        await drainMainQueueAsync()
+
+        XCTAssertTrue(edges.isEmpty,
+                      "this cue is for the LCP audiobook content phase only")
+    }
+
     // MARK: - License rename + fulfill invocation
 
     func testFulfill_invokesLCPServiceWithRenamedLicenseURL() async throws {
@@ -197,42 +249,21 @@ final class LCPFulfillmentHandlerTests: XCTestCase {
                       "Missing local URL surfaces the documented error message")
     }
 
-    /// Writes a non-empty content file where the handler resolves this book's
-    /// local content, so `hasLocalContent` is true.
-    @discardableResult
-    private func writeLocalContent(for book: TPPBook) throws -> URL {
-        // Book-based overload: the identifier overload resolves through the
-        // registry, and these fixtures write content before registering.
-        let url = try XCTUnwrap(bookFileManager.fileUrl(for: book, account: nil))
-        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
-                                                withIntermediateDirectories: true)
-        try Data(repeating: 0xEE, count: 2048).write(to: url)
-        return url
-    }
+    // MARK: - Audiobook unconditional path
 
-    // MARK: - Audiobook: success waits for the content package
-
-    /// Inverted deliberately. This test previously asserted the opposite —
-    /// that an LCP audiobook is marked `.downloadSuccessful` the moment its
-    /// `.lcpl` license lands — on the premise that a license alone was enough
-    /// to stream. That premise no longer holds: streaming-from-license is
-    /// broken upstream (readium/swift-toolkit#579) and an `.lcpa` is a single
-    /// encrypted container with no partial-play threshold, so until the whole
-    /// archive is on disk there is nothing playable.
-    ///
-    /// Marking success early had two visible costs: "Listen" was offered for a
-    /// book whose audio was absent, and the half-sheet's progress bar (gated on
-    /// `bookState == .downloading`) drew an invisible spacer for the entire
-    /// multi-gigabyte transfer, which patrons read as a failure.
-    func testFulfill_audiobook_doesNotMarkSuccessfulUntilContentLands() async throws {
+    func testFulfill_audiobook_marksDownloadSuccessfulEvenBeforeCompletion() async throws {
         let audiobook = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
         let sourceURL = try writeSourceFile(ext: "lcpa")
         let downloadTask = FakeDownloadTask(state: .completed, identifier: 1)
 
         handler.fulfillLCPLicense(fileUrl: sourceURL, forBook: audiobook, downloadTask: downloadTask)
 
-        XCTAssertTrue(spyDelegate.markSuccessfulCalls.isEmpty,
-                      "the license landing must NOT mark the book successful — the .lcpa content is still transferring")
+        // The audiobook path runs the markDownloadSuccessful + streaming-
+        // license-copy side effects unconditionally — they don't wait for
+        // the fulfillment task to finish, so the user can stream
+        // immediately.
+        XCTAssertEqual(spyDelegate.markSuccessfulCalls, [audiobook.identifier],
+                       "Audiobook books mark .downloadSuccessful immediately so streaming works")
     }
 
     // MARK: - LCP audiobook phase-2 download failure must not downgrade
@@ -240,14 +271,10 @@ final class LCPFulfillmentHandlerTests: XCTestCase {
     /// Regression of PP-4114-adjacent iPad bug.
     ///
     /// LCP audiobooks have a two-phase download: the .lcpl license file
-    /// completes first, then the LCP toolkit runs a SECONDARY background
-    /// download for the .lcpa content file from googleapis.com.
-    ///
-    /// The case guarded here is a RE-fulfillment of a book that already has
-    /// playable content on disk (hence the explicitly staged
-    /// `.downloadSuccessful` below). A first fulfillment is `.downloading` at
-    /// this point and must fail honestly instead — see
-    /// `testFulfill_audiobook_freshFulfillmentContentError_surfacesAlert`.
+    /// completes first and the book is immediately marked `.downloadSuccessful`
+    /// (playable via streaming). The LCP toolkit then runs a SECONDARY
+    /// background download for the .lcpa content file from googleapis.com
+    /// so offline playback also works.
     ///
     /// If that secondary download fails — for example, the user toggles
     /// airplane mode mid-fetch — `lcpCompletion` was previously firing
@@ -269,11 +296,12 @@ final class LCPFulfillmentHandlerTests: XCTestCase {
 
         handler.fulfillLCPLicense(fileUrl: sourceURL, forBook: audiobook, downloadTask: downloadTask)
 
-        // Stage a book that ALREADY has content on disk — which is what the
-        // guard actually protects. Registry state alone is NOT enough any more
-        // (and staging `.downloadSuccessful` by hand was a fixture that
-        // production forbids as an entry condition to this path).
-        try writeLocalContent(for: audiobook)
+        // Mirror production: the audiobook path's synchronous
+        // markDownloadSuccessful runs immediately. We assert the spy saw
+        // it (sanity), then stage the registry state production would be
+        // in when the phase-2 error fires.
+        XCTAssertEqual(spyDelegate.markSuccessfulCalls, [audiobook.identifier],
+                       "precondition: audiobook is marked .downloadSuccessful at license-fulfilled time")
         registry.addBook(audiobook, state: .downloadSuccessful)
 
         // Fire the secondary-fetch failure (airplane mode in production).
@@ -285,11 +313,10 @@ final class LCPFulfillmentHandlerTests: XCTestCase {
         )
         completion(nil, networkLost)
 
-        // Negative assertion: nothing should be published. A fixed sleep would
-        // be both slow and flake-prone under -test-iterations 3, so drain the
-        // main queue deterministically instead — the guard's failure mode
-        // (failDownloadWithAlert off the completion) would have enqueued by now.
-        await drainMainQueueAsync()
+        // Give the async error handler time to run; without the guard it
+        // calls failDownloadWithAlert synchronously off the completion.
+        try? await Task.sleep(nanoseconds: 250_000_000)
+        await Task.yield()
 
         XCTAssertEqual(registry.state(for: audiobook.identifier), .downloadSuccessful,
                        "LCP audiobook with streaming-ready license must NOT flip to .downloadFailed when the phase-2 content download fails")
@@ -308,99 +335,20 @@ final class LCPFulfillmentHandlerTests: XCTestCase {
         let downloadTask = FakeDownloadTask(state: .completed, identifier: 1)
 
         handler.fulfillLCPLicense(fileUrl: sourceURL, forBook: audiobook, downloadTask: downloadTask)
-        // Stage the future state: book has been opened at least once AND its
-        // content is on disk.
-        try writeLocalContent(for: audiobook)
+        // Stage the future state: book has been opened at least once.
         registry.addBook(audiobook, state: .used)
 
         let completion = try XCTUnwrap(lcpService.lastCompletion)
         completion(nil, NSError(domain: NSURLErrorDomain,
                                 code: NSURLErrorNetworkConnectionLost,
                                 userInfo: [NSLocalizedDescriptionKey: "lost"]))
-        await drainMainQueueAsync()
+        try? await Task.sleep(nanoseconds: 250_000_000)
+        await Task.yield()
 
         XCTAssertEqual(registry.state(for: audiobook.identifier), .used,
                        "Audiobook in .used (already-opened) must survive a phase-2 failure same as .downloadSuccessful")
         XCTAssertTrue(capturedErrors.isEmpty,
                       "No alert should publish for an already-opened audiobook on phase-2 failure")
-    }
-
-    /// The positive path, and the reason this test exists: after 3.2.3 moved
-    /// `markDownloadSuccessful` out of the license-fulfilled branch and into the
-    /// content-landed branch, NOTHING asserted that an LCP audiobook ever
-    /// reaches `.downloadSuccessful` at all. Deleting that call killed zero
-    /// tests while stranding every fresh LCP download in `.downloading`
-    /// (Cancel-only, no Listen). Reviewers caught it; this pins it.
-    ///
-    /// Reaching the branch needs the real `replaceBook` to succeed, which needs
-    /// a delegate that can resolve a destination — hence the mock delegate — and
-    /// a license the completion can parse, hence the JSON fixture rather than
-    /// arbitrary bytes.
-    func testFulfill_audiobook_marksSuccessfulOnceContentLands() async throws {
-        let audiobook = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
-
-        // Destination the content will be moved to.
-        let destination = tempDir.appendingPathComponent("\(audiobook.identifier).lcpa")
-        let mockDelegate = MockBackgroundDownloadDelegate(bookRegistry: registry)
-        mockDelegate.fileUrls[audiobook.identifier] = destination
-        backgroundHandler.delegate = mockDelegate
-
-        // The file handed to fulfillLCPLicense is renamed to `.lcpl` and later
-        // re-read by the completion, so it must be a parseable license.
-        let sourceURL = tempDir.appendingPathComponent("incoming-\(UUID().uuidString).lcpa")
-        let licenseJSON = """
-        {"id":"urn:uuid:\(UUID().uuidString)","links":[]}
-        """
-        try licenseJSON.data(using: .utf8)!.write(to: sourceURL)
-
-        let downloadTask = FakeDownloadTask(state: .completed, identifier: 1)
-        handler.fulfillLCPLicense(fileUrl: sourceURL, forBook: audiobook, downloadTask: downloadTask)
-
-        XCTAssertTrue(spyDelegate.markSuccessfulCalls.isEmpty,
-                      "precondition: the license landing alone must not mark success")
-
-        // The content arrives.
-        let contentURL = tempDir.appendingPathComponent("content-\(UUID().uuidString).lcpa")
-        try Data(repeating: 0xAB, count: 4096).write(to: contentURL)
-
-        let completion = try XCTUnwrap(lcpService.lastCompletion)
-        completion(contentURL, nil)
-        await awaitConditionAsync { [weak self] in
-            self?.spyDelegate.markSuccessfulCalls.isEmpty == false
-        }
-
-        XCTAssertEqual(spyDelegate.markSuccessfulCalls, [audiobook.identifier],
-                       "once the .lcpa is stored the book must become downloadSuccessful, or it strands in .downloading forever")
-        XCTAssertTrue(capturedErrors.isEmpty,
-                      "a successful content landing must not surface a failure alert")
-    }
-
-    /// The other side of the guard above. On a FIRST fulfillment the book is
-    /// still `.downloading` when the content fetch fails, so there is no
-    /// playable audio to protect and (with streaming broken) nothing to fall
-    /// back to. Continuing silently would strand the book in `.downloading`
-    /// forever with no way for the patron to retry, so the failure must
-    /// surface. Before this change the book had already been marked
-    /// `.downloadSuccessful`, which is what sent it down the "leave it alone"
-    /// branch and produced a book that advertised Listen but had no audio.
-    func testFulfill_audiobook_freshFulfillmentContentError_surfacesAlert() async throws {
-        let audiobook = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
-        let sourceURL = try writeSourceFile(ext: "lcpa")
-        let downloadTask = FakeDownloadTask(state: .completed, identifier: 1)
-
-        handler.fulfillLCPLicense(fileUrl: sourceURL, forBook: audiobook, downloadTask: downloadTask)
-
-        // A first fulfillment: the book is mid-download, NOT streaming-ready.
-        registry.addBook(audiobook, state: .downloading)
-
-        let completion = try XCTUnwrap(lcpService.lastCompletion)
-        completion(nil, NSError(domain: NSURLErrorDomain,
-                                code: NSURLErrorNetworkConnectionLost,
-                                userInfo: [NSLocalizedDescriptionKey: "lost"]))
-        await waitForPublishedError()
-
-        XCTAssertFalse(capturedErrors.isEmpty,
-                       "a first fulfillment whose content never arrived must surface a failure, not sit in .downloading forever")
     }
 
     /// Sibling check: a non-audiobook (e.g. LCP EPUB) does NOT get the
