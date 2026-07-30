@@ -285,10 +285,11 @@ final class LCPFulfillmentHandlerTests: XCTestCase {
         )
         completion(nil, networkLost)
 
-        // Give the async error handler time to run; without the guard it
-        // calls failDownloadWithAlert synchronously off the completion.
-        try? await Task.sleep(nanoseconds: 250_000_000)
-        await Task.yield()
+        // Negative assertion: nothing should be published. A fixed sleep would
+        // be both slow and flake-prone under -test-iterations 3, so drain the
+        // main queue deterministically instead — the guard's failure mode
+        // (failDownloadWithAlert off the completion) would have enqueued by now.
+        await drainMainQueueAsync()
 
         XCTAssertEqual(registry.state(for: audiobook.identifier), .downloadSuccessful,
                        "LCP audiobook with streaming-ready license must NOT flip to .downloadFailed when the phase-2 content download fails")
@@ -316,8 +317,7 @@ final class LCPFulfillmentHandlerTests: XCTestCase {
         completion(nil, NSError(domain: NSURLErrorDomain,
                                 code: NSURLErrorNetworkConnectionLost,
                                 userInfo: [NSLocalizedDescriptionKey: "lost"]))
-        try? await Task.sleep(nanoseconds: 250_000_000)
-        await Task.yield()
+        await drainMainQueueAsync()
 
         XCTAssertEqual(registry.state(for: audiobook.identifier), .used,
                        "Audiobook in .used (already-opened) must survive a phase-2 failure same as .downloadSuccessful")
@@ -365,8 +365,9 @@ final class LCPFulfillmentHandlerTests: XCTestCase {
 
         let completion = try XCTUnwrap(lcpService.lastCompletion)
         completion(contentURL, nil)
-        try? await Task.sleep(nanoseconds: 250_000_000)
-        await Task.yield()
+        await awaitConditionAsync { [weak self] in
+            self?.spyDelegate.markSuccessfulCalls.isEmpty == false
+        }
 
         XCTAssertEqual(spyDelegate.markSuccessfulCalls, [audiobook.identifier],
                        "once the .lcpa is stored the book must become downloadSuccessful, or it strands in .downloading forever")
@@ -396,8 +397,7 @@ final class LCPFulfillmentHandlerTests: XCTestCase {
         completion(nil, NSError(domain: NSURLErrorDomain,
                                 code: NSURLErrorNetworkConnectionLost,
                                 userInfo: [NSLocalizedDescriptionKey: "lost"]))
-        try? await Task.sleep(nanoseconds: 250_000_000)
-        await Task.yield()
+        await waitForPublishedError()
 
         XCTAssertFalse(capturedErrors.isEmpty,
                        "a first fulfillment whose content never arrived must surface a failure, not sit in .downloading forever")

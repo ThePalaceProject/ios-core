@@ -332,6 +332,21 @@ final class LocalBookContentServiceTests: XCTestCase {
     // half-sheet had nothing to draw for a multi-gigabyte transfer and patrons
     // read the silence as a failure.
 
+    /// The wiring itself. `MyBooksDownloadCenter` assigns the reporter to the
+    /// content service after `init` (the service is built earlier in that
+    /// initializer than the reporter is). Both halves of the progress cue are
+    /// otherwise tested with a hand-injected reporter, so deleting that one
+    /// assignment line would silently kill the whole feature with every unit
+    /// test still green.
+    func testDownloadCenter_wiresItsReporterIntoTheContentService() {
+        let center = AppContainer.production().downloadCenter
+
+        XCTAssertNotNil(center.localContentService.contentDownloadReporter,
+                        "MyBooksDownloadCenter must wire its progress reporter into the content service, or the LCP content download reports to nothing")
+        XCTAssertTrue(center.localContentService.contentDownloadReporter === center.progressReporter,
+                      "it must be the SAME reporter the rest of the download center publishes through")
+    }
+
     func testRedownload_reportsActiveThenProgressThenIdle() throws {
         let book = try seedLicenseOnlyLCPAudiobook()
         let fulfiller = SpyLCPContentFulfiller()

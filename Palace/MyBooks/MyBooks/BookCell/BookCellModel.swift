@@ -95,6 +95,14 @@ class BookCellModel: ObservableObject {
 
     @Published var isManagingHold: Bool = false
 
+    /// True while the background `.lcpa` content re-download is running for this
+    /// book. Satisfies `HalfSheetProvider`, whose protocol-extension default is
+    /// `false` — and the default was the wrong answer here, because the self-heal
+    /// fires for books on the My Books shelf, which is exactly the route this
+    /// model backs. Without it the half-sheet reached from a shelf cell showed no
+    /// progress for the whole transfer.
+    @Published var isDownloadingLCPContent: Bool = false
+
     @Published private(set) var stableButtonState: BookButtonState = .unsupported {
         didSet {
             // Always update state when stableButtonState changes - avoids comparison edge cases
@@ -286,6 +294,15 @@ class BookCellModel: ObservableObject {
                 }
             }
             .store(in: &cancellables)
+
+        // LCP `.lcpa` content re-download: the book stays `.downloadSuccessful`
+        // (only its content went missing), so no registry-state change signals
+        // this transfer and the ordinary progress cue cannot see it.
+        downloadCenter.lcpContentDownloadPublisher
+            .filter { [weak self] in $0.0 == self?.book.identifier }
+            .map(\.1)
+            .receive(on: RunLoop.main)
+            .assign(to: &$isDownloadingLCPContent)
 
         // Subscribe to download errors so the half sheet can present them via SwiftUI .alert.
         // Filter by error kind: borrow errors only show for unregistered books (user tapped Get),

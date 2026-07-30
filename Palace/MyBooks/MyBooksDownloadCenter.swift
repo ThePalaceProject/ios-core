@@ -77,7 +77,12 @@ import OverdriveProcessor
     let downloadAnnouncementService: DownloadAnnouncementService
     private let bookFileManager: BookFileManager
     private let diskBudgetManager: DiskBudgetManager
-    private let localContentService: LocalBookContentService
+    /// Internal rather than private so the post-`init` reporter wiring below can
+    /// be asserted. That assignment is the single point the LCP content-download
+    /// progress cue depends on, and both halves of the cue are otherwise tested
+    /// with a hand-injected reporter, so without this the line could be deleted
+    /// with every unit test still passing.
+    let localContentService: LocalBookContentService
     private let returnService: BookReturnService
     private let alertPresenter: DownloadAlertPresenter
     private let authRetryHandler: DownloadAuthRetryHandler

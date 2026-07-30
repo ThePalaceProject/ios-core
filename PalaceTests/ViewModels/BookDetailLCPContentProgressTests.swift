@@ -42,11 +42,25 @@ final class BookDetailLCPContentProgressTests: XCTestCase {
         )
     }
 
-    /// Lets the Combine hop (`receive(on: RunLoop.main)`) land before asserting.
+    /// Waits for a specific expected outcome rather than sleeping a fixed
+    /// interval. Fixed sleeps are both slower than needed and flake-prone under
+    /// `-test-iterations 3` with parallel clones, which is the documented
+    /// starvation pattern in this suite.
+    private func waitUntil(
+        _ predicate: @escaping () -> Bool,
+        file: StaticString = #file,
+        line: UInt = #line
+    ) async {
+        await awaitConditionAsync(file: file, line: line, predicate)
+    }
+
+    /// For assertions that nothing happens, there is no condition to poll for.
+    /// Drain the main queue deterministically instead: the Combine delivery this
+    /// guards against would have been enqueued by the time the drain returns.
     private func settle() async {
+        await drainMainQueueAsync()
         await Task.yield()
-        try? await Task.sleep(nanoseconds: 120_000_000)
-        await Task.yield()
+        await drainMainQueueAsync()
     }
 
     private var reporter: DownloadProgressReporter {
@@ -59,7 +73,7 @@ final class BookDetailLCPContentProgressTests: XCTestCase {
         XCTAssertFalse(vm.isDownloadingLCPContent, "precondition")
 
         reporter.sendLCPContentDownloadActive(bookIdentifier: book.identifier, active: true)
-        await settle()
+        await waitUntil { vm.isDownloadingLCPContent }
 
         XCTAssertTrue(vm.isDownloadingLCPContent,
                       "the view-model must learn that a content re-download started, or the sheet stays blank")
@@ -70,9 +84,9 @@ final class BookDetailLCPContentProgressTests: XCTestCase {
         let vm = makeViewModel(for: book)
 
         reporter.sendLCPContentDownloadActive(bookIdentifier: book.identifier, active: true)
-        await settle()
+        await waitUntil { vm.isDownloadingLCPContent }
         reporter.sendLCPContentDownloadActive(bookIdentifier: book.identifier, active: false)
-        await settle()
+        await waitUntil { !vm.isDownloadingLCPContent }
 
         XCTAssertFalse(vm.isDownloadingLCPContent,
                        "the cue must close when the transfer ends, on failure as well as success")
@@ -100,11 +114,11 @@ final class BookDetailLCPContentProgressTests: XCTestCase {
 
         // Simulate a completed earlier download.
         reporter.sendProgress(bookIdentifier: book.identifier, progress: 1.0)
-        await settle()
+        await waitUntil { vm.downloadProgress == 1.0 }
         XCTAssertEqual(vm.downloadProgress, 1.0, accuracy: 0.001, "precondition")
 
         reporter.sendLCPContentDownloadActive(bookIdentifier: book.identifier, active: true)
-        await settle()
+        await waitUntil { vm.downloadProgress == 0.0 }
 
         XCTAssertEqual(vm.downloadProgress, 0.0, accuracy: 0.001,
                        "a new content transfer must re-base the clamp, else the bar sits at 100% for the entire download")
@@ -115,11 +129,11 @@ final class BookDetailLCPContentProgressTests: XCTestCase {
         let vm = makeViewModel(for: book)
 
         reporter.sendProgress(bookIdentifier: book.identifier, progress: 1.0)
-        await settle()
+        await waitUntil { vm.downloadProgress == 1.0 }
         reporter.sendLCPContentDownloadActive(bookIdentifier: book.identifier, active: true)
-        await settle()
+        await waitUntil { vm.downloadProgress == 0.0 }
         reporter.sendProgress(bookIdentifier: book.identifier, progress: 0.35)
-        await settle()
+        await waitUntil { vm.downloadProgress == 0.35 }
 
         XCTAssertEqual(vm.downloadProgress, 0.35, accuracy: 0.001,
                        "real transfer progress must reach the bar after the reset")
@@ -131,7 +145,7 @@ final class BookDetailLCPContentProgressTests: XCTestCase {
         let vm = makeViewModel(for: book)
 
         reporter.sendLCPContentDownloadActive(bookIdentifier: book.identifier, active: true)
-        await settle()
+        await waitUntil { vm.isDownloadingLCPContent }
 
         let cue = HalfSheetProgressCue.resolve(
             isBorrowProcessing: vm.isBorrowProcessing,
