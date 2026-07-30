@@ -13,7 +13,7 @@ import XCTest
 import PalaceCatalog
 @testable import Palace
 
-final class BookRegistrySyncTests: XCTestCase {
+final class BookRegistrySyncTests: PalaceWiringTestCase {
 
     private var store: BookRegistryStore!
     private var syncManager: BookRegistrySync!
@@ -21,7 +21,6 @@ final class BookRegistrySyncTests: XCTestCase {
     private var tempDirectory: URL!
     private var appContainer: AppContainer!
     private var scheduler: SpyRedownloadScheduler!
-    private var isolatedAccountsManagers: [AccountsManager] = []
     /// Collapses production's account-switch grace period so tests assert the
     /// DECISION instead of sleeping through it.
     private static let testDelay: TimeInterval = 0.05
@@ -53,7 +52,6 @@ final class BookRegistrySyncTests: XCTestCase {
     override func tearDown() {
         try? FileManager.default.removeItem(at: tempDirectory)
         tempDirectory = nil
-        isolatedAccountsManagers.removeAll()
         scheduler = nil
         appContainer = nil
         syncManager = nil
@@ -263,7 +261,13 @@ final class BookRegistrySyncTests: XCTestCase {
         -> (BookRegistrySync, SpyRedownloadScheduler, BookRegistryStore) {
         let suite = UserDefaults(suiteName: "brs-sched-\(UUID().uuidString)")!
         suite.set(account, forKey: currentAccountIdentifierKey)
-        let manager = AccountsManager(defaults: suite)
+        // The sanctioned seam, NOT a bare `AccountsManager(defaults:)`. A bare
+        // construction spawns a background `loadCatalogs` that outlives the test,
+        // retains Combine sinks and writes the bundled-catalog snapshot into the
+        // shared Application Support directory — the next test in the bundle
+        // inherits it. `makeFreshAccountsManager` pins the defer flag and registers
+        // the manager for cancellation on tearDown.
+        let manager = makeFreshAccountsManager(defaults: suite)
         let spy = SpyRedownloadScheduler()
         let localStore = BookRegistryStore()
         let container = appContainer!
@@ -276,7 +280,6 @@ final class BookRegistrySyncTests: XCTestCase {
             contentRedownloadDelay: Self.testDelay,
             orphanRedownloadDelay: Self.testDelay
         )
-        isolatedAccountsManagers.append(manager)
         return (sync, spy, localStore)
     }
 
