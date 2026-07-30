@@ -10,7 +10,7 @@ import XCTest
 import Combine
 @testable import Palace
 
-final class DownloadProgressPublisherCoreTests: XCTestCase {
+final class DownloadProgressPublisherTests: XCTestCase {
 
     private var reporter: DownloadProgressReporter!
     private var cancellables: Set<AnyCancellable>!
@@ -387,5 +387,66 @@ final class DownloadProgressPublisherCoreTests: XCTestCase {
 
         XCTAssertFalse(reporter.isLCPContentTransferActive(for: "book-1"),
                        "cancel must release the registration, or the book stays pinned behind a bar that never moves")
+    }
+
+    // MARK: - The UI edge on release
+    //
+    // `isDownloadingLCPContent` is driven ONLY by `lcpContentDownloadPublisher`,
+    // and `HalfSheetProgressCue` reads that flag ahead of book state. Dropping a
+    // registration without publishing therefore unsticks reconciliation while
+    // leaving a determinate bar frozen on screen indefinitely.
+
+    func testClearTransfer_publishesTheInactiveEdge() {
+        let reporter = DownloadProgressReporter()
+        var edges: [(String, Bool)] = []
+        let sub = reporter.lcpContentDownloadPublisher.sink { edges.append(($0.0, $0.1)) }
+        defer { sub.cancel() }
+
+        reporter.sendLCPContentDownloadActive(bookIdentifier: "book-1", active: true)
+        reporter.clearLCPContentTransfer(for: "book-1")
+
+        let settled = expectation(description: "edges delivered")
+        DispatchQueue.main.async { settled.fulfill() }
+        wait(for: [settled], timeout: 5.0)
+
+        XCTAssertEqual(edges.map(\.1), [true, false],
+                       "a cancelled transfer must publish its own release, or the bar never clears")
+    }
+
+    func testIdleExpiry_publishesTheInactiveEdge() {
+        let reporter = DownloadProgressReporter()
+        var now: TimeInterval = 1_000
+        reporter.monotonicClock = { now }
+        var edges: [(String, Bool)] = []
+        let sub = reporter.lcpContentDownloadPublisher.sink { edges.append(($0.0, $0.1)) }
+        defer { sub.cancel() }
+
+        reporter.sendLCPContentDownloadActive(bookIdentifier: "book-1", active: true)
+        now += DownloadProgressReporter.contentTransferIdleTimeout + 1
+        _ = reporter.isLCPContentTransferActive(for: "book-1")
+
+        let settled = expectation(description: "edges delivered")
+        DispatchQueue.main.async { settled.fulfill() }
+        wait(for: [settled], timeout: 5.0)
+
+        XCTAssertEqual(edges.map(\.1), [true, false],
+                       "expiring a dead transfer must also release the UI, not just reconciliation")
+    }
+
+    /// A clear for a book that was never registered must stay silent, or an
+    /// unrelated cancel emits a spurious edge that clears someone else's cue.
+    func testClearTransfer_forAnUnregisteredBook_publishesNothing() {
+        let reporter = DownloadProgressReporter()
+        var edges: [(String, Bool)] = []
+        let sub = reporter.lcpContentDownloadPublisher.sink { edges.append(($0.0, $0.1)) }
+        defer { sub.cancel() }
+
+        reporter.clearLCPContentTransfer(for: "never-registered")
+
+        let settled = expectation(description: "edges delivered")
+        DispatchQueue.main.async { settled.fulfill() }
+        wait(for: [settled], timeout: 5.0)
+
+        XCTAssertTrue(edges.isEmpty, "no registration, no edge")
     }
 }

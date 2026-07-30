@@ -22,6 +22,9 @@ final class BookRegistrySyncTests: XCTestCase {
     private var appContainer: AppContainer!
     private var scheduler: SpyRedownloadScheduler!
     private var isolatedAccountsManagers: [AccountsManager] = []
+    /// Collapses production's account-switch grace period so tests assert the
+    /// DECISION instead of sleeping through it.
+    private static let testDelay: TimeInterval = 0.05
 
     override func setUp() {
         super.setUp()
@@ -36,23 +39,18 @@ final class BookRegistrySyncTests: XCTestCase {
             accountsManager: container.accountsManager,
             downloadCenterProvider: { container.downloadCenter },
             opdsFeedServiceProvider: { container.opdsFeedService },
-            redownloadSchedulerProvider: { spy }
+            redownloadSchedulerProvider: { spy },
+            contentRedownloadDelay: Self.testDelay,
+            orphanRedownloadDelay: Self.testDelay
         )
 
         // Create a temp directory for registry file I/O tests
-        // Collapse the re-download schedules so tests assert the DECISION rather
-        // than sleeping through production's account-switch grace period.
-        BookRegistrySync.contentRedownloadDelay = 0.05
-        BookRegistrySync.orphanRedownloadDelay = 0.05
-
         tempDirectory = FileManager.default.temporaryDirectory
             .appendingPathComponent("BookRegistrySyncTests-\(UUID().uuidString)")
         try? FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
     }
 
     override func tearDown() {
-        BookRegistrySync.contentRedownloadDelay = 3.0
-        BookRegistrySync.orphanRedownloadDelay = 5.0
         try? FileManager.default.removeItem(at: tempDirectory)
         tempDirectory = nil
         isolatedAccountsManagers.removeAll()
@@ -274,7 +272,9 @@ final class BookRegistrySyncTests: XCTestCase {
             accountsManager: manager,
             downloadCenterProvider: { container.downloadCenter },
             opdsFeedServiceProvider: { container.opdsFeedService },
-            redownloadSchedulerProvider: { spy }
+            redownloadSchedulerProvider: { spy },
+            contentRedownloadDelay: Self.testDelay,
+            orphanRedownloadDelay: Self.testDelay
         )
         isolatedAccountsManagers.append(manager)
         return (sync, spy, localStore)

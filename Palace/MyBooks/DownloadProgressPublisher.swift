@@ -173,20 +173,43 @@ final class DownloadProgressReporter: DownloadProgressPublishing {
 
     func isLCPContentTransferActive(for bookIdentifier: String) -> Bool {
         activeTransfersLock.lock()
-        defer { activeTransfersLock.unlock() }
-        guard let lastActivity = activeLCPContentTransfers[bookIdentifier] else { return false }
-        if monotonicClock() - lastActivity > Self.contentTransferIdleTimeout {
-            // Gone quiet past the idle window — treat as dead so recovery can run.
-            activeLCPContentTransfers.removeValue(forKey: bookIdentifier)
+        guard let lastActivity = activeLCPContentTransfers[bookIdentifier] else {
+            activeTransfersLock.unlock()
             return false
         }
-        return true
+        guard monotonicClock() - lastActivity > Self.contentTransferIdleTimeout else {
+            activeTransfersLock.unlock()
+            return true
+        }
+        // Gone quiet past the idle window — treat as dead so recovery can run.
+        activeLCPContentTransfers.removeValue(forKey: bookIdentifier)
+        activeTransfersLock.unlock()
+
+        // Publish OUTSIDE the lock. Dropping the entry silently would unstick
+        // reconciliation but leave the UI flag latched true, and the half-sheet
+        // reads that flag ahead of book state — a determinate bar frozen forever.
+        publishTransferEdge(bookIdentifier: bookIdentifier, active: false)
+        return false
     }
 
     func clearLCPContentTransfer(for bookIdentifier: String) {
         activeTransfersLock.lock()
-        activeLCPContentTransfers.removeValue(forKey: bookIdentifier)
+        let wasRegistered = activeLCPContentTransfers.removeValue(forKey: bookIdentifier) != nil
         activeTransfersLock.unlock()
+
+        // Same reason as above: the UI flag is driven ONLY by this publisher, so a
+        // silent drop leaves a cancelled download rendering a bar that never moves.
+        // Only publish if something was actually registered, so a cancel for an
+        // unrelated book cannot emit a spurious edge.
+        if wasRegistered {
+            publishTransferEdge(bookIdentifier: bookIdentifier, active: false)
+        }
+    }
+
+    private func publishTransferEdge(bookIdentifier: String, active: Bool) {
+        Task { @MainActor in
+            lcpContentDownloadPublisher.send((bookIdentifier, active))
+        }
     }
 
     // MARK: - Error Publishing

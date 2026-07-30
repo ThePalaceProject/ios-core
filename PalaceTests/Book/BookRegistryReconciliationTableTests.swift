@@ -169,6 +169,24 @@ final class BookRegistryReconciliationTableTests: XCTestCase {
         }
     }
 
+    /// An in-flight transfer must settle EVERY entry state that could be reached
+    /// mid-download, not just `.downloading`. The device trace's 2nd and 3rd
+    /// duplicate schedules both came from `.downloadNeeded`, which returns
+    /// `content: true` on its own.
+    func testInFlightTransfer_leavesEveryMidDownloadEntryStateAlone() {
+        for entry in [TPPBookState.downloading, .downloadNeeded, .downloadSuccessful, .used] {
+            let got = BookRegistrySync.reconcile(
+                entryState: entry,
+                presence: .licenseOnly,
+                isDownloadInFlight: true
+            )
+            XCTAssertFalse(
+                got.schedulesContentRedownload,
+                "entry \(entry) scheduled a re-download while the archive was already transferring — that is the doubled download"
+            )
+        }
+    }
+
     // MARK: - The safety property
     //
     // Stated in terms of the patron-visible defect rather than any arm, so it

@@ -54,9 +54,15 @@ class BookRegistrySync {
   /// tests do not have to sleep through it. A test that waits out the real delay
   /// costs 7s of wall clock, which under `-test-iterations 3` is the deadline-poll
   /// flake shape this suite already suffers from.
-  static var contentRedownloadDelay: TimeInterval = 3.0
-  /// Same, for the orphan auto-restart.
-  static var orphanRedownloadDelay: TimeInterval = 5.0
+  ///
+  /// Instance properties, not mutable statics: statics would be shared across
+  /// every instance and every parallel test clone, and a `tearDown` restoring a
+  /// hardcoded default silently desyncs the moment the default changes.
+  static let defaultContentRedownloadDelay: TimeInterval = 3.0
+  static let defaultOrphanRedownloadDelay: TimeInterval = 5.0
+
+  private let contentRedownloadDelay: TimeInterval
+  private let orphanRedownloadDelay: TimeInterval
   /// Serial queue for disk writes — prevents out-of-order save races where a stale
   /// snapshot could overwrite a newer one if two saves dispatch concurrently.
   private let diskWriteQueue = DispatchQueue(label: "com.palace.registryDiskWrite")
@@ -93,8 +99,12 @@ class BookRegistrySync {
     accountsManager: AccountsManager,
     downloadCenterProvider: @escaping () -> MyBooksDownloadCenter,
     opdsFeedServiceProvider: @escaping () -> OPDSFeedService,
-    redownloadSchedulerProvider: (() -> RegistryRedownloadScheduling)? = nil
+    redownloadSchedulerProvider: (() -> RegistryRedownloadScheduling)? = nil,
+    contentRedownloadDelay: TimeInterval = BookRegistrySync.defaultContentRedownloadDelay,
+    orphanRedownloadDelay: TimeInterval = BookRegistrySync.defaultOrphanRedownloadDelay
   ) {
+    self.contentRedownloadDelay = contentRedownloadDelay
+    self.orphanRedownloadDelay = orphanRedownloadDelay
     self.store = store
     self.accountsManager = accountsManager
     self.downloadCenterProvider = downloadCenterProvider
@@ -283,7 +293,7 @@ class BookRegistrySync {
         if !lcpBooksNeedingBackgroundRedownload.isEmpty {
           Log.info(#file, "  Scheduling background .lcpa re-download for \(lcpBooksNeedingBackgroundRedownload.count) orphaned LCP audiobook(s)")
           let scheduler = self.redownloadSchedulerProvider()
-          DispatchQueue.main.asyncAfter(deadline: .now() + Self.contentRedownloadDelay) { [accountsManager] in
+          DispatchQueue.main.asyncAfter(deadline: .now() + self.contentRedownloadDelay) { [accountsManager] in
             guard accountsManager.currentAccountId == loadedAccount else {
               Log.info(#file, "  Skipping LCP background re-download — account changed during wait")
               return
@@ -298,7 +308,7 @@ class BookRegistrySync {
         if !orphanedBooksNeedingRedownload.isEmpty {
           Log.info(#file, "  Scheduling auto-restart for \(orphanedBooksNeedingRedownload.count) orphaned download(s)")
           let scheduler = self.redownloadSchedulerProvider()
-          DispatchQueue.main.asyncAfter(deadline: .now() + Self.orphanRedownloadDelay) { [accountsManager] in
+          DispatchQueue.main.asyncAfter(deadline: .now() + self.orphanRedownloadDelay) { [accountsManager] in
             guard accountsManager.currentAccountId == loadedAccount else {
               Log.info(#file, "  Skipping orphan auto-restart — account changed during wait")
               return
@@ -775,11 +785,28 @@ class BookRegistrySync {
                              schedulesOrphanRedownload: orphan)
     }
 
+    // A live transfer settles EVERY state in the download chain, not just
+    // `.downloading`. Checking it only in that one arm is what let the device
+    // trace's 2nd and 3rd duplicate schedules through: both arrived as
+    // `.downloadNeeded`, whose license-only cell schedules a re-download on its
+    // own. Restricted to the chain so `.holding` / `.returning` / `.unsupported`
+    // stay identity, and to a missing content package so a book that already has
+    // its content is still reported finished.
+    let downloadChain: Set<TPPBookState> = [
+      .downloading, .downloadNeeded, .downloadSuccessful, .used, .SAMLStarted
+    ]
+    if isDownloadInFlight, downloadChain.contains(entryState) {
+      // Content already on disk: leave the record exactly as it is. Forcing
+      // `.downloading` here would strip the Listen button from a `.used` book
+      // whose content is present while a background re-download runs.
+      // Nothing on disk yet: the book IS downloading, whatever state it entered in.
+      return presence == .present ? decision(entryState) : decision(.downloading)
+    }
+
     switch entryState {
     case .downloading:
       // A warm `load()` (foreground, hold changes) can land mid-transfer. A
       // live download settles its own state; do not pre-empt it.
-      if isDownloadInFlight { return decision(.downloading) }
       switch presence {
       case .present:     return decision(.downloadSuccessful)
       case .licenseOnly: return decision(.downloadNeeded, content: true)
