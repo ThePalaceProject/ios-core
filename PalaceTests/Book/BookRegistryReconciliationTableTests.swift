@@ -175,20 +175,42 @@ final class BookRegistryReconciliationTableTests: XCTestCase {
     }
 
     /// The specific class that bit us three times: a book holding only its
-    /// license must never settle into a state that claims it is playable, no
-    /// matter which entry state it starts from.
+    /// license must never settle into a state that claims it is playable, from
+    /// any entry state.
+    ///
+    /// Asserts SETTLEMENT before inspecting the endpoint. An earlier version
+    /// read the state after a fixed number of iterations, which made it pass by
+    /// parity for the one entry state whose mutated arm happened to land back on
+    /// itself — the mutated arm, of all of them. Every visited state is checked,
+    /// so an oscillation cannot hide the violation in a trough.
     func testLicenseOnlyNeverSettlesIntoAPlayableState() {
         for entry in entryStates {
             var state = entry
+            var visited: [TPPBookState] = [state]
+            var settled = false
+
             for _ in 0..<6 {
                 let next = outcome(entry: state, disk: .licenseOnly).state
-                if next == state { break }
+                if next == state { settled = true; break }
                 state = next
+                visited.append(state)
             }
-            XCTAssertFalse(
-                state == .downloadSuccessful || state == .used,
-                "entry \(entry) with only a license settled into \(state) — that is the Listen-with-no-audio defect, and it is how the previous fix regressed"
+
+            XCTAssertTrue(
+                settled,
+                "entry \(entry) never settled with only a license — visited \(visited); an oscillating chain has no safe endpoint to check"
             )
+
+            // Skip the entry itself: `.downloadSuccessful` and `.used` ARE
+            // playable states, and starting there is the whole point — the chain
+            // must demote them. What must never happen is the chain PRODUCING or
+            // returning to a playable state while only a license is on disk.
+            for produced in visited.dropFirst() {
+                XCTAssertFalse(
+                    produced == .downloadSuccessful || produced == .used,
+                    "entry \(entry) was reconciled INTO \(produced) with only a license — visited \(visited). That is the Listen-with-no-audio defect, and checking only the endpoint is how it survived a review round."
+                )
+            }
         }
     }
 

@@ -177,27 +177,32 @@ final class BookRegistrySyncTests: XCTestCase {
 
     // MARK: - State Transition Logic During Load
 
-    func test_loadStateTransition_downloadingWithNoFile_becomesDownloadFailed() {
-        // The checkIfBookFileExists will return false for our fake book
-        // since no file is on disk. This tests the state correction logic.
-        let book = makeBook(identifier: "dl-book")
+    /// Drives `load()` end to end and asserts the state it PERSISTS.
+    ///
+    /// This replaces a stub of the same name that wrote a registry file and then
+    /// asserted only that the file existed — it never called `load()`, so the
+    /// reconciliation WIRING was entirely unpinned. The pure `reconcile`
+    /// function is exhaustively covered by `BookRegistryReconciliationTableTests`,
+    /// but a green detector proves nothing if `load()` never applies its result:
+    /// deleting `record.state = decision.state` left every test green.
+    func test_load_downloadingWithNoFileOnDisk_persistsDownloadFailed() throws {
+        let (account, url) = makeIsolatedAccount()
+        defer { cleanupAccount(url) }
+
+        let book = makeBook(identifier: "dl-book-\(UUID().uuidString)")
         let record = TPPBookRegistryRecord(book: book, state: .downloading)
-        let dict = record.dictionaryRepresentation
+        try writeRegistryFile(records: [record.dictionaryRepresentation], to: url)
 
-        // Write a registry with the downloading record
-        let registryUrl = tempDirectory
-            .appendingPathComponent("registry")
-            .appendingPathComponent("registry.json")
-
-        do {
-            try writeRegistryFile(records: [dict], to: registryUrl)
-        } catch {
-            XCTFail("Failed to write test registry: \(error)")
-            return
+        let done = expectation(description: "loaded")
+        syncManager.load(account: account) { state in
+            if state == .loaded { done.fulfill() }
         }
+        wait(for: [done], timeout: 10.0)
 
-        // Verify the file was written
-        XCTAssertTrue(FileManager.default.fileExists(atPath: registryUrl.path))
+        XCTAssertEqual(
+            store.state(for: book.identifier), .downloadFailed,
+            "load() must APPLY the reconciliation decision, not merely compute it — a book left .downloading with nothing on disk did not finish downloading"
+        )
     }
 
     // MARK: - Multiple Books with Various States

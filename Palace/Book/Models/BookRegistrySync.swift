@@ -176,31 +176,31 @@ class BookRegistrySync {
           // the correct "Download" affordance. Treat missing-file the same
           // as .downloadSuccessful: flip to .downloadNeeded and schedule
           // auto-restart.
-          if record.state == .downloading || record.state == .SAMLStarted || record.state == .downloadSuccessful || record.state == .downloadNeeded || record.state == .used {
-            let presence = self.contentPresence(for: record.book, account: account)
-            let decision = Self.reconcile(
-              entryState: record.state,
-              presence: presence,
-              isDownloadInFlight: self.isDownloadInFlight(for: record.book)
-            )
+          // No entry-state gate here: `reconcile` is total and returns the
+          // record unchanged for states it does not act on. Gating first would
+          // re-derive the same set of states in two places, which is the exact
+          // shape that produced three defects in this file.
+          let presence = self.contentPresence(for: record.book, account: account)
+          let decision = Self.reconcile(
+            entryState: record.state,
+            presence: presence,
+            isDownloadInFlight: self.isDownloadInFlight(for: record.book)
+          )
 
-            if decision.state != record.state {
-              Log.info(#file, "  Reconciling '\(record.book.title)': \(record.state) -> \(decision.state) (content: \(presence))")
-            }
-            record.state = decision.state
+          if decision.state != record.state {
+            // Keep the prior state AND the disk condition in the message. Field
+            // logs are how every defect in this area was actually found.
+            Log.info(#file, "  Reconciled '\(record.book.title)': \(record.state) -> \(decision.state) (content: \(presence))")
+          }
+          record.state = decision.state
 
-            if decision.schedulesContentRedownload {
-              Log.warn(#file, "  '\(record.book.title)' has a license but no content — scheduling content re-download")
-              lcpBooksNeedingBackgroundRedownload.append(record.book)
-            }
-            if decision.schedulesOrphanRedownload {
-              Log.error(#file, "  '\(record.book.title)' content MISSING — scheduling orphan re-download")
-              orphanedBooksNeedingRedownload.append(record.book)
-            }
-
-            if originalState != record.state {
-              Log.info(#file, "  State changed for '\(record.book.title)': \(originalState) -> \(record.state)")
-            }
+          if decision.schedulesContentRedownload {
+            Log.warn(#file, "  '\(record.book.title)' has a license but no .lcpa content (was \(originalState)) — scheduling content re-download")
+            lcpBooksNeedingBackgroundRedownload.append(record.book)
+          }
+          if decision.schedulesOrphanRedownload {
+            Log.error(#file, "  '\(record.book.title)' content MISSING on disk (was \(originalState)) — scheduling orphan re-download")
+            orphanedBooksNeedingRedownload.append(record.book)
           }
 
           newRegistry[record.book.identifier] = record
