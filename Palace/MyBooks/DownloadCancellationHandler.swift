@@ -46,6 +46,11 @@ final class DownloadCancellationHandler {
 
     weak var delegate: DownloadCancellationHandlerDelegate?
 
+    /// Wired after construction by `MyBooksDownloadCenter` (two inits, DRM and
+    /// noDRM, so a property is less invasive than threading it through both).
+    /// Cancel must drop any LCP content-transfer registration — see `cancelDownload`.
+    weak var progressReporter: DownloadProgressReporter?
+
     private let stateManager: DownloadStateManager
     private let bookRegistry: TPPBookRegistryProvider
     #if FEATURE_DRM_CONNECTOR
@@ -76,6 +81,13 @@ final class DownloadCancellationHandler {
 
     func cancelDownload(for identifier: String) {
         let state = bookRegistry.state(for: identifier)
+
+        // An LCP fulfillment cancel never reaches the fulfillment completion
+        // handler: LicensesService swallows NSURLErrorCancelled without calling
+        // it. Without this the registration outlives the transfer, which pins the
+        // book at `.downloading` and the half-sheet on a progress bar for a
+        // download that is no longer running.
+        progressReporter?.clearLCPContentTransfer(for: identifier)
 
         guard let info = stateManager.bookIdentifierToDownloadInfo.syncGet(identifier) else {
             // No URL session task — only allow cancellation for states

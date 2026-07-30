@@ -113,10 +113,17 @@ final class LCPFulfillmentHandler {
 
         let lcpCompletion: (URL?, Error?) -> Void = { [weak self] localUrl, error in
             guard let self = self else { return }
-            // Closes the cue and clears the in-flight registration on BOTH arms —
-            // a failed fulfillment that left the flag set would suppress the
-            // recovery re-download this book now depends on.
-            self.progressReporter.sendLCPContentDownloadActive(bookIdentifier: book.identifier, active: false)
+            // `defer`, not a straight-line call, for two reasons. It releases the
+            // registration on EVERY exit — this closure has four `return`s, and a
+            // failed fulfillment that kept the flag would suppress the recovery
+            // re-download it specifically depends on. And it runs AFTER
+            // `replaceBook` has put the content on disk: clearing up front left a
+            // window where the book was (license, no content, nothing in flight),
+            // which is precisely the triple that makes reconciliation schedule a
+            // duplicate download.
+            defer {
+                self.progressReporter.sendLCPContentDownloadActive(bookIdentifier: book.identifier, active: false)
+            }
             if let error = error {
                 let summary = "\(String(describing: book.distributor)) LCP license fulfillment error"
                 TPPErrorLogger.logError(error, summary: summary, metadata: [
@@ -220,11 +227,12 @@ final class LCPFulfillmentHandler {
         // it is the same edge the half-sheet uses to swap the borrow spinner for a
         // real progress bar.
         //
-        // Audiobook-only on purpose: `.lcpa` is the sole content type whose absence
-        // reconciliation treats as a stranded book (see `contentPresence`).
-        if book.defaultBookContentType == .audiobook {
-            progressReporter.sendLCPContentDownloadActive(bookIdentifier: book.identifier, active: true)
-        }
+        // Registered for EVERY LCP content type, not just audiobooks. The clear on
+        // completion is unconditional, and an LCP EPUB mid-fulfillment resolves to
+        // `.absent` (its license is not copied to the content directory the way an
+        // audiobook's is), so a warm `load()` during the transfer would otherwise
+        // reconcile a perfectly healthy EPUB download to `.downloadFailed`.
+        progressReporter.sendLCPContentDownloadActive(bookIdentifier: book.identifier, active: true)
 
         let fulfillmentDownloadTask = lcpService.fulfill(licenseUrl, progress: lcpProgress, completion: lcpCompletion)
 
@@ -245,8 +253,12 @@ final class LCPFulfillmentHandler {
             // `bookState == .downloading`) rendered an invisible spacer for the
             // entire download, which patrons read as a failure.
             //
-            // Cancel keeps working across the content phase because the
-            // fulfillment download task is registered in `downloadInfo` below.
+            // Cancel across the content phase does NOT work through `downloadInfo`:
+            // that registration is cleared ~100 ms after the download-completion
+            // cleanup runs, and Readium's own transfer was never in it. Cancel
+            // takes the no-task branch, and `DownloadCancellationHandler` clears
+            // the content-transfer registration so the book does not stay pinned
+            // at `.downloading` behind a bar that no longer moves.
             Log.info(#file, "LCP audiobook license fulfilled; awaiting .lcpa content before marking successful: \(book.identifier)")
 
             if let license = TPPLCPLicense(url: licenseUrl) {

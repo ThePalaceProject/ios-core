@@ -60,6 +60,10 @@ protocol DownloadProgressPublishing: AnyObject {
     /// reconciliation pass running before that hop must still see the transfer.
     func isLCPContentTransferActive(for bookIdentifier: String) -> Bool
 
+    /// Drops the registration without publishing a UI edge. For the cancel path,
+    /// where Readium never calls the fulfillment completion handler at all.
+    func clearLCPContentTransfer(for bookIdentifier: String)
+
     /// Publishes an error and announces it via VoiceOver
     func publishAndAnnounceError(_ errorInfo: DownloadErrorInfo)
 
@@ -89,8 +93,27 @@ final class DownloadProgressReporter: DownloadProgressPublishing {
     // Read from background reconciliation and written from the fulfillment and
     // re-download paths, so it carries its own lock rather than an actor hop.
 
-    private var activeLCPContentTransfers = Set<String>()
+    /// identifier -> monotonic timestamp of the last sign of life.
+    ///
+    /// Timestamped rather than a plain set because the completion handler is not
+    /// guaranteed to run: `LicensesService.urlSession(_:task:didCompleteWithError:)`
+    /// deliberately swallows `NSURLErrorCancelled` WITHOUT calling the completion
+    /// handler, so a cancelled fulfillment would otherwise leave a permanent
+    /// registration — pinning the book at `.downloading` and the half-sheet on a
+    /// progress bar that never moves. The cancel path clears explicitly; this idle
+    /// window is the backstop for every route that never reports at all.
+    private var activeLCPContentTransfers: [String: TimeInterval] = [:]
     private let activeTransfersLock = NSLock()
+
+    /// Idle, NOT total duration. A 1.8 GB archive on a slow connection legitimately
+    /// runs far longer than any total-duration cap, and an earlier revision of the
+    /// sibling claim map used a total window and reintroduced the duplicate it
+    /// existed to prevent.
+    static let contentTransferIdleTimeout: TimeInterval = 180
+
+    /// Monotonic so a wall-clock adjustment mid-download cannot expire a live
+    /// transfer. Injectable for tests.
+    var monotonicClock: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
 
     // MARK: - Broadcast throttling
 
@@ -118,6 +141,13 @@ final class DownloadProgressReporter: DownloadProgressPublishing {
     // MARK: - Progress
 
     func sendProgress(bookIdentifier: String, progress: Double) {
+        // Heartbeat: a transfer reporting bytes is alive, however long it has run.
+        activeTransfersLock.lock()
+        if activeLCPContentTransfers[bookIdentifier] != nil {
+            activeLCPContentTransfers[bookIdentifier] = monotonicClock()
+        }
+        activeTransfersLock.unlock()
+
         Task { @MainActor in
             downloadProgressPublisher.send((bookIdentifier, progress))
         }
@@ -130,9 +160,9 @@ final class DownloadProgressReporter: DownloadProgressPublishing {
         // duplicate re-download this registry exists to prevent.
         activeTransfersLock.lock()
         if active {
-            activeLCPContentTransfers.insert(bookIdentifier)
+            activeLCPContentTransfers[bookIdentifier] = monotonicClock()
         } else {
-            activeLCPContentTransfers.remove(bookIdentifier)
+            activeLCPContentTransfers.removeValue(forKey: bookIdentifier)
         }
         activeTransfersLock.unlock()
 
@@ -144,7 +174,19 @@ final class DownloadProgressReporter: DownloadProgressPublishing {
     func isLCPContentTransferActive(for bookIdentifier: String) -> Bool {
         activeTransfersLock.lock()
         defer { activeTransfersLock.unlock() }
-        return activeLCPContentTransfers.contains(bookIdentifier)
+        guard let lastActivity = activeLCPContentTransfers[bookIdentifier] else { return false }
+        if monotonicClock() - lastActivity > Self.contentTransferIdleTimeout {
+            // Gone quiet past the idle window — treat as dead so recovery can run.
+            activeLCPContentTransfers.removeValue(forKey: bookIdentifier)
+            return false
+        }
+        return true
+    }
+
+    func clearLCPContentTransfer(for bookIdentifier: String) {
+        activeTransfersLock.lock()
+        activeLCPContentTransfers.removeValue(forKey: bookIdentifier)
+        activeTransfersLock.unlock()
     }
 
     // MARK: - Error Publishing

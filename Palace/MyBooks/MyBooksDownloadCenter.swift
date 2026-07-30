@@ -864,9 +864,21 @@ import OverdriveProcessor
         // The content re-download must not race the fulfillment handler's own
         // transfer for the same book. That one is registered here, not in the
         // service's claim map, so the service asks us.
+        //
+        // `downloadInfo` alone is NOT sufficient: it is cleared ~100 ms after a
+        // fulfillment begins (see the download-completion cleanup below), and an
+        // LCP `.lcpa` transfer runs on Readium's own URLSession which is never
+        // registered there at all. Consulting only `downloadInfo` is what let the
+        // archive be fetched twice on a fresh borrow.
         self.localContentService.downloadCenterHasTransfer = { [weak self] identifier in
-            self?.downloadInfo(forBookIdentifier: identifier) != nil
+            guard let self else { return false }
+            return self.downloadInfo(forBookIdentifier: identifier) != nil
+                || self.progressReporter.isLCPContentTransferActive(for: identifier)
         }
+
+        // Cancel must drop the LCP content-transfer registration: Readium never
+        // calls the fulfillment completion handler for a cancelled transfer.
+        self.cancellationHandler.progressReporter = progressReporter
 
         // Both helpers are weak-delegate types; safe to wire here. Use
         // `self.` to disambiguate from the init parameters (which are

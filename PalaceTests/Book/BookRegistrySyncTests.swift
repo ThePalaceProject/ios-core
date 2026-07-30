@@ -40,12 +40,19 @@ final class BookRegistrySyncTests: XCTestCase {
         )
 
         // Create a temp directory for registry file I/O tests
+        // Collapse the re-download schedules so tests assert the DECISION rather
+        // than sleeping through production's account-switch grace period.
+        BookRegistrySync.contentRedownloadDelay = 0.05
+        BookRegistrySync.orphanRedownloadDelay = 0.05
+
         tempDirectory = FileManager.default.temporaryDirectory
             .appendingPathComponent("BookRegistrySyncTests-\(UUID().uuidString)")
         try? FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
     }
 
     override func tearDown() {
+        BookRegistrySync.contentRedownloadDelay = 3.0
+        BookRegistrySync.orphanRedownloadDelay = 5.0
         try? FileManager.default.removeItem(at: tempDirectory)
         tempDirectory = nil
         isolatedAccountsManagers.removeAll()
@@ -399,10 +406,10 @@ final class BookRegistrySyncTests: XCTestCase {
         sync.load(account: account) { if $0 == .loaded { done.fulfill() } }
         wait(for: [done], timeout: 10.0)
 
-        // Outlive the 3s content schedule and the 5s orphan schedule.
+        // Outlive both (now-collapsed) schedules without a wall-clock sleep.
         let settled = expectation(description: "schedules would have fired")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 7.0) { settled.fulfill() }
-        wait(for: [settled], timeout: 15.0)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { settled.fulfill() }
+        wait(for: [settled], timeout: 5.0)
 
         XCTAssertTrue(
             spy.lcpContentRedownloads.isEmpty,

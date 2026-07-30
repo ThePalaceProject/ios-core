@@ -325,4 +325,67 @@ final class DownloadProgressPublisherCoreTests: XCTestCase {
             "one book's transfer must not suppress another book's recovery"
         )
     }
+
+    // MARK: - Idle expiry and heartbeat
+    //
+    // The completion handler is NOT guaranteed to run: LicensesService swallows
+    // NSURLErrorCancelled without calling it. The idle window is the backstop, and
+    // it is IDLE rather than total duration because a 1.8 GB archive on a slow
+    // connection legitimately outlives any total-duration cap.
+
+    func testTransferRegistry_expiresATransferThatHasGoneQuiet() {
+        let reporter = DownloadProgressReporter()
+        var now: TimeInterval = 1_000
+        reporter.monotonicClock = { now }
+
+        reporter.sendLCPContentDownloadActive(bookIdentifier: "book-1", active: true)
+        XCTAssertTrue(reporter.isLCPContentTransferActive(for: "book-1"), "precondition")
+
+        now += DownloadProgressReporter.contentTransferIdleTimeout + 1
+
+        XCTAssertFalse(
+            reporter.isLCPContentTransferActive(for: "book-1"),
+            "a cancelled fulfillment never reports completion — without idle expiry the book is pinned at .downloading forever"
+        )
+    }
+
+    func testTransferRegistry_heartbeatKeepsALongDownloadAlive() {
+        let reporter = DownloadProgressReporter()
+        var now: TimeInterval = 1_000
+        reporter.monotonicClock = { now }
+
+        reporter.sendLCPContentDownloadActive(bookIdentifier: "book-1", active: true)
+
+        // A long transfer that keeps reporting bytes, well past the idle window.
+        for _ in 0..<5 {
+            now += DownloadProgressReporter.contentTransferIdleTimeout - 1
+            reporter.sendProgress(bookIdentifier: "book-1", progress: 0.5)
+        }
+        now += DownloadProgressReporter.contentTransferIdleTimeout - 1
+
+        XCTAssertTrue(
+            reporter.isLCPContentTransferActive(for: "book-1"),
+            "the window is IDLE, not total duration — a slow 1.8 GB download that is still transferring must not be declared dead"
+        )
+    }
+
+    func testTransferRegistry_progressForAnUnregisteredBookDoesNotRegisterIt() {
+        let reporter = DownloadProgressReporter()
+        reporter.sendProgress(bookIdentifier: "book-1", progress: 0.5)
+
+        XCTAssertFalse(reporter.isLCPContentTransferActive(for: "book-1"),
+                       "an ordinary download's progress must not masquerade as an LCP content transfer")
+    }
+
+    /// The cancel path calls this directly, because Readium never invokes the
+    /// fulfillment completion handler for a cancelled transfer.
+    func testClearTransfer_dropsTheRegistrationWithoutACompletion() {
+        let reporter = DownloadProgressReporter()
+        reporter.sendLCPContentDownloadActive(bookIdentifier: "book-1", active: true)
+
+        reporter.clearLCPContentTransfer(for: "book-1")
+
+        XCTAssertFalse(reporter.isLCPContentTransferActive(for: "book-1"),
+                       "cancel must release the registration, or the book stays pinned behind a bar that never moves")
+    }
 }

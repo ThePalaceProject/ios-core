@@ -48,6 +48,15 @@ class BookRegistrySync {
   /// healthy auth-doc round-trip while still self-healing a dropped-completion
   /// wedge within one foreground/account-change retry cycle.
   static let authReadinessTimeout: TimeInterval = 30
+
+  /// Delay before the license-without-content re-download fires. Non-zero in
+  /// production so an account switch during launch can cancel it; injectable so
+  /// tests do not have to sleep through it. A test that waits out the real delay
+  /// costs 7s of wall clock, which under `-test-iterations 3` is the deadline-poll
+  /// flake shape this suite already suffers from.
+  static var contentRedownloadDelay: TimeInterval = 3.0
+  /// Same, for the orphan auto-restart.
+  static var orphanRedownloadDelay: TimeInterval = 5.0
   /// Serial queue for disk writes — prevents out-of-order save races where a stale
   /// snapshot could overwrite a newer one if two saves dispatch concurrently.
   private let diskWriteQueue = DispatchQueue(label: "com.palace.registryDiskWrite")
@@ -274,7 +283,7 @@ class BookRegistrySync {
         if !lcpBooksNeedingBackgroundRedownload.isEmpty {
           Log.info(#file, "  Scheduling background .lcpa re-download for \(lcpBooksNeedingBackgroundRedownload.count) orphaned LCP audiobook(s)")
           let scheduler = self.redownloadSchedulerProvider()
-          DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [accountsManager] in
+          DispatchQueue.main.asyncAfter(deadline: .now() + Self.contentRedownloadDelay) { [accountsManager] in
             guard accountsManager.currentAccountId == loadedAccount else {
               Log.info(#file, "  Skipping LCP background re-download — account changed during wait")
               return
@@ -289,7 +298,7 @@ class BookRegistrySync {
         if !orphanedBooksNeedingRedownload.isEmpty {
           Log.info(#file, "  Scheduling auto-restart for \(orphanedBooksNeedingRedownload.count) orphaned download(s)")
           let scheduler = self.redownloadSchedulerProvider()
-          DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) { [accountsManager] in
+          DispatchQueue.main.asyncAfter(deadline: .now() + Self.orphanRedownloadDelay) { [accountsManager] in
             guard accountsManager.currentAccountId == loadedAccount else {
               Log.info(#file, "  Skipping orphan auto-restart — account changed during wait")
               return

@@ -536,6 +536,10 @@ private final class SpyProgressReporter: DownloadProgressPublishing {
         active_transfers.contains(bookIdentifier)
     }
 
+    func clearLCPContentTransfer(for bookIdentifier: String) {
+        active_transfers.remove(bookIdentifier)
+    }
+
     func publishAndAnnounceError(_ errorInfo: DownloadErrorInfo) {}
     func broadcastUpdate() {}
 }

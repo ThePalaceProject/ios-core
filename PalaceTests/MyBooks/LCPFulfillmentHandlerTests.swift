@@ -155,6 +155,76 @@ final class LCPFulfillmentHandlerTests: XCTestCase {
                       "Renamed license file exists on disk")
     }
 
+    // MARK: - Content-transfer registration
+    //
+    // The `.lcpa` transfer runs on Readium's own URLSession and is never in
+    // `downloadInfo`, which is additionally cleared ~100 ms after fulfillment
+    // begins. This registration is therefore the ONLY thing telling registry
+    // reconciliation that a license-without-content book is downloading rather
+    // than stranded. Without it, a device trace showed reconciliation firing three
+    // times in eight seconds and scheduling a re-download that fetched a second
+    // full 1.8 GB copy of the archive.
+
+    func testFulfill_registersTheContentTransfer_beforeStartingIt() throws {
+        let book = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        let sourceURL = try writeSourceFile()
+        let downloadTask = FakeDownloadTask(state: .running, identifier: 7)
+
+        XCTAssertFalse(reporter.isLCPContentTransferActive(for: book.identifier), "precondition")
+
+        handler.fulfillLCPLicense(fileUrl: sourceURL, forBook: book, downloadTask: downloadTask)
+
+        XCTAssertTrue(
+            reporter.isLCPContentTransferActive(for: book.identifier),
+            "reconciliation must be able to see this transfer, or it schedules a duplicate download of the whole archive"
+        )
+    }
+
+    /// Not audiobook-only: an LCP EPUB mid-fulfillment also resolves to `.absent`,
+    /// so an unregistered transfer lets a warm `load()` call a healthy download failed.
+    func testFulfill_registersTheContentTransfer_forEpubsToo() throws {
+        let book = TPPBookMocker.mockBook(distributorType: .ReadiumLCP)
+        let sourceURL = try writeSourceFile()
+        let downloadTask = FakeDownloadTask(state: .running, identifier: 8)
+
+        handler.fulfillLCPLicense(fileUrl: sourceURL, forBook: book, downloadTask: downloadTask)
+
+        XCTAssertTrue(reporter.isLCPContentTransferActive(for: book.identifier),
+                      "an LCP EPUB transfer must be registered too")
+    }
+
+    func testFulfill_completion_clearsTheContentTransfer() throws {
+        let book = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        let sourceURL = try writeSourceFile()
+        let downloadTask = FakeDownloadTask(state: .running, identifier: 9)
+
+        handler.fulfillLCPLicense(fileUrl: sourceURL, forBook: book, downloadTask: downloadTask)
+        XCTAssertTrue(reporter.isLCPContentTransferActive(for: book.identifier), "precondition")
+
+        let completion = try XCTUnwrap(lcpService.lastCompletion)
+        completion(tempDir.appendingPathComponent("content.lcpa"), nil)
+
+        XCTAssertFalse(
+            reporter.isLCPContentTransferActive(for: book.identifier),
+            "a registration left behind after the transfer ends pins the book at .downloading and the half-sheet on a bar that never moves"
+        )
+    }
+
+    /// The failure arm must clear too — a stuck registration would suppress the
+    /// recovery re-download that a failed fulfillment specifically depends on.
+    func testFulfill_completionWithError_alsoClearsTheContentTransfer() throws {
+        let book = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        let sourceURL = try writeSourceFile()
+        let downloadTask = FakeDownloadTask(state: .running, identifier: 10)
+
+        handler.fulfillLCPLicense(fileUrl: sourceURL, forBook: book, downloadTask: downloadTask)
+        let completion = try XCTUnwrap(lcpService.lastCompletion)
+        completion(nil, NSError(domain: "test", code: 1))
+
+        XCTAssertFalse(reporter.isLCPContentTransferActive(for: book.identifier),
+                       "the failure arm must release the registration as well")
+    }
+
     // MARK: - Fulfill completion error → alert
 
     func testFulfill_completionWithError_publishesFulfilmentErrorAlert() async throws {
