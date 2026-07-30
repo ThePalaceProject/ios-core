@@ -359,6 +359,60 @@ final class BookRegistrySyncTests: XCTestCase {
         )
     }
 
+    /// The duplicate-download guard.
+    ///
+    /// A device trace of a fresh borrow showed reconciliation firing three times
+    /// inside eight seconds while the `.lcpa` was still transferring; each pass
+    /// saw a license with no content, and one scheduled re-download ran to
+    /// completion alongside the fulfillment — two 1.8 GB transfers for one book,
+    /// the second discarded with "an item with the same name already exists".
+    ///
+    /// `downloadInfo` cannot see the fulfillment (it lives on Readium's own
+    /// URLSession), so the transfer registry is the only thing standing between a
+    /// patron and a doubled download.
+    func test_load_licenseWithoutContent_whileFulfillmentIsRunning_schedulesNothing() throws {
+        let account = "brs-test-\(UUID().uuidString)"
+        let (sync, spy, localStore) = makeSchedulingSyncManager(currentAccount: account)
+        let url = try XCTUnwrap(sync.registryUrl(for: account))
+        defer { cleanupAccount(url) }
+
+        let book = makeLCPAudiobook(identifier: "lcp-inflight-\(UUID().uuidString)")
+        let record = TPPBookRegistryRecord(book: book, state: .downloading)
+        try writeRegistryFile(records: [record.dictionaryRepresentation], to: url)
+
+        let licenseURL = try XCTUnwrap(appContainer.downloadCenter.fileUrl(for: book, account: account))
+            .deletingPathExtension().appendingPathExtension("lcpl")
+        try FileManager.default.createDirectory(at: licenseURL.deletingLastPathComponent(),
+                                                withIntermediateDirectories: true)
+        try Data("{}".utf8).write(to: licenseURL)
+        defer { try? FileManager.default.removeItem(at: licenseURL) }
+
+        // The fulfillment is mid-flight — exactly the device scenario.
+        appContainer.downloadCenter.progressReporter
+            .sendLCPContentDownloadActive(bookIdentifier: book.identifier, active: true)
+        defer {
+            appContainer.downloadCenter.progressReporter
+                .sendLCPContentDownloadActive(bookIdentifier: book.identifier, active: false)
+        }
+
+        let done = expectation(description: "loaded")
+        sync.load(account: account) { if $0 == .loaded { done.fulfill() } }
+        wait(for: [done], timeout: 10.0)
+
+        // Outlive the 3s content schedule and the 5s orphan schedule.
+        let settled = expectation(description: "schedules would have fired")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 7.0) { settled.fulfill() }
+        wait(for: [settled], timeout: 15.0)
+
+        XCTAssertTrue(
+            spy.lcpContentRedownloads.isEmpty,
+            "reconciliation re-downloaded a book that was already downloading — this is the doubled 1.8 GB transfer"
+        )
+        XCTAssertTrue(spy.orphanRedownloads.isEmpty, "no orphan restart either — the book is mid-transfer")
+        XCTAssertEqual(localStore.state(for: book.identifier), .downloading,
+                       "a book whose content is actively transferring stays .downloading")
+    }
+
     // MARK: - Multiple Books with Various States
 
     func test_storeSnapshotWithMultipleStates() {

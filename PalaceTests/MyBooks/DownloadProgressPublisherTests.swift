@@ -283,4 +283,46 @@ final class DownloadProgressPublisherCoreTests: XCTestCase {
         XCTAssertNotNil(publishing.downloadProgressPublisher)
         XCTAssertNotNil(publishing.downloadErrorPublisher)
     }
+
+    // MARK: - Active content-transfer registry
+    //
+    // Reconciliation reads this from a background queue to decide whether a
+    // license-without-content book is stranded or still downloading. It must
+    // answer WITHOUT waiting for the main-actor publish, or the reconciliation
+    // pass that runs in between schedules a duplicate archive download.
+
+    func testTransferRegistry_reflectsActiveImmediately_withoutAwaitingThePublish() {
+        let reporter = DownloadProgressReporter()
+        XCTAssertFalse(reporter.isLCPContentTransferActive(for: "book-1"), "precondition")
+
+        reporter.sendLCPContentDownloadActive(bookIdentifier: "book-1", active: true)
+
+        // Deliberately no main-queue drain: the point is that a reader running
+        // before the published edge lands still sees the transfer.
+        XCTAssertTrue(
+            reporter.isLCPContentTransferActive(for: "book-1"),
+            "the registry must update synchronously — reconciliation runs off the main actor and a stale read schedules a duplicate 1.8 GB download"
+        )
+    }
+
+    func testTransferRegistry_clearsOnCompletion() {
+        let reporter = DownloadProgressReporter()
+        reporter.sendLCPContentDownloadActive(bookIdentifier: "book-1", active: true)
+        reporter.sendLCPContentDownloadActive(bookIdentifier: "book-1", active: false)
+
+        XCTAssertFalse(
+            reporter.isLCPContentTransferActive(for: "book-1"),
+            "a transfer left registered after it ends would suppress the recovery re-download the book depends on"
+        )
+    }
+
+    func testTransferRegistry_isScopedPerBook() {
+        let reporter = DownloadProgressReporter()
+        reporter.sendLCPContentDownloadActive(bookIdentifier: "book-1", active: true)
+
+        XCTAssertFalse(
+            reporter.isLCPContentTransferActive(for: "book-2"),
+            "one book's transfer must not suppress another book's recovery"
+        )
+    }
 }

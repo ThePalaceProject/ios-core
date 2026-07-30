@@ -31,13 +31,19 @@ enum HalfSheetProgressCue: Equatable {
         buttonState: BookButtonState,
         isDownloadingLCPContent: Bool
     ) -> HalfSheetProgressCue {
+        // Ordered before the borrow spinner deliberately. A known content transfer
+        // is a strictly better answer than "borrow is processing": borrow stays
+        // marked processing across the whole `.lcpa` fetch, and that fetch reports
+        // zero until its first byte lands, so checking the spinner first pinned
+        // the half-sheet on "borrowing" for the entire multi-minute download.
+        // Patrons read the motionless spinner as a hang and backed out.
+        if isDownloadingLCPContent {
+            return .downloading
+        }
         if isBorrowProcessing && downloadProgress == 0 {
             return .borrowing
         }
         if bookState == .downloading && buttonState != .downloadSuccessful {
-            return .downloading
-        }
-        if isDownloadingLCPContent {
             return .downloading
         }
         return .idle

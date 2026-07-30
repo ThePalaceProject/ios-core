@@ -856,7 +856,16 @@ class BookRegistrySync {
   /// on hold changes — so without this a warm load during a multi-minute `.lcpa`
   /// transfer would flip a perfectly healthy in-flight download.
   func isDownloadInFlight(for book: TPPBook) -> Bool {
-    downloadCenter.downloadInfo(forBookIdentifier: book.identifier) != nil
+    if downloadCenter.downloadInfo(forBookIdentifier: book.identifier) != nil {
+      return true
+    }
+    // An LCP `.lcpa` transfer runs on Readium's own `URLSession` and is never
+    // registered in `downloadInfo`, so `downloadInfo` alone reports "nothing in
+    // flight" throughout a multi-minute fulfillment. Reconciliation then reads a
+    // license with no content as a stranded book and schedules a re-download of
+    // something already downloading — measured as a duplicated 1.8 GB transfer on
+    // a fresh borrow, discarded on arrival.
+    return downloadCenter.progressReporter.isLCPContentTransferActive(for: book.identifier)
   }
 
   func checkIfBookFileExists(for book: TPPBook, account: String) -> Bool {

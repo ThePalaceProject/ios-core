@@ -521,6 +521,19 @@ private final class SpyProgressReporter: DownloadProgressPublishing {
 
     func sendLCPContentDownloadActive(bookIdentifier: String, active: Bool) {
         activity.append(active)
+        if active {
+            active_transfers.insert(bookIdentifier)
+        } else {
+            active_transfers.remove(bookIdentifier)
+        }
+    }
+
+    /// Mirrors the real reporter so a caller that consults the registry sees the
+    /// same answer the production guard would.
+    private var active_transfers = Set<String>()
+
+    func isLCPContentTransferActive(for bookIdentifier: String) -> Bool {
+        active_transfers.contains(bookIdentifier)
     }
 
     func publishAndAnnounceError(_ errorInfo: DownloadErrorInfo) {}

@@ -113,6 +113,10 @@ final class LCPFulfillmentHandler {
 
         let lcpCompletion: (URL?, Error?) -> Void = { [weak self] localUrl, error in
             guard let self = self else { return }
+            // Closes the cue and clears the in-flight registration on BOTH arms —
+            // a failed fulfillment that left the flag set would suppress the
+            // recovery re-download this book now depends on.
+            self.progressReporter.sendLCPContentDownloadActive(bookIdentifier: book.identifier, active: false)
             if let error = error {
                 let summary = "\(String(describing: book.distributor)) LCP license fulfillment error"
                 TPPErrorLogger.logError(error, summary: summary, metadata: [
@@ -206,6 +210,20 @@ final class LCPFulfillmentHandler {
             if book.defaultBookContentType == .pdf {
                 self.delegate?.markDownloadSuccessful(for: book)
             }
+        }
+
+        // Register the content transfer BEFORE starting it. Reconciliation runs on
+        // foreground and on borrow, and it fired three times inside the first eight
+        // seconds of this fulfillment in a device trace; each pass saw a license
+        // with no content and no registered transfer, and scheduled a re-download.
+        // Registering here is what makes the fulfillment visible to that guard, and
+        // it is the same edge the half-sheet uses to swap the borrow spinner for a
+        // real progress bar.
+        //
+        // Audiobook-only on purpose: `.lcpa` is the sole content type whose absence
+        // reconciliation treats as a stranded book (see `contentPresence`).
+        if book.defaultBookContentType == .audiobook {
+            progressReporter.sendLCPContentDownloadActive(bookIdentifier: book.identifier, active: true)
         }
 
         let fulfillmentDownloadTask = lcpService.fulfill(licenseUrl, progress: lcpProgress, completion: lcpCompletion)

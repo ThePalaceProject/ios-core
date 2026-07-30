@@ -44,6 +44,22 @@ protocol DownloadProgressPublishing: AnyObject {
     /// failure, so the UI cue always closes).
     func sendLCPContentDownloadActive(bookIdentifier: String, active: Bool)
 
+    /// True while an LCP `.lcpa` content transfer is running for this book,
+    /// whether it came from first-borrow fulfillment or the background re-download.
+    ///
+    /// Registry reconciliation consults this to decide whether a book holding a
+    /// license but no content is genuinely stranded or simply still downloading.
+    /// It cannot use `downloadInfo` for that: the fulfillment transfer belongs to
+    /// Readium's own `URLSession` and is never registered there, so reconciliation
+    /// saw "license, no content, nothing in flight", scheduled a redundant
+    /// re-download, and the archive was fetched twice on every fresh borrow
+    /// (measured: two 1.8 GB transfers for one Audible title, the second
+    /// discarded on arrival with "an item with the same name already exists").
+    ///
+    /// Answers synchronously — the publisher delivers on the main actor, and a
+    /// reconciliation pass running before that hop must still see the transfer.
+    func isLCPContentTransferActive(for bookIdentifier: String) -> Bool
+
     /// Publishes an error and announces it via VoiceOver
     func publishAndAnnounceError(_ errorInfo: DownloadErrorInfo)
 
@@ -67,6 +83,14 @@ final class DownloadProgressReporter: DownloadProgressPublishing {
 
     private let accessibilityAnnouncements: TPPAccessibilityAnnouncementCenter
     private let downloadAnnouncementService: DownloadAnnouncementService
+
+    // MARK: - Active LCP content transfers
+    //
+    // Read from background reconciliation and written from the fulfillment and
+    // re-download paths, so it carries its own lock rather than an actor hop.
+
+    private var activeLCPContentTransfers = Set<String>()
+    private let activeTransfersLock = NSLock()
 
     // MARK: - Broadcast throttling
 
@@ -100,9 +124,27 @@ final class DownloadProgressReporter: DownloadProgressPublishing {
     }
 
     func sendLCPContentDownloadActive(bookIdentifier: String, active: Bool) {
+        // Update the queryable set BEFORE the main-actor hop. Reconciliation runs
+        // on a background queue and can land between this call and the delivery of
+        // the published edge; if it read a stale empty set it would schedule the
+        // duplicate re-download this registry exists to prevent.
+        activeTransfersLock.lock()
+        if active {
+            activeLCPContentTransfers.insert(bookIdentifier)
+        } else {
+            activeLCPContentTransfers.remove(bookIdentifier)
+        }
+        activeTransfersLock.unlock()
+
         Task { @MainActor in
             lcpContentDownloadPublisher.send((bookIdentifier, active))
         }
+    }
+
+    func isLCPContentTransferActive(for bookIdentifier: String) -> Bool {
+        activeTransfersLock.lock()
+        defer { activeTransfersLock.unlock() }
+        return activeLCPContentTransfers.contains(bookIdentifier)
     }
 
     // MARK: - Error Publishing
