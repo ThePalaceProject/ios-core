@@ -119,13 +119,20 @@ import OverdriveProcessor
     /// cancel + dictionary cleanup). Adobe DRM short-circuits to
     /// adobeDRMService.cancelFulfillment so it can drive its own
     /// state machine.
-    private let cancellationHandler: DownloadCancellationHandler
+    /// Internal for the same reason as `startCoordinator` — its
+    /// `progressReporter` is assigned post-init and nothing else observes it.
+    let cancellationHandler: DownloadCancellationHandler
     /// Owns startBorrow + startDownloadAsync + startDownloadIfAvailable.
     /// MBDC's `startBorrow` / `startDownload` / `startDownloadAsync`
     /// methods stay as 1-line delegators so the @objc public surface
     /// and the DownloadStartDispatcherDelegate.startBorrow hop both
     /// remain intact.
-    private let startCoordinator: DownloadStartCoordinator
+    /// Internal, not private: `MyBooksDownloadCenter` wires
+    /// `hasActiveLCPContentTransfer` into it after init, and that assignment is
+    /// the ONLY thing connecting the manual-start gate to the transfer registry.
+    /// A test has to be able to see it, or deleting the line kills the guard
+    /// silently.
+    let startCoordinator: DownloadStartCoordinator
     /// Owns the complete borrow lifecycle (borrowAsync + auth-error
     /// retry + OIDC silent reauth + sign-in modal + error
     /// presentation). MBDC's `borrowAsync(_:attemptDownload:)` in

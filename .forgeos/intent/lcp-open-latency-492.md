@@ -1,12 +1,12 @@
 ---
-name: lcp-open-latency-491
+name: lcp-open-latency-492
 created: 2026-07-30
 author: Maurice Carrier
 branch: hotfix/3.2.3-lcp-open
-priority: 3.2.3 build 491 (critical-path: borrow / download / DRM fulfillment)
+priority: 3.2.3 build 492 (critical-path: borrow / download / DRM fulfillment)
 ---
 
-# Intent: cut LCP audiobook open latency and make the wait legible (3.2.3 build 491)
+# Intent: cut LCP audiobook open latency and make the wait legible (3.2.3 build 492)
 
 ## Context
 
@@ -126,6 +126,8 @@ survives future rewrites of the chain.
 - `Palace/MyBooks/DownloadProgressPublisher.swift` (C)
 - `Palace/MyBooks/MyBooksDownloadCenter.swift` (C wiring)
 - `Palace/MyBooks/LCPFulfillmentHandler.swift` (C — the two content-phase
+- `Palace/MyBooks/DownloadCancellationHandler.swift` — releases the LCP content-transfer registration on cancel
+- `Palace/MyBooks/DownloadStartCoordinator.swift` — gates a manual start on a live content transfer
   emission points only; the state transition is unchanged from 490)
 - `Palace/Book/UI/BookDetail/BookDetailViewModel.swift` (C)
 - `Palace/MyBooks/MyBooks/BookCell/BookCellModel.swift` (C)
@@ -135,7 +137,7 @@ survives future rewrites of the chain.
 - `Palace/Book/Models/BookRegistrySync.swift` (B — the `ContentPresence` predicate and the arms that consume it)
 - `PalaceTests/Book/BookRegistryReconciliationTableTests.swift` (B — table + properties)
 - `scripts/check-dependency-money-paths.sh` + `scripts/tests/` + docs (D)
-- `Palace.xcodeproj/project.pbxproj` (build 490 → 491, new files both targets)
+- `Palace.xcodeproj/project.pbxproj` (build 490 → 492, new files both targets)
 
 ## Verification plan
 
@@ -144,5 +146,5 @@ survives future rewrites of the chain.
 - Suites derived from the changed files rather than guessed.
 - simdrive pass on the simulator against A1QA: single download per open and no
   discarded transfer, bar visible for the whole wait.
-  Result on build 491: 1 download started and 0 discarded, for the scenario that
+  Result on build 492: 1 download started and 0 discarded, for the scenario that
   produced 2 and 1 on build 490; content landed and playback started.

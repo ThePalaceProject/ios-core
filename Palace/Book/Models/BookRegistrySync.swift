@@ -848,8 +848,8 @@ class BookRegistrySync {
 
     switch entryState {
     case .downloading:
-      // A warm `load()` (foreground, hold changes) can land mid-transfer. A
-      // live download settles its own state; do not pre-empt it.
+      // A warm `load()` (CarPlay bootstrap, no-auth hold changes) can land
+      // mid-transfer. A live download settles its own state; do not pre-empt it.
       switch presence {
       case .present:     return decision(.downloadSuccessful)
       case .licenseOnly: return decision(.downloadNeeded, content: true)
@@ -931,9 +931,14 @@ class BookRegistrySync {
 
   /// True when the download center is currently transferring this book, so
   /// reconciliation must leave a `.downloading` record alone. `load()` is not
-  /// launch-only — `TPPAppDelegate` runs it on foreground and `HoldsViewModel`
-  /// on hold changes — so without this a warm load during a multi-minute `.lcpa`
-  /// transfer would flip a perfectly healthy in-flight download.
+  /// launch-only — `PlaybackBootstrapper` runs it for CarPlay and `HoldsViewModel`
+  /// on no-auth hold changes — so without this a warm load during a multi-minute
+  /// `.lcpa` transfer would flip a perfectly healthy in-flight download.
+  ///
+  /// It does NOT run on foreground: `TPPAppDelegate` calls it only from
+  /// `didFinishLaunching`. An earlier version of this note claimed otherwise, and
+  /// that overstatement is why a self-heal leaving a book at `.downloadNeeded`
+  /// looked self-correcting when it was not.
   func isDownloadInFlight(for book: TPPBook) -> Bool {
     if downloadCenter.downloadInfo(forBookIdentifier: book.identifier) != nil {
       return true

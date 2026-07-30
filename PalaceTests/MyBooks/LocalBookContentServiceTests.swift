@@ -461,6 +461,78 @@ final class LocalBookContentServiceTests: XCTestCase {
                       "it must be the SAME reporter the rest of the download center publishes through")
     }
 
+    /// The `downloadCenterHasTransfer` BRANCH. This is not belt-and-braces:
+    /// `AudiobookSessionManager` calls `redownloadLCPContentFile` DIRECTLY, never
+    /// through reconciliation, so on the Listen-tap-during-fulfillment route this
+    /// gate is the only thing standing between the patron and a second copy of the
+    /// archive — the measured 2 x 778 MB defect.
+    func testRedownload_whenTheDownloadCenterIsAlreadyTransferring_doesNotStartASecond() throws {
+        let book = try seedLicenseOnlyLCPAudiobook()
+        let fulfiller = SpyLCPContentFulfiller()
+        let service = makeService(fulfiller: fulfiller)
+        service.downloadCenterHasTransfer = { _ in true }
+
+        service.redownloadLCPContentFile(for: book)
+
+        XCTAssertEqual(fulfiller.callCount, 0,
+                       "the fulfillment handler is already transferring this archive; a second fetch doubles the patron's data")
+    }
+
+    /// Scoped per book — another title's transfer must not block this recovery.
+    func testRedownload_whenAnotherBookIsTransferring_stillStarts() throws {
+        let book = try seedLicenseOnlyLCPAudiobook()
+        let fulfiller = SpyLCPContentFulfiller()
+        let service = makeService(fulfiller: fulfiller)
+        service.downloadCenterHasTransfer = { $0 != book.identifier }
+
+        service.redownloadLCPContentFile(for: book)
+
+        XCTAssertEqual(fulfiller.callCount, 1,
+                       "an unrelated transfer must not strand this book without its content")
+    }
+
+    // MARK: - The post-init wiring
+    //
+    // Each of these is a single assignment in `MyBooksDownloadCenter.init`, and
+    // every behavioural test above injects the seam by hand. Without these, any
+    // one of those lines could be deleted with the entire suite still green — the
+    // inert-guard shape this branch has already paid for repeatedly.
+
+    func testDownloadCenter_wiresTheTransferRegistryIntoTheContentService() {
+        let center = appContainer.downloadCenter
+        let probe = "wiring-probe-\(UUID().uuidString)"
+
+        XCTAssertNotNil(center.localContentService.downloadCenterHasTransfer,
+                        "the content service must be able to ask the download center about live transfers")
+
+        center.progressReporter.sendLCPContentDownloadActive(bookIdentifier: probe, active: true)
+        defer { center.progressReporter.clearLCPContentTransfer(for: probe) }
+
+        XCTAssertEqual(center.localContentService.downloadCenterHasTransfer?(probe), true,
+                       "the closure must consult the SAME registry the fulfillment path registers into")
+    }
+
+    func testDownloadCenter_wiresTheTransferRegistryIntoTheStartCoordinator() {
+        let center = appContainer.downloadCenter
+        let probe = "wiring-probe-\(UUID().uuidString)"
+
+        XCTAssertNotNil(center.startCoordinator.hasActiveLCPContentTransfer,
+                        "a patron tap must be gated on live transfers, or it starts a second archive fetch")
+
+        center.progressReporter.sendLCPContentDownloadActive(bookIdentifier: probe, active: true)
+        defer { center.progressReporter.clearLCPContentTransfer(for: probe) }
+
+        XCTAssertEqual(center.startCoordinator.hasActiveLCPContentTransfer?(probe), true,
+                       "the gate must consult the SAME registry the fulfillment path registers into")
+    }
+
+    func testDownloadCenter_wiresItsReporterIntoTheCancellationHandler() {
+        let center = appContainer.downloadCenter
+
+        XCTAssertTrue(center.cancellationHandler.progressReporter === center.progressReporter,
+                      "cancel must be able to release the content-transfer registration — Readium never reports a cancelled transfer")
+    }
+
     func testRedownload_reportsActiveThenProgressThenIdle() throws {
         let book = try seedLicenseOnlyLCPAudiobook()
         let fulfiller = SpyLCPContentFulfiller()
