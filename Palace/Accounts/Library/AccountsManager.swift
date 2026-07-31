@@ -73,8 +73,10 @@ private final class AccountsManagerBoolFlag: @unchecked Sendable {
 ///   - the auth-document fetch state (single-flight map + lock)  → moved to the
 ///     injected `AuthDocumentLoader` (Wave 3 / 3a-3), which owns its own `NSLock`; the
 ///     hub holds the loader as a `lazy var` and no longer names that state.
-///   - `userAccounts`, `lastKnownCurrentUserAccount`  → read/written only under
-///     `userAccountsLock`.
+///   - the per-account credential state (`userAccounts` cache + its lock,
+///     `lastKnownCurrentUserAccount`, `noAccountPlaceholder`)  → moved to the injected
+///     `AccountCredentialResolver` (Wave 3 / 3a-5), which owns their `NSLock`/lazy
+///     synchronization; the hub holds it as a `lazy var`.
 ///   - `crawlScheduler`  → immutable `Sendable` `let` bound once from `init`, passed
 ///     into the load collaborator.
 ///   - `isAccountSwitching`  → storage moved into the lock-backed
@@ -82,19 +84,16 @@ private final class AccountsManagerBoolFlag: @unchecked Sendable {
 ///     set/get is serialized by the holder's own `NSLock`; the public
 ///     `private(set) var` computed accessor preserves every call site and the
 ///     value/timing verbatim (see property below).
-///   - `networkExecutor`, `noAccountPlaceholder`  → `lazy var`, each resolved
-///     exactly once from an already-constructed dependency and immutable
-///     thereafter; the lazy init runs on the first touch, which for
-///     `networkExecutor` is inside the background load path after `AppContainer`
-///     finishes constructing, and for `noAccountPlaceholder` only on the fresh-
-///     install `currentUserAccount` path. Effectively write-once.
+///   - `networkExecutor`  → `lazy var`, resolved exactly once from an
+///     already-constructed dependency (inside the background load path after
+///     `AppContainer` finishes constructing) and immutable thereafter — write-once.
 ///   - `_explicitCancelCalled`  → `#if DEBUG` test-only; compiled out of release. Set by
 ///     the hub cancel/drain facades BEFORE delegating to the load collaborator (so the
 ///     3a-3 `AuthDocumentLoader.isTornDown` binding stays byte-identical).
 ///
 ///   Immutable (`let`) state — inherently safe: `tppAccountUUID`, `ageCheck`,
 ///   `settings`, `defaults`, `registryStore` (internally synchronized),
-///   `registryCache`, `crawlScheduler`, `userAccountsLock`.
+///   `registryCache`, `crawlScheduler`.
 ///
 ///   `currentAccountId` is a computed property backed by the injected
 ///   `UserDefaults` (`defaults`), which is itself internally thread-safe — no
@@ -647,65 +646,26 @@ private final class AccountsManagerBoolFlag: @unchecked Sendable {
 
     // MARK: - Per-Account User Credentials
 
-    /// Cache of per-library `TPPUserAccount` instances. Each instance has
-    /// immutable keychain keys, eliminating the TOCTOU race that the
-    /// singleton's mutable `libraryUUID` pattern was subject to.
-    private var userAccounts = [String: TPPUserAccount]()
-    private let userAccountsLock = NSLock()
-
-    /// Last account returned from `currentUserAccount`. Used to ride out the
-    /// brief windows where `currentAccountId` is nil during an account switch
-    /// — without this, consumers observe a transiently-unauthenticated state
-    /// on an account that IS signed in, and fire spurious sign-in modals.
-    private var lastKnownCurrentUserAccount: TPPUserAccount?
-
-    /// Sentinel UUID for the "no account selected" placeholder. Not a real
-    /// library UUID — keychain reads for this instance return nil, so
-    /// hasCredentials() deterministically returns false.
-    private static let noAccountSentinelUUID = "__no_account_selected__"
-
-    /// Placeholder returned by `currentUserAccount` only on a truly fresh
-    /// install before any account has ever been selected. Lazily created so
-    /// app launch doesn't pay for a keychain-probed instance.
-    private lazy var noAccountPlaceholder: TPPUserAccount = TPPUserAccount(
-        libraryUUID: AccountsManager.noAccountSentinelUUID
+    /// Per-account credential resolution (Wave 3 / 3a-5): the per-library
+    /// `TPPUserAccount` cache (immutable keys), the `currentUserAccount` ride-out over
+    /// the account-switch nil window, and the fresh-install placeholder moved to the
+    /// injected `AccountCredentialResolver`, which owns the F-034/F-016 invariants. The
+    /// hub keeps the `@objc TPPUserAccountResolving` witnesses below as thin facades.
+    /// `lazy var` because the provider closure captures `self` (the authDocLoader
+    /// precedent); `currentAccountIdProvider` is a LIVE read (not a snapshot) so the
+    /// ride-out observes the transient nil window in real time.
+    private lazy var credentialResolver = AccountCredentialResolver(
+        currentAccountIdProvider: { [weak self] in self?.currentAccountId }
     )
 
-    /// Returns a library-scoped `TPPUserAccount` instance. Creates and
-    /// caches a new one on first access for a given UUID.
+    /// Returns a library-scoped `TPPUserAccount` instance (facade → `credentialResolver`).
     func userAccount(for libraryUUID: String) -> TPPUserAccount {
-        userAccountsLock.lock()
-        defer { userAccountsLock.unlock() }
-        if let existing = userAccounts[libraryUUID] {
-            return existing
-        }
-        let account = TPPUserAccount(libraryUUID: libraryUUID)
-        userAccounts[libraryUUID] = account
-        return account
+        credentialResolver.userAccount(for: libraryUUID)
     }
 
-    /// Convenience for the current library's user account.
-    ///
-    /// Thread-safety note: `currentAccountId` can transiently be nil during an
-    /// account switch (the old id is cleared before the new id is assigned).
-    /// If we blindly fell back to a fresh/empty instance in that window,
-    /// consumers like MyBooksDownloadCenter would observe `hasCredentials ==
-    /// false` on an account that IS signed in and fire a spurious login modal.
-    /// We cache the last-resolved account and return it during the nil window
-    /// instead. The placeholder path only fires on a true fresh-install state
-    /// where no account has ever been selected.
+    /// Convenience for the current library's user account (facade → `credentialResolver`).
     var currentUserAccount: TPPUserAccount {
-        if let id = currentAccountId {
-            let account = userAccount(for: id)
-            userAccountsLock.lock()
-            lastKnownCurrentUserAccount = account
-            userAccountsLock.unlock()
-            return account
-        }
-        userAccountsLock.lock()
-        let last = lastKnownCurrentUserAccount
-        userAccountsLock.unlock()
-        return last ?? noAccountPlaceholder
+        credentialResolver.currentUserAccount
     }
 
     // MARK: – Load logic (facade → AccountRegistryLoader)
