@@ -273,14 +273,14 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
     /// Replaces the static `MyBooksDownloadCenter.clearAllBorrowReauthState()`
     /// call so the money-path clear is spy-testable. See `BorrowReauthResetting`.
     private let borrowReauthResetter: any BorrowReauthResetting
-    /// Wave 3 S3 — account-switch cleanup collaborators injected as a frozen bundle so the setter /
-    /// cleanup invert the ambient singleton REACHES (spy-observable); the concrete TPPNetworkExecutor TYPE edge survives, so 3a must still introduce a NetworkExecuting protocol to fully unblock the PalaceAccounts move.
+    /// Wave 3 S3 — account-switch cleanup collaborators injected as a frozen bundle (spy-observable);
+    /// the concrete executor TYPE edge is now inverted behind `AccountNetworking` too (3a precondition).
     private let switchDeps: AccountSwitchDependencies
     /// Lazy-resolved through the injected provider to break the singleton init cycle:
     /// AccountsManager is constructed inline by AppContainer._cached's initializer, so
     /// we cannot resolve the executor during init. First accessed *after* AppContainer
     /// finishes constructing; resolved exactly once, then cached here.
-    private lazy var networkExecutor: TPPNetworkExecutor = switchDeps.networkExecutorProvider()
+    private lazy var networkExecutor: any AccountNetworking = switchDeps.networkExecutorProvider()
     /// Injectable background-crawl spawn seam (see `CatalogCrawlScheduler`).
     /// Immutable `Sendable` `let`; `.production` by default, recording under test.
     private let crawlScheduler: CrawlTaskScheduler

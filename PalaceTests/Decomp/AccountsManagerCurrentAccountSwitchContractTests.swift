@@ -373,17 +373,19 @@ final class AccountsManagerCurrentAccountSwitchContractTests: PalaceWiringTestCa
 
 // MARK: - Spies for the Wave 3 S3 switch-cleanup contract
 
-/// Records `cancelNonEssentialTasks()` into a shared `CallLog`. Subclasses the real
-/// `TPPNetworkExecutor` (the only way to observe the concrete cancel seam); every
-/// other executor behavior is inherited but never exercised on the switch path.
-fileprivate final class SpyAccountSwitchNetworkExecutor: TPPNetworkExecutor, @unchecked Sendable {
+/// Records `cancelNonEssentialTasks()` into a shared `CallLog`. A plain
+/// `AccountNetworking` conformer — the Wave 3 / 3a seam means observing the cancel
+/// call no longer requires subclassing the concrete `TPPNetworkExecutor` (which
+/// pulled a real caching stack into the test). The other two seam methods are
+/// implemented inertly; the switch path only exercises `cancelNonEssentialTasks`.
+fileprivate final class SpyAccountSwitchNetworkExecutor: AccountNetworking, @unchecked Sendable {
     let log: CallLog
-    init(log: CallLog) {
-        self.log = log
-        super.init(cachingStrategy: .ephemeral)
-    }
-    override func cancelNonEssentialTasks() {
-        log.record("cancelNonEssentialTasks")
+    init(log: CallLog) { self.log = log }
+    func cancelNonEssentialTasks() { log.record("cancelNonEssentialTasks") }
+    func clearCache() { log.record("clearCache") }
+    func GET(_ reqURL: URL, useTokenIfAvailable: Bool) async throws -> (Data, URLResponse?) {
+        log.record("GET", args: ["url": reqURL.absoluteString])
+        return (Data(), nil)
     }
 }
 
