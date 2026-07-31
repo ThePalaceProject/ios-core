@@ -1,5 +1,55 @@
 import SwiftUI
 
+/// Which progress cue the half-sheet shows. Extracted from the view so the
+/// decision is unit-testable and mutation-verifiable — a SwiftUI `@ViewBuilder`
+/// body is not, and this decision has real consequences: picking `.none` while
+/// a multi-gigabyte `.lcpa` transfers is what made patrons think the app had
+/// failed and back out mid-download.
+enum HalfSheetProgressCue: Equatable {
+    /// Borrow request in flight, download not started — indeterminate spinner
+    /// plus "Borrowing…". The slow-distributor case (e.g. Overdrive) that
+    /// previously showed an inert 0% linear bar.
+    case borrowing
+    /// A transfer is running — determinate linear bar.
+    case downloading
+    /// Nothing in flight — invisible spacer that preserves layout height.
+    case idle
+
+    /// - Parameters:
+    ///   - isBorrowProcessing: registry processing flag, set by `BorrowOperation`.
+    ///   - downloadProgress: 0…1 from the download centre.
+    ///   - bookState: registry state.
+    ///   - buttonState: resolved button state.
+    ///   - isDownloadingLCPContent: the background `.lcpa` content re-download
+    ///     is running. Required as its own input because that path leaves the
+    ///     book at `.downloadSuccessful` (only its content went missing), so the
+    ///     `bookState` clause below cannot see it.
+    static func resolve(
+        isBorrowProcessing: Bool,
+        downloadProgress: Double,
+        bookState: TPPBookState,
+        buttonState: BookButtonState,
+        isDownloadingLCPContent: Bool
+    ) -> HalfSheetProgressCue {
+        // Ordered before the borrow spinner deliberately. A known content transfer
+        // is a strictly better answer than "borrow is processing": borrow stays
+        // marked processing across the whole `.lcpa` fetch, and that fetch reports
+        // zero until its first byte lands, so checking the spinner first pinned
+        // the half-sheet on "borrowing" for the entire multi-minute download.
+        // Patrons read the motionless spinner as a hang and backed out.
+        if isDownloadingLCPContent {
+            return .downloading
+        }
+        if isBorrowProcessing && downloadProgress == 0 {
+            return .borrowing
+        }
+        if bookState == .downloading && buttonState != .downloadSuccessful {
+            return .downloading
+        }
+        return .idle
+    }
+}
+
 @MainActor
 protocol HalfSheetProvider: ObservableObject, BookButtonProvider {
     var isFullSize: Bool { get }
@@ -18,6 +68,15 @@ protocol HalfSheetProvider: ObservableObject, BookButtonProvider {
     /// `BookCellModel`) don't have to opt in mechanically.
     var isBorrowProcessing: Bool { get }
 
+    /// `true` while the background `.lcpa` content re-download is running for
+    /// this book. With LCP streaming broken upstream, the whole archive must be
+    /// on disk before playback, and for a book that is already
+    /// `.downloadSuccessful` with only its content missing there is no
+    /// `.downloading` state to drive the usual progress bar. Default `false` so
+    /// providers that never see this path (e.g. `BookCellModel`) don't have to
+    /// opt in mechanically.
+    var isDownloadingLCPContent: Bool { get }
+
     /// Error alert to present via SwiftUI `.alert` on the half sheet.
     var downloadErrorAlert: AlertModel? { get set }
 
@@ -29,6 +88,8 @@ protocol HalfSheetProvider: ObservableObject, BookButtonProvider {
 }
 
 extension HalfSheetProvider {
+    var isDownloadingLCPContent: Bool { false }
+
     var isReturning: Bool {
         bookState == .returning
     }
@@ -265,16 +326,32 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
 // MARK: - Subviews
 private extension HalfSheetView {
 
-    /// Renders the borrow/download progress UI cue. Three states:
+    /// Renders the borrow/download progress UI cue. Four states:
     /// 1. Borrow request in flight (registry's processing flag is set, and
     ///    the download itself hasn't started yet) → indeterminate spinner
     ///    + "Borrowing…" label. This is the slow-distributor case (e.g.
     ///    Overdrive) that previously showed an inert 0%-linear bar.
     /// 2. Download running → existing linear bar at the current %.
-    /// 3. Idle → invisible spacer to preserve layout height.
+    /// 3. LCP content re-download running while the book is already
+    ///    `.downloadSuccessful` → same linear bar. A multi-gigabyte `.lcpa`
+    ///    must land in full before playback (streaming is broken upstream), and
+    ///    without this the sheet showed nothing at all for the whole wait,
+    ///    which patrons read as a failure and backed out of.
+    /// 4. Idle → invisible spacer to preserve layout height.
+    var progressCue: HalfSheetProgressCue {
+        HalfSheetProgressCue.resolve(
+            isBorrowProcessing: viewModel.isBorrowProcessing,
+            downloadProgress: viewModel.downloadProgress,
+            bookState: viewModel.bookState,
+            buttonState: viewModel.buttonState,
+            isDownloadingLCPContent: viewModel.isDownloadingLCPContent
+        )
+    }
+
     @ViewBuilder
     var progressIndicator: some View {
-        if viewModel.isBorrowProcessing && viewModel.downloadProgress == 0 {
+        switch progressCue {
+        case .borrowing:
             HStack(spacing: 8) {
                 ProgressView()
                     .progressViewStyle(CircularProgressViewStyle())
@@ -287,11 +364,12 @@ private extension HalfSheetView {
             .frame(height: 6)
             .accessibilityIdentifier(AccessibilityID.BookDetail.borrowingProgress)
             .accessibilityLabel(Strings.BookDetailView.borrowingInProgress)
-        } else if viewModel.bookState == .downloading && viewModel.buttonState != .downloadSuccessful {
+        case .downloading:
             ProgressView(value: viewModel.downloadProgress, total: 1.0)
                 .progressViewStyle(LinearProgressViewStyle())
                 .frame(height: 6)
-        } else {
+                .accessibilityIdentifier(AccessibilityID.BookDetail.downloadProgress)
+        case .idle:
             // Reserve consistent space so the layout doesn't jump when the
             // indicator appears/disappears.
             Color.clear

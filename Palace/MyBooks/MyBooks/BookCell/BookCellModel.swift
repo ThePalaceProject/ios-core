@@ -95,6 +95,21 @@ class BookCellModel: ObservableObject {
 
     @Published var isManagingHold: Bool = false
 
+    /// True while the background `.lcpa` content re-download is running for this
+    /// book. Satisfies `HalfSheetProvider`, whose protocol-extension default is
+    /// `false` — and the default was the wrong answer here, because the self-heal
+    /// fires for books on the My Books shelf, which is exactly the route this
+    /// model backs. Without it the half-sheet reached from a shelf cell showed no
+    /// progress for the whole transfer.
+    @Published var isDownloadingLCPContent: Bool = false
+
+    /// Progress samples observed from `downloadProgressPublisher`. Needed
+    /// because the LCP content re-download is not registered in the download
+    /// center's `downloadInfo`, so the computed `downloadProgress` below has no
+    /// other source for it. Reset on the rising edge of a new content transfer
+    /// so a book whose earlier download reached 1.0 does not show a full bar.
+    @Published private var observedProgress: Double = 0.0
+
     @Published private(set) var stableButtonState: BookButtonState = .unsupported {
         didSet {
             // Always update state when stableButtonState changes - avoids comparison edge cases
@@ -284,6 +299,43 @@ class BookCellModel: ObservableObject {
                 case .downloadNeeded, .returning, .used, .unsupported, .SAMLStarted:
                     break
                 }
+            }
+            .store(in: &cancellables)
+
+        // LCP `.lcpa` content re-download: the book stays `.downloadSuccessful`
+        // (only its content went missing), so no registry-state change signals
+        // this transfer and the ordinary progress cue cannot see it.
+        // Seed from the registry BEFORE subscribing. `lcpContentDownloadPublisher`
+        // is a PassthroughSubject with no replay, so a model constructed AFTER the
+        // transfer started would never learn about it and would sit at `false` for
+        // the whole download. That is the normal case, not an edge case: the cell
+        // model is cache-built on demand with a 120s unused TTL while the measured
+        // archives (438 MB / 778 MB / 1.9 GB) all run past three minutes, so a
+        // patron opening a book mid-transfer gets a fresh model every time.
+        // Without this the cue falls to `.idle`, the shelf offers "Download", and
+        // the tap is a silent no-op for the entire transfer.
+        isDownloadingLCPContent = downloadCenter.progressReporter
+            .isLCPContentTransferActive(for: book.identifier)
+
+        downloadCenter.lcpContentDownloadPublisher
+            .filter { [weak self] in $0.0 == self?.book.identifier }
+            .receive(on: RunLoop.main)
+            .sink { [weak self] update in
+                guard let self else { return }
+                let isActive = update.1
+                if isActive && !self.isDownloadingLCPContent {
+                    self.observedProgress = 0.0
+                }
+                self.isDownloadingLCPContent = isActive
+            }
+            .store(in: &cancellables)
+
+        downloadCenter.downloadProgressPublisher
+            .filter { [weak self] in $0.0 == self?.book.identifier }
+            .receive(on: RunLoop.main)
+            .sink { [weak self] update in
+                guard let self else { return }
+                self.observedProgress = max(self.observedProgress, update.1)
             }
             .store(in: &cancellables)
 
@@ -840,6 +892,21 @@ extension BookCellModel: HalfSheetProvider {
     }
 
     var downloadProgress: Double {
-        downloadCenter.downloadProgress(for: book.identifier)
+        // `downloadCenter.downloadProgress(for:)` reads `downloadInfo`, which is
+        // populated only for transfers the download center owns. The LCP `.lcpa`
+        // content re-download runs on an out-of-band background session and
+        // never appears there, so relying on it alone would render a
+        // determinate bar pinned at 0% for the whole transfer — the "looks
+        // broken" impression this cue exists to remove. `observedProgress`
+        // carries the published samples for that case.
+        //
+        // Scoped to that case deliberately. `observedProgress` is a monotone
+        // maximum reset only on the LCP rising edge, so merging it into every
+        // download would let a cached cell that once saw 1.0 (this model is
+        // cached with a 120s TTL) show a full bar for an unrelated later
+        // re-download.
+        let reported = downloadCenter.downloadProgress(for: book.identifier)
+        guard isDownloadingLCPContent else { return reported }
+        return max(reported, observedProgress)
     }
 }

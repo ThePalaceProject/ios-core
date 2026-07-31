@@ -78,3 +78,17 @@ jobs:
           else
             echo "No hook fixture test — skipping."
           fi
+
+      # 4. Dependency money-path gate. Readium renders and decrypts borrowed
+      #    content, so a pin bump can break borrow / fulfillment / playback with
+      #    no compile error and no failing test — that is how the 3.7 -> 3.9 bump
+      #    shipped broken LCP audiobook streaming. This step fails a PR that
+      #    moves the pin without recording money-path validation. A PR that does
+      #    not touch the pin passes untouched, which the pytest above asserts
+      #    explicitly.
+      - name: Readium money-path validation gate
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
+          bash scripts/check-dependency-money-paths.sh --base "origin/${{ github.base_ref }}"

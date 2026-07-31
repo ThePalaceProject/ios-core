@@ -4,6 +4,21 @@ import PalaceCatalog
 
 /// Handles server synchronization for the book registry.
 /// Manages syncing loans from the OPDS feed and loading/saving from disk.
+/// The two re-download actions `load()` schedules once reconciliation has decided
+/// a book's content is missing.
+///
+/// Narrow by design. `MyBooksDownloadCenter` declares both methods in extensions,
+/// so a subclass cannot override them, and constructing a real download center in
+/// a unit test is not viable. Without this seam the scheduling plumbing in
+/// `load()` is unobservable — review confirmed that deleting either scheduling
+/// block killed zero tests.
+protocol RegistryRedownloadScheduling: AnyObject {
+  /// A license landed but the `.lcpa` content did not. Fetch the content.
+  func scheduleLCPContentRedownload(for book: TPPBook)
+  /// The book's content is gone from disk entirely. Restart the download.
+  func scheduleOrphanRedownload(for book: TPPBook)
+}
+
 class BookRegistrySync {
 
   private let store: BookRegistryStore
@@ -18,6 +33,8 @@ class BookRegistrySync {
   /// `AppContainer.production().downloadCenter` has settled.
   private let downloadCenterProvider: () -> MyBooksDownloadCenter
   private let opdsFeedServiceProvider: () -> OPDSFeedService
+  /// Defaults to the download center; injected in tests to observe scheduling.
+  private let redownloadSchedulerProvider: () -> RegistryRedownloadScheduling
   private let registryFolderName = "registry"
   private let registryFileName = "registry.json"
 
@@ -31,6 +48,21 @@ class BookRegistrySync {
   /// healthy auth-doc round-trip while still self-healing a dropped-completion
   /// wedge within one foreground/account-change retry cycle.
   static let authReadinessTimeout: TimeInterval = 30
+
+  /// Delay before the license-without-content re-download fires. Non-zero in
+  /// production so an account switch during launch can cancel it; injectable so
+  /// tests do not have to sleep through it. A test that waits out the real delay
+  /// costs 7s of wall clock, which under `-test-iterations 3` is the deadline-poll
+  /// flake shape this suite already suffers from.
+  ///
+  /// Instance properties, not mutable statics: statics would be shared across
+  /// every instance and every parallel test clone, and a `tearDown` restoring a
+  /// hardcoded default silently desyncs the moment the default changes.
+  static let defaultContentRedownloadDelay: TimeInterval = 3.0
+  static let defaultOrphanRedownloadDelay: TimeInterval = 5.0
+
+  private let contentRedownloadDelay: TimeInterval
+  private let orphanRedownloadDelay: TimeInterval
   /// Serial queue for disk writes — prevents out-of-order save races where a stale
   /// snapshot could overwrite a newer one if two saves dispatch concurrently.
   private let diskWriteQueue = DispatchQueue(label: "com.palace.registryDiskWrite")
@@ -66,12 +98,18 @@ class BookRegistrySync {
     store: BookRegistryStore,
     accountsManager: AccountsManager,
     downloadCenterProvider: @escaping () -> MyBooksDownloadCenter,
-    opdsFeedServiceProvider: @escaping () -> OPDSFeedService
+    opdsFeedServiceProvider: @escaping () -> OPDSFeedService,
+    redownloadSchedulerProvider: (() -> RegistryRedownloadScheduling)? = nil,
+    contentRedownloadDelay: TimeInterval = BookRegistrySync.defaultContentRedownloadDelay,
+    orphanRedownloadDelay: TimeInterval = BookRegistrySync.defaultOrphanRedownloadDelay
   ) {
+    self.contentRedownloadDelay = contentRedownloadDelay
+    self.orphanRedownloadDelay = orphanRedownloadDelay
     self.store = store
     self.accountsManager = accountsManager
     self.downloadCenterProvider = downloadCenterProvider
     self.opdsFeedServiceProvider = opdsFeedServiceProvider
+    self.redownloadSchedulerProvider = redownloadSchedulerProvider ?? { downloadCenterProvider() }
     diskWriteQueue.setSpecific(key: diskWriteQueueKey, value: ())
   }
 
@@ -176,80 +214,31 @@ class BookRegistrySync {
           // the correct "Download" affordance. Treat missing-file the same
           // as .downloadSuccessful: flip to .downloadNeeded and schedule
           // auto-restart.
-          if record.state == .downloading || record.state == .SAMLStarted || record.state == .downloadSuccessful || record.state == .downloadNeeded || record.state == .used {
-            let fileExists = self.checkIfBookFileExists(for: record.book, account: account)
+          // No entry-state gate here: `reconcile` is total and returns the
+          // record unchanged for states it does not act on. Gating first would
+          // re-derive the same set of states in two places, which is the exact
+          // shape that produced three defects in this file.
+          let presence = self.contentPresence(for: record.book, account: account)
+          let decision = Self.reconcile(
+            entryState: record.state,
+            presence: presence,
+            isDownloadInFlight: self.isDownloadInFlight(for: record.book)
+          )
 
-            if record.state == .downloading {
-              if fileExists {
-                Log.info(#file, "  '\(record.book.title)' was downloading but file exists - marking as successful")
-                record.state = .downloadSuccessful
-              } else {
-                Log.warn(#file, "  '\(record.book.title)' was downloading but file missing - marking as failed")
-                record.state = .downloadFailed
-              }
-            } else if record.state == .SAMLStarted {
-              if fileExists {
-                Log.info(#file, "  '\(record.book.title)' was in SAML flow but file exists - marking as download needed")
-                record.state = .downloadNeeded
-              } else {
-                Log.warn(#file, "  '\(record.book.title)' was in SAML flow but file missing - marking as failed")
-                record.state = .downloadFailed
-              }
-            } else if record.state == .downloadNeeded {
-              // Migration heal: the pre-PR-#856 sync-before-load race (plus the
-              // UpdatedKey parse regression that silently dropped records during
-              // load) could leave a downloaded book persisted as .downloadNeeded
-              // even though its content file was still on disk. If we see that
-              // combination now, promote to .downloadSuccessful so the user
-              // doesn't get a spurious "Download" button for a book they already
-              // have locally. No-op for the normal case where .downloadNeeded
-              // genuinely has no file.
-              if fileExists {
-                Log.info(#file, "  '\(record.book.title)' state was .downloadNeeded but file present — healing to .downloadSuccessful")
-                record.state = .downloadSuccessful
-              }
-            } else if record.state == .used {
-              // A book the user has opened at least once. If its content file
-              // was evicted by the LRU budget (pre-fix) the reader fails to
-              // load with "unable to open PDF/EPUB". Same heal as
-              // .downloadSuccessful: flip to .downloadNeeded + auto-restart.
-              if !fileExists {
-                Log.error(#file, "  '\(record.book.title)' was .used but FILE MISSING — marking as download needed")
-                record.state = .downloadNeeded
-                orphanedBooksNeedingRedownload.append(record.book)
-              } else {
-                Log.debug(#file, "  '\(record.book.title)' used and file verified")
-              }
-            } else if record.state == .downloadSuccessful {
-              if !fileExists {
-                Log.error(#file, "  '\(record.book.title)' marked as downloaded but FILE MISSING - marking as download needed")
-                Log.error(#file, "     This suggests the file was deleted or the path is wrong")
-                record.state = .downloadNeeded
-                orphanedBooksNeedingRedownload.append(record.book)
-              } else {
-                #if LCP
-                // LCP audiobooks pass checkIfBookFileExists as soon as the .lcpl
-                // license exists (playable via streaming). If the .lcpa content
-                // file is missing, schedule a silent background re-download so
-                // subsequent opens use the local copy instead of ranged reads
-                // from GCS (PP-3704).
-                if LCPAudiobooks.canOpenBook(record.book),
-                   let bookURL = downloadCenter.fileUrl(for: record.book, account: account),
-                   !FileManager.default.fileExists(atPath: bookURL.path) {
-                  Log.warn(#file, "  '\(record.book.title)' LCP audiobook playable via streaming but .lcpa MISSING - scheduling background re-download")
-                  lcpBooksNeedingBackgroundRedownload.append(record.book)
-                } else {
-                  Log.debug(#file, "  '\(record.book.title)' downloaded and file verified")
-                }
-                #else
-                Log.debug(#file, "  '\(record.book.title)' downloaded and file verified")
-                #endif
-              }
-            }
+          if decision.state != record.state {
+            // Keep the prior state AND the disk condition in the message. Field
+            // logs are how every defect in this area was actually found.
+            Log.info(#file, "  Reconciled '\(record.book.title)': \(record.state) -> \(decision.state) (content: \(presence))")
+          }
+          record.state = decision.state
 
-            if originalState != record.state {
-              Log.info(#file, "  State changed for '\(record.book.title)': \(originalState) -> \(record.state)")
-            }
+          if decision.schedulesContentRedownload {
+            Log.warn(#file, "  '\(record.book.title)' has a license but no .lcpa content (was \(originalState)) — scheduling content re-download")
+            lcpBooksNeedingBackgroundRedownload.append(record.book)
+          }
+          if decision.schedulesOrphanRedownload {
+            Log.error(#file, "  '\(record.book.title)' content MISSING on disk (was \(originalState)) — scheduling orphan re-download")
+            orphanedBooksNeedingRedownload.append(record.book)
           }
 
           newRegistry[record.book.identifier] = record
@@ -303,13 +292,14 @@ class BookRegistrySync {
         #if LCP
         if !lcpBooksNeedingBackgroundRedownload.isEmpty {
           Log.info(#file, "  Scheduling background .lcpa re-download for \(lcpBooksNeedingBackgroundRedownload.count) orphaned LCP audiobook(s)")
-          DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [accountsManager, downloadCenter] in
+          let scheduler = self.redownloadSchedulerProvider()
+          DispatchQueue.main.asyncAfter(deadline: .now() + self.contentRedownloadDelay) { [accountsManager] in
             guard accountsManager.currentAccountId == loadedAccount else {
               Log.info(#file, "  Skipping LCP background re-download — account changed during wait")
               return
             }
             for book in lcpBooksNeedingBackgroundRedownload {
-              downloadCenter.redownloadLCPContentFile(for: book)
+              scheduler.scheduleLCPContentRedownload(for: book)
             }
           }
         }
@@ -317,13 +307,14 @@ class BookRegistrySync {
 
         if !orphanedBooksNeedingRedownload.isEmpty {
           Log.info(#file, "  Scheduling auto-restart for \(orphanedBooksNeedingRedownload.count) orphaned download(s)")
-          DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) { [accountsManager, downloadCenter] in
+          let scheduler = self.redownloadSchedulerProvider()
+          DispatchQueue.main.asyncAfter(deadline: .now() + self.orphanRedownloadDelay) { [accountsManager] in
             guard accountsManager.currentAccountId == loadedAccount else {
               Log.info(#file, "  Skipping orphan auto-restart — account changed during wait")
               return
             }
             for book in orphanedBooksNeedingRedownload {
-              downloadCenter.startDownload(for: book)
+              scheduler.scheduleOrphanRedownload(for: book)
             }
           }
         }
@@ -753,6 +744,212 @@ class BookRegistrySync {
   /// feed-fetch pipeline.
   static func shouldSkipBulkDeletion(localCount: Int, feedCount: Int, deletionCount: Int) -> Bool {
     return localCount >= 1 && feedCount == 0 && deletionCount > 0
+  }
+
+
+  /// The outcome of reconciling one record at load time.
+  struct ReconciliationDecision: Equatable {
+    var state: TPPBookState
+    /// Schedule the LCP `.lcpa` content re-download (license present, content not).
+    var schedulesContentRedownload: Bool
+    /// Schedule the ordinary orphaned-download restart (nothing on disk).
+    var schedulesOrphanRedownload: Bool
+  }
+
+  /// The load-time reconciliation decision for a single record, as a pure
+  /// function of the things that actually determine it.
+  ///
+  /// Extracted from the else-if chain in `load` deliberately. That chain is a
+  /// fossil record — each arm is an incident fix accreted over time — and three
+  /// separate defects came from changing one arm and breaking a neighbour,
+  /// because "a file exists implies playable" was re-derived independently in
+  /// four places. There was no way to assert over the whole decision, so every
+  /// regression had to be caught by a human reading the diff.
+  ///
+  /// As a pure function it can be driven exhaustively over
+  /// (entry state × content presence × in-flight), which is what
+  /// `BookRegistryReconciliationTableTests` does. `load` below is the only
+  /// production caller and simply applies the result.
+  static func reconcile(
+    entryState: TPPBookState,
+    presence: ContentPresence,
+    isDownloadInFlight: Bool
+  ) -> ReconciliationDecision {
+    func decision(
+      _ state: TPPBookState,
+      content: Bool = false,
+      orphan: Bool = false
+    ) -> ReconciliationDecision {
+      ReconciliationDecision(state: state,
+                             schedulesContentRedownload: content,
+                             schedulesOrphanRedownload: orphan)
+    }
+
+    // A live transfer settles EVERY state in the download chain, not just
+    // `.downloading`. Checking it only in that one arm is what let the device
+    // trace's 2nd and 3rd duplicate schedules through: both arrived as
+    // `.downloadNeeded`, whose license-only cell schedules a re-download on its
+    // own. Restricted to the chain so `.holding` / `.returning` / `.unsupported`
+    // stay identity, and to a missing content package so a book that already has
+    // its content is still reported finished.
+    let downloadChain: Set<TPPBookState> = [
+      .downloading, .downloadNeeded, .downloadSuccessful, .used, .SAMLStarted
+    ]
+    if isDownloadInFlight, downloadChain.contains(entryState) {
+      // Content already on disk: leave the record exactly as it is. Forcing
+      // `.downloading` here would strip the Listen button from a `.used` book
+      // whose content is present while a background re-download runs.
+      if presence == .present {
+        return decision(entryState)
+      }
+      // A first-borrow fulfillment genuinely is `.downloading`, and that is the
+      // state fix (B) established for it.
+      if entryState == .downloading {
+        return decision(.downloading)
+      }
+      // Every other entry state keeps the answer its own arm would give, with the
+      // re-download scheduling SUPPRESSED because a transfer is already running.
+      //
+      // Deliberately not `.downloading` for these. That state maps to
+      // `buttons = [.cancel]`, and the transfer these states are waiting on is the
+      // BACKGROUND re-download, whose task handle is discarded
+      // (`LCPContentFulfilling` returns Void) — so cancel would report success
+      // while the transfer kept running, possibly on cellular. Both
+      // `lcpContentDownloadPublisher` and `redownloadLCPContentFile` document that
+      // this path must not claim `.downloading` for exactly this reason; an earlier
+      // revision of this guard contradicted its own design note. Progress is still
+      // shown, via the `isDownloadingLCPContent` cue, which is independent of book
+      // state.
+      var suppressed = armDecision(entryState: entryState, presence: presence)
+      suppressed.schedulesContentRedownload = false
+      suppressed.schedulesOrphanRedownload = false
+      return suppressed
+    }
+
+    return armDecision(entryState: entryState, presence: presence)
+  }
+
+  /// The per-entry-state reconciliation arms, with no in-flight consideration.
+  /// Split out so the in-flight guard above can reuse an arm's STATE while
+  /// suppressing its scheduling.
+  private static func armDecision(
+    entryState: TPPBookState,
+    presence: ContentPresence
+  ) -> ReconciliationDecision {
+    func decision(
+      _ state: TPPBookState,
+      content: Bool = false,
+      orphan: Bool = false
+    ) -> ReconciliationDecision {
+      ReconciliationDecision(state: state,
+                             schedulesContentRedownload: content,
+                             schedulesOrphanRedownload: orphan)
+    }
+
+    switch entryState {
+    case .downloading:
+      // A warm `load()` (CarPlay bootstrap, no-auth hold changes) can land
+      // mid-transfer. A live download settles its own state; do not pre-empt it.
+      switch presence {
+      case .present:     return decision(.downloadSuccessful)
+      case .licenseOnly: return decision(.downloadNeeded, content: true)
+      case .absent:      return decision(.downloadFailed)
+      }
+
+    case .SAMLStarted:
+      return presence == .absent ? decision(.downloadFailed) : decision(.downloadNeeded)
+
+    case .downloadNeeded:
+      // Only REAL content heals this. Promoting on a license alone is exactly
+      // how the interrupted-download defect returned one launch later.
+      switch presence {
+      case .present:     return decision(.downloadSuccessful)
+      case .licenseOnly: return decision(.downloadNeeded, content: true)
+      case .absent:      return decision(.downloadNeeded)
+      }
+
+    case .downloadSuccessful:
+      switch presence {
+      case .present:     return decision(.downloadSuccessful)
+      case .licenseOnly: return decision(.downloadNeeded, content: true)
+      case .absent:      return decision(.downloadNeeded, orphan: true)
+      }
+
+    case .used:
+      switch presence {
+      case .present:     return decision(.used)
+      case .licenseOnly: return decision(.downloadNeeded, content: true)
+      case .absent:      return decision(.downloadNeeded, orphan: true)
+      }
+
+    default:
+      return decision(entryState)
+    }
+  }
+
+  /// What is actually on disk for a book.
+  ///
+  /// `checkIfBookFileExists` answers a weaker question: for an LCP audiobook it
+  /// reports `true` on the `.lcpl` LICENSE alone, because while streaming worked
+  /// a license WAS enough to play. That assumption is denormalized across the
+  /// reconciliation arms below, and it is the reason three separate defects were
+  /// found in this file: each arm independently treated "a file exists" as "the
+  /// book is playable", so an interrupted or cancelled LCP download was promoted
+  /// to `.downloadSuccessful` and offered a Listen button with no audio behind
+  /// it.
+  ///
+  /// Streaming is unusable upstream, so the license alone no longer means
+  /// playable. This makes the distinction explicit and gives every arm one
+  /// predicate to consume instead of re-deriving it.
+  enum ContentPresence {
+    /// Nothing on disk.
+    case absent
+    /// LCP audiobook whose `.lcpl` license is present but whose `.lcpa` content
+    /// package is not. Not playable; recoverable by re-fetching the content.
+    case licenseOnly
+    /// Real, playable content on disk.
+    case present
+  }
+
+  func contentPresence(for book: TPPBook, account: String) -> ContentPresence {
+    guard let bookURL = downloadCenter.fileUrl(for: book, account: account) else {
+      return .absent
+    }
+    if FileManager.default.fileExists(atPath: bookURL.path) {
+      return .present
+    }
+    #if LCP
+    if LCPAudiobooks.canOpenBook(book) {
+      let licenseURL = bookURL.deletingPathExtension().appendingPathExtension("lcpl")
+      if FileManager.default.fileExists(atPath: licenseURL.path) {
+        return .licenseOnly
+      }
+    }
+    #endif
+    return .absent
+  }
+
+  /// True when the download center is currently transferring this book, so
+  /// reconciliation must leave a `.downloading` record alone. `load()` is not
+  /// launch-only — `PlaybackBootstrapper` runs it for CarPlay and `HoldsViewModel`
+  /// on no-auth hold changes — so without this a warm load during a multi-minute
+  /// `.lcpa` transfer would flip a perfectly healthy in-flight download.
+  ///
+  /// It does NOT run on foreground: `TPPAppDelegate` calls it only from
+  /// `didFinishLaunching`. An earlier version of this note claimed otherwise, and
+  /// that overstatement is why a self-heal leaving a book at `.downloadNeeded`
+  /// looked self-correcting when it was not.
+  func isDownloadInFlight(for book: TPPBook) -> Bool {
+    if downloadCenter.downloadInfo(forBookIdentifier: book.identifier) != nil {
+      return true
+    }
+    // An LCP `.lcpa` transfer runs on Readium's own `URLSession` and is never
+    // registered in `downloadInfo`, so `downloadInfo` alone reports "nothing in
+    // flight" throughout a multi-minute fulfillment. Reconciliation then reads a
+    // license with no content as a stranded book and schedules a re-download of
+    // something already downloading — measured as a duplicated 1.8 GB transfer on
+    // a fresh borrow, discarded on arrival.
+    return downloadCenter.progressReporter.isLCPContentTransferActive(for: book.identifier)
   }
 
   func checkIfBookFileExists(for book: TPPBook, account: String) -> Bool {

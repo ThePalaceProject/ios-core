@@ -37,6 +37,12 @@ final class BookDetailViewModel: ObservableObject {
     @Published var showSampleToolbar = false
     @Published var downloadProgress: Double = 0.0
 
+    /// True while the background `.lcpa` content re-download for this book is
+    /// running. Drives the half-sheet progress cue for the case where the book
+    /// is `.downloadSuccessful` but its content package is absent, which the
+    /// `bookState == .downloading` cue cannot cover.
+    @Published var isDownloadingLCPContent: Bool = false
+
     /// Error alert to present via SwiftUI `.alert`, ensuring it shows
     /// on top of the half sheet instead of being swallowed by UIKit.
     @Published var downloadErrorAlert: AlertModel?
@@ -325,6 +331,45 @@ final class BookDetailViewModel: ObservableObject {
                 max(self?.downloadProgress ?? 0.0, update.1)
             }
             .assign(to: &$downloadProgress)
+
+        // LCP audiobook content re-download: the book is already
+        // `.downloadSuccessful` from an earlier session and only its `.lcpa`
+        // went missing, so the download-state-driven progress bar does not
+        // apply. This flag lets the half-sheet show the bar for that case.
+        //
+        // A dedicated signal rather than an inference from `downloadProgress`:
+        // that value is clamped monotonically upward above, so for a book whose
+        // earlier download already reached 1.0 every fresh sample would clamp
+        // back to 1.0 and a new transfer would be undetectable.
+        // Seed from the registry BEFORE subscribing. `lcpContentDownloadPublisher`
+        // is a PassthroughSubject with no replay, so a model constructed AFTER the
+        // transfer started would never learn about it and would sit at `false` for
+        // the whole download. That is the normal case, not an edge case: the cell
+        // model is cache-built on demand with a 120s unused TTL while the measured
+        // archives (438 MB / 778 MB / 1.9 GB) all run past three minutes, so a
+        // patron opening a book mid-transfer gets a fresh model every time.
+        // Without this the cue falls to `.idle`, the shelf offers "Download", and
+        // the tap is a silent no-op for the entire transfer.
+        isDownloadingLCPContent = downloadCenter.progressReporter
+            .isLCPContentTransferActive(for: book.identifier)
+
+        downloadCenter.lcpContentDownloadPublisher
+            .filter { [weak self] in $0.0 == self?.book.identifier }
+            .receive(on: RunLoop.main)
+            .sink { [weak self] update in
+                guard let self else { return }
+                let isActive = update.1
+                // Zero the progress on the rising edge. `downloadProgress` is
+                // clamped monotonically upward above, so a book whose earlier
+                // download already reached 1.0 would render a full bar for the
+                // entire new transfer. Resetting here re-bases the clamp for
+                // this download.
+                if isActive && !self.isDownloadingLCPContent {
+                    self.downloadProgress = 0.0
+                }
+                self.isDownloadingLCPContent = isActive
+            }
+            .store(in: &cancellables)
 
         // Subscribe to download errors so we can present them via SwiftUI .alert
         // instead of UIKit (which can fail when a SwiftUI sheet is topmost).

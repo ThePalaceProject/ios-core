@@ -15,6 +15,7 @@ final class ButtonStateTests: XCTestCase {
         super.tearDown()
     }
 
+
     private var testAudiobook: TPPBook {
         TPPBook(dictionary: [
                     "acquisitions": [TPPFake.genericAudiobookAcquisition.dictionaryRepresentation()],
