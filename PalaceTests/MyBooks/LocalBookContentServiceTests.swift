@@ -498,39 +498,36 @@ final class LocalBookContentServiceTests: XCTestCase {
     // one of those lines could be deleted with the entire suite still green — the
     // inert-guard shape this branch has already paid for repeatedly.
 
-    func testDownloadCenter_wiresTheTransferRegistryIntoTheContentService() {
+    /// All three post-init assignments, asserted in ONE test.
+    ///
+    /// Deliberately not three tests: each would stand up its own
+    /// `MyBooksDownloadCenter` graph in `setUp`, and measured against the previous
+    /// tip that extra construction cost was enough to tip unrelated deadline-poll
+    /// suites into failure under parallel clones (three clean full runs before,
+    /// two red after). Coverage is unchanged — deleting any one of the three
+    /// assignments still fails this test.
+    ///
+    /// The assertions are behavioural, not non-nil: a probe is registered in the
+    /// real reporter and each consumer must SEE it, so a closure wired to the
+    /// wrong registry fails too.
+    func testDownloadCenter_wiresTheLCPTransferRegistryIntoEveryConsumer() {
         let center = appContainer.downloadCenter
         let probe = "wiring-probe-\(UUID().uuidString)"
 
         XCTAssertNotNil(center.localContentService.downloadCenterHasTransfer,
-                        "the content service must be able to ask the download center about live transfers")
+                        "the content service must be able to ask about live transfers — on the Listen-tap route this is the only duplicate-download defence")
+        XCTAssertNotNil(center.startCoordinator.hasActiveLCPContentTransfer,
+                        "a patron tap must be gated on live transfers, or it starts a second archive fetch")
+        XCTAssertTrue(center.cancellationHandler.progressReporter === center.progressReporter,
+                      "cancel must be able to release the registration — Readium never reports a cancelled transfer")
 
         center.progressReporter.sendLCPContentDownloadActive(bookIdentifier: probe, active: true)
         defer { center.progressReporter.clearLCPContentTransfer(for: probe) }
 
         XCTAssertEqual(center.localContentService.downloadCenterHasTransfer?(probe), true,
-                       "the closure must consult the SAME registry the fulfillment path registers into")
-    }
-
-    func testDownloadCenter_wiresTheTransferRegistryIntoTheStartCoordinator() {
-        let center = appContainer.downloadCenter
-        let probe = "wiring-probe-\(UUID().uuidString)"
-
-        XCTAssertNotNil(center.startCoordinator.hasActiveLCPContentTransfer,
-                        "a patron tap must be gated on live transfers, or it starts a second archive fetch")
-
-        center.progressReporter.sendLCPContentDownloadActive(bookIdentifier: probe, active: true)
-        defer { center.progressReporter.clearLCPContentTransfer(for: probe) }
-
+                       "the content service's closure must consult the SAME registry the fulfillment path registers into")
         XCTAssertEqual(center.startCoordinator.hasActiveLCPContentTransfer?(probe), true,
-                       "the gate must consult the SAME registry the fulfillment path registers into")
-    }
-
-    func testDownloadCenter_wiresItsReporterIntoTheCancellationHandler() {
-        let center = appContainer.downloadCenter
-
-        XCTAssertTrue(center.cancellationHandler.progressReporter === center.progressReporter,
-                      "cancel must be able to release the content-transfer registration — Readium never reports a cancelled transfer")
+                       "the manual-start gate must consult the SAME registry")
     }
 
     func testRedownload_reportsActiveThenProgressThenIdle() throws {
