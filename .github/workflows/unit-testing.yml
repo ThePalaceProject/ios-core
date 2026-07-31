@@ -95,6 +95,13 @@ jobs:
       - name: Run PalaceTriageBot package tests
         run: swift test --package-path Palace/Packages/PalaceTriageBot
 
+      # The package suite above runs RedactionCorpusTests, but a deny-list guard
+      # is only worth its ability to fail. --self-test disables redaction to prove
+      # the guard goes red on an un-redacted corpus, catching a guard that has
+      # silently stopped guarding. Build products are warm from the step above.
+      - name: Verify TriageBot redaction leak gate
+        run: bash scripts/triage-corpus-check.sh --self-test
+
       - name: Checkout Certificates
         uses: actions/checkout@v7
         with:

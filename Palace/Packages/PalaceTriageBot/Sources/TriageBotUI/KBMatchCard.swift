@@ -45,7 +45,9 @@ struct KBMatchCard: View {
             // Secondary actions row. Single line, tight chips. Only shown
             // when there ARE secondary actions to take.
             HStack(spacing: BotUI.Spacing.small) {
-                if entry.fixedInVersion != nil {
+                if KBMatchActionPolicy.showsNotifyMeOnFix(
+                    entryHasFixVersion: entry.fixedInVersion != nil
+                ) {
                     BotUI.SecondaryChip(title: "Notify me", systemImage: "bell.fill") {
                         onAction(.notifyMe)
                     }
