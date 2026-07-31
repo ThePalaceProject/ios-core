@@ -92,6 +92,17 @@ final class DownloadStartCoordinator: @unchecked Sendable {
 
     private let stateManager: DownloadStateManager
     private let bookRegistry: TPPBookRegistryProvider
+
+    /// True when an LCP `.lcpa` transfer is already running for this identifier.
+    /// Wired post-init by `MyBooksDownloadCenter`; nil in contexts that never
+    /// fulfil LCP content.
+    ///
+    /// `downloadInfo` and `state == .downloading` are NOT sufficient gates for the
+    /// content phase: the former is cleared ~100 ms in, and a book whose content is
+    /// being re-fetched in the background deliberately does not claim `.downloading`
+    /// (that would offer a Cancel that cannot stop the transfer). Without this a
+    /// patron tapping Download mid-transfer starts a second full archive fetch.
+    var hasActiveLCPContentTransfer: ((String) -> Bool)?
     private let userAccountProvider: () -> TPPUserAccount
     /// Reads the "currently selected library UUID" at download-start time.
     /// Captured once into a let-binding at the top of
@@ -288,6 +299,11 @@ final class DownloadStartCoordinator: @unchecked Sendable {
         let existingInfo = await stateManager.bookIdentifierToDownloadInfo.get(book.identifier)
         if existingInfo != nil {
             Log.debug(#file, "Download already in progress for '\(book.title)', skipping duplicate start")
+            return
+        }
+
+        if hasActiveLCPContentTransfer?(book.identifier) == true {
+            Log.debug(#file, "LCP content transfer already running for '\(book.title)', skipping duplicate start")
             return
         }
 

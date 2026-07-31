@@ -129,7 +129,12 @@ private final class DownloadFailureMetadataBox: @unchecked Sendable {
     let downloadAnnouncementService: DownloadAnnouncementService
     private let bookFileManager: BookFileManager
     private let diskBudgetManager: DiskBudgetManager
-    private let localContentService: LocalBookContentService
+    /// Internal rather than private so the post-`init` reporter wiring below can
+    /// be asserted. That assignment is the single point the LCP content-download
+    /// progress cue depends on, and both halves of the cue are otherwise tested
+    /// with a hand-injected reporter, so without this the line could be deleted
+    /// with every unit test still passing.
+    let localContentService: LocalBookContentService
     private let returnService: BookReturnService
     private let alertPresenter: DownloadAlertPresenter
     private let authRetryHandler: DownloadAuthRetryHandler
@@ -166,13 +171,20 @@ private final class DownloadFailureMetadataBox: @unchecked Sendable {
     /// cancel + dictionary cleanup). Adobe DRM short-circuits to
     /// adobeDRMService.cancelFulfillment so it can drive its own
     /// state machine.
-    private let cancellationHandler: DownloadCancellationHandler
+    /// Internal for the same reason as `startCoordinator` — its
+    /// `progressReporter` is assigned post-init and nothing else observes it.
+    let cancellationHandler: DownloadCancellationHandler
     /// Owns startBorrow + startDownloadAsync + startDownloadIfAvailable.
     /// MBDC's `startBorrow` / `startDownload` / `startDownloadAsync`
     /// methods stay as 1-line delegators so the @objc public surface
     /// and the DownloadStartDispatcherDelegate.startBorrow hop both
     /// remain intact.
-    private let startCoordinator: DownloadStartCoordinator
+    /// Internal, not private: `MyBooksDownloadCenter` wires
+    /// `hasActiveLCPContentTransfer` into it after init, and that assignment is
+    /// the ONLY thing connecting the manual-start gate to the transfer registry.
+    /// A test has to be able to see it, or deleting the line kills the guard
+    /// silently.
+    let startCoordinator: DownloadStartCoordinator
     /// Owns the complete borrow lifecycle (borrowAsync + auth-error
     /// retry + OIDC silent reauth + sign-in modal + error
     /// presentation). MBDC's `borrowAsync(_:attemptDownload:)` in
@@ -306,6 +318,11 @@ private final class DownloadFailureMetadataBox: @unchecked Sendable {
     private let downloadExecutor = SerialExecutor()
 
     let downloadProgressPublisher: PassthroughSubject<(String, Double), Never>
+
+    /// Publishes (bookIdentifier, isActive) for the background LCP `.lcpa`
+    /// content re-download. See `DownloadProgressPublishing` for why this is a
+    /// distinct signal rather than a registry-state change.
+    let lcpContentDownloadPublisher: PassthroughSubject<(String, Bool), Never>
 
     /// Publishes download error alerts for a given book identifier.
     /// Subscribers (e.g. view models showing a half sheet) can present the
@@ -586,6 +603,7 @@ private final class DownloadFailureMetadataBox: @unchecked Sendable {
         )
         self.progressReporter = reporter
         self.downloadProgressPublisher = reporter.downloadProgressPublisher
+        self.lcpContentDownloadPublisher = reporter.lcpContentDownloadPublisher
         self.downloadErrorPublisher = reporter.downloadErrorPublisher
         // DownloadAlertPresenter shares the same reporter / stateManager /
         // announcer / registry MBDC just wired so all download-failure paths
@@ -939,6 +957,39 @@ private final class DownloadFailureMetadataBox: @unchecked Sendable {
         // Notification sender has to outlive `super.init()` since the
         // reporter holds it weakly — set after self is fully constructed.
         progressReporter.notificationSender = self
+
+        // The LCP content re-download reports progress + an active/idle edge so
+        // the half-sheet can show a real percentage while a multi-gigabyte
+        // `.lcpa` transfers. Wired here rather than at construction because
+        // `localContentService` is built earlier in this initializer than
+        // `reporter` is (same reason as `notificationSender` above).
+        self.localContentService.contentDownloadReporter = progressReporter
+
+        // The content re-download must not race the fulfillment handler's own
+        // transfer for the same book. That one is registered here, not in the
+        // service's claim map, so the service asks us.
+        //
+        // `downloadInfo` alone is NOT sufficient: it is cleared ~100 ms after a
+        // fulfillment begins (see the download-completion cleanup below), and an
+        // LCP `.lcpa` transfer runs on Readium's own URLSession which is never
+        // registered there at all. Consulting only `downloadInfo` is what let the
+        // archive be fetched twice on a fresh borrow.
+        self.localContentService.downloadCenterHasTransfer = { [weak self] identifier in
+            guard let self else { return false }
+            return self.downloadInfo(forBookIdentifier: identifier) != nil
+                || self.progressReporter.isLCPContentTransferActive(for: identifier)
+        }
+
+        // A patron tap must not start a second archive fetch for a book whose
+        // content is already transferring — `downloadInfo` and `.downloading` both
+        // miss that case (see the property's own note).
+        self.startCoordinator.hasActiveLCPContentTransfer = { [weak self] identifier in
+            self?.progressReporter.isLCPContentTransferActive(for: identifier) ?? false
+        }
+
+        // Cancel must drop the LCP content-transfer registration: Readium never
+        // calls the fulfillment completion handler for a cancelled transfer.
+        self.cancellationHandler.progressReporter = progressReporter
 
         // Both helpers are weak-delegate types; safe to wire here. Use
         // `self.` to disambiguate from the init parameters (which are
@@ -1333,6 +1384,15 @@ private final class DownloadFailureMetadataBox: @unchecked Sendable {
         cancellationHandler.cancelDownload(for: identifier)
     }
 }
+
+// FORWARD-PORT (3.2.3 build 492 → develop): upstream added a
+// `RegistryRedownloadScheduling` conformance here, whose two methods were
+// pass-throughs to `redownloadLCPContentFile` / `startDownload`. It existed only
+// because upstream's registry held a concrete `MyBooksDownloadCenter` and could not
+// observe scheduling in a test. develop already routes both calls through the
+// injectable `RegistryDownloadServicing` seam, which declares them directly — so
+// the extra protocol would be a second name for a seam that already exists. Tests
+// observe scheduling by decorating that seam (`SpyRegistryDownloadService`).
 
 extension MyBooksDownloadCenter {
 

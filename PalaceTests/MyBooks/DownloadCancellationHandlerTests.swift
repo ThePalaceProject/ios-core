@@ -22,6 +22,7 @@ final class DownloadCancellationHandlerTests: XCTestCase {
     private var spyDelegate: SpyDelegate!
     private var handler: DownloadCancellationHandler!
     private var book: TPPBook!
+    private var reporter: DownloadProgressReporter!
 
     override func setUpWithError() throws {
         try super.setUpWithError()
@@ -39,6 +40,8 @@ final class DownloadCancellationHandlerTests: XCTestCase {
             adobeDRMService: AdobeDRMService.shared
         )
         handler.delegate = spyDelegate
+        reporter = DownloadProgressReporter()
+        handler.progressReporter = reporter
     }
 
     override func tearDownWithError() throws {
@@ -47,9 +50,55 @@ final class DownloadCancellationHandlerTests: XCTestCase {
         spyDelegate = nil
         handler = nil
         book = nil
+        reporter = nil
         try super.tearDownWithError()
     }
 
+    // MARK: - LCP content-transfer release on cancel
+    //
+    // Readium never reports a cancelled fulfillment: LicensesService swallows
+    // NSURLErrorCancelled WITHOUT calling the completion handler, so the
+    // registration is released here or not at all. Left behind it pins the book at
+    // `.downloading` and, because the half-sheet reads that flag ahead of book
+    // state, leaves a determinate progress bar frozen on screen forever.
+
+    func testCancel_releasesTheLCPContentTransferRegistration() {
+        bookRegistry.setState(.downloading, for: book.identifier)
+        reporter.sendLCPContentDownloadActive(bookIdentifier: book.identifier, active: true)
+        XCTAssertTrue(reporter.isLCPContentTransferActive(for: book.identifier), "precondition")
+
+        handler.cancelDownload(for: book.identifier)
+
+        XCTAssertFalse(
+            reporter.isLCPContentTransferActive(for: book.identifier),
+            "cancel must release the registration — Readium never reports the cancelled transfer, so nothing else will"
+        )
+    }
+
+    /// A cancel the handler REJECTS must not mutate transfer state. `.holding` is
+    /// not a cancellable no-task state, so this request does nothing at all.
+    func testRejectedCancel_leavesTheRegistrationAlone() {
+        bookRegistry.setState(.holding, for: book.identifier)
+        reporter.sendLCPContentDownloadActive(bookIdentifier: book.identifier, active: true)
+
+        handler.cancelDownload(for: book.identifier)
+
+        XCTAssertTrue(
+            reporter.isLCPContentTransferActive(for: book.identifier),
+            "a nonsensical cancel is ignored; it must not tear down a live transfer's registration"
+        )
+    }
+
+    /// Thin wrapper around the shared `awaitConditionAsync` helper.
+    /// `file`/`line` forwarded so timeout XCTFail blames the call site.
+    private func waitForAsync(
+        timeout: TimeInterval = 10.0,
+        file: StaticString = #file,
+        line: UInt = #line,
+        _ predicate: @escaping () -> Bool
+    ) async {
+        await awaitConditionAsync(timeout: timeout, file: file, line: line, predicate)
+    }
     // MARK: - No task: nonsensical state
 
     func testCancel_unknownIdentifierWithNonCancellableState_isNoOp() async {

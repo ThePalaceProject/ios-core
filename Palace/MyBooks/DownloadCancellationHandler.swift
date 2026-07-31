@@ -67,6 +67,11 @@ final class DownloadCancellationHandler: @unchecked Sendable {
     /// a reference to it is now kept.
     private(set) var lastCancelTeardownTask: Task<Void, Never>?
 
+    /// Wired after construction by `MyBooksDownloadCenter` (two inits, DRM and
+    /// noDRM, so a property is less invasive than threading it through both).
+    /// Cancel must drop any LCP content-transfer registration — see `cancelDownload`.
+    weak var progressReporter: DownloadProgressReporter?
+
     private let stateManager: DownloadStateManager
     private let bookRegistry: TPPBookRegistryProvider
     #if FEATURE_DRM_CONNECTOR
@@ -98,11 +103,20 @@ final class DownloadCancellationHandler: @unchecked Sendable {
     func cancelDownload(for identifier: String) {
         let state = bookRegistry.state(for: identifier)
 
+
         guard let info = stateManager.bookIdentifierToDownloadInfo.syncGet(identifier) else {
             // No URL session task — only allow cancellation for states
             // that signify a download or borrow is genuinely in flight.
             if Self.cancellableNoTaskStates.contains(state) {
                 Log.info(#file, "📊 Cancelling download without task for '\(identifier)' (state: \(state.stringValue()))")
+                // An LCP fulfillment cancel never reaches the fulfillment completion
+                // handler — LicensesService swallows NSURLErrorCancelled without
+                // calling it — so the registration must be dropped here or it
+                // outlives the transfer, pinning the book at `.downloading` behind
+                // a progress bar that no longer moves. Deliberately NOT above the
+                // guard: a rejected ("nonsensical") cancel must not mutate transfer
+                // state for a cancel that does nothing.
+                progressReporter?.clearLCPContentTransfer(for: identifier)
                 bookRegistry.setState(.downloadNeeded, for: identifier)
                 delegate?.broadcastUpdate()
 
@@ -134,6 +148,11 @@ final class DownloadCancellationHandler: @unchecked Sendable {
         let taskId = info.downloadTask.taskIdentifier
 
         // Update UI BEFORE cancelling so the user sees feedback immediately.
+        // Includes releasing any LCP content-transfer registration: cancelling
+        // during the window where `downloadInfo` IS populated still leaves
+        // Readium's own transfer unreported, so the same stuck-flag applies here
+        // as on the no-task branch above.
+        progressReporter?.clearLCPContentTransfer(for: identifier)
         bookRegistry.setState(.downloadNeeded, for: identifier)
         delegate?.broadcastUpdate()
 

@@ -67,4 +67,45 @@ extension MyBooksDownloadCenter: RegistryDownloadServicing {
         #endif
         return false
     }
+
+    /// The license-vs-content distinction load-time reconciliation consumes.
+    /// Body is the upstream 3.2.3 `BookRegistrySync.contentPresence` verbatim; it
+    /// lives here only because the `#if LCP` / `LCPAudiobooks` probe cannot exist in
+    /// the SPM package.
+    ///
+    /// Note the license-existence check on the `.licenseOnly` path. Dropping it and
+    /// reusing `lcpContentFileMissing` instead would collapse "license present,
+    /// content missing" into "nothing on disk", and those reconcile differently: the
+    /// former re-fetches just the content, the latter is a failed/fresh fulfillment.
+    public func contentPresence(for book: TPPBook, account: String) -> RegistryContentPresence {
+        guard let bookURL = fileUrl(for: book, account: account) else {
+            return .absent
+        }
+        if FileManager.default.fileExists(atPath: bookURL.path) {
+            return .present
+        }
+        #if LCP
+        if LCPAudiobooks.canOpenBook(book) {
+            let licenseURL = bookURL.deletingPathExtension().appendingPathExtension("lcpl")
+            if FileManager.default.fileExists(atPath: licenseURL.path) {
+                return .licenseOnly
+            }
+        }
+        #endif
+        return .absent
+    }
+
+    /// True while any transfer for this book is running.
+    ///
+    /// Both checks are load-bearing. `downloadInfo` covers the app's own URLSession
+    /// downloads; the progress reporter covers an LCP `.lcpa` transfer, which runs on
+    /// Readium's own session and is never registered in `downloadInfo` — so without
+    /// the second check this returns false for the whole of a multi-minute
+    /// fulfillment, which is exactly how the duplicate 1.8 GB download happened.
+    public func isDownloadInFlight(for book: TPPBook) -> Bool {
+        if downloadInfo(forBookIdentifier: book.identifier) != nil {
+            return true
+        }
+        return progressReporter.isLCPContentTransferActive(for: book.identifier)
+    }
 }
