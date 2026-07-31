@@ -61,7 +61,11 @@ fi
 # That second shape is the one that goes inert, and narrowing to it keeps the
 # signal high enough to act on — a noisy detector gets ignored, which is how you
 # end up with an inert detector for inert guards.
-CANDIDATES=$(git diff "$BASE"...HEAD --unified=0 -- 'Palace/**/*.swift' \
+# Pathspec is `Palace/` plus a suffix filter, NOT 'Palace/**/*.swift': that glob
+# requires at least one directory level, so it silently skipped files directly
+# under Palace/ — which is exactly how a detector ends up reporting "nothing to
+# check" on a diff that has something to check.
+CANDIDATES=$(git diff "$BASE"...HEAD --unified=0 -- 'Palace/' \
   | grep -E '^\+' | grep -vE '^\+\+\+' \
   | sed 's/^\+//' \
   | grep -E '^\s*self\.[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\s*=\s*(\{|[A-Za-z_])' \
@@ -105,7 +109,7 @@ TOTAL=0
 INCONCLUSIVE=0
 
 while IFS= read -r line; do
-  FILE=$(git diff "$BASE"...HEAD --name-only -- 'Palace/**/*.swift' \
+  FILE=$(git diff "$BASE"...HEAD --name-only -- 'Palace/' | grep '\.swift$' \
          | while read -r f; do grep -qF "$line" "$f" 2>/dev/null && echo "$f" && break; done)
   [[ -z "$FILE" ]] && continue
   TOTAL=$((TOTAL + 1))

@@ -63,7 +63,9 @@ echo "  tests starve first, so you will get a different unrelated failure each r
 echo "  each passing in isolation — which looks exactly like a known flake."
 echo ""
 echo "  Top consumers:"
-ps -Ao %cpu,etime,comm -r 2>/dev/null | head -8 | sed 's/^/    /'
+# `| head` closes the pipe early, so under `set -o pipefail` the producer dies
+# with SIGPIPE and takes the whole script's exit code with it (141, not 1).
+ps -Ao %cpu,etime,comm -r 2>/dev/null | sed -n '1,8p' | sed 's/^/    /'
 echo ""
 
 STALE_SHELLS=$(ps -Ao etime,command 2>/dev/null \
