@@ -308,6 +308,26 @@ class PalaceWiringTestCase: PalaceTestCase {
         return manager
     }
 
+    /// DI-aware overload that injects the account-registry state collaborator
+    /// (`AccountRegistryStore`, Wave 3 / 3a-2). Lets a test drive registry state
+    /// through an owned store and assert the hub's retrieval facades delegate to it,
+    /// while keeping the opt-out flag pin + tearDown drain (so it stays off the
+    /// `AccountsManagerIsolationLint` bare-construction ban).
+    @discardableResult
+    nonisolated func makeFreshAccountsManager(
+        defaults: UserDefaults,
+        registryStore: AccountRegistryStore,
+        _ configure: (AccountsManager) -> Void = { _ in }
+    ) -> AccountsManager {
+        #if DEBUG
+        AccountsManager.deferInitialLoadCatalogsForTesting = true
+        #endif
+        let manager = AccountsManager(defaults: defaults, registryStore: registryStore)
+        configure(manager)
+        managersToCancelOnTearDown.append(manager)
+        return manager
+    }
+
     // MARK: - Disk-cache cleanup
 
     /// Remove every on-disk catalog/auth/crawl cache file in the test
