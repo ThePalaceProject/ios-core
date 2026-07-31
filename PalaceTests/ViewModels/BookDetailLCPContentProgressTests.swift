@@ -67,6 +67,25 @@ final class BookDetailLCPContentProgressTests: XCTestCase {
         appContainer.downloadCenter.progressReporter
     }
 
+    /// Same ordering case as the shelf model: the half-sheet's view model is built
+    /// when the patron opens the book, which for a multi-minute archive is
+    /// routinely AFTER the transfer started. The publisher has no replay, so
+    /// without seeding the sheet shows no progress for the whole download.
+    func testViewModelBuiltWhileATransferIsRunning_showsTheCueImmediately() {
+        let book = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        appContainer.downloadCenter.progressReporter
+            .sendLCPContentDownloadActive(bookIdentifier: book.identifier, active: true)
+        defer {
+            appContainer.downloadCenter.progressReporter
+                .clearLCPContentTransfer(for: book.identifier)
+        }
+
+        let viewModel = makeViewModel(for: book)
+
+        XCTAssertTrue(viewModel.isDownloadingLCPContent,
+                      "opening a book mid-transfer must show its progress, not an idle sheet with a dead Download button")
+    }
+
     func testActiveSignal_raisesFlagForThisBook() async {
         let book = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
         let vm = makeViewModel(for: book)

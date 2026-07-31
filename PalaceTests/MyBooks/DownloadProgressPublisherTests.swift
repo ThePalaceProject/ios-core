@@ -443,10 +443,21 @@ final class DownloadProgressPublisherTests: XCTestCase {
 
         reporter.clearLCPContentTransfer(for: "never-registered")
 
-        let settled = expectation(description: "edges delivered")
-        DispatchQueue.main.async { settled.fulfill() }
-        wait(for: [settled], timeout: 5.0)
+        // Barrier with a REAL edge rather than a main-queue hop. The publish path
+        // is `Task { @MainActor }`, which a `DispatchQueue.main.async` does not
+        // order behind — so draining the main queue could return before a spurious
+        // edge arrived, letting the `if wasRegistered` guard go inert. Sending a
+        // known edge and waiting for it guarantees any earlier one has landed too.
+        reporter.sendLCPContentDownloadActive(bookIdentifier: "sentinel", active: true)
+        let sentinel = expectation(description: "sentinel edge delivered")
+        var seenSentinel = false
+        let watch = reporter.lcpContentDownloadPublisher.sink {
+            if $0.0 == "sentinel" && !seenSentinel { seenSentinel = true; sentinel.fulfill() }
+        }
+        defer { watch.cancel(); reporter.clearLCPContentTransfer(for: "sentinel") }
+        wait(for: [sentinel], timeout: 5.0)
 
-        XCTAssertTrue(edges.isEmpty, "no registration, no edge")
+        XCTAssertEqual(edges.filter { $0.0 == "never-registered" }.count, 0,
+                       "no registration, no edge — an unrelated cancel must not clear another book's cue")
     }
 }

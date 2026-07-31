@@ -305,6 +305,18 @@ class BookCellModel: ObservableObject {
         // LCP `.lcpa` content re-download: the book stays `.downloadSuccessful`
         // (only its content went missing), so no registry-state change signals
         // this transfer and the ordinary progress cue cannot see it.
+        // Seed from the registry BEFORE subscribing. `lcpContentDownloadPublisher`
+        // is a PassthroughSubject with no replay, so a model constructed AFTER the
+        // transfer started would never learn about it and would sit at `false` for
+        // the whole download. That is the normal case, not an edge case: the cell
+        // model is cache-built on demand with a 120s unused TTL while the measured
+        // archives (438 MB / 778 MB / 1.9 GB) all run past three minutes, so a
+        // patron opening a book mid-transfer gets a fresh model every time.
+        // Without this the cue falls to `.idle`, the shelf offers "Download", and
+        // the tap is a silent no-op for the entire transfer.
+        isDownloadingLCPContent = downloadCenter.progressReporter
+            .isLCPContentTransferActive(for: book.identifier)
+
         downloadCenter.lcpContentDownloadPublisher
             .filter { [weak self] in $0.0 == self?.book.identifier }
             .receive(on: RunLoop.main)

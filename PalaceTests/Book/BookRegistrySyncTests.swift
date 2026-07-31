@@ -409,9 +409,13 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
         sync.load(account: account) { if $0 == .loaded { done.fulfill() } }
         wait(for: [done], timeout: 10.0)
 
-        // Outlive both (now-collapsed) schedules without a wall-clock sleep.
+        // Both schedules are injected to 0.05s and dispatched to the main queue, so
+        // a plain main-queue hop is ordered strictly behind them — no wall-clock
+        // wait needed. (An earlier revision waited 0.5s under a comment claiming it
+        // did not sleep; the comment was wrong and the wait was the banned
+        // deadline-poll pattern.)
         let settled = expectation(description: "schedules would have fired")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { settled.fulfill() }
+        DispatchQueue.main.async { settled.fulfill() }
         wait(for: [settled], timeout: 5.0)
 
         XCTAssertTrue(

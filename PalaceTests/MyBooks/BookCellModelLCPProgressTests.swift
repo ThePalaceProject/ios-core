@@ -86,6 +86,38 @@ final class BookCellModelLCPProgressTests: XCTestCase {
                        "another book's transfer must not light up this cell")
     }
 
+    /// THE ORDERING CASE. Every other cue test publishes the edge and then reads
+    /// the model, so all of them passed while a model constructed AFTER the edge
+    /// stayed at `false` forever.
+    ///
+    /// `lcpContentDownloadPublisher` is a PassthroughSubject with no replay, and
+    /// these cell models are cache-built on demand with a 120s unused TTL while
+    /// the measured archives all run past three minutes. So "the transfer is
+    /// already running when the model is built" is the NORMAL case for a patron
+    /// opening a book mid-download — and without seeding, the shelf offers a
+    /// Download button whose tap does nothing at all.
+    func testModelBuiltWhileATransferIsRunning_showsTheCueImmediately() {
+        let book = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        reporter.sendLCPContentDownloadActive(bookIdentifier: book.identifier, active: true)
+        defer { reporter.clearLCPContentTransfer(for: book.identifier) }
+
+        let model = makeModel(for: book)
+
+        XCTAssertTrue(
+            model.isDownloadingLCPContent,
+            "a model built mid-transfer must seed from the registry — the publisher has no replay, so it will never be told"
+        )
+    }
+
+    func testModelBuiltWithNoTransferRunning_doesNotShowTheCue() {
+        let book = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+
+        let model = makeModel(for: book)
+
+        XCTAssertFalse(model.isDownloadingLCPContent,
+                       "seeding must reflect the registry, not default to true")
+    }
+
     // MARK: - Progress only counts while an LCP content download is running
     //
     // This is the scoping mutant. Removing `guard isDownloadingLCPContent`
