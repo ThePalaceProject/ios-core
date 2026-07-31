@@ -43,25 +43,6 @@ private final class AccountsManagerBoolFlag: @unchecked Sendable {
     }
 }
 
-/// Documented carrier for a non-Sendable `() -> Void` handed to a
-/// `DispatchQueue` barrier block in `AccountsManager.performWrite`.
-/// `@unchecked Sendable` invariant: the wrapped closure is invoked exactly
-/// once, on the serial barrier of the concurrent `accountSetsLock`, never
-/// concurrently.
-private struct VoidWorkBox: @unchecked Sendable {
-    let work: () -> Void
-}
-
-/// Documented carrier for the non-Sendable `(inout [String: [Account]]) -> Void`
-/// mutation closure handed to the `accountSetsLock` barrier in
-/// `AccountsManager.mutateAccountSets`. Same `@unchecked Sendable` invariant as
-/// `VoidWorkBox`: the wrapped closure is invoked exactly once, on the serial
-/// `.barrier` of the concurrent `accountSetsLock`, never concurrently. Timing
-/// and the mutate-then-rebuild-index contract are unchanged.
-private struct AccountSetsMutationBox: @unchecked Sendable {
-    let mutate: (inout [String: [Account]]) -> Void
-}
-
 /// Documented carrier for a non-Sendable `(Bool) -> Void` load-completion
 /// handler stored into the `loadingHandlersQueue` barrier in
 /// `AccountsManager.addLoadingHandler`. `@unchecked Sendable` invariant: the
@@ -105,10 +86,10 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
 /// `TPPUserAccount` and `AccountStateStore`'s own `@unchecked` justification):
 ///
 ///   Instance mutable state:
-///   - `accountSet`, `accountSets`, `accountByUUID`  → read via `performRead`
-///     (`accountSetsLock.sync`), written via `performWrite` / `mutateAccountSets`
-///     (`accountSetsLock.async(flags:.barrier)`). `accountByUUID` is only ever
-///     rebuilt inside the same barrier as `accountSets`, so the two never desync.
+///   - the account-registry state (current hash, `accountSets`, the `accountByUUID`
+///     index, and the slim fallback)  → moved to the injected `AccountRegistryStore`
+///     (Wave 3 / 3a-2), which owns their concurrent `accountSetsLock` sync-read /
+///     barrier-write model; the hub holds the store as an immutable `Sendable` `let`.
 ///   - `loadingCompletionHandlers`  → read via `loadingHandlersQueue.sync`,
 ///     written via `loadingHandlersQueue.async(flags:.barrier)`.
 ///   - `inflightAuthDocFetches`  → read/written only under `inflightAuthDocLock`.
@@ -133,9 +114,9 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
 ///     `cancelBackgroundWork()` / `_injectBackgroundFetchTaskForTesting` seams.
 ///
 ///   Immutable (`let`) state — inherently safe: `tppAccountUUID`, `ageCheck`,
-///   `settings`, `defaults`, `accountSetsLock`, `catalogPreloader`,
-///   `loadingHandlersQueue`, `inflightAuthDocLock`, `userAccountsLock`,
-///   `_trackedCrawlTasksLock`.
+///   `settings`, `defaults`, `registryStore` (internally synchronized),
+///   `registryCache`, `catalogPreloader`, `loadingHandlersQueue`,
+///   `inflightAuthDocLock`, `userAccountsLock`, `_trackedCrawlTasksLock`.
 ///
 ///   `currentAccountId` is a computed property backed by the injected
 ///   `UserDefaults` (`defaults`), which is itself internally thread-safe — no
@@ -217,37 +198,15 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
     /// choreography cancels + awaits, so no un-drainable write channel survives a
     /// test boundary. Self-pruning + internally synchronized.
     private let ownedCrawlTasks = OwnedCrawlTaskRegistry()
-    private var accountSet: String
-    private var accountSets = [String: [Account]]()
-    /// O(1) `uuid → Account` index derived from `accountSets`, kept in lockstep
-    /// with it under `accountSetsLock`. Lets `account(_:)` resolve a UUID without
-    /// a linear scan over every bucket — the registry snapshot holds ~1142
-    /// accounts, and `account(_:)` is on the main-thread display path for every
-    /// account-change-driven view refresh, so the old `accountSets.values.first {
-    /// $0.contains(where:) }` scan saturated the main thread (the test-suite hang
-    /// class, and a live-app cost on every library switch). MUST only be mutated
-    /// via `mutateAccountSets` so it can never desync from `accountSets`.
-    private var accountByUUID = [String: Account]()
-    private let accountSetsLock = DispatchQueue(label: "com.tpp.accountSetsLock", attributes: .concurrent)
-
-    /// Launch-hydration (CP-D1) slim lookup: the current + `settingsAccountIdsList`
-    /// accounts (~2 accounts, a few KB) decoded SYNCHRONOUSLY at launch from the
-    /// small `accounts_catalog_slim_<hash>.json` snapshot, so `currentAccount`
-    /// resolves — and its `awaitReady()` gate is driven — within a few ms of
-    /// launch instead of paying the full ~207ms (fast sim) / ~0.3-0.6s (device)
-    /// 1142-account decode+map on the launch main thread.
-    ///
-    /// Deliberately kept SEPARATE from `accountSets`: `accountsHaveLoaded` and
-    /// `accounts()` MUST keep reflecting the FULL 1142-account list (the library
-    /// picker — `TPPAccountList` / `TPPAppDelegate.presentFirstRunFlowIfNeeded`
-    /// — reads them), so the ~2-account slim set must NOT flip `accountsHaveLoaded`
-    /// true (a truncated-picker bug). This structure only backs `account(_:)`'s
-    /// FALLBACK; full instances (in `accountByUUID`) always win once the full
-    /// list materializes off-main via the background `loadCatalogs`. Guarded by
-    /// its own `NSLock` so `account(_:)`'s `accountSetsLock` read and this
-    /// fallback never contend on the same lock.
-    private var slimAccountsByUUID = [String: Account]()
-    private let slimAccountsLock = NSLock()
+    /// Account-registry state + all thread-safe access (Wave 3 / 3a-2): the current
+    /// catalog hash, the `[hash → [Account]]` sets, the O(1) `uuid → Account` index
+    /// rebuilt in-barrier-lockstep with them, and the separate slim launch-hydration
+    /// fallback. Injected `let` — the concrete `AccountRegistryStore` by default, a
+    /// recording double under test. All registry-state concurrency (the concurrent
+    /// `accountSetsLock` sync-read / barrier-write model) lives in the store now, so
+    /// the hub carries none of it. See `AccountRegistryStore.swift` for the
+    /// `@unchecked Sendable` invariant and the class-not-actor rationale.
+    private let registryStore: AccountRegistryStore
 
     private let catalogPreloader = CatalogPreloader()
 
@@ -513,20 +472,28 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
         borrowReauthResetter: any BorrowReauthResetting = DownloadCenterBorrowReauthResetter(),
         crawlScheduler: CrawlTaskScheduler = .production,
         switchDependencies: AccountSwitchDependencies = .production,
-        registryCache: any AccountRegistryCaching = DiskAccountRegistryCache()
+        registryCache: any AccountRegistryCaching = DiskAccountRegistryCache(),
+        registryStore: AccountRegistryStore = AccountRegistryStore()
     ) {
         self.defaults = defaults
         self.borrowReauthResetter = borrowReauthResetter
         self.crawlScheduler = crawlScheduler
         self.switchDeps = switchDependencies
         self.registryCache = registryCache
+        self.registryStore = registryStore
         self.settings = TPPSettings()
-        self.accountSet = TPPConfiguration.customUrlHash()
-            ?? (settings.useBetaLibraries
-                    ? TPPConfiguration.betaUrlHash
-                    : TPPConfiguration.prodUrlHash)
         self.ageCheck = TPPAgeCheck(ageCheckChoiceStorage: settings)
         super.init()
+        // Seed the registry store's current hash (was the hub's `accountSet` stored
+        // property, now owned by the store — Wave 3 / 3a-2). Written on the store's
+        // barrier; the synchronous `preloadAccountsFromDiskCacheSync` read below
+        // observes it via GCD barrier FIFO ordering (the one deliberate init delta).
+        registryStore.setCurrentHash(
+            TPPConfiguration.customUrlHash()
+                ?? (settings.useBetaLibraries
+                        ? TPPConfiguration.betaUrlHash
+                        : TPPConfiguration.prodUrlHash)
+        )
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(updateAccountSetFromNotification(_:)),
@@ -599,7 +566,7 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
     /// Exposed `internal` so contract-snapshot tests can drive the preload
     /// path directly after seeding the on-disk cache.
     internal func preloadAccountsFromDiskCacheSync() {
-        let hash = self.accountSet
+        let hash = registryStore.currentHash
         // Fast path (CP-D1 LaunchHydration): when a slim snapshot exists, decode
         // ONLY the current + settings accounts (a few KB) synchronously so
         // `currentAccount` resolves and its auth-doc drive fires within a few ms
@@ -665,7 +632,7 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
                !accounts.contains(where: { $0.uuid == currentId }) {
                 return false
             }
-            storeSlimAccounts(accounts)
+            registryStore.storeSlim(accounts)
             for account in accounts {
                 if case .notLoaded = switchDeps.accountStateStore.state(for: account.uuid) {
                     account._setState(.basicInfoLoaded)
@@ -712,7 +679,7 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
             let accounts = feed.catalogs.map {
                 Account(publication: $0, imageCache: switchDeps.imageCache)
             }
-            mutateAccountSets { $0[hash] = accounts }
+            registryStore.mutate { $0[hash] = accounts }
             // Account state-machine wiring (3.2.0): Phase 1 — drive every
             // preloaded account into `.basicInfoLoaded`. Display-only
             // consumers (Settings/Libraries) can render the row immediately;
@@ -729,22 +696,6 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
             // we silently fall through to the async network refresh.
             Log.warn(#file, "Sync disk-cache pre-load failed: \(error). Will refresh from network async.")
         }
-    }
-
-    /// Thread-safe write of the slim launch-hydration accounts. CP-D1.
-    private func storeSlimAccounts(_ accounts: [Account]) {
-        slimAccountsLock.lock()
-        defer { slimAccountsLock.unlock() }
-        for account in accounts {
-            slimAccountsByUUID[account.uuid] = account
-        }
-    }
-
-    /// Thread-safe read of a slim launch-hydration account. CP-D1.
-    private func slimAccount(_ uuid: String) -> Account? {
-        slimAccountsLock.lock()
-        defer { slimAccountsLock.unlock() }
-        return slimAccountsByUUID[uuid]
     }
 
     /// Rebuild the slim launch snapshot from the authoritative full on-disk
@@ -829,55 +780,14 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
         return try? JSONSerialization.data(withJSONObject: slimRoot)
     }
 
-    // MARK: – Thread‐safe accountSets access
+    // MARK: – Account index (static shim)
 
-    private func performRead<T>(_ block: () -> T) -> T {
-        return accountSetsLock.sync {
-            block()
-        }
-    }
-
-    private func performWrite(_ block: @escaping () -> Void) {
-        // Carry the non-Sendable `block` into the barrier block via a
-        // documented box. `@unchecked Sendable` invariant: `block` is
-        // invoked exactly once, on the serial `.barrier` of the concurrent
-        // `accountSetsLock`, never concurrently — the same execution
-        // contract this method already guaranteed. Timing is unchanged.
-        let box = VoidWorkBox(work: block)
-        accountSetsLock.async(flags: .barrier) {
-            box.work()
-        }
-    }
-
-    /// The ONLY sanctioned way to mutate `accountSets`. Applies `mutate` to the
-    /// dictionary inside the `accountSetsLock` barrier, then rebuilds the
-    /// `accountByUUID` index in the same critical section so the two can never
-    /// desync. Every write site (preload hydrate, network load, the test seams)
-    /// goes through here — adding a new write that bypasses it would silently
-    /// break `account(_:)` lookups, which the index-coherence test guards against.
-    private func mutateAccountSets(_ mutate: @escaping (inout [String: [Account]]) -> Void) {
-        // Carry the non-Sendable `mutate` into the `@Sendable` barrier block via
-        // a documented box (mirrors `performWrite`'s `VoidWorkBox`). Same serial-
-        // barrier execution contract; timing unchanged.
-        let box = AccountSetsMutationBox(mutate: mutate)
-        accountSetsLock.async(flags: .barrier) {
-            box.mutate(&self.accountSets)
-            self.accountByUUID = AccountsManager.buildAccountIndex(self.accountSets)
-        }
-    }
-
-    /// Pure: flatten `accountSets` into a `uuid → Account` index. When a UUID
-    /// appears in more than one bucket (e.g. an account present in both the
-    /// prod and beta registries), the last-enumerated wins — equivalent to the
-    /// nondeterministic "first across `values`" the prior linear scan returned.
+    /// Pure `uuid → Account` index builder. The implementation and ALL thread-safe
+    /// `accountSets` access moved to `AccountRegistryStore` (Wave 3 / 3a-2); this thin
+    /// static forwards so `AccountsManager.buildAccountIndex(...)` stays a stable name
+    /// for `AccountsManagerAccountIndexTests`.
     static func buildAccountIndex(_ sets: [String: [Account]]) -> [String: Account] {
-        var index = [String: Account]()
-        for accounts in sets.values {
-            for account in accounts {
-                index[account.uuid] = account
-            }
-        }
-        return index
+        AccountRegistryStore.buildAccountIndex(sets)
     }
 
     // MARK: - Account Retrieval
@@ -971,7 +881,7 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
             // Off-main + best-effort + XCTest-gated (see the method); no launch
             // main-thread cost. The `hydrateSlimLaunchSnapshot` current-account
             // presence check is the belt-and-suspenders if this ever lags.
-            refreshSlimLaunchSnapshotOffMain(hash: self.accountSet)
+            refreshSlimLaunchSnapshotOffMain(hash: registryStore.currentHash)
             NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
         }
     }
@@ -1002,22 +912,17 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
     }
 
     func account(_ uuid: String) -> Account? {
-        if let full = performRead({ accountByUUID[uuid] }) {
-            return full
-        }
-        // CP-D1 launch-hydration fallback: before the full 1142-account list has
-        // materialized off-main, the slim snapshot backs current-account
-        // resolution so `currentAccount` (and its auth-doc drive) work in the
-        // pre-materialization window. Full instances take precedence (checked
-        // first, above) once present.
-        return slimAccount(uuid)
+        return registryStore.account(uuid)
     }
 
     func accounts(_ key: String? = nil) -> [Account] {
-        return performRead {
-            let k = key ?? self.accountSet
-            return self.accountSets[k] ?? []
+        // Atomic on the nil path: the store reads currentHash + its bucket in ONE
+        // critical section, so a concurrent library switch can't key the bucket to a
+        // stale hash. Do NOT collapse this to `accounts(forKey: currentHash)`.
+        if let key {
+            return registryStore.accounts(forKey: key)
         }
+        return registryStore.accountsForCurrentHash()
     }
 
     #if DEBUG
@@ -1039,8 +944,8 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
     /// NOT exposed in production builds.
     @discardableResult
     func _seedAccountForTesting(_ account: Account) -> () -> Void {
-        let seedKey = self.accountSet
-        mutateAccountSets {
+        let seedKey = registryStore.currentHash
+        registryStore.mutate {
             var seeded = $0[seedKey] ?? []
             seeded.removeAll { $0.uuid == account.uuid }
             seeded.append(account)
@@ -1049,7 +954,7 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
         let previousId = defaults.string(forKey: currentAccountIdentifierKey)
         defaults.set(account.uuid, forKey: currentAccountIdentifierKey)
         return {
-            self.mutateAccountSets {
+            self.registryStore.mutate {
                 $0[seedKey]?.removeAll { $0.uuid == account.uuid }
             }
             if let prev = previousId {
@@ -1062,9 +967,8 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
     #endif
 
     var accountsHaveLoaded: Bool {
-        return performRead {
-            !(self.accountSets[self.accountSet]?.isEmpty ?? true)
-        }
+        // Atomic: the store samples currentHash + its bucket in ONE critical section.
+        return registryStore.currentBucketIsLoaded()
     }
 
     // MARK: - Per-Account User Credentials
@@ -1186,7 +1090,7 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
             .trimmingCharacters(in: ["="])
 
         // 1. If already loaded in memory, return immediately
-        if performRead({ self.accountSets[hash]?.isEmpty == false }) {
+        if registryStore.bucketIsNonEmpty(hash: hash) {
             // State-machine wiring (3.2.0): the cold path drives the
             // current account's LoadState past `.basicInfoLoaded` via
             // `loadAccountSetsAndAuthDoc → fetchAuthDocumentWithStateMachine`.
@@ -1769,7 +1673,7 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
                 // `oldAccountsByUUID` carries the auth-doc forward via the loop
                 // below and fresh network data must win, so we do NOT reuse then.
                 if oldAccountsByUUID[publication.metadata.id] == nil,
-                   let slim = slimAccount(publication.metadata.id) {
+                   let slim = registryStore.slimAccount(publication.metadata.id) {
                     return slim
                 }
                 return Account(publication: publication, imageCache: switchDeps.imageCache)
@@ -1791,7 +1695,7 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
                 }
             }
 
-            self.mutateAccountSets { $0[hash] = newAccounts }
+            self.registryStore.mutate { $0[hash] = newAccounts }
 
             // Account state-machine wiring (3.2.0): Phase 1 — drive every
             // freshly-constructed account into its post-load terminal state.
@@ -1878,9 +1782,10 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
     @objc private func updateAccountSetFromNotification(_ notif: Notification) {
         // Run off the poster's thread. `.TPPUseBetaDidChange` is delivered
         // synchronously by `NotificationCenter` on whatever thread posted it —
-        // typically MAIN, from a Settings toggle. `updateAccountSet` does an
-        // `accountSetsLock.sync` read (`performRead`) that blocks until any
-        // in-flight background catalog-refresh barrier on that lock drains; under
+        // typically MAIN, from a Settings toggle. `updateAccountSet` does a
+        // synchronous read on the registry store's concurrent `accountSetsLock`
+        // (via `registryStore.bucketIsNonEmpty`) that blocks until any in-flight
+        // background catalog-refresh barrier on that lock drains; under
         // load that barrier can take a long time, so reacting synchronously stalls
         // the poster (the Settings UI — and any test that posts this notification,
         // which is how it surfaced as a 120s hang). The account-set update is
@@ -1896,8 +1801,11 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
                     ? TPPConfiguration.betaUrlHash
                     : TPPConfiguration.prodUrlHash)
 
-        performWrite { self.accountSet = newHash }
-        if performRead({ self.accountSets[newHash]?.isEmpty ?? true }) || TPPConfiguration.customUrlHash() != nil {
+        registryStore.setCurrentHash(newHash)
+        // Original was `accountSets[newHash]?.isEmpty ?? true` (true when empty/missing);
+        // bucketIsNonEmpty is its inverse, so this MUST be negated to preserve the
+        // load-trigger polarity.
+        if !registryStore.bucketIsNonEmpty(hash: newHash) || TPPConfiguration.customUrlHash() != nil {
             loadCatalogs(completion: completion)
         } else {
             completion?(true)
@@ -1958,12 +1866,13 @@ extension AccountsManager {
     }
 
     /// Test-only seam: populate an accountSets bucket without going through
-    /// OPDS2 parsing. Routes through `performWrite` so concurrent-access
-    /// invariants are preserved. Used by mutation-killing tests for
+    /// OPDS2 parsing. Routes through `registryStore.mutate` (the store's barrier)
+    /// so concurrent-access invariants — including the in-barrier `accountByUUID`
+    /// rebuild — are preserved. Used by mutation-killing tests for
     /// `account(_ uuid:)` — multi-bucket scenarios are not otherwise
     /// reachable from outside the class.
     func _testSetAccountSet(_ accounts: [Account], forKey key: String) {
-        mutateAccountSets { $0[key] = accounts }
+        registryStore.mutate { $0[key] = accounts }
     }
 
     /// Test-only: cancel the in-flight background `loadCatalogs` Task (if any)
@@ -2021,9 +1930,9 @@ extension AccountsManager {
     /// Why this exists (WS-0 follow-up — closes the residual race documented on
     /// `cancelBackgroundWork()` above): the cooperative `cancelBackgroundWork()`
     /// returns immediately, so a just-cancelled crawl can still be mid-flight —
-    /// holding the `performWrite` `.barrier` on `accountSetsLock` — when the
-    /// NEXT test's `@MainActor` reauth path does a synchronous
-    /// `currentUserAccount` / `performRead` `.sync` read. That read blocks
+    /// holding the `.barrier` on the registry store's `accountSetsLock` (via
+    /// `registryStore.mutate`) — when the NEXT test's `@MainActor` reauth path does a
+    /// synchronous `currentUserAccount` / store `.sync` read. That read blocks
     /// behind the barrier; because the crawl hops to the main actor to complete,
     /// and main is now blocked on the read, the two deadlock → the victim test's
     /// 5s `waitForExpectations` timer never fires → 120s main-thread jam. This
