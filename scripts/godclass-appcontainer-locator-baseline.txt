@@ -12,4 +12,7 @@
 # Wave 3 S2b: MBDC's B6 `authSurfaceHosts` locators route through the S2
 # `DownloadAccountScopeProviding` seam instead → 305 -> 304 (net -1 after rebase; one
 # `AppContainer.production()` prose mention remains in the new AccountScope rationale).
-304
+# Wave 3 / 3a-4 (AccountRegistryLoader extraction): 304 -> 302. Two `AppContainer.production()`
+# reaches left AccountsManager with the relocated load bodies (into the new, unfrozen
+# AccountRegistryLoader.swift), so the hub's out-of-allowlist count drops by 2.
+302

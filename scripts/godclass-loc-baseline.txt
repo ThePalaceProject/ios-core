@@ -60,6 +60,16 @@
 #   seams were inverted behind the injected `AccountSwitchDependencies` bundle; the
 #   net is slightly NEGATIVE (the extracted nav-pop closure + deleted inline reaches
 #   outweigh the stored dependency + its docs). Re-baselined by the exact delta.
+# Wave 3 / 3a-4 (-954 on AccountsManager, 1910 -> 956): the catalog LOAD orchestration
+#   (loadCatalogs stale-while-revalidate pipeline, the first-page/paginate network crawl +
+#   direct-GET fallbacks, CP-D1 preload + slim-snapshot hydrate/carve/write, the owned
+#   background-crawl task registry + its test-boundary drain choreography, and the
+#   loading-completion handler dedupe) EXTRACTED to the injected `AccountRegistryLoader`
+#   (a `final class`, not an actor). The hub keeps thin facades (loadCatalogs,
+#   loadAccountSetsAndAuthDoc, preloadAccountsFromDiskCacheSync, the drain/join seams) +
+#   static shims (carveSlimFeed). `_explicitCancelCalled` + the live-instance registry STAY
+#   on the hub; the hub cancel/drain facades set the flag before delegating. Largest of the
+#   3a splits (~950 LOC). Re-baselined DOWN.
 # Wave 3 / 3a-3 (-172 on AccountsManager, 2082 -> 1910): the per-account auth-document
 #   fetch + state-machine wiring (the single-flight `inflightAuthDocFetches` map + lock,
 #   `authDocInflightTimeout`, `fetchAuthDocumentWithStateMachine`, `fetchCompletionMayWriteTerminal`,
@@ -98,7 +108,7 @@
 #   PalaceDownloads and the account-scope wiring goes with it. Re-baselined by the exact
 #   delta; the freeze still catches any further unrelated growth.
 3093 Palace/Audiobooks/AudiobookSessionManager.swift
-1910 Palace/Accounts/Library/AccountsManager.swift
+955 Palace/Accounts/Library/AccountsManager.swift
 2184 Palace/MyBooks/MyBooksDownloadCenter.swift
 1378 Palace/Book/UI/BookDetail/BookDetailViewModel.swift
 1261 Palace/SignInLogic/TPPSignInBusinessLogic.swift
