@@ -288,6 +288,26 @@ class PalaceWiringTestCase: PalaceTestCase {
         return manager
     }
 
+    /// DI-aware overload that injects the disk-cache collaborator
+    /// (`AccountRegistryCaching`, Wave 3 / 3a-1). Lets a test install a recording
+    /// cache to pin the catalog read/write/clear routing while keeping the same
+    /// opt-out flag pin + tearDown drain as the other helpers (so it stays off the
+    /// `AccountsManagerIsolationLint` bare-construction ban).
+    @discardableResult
+    nonisolated func makeFreshAccountsManager(
+        defaults: UserDefaults,
+        registryCache: any AccountRegistryCaching,
+        _ configure: (AccountsManager) -> Void = { _ in }
+    ) -> AccountsManager {
+        #if DEBUG
+        AccountsManager.deferInitialLoadCatalogsForTesting = true
+        #endif
+        let manager = AccountsManager(defaults: defaults, registryCache: registryCache)
+        configure(manager)
+        managersToCancelOnTearDown.append(manager)
+        return manager
+    }
+
     // MARK: - Disk-cache cleanup
 
     /// Remove every on-disk catalog/auth/crawl cache file in the test
