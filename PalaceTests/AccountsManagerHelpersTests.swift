@@ -84,12 +84,12 @@ final class AccountsManagerHelpersTests: XCTestCase {
     func test_isCacheStale_nilMetadata_returnsTrue() {
         // Kills the `return true` → `return false` mutant on the
         // nil-metadata path.
-        XCTAssertTrue(AccountsManager.isCacheStale(metadata: nil, serverMaxAge: nil))
+        XCTAssertTrue(CatalogCacheMetadata.isCacheStale(metadata: nil, serverMaxAge: nil))
     }
 
     func test_isCacheStale_freshMetadata_returnsFalse() {
         let fresh = CatalogCacheMetadata(timestamp: Date(), hash: "h")
-        XCTAssertFalse(AccountsManager.isCacheStale(metadata: fresh, serverMaxAge: nil))
+        XCTAssertFalse(CatalogCacheMetadata.isCacheStale(metadata: fresh, serverMaxAge: nil))
     }
 
     func test_isCacheStale_staleMetadata_returnsTrue() {
@@ -98,7 +98,7 @@ final class AccountsManagerHelpersTests: XCTestCase {
             timestamp: Date().addingTimeInterval(-7 * 3600),
             hash: "h"
         )
-        XCTAssertTrue(AccountsManager.isCacheStale(metadata: stale, serverMaxAge: nil))
+        XCTAssertTrue(CatalogCacheMetadata.isCacheStale(metadata: stale, serverMaxAge: nil))
     }
 
     func test_isCacheStale_serverMaxAgeRespected() {
@@ -108,13 +108,13 @@ final class AccountsManagerHelpersTests: XCTestCase {
             timestamp: Date().addingTimeInterval(-4 * 60),
             hash: "h"
         )
-        XCTAssertFalse(AccountsManager.isCacheStale(metadata: recent, serverMaxAge: 600))
+        XCTAssertFalse(CatalogCacheMetadata.isCacheStale(metadata: recent, serverMaxAge: 600))
 
         // Same metadata 10 minutes old → stale (> 5min TTL).
         let older = CatalogCacheMetadata(
             timestamp: Date().addingTimeInterval(-10 * 60),
             hash: "h"
         )
-        XCTAssertTrue(AccountsManager.isCacheStale(metadata: older, serverMaxAge: 600))
+        XCTAssertTrue(CatalogCacheMetadata.isCacheStale(metadata: older, serverMaxAge: 600))
     }
 }

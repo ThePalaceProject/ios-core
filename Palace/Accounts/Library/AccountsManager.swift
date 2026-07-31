@@ -6,86 +6,8 @@ import PalaceBookRegistry
 
 let currentAccountIdentifierKey = "TPPCurrentAccountIdentifier"
 
-// MARK: - Cache Metadata
-
-/// Metadata for tracking cache freshness in stale-while-revalidate pattern
-struct CatalogCacheMetadata: Codable {
-    let timestamp: Date
-    let hash: String
-    /// `true` when this cache entry was populated from the build-time
-    /// bundled snapshot (`Palace/Accounts/Library/bundled_registry.json`),
-    /// `false` for entries written from a network response. Bundled-origin
-    /// caches return `true` from `isStale(serverMaxAge:now:)` regardless
-    /// of timestamp so the refresh trigger keeps firing on every
-    /// `loadCatalogs` call until a real network response overwrites the
-    /// metadata with `isBundled = false`. Decodes as `false` for legacy
-    /// metadata files written before this field existed.
-    let isBundled: Bool
-
-    init(timestamp: Date, hash: String, isBundled: Bool = false) {
-        self.timestamp = timestamp
-        self.hash = hash
-        self.isBundled = isBundled
-    }
-
-    private enum CodingKeys: String, CodingKey {
-        case timestamp, hash, isBundled
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.timestamp = try container.decode(Date.self, forKey: .timestamp)
-        self.hash = try container.decode(String.self, forKey: .hash)
-        self.isBundled = try container.decodeIfPresent(Bool.self, forKey: .isBundled) ?? false
-    }
-
-    /// Default stale TTL: 6 hours (half the server's typical Cache-Control
-    /// max-age of 12hr). Overridden dynamically by `staleTTL(serverMaxAge:)`.
-    private static let defaultStaleTTL: TimeInterval = 21600
-
-    /// Cache expires after 24 hours (must not be used)
-    private static let maxAge: TimeInterval = 86400
-
-    /// Returns the stale TTL, dynamically adjusted from the server's
-    /// Cache-Control max-age if available. Uses half the server's value
-    /// with a floor of 5 minutes and a ceiling of 12 hours.
-    static func staleTTL(serverMaxAge: TimeInterval?) -> TimeInterval {
-        guard let serverMax = serverMaxAge, serverMax > 0 else {
-            return defaultStaleTTL
-        }
-        let half = serverMax / 2
-        return min(max(half, 300), 43200) // clamp to [5min, 12hr]
-    }
-
-    /// Returns true if cache is stale given the server's max-age hint.
-    func isStale(serverMaxAge: TimeInterval?) -> Bool {
-        isStale(serverMaxAge: serverMaxAge, now: Date())
-    }
-
-    func isStale(serverMaxAge: TimeInterval?, now: Date) -> Bool {
-        // Bundled-origin caches are always stale for refresh purposes
-        // regardless of timestamp. The bundled bytes are usable for
-        // immediate display but not authoritative, so refresh has to
-        // keep firing until a real network response overwrites with
-        // `isBundled = false`.
-        if isBundled { return true }
-        return now.timeIntervalSince(timestamp) > Self.staleTTL(serverMaxAge: serverMaxAge)
-    }
-
-    /// Returns true if cache is stale using the default TTL (no server hint).
-    var isStale: Bool {
-        isStale(serverMaxAge: nil)
-    }
-
-    /// Returns true if cache is expired (older than 24 hours)
-    var isExpired: Bool {
-        isExpired(now: Date())
-    }
-
-    func isExpired(now: Date) -> Bool {
-        now.timeIntervalSince(timestamp) > Self.maxAge
-    }
-}
+// `CatalogCacheMetadata` and the on-disk catalog cache moved to
+// `AccountRegistryCache.swift` (Wave 3 / 3a-1) — injected via `registryCache`.
 
 @objc protocol TPPCurrentLibraryAccountProvider: NSObjectProtocol {
     var currentAccount: Account? { get }
@@ -175,7 +97,7 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
 /// Its four background `Task { [weak self] in … }` crawl/refresh/preload
 /// closures require a `@Sendable` capture of `self` — and they cannot be
 /// rewritten to "snapshot Sendable fields at the site" because each one drives
-/// `self`'s instance I/O pipeline (`cacheAccountsCatalogData`,
+/// `self`'s instance I/O pipeline (`registryCache.writeCatalogData`,
 /// `loadAccountSetsAndAuthDoc`, `fallbackFetchFromNetwork`, `triggerCatalogPreload`,
 /// `catalogPreloader`, `currentAccount`), which is the whole purpose of the Task.
 /// So the type itself must be `Sendable`. It is safe to share because EVERY
@@ -284,6 +206,12 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
     /// Injectable background-crawl spawn seam (see `CatalogCrawlScheduler`).
     /// Immutable `Sendable` `let`; `.production` by default, recording under test.
     private let crawlScheduler: CrawlTaskScheduler
+    /// On-disk catalog cache collaborator (Wave 3 / 3a-1). Immutable `Sendable`
+    /// `let`; the stateless `DiskAccountRegistryCache` by default, a recording
+    /// double under test. All catalog read/write/staleness/clear disk I/O routes
+    /// here, so the hub carries none of it and a packaged manager names no
+    /// FileManager cache body.
+    private let registryCache: any AccountRegistryCaching
     /// Owns every background catalog-crawl Task — production included (PP-4754):
     /// the previously fire-and-forget crawl now has an owner the reset
     /// choreography cancels + awaits, so no un-drainable write channel survives a
@@ -584,12 +512,14 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
         defaults: UserDefaults = .standard,
         borrowReauthResetter: any BorrowReauthResetting = DownloadCenterBorrowReauthResetter(),
         crawlScheduler: CrawlTaskScheduler = .production,
-        switchDependencies: AccountSwitchDependencies = .production
+        switchDependencies: AccountSwitchDependencies = .production,
+        registryCache: any AccountRegistryCaching = DiskAccountRegistryCache()
     ) {
         self.defaults = defaults
         self.borrowReauthResetter = borrowReauthResetter
         self.crawlScheduler = crawlScheduler
         self.switchDeps = switchDependencies
+        self.registryCache = registryCache
         self.settings = TPPSettings()
         self.accountSet = TPPConfiguration.customUrlHash()
             ?? (settings.useBetaLibraries
@@ -681,10 +611,10 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
         // `Account.awaitReady()` gate, which reads `AccountStateStore` keyed by
         // uuid and so survives the slim→full Account-instance swap.
         //
-        // Gated on `hasCachedCatalogData` (full-cache freshness): the slim
+        // Gated on `registryCache.hasFreshCatalogData` (full-cache freshness): the slim
         // snapshot carries no separate metadata, so a truly-expired cache still
         // falls through to the no-op below rather than hydrating stale data.
-        if hasCachedCatalogData(hash: hash), hydrateSlimLaunchSnapshot(hash: hash) {
+        if registryCache.hasFreshCatalogData(hash: hash), hydrateSlimLaunchSnapshot(hash: hash) {
             refreshSlimLaunchSnapshotOffMain(hash: hash)
             return
         }
@@ -693,8 +623,8 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
         // set synchronously exactly as before so behaviour is unchanged on that
         // one launch, then seed a slim snapshot off-main so the NEXT launch takes
         // the fast path above.
-        guard hasCachedCatalogData(hash: hash),
-              let cachedData = readCachedAccountsCatalogData(hash: hash) else {
+        guard registryCache.hasFreshCatalogData(hash: hash),
+              let cachedData = registryCache.readCatalogData(hash: hash) else {
             return
         }
         hydrateFullAccountSets(fromCatalogData: cachedData, hash: hash)
@@ -710,7 +640,7 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
     /// it is empty, or it fails to decode — the caller then takes the full sync
     /// path. CP-D1.
     private func hydrateSlimLaunchSnapshot(hash: String) -> Bool {
-        guard let url = slimSnapshotUrl(hash: hash),
+        guard let url = registryCache.slimSnapshotURL(hash: hash),
               FileManager.default.fileExists(atPath: url.path),
               let data = try? Data(contentsOf: url) else {
             return false
@@ -836,7 +766,7 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
         guard !Self._isRunningUnderXCTest else { return }
         spawnOwnedCrawlTask(priority: .utility, detached: true) { [weak self] in
             guard let self, !Task.isCancelled else { return }
-            guard let data = self.readCachedAccountsCatalogData(hash: hash) else { return }
+            guard let data = self.registryCache.readCatalogData(hash: hash) else { return }
             guard !Task.isCancelled else { return }
             self.writeSlimSnapshot(fromFullCatalogData: data, hash: hash)
         }
@@ -847,7 +777,7 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
     /// Runs on a background queue (never the launch main thread). CP-D1.
     private func writeSlimSnapshot(fromFullCatalogData data: Data, hash: String) {
         let keepUUIDs = slimSnapshotUUIDs()
-        guard !keepUUIDs.isEmpty, let url = slimSnapshotUrl(hash: hash) else { return }
+        guard !keepUUIDs.isEmpty, let url = registryCache.slimSnapshotURL(hash: hash) else { return }
         guard let carved = Self.carveSlimFeed(fromFullCatalogData: data, keepUUIDs: keepUUIDs) else {
             Log.warn(#file, "CP-D1: slim snapshot carve produced no data (hash=\(hash))")
             return
@@ -1273,15 +1203,15 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
             driveCurrentAccountAuthDocIfNeeded()
             completion?(true)
             // Still refresh in background if stale
-            if isCacheStale(hash: hash) {
+            if registryCache.isCatalogStale(hash: hash) {
                 refreshInBackground(targetUrl: targetUrl, hash: hash)
             }
             return
         }
 
         // 2. Try disk cache first (stale-while-revalidate)
-        if hasCachedCatalogData(hash: hash),
-           let cachedData = readCachedAccountsCatalogData(hash: hash) {
+        if registryCache.hasFreshCatalogData(hash: hash),
+           let cachedData = registryCache.readCatalogData(hash: hash) {
             Log.info(#file, "Loading catalogs from cache (stale-while-revalidate), hash=\(hash), dataSize=\(cachedData.count)")
 
             // dedupe concurrent loads for initial cache load
@@ -1333,7 +1263,7 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
                 // isBundled=true keeps the cache flagged as non-authoritative so
                 // every subsequent loadCatalogs call still triggers refresh until
                 // a real network response overwrites the metadata.
-                self.cacheAccountsCatalogData(bundledData, hash: hash, isBundled: true)
+                self.registryCache.writeCatalogData(bundledData, hash: hash, isBundled: true)
                 self.loadAccountSetsAndAuthDoc(fromCatalogData: bundledData, key: hash) { _ in
                     NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
                 }
@@ -1384,7 +1314,7 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
             // Cooperative cancellation observation (swarm_4b64e4e0 Fix 2):
             // if `cancelBackgroundWork()` was called while we were awaiting
             // `crawlFirstPage`, drop the result on the floor instead of
-            // writing through to `accountSets` / `cacheAccountsCatalogData`.
+            // writing through to `accountSets` / `registryCache.writeCatalogData`.
             // Without this, a test that `_resetForTesting()`s the AppContainer
             // mid-fetch still sees the prior `AccountsManager`'s response
             // land in its caches a few ms later.
@@ -1393,7 +1323,7 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
             switch firstPageResult {
             case .success(let firstPageData, let firstPage):
                 // Display first page immediately
-                self.cacheAccountsCatalogData(firstPageData, hash: hash)
+                self.registryCache.writeCatalogData(firstPageData, hash: hash)
                 self.loadAccountSetsAndAuthDoc(fromCatalogData: firstPageData, key: hash) { success in
                     NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
                     self.callAndClearLoadingHandlers(for: hash, success)
@@ -1426,7 +1356,7 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
                     if case .success(let fullData) = remainingResult {
                         let fullCount = (try? OPDS2CatalogsFeed.fromData(fullData))?.catalogs.count ?? -1
                         Log.info(#file, "Background pagination complete: \(fullCount) total libraries cached")
-                        self.cacheAccountsCatalogData(fullData, hash: hash)
+                        self.registryCache.writeCatalogData(fullData, hash: hash)
                         self.loadAccountSetsAndAuthDoc(fromCatalogData: fullData, key: hash) { _ in
                             NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
                         }
@@ -1461,7 +1391,7 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
             do {
                 let (data, _) = try await self.networkExecutor.GET(targetUrl, useTokenIfAvailable: false)
                 if Task.isCancelled { return }
-                self.cacheAccountsCatalogData(data, hash: hash)
+                self.registryCache.writeCatalogData(data, hash: hash)
                 self.loadAccountSetsAndAuthDoc(fromCatalogData: data, key: hash) { success in
                     NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
                     self.callAndClearLoadingHandlers(for: hash, success)
@@ -1469,7 +1399,7 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
             } catch {
                 if Task.isCancelled { return }
                 Log.error(#file, "Failed to load catalogs from network: \(error.localizedDescription)")
-                if let data = self.readCachedAccountsCatalogData(hash: hash) {
+                if let data = self.registryCache.readCatalogData(hash: hash) {
                     Log.info(#file, "Using cached catalog data as fallback after network failure")
                     self.loadAccountSetsAndAuthDoc(fromCatalogData: data, key: hash) { success in
                         NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
@@ -1499,7 +1429,7 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
             // Parse existing cached publications for merge
             let existingPubs: [OPDS2Publication]
             let existingMetadata: OPDS2CatalogsFeed.Metadata?
-            if let cachedData = self.readCachedAccountsCatalogData(hash: hash),
+            if let cachedData = self.registryCache.readCatalogData(hash: hash),
                let feed = try? OPDS2CatalogsFeed.fromData(cachedData) {
                 existingPubs = feed.catalogs
                 existingMetadata = feed.metadata
@@ -1519,7 +1449,7 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
             case .success(let data):
                 let pubCount = (try? OPDS2CatalogsFeed.fromData(data))?.catalogs.count ?? -1
                 Log.info(#file, "Background crawl successful for hash \(hash), \(pubCount) libraries in result, dataSize=\(data.count)")
-                self.cacheAccountsCatalogData(data, hash: hash)
+                self.registryCache.writeCatalogData(data, hash: hash)
                 self.loadAccountSetsAndAuthDoc(fromCatalogData: data, key: hash) { [weak self] _ in
                     NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
                     // Preload catalogs for active accounts
@@ -1549,7 +1479,7 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
                 let (data, _) = try await self.networkExecutor.GET(targetUrl, useTokenIfAvailable: false)
                 if Task.isCancelled { return }
                 Log.info(#file, "Fallback direct refresh successful for hash \(hash)")
-                self.cacheAccountsCatalogData(data, hash: hash)
+                self.registryCache.writeCatalogData(data, hash: hash)
                 self.loadAccountSetsAndAuthDoc(fromCatalogData: data, key: hash) { _ in
                     NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
                 }
@@ -1571,112 +1501,11 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
         }
     }
 
-    // MARK: – Disk cache helpers
-
-    private func accountsCatalogUrl(hash: String) -> URL? {
-        guard let appSupport = try? FileManager.default.url(
-                for: .applicationSupportDirectory,
-                in: .userDomainMask,
-                appropriateFor: nil,
-                create: true)
-        else { return nil }
-        return appSupport.appendingPathComponent("accounts_catalog_\(hash).json")
-    }
-
-    private func cacheMetadataUrl(hash: String) -> URL? {
-        guard let appSupport = try? FileManager.default.url(
-                for: .applicationSupportDirectory,
-                in: .userDomainMask,
-                appropriateFor: nil,
-                create: true)
-        else { return nil }
-        return appSupport.appendingPathComponent("accounts_catalog_metadata_\(hash).json")
-    }
-
-    /// On-disk location of the CP-D1 slim launch snapshot (current + settings
-    /// accounts). The `accounts_catalog_slim_` name shares the
-    /// `accounts_catalog_` prefix, so `clearCache()` and the wiring-suite
-    /// disk-cache purge already sweep it with no extra bookkeeping. CP-D1.
-    private func slimSnapshotUrl(hash: String) -> URL? {
-        guard let appSupport = try? FileManager.default.url(
-                for: .applicationSupportDirectory,
-                in: .userDomainMask,
-                appropriateFor: nil,
-                create: true)
-        else { return nil }
-        return appSupport.appendingPathComponent("accounts_catalog_slim_\(hash).json")
-    }
-
-    private func cacheAccountsCatalogData(_ data: Data, hash: String, isBundled: Bool = false) {
-        // Save catalog data
-        guard let url = accountsCatalogUrl(hash: hash) else { return }
-        try? data.write(to: url)
-
-        // Save metadata with current timestamp. `isBundled` distinguishes
-        // build-time-snapshot writes from authoritative network writes so
-        // staleness logic can keep refresh alive on bundled-origin caches.
-        let metadata = CatalogCacheMetadata(timestamp: Date(), hash: hash, isBundled: isBundled)
-        if let metadataUrl = cacheMetadataUrl(hash: hash),
-           let metadataData = try? JSONEncoder().encode(metadata) {
-            try? metadataData.write(to: metadataUrl)
-        }
-    }
-
-    private func readCachedAccountsCatalogData(hash: String) -> Data? {
-        guard let url = accountsCatalogUrl(hash: hash) else { return nil }
-        return try? Data(contentsOf: url)
-    }
-
-    /// Reads cache metadata for the given hash
-    private func readCacheMetadata(hash: String) -> CatalogCacheMetadata? {
-        guard let url = cacheMetadataUrl(hash: hash),
-              let data = try? Data(contentsOf: url) else { return nil }
-        return try? JSONDecoder().decode(CatalogCacheMetadata.self, from: data)
-    }
-
-    /// Returns true if cached data exists and is not expired (can be stale but usable).
-    ///
-    /// Existence is probed with `FileManager.fileExists` — NOT a full
-    /// `Data(contentsOf:)` — so this check never reads the ~2.4MB catalog blob
-    /// off disk. The single authoritative byte read happens exactly once per
-    /// launch at the caller (`preloadAccountsFromDiskCacheSync` and the
-    /// `loadCatalogs` stale-while-revalidate branch), which pair this gate with
-    /// one `readCachedAccountsCatalogData` and thread those bytes into the
-    /// decode. The prior implementation read the entire file here purely to
-    /// test existence, then the caller read the same file again — two full
-    /// reads of the same 2.4MB blob per launch.
-    private func hasCachedCatalogData(hash: String) -> Bool {
-        guard let url = accountsCatalogUrl(hash: hash),
-              FileManager.default.fileExists(atPath: url.path) else { return false }
-        guard let metadata = readCacheMetadata(hash: hash) else {
-            // Data exists but no metadata - treat as usable but stale
-            return false
-        }
-        return !metadata.isExpired
-    }
-
-    /// Returns true if cache exists and is stale (needs background refresh)
-    private func isCacheStale(hash: String) -> Bool {
-        let metadata = readCacheMetadata(hash: hash)
-        let serverMaxAge = readCrawlState(hash: hash)?.serverMaxAge
-        return Self.isCacheStale(metadata: metadata, serverMaxAge: serverMaxAge)
-    }
-
-    /// Pure variant of `isCacheStale(hash:)` that doesn't touch the file
-    /// system. Returns `true` when metadata is missing OR when the metadata
-    /// reports staleness against `serverMaxAge`. Extracted from the private
-    /// version so tests can exercise the nil-metadata → refresh path that
-    /// previously had no test coverage (F-013).
-    static func isCacheStale(
-        metadata: CatalogCacheMetadata?,
-        serverMaxAge: TimeInterval?
-    ) -> Bool {
-        guard let metadata else {
-            // No metadata means we should refresh
-            return true
-        }
-        return metadata.isStale(serverMaxAge: serverMaxAge)
-    }
+    // MARK: – Account-switch pure helpers
+    //
+    // The disk-cache helpers that lived here moved to `AccountRegistryCache.swift`
+    // (Wave 3 / 3a-1). These two remain: they are pure switch-pipeline predicates,
+    // not cache I/O, and travel with the current-account extraction later.
 
     /// Pure helper for `cleanupActiveContentBeforeAccountSwitch`'s
     /// `pathCount > 0` guard — extracted so the bound check is testable.
@@ -1694,19 +1523,6 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
         newAccountId: String?
     ) -> Bool {
         return previousAccountId == newAccountId || previousAccountId == nil
-    }
-
-    /// Reads crawl state for the given hash (used for dynamic TTL adjustment)
-    private func readCrawlState(hash: String) -> CrawlState? {
-        guard let appSupport = try? FileManager.default.url(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: false
-        ) else { return nil }
-        let url = appSupport.appendingPathComponent("crawl_state_\(hash).json")
-        guard let data = try? Data(contentsOf: url) else { return nil }
-        return try? JSONDecoder().decode(CrawlState.self, from: data)
     }
 
     // MARK: – Auth Document fetch with state-machine wiring
@@ -2092,35 +1908,9 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
     func clearCache() {
         // network cache
         networkExecutor.clearCache()
-        // file caches — delete all files matching known prefixes written to the
-        // Application Support root. (`authentication_document_` was removed: no
-        // code path writes a file with that prefix — auth docs live in `Account`
-        // state / are re-fetched, not persisted as files — so it cleared nothing.)
-        let prefixes = [
-            "library_list_",
-            "accounts_catalog_",
-            "accounts_catalog_metadata_",
-            "crawl_state_",
-        ]
-        let fm = FileManager.default
-        guard let appSupport = try? fm.url(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: false
-        ) else { return }
-
-        guard let files = try? fm.contentsOfDirectory(
-            at: appSupport,
-            includingPropertiesForKeys: nil
-        ) else { return }
-
-        for file in files {
-            let name = file.lastPathComponent
-            if prefixes.contains(where: { name.hasPrefix($0) }) {
-                try? fm.removeItem(at: file)
-            }
-        }
+        // file caches — the on-disk catalog/metadata/list/crawl sweep now lives on
+        // the injected registry cache (Wave 3 / 3a-1).
+        registryCache.clearFileCaches()
     }
 }
 
