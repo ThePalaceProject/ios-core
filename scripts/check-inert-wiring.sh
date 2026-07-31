@@ -102,6 +102,7 @@ trap 'git checkout -- Palace/ 2>/dev/null || true; rm -rf "$WORK"' EXIT
 
 SURVIVED=0
 TOTAL=0
+INCONCLUSIVE=0
 
 while IFS= read -r line; do
   FILE=$(git diff "$BASE"...HEAD --name-only -- 'Palace/**/*.swift' \
@@ -117,14 +118,20 @@ while IFS= read -r line; do
 import sys
 path, target = sys.argv[1], sys.argv[2]
 src = open(path).read()
-# Comment out the assignment. Closure bodies keep compiling because we only
-# neutralise the assignment itself when it is a one-liner; multi-line closures
-# are replaced wholesale up to the matching brace.
+# Neutralise the assignment. A one-liner is commented out; a multi-line closure
+# must be removed WHOLESALE, or the orphaned body is a syntax error and the probe
+# reports nothing useful.
+#
+# Detecting "opens a closure" by `endswith("{")` is wrong: a capture list ends the
+# line with `in` (`= { [weak self] identifier in`). That bug made this script's own
+# first run report two covered lines as SURVIVED — a false positive, which is worse
+# than no detector at all.
 idx = src.find(target)
 if idx == -1:
     sys.exit(0)
 open(path + ".inert-bak", "w").write(src)
-if target.rstrip().endswith("{"):
+opens_closure = "{" in target and target.count("{") > target.count("}")
+if opens_closure:
     # multi-line closure: find matching close brace at the same indent
     indent = len(target) - len(target.lstrip())
     end = src.find("\n" + " " * indent + "}", idx)
@@ -143,10 +150,14 @@ PY
     FAILS=$(grep -cE 'error: -\[' "$WORK/out.log" || true)
   fi
 
-  # A build failure is not a kill — it means the probe broke compilation, which
-  # tells you nothing about coverage. Report it as inconclusive.
-  if grep -q "BUILD FAILED\|error: cannot find\|error: value of type" "$WORK/out.log" && [[ "$FAILS" == "0" ]]; then
-    echo "    INCONCLUSIVE — probe did not compile; check by hand"
+  # A build failure is not a kill and is NOT a survival — it means the probe broke
+  # compilation, which tells you nothing about coverage. The only trustworthy
+  # signal that tests actually RAN is a TEST SUCCEEDED/FAILED banner; absent that,
+  # say so rather than guessing. Scoring a non-compiling probe as SURVIVED is how
+  # this script first reported two well-covered lines as inert.
+  if ! grep -qE '\*\* TEST (SUCCEEDED|FAILED) \*\*' "$WORK/out.log"; then
+    echo "    INCONCLUSIVE — probe did not build, so no test ran; check by hand"
+    INCONCLUSIVE=$((INCONCLUSIVE + 1))
   elif [[ "$FAILS" -gt 0 ]]; then
     echo "    KILLED — $FAILS failing assertion(s)"
   else
@@ -166,4 +177,7 @@ if [[ "$SURVIVED" -gt 0 ]]; then
   exit 1
 fi
 
-echo "check-inert-wiring: all $TOTAL wiring line(s) killed."
+if [[ "$INCONCLUSIVE" -gt 0 ]]; then
+  echo "check-inert-wiring: $INCONCLUSIVE of $TOTAL probe(s) INCONCLUSIVE — verify those by hand."
+fi
+echo "check-inert-wiring: all conclusive probes killed ($TOTAL candidate(s))."
