@@ -92,7 +92,9 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
 ///     barrier-write model; the hub holds the store as an immutable `Sendable` `let`.
 ///   - `loadingCompletionHandlers`  → read via `loadingHandlersQueue.sync`,
 ///     written via `loadingHandlersQueue.async(flags:.barrier)`.
-///   - `inflightAuthDocFetches`  → read/written only under `inflightAuthDocLock`.
+///   - the auth-document fetch state (single-flight map + lock)  → moved to the
+///     injected `AuthDocumentLoader` (Wave 3 / 3a-3), which owns its own `NSLock`; the
+///     hub holds the loader as a `lazy var` and no longer names that state.
 ///   - `userAccounts`, `lastKnownCurrentUserAccount`  → read/written only under
 ///     `userAccountsLock`.
 ///   - `_trackedFirstRunTasks`  → read/written only under `_trackedCrawlTasksLock`.
@@ -116,7 +118,7 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
 ///   Immutable (`let`) state — inherently safe: `tppAccountUUID`, `ageCheck`,
 ///   `settings`, `defaults`, `registryStore` (internally synchronized),
 ///   `registryCache`, `catalogPreloader`, `loadingHandlersQueue`,
-///   `inflightAuthDocLock`, `userAccountsLock`, `_trackedCrawlTasksLock`.
+///   `userAccountsLock`, `_trackedCrawlTasksLock`.
 ///
 ///   `currentAccountId` is a computed property backed by the injected
 ///   `UserDefaults` (`defaults`), which is itself internally thread-safe — no
@@ -184,6 +186,25 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
     /// we cannot resolve the executor during init. First accessed *after* AppContainer
     /// finishes constructing; resolved exactly once, then cached here.
     private lazy var networkExecutor: any AccountNetworking = switchDeps.networkExecutorProvider()
+    /// Per-account auth-document fetch + state-machine collaborator (Wave 3 / 3a-3).
+    /// A `lazy var` (not a `let` default arg like `registryStore`) because its provider
+    /// closures capture `self`, so it can't be resolved before `super.init()`; first
+    /// access is post-init (the earliest drive is the preload / background `loadCatalogs`),
+    /// exactly like `networkExecutor`. The `isTornDown` binding is `#if DEBUG` (reads the
+    /// DEBUG-only `_explicitCancelCalled`); release binds `{ false }` so the DRM build compiles.
+    private lazy var authDocLoader: AuthDocumentLoader = {
+        #if DEBUG
+        let torn: @Sendable () -> Bool = { [weak self] in self?._explicitCancelCalled ?? true }
+        #else
+        let torn: @Sendable () -> Bool = { false }
+        #endif
+        return AuthDocumentLoader(
+            accountStateStore: switchDeps.accountStateStore,
+            currentAccountProvider: { [weak self] in self?.currentAccount },
+            signedInStateProvider: { [weak self] in self?.currentUserAccount },
+            isTornDown: torn
+        )
+    }()
     /// Injectable background-crawl spawn seam (see `CatalogCrawlScheduler`).
     /// Immutable `Sendable` `let`; `.production` by default, recording under test.
     private let crawlScheduler: CrawlTaskScheduler
@@ -214,30 +235,13 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
     private var loadingCompletionHandlers = [String: [(Bool) -> Void]]()
     private let loadingHandlersQueue = DispatchQueue(label: "com.tpp.loadingHandlers", attributes: .concurrent)
 
-    /// Per-UUID single-flight guard for `authentication_document` fetches,
-    /// keyed by UUID → the `Date` the fetch was started. Without single-flight,
-    /// two concurrent consumers calling `awaitReady()` on the same Account would
-    /// each cause `current.loadAuthenticationDocument` to fire a duplicate HTTP
-    /// request. The state machine's broadcast (`CurrentValueSubject`) handles
-    /// multi-consumer observation; this map just prevents the duplicate network
-    /// request. See ADR docs/architecture/account-state-machine.md Open Q #1.
-    ///
-    /// The start-time value (rather than a bare `Set`) exists so a wedged fetch
-    /// can be reclaimed: if a fetch's network completion is DROPPED, the UUID
-    /// would otherwise stay in-flight forever and every later
-    /// `driveCurrentAccountAuthDocIfNeeded` would early-return on the dead entry,
-    /// leaving the account stuck at `.detailsLoading` (HelpSpot #18414). When an
-    /// entry is older than `authDocInflightTimeout`, the next fetch reclaims the
-    /// slot and re-fires instead of deduping against the corpse.
-    private var inflightAuthDocFetches = [String: Date]()
-    private let inflightAuthDocLock = NSLock()
+    // The per-account auth-document fetch + state-machine wiring (the single-flight
+    // map + lock, the timeout, and the fetch/drive/terminal logic) moved to
+    // `AuthDocumentLoader.swift` (Wave 3 / 3a-3) — injected via `authDocLoader` below.
 
-    /// How long a single-flight `authentication_document` fetch may remain
-    /// in-flight before a subsequent fetch treats it as wedged (dropped
-    /// completion) and reclaims the slot. Sized above a healthy auth-doc
-    /// round-trip so a genuinely concurrent fetch is still deduped, while a
-    /// dropped-completion wedge self-heals on the next drive.
-    static let authDocInflightTimeout: TimeInterval = 30
+    /// Alias retained so `AccountsManager.authDocInflightTimeout` keeps resolving for
+    /// the wiring-suite tests; the value + the fetch machinery live on `AuthDocumentLoader`.
+    static let authDocInflightTimeout: TimeInterval = AuthDocumentLoader.authDocInflightTimeout
 
     #if DEBUG
     /// Test-only opt-out from the post-init background `loadCatalogs` spawn.
@@ -316,21 +320,14 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
     /// surface conflating those two semantics.
     private var _explicitCancelCalled: Bool = false
 
-    /// Test-only: seed the single-flight `inflightAuthDocFetches` map with an
-    /// entry whose start time is `age` seconds in the past. Lets the stale-wedge
-    /// reclaim path in `fetchAuthDocumentWithStateMachine` be exercised
-    /// deterministically without burning `authDocInflightTimeout` wall-clock
-    /// seconds. NOT compiled into release builds.
+    /// Test-only: forwards to the loader's single-flight seed (Wave 3 / 3a-3).
     func _seedInflightAuthDocForTesting(uuid: String, age: TimeInterval) {
-        inflightAuthDocLock.lock()
-        inflightAuthDocFetches[uuid] = Date().addingTimeInterval(-age)
-        inflightAuthDocLock.unlock()
+        authDocLoader._seedInflightAuthDocForTesting(uuid: uuid, age: age)
     }
 
-    /// Test-only read of whether a UUID currently occupies the single-flight map.
+    /// Test-only read of whether a UUID currently occupies the loader's single-flight map.
     func _inflightAuthDocContainsForTesting(uuid: String) -> Bool {
-        inflightAuthDocLock.lock(); defer { inflightAuthDocLock.unlock() }
-        return inflightAuthDocFetches[uuid] != nil
+        authDocLoader._inflightAuthDocContainsForTesting(uuid: uuid)
     }
     #endif
 
@@ -1429,206 +1426,37 @@ private struct CrawlerHandoffBox: @unchecked Sendable {
         return previousAccountId == newAccountId || previousAccountId == nil
     }
 
-    // MARK: – Auth Document fetch with state-machine wiring
+    // MARK: – Auth Document fetch with state-machine wiring (facades → AuthDocumentLoader)
+    //
+    // The single-flight guard, the `.detailsLoading → .detailsLoaded/.detailsFailed`
+    // transitions, and the `.detailsEvicted` disambiguation moved to
+    // `AuthDocumentLoader.swift` (Wave 3 / 3a-3). The hub keeps thin forwarders so every
+    // call site (the `currentAccount` setter, the warm path) and every test stays byte-
+    // identical.
 
-    /// Wraps `Account.loadAuthenticationDocument` with:
-    /// 1. Per-UUID single-flight guard — the second concurrent caller for
-    ///    the same UUID does NOT fire a duplicate HTTP request; the state
-    ///    stream's broadcast (`CurrentValueSubject`) ensures both callers
-    ///    observe the same eventual transition.
-    /// 2. State-machine transitions — `.detailsLoading` before the fetch;
-    ///    `.detailsLoaded(details)` on success; `.detailsFailed(...)` on
-    ///    failure. New code that reads `account.details` must go through
-    ///    `Account.awaitReady()`, which observes these transitions.
-    ///
-    /// Exposed `internal` so contract-snapshot tests can drive the wiring
-    /// path directly without going through the full `loadCatalogs` cycle.
-    /// Whether an auth-doc fetch completion may write its own terminal
-    /// (`.detailsLoaded`/`.detailsFailed`). Returns `false` when the account has
-    /// since been evicted by a library switch — the deliberate, newer
-    /// `.detailsEvicted` terminal supersedes the in-flight fetch this completion
-    /// belonged to, and awaiters rely on it to fail-fast + redrive on return.
-    /// Pure so the guard is unit-testable without a controllable async fetch.
-    /// CP-D1 (swarm_27c181b5).
+    /// Static forwarder — `AuthDocumentLoader.fetchCompletionMayWriteTerminal` holds the
+    /// pure guard; retained here because the wiring/snapshot tests call
+    /// `AccountsManager.fetchCompletionMayWriteTerminal`.
     static func fetchCompletionMayWriteTerminal(currentState: Account.LoadState) -> Bool {
-        if case .detailsEvicted = currentState { return false }
-        return true
+        AuthDocumentLoader.fetchCompletionMayWriteTerminal(currentState: currentState)
     }
 
+    /// Forwards to `authDocLoader` (Wave 3 / 3a-3). Exposed `internal` so contract-snapshot
+    /// tests can drive the wiring path directly without the full `loadCatalogs` cycle.
     internal func fetchAuthDocumentWithStateMachine(
         for account: Account,
         completion: @escaping (Bool) -> Void
     ) {
-        #if DEBUG
-        // Test-isolation (entry guard): once this manager was explicitly torn
-        // down (`cancelBackgroundWork()` in `AppContainer._resetForTesting()`),
-        // it must not drive any auth-doc state — neither the synchronous
-        // `.detailsLoading` below nor the async terminal write. Otherwise a
-        // late/deferred drive (`driveCurrentAccountAuthDocIfNeeded` dispatched
-        // via `DispatchQueue.main.async`) fires on a later runloop turn, after
-        // the next test's `AccountStateStore` reset, keyed by a fixture-shared
-        // library UUID, and pollutes whichever Accounts test runs next (the
-        // order-dependent flakes in AccountsManagerLaunchSnapshotTests /
-        // AccountsManagerStateMachineWiringTests). Production is UNAFFECTED:
-        // `_explicitCancelCalled` and `cancelBackgroundWork()` are `#if DEBUG`
-        // test-only (the latter is reachable only from `_resetForTesting()`).
-        if _explicitCancelCalled {
-            completion(false)
-            return
-        }
-        #endif
-
-        let now = Date()
-        inflightAuthDocLock.lock()
-        let existingStart = inflightAuthDocFetches[account.uuid]
-        let isStaleWedge: Bool
-        if let existingStart {
-            isStaleWedge = now.timeIntervalSince(existingStart) >= Self.authDocInflightTimeout
-        } else {
-            isStaleWedge = false
-        }
-        // Claim (or re-claim) the slot unless a genuinely-recent fetch owns it.
-        let deduping = existingStart != nil && !isStaleWedge
-        if !deduping {
-            inflightAuthDocFetches[account.uuid] = now
-        }
-        inflightAuthDocLock.unlock()
-
-        if deduping {
-            // A fresh fetch for this UUID is already in flight. Don't fire a
-            // duplicate HTTP request — the state stream's broadcast covers
-            // multi-consumer observation. Caller's completion gets `true`
-            // so the calling DispatchGroup (if any) balances.
-            completion(true)
-            return
-        }
-
-        if isStaleWedge {
-            // The prior in-flight fetch never reported back (its network
-            // completion was dropped) — the account is wedged at
-            // `.detailsLoading`. We reclaimed the slot above; re-fire the fetch
-            // so `awaitReady()` callers aren't stuck forever (HelpSpot #18414).
-            // Re-entering `.detailsLoading` below is the retryable reset: the
-            // stream re-broadcasts and the fresh fetch drives a real terminal.
-            Log.warn(#file, "Auth-doc fetch for \(account.uuid) was wedged in-flight beyond \(Self.authDocInflightTimeout)s — reclaiming and re-firing")
-        }
-
-        account._setState(.detailsLoading)
-        account.loadAuthenticationDocument(using: self.currentUserAccount) { [weak self] success in
-            guard let self = self else {
-                completion(success)
-                return
-            }
-            self.inflightAuthDocLock.lock()
-            self.inflightAuthDocFetches.removeValue(forKey: account.uuid)
-            self.inflightAuthDocLock.unlock()
-
-            #if DEBUG
-            // Test-isolation (completion guard): companion to the entry guard —
-            // an auth-doc fetch that was already IN FLIGHT when this manager was
-            // torn down must not land its terminal `_setState` after the test
-            // boundary. Suppress the write; still balance the caller's completion.
-            // (DEBUG-only — see entry guard; production is unaffected.)
-            if self._explicitCancelCalled {
-                completion(success)
-                return
-            }
-            #endif
-
-            // A fetch that was SUPERSEDED by a library switch must not overwrite
-            // the eviction marker the `currentAccount` setter wrote. Sequence
-            // (CP-D1, swarm_27c181b5): the setter cancels this account's in-flight
-            // fetch (`cancelNonEssentialTasks`) THEN writes
-            // `.detailsEvicted(.libraryDeselected)`; this cancellation completion
-            // then fires ASYNC with `success == false` (NSURLError -999). Without
-            // this guard it clobbers `.detailsEvicted` with
-            // `.detailsFailed(.authDocumentFetchFailed)`, and on switch-back
-            // `driveCurrentAccountAuthDocIfNeeded` reads `.detailsFailed` → the
-            // "genuine failure, don't redrive" arm → `awaitReady()` consumers
-            // (audiobook open, token refresh, bookmark sync, CarPlay auth) stay
-            // stuck (the regression class PR #1021 split the enum to prevent). A
-            // switch-cancellation is NOT a genuine auth failure — the deliberate,
-            // newer `.detailsEvicted` terminal must win. Applies to success too:
-            // a fetch that landed just before cancellation must not resurrect the
-            // now-non-current account.
-            if AccountsManager.fetchCompletionMayWriteTerminal(
-                currentState: switchDeps.accountStateStore.state(for: account.uuid)
-            ) {
-                if success, let details = account.details {
-                    account._setState(.detailsLoaded(details))
-                } else {
-                    account._setState(.detailsFailed(
-                        .authDocumentFetchFailed(underlyingDescription: "loadAuthenticationDocument returned false")
-                    ))
-                }
-            }
-            completion(success)
-        }
+        authDocLoader.fetchAuthDocumentWithStateMachine(for: account, completion: completion)
     }
 
-    /// Fires `fetchAuthDocumentWithStateMachine` for the current account
-    /// when its `LoadState` is non-terminal. Used by the `loadCatalogs`
-    /// warm-path to close the driver gap on cold-launch with a hot
-    /// in-memory accountSets cache — without this, `awaitReady()` callers
-    /// (audiobook open, token refresh, bookmark sync, CarPlay auth) hang
-    /// indefinitely waiting for `.detailsLoaded`/`.detailsFailed` because
-    /// nothing drives the transition. No-op when there is no current
-    /// account, or when state has already settled at a terminal value
-    /// (existing `awaitReady()` awaiters resolve via that terminal).
-    /// Single-flight guard inside `fetchAuthDocumentWithStateMachine`
-    /// dedupes against concurrent callers from `refreshInBackground` or
-    /// the library-switch path.
+    /// Forwards to `authDocLoader` (Wave 3 / 3a-3). Called synchronously from the
+    /// `currentAccount` setter, the slim-hydrate drive, and the `loadCatalogs` warm path
+    /// to close the readiness driver gap; no-op at a terminal state, redrive on a stale
+    /// `.detailsEvicted` marker. The `.detailsEvicted`-vs-`.detailsFailed` disambiguation
+    /// + the forward-compat exhaustiveness guard live in `AuthDocumentLoader`.
     internal func driveCurrentAccountAuthDocIfNeeded() {
-        guard let account = currentAccount else { return }
-        switch switchDeps.accountStateStore.state(for: account.uuid) {
-        case .detailsLoaded:
-            return // terminal — `awaitReady()` awaiters resolve via the loaded details
-        case .detailsEvicted(.libraryDeselected):
-            // `.detailsEvicted(.libraryDeselected)` is the eviction marker
-            // the `currentAccount` setter writes against the PRIOR uuid
-            // when the user switches libraries. If this account is back to
-            // being the current account, that marker is stale — re-drive
-            // the auth-doc fetch so awaitReady() callers (audiobook open,
-            // token refresh, bookmark sync, CarPlay auth) don't throw
-            // `.evicted` forever after a swap-away/swap-back.
-            //
-            // PR #1021 (Module A, swarm_51f248d5) split this case off from
-            // `.detailsFailed(.accountNotFound)` so the eviction marker
-            // stops sharing storage with the genuine HTTP-404 load failure
-            // below. Now a real `.accountNotFound` correctly hits the
-            // `.detailsFailed` arm and does NOT redrive.
-            //
-            // FORWARD-COMPAT (added by swarm_18b0d071 wave 3 Module B):
-            // This arm matches ONLY `.libraryDeselected` today because
-            // that is the only known `AccountEvictionReason`. When a NEW
-            // `AccountEvictionReason` case is added in the future, the
-            // implementer must decide between two semantics:
-            //   (a) "Re-drive on re-entry" — same semantics as
-            //       `.libraryDeselected`: the eviction was triggered by a
-            //       reversible UX action (library swap, sign-out-on-
-            //       current, etc.). Add `case .detailsEvicted(.<newReason>):`
-            //       to THIS arm (alongside `.libraryDeselected`) so
-            //       awaitReady() callers can resume after re-entry.
-            //   (b) "Do NOT re-drive" — the eviction was triggered by an
-            //       irreversible state (account deleted server-side,
-            //       policy expiry, etc.). Add a NEW
-            //       `case .detailsEvicted(.<newReason>):` arm that
-            //       `return`s (mirroring the `.detailsFailed` arm below at
-            //       line ~983) so awaitReady() correctly surfaces the
-            //       failure to consumers instead of looping fetches.
-            // The `default` case is deliberately NOT added to this switch
-            // — Swift's switch-exhaustiveness check will fail at compile
-            // time when a new `AccountEvictionReason` case is added,
-            // forcing the future implementer to make the (a)/(b) decision
-            // explicit here rather than silently inheriting the wrong
-            // behaviour from a default fall-through.
-            break
-        case .detailsFailed:
-            return // genuine load failure — caller must retry explicitly
-        case .notLoaded, .basicInfoLoaded, .detailsLoading:
-            break
-        }
-        fetchAuthDocumentWithStateMachine(for: account) { _ in }
+        authDocLoader.driveCurrentAccountAuthDocIfNeeded()
     }
 
     // MARK: – Parsing & notifying
