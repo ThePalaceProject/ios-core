@@ -11,10 +11,16 @@ public protocol DiagnosticsPreference: Sendable {
 /// UserDefaults-backed preference. Foundation-only so it lives in Core and is
 /// testable under macOS `swift test`. Absent key reads as `true` (default ON).
 public final class UserDefaultsDiagnosticsPreference: DiagnosticsPreference, @unchecked Sendable {
+    /// The single UserDefaults key both this preference and the Settings toggle
+    /// (PP-4884) read/write. Exposed so the app-side toggle binds to the exact
+    /// key the gating context provider honors — no drift between the switch a
+    /// patron flips and the choice the bot obeys.
+    public static let defaultsKey = "triagebot.includeDiagnostics"
+
     private let defaults: UserDefaults
     private let key: String
 
-    public init(defaults: UserDefaults = .standard, key: String = "triagebot.includeDiagnostics") {
+    public init(defaults: UserDefaults = .standard, key: String = UserDefaultsDiagnosticsPreference.defaultsKey) {
         self.defaults = defaults
         self.key = key
     }

@@ -11,6 +11,7 @@ import PalacePreferences
 import PalaceUIKit
 import PalaceBookModel
 import PalaceBookRegistry
+import TriageBotCore
 
 struct TPPSettingsView: View {
     typealias DisplayStrings = Strings.Settings
@@ -35,6 +36,13 @@ struct TPPSettingsView: View {
     /// `sideLoadingSection`), whose precedence is local override > Firebase
     /// remote (default off); this @AppStorage read registers the observation.
     @AppStorage(RemoteFeatureFlags.sideLoadingLocalOverrideKey) private var sideLoadingLocalOverride: Bool = false
+    /// PP-4884: the patron's "Include diagnostics" choice. Bound to the exact
+    /// key the triage bot's gating context provider reads
+    /// (`UserDefaultsDiagnosticsPreference.defaultsKey`), so flipping this switch
+    /// changes what the bot collects with no other wiring. Default ON — the bot
+    /// is most useful to support with full context; a privacy-conscious patron
+    /// can turn it off to send only app + device version.
+    @AppStorage(UserDefaultsDiagnosticsPreference.defaultsKey) private var includeTriageDiagnostics: Bool = true
     /// Feature-flag read seam (Wave 1b), resolved from the environment.
     @Environment(\.appContainer) private var appContainer
     @State private var selectedView: Int? = 0
@@ -344,6 +352,22 @@ struct TPPSettingsView: View {
                 row(title: "Get Help", index: 10, selection: self.$selectedView, destination: wrapper)
                     .accessibilityIdentifier("settings.row.getHelp")
                     .accessibilityLabel("Get Help — chat with our support bot")
+                // PP-4884: give a privacy-conscious patron a way to send fewer
+                // diagnostics. Only shown when the bot is active (the toggle is
+                // moot when no support ticket is ever assembled). The bot honors
+                // this via DiagnosticsGatingContextProvider — no other wiring.
+                // COPY PENDING PRODUCT SIGN-OFF (PP-4884 done-criterion).
+                VStack(alignment: .leading, spacing: 4) {
+                    Toggle(isOn: $includeTriageDiagnostics) {
+                        Text("Include diagnostics")
+                            .palaceFont(.body)
+                    }
+                    .accessibilityIdentifier("settings.row.includeDiagnostics")
+                    Text("When on, a support ticket includes your app and device version, network state, and a short tail of recent activity so support can solve problems faster. Turn it off to send only your app and device version.")
+                        .palaceFont(.caption)
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             case .legacyEmail(let address):
                 Button {
                     presentLegacyReportIssue(to: address)

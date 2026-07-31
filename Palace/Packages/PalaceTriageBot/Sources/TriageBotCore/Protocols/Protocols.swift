@@ -12,6 +12,13 @@ public protocol ContextProvider: Sendable {
 /// HTTP API (or, for demo, copies the JSON to the pasteboard). Failure modes
 /// surface via the throwing init — the reducer maps thrown errors to
 /// `ticketSubmissionFailed` actions.
+///
+/// Serialization contract (PP-4883): any implementation that writes the draft
+/// to an external sink (email attachment, pasteboard, network body) MUST
+/// serialize `draft.sanitizedForSubmission()` — in practice, route through
+/// `TicketWirePayload` — never the raw draft. The patron reviews the ticket
+/// field-by-field and can switch fields off; a gateway that encodes the raw
+/// draft ships fields the patron omitted (as-built gap 12).
 public protocol TicketGateway: Sendable {
     func submit(_ draft: TicketDraft) async throws -> TicketReceipt
 }

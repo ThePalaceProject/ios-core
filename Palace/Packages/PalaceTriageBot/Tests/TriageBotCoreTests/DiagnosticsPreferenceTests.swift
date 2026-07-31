@@ -87,4 +87,23 @@ final class DiagnosticsPreferenceTests: XCTestCase {
         let second = UserDefaultsDiagnosticsPreference(defaults: suite, key: "k")
         XCTAssertFalse(second.includeDiagnostics, "The OFF choice must survive across instances")
     }
+
+    // MARK: - PP-4884: the Settings toggle and the provider share one key
+
+    /// The app-side toggle writes to `UserDefaultsDiagnosticsPreference.defaultsKey`
+    /// (via @AppStorage). A default-key preference — the one the factory builds
+    /// for the gating provider — must read that exact value back. If the key
+    /// constant and the default init drift apart, a patron could flip the switch
+    /// and the bot would keep collecting everything; this pins them together.
+    func testDefaultKey_isWhatTheDefaultInitReads() {
+        let suite = UserDefaults(suiteName: "diag.key.\(UUID().uuidString)")!
+
+        // Simulate the toggle writing OFF under the shared key.
+        suite.set(false, forKey: UserDefaultsDiagnosticsPreference.defaultsKey)
+
+        // The provider built with the DEFAULT key must honor it.
+        let providerPref = UserDefaultsDiagnosticsPreference(defaults: suite)
+        XCTAssertFalse(providerPref.includeDiagnostics,
+                       "A toggle write under defaultsKey must be read by the default-key preference")
+    }
 }
