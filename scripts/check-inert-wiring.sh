@@ -68,8 +68,14 @@ fi
 CANDIDATES=$(git diff "$BASE"...HEAD --unified=0 -- 'Palace/' \
   | grep -E '^\+' | grep -vE '^\+\+\+' \
   | sed 's/^\+//' \
-  | grep -E '^\s*self\.[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\s*=\s*(\{|[A-Za-z_])' \
-  | sed 's/^\s*//' | sort -u || true)
+  | grep -E '^[[:space:]]*self\.[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*[[:space:]]*=[[:space:]]*(\{|[A-Za-z_])' \
+  | sort -u || true)
+
+# `[[:space:]]` not `\s`, and NO left-strip. BSD sed silently ignores `\s`, so a
+# `sed 's/^\s*//'` here is a no-op on macOS and a real strip on the GNU sed the
+# ubuntu tooling runner uses. That difference is invisible locally and changes what
+# the probe deletes — the detector passed its own dogfood on macOS while being
+# broken on CI.
 
 if [[ -z "$CANDIDATES" ]]; then
   echo "check-inert-wiring: no post-init wiring assignments added — nothing to check"
@@ -136,17 +142,29 @@ if idx == -1:
 open(path + ".inert-bak", "w").write(src)
 opens_closure = "{" in target and target.count("{") > target.count("}")
 if opens_closure:
-    # multi-line closure: find matching close brace at the same indent
-    indent = len(target) - len(target.lstrip())
-    end = src.find("\n" + " " * indent + "}", idx)
-    end = src.find("\n", end + 1) if end != -1 else idx + len(target)
+    # Balance braces from the assignment forward, rather than guessing the closing
+    # brace from indentation. Indent-matching depended on the candidate keeping its
+    # leading whitespace, which differs between BSD and GNU sed; when it was lost,
+    # this searched for a column-0 `}` and deleted to the end of the class.
+    depth, end = 0, None
+    for i in range(idx, len(src)):
+        if src[i] == "{":
+            depth += 1
+        elif src[i] == "}":
+            depth -= 1
+            if depth == 0:
+                end = src.find("\n", i)
+                end = end + 1 if end != -1 else len(src)
+                break
+    if end is None:
+        sys.exit(0)
     src = src[:idx] + src[end:]
 else:
     src = src.replace(target, "// [inert-wiring probe] " + target, 1)
 open(path, "w").write(src)
 PY
 
-  if xcodebuild -project Palace.xcodeproj -scheme Palace -configuration Debug \
+  if "${XCODEBUILD:-xcodebuild}" -project Palace.xcodeproj -scheme Palace -configuration Debug \
        -destination "$DEST" -derivedDataPath "$WORK/dd" \
        $ONLY_TESTING test > "$WORK/out.log" 2>&1; then
     FAILS=0
@@ -182,6 +200,10 @@ if [[ "$SURVIVED" -gt 0 ]]; then
 fi
 
 if [[ "$INCONCLUSIVE" -gt 0 ]]; then
-  echo "check-inert-wiring: $INCONCLUSIVE of $TOTAL probe(s) INCONCLUSIVE — verify those by hand."
+  echo "check-inert-wiring: $INCONCLUSIVE of $TOTAL probe(s) INCONCLUSIVE — the probe did not"
+  echo "compile, so those lines are UNVERIFIED. Exiting non-zero: a detector that cannot"
+  echo "reach a verdict must not report success, or it becomes the inert gate it exists"
+  echo "to find."
+  exit 1
 fi
 echo "check-inert-wiring: all conclusive probes killed ($TOTAL candidate(s))."

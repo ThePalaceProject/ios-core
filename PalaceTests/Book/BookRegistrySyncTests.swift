@@ -409,13 +409,16 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
         sync.load(account: account) { if $0 == .loaded { done.fulfill() } }
         wait(for: [done], timeout: 10.0)
 
-        // Both schedules are injected to 0.05s and dispatched to the main queue, so
-        // a plain main-queue hop is ordered strictly behind them — no wall-clock
-        // wait needed. (An earlier revision waited 0.5s under a comment claiming it
-        // did not sleep; the comment was wrong and the wait was the banned
-        // deadline-poll pattern.)
+        // Barrier by DEADLINE, not by queue position. GCD does not FIFO-order a
+        // plain `async` behind an already-pending `asyncAfter`, so the previous
+        // `DispatchQueue.main.async` here ran ~50ms BEFORE the schedules it was
+        // meant to outlive — leaving both "no duplicate was scheduled" assertions
+        // vacuous on this branch's headline defect. Measured: mutating the
+        // in-flight arm to schedule anyway failed 0 assertions.
+        //
+        // It does order by deadline, so a later deadline is a real barrier.
         let settled = expectation(description: "schedules would have fired")
-        DispatchQueue.main.async { settled.fulfill() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.testDelay * 4) { settled.fulfill() }
         wait(for: [settled], timeout: 5.0)
 
         XCTAssertTrue(
