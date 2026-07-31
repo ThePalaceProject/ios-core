@@ -78,15 +78,6 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 cd "$REPO_ROOT"
 
-# Load check FIRST, before anything is measured. A suite run on a saturated box
-# produces a different unrelated failure each time, each passing in isolation —
-# indistinguishable by eye from a known flake, and it has cost this project hours
-# of misdiagnosis. Advisory by design: it prints the warning and continues, so a
-# busy machine never blocks a run, but the result is labelled untrusted.
-if [[ -x "$SCRIPT_DIR/check-machine-quiet.sh" ]]; then
-  "$SCRIPT_DIR/check-machine-quiet.sh" || true
-fi
-
 QUICK=false
 REPORT_FILE=""
 SIMDRIVE=false
