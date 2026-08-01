@@ -19,4 +19,8 @@
 # MBDC `.shared` read inverted via the account-scope seam is offset by a `.shared`
 # mention in the new MyBooksDownloadCenter+AccountScope.swift rationale (the detector
 # counts prose too — Wave-0 debt noted above). Baseline held at the measured 213.
-213
+# 2026-07-31: THAT WAVE-0 DEBT IS NOW RETIRED — the detector strips comments before
+#   matching, so a `.shared` named in a doc/line comment (like the S2b rationale prose
+#   above) is no longer counted as a read. Re-baselined 213 -> 164 by that recount alone:
+#   a pure measurement correction, not 49 removed reads.
+164

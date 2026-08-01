@@ -14,6 +14,12 @@
 #
 # What is counted: occurrences of `<UpperCamelType>.shared` in Palace/*.swift,
 # EXCLUDING:
+#   - matches inside COMMENTS — `//`/`///` line comments (trailing or full-line) and
+#     block-comment lines (`/* … * … */`). A `.shared` mention in a doc comment is
+#     documentation, not a coupling edge; counting it penalizes accurate comments and
+#     produced repeated false-positive freezes during the decomposition. (Residual: a
+#     `.shared` on the SAME line after code but inside a trailing `/* … */` block, or a
+#     non-`*`-aligned block-comment continuation line, is still counted — rare.)
 #   - anything under Palace/Packages/ (SPM packages — already the target shape),
 #   - the platform/system singletons listed in SYS_EXCLUDE below (UIApplication,
 #     URLSession, URLCache, HTTPCookieStorage, FileManager, NotificationCenter,
@@ -47,12 +53,28 @@ SYS_EXCLUDE='^(UIApplication|URLSession|URLCache|HTTPCookieStorage|FileManager|N
 
 [ -d "$SCAN_ROOT" ] || { echo "[shared-read] ERROR: scan root not found: $SCAN_ROOT"; exit 2; }
 
+# Strip Swift comments so a `.shared` mention in a comment isn't counted as a read:
+#   1. drop block-comment lines (trimmed line starts with `*`, `*/`, or `/*`),
+#   2. strip trailing/full `//` line comments — only when `//` is at line-start or
+#      preceded by whitespace, so `://` inside a string URL is preserved.
+# `//` is unambiguously a comment in Swift (there is no `//` operator), so this never
+# strips real code. Line-oriented, so it is safe over cat-concatenated files.
+strip_comments() {
+  awk '{ s=$0; sub(/^[[:space:]]+/,"",s); if (s ~ "^/?[*]") next; print }' \
+    | sed -E 's#(^|[[:space:]])//.*$#\1#'
+}
+
+# Concatenate all non-Packages Swift files, strip comments, then count occurrences.
+shared_reads() {
+  find "$SCAN_ROOT" -type f -name '*.swift' -not -path '*/Packages/*' -print0 2>/dev/null \
+    | xargs -0 cat 2>/dev/null \
+    | strip_comments \
+    | grep -oE '[A-Z][A-Za-z0-9_]*\.shared' \
+    | grep -vE "$SYS_EXCLUDE"
+}
+
 count_shared() {
-  # One match per occurrence (grep -o); exclude Packages dir + system types.
-  grep -rhoE '[A-Z][A-Za-z0-9_]*\.shared' "$SCAN_ROOT" \
-      --include='*.swift' --exclude-dir='Packages' 2>/dev/null \
-    | grep -vE "$SYS_EXCLUDE" \
-    | wc -l | tr -d ' '
+  shared_reads | wc -l | tr -d ' '
 }
 
 CUR="$(count_shared)"
@@ -72,9 +94,8 @@ if [ "$CUR" -gt "$BASE" ]; then
   echo "[shared-read] FAIL: non-system \`.shared\` reads went UP: $BASE -> $CUR (+$((CUR - BASE)))."
   echo "  This ratchet is monotone-down. Inject the dependency via an AppContainer seam"
   echo "  instead of reaching for \`.shared\` (see decomposition plan §3c)."
-  echo "  New reads (sample):"
-  grep -rnE '[A-Z][A-Za-z0-9_]*\.shared' "$SCAN_ROOT" --include='*.swift' --exclude-dir='Packages' 2>/dev/null \
-    | grep -vE "$SYS_EXCLUDE" | grep -oE '[A-Z][A-Za-z0-9_]*\.shared' | sort | uniq -c | sort -rn | head -15
+  echo "  Reads by type (sample, comments excluded):"
+  shared_reads | sort | uniq -c | sort -rn | head -15
   exit 1
 fi
 
