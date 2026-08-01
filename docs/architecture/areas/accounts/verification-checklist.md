@@ -44,6 +44,13 @@ description: Per-area verification reference; refresh before next swarm/rigorous
 | `Palace/Accounts/User/UserAccountPublisher.swift` | 79-127 | `UserAccountPublisher.shared` — Combine bridge for SwiftUI auth-state observation. Has `updateState(from:)`, `markCredentialsStale()`, `markLoggedIn()`, `signOut()`. Read by SwiftUI extensions at `UserAccountPublisher+Extensions.swift:67,76,89`. | Singleton; observer-only — does NOT own state. |
 | `Palace/Accounts/AgeCheck/TPPAgeCheck.swift` | (full file) | Age-check verification flow. Wired into AccountsManager via `ageCheck.verifyCurrentAccountAgeRequirement(...)` at `AccountsManager.swift:1040-1043`. | Lifted through Phase 1 wiring. |
 
+> **Decomposition STOP (Wave 3 / 3a, 2026-07-31):** the `currentAccount` switch pipeline is the
+> composition-root orchestration spine and is deliberately NOT extracted into a `CurrentAccountStore`
+> — see the decomposition plan's "Wave 3 / 3a COMPLETE" note for the full rationale (~61 executable
+> LOC, almost no state, ~11–13-closure fan-out that conserves coupling, `@objc` witnesses can't move,
+> packageability already met via S1/S3). The five state/I/O clusters (cache/store/auth-doc/loader/
+> credentials) were extracted; the switch sequencing legitimately stays on the hub. Do not re-litigate.
+
 **`currentAccount` SETTER call sites** (production code that picks a new library — every one of these triggers the swap pipeline at `AccountsManager.swift:272-324`):
 - `Palace/CatalogUI/Views/CatalogView.swift:257`
 - `Palace/AppInfrastructure/TPPAppDelegate.swift:509`

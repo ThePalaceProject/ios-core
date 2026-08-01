@@ -4,6 +4,40 @@
 
 ---
 
+<!-- audit-verified: the five 3a extraction PRs (#1361/#1363/#1366/#1367/#1368) + #1360 were
+     authored, SoD-reviewed, and merged to develop this session (2026-07-31); F-016 is the
+     currentUserAccount nil-window / PR #822 spurious-sign-in-modal class documented in
+     verification-checklist.md §5/§7 and preserved verbatim by the 3a-5 AccountCredentialResolver. -->
+
+## Wave 3 / 3a — `AccountsManager` decomposition: COMPLETE (2026-07-31)
+
+The `AccountsManager` god-class decomposition finished at **five injected in-target
+collaborators** (2383 → 915 LOC, −62%), all merged to `develop`, each moving a cohesive
+state + I/O + lock cluster out of the hub:
+
+- `AccountRegistryCache` (3a-1, #1361) — on-disk catalog cache (FileManager I/O).
+- `AccountRegistryStore` (3a-2, #1363) — registry state + the concurrent `accountSetsLock` barrier + the `accountByUUID` index.
+- `AuthDocumentLoader` (3a-3, #1366) — auth-doc fetch state machine + the single-flight map/lock.
+- `AccountRegistryLoader` (3a-4, #1367) — catalog load orchestration + owned-crawl registry + drain.
+- `AccountCredentialResolver` (3a-5, #1368) — per-account `TPPUserAccount` cache/lock + the F-016 ride-out.
+
+Preceded by the `AccountNetworking` seam (#1360, inverting the last concrete `TPPNetworkExecutor` type edge).
+
+**3a-6 `CurrentAccountStore` — deliberately NOT extracted (STOP decision, 2026-07-31).** The
+`currentAccount` get/set switch pipeline (~61 executable LOC; almost no state of its own —
+`currentAccountId` is computed over `UserDefaults`, `isAccountSwitching` is one `Bool`) is the
+**irreducible composition-root orchestration spine**, not a god-class remnant. Extracting it
+would require an ~11–13 provider-closure fan-out (larger than 3a-4's) that conserves coupling
+while adding an indirection hop; the `@objc` `currentAccount`/`account(_:)` witnesses cannot move
+(the hub must keep forwarding facades regardless); and packageability is **already satisfied** —
+the S1/S3 seams inverted every external singleton reach, so the setter now names only
+`PalaceAccounts`-internal collaborators + `NotificationCenter` + `TPPErrorLogger`. A composition
+root that names its collaborators to sequence an account switch is correct, not a smell. The hub
+is at its irreducible core (~374 executable LOC, ~90 of it DEBUG-only test seams). **Do not
+re-litigate 3a-6.** The `PalaceAccounts` SwiftPM package move is the next, separate step when desired.
+
+---
+
 ## 1. Current-state review
 
 ### What is healthy (the target pattern is proven in-repo, not hypothetical)
