@@ -35,6 +35,49 @@ public protocol RegistryDownloadServicing: Sendable {
     /// `.lcpa` content file — the signal to schedule a silent background
     /// re-download (PP-3704). LCP-only; noDRM returns `false`.
     func lcpContentFileMissing(for book: TPPBook, account: String) -> Bool
+
+    /// What is actually on disk for a book, as load-time reconciliation needs it.
+    ///
+    /// Strictly stronger than `contentFileSatisfied`, which answers a weaker
+    /// question: for an LCP audiobook it reports `true` on the `.lcpl` LICENSE
+    /// alone, because while streaming worked a license WAS enough to play. With
+    /// streaming unusable upstream that assumption is false, and it was
+    /// denormalized across the reconciliation arms — each independently reading
+    /// "a file exists" as "the book is playable". Three separate defects came out
+    /// of that, all shaped the same way: an interrupted or cancelled LCP download
+    /// promoted to `.downloadSuccessful`, offering Listen with no audio behind it.
+    ///
+    /// Note this is NOT `lcpContentFileMissing` inverted. That predicate does not
+    /// check whether the license exists, so it cannot separate "license present,
+    /// content missing" (recoverable — re-fetch the content) from "nothing on
+    /// disk at all" (a fresh borrow, or a failed first fulfillment). Those two
+    /// map to different reconciliation outcomes, so they need distinct cases.
+    func contentPresence(for book: TPPBook, account: String) -> RegistryContentPresence
+
+    /// True while a transfer for this book is running, so reconciliation leaves an
+    /// in-flight record alone instead of scheduling a duplicate.
+    ///
+    /// Cannot be derived from `downloadInfo` alone app-side, which is why it is a
+    /// seam member: an LCP `.lcpa` transfer runs on Readium's own `URLSession` and
+    /// never registers there, so `downloadInfo` reports "nothing in flight" for the
+    /// entire multi-minute fulfillment. The adapter also consults the progress
+    /// reporter. Without both, reconciliation reads a license with no content as a
+    /// stranded book and re-downloads something already downloading — measured as a
+    /// duplicated 1.8 GB transfer on a fresh borrow, discarded on arrival.
+    func isDownloadInFlight(for book: TPPBook) -> Bool
+}
+
+/// What is on disk for a book: the `.lcpl`-license-only case distinguished from
+/// real playable content. Resolved app-side (the `#if LCP` probe cannot live in
+/// this package) and consumed by `BookRegistrySync.reconcile`.
+public enum RegistryContentPresence: Equatable, Sendable {
+    /// Nothing on disk.
+    case absent
+    /// LCP audiobook whose `.lcpl` license is present but whose `.lcpa` content
+    /// package is not. Not playable; recoverable by re-fetching the content.
+    case licenseOnly
+    /// Real, playable content on disk.
+    case present
 }
 
 /// The external collaborators `BookRegistrySync` / `BookRegistryStore` resolve

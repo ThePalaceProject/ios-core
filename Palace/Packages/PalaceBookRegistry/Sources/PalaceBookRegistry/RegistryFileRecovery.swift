@@ -218,4 +218,27 @@ enum RegistryFileRecovery {
   static func backupHasRecords(for registryURL: URL) -> Bool {
     return recoverFromBackup(for: registryURL) != nil
   }
+
+  /// True when the PRIMARY on-disk registry file currently holds a valid,
+  /// non-empty `records` array. Reads and classifies the primary bytes (not
+  /// the `.bak`). Corrupt, empty, absent, or valid-but-empty primaries all
+  /// return `false`.
+  static func primaryHasRecords(for registryURL: URL) -> Bool {
+    guard let data = try? Data(contentsOf: registryURL) else { return false }
+    if case .valid(let records) = classify(data: data), !records.isEmpty {
+      return true
+    }
+    return false
+  }
+
+  /// True when EITHER the primary registry file OR the last-good `.bak` holds
+  /// non-empty records. This is the broadened INV-1 precondition (HelpSpot
+  /// #18414): a non-authoritative EMPTY save is destructive whenever a
+  /// non-empty shelf exists on disk — whether the corrupt-rebuild flag is set
+  /// or not. `backupHasRecords` alone misses the wedge path where the shelf was
+  /// never corrupted (so no `.bak` was minted) but registry sync wedged, leaving
+  /// an empty in-memory shelf poised to clobber a healthy primary.
+  static func onDiskHasRecords(for registryURL: URL) -> Bool {
+    return primaryHasRecords(for: registryURL) || backupHasRecords(for: registryURL)
+  }
 }

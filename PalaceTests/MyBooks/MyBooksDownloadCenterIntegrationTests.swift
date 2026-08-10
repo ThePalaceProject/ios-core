@@ -800,9 +800,13 @@ final class RightsManagementDetectionTests: XCTestCase {
 // MARK: - Download Progress Publisher Tests
 
 /// Tests for download progress Combine publisher.
+/// Renamed from `DownloadProgressPublisherTests`: that name collided with the
+/// FILE name `DownloadProgressPublisherTests.swift`, whose class is actually
+/// `DownloadProgressPublisherCoreTests`. A `-only-testing:` run aimed at the
+/// publisher's own suite silently selected these two tests instead and reported a
+/// mutant as surviving when it was never exercised.
 @MainActor
-final class DownloadProgressPublisherTests: XCTestCase {
-
+final class MyBooksDownloadCenterProgressPublishingTests: XCTestCase {
     private var cancellables: Set<AnyCancellable> = []
 
     override func tearDown() {

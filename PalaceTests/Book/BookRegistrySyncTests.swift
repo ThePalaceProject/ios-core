@@ -10,29 +10,52 @@
 //
 
 import XCTest
+import Combine
 import PalaceCatalog
 @testable import Palace
 import PalaceBookModel
 @testable import PalaceBookRegistry
 
-@MainActor
-final class BookRegistrySyncTests: XCTestCase {
-
+final class BookRegistrySyncTests: PalaceWiringTestCase {
     private var store: BookRegistryStore!
     private var syncManager: BookRegistrySync!
     private var accountsManager: AccountsManager!
     private var tempDirectory: URL!
+    private var appContainer: AppContainer!
+    private var scheduler: SpyRegistryDownloadService!
+    /// Collapses production's account-switch grace period so tests assert the
+    /// DECISION instead of sleeping through it.
+    private static let testDelay: TimeInterval = 0.05
+
+    /// Builds the dependency bundle with the download seam decorated by `spy`, so a
+    /// test can force the in-flight answer and observe scheduling while every disk
+    /// probe still hits the real download center.
+    private func makeDependencies(
+        container: AppContainer,
+        spy: SpyRegistryDownloadService
+    ) -> RegistryExternalDependencies {
+        RegistryExternalDependencies(
+            downloadService: { spy },
+            loansFeedFetcher: { container.opdsFeedService },
+            sideloadedIdentifiers: { [] },
+            registryDirectory: { TPPBookContentMetadataFilesHelper.directory(for: $0) },
+            onAvailabilityChange: { NotificationService.compareAvailability(cachedRecord: $0, andNewBook: $1) }
+        )
+    }
 
     override func setUp() {
         super.setUp()
         store = BookRegistryStore()
-        let appContainer = makeTestAppContainer()
+        appContainer = makeTestAppContainer()
         accountsManager = appContainer.accountsManager
+        let container = appContainer!
+        scheduler = SpyRegistryDownloadService(wrapping: container.downloadCenter)
         syncManager = BookRegistrySync(
             store: store,
-            accountsManager: appContainer.accountsManager,
-            downloadCenterProvider: { appContainer.downloadCenter },
-            opdsFeedServiceProvider: { appContainer.opdsFeedService }
+            accountScope: AccountsManagerAccountScopeAdapter(accountsManager: container.accountsManager),
+            dependencies: makeDependencies(container: container, spy: scheduler!),
+            contentRedownloadDelay: Self.testDelay,
+            orphanRedownloadDelay: Self.testDelay
         )
 
         // Create a temp directory for registry file I/O tests
@@ -44,6 +67,8 @@ final class BookRegistrySyncTests: XCTestCase {
     override func tearDown() {
         try? FileManager.default.removeItem(at: tempDirectory)
         tempDirectory = nil
+        scheduler = nil
+        appContainer = nil
         syncManager = nil
         accountsManager = nil
         store = nil
@@ -176,27 +201,256 @@ final class BookRegistrySyncTests: XCTestCase {
 
     // MARK: - State Transition Logic During Load
 
-    func test_loadStateTransition_downloadingWithNoFile_becomesDownloadFailed() {
-        // The checkIfBookFileExists will return false for our fake book
-        // since no file is on disk. This tests the state correction logic.
-        let book = makeBook(identifier: "dl-book")
+    /// Drives `load()` end to end and asserts the state it PERSISTS.
+    ///
+    /// This replaces a stub of the same name that wrote a registry file and then
+    /// asserted only that the file existed — it never called `load()`, so the
+    /// reconciliation WIRING was entirely unpinned. The pure `reconcile`
+    /// function is exhaustively covered by `BookRegistryReconciliationTableTests`,
+    /// but a green detector proves nothing if `load()` never applies its result:
+    /// deleting `record.state = decision.state` left every test green.
+    func test_load_downloadingWithNoFileOnDisk_persistsDownloadFailed() throws {
+        let (account, url) = makeIsolatedAccount()
+        defer { cleanupAccount(url) }
+
+        let book = makeBook(identifier: "dl-book-\(UUID().uuidString)")
         let record = TPPBookRegistryRecord(book: book, state: .downloading)
-        let dict = record.dictionaryRepresentation
+        try writeRegistryFile(records: [record.dictionaryRepresentation], to: url)
 
-        // Write a registry with the downloading record
-        let registryUrl = tempDirectory
-            .appendingPathComponent("registry")
-            .appendingPathComponent("registry.json")
+        let done = expectation(description: "loaded")
+        syncManager.load(account: account) { state in
+            if state == .loaded { done.fulfill() }
+        }
+        // Bounded wait, not a deadline poll: bounded — `done` is fulfilled by load()'s own setState callback, which load invokes unconditionally on every path. This awaits a guaranteed callback rather than polling for a side effect; the deadline is a safety net, not the synchronization mechanism.
+        wait(for: [done], timeout: 10.0)  // STARVE-001-OK
 
-        do {
-            try writeRegistryFile(records: [dict], to: registryUrl)
-        } catch {
-            XCTFail("Failed to write test registry: \(error)")
-            return
+        XCTAssertEqual(
+            store.state(for: book.identifier), .downloadFailed,
+            "load() must APPLY the reconciliation decision, not merely compute it — a book left .downloading with nothing on disk did not finish downloading"
+        )
+    }
+
+    /// Kills the mutant "load() ignores `presence`". The previous wiring test
+    /// used a book with nothing on disk, so hardcoding `presence: .absent`
+    /// produced the same answer and survived.
+    func test_load_downloadingWithContentOnDisk_persistsDownloadSuccessful() throws {
+        let (account, url) = makeIsolatedAccount()
+        defer { cleanupAccount(url) }
+
+        let book = makeBook(identifier: "dl-present-\(UUID().uuidString)")
+        let record = TPPBookRegistryRecord(book: book, state: .downloading)
+        try writeRegistryFile(records: [record.dictionaryRepresentation], to: url)
+
+        // Put real content where the download center resolves this book.
+        let contentURL = try XCTUnwrap(
+            appContainer.downloadCenter.fileUrl(for: book, account: account)
+        )
+        try FileManager.default.createDirectory(at: contentURL.deletingLastPathComponent(),
+                                                withIntermediateDirectories: true)
+        try Data(repeating: 0x7A, count: 1024).write(to: contentURL)
+        defer { try? FileManager.default.removeItem(at: contentURL) }
+
+        let done = expectation(description: "loaded")
+        syncManager.load(account: account) { state in
+            if state == .loaded { done.fulfill() }
+        }
+        // Bounded wait, not a deadline poll: bounded — `done` is fulfilled by load()'s own setState callback, which load invokes unconditionally on every path. This awaits a guaranteed callback rather than polling for a side effect; the deadline is a safety net, not the synchronization mechanism.
+        wait(for: [done], timeout: 10.0)  // STARVE-001-OK
+
+        XCTAssertEqual(
+            store.state(for: book.identifier), .downloadSuccessful,
+            "load() must feed the REAL disk condition into reconcile — a download interrupted after the content landed is finished, not failed"
+        )
+    }
+
+    /// A sync manager whose accounts manager reports `account` as current.
+    ///
+    /// `load()` guards both re-download schedules on
+    /// `currentAccountId == loadedAccount` — it must not kick off a transfer
+    /// with the wrong auth context. Tests that assert scheduling therefore need
+    /// the loaded account to BE the current one, via an isolated UserDefaults
+    /// suite rather than writing to `.standard`.
+    private func makeSchedulingSyncManager(currentAccount account: String)
+        -> (BookRegistrySync, SpyRegistryDownloadService, BookRegistryStore) {
+        // Upstream 3.2.3 satisfied this guard by pointing a fresh AccountsManager at
+        // an isolated UserDefaults suite, because it compared the RAW
+        // `currentAccountId` string. develop's seam exposes `currentAccountID` as
+        // `currentAccount?.uuid` — a RESOLVED `Account` — so writing the defaults key
+        // is no longer sufficient: with no Account object for that uuid the guard
+        // reads nil, silently skips both schedules, and the test times out (which is
+        // exactly how it first failed here). Stating "this account is current"
+        // directly through the seam is both simpler and what the test means.
+        let localStore = BookRegistryStore()
+        let container = appContainer!
+        let spy = SpyRegistryDownloadService(wrapping: container.downloadCenter)
+        let sync = BookRegistrySync(
+            store: localStore,
+            accountScope: FixedAccountScope(accountID: account),
+            dependencies: makeDependencies(container: container, spy: spy),
+            contentRedownloadDelay: Self.testDelay,
+            orphanRedownloadDelay: Self.testDelay
+        )
+        return (sync, spy, localStore)
+    }
+
+    /// Kills the mutant "load() computes `schedulesContentRedownload` and never
+    /// acts on it". A license with no `.lcpa` is the exact 3.2.3 defect: the
+    /// patron holds a book that cannot play, and only this scheduling recovers it.
+    func test_load_licenseWithoutContent_schedulesTheContentRedownload() async throws {
+        let account = "brs-test-\(UUID().uuidString)"
+        let (sync, spy, localStore) = makeSchedulingSyncManager(currentAccount: account)
+        let url = try XCTUnwrap(sync.registryUrl(for: account))
+        defer { cleanupAccount(url) }
+
+        let book = makeLCPAudiobook(identifier: "lcp-sched-\(UUID().uuidString)")
+        let record = TPPBookRegistryRecord(book: book, state: .downloadSuccessful)
+        try writeRegistryFile(records: [record.dictionaryRepresentation], to: url)
+
+        let licenseURL = try XCTUnwrap(appContainer.downloadCenter.fileUrl(for: book, account: account))
+            .deletingPathExtension().appendingPathExtension("lcpl")
+        try FileManager.default.createDirectory(at: licenseURL.deletingLastPathComponent(),
+                                                withIntermediateDirectories: true)
+        try Data("{}".utf8).write(to: licenseURL)
+        defer { try? FileManager.default.removeItem(at: licenseURL) }
+
+        let done = expectation(description: "loaded")
+        sync.load(account: account) { if $0 == .loaded { done.fulfill() } }
+        // invokes unconditionally on every path — a bounded callback, not a polled side
+        // effect. The deadline is a safety net, never the synchronization mechanism.
+        // Bounded wait, not a deadline poll: bounded — `done` is fulfilled by load()'s own setState callback, which load invokes unconditionally on every path. This awaits a guaranteed callback rather than polling for a side effect; the deadline is a safety net, not the synchronization mechanism.
+        await fulfillment(of: [done], timeout: 10.0)  // STARVE-001-OK
+
+        // The re-download is DELAYED and fire-and-forget, so waiting on a deadline for it
+        // is the STARVE-001 shape. Join the scheduled Task deterministically instead.
+        await sync._awaitScheduledRedownloadsForTesting()
+
+        XCTAssertEqual(spy.lcpContentRedownloads.map(\.identifier), [book.identifier],
+                       "a license with no .lcpa must schedule exactly one content re-download")
+
+        XCTAssertEqual(localStore.state(for: book.identifier), .downloadNeeded,
+                       "a license alone is not a playable book")
+    }
+
+    /// Kills the mutant "load() drops the orphan-redownload block". Content gone
+    /// from disk with no license is a different recovery path from the one above.
+    func test_load_contentMissingEntirely_schedulesTheOrphanRedownload() async throws {
+        let account = "brs-test-\(UUID().uuidString)"
+        let (sync, spy, _) = makeSchedulingSyncManager(currentAccount: account)
+        let url = try XCTUnwrap(sync.registryUrl(for: account))
+        defer { cleanupAccount(url) }
+
+        let book = makeBook(identifier: "orphan-\(UUID().uuidString)")
+        let record = TPPBookRegistryRecord(book: book, state: .downloadSuccessful)
+        try writeRegistryFile(records: [record.dictionaryRepresentation], to: url)
+
+        let done = expectation(description: "loaded")
+        sync.load(account: account) { if $0 == .loaded { done.fulfill() } }
+        // Bounded wait, not a deadline poll: bounded — `done` is fulfilled by load()'s own setState callback, which load invokes unconditionally on every path. This awaits a guaranteed callback rather than polling for a side effect; the deadline is a safety net, not the synchronization mechanism.
+        await fulfillment(of: [done], timeout: 10.0)  // STARVE-001-OK
+
+        // Delayed fire-and-forget schedule — join it rather than racing a deadline.
+        await sync._awaitScheduledRedownloadsForTesting()
+
+        XCTAssertEqual(spy.orphanRedownloads.map(\.identifier), [book.identifier],
+                       "content gone from disk must schedule exactly one orphan re-download")
+    }
+
+    /// Kills the mutant "load() ignores `isDownloadInFlight`". `load()` is not
+    /// launch-only — the app delegate runs it on every foreground — so during a
+    /// multi-minute `.lcpa` transfer a warm load must leave the healthy
+    /// in-flight download alone rather than declare it failed.
+    func test_load_downloadInFlight_leavesTheDownloadingRecordAlone() throws {
+        let account = "brs-test-\(UUID().uuidString)"
+        let book = makeBook(identifier: "inflight-\(UUID().uuidString)")
+
+        let localStore = BookRegistryStore()
+        let container = appContainer!
+        let spy = SpyRegistryDownloadService(wrapping: container.downloadCenter)
+        spy.inFlightIdentifiers = [book.identifier]
+        let sync = BookRegistrySync(
+            store: localStore,
+            accountScope: AccountsManagerAccountScopeAdapter(accountsManager: container.accountsManager),
+            dependencies: makeDependencies(container: container, spy: spy),
+            contentRedownloadDelay: Self.testDelay,
+            orphanRedownloadDelay: Self.testDelay
+        )
+
+        let url = try XCTUnwrap(sync.registryUrl(for: account))
+        defer { cleanupAccount(url) }
+        let record = TPPBookRegistryRecord(book: book, state: .downloading)
+        try writeRegistryFile(records: [record.dictionaryRepresentation], to: url)
+
+        let done = expectation(description: "loaded")
+        sync.load(account: account) { if $0 == .loaded { done.fulfill() } }
+        // Bounded wait, not a deadline poll: bounded — `done` is fulfilled by load()'s own setState callback, which load invokes unconditionally on every path. This awaits a guaranteed callback rather than polling for a side effect; the deadline is a safety net, not the synchronization mechanism.
+        wait(for: [done], timeout: 10.0)  // STARVE-001-OK
+
+        XCTAssertEqual(
+            localStore.state(for: book.identifier), .downloading,
+            "a foreground load during a live transfer must not flip a healthy in-flight download to .downloadFailed"
+        )
+    }
+
+    /// The duplicate-download guard.
+    ///
+    /// A device trace of a fresh borrow showed reconciliation firing three times
+    /// inside eight seconds while the `.lcpa` was still transferring; each pass
+    /// saw a license with no content, and one scheduled re-download ran to
+    /// completion alongside the fulfillment — two 1.8 GB transfers for one book,
+    /// the second discarded with "an item with the same name already exists".
+    ///
+    /// `downloadInfo` cannot see the fulfillment (it lives on Readium's own
+    /// URLSession), so the transfer registry is the only thing standing between a
+    /// patron and a doubled download.
+    func test_load_licenseWithoutContent_whileFulfillmentIsRunning_schedulesNothing() async throws {
+        let account = "brs-test-\(UUID().uuidString)"
+        let (sync, spy, localStore) = makeSchedulingSyncManager(currentAccount: account)
+        let url = try XCTUnwrap(sync.registryUrl(for: account))
+        defer { cleanupAccount(url) }
+
+        let book = makeLCPAudiobook(identifier: "lcp-inflight-\(UUID().uuidString)")
+        let record = TPPBookRegistryRecord(book: book, state: .downloading)
+        try writeRegistryFile(records: [record.dictionaryRepresentation], to: url)
+
+        let licenseURL = try XCTUnwrap(appContainer.downloadCenter.fileUrl(for: book, account: account))
+            .deletingPathExtension().appendingPathExtension("lcpl")
+        try FileManager.default.createDirectory(at: licenseURL.deletingLastPathComponent(),
+                                                withIntermediateDirectories: true)
+        try Data("{}".utf8).write(to: licenseURL)
+        defer { try? FileManager.default.removeItem(at: licenseURL) }
+
+        // The fulfillment is mid-flight — exactly the device scenario.
+        appContainer.downloadCenter.progressReporter
+            .sendLCPContentDownloadActive(bookIdentifier: book.identifier, active: true)
+        defer {
+            appContainer.downloadCenter.progressReporter
+                .sendLCPContentDownloadActive(bookIdentifier: book.identifier, active: false)
         }
 
-        // Verify the file was written
-        XCTAssertTrue(FileManager.default.fileExists(atPath: registryUrl.path))
+        let done = expectation(description: "loaded")
+        sync.load(account: account) { if $0 == .loaded { done.fulfill() } }
+        // Bounded wait, not a deadline poll: bounded — `done` is fulfilled by load()'s own setState callback, which load invokes unconditionally on every path. This awaits a guaranteed callback rather than polling for a side effect; the deadline is a safety net, not the synchronization mechanism.
+        await fulfillment(of: [done], timeout: 10.0)  // STARVE-001-OK
+
+        // A negative assertion needs a real barrier: the schedules must have had their
+        // chance to fire before "nothing was scheduled" means anything. An earlier
+        // revision used a plain `DispatchQueue.main.async`, which GCD does NOT order
+        // behind an already-pending `asyncAfter` — it ran ~50ms early and left both
+        // assertions vacuous on this branch's headline defect (measured: mutating the
+        // in-flight arm to schedule anyway failed 0 assertions).
+        //
+        // Joining the tracked Tasks is a stronger barrier than any deadline: it awaits
+        // the scheduled work itself, so if the in-flight guard wrongly scheduled a
+        // re-download this cannot pass by finishing early. No wall clock involved.
+        await sync._awaitScheduledRedownloadsForTesting()
+
+        XCTAssertTrue(
+            spy.lcpContentRedownloads.isEmpty,
+            "reconciliation re-downloaded a book that was already downloading — this is the doubled 1.8 GB transfer"
+        )
+        XCTAssertTrue(spy.orphanRedownloads.isEmpty, "no orphan restart either — the book is mid-transfer")
+        XCTAssertEqual(localStore.state(for: book.identifier), .downloading,
+                       "a book whose content is actively transferring stays .downloading")
     }
 
     // MARK: - Multiple Books with Various States
@@ -1131,6 +1385,161 @@ final class BookRegistrySyncTests: XCTestCase {
         XCTAssertEqual(RegistryFileRecovery.schemaVersion(from: try? Data(contentsOf: url)),
                        RegistryFileRecovery.currentSchemaVersion,
                        "the next save must migrate the unversioned file to the current schema version")
+    }
+
+    /// An LCP audiobook shaped like a real `/loans/` acquisition: the acquisition
+    /// type is the LCP *license* MIME with the audiobook as an indirect. That
+    /// shape is what `LCPAudiobooks.canOpenBook` requires, and it is what the
+    /// server actually sends — a fixture that skips the indirect makes the
+    /// license-only branch of `contentPresence` unreachable and the test vacuous.
+    private func makeLCPAudiobook(identifier: String) -> TPPBook {
+        let acquisition = TPPOPDSAcquisition(
+            relation: .generic,
+            type: "application/vnd.readium.lcp.license.v1.0+json",
+            hrefURL: URL(string: "https://example.org/loans/\(identifier)")!,
+            indirectAcquisitions: [
+                TPPOPDSIndirectAcquisition(type: "application/audiobook+lcp", indirectAcquisitions: [])
+            ],
+            availability: TPPOPDSAcquisitionAvailabilityUnlimited()
+        )
+        return TPPBook(
+            acquisitions: [acquisition],
+            authors: nil, categoryStrings: nil, distributor: nil,
+            identifier: identifier, imageURL: nil, imageThumbnailURL: nil,
+            published: nil, publisher: nil, subtitle: nil, summary: nil,
+            title: "LCP Audiobook", updated: Date(),
+            annotationsURL: nil, analyticsURL: nil, alternateURL: nil,
+            relatedWorksURL: nil, previewLink: nil, seriesURL: nil,
+            revokeURL: nil, reportURL: nil, timeTrackingURL: nil,
+            contributors: nil, bookDuration: nil, imageCache: MockImageCache()
+        )
+    }
+}
+
+/// Reports one fixed library as current, with credentials present.
+///
+/// `load()`'s two re-download schedules are guarded on
+/// `currentAccountID == loadedAccount` — they must not start a transfer under the
+/// wrong auth context. Tests asserting scheduling therefore need the loaded account
+/// to BE the current one, which this states directly instead of standing up an
+/// `AccountsManager` whose `currentAccount` would have to resolve a real `Account`.
+final class FixedAccountScope: AccountScopeProviding, @unchecked Sendable {
+    let accountID: String
+    init(accountID: String) { self.accountID = accountID }
+
+    var currentAccountID: String? { accountID }
+
+    var accountDidChangePublisher: AnyPublisher<Void, Never> {
+        Empty<Void, Never>(completeImmediately: false).eraseToAnyPublisher()
+    }
+
+    /// True so `sync()` clears its no-credentials gate. `load()` does not consult
+    /// this, but the same scope is reused for sync-path coverage.
+    func hasCredentials(forAccount accountID: String) -> Bool { true }
+
+    func loansURL(forAccount accountID: String, readinessTimeout: TimeInterval) async throws -> URL? {
+        nil
+    }
+}
+
+/// Decorates the REAL download service so reconciliation still probes actual
+/// files on disk, while making the two things a unit test cannot stand up
+/// controllable: what is in flight, and what got scheduled.
+///
+/// Replaces the upstream 3.2.3 pair `SpyRedownloadScheduler` +
+/// `StubInFlightSync`. Neither ports to develop: the scheduling calls already go
+/// through the injectable `RegistryDownloadServicing` seam (so a second
+/// `RegistryRedownloadScheduling` protocol would be a redundant abstraction), and
+/// `BookRegistrySync` is `final` here, so the subclass-override stub cannot
+/// compile. Decorating the seam covers both needs without weakening either.
+///
+/// `@unchecked Sendable` invariant: every mutable property is read and written
+/// only under `lock`.
+final class SpyRegistryDownloadService: RegistryDownloadServicing, @unchecked Sendable {
+    private let wrapped: any RegistryDownloadServicing
+    private let lock = NSLock()
+    private var _lcpContentRedownloads: [TPPBook] = []
+    private var _orphanRedownloads: [TPPBook] = []
+    private var _inFlightIdentifiers: Set<String> = []
+    private var _onLCPContentRedownload: ((TPPBook) -> Void)?
+    private var _onOrphanRedownload: ((TPPBook) -> Void)?
+
+    init(wrapping wrapped: any RegistryDownloadServicing) {
+        self.wrapped = wrapped
+    }
+
+    // MARK: Controls
+
+    /// Books reconciliation should believe are mid-transfer. Forced because the real
+    /// answer needs a live `URLSession` task (or an in-flight Readium fulfillment).
+    var inFlightIdentifiers: Set<String> {
+        get { lock.lock(); defer { lock.unlock() }; return _inFlightIdentifiers }
+        set { lock.lock(); defer { lock.unlock() }; _inFlightIdentifiers = newValue }
+    }
+
+    var onLCPContentRedownload: ((TPPBook) -> Void)? {
+        get { lock.lock(); defer { lock.unlock() }; return _onLCPContentRedownload }
+        set { lock.lock(); defer { lock.unlock() }; _onLCPContentRedownload = newValue }
+    }
+
+    var onOrphanRedownload: ((TPPBook) -> Void)? {
+        get { lock.lock(); defer { lock.unlock() }; return _onOrphanRedownload }
+        set { lock.lock(); defer { lock.unlock() }; _onOrphanRedownload = newValue }
+    }
+
+    // MARK: Observations
+
+    var lcpContentRedownloads: [TPPBook] {
+        lock.lock(); defer { lock.unlock() }; return _lcpContentRedownloads
+    }
+
+    var orphanRedownloads: [TPPBook] {
+        lock.lock(); defer { lock.unlock() }; return _orphanRedownloads
+    }
+
+    // MARK: RegistryDownloadServicing
+
+    func redownloadLCPContentFile(for book: TPPBook) {
+        lock.lock(); _lcpContentRedownloads.append(book); let hook = _onLCPContentRedownload; lock.unlock()
+        hook?(book)
+    }
+
+    func startDownload(for book: TPPBook) {
+        lock.lock(); _orphanRedownloads.append(book); let hook = _onOrphanRedownload; lock.unlock()
+        hook?(book)
+    }
+
+    /// Forced OR real. `inFlightIdentifiers` covers tests that cannot stand up a
+    /// transfer at all; delegating as well keeps the tests that DO signal through
+    /// the real progress reporter (`sendLCPContentDownloadActive`) honest — that is
+    /// the path the doubled-download defect actually travelled.
+    func isDownloadInFlight(for book: TPPBook) -> Bool {
+        lock.lock()
+        let forced = _inFlightIdentifiers.contains(book.identifier)
+        lock.unlock()
+        return forced || wrapped.isDownloadInFlight(for: book)
+    }
+
+    // Real disk probes — the reconciliation tests write actual content/license
+    // files and must see the production answer, not a canned one.
+    func fileUrl(for book: TPPBook, account: String?) -> URL? {
+        wrapped.fileUrl(for: book, account: account)
+    }
+
+    func deleteLocalContent(forBook book: TPPBook, account: String?) {
+        wrapped.deleteLocalContent(forBook: book, account: account)
+    }
+
+    func contentFileSatisfied(for book: TPPBook, account: String) -> Bool {
+        wrapped.contentFileSatisfied(for: book, account: account)
+    }
+
+    func lcpContentFileMissing(for book: TPPBook, account: String) -> Bool {
+        wrapped.lcpContentFileMissing(for: book, account: account)
+    }
+
+    func contentPresence(for book: TPPBook, account: String) -> RegistryContentPresence {
+        wrapped.contentPresence(for: book, account: account)
     }
 }
 

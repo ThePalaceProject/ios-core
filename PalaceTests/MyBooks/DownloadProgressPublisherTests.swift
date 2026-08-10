@@ -12,7 +12,6 @@ import Combine
 
 @MainActor
 final class DownloadProgressPublisherCoreTests: XCTestCase {
-
     private var reporter: DownloadProgressReporter!
     private var cancellables: Set<AnyCancellable>!
 
@@ -286,5 +285,185 @@ final class DownloadProgressPublisherCoreTests: XCTestCase {
         let publishing: DownloadProgressPublishing = reporter
         XCTAssertNotNil(publishing.downloadProgressPublisher)
         XCTAssertNotNil(publishing.downloadErrorPublisher)
+    }
+
+    // MARK: - Active content-transfer registry
+    //
+    // Reconciliation reads this from a background queue to decide whether a
+    // license-without-content book is stranded or still downloading. It must
+    // answer WITHOUT waiting for the main-actor publish, or the reconciliation
+    // pass that runs in between schedules a duplicate archive download.
+
+    func testTransferRegistry_reflectsActiveImmediately_withoutAwaitingThePublish() {
+        let reporter = DownloadProgressReporter()
+        XCTAssertFalse(reporter.isLCPContentTransferActive(for: "book-1"), "precondition")
+
+        reporter.sendLCPContentDownloadActive(bookIdentifier: "book-1", active: true)
+
+        // Deliberately no main-queue drain: the point is that a reader running
+        // before the published edge lands still sees the transfer.
+        XCTAssertTrue(
+            reporter.isLCPContentTransferActive(for: "book-1"),
+            "the registry must update synchronously — reconciliation runs off the main actor and a stale read schedules a duplicate 1.8 GB download"
+        )
+    }
+
+    func testTransferRegistry_clearsOnCompletion() {
+        let reporter = DownloadProgressReporter()
+        reporter.sendLCPContentDownloadActive(bookIdentifier: "book-1", active: true)
+        reporter.sendLCPContentDownloadActive(bookIdentifier: "book-1", active: false)
+
+        XCTAssertFalse(
+            reporter.isLCPContentTransferActive(for: "book-1"),
+            "a transfer left registered after it ends would suppress the recovery re-download the book depends on"
+        )
+    }
+
+    func testTransferRegistry_isScopedPerBook() {
+        let reporter = DownloadProgressReporter()
+        reporter.sendLCPContentDownloadActive(bookIdentifier: "book-1", active: true)
+
+        XCTAssertFalse(
+            reporter.isLCPContentTransferActive(for: "book-2"),
+            "one book's transfer must not suppress another book's recovery"
+        )
+    }
+
+    // MARK: - Idle expiry and heartbeat
+    //
+    // The completion handler is NOT guaranteed to run: LicensesService swallows
+    // NSURLErrorCancelled without calling it. The idle window is the backstop, and
+    // it is IDLE rather than total duration because a 1.8 GB archive on a slow
+    // connection legitimately outlives any total-duration cap.
+
+    func testTransferRegistry_expiresATransferThatHasGoneQuiet() {
+        let reporter = DownloadProgressReporter()
+        var now: TimeInterval = 1_000
+        reporter.monotonicClock = { now }
+
+        reporter.sendLCPContentDownloadActive(bookIdentifier: "book-1", active: true)
+        XCTAssertTrue(reporter.isLCPContentTransferActive(for: "book-1"), "precondition")
+
+        now += DownloadProgressReporter.contentTransferIdleTimeout + 1
+
+        XCTAssertFalse(
+            reporter.isLCPContentTransferActive(for: "book-1"),
+            "a cancelled fulfillment never reports completion — without idle expiry the book is pinned at .downloading forever"
+        )
+    }
+
+    func testTransferRegistry_heartbeatKeepsALongDownloadAlive() {
+        let reporter = DownloadProgressReporter()
+        var now: TimeInterval = 1_000
+        reporter.monotonicClock = { now }
+
+        reporter.sendLCPContentDownloadActive(bookIdentifier: "book-1", active: true)
+
+        // A long transfer that keeps reporting bytes, well past the idle window.
+        for _ in 0..<5 {
+            now += DownloadProgressReporter.contentTransferIdleTimeout - 1
+            reporter.sendProgress(bookIdentifier: "book-1", progress: 0.5)
+        }
+        now += DownloadProgressReporter.contentTransferIdleTimeout - 1
+
+        XCTAssertTrue(
+            reporter.isLCPContentTransferActive(for: "book-1"),
+            "the window is IDLE, not total duration — a slow 1.8 GB download that is still transferring must not be declared dead"
+        )
+    }
+
+    func testTransferRegistry_progressForAnUnregisteredBookDoesNotRegisterIt() {
+        let reporter = DownloadProgressReporter()
+        reporter.sendProgress(bookIdentifier: "book-1", progress: 0.5)
+
+        XCTAssertFalse(reporter.isLCPContentTransferActive(for: "book-1"),
+                       "an ordinary download's progress must not masquerade as an LCP content transfer")
+    }
+
+    /// The cancel path calls this directly, because Readium never invokes the
+    /// fulfillment completion handler for a cancelled transfer.
+    func testClearTransfer_dropsTheRegistrationWithoutACompletion() {
+        let reporter = DownloadProgressReporter()
+        reporter.sendLCPContentDownloadActive(bookIdentifier: "book-1", active: true)
+
+        reporter.clearLCPContentTransfer(for: "book-1")
+
+        XCTAssertFalse(reporter.isLCPContentTransferActive(for: "book-1"),
+                       "cancel must release the registration, or the book stays pinned behind a bar that never moves")
+    }
+
+    // MARK: - The UI edge on release
+    //
+    // `isDownloadingLCPContent` is driven ONLY by `lcpContentDownloadPublisher`,
+    // and `HalfSheetProgressCue` reads that flag ahead of book state. Dropping a
+    // registration without publishing therefore unsticks reconciliation while
+    // leaving a determinate bar frozen on screen indefinitely.
+
+    func testClearTransfer_publishesTheInactiveEdge() {
+        let reporter = DownloadProgressReporter()
+        var edges: [(String, Bool)] = []
+        let sub = reporter.lcpContentDownloadPublisher.sink { edges.append(($0.0, $0.1)) }
+        defer { sub.cancel() }
+
+        reporter.sendLCPContentDownloadActive(bookIdentifier: "book-1", active: true)
+        reporter.clearLCPContentTransfer(for: "book-1")
+
+        let settled = expectation(description: "edges delivered")
+        DispatchQueue.main.async { settled.fulfill() }
+        // Bounded wait, not a deadline poll: FIFO main-queue drain, not a poll — the fulfilling `DispatchQueue.main.async` is enqueued AFTER the work under test, so serial-queue ordering guarantees that work has already run.
+        wait(for: [settled], timeout: 5.0)  // STARVE-001-OK
+
+        XCTAssertEqual(edges.map(\.1), [true, false],
+                       "a cancelled transfer must publish its own release, or the bar never clears")
+    }
+
+    func testIdleExpiry_publishesTheInactiveEdge() {
+        let reporter = DownloadProgressReporter()
+        var now: TimeInterval = 1_000
+        reporter.monotonicClock = { now }
+        var edges: [(String, Bool)] = []
+        let sub = reporter.lcpContentDownloadPublisher.sink { edges.append(($0.0, $0.1)) }
+        defer { sub.cancel() }
+
+        reporter.sendLCPContentDownloadActive(bookIdentifier: "book-1", active: true)
+        now += DownloadProgressReporter.contentTransferIdleTimeout + 1
+        _ = reporter.isLCPContentTransferActive(for: "book-1")
+
+        let settled = expectation(description: "edges delivered")
+        DispatchQueue.main.async { settled.fulfill() }
+        // Bounded wait, not a deadline poll: FIFO main-queue drain, not a poll — the fulfilling `DispatchQueue.main.async` is enqueued AFTER the work under test, so serial-queue ordering guarantees that work has already run.
+        wait(for: [settled], timeout: 5.0)  // STARVE-001-OK
+
+        XCTAssertEqual(edges.map(\.1), [true, false],
+                       "expiring a dead transfer must also release the UI, not just reconciliation")
+    }
+
+    /// A clear for a book that was never registered must stay silent, or an
+    /// unrelated cancel emits a spurious edge that clears someone else's cue.
+    func testClearTransfer_forAnUnregisteredBook_publishesNothing() {
+        let reporter = DownloadProgressReporter()
+        var edges: [(String, Bool)] = []
+        let sub = reporter.lcpContentDownloadPublisher.sink { edges.append(($0.0, $0.1)) }
+        defer { sub.cancel() }
+
+        reporter.clearLCPContentTransfer(for: "never-registered")
+
+        // Barrier with a REAL edge rather than a main-queue hop. The publish path
+        // is `Task { @MainActor }`, which a `DispatchQueue.main.async` does not
+        // order behind — so draining the main queue could return before a spurious
+        // edge arrived, letting the `if wasRegistered` guard go inert. Sending a
+        // known edge and waiting for it guarantees any earlier one has landed too.
+        reporter.sendLCPContentDownloadActive(bookIdentifier: "sentinel", active: true)
+        let sentinel = expectation(description: "sentinel edge delivered")
+        var seenSentinel = false
+        let watch = reporter.lcpContentDownloadPublisher.sink {
+            if $0.0 == "sentinel" && !seenSentinel { seenSentinel = true; sentinel.fulfill() }
+        }
+        defer { watch.cancel(); reporter.clearLCPContentTransfer(for: "sentinel") }
+        // Bounded wait, not a deadline poll: bounded — waits for a sentinel edge this test itself publishes through a PassthroughSubject with a live sink; delivery is synchronous, so the edge is guaranteed.
+        wait(for: [sentinel], timeout: 5.0)  // STARVE-001-OK
+
+        XCTAssertEqual(edges.filter { $0.0 == "never-registered" }.count, 0,
+                       "no registration, no edge — an unrelated cancel must not clear another book's cue")
     }
 }
