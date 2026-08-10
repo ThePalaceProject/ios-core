@@ -78,9 +78,56 @@ final class AccountScopeAdapterTests: PalaceWiringTestCase {
         let manager = makeFreshAccountsManager()
         let adapter = AccountsManagerAccountScopeAdapter(accountsManager: manager)
 
-        let url = try? await adapter.loansURL(forAccount: "does-not-exist-\(UUID().uuidString)")
+        let url = try? await adapter.loansURL(
+            forAccount: "does-not-exist-\(UUID().uuidString)",
+            readinessTimeout: 30
+        )
 
         XCTAssertNil(url ?? nil, "unknown account → nil loans URL (safe revert)")
+    }
+
+    /// THE #18414 PRODUCER TEST. An account wedged at `.detailsLoading` — the
+    /// dropped-`authentication_document`-completion state — must make the adapter
+    /// THROW `.readinessTimedOut` once the caller's bound elapses, never hang.
+    ///
+    /// Why this test exists at this layer: the 3.2.3 hotfix's timeout test
+    /// (`BookRegistrySyncReadinessTests.testReadiness_wedgedAtDetailsLoading_bounded_…`)
+    /// exercises `Account.awaitReady(timeout:)` — the HELPER — directly. When the
+    /// Wave 3 S2 seam extraction moved the readiness await into this adapter and
+    /// dropped `timeout:`, that helper test stayed green while the real production
+    /// path went unbounded again: registry sync never completed and My Books spun
+    /// forever (HelpSpot #18619, #18624). Only a test on the producer catches that.
+    ///
+    /// Kill case: revert the adapter to the unbounded `account.awaitReady()` and this
+    /// test fails on XCTest's own timeout instead of the assertion — it cannot pass.
+    func testLoansURL_accountWedgedAtDetailsLoading_throwsReadinessTimedOutWithinBound() async {
+        let manager = makeFreshAccountsManager()
+        let uuid = "adapter-wedged-\(UUID().uuidString)"
+        let account = makeAccount(uuid: uuid)
+        _ = manager._seedAccountForTesting(account)
+        account._setState(.detailsLoading)   // wedged; no transition ever comes
+
+        let adapter = AccountsManagerAccountScopeAdapter(accountsManager: manager)
+        let bound: TimeInterval = 0.3
+        let started = ProcessInfo.processInfo.systemUptime
+
+        do {
+            _ = try await adapter.loansURL(forAccount: uuid, readinessTimeout: bound)
+            XCTFail("A wedged account must not resolve — the adapter has to surface the timeout so the registry can revert to .loaded and retry")
+        } catch let error as AccountLoadError {
+            guard case .readinessTimedOut = error else {
+                return XCTFail("Expected .readinessTimedOut so BookRegistrySync.sync's catch reverts to .loaded; got \(error)")
+            }
+        } catch {
+            XCTFail("Expected AccountLoadError.readinessTimedOut, got \(type(of: error)): \(error)")
+        }
+
+        // The adapter must honor the CALLER's bound, not some longer internal one.
+        // Generous ceiling (bound × 10) so a starved parallel sim clone can't flake
+        // this; an unbounded await blows past any ceiling because it never returns.
+        let elapsed = ProcessInfo.processInfo.systemUptime - started
+        XCTAssertLessThan(elapsed, bound * 10,
+                          "the adapter must give up on the caller's timeout, not wait indefinitely (elapsed \(elapsed)s for a \(bound)s bound)")
     }
 
     /// A library with no stored credentials reports false — the gate that makes

@@ -63,6 +63,20 @@ final class BookRegistrySync: @unchecked Sendable {
   /// (which would deadlock). See `saveSync(for:)`.
   private let diskWriteQueueKey = DispatchSpecificKey<Void>()
 
+  /// Upper bound on how long `sync()` waits for account-details readiness before
+  /// giving up and reverting to `.loaded` (HelpSpot #18414). A wedged per-UUID
+  /// `authentication_document` fetch — network completion dropped, account parked
+  /// at `.detailsLoading` — used to make the readiness await hang forever: registry
+  /// sync never completed, My Books spun indefinitely, and nothing short of a
+  /// sign-out recovered it.
+  ///
+  /// This engine owns the value because it owns the retry cadence
+  /// (`waitForLoadThenRunSync` + account-change notifications drive the next
+  /// attempt). Aborting here also means a wedge NEVER reaches the
+  /// reconciliation/save block with an empty in-memory shelf, so it cannot trigger
+  /// an empty-over-good persist.
+  static let authReadinessTimeout: TimeInterval = 30
+
   var syncUrl: URL?
   var loadingAccount: String?
 
@@ -438,13 +452,20 @@ final class BookRegistrySync: @unchecked Sendable {
       // `awaitReady()`. Pre-Phase-1 this silently returned on first cold-
       // launch (details still loading → loansUrl nil → guard bailed →
       // registry stuck `.loaded` empty until the next sync trigger). Now
-      // we block on terminal state. On `AccountLoadError` we revert state
-      // to `.loaded` (BookRegistrySync's own retry policy from
-      // `waitForLoadThenRunSync` / account-change notifications drives the
-      // next attempt — per the ADR's "no additional timeout" UX policy).
+      // we block on terminal state, but BOUNDED by `authReadinessTimeout`
+      // (HelpSpot #18414): a wedged auth-doc fetch used to hang this await
+      // forever. On any `AccountLoadError` — including `.readinessTimedOut` —
+      // we revert state to `.loaded` so this engine's own retry policy
+      // (`waitForLoadThenRunSync` / account-change notifications) drives the
+      // next attempt. This is the ONE bounded readiness await in the app; the
+      // ADR's "no additional timeout" policy applies to consumers that own a
+      // pipeline-level timeout, and registry sync owns none.
       let loansUrl: URL
       do {
-        guard let resolvedLoansUrl = try await accountScope.loansURL(forAccount: accountUUID) else {
+        guard let resolvedLoansUrl = try await accountScope.loansURL(
+          forAccount: accountUUID,
+          readinessTimeout: Self.authReadinessTimeout
+        ) else {
           Log.debug(#file, "BookRegistrySync abort: account \(accountUUID) has no loansUrl after awaitReady — anonymous library")
           await MainActor.run {
             callbacks.setState(.loaded)
