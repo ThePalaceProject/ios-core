@@ -126,9 +126,28 @@
 # Code-line counts (2026-07-31 recount). Physical `wc -l` at this same tree was:
 #   AudiobookSessionManager 3093, AccountsManager 915, MyBooksDownloadCenter 2184,
 #   BookDetailViewModel 1378, TPPSignInBusinessLogic 1261, BorrowOperation 968.
+# 3.2.3 build-492 forward-port (+12 MyBooksDownloadCenter, +15 BookDetailViewModel).
+#   Carrying PR #1362 from main into develop: the duplicate-LCP-archive-download guard, the
+#   half-sheet progress cue, and the stop-offering-Listen-before-audio-exists fix. This code
+#   ALREADY SHIPS to patrons on main; refusing it here would mean 3.3.0 regressing behavior
+#   the 3.2.x hotfix line already fixed, which the freeze was never meant to do.
+#   Both deltas are code, not doc accretion — measured with the code-line counter, and the
+#   third frozen file the raw diff appeared to grow (AudiobookSessionManager, +2 physical)
+#   is +0 here because that growth was entirely comments.
+#   Why not extracted instead: MBDC's +12 is post-init wiring of the progress reporter into
+#   the three collaborators MBDC itself OWNS (localContentService, startCoordinator,
+#   cancellationHandler) plus the publisher property and two closures — a wiring type would
+#   relocate the same lines and add an indirection. BookDetailViewModel's +15 is its own
+#   `@Published isDownloadingLCPContent`, the seed-from-registry read, and the Combine
+#   subscription — view-model state belongs in the view model. Extracting either would also
+#   make develop's LCP code structurally DIVERGE from main's, which is what makes the next
+#   hotfix port hard; this port exists precisely to stop that divergence.
+#   Nets negative at the 3b package move, when the MBDC cluster leaves the hub for
+#   PalaceDownloads. Re-baselined by the exact delta; the freeze still catches any further
+#   unrelated growth.
 1571 Palace/Audiobooks/AudiobookSessionManager.swift
 374 Palace/Accounts/Library/AccountsManager.swift
-1244 Palace/MyBooks/MyBooksDownloadCenter.swift
-966 Palace/Book/UI/BookDetail/BookDetailViewModel.swift
+1256 Palace/MyBooks/MyBooksDownloadCenter.swift
+981 Palace/Book/UI/BookDetail/BookDetailViewModel.swift
 638 Palace/SignInLogic/TPPSignInBusinessLogic.swift
 575 Palace/MyBooks/BorrowOperation.swift
