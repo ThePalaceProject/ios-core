@@ -389,12 +389,13 @@ final class BookDetailViewModel: ObservableObject {
         // Seed from the registry BEFORE subscribing. `lcpContentDownloadPublisher`
         // is a PassthroughSubject with no replay, so a model constructed AFTER the
         // transfer started would never learn about it and would sit at `false` for
-        // the whole download. That is the normal case, not an edge case: the cell
-        // model is cache-built on demand with a 120s unused TTL while the measured
-        // archives (438 MB / 778 MB / 1.9 GB) all run past three minutes, so a
-        // patron opening a book mid-transfer gets a fresh model every time.
-        // Without this the cue falls to `.idle`, the shelf offers "Download", and
-        // the tap is a silent no-op for the entire transfer.
+        // the whole download. That is the normal case here, not an edge case: this
+        // view model is built when the patron OPENS the book detail, while the
+        // measured archives (438 MB / 778 MB / 1.9 GB) all run past three minutes —
+        // so opening a book mid-transfer is precisely the common path, and it always
+        // gets a fresh model. Without this seed the cue falls to `.idle`, the sheet
+        // offers "Download", and the tap is a silent no-op for the rest of the
+        // transfer.
         isDownloadingLCPContent = downloadCenter.progressReporter
             .isLCPContentTransferActive(for: book.identifier)
 

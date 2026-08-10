@@ -74,9 +74,15 @@ protocol HalfSheetProvider: ObservableObject, BookButtonProvider {
     /// this book. With LCP streaming broken upstream, the whole archive must be
     /// on disk before playback, and for a book that is already
     /// `.downloadSuccessful` with only its content missing there is no
-    /// `.downloading` state to drive the usual progress bar. Default `false` so
-    /// providers that never see this path (e.g. `BookCellModel`) don't have to
-    /// opt in mechanically.
+    /// `.downloading` state to drive the usual progress bar.
+    ///
+    /// Defaulted `false` for providers that genuinely never reach this path — but
+    /// note that BOTH current providers do implement it. `BookCellModel`
+    /// deliberately overrides: the content self-heal fires for books on the My
+    /// Books shelf, which that model backs, so taking the default there showed no
+    /// progress for the entire transfer. Treat the default as a compatibility
+    /// affordance for a future provider, not as evidence that a given provider is
+    /// off this path — check the provider.
     var isDownloadingLCPContent: Bool { get }
 
     /// Error alert to present via SwiftUI `.alert` on the half sheet.

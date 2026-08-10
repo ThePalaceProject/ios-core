@@ -103,7 +103,6 @@ final class DownloadCancellationHandler: @unchecked Sendable {
     func cancelDownload(for identifier: String) {
         let state = bookRegistry.state(for: identifier)
 
-
         guard let info = stateManager.bookIdentifierToDownloadInfo.syncGet(identifier) else {
             // No URL session task — only allow cancellation for states
             // that signify a download or borrow is genuinely in flight.

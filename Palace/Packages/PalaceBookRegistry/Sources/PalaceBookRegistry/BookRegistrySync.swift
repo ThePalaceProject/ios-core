@@ -331,7 +331,8 @@ final class BookRegistrySync: @unchecked Sendable {
               return
             }
             for book in lcpRedownloadSnapshot {
-              downloadService.redownloadLCPContentFile(for: book)            }
+              downloadService.redownloadLCPContentFile(for: book)
+            }
           }
         }
 
@@ -346,7 +347,8 @@ final class BookRegistrySync: @unchecked Sendable {
               return
             }
             for book in orphanRedownloadSnapshot {
-              downloadService.startDownload(for: book)            }
+              downloadService.startDownload(for: book)
+            }
           }
         }
       }
