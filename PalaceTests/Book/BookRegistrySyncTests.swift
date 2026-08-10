@@ -322,7 +322,7 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
 
         // The re-download is DELAYED and fire-and-forget, so waiting on a deadline for it
         // is the STARVE-001 shape. Join the scheduled Task deterministically instead.
-        await BookRegistrySync._awaitScheduledRedownloadsForTesting()
+        await sync._awaitScheduledRedownloadsForTesting()
 
         XCTAssertEqual(spy.lcpContentRedownloads.map(\.identifier), [book.identifier],
                        "a license with no .lcpa must schedule exactly one content re-download")
@@ -349,7 +349,7 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
         await fulfillment(of: [done], timeout: 10.0)  // STARVE-001-OK
 
         // Delayed fire-and-forget schedule — join it rather than racing a deadline.
-        await BookRegistrySync._awaitScheduledRedownloadsForTesting()
+        await sync._awaitScheduledRedownloadsForTesting()
 
         XCTAssertEqual(spy.orphanRedownloads.map(\.identifier), [book.identifier],
                        "content gone from disk must schedule exactly one orphan re-download")
@@ -442,7 +442,7 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
         // Joining the tracked Tasks is a stronger barrier than any deadline: it awaits
         // the scheduled work itself, so if the in-flight guard wrongly scheduled a
         // re-download this cannot pass by finishing early. No wall clock involved.
-        await BookRegistrySync._awaitScheduledRedownloadsForTesting()
+        await sync._awaitScheduledRedownloadsForTesting()
 
         XCTAssertTrue(
             spy.lcpContentRedownloads.isEmpty,

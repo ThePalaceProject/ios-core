@@ -143,11 +143,20 @@ final class BookRegistrySync: @unchecked Sendable {
   /// conditional compilation, matching `AccountRegistryLoader._trackedCrawlTasks`.
   private static let _isRunningUnderXCTest =
     ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
-  private static let _scheduledRedownloadsLock = NSLock()
-  nonisolated(unsafe) private static var _scheduledRedownloads: [Task<Void, Never>] = []
+
+  /// PER-INSTANCE, deliberately NOT static. A static array is shared by every
+  /// `BookRegistrySync` in the test process, so one test's join drains another
+  /// test's tasks — the join returns early, its assertion runs before the schedule
+  /// fires, and the test fails or (worse) passes vacuously. That is the shared-
+  /// mutable-static pollution class CI is built to catch, and it did: the first
+  /// revision of this seam was static and failed
+  /// `test_load_contentMissingEntirely_schedulesTheOrphanRedownload` on CI while
+  /// passing locally, where the interleaving happened to be benign.
+  private let _scheduledRedownloadsLock = NSLock()
+  nonisolated(unsafe) private var _scheduledRedownloads: [Task<Void, Never>] = []
 
   /// Schedules `body` on the main queue after `delay`, retaining the Task under XCTest.
-  private static func trackScheduledRedownload(
+  private func trackScheduledRedownload(
     after delay: TimeInterval,
     _ body: @escaping @Sendable () -> Void
   ) {
@@ -156,25 +165,25 @@ final class BookRegistrySync: @unchecked Sendable {
       guard !Task.isCancelled else { return }
       body()
     }
-    guard _isRunningUnderXCTest else { return }
+    guard Self._isRunningUnderXCTest else { return }
     _scheduledRedownloadsLock.lock()
     _scheduledRedownloads.append(task)
     _scheduledRedownloadsLock.unlock()
   }
 
   /// Snapshot-then-await without holding the lock across an await (Swift 6 bans it).
-  private static func _snapshotScheduledRedownloadsForTesting() -> [Task<Void, Never>] {
+  /// Does NOT clear: a join must be idempotent, so a second call cannot silently
+  /// return early because the first drained the list.
+  private func _snapshotScheduledRedownloadsForTesting() -> [Task<Void, Never>] {
     _scheduledRedownloadsLock.lock()
     defer { _scheduledRedownloadsLock.unlock() }
-    let snapshot = _scheduledRedownloads
-    _scheduledRedownloads.removeAll()
-    return snapshot
+    return _scheduledRedownloads
   }
 
-  /// Test-only NARROW deterministic JOIN seam: awaits every scheduled re-download,
-  /// including its delay, so a test can assert on what was (or was not) scheduled
-  /// without a wall-clock deadline.
-  static func _awaitScheduledRedownloadsForTesting() async {
+  /// Test-only NARROW deterministic JOIN seam: awaits every re-download this
+  /// instance scheduled, including its delay, so a test can assert on what was (or
+  /// was not) scheduled without a wall-clock deadline.
+  func _awaitScheduledRedownloadsForTesting() async {
     for task in _snapshotScheduledRedownloadsForTesting() {
       _ = await task.value
     }
@@ -380,7 +389,7 @@ final class BookRegistrySync: @unchecked Sendable {
           // snapshot array is a Sendable value. Mirrors the DLNavigator
           // "capture an immutable copy before the closure" pattern.
           let lcpRedownloadSnapshot = lcpBooksNeedingBackgroundRedownload
-          Self.trackScheduledRedownload(
+          self.trackScheduledRedownload(
             after: contentRedownloadDelay
           ) { [accountScope, downloadService, lcpRedownloadSnapshot] in
             guard accountScope.currentAccountID == loadedAccount else {
@@ -398,7 +407,7 @@ final class BookRegistrySync: @unchecked Sendable {
           // Immutable `let` snapshot captured in the list — see the LCP branch
           // above for the same `sending`-mutable-var rationale.
           let orphanRedownloadSnapshot = orphanedBooksNeedingRedownload
-          Self.trackScheduledRedownload(
+          self.trackScheduledRedownload(
             after: orphanRedownloadDelay
           ) { [accountScope, downloadService, orphanRedownloadSnapshot] in
             guard accountScope.currentAccountID == loadedAccount else {
