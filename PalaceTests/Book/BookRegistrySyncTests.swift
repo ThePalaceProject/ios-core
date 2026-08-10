@@ -318,7 +318,7 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
         // invokes unconditionally on every path — a bounded callback, not a polled side
         // effect. The deadline is a safety net, never the synchronization mechanism.
         // Bounded wait, not a deadline poll: bounded — `done` is fulfilled by load()'s own setState callback, which load invokes unconditionally on every path. This awaits a guaranteed callback rather than polling for a side effect; the deadline is a safety net, not the synchronization mechanism.
-        wait(for: [done], timeout: 10.0)  // STARVE-001-OK
+        await fulfillment(of: [done], timeout: 10.0)  // STARVE-001-OK
 
         // The re-download is DELAYED and fire-and-forget, so waiting on a deadline for it
         // is the STARVE-001 shape. Join the scheduled Task deterministically instead.
@@ -346,7 +346,7 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
         let done = expectation(description: "loaded")
         sync.load(account: account) { if $0 == .loaded { done.fulfill() } }
         // Bounded wait, not a deadline poll: bounded — `done` is fulfilled by load()'s own setState callback, which load invokes unconditionally on every path. This awaits a guaranteed callback rather than polling for a side effect; the deadline is a safety net, not the synchronization mechanism.
-        wait(for: [done], timeout: 10.0)  // STARVE-001-OK
+        await fulfillment(of: [done], timeout: 10.0)  // STARVE-001-OK
 
         // Delayed fire-and-forget schedule — join it rather than racing a deadline.
         await BookRegistrySync._awaitScheduledRedownloadsForTesting()
@@ -430,7 +430,7 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
         let done = expectation(description: "loaded")
         sync.load(account: account) { if $0 == .loaded { done.fulfill() } }
         // Bounded wait, not a deadline poll: bounded — `done` is fulfilled by load()'s own setState callback, which load invokes unconditionally on every path. This awaits a guaranteed callback rather than polling for a side effect; the deadline is a safety net, not the synchronization mechanism.
-        wait(for: [done], timeout: 10.0)  // STARVE-001-OK
+        await fulfillment(of: [done], timeout: 10.0)  // STARVE-001-OK
 
         // A negative assertion needs a real barrier: the schedules must have had their
         // chance to fire before "nothing was scheduled" means anything. An earlier
