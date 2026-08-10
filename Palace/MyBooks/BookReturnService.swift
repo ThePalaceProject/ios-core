@@ -443,11 +443,26 @@ final class BookReturnService: @unchecked Sendable {
             for effect in effects {
                 switch effect {
                 case .updateAndRemoveBook:
-                    if let returnedBook { self.bookRegistry.updateAndRemoveBook(returnedBook) }
+                    // serverAuthoritative: every path into this method is a
+                    // CONFIRMED (or treat-as-confirmed) server outcome — a 2xx
+                    // revoke, a no-revokeURL book with no server to confirm
+                    // against, OverDrive answering non-OPDS XML after a successful
+                    // revoke, or the server reporting the loan already gone. The
+                    // #18414 guard refuses a non-authoritative empty save over a
+                    // non-empty shelf, so without this flag returning your ONLY
+                    // book leaves it on disk and it resurrects on relaunch.
+                    //
+                    // Deliberately NOT applied to the "Remove from Device" path
+                    // below: there the server return FAILED, so a local removal is
+                    // not a confirmed outcome and must stay refusable.
+                    if let returnedBook {
+                        self.bookRegistry.updateAndRemoveBook(returnedBook, serverAuthoritative: true)
+                    }
                 case .setStateUnregistered:
                     self.bookRegistry.setState(.unregistered, for: identifier)
                 case .removeBook:
-                    self.bookRegistry.removeBook(forIdentifier: identifier)
+                    // serverAuthoritative — see the `.updateAndRemoveBook` note above.
+                    self.bookRegistry.removeBook(forIdentifier: identifier, serverAuthoritative: true)
                 case .deleteLocalContent, .purgeAudiobookCaches, .announceReturnSucceeded:
                     break // run outside the callback / in the post-sync block
                 }

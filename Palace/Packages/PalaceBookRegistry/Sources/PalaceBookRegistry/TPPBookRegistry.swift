@@ -56,7 +56,23 @@ public protocol TPPBookRegistryProvider: Sendable {
     func replaceGenericBookmark(_ oldLocation: TPPBookLocation, with newLocation: TPPBookLocation, forIdentifier: String)
     func addBook(_ book: TPPBook, location: TPPBookLocation?, state: TPPBookState, fulfillmentId: String?, readiumBookmarks: [TPPReadiumBookmark]?, genericBookmarks: [TPPBookLocation]?)
     func removeBook(forIdentifier bookIdentifier: String)
+    /// Server-authority-aware removal. `serverAuthoritative: true` marks the
+    /// removal's persist as the result of a CONFIRMED server action (a 2xx
+    /// return/revoke, a no-active-loan problem doc, or a no-revokeURL book whose
+    /// removal has no server to confirm) so the resulting save is allowed to
+    /// persist an EMPTY registry over a non-empty on-disk shelf.
+    ///
+    /// This is the return-to-empty path. Without it, returning your ONLY book
+    /// leaves the book on disk — the empty save is refused as a suspected #18414
+    /// wedge — and it resurrects on relaunch. Non-confirmed removals (a wedge, or
+    /// an incidental teardown save) stay `false` and remain refused, which is what
+    /// preserves the #18414 guard.
+    func removeBook(forIdentifier bookIdentifier: String, serverAuthoritative: Bool)
     func updateAndRemoveBook(_ book: TPPBook)
+    /// Server-authority-aware sibling of `updateAndRemoveBook` — see
+    /// `removeBook(forIdentifier:serverAuthoritative:)`. Used by the confirmed
+    /// (2xx) revoke return path so a return-to-empty persists.
+    func updateAndRemoveBook(_ book: TPPBook, serverAuthoritative: Bool)
     func setState(_ state: TPPBookState, for bookIdentifier: String)
     func book(forIdentifier bookIdentifier: String?) -> TPPBook?
     func fulfillmentId(forIdentifier bookIdentifier: String?) -> String?
@@ -67,6 +83,21 @@ public protocol TPPBookRegistryProvider: Sendable {
     func cachedThumbnailImage(for book: TPPBook) -> UIImage?
     func thumbnailImage(for book: TPPBook?, handler: @escaping (_ image: UIImage?) -> Void)
     func thumbnailImages(forBooks books: Set<TPPBook>, handler: @escaping (_ bookIdentifiersToImages: [String: UIImage]) -> Void)
+}
+
+public extension TPPBookRegistryProvider {
+    /// Default forwards to the non-authoritative removal. Only registries that
+    /// PERSIST to disk (the concrete `TPPBookRegistry`) override these to thread the
+    /// flag into `BookRegistrySync.save`'s server-authority gate (HelpSpot #18414).
+    /// Test doubles that mutate only in-memory state inherit this default, so adding
+    /// the parameterized requirement does not force every double to implement it.
+    func removeBook(forIdentifier bookIdentifier: String, serverAuthoritative: Bool) {
+        removeBook(forIdentifier: bookIdentifier)
+    }
+
+    func updateAndRemoveBook(_ book: TPPBook, serverAuthoritative: Bool) {
+        updateAndRemoveBook(book)
+    }
 }
 
 // TPPBookRegistryData and TPPBookRegistryKey defined in TPPBookRegistryRecord.swift
@@ -626,6 +657,10 @@ public class TPPBookRegistry: @unchecked Sendable {
     }
 
     public func removeBook(forIdentifier bookIdentifier: String) {
+        removeBook(forIdentifier: bookIdentifier, serverAuthoritative: false)
+    }
+
+    public func removeBook(forIdentifier bookIdentifier: String, serverAuthoritative: Bool) {
         guard !bookIdentifier.isEmpty else {
             Log.error(#file, "removeBook called with empty bookIdentifier")
             return
@@ -634,7 +669,7 @@ public class TPPBookRegistry: @unchecked Sendable {
         store.removeBook(forIdentifier: bookIdentifier) { [weak self, syncEngine] removedBook, _ in
             guard let self else { return }
             Log.info(#file, "📚 REMOVING BOOK from registry: \(bookIdentifier)")
-            if let account { syncEngine.save(for: account) }
+            if let account { syncEngine.save(for: account, serverAuthoritative: serverAuthoritative) }
             DispatchQueue.main.async {
                 self.store.bookStateSubject.send((bookIdentifier, .unregistered))
                 if let book = removedBook {
@@ -658,11 +693,15 @@ public class TPPBookRegistry: @unchecked Sendable {
     }
 
     public func updateAndRemoveBook(_ book: TPPBook) {
+        updateAndRemoveBook(book, serverAuthoritative: false)
+    }
+
+    public func updateAndRemoveBook(_ book: TPPBook, serverAuthoritative: Bool) {
         imageLoader.thumbnailImage(for: book) { _ in }
         let account = accountScope.currentAccountID
         store.updateAndRemoveBook(book) { [weak self, syncEngine] _ in
             guard let self else { return }
-            if let account { syncEngine.save(for: account) }
+            if let account { syncEngine.save(for: account, serverAuthoritative: serverAuthoritative) }
             DispatchQueue.main.async {
                 self.store.bookStateSubject.send((book.identifier, .unregistered))
             }
