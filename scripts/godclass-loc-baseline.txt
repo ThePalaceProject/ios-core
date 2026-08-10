@@ -1,8 +1,18 @@
 # God-class LOC freeze baseline — Wave 0 ratchet.
 # Consumed by scripts/check-godclass-loc-freeze.sh.
-# Format: <loc> <repo-relative-path>. A file may NOT exceed its count.
+# Format: <code-loc> <repo-relative-path>. A file may NOT exceed its count.
 # When a file SHRINKS, the script prints the new number; ratchet this DOWN by hand.
-# Captured 2026-07-23 (live wc -l). See docs/architecture/god-class-decomposition-plan.md §3a.
+# Captured 2026-07-23. See docs/architecture/god-class-decomposition-plan.md §3a.
+#
+# ┌── 2026-07-31: COUNTING CHANGED to CODE LINES, all numbers recomputed ──────────┐
+# │ The detector now counts non-blank, non-comment-only lines (see the script      │
+# │ header), retiring the "Wave 0 debt" flagged in the Wave 1a note below. The      │
+# │ per-wave narrative in this file was written against the OLD physical `wc -l`    │
+# │ counts and is preserved as the campaign's decision ledger — but the six NUMBERS │
+# │ at the bottom are now CODE lines and are NOT comparable to the deltas below.    │
+# │ For the physical-line history, see this file's git log. The freeze still only   │
+# │ tightens by hand; a doc-comment or blank-line edit no longer moves the number.  │
+# └────────────────────────────────────────────────────────────────────────────────┘
 # Wave 1a (+1 on 4 files): each gained a single `import PalacePreferences` line when
 # TPPSettings moved to the leaf package — a decomposition import that REDUCES coupling,
 # not accretion. Re-baselined by exactly the import delta. (Follow-up: make the ratchet
@@ -113,9 +123,12 @@
 #   NEGATIVE at the 3a/3b package move, when the MBDC cluster leaves the hub for
 #   PalaceDownloads and the account-scope wiring goes with it. Re-baselined by the exact
 #   delta; the freeze still catches any further unrelated growth.
-3093 Palace/Audiobooks/AudiobookSessionManager.swift
-915 Palace/Accounts/Library/AccountsManager.swift
-2184 Palace/MyBooks/MyBooksDownloadCenter.swift
-1378 Palace/Book/UI/BookDetail/BookDetailViewModel.swift
-1261 Palace/SignInLogic/TPPSignInBusinessLogic.swift
-968 Palace/MyBooks/BorrowOperation.swift
+# Code-line counts (2026-07-31 recount). Physical `wc -l` at this same tree was:
+#   AudiobookSessionManager 3093, AccountsManager 915, MyBooksDownloadCenter 2184,
+#   BookDetailViewModel 1378, TPPSignInBusinessLogic 1261, BorrowOperation 968.
+1571 Palace/Audiobooks/AudiobookSessionManager.swift
+374 Palace/Accounts/Library/AccountsManager.swift
+1244 Palace/MyBooks/MyBooksDownloadCenter.swift
+966 Palace/Book/UI/BookDetail/BookDetailViewModel.swift
+638 Palace/SignInLogic/TPPSignInBusinessLogic.swift
+575 Palace/MyBooks/BorrowOperation.swift

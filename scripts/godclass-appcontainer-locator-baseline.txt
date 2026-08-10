@@ -15,4 +15,8 @@
 # Wave 3 / 3a-4 (AccountRegistryLoader extraction): 304 -> 302. Two `AppContainer.production()`
 # reaches left AccountsManager with the relocated load bodies (into the new, unfrozen
 # AccountRegistryLoader.swift), so the hub's out-of-allowlist count drops by 2.
-302
+# 2026-07-31: detector now strips comments before matching, so `AppContainer.production()`
+#   named in a doc/line comment (e.g. the S2b AccountScope rationale prose above) is no
+#   longer counted — it is documentation, not a locator call. Re-baselined 302 -> 256 by
+#   that recount alone: a pure measurement correction, not 46 removed call sites.
+256

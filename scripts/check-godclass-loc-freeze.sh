@@ -14,10 +14,18 @@
 #                          ratchet the baseline down (this script never rewrites
 #                          the baseline — a ratchet only tightens by hand).
 #
-# Counts are read LIVE from the tree (wc -l), so no generated state to drift.
+# Counts are read LIVE from the tree, so no generated state to drift.
+#
+# LINE COUNTING: CODE lines only — blank lines and comment-only lines (`//`, `///`,
+# and block-comment bodies `/* … * … */`) are NOT counted. This is deliberate
+# (retires the "Wave 0 debt" noted in the baseline file): a doc-comment or blank-line
+# edit must not trip the freeze, because those are the opposite of the hub accretion
+# this ratchet exists to stop. Only executable/declaration lines move the number.
+# (Residual: a block-comment continuation line that starts with neither `*` nor
+# whitespace-then-`*` is counted as code — rare; Swift block comments align on `*`.)
 #
 # Baseline file (checked in): scripts/godclass-loc-baseline.txt
-#   Format, one file per line:   <loc><whitespace><repo-relative-path>
+#   Format, one file per line:   <code-loc><whitespace><repo-relative-path>
 #   '#' comments and blank lines ignored.
 #
 # Usage:
@@ -40,10 +48,20 @@ MODE="${1:-}"
 
 [ -f "$BASELINE" ] || { echo "[godclass-loc] ERROR: baseline not found: $BASELINE"; exit 2; }
 
-loc_of() {  # live line count of a file, 0 if missing
+loc_of() {  # live CODE-line count (non-blank, non-comment-only); -1 if missing
   local p="$1"
   [ -f "$p" ] || { echo "-1"; return; }
-  wc -l < "$p" | tr -d ' '
+  awk '
+    {
+      s = $0
+      sub(/^[[:space:]]+/, "", s)   # left-trim
+      if (s == "")            next  # blank
+      if (s ~ "^//")          next  # // or /// line comment
+      if (s ~ "^/?[*]")       next  # /* start, * body, */ end
+      n++
+    }
+    END { print n + 0 }
+  ' "$p"
 }
 
 FAIL=0
