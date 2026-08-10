@@ -125,6 +125,61 @@ final class BookRegistrySync: @unchecked Sendable {
     diskWriteQueue.setSpecific(key: diskWriteQueueKey, value: ())
   }
 
+  // MARK: - Deferred-redownload scheduling + test join seam (STARVE-001)
+
+  /// The two re-download schedules in `load()` are deliberately DELAYED and
+  /// fire-and-forget: the grace period exists so an account switch during launch can
+  /// cancel them, and nothing awaits their completion in production.
+  ///
+  /// That shape is untestable by waiting: a test can only sit on a wall-clock deadline
+  /// hoping the work already ran, which starves under parallel sim clones and fails all
+  /// three CI retries (STARVE-001 / `parallel-clone-starvation`). So the scheduled work
+  /// is wrapped in a `Task` that is RETAINED under XCTest, letting a test join it
+  /// deterministically via `_awaitScheduledRedownloadsForTesting()`.
+  ///
+  /// Production behavior is unchanged: same delay, same main-queue delivery, same
+  /// fire-and-forget semantics — only a reference is kept, and only under XCTest. The
+  /// env-var gate (rather than `#if DEBUG`) keeps the scheduling path free of
+  /// conditional compilation, matching `AccountRegistryLoader._trackedCrawlTasks`.
+  private static let _isRunningUnderXCTest =
+    ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+  private static let _scheduledRedownloadsLock = NSLock()
+  nonisolated(unsafe) private static var _scheduledRedownloads: [Task<Void, Never>] = []
+
+  /// Schedules `body` on the main queue after `delay`, retaining the Task under XCTest.
+  private static func trackScheduledRedownload(
+    after delay: TimeInterval,
+    _ body: @escaping @Sendable () -> Void
+  ) {
+    let task = Task { @MainActor in
+      try? await Task.sleep(nanoseconds: UInt64(max(0, delay) * 1_000_000_000))
+      guard !Task.isCancelled else { return }
+      body()
+    }
+    guard _isRunningUnderXCTest else { return }
+    _scheduledRedownloadsLock.lock()
+    _scheduledRedownloads.append(task)
+    _scheduledRedownloadsLock.unlock()
+  }
+
+  /// Snapshot-then-await without holding the lock across an await (Swift 6 bans it).
+  private static func _snapshotScheduledRedownloadsForTesting() -> [Task<Void, Never>] {
+    _scheduledRedownloadsLock.lock()
+    defer { _scheduledRedownloadsLock.unlock() }
+    let snapshot = _scheduledRedownloads
+    _scheduledRedownloads.removeAll()
+    return snapshot
+  }
+
+  /// Test-only NARROW deterministic JOIN seam: awaits every scheduled re-download,
+  /// including its delay, so a test can assert on what was (or was not) scheduled
+  /// without a wall-clock deadline.
+  static func _awaitScheduledRedownloadsForTesting() async {
+    for task in _snapshotScheduledRedownloadsForTesting() {
+      _ = await task.value
+    }
+  }
+
   func registryUrl(for account: String) -> URL? {
     // The `TPPAccountUUIDs[0]` root-vs-subdir path-layout rule + error logging
     // lives app-side behind `dependencies.registryDirectory` (god-class decomp
@@ -325,7 +380,9 @@ final class BookRegistrySync: @unchecked Sendable {
           // snapshot array is a Sendable value. Mirrors the DLNavigator
           // "capture an immutable copy before the closure" pattern.
           let lcpRedownloadSnapshot = lcpBooksNeedingBackgroundRedownload
-          DispatchQueue.main.asyncAfter(deadline: .now() + contentRedownloadDelay) { [accountScope, downloadService, lcpRedownloadSnapshot] in
+          Self.trackScheduledRedownload(
+            after: contentRedownloadDelay
+          ) { [accountScope, downloadService, lcpRedownloadSnapshot] in
             guard accountScope.currentAccountID == loadedAccount else {
               Log.info(#file, "  Skipping LCP background re-download — account changed during wait")
               return
@@ -341,7 +398,9 @@ final class BookRegistrySync: @unchecked Sendable {
           // Immutable `let` snapshot captured in the list — see the LCP branch
           // above for the same `sending`-mutable-var rationale.
           let orphanRedownloadSnapshot = orphanedBooksNeedingRedownload
-          DispatchQueue.main.asyncAfter(deadline: .now() + orphanRedownloadDelay) { [accountScope, downloadService, orphanRedownloadSnapshot] in
+          Self.trackScheduledRedownload(
+            after: orphanRedownloadDelay
+          ) { [accountScope, downloadService, orphanRedownloadSnapshot] in
             guard accountScope.currentAccountID == loadedAccount else {
               Log.info(#file, "  Skipping orphan auto-restart — account changed during wait")
               return

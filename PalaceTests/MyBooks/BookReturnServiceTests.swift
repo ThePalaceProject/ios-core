@@ -796,7 +796,8 @@ final class BookReturnServiceTests: XCTestCase {
         let service = makeServiceBackedByRealRegistry(realRegistry, feed: feed)
         let exp = expectation(description: "return completion")
         service.returnBook(withIdentifier: onlyBook.identifier) { exp.fulfill() }
-        await fulfillment(of: [exp], timeout: 10.0)
+        // Bounded wait, not a deadline poll: bounded — `exp` is fulfilled by returnBook's own completion handler, which the return state machine invokes on every terminal path.
+        await fulfillment(of: [exp], timeout: 10.0)  // STARVE-001-OK
         await waitForCompletion { self.onDiskRecordCount(at: registryURL) == 0 }
         XCTAssertEqual(onDiskRecordCount(at: registryURL), 0,
                        "a confirmed server-error return of the last book must persist an EMPTY registry",
@@ -812,7 +813,8 @@ final class BookReturnServiceTests: XCTestCase {
         )
         let loaded = expectation(description: "cold reload")
         sync2.load(account: uuid, setState: { if $0 == .loaded { loaded.fulfill() } })
-        await fulfillment(of: [loaded], timeout: 10.0)
+        // Bounded wait, not a deadline poll: bounded — `loaded` is fulfilled by load()'s setState callback, invoked unconditionally.
+        await fulfillment(of: [loaded], timeout: 10.0)  // STARVE-001-OK
         XCTAssertTrue(store2.allBooks.isEmpty,
                       "the returned last book must NOT resurrect on relaunch",
                       file: file, line: line)

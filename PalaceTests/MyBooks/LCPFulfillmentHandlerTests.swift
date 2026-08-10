@@ -277,7 +277,8 @@ final class LCPFulfillmentHandlerTests: XCTestCase {
             progress(0.5)
             let ticked = expectation(description: "heartbeat applied")
             DispatchQueue.main.async { ticked.fulfill() }
-            wait(for: [ticked], timeout: 5.0)
+            // Bounded wait, not a deadline poll: FIFO main-queue drain — the fulfilling `main.async` is enqueued after the progress callback, so the heartbeat write it orders behind has already been applied.
+            wait(for: [ticked], timeout: 5.0)  // STARVE-001-OK
         }
         now += DownloadProgressReporter.contentTransferIdleTimeout - 10
 

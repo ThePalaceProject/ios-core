@@ -111,7 +111,8 @@ final class BookRegistrySyncTimeoutSeamTests: XCTestCase {
 
         let resolved = expectation(description: "sync unwinds through the anonymous-account path")
         sync.sync(currentState: .loaded, setState: { _ in }) { _, _ in resolved.fulfill() }
-        await fulfillment(of: [resolved], timeout: 5)
+        // Bounded wait, not a deadline poll: bounded — the spy reports anonymous (nil loans URL), so sync() unwinds through its own completion on the next main hop. The completion is guaranteed to fire, not polled for.
+        await fulfillment(of: [resolved], timeout: 5)  // STARVE-001-OK
 
         XCTAssertEqual(scope.receivedTimeouts.count, 1,
                        "sync must resolve the loans URL through the seam exactly once")

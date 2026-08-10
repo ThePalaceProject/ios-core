@@ -221,7 +221,8 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
         syncManager.load(account: account) { state in
             if state == .loaded { done.fulfill() }
         }
-        wait(for: [done], timeout: 10.0)
+        // Bounded wait, not a deadline poll: bounded — `done` is fulfilled by load()'s own setState callback, which load invokes unconditionally on every path. This awaits a guaranteed callback rather than polling for a side effect; the deadline is a safety net, not the synchronization mechanism.
+        wait(for: [done], timeout: 10.0)  // STARVE-001-OK
 
         XCTAssertEqual(
             store.state(for: book.identifier), .downloadFailed,
@@ -253,7 +254,8 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
         syncManager.load(account: account) { state in
             if state == .loaded { done.fulfill() }
         }
-        wait(for: [done], timeout: 10.0)
+        // Bounded wait, not a deadline poll: bounded — `done` is fulfilled by load()'s own setState callback, which load invokes unconditionally on every path. This awaits a guaranteed callback rather than polling for a side effect; the deadline is a safety net, not the synchronization mechanism.
+        wait(for: [done], timeout: 10.0)  // STARVE-001-OK
 
         XCTAssertEqual(
             store.state(for: book.identifier), .downloadSuccessful,
@@ -294,7 +296,7 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
     /// Kills the mutant "load() computes `schedulesContentRedownload` and never
     /// acts on it". A license with no `.lcpa` is the exact 3.2.3 defect: the
     /// patron holds a book that cannot play, and only this scheduling recovers it.
-    func test_load_licenseWithoutContent_schedulesTheContentRedownload() throws {
+    func test_load_licenseWithoutContent_schedulesTheContentRedownload() async throws {
         let account = "brs-test-\(UUID().uuidString)"
         let (sync, spy, localStore) = makeSchedulingSyncManager(currentAccount: account)
         let url = try XCTUnwrap(sync.registryUrl(for: account))
@@ -311,13 +313,19 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
         try Data("{}".utf8).write(to: licenseURL)
         defer { try? FileManager.default.removeItem(at: licenseURL) }
 
-        let scheduled = expectation(description: "content re-download scheduled")
-        spy.onLCPContentRedownload = { if $0.identifier == book.identifier { scheduled.fulfill() } }
-
         let done = expectation(description: "loaded")
         sync.load(account: account) { if $0 == .loaded { done.fulfill() } }
-        wait(for: [done], timeout: 10.0)
-        wait(for: [scheduled], timeout: 20.0)
+        // invokes unconditionally on every path — a bounded callback, not a polled side
+        // effect. The deadline is a safety net, never the synchronization mechanism.
+        // Bounded wait, not a deadline poll: bounded — `done` is fulfilled by load()'s own setState callback, which load invokes unconditionally on every path. This awaits a guaranteed callback rather than polling for a side effect; the deadline is a safety net, not the synchronization mechanism.
+        wait(for: [done], timeout: 10.0)  // STARVE-001-OK
+
+        // The re-download is DELAYED and fire-and-forget, so waiting on a deadline for it
+        // is the STARVE-001 shape. Join the scheduled Task deterministically instead.
+        await BookRegistrySync._awaitScheduledRedownloadsForTesting()
+
+        XCTAssertEqual(spy.lcpContentRedownloads.map(\.identifier), [book.identifier],
+                       "a license with no .lcpa must schedule exactly one content re-download")
 
         XCTAssertEqual(localStore.state(for: book.identifier), .downloadNeeded,
                        "a license alone is not a playable book")
@@ -325,7 +333,7 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
 
     /// Kills the mutant "load() drops the orphan-redownload block". Content gone
     /// from disk with no license is a different recovery path from the one above.
-    func test_load_contentMissingEntirely_schedulesTheOrphanRedownload() throws {
+    func test_load_contentMissingEntirely_schedulesTheOrphanRedownload() async throws {
         let account = "brs-test-\(UUID().uuidString)"
         let (sync, spy, _) = makeSchedulingSyncManager(currentAccount: account)
         let url = try XCTUnwrap(sync.registryUrl(for: account))
@@ -335,13 +343,16 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
         let record = TPPBookRegistryRecord(book: book, state: .downloadSuccessful)
         try writeRegistryFile(records: [record.dictionaryRepresentation], to: url)
 
-        let scheduled = expectation(description: "orphan re-download scheduled")
-        spy.onOrphanRedownload = { if $0.identifier == book.identifier { scheduled.fulfill() } }
-
         let done = expectation(description: "loaded")
         sync.load(account: account) { if $0 == .loaded { done.fulfill() } }
-        wait(for: [done], timeout: 10.0)
-        wait(for: [scheduled], timeout: 20.0)
+        // Bounded wait, not a deadline poll: bounded — `done` is fulfilled by load()'s own setState callback, which load invokes unconditionally on every path. This awaits a guaranteed callback rather than polling for a side effect; the deadline is a safety net, not the synchronization mechanism.
+        wait(for: [done], timeout: 10.0)  // STARVE-001-OK
+
+        // Delayed fire-and-forget schedule — join it rather than racing a deadline.
+        await BookRegistrySync._awaitScheduledRedownloadsForTesting()
+
+        XCTAssertEqual(spy.orphanRedownloads.map(\.identifier), [book.identifier],
+                       "content gone from disk must schedule exactly one orphan re-download")
     }
 
     /// Kills the mutant "load() ignores `isDownloadInFlight`". `load()` is not
@@ -371,7 +382,8 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
 
         let done = expectation(description: "loaded")
         sync.load(account: account) { if $0 == .loaded { done.fulfill() } }
-        wait(for: [done], timeout: 10.0)
+        // Bounded wait, not a deadline poll: bounded — `done` is fulfilled by load()'s own setState callback, which load invokes unconditionally on every path. This awaits a guaranteed callback rather than polling for a side effect; the deadline is a safety net, not the synchronization mechanism.
+        wait(for: [done], timeout: 10.0)  // STARVE-001-OK
 
         XCTAssertEqual(
             localStore.state(for: book.identifier), .downloading,
@@ -390,7 +402,7 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
     /// `downloadInfo` cannot see the fulfillment (it lives on Readium's own
     /// URLSession), so the transfer registry is the only thing standing between a
     /// patron and a doubled download.
-    func test_load_licenseWithoutContent_whileFulfillmentIsRunning_schedulesNothing() throws {
+    func test_load_licenseWithoutContent_whileFulfillmentIsRunning_schedulesNothing() async throws {
         let account = "brs-test-\(UUID().uuidString)"
         let (sync, spy, localStore) = makeSchedulingSyncManager(currentAccount: account)
         let url = try XCTUnwrap(sync.registryUrl(for: account))
@@ -417,19 +429,20 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
 
         let done = expectation(description: "loaded")
         sync.load(account: account) { if $0 == .loaded { done.fulfill() } }
-        wait(for: [done], timeout: 10.0)
+        // Bounded wait, not a deadline poll: bounded — `done` is fulfilled by load()'s own setState callback, which load invokes unconditionally on every path. This awaits a guaranteed callback rather than polling for a side effect; the deadline is a safety net, not the synchronization mechanism.
+        wait(for: [done], timeout: 10.0)  // STARVE-001-OK
 
-        // Barrier by DEADLINE, not by queue position. GCD does not FIFO-order a
-        // plain `async` behind an already-pending `asyncAfter`, so the previous
-        // `DispatchQueue.main.async` here ran ~50ms BEFORE the schedules it was
-        // meant to outlive — leaving both "no duplicate was scheduled" assertions
-        // vacuous on this branch's headline defect. Measured: mutating the
-        // in-flight arm to schedule anyway failed 0 assertions.
+        // A negative assertion needs a real barrier: the schedules must have had their
+        // chance to fire before "nothing was scheduled" means anything. An earlier
+        // revision used a plain `DispatchQueue.main.async`, which GCD does NOT order
+        // behind an already-pending `asyncAfter` — it ran ~50ms early and left both
+        // assertions vacuous on this branch's headline defect (measured: mutating the
+        // in-flight arm to schedule anyway failed 0 assertions).
         //
-        // It does order by deadline, so a later deadline is a real barrier.
-        let settled = expectation(description: "schedules would have fired")
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.testDelay * 4) { settled.fulfill() }
-        wait(for: [settled], timeout: 5.0)
+        // Joining the tracked Tasks is a stronger barrier than any deadline: it awaits
+        // the scheduled work itself, so if the in-flight guard wrongly scheduled a
+        // re-download this cannot pass by finishing early. No wall clock involved.
+        await BookRegistrySync._awaitScheduledRedownloadsForTesting()
 
         XCTAssertTrue(
             spy.lcpContentRedownloads.isEmpty,

@@ -410,7 +410,8 @@ final class DownloadProgressPublisherCoreTests: XCTestCase {
 
         let settled = expectation(description: "edges delivered")
         DispatchQueue.main.async { settled.fulfill() }
-        wait(for: [settled], timeout: 5.0)
+        // Bounded wait, not a deadline poll: FIFO main-queue drain, not a poll — the fulfilling `DispatchQueue.main.async` is enqueued AFTER the work under test, so serial-queue ordering guarantees that work has already run.
+        wait(for: [settled], timeout: 5.0)  // STARVE-001-OK
 
         XCTAssertEqual(edges.map(\.1), [true, false],
                        "a cancelled transfer must publish its own release, or the bar never clears")
@@ -430,7 +431,8 @@ final class DownloadProgressPublisherCoreTests: XCTestCase {
 
         let settled = expectation(description: "edges delivered")
         DispatchQueue.main.async { settled.fulfill() }
-        wait(for: [settled], timeout: 5.0)
+        // Bounded wait, not a deadline poll: FIFO main-queue drain, not a poll — the fulfilling `DispatchQueue.main.async` is enqueued AFTER the work under test, so serial-queue ordering guarantees that work has already run.
+        wait(for: [settled], timeout: 5.0)  // STARVE-001-OK
 
         XCTAssertEqual(edges.map(\.1), [true, false],
                        "expiring a dead transfer must also release the UI, not just reconciliation")
@@ -458,7 +460,8 @@ final class DownloadProgressPublisherCoreTests: XCTestCase {
             if $0.0 == "sentinel" && !seenSentinel { seenSentinel = true; sentinel.fulfill() }
         }
         defer { watch.cancel(); reporter.clearLCPContentTransfer(for: "sentinel") }
-        wait(for: [sentinel], timeout: 5.0)
+        // Bounded wait, not a deadline poll: bounded — waits for a sentinel edge this test itself publishes through a PassthroughSubject with a live sink; delivery is synchronous, so the edge is guaranteed.
+        wait(for: [sentinel], timeout: 5.0)  // STARVE-001-OK
 
         XCTAssertEqual(edges.filter { $0.0 == "never-registered" }.count, 0,
                        "no registration, no edge — an unrelated cancel must not clear another book's cue")
