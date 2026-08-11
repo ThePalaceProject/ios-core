@@ -251,12 +251,12 @@ struct AppContainer: @unchecked Sendable {
         return session
     }
 
-    /// Polish-phase (in-app-nav-polish-2026-06-01) — wall-clock open-time
-    /// tracker keyed by book identifier. Used by `RecentlyReadingService`
-    /// to surface the genuinely last-opened book on the Continue Reading
-    /// row (without it, EPUB/PDF locations fall back to `book.updated`
-    /// from the OPDS feed and the row shows the wrong book). Audiobook
-    /// + reader open-paths record into this tracker.
+    /// Wall-clock open-time tracker keyed by book identifier. Audiobook +
+    /// reader open-paths record into it. Its only reader (the "Continue"
+    /// catalog rows) was removed in PP-4910, so the tracker is currently
+    /// write-only — retained because the recording call sites live in the
+    /// critical-path reader/audiobook flows and a future "resume" re-entry
+    /// point would consume it. See PP-4910's removal note.
     @MainActor
     var bookOpenTracker: BookOpenTracking {
         if let cached = AppContainer._bookOpenTracker { return cached }
