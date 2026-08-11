@@ -92,6 +92,12 @@ struct AudiobookMorphingPlayerView: View {
     @State private var toastText = ""
     @State private var showToast = false
 
+    /// Drives the "Stop Playback?" confirmation presented when the patron taps
+    /// the mini-player's close (✕) control (PP-4910). Closing the player stops
+    /// playback and tears the session down, so it is confirmed rather than
+    /// instant. The alert takes VoiceOver focus when presented.
+    @State private var showStopConfirmation = false
+
     /// VoiceOver focus target — moved to the title when the full player expands
     /// (mirrors toolkit `isTitleFocused`).
     @AccessibilityFocusState private var isTitleFocused: Bool
@@ -204,15 +210,27 @@ struct AudiobookMorphingPlayerView: View {
     @ViewBuilder
     private func card(expanded: Bool, size: CGSize, landscape: Bool) -> some View {
         ZStack(alignment: .top) {
-            Color(.systemBackground)
             if expanded {
+                Color(.systemBackground)
                 fullContent(size: size, landscape: landscape)
             } else {
+                // Elevated surface so the floating mini bar reads as a distinct
+                // card. Its former `systemBackground` fill was pure black in dark
+                // mode and its shadow is invisible on the near-black catalog, so
+                // the bar blended into the page. A material (plus a hairline
+                // stroke below) lifts it off the background in both appearances.
+                Rectangle().fill(.regularMaterial)
                 miniContent
             }
         }
         .frame(height: expanded ? size.height : Self.miniBarHeight)
         .clipShape(RoundedRectangle(cornerRadius: expanded ? 0 : 16, style: .continuous))
+        .overlay {
+            if !expanded {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5)
+            }
+        }
         .shadow(color: .black.opacity(expanded ? 0 : 0.18),
                 radius: expanded ? 0 : 10, y: -2)
         .padding(.horizontal, expanded ? 0 : Self.miniMargin)
@@ -977,78 +995,77 @@ struct AudiobookMorphingPlayerView: View {
     // MARK: - Mini layout
 
     private var miniContent: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 12) {
-                coverImageOrPlaceholder
+        // Revised layout (PP-4910): close (✕) at the LEADING edge, then the
+        // cover, the marquee title/author, and the rewind / play-pause / forward
+        // transport controls at the TRAILING edge. No progress bar.
+        HStack(spacing: 12) {
+            // Close — presents the "Stop Playback?" confirmation rather than
+            // stopping instantly, since closing tears the session down.
+            Button { showStopConfirmation = true } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.secondary)
                     .frame(width: 44, height: 44)
-                    .clipShape(RoundedRectangle(cornerRadius: 4))
-                    .matchedGeometryEffect(id: Self.coverMatchID, in: morphNamespace)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(presenter.currentBook?.title ?? "")
-                        .font(.subheadline).fontWeight(.medium)
-                        .lineLimit(1).truncationMode(.tail)
-                    if let authors = presenter.currentBook?.authors, !authors.isEmpty {
-                        Text(authors)
-                            .font(.caption).foregroundStyle(.secondary)
-                            .lineLimit(1).truncationMode(.tail)
-                    }
-                }
-                // Tap the cover/title zone to expand.
-                .contentShape(Rectangle())
-                .onTapGesture { expand() }
-
-                Spacer(minLength: 2)
-
-                Button(action: { audiobookSession.skipBack() }) {
-                    Image(systemName: "gobackward.\(skipBackInterval)")
-                        .font(.system(size: 18, weight: .regular))
-                        .frame(width: 40, height: 44)
-                }
-                .buttonStyle(.plain).tint(.primary)
-                .accessibilityLabel(Strings.Generic.skipBackSeconds(skipBackInterval))
-
-                Button(action: { audiobookSession.togglePlayPause() }) {
-                    Image(systemName: presenter.isPlaying ? "pause.fill" : "play.fill")
-                        .resizable().aspectRatio(contentMode: .fit)
-                        .padding(10).frame(width: 42, height: 42)
-                        .contentTransition(.symbolEffect(.replace))
-                }
-                .buttonStyle(.plain).tint(.accentColor)
-                .accessibilityLabel(presenter.isPlaying ? Strings.Generic.pauseAudiobook : Strings.Generic.playAudiobook)
-
-                Button(action: { audiobookSession.skipForward() }) {
-                    Image(systemName: "goforward.\(skipForwardInterval)")
-                        .font(.system(size: 18, weight: .regular))
-                        .frame(width: 40, height: 44)
-                }
-                .buttonStyle(.plain).tint(.primary)
-                .accessibilityLabel(Strings.Generic.skipForwardSeconds(skipForwardInterval))
-
-                Button(action: stop) {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 22))
-                        .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(.secondary)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(Strings.Generic.stopAudiobook)
+                    .contentShape(Rectangle())
             }
-            .padding(.horizontal, 12)
-            .padding(.top, 8)
+            .buttonStyle(.plain)
+            .accessibilityLabel(Strings.Generic.closeAudiobookPlayer)
 
-            ProgressView(value: clampedProgress, total: 1.0)
-                .progressViewStyle(.linear)
-                .tint(.accentColor)
-                .frame(height: 2)
-                .accessibilityHidden(true)
+            coverImageOrPlaceholder
+                .frame(width: 44, height: 44)
+                .clipShape(RoundedRectangle(cornerRadius: 4))
+                .matchedGeometryEffect(id: Self.coverMatchID, in: morphNamespace)
+
+            VStack(alignment: .leading, spacing: 2) {
+                MarqueeText(text: presenter.currentBook?.title ?? "",
+                            font: .callout.weight(.semibold))
+                if let authors = presenter.currentBook?.authors, !authors.isEmpty {
+                    MarqueeText(text: authors, font: .subheadline, color: .secondary)
+                }
+            }
+            // Tap the cover/title zone to expand.
+            .contentShape(Rectangle())
+            .onTapGesture { expand() }
+
+            Spacer(minLength: 2)
+
+            Button(action: { audiobookSession.skipBack() }) {
+                Image(systemName: "gobackward.\(skipBackInterval)")
+                    .font(.system(size: 18, weight: .regular))
+                    .frame(width: 40, height: 44)
+            }
+            .buttonStyle(.plain).tint(.primary)
+            .accessibilityLabel(Strings.Generic.skipBackSeconds(skipBackInterval))
+
+            Button(action: { audiobookSession.togglePlayPause() }) {
+                Image(systemName: presenter.isPlaying ? "pause.fill" : "play.fill")
+                    .resizable().aspectRatio(contentMode: .fit)
+                    .padding(10).frame(width: 42, height: 42)
+                    .contentTransition(.symbolEffect(.replace))
+            }
+            .buttonStyle(.plain).tint(.accentColor)
+            .accessibilityLabel(presenter.isPlaying ? Strings.Generic.pauseAudiobook : Strings.Generic.playAudiobook)
+
+            Button(action: { audiobookSession.skipForward() }) {
+                Image(systemName: "goforward.\(skipForwardInterval)")
+                    .font(.system(size: 18, weight: .regular))
+                    .frame(width: 40, height: 44)
+            }
+            .buttonStyle(.plain).tint(.primary)
+            .accessibilityLabel(Strings.Generic.skipForwardSeconds(skipForwardInterval))
         }
+        .padding(.horizontal, 12)
+        .frame(maxHeight: .infinity)
         // Tap anywhere else / pull up on the bar → expand.
         .contentShape(Rectangle())
         .onTapGesture { expand() }
         .gesture(expandDrag)
+        .alert(Strings.Generic.stopPlaybackTitle, isPresented: $showStopConfirmation) {
+            Button(Strings.Generic.stopPlaybackCancel, role: .cancel) { }
+            Button(Strings.Generic.stopPlaybackConfirm, role: .destructive) { stop() }
+        } message: {
+            Text(Strings.Generic.stopPlaybackMessage)
+        }
     }
 
     // MARK: - Shared cover
@@ -1258,12 +1275,6 @@ struct AudiobookMorphingPlayerView: View {
     }
 
     // MARK: - Derived
-
-    /// Book-relative progress (0…1 across the whole book) — drives the mini
-    /// player's overall progress bar. NOT the scrubber (see `chapterProgressClamped`).
-    private var clampedProgress: Double {
-        progress.playbackProgress.isFinite ? min(max(progress.playbackProgress, 0), 1) : 0
-    }
 
     /// Chapter-relative progress (0…1 within the current chapter) — drives the
     /// seek scrubber so its thumb position matches `seekWithSlider`'s chapter scale.

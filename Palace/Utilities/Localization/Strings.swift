@@ -211,6 +211,27 @@ struct Strings {
             "Shows the full audiobook player controls",
             comment: "VoiceOver hint announced for the collapsed audiobook pill explaining that tapping restores the full mini-player"
         )
+        // Accessibility + copy - Audiobook mini-player close confirmation (PP-4910)
+        static let closeAudiobookPlayer = NSLocalizedString(
+            "Close player",
+            comment: "VoiceOver: Close (X) control on the audiobook mini-player. Presents a confirmation before stopping playback."
+        )
+        static let stopPlaybackTitle = NSLocalizedString(
+            "Stop Playback?",
+            comment: "Title of the confirmation dialog shown when the patron closes the audiobook mini-player"
+        )
+        static let stopPlaybackMessage = NSLocalizedString(
+            "Are you sure you want to stop playing your audiobook and close the player?",
+            comment: "Body of the confirmation dialog shown when the patron closes the audiobook mini-player"
+        )
+        static let stopPlaybackCancel = NSLocalizedString(
+            "No, Cancel",
+            comment: "Dismisses the stop-playback confirmation, leaving playback and the mini-player unchanged"
+        )
+        static let stopPlaybackConfirm = NSLocalizedString(
+            "Yes, Stop",
+            comment: "Confirms the stop-playback dialog: stops playback and dismisses the mini-player"
+        )
         // Accessibility - Audiobook full player (parity with toolkit AudiobookPlayerView)
         static let bookCover = NSLocalizedString("Book cover", comment: "VoiceOver: Accessibility label for the audiobook cover art")
         static let audiobookLoading = NSLocalizedString("Loading…", comment: "Shown over the audiobook player while the track buffers")

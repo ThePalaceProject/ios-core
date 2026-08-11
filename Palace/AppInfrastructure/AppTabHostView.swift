@@ -26,14 +26,6 @@ struct AppTabHostView: View {
     /// it in `tabViewContent` allocated a fresh, self-publishing view-model on
     /// every re-render → "update multiple times per frame" → main-thread freeze.
     @StateObject private var myBooksViewModel: MyBooksViewModel
-    /// Module B (swarm_0b7616e7) — single ActiveSessionsViewModel for
-    /// the app lifetime. Constructed here (composition root for the
-    /// Continue Reading + Continue Listening rows) and threaded into
-    /// `CatalogView`. The viewmodel observes `bookRegistry`,
-    /// `audiobookSession`, and `.TPPCurrentAccountDidChange` internally,
-    /// so it does not need to be re-created across tab switches or
-    /// library swaps.
-    @StateObject private var activeSessionsViewModel: ActiveSessionsViewModel
     /// Polish-phase (in-app-nav-polish-2026-06-01) reactivity fix:
     /// `AppTabHostView` must observe the presenter directly so SwiftUI
     /// re-evaluates `body` when `isPlayerExpanded` flips (mini-player tap
@@ -105,22 +97,6 @@ struct AppTabHostView: View {
             }
         ))
         _myBooksViewModel = StateObject(wrappedValue: MyBooksViewModel(appContainer: appContainer))
-        // Module B (swarm_0b7616e7) composition root for the Continue
-        // Reading row's data source. `DefaultRecentlyReadingService` is
-        // a pure function of `bookRegistry.myBooks` + saved location, so
-        // it carries no extra dependencies and lives as long as the
-        // viewmodel does. Initial state seeds synchronously inside the
-        // viewmodel `init` so the first CatalogView body sees the rows
-        // populated where applicable.
-        let recentlyReading = DefaultRecentlyReadingService(
-            bookRegistry: appContainer.bookRegistry,
-            bookOpenTracker: appContainer.bookOpenTracker
-        )
-        _activeSessionsViewModel = StateObject(wrappedValue: ActiveSessionsViewModel(
-            recentlyReadingService: recentlyReading,
-            audiobookSession: appContainer.audiobookSession,
-            bookRegistry: appContainer.bookRegistry
-        ))
     }
 
     // Mini-player inset modifier. Applied to each tab's NavigationHostView
@@ -332,7 +308,6 @@ struct AppTabHostView: View {
     private var catalogRoot: some View {
         NavigationHostView(rootView: CatalogView(
             viewModel: catalogViewModel,
-            activeSessionsViewModel: activeSessionsViewModel,
             appContainer: appContainer
         ))
         .environmentObject(router)
