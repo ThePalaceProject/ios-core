@@ -1,0 +1,110 @@
+scenario:
+  id: audiobook-sleep-timer-45
+  name: "Audiobook sleep timer offers 45 Minutes and arms it"
+  description: >
+    Covers the 45-minute sleep-timer option added for PP-4903 (toolkit PR #201,
+    adopted by ios-core PR #1376), which brings iOS in line with Android. The
+    journey opens the sleep-timer menu from the audiobook player, picks
+    "45 Minutes", and asserts the menu dismissed with the countdown chip armed.
+
+    Both sleep-timer menus — the toolkit sheet player's action sheet and the
+    in-app player's `Menu` in AudiobookMorphingPlayerView — are built by
+    iterating `SleepTimerTriggerAt.allCases` and labelling each case with its
+    `displayTitle`. Declaration order is therefore menu order, which is why the
+    option list is a load-bearing invariant here and not incidental UI.
+
+  tags: [tier1, ios, audiobook, sleep-timer, pp-4903]
+  tier: stateful
+  blocking: false   # smoke-only — see known_issues: the menu-row tap is racy
+                    # under synthetic HID, so a halt is not always a product bug.
+
+  preconditions:
+    - "A1QA Test Library is the active library, signed in (patron card 0123…0237)"
+    - "The beta library registry is enabled — A1QA is NOT in the production registry"
+    - "'Private Down Under' (audiobook, Automated Tests lane) is borrowed and open in the player"
+    - "The sleep timer is OFF: the moon control renders as a plain circle with no countdown chip"
+
+  state_reset:
+    - "Enable the beta registry before adding A1QA: `xcrun simctl spawn <UDID> defaults write org.thepalaceproject.palace NYPLUseBetaLibrariesKey -bool YES`, then relaunch."
+    - "If the catalog fails with 'HTTP status error 914', the app is resolving a dead legacy feed (circulation.librarysimplified.org/NYNYPL, DNS NoSuchRecord -1003) — reinstall the app to clear it. 914 is Palace's synthetic no-response code, not a server status."
+    - "Set the sleep timer back to Off before each replay, and VERIFY it: an armed timer renders a countdown chip, and step 1's pre-state comparison tolerates that difference (SSIM ~0.92, above the 0.85 threshold)."
+    - "Verify the menu is closed too. The `requires.initial_state.text_subset_forbidden` gate catches a left-open menu, which happens more often than expected (see known_issues)."
+
+  recording:
+    path: "~/.simdrive/recordings/audiobook-sleep-timer-45/recording.yaml"
+    steps: 3
+    captured_with: "simdrive 1.0.0b12"
+    captured_on: "2026-08-12"
+    note: |
+      Step 3 exists to make the outcome assertable, and that is the whole point
+      of its presence. Replay compares each step's PRE-state against the
+      capture, and never asserts anything after the final step — so a two-step
+      recording that ended on "tap 45 Minutes" reported ok=true with SSIM 0.995
+      while the selection had silently not happened at all. Adding a third step
+      (reopen the sleep-timer menu) turns the post-selection screen into a
+      compared pre-state: menu dismissed, countdown chip armed. The same failure
+      now halts at step 3 with SSIM ~0.63 instead of passing.
+
+  steps:
+    - id: open_sleep_timer_menu
+      description: "Tap the sleep-timer moon control in the player's lower control row"
+      tap_target: { x: 772, y: 2543 }
+    - id: choose_45_minutes
+      description: "Pick '45 Minutes' — the new option, third from the bottom above 60 Minutes"
+      tap_target: { x: 332, y: 1921 }
+    - id: reopen_sleep_timer_menu
+      description: "Reopen the menu — its pre-state is the assertion that the 45-minute timer armed"
+      tap_target: { x: 785, y: 2480 }
+
+  expected_invariants:
+    - "The sleep-timer menu lists, top to bottom as rendered: End of Chapter, 60 Minutes, 45 Minutes, 30 Minutes, 15 Minutes, Off"
+    - "That is `SleepTimerTriggerAt.allCases` order inverted by SwiftUI's upward menu presentation — a patron reading it bottom-up sees Off, 15, 30, 45, 60, End of Chapter"
+    - "'45 Minutes' sits between '30 Minutes' and '60 Minutes'; a case appended to the end of the enum would render it after 'End of Chapter'"
+    - "Choosing 45 Minutes dismisses the menu and replaces the plain moon circle with a moon + countdown capsule"
+    - "The countdown starts just under 45:00 (observed 44:59 at capture) and decrements while playing"
+
+  ssim_gating:
+    threshold: 0.85
+    on_drift: halt   # Unlike the sibling audiobook journeys, drift here is
+                     # meaningful: the load-bearing difference between pass and
+                     # fail is menu-open vs menu-dismissed-with-chip, which is a
+                     # large-area change (~0.63 when wrong, ~0.99 when right).
+
+  known_issues:
+    - |
+      THE FIRST SYNTHETIC TAP ON A PRESENTED SwiftUI MENU ROW IS OFTEN SWALLOWED.
+      Observed five times across this session, on both '45 Minutes' and 'Off':
+      the tap tool returns ok with a resolved mark, the menu stays presented, and
+      an identical second tap then lands. Live capture hides it because the agent
+      observes between taps (which costs ~1.5s of real time); replay executes
+      taps back-to-back and hits it more often. Recording YAML does not persist
+      `settle_ms`, so a replay cannot reproduce the capture's pacing. A halt at
+      step 2 or 3 with the menu still open is therefore this race, not a
+      regression in the sleep timer — re-run before filing anything.
+    - |
+      REPLAY DOES NOT ASSERT THE FINAL STEP'S OUTCOME. See `recording.note`. Any
+      journey whose payload is its last action is a false green waiting to
+      happen; always record one more step so the outcome becomes a pre-state.
+    - |
+      AUTO-GENERATED STATE CONTRACTS PIN OCR NOISE. The captured
+      `text_subset_required` included cover-art words that re-OCR differently on
+      every run ('JAMES PATTERSON' vs 'PATERSON', 'MICHAEL' vs 'MICHALL WHITE',
+      'DOWI UNDER'), so the contract rejected genuinely correct state. It is
+      curated here down to durable player chrome: the title, 'Track 1', '1.0x'.
+    - |
+      SSIM CANNOT TELL 45 FROM 30. The chip is a small text region, so a wrongly
+      armed 30-minute timer would very likely differ by less than the threshold.
+      This was probed by repointing step 2 at the 30 Minutes row, but the probe
+      halted on the swallowed-tap race before it could answer the question, so
+      the limit is reasoned rather than measured. The duration itself is pinned
+      by `SleepTimerTests.testFortyFiveMinutes_SchedulesSleepFortyFiveMinutesOut`
+      in the toolkit, which asserts 2700 seconds exactly and was proved by
+      mutating 45 to 30. Treat that unit test as the duration authority and this
+      journey as the "option is present, reachable, and arms something" check.
+    - "Sim audio is silent (see feedback_audiobook_sim_audio_limitation.md). This journey never asserts audible output; the countdown chip is UI state and decrements regardless."
+
+  related:
+    - "audiobook-skip-forward.yaml — sibling position-state player journey"
+    - "audiobook-cold-load-first-open.yaml — the player-open precondition this journey inherits"
+    - "PalaceAudiobookToolkitTests/SleepTimerTests — duration + menu-order unit coverage"
+    - "ios-audiobooktoolkit PR #201, ios-core PR #1376 — the change under test"
