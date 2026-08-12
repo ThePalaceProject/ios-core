@@ -241,7 +241,74 @@ python3 scripts/palace_mutate.py \
 
 The `--tests` arg is an XCTest **class** name (not a directory) — `-only-testing` matches `<TestBundle>/<XCTestCase subclass>`. A run that says "0 tests executed" is a misconfiguration, not a clean pass.
 
+**Mutating the audiobook toolkit** (a sibling checkout with its own project). It
+cannot build standalone — `AudiobookPlayerView` imports `PalaceUIKit` from
+`Palace.xcodeproj` — so point it at a DerivedData that already has that
+framework built:
+
+```bash
+PALACE_MUTATE_DERIVED_DATA_PATH=/path/to/dd-with-PalaceUIKit \
+HARNESS_SESSION_SIM_UDID=<sim> \
+python3 scripts/palace_mutate.py \
+  --repo-root  /path/to/ios-audiobooktoolkit \
+  --project    PalaceAudiobookToolkit.xcodeproj \
+  --scheme     PalaceAudiobookToolkit \
+  --file       PalaceAudiobookToolkit/Path/Changed.swift \
+  --tests      PalaceAudiobookToolkitTests/SomeTests \
+  --diff-only --diff-base origin/main
+```
+
+Without `PALACE_MUTATE_DERIVED_DATA_PATH` every mutant fails to build with
+`no such module 'PalaceUIKit'` and the run is worthless.
+
 A test that doesn't kill any mutants should be rewritten to test the actual behavior path, not just surface properties.
+
+**Derive mutants from the source, never from your own model of it.** Use
+`palace_mutate.py`, which discovers mutations mechanically. A hand-written list
+of "the mutants I think matter" is the set of tests you already believe in,
+restated — it inherits your blind spots exactly, and a green score against it
+means nothing. Incident (PP-4724 wave 3, 2026-08-12): a bespoke mutation script
+reported "7/7 killed" on a state machine while a reviewer's mechanically-derived
+mutant — deleting a whole branch of the changed line — left the suite green.
+If you show a hand-authored mutant, label it as illustration, not as a score.
+
+**A build failure is not a kill.** A mutant that fails to COMPILE proves
+nothing about your tests, and any harness that keys off "the test command
+exited non-zero" will score it as killed. Require a NAMED failing test before
+counting a mutant dead. This bit twice in one session: a bespoke script
+classified compile failures as kills, and a reviewer re-running it against a
+clean DerivedData got a "kill" that was really `no such module 'PalaceUIKit'`.
+`palace_mutate.py` reports `errored` separately for this reason — do not
+collapse that into the kill count.
+
+**Mutation score is not coverage, and is structurally blind to the defects that
+actually ship.** A mutant is a perturbation of code that EXISTS, so it can say
+nothing about a case you never wrote. In the same incident, "all mutants killed"
+sat next to a state-transition cell that had no test at all. Always pair the
+score with the different question: *which reachable (state, event) pairs have no
+test?*
+
+**State machines: test the transition table, not scenarios.** If a type holds a
+state enum that more than one method mutates — especially inside a
+`LockIsolated`/lock box on a critical path — write the states × events table
+down and assert every cell. States × events is finite and enumerable; scenarios
+are not, and every defect in the incident above was one unenumerated cell:
+`claim` from `.failed(n)`, `failure` from `.loading(superseded: true)`, a
+position exactly ON a chapter boundary. Five review rounds found roughly one
+cell each, by reading. The table would have found all of them at once.
+
+**When a fix adds a state dimension, say what it does to every existing cell.**
+A remediation that adds a flag doubles the space; if review is sampling cells
+while the fix is adding them, the loop diverges. This is the state-shaped form
+of the same rule as "enumerate every encoding of an invariant before patching
+one arm".
+
+**A behavior change to a shared helper needs a call-site census, not just a
+passing suite.** Grep every caller and state what each one now does differently.
+In the same incident a chapter-boundary fix was correct in isolation, had 225
+green tests, and would have paused audiobook playback at every chapter — because
+two players compared that helper's results across a boundary to decide whether
+to keep playing. No test caught it; tracing the callers did.
 
 **Tautology tests are forbidden:**
 - `XCTAssertTrue(x == true || x == false)` — always passes, tests nothing

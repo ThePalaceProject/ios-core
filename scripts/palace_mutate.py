@@ -56,6 +56,16 @@ from typing import Callable, Iterable
 # `|| true` masked the failure so the mutation gate "passed" with zero reports.
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+# The Xcode project this script drives. Overridable via --project/--scheme/
+# --repo-root so the tool can mutate code in a SIBLING checkout — notably
+# ios-audiobooktoolkit, which is the audiobook playback/download critical
+# path and could not be mutated at all while these were literals. That gap
+# is why PP-4724 wave 3 was "verified" with hand-authored mutants, which
+# inherit the author's blind spots: a reviewer's mechanically-derived
+# mutant later survived a suite those hand-written ones had passed.
+PROJECT = "Palace.xcodeproj"
+SCHEME = "Palace"
+
 # SIM_ID: prefer the harness-allocated UDID (HARNESS_SESSION_SIM_UDID env var)
 # so parallel agents and CI can each pin a different sim. Fall back to the
 # author's local sim for direct dev invocation; the script is still allowed to
@@ -211,13 +221,27 @@ def changed_lines(file_relpath: str, base_ref: str) -> set[int] | None:
     that are added or modified vs `base_ref`. Returns None if git fails so the
     caller falls back to whole-file mutation.
 
-    Uses `git diff --unified=0 <base>..HEAD -- <path>` and parses the @@ hunk
+    Uses `git diff --unified=0 <base> -- <path>` and parses the @@ hunk
     headers. Lines reported are 1-indexed against the WORKING-TREE version of
     the file (the version palace_mutate is about to mutate).
+
+    NOTE the diff is `<base>` and NOT `<base>..HEAD`. It used to be the latter,
+    which compares base against the last COMMIT while this tool mutates the
+    WORKING TREE. With a dirty tree the two files have different line
+    numbering, so hunk line numbers referred to one version and the mutations
+    were applied to another: genuinely-changed lines were skipped, and stale
+    numbers still resolved to *some* line, so the wrong lines could be mutated
+    without any error. That is the state you are in whenever you iterate on a
+    fix before committing it — the normal case for `--diff-only`.
+
+    Found while mutating a toolkit change: the one behaviour-carrying line in
+    the diff had four mutation points and the tool reported "0/57 mutation
+    points on changed lines". When the tree is clean the two forms are
+    identical, so CI behaviour is unchanged.
     """
     try:
         result = subprocess.run(
-            ["git", "diff", "--unified=0", f"{base_ref}..HEAD", "--", file_relpath],
+            ["git", "diff", "--unified=0", base_ref, "--", file_relpath],
             cwd=REPO_ROOT, capture_output=True, text=True, check=False,
         )
     except OSError as e:
@@ -396,8 +420,8 @@ def build_xcodebuild_command(test_class_paths: list[str],
                          "-resultBundlePath", coverage_bundle_path]
     return [
         "xcodebuild",
-        "-project", "Palace.xcodeproj",
-        "-scheme", "Palace",
+        "-project", PROJECT,
+        "-scheme", SCHEME,
         "-destination", f"platform=iOS Simulator,id={SIM_ID}",
         "test",
     ] + derived_data_args + fast_flags + coverage_args + only_testing_args
@@ -720,6 +744,13 @@ def compute_exit_code(summary: dict) -> int:
 def main() -> int:
     p = argparse.ArgumentParser(description="Focused Swift mutation tester for Palace iOS")
     p.add_argument("--file", required=True, help="source file to mutate (relative to repo root)")
+    p.add_argument("--repo-root", default=None,
+                   help="repo containing --file and the Xcode project (default: this script's repo). "
+                        "Use to mutate a sibling checkout such as ios-audiobooktoolkit.")
+    p.add_argument("--project", default=None,
+                   help="Xcode project filename (default: Palace.xcodeproj)")
+    p.add_argument("--scheme", default=None,
+                   help="scheme to test (default: Palace)")
     p.add_argument("--tests", required=True, action="append",
                    help="test class path for -only-testing (repeatable). e.g. PalaceTests/PalaceCheckPropertyTests")
     p.add_argument("--max-mutations", type=int, default=20, help="cap number of mutations")
@@ -748,6 +779,16 @@ def main() -> int:
     p.add_argument("--mutant-cache-dir", default=DEFAULT_MUTANT_CACHE_DIR,
                    help=f"per-mutant incremental cache dir (default: {DEFAULT_MUTANT_CACHE_DIR})")
     args = p.parse_args()
+
+    # Retarget at a different checkout/project before anything reads these.
+    # Defaults keep existing invocations byte-identical.
+    global REPO_ROOT, PROJECT, SCHEME
+    if args.repo_root:
+        REPO_ROOT = os.path.abspath(args.repo_root)
+    if args.project:
+        PROJECT = args.project
+    if args.scheme:
+        SCHEME = args.scheme
 
     file_path = os.path.join(REPO_ROOT, args.file)
     if not os.path.isfile(file_path):
