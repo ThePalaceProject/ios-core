@@ -162,7 +162,11 @@ public struct LocalClassifier: Sendable {
                     confidence: top.score,
                     matchedKeywords: top.matched,
                     consideredEntryIds: consideredIds,
-                    recognizedEntryId: top.entry.id
+                    recognizedEntryId: top.entry.id,
+                    // Reached only inside the strong-evidence branch, so this
+                    // recognition is strong by construction — the entry's
+                    // targeted follow-up is warranted.
+                    recognitionIsStrong: true
                 )
             }
             return ClassificationResult(
@@ -184,16 +188,21 @@ public struct LocalClassifier: Sendable {
             )
         }
 
-        // Single low-confidence match — escalate rather than over-promise. We DID
+        // Low-confidence match — escalate rather than over-promise. We DID
         // recognize a topic (top.entry), just not confidently enough to suggest;
-        // carry it so the escalation can ask that entry's targeted follow-up and
-        // hand support a scoped ticket instead of a blank hand-off.
+        // carry it so the ticket reaches support scoped rather than blank.
+        //
+        // Whether that recognition also earns the entry's targeted follow-up
+        // QUESTION depends on its strength: a decisive phrase that merely lost on
+        // the margin justifies asking; a lone generic word does not, because every
+        // such prompt presumes its bug and would read as the bot inventing one.
         return ClassificationResult(
             decision: .escalate,
             confidence: top.score,
             matchedKeywords: top.matched,
             consideredEntryIds: consideredIds,
-            recognizedEntryId: top.entry.id
+            recognizedEntryId: top.entry.id,
+            recognitionIsStrong: top.strongCount >= 1
         )
     }
 

@@ -72,11 +72,15 @@ final class StructuredEscalationTests: XCTestCase {
 
     func testEscalate_recognizedTopic_asksItsTargetedFollowUp() {
         let entries = [KBEntry(id: "KI-FU", category: .other, status: .open,
-                               symptomKeywords: ["some unrelated phrase"],
-                               corroboratingKeywords: ["frobnicate widget"],
+                               symptomKeywords: ["frobnicate widget"],
                                userFacingWorkaround: "Try turning it off and on again please.",
                                escalationFollowUp: KBEscalationFollowUp(prompt: "Which widget model is it?"),
-                               confidenceThreshold: 0.1)]
+                               confidenceThreshold: 0.1,
+                               // escalate_anyway = recognized confidently, but no
+                               // safe self-serve fix. The strong-recognition
+                               // escalation, which is exactly when the targeted
+                               // question is warranted.
+                               escalateAnyway: true)]
         let state = drive(reducer(entries), category: .other, text: "my frobnicate widget is broken")
 
         guard case .awaitingEscalationFollowUp(let prompt, _) = state.step else {

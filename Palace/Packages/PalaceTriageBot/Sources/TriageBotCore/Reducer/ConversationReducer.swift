@@ -188,7 +188,11 @@ public struct ConversationReducer: Sendable {
                         userText: userText,
                         category: category,
                         matchedEntryId: recognized,
-                        tagSuffix: recognized != nil ? "escalate-recognized" : "escalate-novel"
+                        tagSuffix: recognized != nil ? "escalate-recognized" : "escalate-novel",
+                        // Weak-only recognition still scopes the ticket, but must
+                        // not interrogate the patron about a bug we have not
+                        // actually identified.
+                        mayAskTargetedFollowUp: result.recognitionIsStrong
                     )
                 }
             }
@@ -826,7 +830,13 @@ public struct ConversationReducer: Sendable {
         userText: String,
         category: KBCategory?,
         matchedEntryId: String?,
-        tagSuffix: String
+        tagSuffix: String,
+        // Whether the recognition is strong enough to justify the entry's
+        // bug-presuming follow-up question. The ticket is scoped either way;
+        // only the patron-facing question is gated. Defaults true — callers
+        // that got here from a guided flow have watched the patron walk the
+        // entry's own steps, which is the strongest recognition there is.
+        mayAskTargetedFollowUp: Bool = true
     ) {
         let draft = TicketDraft(
             // PP-4805: redact patron-typed free text at draft assembly.
@@ -841,7 +851,7 @@ public struct ConversationReducer: Sendable {
         askEscalationFollowUpOrDraft(
             state: &next,
             effects: &effects,
-            entryId: matchedEntryId,
+            entryId: mayAskTargetedFollowUp ? matchedEntryId : nil,
             draft: draft,
             tagSuffix: tagSuffix
         )

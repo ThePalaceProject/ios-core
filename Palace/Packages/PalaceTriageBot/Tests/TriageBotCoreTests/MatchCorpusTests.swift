@@ -58,10 +58,20 @@ final class MatchCorpusTests: XCTestCase {
         let cases: [Case]
     }
 
+    /// Three outcomes, not two — because with the AI fallback off, "we could not
+    /// self-serve this" is not the end of the bot's usefulness. An escalation that
+    /// carries `recognizedEntryId` hands support a SCOPED ticket and asks the
+    /// entry's targeted follow-up ("which title?", "which library?") before filing.
+    /// A blind escalation hands them "patron reports a problem".
+    ///
+    /// So the goal is layered: capture what we can, and for everything we cannot,
+    /// prefer a triaged escalation over a blind one. Misrouting stays the only
+    /// truly bad outcome — it is the one where the patron acts on wrong advice.
     private enum Outcome {
-        case captured(String)       // suggested an acceptable entry
+        case captured(String)       // suggested an acceptable entry — patron self-serves
         case misrouted(String)      // suggested an entry that is not acceptable
-        case escalated
+        case triaged(String)        // escalated, but recognized the topic → scoped ticket
+        case blindEscalated         // escalated with no recognition → generic ticket
         case disambiguated
     }
 
@@ -69,6 +79,8 @@ final class MatchCorpusTests: XCTestCase {
         var capturable = 0          // cases where an entry is the right answer
         var captured = 0
         var misrouted = 0
+        var triaged = 0
+        var blind = 0
         var total = 0
     }
 
@@ -98,7 +110,9 @@ final class MatchCorpusTests: XCTestCase {
                 ? .captured(entryId)
                 : .misrouted(entryId)
         case .escalate:
-            return .escalated
+            // recognizedEntryId is what turns a dead-end into a scoped hand-off.
+            if let recognized = result.recognizedEntryId { return .triaged(recognized) }
+            return .blindEscalated
         case .disambiguate:
             return .disambiguated
         }
@@ -127,10 +141,16 @@ final class MatchCorpusTests: XCTestCase {
             case .misrouted(let id):
                 tally.misrouted += 1
                 line = "  ✗ MISROUTED   \(testCase.id) -> \(id) (expected \(testCase.expected))"
-            case .escalated:
+            case .triaged(let id):
+                tally.triaged += 1
+                line = testCase.expectsEscalation
+                    ? "  ✓ triaged     \(testCase.id) (scoped to \(id))"
+                    : "  ~ triaged     \(testCase.id) (no answer shown, but ticket scoped to \(id))"
+            case .blindEscalated:
+                tally.blind += 1
                 line = testCase.expectsEscalation
                     ? "  ✓ escalated   \(testCase.id)"
-                    : "  – missed      \(testCase.id) (expected \(testCase.expected))"
+                    : "  – MISSED      \(testCase.id) (expected \(testCase.expected); ticket unscoped)"
             case .disambiguated:
                 line = "  ? ambiguous   \(testCase.id) (expected \(testCase.expected))"
             }
@@ -144,8 +164,16 @@ final class MatchCorpusTests: XCTestCase {
             guard let tally = bySlice[slice] else { continue }
             let pct = tally.capturable == 0 ? "n/a"
                 : String(format: "%.0f%%", 100.0 * Double(tally.captured) / Double(tally.capturable))
+            // "handled" = the patron got either an answer or a scoped hand-off.
+            // With the AI fallback off this is the number that describes what the
+            // bot is actually worth today; capture alone undersells it.
+            let handled = tally.captured + tally.triaged
+            let handledPct = tally.total == 0 ? "n/a"
+                : String(format: "%.0f%%", 100.0 * Double(handled) / Double(tally.total))
             print("\n[\(slice)] cases=\(tally.total) capturable=\(tally.capturable) "
                   + "captured=\(tally.captured) (\(pct)) misrouted=\(tally.misrouted)")
+            print("         triaged=\(tally.triaged) blind=\(tally.blind) "
+                  + "→ handled (answered or scoped) = \(handled)/\(tally.total) (\(handledPct))")
         }
         print("\n--- per case ---")
         report.forEach { print($0) }
