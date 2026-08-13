@@ -88,7 +88,26 @@ public struct KBEntry: Codable, Equatable, Identifiable, Sendable {
     /// status). Present for `.knownIssue` entries.
     public let status: KBStatus?
     public let fixedInVersion: String?
+    /// STRONG evidence — phrases specific enough that one of them, alone, is
+    /// grounds to offer this entry. "won't download", "hold is ready",
+    /// "grayed out". A patron who writes one of these has named this problem.
     public let symptomKeywords: [String]
+    /// WEAK evidence — generic symptom words that are consistent with this entry
+    /// but describe half the app: "stuck", "crashes", "download", "bookshelf".
+    /// They raise confidence when they accompany a strong match and are NEVER
+    /// sufficient on their own.
+    ///
+    /// The distinction exists because these two populations were previously one
+    /// flat `symptom_keywords` list, which forced the classifier to gate on
+    /// COUNT ("require ≥2 matches") as a proxy for quality. That proxy suppressed
+    /// the strong keywords along with the weak ones: a patron writing the single
+    /// decisive phrase "my book won't download" scored 1 and escalated, while the
+    /// bot's guided steps sat unreachable behind the ≥2 floor (PP-4865).
+    ///
+    /// Optional in JSON so existing catalogs — and the Kotlin reader of the same
+    /// schema — decode unchanged; absent means "this entry has no weak keywords",
+    /// which is the correct reading for every `how_to` entry.
+    public let corroboratingKeywords: [String]?
     public let distributorFilter: [String]?
     public let authTypeFilter: [String]?
     public let iosVersionFilter: [String]?
@@ -129,6 +148,7 @@ public struct KBEntry: Codable, Equatable, Identifiable, Sendable {
         case status
         case fixedInVersion = "fixed_in_version"
         case symptomKeywords = "symptom_keywords"
+        case corroboratingKeywords = "corroborating_keywords"
         case distributorFilter = "distributor_filter"
         case authTypeFilter = "auth_type_filter"
         case iosVersionFilter = "ios_version_filter"
@@ -152,6 +172,7 @@ public struct KBEntry: Codable, Equatable, Identifiable, Sendable {
         status: KBStatus? = nil,
         fixedInVersion: String? = nil,
         symptomKeywords: [String],
+        corroboratingKeywords: [String]? = nil,
         distributorFilter: [String]? = nil,
         authTypeFilter: [String]? = nil,
         iosVersionFilter: [String]? = nil,
@@ -173,6 +194,7 @@ public struct KBEntry: Codable, Equatable, Identifiable, Sendable {
         self.status = status
         self.fixedInVersion = fixedInVersion
         self.symptomKeywords = symptomKeywords
+        self.corroboratingKeywords = corroboratingKeywords
         self.distributorFilter = distributorFilter
         self.authTypeFilter = authTypeFilter
         self.iosVersionFilter = iosVersionFilter

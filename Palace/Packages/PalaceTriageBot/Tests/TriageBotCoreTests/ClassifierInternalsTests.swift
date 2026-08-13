@@ -13,9 +13,15 @@ final class ClassifierInternalsTests: XCTestCase {
         KnowledgeBase(catalog: KBCatalog(version: "test", updatedAt: "2026-07-20", entries: entries))
     }
 
-    private func knownIssue(_ id: String, _ keywords: [String], threshold: Double = 0.0) -> KBEntry {
+    private func knownIssue(
+        _ id: String,
+        _ keywords: [String],
+        corroborating: [String]? = nil,
+        threshold: Double = 0.0
+    ) -> KBEntry {
         KBEntry(id: id, category: .other, status: .open,
-                symptomKeywords: keywords, userFacingWorkaround: "Do the thing to fix it.",
+                symptomKeywords: keywords, corroboratingKeywords: corroborating,
+                userFacingWorkaround: "Do the thing to fix it.",
                 confidenceThreshold: threshold)
     }
 
@@ -95,9 +101,35 @@ final class ClassifierInternalsTests: XCTestCase {
                        .suggest(entryId: "K"))
     }
 
-    func testGuard_knownIssueSingleRegion_escalates() {
+    /// One STRONG region is sufficient. This is the behavior change that made the
+    /// bot usable: a patron naming the problem once gets the answer.
+    func testGuard_knownIssueSingleStrongRegion_suggests() {
         let kb = makeKB([knownIssue("K", ["alpha", "beta"])])
-        XCTAssertEqual(classifier.classify(userText: "alpha only", knowledgeBase: kb).decision, .escalate)
+        XCTAssertEqual(classifier.classify(userText: "alpha only", knowledgeBase: kb).decision,
+                       .suggest(entryId: "K"))
+    }
+
+    /// One WEAK region is not, however many of them there are. Corroborating
+    /// keywords shade confidence; they never carry a suggestion alone. Kills the
+    /// mutant that drops the strong-evidence conjunct from the suggest guard.
+    func testGuard_knownIssueWeakRegionsOnly_escalates() {
+        let kb = makeKB([knownIssue("K", ["alpha"], corroborating: ["beta", "gamma"])])
+        XCTAssertEqual(classifier.classify(userText: "beta and gamma", knowledgeBase: kb).decision,
+                       .escalate,
+                       "two weak matches are still weak — only strong evidence may carry a suggestion")
+    }
+
+    /// Weak evidence still counts toward the score once a strong match exists —
+    /// that is the whole point of keeping it rather than deleting it. Strong(1) +
+    /// weak(1) = 1.5/3 = 0.5, which clears a 0.4 threshold that strong alone
+    /// (1/3 = 0.333) would not.
+    func testScoring_corroboratingEvidenceRaisesConfidenceOnceStrongMatchExists() {
+        let kb = makeKB([knownIssue("K", ["alpha"], corroborating: ["beta"], threshold: 0.4)])
+        XCTAssertEqual(classifier.classify(userText: "alpha beta", knowledgeBase: kb).decision,
+                       .suggest(entryId: "K"))
+        XCTAssertEqual(classifier.classify(userText: "alpha only", knowledgeBase: kb).decision,
+                       .escalate,
+                       "strong alone scores 0.333 and must not clear a 0.4 threshold")
     }
 
     func testGuard_tiedRegionCounts_disambiguates() {
@@ -133,18 +165,35 @@ final class ClassifierInternalsTests: XCTestCase {
                        .suggest(entryId: "H"))
     }
 
-    func testKnownIssueVsHowTo_sameSingleRegionInput_divergeByKind() {
-        // Identical 1-region match: how_to suggests, known_issue escalates.
-        // Kills M5 (both→2: how_to would escalate) AND M6 (both→1: known_issue
-        // would suggest) from one paired assertion.
+    /// The suggest floor diverges on keyword STRENGTH, not on entry KIND.
+    ///
+    /// This replaces a paired assertion that a 1-region input suggested for
+    /// how_to and escalated for known_issue. That divergence was an artifact of
+    /// the per-kind count floor: `how_to` was allowed one region because its
+    /// keywords are lint-forced to be specific multi-word phrases, while
+    /// `known_issue` needed two because its keyword list mixed specific phrases
+    /// with generic words. Making strength explicit removes the need to
+    /// approximate it by kind — so an identical strong match now behaves
+    /// identically for both, and the axis that actually decides is which list the
+    /// keyword came from.
+    func testSuggestFloor_divergesByKeywordStrength_notByEntryKind() {
         let howTo = KBEntry(id: "H", category: .other, kind: .howTo,
                             symptomKeywords: ["magicphrase"],
                             userFacingWorkaround: "Here is how you do the thing.",
                             confidenceThreshold: 0.1)
-        let known = knownIssue("K", ["magicphrase"])
+        let known = knownIssue("K", ["magicphrase"], threshold: 0.1)
+
+        // Same input, same strength, both kinds → same decision. Kills the mutant
+        // that reintroduces a kind-specific floor.
         XCTAssertEqual(classifier.classify(userText: "magicphrase", knowledgeBase: makeKB([howTo])).decision,
                        .suggest(entryId: "H"))
         XCTAssertEqual(classifier.classify(userText: "magicphrase", knowledgeBase: makeKB([known])).decision,
+                       .suggest(entryId: "K"))
+
+        // Same input, same kind, weak instead of strong → escalates. Strength is
+        // the live axis.
+        let weakKnown = knownIssue("W", ["unrelated"], corroborating: ["magicphrase"], threshold: 0.1)
+        XCTAssertEqual(classifier.classify(userText: "magicphrase", knowledgeBase: makeKB([weakKnown])).decision,
                        .escalate)
     }
 

@@ -13,25 +13,27 @@
         "wont load",
         "will not play",
         "will not load",
-        "spinning",
-        "spinner",
-        "first time",
-        "hangs",
-        "stuck",
         "sits there",
-        "nothing happens",
         "tap play",
         "tapped play",
         "play button",
-        "blinks",
         "no sound",
         "stops playing",
         "just loads",
         "doesn't start",
         "doesnt start",
         "play and nothing",
+        "loan disappear"
+      ],
+      "corroborating_keywords": [
+        "spinning",
+        "spinner",
+        "first time",
+        "hangs",
+        "stuck",
+        "nothing happens",
+        "blinks",
         "opens but",
-        "loan disappear",
         "reinstall"
       ],
       "distributor_filter": [
@@ -126,8 +128,10 @@
         "switched libraries",
         "changed library",
         "playback crash",
-        "crashed",
         "crash while playing"
+      ],
+      "corroborating_keywords": [
+        "crashed"
       ],
       "distributor_filter": [
         "palace_marketplace"
@@ -199,10 +203,12 @@
         "fields look disabled",
         "where to type",
         "where do i type",
-        "placeholder",
-        "boxes",
         "never prompted",
         "looks disabled"
+      ],
+      "corroborating_keywords": [
+        "placeholder",
+        "boxes"
       ],
       "user_facing_workaround": "The field looks grayed out, but it's actually active — tap it and start typing. This is a contrast issue we've already fixed; the next App Store update will look correct.",
       "user_facing_steps": [
@@ -248,17 +254,19 @@
         "not my library",
         "where is my library",
         "where's my library",
-        "can't find",
-        "cant find",
         "missing titles",
         "missing books",
         "demo books",
         "demo collection",
+        "doesn't appear",
+        "doesnt appear"
+      ],
+      "corroborating_keywords": [
+        "can't find",
+        "cant find",
         "bookshelf",
         "these aren't",
         "these arent",
-        "doesn't appear",
-        "doesnt appear",
         "on my ipad",
         "on my phone"
       ],
@@ -349,7 +357,9 @@
         "connecting to car",
         "in the car",
         "in my car",
-        "crash in car",
+        "crash in car"
+      ],
+      "corroborating_keywords": [
         "crashes"
       ],
       "user_facing_workaround": "This CarPlay crash is fixed in the next release. As a workaround, start playback before connecting to your car.",
@@ -416,7 +426,6 @@
         "holds disappeared",
         "holds list",
         "still on hold",
-        "still shows",
         "shows as reserved",
         "next in line",
         "got a notification",
@@ -427,6 +436,9 @@
         "list disagrees",
         "not in my holds",
         "hold list"
+      ],
+      "corroborating_keywords": [
+        "still shows"
       ],
       "user_facing_workaround": "Pull down on the Holds list to refresh. If the hold is still missing, sign out and back in — your account will sync from the server.",
       "user_facing_steps": [
@@ -563,7 +575,6 @@
       "symptom_keywords": [
         "won't download",
         "wont download",
-        "download",
         "never works",
         "download stuck",
         "download failed",
@@ -572,6 +583,9 @@
         "hasnt moved",
         "stalled",
         "stuck downloading"
+      ],
+      "corroborating_keywords": [
+        "download"
       ],
       "user_facing_workaround": "If a download stalls, check that you're connected to WiFi or cellular data, then pull down to refresh your bookshelf. If it still fails, sign out and back in.",
       "user_facing_steps": [
@@ -661,13 +675,15 @@
         "does not show",
         "doesn't show",
         "doesnt show",
-        "not showing",
         "no additional",
         "won't let me add",
         "wont let me add",
         "unable to add",
         "can't add",
         "cant add"
+      ],
+      "corroborating_keywords": [
+        "not showing"
       ],
       "user_facing_workaround": "The Add Library list can go stale and stop showing newly-added libraries. On the Add Library screen, pull down and hold for a second to force a refresh — your library should then appear so you can add it.",
       "user_facing_steps": [

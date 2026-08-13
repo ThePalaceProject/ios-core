@@ -34,8 +34,14 @@ final class EscalationPreambleTests: XCTestCase {
     /// The reducer renders exactly one preamble, sitting directly in front of the
     /// bare-question prompt.
     func testReducer_followUpMessage_hasExactlyOnePreamble() {
+        // The keyword is CORROBORATING so the classifier recognizes the entry but
+        // escalates on it — which is the state that renders the follow-up prompt.
+        // (It was a `symptom_keywords` entry when known-issue suggest required two
+        // matches; a single strong match now suggests, and a suggestion never asks
+        // an escalation follow-up.)
         let entries = [KBEntry(id: "KI-FU", category: .other, status: .open,
-                               symptomKeywords: ["frobnicate widget"],
+                               symptomKeywords: ["some unrelated phrase"],
+                               corroboratingKeywords: ["frobnicate widget"],
                                userFacingWorkaround: "Try turning it off and on again please.",
                                escalationFollowUp: KBEscalationFollowUp(prompt: "Which widget model is it?"),
                                confidenceThreshold: 0.1)]

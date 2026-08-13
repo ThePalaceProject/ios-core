@@ -17,10 +17,11 @@ final class StructuredEscalationTests: XCTestCase {
     // MARK: - Classifier: recognizedEntryId
 
     func testLowConfidenceEscalate_carriesRecognizedEntryId() {
-        // One region hit → below the known_issue floor → escalate. But we DID
-        // recognize the topic, so the id rides along for the hand-off.
+        // A weak-evidence-only hit → cannot carry a suggestion → escalate. But we
+        // DID recognize the topic, so the id rides along for the hand-off.
         let entries = [KBEntry(id: "KI-FU", category: .other, status: .open,
-                               symptomKeywords: ["frobnicate widget"],
+                               symptomKeywords: ["some unrelated phrase"],
+                               corroboratingKeywords: ["frobnicate widget"],
                                userFacingWorkaround: "Try turning it off and on again please.",
                                confidenceThreshold: 0.1)]
         let result = classifier.classify(userText: "my frobnicate widget is broken", knowledgeBase: kb(entries))
@@ -71,7 +72,8 @@ final class StructuredEscalationTests: XCTestCase {
 
     func testEscalate_recognizedTopic_asksItsTargetedFollowUp() {
         let entries = [KBEntry(id: "KI-FU", category: .other, status: .open,
-                               symptomKeywords: ["frobnicate widget"],
+                               symptomKeywords: ["some unrelated phrase"],
+                               corroboratingKeywords: ["frobnicate widget"],
                                userFacingWorkaround: "Try turning it off and on again please.",
                                escalationFollowUp: KBEscalationFollowUp(prompt: "Which widget model is it?"),
                                confidenceThreshold: 0.1)]

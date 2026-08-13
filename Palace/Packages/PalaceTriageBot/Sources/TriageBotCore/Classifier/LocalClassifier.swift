@@ -51,28 +51,43 @@ public struct LocalClassifier: Sendable {
             )
         }
 
-        let scored = candidates.map { entry -> (entry: KBEntry, score: Double, matched: [String], distinctCount: Int) in
-            let matched = entry.symptomKeywords.filter { keyword in
+        let scored = candidates.map { entry -> (entry: KBEntry, score: Double, matched: [String], distinctCount: Int, strongCount: Int) in
+            let strongMatched = entry.symptomKeywords.filter { keyword in
                 normalized.contains(TextNormalizer.normalize(keyword))
             }
-            // Score on the count of DISTINCT non-overlapping regions of the
-            // patron's text that matched — not the raw count of keyword-list
-            // hits. A single word ("hangs") substring-matches every nested
-            // variant an entry lists ("hang", "hangs"), which inflated the raw
-            // count and let one word clear the ≥2 confidence guard. Counting
-            // merged match regions collapses those synonyms to the one concept
-            // the patron actually mentioned.
+            let weakMatched = (entry.corroboratingKeywords ?? []).filter { keyword in
+                normalized.contains(TextNormalizer.normalize(keyword))
+            }
+            let matched = strongMatched + weakMatched
+
+            // Count DISTINCT non-overlapping regions of the patron's text — not
+            // raw keyword-list hits. A single word ("hangs") substring-matches
+            // every nested variant an entry lists ("hang", "hangs"), which
+            // inflated the raw count. Counting merged match regions collapses
+            // those synonyms to the one concept the patron actually mentioned.
             //
-            // Each region is worth at most 1/3, saturating at 3+ → 1.0. The cap
-            // means a confident 3-concept hit reads as "very likely" regardless
-            // of how exhaustive the entry's synonym list is.
-            let distinctCount = Self.distinctMatchRegionCount(
+            // Strong and weak regions are counted SEPARATELY, because they answer
+            // different questions: strong regions decide whether we may suggest at
+            // all, weak regions only shade how confident the suggestion reads.
+            let strongCount = Self.distinctMatchRegionCount(
+                of: strongMatched.map { TextNormalizer.normalize($0) },
+                in: normalized
+            )
+            let totalCount = Self.distinctMatchRegionCount(
                 of: matched.map { TextNormalizer.normalize($0) },
                 in: normalized
             )
-            let kSaturation = 3
-            let normalizedScore = min(Double(distinctCount) / Double(kSaturation), 1.0)
-            return (entry, normalizedScore, matched, distinctCount)
+            let weakCount = max(totalCount - strongCount, 0)
+
+            // A strong region is worth a full unit, a weak one half — a generic
+            // "stuck" alongside "won't play" should sharpen the match, not count
+            // as much as a second decisive phrase. Saturates at 3.0 → 1.0, so a
+            // confident hit reads as "very likely" regardless of how exhaustive
+            // the entry's synonym list is.
+            let kSaturation = 3.0
+            let weightedEvidence = Double(strongCount) + 0.5 * Double(weakCount)
+            let normalizedScore = min(weightedEvidence / kSaturation, 1.0)
+            return (entry, normalizedScore, matched, totalCount, strongCount)
         }
 
         let consideredIds = scored.map { $0.entry.id }
@@ -93,31 +108,33 @@ public struct LocalClassifier: Sendable {
         //   2. runner-up score < 0.8 — when BOTH entries are at/near saturation
         //      (e.g. user stuffed keywords from multiple entries), we have
         //      genuine ambiguity and should disambiguate, not confidently pick.
-        //   3. top.distinctCount ≥ 2 — chaos-qa F-002 (2026-05-29) showed
-        //      that a single keyword match like "my library" in KI-004
-        //      could route a generic auth-loop complaint to the wrong
-        //      workaround. Requiring ≥2 DISTINCT match regions for confident
-        //      LOCAL suggest means single-match-only inputs escalate
-        //      instead, which routes them to the AI fallback (Claude)
-        //      that has semantic understanding to either confirm or
-        //      reject the match. Cost: ~1 extra Claude call per
-        //      single-keyword-overlap input. Worth it — false positives
-        //      misdirect users; the AI fallback's whole purpose is to
-        //      catch them.
+        //   3. top.strongCount ≥ 1 — the precision guard. See below.
         let secondScore = ranked.count > 1 ? ranked[1].score : 0
         let secondMatchCount = ranked.count > 1 ? ranked[1].distinctCount : 0
         let matchCountMargin = top.distinctCount - secondMatchCount
 
-        // Per-kind suggest floor. known_issue entries require ≥2 distinct match
-        // regions (the F-002 precision guard: a symptom word like "stuck" is too
-        // weak alone to route to a specific bug workaround). how_to entries carry
-        // specific multi-word intent phrases ("switch library", "return early")
-        // that are disjoint from symptom language, so a single strong intent
-        // match is a confident signal — requiring two would make most FAQ
-        // phrasings escalate. (The multi-word requirement is enforced by
-        // CatalogSchemaLintTests so a bare word like "renew" can't sneak in and
-        // fire on "renewed my card".)
-        let minDistinctRegions = top.entry.resolvedKind == .howTo ? 1 : 2
+        // The precision guard: at least one STRONG match region, for every kind.
+        //
+        // This replaces a per-kind COUNT floor (known_issue needed ≥2 regions of
+        // any kind, how_to needed 1). That floor was a proxy for evidence quality
+        // — chaos-qa F-002 (2026-05-29) showed a lone weak match could route a
+        // generic auth-loop complaint to the wrong-library workaround, and
+        // requiring two matches made that unlikely. But it was a bad proxy: it
+        // also suppressed the single DECISIVE phrase. Measured on the shipped
+        // catalog, 17 of 21 realistic patron phrasings escalated, including ones
+        // where the classifier had already identified the right entry — a patron
+        // typing "my book won't download" was told "I haven't seen exactly that
+        // before" (PP-4865).
+        //
+        // Gating on strength instead of count keeps F-002 closed — a weak word
+        // alone still cannot suggest, which is what that defect actually was —
+        // while letting one decisive phrase through, which is how patrons write.
+        // how_to entries are unaffected: they carry no corroborating keywords, so
+        // every match they can make is strong and their floor stays effectively 1.
+        //
+        // The partition is enforced by CatalogSchemaLintTests, so a generic word
+        // cannot drift back into `symptom_keywords` and quietly become sufficient.
+        let hasStrongEvidence = top.strongCount >= 1
 
         // confidenceThreshold lets an individual entry DEMAND more evidence than
         // its kind floor. Scores are quantized to {1/3, 2/3, 1.0} (1, 2, 3+
@@ -131,7 +148,7 @@ public struct LocalClassifier: Sendable {
         // which already implies matchCountMargin ≥ 1. It was provably dead.
         let runnerUpAlsoSaturated = secondScore >= 0.8
         if top.score >= top.entry.confidenceThreshold &&
-           top.distinctCount >= minDistinctRegions &&
+           hasStrongEvidence &&
            matchCountMargin >= 1 &&
            !runnerUpAlsoSaturated {
             // escalate_anyway: recognized AND confident, but this class of problem

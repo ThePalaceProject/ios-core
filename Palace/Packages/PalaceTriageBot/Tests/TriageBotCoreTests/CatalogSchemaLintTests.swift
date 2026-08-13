@@ -39,6 +39,63 @@ final class CatalogSchemaLintTests: XCTestCase {
                       "how_to keywords must be multi-word intent phrases, not single words: \(offenders)")
     }
 
+    /// Generic symptom words are corroborating evidence, never strong evidence.
+    ///
+    /// `symptom_keywords` is the sufficient-alone list: one match there is grounds
+    /// to offer the entry's workaround. A word like "stuck" or "crashes" describes
+    /// half the app, so if it sits in that list the bot will hand a patron a
+    /// specific bug's fix on the strength of one generic word — the chaos-qa F-002
+    /// defect. Such words belong in `corroborating_keywords`, where they sharpen a
+    /// real match without ever being one.
+    ///
+    /// This is the guard that lets the classifier gate on evidence STRENGTH rather
+    /// than evidence COUNT. Without it, the partition would drift the first time
+    /// someone adds a keyword to fix a missed ticket, and the ≥1-strong-region
+    /// floor would quietly become as unsafe as the ≥2-of-anything floor it
+    /// replaced.
+    func testGenericSymptomWordsAreNotStrongEvidence() throws {
+        // Bare words that describe a symptom without identifying a cause. Each one
+        // appears verbatim in the shipped catalog, on entries whose actual bug is
+        // far narrower than the word.
+        let generic: Set<String> = [
+            "stuck", "crashes", "crashed", "crash", "hangs", "hang", "hanging",
+            "spinning", "spinner", "blinks", "blinking", "frozen", "freezes",
+            "download", "downloads", "downloading", "bookshelf", "boxes",
+            "placeholder", "reinstall", "broken", "error", "failed", "failing",
+            "slow", "buggy", "glitch", "weird", "wrong"
+        ]
+
+        var offenders: [String] = []
+        for entry in try loadEntries() {
+            for keyword in entry.symptomKeywords
+            where generic.contains(keyword.lowercased().trimmingCharacters(in: .whitespaces)) {
+                offenders.append("\(entry.id): '\(keyword)'")
+            }
+        }
+        XCTAssertTrue(
+            offenders.isEmpty,
+            """
+            generic symptom words found in symptom_keywords (the sufficient-alone list). \
+            Move them to corroborating_keywords — as strong evidence they let one \
+            vague word route a patron to a specific bug's workaround: \(offenders)
+            """
+        )
+    }
+
+    /// A word cannot be both sufficient-alone and corroborating. Overlap would make
+    /// the strength partition meaningless — the strong list would win and the weak
+    /// listing would read as a guard that isn't there.
+    func testStrengthTiersDoNotOverlap() throws {
+        for entry in try loadEntries() {
+            let strong = Set(entry.symptomKeywords.map { $0.lowercased() })
+            let weak = Set((entry.corroboratingKeywords ?? []).map { $0.lowercased() })
+            XCTAssertTrue(
+                strong.isDisjoint(with: weak),
+                "\(entry.id): keywords in both tiers: \(strong.intersection(weak).sorted())"
+            )
+        }
+    }
+
     /// Duplicate entry ids silently break `entry(id:)` lookups and telemetry.
     func testEntryIdsAreUnique() throws {
         let ids = try loadEntries().map { $0.id }
@@ -75,20 +132,20 @@ final class CatalogSchemaLintTests: XCTestCase {
                 }
             }
         }
-        // The known, intentional set is exactly the 5 bare-"download" pairs in
-        // KI-008: "download" is load-bearing for recall on inputs like "trying to
-        // download an ebook and it never works" (it forms the second distinct
-        // region alongside "never works"), so it stays despite being a substring
-        // of the specific "won't download" etc. Every other entry was pruned to
-        // distinct concepts. Asserting the exact SET (not a count ≤ N) means a
-        // swap — one nesting fixed, a new one introduced — still fails.
-        let allowed: Set<String> = [
-            "KI-2026-008-download-no-network: 'download' is nested inside 'won't download'",
-            "KI-2026-008-download-no-network: 'download' is nested inside 'wont download'",
-            "KI-2026-008-download-no-network: 'download' is nested inside 'download stuck'",
-            "KI-2026-008-download-no-network: 'download' is nested inside 'download failed'",
-            "KI-2026-008-download-no-network: 'download' is nested inside 'stuck downloading'",
-        ]
+        // Empty, and deliberately so. This set used to grandfather 5 bare-"download"
+        // nestings in KI-008: under the old count-based floor a known-issue entry
+        // needed TWO distinct regions to suggest, so bare "download" was kept as
+        // load-bearing padding — it supplied the second region alongside "never
+        // works" on inputs like "trying to download an ebook and it never works".
+        //
+        // Keyword strength tiers removed the need for that padding: "never works"
+        // is strong evidence and now suffices alone, so "download" moved to
+        // `corroborating_keywords` where a bare category noun belongs. The
+        // exception retired with the floor that forced it.
+        //
+        // Asserting the exact SET (not a count ≤ N) means a swap — one nesting
+        // fixed, a new one introduced — still fails.
+        let allowed: Set<String> = []
         if Set(offenders) != allowed {
             for o in offenders where !allowed.contains(o) { print("  UNEXPECTED NESTED-KEYWORD: \(o)") }
         }
