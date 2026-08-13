@@ -3,11 +3,18 @@ import Foundation
 /// Pure-function classifier — given user text + (optional) context + a KB,
 /// returns what the bot should do next. No I/O, no side effects, deterministic.
 ///
-/// Scoring is simple keyword overlap normalized to [0, 1]: count of matched
-/// keywords ÷ total keywords on the entry. Confidence threshold per entry
-/// gates suggest-vs-disambiguate. Below the lowest entry threshold the
-/// classifier returns .escalate — we'd rather waste a triager's time on a
-/// known issue than tell the user something wrong about a novel bug.
+/// Matching is token-based: both the patron's text and each keyword are split
+/// into word tokens, and a keyword hits when its tokens appear as a contiguous
+/// run. Evidence is then counted as DISTINCT match regions — overlapping hits
+/// merge, so an entry listing a phrase and its head noun scores the concept
+/// once.
+///
+/// Regions are weighted by keyword STRENGTH: a `symptom_keywords` hit is worth a
+/// full unit and can carry a suggestion alone; a `corroborating_keywords` hit is
+/// worth half and never can. Score = (strong + 0.5·weak) / 3, capped at 1.0.
+/// A suggestion additionally requires clearing the entry's threshold and leading
+/// the runner-up. Otherwise the classifier escalates — we would rather waste a
+/// triager's time on a known issue than tell a patron something wrong.
 public struct LocalClassifier: Sendable {
     public init() {}
 
@@ -51,13 +58,18 @@ public struct LocalClassifier: Sendable {
             )
         }
 
+        // Tokenize ONCE per classify() call, not per entry per keyword.
+        let textTokens = TextTokenizer.tokens(normalized)
+
         let scored = candidates.map { entry -> (entry: KBEntry, score: Double, matched: [String], distinctCount: Int, strongCount: Int) in
-            let strongMatched = entry.symptomKeywords.filter { keyword in
-                normalized.contains(TextNormalizer.normalize(keyword))
+            func hits(_ keyword: String) -> Bool {
+                !TextTokenizer.matchRanges(
+                    of: TextTokenizer.tokens(TextNormalizer.normalize(keyword)),
+                    in: textTokens
+                ).isEmpty
             }
-            let weakMatched = (entry.corroboratingKeywords ?? []).filter { keyword in
-                normalized.contains(TextNormalizer.normalize(keyword))
-            }
+            let strongMatched = entry.symptomKeywords.filter(hits)
+            let weakMatched = (entry.corroboratingKeywords ?? []).filter(hits)
             let matched = strongMatched + weakMatched
 
             // Count DISTINCT non-overlapping regions of the patron's text — not
@@ -77,6 +89,7 @@ public struct LocalClassifier: Sendable {
                 of: matched.map { TextNormalizer.normalize($0) },
                 in: normalized
             )
+            _ = textTokens  // tokens are consumed by `hits` above
             let weakCount = max(totalCount - strongCount, 0)
 
             // A strong region is worth a full unit, a weak one half — a generic
@@ -153,16 +166,22 @@ public struct LocalClassifier: Sendable {
         // cannot drift back into `symptom_keywords` and quietly become sufficient.
         let hasStrongEvidence = top.strongCount >= 1
 
-        // confidenceThreshold lets an individual entry DEMAND more evidence than
-        // its kind floor. Scores are quantized to {1/3, 2/3, 1.0} (1, 2, 3+
-        // regions), so a threshold in (1/3, 2/3] means "require ≥2 regions" and
-        // (2/3, 1.0] means "require ≥3". A threshold ≤ 1/3 is a no-op beyond the
-        // kind floor. Shipped catalog entries sit at the floor; the knob exists
-        // for a future entry so broad it needs 3 regions to be safe.
+        // confidenceThreshold lets an entry DEMAND more evidence than the floor.
         //
-        // NOTE: the old `scoreMargin >= 0.1` disjunct was removed — with quantized
-        // scores, scoreMargin ≥ 0.1 can only happen when the region counts differ,
-        // which already implies matchCountMargin ≥ 1. It was provably dead.
+        // CALIBRATION WARNING: the scale it is read against has changed twice and
+        // the shipped values have not been re-derived. Scores were once quantized
+        // to {1/3, 2/3, 1.0}, which is what made "a threshold in (1/3, 2/3] means
+        // require two regions" true. Weighting corroborating regions at 0.5 put
+        // halves on the scale, so a 0.5 threshold is now satisfiable by one strong
+        // plus one weak — the knob no longer means "region count".
+        //
+        // Every threshold in the shipped catalog is 0.08-0.1, and the weakest
+        // possible non-zero score is one corroborating region at 1/6 = 0.167, so
+        // ALL of them currently pass unconditionally: the suggest gate is carried
+        // entirely by hasStrongEvidence and the margin guards. The knob is inert,
+        // not protective - do not read a shipped threshold as a safety property.
+        // Either re-derive these against the strong-count axis the classifier
+        // actually ranks on, or delete the field.
         let runnerUpAlsoSaturated = secondScore >= 0.8
         if top.score >= top.entry.confidenceThreshold &&
            hasStrongEvidence &&
@@ -237,10 +256,15 @@ public struct LocalClassifier: Sendable {
     /// Uses each keyword's first occurrence; merges overlapping/touching
     /// ranges and returns the cluster count.
     static func distinctMatchRegionCount(of keywords: [String], in text: String) -> Int {
-        var ranges: [Range<String.Index>] = []
-        for keyword in keywords where !keyword.isEmpty {
-            if let range = text.range(of: keyword) {
-                ranges.append(range)
+        let textTokens = TextTokenizer.tokens(text)
+        var ranges: [Range<Int>] = []
+        for keyword in keywords {
+            let kw = TextTokenizer.tokens(keyword)
+            // First occurrence only: a concept the patron mentioned once counts
+            // once, and a phrase repeated across a long complaint is still one
+            // concept.
+            if let first = TextTokenizer.matchRanges(of: kw, in: textTokens).first {
+                ranges.append(first)
             }
         }
         guard !ranges.isEmpty else { return 0 }

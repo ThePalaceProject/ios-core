@@ -160,7 +160,7 @@ final class MatchCorpusTests: XCTestCase {
 
         // Emit the full picture before asserting, so a failing run explains itself.
         print("=== MATCH CORPUS ===")
-        for slice in ["mined", "held_out", "trap"] {
+        for slice in ["mined", "held_out", "trap", "near_miss"] {
             guard let tally = bySlice[slice] else { continue }
             let pct = tally.capturable == 0 ? "n/a"
                 : String(format: "%.0f%%", 100.0 * Double(tally.captured) / Double(tally.capturable))
@@ -182,6 +182,16 @@ final class MatchCorpusTests: XCTestCase {
         // built entirely from inputs whose only overlap with an entry is a weak,
         // non-diagnostic word, so any suggestion here is a defect — this is the
         // guard that stops "improve recall" from silently reintroducing F-002.
+        // near_miss is the slice that can actually fail: real tickets carrying a
+        // strong keyword whose true cause is elsewhere. The trap slice cannot
+        // catch a mis-partitioned strong keyword, because it is sampled from the
+        // weak side by construction.
+        let nearMiss = bySlice["near_miss"] ?? Tally()
+        XCTAssertEqual(
+            nearMiss.misrouted, 0,
+            "a real patron would be shown a workaround for a bug they do not have — see MISROUTED lines"
+        )
+
         let trap = bySlice["trap"] ?? Tally()
         XCTAssertEqual(
             trap.misrouted, 0,
@@ -224,12 +234,23 @@ final class MatchCorpusTests: XCTestCase {
             }
         }
 
-        // Majority of the catalog's own source tickets must come back. Anything
-        // less means the keyword lists do not describe the tickets they were
-        // mined from.
-        XCTAssertGreaterThan(
-            captured * 2, mined.count,
-            "mined-slice recall is \(captured)/\(mined.count); missed: \(missed.joined(separator: ", "))"
+        // A RATCHET, not a target. This was a majority rule until the near-miss
+        // slice showed the keywords carrying that majority were also misrouting
+        // real patrons: "never works" captured hs-17976 (a genuine download
+        // failure) and simultaneously fired KI-008's network advice at hs-18571,
+        // whose audiobook simply would not play. Demoting it cost recall and
+        // bought precision, which is the right direction — a missed ticket
+        // escalates safely, a misrouted one hands out a wrong fix.
+        //
+        // The remaining misses are COVERAGE, not matching: hs-18028/18103 are
+        // FAQ phrasings no how_to keyword covers, hs-17957 needs a "does not
+        // appear" variant, hs-17917's own text does not support its label, and
+        // hs-17930 would need a keyword overfitted to one ticket. Raise this
+        // floor by adding entries and phrasings; never by re-promoting an
+        // ambiguous phrase.
+        XCTAssertGreaterThanOrEqual(
+            captured, 7,
+            "mined-slice recall regressed below the ratchet: \(captured)/\(mined.count); missed: \(missed.joined(separator: ", "))"
         )
     }
 }

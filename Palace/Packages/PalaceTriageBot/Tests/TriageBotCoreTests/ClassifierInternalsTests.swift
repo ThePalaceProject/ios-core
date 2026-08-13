@@ -27,10 +27,29 @@ final class ClassifierInternalsTests: XCTestCase {
 
     // MARK: - distinctMatchRegionCount (kills M2 merge-boundary, pins M8 init)
 
-    func testRegionCount_touchingRangesAreTwoRegions() {
-        // "sign"[0..4) touches "in"[4..6): lowerBound(4) >= currentUpper(4) → new
-        // cluster. If the boundary were `>` they would merge into one.
-        XCTAssertEqual(LocalClassifier.distinctMatchRegionCount(of: ["sign", "in"], in: "signin"), 2)
+    /// Keywords match whole words, not substrings. This test previously asserted
+    /// that "sign" + "in" found two regions inside the single word "signin" —
+    /// pinning the substring behavior that let "stalled" match "rein**stalled**"
+    /// and hand a launch-crash report the download-no-network workaround.
+    func testRegionCount_keywordsDoNotMatchInsideAWord() {
+        XCTAssertEqual(LocalClassifier.distinctMatchRegionCount(of: ["sign", "in"], in: "signin"), 0)
+        XCTAssertEqual(LocalClassifier.distinctMatchRegionCount(of: ["stalled"], in: "I reinstalled the app"), 0)
+        XCTAssertEqual(LocalClassifier.distinctMatchRegionCount(of: ["add"], in: "additional libraries"), 0)
+    }
+
+    /// Adjacent whole-word matches are still two regions — the boundary rule that
+    /// keeps two distinct concepts from merging survives the move to tokens.
+    func testRegionCount_adjacentWordsAreTwoRegions() {
+        XCTAssertEqual(LocalClassifier.distinctMatchRegionCount(of: ["sign", "in"], in: "sign in"), 2)
+    }
+
+    /// The cost of the above, stated rather than hidden: a patron who writes the
+    /// phrase as one word is no longer matched by the two-word keyword. The fix
+    /// is a keyword spelling ("signin"), not a return to substring matching —
+    /// recall gaps are additive and cheap, false workarounds are not.
+    func testRegionCount_closedUpSpellingIsMissed_knownTradeoff() {
+        XCTAssertEqual(LocalClassifier.distinctMatchRegionCount(of: ["sign in"], in: "cant signin"), 0)
+        XCTAssertEqual(LocalClassifier.distinctMatchRegionCount(of: ["signin"], in: "cant signin"), 1)
     }
 
     func testRegionCount_nestedRangesAreOneRegion() {

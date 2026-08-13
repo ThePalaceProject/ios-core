@@ -21,6 +21,7 @@
     "`expected` is a KB entry id, or \"escalate\". `also_acceptable` lists entry ids",
     "that would not count as a misroute if returned instead.",
     "",
+    "  near_miss — real tickets that CONTAIN a strong keyword but that support resolved to a different cause. The trap slice above only samples inputs whose overlap is a WEAK word, which makes its zero-misroute result circular: the partition decides what is weak, so a mis-partitioned STRONG keyword can never appear there. These are drawn from the strong side and are the real precision test. Expected escalate in every case: the entry that would fire cannot help this patron.",
     "Patron text is verbatim apart from PII stripping (names, emails, card and",
     "patron-ID numbers, phone numbers, signatures and mail-client boilerplate",
     "removed) and trimming to the substantive complaint. Book titles are dropped —",
@@ -107,7 +108,10 @@
       "category": "library",
       "text": "I have two libraries in my area and both use the palace project app. I currently have one as my library in the app and would like to add the other as well but am unable. When I click add library it only lets me search the palace shelf.",
       "expected": "KI-2026-009-add-library-stale-registry",
-      "also_acceptable": ["HT-2026-008-add-library-card", "HT-2026-003-switch-library"]
+      "also_acceptable": [
+        "HT-2026-008-add-library-card",
+        "HT-2026-003-switch-library"
+      ]
     },
     {
       "id": "hs-18028",
@@ -141,7 +145,6 @@
       "text": "Does Palace Project send reminders to the borrower when items are coming due?",
       "expected": "HT-2026-004-notifications"
     },
-
     {
       "id": "hs-18659",
       "source": "helpspot:18659",
@@ -175,7 +178,9 @@
       "category": "library",
       "text": "Couldn't access my library content this morning. When I went to the Libraries page, I noticed that the only libraries listed are school libraries in another state. I'm guessing this is a bug with the app rather than an issue with my local library dropping palace.",
       "expected": "escalate",
-      "also_acceptable": ["KI-2026-009-add-library-stale-registry"],
+      "also_acceptable": [
+        "KI-2026-009-add-library-stale-registry"
+      ],
       "note": "A stale registry list is a plausible cause, so KI-009 is allowed, but the patron is not on the Add Library screen and its pull-to-refresh instruction may not apply. Escalating is the safe outcome."
     },
     {
@@ -185,7 +190,9 @@
       "category": "library",
       "text": "My screen is not showing any books",
       "expected": "escalate",
-      "also_acceptable": ["KI-2026-004-wrong-library-palace-bookshelf"],
+      "also_acceptable": [
+        "KI-2026-004-wrong-library-palace-bookshelf"
+      ],
       "note": "Genuinely underspecified. Either escalating or offering the wrong-library check is defensible; misrouting to an unrelated entry is not."
     },
     {
@@ -228,7 +235,6 @@
       "text": "Please add the ability to like or favorite a book.",
       "expected": "escalate"
     },
-
     {
       "id": "trap-generic-crash-audiobook",
       "provenance": "trap",
@@ -286,6 +292,51 @@
       "text": "I keep getting kicked out and have to sign in to my library again",
       "expected": "escalate",
       "note": "The original chaos-qa F-002 input: a generic auth loop that must not route to the wrong-library workaround."
+    },
+    {
+      "id": "nm-18181",
+      "source": "helpspot:18181",
+      "provenance": "near_miss",
+      "category": "other",
+      "text": "There is an e-book not checking out for a member. The page just loads without fully confirming.",
+      "expected": "escalate",
+      "note": "Contains KI-001's strong phrase \"just loads\". Support's cause was location services never being granted — the first-open-hang workaround does nothing."
+    },
+    {
+      "id": "nm-18353",
+      "source": "helpspot:18353",
+      "provenance": "near_miss",
+      "category": "library",
+      "text": "I have not been able to log in to Boston Public Library as a library. I tried looking for how to add a library and could not find it.",
+      "expected": "escalate",
+      "note": "Contains KI-009's strong phrase \"add a library\". Support's cause: a new library must be added before an old one can be deleted — not a stale registry needing pull-to-refresh."
+    },
+    {
+      "id": "nm-18571",
+      "source": "helpspot:18571",
+      "provenance": "near_miss",
+      "category": "download",
+      "text": "The app almost never works. It is so hit or miss on if my audiobook plays or not.",
+      "expected": "escalate",
+      "note": "Contains KI-008's strong phrase \"never works\". Support's cause was the 3.2.x audiobook playback bug fixed in 3.2.3 — telling this patron to check WiFi is wrong."
+    },
+    {
+      "id": "nm-18449",
+      "source": "helpspot:18449",
+      "provenance": "near_miss",
+      "category": "download",
+      "text": "It won't let me download the book. I have a returned date but I can't listen to it.",
+      "expected": "escalate",
+      "note": "Contains KI-008's strong phrase \"won't download\". Support's cause was the same 3.2.3 audiobook defect, not a network failure."
+    },
+    {
+      "id": "nm-17978",
+      "source": "helpspot:17978",
+      "provenance": "near_miss",
+      "category": "other",
+      "text": "I got a notification a book was ready to borrow. When I opened the app, none of the books in my holds were available.",
+      "expected": "escalate",
+      "note": "Contains KI-006's strong phrases \"got a notification\"/\"notification that\". Support reached no diagnosis and escalated to the library — the hold-desync refresh advice is a guess."
     }
   ]
 }

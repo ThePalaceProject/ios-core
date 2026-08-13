@@ -575,17 +575,18 @@
       "symptom_keywords": [
         "won't download",
         "wont download",
-        "never works",
         "download stuck",
         "download failed",
         "no progress",
         "hasn't moved",
         "hasnt moved",
-        "stalled",
-        "stuck downloading"
+        "stuck downloading",
+        "trying to download"
       ],
       "corroborating_keywords": [
-        "download"
+        "download",
+        "stalled",
+        "never works"
       ],
       "user_facing_workaround": "If a download stalls, check that you're connected to WiFi or cellular data, then pull down to refresh your bookshelf. If it still fails, sign out and back in.",
       "user_facing_steps": [
@@ -667,8 +668,6 @@
       "symptom_keywords": [
         "second library",
         "another library",
-        "add a library",
-        "add library",
         "add a card",
         "second card",
         "additional libraries",
@@ -683,7 +682,9 @@
         "cant add"
       ],
       "corroborating_keywords": [
-        "not showing"
+        "not showing",
+        "add a library",
+        "add library"
       ],
       "user_facing_workaround": "The Add Library list can go stale and stop showing newly-added libraries. On the Add Library screen, pull down and hold for a second to force a refresh — your library should then appear so you can add it.",
       "user_facing_steps": [
