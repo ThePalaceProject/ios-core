@@ -89,6 +89,17 @@ final class ResponseQualityTests: XCTestCase {
         distributor: "palace_marketplace"
     )
 
+    /// A patron still on an affected build. The 3.2.x fulfillment entry is
+    /// `fixed_in 3.2.3`, so the version gate hides it from anyone past the fix —
+    /// meaning the benchmark must pin an affected version or it would test
+    /// nothing.
+    private static let affectedBy32xContext = ContextSnapshot(
+        appVersion: "3.2.1",
+        appBuild: "489",
+        osVersion: "26.5.2",
+        deviceModel: "iPhone17,2"
+    )
+
     private static let openAccessContext = ContextSnapshot(
         appVersion: "3.0.3",
         appBuild: "478",
@@ -339,6 +350,14 @@ final class ResponseQualityTests: XCTestCase {
              category: .audiobook, context: marketplaceContext,
              expect: .shouldEscalate,
              source: "HelpSpot 17981 — KB GAP: post-recheckout permanent failure, distinct from KI-001 first-open hang. Needs new KI"),
+
+        // Verbatim shape from HelpSpot 18571-class tickets, all resolved as the
+        // 3.2.x fulfillment defect. Every keyword it hits appears only in tickets
+        // support resolved that way.
+        Case(userText: "Since the update, my checked out audiobook won't play. I hit listen and it just spins in circles like it's loading",
+             category: .audiobook, context: affectedBy32xContext,
+             expect: .shouldMatch(entryId: "KI-2026-010-audiobook-fulfillment-3-2-x"),
+             source: "HelpSpot 18449/18464/18475/18486/18571 — the 3.2.0-3.2.2 audiobook fulfillment defect; support's answer was uniformly 'fixed in 3.2.3'"),
 
         Case(userText: "trying to download an ebook and it never works after I toggled wifi and reinstalled the app",
              category: .download, context: nil,

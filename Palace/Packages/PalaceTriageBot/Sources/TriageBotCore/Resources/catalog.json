@@ -742,6 +742,89 @@
       "visibility": "user_facing"
     },
     {
+      "id": "KI-2026-010-audiobook-fulfillment-3-2-x",
+      "category": "audiobook",
+      "status": "fixed_in",
+      "fixed_in_version": "3.2.3",
+      "symptom_keywords": [
+        "audio book unavailable",
+        "no longer available",
+        "listen button",
+        "hit listen",
+        "press the listen",
+        "spins in circles",
+        "spinning wheel",
+        "since the update"
+      ],
+      "corroborating_keywords": [
+        "audiobook unavailable",
+        "temporarily unavailable",
+        "times out",
+        "keeps spinning",
+        "just spins",
+        "contact your library"
+      ],
+      "user_facing_workaround": "This was a bug in Palace 3.2.0-3.2.2 that stopped some audiobooks from opening, and it is fixed in Palace 3.2.3. Update Palace from the App Store, then open the title again from My Books. If you are already on 3.2.3 or later and it still will not play, we should take a look.",
+      "user_facing_steps": [
+        {
+          "id": "ki010-step1-update",
+          "instruction": "Open the App Store, search for Palace, and install any available update. The fix for this shipped in version 3.2.3.",
+          "check": "Did the App Store offer you an update?",
+          "responses": [
+            {
+              "label": "Updated it",
+              "outcome": "advance",
+              "diagnostic": "audiobook.3_2_x.updated"
+            },
+            {
+              "label": "Already up to date",
+              "outcome": "escalate",
+              "diagnostic": "audiobook.3_2_x.already_current"
+            }
+          ],
+          "diagnostic": "audiobook.3_2_x.update_offered"
+        },
+        {
+          "id": "ki010-step2-reopen",
+          "instruction": "Go back to My Books and tap Listen on the title again.",
+          "check": "Does it play now?",
+          "responses": [
+            {
+              "label": "Yes, playing",
+              "outcome": "resolved",
+              "diagnostic": "audiobook.3_2_x.resolved_after_update"
+            },
+            {
+              "label": "Still not playing",
+              "outcome": "escalate",
+              "diagnostic": "audiobook.3_2_x.persists_after_update"
+            }
+          ],
+          "diagnostic": "audiobook.3_2_x.reopen_after_update"
+        }
+      ],
+      "escalation_follow_up": {
+        "prompt": "Which version of Palace does the App Store show you have, and which audiobook is doing this?",
+        "placeholder": "e.g. 3.2.3, and the title",
+        "diagnostic": "audiobook.3_2_x.version_and_title",
+        "presumes_issue": false
+      },
+      "internal_reference": {
+        "helpspot": [
+          18449,
+          18464,
+          18475,
+          18486,
+          18571
+        ]
+      },
+      "confidence_threshold": 0.1,
+      "escalate_anyway": false,
+      "helpspot_tag": "audiobook-fulfillment-3-2-x",
+      "trust_level": "authoritative",
+      "visibility": "user_facing"
+    },
+    {
       "id": "HT-2026-001-renewals",
       "category": "other",
       "kind": "how_to",
