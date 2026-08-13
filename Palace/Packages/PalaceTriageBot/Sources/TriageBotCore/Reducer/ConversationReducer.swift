@@ -10,6 +10,7 @@ import Foundation
 /// a synthetic KB without mocking.
 public struct ConversationReducer: Sendable {
     public let classifier: LocalClassifier
+    private let remedyDetector = RemedyDetector()
     public let redactor: ContextRedactor
     public let knowledgeBase: KnowledgeBase
     /// When true, local-classifier escalations route through
@@ -115,6 +116,8 @@ public struct ConversationReducer: Sendable {
 
             next.messages.append(.init(sender: .user, kind: .text(userText)))
             next.inputText = ""
+            // Read what they have already done BEFORE deciding what to suggest.
+            next.alreadyTriedRemedies = remedyDetector.alreadyTried(in: userText)
 
             let result = classifier.classify(
                 userText: userText,
@@ -326,19 +329,53 @@ public struct ConversationReducer: Sendable {
                 return (next, effects)
             }
             let startedAt = Date()
+            // Skip anything they already told us they did. If that is every step,
+            // there is nothing left to walk through and the honest move is to
+            // escalate with the trace rather than open an empty flow.
+            let skipped = Set(steps.compactMap(\.remedy)).intersection(next.alreadyTriedRemedies)
+            guard let firstIndex = nextUntriedStepIndex(
+                from: 0, steps: steps, alreadyTried: next.alreadyTriedRemedies
+            ) else {
+                if let ack = acknowledgement(for: skipped) {
+                    next.messages.append(.init(sender: .bot, kind: .text(ack)))
+                }
+                effects.append(.emitTelemetry(.init(
+                    name: "triage_guided_flow_all_steps_already_tried",
+                    parameters: ["entry_id": entryId]
+                )))
+                escalateWithTrace(
+                    state: &next, effects: &effects,
+                    userText: next.messages.compactMap {
+                        if case .text(let t) = $0.kind, $0.sender == .user { return t }
+                        return nil
+                    }.last ?? "",
+                    category: entry.category,
+                    matchedEntryId: entryId,
+                    trace: ResolutionTrace(entryId: entryId, attempts: [],
+                                           startedAt: startedAt, endedAt: Date(),
+                                           outcome: .escalatedAfterStepsExhausted),
+                    helpspotTag: entry.helpspotTag ?? entryId,
+                    tagSuffix: "escalate-all-steps-already-tried"
+                )
+                return (next, effects)
+            }
             next.step = .guidedStep(
                 entryId: entryId,
-                stepIndex: 0,
+                stepIndex: firstIndex,
                 startedAt: startedAt,
                 attempts: []
             )
+            if let ack = acknowledgement(for: skipped) {
+                next.messages.append(.init(sender: .bot, kind: .text(ack)))
+            }
+            let remaining = steps.count - skipped.count
             next.messages.append(.init(
                 sender: .bot,
-                kind: .text("Let's walk through this together. \(steps.count) thing\(steps.count == 1 ? "" : "s") to try.")
+                kind: .text("Let's walk through this together. \(remaining) thing\(remaining == 1 ? "" : "s") to try.")
             ))
             next.messages.append(.init(
                 sender: .bot,
-                kind: .guidedStep(entryId: entryId, stepIndex: 0)
+                kind: .guidedStep(entryId: entryId, stepIndex: firstIndex)
             ))
             effects.append(.emitTelemetry(.init(
                 name: "triage_guided_flow_started",
@@ -385,7 +422,9 @@ public struct ConversationReducer: Sendable {
             }
             attempts.append(StepAttempt(stepId: stepId, outcome: .didNotResolve, timestamp: Date()))
 
-            let nextIndex = stepIndex + 1
+            let nextIndex = nextUntriedStepIndex(
+                from: stepIndex + 1, steps: steps, alreadyTried: next.alreadyTriedRemedies
+            ) ?? steps.count
             if nextIndex < steps.count {
                 next.step = .guidedStep(
                     entryId: entryId,
@@ -830,6 +869,33 @@ public struct ConversationReducer: Sendable {
             }
         }
         return nil
+    }
+
+    /// First step at or after `from` that the patron has NOT already tried.
+    /// Returns nil when every remaining step is one they have done.
+    private func nextUntriedStepIndex(
+        from index: Int, steps: [KBStep], alreadyTried: Set<Remedy>
+    ) -> Int? {
+        var i = index
+        while i < steps.count {
+            if let remedy = steps[i].remedy, alreadyTried.contains(remedy) { i += 1; continue }
+            return i
+        }
+        return nil
+    }
+
+    /// "You have already tried X and Y" — said once, so skipping does not look
+    /// like steps silently going missing.
+    private func acknowledgement(for remedies: Set<Remedy>) -> String? {
+        guard !remedies.isEmpty else { return nil }
+        let names = remedies.map(\.displayName).sorted()
+        let list: String
+        switch names.count {
+        case 1: list = names[0]
+        case 2: list = "\(names[0]) and \(names[1])"
+        default: list = names.dropLast().joined(separator: ", ") + ", and " + names[names.count - 1]
+        }
+        return "You have already tried \(list), so I will skip that."
     }
 
     /// Shared escalation transition — used by both the local-only escalate

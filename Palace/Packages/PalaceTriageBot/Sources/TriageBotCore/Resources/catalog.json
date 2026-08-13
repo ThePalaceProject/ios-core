@@ -44,6 +44,7 @@
         {
           "id": "ki001-step1-tap-back-tap-again",
           "instruction": "Tap back to your library list, then tap the audiobook title again. This usually clears the hang on the second open.",
+          "remedy": "reopenTitle",
           "check": "Did it start playing this time?",
           "responses": [
             {
@@ -62,6 +63,7 @@
         {
           "id": "ki001-step2-force-quit",
           "instruction": "Force-quit Palace: swipe up from the bottom of the screen and pause, then swipe up on Palace's preview to close it. Reopen Palace and tap the audiobook again.",
+          "remedy": "reopenTitle",
           "check": "Plays now?",
           "responses": [
             {
@@ -80,6 +82,7 @@
         {
           "id": "ki001-step3-sign-out-in",
           "instruction": "In Settings → Libraries, tap your library, scroll down and tap Sign Out. Sign back in and try the audiobook.",
+          "remedy": "signOutIn",
           "check": "Plays after sign-in?",
           "responses": [
             {
@@ -141,6 +144,7 @@
         {
           "id": "ki002-step1-update",
           "instruction": "Check the App Store for a Palace update — this crash is fixed in version 3.2.0 or later. Update if available, then try again.",
+          "remedy": "updateApp",
           "check": "Are you now on 3.2.0 or later, and the crash gone?",
           "responses": [
             {
@@ -367,6 +371,7 @@
         {
           "id": "ki005-step1-update",
           "instruction": "Check the App Store — this CarPlay crash is fixed in version 3.1.0 or later. Update if available.",
+          "remedy": "updateApp",
           "check": "Are you now on 3.1.0+, and the crash gone when you connect to CarPlay?",
           "responses": [
             {
@@ -463,6 +468,7 @@
         {
           "id": "ki006-step2-sign-out-in",
           "instruction": "Go to Settings → Libraries → tap your library → Sign Out. Sign back in. Then check the Holds tab again.",
+          "remedy": "signOutIn",
           "check": "Is the ready hold visible after sign-in?",
           "responses": [
             {
@@ -520,6 +526,7 @@
         {
           "id": "ki007-step1-pull-refresh-and-reopen",
           "instruction": "Go to My Books, pull down to refresh, then tap the PDF title to reopen it.",
+          "remedy": "reopenTitle",
           "check": "Did the PDF render this time?",
           "responses": [
             {
@@ -593,6 +600,7 @@
         {
           "id": "ki008-step1-check-connection",
           "instruction": "Check the top-right of your screen — do you see WiFi or cellular signal? If you're in airplane mode or your WiFi dropped, toggle it back on.",
+          "remedy": "toggleNetwork",
           "check": "Is your connection up, and the download resuming?",
           "responses": [
             {
@@ -629,6 +637,7 @@
         {
           "id": "ki008-step3-sign-out-in",
           "instruction": "Go to Settings → Libraries → your library → Sign Out. Sign back in. Then re-attempt the download from My Books or the Catalog.",
+          "remedy": "signOutIn",
           "check": "Does the download complete after sign-in?",
           "responses": [
             {
@@ -709,6 +718,7 @@
         {
           "id": "ki009-step2-signout-reinstall",
           "instruction": "If it's still missing, sign out of your current library, then delete and reinstall Palace. Open it and try Add Library again.",
+          "remedy": "reinstall",
           "check": "Can you add the second library now?",
           "responses": [
             {
@@ -769,6 +779,7 @@
         {
           "id": "ki010-step1-update",
           "instruction": "Open the App Store, search for Palace, and install any available update. The fix for this shipped in version 3.2.3.",
+          "remedy": "updateApp",
           "check": "Did the App Store offer you an update?",
           "responses": [
             {
@@ -787,6 +798,7 @@
         {
           "id": "ki010-step2-reopen",
           "instruction": "Go back to My Books and tap Listen on the title again.",
+          "remedy": "reopenTitle",
           "check": "Does it play now?",
           "responses": [
             {

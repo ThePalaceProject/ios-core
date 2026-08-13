@@ -93,6 +93,11 @@ public struct ConversationState: Equatable, Sendable {
     /// every pre-PP-4843 flow) sends normally — only reducer-driven fresh
     /// previews arm the gate.
     public var pendingSendConsent: Bool
+    /// Remedies the patron said, in their own description, that they already
+    /// tried. Guided flows skip these rather than asking someone who has
+    /// reinstalled three times to reinstall again — 10% of real tickets open by
+    /// listing what they have already done.
+    public var alreadyTriedRemedies: Set<Remedy>
 
     public init(
         step: Step = .welcome,
@@ -100,7 +105,8 @@ public struct ConversationState: Equatable, Sendable {
         context: ContextSnapshot? = nil,
         lastClassification: ClassificationResult? = nil,
         inputText: String = "",
-        pendingSendConsent: Bool = false
+        pendingSendConsent: Bool = false,
+        alreadyTriedRemedies: Set<Remedy> = []
     ) {
         self.step = step
         self.messages = messages
@@ -108,6 +114,7 @@ public struct ConversationState: Equatable, Sendable {
         self.lastClassification = lastClassification
         self.inputText = inputText
         self.pendingSendConsent = pendingSendConsent
+        self.alreadyTriedRemedies = alreadyTriedRemedies
     }
 }
 
