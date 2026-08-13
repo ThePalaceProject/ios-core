@@ -10,6 +10,12 @@ public struct KnowledgeBase: Sendable {
         self.catalog = catalog
     }
 
+    /// The catch-all question for a category, used when no entry was recognized.
+    public func categoryFollowUp(for category: KBCategory?) -> KBEscalationFollowUp? {
+        guard let category else { return nil }
+        return catalog.categoryFollowUps?[category.rawValue]
+    }
+
     public func entry(id: String) -> KBEntry? {
         catalog.entries.first { $0.id == id }
     }

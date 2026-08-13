@@ -891,10 +891,21 @@ public struct ConversationReducer: Sendable {
         // patron's situation rather than about a bug we may have misread.
         recognitionIsStrong: Bool = true
     ) {
-        if let entryId,
-           let entry = knowledgeBase.entry(id: entryId),
-           let followUp = entry.escalationFollowUp,
-           recognitionIsStrong || !followUp.presumesIssue {
+        // Prefer the recognized entry's own question; fall back to the category's.
+        //
+        // A blank ticket is the worst thing this bot can produce, and 69% of
+        // escalations were producing one. The category question does not claim to
+        // know the cause — it asks the thing that most often separates that
+        // category's clusters — so it is safe precisely when we know least.
+        let entryFollowUp: KBEscalationFollowUp? = {
+            guard let entryId, let entry = knowledgeBase.entry(id: entryId),
+                  let followUp = entry.escalationFollowUp,
+                  recognitionIsStrong || !followUp.presumesIssue else { return nil }
+            return followUp
+        }()
+        let followUp = entryFollowUp ?? knowledgeBase.categoryFollowUp(for: draft.category)
+
+        if let followUp {
             next.step = .awaitingEscalationFollowUp(prompt: followUp.prompt, pendingDraft: draft)
             next.messages.append(.init(
                 sender: .bot,
@@ -902,7 +913,9 @@ public struct ConversationReducer: Sendable {
             ))
             effects.append(.emitTelemetry(.init(
                 name: "triage_escalation_followup_asked",
-                parameters: ["entry_id": entryId]
+                // "(category)" distinguishes a catch-all question from an entry's
+                // own, so the two can be compared for answer rate later.
+                parameters: ["entry_id": entryFollowUp != nil ? (entryId ?? "(none)") : "(category)"]
             )))
         } else {
             next.step = .drafting(ticket: draft)

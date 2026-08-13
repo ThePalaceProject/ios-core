@@ -1095,5 +1095,43 @@
       "ui_surface": "my-books",
       "reviewed_at": "2026-07-22"
     }
-  ]
+  ],
+  "category_follow_ups": {
+    "signin": {
+      "prompt": "Is the card you're using one your library gave you, or one you created inside the Palace app?",
+      "placeholder": "Library-issued or created in the app",
+      "diagnostic": "category.signin",
+      "presumes_issue": false
+    },
+    "audiobook": {
+      "prompt": "Does the audiobook fail right when you open it, or does it start and then stop partway through?",
+      "placeholder": "At the start, or partway through",
+      "diagnostic": "category.audiobook",
+      "presumes_issue": false
+    },
+    "download": {
+      "prompt": "Did the download never start, or did it begin and then stop before finishing?",
+      "placeholder": "Never started, or stopped partway",
+      "diagnostic": "category.download",
+      "presumes_issue": false
+    },
+    "library": {
+      "prompt": "Which library are you trying to use, and is it missing from the list or showing the wrong books?",
+      "placeholder": "City or library name",
+      "diagnostic": "category.library",
+      "presumes_issue": false
+    },
+    "reader": {
+      "prompt": "Is this an ebook or a PDF, and does it fail to open at all or fail partway through?",
+      "placeholder": "Ebook or PDF",
+      "diagnostic": "category.reader",
+      "presumes_issue": false
+    },
+    "other": {
+      "prompt": "What were you doing in the app just before this happened?",
+      "placeholder": "e.g. borrowing a book, opening my shelf",
+      "diagnostic": "category.other",
+      "presumes_issue": false
+    }
+  }
 }

@@ -15,8 +15,10 @@ import XCTest
 ///   - ticket SCOPING happens on any recognition, strong or weak. It is support-
 ///     facing metadata the patron never sees, and a hint costs a triager nothing.
 ///   - the targeted QUESTION is asked only on strong recognition. On weak-only
-///     evidence the bot files the scoped ticket without pretending to know which
-///     bug this is.
+///     evidence the bot asks its CATEGORY's catch-all instead — a question that
+///     presumes nothing — so the ticket is still scoped and the patron is still
+///     asked something useful, without the bot pretending to know which bug this
+///     is.
 final class WeakRecognitionFollowUpTests: XCTestCase {
 
     private func drive(_ r: ConversationReducer, category: KBCategory, text: String) -> ConversationState {
@@ -35,8 +37,11 @@ final class WeakRecognitionFollowUpTests: XCTestCase {
     func testGenericCrash_isNotAskedTheCarPlayQuestion() throws {
         let state = drive(try shippedReducer(), category: .audiobook, text: "the app crashes when I open it")
 
+        // A question IS asked now — the category catch-all, which presumes
+        // nothing. What must never appear is the entry's bug-specific one.
         if case .awaitingEscalationFollowUp(let prompt, _) = state.step {
-            XCTFail("""
+            XCTAssertFalse(prompt.lowercased().contains("carplay") || prompt.lowercased().contains("car model"),
+                """
                 a lone weak-keyword match must not ask a bug-specific question; \
                 patron said "the app crashes when I open it" and was asked: "\(prompt)"
                 """)
@@ -50,7 +55,8 @@ final class WeakRecognitionFollowUpTests: XCTestCase {
         let state = drive(try shippedReducer(), category: .library, text: "my bookshelf looks empty")
 
         if case .awaitingEscalationFollowUp(let prompt, _) = state.step {
-            XCTFail("""
+            XCTAssertFalse(prompt.lowercased().contains("trying to add"),
+                """
                 a lone weak-keyword match must not ask a bug-specific question; \
                 patron said "my bookshelf looks empty" and was asked: "\(prompt)"
                 """)

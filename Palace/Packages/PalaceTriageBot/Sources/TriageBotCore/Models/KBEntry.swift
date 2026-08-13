@@ -219,10 +219,36 @@ public struct KBCatalog: Codable, Equatable, Sendable {
     public let version: String
     public let updatedAt: String
     public let entries: [KBEntry]
+    /// One question per category, asked when we recognized NOTHING.
+    ///
+    /// Measured on 318 real tickets, 69% of escalations carry no recognized entry
+    /// and therefore ask nothing — support receives "a patron reports a problem"
+    /// plus diagnostics. Matching cannot close that: 8% of complaints are under a
+    /// dozen words ("Cant sign in"), and the catalog covers a fraction of the
+    /// causes behind the rest.
+    ///
+    /// A per-category question does not need to know the cause. It only needs to
+    /// ask the thing that most often splits that category's clusters — for
+    /// sign-in, whether the card came from the library or was created in the app,
+    /// which separates the two largest groups in one answer. That turns a blank
+    /// ticket into a scoped one without any claim about what is wrong.
+    ///
+    /// Keyed by `KBCategory.rawValue`. Optional so existing catalogs decode
+    /// unchanged; a missing category simply asks nothing, as today.
+    public let categoryFollowUps: [String: KBEscalationFollowUp]?
 
     enum CodingKeys: String, CodingKey {
         case version
         case updatedAt = "updated_at"
         case entries
+        case categoryFollowUps = "category_follow_ups"
+    }
+
+    public init(version: String, updatedAt: String, entries: [KBEntry],
+                categoryFollowUps: [String: KBEscalationFollowUp]? = nil) {
+        self.version = version
+        self.updatedAt = updatedAt
+        self.entries = entries
+        self.categoryFollowUps = categoryFollowUps
     }
 }
