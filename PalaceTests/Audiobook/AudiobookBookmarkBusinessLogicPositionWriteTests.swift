@@ -398,11 +398,14 @@ final class AudiobookBookmarkBusinessLogicPositionWriteTests: XCTestCase {
     // MARK: - 6. Timestamp-newer race-check preserved (swarm_f3b9b087 #4)
 
     /// Pin the swarm_f3b9b087 P0 #4 race-check predicate: when a save's
-    /// timestamp is older than the current local timestamp by more than
-    /// the 1.0-second window (the implementation passes `with: 1.0` to
-    /// `String.isDate(_:moreRecentThan:with:)`), the post-save commit MUST
-    /// be suppressed so a stale upload result cannot overwrite a fresh
-    /// local position.
+    /// timestamp is genuinely OLDER than the current local timestamp, the
+    /// post-save commit MUST be suppressed so a stale upload result cannot
+    /// overwrite a fresh local position.
+    ///
+    /// Note this seeds local at +1 hour — "well outside any grace window" —
+    /// so it passes under any tolerance and never exercises the boundary.
+    /// `testTimestampTie_sameSecondStamp_commitsTheSavedPosition` covers the
+    /// boundary, which is the case that actually occurs in the field.
     func testTimestampNewerRace_preservedAfterMigration_keepsLocal() async throws {
         // The sentTimestamp the SUT sets is `Date().iso8601` at the moment
         // of the save call. To make the post-save guard fire, the
@@ -484,5 +487,87 @@ final class AudiobookBookmarkBusinessLogicPositionWriteTests: XCTestCase {
                        "Fresh-local annotationId MUST survive a stale upload result")
         XCTAssertEqual(finalBookmark.chapter, "chapter-2",
                        "Fresh-local chapter MUST survive a stale upload result")
+    }
+
+    // MARK: - 7. Timestamp TIE — the case that actually happens in production
+
+    /// The race check above seeds local at +1 hour, "well outside any grace
+    /// window", so it passes whatever tolerance the call site uses and never
+    /// touches the boundary. This test pins the boundary, and the boundary is
+    /// not an edge case here — it is the ONLY case observed in the field.
+    ///
+    /// `lastSavedTimeStamp` is ISO8601 at SECOND granularity ("2026-08-13T15:30:52Z",
+    /// no fractional part). A save round-trips in well under a second, so the
+    /// local and sent stamps land in the same second and compare EQUAL. A
+    /// 37-minute locked-screen run on device produced 10 post-save resolutions
+    /// and all 10 were equal-timestamp ties.
+    ///
+    /// The call site's intent, per its own comment, is to protect local "from
+    /// being overwritten by a STALE upload result" — stale meaning older. A tie
+    /// is not stale, so the position we just successfully saved must be
+    /// committed. Passing a 1.0s grace window inverted that: `d1 + 1.0 > d2` is
+    /// unconditionally true when `d1 == d2`, so every tie took the "local is
+    /// newer" branch and discarded the save.
+    func testTimestampTie_sameSecondStamp_commitsTheSavedPosition() async throws {
+        // Local carries a stamp from the SAME SECOND as the one the SUT will
+        // send — which is what production always produces.
+        let tieTimestamp = ISO8601DateFormatter().string(from: Date())
+        let tieLocal = AudioBookmark(
+            type: .locatorAudioBookTime,
+            version: 1,
+            timeStamp: tieTimestamp,
+            annotationId: "ann-tie-local",
+            readingOrderItem: "track-2",
+            readingOrderItemOffsetMilliseconds: 30_000,
+            chapter: "chapter-2",
+            title: "Chapter 2",
+            part: nil,
+            time: 30
+        )
+        guard let tieLocation = tieLocal.toTPPBookLocation() else {
+            XCTFail("Failed to build tie-local TPPBookLocation")
+            return
+        }
+
+        final class TieWriter: PositionWriter, @unchecked Sendable {
+            let onSave: () -> Void
+            init(onSave: @escaping () -> Void) { self.onSave = onSave }
+            func save(_ snapshot: PositionSnapshot) async throws -> ServerPositionID? {
+                onSave()
+                return "server-tie-id"
+            }
+            func load(for bookID: String) async throws -> PositionSnapshot? { nil }
+            func cancel(for bookID: String) async {}
+        }
+        let tieWriter = TieWriter { [weak self] in
+            self?.mockRegistry.setLocation(tieLocation,
+                                           forIdentifier: self?.bookIdentifier ?? "")
+        }
+        sut = AudiobookBookmarkBusinessLogic(
+            book: fakeBook,
+            registry: mockRegistry,
+            annotationsManager: mockAnnotations,
+            positionWriter: tieWriter
+        )
+
+        // trackIndex 0 with a non-zero time is deliberately NOT "at beginning"
+        // (BeginningPositionPolicy is strict-zero), so the later guard cannot be
+        // what answers this test.
+        let returned = await saveAndWait(position: position(trackIndex: 0, time: 5.0))
+
+        XCTAssertEqual(returned, "server-tie-id",
+                       "Completion should still receive the server ID")
+        guard let finalLocation = mockRegistry.location(forIdentifier: bookIdentifier),
+              let dict = finalLocation.locationStringDictionary(),
+              let finalBookmark = AudioBookmark.create(locatorData: dict) else {
+            XCTFail("Final registry state missing or malformed")
+            return
+        }
+        XCTAssertEqual(
+            finalBookmark.annotationId, "server-tie-id",
+            "An EQUAL timestamp is not a stale upload. The position that was just saved "
+                + "must be committed; keeping local here is how a real reading position "
+                + "(observed: 331s into track 003) was discarded in favour of track=0."
+        )
     }
 }
