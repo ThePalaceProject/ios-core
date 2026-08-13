@@ -96,6 +96,35 @@ final class CatalogSchemaLintTests: XCTestCase {
         }
     }
 
+    /// `confidence_threshold` must not read as a safety knob it is not.
+    ///
+    /// Scores are (strong + 0.5·weak) / 3. The weakest non-zero score any input
+    /// can produce is a single corroborating region: 1/6 ≈ 0.167. Every threshold
+    /// in the shipped catalog is 0.08–0.1, so every one of them passes
+    /// unconditionally — the suggest gate is carried entirely by the
+    /// strong-evidence requirement and the margin guards.
+    ///
+    /// That is fine as long as it is DELIBERATE. This test pins the two states
+    /// apart: a threshold below the floor is an explicit no-op, and anything at or
+    /// above it is a real constraint that must be chosen against the current
+    /// scale, not inherited from the old quantized one where 0.5 meant "two
+    /// regions". Raising a value without reading this is how a knob that never
+    /// fired starts silently suppressing matches.
+    func testConfidenceThresholdsAreDeliberate() throws {
+        let weakestPossibleScore = 0.5 / 3.0   // one corroborating region
+        var active: [String] = []
+        for entry in try loadEntries() where entry.confidenceThreshold >= weakestPossibleScore {
+            let impliedStrongRegions = Int((entry.confidenceThreshold * 3.0).rounded(.up))
+            active.append("\(entry.id): \(entry.confidenceThreshold) demands ~\(impliedStrongRegions) strong region(s)")
+        }
+        XCTAssertTrue(
+            active.isEmpty,
+            """
+            these thresholds now constrain matching on the CURRENT score scale.             Confirm each was chosen against (strong + 0.5·weak)/3 rather than the             retired {1/3, 2/3, 1} quantization, then add it to this test's             allowance: \(active)
+            """
+        )
+    }
+
     /// Duplicate entry ids silently break `entry(id:)` lookups and telemetry.
     func testEntryIdsAreUnique() throws {
         let ids = try loadEntries().map { $0.id }

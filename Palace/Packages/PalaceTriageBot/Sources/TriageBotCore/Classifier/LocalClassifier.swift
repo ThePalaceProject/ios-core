@@ -209,7 +209,8 @@ public struct LocalClassifier: Sendable {
                 decision: .suggest(entryId: top.entry.id),
                 confidence: top.score,
                 matchedKeywords: top.matched,
-                consideredEntryIds: consideredIds
+                consideredEntryIds: consideredIds,
+                strongRegionCount: top.strongCount
             )
         }
 
@@ -244,7 +245,8 @@ public struct LocalClassifier: Sendable {
             matchedKeywords: top.matched,
             consideredEntryIds: consideredIds,
             recognizedEntryId: top.entry.id,
-            recognitionIsStrong: top.strongCount >= 1
+            recognitionIsStrong: top.strongCount >= 1,
+            strongRegionCount: top.strongCount
         )
     }
 

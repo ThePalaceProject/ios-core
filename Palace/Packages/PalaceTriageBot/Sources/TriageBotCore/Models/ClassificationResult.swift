@@ -45,6 +45,12 @@ public struct ClassificationResult: Equatable, Sendable {
     /// False for a genuine no-match, and irrelevant on `.suggest` (which already
     /// requires strong evidence by construction).
     public let recognitionIsStrong: Bool
+    /// How many DISTINCT strong concepts the patron's text matched on the winning
+    /// entry. One is enough to suggest — that is the fix for QA's complaint — but
+    /// one is also the thinnest evidence that can produce a suggestion, so the UI
+    /// hedges there rather than asserting. Two or more distinct concepts is a
+    /// coincidence worth stating plainly.
+    public let strongRegionCount: Int
 
     public init(
         decision: Decision,
@@ -52,7 +58,8 @@ public struct ClassificationResult: Equatable, Sendable {
         matchedKeywords: [String] = [],
         consideredEntryIds: [String] = [],
         recognizedEntryId: String? = nil,
-        recognitionIsStrong: Bool = false
+        recognitionIsStrong: Bool = false,
+        strongRegionCount: Int = 0
     ) {
         self.decision = decision
         self.confidence = confidence
@@ -60,5 +67,6 @@ public struct ClassificationResult: Equatable, Sendable {
         self.consideredEntryIds = consideredEntryIds
         self.recognizedEntryId = recognizedEntryId
         self.recognitionIsStrong = recognitionIsStrong
+        self.strongRegionCount = strongRegionCount
     }
 }

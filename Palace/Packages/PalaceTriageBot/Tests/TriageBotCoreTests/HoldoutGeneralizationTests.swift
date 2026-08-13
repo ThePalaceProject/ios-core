@@ -45,7 +45,16 @@ final class HoldoutGeneralizationTests: XCTestCase {
              source: "HelpSpot 17834 — patron stuck on Palace Bookshelf demo; resolution was switch to real library (KI-004)."),
         Case(userText: "when a hold becomes available how long do I have to borrow it before it goes to the next person, and does Palace send reminders when items are coming due",
              expect: .shouldEscalate,
-             source: "HelpSpot 18103 — hold-window + due-date-reminder FAQ; no how_to entry exists for these yet (PP-4831)."),
+             // RE-ADJUDICATED: the original note said no how_to entry existed for
+             // these. HT-2026-005 (hold pickup window) and HT-2026-004
+             // (notifications) both exist now, so that justification is stale.
+             // The expectation still stands, for a different and better reason:
+             // this is ONE message asking TWO questions, and the matcher answers
+             // with a single entry. Suggesting either one would answer half the
+             // patron's message while implying it answered all of it. Escalating
+             // is correct until multi-issue input is handled — which is the real
+             // open gap this case documents.
+             source: "HelpSpot 18103 — a single message asking two distinct FAQ questions (hold window AND due-date reminders). Both entries now exist; the matcher cannot split a multi-issue message, so answering with one would be a partial answer presented as a whole."),
     ]
 
     // Tracked KNOWN limitations, keyed by userText. A case here is one the blind

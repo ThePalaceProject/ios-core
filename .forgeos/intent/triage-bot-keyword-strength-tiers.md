@@ -73,3 +73,49 @@ known-issue entries by making keyword strength explicit rather than implicit.
 
 - `swift test` on the PalaceTriageBot package (macOS) — the whole existing suite, not a filtered subset, since `LocalClassifier` behavior is asserted across several existing test classes
 - capture / misroute rates reported per provenance slice before and after, so the trade is stated as a number rather than a claim
+
+## Scope amendment (2026-08-13, during implementation)
+
+The original Claims/Anti-claims describe only the evidence model. The work grew
+in response to a QA question and an adversarial architecture review, and the
+following are now in scope. Recording them here rather than leaving the intent
+describing a smaller change than the diff — the reconciliation gate exists to
+catch exactly that drift, and it caught it.
+
+Added beyond the original claims:
+
+- `ConversationReducer` and `KBEscalationFollowUp` ARE modified, contradicting
+  the original anti-claim "does NOT change the reducer". Escalation now splits
+  ticket SCOPING (on any recognition) from the targeted follow-up QUESTION (only
+  on strong evidence, or when a prompt declares `presumes_issue: false`). The
+  anti-claim was written before the finding that every catalog prompt presumes
+  its own bug, which made weak-evidence questioning actively misleading.
+- Matching moved from substring to TOKEN comparison (`TextTokenizer`). Not
+  foreseen; forced by the discovery that `stalled` matches inside `reinstalled`,
+  a defect the old ≥2 floor had been masking.
+- Ranking and the margin guard now read strong evidence first. Prerequisite for
+  adding any corroborating keyword: without it a weak-many entry outranks a
+  strong-one entry and suppresses the better match.
+- Keyword changes the original anti-claims forbade ("does NOT add new keywords",
+  "does NOT add/remove/reword any KB entry"). Retracted deliberately: the
+  near-miss corpus produced evidence that `never works` and `add a library` were
+  misrouting real patrons, and `trying to download` was added to recover recall
+  the demotions cost. Each change is justified by a cited ticket, not by feel.
+- Nine `how_to` entries gained `escalation_follow_up` prompts and corroborating
+  keywords, so an unmatched FAQ question reaches support scoped rather than
+  blank. These prompts are NEW PATRON-FACING COPY and have not had product
+  sign-off.
+- Suggestions resting on a single matched concept are now phrased as a question
+  rather than asserted.
+
+Claims from the original document that did NOT hold as written:
+
+- "moves the generic single-word keywords … `stalled` …" — `stalled` was NOT
+  moved in the first commit. Caught by review; fixed here.
+
+## Verification amendment
+
+- `keyword_strength.py` (scratch, not committed) implements the measured-strength
+  approach. It does NOT work at this corpus size: only 5 of 187 strong keywords
+  occur ≥3 times across 318 tickets. Recorded as a negative result rather than
+  shipped as a 3%-coverage gate.

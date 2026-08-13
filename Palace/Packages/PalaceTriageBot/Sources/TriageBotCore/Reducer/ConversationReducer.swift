@@ -127,13 +127,30 @@ public struct ConversationReducer: Sendable {
             switch result.decision {
             case .suggest(let entryId):
                 next.step = .matched(entryId: entryId)
-                // Trust level shapes how we speak the match. An `authoritative`
-                // entry is stated directly; a lower-confidence `signal` / `context`
-                // entry is hedged so the bot doesn't assert a maybe as a fact.
-                if let entry = knowledgeBase.entry(id: entryId), entry.trustLevel != .authoritative {
+                // How confidently we SPEAK the match is separate from whether we
+                // make it. Two things force a hedge:
+                //
+                //  - a non-`authoritative` entry, which is a maybe by definition;
+                //  - evidence resting on ONE matched concept. A single decisive
+                //    phrase is enough to offer the entry — that is the fix for the
+                //    "I haven't seen exactly that before" complaint — but it is
+                //    also the thinnest evidence that can produce a suggestion, and
+                //    the near-miss corpus shows single-concept matches are where
+                //    real misroutes live. Stating a one-concept guess as fact is
+                //    what turns a wrong guess into wrong instructions; asking
+                //    turns it into a tap. Two of the entries reachable this way
+                //    advise signing out and back in, which given the DRM
+                //    data-loss history (PP-4951) is not free advice to hand the
+                //    wrong patron.
+                let entry = knowledgeBase.entry(id: entryId)
+                let thinEvidence = result.strongRegionCount <= 1
+                let untrusted = entry?.trustLevel != .authoritative
+                if untrusted || thinEvidence {
                     next.messages.append(.init(
                         sender: .bot,
-                        kind: .text("This might be what's going on — take a look:")
+                        kind: .text(thinEvidence && !untrusted
+                            ? "This sounds like it might be the problem below — does that match what you're seeing?"
+                            : "This might be what's going on — take a look:")
                     ))
                 }
                 next.messages.append(.init(sender: .bot, kind: .kbMatch(entryId: entryId)))
