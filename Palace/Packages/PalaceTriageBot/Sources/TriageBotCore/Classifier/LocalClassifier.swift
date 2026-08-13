@@ -91,7 +91,15 @@ public struct LocalClassifier: Sendable {
         }
 
         let consideredIds = scored.map { $0.entry.id }
-        let ranked = scored.sorted { $0.score > $1.score }
+        // Rank on STRENGTH first, score second. Weak regions are worth half a
+        // strong one, so two vague matches tie one decisive phrase on raw score —
+        // and a score-only sort let the vague entry take the top slot, where its
+        // lack of strong evidence then blocked the suggest outright. The decisive
+        // match lost to a competitor that could not itself answer. Strength-first
+        // ordering is what makes corroborating keywords safe to add at all.
+        let ranked = scored.sorted {
+            $0.strongCount != $1.strongCount ? $0.strongCount > $1.strongCount : $0.score > $1.score
+        }
 
         guard let top = ranked.first, top.score > 0 else {
             return ClassificationResult(
@@ -111,7 +119,16 @@ public struct LocalClassifier: Sendable {
         //   3. top.strongCount ≥ 1 — the precision guard. See below.
         let secondScore = ranked.count > 1 ? ranked[1].score : 0
         let secondMatchCount = ranked.count > 1 ? ranked[1].distinctCount : 0
-        let matchCountMargin = top.distinctCount - secondMatchCount
+        let secondStrongCount = ranked.count > 1 ? ranked[1].strongCount : 0
+
+        // Measure the lead on the same axis the ranking used, or the guard fights
+        // the sort: a 1-strong-region winner trails a 2-weak-region runner-up on
+        // total regions and would fail a region-only margin despite being the
+        // better match. Strong evidence decides when it differs; total regions
+        // break ties between entries with equal strong evidence.
+        let strongMargin = top.strongCount - secondStrongCount
+        let regionMargin = top.distinctCount - secondMatchCount
+        let matchCountMargin = strongMargin >= 1 ? strongMargin : regionMargin
 
         // The precision guard: at least one STRONG match region, for every kind.
         //
@@ -177,9 +194,15 @@ public struct LocalClassifier: Sendable {
             )
         }
 
-        // Multiple plausible matches → disambiguate by asking a follow-up
+        // Multiple plausible matches → disambiguate by asking a follow-up.
+        //
+        // Only when at least one candidate is backed by a decisive phrase. Offering
+        // a choice asserts we have two good guesses; if every candidate rests on
+        // vague words we have none, and the patron gets a menu of topics we merely
+        // brushed against. Weak-only competition falls through to the escalation
+        // below, which is honest about not knowing and still scopes the ticket.
         let plausible = ranked.prefix(3).filter { $0.score > 0 }.map { $0.entry.id }
-        if plausible.count >= 2 {
+        if plausible.count >= 2 && top.strongCount >= 1 {
             return ClassificationResult(
                 decision: .disambiguate(candidates: Array(plausible)),
                 confidence: top.score,

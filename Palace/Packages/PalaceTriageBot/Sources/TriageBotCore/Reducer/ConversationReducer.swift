@@ -851,9 +851,10 @@ public struct ConversationReducer: Sendable {
         askEscalationFollowUpOrDraft(
             state: &next,
             effects: &effects,
-            entryId: mayAskTargetedFollowUp ? matchedEntryId : nil,
+            entryId: matchedEntryId,
             draft: draft,
-            tagSuffix: tagSuffix
+            tagSuffix: tagSuffix,
+            recognitionIsStrong: mayAskTargetedFollowUp
         )
     }
 
@@ -866,11 +867,17 @@ public struct ConversationReducer: Sendable {
         effects: inout [ConversationEffect],
         entryId: String?,
         draft: TicketDraft,
-        tagSuffix: String
+        tagSuffix: String,
+        // True when the recognition rests on a decisive phrase. A prompt that
+        // presumes the issue is only asked then; a prompt marked
+        // `presumes_issue: false` is safe either way, because it asks about the
+        // patron's situation rather than about a bug we may have misread.
+        recognitionIsStrong: Bool = true
     ) {
         if let entryId,
            let entry = knowledgeBase.entry(id: entryId),
-           let followUp = entry.escalationFollowUp {
+           let followUp = entry.escalationFollowUp,
+           recognitionIsStrong || !followUp.presumesIssue {
             next.step = .awaitingEscalationFollowUp(prompt: followUp.prompt, pendingDraft: draft)
             next.messages.append(.init(
                 sender: .bot,

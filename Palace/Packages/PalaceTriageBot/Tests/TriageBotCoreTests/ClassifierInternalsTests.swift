@@ -132,6 +132,71 @@ final class ClassifierInternalsTests: XCTestCase {
                        "strong alone scores 0.333 and must not clear a 0.4 threshold")
     }
 
+    /// Ranking is strength-first: an entry the patron named decisively must not be
+    /// outranked by one they merely brushed with vague words.
+    ///
+    /// Weak regions are worth 0.5 each, so two of them tie one strong region on
+    /// raw score. Sorting on score alone let the weak entry take the top slot,
+    /// where its lack of strong evidence then blocked the suggest entirely — the
+    /// decisive match was suppressed by a vaguer competitor. Ranking on
+    /// (strongCount, score) is what makes it safe to give entries corroborating
+    /// keywords at all.
+    func testRanking_oneStrongRegionOutranksTwoWeakRegions() {
+        let weakMany = knownIssue("W", ["nothing here"], corroborating: ["alpha", "beta"], threshold: 0.1)
+        let strongOne = knownIssue("S", ["gamma"], threshold: 0.1)
+        let kb = makeKB([weakMany, strongOne])
+
+        XCTAssertEqual(classifier.classify(userText: "alpha beta gamma", knowledgeBase: kb).decision,
+                       .suggest(entryId: "S"),
+                       "a decisive phrase must beat two vague ones, not be suppressed by them")
+    }
+
+    /// The margin guard must compare on the same axis the ranking uses. If it
+    /// still compared total regions, the winner above (1 region) would trail the
+    /// loser (2 regions) and fail the margin — suggesting nothing.
+    func testRanking_marginIsMeasuredOnStrongEvidenceFirst() {
+        let weakMany = knownIssue("W", ["nothing here"],
+                                  corroborating: ["alpha", "beta", "delta"], threshold: 0.1)
+        let strongOne = knownIssue("S", ["gamma"], threshold: 0.1)
+        let kb = makeKB([weakMany, strongOne])
+
+        // W has THREE weak regions (score 0.5) vs S's one strong (0.333). Strength
+        // still wins the sort, and the margin must be read the same way.
+        XCTAssertEqual(classifier.classify(userText: "alpha beta delta gamma", knowledgeBase: kb).decision,
+                       .suggest(entryId: "S"))
+    }
+
+    /// Equal strong evidence on both sides is genuine ambiguity and must still
+    /// disambiguate — the strength-first ordering must not collapse that into a
+    /// confident pick.
+    func testRanking_equalStrongEvidence_stillDisambiguates() {
+        let a = knownIssue("A", ["gamma"], threshold: 0.1)
+        let b = knownIssue("B", ["gamma"], threshold: 0.1)
+        guard case .disambiguate = classifier.classify(userText: "gamma", knowledgeBase: makeKB([a, b])).decision else {
+            return XCTFail("two entries with identical strong evidence must disambiguate")
+        }
+    }
+
+    /// Disambiguation is a claim that we have two GOOD candidates and need the
+    /// patron to pick. When every candidate rests on vague words we have none, and
+    /// the reducer's disambiguation prompt ("is this happening right now, or did it
+    /// happen earlier today?") does not separate topics anyway — so a renewals
+    /// question would be answered with a timing question, and no ticket scoped.
+    ///
+    /// Escalating with the top candidate attached is the honest outcome: it says
+    /// "I am not sure", asks the entry's non-presuming question, and still hands
+    /// support a lead.
+    func testDisambiguate_requiresAtLeastOneStrongCandidate() {
+        let a = knownIssue("A", ["nothing here"], corroborating: ["alpha"], threshold: 0.1)
+        let b = knownIssue("B", ["nor here"], corroborating: ["beta"], threshold: 0.1)
+        let result = classifier.classify(userText: "alpha beta", knowledgeBase: makeKB([a, b]))
+
+        XCTAssertEqual(result.decision, .escalate,
+                       "weak-only candidates must not be presented as a choice between two guesses")
+        XCTAssertNotNil(result.recognizedEntryId, "…but the ticket must still carry a lead")
+        XCTAssertFalse(result.recognitionIsStrong)
+    }
+
     func testGuard_tiedRegionCounts_disambiguates() {
         // Two entries, 2 regions each → matchCountMargin 0 → no clear leader.
         let kb = makeKB([knownIssue("A", ["alpha", "beta"]), knownIssue("B", ["alpha", "beta"])])

@@ -759,7 +759,19 @@
         "keep it longer",
         "borrow it again"
       ],
+      "corroborating_keywords": [
+        "renew",
+        "renewal",
+        "renewed",
+        "extend"
+      ],
       "user_facing_workaround": "Palace doesn't renew loans inside the app — when your lending period ends, the book returns itself automatically. To keep reading, just borrow the title again from the catalog. If someone else has it on hold, place a hold to get back in line.",
+      "escalation_follow_up": {
+        "prompt": "Which library issued the card you're using? Loan and renewal rules are set by each library, so support can check yours.",
+        "placeholder": "City, county, or system name",
+        "diagnostic": "howto.renewals",
+        "presumes_issue": false
+      },
       "internal_reference": {
         "helpspot": [
           18028,
@@ -791,7 +803,18 @@
         "give it back early",
         "send it back"
       ],
+      "corroborating_keywords": [
+        "return",
+        "returning",
+        "give back"
+      ],
       "user_facing_workaround": "To return a book before it's due, go to My Books, swipe left on the title, and tap Return (or open the book's menu and choose Return). It goes straight back to the library so the next reader can borrow it.",
+      "escalation_follow_up": {
+        "prompt": "Which library are you using, and is this an ebook or an audiobook?",
+        "placeholder": "City or library name",
+        "diagnostic": "howto.early",
+        "presumes_issue": false
+      },
       "internal_reference": {
         "helpspot": [
           17901
@@ -820,7 +843,17 @@
         "go back to my other library",
         "toggle between libraries"
       ],
+      "corroborating_keywords": [
+        "switch",
+        "different library"
+      ],
       "user_facing_workaround": "You can keep more than one library in Palace and switch between them anytime. Go to Settings → Libraries to see your libraries, then tap the one you want to switch to it. To add another, tap Add Library there and search for it by name.",
+      "escalation_follow_up": {
+        "prompt": "Which library are you trying to use? (City, county, or system name is fine.)",
+        "placeholder": "City or library name",
+        "diagnostic": "howto.library",
+        "presumes_issue": false
+      },
       "internal_reference": {
         "helpspot": [
           17930
@@ -849,7 +882,20 @@
         "enable notifications",
         "when my book is due"
       ],
+      "corroborating_keywords": [
+        "notification",
+        "notified",
+        "reminder",
+        "reminders",
+        "alert"
+      ],
       "user_facing_workaround": "Turn on notifications and Palace will alert you when a hold you placed is ready to borrow, and again when a loan is about to expire. You can enable them when you first install the app, or later in your phone's Settings under Palace.",
+      "escalation_follow_up": {
+        "prompt": "Which library are you using, and which notifications were you expecting to get?",
+        "placeholder": "City or library name",
+        "diagnostic": "howto.notifications",
+        "presumes_issue": false
+      },
       "internal_reference": {
         "helpspot": [
           18103
@@ -878,7 +924,19 @@
         "hold pickup deadline",
         "how long to get my hold"
       ],
+      "corroborating_keywords": [
+        "hold",
+        "holds",
+        "pick up",
+        "expires"
+      ],
       "user_facing_workaround": "How long you have to pick up a ready hold varies by library and distributor. When your hold is ready, Palace shows the exact \"pick up by\" date right on it — open the title from your holds to see the deadline.",
+      "escalation_follow_up": {
+        "prompt": "Which library are you using? Hold pickup windows are set by each library.",
+        "placeholder": "City, county, or system name",
+        "diagnostic": "howto.window",
+        "presumes_issue": false
+      },
       "internal_reference": {
         "jira": "PP-4831"
       },
@@ -904,7 +962,17 @@
         "how many at once",
         "how many titles at once"
       ],
+      "corroborating_keywords": [
+        "limit",
+        "how many"
+      ],
       "user_facing_workaround": "The number of titles you can borrow at once is set by your library, so it varies. If you've reached the limit, returning a title you've finished frees up a slot — or check with your library for its exact borrowing limit.",
+      "escalation_follow_up": {
+        "prompt": "Which library are you using? Borrowing limits are set by each library.",
+        "placeholder": "City, county, or system name",
+        "diagnostic": "howto.limit",
+        "presumes_issue": false
+      },
       "internal_reference": {
         "jira": "PP-4831"
       },
@@ -930,7 +998,17 @@
         "lending period",
         "loan period"
       ],
+      "corroborating_keywords": [
+        "how long",
+        "due date"
+      ],
       "user_facing_workaround": "Loan length is set by your library, so it varies — you'll see the due date on each title when you borrow it. Palace can't extend or renew a loan in the app: when the lending period ends the book returns automatically, and to keep reading you simply borrow it again (or place a hold if there's a waitlist).",
+      "escalation_follow_up": {
+        "prompt": "Which library are you using? Loan lengths are set by each library.",
+        "placeholder": "City, county, or system name",
+        "diagnostic": "howto.length",
+        "presumes_issue": false
+      },
       "internal_reference": {
         "jira": "PP-4831"
       },
@@ -957,7 +1035,18 @@
         "put in my library card",
         "register my card"
       ],
+      "corroborating_keywords": [
+        "card",
+        "library card",
+        "add"
+      ],
       "user_facing_workaround": "To add your library card, open Settings → Libraries. If your library isn't listed yet, add it there first, then tap it and sign in with your library card number (barcode) and PIN. Once you're signed in, your loans and holds show up in Palace.",
+      "escalation_follow_up": {
+        "prompt": "Which library are you trying to add? (City, county, or system name is fine.)",
+        "placeholder": "City or library name",
+        "diagnostic": "howto.card",
+        "presumes_issue": false
+      },
       "internal_reference": {
         "jira": "PP-4831"
       },
@@ -982,7 +1071,18 @@
         "reading format",
         "send to my ereader"
       ],
+      "corroborating_keywords": [
+        "kindle",
+        "format",
+        "e-reader"
+      ],
       "user_facing_workaround": "Palace isn't connected to Kindle — there's no \"send to Kindle\" step. You read your borrowed books right in the Palace app: ebooks open in the built-in reader and audiobooks play in the built-in player, and everything stays in Palace for the length of your loan.",
+      "escalation_follow_up": {
+        "prompt": "Which library are you using, and which device were you hoping to read on?",
+        "placeholder": "City or library name",
+        "diagnostic": "howto.kindle",
+        "presumes_issue": false
+      },
       "internal_reference": {
         "jira": "PP-4831"
       },
