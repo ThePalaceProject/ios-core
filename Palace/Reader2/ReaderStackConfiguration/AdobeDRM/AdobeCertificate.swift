@@ -209,9 +209,27 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
     /// Flag to track if initialization failed
     private var initializationFailed = false
 
+    /// Single-flight gate for on-demand device activation. Adobe's RMSDK is not
+    /// safe to call concurrently; this collapses racing borrows onto one
+    /// activation. See `AdobeActivationCoordinator` for the crash forensics
+    /// (PP-4952 / Crashlytics ed05e903). Internal rather than private so
+    /// concurrency tests can await the "all racers arrived" edge deterministically.
+    @nonobjc let activationCoordinator: AdobeActivationCoordinator
+
     private override init() {
+        self.activationCoordinator = AdobeActivationCoordinator()
         super.init()
     }
+
+    #if DEBUG
+    /// Test-only, and `#if DEBUG` on purpose: a second `AdobeDRMService` means a
+    /// second single-flight slot, which would silently defeat this entire fix.
+    /// Release builds get exactly one instance, `shared`.
+    @nonobjc init(activationCoordinator: AdobeActivationCoordinator) {
+        self.activationCoordinator = activationCoordinator
+        super.init()
+    }
+    #endif
 
     /// Prepare for app termination by clearing cached references.
     /// This helps prevent "recursive_mutex lock failed" crashes on Mac Catalyst
@@ -419,16 +437,35 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
     ///
     /// - Throws: `PalaceError.drm` if activation fails or credentials are unavailable.
     func ensureDeviceActivated() async throws {
-        let userAccount = AppContainer.production().accountsManager.currentUserAccount
+        // `authorizer` is a closure, not a value: evaluating `adeptInstance`
+        // eagerly would initialise RMSDK *before* the availability and licensor
+        // guards, where develop returned first. Behaviour-preserving laziness.
+        try await ensureDeviceActivated(
+            authorizer: { self.adeptInstance },
+            userAccount: AppContainer.production().accountsManager.currentUserAccount,
+            isDRMAvailable: AdobeCertificate.isDRMAvailable
+        )
+    }
 
+    /// Dependency-injected form of `ensureDeviceActivated()`. The no-argument
+    /// overload above is the only production call site and simply supplies the
+    /// live singletons; this is where the actual logic lives so the borrow-time
+    /// activation path can be exercised end-to-end in tests against
+    /// `TPPDRMAuthorizingMock` instead of the real RMSDK. Keeping the logic here
+    /// rather than in a helper means a test of this method is a test of what
+    /// production actually runs.
+    func ensureDeviceActivated(authorizer: @escaping @Sendable () -> TPPDRMAuthorizing?,
+                               userAccount: AdobeActivationAccount,
+                               isDRMAvailable: Bool,
+                               timeout: TimeInterval = AdobeActivationCoordinator.defaultTimeout) async throws {
         if let userID = userAccount.userID,
            let deviceID = userAccount.deviceID,
-           isUserAuthorized(userID, deviceID: deviceID) {
+           authorizer()?.isUserAuthorized(userID, withDevice: deviceID) == true {
             Log.info(#file, "Adobe device already activated — skipping activation")
             return
         }
 
-        guard AdobeCertificate.isDRMAvailable else {
+        guard isDRMAvailable else {
             Log.error(#file, "Adobe DRM not available — certificate missing or expired")
             throw PalaceError.drm(.noActivation)
         }
@@ -447,40 +484,133 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
         items.removeLast()
         let tokenUsername = (items as NSArray).componentsJoined(by: "|")
 
-        Log.info(#file, "Performing on-demand Adobe device activation for borrow")
+        // SINGLE-FLIGHT (PP-4952 / Crashlytics ed05e903). Everything below this
+        // line enters Adobe's non-thread-safe C++ RMSDK. Concurrent borrows
+        // MUST NOT both get here — two simultaneous `authorize` calls corrupt
+        // RMSDK's shared heap and abort the process. The coordinator collapses
+        // racing callers onto one activation; the losers await its result.
+        //
+        // Note this is deliberately INSIDE the guards above: a coalesced caller
+        // still re-runs the `isUserAuthorized` fast path on its next borrow, so
+        // a successful activation short-circuits future callers entirely.
+        try await activationCoordinator.activate {
+            Log.info(#file, "Performing on-demand Adobe device activation for borrow")
 
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            guard let adept = self.adeptInstance else {
-                continuation.resume(throwing: PalaceError.drm(.noActivation))
-                return
-            }
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                // THE DEADLINE LIVES HERE, on the continuation, and nowhere else.
+                //
+                // Racing the work in a task group does NOT bound this: a group
+                // awaits its children on scope exit and `cancelAll()` is only
+                // cooperative, so a continuation RMSDK never resumes would keep
+                // the group — and therefore the single-flight slot — wedged
+                // forever, making every later borrow hang. A one-shot latch is
+                // what actually works: whichever arrives first, RMSDK's
+                // completion or the deadline, resumes exactly once and the
+                // awaiting task genuinely unwinds, so `inFlight` clears.
+                //
+                // TRADE-OFF, stated deliberately: after a timeout a later borrow
+                // may enter RMSDK while the original call is still notionally
+                // live. That is the same exposure `develop` had on every borrow,
+                // now narrowed to "only after a 90s wedge", and it is preferable
+                // to a permanently dead borrow button.
+                let once = OneShotContinuation(continuation)
 
-            adept.authorize(withVendorID: vendor,
-                            username: tokenUsername,
-                            password: tokenPassword) { success, error, deviceID, userID in
-                if success, let userID = userID, let deviceID = deviceID {
-                    Log.info(#file, "On-demand Adobe activation succeeded")
-                    TPPMainThreadRun.asyncIfNeeded {
-                        userAccount.setUserID(userID)
-                        userAccount.setDeviceID(deviceID)
+                let deadline = Task {
+                    // `try?` + fall-through would be a bug: cancelling this task
+                    // makes the sleep throw, `try?` would swallow it, and the
+                    // timeout would still fire — racing (and often beating) the
+                    // real completion, so a successful activation surfaces as a
+                    // spurious timeout. Return on cancellation instead.
+                    do {
+                        try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                    } catch {
+                        return
                     }
-                    continuation.resume()
-                } else {
-                    let activationError = error ?? NSError(
-                        domain: "AdobeDRM",
-                        code: -1,
-                        userInfo: [NSLocalizedDescriptionKey: "Adobe device activation failed"]
-                    )
-                    Log.error(#file, "On-demand Adobe activation failed: \(activationError.localizedDescription)")
+                    // Claim FIRST, report only if we won. This timeout is the
+                    // failure mode the design deliberately accepts, and an
+                    // accepted failure mode with no telemetry is an invisible
+                    // one — but reporting one for an activation that actually
+                    // succeeded is worse than silence.
+                    guard once.finish(throwing: PalaceError.drm(.adobeError)) else { return }
+                    Log.error(#file, "On-demand Adobe activation timed out after \(timeout)s — RMSDK never invoked the completion")
                     TPPErrorLogger.logError(
                         withCode: .invalidLicensor,
-                        summary: "On-demand Adobe device activation failed (PP-3649)",
-                        metadata: ["error": activationError.localizedDescription]
+                        summary: "On-demand Adobe device activation timed out (PP-4952)",
+                        metadata: ["timeoutSeconds": timeout]
                     )
-                    continuation.resume(throwing: PalaceError.drm(.authenticationFailed))
+                }
+
+                guard let adept = authorizer() else {
+                    deadline.cancel()
+                    once.finish(throwing: PalaceError.drm(.noActivation))
+                    return
+                }
+
+                adept.authorize(withVendorID: vendor,
+                                username: tokenUsername,
+                                password: tokenPassword) { success, error, deviceID, userID in
+                    deadline.cancel()
+                    if success, let userID = userID, let deviceID = deviceID {
+                        Log.info(#file, "On-demand Adobe activation succeeded")
+                        TPPMainThreadRun.asyncIfNeeded {
+                            userAccount.setUserID(userID)
+                            userAccount.setDeviceID(deviceID)
+                        }
+                        once.finish(throwing: nil)
+                    } else {
+                        let activationError = error ?? NSError(
+                            domain: "AdobeDRM",
+                            code: -1,
+                            userInfo: [NSLocalizedDescriptionKey: "Adobe device activation failed"]
+                        )
+                        Log.error(#file, "On-demand Adobe activation failed: \(activationError.localizedDescription)")
+                        TPPErrorLogger.logError(
+                            withCode: .invalidLicensor,
+                            summary: "On-demand Adobe device activation failed (PP-3649)",
+                            metadata: ["error": activationError.localizedDescription]
+                        )
+                        once.finish(throwing: PalaceError.drm(.authenticationFailed))
+                    }
                 }
             }
         }
+    }
+}
+
+/// Resumes a continuation exactly once, whoever gets there first.
+///
+/// Two producers race for it: RMSDK's completion block and the activation
+/// deadline. Resuming a `CheckedContinuation` twice is a hard runtime trap, so
+/// the at-most-once guarantee is load-bearing, not defensive styling. Mirrors
+/// `TPPOnceGuard`, used for the same reason in `boundedCompletion`.
+private final class OneShotContinuation: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<Void, Error>?
+
+    init(_ continuation: CheckedContinuation<Void, Error>) {
+        self.continuation = continuation
+    }
+
+    /// Returns `true` only if THIS call claimed the continuation. Callers whose
+    /// outcome is newsworthy (the deadline reporting a timeout) must check it:
+    /// if RMSDK completes in the microseconds after the sleep wakes, the
+    /// completion wins the latch and reporting a timeout anyway would file a
+    /// non-fatal for a successful activation — false telemetry is worse than
+    /// none.
+    @discardableResult
+    func finish(throwing error: Error?) -> Bool {
+        let claimed: CheckedContinuation<Void, Error>? = lock.withLock {
+            let c = continuation
+            continuation = nil
+            return c
+        }
+        guard let claimed else { return false }
+        if let error {
+            claimed.resume(throwing: error)
+        } else {
+            claimed.resume()
+        }
+        return true
     }
 }
 
