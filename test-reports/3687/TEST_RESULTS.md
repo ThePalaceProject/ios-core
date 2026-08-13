@@ -1,6 +1,6 @@
 # 🧪 Palace iOS Unit Test Results
 
-**Generated:** 2026-08-13 21:14:15 UTC
+**Generated:** 2026-08-13 22:27:55 UTC
 **Commit:** `0955496033c5`
 **Branch:** `fix/pp-4955-runtime-isolation-assertions`
 
