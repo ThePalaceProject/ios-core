@@ -1030,9 +1030,19 @@ public struct ConversationReducer: Sendable {
         if let entry = knowledgeBase.entry(id: matchedEntryId),
            let followUp = entry.escalationFollowUp {
             next.step = .awaitingEscalationFollowUp(prompt: followUp.prompt, pendingDraft: draft)
+            // "That didn't resolve it" is only true if they tried something. When
+            // every step was skipped because the patron had already done it, the
+            // trace is empty and asserting a failed attempt reads as the bot not
+            // following its own conversation — one line after it demonstrated
+            // that it was. Found by driving the app; the reducer tests assert
+            // state, not prose, so it was invisible to them.
+            let attemptedSomething = !trace.attempts.isEmpty
+            let preamble = attemptedSomething
+                ? "That didn't resolve it. Before I file the ticket — "
+                : "Before I file the ticket — "
             next.messages.append(.init(
                 sender: .bot,
-                kind: .text("That didn't resolve it. Before I file the ticket — \(followUp.prompt) (Tap Skip if you'd rather not say.)")
+                kind: .text("\(preamble)\(followUp.prompt) (Tap Skip if you'd rather not say.)")
             ))
             effects.append(.emitTelemetry(.init(
                 name: "triage_escalation_followup_asked",

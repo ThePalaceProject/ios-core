@@ -80,6 +80,35 @@ final class AlreadyTriedTests: XCTestCase {
         XCTAssertEqual(index, 0)
     }
 
+    /// Found by dogfooding: when every step is skipped the patron attempted
+    /// nothing, so the escalation must not open by telling them their attempt
+    /// failed. The reducer tests assert state rather than prose, which is exactly
+    /// why this survived them.
+    func testAllStepsSkipped_doesNotClaimAnAttemptFailed() {
+        let entry = KBEntry(
+            id: "K", category: .audiobook, status: .open,
+            symptomKeywords: ["alpha thing"],
+            userFacingWorkaround: "Fix it.",
+            userFacingSteps: [
+                KBStep(id: "s1", instruction: "Delete and reinstall Palace.", check: "Better?", remedy: .reinstall),
+            ],
+            escalationFollowUp: KBEscalationFollowUp(prompt: "Which title is doing this?"),
+            confidenceThreshold: 0.1)
+        let r = ConversationReducer(knowledgeBase: KnowledgeBase(
+            catalog: KBCatalog(version: "t", updatedAt: "x", entries: [entry])))
+        var (s, _) = r.reduce(state: ConversationState(), action: .start)
+        (s, _) = r.reduce(state: s, action: .userTappedCategory(.audiobook))
+        (s, _) = r.reduce(state: s, action: .inputChanged("the alpha thing is broken, I already reinstalled the app"))
+        (s, _) = r.reduce(state: s, action: .userSubmittedDescription)
+        (s, _) = r.reduce(state: s, action: .userTappedStartGuidedFlow(entryId: "K"))
+
+        let said = s.messages.compactMap { if case .text(let t) = $0.kind { return t }; return nil }
+        XCTAssertFalse(said.contains { $0.contains("That didn't resolve it") },
+                       "nothing was attempted — do not assert a failed attempt: \(said)")
+        XCTAssertTrue(said.contains { $0.contains("Which title is doing this?") },
+                      "the entry's question should still be asked: \(said)")
+    }
+
     /// Skipping must apply while ADVANCING too, not only when the flow opens.
     /// A mutant that ignored already-tried on advance survived the first version
     /// of this suite — every step boundary is a place to re-check, not just the
