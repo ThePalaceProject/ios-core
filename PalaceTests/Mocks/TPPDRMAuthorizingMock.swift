@@ -50,6 +50,54 @@ class TPPDRMAuthorizingMock: NSObject, TPPDRMAuthorizing, @unchecked Sendable {
         set { lock.withLock { _authorizeCallCount = newValue } }
     }
 
+    /// When true, `authorize` captures the completion instead of calling it
+    /// immediately. Call `completeDeferredAuthorize()` to fire the callback.
+    /// Lets a test hold ONE activation in flight while other callers race in —
+    /// the setup the Adobe single-flight de-dup tests need (PP-4952).
+    private var _shouldDeferAuthorize = false
+    var shouldDeferAuthorize: Bool {
+        get { lock.withLock { _shouldDeferAuthorize } }
+        set { lock.withLock { _shouldDeferAuthorize = newValue } }
+    }
+
+    /// Controls whether the (non-deferred) `authorize` reports success.
+    private var _authorizeShouldSucceed = true
+    var authorizeShouldSucceed: Bool {
+        get { lock.withLock { _authorizeShouldSucceed } }
+        set { lock.withLock { _authorizeShouldSucceed = newValue } }
+    }
+
+    /// ALL captured authorize completions, not just the most recent one. If a
+    /// de-duplication regression lets N concurrent activations through, every
+    /// one of them parks here and `completeDeferredAuthorize` releases them all
+    /// — so the test fails on its assertion instead of hanging on the N-1
+    /// callers nobody resumed. A hang is a much worse failure signal than a
+    /// count mismatch.
+    private var _deferredAuthCompletions: [@Sendable (Bool, Error?, String?, String?) -> Void] = []
+
+    /// Once `completeDeferredAuthorize` has fired, deferral STOPS: any later
+    /// `authorize` completes immediately with the same outcome. Drain-and-stay-
+    /// open, like a latch. Without this a de-duplication regression deadlocks
+    /// the test — the extra concurrent activations arrive after the drain and
+    /// park on a completion nobody will ever fire — and a deadlock tells you far
+    /// less than `authorizeCallCount` reading 10 instead of 1.
+    private var _authorizeDeferralDrained = false
+    private var _drainedOutcome: (success: Bool, error: Error?) = (true, nil)
+
+    /// Fires every previously captured authorization completion.
+    func completeDeferredAuthorize(success: Bool = true, error: Error? = nil) {
+        let completions: [@Sendable (Bool, Error?, String?, String?) -> Void] = lock.withLock {
+            let c = _deferredAuthCompletions
+            _deferredAuthCompletions = []
+            _authorizeDeferralDrained = true
+            _drainedOutcome = (success, error)
+            return c
+        }
+        for completion in completions {
+            completion(success, error, success ? deviceID : nil, success ? userID : nil)
+        }
+    }
+
     /// Tracks whether `deauthorize` was called.
     private var _deauthorizeWasCalled = false
     var deauthorizeWasCalled: Bool {
@@ -110,9 +158,37 @@ class TPPDRMAuthorizingMock: NSObject, TPPDRMAuthorizing, @unchecked Sendable {
     }
 
     func authorize(withVendorID vendorID: String!, username: String!, password: String!, completion: (@Sendable (Bool, Error?, String?, String?) -> Void)!) {
-        authorizeWasCalled = true
-        authorizeCallCount += 1
-        completion(true, nil, deviceID, userID)
+        // Flag, count, and park-decision under ONE lock acquisition so tests
+        // polling `authorizeCallCount` never observe a torn state.
+        let didPark: Bool = lock.withLock {
+            _authorizeWasCalled = true
+            _authorizeCallCount += 1
+            let shouldPark = _shouldDeferAuthorize && !_authorizeDeferralDrained
+            if shouldPark {
+                _deferredAuthCompletions.append(completion)
+            }
+            return shouldPark
+        }
+
+        guard !didPark else { return }
+
+        let drained: (success: Bool, error: Error?)? = lock.withLock {
+            _authorizeDeferralDrained ? _drainedOutcome : nil
+        }
+        if let drained {
+            completion(drained.success, drained.error,
+                       drained.success ? deviceID : nil, drained.success ? userID : nil)
+            return
+        }
+
+        if authorizeShouldSucceed {
+            completion(true, nil, deviceID, userID)
+        } else {
+            completion(false,
+                       NSError(domain: "AdobeDRM", code: -1,
+                               userInfo: [NSLocalizedDescriptionKey: "mock activation failure"]),
+                       nil, nil)
+        }
     }
 
     func deauthorize(withUsername username: String!, password: String!, userID: String!, deviceID: String!, completion: (@Sendable (Bool, Error?) -> Void)!) {
@@ -125,6 +201,11 @@ class TPPDRMAuthorizingMock: NSObject, TPPDRMAuthorizing, @unchecked Sendable {
             _deauthorizeCalledContinuation = nil
             return c
         }
+        // Load-bearing: `_awaitDeauthorizeCalledForTesting` suspends on this
+        // continuation, and three sign-out critical-path tests await it BEFORE
+        // deauthorize fires. Dropping the resume suspends them forever — a suite
+        // wedge, not a failure. (Deleted by accident while pruning the unused
+        // authorize-side seam; restored after review caught it.)
         waiter?.resume()
 
         if shouldDeferDeauthorize {
@@ -148,7 +229,14 @@ class TPPDRMAuthorizingMock: NSObject, TPPDRMAuthorizing, @unchecked Sendable {
         deauthorizeWasCalled = false
         deauthorizeCallCount = 0
         shouldDeferDeauthorize = false
+        shouldDeferAuthorize = false
+        authorizeShouldSucceed = true
         deferredDeauthCompletion = nil
-        lock.withLock { _deauthorizeCalledContinuation = nil }
+        lock.withLock {
+            _deauthorizeCalledContinuation = nil
+            _deferredAuthCompletions = []
+            _authorizeDeferralDrained = false
+            _drainedOutcome = (true, nil)
+        }
     }
 }
