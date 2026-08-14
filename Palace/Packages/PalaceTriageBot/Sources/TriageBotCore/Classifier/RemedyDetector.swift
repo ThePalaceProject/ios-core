@@ -11,6 +11,12 @@ import Foundation
 /// That is worse than unhelpful. A patron who has spent twenty minutes
 /// reinstalling and is then told to reinstall concludes the thing is not
 /// listening, and they are right.
+///
+// PUBLIC_INTENT: `KBStep.remedy` is public and decoded from the catalog, so this
+// type has to be at least as accessible as the step that carries it. It is also
+// the tag a server-supplied catalog writes, which makes it contracted schema
+// rather than an implementation detail. Its `costTier` is deliberately NOT
+// public — that one is a local authoring rule, enforced inside this module.
 public enum Remedy: String, Codable, Sendable, CaseIterable {
     case reinstall
     case restartDevice
@@ -84,13 +90,13 @@ public enum Remedy: String, Codable, Sendable, CaseIterable {
     ///    Reinstalling deletes every download across every library, and with the
     ///    Adobe activation history (PP-4951) re-fulfilment afterwards is not
     ///    guaranteed. These go last or never, and always skippable.
-    public enum CostTier: String, Codable, Sendable {
+    enum CostTier: String, Codable, Sendable {
         case free
         case disruptive
         case destructive
     }
 
-    public var costTier: CostTier {
+    var costTier: CostTier {
         switch self {
         case .pullToRefresh, .reopenTitle, .verifyOnWeb, .waitForFix: return .free
         // Costs a catalog refetch and nothing the patron owns — no books, no

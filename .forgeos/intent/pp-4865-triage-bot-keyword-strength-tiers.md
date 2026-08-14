@@ -1,5 +1,5 @@
 ---
-name: triage-bot-keyword-strength-tiers
+name: pp-4865-triage-bot-keyword-strength-tiers
 created: 2026-08-13
 author: claude-opus-5
 ---
