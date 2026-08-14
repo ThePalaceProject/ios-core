@@ -44,12 +44,12 @@ public struct TicketDraft: Codable, Equatable, Sendable {
     /// tried. Parsed from the description to skip redundant guided steps, and
     /// carried here so support does not have to re-read the free text to learn
     /// something the bot already extracted.
-    public let alreadyTried: Set<Remedy>
+    let alreadyTried: Set<Remedy>
     /// The patron claimed broad unsuccessful effort ("I've tried everything")
     /// without naming steps. It cannot skip a specific remedy, but it tells a
     /// triager the patron has already spent time, which changes how the reply
     /// should open.
-    public let claimsExhaustedEffort: Bool
+    let claimsExhaustedEffort: Bool
 
     public enum Priority: String, Codable, Sendable {
         case low      // user accepted bot's match, filing for impact tracking only

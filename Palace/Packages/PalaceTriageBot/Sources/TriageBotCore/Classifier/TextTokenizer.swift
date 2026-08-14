@@ -21,7 +21,7 @@ import Foundation
 /// Foundation-locale or NaturalLanguage dependency, so `TriageBotCore` stays
 /// KMP-portable: the Kotlin port splits on the same rule and gets the same
 /// tokens.
-public enum TextTokenizer {
+enum TextTokenizer {
 
     /// Lowercased alphanumeric runs. Everything else — spaces, apostrophes,
     /// hyphens, punctuation — separates.
@@ -32,7 +32,7 @@ public enum TextTokenizer {
     /// ["won", "t", "download"] and ["wont", "download"] respectively, and the
     /// patron's text tokenizes the same way it was written. Consistency across
     /// both sides is what matters, not linguistic fidelity.
-    public static func tokens(_ text: String) -> [String] {
+    static func tokens(_ text: String) -> [String] {
         var out: [String] = []
         var current = ""
         for ch in text.lowercased() {
@@ -53,7 +53,7 @@ public enum TextTokenizer {
     /// Returns EVERY occurrence, not just the first: a phrase repeated in a long
     /// complaint is still one concept, and leaving the merge to the caller keeps
     /// that decision in one place.
-    public static func matchRanges(of keyword: [String], in text: [String]) -> [Range<Int>] {
+    static func matchRanges(of keyword: [String], in text: [String]) -> [Range<Int>] {
         guard !keyword.isEmpty, keyword.count <= text.count else { return [] }
         var ranges: [Range<Int>] = []
         for start in 0...(text.count - keyword.count) {

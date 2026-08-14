@@ -7,7 +7,7 @@ public struct KnowledgeBase: Sendable {
     public let catalog: KBCatalog
     /// Ladder rules the loaded catalog broke. Non-empty means the offending
     /// ladders were dropped rather than spoken from — see `init`.
-    public let validationViolations: [String]
+    let validationViolations: [String]
 
     public init(catalog: KBCatalog) {
         // Validate at LOAD, and degrade rather than refuse. A catalog that
@@ -38,13 +38,13 @@ public struct KnowledgeBase: Sendable {
     }
 
     /// The catch-all question for a category, used when no entry was recognized.
-    public func categoryFollowUp(for category: KBCategory?) -> KBEscalationFollowUp? {
+    func categoryFollowUp(for category: KBCategory?) -> KBEscalationFollowUp? {
         guard let category else { return nil }
         return catalog.categoryFollowUps?[category.rawValue]
     }
 
     /// The remedy ladder for a category, if the catalog defines one.
-    public func genericFlow(for category: KBCategory?) -> KBEntry? {
+    func genericFlow(for category: KBCategory?) -> KBEntry? {
         guard let category else { return nil }
         return catalog.entries.first {
             $0.resolvedKind == .genericFlow && $0.category == category

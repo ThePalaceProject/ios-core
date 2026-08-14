@@ -115,7 +115,7 @@ public struct KBEntry: Codable, Equatable, Identifiable, Sendable {
     /// Optional in JSON so existing catalogs — and the Kotlin reader of the same
     /// schema — decode unchanged; absent means "this entry has no weak keywords",
     /// which is the correct reading for every `how_to` entry.
-    public let corroboratingKeywords: [String]?
+    let corroboratingKeywords: [String]?
     public let distributorFilter: [String]?
     public let authTypeFilter: [String]?
     public let iosVersionFilter: [String]?
@@ -243,7 +243,7 @@ public struct KBCatalog: Codable, Equatable, Sendable {
     ///
     /// Keyed by `KBCategory.rawValue`. Optional so existing catalogs decode
     /// unchanged; a missing category simply asks nothing, as today.
-    public let categoryFollowUps: [String: KBEscalationFollowUp]?
+    let categoryFollowUps: [String: KBEscalationFollowUp]?
     /// The newest app version this catalog knows about.
     ///
     /// Lets a ladder skip its "check for an update" rung for anyone already at or
@@ -253,7 +253,7 @@ public struct KBCatalog: Codable, Equatable, Sendable {
     /// rung. Going stale costs one cohort a wasted rung — the same cost as having
     /// no gate at all — so staleness degrades to today's behaviour rather than to
     /// a withheld fix.
-    public let latestKnownAppVersion: String?
+    let latestKnownAppVersion: String?
 
     enum CodingKeys: String, CodingKey {
         case version
@@ -263,7 +263,7 @@ public struct KBCatalog: Codable, Equatable, Sendable {
         case latestKnownAppVersion = "latest_known_app_version"
     }
 
-    public init(version: String, updatedAt: String, entries: [KBEntry],
+    init(version: String, updatedAt: String, entries: [KBEntry],
                 categoryFollowUps: [String: KBEscalationFollowUp]? = nil,
                 latestKnownAppVersion: String? = nil) {
         self.version = version

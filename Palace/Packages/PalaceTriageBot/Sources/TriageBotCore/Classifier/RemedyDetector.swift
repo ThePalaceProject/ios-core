@@ -118,7 +118,7 @@ public enum Remedy: String, Codable, Sendable, CaseIterable {
     }
 
     /// Patron-facing name, for acknowledging what they have already done.
-    public var displayName: String {
+    var displayName: String {
         switch self {
         case .reinstall:     return "reinstalling the app"
         case .restartDevice: return "restarting your device"
@@ -148,9 +148,9 @@ public enum Remedy: String, Codable, Sendable, CaseIterable {
 /// repeats advice, which is the status quo. So the phrases are all explicit
 /// past-tense statements of having done the thing, not mentions of the concept —
 /// "I reinstalled" counts, "should I reinstall?" does not.
-public struct RemedyDetector: Sendable {
+struct RemedyDetector: Sendable {
 
-    public init() {}
+    init() {}
 
     /// Past-tense phrasings only. Every entry was taken from wording that appears
     /// in the mined ticket corpus.
@@ -258,7 +258,7 @@ public struct RemedyDetector: Sendable {
     ]
 
     /// Remedies the text says were already attempted.
-    public func alreadyTried(in text: String) -> Set<Remedy> {
+    func alreadyTried(in text: String) -> Set<Remedy> {
         let tokens = TextTokenizer.tokens(TextNormalizer.normalize(text))
         var found: Set<Remedy> = []
         for (remedy, phrases) in Self.phrases {
@@ -275,7 +275,7 @@ public struct RemedyDetector: Sendable {
 
     /// Whether the patron claims broad unsuccessful effort without naming steps.
     /// Worth telling support even though it cannot skip anything.
-    public func claimsExhaustedEffort(in text: String) -> Bool {
+    func claimsExhaustedEffort(in text: String) -> Bool {
         let tokens = TextTokenizer.tokens(TextNormalizer.normalize(text))
         return Self.blanketPhrases.contains { phrase in
             !TextTokenizer.matchRanges(

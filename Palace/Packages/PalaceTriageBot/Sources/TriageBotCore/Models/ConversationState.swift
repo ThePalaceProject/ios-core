@@ -97,12 +97,12 @@ public struct ConversationState: Equatable, Sendable {
     /// tried. Guided flows skip these rather than asking someone who has
     /// reinstalled three times to reinstall again — 10% of real tickets open by
     /// listing what they have already done.
-    public var alreadyTriedRemedies: Set<Remedy>
+    var alreadyTriedRemedies: Set<Remedy>
     /// The patron said they had tried everything, without naming steps. Cannot
     /// skip any specific rung, but must suppress the remedy ladder entirely —
     /// walking someone through remedies after they told us they had exhausted
     /// them is the not-listening defect in its purest form.
-    public var claimsExhaustedEffort: Bool
+    var claimsExhaustedEffort: Bool
 
     public init(
         step: Step = .welcome,

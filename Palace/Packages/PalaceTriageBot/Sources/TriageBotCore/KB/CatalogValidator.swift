@@ -12,7 +12,7 @@ import Foundation
 /// keyword strength and copy quality stay in `CatalogSchemaLintTests`, which runs
 /// against the bundled file at build time and can afford to be stricter than
 /// anything we would enforce against a live catalog.
-public enum CatalogValidator {
+enum CatalogValidator {
 
     /// Per-category remedies that evidence says must never be offered.
     ///
@@ -57,7 +57,7 @@ public enum CatalogValidator {
     /// before reaching a human; three cheap steps is a defensible tax, six is not.
     static let maxRungs = 3
 
-    public static func violations(in catalog: KBCatalog) -> [String] {
+    static func violations(in catalog: KBCatalog) -> [String] {
         var problems: [String] = []
 
         for entry in catalog.entries {

@@ -42,7 +42,7 @@ public struct KBStep: Codable, Equatable, Sendable, Identifiable {
     /// skip a step the patron has already told us they did, rather than asking
     /// them to reinstall for the third time. Nil for steps that are not a
     /// standard remedy (e.g. "tap the field anyway, it IS active").
-    public let remedy: Remedy?
+    let remedy: Remedy?
 
     enum CodingKeys: String, CodingKey {
         case id, instruction, check, responses, diagnostic, remedy

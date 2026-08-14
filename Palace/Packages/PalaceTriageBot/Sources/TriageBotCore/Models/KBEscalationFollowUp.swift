@@ -34,7 +34,7 @@ public struct KBEscalationFollowUp: Codable, Equatable, Sendable {
     ///
     /// This is a property of the PROMPT's wording, not of the entry: it says "this
     /// sentence is safe to say to someone whose problem we may have misread."
-    public let presumesIssue: Bool
+    let presumesIssue: Bool
 
     enum CodingKeys: String, CodingKey {
         case prompt
@@ -43,7 +43,7 @@ public struct KBEscalationFollowUp: Codable, Equatable, Sendable {
         case presumesIssue = "presumes_issue"
     }
 
-    public init(
+    init(
         prompt: String,
         placeholder: String? = nil,
         diagnostic: String? = nil,
