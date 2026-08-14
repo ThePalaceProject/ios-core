@@ -244,19 +244,32 @@ public struct KBCatalog: Codable, Equatable, Sendable {
     /// Keyed by `KBCategory.rawValue`. Optional so existing catalogs decode
     /// unchanged; a missing category simply asks nothing, as today.
     public let categoryFollowUps: [String: KBEscalationFollowUp]?
+    /// The newest app version this catalog knows about.
+    ///
+    /// Lets a ladder skip its "check for an update" rung for anyone already at or
+    /// past it. The bot cannot see the App Store, so this is the only way it can
+    /// avoid sending a patron on the newest build to look for an update that is
+    /// not there. Optional and conservatively handled: absent means offer the
+    /// rung. Going stale costs one cohort a wasted rung — the same cost as having
+    /// no gate at all — so staleness degrades to today's behaviour rather than to
+    /// a withheld fix.
+    public let latestKnownAppVersion: String?
 
     enum CodingKeys: String, CodingKey {
         case version
         case updatedAt = "updated_at"
         case entries
         case categoryFollowUps = "category_follow_ups"
+        case latestKnownAppVersion = "latest_known_app_version"
     }
 
     public init(version: String, updatedAt: String, entries: [KBEntry],
-                categoryFollowUps: [String: KBEscalationFollowUp]? = nil) {
+                categoryFollowUps: [String: KBEscalationFollowUp]? = nil,
+                latestKnownAppVersion: String? = nil) {
         self.version = version
         self.updatedAt = updatedAt
         self.entries = entries
         self.categoryFollowUps = categoryFollowUps
+        self.latestKnownAppVersion = latestKnownAppVersion
     }
 }

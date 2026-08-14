@@ -31,7 +31,8 @@ public struct KnowledgeBase: Sendable {
                 version: catalog.version,
                 updatedAt: catalog.updatedAt,
                 entries: catalog.entries.filter { !offending.contains($0.id) },
-                categoryFollowUps: catalog.categoryFollowUps
+                categoryFollowUps: catalog.categoryFollowUps,
+                latestKnownAppVersion: catalog.latestKnownAppVersion
             )
         }
     }

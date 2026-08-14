@@ -30,32 +30,19 @@ final class CategoryFollowUpTests: XCTestCase {
 
     /// The exact input class that no keyword can ever reach.
     ///
-    /// The shape changed when remedy ladders shipped: such a complaint is now
-    /// offered the category's ladder FIRST, and the catch-all question arrives
-    /// when the ladder is exhausted. The invariant that matters is unchanged —
-    /// this patron is never filed blind — so the test walks the whole path
-    /// rather than asserting the first screen.
-    func testUnrecognizableComplaint_isOfferedRemediesThenStillAsked() throws {
-        let r = try shipped()
-        var state = drive(r, .signin, "Cant sign in")
-
-        guard case .matched(let offered) = state.step, offered.hasPrefix("GF-") else {
-            return XCTFail("expected the sign-in remedy ladder; got \(state.step)")
-        }
-        state = r.reduce(state: state, action: .userTappedStartGuidedFlow(entryId: offered)).0
-        guard case .guidedStep(_, _, _, _) = state.step else {
-            return XCTFail("expected a rung; got \(state.step)")
-        }
-        // Exhaust every rung.
-        var guard_ = 0
-        while case .guidedStep(let e, let i, _, _) = state.step, guard_ < 5 {
-            let stepId = r.knowledgeBase.entry(id: e)?.userFacingSteps?[i].id ?? ""
-            state = r.reduce(state: state, action: .userConfirmedStepDidNotResolve(stepId: stepId)).0
-            guard_ += 1
-        }
+    /// Sign-in deliberately has NO remedy ladder, so this complaint goes straight
+    /// to the question. Both cheap remedies were suppressed for the category by
+    /// evidence — support prescribed update-the-app 0 times in 41 sign-in tickets
+    /// and sign-out once — and the only rung left was a mechanism nobody had
+    /// measured. Copy review rejected it rather than ship filler to the least
+    /// tolerant audience in the app. Zero rungs is the honest ladder here, and
+    /// this test is what keeps it that way: if a sign-in ladder is ever added,
+    /// this fails and someone has to justify it.
+    func testUnrecognizableComplaint_isStillAskedSomethingUseful() throws {
+        let state = drive(try shipped(), .signin, "Cant sign in")
         let asked = try XCTUnwrap(prompt(state), "a blank ticket is the worst outcome this bot can produce")
         XCTAssertTrue(asked.contains("library gave you") || asked.contains("created inside"),
-                      "sign-in's catch-all must still split library-issued from app-created cards: \(asked)")
+                      "sign-in's catch-all must split library-issued from app-created cards: \(asked)")
     }
 
     /// Every category has one, so no route to a ticket is blind.

@@ -364,7 +364,8 @@ public struct ConversationReducer: Sendable {
             // escalate with the trace rather than open an empty flow.
             let skipped = Set(steps.compactMap(\.remedy)).intersection(next.alreadyTriedRemedies)
             guard let firstIndex = nextUntriedStepIndex(
-                from: 0, steps: steps, alreadyTried: next.alreadyTriedRemedies
+                from: 0, steps: steps, alreadyTried: next.alreadyTriedRemedies,
+                context: next.context
             ) else {
                 if let ack = acknowledgement(for: skipped) {
                     next.messages.append(.init(sender: .bot, kind: .text(ack)))
@@ -453,7 +454,8 @@ public struct ConversationReducer: Sendable {
             attempts.append(StepAttempt(stepId: stepId, outcome: .didNotResolve, timestamp: Date()))
 
             let nextIndex = nextUntriedStepIndex(
-                from: stepIndex + 1, steps: steps, alreadyTried: next.alreadyTriedRemedies
+                from: stepIndex + 1, steps: steps, alreadyTried: next.alreadyTriedRemedies,
+                context: next.context
             ) ?? steps.count
             if nextIndex < steps.count {
                 next.step = .guidedStep(
@@ -492,7 +494,7 @@ public struct ConversationReducer: Sendable {
                     effects: &effects,
                     userText: lastUserText(next.messages) ?? "(no description)",
                     category: entry.category,
-                    matchedEntryId: entryId,
+                    matchedEntryId: ticketScope(for: entryId, state: next),
                     trace: trace,
                     helpspotTag: entry.helpspotTag ?? "triage-bot-known-issue",
                     tagSuffix: "escalate-after-guided-flow-exhausted"
@@ -559,7 +561,7 @@ public struct ConversationReducer: Sendable {
                 effects: &effects,
                 userText: lastUserText(next.messages) ?? "(no description)",
                 category: entry.category,
-                matchedEntryId: entryId,
+                matchedEntryId: ticketScope(for: entryId, state: next),
                 trace: trace,
                 helpspotTag: entry.helpspotTag ?? "triage-bot-known-issue",
                 tagSuffix: "escalate-after-guided-flow-abandoned"
@@ -901,17 +903,45 @@ public struct ConversationReducer: Sendable {
         return nil
     }
 
+    /// Which entry a ticket should be scoped to when a flow ends.
+    ///
+    /// For a real entry, itself. For a generic ladder, whatever the classifier
+    /// weakly recognised — the ladder's own id tells a triager only that the bot
+    /// had no idea, which the absence of an answer already tells them. The hint
+    /// survives in `lastClassification` because the ladder does not clear it.
+    private func ticketScope(for entryId: String, state: ConversationState) -> String {
+        guard knowledgeBase.entry(id: entryId)?.resolvedKind == .genericFlow else { return entryId }
+        return state.lastClassification?.recognizedEntryId ?? entryId
+    }
+
     /// First step at or after `from` that the patron has NOT already tried.
     /// Returns nil when every remaining step is one they have done.
     private func nextUntriedStepIndex(
-        from index: Int, steps: [KBStep], alreadyTried: Set<Remedy>
+        from index: Int, steps: [KBStep], alreadyTried: Set<Remedy>,
+        context: ContextSnapshot? = nil
     ) -> Int? {
         var i = index
         while i < steps.count {
-            if let remedy = steps[i].remedy, alreadyTried.contains(remedy) { i += 1; continue }
+            if let remedy = steps[i].remedy {
+                if alreadyTried.contains(remedy) { i += 1; continue }
+                // Nothing to find in the App Store if they are already current.
+                if remedy == .updateApp, isAlreadyOnNewestKnownVersion(context) { i += 1; continue }
+            }
             return i
         }
         return nil
+    }
+
+    /// True only when BOTH the catalog's newest-known version and the patron's
+    /// app version are known, and the patron is at or past it. Either unknown
+    /// returns false — offer the rung — because a wasted rung costs seconds and a
+    /// suppressed one may cost the fix.
+    private func isAlreadyOnNewestKnownVersion(_ context: ContextSnapshot?) -> Bool {
+        guard let latest = knowledgeBase.catalog.latestKnownAppVersion,
+              let latestVersion = SemanticVersion(latest),
+              let current = context?.appVersion,
+              let currentVersion = SemanticVersion(current) else { return false }
+        return currentVersion >= latestVersion
     }
 
     /// "You have already tried X and Y" — said once, so skipping does not look

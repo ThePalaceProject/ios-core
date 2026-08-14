@@ -1195,13 +1195,13 @@
       "category": "audiobook",
       "kind": "generic_flow",
       "symptom_keywords": [],
-      "user_facing_workaround": "A few things worth trying before we send this to support.",
+      "user_facing_workaround": "A couple of things worth trying before we send this to support.",
       "user_facing_steps": [
         {
           "id": "gf-audio-1",
           "instruction": "Open the App Store and check for a Palace update. Several audiobook problems were fixed in recent releases.",
           "remedy": "updateApp",
-          "check": "Did an update install?",
+          "check": "Does it play now?",
           "responses": [
             {
               "label": "It plays now",
@@ -1248,13 +1248,13 @@
       "category": "download",
       "kind": "generic_flow",
       "symptom_keywords": [],
-      "user_facing_workaround": "Let's try a couple of things before we file this.",
+      "user_facing_workaround": "A couple of things worth trying before we send this to support.",
       "user_facing_steps": [
         {
           "id": "gf-dl-1",
-          "instruction": "Check the top of your screen for WiFi or cellular signal. If you're on WiFi, try switching to cellular, or the other way round.",
+          "instruction": "Check the top of your screen for WiFi or cellular signal. If you're on WiFi, try switching to cellular — or if you're on cellular, try WiFi.",
           "remedy": "toggleNetwork",
-          "check": "Does the download move now?",
+          "check": "Is the download moving now?",
           "responses": [
             {
               "label": "It's downloading",
@@ -1273,7 +1273,7 @@
           "id": "gf-dl-2",
           "instruction": "Open the App Store and check for a Palace update.",
           "remedy": "updateApp",
-          "check": "Did that help?",
+          "check": "Is it downloading now?",
           "responses": [
             {
               "label": "It's downloading",
@@ -1301,7 +1301,7 @@
       "category": "library",
       "kind": "generic_flow",
       "symptom_keywords": [],
-      "user_facing_workaround": "Two things to check before we send this on.",
+      "user_facing_workaround": "Two things worth checking before we send this to support.",
       "user_facing_steps": [
         {
           "id": "gf-lib-1",
@@ -1324,12 +1324,12 @@
         },
         {
           "id": "gf-lib-2",
-          "instruction": "On the library list, pull down and hold for a second to refresh it from the server.",
+          "instruction": "Go back to My Books, pull down from the top of the list, and hold for a second to reload your books.",
           "remedy": "pullToRefresh",
-          "check": "Any change?",
+          "check": "Are your books there now?",
           "responses": [
             {
-              "label": "That fixed it",
+              "label": "Found them",
               "outcome": "resolved",
               "diagnostic": "ladder.gf-lib-2.resolved"
             },
@@ -1350,45 +1350,11 @@
       "reviewed_at": "2026-08-13"
     },
     {
-      "id": "GF-signin",
-      "category": "signin",
-      "kind": "generic_flow",
-      "symptom_keywords": [],
-      "user_facing_workaround": "One thing worth checking before we send this to support.",
-      "user_facing_steps": [
-        {
-          "id": "gf-signin-1",
-          "instruction": "On the sign-in screen, close it and reopen it from Settings → Libraries. Sometimes the sign-in form loads before your library's settings do.",
-          "remedy": "pullToRefresh",
-          "check": "Can you sign in now?",
-          "responses": [
-            {
-              "label": "I'm signed in",
-              "outcome": "resolved",
-              "diagnostic": "ladder.gf-signin-1.resolved"
-            },
-            {
-              "label": "No change",
-              "outcome": "advance",
-              "diagnostic": "ladder.gf-signin-1.no_change"
-            }
-          ],
-          "diagnostic": "ladder.gf-signin-1"
-        }
-      ],
-      "confidence_threshold": 0.1,
-      "escalate_anyway": false,
-      "helpspot_tag": "generic-ladder-signin",
-      "trust_level": "authoritative",
-      "visibility": "user_facing",
-      "reviewed_at": "2026-08-13"
-    },
-    {
       "id": "GF-reader",
       "category": "reader",
       "kind": "generic_flow",
       "symptom_keywords": [],
-      "user_facing_workaround": "A couple of things to try before we file this.",
+      "user_facing_workaround": "A couple of things worth trying before we send this to support.",
       "user_facing_steps": [
         {
           "id": "gf-read-1",
@@ -1413,7 +1379,7 @@
           "id": "gf-read-2",
           "instruction": "Open the App Store and check for a Palace update.",
           "remedy": "updateApp",
-          "check": "Did that help?",
+          "check": "Does it open now?",
           "responses": [
             {
               "label": "It opens now",
@@ -1441,13 +1407,13 @@
       "category": "other",
       "kind": "generic_flow",
       "symptom_keywords": [],
-      "user_facing_workaround": "Let's try one thing before we send this on.",
+      "user_facing_workaround": "One thing worth trying before we send this to support.",
       "user_facing_steps": [
         {
           "id": "gf-other-1",
           "instruction": "Open the App Store and check for a Palace update — it's the quickest thing to rule out.",
           "remedy": "updateApp",
-          "check": "Did an update install?",
+          "check": "Did that fix it?",
           "responses": [
             {
               "label": "That fixed it",
