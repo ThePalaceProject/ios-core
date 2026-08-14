@@ -22,10 +22,29 @@ public enum CatalogValidator {
     /// them. Categories below that count (reader, n=4) are UNKNOWN, not zero, and
     /// are governed by the default order instead.
     ///
-    ///   sign-in, n=41 — update-the-app prescribed 0 times, sign-out once.
+    ///   sign-in, n=44 — update-the-app prescribed 0 times, sign-out 0 times.
     ///   The two cheapest remedies are the two least applicable in the largest
     ///   category, which is precisely the ordering a cost-only ladder would have
     ///   produced. That is why this table exists.
+    ///
+    /// TWO TRAPS FOR WHOEVER RE-DERIVES THIS. Both were hit on the first
+    /// re-derivation against a freshly mined corpus, and both would have loosened
+    /// a correct rule.
+    ///
+    /// 1. A keyword scan over resolution text counts MENTIONS, not
+    ///    PRESCRIPTIONS. Re-deriving naively put sign-out at 7% for sign-in and
+    ///    appeared to contradict this table. Reading the three tickets showed
+    ///    none of them prescribed it: one patron was already signed out and was
+    ///    walked TO the login screen, one resolution merely explained that
+    ///    credentials persist "until you sign out", and one described replacing a
+    ///    library card. Zero were a remedy for a failing sign-in. Read the cited
+    ///    tickets before moving any cell.
+    /// 2. Absence is only evidence for remedies support would WRITE DOWN.
+    ///    Pull-to-refresh appears in 3 of 135 resolutions total, so it reads 0%
+    ///    in every category — not because it never helps but because it is too
+    ///    small to record. Suppressing on that would remove the safest remedy we
+    ///    have. The <=3% rule applies only to substantive, mentionable remedies:
+    ///    update, reinstall, sign-out, switch-library.
     static let suppressed: [KBCategory: Set<Remedy>] = [
         .signin: [.updateApp, .signOutIn],
         .audiobook: [.switchLibrary],
