@@ -1,6 +1,7 @@
 {
   "version": "v1.2-2026-07-20",
   "updated_at": "2026-07-20",
+  "latest_known_app_version": "3.2.3",
   "entries": [
     {
       "id": "KI-2026-001-audiobook-first-open-hang",

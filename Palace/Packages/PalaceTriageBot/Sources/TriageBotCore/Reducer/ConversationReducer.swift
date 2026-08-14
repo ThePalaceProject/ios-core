@@ -321,9 +321,21 @@ public struct ConversationReducer: Sendable {
                 // through the redactor before it can land in a ticket.
                 userDescription: redactor.redactLine(lastUserText(next.messages) ?? "(no description)"),
                 category: entry.category,
-                matchedEntryId: entryId,
+                alreadyTried: next.alreadyTriedRemedies,
+                claimsExhaustedEffort: next.claimsExhaustedEffort,
+                // Declining a ladder is its THIRD exit, and the only one that was
+                // not scoping the ticket. A patron who taps "just file a ticket"
+                // was handed the ladder's own id, which tells a triager the bot
+                // had no idea — something the absence of an answer already says —
+                // while the weak recognition sat unused in lastClassification.
+                matchedEntryId: ticketScope(for: entryId, state: next),
                 context: next.context ?? emptyContext(),
-                helpspotTags: [entry.helpspotTag ?? "triage-bot-known-issue", "user-requested-followup"],
+                helpspotTags: [
+                    entry.resolvedKind == .genericFlow
+                        ? "triage-bot-generic-ladder"
+                        : (entry.helpspotTag ?? "triage-bot-known-issue"),
+                    "user-requested-followup"
+                ],
                 priority: .low,
                 omittedFields: initialOmittedFields(next.context)
             )
@@ -985,6 +997,8 @@ public struct ConversationReducer: Sendable {
             // PP-4805: redact patron-typed free text at draft assembly.
             userDescription: redactor.redactLine(userText),
             category: category ?? .other,
+            alreadyTried: next.alreadyTriedRemedies,
+            claimsExhaustedEffort: next.claimsExhaustedEffort,
             matchedEntryId: matchedEntryId,
             context: next.context ?? emptyContext(),
             helpspotTags: ["triage-bot-\(tagSuffix)"],
@@ -1079,6 +1093,8 @@ public struct ConversationReducer: Sendable {
             // PP-4805: redact patron-typed free text at draft assembly.
             userDescription: redactor.redactLine(userText),
             category: category,
+            alreadyTried: next.alreadyTriedRemedies,
+            claimsExhaustedEffort: next.claimsExhaustedEffort,
             matchedEntryId: matchedEntryId,
             context: next.context ?? emptyContext(),
             helpspotTags: [helpspotTag, "guided-flow-\(trace.outcome.rawValue)"],

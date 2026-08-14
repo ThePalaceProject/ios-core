@@ -62,7 +62,10 @@ escalation is where most patrons land.
 Escalation is not a dead end. Three things happen there, in order of preference:
 
 1. If an entry was recognised, the ticket carries its identity so support sees a
-   scoped report rather than "a patron reports a problem".
+   scoped report rather than "a patron reports a problem". This holds on all
+   three exits from a ladder: exhausting it, abandoning it, and declining it.
+   The third was added late, after review found that declining a ladder filed the
+   ladder's own id and dropped the recognition.
 2. The patron is offered the category's remedy ladder, if one exists.
 3. When the ladder is exhausted or the patron declines it, a question is asked
    before the ticket is filed. The entry's own question is used when recognition
@@ -78,9 +81,13 @@ has no signal to work with.
 Ladders reuse the existing guided-step engine rather than introducing new
 machinery. Already-tried skipping, step advance, exhaustion, abandonment and
 per-step telemetry all apply without modification, and no new conversation state
-was added. Exactly one existing transition changed: an unrecognised escalation now
-offers the ladder before drafting a ticket. A catalog with no ladder for a
-category behaves exactly as it did before.
+was added. Exactly one existing transition changed: an escalation that produced
+no suggestion now offers the ladder before drafting a ticket. That includes
+weakly-recognised escalations, not only wholly unrecognised ones — a weak match
+scopes the ticket but does not answer the patron, so the ladder is still the
+better thing to offer. It excludes `escalate_anyway` entries and patrons who said
+they had tried everything. A catalog with no ladder for a category behaves
+exactly as it did before.
 
 ### Rules a ladder must satisfy
 
@@ -179,7 +186,10 @@ attempts, ranking on the Wilson lower bound of their resolution rate.
   catalog reaches those; they are the permanent argument for asking one good
   question rather than guessing.
 - The category chip is a hard filter. A decisive match in another category is
-  discarded unseen.
+  discarded unseen, and because the filter runs before scoring, the conflict is
+  not merely unresolved but undetectable. When no chip is tapped at all the
+  classifier already scans the whole catalog, which is token-driven area
+  identification and is the cheapest place to start improving this.
 - A message asking two questions is answered with one entry or none.
 - The per-category priors are era-bound. Audiobook's update-the-app rate reflects
   one broken release and will decay, which is why they live in catalog data and

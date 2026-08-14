@@ -66,3 +66,18 @@ final class UpdateRungVersionGateTests: XCTestCase {
         XCTAssertEqual(firstRung(latestKnown: "3.2.3", appVersion: nil), 0)
     }
 }
+
+extension UpdateRungVersionGateTests {
+
+    /// The gate is only real if the SHIPPED catalog arms it. It was built, tested
+    /// against fixture catalogs, and shipped inert — `latest_known_app_version`
+    /// was never authored, so every ladder offered "check for an update" to
+    /// patrons already on the newest build. Tested machinery with unauthored data
+    /// is indistinguishable from no machinery.
+    func testShippedCatalog_ArmsTheVersionGate() throws {
+        let catalog = try BundledCatalogSource.loadCatalogSync()
+        let declared = try XCTUnwrap(catalog.latestKnownAppVersion,
+            "the shipped catalog declares no newest-known version, so the update rung never skips")
+        XCTAssertNotNil(SemanticVersion(declared), "must parse as a version: \(declared)")
+    }
+}
