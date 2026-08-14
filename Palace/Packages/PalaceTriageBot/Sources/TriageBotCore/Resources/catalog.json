@@ -1189,6 +1189,286 @@
       "visibility": "user_facing",
       "ui_surface": "my-books",
       "reviewed_at": "2026-07-22"
+    },
+    {
+      "id": "GF-audiobook",
+      "category": "audiobook",
+      "kind": "generic_flow",
+      "symptom_keywords": [],
+      "user_facing_workaround": "A few things worth trying before we send this to support.",
+      "user_facing_steps": [
+        {
+          "id": "gf-audio-1",
+          "instruction": "Open the App Store and check for a Palace update. Several audiobook problems were fixed in recent releases.",
+          "remedy": "updateApp",
+          "check": "Did an update install?",
+          "responses": [
+            {
+              "label": "It plays now",
+              "outcome": "resolved",
+              "diagnostic": "ladder.gf-audio-1.resolved"
+            },
+            {
+              "label": "No change",
+              "outcome": "advance",
+              "diagnostic": "ladder.gf-audio-1.no_change"
+            }
+          ],
+          "diagnostic": "ladder.gf-audio-1"
+        },
+        {
+          "id": "gf-audio-2",
+          "instruction": "Go back to My Books and tap the title again. The second open often works when the first one stalls.",
+          "remedy": "reopenTitle",
+          "check": "Does it play now?",
+          "responses": [
+            {
+              "label": "It plays now",
+              "outcome": "resolved",
+              "diagnostic": "ladder.gf-audio-2.resolved"
+            },
+            {
+              "label": "No change",
+              "outcome": "advance",
+              "diagnostic": "ladder.gf-audio-2.no_change"
+            }
+          ],
+          "diagnostic": "ladder.gf-audio-2"
+        }
+      ],
+      "confidence_threshold": 0.1,
+      "escalate_anyway": false,
+      "helpspot_tag": "generic-ladder-audiobook",
+      "trust_level": "authoritative",
+      "visibility": "user_facing",
+      "reviewed_at": "2026-08-13"
+    },
+    {
+      "id": "GF-download",
+      "category": "download",
+      "kind": "generic_flow",
+      "symptom_keywords": [],
+      "user_facing_workaround": "Let's try a couple of things before we file this.",
+      "user_facing_steps": [
+        {
+          "id": "gf-dl-1",
+          "instruction": "Check the top of your screen for WiFi or cellular signal. If you're on WiFi, try switching to cellular, or the other way round.",
+          "remedy": "toggleNetwork",
+          "check": "Does the download move now?",
+          "responses": [
+            {
+              "label": "It's downloading",
+              "outcome": "resolved",
+              "diagnostic": "ladder.gf-dl-1.resolved"
+            },
+            {
+              "label": "No change",
+              "outcome": "advance",
+              "diagnostic": "ladder.gf-dl-1.no_change"
+            }
+          ],
+          "diagnostic": "ladder.gf-dl-1"
+        },
+        {
+          "id": "gf-dl-2",
+          "instruction": "Open the App Store and check for a Palace update.",
+          "remedy": "updateApp",
+          "check": "Did that help?",
+          "responses": [
+            {
+              "label": "It's downloading",
+              "outcome": "resolved",
+              "diagnostic": "ladder.gf-dl-2.resolved"
+            },
+            {
+              "label": "No change",
+              "outcome": "advance",
+              "diagnostic": "ladder.gf-dl-2.no_change"
+            }
+          ],
+          "diagnostic": "ladder.gf-dl-2"
+        }
+      ],
+      "confidence_threshold": 0.1,
+      "escalate_anyway": false,
+      "helpspot_tag": "generic-ladder-download",
+      "trust_level": "authoritative",
+      "visibility": "user_facing",
+      "reviewed_at": "2026-08-13"
+    },
+    {
+      "id": "GF-library",
+      "category": "library",
+      "kind": "generic_flow",
+      "symptom_keywords": [],
+      "user_facing_workaround": "Two things to check before we send this on.",
+      "user_facing_steps": [
+        {
+          "id": "gf-lib-1",
+          "instruction": "Open Settings, then Libraries, and check which library is selected. If you have more than one card, the books you're looking for may be under a different library.",
+          "remedy": "switchLibrary",
+          "check": "Are your books there?",
+          "responses": [
+            {
+              "label": "Found them",
+              "outcome": "resolved",
+              "diagnostic": "ladder.gf-lib-1.resolved"
+            },
+            {
+              "label": "No change",
+              "outcome": "advance",
+              "diagnostic": "ladder.gf-lib-1.no_change"
+            }
+          ],
+          "diagnostic": "ladder.gf-lib-1"
+        },
+        {
+          "id": "gf-lib-2",
+          "instruction": "On the library list, pull down and hold for a second to refresh it from the server.",
+          "remedy": "pullToRefresh",
+          "check": "Any change?",
+          "responses": [
+            {
+              "label": "That fixed it",
+              "outcome": "resolved",
+              "diagnostic": "ladder.gf-lib-2.resolved"
+            },
+            {
+              "label": "No change",
+              "outcome": "advance",
+              "diagnostic": "ladder.gf-lib-2.no_change"
+            }
+          ],
+          "diagnostic": "ladder.gf-lib-2"
+        }
+      ],
+      "confidence_threshold": 0.1,
+      "escalate_anyway": false,
+      "helpspot_tag": "generic-ladder-library",
+      "trust_level": "authoritative",
+      "visibility": "user_facing",
+      "reviewed_at": "2026-08-13"
+    },
+    {
+      "id": "GF-signin",
+      "category": "signin",
+      "kind": "generic_flow",
+      "symptom_keywords": [],
+      "user_facing_workaround": "One thing worth checking before we send this to support.",
+      "user_facing_steps": [
+        {
+          "id": "gf-signin-1",
+          "instruction": "On the sign-in screen, close it and reopen it from Settings → Libraries. Sometimes the sign-in form loads before your library's settings do.",
+          "remedy": "pullToRefresh",
+          "check": "Can you sign in now?",
+          "responses": [
+            {
+              "label": "I'm signed in",
+              "outcome": "resolved",
+              "diagnostic": "ladder.gf-signin-1.resolved"
+            },
+            {
+              "label": "No change",
+              "outcome": "advance",
+              "diagnostic": "ladder.gf-signin-1.no_change"
+            }
+          ],
+          "diagnostic": "ladder.gf-signin-1"
+        }
+      ],
+      "confidence_threshold": 0.1,
+      "escalate_anyway": false,
+      "helpspot_tag": "generic-ladder-signin",
+      "trust_level": "authoritative",
+      "visibility": "user_facing",
+      "reviewed_at": "2026-08-13"
+    },
+    {
+      "id": "GF-reader",
+      "category": "reader",
+      "kind": "generic_flow",
+      "symptom_keywords": [],
+      "user_facing_workaround": "A couple of things to try before we file this.",
+      "user_facing_steps": [
+        {
+          "id": "gf-read-1",
+          "instruction": "Go back to My Books and tap the title again.",
+          "remedy": "reopenTitle",
+          "check": "Does it open now?",
+          "responses": [
+            {
+              "label": "It opens now",
+              "outcome": "resolved",
+              "diagnostic": "ladder.gf-read-1.resolved"
+            },
+            {
+              "label": "No change",
+              "outcome": "advance",
+              "diagnostic": "ladder.gf-read-1.no_change"
+            }
+          ],
+          "diagnostic": "ladder.gf-read-1"
+        },
+        {
+          "id": "gf-read-2",
+          "instruction": "Open the App Store and check for a Palace update.",
+          "remedy": "updateApp",
+          "check": "Did that help?",
+          "responses": [
+            {
+              "label": "It opens now",
+              "outcome": "resolved",
+              "diagnostic": "ladder.gf-read-2.resolved"
+            },
+            {
+              "label": "No change",
+              "outcome": "advance",
+              "diagnostic": "ladder.gf-read-2.no_change"
+            }
+          ],
+          "diagnostic": "ladder.gf-read-2"
+        }
+      ],
+      "confidence_threshold": 0.1,
+      "escalate_anyway": false,
+      "helpspot_tag": "generic-ladder-reader",
+      "trust_level": "authoritative",
+      "visibility": "user_facing",
+      "reviewed_at": "2026-08-13"
+    },
+    {
+      "id": "GF-other",
+      "category": "other",
+      "kind": "generic_flow",
+      "symptom_keywords": [],
+      "user_facing_workaround": "Let's try one thing before we send this on.",
+      "user_facing_steps": [
+        {
+          "id": "gf-other-1",
+          "instruction": "Open the App Store and check for a Palace update — it's the quickest thing to rule out.",
+          "remedy": "updateApp",
+          "check": "Did an update install?",
+          "responses": [
+            {
+              "label": "That fixed it",
+              "outcome": "resolved",
+              "diagnostic": "ladder.gf-other-1.resolved"
+            },
+            {
+              "label": "No change",
+              "outcome": "advance",
+              "diagnostic": "ladder.gf-other-1.no_change"
+            }
+          ],
+          "diagnostic": "ladder.gf-other-1"
+        }
+      ],
+      "confidence_threshold": 0.1,
+      "escalate_anyway": false,
+      "helpspot_tag": "generic-ladder-other",
+      "trust_level": "authoritative",
+      "visibility": "user_facing",
+      "reviewed_at": "2026-08-13"
     }
   ],
   "category_follow_ups": {

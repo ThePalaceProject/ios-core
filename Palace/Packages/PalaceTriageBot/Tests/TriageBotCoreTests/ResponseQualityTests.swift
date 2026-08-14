@@ -779,7 +779,11 @@ final class ResponseQualityTests: XCTestCase {
 
     func testEveryCatalogEntry_hasABenchmarkCase() throws {
         let kb = try Self.loadCatalog()
-        let entryIds = Set(kb.catalog.entries.map { $0.id })
+        // Ladders cannot have a shouldMatch case — they are never matched. Their
+        // coverage lives in GenericLadderTests and CatalogValidationTests.
+        let entryIds = Set(kb.catalog.entries
+            .filter { $0.resolvedKind != .genericFlow }
+            .map { $0.id })
         let covered = Set(Self.corpus.compactMap { c -> String? in
             if case .shouldMatch(let id) = c.expect { return id }; return nil
         })
@@ -823,7 +827,9 @@ final class ResponseQualityTests: XCTestCase {
         let kb = try Self.loadCatalog()
         var failures: [String] = []
 
-        for entry in kb.catalog.entries {
+        // Ladders are offered, not matched, so they have no benchmark input —
+        // they are covered by GenericLadderTests instead.
+        for entry in kb.catalog.entries where entry.resolvedKind != .genericFlow {
             let text = entry.userFacingWorkaround
 
             // Length: too short usually means generic, too long means we

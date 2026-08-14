@@ -5,9 +5,35 @@ import Foundation
 /// reducer asks it for a single entry by id.
 public struct KnowledgeBase: Sendable {
     public let catalog: KBCatalog
+    /// Ladder rules the loaded catalog broke. Non-empty means the offending
+    /// ladders were dropped rather than spoken from — see `init`.
+    public let validationViolations: [String]
 
     public init(catalog: KBCatalog) {
-        self.catalog = catalog
+        // Validate at LOAD, and degrade rather than refuse. A catalog that
+        // violates a ladder rule is not wholly untrustworthy — its entries and
+        // answers are still good — so the safe response is to drop the offending
+        // LADDERS and keep everything else. The bot then behaves as it did before
+        // ladders existed for those categories, which is a known-good state.
+        //
+        // Enforced here rather than only in tests because this schema is designed
+        // to be server-supplied later: a rule that lives only in the test suite is
+        // a rule the shipped app does not have.
+        let violations = CatalogValidator.violations(in: catalog)
+        self.validationViolations = violations
+
+        if violations.isEmpty {
+            self.catalog = catalog
+        } else {
+            let offending = Set(violations.compactMap { $0.split(separator: ":").first.map(String.init) }
+                                          .map { $0.split(separator: "/").first.map(String.init) ?? $0 })
+            self.catalog = KBCatalog(
+                version: catalog.version,
+                updatedAt: catalog.updatedAt,
+                entries: catalog.entries.filter { !offending.contains($0.id) },
+                categoryFollowUps: catalog.categoryFollowUps
+            )
+        }
     }
 
     /// The catch-all question for a category, used when no entry was recognized.

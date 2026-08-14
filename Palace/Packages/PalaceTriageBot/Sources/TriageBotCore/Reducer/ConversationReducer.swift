@@ -442,7 +442,7 @@ public struct ConversationReducer: Sendable {
             )))
             // Phase 2: persist trace to a local backfill log so a server-
             // backed catalog source can ingest per-step success rates.
-            _ = trace
+            effects.append(.persistResolutionTrace(trace))
 
         case .userConfirmedStepDidNotResolve(let stepId):
             guard case .guidedStep(let entryId, let stepIndex, let startedAt, var attempts) = next.step,
@@ -1042,6 +1042,9 @@ public struct ConversationReducer: Sendable {
         helpspotTag: String,
         tagSuffix: String
     ) {
+        // Every terminal outcome records what was tried, not just the ones that
+        // produce a ticket.
+        effects.append(.persistResolutionTrace(trace))
         let draft = TicketDraft(
             // PP-4805: redact patron-typed free text at draft assembly.
             userDescription: redactor.redactLine(userText),
@@ -1132,4 +1135,22 @@ public enum ConversationEffect: Equatable, Sendable {
     /// userText is the pre-sanitized version — sanitization happens inside
     /// the classifier per the contract on `FallbackClassifier`.
     case runAIFallback(userText: String, category: KBCategory?, context: ContextSnapshot?)
+    /// Record how a guided flow ended — which steps were tried, in order, and
+    /// whether one of them worked.
+    ///
+    /// Emitted on all three terminal outcomes, including RESOLVED, which is the
+    /// one the reducer used to discard. That was the asymmetry worth fixing:
+    /// exhausted and abandoned flows carried their trace out on the ticket, but a
+    /// flow that succeeded produced no ticket and therefore no record — so the
+    /// only outcome that says "this remedy works" was the only one never kept.
+    ///
+    /// Nothing reads this yet, deliberately. It is the precondition for ever
+    /// replacing the current per-category ordering, which was derived from 204
+    /// tickets and is known to be era-bound, with measured rates. The rule for
+    /// doing so is pre-registered rather than left to future judgement: re-rank
+    /// only at catalog-review cadence, only for rungs with at least 50 recorded
+    /// attempts, ranking on the Wilson lower bound of their resolution rate. No
+    /// in-app adaptive ordering — it would make the bot's answers irreproducible,
+    /// and reproducibility is half of what "consistent" means here.
+    case persistResolutionTrace(ResolutionTrace)
 }
