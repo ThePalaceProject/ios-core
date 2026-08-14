@@ -9500,7 +9500,7 @@
 				CODE_SIGN_ENTITLEMENTS = Palace/PalaceDebug.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 493;
+				CURRENT_PROJECT_VERSION = 494;
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -9559,7 +9559,7 @@
 				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES_ERROR;
 				CODE_SIGN_ENTITLEMENTS = Palace/SimplyE.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Distribution";
-				CURRENT_PROJECT_VERSION = 493;
+				CURRENT_PROJECT_VERSION = 494;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -9748,7 +9748,7 @@
 				CODE_SIGN_ENTITLEMENTS = Palace/PalaceDebug.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 493;
+				CURRENT_PROJECT_VERSION = 494;
 				DEVELOPMENT_TEAM = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
 				FRAMEWORK_SEARCH_PATHS = (
@@ -9809,7 +9809,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 493;
+				CURRENT_PROJECT_VERSION = 494;
 				DEVELOPMENT_TEAM = "";
 				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = 88CBA74T8K;
 				ENABLE_BITCODE = NO;
@@ -10123,10 +10123,10 @@
 		};
 		E77D02182931337000544180 /* XCRemoteSwiftPackageReference "swift-toolkit" */ = {
 			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/readium/swift-toolkit.git";
+			repositoryURL = "https://github.com/ThePalaceProject/swift-toolkit.git";
 			requirement = {
-				kind = exactVersion;
-				version = 3.11.0;
+				kind = revision;
+				revision = 58413f8680a310ed6d98278687ab711e6be639c8;
 			};
 		};
 		E77D02232931357400544180 /* XCRemoteSwiftPackageReference "SwiftSoup" */ = {

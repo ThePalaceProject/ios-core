@@ -368,6 +368,99 @@ final class LCPFulfillmentHandlerTests: XCTestCase {
                       "the license landing must NOT mark the book successful — the .lcpa content is still transferring")
     }
 
+    // MARK: - PP-4957 streaming-from-license (feature flag ON)
+
+    /// Builds a handler with the LCP-audiobook-streaming flag forced ON. The
+    /// setUp handler leaves the flag at its production default (OFF), so every
+    /// other test in this file exercises the unchanged download-first path — the
+    /// flag-OFF invariance the feature depends on.
+    private func makeStreamingHandler() -> LCPFulfillmentHandler {
+        let streamingHandler = LCPFulfillmentHandler(
+            bookRegistry: registry,
+            stateManager: stateManager,
+            progressReporter: reporter,
+            alertPresenter: alertPresenter,
+            bookFileManager: bookFileManager,
+            backgroundDownloadHandler: backgroundHandler,
+            fileManager: .default,
+            lcpServiceFactory: { [unowned self] in self.lcpService },
+            streamingEnabledProvider: { true }
+        )
+        streamingHandler.delegate = spyDelegate
+        return streamingHandler
+    }
+
+    /// Writes a PARSEABLE `.lcpl` license (fixed id) as the source file the
+    /// handler renames and re-reads. A `0xCD`-bytes fixture fails
+    /// `TPPLCPLicense(url:)` and would silently exercise only the error arm —
+    /// leaving the `setFulfillmentId` success arm (which drives return/revoke)
+    /// untested. This makes the real success arm run.
+    private func writeValidLicenseSource(id: String) throws -> URL {
+        let url = tempDir.appendingPathComponent("incoming-\(UUID().uuidString)").appendingPathExtension("lcpa")
+        try "{\"id\":\"\(id)\",\"links\":[]}".data(using: .utf8)!.write(to: url)
+        return url
+    }
+
+    /// Flag ON + LCP audiobook: the license alone makes the book playable, so the
+    /// handler marks it successful immediately, records the fulfillment ID from
+    /// the parsed license, and NEVER starts the `.lcpa` content download — the
+    /// player streams via the swift-toolkit #579 fork. This is the core PP-4957
+    /// behavior; deleting the streaming branch regresses every assertion here.
+    func testFulfill_streamingEnabled_audiobook_marksSuccessfulOnLicense_noDownload() async throws {
+        let audiobook = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        // The book must be in the registry for setFulfillmentId to stick.
+        registry.addBook(audiobook, state: .downloading)
+        let licenseId = "urn:uuid:pp4957-streaming-license"
+        let sourceURL = try writeValidLicenseSource(id: licenseId)
+        let downloadTask = FakeDownloadTask(state: .completed, identifier: 1)
+
+        makeStreamingHandler().fulfillLCPLicense(fileUrl: sourceURL, forBook: audiobook, downloadTask: downloadTask)
+
+        XCTAssertEqual(lcpService.fulfillCallCount, 0,
+                       "streaming ON must NOT download the .lcpa — the license alone is enough to stream")
+        XCTAssertEqual(spyDelegate.markSuccessfulCalls, [audiobook.identifier],
+                       "streaming ON marks the book successful on the license so 'Listen' is offered immediately")
+        XCTAssertEqual(registry.fulfillmentId(forIdentifier: audiobook.identifier), licenseId,
+                       "the fulfillment ID (used by return/revoke) must be recorded from the parsed license on the streaming path")
+        XCTAssertFalse(reporter.isLCPContentTransferActive(for: audiobook.identifier),
+                       "no content transfer starts, so no 'downloading' cue may be left active — an un-cleared cue pins the book at .downloading forever")
+    }
+
+    /// Defensive arm: streaming ON but the license bytes don't parse. The book is
+    /// still marked playable (the license read only drives the fulfillment ID),
+    /// but no fulfillment ID is recorded — the license-read failure is non-fatal
+    /// to the streaming mark-successful path.
+    func testFulfill_streamingEnabled_unreadableLicense_stillMarksSuccessful_noFulfillmentId() async throws {
+        let audiobook = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        registry.addBook(audiobook, state: .downloading)
+        let sourceURL = try writeSourceFile(ext: "lcpa")  // 0xCD bytes → not a parseable license
+        let downloadTask = FakeDownloadTask(state: .completed, identifier: 1)
+
+        makeStreamingHandler().fulfillLCPLicense(fileUrl: sourceURL, forBook: audiobook, downloadTask: downloadTask)
+
+        XCTAssertEqual(spyDelegate.markSuccessfulCalls, [audiobook.identifier],
+                       "an unreadable license must not block the streaming mark-successful — the read only affects the fulfillment ID")
+        XCTAssertNil(registry.fulfillmentId(forIdentifier: audiobook.identifier),
+                     "no parseable license → no fulfillment ID recorded")
+        XCTAssertEqual(lcpService.fulfillCallCount, 0, "still no content download")
+    }
+
+    /// Flag ON but the book is an LCP EPUB, not an audiobook: streaming is
+    /// audiobook-only, so the EPUB must still fulfill (download) normally. Proves
+    /// the branch is gated on `.audiobook`, not on the flag alone.
+    func testFulfill_streamingEnabled_epub_stillDownloads() async throws {
+        let epub = TPPBookMocker.mockBook(distributorType: .ReadiumLCP)
+        let sourceURL = try writeSourceFile()
+        let downloadTask = FakeDownloadTask(state: .completed, identifier: 2)
+
+        makeStreamingHandler().fulfillLCPLicense(fileUrl: sourceURL, forBook: epub, downloadTask: downloadTask)
+
+        XCTAssertEqual(lcpService.fulfillCallCount, 1,
+                       "an LCP EPUB is unaffected by audiobook streaming — it must still download normally")
+        XCTAssertTrue(spyDelegate.markSuccessfulCalls.isEmpty,
+                      "the EPUB is not marked successful on the license — its content is still transferring")
+    }
+
     // MARK: - LCP audiobook phase-2 download failure must not downgrade
 
     /// Regression of PP-4114-adjacent iPad bug.

@@ -232,7 +232,8 @@ final class LocalBookContentServiceTests: XCTestCase {
         fulfiller: SpyLCPContentFulfiller,
         reporter: SpyProgressReporter? = nil,
         idleTimeout: TimeInterval = LocalBookContentService.inflightContentDownloadIdleTimeout,
-        clock: FakeClock? = nil
+        clock: FakeClock? = nil,
+        streamingEnabled: Bool = false
     ) -> LocalBookContentService {
         let service = LocalBookContentService(
             bookRegistry: registry,
@@ -240,10 +241,46 @@ final class LocalBookContentServiceTests: XCTestCase {
             bookFileManager: bookFileManager,
             lcpContentFulfiller: fulfiller.fulfill,
             inflightIdleTimeout: idleTimeout,
-            monotonicClock: clock.map { c in { c.now } }
+            monotonicClock: clock.map { c in { c.now } },
+            streamingEnabledProvider: { streamingEnabled }
         )
         service.contentDownloadReporter = reporter
         return service
+    }
+
+    // MARK: - PP-4957 streaming: self-heal must NOT re-download when streaming is ON
+
+    /// Flag ON: a streaming LCP audiobook is intentionally content-absent and
+    /// playable on its license alone, so the self-heal re-download must no-op —
+    /// re-fetching the `.lcpa` would defeat streaming and pull the full archive
+    /// the streaming path exists to avoid. Same seeded state as the download-first
+    /// tests below, which DO fulfill — the only difference is the flag.
+    func testRedownload_streamingEnabled_doesNotReFetchTheArchive() throws {
+        let book = try seedLicenseOnlyLCPAudiobook()
+        let fulfiller = SpyLCPContentFulfiller()
+        let service = makeService(fulfiller: fulfiller, streamingEnabled: true)
+
+        service.redownloadLCPContentFile(for: book)
+
+        XCTAssertEqual(fulfiller.callCount, 0,
+                       "streaming ON — the self-heal must not re-download the .lcpa; the book streams on its license")
+        XCTAssertFalse(service.isContentDownloadInFlight(for: book.identifier),
+                       "no transfer was claimed, so nothing is in flight")
+    }
+
+    /// Flag OFF (default): the same seeded license-only state DOES trigger the
+    /// re-download — this is the download-first behavior the flag-ON test above
+    /// suppresses, and it pins the `if streamingEnabledProvider() { return }`
+    /// branch (deleting it makes the flag-ON test fetch the archive).
+    func testRedownload_streamingDisabled_reFetchesTheArchive() throws {
+        let book = try seedLicenseOnlyLCPAudiobook()
+        let fulfiller = SpyLCPContentFulfiller()
+        let service = makeService(fulfiller: fulfiller, streamingEnabled: false)
+
+        service.redownloadLCPContentFile(for: book)
+
+        XCTAssertEqual(fulfiller.callCount, 1,
+                       "streaming OFF — the self-heal re-downloads the .lcpa as it does today")
     }
 
     // MARK: - Claim lifetime: idle expiry, heartbeat, token-matched release

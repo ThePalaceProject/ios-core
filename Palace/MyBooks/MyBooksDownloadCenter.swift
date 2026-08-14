@@ -343,6 +343,13 @@ private final class DownloadFailureMetadataBox: @unchecked Sendable {
     }
     private var downloadCoordinator: DownloadCoordinator { stateManager.downloadCoordinator }
 
+    /// PP-4957: reads the LCP-audiobook-streaming feature flag, consulted by the
+    /// `RegistryDownloadServicing.contentPresence` seam so a license-only LCP
+    /// audiobook is reported `.present` (playable) when streaming is ON. A `var`
+    /// with a production default so tests can override it per-instance without
+    /// touching `.shared`/`.standard` or threading the large init.
+    var lcpStreamingEnabledProvider: () -> Bool = { RemoteFeatureFlags.shared.isLCPAudiobookStreamingEnabled }
+
     init(
         // Test-only override. Production code passes nil so `userAccount`
         // resolves to the current account via `accountsManager` on every

@@ -57,6 +57,15 @@ public enum PalaceFeatureFlag: String, Sendable {
     /// Default ON; set to false in Remote Config to suppress the prompt
     /// entirely regardless of engagement state.
     case appRatingPromptEnabled = "app_rating_prompt_enabled"
+    /// Gates LCP audiobook streaming-from-license (PP-4957). When ON, an LCP
+    /// audiobook becomes playable on the `.lcpl` license alone and the player
+    /// streams the encrypted audio on demand via the pinned swift-toolkit fork
+    /// (3.11.0 + fix-issue-579); when OFF, the app downloads the full `.lcpa`
+    /// before playback (today's behavior). **Default OFF — Firebase-gated;**
+    /// the default flip to streaming is a product decision. Precedence is
+    /// UserDefaults local override (dev-menu toggle / QA) > Firebase remote
+    /// (default false) — see `isLCPAudiobookStreamingEnabled`.
+    case lcpAudiobookStreamingEnabled = "lcp_audiobook_streaming_enabled"
 
     /// In-app fallback when Remote Config has no value. Kept in the package:
     /// it is part of the flag CONTRACT (tests pin it), not Firebase wiring.

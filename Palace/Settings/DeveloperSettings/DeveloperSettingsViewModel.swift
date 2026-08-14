@@ -107,6 +107,12 @@ final class DeveloperSettingsViewModel: ObservableObject {
         didSet { overrideDefaults.set(continuationCardsEnabled, forKey: RemoteFeatureFlags.continuationCardsLocalOverrideKey) }
     }
 
+    /// PP-4957: local override for LCP audiobook streaming-from-license. Lets QA
+    /// force streaming on/off without a Firebase round-trip.
+    @Published var lcpAudiobookStreamingEnabled: Bool {
+        didSet { overrideDefaults.set(lcpAudiobookStreamingEnabled, forKey: RemoteFeatureFlags.lcpAudiobookStreamingLocalOverrideKey) }
+    }
+
     @Published var appRatingForceEligible: Bool {
         didSet { overrideDefaults.set(appRatingForceEligible, forKey: RemoteFeatureFlags.appRatingForceEligibleLocalOverrideKey) }
     }
@@ -180,6 +186,7 @@ final class DeveloperSettingsViewModel: ObservableObject {
 
         self.inAppPlaybackNavEnabled = featureFlags.isInAppPlaybackNavEnabled
         self.continuationCardsEnabled = featureFlags.isContinuationCardsEnabled
+        self.lcpAudiobookStreamingEnabled = featureFlags.isLCPAudiobookStreamingEnabled
         self.appRatingForceEligible = featureFlags.isAppRatingForceEligible
 
         self.customRegistryInput = settings.customLibraryRegistryServer ?? ""
