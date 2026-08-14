@@ -118,6 +118,7 @@ public struct ConversationReducer: Sendable {
             next.inputText = ""
             // Read what they have already done BEFORE deciding what to suggest.
             next.alreadyTriedRemedies = remedyDetector.alreadyTried(in: userText)
+            next.claimsExhaustedEffort = remedyDetector.claimsExhaustedEffort(in: userText)
 
             let result = classifier.classify(
                 userText: userText,
@@ -202,6 +203,35 @@ public struct ConversationReducer: Sendable {
                     // handing support a blank "couldn't help." nil = a genuine
                     // no-match (novel issue).
                     let recognized = result.recognizedEntryId
+
+                    // Nothing matched, or matched only weakly — this is ~88% of
+                    // real complaints. Offer the category's remedy ladder before
+                    // filing, rather than only asking a question.
+                    //
+                    // Not offered when the patron said they had tried everything,
+                    // and never for escalate_anyway entries (handled in the
+                    // classifier — those never reach this arm with a suggestion).
+                    // `escalate_anyway` means the entry was recognized WITH
+                    // confidence and has no safe self-serve fix — the account-side
+                    // and library-side class that is a quarter of real tickets.
+                    // Offering remedies there is delay dressed as help, and it
+                    // contradicts the entry's own declaration.
+                    let staffOnly = recognized
+                        .flatMap { knowledgeBase.entry(id: $0) }?
+                        .escalateAnyway ?? false
+
+                    if !next.claimsExhaustedEffort, !staffOnly,
+                       let flow = knowledgeBase.genericFlow(for: category) {
+                        next.step = .matched(entryId: flow.id)
+                        next.messages.append(.init(
+                            sender: .bot, kind: .kbMatch(entryId: flow.id)))
+                        effects.append(.emitTelemetry(.init(
+                            name: "triage_generic_ladder_offered",
+                            parameters: ["category": category?.rawValue ?? "(none)"]
+                        )))
+                        return (next, effects)
+                    }
+
                     transitionToDrafting(
                         state: &next,
                         effects: &effects,
@@ -1027,8 +1057,13 @@ public struct ConversationReducer: Sendable {
         // an escalationFollowUp, ask it first; otherwise go straight to
         // the ticket preview. Acknowledgment text leads either way so the
         // chat reads naturally.
-        if let entry = knowledgeBase.entry(id: matchedEntryId),
-           let followUp = entry.escalationFollowUp {
+        // Same fallback as askEscalationFollowUpOrDraft: prefer the entry's own
+        // question, else the category's catch-all. Without this, an entry with
+        // steps but no follow-up walked the patron through a whole flow and then
+        // filed with nothing asked — the blank-ticket class, surviving on the one
+        // path where the patron had invested the most effort.
+        let entryFollowUp = knowledgeBase.entry(id: matchedEntryId)?.escalationFollowUp
+        if let followUp = entryFollowUp ?? knowledgeBase.categoryFollowUp(for: draft.category) {
             next.step = .awaitingEscalationFollowUp(prompt: followUp.prompt, pendingDraft: draft)
             // "That didn't resolve it" is only true if they tried something. When
             // every step was skipped because the patron had already done it, the
@@ -1046,7 +1081,7 @@ public struct ConversationReducer: Sendable {
             ))
             effects.append(.emitTelemetry(.init(
                 name: "triage_escalation_followup_asked",
-                parameters: ["entry_id": matchedEntryId]
+                parameters: ["entry_id": entryFollowUp != nil ? matchedEntryId : "(category)"]
             )))
         } else {
             next.step = .drafting(ticket: draft)

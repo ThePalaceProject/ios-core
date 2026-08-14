@@ -30,6 +30,27 @@ final class AlreadyTriedTests: XCTestCase {
         XCTAssertTrue(detector.alreadyTried(in: "my audiobook won't play").isEmpty)
     }
 
+    /// The two remedies a generic ladder would offer that the detector could not
+    /// see. Without these, a patron who wrote "I pulled down to refresh and
+    /// nothing happened" would be told to pull down to refresh — the exact
+    /// not-listening defect this work exists to remove, reintroduced on the new
+    /// surface.
+    func testDetectsTheRemediesAGenericLadderWouldOffer() {
+        XCTAssertTrue(detector.alreadyTried(in: "I pulled down to refresh and nothing changed").contains(.pullToRefresh))
+        XCTAssertTrue(detector.alreadyTried(in: "I switched to my other library and it is the same").contains(.switchLibrary))
+    }
+
+    /// Cost tiers are what let the ladder put destructive remedies last. Asserted
+    /// through behaviour that depends on them, not as a constant echo: the two
+    /// remedies that destroy downloaded content must not sit in the free tier.
+    func testDestructiveRemediesAreNotClassifiedAsFree() {
+        XCTAssertEqual(Remedy.reinstall.costTier, .destructive,
+                       "reinstall deletes every downloaded book")
+        XCTAssertEqual(Remedy.signOutIn.costTier, .destructive,
+                       "signing out removes that library's downloaded content, and a patron who cannot sign back in is stranded")
+        XCTAssertEqual(Remedy.pullToRefresh.costTier, .free)
+    }
+
     /// A blanket claim is real information for support but cannot skip anything —
     /// skipping every step on "tried everything" strands the patron.
     func testBlanketClaimIsReportedButSkipsNothing() {

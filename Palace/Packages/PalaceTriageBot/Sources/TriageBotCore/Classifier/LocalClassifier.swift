@@ -32,6 +32,12 @@ public struct LocalClassifier: Sendable {
         } else {
             rawCandidates = kb.entries(matching: context)
         }
+        // Generic ladders are remedies, not diagnoses — they never compete for a
+        // match. Excluded here rather than by relying on an empty keyword list,
+        // because an empty-keyword entry still enters the candidate set and would
+        // surface in consideredEntryIds (and would compete outright the moment
+        // someone gave a ladder a keyword).
+        let matchable = rawCandidates.filter { $0.resolvedKind != .genericFlow }
 
         // Version-aware filter — don't surface a `fixed_in` entry to a user
         // who's already on / past the fix version. They have the fix; if
@@ -40,7 +46,7 @@ public struct LocalClassifier: Sendable {
         // implicitly accepted. Entries without `fixed_in_version`, entries
         // with `status: open`, or contexts without an app version all pass
         // through unfiltered.
-        let candidates = rawCandidates.filter { entry in
+        let candidates = matchable.filter { entry in
             // Only known-issue `fixed_in` entries are version-gated. how_to
             // (general-help) entries have no fix version and must always
             // surface — a "how do I renew?" answer never expires against a

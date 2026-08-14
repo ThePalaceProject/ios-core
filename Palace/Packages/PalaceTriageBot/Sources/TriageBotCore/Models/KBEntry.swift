@@ -62,6 +62,14 @@ public enum KBCategory: String, Codable, Sendable, CaseIterable {
 public enum KBKind: String, Codable, Sendable {
     case knownIssue = "known_issue"
     case howTo = "how_to"
+    /// A per-category remedy ladder, not a diagnosis.
+    ///
+    /// Carries `user_facing_steps` like a known_issue, but claims nothing about
+    /// what is wrong — it is the short, safe sequence offered when no entry
+    /// matched, which is most of the time. Deliberately excluded from
+    /// classification: a ladder must never win a match, scope a ticket, or appear
+    /// as a considered candidate, because it has no diagnostic content to offer.
+    case genericFlow = "generic_flow"
 }
 
 public struct KBInternalReference: Codable, Equatable, Sendable {

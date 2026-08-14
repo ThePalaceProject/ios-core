@@ -141,6 +141,15 @@ final class CatalogSchemaLintTests: XCTestCase {
                 XCTAssertNil(entry.fixedInVersion, "\(entry.id): how_to entry must not carry a fix version")
             case .knownIssue:
                 XCTAssertNotNil(entry.status, "\(entry.id): known_issue entry must declare a status")
+            case .genericFlow:
+                // A ladder is not a diagnosis: no known-issue status, no version
+                // gate, and it must carry rungs or it has nothing to offer.
+                XCTAssertNil(entry.status, "\(entry.id): generic_flow must not carry a known-issue status")
+                XCTAssertNil(entry.fixedInVersion, "\(entry.id): generic_flow must not carry a fix version")
+                XCTAssertFalse((entry.userFacingSteps ?? []).isEmpty,
+                               "\(entry.id): generic_flow with no steps offers nothing")
+                XCTAssertTrue(entry.symptomKeywords.isEmpty,
+                              "\(entry.id): a ladder must not claim symptoms — it is offered when nothing matched")
             }
         }
     }

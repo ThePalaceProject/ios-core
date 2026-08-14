@@ -98,6 +98,11 @@ public struct ConversationState: Equatable, Sendable {
     /// reinstalled three times to reinstall again — 10% of real tickets open by
     /// listing what they have already done.
     public var alreadyTriedRemedies: Set<Remedy>
+    /// The patron said they had tried everything, without naming steps. Cannot
+    /// skip any specific rung, but must suppress the remedy ladder entirely —
+    /// walking someone through remedies after they told us they had exhausted
+    /// them is the not-listening defect in its purest form.
+    public var claimsExhaustedEffort: Bool
 
     public init(
         step: Step = .welcome,
@@ -106,7 +111,8 @@ public struct ConversationState: Equatable, Sendable {
         lastClassification: ClassificationResult? = nil,
         inputText: String = "",
         pendingSendConsent: Bool = false,
-        alreadyTriedRemedies: Set<Remedy> = []
+        alreadyTriedRemedies: Set<Remedy> = [],
+        claimsExhaustedEffort: Bool = false
     ) {
         self.step = step
         self.messages = messages
@@ -115,6 +121,7 @@ public struct ConversationState: Equatable, Sendable {
         self.inputText = inputText
         self.pendingSendConsent = pendingSendConsent
         self.alreadyTriedRemedies = alreadyTriedRemedies
+        self.claimsExhaustedEffort = claimsExhaustedEffort
     }
 }
 

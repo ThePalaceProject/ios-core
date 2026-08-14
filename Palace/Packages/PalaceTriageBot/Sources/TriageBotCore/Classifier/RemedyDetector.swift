@@ -19,6 +19,37 @@ public enum Remedy: String, Codable, Sendable, CaseIterable {
     case reopenTitle
     case updateApp
     case otherDevice
+    case pullToRefresh
+    case switchLibrary
+
+    /// What the remedy costs the patron if it does NOT work.
+    ///
+    /// The claim that a generic remedy is "never wrong, only unhelpful" is false
+    /// in this app, and the distinction is what lets a ladder order itself safely:
+    ///
+    ///  - `free` — costs seconds and nothing else. Safe to offer early, anywhere.
+    ///  - `disruptive` — interrupts something or may cost money (metered data,
+    ///    a lost playback position).
+    ///  - `destructive` — DESTROYS content. Signing out removes that library's
+    ///    downloaded books, and a patron who then cannot sign back in (expired
+    ///    card, ILS outage — a quarter of real tickets) has gone from "app
+    ///    misbehaving, books still readable" to "locked out, books gone".
+    ///    Reinstalling deletes every download across every library, and with the
+    ///    Adobe activation history (PP-4951) re-fulfilment afterwards is not
+    ///    guaranteed. These go last or never, and always skippable.
+    public enum CostTier: String, Codable, Sendable {
+        case free
+        case disruptive
+        case destructive
+    }
+
+    public var costTier: CostTier {
+        switch self {
+        case .pullToRefresh, .reopenTitle, .updateApp: return .free
+        case .restartDevice, .toggleNetwork, .otherDevice, .switchLibrary: return .disruptive
+        case .signOutIn, .reinstall: return .destructive
+        }
+    }
 
     /// Patron-facing name, for acknowledging what they have already done.
     public var displayName: String {
@@ -30,6 +61,8 @@ public enum Remedy: String, Codable, Sendable, CaseIterable {
         case .reopenTitle:   return "reopening the title"
         case .updateApp:     return "updating the app"
         case .otherDevice:   return "trying another device"
+        case .pullToRefresh: return "pulling down to refresh"
+        case .switchLibrary: return "switching libraries"
         }
     }
 }
@@ -75,6 +108,15 @@ public struct RemedyDetector: Sendable {
         .updateApp: [
             "updated the app", "installed the update", "already updated", "on the latest version",
             "running the latest", "up to date",
+        ],
+        .pullToRefresh: [
+            "pulled down to refresh", "pulled to refresh", "pull to refresh",
+            "swiped down to refresh", "refreshed the list", "refreshed my holds",
+        ],
+        .switchLibrary: [
+            "switched to my other", "switched libraries", "switched library",
+            "changed to my other library", "tried my other library",
+            "switched to my other library",
         ],
         .otherDevice: [
             "tried on my ipad", "tried on my phone", "tried a different device",

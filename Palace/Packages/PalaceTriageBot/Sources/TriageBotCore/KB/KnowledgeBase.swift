@@ -16,6 +16,15 @@ public struct KnowledgeBase: Sendable {
         return catalog.categoryFollowUps?[category.rawValue]
     }
 
+    /// The remedy ladder for a category, if the catalog defines one.
+    public func genericFlow(for category: KBCategory?) -> KBEntry? {
+        guard let category else { return nil }
+        return catalog.entries.first {
+            $0.resolvedKind == .genericFlow && $0.category == category
+                && !($0.userFacingSteps ?? []).isEmpty
+        }
+    }
+
     public func entry(id: String) -> KBEntry? {
         catalog.entries.first { $0.id == id }
     }
