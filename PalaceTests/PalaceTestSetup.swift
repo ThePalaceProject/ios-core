@@ -80,6 +80,16 @@ class PalaceTestSetup: NSObject {
         AccountsManager.deferInitialLoadCatalogsForTesting = true
         #endif
 
+        // PP-4957: pin the LCP-audiobook-streaming flag OFF for the whole test
+        // run. MyBooksDownloadCenter / LCPFulfillmentHandler / AudiobookSessionManager
+        // default their streaming provider to `RemoteFeatureFlags.shared`, whose
+        // value in the test host is otherwise non-deterministic (FirebaseManager
+        // state + prior-run `.standard` residue) — which flaked the download-first
+        // reconcile / fulfillment tests on unlucky shuffles. Streaming tests inject
+        // their own provider (bypassing `.shared`) and are unaffected. Re-pinned
+        // after every test by the registered resetter below.
+        UserDefaults.standard.set(false, forKey: RemoteFeatureFlags.lcpAudiobookStreamingLocalOverrideKey)
+
         let obs = PalaceSingletonResetObserver()
         XCTestObservationCenter.shared.addTestObserver(obs)
         observer = obs
@@ -241,6 +251,14 @@ class PalaceTestSetup: NSObject {
         // synchronous clear that also invalidates any leaked chaos sessions.
         registry.register("ChaosURLProtocol.reset") {
             ChaosURLProtocol.reset()
+        }
+
+        // PP-4957: re-pin the LCP-audiobook-streaming flag OFF after every test,
+        // so a test that flips it (e.g. the DeveloperSettings toggle) cannot leak
+        // an ON value into the next test's default streaming providers. See the
+        // bootstrap-time pin above for the rationale.
+        registry.register("RemoteFeatureFlags.lcpStreamingOverride.pinOff") {
+            UserDefaults.standard.set(false, forKey: RemoteFeatureFlags.lcpAudiobookStreamingLocalOverrideKey)
         }
     }
 }

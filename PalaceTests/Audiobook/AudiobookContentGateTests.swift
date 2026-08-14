@@ -58,32 +58,60 @@ final class AudiobookContentGateTests: XCTestCase {
 
     // MARK: - Pure predicate (mutation-focused)
 
+    // Flag OFF (`streamingEnabled: false`) — the download-first gate, unchanged.
     func testShouldTrigger_lcpBookContentMissingNotRecovery_returnsTrue() {
         XCTAssertTrue(
             AudiobookSessionManager.shouldTriggerContentDownloadBeforeOpen(
-                isColdLoadRecovery: false, canOpenLCPBook: true, contentIsLocal: false),
+                isColdLoadRecovery: false, canOpenLCPBook: true, contentIsLocal: false, streamingEnabled: false),
             "A first cold open of an LCP audiobook whose .lcpa isn't on disk must trigger a content download — this is the exact 323-Cause-1 dead-end")
     }
 
     func testShouldTrigger_contentAlreadyLocal_returnsFalse() {
         XCTAssertFalse(
             AudiobookSessionManager.shouldTriggerContentDownloadBeforeOpen(
-                isColdLoadRecovery: false, canOpenLCPBook: true, contentIsLocal: true),
+                isColdLoadRecovery: false, canOpenLCPBook: true, contentIsLocal: true, streamingEnabled: false),
             "When the .lcpa is already on disk there is nothing to download — open immediately")
     }
 
     func testShouldTrigger_coldLoadRecovery_returnsFalse() {
         XCTAssertFalse(
             AudiobookSessionManager.shouldTriggerContentDownloadBeforeOpen(
-                isColdLoadRecovery: true, canOpenLCPBook: true, contentIsLocal: false),
+                isColdLoadRecovery: true, canOpenLCPBook: true, contentIsLocal: false, streamingEnabled: false),
             "Cold-load recovery re-opens skip the gate — content is already local by then, and re-gating would double the wait")
     }
 
     func testShouldTrigger_notLCPBook_returnsFalse() {
         XCTAssertFalse(
             AudiobookSessionManager.shouldTriggerContentDownloadBeforeOpen(
-                isColdLoadRecovery: false, canOpenLCPBook: false, contentIsLocal: false),
+                isColdLoadRecovery: false, canOpenLCPBook: false, contentIsLocal: false, streamingEnabled: false),
             "The content gate is LCP-specific — a non-LCP audiobook must not be routed through the LCP re-download seam")
+    }
+
+    // PP-4957 — Flag ON (`streamingEnabled: true`) short-circuits the gate to
+    // false, so an LCP audiobook opens (and streams) without a content download.
+    func testShouldTrigger_streamingEnabled_overridesDownloadFirst_returnsFalse() {
+        // Same inputs as `testShouldTrigger_lcpBookContentMissingNotRecovery_returnsTrue`
+        // (which returns TRUE with the flag off) — the ONLY difference is the flag,
+        // so this pins the `if streamingEnabled { return false }` branch: deleting
+        // it makes this assertion fail.
+        XCTAssertFalse(
+            AudiobookSessionManager.shouldTriggerContentDownloadBeforeOpen(
+                isColdLoadRecovery: false, canOpenLCPBook: true, contentIsLocal: false, streamingEnabled: true),
+            "With streaming enabled, an LCP audiobook is playable on its license alone — the gate must NOT force a content download before opening")
+    }
+
+    func testShouldTrigger_streamingEnabled_neverTriggers_acrossInputs() {
+        // Streaming ON dominates every other input — no combination triggers a download.
+        for cold in [true, false] {
+            for canOpen in [true, false] {
+                for local in [true, false] {
+                    XCTAssertFalse(
+                        AudiobookSessionManager.shouldTriggerContentDownloadBeforeOpen(
+                            isColdLoadRecovery: cold, canOpenLCPBook: canOpen, contentIsLocal: local, streamingEnabled: true),
+                        "streamingEnabled must force false regardless of (cold: \(cold), canOpen: \(canOpen), local: \(local))")
+                }
+            }
+        }
     }
 
     // MARK: - Gate behavior — TRIGGERS the download (the core fix)

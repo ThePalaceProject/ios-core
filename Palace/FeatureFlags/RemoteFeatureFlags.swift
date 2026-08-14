@@ -349,6 +349,33 @@ final class RemoteFeatureFlags: @unchecked Sendable {
         return isFeatureEnabled(.sideLoadingEnabled)
     }
 
+    /// UserDefaults override that lets QA / a developer force LCP audiobook
+    /// streaming on or off without a Firebase round-trip. Settable from
+    /// `TPPDeveloperSettingsTableViewController`. Falls through to the Remote
+    /// Config flag when nil. Mirrors the `inAppPlaybackNavLocalOverrideKey` pattern.
+    static let lcpAudiobookStreamingLocalOverrideKey = "RemoteFeatureFlags.lcpAudiobookStreamingLocalOverride"
+
+    /// Whether LCP audiobook streaming-from-license is enabled (PP-4957). When
+    /// ON, an LCP audiobook is playable on the `.lcpl` license alone and the
+    /// player streams the encrypted audio on demand via the pinned swift-toolkit
+    /// fork (3.11.0 + fix-issue-579); when OFF, the app downloads the full
+    /// `.lcpa` before playback (today's behavior).
+    ///
+    /// **Default OFF — Firebase-gated.** The default flip to streaming is a
+    /// product decision; production users stay on download-first until Firebase
+    /// Remote Config sets `lcp_audiobook_streaming_enabled = true` (global or
+    /// staged), which the team can roll out and back without shipping a build.
+    ///
+    /// Override precedence:
+    ///   1. UserDefaults local override (dev-menu toggle / QA) — wins.
+    ///   2. Firebase Remote Config (`isFeatureEnabled`, default `false`).
+    var isLCPAudiobookStreamingEnabled: Bool {
+        if let override = defaults.object(forKey: Self.lcpAudiobookStreamingLocalOverrideKey) as? Bool {
+            return override
+        }
+        return isFeatureEnabled(.lcpAudiobookStreamingEnabled)
+    }
+
     // MARK: - App Rating (Epic PP-4086)
 
     /// Master switch for the app-rating prompt. When false, no eligibility
@@ -431,6 +458,8 @@ extension PalaceFeatureFlag {
             return .continuationCardsEnabled
         case .sideLoadingEnabled:
             return .sideLoadingEnabled
+        case .lcpAudiobookStreamingEnabled:
+            return .lcpAudiobookStreamingEnabled
         case .appRatingPromptEnabled:
             return .appRatingPromptEnabled
         default:

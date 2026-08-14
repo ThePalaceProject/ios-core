@@ -243,12 +243,15 @@ def test_repository_ledger_records_the_current_pin():
 
     doc = json.loads(resolved.read_text())
     pins = doc.get("pins") or doc.get("object", {}).get("pins") or []
-    version = next(
-        (p["state"].get("version", "") for p in pins
+    state = next(
+        (p["state"] for p in pins
          if (p.get("identity") or "").lower() == "swift-toolkit"),
-        "",
+        {},
     )
+    # A fork pinned by revision has no semver `version`; the runtime gate
+    # (check-dependency-money-paths.sh) keys on revision in that case, so mirror it.
+    version = state.get("version") or state.get("revision", "")
     assert version, "swift-toolkit pin not found in Package.resolved"
     assert version in ledger.read_text(), (
-        f"ledger has no entry for the pinned Readium version {version}"
+        f"ledger has no entry for the pinned Readium version/revision {version}"
     )

@@ -66,6 +66,12 @@ final class LCPFulfillmentHandler: @unchecked Sendable {
     /// service per fulfillment — same lifetime as the prior MBDC body.
     private let lcpServiceFactory: () -> LCPLibraryService
 
+    /// PP-4957: reads the LCP-audiobook-streaming feature flag. Injected as a
+    /// closure so tests drive BOTH flag states without touching
+    /// `RemoteFeatureFlags.shared`. Production default reads the shared flag
+    /// (local override > Firebase remote, default `false` → download-first).
+    private let streamingEnabledProvider: () -> Bool
+
     init(
         bookRegistry: TPPBookRegistryProvider,
         stateManager: DownloadStateManager,
@@ -74,7 +80,8 @@ final class LCPFulfillmentHandler: @unchecked Sendable {
         bookFileManager: BookFileManager,
         backgroundDownloadHandler: BackgroundDownloadHandler,
         fileManager: FileManager = .default,
-        lcpServiceFactory: @escaping () -> LCPLibraryService = { LCPLibraryService() }
+        lcpServiceFactory: @escaping () -> LCPLibraryService = { LCPLibraryService() },
+        streamingEnabledProvider: @escaping () -> Bool = { RemoteFeatureFlags.shared.isLCPAudiobookStreamingEnabled }
     ) {
         self.bookRegistry = bookRegistry
         self.stateManager = stateManager
@@ -84,6 +91,7 @@ final class LCPFulfillmentHandler: @unchecked Sendable {
         self.backgroundDownloadHandler = backgroundDownloadHandler
         self.fileManager = fileManager
         self.lcpServiceFactory = lcpServiceFactory
+        self.streamingEnabledProvider = streamingEnabledProvider
     }
 
     // MARK: - Fulfillment
@@ -105,6 +113,30 @@ final class LCPFulfillmentHandler: @unchecked Sendable {
                 "book": book.loggableDictionary
             ])
             alertPresenter.failDownloadWithAlert(for: book, withMessage: error.localizedDescription)
+            return
+        }
+
+        // PP-4957 — streaming-from-license. When the feature flag is ON and this
+        // is an LCP audiobook, the `.lcpl` license alone makes the book playable:
+        // the player streams the encrypted audio on demand via the swift-toolkit
+        // #579 fork. Short-circuit HERE — before the progress cue
+        // (`sendLCPContentDownloadActive(active: true)`), the content-transfer
+        // registration, and `lcpService.fulfill(...)` — so NO `.lcpa` is fetched
+        // and no "downloading" cue is left un-cleared. Flag OFF → fall straight
+        // through to the unchanged download-first path below (behavior identical
+        // to today, which is what keeps this mergeable ahead of the product flip).
+        if streamingEnabledProvider(), book.defaultBookContentType == .audiobook {
+            if let license = TPPLCPLicense(url: licenseUrl) {
+                bookRegistry.setFulfillmentId(license.identifier, for: book.identifier)
+            } else {
+                Log.error(#file, "🔑 ❌ PP-4957 streaming: failed to read license for fulfillment ID: \(book.identifier)")
+            }
+            copyLicenseForStreaming(book: book, sourceLicenseUrl: licenseUrl)
+            Log.info(#file, "PP-4957 streaming ON — LCP audiobook playable on license alone, skipping .lcpa download: \(book.identifier)")
+            delegate?.markDownloadSuccessful(for: book)
+            runOnMainAsync { [weak self] in
+                self?.progressReporter.broadcastUpdate()
+            }
             return
         }
 
