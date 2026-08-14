@@ -315,11 +315,20 @@ final class AudiobookPositionAdapterContractTests: XCTestCase {
     // MARK: - 2. isAtBeginning guard — second registry write is suppressed
 
     /// Pins the swarm_f3b9b087 P0 #4 guard predicate:
-    ///   When (incoming trackIndex == 0 AND playbackTime < 30.0) AND the
+    ///   When (incoming trackIndex == 0 AND playbackTime == 0) AND the
     ///   current local bookmark is in a LATER track, the post-save commit
     ///   MUST be suppressed — the snapshot shows ONE `registry.setLocation`
     ///   (the initial local save) and ONE `writer.save`, with NO follow-up
     ///   `registry.setLocation`.
+    ///
+    /// The predicate is STRICT ZERO (`BeginningPositionPolicy.isAtBeginning`
+    /// returns true iff `trackIndex == 0 && playbackTime == 0`); the 30s grace
+    /// was removed because it discarded real 0:25-of-chapter-1 pauses. This
+    /// test used to drive `time: 5.0`, which under strict zero does NOT reach
+    /// the guard at all — it passed only because a separate defect (the
+    /// timestamp-tie in `AudiobookBookmarkBusinessLogic`, since fixed) happened
+    /// to suppress the same commit. It was green for the wrong reason and would
+    /// not have caught the inversion it claims to catch.
     ///
     /// Regression caught: if the predicate inverts (e.g. `trackIndex == 0`
     /// → `trackIndex != 0`) the snapshot grows a second
@@ -341,13 +350,21 @@ final class AudiobookPositionAdapterContractTests: XCTestCase {
             time: 60
         )
         let laterLoc = try XCTUnwrap(later.toTPPBookLocation())
-        // Pre-seed via the INNER mock so the pre-state setLocation isn't
-        // captured by the CallLog (we want the snapshot to start at the
-        // SUT's first call, not at test setup).
-        innerRegistry.setLocation(laterLoc, forIdentifier: bookIdentifier)
 
+        // Seed the later position DURING the save, not before it. Seeding
+        // beforehand cannot reach the guard: `saveListeningPosition` writes the
+        // INCOMING position to the registry first (the crash-safety net), so by
+        // the time the post-save guard reads `currentLocal` it would see track 0
+        // — its own write — and `currentTrackIndex > 0` could never hold. The
+        // guard is only reachable when a DIFFERENT writer moves the position
+        // mid-flight, which is exactly what this hook simulates (and what the
+        // timestamp-race test above does for its own predicate).
         writer.outcome = .success("server-beginning-id")
-        let p = position(trackIndex: 0, time: 5.0)  // < 30.0 → guard fires
+        writer.setOnSave { [weak self] in
+            guard let self else { return }
+            self.innerRegistry.setLocation(laterLoc, forIdentifier: self.bookIdentifier)
+        }
+        let p = position(trackIndex: 0, time: 0)  // strict zero → guard fires
         saveAndWait(position: p)
 
         ContractSnapshot.assert(log, named: "audiobookSave_preservesIsAtBeginningGuard")

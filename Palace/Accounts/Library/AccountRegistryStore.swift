@@ -15,43 +15,95 @@
 //  A `final class`, NOT an `actor`, and NOT a protocol: `AccountsManager.account(_:)`
 //  is a SYNCHRONOUS `@objc TPPLibraryAccountsProvider` requirement, and the
 //  background-work drain choreography (`cancelAndDrainBackgroundWork`) depends on a
-//  synchronous `accountSetsLock.sync` read blocking behind the barrier — an actor
-//  would force `await` through the `@objc` conformance and delete that timing. The
-//  store therefore OWNS the same concurrent `DispatchQueue` and preserves the exact
-//  sync-read / `.async(flags:.barrier)`-write model verbatim. It is pure in-target
+//  synchronous read — an actor would force `await` through the `@objc` conformance
+//  and delete that timing.
+//
+//  The reads remain synchronous, but the primitive changed: a `ReadWriteLock`
+//  (pthread_rwlock) the CALLING thread takes, instead of `.sync` on a concurrent
+//  `DispatchQueue`. `.sync` had to wait for any QUEUED `.barrier`, and a barrier
+//  needs a GCD worker thread; with Swift Tasks as the readers, each blocked reader
+//  held one cooperative-pool thread (pool width == core count) until the pool was
+//  exhausted and the barrier could not be scheduled at all. Reads now block only
+//  for an actively-held write, never on thread availability.
+//
+//  Writes are SYNCHRONOUS under the write lock. That is load-bearing, not an
+//  incidental simplification: the old model shared ONE queue between reads and
+//  writes, so a `.sync` read queued behind a pending `.barrier` and callers got
+//  read-after-write ordering for free. Dispatching writes to a separate queue
+//  silently removed that ordering and broke 14 AccountsManager/registry tests.
+//  Taking the write lock on the calling thread restores it — and needs no worker
+//  thread, which is what the read path required anyway. It is pure in-target
 //  state with no outward app-target edge, so it is a concrete injected instance
 //  (like `AccountStateStore`) and travels into `PalaceAccounts` with the hub.
 //
 //  `@unchecked Sendable` invariant: the only mutable state is `_currentHash`,
-//  `accountSets`, and `accountByUUID`, read exclusively via `accountSetsLock.sync`
-//  (`performRead`) and written exclusively on the serial `.barrier` of the concurrent
-//  `accountSetsLock` (`performWrite` / `mutate`); `accountByUUID` is rebuilt inside the
-//  SAME barrier as `accountSets` so the two never desync. `slimAccountsByUUID` is
+//  `accountSets`, and `accountByUUID`, read exclusively under the `accountSetsLock`
+//  read lock (`performRead`) and written exclusively under its write lock
+//  (`performWrite` / `mutate`); `accountByUUID` is
+//  rebuilt inside the SAME write critical section as `accountSets` so the two never
+//  desync. `slimAccountsByUUID` is
 //  guarded by its own `slimAccountsLock` NSLock — deliberately separate so the
 //  `account(_:)` full-index read and the slim fallback never contend on one lock; the
 //  slim set is a launch fallback only and never flips `currentBucketIsLoaded`. All
-//  boxed closures are invoked exactly once on that serial barrier, never concurrently.
+//  boxed closures are invoked exactly once, on the serial write queue under the
+//  write lock, never concurrently.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
 
 import Foundation
 
-/// Documented carrier for a non-Sendable `() -> Void` handed to the `accountSetsLock`
-/// barrier in `performWrite`. `@unchecked Sendable` invariant: the wrapped closure is
-/// invoked exactly once, on the serial barrier of the concurrent `accountSetsLock`,
-/// never concurrently.
+/// Documented carrier for a non-Sendable `() -> Void` handed to the write critical
+/// section in `performWrite`. `@unchecked Sendable` invariant: the wrapped closure is
+/// invoked exactly once, under the `accountSetsLock` write lock, never
+/// concurrently.
 private struct VoidWorkBox: @unchecked Sendable {
     let work: () -> Void
 }
 
 /// Documented carrier for the non-Sendable `(inout [String: [Account]]) -> Void`
-/// mutation closure handed to the `accountSetsLock` barrier in `mutate`. Same
+/// mutation closure handed to the write critical section in `mutate`. Same
 /// `@unchecked Sendable` invariant as `VoidWorkBox`: invoked exactly once, on the
-/// serial `.barrier`, never concurrently. Timing and the mutate-then-rebuild-index
-/// contract are unchanged.
+/// write lock, never concurrently. The mutate-then-rebuild-index contract is
+/// unchanged.
 private struct AccountSetsMutationBox: @unchecked Sendable {
     let mutate: (inout [String: [Account]]) -> Void
+}
+
+/// Reader/writer lock the CALLING thread takes itself.
+///
+/// This exists because `DispatchQueue.sync` does not. A `.sync` read on a
+/// concurrent queue must wait for any queued `.barrier`, and that barrier needs a
+/// GCD WORKER THREAD to run. When the readers are Swift Tasks, each blocked
+/// reader occupies one cooperative-pool thread — and that pool's width is the
+/// core count. Enough concurrent readers and every worker is parked waiting for a
+/// barrier that cannot be scheduled, because the threads it needs are the ones
+/// parked. It unwedges only when GCD slowly grows the pool.
+///
+/// Measured: 24 threads (== core count) in `__ulock_wait` inside `performRead`
+/// with NO barrier running, and 189-404 SECOND whole-worker freezes in CI between
+/// two 0.001s tests of an unrelated suite.
+///
+/// `pthread_rwlock` needs no worker thread — the caller acquires it directly — so
+/// a reader can never be waiting on work that requires the thread it is holding.
+/// Concurrent readers and reader/writer exclusion are unchanged.
+private final class ReadWriteLock: @unchecked Sendable {
+    private var lock = pthread_rwlock_t()
+
+    init() { pthread_rwlock_init(&lock, nil) }
+    deinit { pthread_rwlock_destroy(&lock) }
+
+    func read<T>(_ block: () -> T) -> T {
+        pthread_rwlock_rdlock(&lock)
+        defer { pthread_rwlock_unlock(&lock) }
+        return block()
+    }
+
+    func write<T>(_ block: () -> T) -> T {
+        pthread_rwlock_wrlock(&lock)
+        defer { pthread_rwlock_unlock(&lock) }
+        return block()
+    }
 }
 
 /// Thread-safe holder of the account-registry state. See the file header for the
@@ -59,7 +111,7 @@ private struct AccountSetsMutationBox: @unchecked Sendable {
 final class AccountRegistryStore: @unchecked Sendable {
 
     /// The current catalog hash (`prod` / `beta` / custom-URL). Written on the
-    /// barrier, read under `accountSetsLock` — bundled into ONE critical section with
+    /// write lock, read under it — bundled into ONE critical section with
     /// the bucket read by `accountsForCurrentHash` / `currentBucketIsLoaded` so a
     /// concurrent library switch can never key the bucket to a stale hash.
     private var _currentHash: String
@@ -67,13 +119,15 @@ final class AccountRegistryStore: @unchecked Sendable {
     private var accountSets = [String: [Account]]()
 
     /// O(1) `uuid → Account` index derived from `accountSets`, kept in lockstep with
-    /// it under `accountSetsLock` (rebuilt in the SAME barrier as any `accountSets`
+    /// it under `accountSetsLock` (rebuilt in the SAME write critical section as any `accountSets`
     /// mutation — see `mutate`). Lets `account(_:)` resolve a UUID without a linear
     /// scan over ~1142 accounts on the main-thread display path. MUST only change via
     /// `mutate` so it can never desync from `accountSets`.
     private var accountByUUID = [String: Account]()
 
-    private let accountSetsLock = DispatchQueue(label: "com.tpp.accountSetsLock", attributes: .concurrent)
+    /// Guards `_currentHash` / `accountSets` / `accountByUUID`. Taken directly by
+    /// the calling thread — see `ReadWriteLock` for why this is not a queue.
+    private let accountSetsLock = ReadWriteLock()
 
     /// Launch-hydration (CP-D1) slim lookup: the current + settings accounts (~2),
     /// decoded synchronously at launch so `currentAccount` resolves within a few ms.
@@ -91,14 +145,14 @@ final class AccountRegistryStore: @unchecked Sendable {
     // MARK: - Concurrency primitives (private)
 
     private func performRead<T>(_ block: () -> T) -> T {
-        return accountSetsLock.sync {
+        return accountSetsLock.read {
             block()
         }
     }
 
     private func performWrite(_ block: @escaping () -> Void) {
         let box = VoidWorkBox(work: block)
-        accountSetsLock.async(flags: .barrier) {
+        accountSetsLock.write {
             box.work()
         }
     }
@@ -135,7 +189,7 @@ final class AccountRegistryStore: @unchecked Sendable {
     }
 
     /// Accounts for the CURRENT hash, read ATOMICALLY: the hash and the bucket are
-    /// sampled in ONE `performRead`, so a library-switch barrier cannot land between
+    /// sampled in ONE `performRead`, so a library-switch write cannot land between
     /// them and key the bucket to a stale hash. Do NOT reimplement as
     /// `accounts(forKey: currentHash)` — that is two separate lock acquisitions.
     func accountsForCurrentHash() -> [Account] {
@@ -157,12 +211,15 @@ final class AccountRegistryStore: @unchecked Sendable {
     // MARK: - Writes
 
     /// The ONLY sanctioned way to mutate `accountSets`. Applies `mutate` inside the
-    /// `accountSetsLock` barrier, then rebuilds `accountByUUID` in the SAME critical
+    /// `accountSetsLock` write lock, then rebuilds `accountByUUID` in the SAME critical
     /// section so the two can never desync. Adding a write that bypasses this silently
     /// breaks `account(_:)` lookups (guarded by the index-coherence tests).
     func mutate(_ mutate: @escaping (inout [String: [Account]]) -> Void) {
         let box = AccountSetsMutationBox(mutate: mutate)
-        accountSetsLock.async(flags: .barrier) {
+        // Index rebuilt inside the SAME critical section as the mutation, so a
+        // reader can never observe updated `accountSets` with a stale
+        // `accountByUUID` (pinned by the index-coherence tests).
+        accountSetsLock.write {
             box.mutate(&self.accountSets)
             self.accountByUUID = AccountRegistryStore.buildAccountIndex(self.accountSets)
         }
