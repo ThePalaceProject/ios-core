@@ -40,6 +40,16 @@ public struct TicketDraft: Codable, Equatable, Sendable {
     /// field is dropped from the email body AND absent from the JSON
     /// attachment, not merely hidden in the card.
     public let omittedFields: Set<TicketField>
+    /// Remedies the patron stated, in their own words, that they had already
+    /// tried. Parsed from the description to skip redundant guided steps, and
+    /// carried here so support does not have to re-read the free text to learn
+    /// something the bot already extracted.
+    let alreadyTried: Set<Remedy>
+    /// The patron claimed broad unsuccessful effort ("I've tried everything")
+    /// without naming steps. It cannot skip a specific remedy, but it tells a
+    /// triager the patron has already spent time, which changes how the reply
+    /// should open.
+    let claimsExhaustedEffort: Bool
 
     public enum Priority: String, Codable, Sendable {
         case low      // user accepted bot's match, filing for impact tracking only
@@ -50,6 +60,8 @@ public struct TicketDraft: Codable, Equatable, Sendable {
     public init(
         userDescription: String,
         category: KBCategory,
+        alreadyTried: Set<Remedy> = [],
+        claimsExhaustedEffort: Bool = false,
         matchedEntryId: String? = nil,
         context: ContextSnapshot,
         helpspotTags: [String] = [],
@@ -60,6 +72,8 @@ public struct TicketDraft: Codable, Equatable, Sendable {
     ) {
         self.userDescription = userDescription
         self.category = category
+        self.alreadyTried = alreadyTried
+        self.claimsExhaustedEffort = claimsExhaustedEffort
         self.matchedEntryId = matchedEntryId
         self.context = context
         self.helpspotTags = helpspotTags
@@ -72,6 +86,7 @@ public struct TicketDraft: Codable, Equatable, Sendable {
     enum CodingKeys: String, CodingKey {
         case userDescription, category, matchedEntryId, context, helpspotTags
         case priority, resolutionTrace, escalationFollowUp, omittedFields
+        case alreadyTried, claimsExhaustedEffort
     }
 
     // Decode-tolerant: a draft persisted by an older build (or the sanitized
@@ -81,6 +96,9 @@ public struct TicketDraft: Codable, Equatable, Sendable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         userDescription = try c.decode(String.self, forKey: .userDescription)
         category = try c.decode(KBCategory.self, forKey: .category)
+        // Absent in drafts persisted before these fields existed.
+        alreadyTried = try c.decodeIfPresent(Set<Remedy>.self, forKey: .alreadyTried) ?? []
+        claimsExhaustedEffort = try c.decodeIfPresent(Bool.self, forKey: .claimsExhaustedEffort) ?? false
         matchedEntryId = try c.decodeIfPresent(String.self, forKey: .matchedEntryId)
         context = try c.decode(ContextSnapshot.self, forKey: .context)
         helpspotTags = try c.decodeIfPresent([String].self, forKey: .helpspotTags) ?? []

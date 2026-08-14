@@ -15,7 +15,7 @@ final class CatalogContractCompletenessTests: XCTestCase {
     // MARK: - Guided-step flow is well-formed and terminating
 
     func testGuidedSteps_areWellFormedAndCanTerminate() throws {
-        for entry in try loadEntries() {
+        for entry in try loadEntries() where entry.resolvedKind != .genericFlow {
             guard let steps = entry.userFacingSteps, !steps.isEmpty else { continue }
 
             // Unique step ids within the entry (routing + telemetry rely on it).
@@ -61,7 +61,7 @@ final class CatalogContractCompletenessTests: XCTestCase {
     // MARK: - Telemetry diagnostics are unique within an entry
 
     func testDiagnostics_areUniqueWithinEntry() throws {
-        for entry in try loadEntries() {
+        for entry in try loadEntries() where entry.resolvedKind != .genericFlow {
             guard let steps = entry.userFacingSteps else { continue }
             var diagnostics: [String] = []
             for step in steps {
@@ -76,7 +76,7 @@ final class CatalogContractCompletenessTests: XCTestCase {
     // MARK: - Escalation follow-up prompt is real when present
 
     func testEscalationFollowUp_hasNonEmptyPrompt() throws {
-        for entry in try loadEntries() {
+        for entry in try loadEntries() where entry.resolvedKind != .genericFlow {
             guard let followUp = entry.escalationFollowUp else { continue }
             XCTAssertFalse(followUp.prompt.trimmingCharacters(in: .whitespaces).isEmpty,
                            "\(entry.id): escalation follow-up present but prompt is empty")
@@ -85,8 +85,12 @@ final class CatalogContractCompletenessTests: XCTestCase {
 
     // MARK: - Every entry is REACHABLE (its own keywords can surface it)
 
+    /// Every entry a patron can be MATCHED to must be reachable from its own
+    /// keywords. `generic_flow` ladders are exempt by design: they carry no
+    /// keywords and are offered when nothing matched, so "unreachable by
+    /// keywords" is their defining property rather than a defect.
     func testEveryEntry_isSuggestableByItsOwnKeywords() throws {
-        let entries = try loadEntries()
+        let entries = try loadEntries().filter { $0.resolvedKind != .genericFlow }
         let kb = KnowledgeBase(catalog: KBCatalog(version: "reach", updatedAt: "2026-07-20", entries: entries))
         let classifier = LocalClassifier()
 

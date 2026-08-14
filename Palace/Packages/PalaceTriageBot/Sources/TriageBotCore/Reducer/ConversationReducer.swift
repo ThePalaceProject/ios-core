@@ -10,6 +10,7 @@ import Foundation
 /// a synthetic KB without mocking.
 public struct ConversationReducer: Sendable {
     public let classifier: LocalClassifier
+    private let remedyDetector = RemedyDetector()
     public let redactor: ContextRedactor
     public let knowledgeBase: KnowledgeBase
     /// When true, local-classifier escalations route through
@@ -115,6 +116,9 @@ public struct ConversationReducer: Sendable {
 
             next.messages.append(.init(sender: .user, kind: .text(userText)))
             next.inputText = ""
+            // Read what they have already done BEFORE deciding what to suggest.
+            next.alreadyTriedRemedies = remedyDetector.alreadyTried(in: userText)
+            next.claimsExhaustedEffort = remedyDetector.claimsExhaustedEffort(in: userText)
 
             let result = classifier.classify(
                 userText: userText,
@@ -127,13 +131,30 @@ public struct ConversationReducer: Sendable {
             switch result.decision {
             case .suggest(let entryId):
                 next.step = .matched(entryId: entryId)
-                // Trust level shapes how we speak the match. An `authoritative`
-                // entry is stated directly; a lower-confidence `signal` / `context`
-                // entry is hedged so the bot doesn't assert a maybe as a fact.
-                if let entry = knowledgeBase.entry(id: entryId), entry.trustLevel != .authoritative {
+                // How confidently we SPEAK the match is separate from whether we
+                // make it. Two things force a hedge:
+                //
+                //  - a non-`authoritative` entry, which is a maybe by definition;
+                //  - evidence resting on ONE matched concept. A single decisive
+                //    phrase is enough to offer the entry — that is the fix for the
+                //    "I haven't seen exactly that before" complaint — but it is
+                //    also the thinnest evidence that can produce a suggestion, and
+                //    the near-miss corpus shows single-concept matches are where
+                //    real misroutes live. Stating a one-concept guess as fact is
+                //    what turns a wrong guess into wrong instructions; asking
+                //    turns it into a tap. Two of the entries reachable this way
+                //    advise signing out and back in, which given the DRM
+                //    data-loss history (PP-4951) is not free advice to hand the
+                //    wrong patron.
+                let entry = knowledgeBase.entry(id: entryId)
+                let thinEvidence = result.strongRegionCount <= 1
+                let untrusted = entry?.trustLevel != .authoritative
+                if untrusted || thinEvidence {
                     next.messages.append(.init(
                         sender: .bot,
-                        kind: .text("This might be what's going on — take a look:")
+                        kind: .text(thinEvidence && !untrusted
+                            ? "This sounds like it might be the problem below — does that match what you're seeing?"
+                            : "This might be what's going on — take a look:")
                     ))
                 }
                 next.messages.append(.init(sender: .bot, kind: .kbMatch(entryId: entryId)))
@@ -182,13 +203,46 @@ public struct ConversationReducer: Sendable {
                     // handing support a blank "couldn't help." nil = a genuine
                     // no-match (novel issue).
                     let recognized = result.recognizedEntryId
+
+                    // Nothing matched, or matched only weakly — this is ~88% of
+                    // real complaints. Offer the category's remedy ladder before
+                    // filing, rather than only asking a question.
+                    //
+                    // Not offered when the patron said they had tried everything,
+                    // and never for escalate_anyway entries (handled in the
+                    // classifier — those never reach this arm with a suggestion).
+                    // `escalate_anyway` means the entry was recognized WITH
+                    // confidence and has no safe self-serve fix — the account-side
+                    // and library-side class that is a quarter of real tickets.
+                    // Offering remedies there is delay dressed as help, and it
+                    // contradicts the entry's own declaration.
+                    let staffOnly = recognized
+                        .flatMap { knowledgeBase.entry(id: $0) }?
+                        .escalateAnyway ?? false
+
+                    if !next.claimsExhaustedEffort, !staffOnly,
+                       let flow = knowledgeBase.genericFlow(for: category) {
+                        next.step = .matched(entryId: flow.id)
+                        next.messages.append(.init(
+                            sender: .bot, kind: .kbMatch(entryId: flow.id)))
+                        effects.append(.emitTelemetry(.init(
+                            name: "triage_generic_ladder_offered",
+                            parameters: ["category": category?.rawValue ?? "(none)"]
+                        )))
+                        return (next, effects)
+                    }
+
                     transitionToDrafting(
                         state: &next,
                         effects: &effects,
                         userText: userText,
                         category: category,
                         matchedEntryId: recognized,
-                        tagSuffix: recognized != nil ? "escalate-recognized" : "escalate-novel"
+                        tagSuffix: recognized != nil ? "escalate-recognized" : "escalate-novel",
+                        // Weak-only recognition still scopes the ticket, but must
+                        // not interrogate the patron about a bug we have not
+                        // actually identified.
+                        mayAskTargetedFollowUp: result.recognitionIsStrong
                     )
                 }
             }
@@ -267,9 +321,21 @@ public struct ConversationReducer: Sendable {
                 // through the redactor before it can land in a ticket.
                 userDescription: redactor.redactLine(lastUserText(next.messages) ?? "(no description)"),
                 category: entry.category,
-                matchedEntryId: entryId,
+                alreadyTried: next.alreadyTriedRemedies,
+                claimsExhaustedEffort: next.claimsExhaustedEffort,
+                // Declining a ladder is its THIRD exit, and the only one that was
+                // not scoping the ticket. A patron who taps "just file a ticket"
+                // was handed the ladder's own id, which tells a triager the bot
+                // had no idea — something the absence of an answer already says —
+                // while the weak recognition sat unused in lastClassification.
+                matchedEntryId: ticketScope(for: entryId, state: next),
                 context: next.context ?? emptyContext(),
-                helpspotTags: [entry.helpspotTag ?? "triage-bot-known-issue", "user-requested-followup"],
+                helpspotTags: [
+                    entry.resolvedKind == .genericFlow
+                        ? "triage-bot-generic-ladder"
+                        : (entry.helpspotTag ?? "triage-bot-known-issue"),
+                    "user-requested-followup"
+                ],
                 priority: .low,
                 omittedFields: initialOmittedFields(next.context)
             )
@@ -305,19 +371,54 @@ public struct ConversationReducer: Sendable {
                 return (next, effects)
             }
             let startedAt = Date()
+            // Skip anything they already told us they did. If that is every step,
+            // there is nothing left to walk through and the honest move is to
+            // escalate with the trace rather than open an empty flow.
+            let skipped = Set(steps.compactMap(\.remedy)).intersection(next.alreadyTriedRemedies)
+            guard let firstIndex = nextUntriedStepIndex(
+                from: 0, steps: steps, alreadyTried: next.alreadyTriedRemedies,
+                context: next.context
+            ) else {
+                if let ack = acknowledgement(for: skipped) {
+                    next.messages.append(.init(sender: .bot, kind: .text(ack)))
+                }
+                effects.append(.emitTelemetry(.init(
+                    name: "triage_guided_flow_all_steps_already_tried",
+                    parameters: ["entry_id": entryId]
+                )))
+                escalateWithTrace(
+                    state: &next, effects: &effects,
+                    userText: next.messages.compactMap {
+                        if case .text(let t) = $0.kind, $0.sender == .user { return t }
+                        return nil
+                    }.last ?? "",
+                    category: entry.category,
+                    matchedEntryId: entryId,
+                    trace: ResolutionTrace(entryId: entryId, attempts: [],
+                                           startedAt: startedAt, endedAt: Date(),
+                                           outcome: .escalatedAfterStepsExhausted),
+                    helpspotTag: entry.helpspotTag ?? entryId,
+                    tagSuffix: "escalate-all-steps-already-tried"
+                )
+                return (next, effects)
+            }
             next.step = .guidedStep(
                 entryId: entryId,
-                stepIndex: 0,
+                stepIndex: firstIndex,
                 startedAt: startedAt,
                 attempts: []
             )
+            if let ack = acknowledgement(for: skipped) {
+                next.messages.append(.init(sender: .bot, kind: .text(ack)))
+            }
+            let remaining = steps.count - skipped.count
             next.messages.append(.init(
                 sender: .bot,
-                kind: .text("Let's walk through this together. \(steps.count) thing\(steps.count == 1 ? "" : "s") to try.")
+                kind: .text("Let's walk through this together. \(remaining) thing\(remaining == 1 ? "" : "s") to try.")
             ))
             next.messages.append(.init(
                 sender: .bot,
-                kind: .guidedStep(entryId: entryId, stepIndex: 0)
+                kind: .guidedStep(entryId: entryId, stepIndex: firstIndex)
             ))
             effects.append(.emitTelemetry(.init(
                 name: "triage_guided_flow_started",
@@ -354,7 +455,7 @@ public struct ConversationReducer: Sendable {
             )))
             // Phase 2: persist trace to a local backfill log so a server-
             // backed catalog source can ingest per-step success rates.
-            _ = trace
+            effects.append(.persistResolutionTrace(trace))
 
         case .userConfirmedStepDidNotResolve(let stepId):
             guard case .guidedStep(let entryId, let stepIndex, let startedAt, var attempts) = next.step,
@@ -364,7 +465,10 @@ public struct ConversationReducer: Sendable {
             }
             attempts.append(StepAttempt(stepId: stepId, outcome: .didNotResolve, timestamp: Date()))
 
-            let nextIndex = stepIndex + 1
+            let nextIndex = nextUntriedStepIndex(
+                from: stepIndex + 1, steps: steps, alreadyTried: next.alreadyTriedRemedies,
+                context: next.context
+            ) ?? steps.count
             if nextIndex < steps.count {
                 next.step = .guidedStep(
                     entryId: entryId,
@@ -402,7 +506,7 @@ public struct ConversationReducer: Sendable {
                     effects: &effects,
                     userText: lastUserText(next.messages) ?? "(no description)",
                     category: entry.category,
-                    matchedEntryId: entryId,
+                    matchedEntryId: ticketScope(for: entryId, state: next),
                     trace: trace,
                     helpspotTag: entry.helpspotTag ?? "triage-bot-known-issue",
                     tagSuffix: "escalate-after-guided-flow-exhausted"
@@ -469,7 +573,7 @@ public struct ConversationReducer: Sendable {
                 effects: &effects,
                 userText: lastUserText(next.messages) ?? "(no description)",
                 category: entry.category,
-                matchedEntryId: entryId,
+                matchedEntryId: ticketScope(for: entryId, state: next),
                 trace: trace,
                 helpspotTag: entry.helpspotTag ?? "triage-bot-known-issue",
                 tagSuffix: "escalate-after-guided-flow-abandoned"
@@ -811,6 +915,61 @@ public struct ConversationReducer: Sendable {
         return nil
     }
 
+    /// Which entry a ticket should be scoped to when a flow ends.
+    ///
+    /// For a real entry, itself. For a generic ladder, whatever the classifier
+    /// weakly recognised — the ladder's own id tells a triager only that the bot
+    /// had no idea, which the absence of an answer already tells them. The hint
+    /// survives in `lastClassification` because the ladder does not clear it.
+    private func ticketScope(for entryId: String, state: ConversationState) -> String {
+        guard knowledgeBase.entry(id: entryId)?.resolvedKind == .genericFlow else { return entryId }
+        return state.lastClassification?.recognizedEntryId ?? entryId
+    }
+
+    /// First step at or after `from` that the patron has NOT already tried.
+    /// Returns nil when every remaining step is one they have done.
+    private func nextUntriedStepIndex(
+        from index: Int, steps: [KBStep], alreadyTried: Set<Remedy>,
+        context: ContextSnapshot? = nil
+    ) -> Int? {
+        var i = index
+        while i < steps.count {
+            if let remedy = steps[i].remedy {
+                if alreadyTried.contains(remedy) { i += 1; continue }
+                // Nothing to find in the App Store if they are already current.
+                if remedy == .updateApp, isAlreadyOnNewestKnownVersion(context) { i += 1; continue }
+            }
+            return i
+        }
+        return nil
+    }
+
+    /// True only when BOTH the catalog's newest-known version and the patron's
+    /// app version are known, and the patron is at or past it. Either unknown
+    /// returns false — offer the rung — because a wasted rung costs seconds and a
+    /// suppressed one may cost the fix.
+    private func isAlreadyOnNewestKnownVersion(_ context: ContextSnapshot?) -> Bool {
+        guard let latest = knowledgeBase.catalog.latestKnownAppVersion,
+              let latestVersion = SemanticVersion(latest),
+              let current = context?.appVersion,
+              let currentVersion = SemanticVersion(current) else { return false }
+        return currentVersion >= latestVersion
+    }
+
+    /// "You have already tried X and Y" — said once, so skipping does not look
+    /// like steps silently going missing.
+    private func acknowledgement(for remedies: Set<Remedy>) -> String? {
+        guard !remedies.isEmpty else { return nil }
+        let names = remedies.map(\.displayName).sorted()
+        let list: String
+        switch names.count {
+        case 1: list = names[0]
+        case 2: list = "\(names[0]) and \(names[1])"
+        default: list = names.dropLast().joined(separator: ", ") + ", and " + names[names.count - 1]
+        }
+        return "You have already tried \(list), so I will skip that."
+    }
+
     /// Shared escalation transition — used by both the local-only escalate
     /// path AND the post-AI-fallback escalate path so the resulting message
     /// stream + state is identical regardless of which classifier escalated.
@@ -826,12 +985,20 @@ public struct ConversationReducer: Sendable {
         userText: String,
         category: KBCategory?,
         matchedEntryId: String?,
-        tagSuffix: String
+        tagSuffix: String,
+        // Whether the recognition is strong enough to justify the entry's
+        // bug-presuming follow-up question. The ticket is scoped either way;
+        // only the patron-facing question is gated. Defaults true — callers
+        // that got here from a guided flow have watched the patron walk the
+        // entry's own steps, which is the strongest recognition there is.
+        mayAskTargetedFollowUp: Bool = true
     ) {
         let draft = TicketDraft(
             // PP-4805: redact patron-typed free text at draft assembly.
             userDescription: redactor.redactLine(userText),
             category: category ?? .other,
+            alreadyTried: next.alreadyTriedRemedies,
+            claimsExhaustedEffort: next.claimsExhaustedEffort,
             matchedEntryId: matchedEntryId,
             context: next.context ?? emptyContext(),
             helpspotTags: ["triage-bot-\(tagSuffix)"],
@@ -843,7 +1010,8 @@ public struct ConversationReducer: Sendable {
             effects: &effects,
             entryId: matchedEntryId,
             draft: draft,
-            tagSuffix: tagSuffix
+            tagSuffix: tagSuffix,
+            recognitionIsStrong: mayAskTargetedFollowUp
         )
     }
 
@@ -856,11 +1024,28 @@ public struct ConversationReducer: Sendable {
         effects: inout [ConversationEffect],
         entryId: String?,
         draft: TicketDraft,
-        tagSuffix: String
+        tagSuffix: String,
+        // True when the recognition rests on a decisive phrase. A prompt that
+        // presumes the issue is only asked then; a prompt marked
+        // `presumes_issue: false` is safe either way, because it asks about the
+        // patron's situation rather than about a bug we may have misread.
+        recognitionIsStrong: Bool = true
     ) {
-        if let entryId,
-           let entry = knowledgeBase.entry(id: entryId),
-           let followUp = entry.escalationFollowUp {
+        // Prefer the recognized entry's own question; fall back to the category's.
+        //
+        // A blank ticket is the worst thing this bot can produce, and 69% of
+        // escalations were producing one. The category question does not claim to
+        // know the cause — it asks the thing that most often separates that
+        // category's clusters — so it is safe precisely when we know least.
+        let entryFollowUp: KBEscalationFollowUp? = {
+            guard let entryId, let entry = knowledgeBase.entry(id: entryId),
+                  let followUp = entry.escalationFollowUp,
+                  recognitionIsStrong || !followUp.presumesIssue else { return nil }
+            return followUp
+        }()
+        let followUp = entryFollowUp ?? knowledgeBase.categoryFollowUp(for: draft.category)
+
+        if let followUp {
             next.step = .awaitingEscalationFollowUp(prompt: followUp.prompt, pendingDraft: draft)
             next.messages.append(.init(
                 sender: .bot,
@@ -868,7 +1053,9 @@ public struct ConversationReducer: Sendable {
             ))
             effects.append(.emitTelemetry(.init(
                 name: "triage_escalation_followup_asked",
-                parameters: ["entry_id": entryId]
+                // "(category)" distinguishes a catch-all question from an entry's
+                // own, so the two can be compared for answer rate later.
+                parameters: ["entry_id": entryFollowUp != nil ? (entryId ?? "(none)") : "(category)"]
             )))
         } else {
             next.step = .drafting(ticket: draft)
@@ -899,10 +1086,15 @@ public struct ConversationReducer: Sendable {
         helpspotTag: String,
         tagSuffix: String
     ) {
+        // Every terminal outcome records what was tried, not just the ones that
+        // produce a ticket.
+        effects.append(.persistResolutionTrace(trace))
         let draft = TicketDraft(
             // PP-4805: redact patron-typed free text at draft assembly.
             userDescription: redactor.redactLine(userText),
             category: category,
+            alreadyTried: next.alreadyTriedRemedies,
+            claimsExhaustedEffort: next.claimsExhaustedEffort,
             matchedEntryId: matchedEntryId,
             context: next.context ?? emptyContext(),
             helpspotTags: [helpspotTag, "guided-flow-\(trace.outcome.rawValue)"],
@@ -914,16 +1106,31 @@ public struct ConversationReducer: Sendable {
         // an escalationFollowUp, ask it first; otherwise go straight to
         // the ticket preview. Acknowledgment text leads either way so the
         // chat reads naturally.
-        if let entry = knowledgeBase.entry(id: matchedEntryId),
-           let followUp = entry.escalationFollowUp {
+        // Same fallback as askEscalationFollowUpOrDraft: prefer the entry's own
+        // question, else the category's catch-all. Without this, an entry with
+        // steps but no follow-up walked the patron through a whole flow and then
+        // filed with nothing asked — the blank-ticket class, surviving on the one
+        // path where the patron had invested the most effort.
+        let entryFollowUp = knowledgeBase.entry(id: matchedEntryId)?.escalationFollowUp
+        if let followUp = entryFollowUp ?? knowledgeBase.categoryFollowUp(for: draft.category) {
             next.step = .awaitingEscalationFollowUp(prompt: followUp.prompt, pendingDraft: draft)
+            // "That didn't resolve it" is only true if they tried something. When
+            // every step was skipped because the patron had already done it, the
+            // trace is empty and asserting a failed attempt reads as the bot not
+            // following its own conversation — one line after it demonstrated
+            // that it was. Found by driving the app; the reducer tests assert
+            // state, not prose, so it was invisible to them.
+            let attemptedSomething = !trace.attempts.isEmpty
+            let preamble = attemptedSomething
+                ? "That didn't resolve it. Before I file the ticket — "
+                : "Before I file the ticket — "
             next.messages.append(.init(
                 sender: .bot,
-                kind: .text("That didn't resolve it. Before I file the ticket — \(followUp.prompt) (Tap Skip if you'd rather not say.)")
+                kind: .text("\(preamble)\(followUp.prompt) (Tap Skip if you'd rather not say.)")
             ))
             effects.append(.emitTelemetry(.init(
                 name: "triage_escalation_followup_asked",
-                parameters: ["entry_id": matchedEntryId]
+                parameters: ["entry_id": entryFollowUp != nil ? matchedEntryId : "(category)"]
             )))
         } else {
             next.step = .drafting(ticket: draft)
@@ -974,4 +1181,22 @@ public enum ConversationEffect: Equatable, Sendable {
     /// userText is the pre-sanitized version — sanitization happens inside
     /// the classifier per the contract on `FallbackClassifier`.
     case runAIFallback(userText: String, category: KBCategory?, context: ContextSnapshot?)
+    /// Record how a guided flow ended — which steps were tried, in order, and
+    /// whether one of them worked.
+    ///
+    /// Emitted on all three terminal outcomes, including RESOLVED, which is the
+    /// one the reducer used to discard. That was the asymmetry worth fixing:
+    /// exhausted and abandoned flows carried their trace out on the ticket, but a
+    /// flow that succeeded produced no ticket and therefore no record — so the
+    /// only outcome that says "this remedy works" was the only one never kept.
+    ///
+    /// Nothing reads this yet, deliberately. It is the precondition for ever
+    /// replacing the current per-category ordering, which was derived from 204
+    /// tickets and is known to be era-bound, with measured rates. The rule for
+    /// doing so is pre-registered rather than left to future judgement: re-rank
+    /// only at catalog-review cadence, only for rungs with at least 50 recorded
+    /// attempts, ranking on the Wilson lower bound of their resolution rate. No
+    /// in-app adaptive ordering — it would make the bot's answers irreproducible,
+    /// and reproducibility is half of what "consistent" means here.
+    case persistResolutionTrace(ResolutionTrace)
 }

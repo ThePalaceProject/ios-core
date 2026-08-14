@@ -37,19 +37,31 @@ public struct KBStep: Codable, Equatable, Sendable, Identifiable {
     /// so support can see per-step success rates without naming-convention
     /// guessing later.
     public let diagnostic: String?
+    /// Which remedy this step asks the patron to perform, if it is one of the
+    /// common ones they often try before contacting support. Lets the reducer
+    /// skip a step the patron has already told us they did, rather than asking
+    /// them to reinstall for the third time. Nil for steps that are not a
+    /// standard remedy (e.g. "tap the field anyway, it IS active").
+    let remedy: Remedy?
+
+    enum CodingKeys: String, CodingKey {
+        case id, instruction, check, responses, diagnostic, remedy
+    }
 
     public init(
         id: String,
         instruction: String,
         check: String,
         responses: [KBStepResponse]? = nil,
-        diagnostic: String? = nil
+        diagnostic: String? = nil,
+        remedy: Remedy? = nil
     ) {
         self.id = id
         self.instruction = instruction
         self.check = check
         self.responses = responses
         self.diagnostic = diagnostic
+        self.remedy = remedy
     }
 }
 
