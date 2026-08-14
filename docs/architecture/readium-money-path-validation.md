@@ -89,3 +89,21 @@ playback-from-local) exercised against a 3.11.0 build, with results recorded her
 Note the LCP device-ID moved to the Keychain in 3.10: that changes behaviour
 across delete/reinstall, so validation should include a reinstall cycle rather
 than a single install.
+
+## ThePalaceProject/swift-toolkit @ 58413f8680a310ed6d98278687ab711e6be639c8
+
+- Validated against: Palace 3.3.0 (494), iPhone Air simulator (iOS 26.1), A1QA Test Library
+- Validated by: engineering (agent-assisted), SoD-reviewed (architect + qa_test + blast_radius)
+- Date: 2026-08-14
+- Pin: `ThePalaceProject/swift-toolkit` fork = Readium 3.11.0 + the upstream `fix-issue-579` series (restores LCP audiobook chunked streaming-from-license). Pinned by **revision** (a fork branch, no semver version), gated behind `lcp_audiobook_streaming_enabled` (default OFF).
+
+| Path | Result | Notes |
+|---|---|---|
+| Audiobook, LCP (streaming) | pass | Flag ON: fresh borrow → instant Listen → **`.lcpa`: 0 bytes** on disk → plays via on-demand chunked decryption. Verified live on the A1QA "Reign of Terror" (Palace Marketplace LCP audiobook). Relaunch durability pinned (reconcile keeps `.downloadSuccessful`). |
+| Audiobook, LCP (local / download-first) | pass | Flag OFF preserves today's download-first path byte-for-byte (unit + reconcile-table + fulfillment tests; full `.lcpa` lands, then Listen). |
+| EPUB, LCP | not validated | Not exercised by this change (streaming is audiobook-only); carries forward from the 3.11.0 base entry. |
+| EPUB, Adobe DRM | not validated | Unchanged by this fork (3.11.0 + audiobook streaming only). |
+| PDF, LCP | not validated | Unchanged. |
+| Audiobook, OverDrive / Findaway | not validated | Unaffected (non-LCP paths). |
+
+Known follow-up: the LCP resource-loader over-fetches (prefetches most of the book); time-to-first-audio win realized, storage win pending a read-ahead cap. Orthogonal to the flag; flag ships OFF.
