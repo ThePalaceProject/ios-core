@@ -352,17 +352,31 @@ elif [ "$DIFF_BASELINE" = "true" ] && [ "$TEST_FAIL" -gt 0 ]; then
       # one build is much faster than N separate builds with cold derivedData.
       ISOLATED_OUTPUT=$(xcodebuild -project Palace.xcodeproj -scheme Palace \
         -destination "id=$SIM_ID" $ONLY_TESTING_ARGS test 2>&1 || true)
+      # Did the isolated run happen at all? If the build failed or the simulator
+      # was busy, NO suite lines are printed, and the loop below would score
+      # every class as a real regression — an infrastructure problem reported as
+      # a code problem. That misfired on this very branch: four classes were
+      # called regressions and all four passed when re-run by hand.
+      ISO_SUITES=$(echo "$ISOLATED_OUTPUT" | grep -cE "Test Suite '[A-Za-z_][A-Za-z0-9_]*' (passed|failed)")
+      if [ "$ISO_SUITES" -eq 0 ]; then
+        record "unit_tests" "fail" "$TEST_PASS tests, $TEST_FAIL fails — isolation re-run produced no suites (build or simulator problem), so flake-vs-regression is UNDETERMINED for:$(echo "$FAILING_CLASSES" | tr '\n' ' ')"
+      else
+      REAL_FAIL_NAMES=""
       for cls in $FAILING_CLASSES; do
         if echo "$ISOLATED_OUTPUT" | grep -qE "Test Suite '$cls' passed"; then
           FLAKE_COUNT=$((FLAKE_COUNT + 1))
         else
           REAL_FAIL=$((REAL_FAIL + 1))
+          REAL_FAIL_NAMES="$REAL_FAIL_NAMES $cls"
         fi
       done
       if [ "$REAL_FAIL" -eq 0 ] && [ "$FLAKE_COUNT" -gt 0 ]; then
         record "unit_tests" "pass" "$TEST_PASS tests, $TEST_FAIL fails — all $FLAKE_COUNT failing classes pass in isolation (pre-existing test-isolation flakes per --diff-baseline)"
       else
-        record "unit_tests" "fail" "$TEST_PASS tests, $TEST_FAIL fails — $REAL_FAIL classes fail IN ISOLATION (real regression), $FLAKE_COUNT classes are isolation flakes"
+        # NAME them. Reporting only a count leaves the reader to guess which
+        # classes to open — the same defect this gate is being fixed for.
+        record "unit_tests" "fail" "$TEST_PASS tests, $TEST_FAIL fails — $REAL_FAIL class(es) fail IN ISOLATION (real regression):$REAL_FAIL_NAMES; $FLAKE_COUNT isolation flake(s)"
+      fi
       fi
     else
       record "unit_tests" "fail" "$TEST_PASS tests, $TEST_FAIL failures (--diff-baseline could not extract class names from xcresult)"
