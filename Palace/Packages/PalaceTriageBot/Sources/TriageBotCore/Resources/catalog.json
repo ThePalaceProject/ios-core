@@ -717,6 +717,25 @@
           "diagnostic": "addlibrary.pull_to_refresh"
         },
         {
+          "id": "ki009-step2-clear-cache",
+          "instruction": "Go to Settings, tap Advanced, then tap Clear Cached Data. Your books and sign-in stay put — this only clears the saved copy of the library list. Then try Add Library again.",
+          "remedy": "clearCache",
+          "check": "Is your library there now?",
+          "responses": [
+            {
+              "label": "Found it",
+              "outcome": "resolved",
+              "diagnostic": "library.registry.cleared_cache_resolved"
+            },
+            {
+              "label": "Still missing",
+              "outcome": "advance",
+              "diagnostic": "library.registry.cleared_cache_no_change"
+            }
+          ],
+          "diagnostic": "library.registry.clear_cache"
+        },
+        {
           "id": "ki009-step2-check-registry",
           "instruction": "If it is still missing, check whether your library is listed at the Palace web catalog on a computer or browser. If it is not there either, the library may not be participating yet, and support can confirm.",
           "remedy": "verifyOnWeb",

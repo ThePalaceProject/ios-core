@@ -17,8 +17,10 @@ final class AlreadyTriedTests: XCTestCase {
                        [.reinstall, .restartDevice])
         XCTAssertEqual(detector.alreadyTried(in: "I have gone on and off wifi, I have logged out of the app"),
                        [.toggleNetwork])
+        // "turned it in and checked it back out" is a return-and-reborrow, which
+        // was invisible until that remedy existed.
         XCTAssertEqual(detector.alreadyTried(in: "I've tried on different devices. I've turned it in and checked it back out."),
-                       [.otherDevice])
+                       [.otherDevice, .returnAndReborrow])
     }
 
     /// Conservative by design: a false positive SKIPS a step the patron may need,

@@ -30,6 +30,44 @@ public enum Remedy: String, Codable, Sendable, CaseIterable {
     /// support performs this check itself, server-side, so it is prescribed
     /// almost never and performed almost always.
     case verifyOnWeb
+    /// Return the title and borrow it again.
+    ///
+    /// Addresses a failure mode nothing else in this set touches: one bad loan or
+    /// fulfilment rather than a bad app state. Support reached for it when they
+    /// could play a title themselves that the patron could not — the loan, not
+    /// the app, was broken.
+    case returnAndReborrow
+    /// Tell the patron a fix is already coming, and that there is nothing for
+    /// them to do.
+    ///
+    /// Not a repair, and the only entry here that resolves nothing today. It
+    /// earns its place because it is the largest single resolution class in the
+    /// corpus — 44 of 212 resolved tickets, more than any actual remedy. Support's
+    /// answer to one patron in five is "we know, it ships in the next release."
+    /// Walking that patron through refreshes instead is worse than telling them
+    /// the truth. May only be said about an entry that documents a real defect;
+    /// promising a fix for a problem we did not identify would be an invention,
+    /// and the validator enforces that.
+    case waitForFix
+    /// Settings → Advanced → Clear Cached Data.
+    ///
+    /// Clears the network cache and the on-disk catalog, metadata and registry
+    /// caches. Downloaded books, loans and sign-in all survive. This is the
+    /// surgical step the set was missing between reopening a title, which fixes
+    /// nothing persistent, and reinstalling, which destroys everything — and its
+    /// absence is a plausible reason support reaches for reinstall in a third of
+    /// resolved download tickets.
+    ///
+    /// The screen was deliberately made always-visible (PP-4788) so support could
+    /// direct patrons to it, which means support has been prescribing an action
+    /// the bot could not name.
+    case clearCache
+    /// Settings → Advanced → Reset This Library.
+    ///
+    /// Scoped destruction: one library's local content and state, leaving other
+    /// libraries intact. Strictly better than a reinstall when the problem is
+    /// isolated to one library, and still destructive.
+    case resetLibrary
 
     /// What the remedy costs the patron if it does NOT work.
     ///
@@ -54,7 +92,10 @@ public enum Remedy: String, Codable, Sendable, CaseIterable {
 
     public var costTier: CostTier {
         switch self {
-        case .pullToRefresh, .reopenTitle, .verifyOnWeb: return .free
+        case .pullToRefresh, .reopenTitle, .verifyOnWeb, .waitForFix: return .free
+        // Costs a catalog refetch and nothing the patron owns — no books, no
+        // loans, no sign-in.
+        case .clearCache: return .free
         // Not free: minutes, possibly hundreds of megabytes on metered data, an
         // Apple ID prompt and a relaunch. The version gate reduces how often it
         // is WASTED, not what it costs when offered.
@@ -63,7 +104,10 @@ public enum Remedy: String, Codable, Sendable, CaseIterable {
         // Changing which library is selected is two taps and reversible; it
         // destroys nothing, and the rung that uses it is an observation.
         case .switchLibrary: return .free
-        case .signOutIn, .reinstall: return .destructive
+        // Returning a loan to fix it can cost the patron their place in a hold
+        // queue, which they cannot undo. A smaller blast radius than reinstalling,
+        // the same kind of loss.
+        case .signOutIn, .reinstall, .returnAndReborrow, .resetLibrary: return .destructive
         }
     }
 
@@ -80,6 +124,10 @@ public enum Remedy: String, Codable, Sendable, CaseIterable {
         case .pullToRefresh: return "pulling down to refresh"
         case .switchLibrary: return "switching libraries"
         case .verifyOnWeb:   return "checking the web catalog"
+        case .returnAndReborrow: return "returning and borrowing it again"
+        case .waitForFix:    return "waiting for the fix"
+        case .clearCache:    return "clearing cached data"
+        case .resetLibrary:  return "resetting that library"
         }
     }
 }
@@ -165,6 +213,23 @@ public struct RemedyDetector: Sendable {
             // Only deliberate-attempt phrasings remain.
             "switched to my other", "tried my other library",
             "changed to my other library", "tried a different library",
+        ],
+        .clearCache: [
+            "cleared the cache", "cleared cache", "clear cached data",
+            "cleared cached data", "cleared my cache", "clearing the cache",
+        ],
+        .resetLibrary: [
+            "reset this library", "reset the library", "reset my library",
+        ],
+        .returnAndReborrow: [
+            "returned it and checked it back out", "returned and re-borrowed",
+            "returned and reborrowed", "checked it back out", "borrowed it again",
+            "gave the book back and borrowed", "returned it and borrowed",
+            "turned it in and checked it back out",
+        ],
+        .waitForFix: [
+            "waiting for the fix", "told this is fixed in", "waiting for the update",
+            "waiting on a fix", "know it is fixed in", "supposed to be fixed in",
         ],
         .verifyOnWeb: [
             "tried the web", "on the website", "in the browser", "web catalog",

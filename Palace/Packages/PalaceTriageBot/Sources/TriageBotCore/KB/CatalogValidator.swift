@@ -86,6 +86,14 @@ public enum CatalogValidator {
             for step in steps {
                 guard let remedy = step.remedy else { continue }
 
+                // A ladder fires when nothing matched. Telling that patron a fix
+                // is coming would be an invention: we do not know what their
+                // problem is, so we cannot know a fix exists for it.
+                if remedy == .waitForFix && isLadder {
+                    problems.append(
+                        "\(entry.id)/\(step.id): waitForFix promises a fix for a problem this flow did not identify")
+                }
+
                 // Trying another device diagnoses; it repairs nothing. Keep it as
                 // detection vocabulary and out of the instruction set.
                 if remedy == .otherDevice {
