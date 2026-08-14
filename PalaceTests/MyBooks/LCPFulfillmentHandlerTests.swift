@@ -100,7 +100,12 @@ final class LCPFulfillmentHandlerTests: XCTestCase {
             bookFileManager: bookFileManager,
             backgroundDownloadHandler: backgroundHandler,
             fileManager: .default,
-            lcpServiceFactory: { [unowned self] in self.lcpService }
+            lcpServiceFactory: { [unowned self] in self.lcpService },
+            // PP-4957: the download-first tests in this suite assert the flag-OFF
+            // path; pin the streaming flag OFF so they don't read the shared flag
+            // (non-deterministic in the test host). The streaming tests build their
+            // own handler via makeStreamingHandler() with the provider forced ON.
+            streamingEnabledProvider: { false }
         )
         handler.delegate = spyDelegate
     }
