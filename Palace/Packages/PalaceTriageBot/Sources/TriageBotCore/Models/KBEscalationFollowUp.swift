@@ -55,6 +55,12 @@ public struct KBEscalationFollowUp: Codable, Equatable, Sendable {
         self.presumesIssue = presumesIssue
     }
 
+    // PUBLIC_INTENT: not a choice — Swift requires the witness for a public
+    // protocol requirement to be public, and `KBEscalationFollowUp` is a public
+    // `Decodable` type. Established by flipping it to `internal`, which fails the
+    // build with "must be declared public because it matches a requirement in
+    // public protocol 'Decodable'". The other 26 declarations flagged alongside
+    // it built clean as `internal` and were narrowed instead.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         prompt = try c.decode(String.self, forKey: .prompt)
