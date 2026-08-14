@@ -559,7 +559,8 @@
               "diagnostic": "pdf.redownload_resolved"
             }
           ],
-          "diagnostic": "pdf.delete_and_redownload"
+          "diagnostic": "pdf.delete_and_redownload",
+          "remedy": "redownloadTitle"
         }
       ],
       "internal_reference": {
@@ -1232,6 +1233,11 @@
               "label": "No change",
               "outcome": "advance",
               "diagnostic": "ladder.gf-audio-1.no_change"
+            },
+            {
+              "label": "Already up to date",
+              "outcome": "not_applicable",
+              "diagnostic": "ladder.gf-audio-1.already_current"
             }
           ],
           "diagnostic": "ladder.gf-audio-1"
@@ -1304,6 +1310,11 @@
               "label": "No change",
               "outcome": "advance",
               "diagnostic": "ladder.gf-dl-2.no_change"
+            },
+            {
+              "label": "Already up to date",
+              "outcome": "not_applicable",
+              "diagnostic": "ladder.gf-dl-2.already_current"
             }
           ],
           "diagnostic": "ladder.gf-dl-2"
@@ -1410,6 +1421,11 @@
               "label": "No change",
               "outcome": "advance",
               "diagnostic": "ladder.gf-read-2.no_change"
+            },
+            {
+              "label": "Already up to date",
+              "outcome": "not_applicable",
+              "diagnostic": "ladder.gf-read-2.already_current"
             }
           ],
           "diagnostic": "ladder.gf-read-2"
@@ -1444,6 +1460,11 @@
               "label": "No change",
               "outcome": "advance",
               "diagnostic": "ladder.gf-other-1.no_change"
+            },
+            {
+              "label": "Already up to date",
+              "outcome": "not_applicable",
+              "diagnostic": "ladder.gf-other-1.already_current"
             }
           ],
           "diagnostic": "ladder.gf-other-1"

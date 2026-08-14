@@ -457,13 +457,19 @@ public struct ConversationReducer: Sendable {
             // backed catalog source can ingest per-step success rates.
             effects.append(.persistResolutionTrace(trace))
 
-        case .userConfirmedStepDidNotResolve(let stepId):
+        case .userConfirmedStepDidNotResolve(let stepId),
+             .userReportedStepNotApplicable(let stepId):
             guard case .guidedStep(let entryId, let stepIndex, let startedAt, var attempts) = next.step,
                   let entry = knowledgeBase.entry(id: entryId),
                   let steps = entry.userFacingSteps else {
                 return (next, effects)
             }
-            attempts.append(StepAttempt(stepId: stepId, outcome: .didNotResolve, timestamp: Date()))
+            // Same advance, different record. A patron who was already current
+            // did not try this rung, and the trace must not say they did.
+            let recorded: StepAttempt.Outcome
+            if case .userReportedStepNotApplicable = action { recorded = .notApplicable }
+            else { recorded = .didNotResolve }
+            attempts.append(StepAttempt(stepId: stepId, outcome: recorded, timestamp: Date()))
 
             let nextIndex = nextUntriedStepIndex(
                 from: stepIndex + 1, steps: steps, alreadyTried: next.alreadyTriedRemedies,
@@ -542,6 +548,12 @@ public struct ConversationReducer: Sendable {
                     action: .userConfirmedStepDidNotResolve(stepId: stepId)
                 )
                 return (advancedNext, effects + advancedEffects)
+            case .notApplicable:
+                let (skippedNext, skippedEffects) = reduce(
+                    state: next,
+                    action: .userReportedStepNotApplicable(stepId: stepId)
+                )
+                return (skippedNext, effects + skippedEffects)
             case .escalate:
                 let (abandonNext, abandonEffects) = reduce(
                     state: next,

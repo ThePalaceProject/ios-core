@@ -146,6 +146,10 @@ public enum ConversationAction: Equatable, Sendable {
     /// either advances to the next step or, if exhausted, escalates with
     /// the full ResolutionTrace attached.
     case userConfirmedStepDidNotResolve(stepId: String)
+    /// The patron reports the step did not apply to them (already on the newest
+    /// build, no such button, nothing to clear). Advances like
+    /// `userConfirmedStepDidNotResolve` but records `notApplicable`.
+    case userReportedStepNotApplicable(stepId: String)
     /// User picked a specific response on a step with explicit
     /// `responses` defined. Reducer routes by the response's
     /// `outcome` (resolved / advance / escalate) — semantically richer

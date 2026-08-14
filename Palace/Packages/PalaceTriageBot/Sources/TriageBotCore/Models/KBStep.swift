@@ -90,6 +90,10 @@ public struct KBStepResponse: Codable, Equatable, Sendable {
         /// Skip remaining steps and file a ticket. Attaches the trace
         /// so support sees what was tried.
         case escalate
+        /// This step does not apply to me — move on without counting it as an
+        /// attempt. Advances exactly like `advance`; the difference is only in
+        /// what the trace records, which is the whole point.
+        case notApplicable = "not_applicable"
     }
 
     public init(label: String, outcome: Outcome, diagnostic: String? = nil) {
@@ -107,6 +111,14 @@ public struct StepAttempt: Codable, Equatable, Sendable {
         case resolved
         case didNotResolve = "did_not_resolve"
         case abandoned
+        /// The step did not apply to this patron, so nothing was attempted —
+        /// "check the App Store for an update" answered by someone already on
+        /// the newest build.
+        ///
+        /// Distinct from `didNotResolve` because the re-ranking rule reads these
+        /// traces to rate a rung, and folding a non-attempt into the failure
+        /// count deflates that rate with something that never happened.
+        case notApplicable = "not_applicable"
     }
 
     public let stepId: String
