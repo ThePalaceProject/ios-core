@@ -48,7 +48,8 @@ public enum Remedy: String, Codable, Sendable, CaseIterable {
     ///
     /// Not a repair, and the only entry here that resolves nothing today. It
     /// earns its place because it is the largest single resolution class in the
-    /// corpus — 44 of 212 resolved tickets, more than any actual remedy. Support's
+    /// corpus — 29 of 135 resolved tickets (21%), more than any actual remedy.
+    /// Concentrated in audiobook, where it is 26 of 36. Support's
     /// answer to one patron in five is "we know, it ships in the next release."
     /// Walking that patron through refreshes instead is worse than telling them
     /// the truth. May only be said about an entry that documents a real defect;

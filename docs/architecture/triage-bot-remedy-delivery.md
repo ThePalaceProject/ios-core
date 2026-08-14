@@ -42,9 +42,18 @@ effort, and it is the single most important constraint on the design. Nothing in
 this system may be, or resemble, a complaint-to-remedy classifier.
 
 **Per-category priors do carry signal.** While individual complaints do not
-predict a remedy, categories do. Support prescribed "update the app" for 55
-percent of resolved audiobook tickets and 0 percent of resolved sign-in tickets.
-That is what orders and filters the remedy ladders.
+predict a remedy, categories do. The clearest split is the class of tickets whose
+resolution was "a fix exists or is coming", which the patron can act on only by
+getting the build: 26 of 36 resolved audiobook tickets, and 0 of 44 resolved
+sign-in tickets. That is what orders and filters the remedy ladders.
+
+Counting that class needs care, and an earlier draft of this document had the
+audiobook figure wrong. Its dominant phrasing is "known issue with certain
+audiobooks; fixed in Palace v3.2.3" — which contains no form of the words
+"update" or "wait", so a scan built from remedy names misses almost all of it
+while a scan for "fix" sweeps in unrelated prose. The rate is only reproducible
+by matching the resolution's shape, not its vocabulary, which is the same trap
+as counting mentions instead of prescriptions.
 
 ## How a message becomes a response
 
