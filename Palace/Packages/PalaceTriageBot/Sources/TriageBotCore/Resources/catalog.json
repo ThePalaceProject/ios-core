@@ -717,23 +717,23 @@
           "diagnostic": "addlibrary.pull_to_refresh"
         },
         {
-          "id": "ki009-step2-signout-reinstall",
-          "instruction": "If it's still missing, sign out of your current library, then delete and reinstall Palace. Open it and try Add Library again.",
-          "remedy": "reinstall",
-          "check": "Can you add the second library now?",
+          "id": "ki009-step2-check-registry",
+          "instruction": "If it is still missing, check whether your library is listed at the Palace web catalog on a computer or browser. If it is not there either, the library may not be participating yet, and support can confirm.",
+          "remedy": "verifyOnWeb",
+          "check": "Did you find your library there?",
           "responses": [
             {
-              "label": "Still can't",
+              "label": "Yes, it's listed",
               "outcome": "escalate",
-              "diagnostic": "addlibrary.reinstall_did_not_resolve"
+              "diagnostic": "library.registry.listed_on_web"
             },
             {
-              "label": "Yes, added",
-              "outcome": "resolved",
-              "diagnostic": "addlibrary.reinstall_resolved"
+              "label": "No, not listed",
+              "outcome": "escalate",
+              "diagnostic": "library.registry.absent_on_web"
             }
           ],
-          "diagnostic": "addlibrary.signout_reinstall"
+          "diagnostic": "library.registry.web_check"
         }
       ],
       "internal_reference": {

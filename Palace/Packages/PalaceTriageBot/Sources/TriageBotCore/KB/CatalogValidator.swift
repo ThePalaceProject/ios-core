@@ -60,22 +60,38 @@ public enum CatalogValidator {
     public static func violations(in catalog: KBCatalog) -> [String] {
         var problems: [String] = []
 
-        for entry in catalog.entries where entry.resolvedKind == .genericFlow {
+        for entry in catalog.entries {
             let steps = entry.userFacingSteps ?? []
+            let isLadder = entry.resolvedKind == .genericFlow
 
-            if steps.isEmpty {
-                problems.append("\(entry.id): a ladder with no rungs offers nothing")
-            }
-            if steps.count > maxRungs {
-                problems.append("\(entry.id): \(steps.count) rungs exceeds the limit of \(maxRungs)")
-            }
-            if !entry.symptomKeywords.isEmpty {
-                problems.append("\(entry.id): a ladder must not claim symptoms — it is offered when nothing matched")
+            // Shape rules that only make sense for a ladder.
+            if isLadder {
+                if steps.isEmpty {
+                    problems.append("\(entry.id): a ladder with no rungs offers nothing")
+                }
+                if steps.count > maxRungs {
+                    problems.append("\(entry.id): \(steps.count) rungs exceeds the limit of \(maxRungs)")
+                }
+                if !entry.symptomKeywords.isEmpty {
+                    problems.append("\(entry.id): a ladder must not claim symptoms — it is offered when nothing matched")
+                }
             }
 
+            // SAFETY rules apply to every entry kind, not only ladders. Scoping
+            // them to ladders contradicted this file's own charter: a hot-pushed
+            // known_issue entry in the signin category with a sign-out step told
+            // exactly the patron we suppress it for to do the thing we suppress,
+            // and validated clean.
             let banned = suppressed[entry.category] ?? []
             for step in steps {
                 guard let remedy = step.remedy else { continue }
+
+                // Trying another device diagnoses; it repairs nothing. Keep it as
+                // detection vocabulary and out of the instruction set.
+                if remedy == .otherDevice {
+                    problems.append(
+                        "\(entry.id)/\(step.id): otherDevice is a diagnostic, not a remedy — it belongs in an escalation question, not a step")
+                }
 
                 if banned.contains(remedy) {
                     problems.append(

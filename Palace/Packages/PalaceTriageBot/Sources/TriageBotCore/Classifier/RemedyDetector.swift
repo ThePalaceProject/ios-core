@@ -21,6 +21,15 @@ public enum Remedy: String, Codable, Sendable, CaseIterable {
     case otherDevice
     case pullToRefresh
     case switchLibrary
+    /// Check the same account in the library's web catalog.
+    ///
+    /// Not a repair — it is the one action that splits an app-side problem from
+    /// an account-side one (expired card, ILS outage, a title the library does
+    /// not license), which is roughly a quarter of real tickets and the class no
+    /// app-side remedy can ever fix. Corpus-invisible for a precise reason:
+    /// support performs this check itself, server-side, so it is prescribed
+    /// almost never and performed almost always.
+    case verifyOnWeb
 
     /// What the remedy costs the patron if it does NOT work.
     ///
@@ -45,8 +54,15 @@ public enum Remedy: String, Codable, Sendable, CaseIterable {
 
     public var costTier: CostTier {
         switch self {
-        case .pullToRefresh, .reopenTitle, .updateApp: return .free
-        case .restartDevice, .toggleNetwork, .otherDevice, .switchLibrary: return .disruptive
+        case .pullToRefresh, .reopenTitle, .verifyOnWeb: return .free
+        // Not free: minutes, possibly hundreds of megabytes on metered data, an
+        // Apple ID prompt and a relaunch. The version gate reduces how often it
+        // is WASTED, not what it costs when offered.
+        case .updateApp: return .disruptive
+        case .restartDevice, .toggleNetwork, .otherDevice: return .disruptive
+        // Changing which library is selected is two taps and reversible; it
+        // destroys nothing, and the rung that uses it is an observation.
+        case .switchLibrary: return .free
         case .signOutIn, .reinstall: return .destructive
         }
     }
@@ -63,6 +79,7 @@ public enum Remedy: String, Codable, Sendable, CaseIterable {
         case .otherDevice:   return "trying another device"
         case .pullToRefresh: return "pulling down to refresh"
         case .switchLibrary: return "switching libraries"
+        case .verifyOnWeb:   return "checking the web catalog"
         }
     }
 }
@@ -87,36 +104,71 @@ public struct RemedyDetector: Sendable {
         .reinstall: [
             "reinstalled", "re installed", "uninstalled and", "deleted the app",
             "deleted and reinstalled", "removed the app and", "redownloaded the app",
-            "delete and reinstall it", "uninstalled it",
+            "delete and reinstall it", "uninstalled it", "deleted palace",
+            "fresh install", "took the app off",
         ],
         .restartDevice: [
-            "rebooted", "restarted my phone", "restarted the phone", "restarted my ipad",
-            "turned my phone off", "power cycled", "restarted my device",
+            // Not bare "rebooted": "my phone rebooted itself while playing" is a
+            // symptom (a spontaneous restart), not a remedy the patron applied.
+            // Third-person forms are NOT optional — a large share of this corpus
+            // is librarians writing on a patron's behalf ("they've reinstalled
+            // the app, rebooted their phone"), so a first-person-only list drops
+            // them.
+            "i rebooted", "rebooted my", "rebooted the", "rebooted their",
+            "rebooted her", "rebooted his", "they rebooted",
+            "restarted my phone", "restarted the phone", "restarted my ipad",
+            "restarted my iphone", "restarted my device", "restarted the app",
+            "restarted their phone", "restarted her phone", "restarted his phone",
+            "turned my phone off", "turned my ipad off", "power cycled",
+            "turned it off and on", "powered it off",
         ],
         .signOutIn: [
+            // Phrases match CONTIGUOUS token runs, so "signed out and back" never
+            // matched "signed out and SIGNED back in" — the way most people write
+            // it. The short trailing forms carry the claim on their own.
+            "signed back in", "logged back in", "sign back in",
             "signed out and back", "signed out and in", "logged out and back",
             "logged out and in", "signed out then", "logged out then",
         ],
         .toggleNetwork: [
             "on and off wifi", "off and on wifi", "toggled wifi", "turned wifi off",
-            "switched to cellular", "tried cellular", "different wifi",
+            "turned off wifi", "switched to cellular", "tried cellular",
+            "different wifi", "different network", "another network",
+            "airplane mode on and off", "turned airplane mode on",
+            "toggled airplane mode", "restarted my router",
         ],
         .reopenTitle: [
             "closed and reopened", "reopened the book", "reopened it", "opened it again",
             "backed out and tried again",
         ],
         .updateApp: [
-            "updated the app", "installed the update", "already updated", "on the latest version",
-            "running the latest", "up to date",
+            // Not bare "up to date": patrons say it of their library CARD and of
+            // iOS. Only claims naming the app or an update count.
+            "updated the app", "updated palace", "installed the update",
+            "already updated", "on the latest version", "running the latest",
+            "app is up to date", "palace is up to date", "installed it again",
         ],
         .pullToRefresh: [
-            "pulled down to refresh", "pulled to refresh", "pull to refresh",
+            // Not "pull to refresh" — imperative, so it matches a patron ASKING
+            // how, and skips the safest rung in the library ladder.
+            "pulled down to refresh", "pulled to refresh",
             "swiped down to refresh", "refreshed the list", "refreshed my holds",
+            "i refreshed",
         ],
         .switchLibrary: [
-            "switched to my other", "switched libraries", "switched library",
-            "changed to my other library", "tried my other library",
-            "switched to my other library",
+            // NOT "switched libraries" / "switched library" / "changed library":
+            // those are KI-2026-002's symptom keywords verbatim. A patron writing
+            // "I switched libraries and now my books are gone" is naming their
+            // trigger, and treating it as a remedy skipped the library ladder's
+            // first rung — the one telling them to check which library is
+            // selected, which is the likeliest fix for that exact complaint.
+            // Only deliberate-attempt phrasings remain.
+            "switched to my other", "tried my other library",
+            "changed to my other library", "tried a different library",
+        ],
+        .verifyOnWeb: [
+            "tried the web", "on the website", "in the browser", "web catalog",
+            "works on the computer", "on my computer", "logged in online",
         ],
         .otherDevice: [
             "tried on my ipad", "tried on my phone", "tried a different device",
@@ -130,7 +182,8 @@ public struct RemedyDetector: Sendable {
     /// strand the patron with no path at all.
     private static let blanketPhrases = [
         "tried everything", "done everything", "tried it all", "nothing works",
-        "nothing has worked",
+        "nothing has worked", "tried all your suggestions", "no luck with anything",
+        "exhausted every", "at my wits end",
     ]
 
     /// Remedies the text says were already attempted.

@@ -77,6 +77,46 @@ final class CatalogValidationTests: XCTestCase {
         ]).isEmpty)
     }
 
+    /// The validator's stated reason for existing is that a hot-pushed catalog
+    /// "could tell every sign-in patron to sign out, and nothing on the device
+    /// would object". It only ever checked `generic_flow` entries — so a pushed
+    /// KNOWN_ISSUE entry in the signin category with a sign-out step did exactly
+    /// that and validated clean. The shipped entries happen to comply, but that
+    /// is luck rather than enforcement.
+    func testSuppressionApplies_toAnyEntryKindNotJustLadders() {
+        let sneaky = KBEntry(
+            id: "KI-SNEAK", category: .signin, status: .open,
+            symptomKeywords: ["cannot sign in"],
+            userFacingWorkaround: "Sign out and back in.",
+            userFacingSteps: [rung("s1", .signOutIn)])
+        XCTAssertFalse(validate([sneaky]).isEmpty,
+            "a suppressed remedy must be rejected in ANY entry kind, not only in ladders")
+    }
+
+    /// Destructive-first and refusability are safety rules about what we ask a
+    /// patron to do. They cannot be scoped to one entry kind either.
+    func testDestructiveRulesApply_toAnyEntryKind() {
+        let firstDestructive = KBEntry(
+            id: "KI-FIRST", category: .audiobook, status: .open,
+            symptomKeywords: ["will not play"],
+            userFacingWorkaround: "Reinstall.",
+            userFacingSteps: [rung("s1", .reinstall), rung("s2", .pullToRefresh)])
+        XCTAssertFalse(validate([firstDestructive]).isEmpty,
+            "no entry of any kind may open by destroying the patron's downloads")
+    }
+
+    /// `otherDevice` is a diagnostic, not a fix — trying another device tells us
+    /// something and repairs nothing. It appears in no ladder and no entry step
+    /// today; this stops a future author reading the enum as a menu.
+    func testOtherDeviceIsNeverARung() {
+        let diagnostic = KBEntry(
+            id: "GF-diag", category: .audiobook, kind: .genericFlow,
+            symptomKeywords: [], userFacingWorkaround: "Try things.",
+            userFacingSteps: [rung("s1", .otherDevice)])
+        XCTAssertFalse(validate([diagnostic]).isEmpty,
+            "trying another device is a diagnostic; it belongs in a question, not a rung")
+    }
+
     /// The shipped catalog must satisfy the same rules it will be held to in
     /// production — the producer check, not just the fixture check.
     func testShippedCatalogIsValid() throws {

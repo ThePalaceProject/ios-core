@@ -65,9 +65,12 @@ final class AlreadyTriedTests: XCTestCase {
             id: "K", category: .audiobook, status: .open,
             symptomKeywords: ["alpha thing"],
             userFacingWorkaround: "Fix it.",
+            // Destructive rungs may not come first, in any entry kind — so the
+            // free step leads and the reinstall follows. The test still turns on
+            // whether an already-tried rung is skipped.
             userFacingSteps: [
-                KBStep(id: "s1", instruction: "Delete and reinstall Palace.", check: "Better?", remedy: .reinstall),
-                KBStep(id: "s2", instruction: "Tap the title again.", check: "Better?", remedy: .reopenTitle),
+                KBStep(id: "s1", instruction: "Tap the title again.", check: "Better?", remedy: .reopenTitle),
+                KBStep(id: "s2", instruction: "Delete and reinstall Palace.", check: "Better?", remedy: .reinstall),
             ],
             confidenceThreshold: 0.1)
         let r = ConversationReducer(knowledgeBase: KnowledgeBase(
@@ -84,12 +87,12 @@ final class AlreadyTriedTests: XCTestCase {
     }
 
     func testGuidedFlow_startsAfterTheStepTheyAlreadyDid() {
-        let state = drive("the alpha thing is broken, I already reinstalled the app twice")
+        let state = drive("the alpha thing is broken, I already closed and reopened it")
         guard case .guidedStep(_, let index, _, _) = state.step else {
             return XCTFail("expected a guided step; got \(state.step)")
         }
         XCTAssertEqual(index, 1, "must start at the step they have NOT tried")
-        XCTAssertTrue(texts(state).contains { $0.contains("already tried reinstalling the app") },
+        XCTAssertTrue(texts(state).contains { $0.contains("already tried reopening the title") },
                       "skipping silently looks like steps going missing: \(texts(state))")
     }
 
@@ -111,7 +114,7 @@ final class AlreadyTriedTests: XCTestCase {
             symptomKeywords: ["alpha thing"],
             userFacingWorkaround: "Fix it.",
             userFacingSteps: [
-                KBStep(id: "s1", instruction: "Delete and reinstall Palace.", check: "Better?", remedy: .reinstall),
+                KBStep(id: "s1", instruction: "Tap the title again.", check: "Better?", remedy: .reopenTitle),
             ],
             escalationFollowUp: KBEscalationFollowUp(prompt: "Which title is doing this?"),
             confidenceThreshold: 0.1)
@@ -119,7 +122,7 @@ final class AlreadyTriedTests: XCTestCase {
             catalog: KBCatalog(version: "t", updatedAt: "x", entries: [entry])))
         var (s, _) = r.reduce(state: ConversationState(), action: .start)
         (s, _) = r.reduce(state: s, action: .userTappedCategory(.audiobook))
-        (s, _) = r.reduce(state: s, action: .inputChanged("the alpha thing is broken, I already reinstalled the app"))
+        (s, _) = r.reduce(state: s, action: .inputChanged("the alpha thing is broken, I already closed and reopened it"))
         (s, _) = r.reduce(state: s, action: .userSubmittedDescription)
         (s, _) = r.reduce(state: s, action: .userTappedStartGuidedFlow(entryId: "K"))
 
@@ -149,6 +152,7 @@ final class AlreadyTriedTests: XCTestCase {
             catalog: KBCatalog(version: "t", updatedAt: "x", entries: [entry])))
         var (s, _) = r.reduce(state: ConversationState(), action: .start)
         (s, _) = r.reduce(state: s, action: .userTappedCategory(.audiobook))
+        // Claims the MIDDLE rung, so the flow opens at 0 and must jump over 1.
         (s, _) = r.reduce(state: s, action: .inputChanged("the alpha thing is broken, I already reinstalled the app"))
         (s, _) = r.reduce(state: s, action: .userSubmittedDescription)
         (s, _) = r.reduce(state: s, action: .userTappedStartGuidedFlow(entryId: "K"))
@@ -165,7 +169,7 @@ final class AlreadyTriedTests: XCTestCase {
     /// If they have done everything the entry would suggest, opening an empty
     /// flow wastes their time — escalate with the trace instead.
     func testGuidedFlow_whenEveryStepIsAlreadyTried_escalatesInstead() {
-        let state = drive("the alpha thing is broken. I reinstalled the app and I closed and reopened it.")
+        let state = drive("the alpha thing is broken. I closed and reopened it and I reinstalled the app.")
         if case .guidedStep = state.step {
             XCTFail("opened a flow with nothing left to try")
         }
