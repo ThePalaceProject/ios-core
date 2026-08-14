@@ -216,6 +216,78 @@ final class MatchCorpusTests: XCTestCase {
         print("\nheld-out capture (reported, not gated): \(heldOut.captured)/\(heldOut.capturable)")
     }
 
+    /// The floor the whole feature rests on: a patron who reaches the end of a
+    /// conversation is never filed as "someone reported a problem".
+    ///
+    /// A ticket is better-identified than the email the patron would have sent
+    /// unaided when it carries something that email would not have: the entry we
+    /// recognised, an answer or explicit skip to a question we asked, or the
+    /// remedies they told us they had already tried.
+    ///
+    /// The conversation is driven ALL THE WAY to a filed ticket — declining any
+    /// ladder and skipping any question — because nothing reaches `.drafting` in
+    /// one step any more. The first version of this test asserted on the state
+    /// immediately after submitting the description, where every case is either
+    /// `.matched` or `.awaitingEscalationFollowUp`, so it ran over an empty set
+    /// and passed unconditionally. A mutation that stripped identification from
+    /// every draft did not fail it; that is how the vacuum was found.
+    func testEveryCase_WalkedToATicket_FilesAnIdentifiedTicket() throws {
+        let kb = KnowledgeBase(catalog: try BundledCatalogSource.loadCatalogSync())
+        let corpus = try loadCorpus()
+        var blanks: [String] = []
+        var filed = 0
+        var beyondTheQuestion = 0
+
+        for testCase in corpus.cases {
+            guard let category = KBCategory(rawValue: testCase.category) else { continue }
+            let reducer = ConversationReducer(knowledgeBase: kb)
+            var (state, _) = reducer.reduce(state: ConversationState(), action: .start)
+            (state, _) = reducer.reduce(state: state, action: .userTappedCategory(category))
+            (state, _) = reducer.reduce(state: state, action: .inputChanged(testCase.text))
+            (state, _) = reducer.reduce(state: state, action: .userSubmittedDescription)
+
+            // A patron who wants a human: decline whatever is offered, skip
+            // whatever is asked, and file. Bounded so a routing bug cannot spin.
+            var hops = 0
+            loop: while hops < 6 {
+                hops += 1
+                switch state.step {
+                case .matched(let id):
+                    (state, _) = reducer.reduce(state: state, action: .userTappedFileTicketAnyway)
+                    _ = id
+                case .awaitingEscalationFollowUp:
+                    (state, _) = reducer.reduce(state: state, action: .userAnsweredEscalationFollowUp(answer: nil))
+                default:
+                    break loop
+                }
+            }
+
+            guard case .drafting(let draft) = state.step else { continue }
+            filed += 1
+            let identified = draft.matchedEntryId != nil
+                || draft.escalationFollowUp != nil
+                || !draft.alreadyTried.isEmpty
+                || draft.claimsExhaustedEffort
+            if !identified { blanks.append(testCase.id) }
+            if draft.matchedEntryId != nil || !draft.alreadyTried.isEmpty || draft.claimsExhaustedEffort {
+                beyondTheQuestion += 1
+            }
+        }
+
+        XCTAssertGreaterThan(filed, 20,
+            "the walk reached only \(filed) tickets — if this collapses the assertions below are vacuous")
+        XCTAssertTrue(blanks.isEmpty,
+            "these filed with nothing support could not have read off the raw email: \(blanks)")
+
+        // The assertion above is satisfied by the follow-up alone, which every
+        // category has, so it cannot fail while catch-alls exist. This one can:
+        // it requires that identification beyond the universal component actually
+        // reaches the ticket. Stripping scoping or already-tried from the drafts
+        // fails here and nowhere else in this suite.
+        XCTAssertGreaterThan(beyondTheQuestion, 5,
+            "no ticket carried anything beyond the question we ask everyone — scoping and already-tried are not reaching drafts")
+    }
+
     /// The mined slice is where the catalog's own source tickets live. If the
     /// matcher cannot recall the very tickets its keywords were written from,
     /// nothing downstream is worth tuning.
