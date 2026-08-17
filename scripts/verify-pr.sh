@@ -762,6 +762,8 @@ run_phase35_detector "unsynchronized_sendable_mock" "check-unsynchronized-sendab
   "No unsynchronized @unchecked Sendable mock driven by concurrent tests" "scan"
 run_phase35_detector "addoperation_literal_ban" "check-addoperation-literal-ban.py" "block" \
   "No raw NSOperation-family closure literal (#1338 ClangImporter @MainActor-poisoning risk)" "diff"
+run_phase35_detector "auth_challenge_async_form" "check-auth-challenge-async-form.py" "block" \
+  "No completion-handler-form auth-challenge delegate callback (PP-4895 ClangImporter @MainActor-poisoning risk)" "diff"
 
 # 4. Coverage floors
 echo "--- Coverage Floors ---"

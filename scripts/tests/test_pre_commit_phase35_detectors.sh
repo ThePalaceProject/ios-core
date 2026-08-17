@@ -194,7 +194,60 @@ if [ "$MOCK_CLEAN_EXIT" -ne 0 ]; then
   exit 1
 fi
 
-echo "PASS: 6 assertions — hook blocks violations, identifies detector, honors both"
+# --- Assert 7: AUTH_CHALLENGE_ASYNC_FORM detector fires on its fixture ---
+# (PP-4895) An authentication-challenge delegate callback written in the
+# completion-handler form must block: the Xcode 26.2 ClangImporter can leave it
+# unmatched, which strips it from the ObjC runtime, and URLSession then never
+# calls it — the challenge goes unanswered with no error. Rewriting it in the
+# SDK's async spelling must pass again.
+git rm -q -r --cached PalaceTests
+rm -rf PalaceTests
+cat > Palace/ChallengeDelegate.swift <<'EOF'
+import Foundation
+final class ChallengeDelegate: NSObject, URLSessionTaskDelegate {
+    func urlSession(_ session: URLSession,
+                    task: URLSessionTask,
+                    didReceive challenge: URLAuthenticationChallenge,
+                    completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        completionHandler(.performDefaultHandling, nil)
+    }
+}
+EOF
+git add Palace/ChallengeDelegate.swift
+set +e
+ACF_OUT=$(echo "$JSON_INPUT" | bash "$HOOK" 2>&1)
+ACF_EXIT=$?
+set -e
+if [ "$ACF_EXIT" -eq 0 ] || ! echo "$ACF_OUT" | grep -q "AUTH_CHALLENGE_ASYNC_FORM\|auth-challenge-async-form"; then
+  echo "FAIL: completion-handler-form auth-challenge callback did not block (exit $ACF_EXIT)"
+  echo "$ACF_OUT" | sed 's/^/    /'
+  exit 1
+fi
+# Clean path: the same callback in the async spelling → must pass.
+cat > Palace/ChallengeDelegate.swift <<'EOF'
+import Foundation
+final class ChallengeDelegate: NSObject, URLSessionTaskDelegate {
+    func urlSession(_ session: URLSession,
+                    task: URLSessionTask,
+                    didReceive challenge: URLAuthenticationChallenge)
+    async -> (URLSession.AuthChallengeDisposition, URLCredential?) {
+        (.performDefaultHandling, nil)
+    }
+}
+EOF
+git add Palace/ChallengeDelegate.swift
+set +e
+ACF_CLEAN_OUT=$(echo "$JSON_INPUT" | bash "$HOOK" 2>&1)
+ACF_CLEAN_EXIT=$?
+set -e
+if [ "$ACF_CLEAN_EXIT" -ne 0 ]; then
+  echo "FAIL: async-form auth-challenge callback spuriously blocked (exit $ACF_CLEAN_EXIT)"
+  echo "$ACF_CLEAN_OUT" | sed 's/^/    /'
+  exit 1
+fi
+
+echo "PASS: 7 assertions — hook blocks violations, identifies detector, honors both"
 echo "      bypass envvars, passes a clean diff (no detector spuriously blocks),"
-echo "      and the unsynchronized-sendable-mock detector fires + clean-passes."
+echo "      and the unsynchronized-sendable-mock + auth-challenge-async-form"
+echo "      detectors each fire on a violation and clean-pass on the fix."
 exit 0
