@@ -305,4 +305,68 @@ final class AudiobookMorphingPlayerViewTests: XCTestCase {
         XCTAssertTrue(V.downloadingAccessibilityLabel(title: "T", authors: nil, progress: 1.42).contains("100%"),
                       "Over-unity progress clamps to 100%")
     }
+
+    // MARK: - PP-4971 — whole-book remaining is wall-clock, not book time
+
+    /// The baseline: at normal speed the figure is the book time unchanged, so
+    /// the fix cannot be "always divide by something".
+    func testWholeBookRemaining_atNormalSpeed_readsBookTime() {
+        XCTAssertEqual(
+            V.wholeBookRemainingText(bookTimeRemaining: 3600, rate: .normalTime),
+            "1 hr 00 min remaining"
+        )
+    }
+
+    /// The reported defect: a 2× listener was told the full book time remained.
+    func testWholeBookRemaining_atDoubleSpeed_isHalved() {
+        XCTAssertEqual(
+            V.wholeBookRemainingText(bookTimeRemaining: 3600, rate: .doubleTime),
+            "30 min remaining"
+        )
+    }
+
+    /// Slower than normal has to move the other way — a sign error would pass a
+    /// test that only ever checked speeds above 1×.
+    func testWholeBookRemaining_belowNormalSpeed_takesLonger() {
+        XCTAssertEqual(
+            V.wholeBookRemainingText(bookTimeRemaining: 3600, rate: .threeQuartersTime),
+            "1 hr 20 min remaining"
+        )
+    }
+
+    /// Changing speed must change the answer at every step of the rail, not just
+    /// at the presets — the whole point of PP-4518 was the 0.05× steps.
+    func testWholeBookRemaining_everyRateOnTheRailProducesADistinctFigure() {
+        // 10 hours of book: enough that adjacent 0.05x steps differ by minutes.
+        let bookTime: TimeInterval = 36_000
+        var seen = Set<String>()
+        for rate in PlaybackRate.allCases {
+            seen.insert(V.wholeBookRemainingText(bookTimeRemaining: bookTime, rate: rate))
+        }
+        XCTAssertEqual(
+            seen.count, PlaybackRate.allCases.count,
+            "Two speeds produced the same remaining figure — the rate is not reaching the calculation"
+        )
+    }
+
+    /// A finished book reads zero however fast it was played.
+    func testWholeBookRemaining_finishedBookIsZeroAtEverySpeed() {
+        for rate in PlaybackRate.allCases {
+            XCTAssertEqual(
+                V.wholeBookRemainingText(bookTimeRemaining: 0, rate: rate),
+                "0 min remaining",
+                "rate \(rate.rawValue) did not report a finished book as zero"
+            )
+        }
+    }
+
+    /// The playhead can overrun the manifest duration, which used to be absorbed
+    /// by a `max(0,)` at the call site. That clamp now lives in the shared rule,
+    /// so a negative must still never surface as "-1 min remaining".
+    func testWholeBookRemaining_overrunPlayheadDoesNotGoNegative() {
+        XCTAssertEqual(
+            V.wholeBookRemainingText(bookTimeRemaining: -120, rate: .normalTime),
+            "0 min remaining"
+        )
+    }
 }
